@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}مدیریت همکاران و نمایندگان فروش{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-handshake text-primary"></i> شبکه نمایندگان و همکاران فروش</h1>
+        <p class="text-muted mb-0">تعریف نمایندگان جدید، تعیین نرخ تخفیف عمده‌فروشی، شارژ اعتبار و مشاهده عملکرد</p>
+    </div>
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addResellerModal">
+        <i class="fas fa-user-plus me-1"></i> تعریف نماینده جدید
+    </button>
+</div>
+
+<!-- جدول لیست نمایندگان -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>نام و عنوان نماینده</th>
+                        <th>نام کاربری ورود</th>
+                        <th>درصد تخفیف</th>
+                        <th>موجودی کیف پول</th>
+                        <th>تعداد مشتریان</th>
+                        <th>اشتراک‌های فعال</th>
+                        <th>مجموع خرید</th>
+                        <th>وضعیت</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in resellers %}
+                    <tr>
+                        <td>
+                            <strong>{{ r['name'] }}</strong>
+                            {% if r['telegram_id'] %}
+                                <div class="text-muted small"><code>{{ r['telegram_id'] }}</code></div>
+                            {% endif %}
+                        </td>
+                        <td><code>{{ r['username'] }}</code></td>
+                        <td><span class="badge bg-primary fs-6">{{ r['discount_percent'] }}%</span></td>
+                        <td><strong class="text-success">{{ "{:,}".format(r['balance'] or 0) }} تومان</strong></td>
+                        <td><span class="badge bg-secondary">{{ r['total_users'] }} مشتری</span></td>
+                        <td><span class="badge bg-success">{{ r['active_users'] }} فعال</span></td>
+                        <td>{{ "{:,}".format(r['total_spent'] or 0) }} تومان</td>
+                        <td>
+                            {% if r['status'] == 'active' %}
+                                <span class="badge badge-approved">فعال</span>
+                            {% else %}
+                                <span class="badge badge-rejected">معلق</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#topupModal{{ r['id'] }}" title="شارژ کیف پول">
+                                    <i class="fas fa-wallet me-1"></i> شارژ
+                                </button>
+                                <a href="{{ url_for('admin_reseller_toggle', reseller_id=r['id']) }}" class="btn btn-outline-warning" title="تغییر وضعیت فعال/غیرفعال" onclick="return confirm('آیا از تغییر وضعیت این نماینده مطمئن هستید؟')">
+                                    <i class="fas fa-power-off"></i>
+                                </a>
+                            </div>
+
+                            <!-- Modal شارژ کیف پول نماینده -->
+                            <div class="modal fade" id="topupModal{{ r['id'] }}" tabindex="-1">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <form method="POST" action="{{ url_for('admin_reseller_add_balance', reseller_id=r['id']) }}">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title fw-bold">شارژ کیف پول «{{ r['name'] }}»</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                <p>موجودی فعلی: <strong>{{ "{:,}".format(r['balance'] or 0) }} تومان</strong></p>
+                                                <div class="mb-3">
+                                                    <label class="form-label">مبلغ شارژ (تومان):</label>
+                                                    <input type="number" name="amount" class="form-control" placeholder="مثال: 500000" min="1000" required>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label class="form-label">توضیحات (اختیاری):</label>
+                                                    <input type="text" name="description" class="form-control" value="شارژ کیف پول توسط مدیر">
+                                                </div>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                                                <button type="submit" class="btn btn-success">افزایش موجودی</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not resellers %}
+                    <tr>
+                        <td colspan="9" class="text-center py-4 text-muted">هنوز هیچ نماینده‌ای ثبت نشده است.</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal تعریف نماینده جدید -->
+<div class="modal fade" id="addResellerModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('admin_resellers') }}">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-user-plus text-primary me-2"></i>تعریف همکار / نماینده جدید</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">نام و عنوان نماینده:</label>
+                        <input type="text" name="name" class="form-control" placeholder="مثال: علی رضایی / فروشگاه نوین" required>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">نام کاربری ورود:</label>
+                            <input type="text" name="username" class="form-control" placeholder="مثال: ali_vpn" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">رمز عبور:</label>
+                            <input type="password" name="password" class="form-control" placeholder="حداقل ۶ کاراکتر" required>
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">درصد تخفیف همکاری (%):</label>
+                            <input type="number" name="discount_percent" class="form-control" value="25" min="1" max="99" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">شارژ اولیه کیف پول (تومان):</label>
+                            <input type="number" name="initial_balance" class="form-control" value="0" min="0">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">آیدی عددی تلگرام (اختیاری برای نوتیفیکیشن):</label>
+                        <input type="number" name="telegram_id" class="form-control" placeholder="مثال: 123456789">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary">ثبت و صدور پنل نماینده</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}ورود به سامانه مدیریت و نمایندگی VPN{% endblock %}
+
+{% block login_content %}
+<div class="container">
+    <div class="row justify-content-center align-items-center" style="min-height: 100vh; padding: 20px 0;">
+        <div class="col-md-5 col-lg-4">
+            <div class="card shadow-lg border-0" style="border-radius: 20px; overflow: hidden;">
+                <div class="card-header text-center py-4" style="background: linear-gradient(135deg, #4f46e5 0%, #0ea5e9 100%); color: white;">
+                    <i class="fas fa-shield-halved fa-3x mb-2"></i>
+                    <h3 class="fw-bold mb-1">سامانه هوشمند VPN</h3>
+                    <p class="small mb-0 opacity-75">ورود مدیران و همکاران فروش</p>
+                </div>
+                <div class="card-body p-4">
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ 'success' if category == 'success' else 'danger' }} py-2 small mb-3">
+                                    {{ message }}
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+
+                    <form method="POST">
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">نام کاربری (مدیر یا همکار):</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light"><i class="fas fa-user text-muted"></i></span>
+                                <input type="text" class="form-control" name="username" placeholder="Username" required autofocus>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label small fw-bold">رمز عبور:</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light"><i class="fas fa-lock text-muted"></i></span>
+                                <input type="password" class="form-control" name="password" placeholder="Password" required>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100 py-2 fw-bold">
+                            <i class="fas fa-right-to-bracket me-1"></i> ورود به سامانه
+                        </button>
+                    </form>
+                </div>
+                <div class="card-footer bg-light text-center py-3">
+                    <small class="text-muted"><i class="fas fa-lock me-1"></i> ارتباط امن و رمزنگاری شده</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

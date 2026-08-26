@@ -1,0 +1,1867 @@
+#!/usr/bin/env python3
+"""
+ماژول دیتابیس برای ذخیره‌سازی مشتریان، تنظیمات و تراکنش‌ها
+"""
+
+import sqlite3
+import json
+import os
+import logging
+from datetime import datetime, timedelta
+from utils import get_now_naive, get_now_iso
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+# مسیر دیتابیس - از Railway persistent storage یا متغیر محیطی استفاده میکنه
+# Railway: اگر Volume دارید، DATA_DIR=/data تنظیم کنید
+# در غیر این صورت، دیتابیس در مسیر پروژه ذخیره میشه
+POSSIBLE_PATHS = [
+    Path(os.environ.get("DATA_DIR", "")),  # Railway Volume
+    Path("/data"),  # Railway default persistent
+    Path(os.path.expanduser("~/.vpn-bot/data")),  # Home directory
+    Path("data"),  # Fallback to project directory
+]
+
+DB_DIR = None
+for path in POSSIBLE_PATHS:
+    if path and path != Path(""):
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            # تست نوشتن
+            test_file = path / ".write_test"
+            test_file.write_text("test")
+            test_file.unlink()
+            DB_DIR = path
+            break
+        except (PermissionError, OSError) as e:
+            logger.warning(f"Cannot write to {path}: {e}")
+            continue
+
+if DB_DIR is None:
+    DB_DIR = Path("data")
+    DB_DIR.mkdir(exist_ok=True)
+
+DB_PATH = DB_DIR / "bot_database.db"
+logger.info(f"Database path: {DB_PATH}")
+logger.info(f"Data directory: {DB_DIR}")
+
+
+class Database:
+    """کلاس مدیریت دیتابیس"""
+
+    def __init__(self, db_path=None):
+        self.db_path = db_path or DB_PATH
+        self.init_db()
+
+    def get_connection(self):
+        """دریافت اتصال دیتابیس"""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        return conn
+
+    def init_db(self):
+        """ایجاد جداول دیتابیس"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        # جدول مشتریان
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER UNIQUE NOT NULL,
+                username TEXT,
+                hidify_uuid TEXT,
+                plan_id TEXT,
+                data_limit REAL DEFAULT 0,
+                expire_at INTEGER,
+                created_at TEXT,
+                updated_at TEXT
+            )
+        """)
+
+        # جدول اشتراک‌ها
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS subscriptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                hidify_uuid TEXT,
+                plan_id TEXT,
+                plan_name TEXT,
+                account_name TEXT,
+                account_comment TEXT,
+                data_limit REAL DEFAULT 0,
+                data_used REAL DEFAULT 0,
+                duration INTEGER DEFAULT 30,
+                start_date TEXT,
+                expire_date TEXT,
+                status TEXT DEFAULT 'active',
+                created_at TEXT,
+                updated_at TEXT,
+                FOREIGN KEY (telegram_id) REFERENCES users(telegram_id)
+            )
+        """)
+
+        # جدول تراکنش‌ها
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id TEXT UNIQUE NOT NULL,
+                user_id INTEGER NOT NULL,
+                username TEXT,
+                plan_name TEXT,
+                amount INTEGER,
+                gateway TEXT,
+                tracking_code TEXT,
+                account_name TEXT,
+                account_comment TEXT,
+                status TEXT DEFAULT 'pending',
+                ref_id TEXT,
+                subscription_id INTEGER,
+                created_at TEXT,
+                updated_at TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(telegram_id),
+                FOREIGN KEY (subscription_id) REFERENCES subscriptions(id)
+            )
+        """)
+
+        # جدول تنظیمات
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT,
+                updated_at TEXT
+            )
+        """)
+
+        # جدول پشتیبان‌ها
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS backups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                backup_file TEXT,
+                backup_size INTEGER,
+                created_at TEXT,
+                uploaded BOOLEAN DEFAULT 0
+            )
+        """)
+
+        # جدول کیف پول
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS wallet (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER UNIQUE NOT NULL,
+                balance INTEGER DEFAULT 0,
+                created_at TEXT,
+                updated_at TEXT,
+                FOREIGN KEY (telegram_id) REFERENCES users(telegram_id)
+            )
+        """)
+
+        # جدول کدهای تخفیف
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS discount_codes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT UNIQUE NOT NULL,
+                discount_percent INTEGER DEFAULT 0,
+                discount_amount INTEGER DEFAULT 0,
+                max_uses INTEGER DEFAULT 0,
+                used_count INTEGER DEFAULT 0,
+                valid_until TEXT,
+                is_active BOOLEAN DEFAULT 1,
+                created_at TEXT,
+                updated_at TEXT
+            )
+        """)
+
+        # جدول بلاک لیست
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS blocked_users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER UNIQUE NOT NULL,
+                reason TEXT,
+                blocked_by INTEGER,
+                created_at TEXT
+            )
+        """)
+
+        # جدول تیکت‌های پشتیبانی
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS support_tickets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                subject TEXT,
+                message TEXT,
+                status TEXT DEFAULT 'open',
+                admin_reply TEXT,
+                created_at TEXT,
+                updated_at TEXT,
+                FOREIGN KEY (telegram_id) REFERENCES users(telegram_id)
+            )
+        """)
+
+        # جدول اعلان‌های ارسال شده
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS sent_notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                notification_type TEXT,
+                subscription_id INTEGER,
+                sent_at TEXT,
+                FOREIGN KEY (telegram_id) REFERENCES users(telegram_id)
+            )
+        """)
+
+        # جدول رفرال و معرفی
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS referrals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                referrer_id INTEGER NOT NULL,
+                referred_id INTEGER UNIQUE NOT NULL,
+                reward_amount INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'pending',
+                created_at TEXT,
+                updated_at TEXT
+            )
+        """)
+
+        # جدول همکاران و نمایندگان فروش (Resellers)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS resellers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                name TEXT NOT NULL,
+                telegram_id INTEGER,
+                balance INTEGER DEFAULT 0,
+                discount_percent INTEGER DEFAULT 20,
+                status TEXT DEFAULT 'active',
+                created_at TEXT,
+                updated_at TEXT
+            )
+        """)
+
+        # جدول تراکنش‌های نمایندگان
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS reseller_transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reseller_id INTEGER NOT NULL,
+                type TEXT NOT NULL,
+                amount INTEGER NOT NULL,
+                plan_name TEXT,
+                account_name TEXT,
+                description TEXT,
+                created_at TEXT,
+                FOREIGN KEY (reseller_id) REFERENCES resellers(id)
+            )
+        """)
+
+        # جدول کارت‌های بانکی مقصد
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS bank_cards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                card_number TEXT NOT NULL,
+                card_holder TEXT NOT NULL,
+                bank_name TEXT NOT NULL,
+                daily_limit INTEGER DEFAULT 50000000,
+                is_active BOOLEAN DEFAULT 1,
+                created_at TEXT
+            )
+        """)
+
+        # مایگریشن خودکار ستون‌های جدید
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN referred_by INTEGER")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN is_renewal BOOLEAN DEFAULT 0")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN renew_sub_id INTEGER")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN discount_code TEXT")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN rejection_reason TEXT")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN receipt_photo_id TEXT")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE subscriptions ADD COLUMN reseller_id INTEGER")
+        except Exception:
+            pass
+
+        conn.commit()
+        conn.close()
+        logger.info("Database initialized successfully")
+
+    def auto_restore(self):
+        """بازیابی خودکار از آخرین پشتیبان اگر دیتابیس خالی باشد"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # بررسی تعداد کاربران
+            cursor.execute("SELECT COUNT(*) FROM users")
+            count = cursor.fetchone()[0]
+            conn.close()
+            
+            if count > 0:
+                logger.info(f"Database has {count} users, no restore needed")
+                return {"restored": False, "reason": "database_not_empty"}
+            
+            logger.info("Database is empty, looking for backups...")
+            
+            # جستجو برای فایل‌های پشتیبان
+            backup_dirs = [
+                Path("backups"),
+                Path("/data/backups"),
+                DB_DIR / "backups",
+                Path(os.path.expanduser("~/.vpn-bot/data/backups")),
+            ]
+            
+            all_backups = []
+            for backup_dir in backup_dirs:
+                if backup_dir.exists():
+                    for f in backup_dir.glob("backup_*.db"):
+                        all_backups.append(f)
+            
+            if not all_backups:
+                logger.info("No backup files found")
+                return {"restored": False, "reason": "no_backups_found"}
+            
+            # مرتب‌سازی بر اساس تاریخ (جدیدترین اول)
+            all_backups.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+            latest_backup = all_backups[0]
+            
+            logger.info(f"Restoring from backup: {latest_backup.name}")
+            
+            # کپی پشتیبان به مسیر دیتابیس فعلی
+            import shutil
+            shutil.copy2(latest_backup, self.db_path)
+            
+            # بررسی نتیجه
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM users")
+            restored_count = cursor.fetchone()[0]
+            conn.close()
+            
+            logger.info(f"Restored {restored_count} users from {latest_backup.name}")
+            return {
+                "restored": True,
+                "backup_file": latest_backup.name,
+                "users_restored": restored_count,
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in auto_restore: {e}")
+            return {"restored": False, "error": str(e)}
+
+    # ═══════════════════════════════════════════════════════════════
+    # مدیریت مشتریان
+    # ═══════════════════════════════════════════════════════════════
+
+    def save_user(self, telegram_id, username=None, hidify_uuid=None, plan_id=None, data_limit=None, expire_at=None):
+        """ذخیره یا بروزرسانی اطلاعات کاربر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+
+        try:
+            # بررسی وجود کاربر
+            cursor.execute("SELECT id FROM users WHERE telegram_id = ?", (telegram_id,))
+            existing = cursor.fetchone()
+
+            if existing:
+                # بروزرسانی با حفظ فیلدهای قبلی در صورت None بودن
+                cursor.execute("""
+                    UPDATE users SET
+                        username = COALESCE(?, username),
+                        hidify_uuid = COALESCE(?, hidify_uuid),
+                        plan_id = COALESCE(?, plan_id),
+                        data_limit = COALESCE(?, data_limit),
+                        expire_at = COALESCE(?, expire_at),
+                        updated_at = ?
+                    WHERE telegram_id = ?
+                """, (username, hidify_uuid, plan_id, data_limit, expire_at, now, telegram_id))
+            else:
+                # درج جدید
+                cursor.execute("""
+                    INSERT INTO users (telegram_id, username, hidify_uuid, plan_id, data_limit, expire_at, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (telegram_id, username or f"user_{telegram_id}", hidify_uuid, plan_id, data_limit or 0, expire_at, now, now))
+
+            conn.commit()
+            logger.info(f"User {telegram_id} saved successfully")
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error saving user {telegram_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_user(self, telegram_id):
+        """دریافت اطلاعات کاربر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+        except Exception as e:
+            logger.error(f"Error getting user {telegram_id}: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def get_all_users(self):
+        """دریافت تمام کاربران"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("SELECT * FROM users ORDER BY created_at DESC")
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error getting all users: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def delete_user(self, telegram_id):
+        """حذف کاربر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("DELETE FROM users WHERE telegram_id = ?", (telegram_id,))
+            conn.commit()
+            logger.info(f"User {telegram_id} deleted")
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error deleting user {telegram_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    # ═══════════════════════════════════════════════════════════════
+    # مدیریت اشتراک‌ها
+    # ═══════════════════════════════════════════════════════════════
+
+    def save_subscription(self, telegram_id, hidify_uuid, plan_id, plan_name, data_limit, duration, data_used=0, status="active", account_name=None, account_comment=None):
+        """ذخیره اشتراک جدید"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        expire_date = (get_now_naive() + timedelta(days=duration)).isoformat()
+
+        try:
+            cursor.execute("""
+                INSERT INTO subscriptions
+                (telegram_id, hidify_uuid, plan_id, plan_name, account_name, account_comment, data_limit, data_used, duration, start_date, expire_date, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (telegram_id, hidify_uuid, plan_id, plan_name, account_name, account_comment, data_limit, data_used, duration, now, expire_date, status, now, now))
+            conn.commit()
+            subscription_id = cursor.lastrowid
+            logger.info(f"Subscription {subscription_id} saved for user {telegram_id}")
+            return {"success": True, "subscription_id": subscription_id}
+        except Exception as e:
+            logger.error(f"Error saving subscription: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_user_subscriptions(self, telegram_id, status=None):
+        """دریافت اشتراک‌های کاربر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            if status:
+                cursor.execute("""
+                    SELECT * FROM subscriptions
+                    WHERE telegram_id = ? AND status = ?
+                    ORDER BY created_at DESC
+                """, (telegram_id, status))
+            else:
+                cursor.execute("""
+                    SELECT * FROM subscriptions
+                    WHERE telegram_id = ?
+                    ORDER BY created_at DESC
+                """, (telegram_id,))
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error getting subscriptions for user {telegram_id}: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_active_subscription(self, telegram_id):
+        """دریافت اشتراک فعال کاربر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                SELECT * FROM subscriptions
+                WHERE telegram_id = ? AND status = 'active'
+                ORDER BY created_at DESC
+                LIMIT 1
+            """, (telegram_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error getting active subscription for user {telegram_id}: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def update_subscription(self, subscription_id, **kwargs):
+        """بروزرسانی اشتراک"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+
+        try:
+            updates = []
+            values = []
+            for key, value in kwargs.items():
+                updates.append(f"{key} = ?")
+                values.append(value)
+            updates.append("updated_at = ?")
+            values.append(now)
+            values.append(subscription_id)
+
+            query = f"UPDATE subscriptions SET {', '.join(updates)} WHERE id = ?"
+            cursor.execute(query, values)
+            conn.commit()
+            logger.info(f"Subscription {subscription_id} updated")
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error updating subscription {subscription_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def cancel_subscription(self, subscription_id):
+        """لغو اشتراک"""
+        return self.update_subscription(subscription_id, status="cancelled")
+
+    # ═══════════════════════════════════════════════════════════════
+    # مدیریت تراکنش‌ها
+    # ═══════════════════════════════════════════════════════════════
+
+    def save_transaction(self, order_id, user_id, username, plan_name, amount, gateway, tracking_code, status="pending", account_name=None, account_comment=None, is_renewal=0, renew_sub_id=None, discount_code=None):
+        """ذخیره تراکنش"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+
+        try:
+            cursor.execute("""
+                INSERT OR REPLACE INTO transactions
+                (order_id, user_id, username, plan_name, amount, gateway, tracking_code, account_name, account_comment, status, is_renewal, renew_sub_id, discount_code, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (order_id, user_id, username, plan_name, amount, gateway, tracking_code, account_name, account_comment, status, 1 if is_renewal else 0, renew_sub_id, discount_code, now, now))
+            conn.commit()
+            logger.info(f"Transaction {order_id} saved (is_renewal={is_renewal})")
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error saving transaction {order_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def update_transaction(self, order_id, status, ref_id=None):
+        """بروزرسانی وضعیت تراکنش"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+
+        try:
+            if ref_id:
+                cursor.execute("""
+                    UPDATE transactions SET status = ?, ref_id = ?, updated_at = ?
+                    WHERE order_id = ?
+                """, (status, ref_id, now, order_id))
+            else:
+                cursor.execute("""
+                    UPDATE transactions SET status = ?, updated_at = ?
+                    WHERE order_id = ?
+                """, (status, now, order_id))
+            conn.commit()
+            logger.info(f"Transaction {order_id} updated to {status}")
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error updating transaction {order_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_user_transactions(self, user_id):
+        """دریافت تراکنش‌های کاربر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                SELECT * FROM transactions WHERE user_id = ?
+                ORDER BY created_at DESC
+            """, (user_id,))
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error getting transactions for user {user_id}: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_transaction_by_order_id(self, order_id):
+        """دریافت تراکنش بر اساس order_id"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                SELECT * FROM transactions WHERE order_id = ?
+            """, (order_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error getting transaction {order_id}: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def get_pending_transactions(self):
+        """دریافت تراکنش‌های در انتظار"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                SELECT * FROM transactions WHERE status = 'pending'
+                ORDER BY created_at DESC
+            """)
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error getting pending transactions: {e}")
+            return []
+        finally:
+            conn.close()
+
+    # ═══════════════════════════════════════════════════════════════
+    # مدیریت تنظیمات
+    # ═══════════════════════════════════════════════════════════════
+
+    def save_setting(self, key, value):
+        """ذخیره تنظیم"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+
+        try:
+            # تبدیل dict/list به JSON
+            if isinstance(value, (dict, list)):
+                value = json.dumps(value, ensure_ascii=False)
+
+            cursor.execute("""
+                INSERT OR REPLACE INTO settings (key, value, updated_at)
+                VALUES (?, ?, ?)
+            """, (key, str(value), now))
+            conn.commit()
+            logger.info(f"Setting {key} saved")
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error saving setting {key}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_setting(self, key, default=None):
+        """دریافت تنظیم"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
+            row = cursor.fetchone()
+            if row:
+                value = row["value"]
+                # تلاش برای تبدیل از JSON
+                try:
+                    return json.loads(value)
+                except:
+                    return value
+            return default
+        except Exception as e:
+            logger.error(f"Error getting setting {key}: {e}")
+            return default
+        finally:
+            conn.close()
+
+    def get_all_settings(self):
+        """دریافت تمام تنظیمات"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("SELECT * FROM settings")
+            rows = cursor.fetchall()
+            result = {}
+            for row in rows:
+                try:
+                    result[row["key"]] = json.loads(row["value"])
+                except:
+                    result[row["key"]] = row["value"]
+            return result
+        except Exception as e:
+            logger.error(f"Error getting all settings: {e}")
+            return {}
+        finally:
+            conn.close()
+
+    # ═══════════════════════════════════════════════════════════════
+    # مدیریت پشتیبان‌ها
+    # ═══════════════════════════════════════════════════════════════
+
+    def save_backup_record(self, backup_file, backup_size):
+        """ذخیره رکورد پشتیبان"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+
+        try:
+            cursor.execute("""
+                INSERT INTO backups (backup_file, backup_size, created_at, uploaded)
+                VALUES (?, ?, ?, 0)
+            """, (backup_file, backup_size, now))
+            conn.commit()
+            return {"success": True, "id": cursor.lastrowid}
+        except Exception as e:
+            logger.error(f"Error saving backup record: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def mark_backup_uploaded(self, backup_id):
+        """علامت‌گذاری پشتیبان به عنوان آپلود شده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("UPDATE backups SET uploaded = 1 WHERE id = ?", (backup_id,))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error marking backup as uploaded: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_backups(self, limit=10):
+        """دریافت لیست پشتیبان‌ها"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                SELECT * FROM backups ORDER BY created_at DESC LIMIT ?
+            """, (limit,))
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error getting backups: {e}")
+            return []
+        finally:
+            conn.close()
+
+    # ═══════════════════════════════════════════════════════════════
+    # مدیریت کیف پول
+    # ═══════════════════════════════════════════════════════════════
+
+    def get_wallet(self, telegram_id):
+        """دریافت موجودی کیف پول"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM wallet WHERE telegram_id = ?", (telegram_id,))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            # ایجاد کیف پول جدید
+            now = get_now_iso()
+            cursor.execute("INSERT INTO wallet (telegram_id, balance, created_at, updated_at) VALUES (?, 0, ?, ?)",
+                          (telegram_id, now, now))
+            conn.commit()
+            return {"telegram_id": telegram_id, "balance": 0}
+        except Exception as e:
+            logger.error(f"Error getting wallet for {telegram_id}: {e}")
+            return {"telegram_id": telegram_id, "balance": 0}
+        finally:
+            conn.close()
+
+    def update_wallet(self, telegram_id, amount):
+        """بروزرسانی موجودی کیف پول"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                INSERT INTO wallet (telegram_id, balance, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(telegram_id) DO UPDATE SET balance = balance + ?, updated_at = ?
+            """, (telegram_id, amount, now, now, amount, now))
+            conn.commit()
+            # دریافت موجودی جدید
+            cursor.execute("SELECT balance FROM wallet WHERE telegram_id = ?", (telegram_id,))
+            row = cursor.fetchone()
+            return {"success": True, "balance": row["balance"] if row else 0}
+        except Exception as e:
+            logger.error(f"Error updating wallet for {telegram_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_all_wallets(self):
+        """دریافت تمام کیف پول‌ها"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM wallet ORDER BY balance DESC")
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error getting all wallets: {e}")
+            return []
+        finally:
+            conn.close()
+
+    # ═══════════════════════════════════════════════════════════════
+    # مدیریت کدهای تخفیف
+    # ═══════════════════════════════════════════════════════════════
+
+    def create_discount_code(self, code, discount_percent=0, discount_amount=0, max_uses=0, valid_until=None):
+        """ایجاد کد تخفیف جدید"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                INSERT INTO discount_codes (code, discount_percent, discount_amount, max_uses, valid_until, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+            """, (code.upper(), discount_percent, discount_amount, max_uses, valid_until, now, now))
+            conn.commit()
+            return {"success": True, "id": cursor.lastrowid}
+        except Exception as e:
+            logger.error(f"Error creating discount code: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def use_discount_code(self, code):
+        """استفاده از کد تخفیف"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT * FROM discount_codes WHERE code = ? AND is_active = 1", (code.upper(),))
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "error": "کد تخفیف یافت نشد"}
+            
+            discount = dict(row)
+            
+            # بررسی تاریخ اعتبار
+            if discount["valid_until"]:
+                valid_until = datetime.fromisoformat(discount["valid_until"])
+                if get_now_naive() > valid_until:
+                    return {"success": False, "error": "کد تخفیف منقضی شده"}
+            
+            # بررسی تعداد استفاده
+            if discount["max_uses"] > 0 and discount["used_count"] >= discount["max_uses"]:
+                return {"success": False, "error": "کد تخفیف به حداکثر استفاده رسیده"}
+            
+            # بروزرسانی تعداد استفاده
+            cursor.execute("UPDATE discount_codes SET used_count = used_count + 1, updated_at = ? WHERE code = ?", (now, code.upper()))
+            conn.commit()
+            
+            return {
+                "success": True,
+                "discount_percent": discount["discount_percent"],
+                "discount_amount": discount["discount_amount"]
+            }
+        except Exception as e:
+            logger.error(f"Error using discount code: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_all_discount_codes(self):
+        """دریافت تمام کدهای تخفیف"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM discount_codes ORDER BY created_at DESC")
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error getting discount codes: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def delete_discount_code(self, code):
+        """حذف کد تخفیف"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM discount_codes WHERE code = ?", (code.upper(),))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error deleting discount code: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    # ═══════════════════════════════════════════════════════════════
+    # مدیریت بلاک لیست
+    # ═══════════════════════════════════════════════════════════════
+
+    def block_user(self, telegram_id, reason=None, blocked_by=None):
+        """بلاک کردن کاربر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                INSERT OR REPLACE INTO blocked_users (telegram_id, reason, blocked_by, created_at)
+                VALUES (?, ?, ?, ?)
+            """, (telegram_id, reason, blocked_by, now))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error blocking user {telegram_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def unblock_user(self, telegram_id):
+        """آنبلاک کردن کاربر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM blocked_users WHERE telegram_id = ?", (telegram_id,))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error unblocking user {telegram_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def is_blocked(self, telegram_id):
+        """بررسی بلاک بودن کاربر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM blocked_users WHERE telegram_id = ?", (telegram_id,))
+            row = cursor.fetchone()
+            return row is not None
+        except Exception as e:
+            logger.error(f"Error checking block status: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def get_blocked_users(self):
+        """دریافت لیست کاربران بلاک شده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM blocked_users ORDER BY created_at DESC")
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error getting blocked users: {e}")
+            return []
+        finally:
+            conn.close()
+
+    # ═══════════════════════════════════════════════════════════════
+    # مدیریت تیکت‌های پشتیبانی
+    # ═══════════════════════════════════════════════════════════════
+
+    def create_ticket(self, telegram_id, subject, message):
+        """ایجاد تیکت پشتیبانی جدید"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                INSERT INTO support_tickets (telegram_id, subject, message, status, created_at, updated_at)
+                VALUES (?, ?, ?, 'open', ?, ?)
+            """, (telegram_id, subject, message, now, now))
+            conn.commit()
+            return {"success": True, "ticket_id": cursor.lastrowid}
+        except Exception as e:
+            logger.error(f"Error creating ticket: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def reply_ticket(self, ticket_id, admin_reply):
+        """پاسخ ادمین به تیکت"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                UPDATE support_tickets SET admin_reply = ?, status = 'replied', updated_at = ?
+                WHERE id = ?
+            """, (admin_reply, now, ticket_id))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error replying to ticket: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def close_ticket(self, ticket_id):
+        """بستن تیکت"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("UPDATE support_tickets SET status = 'closed', updated_at = ? WHERE id = ?", (now, ticket_id))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error closing ticket: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_user_tickets(self, telegram_id, status=None):
+        """دریافت تیکت‌های کاربر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if status:
+                cursor.execute("SELECT * FROM support_tickets WHERE telegram_id = ? AND status = ? ORDER BY created_at DESC", (telegram_id, status))
+            else:
+                cursor.execute("SELECT * FROM support_tickets WHERE telegram_id = ? ORDER BY created_at DESC", (telegram_id,))
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error getting tickets: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_ticket(self, ticket_id):
+        """دریافت یک تیکت بر اساس شناسه"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM support_tickets WHERE id = ?", (ticket_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error getting ticket {ticket_id}: {e}")
+            return None
+        finally:
+            conn.close()
+
+    # ═══════════════════════════════════════════════════════════════
+    # مدیریت رفرال و زیرمجموعه‌گیری
+    # ═══════════════════════════════════════════════════════════════
+
+    def add_referral(self, referrer_id, referred_id):
+        """ثبت کاربر معرفی شده"""
+        if referrer_id == referred_id:
+            return {"success": False, "error": "self_referral"}
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            # ثبت در جدول referrals
+            cursor.execute("""
+                INSERT OR IGNORE INTO referrals (referrer_id, referred_id, reward_amount, status, created_at, updated_at)
+                VALUES (?, ?, 0, 'pending', ?, ?)
+            """, (referrer_id, referred_id, now, now))
+            # ثبت معرف در جدول users
+            cursor.execute("""
+                UPDATE users SET referred_by = ?, updated_at = ?
+                WHERE telegram_id = ? AND referred_by IS NULL
+            """, (referrer_id, now, referred_id))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error adding referral ({referrer_id} -> {referred_id}): {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_referral_stats(self, referrer_id):
+        """دریافت آمار رفرال کاربر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT COUNT(*) as total FROM referrals WHERE referrer_id = ?", (referrer_id,))
+            total_invites = cursor.fetchone()["total"]
+
+            cursor.execute("SELECT COUNT(*) as rewarded FROM referrals WHERE referrer_id = ? AND status = 'rewarded'", (referrer_id,))
+            rewarded_invites = cursor.fetchone()["rewarded"]
+
+            cursor.execute("SELECT COALESCE(SUM(reward_amount), 0) as total_reward FROM referrals WHERE referrer_id = ? AND status = 'rewarded'", (referrer_id,))
+            total_reward = cursor.fetchone()["total_reward"]
+
+            return {
+                "total_invites": total_invites,
+                "rewarded_invites": rewarded_invites,
+                "total_reward": total_reward,
+            }
+        except Exception as e:
+            logger.error(f"Error getting referral stats for {referrer_id}: {e}")
+            return {"total_invites": 0, "rewarded_invites": 0, "total_reward": 0}
+        finally:
+            conn.close()
+
+    def complete_referral(self, referred_id, reward_amount=10000):
+        """تکمیل پاداش رفرال پس از خرید کاربر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT * FROM referrals WHERE referred_id = ? AND status = 'pending'", (referred_id,))
+            ref = cursor.fetchone()
+            if not ref:
+                return {"success": False, "reason": "no_pending_referral"}
+            
+            referrer_id = ref["referrer_id"]
+            cursor.execute("""
+                UPDATE referrals SET status = 'rewarded', reward_amount = ?, updated_at = ?
+                WHERE referred_id = ?
+            """, (reward_amount, now, referred_id))
+            
+            # افزودن پاداش به کیف پول معرف
+            cursor.execute("""
+                INSERT INTO wallet (telegram_id, balance, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(telegram_id) DO UPDATE SET balance = balance + ?, updated_at = ?
+            """, (referrer_id, reward_amount, now, now, reward_amount, now))
+            
+            conn.commit()
+            return {"success": True, "referrer_id": referrer_id, "reward_amount": reward_amount}
+        except Exception as e:
+            logger.error(f"Error completing referral for {referred_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+
+    # ═══════════════════════════════════════════════════════════════
+    # مدیریت اعلان‌ها
+    # ═══════════════════════════════════════════════════════════════
+
+    def save_notification(self, telegram_id, notification_type, subscription_id=None):
+        """ذخیره اعلان ارسال شده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                INSERT INTO sent_notifications (telegram_id, notification_type, subscription_id, sent_at)
+                VALUES (?, ?, ?, ?)
+            """, (telegram_id, notification_type, subscription_id, now))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error saving notification: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def was_notification_sent(self, telegram_id, notification_type, subscription_id=None):
+        """بررسی ارسال شدن اعلان"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if subscription_id:
+                cursor.execute("""SELECT * FROM sent_notifications 
+                    WHERE telegram_id = ? AND notification_type = ? AND subscription_id = ?""", 
+                    (telegram_id, notification_type, subscription_id))
+            else:
+                cursor.execute("""SELECT * FROM sent_notifications 
+                    WHERE telegram_id = ? AND notification_type = ?""", 
+                    (telegram_id, notification_type))
+            return cursor.fetchone() is not None
+        except Exception as e:
+            logger.error(f"Error checking notification: {e}")
+            return False
+        finally:
+            conn.close()
+
+    # ═══════════════════════════════════════════════════════════════
+    # آمار پیشرفته
+    # ═══════════════════════════════════════════════════════════════
+
+    def get_advanced_stats(self):
+        """دریافت آمار پیشرفته"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            stats = {}
+            
+            # آمار کلی
+            cursor.execute("SELECT COUNT(*) as count FROM users")
+            stats["total_users"] = cursor.fetchone()["count"]
+            
+            cursor.execute("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'active'")
+            stats["active_subscriptions"] = cursor.fetchone()["count"]
+            
+            cursor.execute("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'expired'")
+            stats["expired_subscriptions"] = cursor.fetchone()["count"]
+            
+            # درآمد ماهانه
+            cursor.execute("""SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
+                WHERE status = 'completed' AND created_at >= date('now', '-30 days')""")
+            stats["monthly_revenue"] = cursor.fetchone()["total"]
+            
+            # درآمد امروز
+            cursor.execute("""SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
+                WHERE status = 'completed' AND date(created_at) = date('now')""")
+            stats["today_revenue"] = cursor.fetchone()["total"]
+            
+            # کاربران جدید امروز
+            cursor.execute("SELECT COUNT(*) as count FROM users WHERE date(created_at) = date('now')")
+            stats["today_new_users"] = cursor.fetchone()["count"]
+            
+            # تیکت‌های باز
+            cursor.execute("SELECT COUNT(*) as count FROM support_tickets WHERE status = 'open'")
+            stats["open_tickets"] = cursor.fetchone()["count"]
+            
+            # کاربران بلاک شده
+            cursor.execute("SELECT COUNT(*) as count FROM blocked_users")
+            stats["blocked_users"] = cursor.fetchone()["count"]
+            
+            # محبوب‌ترین پلن
+            cursor.execute("""SELECT plan_name, COUNT(*) as count FROM subscriptions 
+                GROUP BY plan_name ORDER BY count DESC LIMIT 5""")
+            stats["popular_plans"] = [dict(row) for row in cursor.fetchall()]
+            
+            return stats
+        except Exception as e:
+            logger.error(f"Error getting advanced stats: {e}")
+            return {}
+        finally:
+            conn.close()
+
+    # ═══════════════════════════════════════════════════════════════
+    # آمار
+    # ═══════════════════════════════════════════════════════════════
+
+    def get_stats(self):
+        """دریافت آمار دیتابیس"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            stats = {}
+
+            # تعداد کاربران
+            cursor.execute("SELECT COUNT(*) as count FROM users")
+            stats["total_users"] = cursor.fetchone()["count"]
+
+            # تعداد تراکنش‌ها
+            cursor.execute("SELECT COUNT(*) as count FROM transactions")
+            stats["total_transactions"] = cursor.fetchone()["count"]
+
+            # تراکنش‌های در انتظار
+            cursor.execute("SELECT COUNT(*) as count FROM transactions WHERE status = 'pending'")
+            stats["pending_transactions"] = cursor.fetchone()["count"]
+
+            # تراکنش‌های تایید شده
+            cursor.execute("SELECT COUNT(*) as count FROM transactions WHERE status = 'completed'")
+            stats["completed_transactions"] = cursor.fetchone()["count"]
+
+            # تراکنش‌های رد شده
+            cursor.execute("SELECT COUNT(*) as count FROM transactions WHERE status = 'rejected'")
+            stats["rejected_transactions"] = cursor.fetchone()["count"]
+
+            # درآمد کل
+            cursor.execute("SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE status = 'completed'")
+            stats["total_revenue"] = cursor.fetchone()["total"]
+
+            # تعداد پشتیبان‌ها
+            cursor.execute("SELECT COUNT(*) as count FROM backups")
+            stats["total_backups"] = cursor.fetchone()["count"]
+
+            return stats
+        except Exception as e:
+            logger.error(f"Error getting stats: {e}")
+            return {}
+        finally:
+            conn.close()
+
+    # ═══════════════════════════════════════════════════════════════
+    # مهاجرت از JSON به دیتابیس
+    # ═══════════════════════════════════════════════════════════════
+
+    def migrate_from_json(self):
+        """مهاجرت اطلاعات از فایل‌های JSON به دیتابیس"""
+        data_dir = Path("data")
+        migrated = 0
+
+        # مهاجرت کاربران
+        for user_file in data_dir.glob("*.json"):
+            if user_file.name in ["transactions.json", "cards.json", "plans.json"]:
+                continue
+
+            try:
+                with open(user_file, "r", encoding="utf-8") as f:
+                    user_data = json.load(f)
+
+                telegram_id = int(user_file.stem)
+                self.save_user(
+                    telegram_id=telegram_id,
+                    username=user_data.get("username", f"tg_{telegram_id}"),
+                    hidify_uuid=user_data.get("hidify_uuid", ""),
+                    plan_id=user_data.get("plan", ""),
+                    data_limit=user_data.get("data_limit", 0),
+                    expire_at=user_data.get("expire_at"),
+                )
+                migrated += 1
+                logger.info(f"Migrated user {telegram_id}")
+            except Exception as e:
+                logger.error(f"Error migrating {user_file}: {e}")
+
+        # مهاجرت تراکنش‌ها
+        transactions_file = data_dir / "transactions.json"
+        if transactions_file.exists():
+            try:
+                with open(transactions_file, "r", encoding="utf-8") as f:
+                    transactions = json.load(f)
+
+                for order_id, trans in transactions.items():
+                    self.save_transaction(
+                        order_id=order_id,
+                        user_id=trans.get("user_id", 0),
+                        username=trans.get("username", ""),
+                        plan_name=trans.get("plan_name", ""),
+                        amount=trans.get("amount", 0),
+                        gateway=trans.get("gateway", ""),
+                        tracking_code=trans.get("tracking_code", ""),
+                        status=trans.get("status", "pending"),
+                    )
+                    migrated += 1
+                logger.info(f"Migrated {len(transactions)} transactions")
+            except Exception as e:
+                logger.error(f"Error migrating transactions: {e}")
+
+        logger.info(f"Migration complete: {migrated} records migrated")
+        return {"success": True, "migrated": migrated}
+
+    # ═══════════════════════════════════════════════════════════════
+    # مهاجرت خودکار در شروع
+    # ═══════════════════════════════════════════════════════════════
+
+    def auto_migrate_on_startup(self):
+        """مهاجرت خودکار اگر دیتابیس خالی باشد و فایل‌های JSON وجود داشته باشد"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            # بررسی آیا دیتابیس خالی است
+            cursor.execute("SELECT COUNT(*) as count FROM users")
+            user_count = cursor.fetchone()["count"]
+
+            if user_count > 0:
+                logger.info(f"Database has {user_count} users, skipping auto-migration")
+                return {"success": True, "skipped": True, "reason": "database_not_empty"}
+
+            # بررسی وجود فایل‌های JSON
+            data_dir = Path("data")
+            json_files = list(data_dir.glob("*.json"))
+            if not json_files:
+                logger.info("No JSON files found, skipping auto-migration")
+                return {"success": True, "skipped": True, "reason": "no_json_files"}
+
+            # اجرای مهاجرت
+            logger.info(f"Found {len(json_files)} JSON files, starting auto-migration...")
+            result = self.migrate_from_json()
+            logger.info(f"Auto-migration completed: {result.get('migrated', 0)} records migrated")
+            return result
+
+        except Exception as e:
+            logger.error(f"Error in auto-migration: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def migrate_add_columns(self):
+        """اضافه کردن ستون‌های جدید به جداول قدیمی"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            # بررسی وجود ستون‌ها در subscriptions
+            cursor.execute("PRAGMA table_info(subscriptions)")
+            columns = [row[1] for row in cursor.fetchall()]
+            if "account_name" not in columns:
+                cursor.execute("ALTER TABLE subscriptions ADD COLUMN account_name TEXT")
+                logger.info("Added account_name column to subscriptions")
+            if "account_comment" not in columns:
+                cursor.execute("ALTER TABLE subscriptions ADD COLUMN account_comment TEXT")
+                logger.info("Added account_comment column to subscriptions")
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error migrating columns: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    # ═══════════════════════════════════════════════════════════════
+    # خروجی گرفتن از دیتابیس
+    # ═══════════════════════════════════════════════════════════════
+
+    def export_to_json(self, export_dir=None):
+        """خروجی گرفتن از دیتابیس به فایل‌های JSON"""
+        if export_dir is None:
+            export_dir = Path("data/export")
+        else:
+            export_dir = Path(export_dir)
+        export_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            # خروجی کاربران
+            users = self.get_all_users()
+            for user in users:
+                user_file = export_dir / f"user_{user['telegram_id']}.json"
+                with open(user_file, "w", encoding="utf-8") as f:
+                    json.dump(user, f, ensure_ascii=False, indent=2)
+
+            # خروجی تراکنش‌ها
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM transactions")
+            transactions = {row["order_id"]: dict(row) for row in cursor.fetchall()}
+            conn.close()
+
+            trans_file = export_dir / "transactions.json"
+            with open(trans_file, "w", encoding="utf-8") as f:
+                json.dump(transactions, f, ensure_ascii=False, indent=2)
+
+            # خروجی اشتراک‌ها
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM subscriptions")
+            subscriptions = [dict(row) for row in cursor.fetchall()]
+            conn.close()
+
+            subs_file = export_dir / "subscriptions.json"
+            with open(subs_file, "w", encoding="utf-8") as f:
+                json.dump(subscriptions, f, ensure_ascii=False, indent=2)
+
+            # خروجی تنظیمات
+            settings = self.get_all_settings()
+            settings_file = export_dir / "settings.json"
+            with open(settings_file, "w", encoding="utf-8") as f:
+                json.dump(settings, f, ensure_ascii=False, indent=2)
+
+            logger.info(f"Export completed to {export_dir}")
+            return {
+                "success": True,
+                "export_dir": str(export_dir),
+                "users": len(users),
+                "transactions": len(transactions),
+                "subscriptions": len(subscriptions),
+            }
+
+        except Exception as e:
+            logger.error(f"Error exporting data: {e}")
+            return {"success": False, "error": str(e)}
+
+    # ═══════════════════════════════════════════════════════════════
+    # ورودی گرفتن به دیتابیس
+    # ═══════════════════════════════════════════════════════════════
+
+    def import_from_json(self, import_dir=None):
+        """ورودی گرفتن از فایل‌های JSON به دیتابیس"""
+        if import_dir is None:
+            import_dir = Path("data/export")
+        else:
+            import_dir = Path(import_dir)
+
+        if not import_dir.exists():
+            return {"success": False, "error": "Import directory not found"}
+
+        imported = 0
+
+        try:
+            # ورودی کاربران
+            for user_file in import_dir.glob("user_*.json"):
+                try:
+                    with open(user_file, "r", encoding="utf-8") as f:
+                        user = json.load(f)
+                    self.save_user(
+                        telegram_id=user.get("telegram_id"),
+                        username=user.get("username", ""),
+                        hidify_uuid=user.get("hidify_uuid", ""),
+                        plan_id=user.get("plan_id", user.get("plan", "")),
+                        data_limit=user.get("data_limit", 0),
+                        expire_at=user.get("expire_at"),
+                    )
+                    imported += 1
+                except Exception as e:
+                    logger.error(f"Error importing {user_file}: {e}")
+
+            # ورودی تراکنش‌ها
+            trans_file = import_dir / "transactions.json"
+            if trans_file.exists():
+                with open(trans_file, "r", encoding="utf-8") as f:
+                    transactions = json.load(f)
+                for order_id, trans in transactions.items():
+                    self.save_transaction(
+                        order_id=order_id,
+                        user_id=trans.get("user_id", 0),
+                        username=trans.get("username", ""),
+                        plan_name=trans.get("plan_name", ""),
+                        amount=trans.get("amount", 0),
+                        gateway=trans.get("gateway", ""),
+                        tracking_code=trans.get("tracking_code", ""),
+                        status=trans.get("status", "pending"),
+                    )
+                    imported += 1
+
+            # ورودی اشتراک‌ها
+            subs_file = import_dir / "subscriptions.json"
+            if subs_file.exists():
+                with open(subs_file, "r", encoding="utf-8") as f:
+                    subscriptions = json.load(f)
+                for sub in subscriptions:
+                    conn = self.get_connection()
+                    cursor = conn.cursor()
+                    try:
+                        cursor.execute("""
+                            INSERT OR REPLACE INTO subscriptions
+                            (telegram_id, hidify_uuid, plan_id, plan_name, data_limit, data_used,
+                             duration, start_date, expire_date, status, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            sub.get("telegram_id"),
+                            sub.get("hidify_uuid", ""),
+                            sub.get("plan_id", ""),
+                            sub.get("plan_name", ""),
+                            sub.get("data_limit", 0),
+                            sub.get("data_used", 0),
+                            sub.get("duration", 30),
+                            sub.get("start_date"),
+                            sub.get("expire_date"),
+                            sub.get("status", "active"),
+                            sub.get("created_at"),
+                            sub.get("updated_at"),
+                        ))
+                        conn.commit()
+                        imported += 1
+                    except Exception as e:
+                        logger.error(f"Error importing subscription: {e}")
+                    finally:
+                        conn.close()
+
+            logger.info(f"Import completed: {imported} records imported")
+            return {"success": True, "imported": imported}
+
+        except Exception as e:
+            logger.error(f"Error importing data: {e}")
+            return {"success": False, "error": str(e)}
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # متدهای مدیریت نمایندگان و همکاران فروش (Reseller System)
+    # ═══════════════════════════════════════════════════════════════════════
+
+    @staticmethod
+    def hash_password(password: str) -> str:
+        import hashlib
+        return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
+    def create_reseller(self, username: str, password: str, name: str,
+                        telegram_id: int = None, discount_percent: int = 20, initial_balance: int = 0) -> dict:
+        """ایجاد نماینده جدید"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        password_hash = self.hash_password(password)
+        try:
+            cursor.execute("""
+                INSERT INTO resellers (username, password_hash, name, telegram_id, balance, discount_percent, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
+            """, (username.strip().lower(), password_hash, name.strip(), telegram_id, initial_balance, discount_percent, now, now))
+            reseller_id = cursor.lastrowid
+            
+            if initial_balance > 0:
+                cursor.execute("""
+                    INSERT INTO reseller_transactions (reseller_id, type, amount, description, created_at)
+                    VALUES (?, 'deposit', ?, 'شارژ اولیه حساب', ?)
+                """, (reseller_id, initial_balance, now))
+
+            conn.commit()
+            return {"success": True, "reseller_id": reseller_id}
+        except sqlite3.IntegrityError:
+            return {"success": False, "error": "این نام کاربری قبلاً ثبت شده است."}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def authenticate_reseller(self, username: str, password: str):
+        """احراز هویت نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        password_hash = self.hash_password(password)
+        cursor.execute("SELECT * FROM resellers WHERE username=? AND password_hash=? AND status='active'",
+                       (username.strip().lower(), password_hash))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def get_all_resellers(self):
+        """لیست همه نمایندگان"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT r.*,
+                   (SELECT COUNT(*) FROM subscriptions WHERE reseller_id=r.id) as total_users,
+                   (SELECT COUNT(*) FROM subscriptions WHERE reseller_id=r.id AND status='active') as active_users,
+                   (SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions WHERE reseller_id=r.id AND type='purchase') as total_spent
+            FROM resellers r
+            ORDER BY r.created_at DESC
+        """)
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+
+    def get_reseller(self, reseller_id: int):
+        """دریافت اطلاعات یک نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM resellers WHERE id=?", (reseller_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def update_reseller(self, reseller_id: int, **kwargs):
+        """ویرایش مشخصات نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        kwargs["updated_at"] = get_now_iso()
+        
+        if "password" in kwargs and kwargs["password"]:
+            kwargs["password_hash"] = self.hash_password(kwargs.pop("password"))
+
+        fields = ", ".join([f"{k}=?" for k in kwargs.keys()])
+        values = list(kwargs.values()) + [reseller_id]
+        cursor.execute(f"UPDATE resellers SET {fields} WHERE id=?", values)
+        conn.commit()
+        conn.close()
+        return {"success": True}
+
+    def add_reseller_balance(self, reseller_id: int, amount: int, description: str = "شارژ کیف پول توسط مدیریت"):
+        """افزایش موجودی کیف پول نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at=? WHERE id=?", (amount, now, reseller_id))
+            cursor.execute("""
+                INSERT INTO reseller_transactions (reseller_id, type, amount, description, created_at)
+                VALUES (?, 'deposit', ?, ?, ?)
+            """, (reseller_id, amount, description, now))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def deduct_reseller_balance(self, reseller_id: int, amount: int, plan_name: str, account_name: str):
+        """کسر موجودی نماینده هنگام خرید اکانت"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT balance FROM resellers WHERE id=?", (reseller_id,))
+            row = cursor.fetchone()
+            if not row or row["balance"] < amount:
+                return {"success": False, "error": "موجودی کیف پول نماینده کافی نیست."}
+
+            cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (amount, now, reseller_id))
+            cursor.execute("""
+                INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
+                VALUES (?, 'purchase', ?, ?, ?, 'خرید اشتراک برای مشتری', ?)
+            """, (reseller_id, amount, plan_name, account_name, now))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_reseller_transactions(self, reseller_id: int, limit: int = 100):
+        """لیست تراکنش‌های یک نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM reseller_transactions WHERE reseller_id=? ORDER BY created_at DESC LIMIT ?", (reseller_id, limit))
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+
+    def get_reseller_subscriptions(self, reseller_id: int):
+        """لیست کاربران و اشتراک‌های یک نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM subscriptions WHERE reseller_id=? ORDER BY created_at DESC", (reseller_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+
+    def get_reseller_stats(self, reseller_id: int):
+        """آمار و شاخص‌های نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT balance, discount_percent FROM resellers WHERE id=?", (reseller_id,))
+        res = cursor.fetchone()
+        balance = res["balance"] if res else 0
+        discount = res["discount_percent"] if res else 0
+        
+        cursor.execute("SELECT COUNT(*) FROM subscriptions WHERE reseller_id=?", (reseller_id,))
+        total_users = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM subscriptions WHERE reseller_id=? AND status='active'", (reseller_id,))
+        active_users = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions WHERE reseller_id=? AND type='purchase'", (reseller_id,))
+        total_purchases = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COALESCE(SUM(data_used), 0), COALESCE(SUM(data_limit), 0) FROM subscriptions WHERE reseller_id=?", (reseller_id,))
+        traffic_row = cursor.fetchone()
+        total_used_gb = traffic_row[0] or 0
+        total_limit_gb = traffic_row[1] or 0
+
+        conn.close()
+        return {
+            "balance": balance,
+            "discount_percent": discount,
+            "total_users": total_users,
+            "active_users": active_users,
+            "total_purchases": total_purchases,
+            "total_used_gb": round(total_used_gb, 2),
+            "total_limit_gb": round(total_limit_gb, 2),
+        }
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # ارسال پیام هدفمند به دسته‌های کاربری (Broadcast Engine)
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def get_target_broadcast_users(self, group_type: str = "all") -> list:
+        """استخراج لیست تلگرام آیدی کاربران بر اساس فیلتر هدفمند"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        if group_type == "all":
+            cursor.execute("SELECT DISTINCT telegram_id FROM users WHERE telegram_id IS NOT NULL AND telegram_id != 0")
+        elif group_type == "active":
+            cursor.execute("SELECT DISTINCT telegram_id FROM subscriptions WHERE status='active'")
+        elif group_type == "expired":
+            cursor.execute("""
+                SELECT DISTINCT telegram_id FROM subscriptions 
+                WHERE status='expired' OR (expire_date IS NOT NULL AND expire_date < datetime('now'))
+            """)
+        elif group_type == "test_only":
+            cursor.execute("""
+                SELECT DISTINCT telegram_id FROM subscriptions WHERE plan_id='test'
+                EXCEPT
+                SELECT DISTINCT telegram_id FROM subscriptions WHERE plan_id != 'test'
+            """)
+        elif group_type == "expiring_soon":
+            cursor.execute("""
+                SELECT DISTINCT telegram_id FROM subscriptions 
+                WHERE status='active' AND expire_date IS NOT NULL 
+                  AND expire_date BETWEEN datetime('now') AND datetime('now', '+3 days')
+            """)
+        else:
+            cursor.execute("SELECT DISTINCT telegram_id FROM users WHERE telegram_id IS NOT NULL")
+            
+        rows = cursor.fetchall()
+        conn.close()
+        return [r[0] for r in rows if r[0]]
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # مدیریت کارت‌های بانکی مقصد (Smart Card Rotator)
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def get_all_bank_cards(self):
+        """لیست تمام کارت‌های بانکی"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM bank_cards ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+
+    def add_bank_card(self, card_number: str, card_holder: str, bank_name: str, daily_limit: int = 50000000):
+        """افزودن کارت بانکی جدید"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        cursor.execute("""
+            INSERT INTO bank_cards (card_number, card_holder, bank_name, daily_limit, is_active, created_at)
+            VALUES (?, ?, ?, ?, 1, ?)
+        """, (card_number.strip(), card_holder.strip(), bank_name.strip(), daily_limit, now))
+        conn.commit()
+        conn.close()
+        return {"success": True}
+
+    def toggle_bank_card(self, card_id: int, is_active: bool):
+        """فعال یا غیرفعال کردن کارت"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE bank_cards SET is_active=? WHERE id=?", (1 if is_active else 0, card_id))
+        conn.commit()
+        conn.close()
+        return {"success": True}
+
+    def delete_bank_card(self, card_id: int):
+        """حذف کارت بانکی"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM bank_cards WHERE id=?", (card_id,))
+        conn.commit()
+        conn.close()
+        return {"success": True}
+
+
+# نمونه singleton
+db = Database()
+

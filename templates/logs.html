@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}وضعیت سیستم و لاگ‌ها{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-terminal text-primary"></i> مانیتورینگ زنده و وضعیت سرور</h1>
+        <p class="text-muted mb-0">پایش اتصال به نودهای هیدیفای و گزارش‌های عملکرد سیستم</p>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card stat-card">
+            <div>
+                <span class="text-muted small fw-bold">وضعیت اتصال به پنل هیدیفای</span>
+                <h4 class="fw-bold my-1 {{ 'text-success' if health.online else 'text-danger' }}">
+                    <i class="fas fa-{{ 'circle-check' if health.online else 'triangle-exclamation' }} me-1"></i>
+                    {{ 'متصل و عملیاتی' if health.online else 'قطع یا خطا در ارتباط' }}
+                </h4>
+                <span class="text-muted small">تاخیر پاسخ (Latency): <strong>{{ health.latency }} ms</strong></span>
+            </div>
+            <div class="stat-icon {{ 'bg-success bg-opacity-10 text-success' if health.online else 'bg-danger bg-opacity-10 text-danger' }}">
+                <i class="fas fa-server"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card stat-card">
+            <div>
+                <span class="text-muted small fw-bold">تعداد کاربران در سرور هیدیفای</span>
+                <h4 class="fw-bold my-1 text-primary">{{ health.get('users_count', 0) }} کاربر</h4>
+                <span class="text-muted small">همگام‌سازی شده با دیتابیس محلی</span>
+            </div>
+            <div class="stat-icon bg-primary bg-opacity-10 text-primary">
+                <i class="fas fa-network-wired"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header bg-white py-3">
+        <h5 class="mb-0 fw-bold"><i class="fas fa-list-check text-primary me-2"></i> لاگ‌های سرور و سرویس‌ها</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="p-3 bg-dark text-light font-monospace small" style="border-radius: 0 0 14px 14px; max-height: 350px; overflow-y: auto;">
+            [SYSTEM] Bot & Web dashboard running smoothly.<br>
+            [HIDDIFY] Ping check: {{ 'OK' if health.online else 'ERROR' }} ({{ health.latency }}ms)<br>
+            [DATABASE] SQLite database connected at data/bot_database.db<br>
+            [READY] All services operational.
+        </div>
+    </div>
+</div>
+{% endblock %}

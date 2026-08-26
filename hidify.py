@@ -1,0 +1,153 @@
+#!/usr/bin/env python3
+"""
+Hidify API Client - v2 API (Async)
+"""
+
+import httpx
+import logging
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+
+class HidifyClient:
+    """کلاینت اتصال به پنل Hidify v2 (async)"""
+
+    def __init__(self, panel_url: str, api_key: str, proxy_path: str):
+        self.panel_url = panel_url.rstrip("/")
+        self.api_key = api_key
+        self.proxy_path = proxy_path.strip("/")
+        self.base_api = f"{self.panel_url}/{self.proxy_path}/api/v2"
+        self.headers = {
+            "Hiddify-API-Key": api_key,
+            "Content-Type": "application/json",
+        }
+        self._client = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """دریافت یا ساخت کلاینت async"""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                verify=False,
+                follow_redirects=True,
+                timeout=httpx.Timeout(15.0)
+            )
+        return self._client
+
+    async def _request(self, method: str, endpoint: str, data: dict = None) -> dict:
+        """ارسال درخواست به API (async)"""
+        url = f"{self.base_api}{endpoint}"
+        try:
+            client = await self._get_client()
+            
+            if method == "GET":
+                response = await client.get(url, headers=self.headers, params=data)
+            elif method == "POST":
+                response = await client.post(url, headers=self.headers, json=data)
+            elif method == "PUT":
+                response = await client.put(url, headers=self.headers, json=data)
+            elif method == "PATCH":
+                response = await client.patch(url, headers=self.headers, json=data)
+            elif method == "DELETE":
+                response = await client.delete(url, headers=self.headers)
+            else:
+                return {"error": "Invalid method"}
+
+            logger.info(f"Hidify API: {method} {url} -> {response.status_code}")
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            error_msg = f"HTTP {e.response.status_code}: {e.response.text[:200]}"
+            logger.error(f"Hidify API error: {error_msg}")
+            return {"error": error_msg}
+        except httpx.TimeoutException:
+            error_msg = "Timeout: درخواست بیش از حد طول کشید"
+            logger.error(f"Hidify timeout: {url}")
+            return {"error": error_msg}
+        except httpx.ConnectError as e:
+            error_msg = f"Connection error: {e}"
+            logger.error(f"Hidify connection error: {error_msg}")
+            return {"error": error_msg}
+        except Exception as e:
+            error_msg = f"{type(e).__name__}: {e}"
+            logger.error(f"Hidify error: {error_msg}")
+            return {"error": error_msg}
+
+    async def close(self):
+        """بستن کلاینت"""
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+
+    # ─── User Management ───
+
+    async def get_users(self) -> list:
+        """دریافت لیست کاربران"""
+        return await self._request("GET", "/admin/user/")
+
+    async def get_user(self, uuid: str) -> dict:
+        """دریافت اطلاعات یک کاربر"""
+        return await self._request("GET", f"/admin/user/{uuid}/")
+
+    async def create_user(self, name: str, usage_limit_gb: float = None,
+                    package_days: int = None, enable: bool = True,
+                    comment: str = None) -> dict:
+        """ساخت کاربر جدید"""
+        payload = {
+            "name": name,
+            "enable": enable,
+            "is_active": True,
+        }
+        if usage_limit_gb is not None:
+            payload["usage_limit_GB"] = usage_limit_gb
+        if package_days is not None:
+            payload["package_days"] = package_days
+        if comment is not None:
+            payload["comment"] = comment
+        return await self._request("POST", "/admin/user/", payload)
+
+    async def update_user(self, uuid: str, **kwargs) -> dict:
+        """بروزرسانی اطلاعات کاربر با قابلیت بازیابی در صورت خطای اسکیما"""
+        res = await self._request("PATCH", f"/admin/user/{uuid}/", kwargs)
+        if "error" not in res:
+            return res
+
+        logger.warning(f"PATCH user {uuid} failed ({res.get('error')}), trying fallback update...")
+        try:
+            existing = await self.get_user(uuid)
+            if isinstance(existing, dict) and "error" not in existing and existing.get("name"):
+                payload = dict(existing)
+                payload.update(kwargs)
+                res_put = await self._request("PUT", f"/admin/user/{uuid}/", payload)
+                if "error" not in res_put:
+                    return res_put
+                res_patch = await self._request("PATCH", f"/admin/user/{uuid}/", payload)
+                if "error" not in res_patch:
+                    return res_patch
+        except Exception as e:
+            logger.error(f"Fallback update error for {uuid}: {e}")
+        return res
+
+
+    async def delete_user(self, uuid: str) -> dict:
+        """حذف کاربر"""
+        return await self._request("DELETE", f"/admin/user/{uuid}/")
+
+    # ─── Admin Management ───
+
+    async def get_admins(self) -> list:
+        """دریافت لیست ادمین‌ها"""
+        return await self._request("GET", "/admin/admin_user/")
+
+    # ─── Panel Info ───
+
+    async def ping(self) -> dict:
+        """تست اتصال"""
+        return await self._request("GET", "/panel/ping/")
+
+    async def get_panel_info(self) -> dict:
+        """دریافت اطلاعات پنل"""
+        return await self._request("GET", "/panel/info/")
+
+    async def get_server_status(self) -> dict:
+        """دریافت وضعیت سرور"""
+        return await self._request("GET", "/admin/server_status/")

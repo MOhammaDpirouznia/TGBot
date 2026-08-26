@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}اشتراک با موفقیت صادر شد - پنل نمایندگی{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+        <div class="card border-success shadow-sm text-center">
+            <div class="card-header bg-success text-white py-3">
+                <h4 class="mb-0 fw-bold"><i class="fas fa-circle-check me-2"></i> اشتراک مشتری با موفقیت ساخته شد</h4>
+            </div>
+            <div class="card-body p-4">
+                <div class="alert alert-success py-2 mb-4">
+                    مبلغ <strong>{{ "{:,}".format(final_price) }} تومان</strong> از کیف پول شما کسر گردید.
+                </div>
+
+                <div class="row text-start g-2 mb-4 p-3 bg-light rounded-3">
+                    <div class="col-6"><strong>نام اکانت:</strong> <code>{{ account_name }}</code></div>
+                    <div class="col-6"><strong>پلن انتخابی:</strong> {{ plan['name'] }}</div>
+                    <div class="col-6"><strong>حجم مجاز:</strong> {{ plan['data_limit'] }} گیگابایت</div>
+                    <div class="col-6"><strong>مدت زمان:</strong> {{ plan['duration'] }} روز</div>
+                </div>
+
+                <h6 class="fw-bold mb-2">لینک سابسکریپشن اتصال مشتری:</h6>
+                <div class="input-group mb-4">
+                    <input type="text" id="subUrlInput" class="form-control text-center" value="{{ sub_url }}" readonly>
+                    <button class="btn btn-primary" onclick="copySubUrl()"><i class="fas fa-copy me-1"></i> کپی لینک</button>
+                </div>
+
+                <div class="d-flex flex-wrap gap-2 justify-content-center mb-3">
+                    <a href="hiddify://install-sub?url={{ sub_url }}" class="btn btn-outline-primary">
+                        <i class="fas fa-rocket me-1"></i> اتصال مستقیم Hiddify
+                    </a>
+                    <a href="streisand://import/{{ sub_url }}" class="btn btn-outline-info">
+                        <i class="fas fa-bolt me-1"></i> اتصال مستقیم Streisand
+                    </a>
+                    <a href="{{ sub_url }}" target="_blank" class="btn btn-outline-secondary">
+                        <i class="fas fa-external-link-alt me-1"></i> باز کردن وب‌پیج هیدیفای
+                    </a>
+                </div>
+
+                <div class="d-flex justify-content-center gap-2 mt-4 pt-3 border-top">
+                    <a href="{{ url_for('reseller_create_user') }}" class="btn btn-success">
+                        <i class="fas fa-plus me-1"></i> ساخت اشتراک دیگر
+                    </a>
+                    <a href="{{ url_for('reseller_users') }}" class="btn btn-outline-dark">
+                        <i class="fas fa-users me-1"></i> لیست مشتریان من
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function copySubUrl() {
+        const input = document.getElementById('subUrlInput');
+        input.select();
+        navigator.clipboard.writeText(input.value);
+        alert('لینک اتصال با موفقیت کپی شد!');
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}مدیریت پرداخت‌ها و فیش‌ها - پنل مدیریت VPN{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-receipt text-primary"></i> مدیریت پرداخت‌ها و رسیدها</h1>
+        <p class="text-muted mb-0">بررسی، تایید خودکار و رد فیش‌های واریزی کاربران</p>
+    </div>
+    <div>
+        <a href="{{ url_for('export_transactions') }}" class="btn btn-outline-success">
+            <i class="fas fa-file-excel me-1"></i> خروجی اکسل (CSV)
+        </a>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body py-3">
+        <div class="row align-items-center g-3">
+            <div class="col-md-7">
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="{{ url_for('payments', status='all') }}" class="btn btn-sm {{ 'btn-primary' if status_filter == 'all' else 'btn-outline-secondary' }}">همه پرداخت‌ها</a>
+                    <a href="{{ url_for('payments', status='pending') }}" class="btn btn-sm {{ 'btn-warning' if status_filter == 'pending' else 'btn-outline-warning' }}">
+                        <i class="fas fa-clock me-1"></i> در انتظار بررسی
+                    </a>
+                    <a href="{{ url_for('payments', status='approved') }}" class="btn btn-sm {{ 'btn-success' if status_filter == 'approved' else 'btn-outline-success' }}">
+                        <i class="fas fa-check-circle me-1"></i> تایید شده
+                    </a>
+                    <a href="{{ url_for('payments', status='rejected') }}" class="btn btn-sm {{ 'btn-danger' if status_filter == 'rejected' else 'btn-outline-danger' }}">
+                        <i class="fas fa-times-circle me-1"></i> رد شده
+                    </a>
+                </div>
+            </div>
+            <div class="col-md-5">
+                <form method="GET" action="{{ url_for('payments') }}" class="d-flex gap-2">
+                    <input type="hidden" name="status" value="{{ status_filter }}">
+                    <input type="text" name="search" value="{{ search or '' }}" class="form-control form-control-sm" placeholder="جستجو کد پیگیری، آیدی یا نام...">
+                    <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-search"></i></button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>شماره سفارش</th>
+                        <th>کاربر تلگرام</th>
+                        <th>پلن / نوع</th>
+                        <th>مبلغ پرداختی</th>
+                        <th>کد پیگیری / فیش</th>
+                        <th>نام اکانت هیدیفای</th>
+                        <th>وضعیت</th>
+                        <th>تاریخ</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tx in payments %}
+                    <tr>
+                        <td><small class="text-muted"><code>{{ tx['order_id'] }}</code></small></td>
+                        <td>
+                            <strong>{{ tx['username'] or 'کاربر تلگرام' }}</strong>
+                            <br><small class="text-muted"><code>{{ tx['user_id'] }}</code></small>
+                        </td>
+                        <td>
+                            <div>{{ tx['plan_name'] or '-' }}</div>
+                            {% if tx['is_renewal'] %}
+                                <span class="badge bg-info" style="font-size: 0.7rem;">تمدید اشتراک</span>
+                            {% else %}
+                                <span class="badge bg-secondary" style="font-size: 0.7rem;">خرید جدید</span>
+                            {% endif %}
+                            {% if tx['discount_code'] %}
+                                <span class="badge bg-warning text-dark" style="font-size: 0.7rem;">کد: {{ tx['discount_code'] }}</span>
+                            {% endif %}
+                        </td>
+                        <td><strong class="text-primary">{{ "{:,}".format(tx['amount'] or 0) }} تومان</strong></td>
+                        <td>
+                            <code class="fw-bold fs-6">{{ tx['tracking_code'] or '-' }}</code>
+                        </td>
+                        <td><code>{{ tx['account_name'] or '-' }}</code></td>
+                        <td>
+                            {% if tx['status'] == 'pending' %}
+                                <span class="badge badge-pending">در انتظار</span>
+                            {% elif tx['status'] == 'approved' %}
+                                <span class="badge badge-approved">تایید شده</span>
+                            {% else %}
+                                <span class="badge badge-rejected" title="{{ tx['rejection_reason'] or 'بدون دلیل' }}">رد شده</span>
+                                {% if tx['rejection_reason'] %}
+                                    <div class="text-danger small" style="font-size: 0.75rem;">{{ tx['rejection_reason'] }}</div>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        <td><small class="text-muted">{{ tx['created_at'][:16] if tx['created_at'] else '-' }}</small></td>
+                        <td>
+                            {% if tx['status'] == 'pending' %}
+                                <div class="btn-group btn-group-sm">
+                                    <a href="{{ url_for('approve_payment', payment_id=tx['id']) }}" class="btn btn-success" title="تایید پرداخت و صدور آنی اکانت در هیدیفای" onclick="return confirm('آیا از تایید این پرداخت مطمئن هستید؟ اکانت به صورت خودکار در هیدیفای فعال و برای کاربر ارسال خواهد شد.')">
+                                        <i class="fas fa-check me-1"></i> تایید
+                                    </a>
+                                    <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#rejectModal{{ tx['id'] }}">
+                                        <i class="fas fa-times me-1"></i> رد
+                                    </button>
+                                </div>
+
+                                <!-- Modal رد پرداخت -->
+                                <div class="modal fade" id="rejectModal{{ tx['id'] }}" tabindex="-1">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <form method="POST" action="{{ url_for('reject_payment', payment_id=tx['id']) }}">
+                                                <div class="modal-header">
+                                                    <h5 class="modal-title fw-bold">رد پرداخت سفارش #{{ tx['id'] }}</h5>
+                                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                </div>
+                                                <div class="modal-body">
+                                                    <p>کاربر: <strong>{{ tx['username'] }} ({{ tx['user_id'] }})</strong> | مبلغ: <strong>{{ "{:,}".format(tx['amount'] or 0) }} تومان</strong></p>
+                                                    <div class="mb-3">
+                                                        <label class="form-label">علت رد پرداخت (برای کاربر ارسال می‌شود):</label>
+                                                        <input type="text" name="reason" class="form-control" placeholder="مثال: فیش ارسالی ناخوانا است یا وجه واریز نشده است" required>
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                                                    <button type="submit" class="btn btn-danger">رد پرداخت و ارسال پیام به کاربر</button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not payments %}
+                    <tr>
+                        <td colspan="9" class="text-center py-4 text-muted">تراکنشی با این شرایط یافت نشد.</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

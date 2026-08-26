@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}ساخت اشتراک مشتری - پنل نمایندگی{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-user-plus text-primary"></i> ساخت اشتراک برای مشتری</h1>
+        <p class="text-muted mb-0">انتخاب پلن، محاسبه خودکار تخفیف عمده‌فروشی و صدور آنی لینک اتصال</p>
+    </div>
+    <div class="badge bg-primary fs-6 py-2 px-3">
+        موجودی کیف پول: {{ "{:,}".format(balance) }} تومان
+    </div>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0 fw-bold">مشخصات اشتراک مشتری</h5>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" id="createSubForm">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">نام یا شناسه مشتری (اختیاری):</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-user"></i></span>
+                            <input type="text" name="account_name" class="form-control" placeholder="مثال: omid_01 یا خالی بگذارید">
+                        </div>
+                        <small class="text-muted">در صورت خالی بودن، نام تصادفی تولید خواهد شد.</small>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">انتخاب پلن مورد نظر:</label>
+                        <div class="row g-3">
+                            {% for p_key, p in plans.items() %}
+                            <div class="col-md-6">
+                                <label class="card p-3 h-100 cursor-pointer border-2 plan-option" style="cursor: pointer;">
+                                    <div class="d-flex align-items-start gap-2">
+                                        <input type="radio" name="plan_id" value="{{ p_key }}" class="form-check-input mt-1" required onchange="calculatePrice({{ p['price'] }})" {% if loop.first %}checked{% endif %}>
+                                        <div class="flex-grow-1">
+                                            <div class="fw-bold">{{ p['name'] }}</div>
+                                            <div class="text-muted small">حجم: {{ p['data_limit'] }} گیگ | مدت: {{ p['duration'] }} روز</div>
+                                            <div class="mt-2">
+                                                <span class="text-decoration-line-through text-muted small">{{ "{:,}".format(p['price']) }} ت</span>
+                                                <strong class="text-success ms-1">{{ "{:,}".format((p['price'] * (100 - discount) / 100)|int) }} تومان</strong>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <!-- خلاصه فاکتور و پرداخت -->
+                    <div class="p-3 bg-light rounded-3 mb-4">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>قیمت مصوب پلن:</span>
+                            <span id="origPriceText">0 تومان</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2 text-primary">
+                            <span>تخفیف نمایندگی شما ({{ discount }}%):</span>
+                            <span id="discountAmountText">0 تومان</span>
+                        </div>
+                        <hr class="my-2">
+                        <div class="d-flex justify-content-between fs-5 fw-bold text-success">
+                            <span>مبلغ کسر از کیف پول:</span>
+                            <span id="finalPriceText">0 تومان</span>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-success w-100 py-3 fw-bold fs-5" onclick="return confirm('آیا از ساخت این اشتراک و کسر هزینه از کیف پول مطمئن هستید؟')">
+                        <i class="fas fa-bolt me-2"></i> پرداخت از کیف پول و صدور آنی اکانت
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const discountPercent = {{ discount }};
+    function calculatePrice(price) {
+        const discountAmount = Math.floor((price * discountPercent) / 100);
+        const finalPrice = price - discountAmount;
+        document.getElementById('origPriceText').innerText = price.toLocaleString('fa-IR') + ' تومان';
+        document.getElementById('discountAmountText').innerText = discountAmount.toLocaleString('fa-IR') + ' تومان';
+        document.getElementById('finalPriceText').innerText = finalPrice.toLocaleString('fa-IR') + ' تومان';
+    }
+
+    // مقداردهی اولیه
+    document.addEventListener('DOMContentLoaded', () => {
+        const checked = document.querySelector('input[name="plan_id"]:checked');
+        if (checked) checked.dispatchEvent(new Event('change'));
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}داشبورد اختصاصی همکار و نماینده فروش{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-chart-pie text-primary"></i> داشبورد نماینده فروش</h1>
+        <p class="text-muted mb-0">خوش آمدید {{ session.get('name') }}! خلاصه وضعیت مشتریان و موجودی کیف پول شما</p>
+    </div>
+    <div>
+        <a href="{{ url_for('reseller_create_user') }}" class="btn btn-success py-2 px-3 fw-bold">
+            <i class="fas fa-user-plus me-1"></i> ساخت آنی اشتراک مشتری
+        </a>
+    </div>
+</div>
+
+<!-- کارت‌های آماری نماینده -->
+<div class="row g-3 mb-4">
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card border-primary">
+            <div>
+                <span class="text-muted small fw-bold">موجودی کیف پول شما</span>
+                <h3 class="fw-bold my-1 text-primary">{{ "{:,}".format(stats['balance'] or 0) }} <span style="font-size: 1rem;">تومان</span></h3>
+                <span class="badge bg-primary bg-opacity-10 text-primary">تخفیف شما: {{ stats['discount_percent'] }}%</span>
+            </div>
+            <div class="stat-icon bg-primary bg-opacity-10 text-primary">
+                <i class="fas fa-wallet"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card">
+            <div>
+                <span class="text-muted small fw-bold">مشتریان فعال</span>
+                <h3 class="fw-bold my-1 text-success">{{ stats['active_users'] }} <span style="font-size: 1rem; color:#64748b;">از {{ stats['total_users'] }}</span></h3>
+                <span class="text-success small"><i class="fas fa-circle-check me-1"></i> متصل و فعال</span>
+            </div>
+            <div class="stat-icon bg-success bg-opacity-10 text-success">
+                <i class="fas fa-users-gear"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card">
+            <div>
+                <span class="text-muted small fw-bold">مجموع حجم مصرفی</span>
+                <h3 class="fw-bold my-1 text-info">{{ stats['total_used_gb'] }} <span style="font-size: 1rem;">GB</span></h3>
+                <span class="text-muted small">از کل سقف {{ stats['total_limit_gb'] }} GB</span>
+            </div>
+            <div class="stat-icon bg-info bg-opacity-10 text-info">
+                <i class="fas fa-cloud-arrow-down"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card">
+            <div>
+                <span class="text-muted small fw-bold">مجموع خریدها</span>
+                <h3 class="fw-bold my-1 text-warning">{{ "{:,}".format(stats['total_purchases'] or 0) }} <span style="font-size: 1rem;">تومان</span></h3>
+                <span class="text-muted small">با احتساب تخفیف عمده</span>
+            </div>
+            <div class="stat-icon bg-warning bg-opacity-10 text-warning">
+                <i class="fas fa-bag-shopping"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- تراکنش‌های اخیر نماینده -->
+    <div class="col-lg-8">
+        <div class="card h-100">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-clock-rotate-left text-primary me-2"></i> آخرین تراکنش‌های کیف پول</h5>
+                <a href="{{ url_for('reseller_transactions') }}" class="btn btn-sm btn-outline-primary">مشاهده همه</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>نوع تراکنش</th>
+                                <th>مبلغ</th>
+                                <th>پلن / نام کاربری</th>
+                                <th>توضیحات</th>
+                                <th>تاریخ</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for tx in recent_transactions %}
+                            <tr>
+                                <td>
+                                    {% if tx['type'] == 'deposit' %}
+                                        <span class="badge bg-success"><i class="fas fa-arrow-down me-1"></i> شارژ کیف پول</span>
+                                    {% else %}
+                                        <span class="badge bg-danger"><i class="fas fa-arrow-up me-1"></i> خرید اشتراک</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <strong class="{{ 'text-success' if tx['type'] == 'deposit' else 'text-danger' }}">
+                                        {{ '+' if tx['type'] == 'deposit' else '-' }}{{ "{:,}".format(tx['amount'] or 0) }} تومان
+                                    </strong>
+                                </td>
+                                <td>{{ tx['plan_name'] or '-' }} <small class="text-muted">({{ tx['account_name'] or '-' }})</small></td>
+                                <td><small class="text-muted">{{ tx['description'] or '-' }}</small></td>
+                                <td><small class="text-muted">{{ tx['created_at'][:16] if tx['created_at'] else '-' }}</small></td>
+                            </tr>
+                            {% endfor %}
+                            {% if not recent_transactions %}
+                            <tr>
+                                <td colspan="5" class="text-center py-4 text-muted">هنوز تراکنشی ثبت نشده است.</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- راهنمای شارژ و اکشن سریع -->
+    <div class="col-lg-4">
+        <div class="card h-100">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-info-circle text-info me-2"></i> اطلاعات نمایندگی</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info py-2 small mb-3">
+                    <i class="fas fa-badge-percent me-1"></i> درصد تخفیف ویژه شما: <strong>{{ stats['discount_percent'] }}%</strong>
+                </div>
+                <p class="text-muted small">
+                    هنگام ساخت اشتراک برای مشتریان، هزینه پلن‌ها با اعمال تخفیف عمده‌فروشی شما محاسبه و مستقیماً از موجودی کیف پولتان کسر می‌شود.
+                </p>
+                <div class="p-3 bg-light rounded-3 mb-3 text-center">
+                    <span class="text-muted small d-block mb-1">برای افزایش اعتبار کیف پول با پشتیبانی هماهنگ فرمایید:</span>
+                    <strong class="text-primary fs-5">شارژ آنی توسط مدیریت</strong>
+                </div>
+                <a href="{{ url_for('reseller_create_user') }}" class="btn btn-primary w-100 py-2">
+                    <i class="fas fa-plus-circle me-1"></i> ساخت اشتراک جدید
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

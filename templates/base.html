@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}پنل مدیریت ربات VPN{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --secondary: #0ea5e9;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --dark: #0f172a;
+            --dark-card: #1e293b;
+            --sidebar-bg: #0f172a;
+            --body-bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+        }
+
+        body {
+            font-family: 'Vazirmatn', sans-serif;
+            background-color: var(--body-bg);
+            color: var(--text-main);
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .sidebar {
+            background: var(--sidebar-bg);
+            min-height: 100vh;
+            width: 260px;
+            position: fixed;
+            top: 0;
+            right: 0;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            box-shadow: -4px 0 15px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+        }
+
+        .sidebar .brand {
+            padding: 24px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            color: white;
+            text-decoration: none;
+        }
+
+        .sidebar .brand i {
+            font-size: 1.8rem;
+            color: var(--secondary);
+        }
+
+        .sidebar .brand-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            line-height: 1.3;
+        }
+
+        .sidebar .brand-badge {
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            border-radius: 6px;
+            background: rgba(14, 165, 233, 0.2);
+            color: var(--secondary);
+            font-weight: 600;
+        }
+
+        .sidebar .nav {
+            padding: 15px 12px;
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        .sidebar .nav-category {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #64748b;
+            padding: 12px 14px 6px;
+            font-weight: 700;
+        }
+
+        .sidebar .nav-link {
+            color: #94a3b8;
+            padding: 11px 14px;
+            border-radius: 10px;
+            margin-bottom: 4px;
+            font-size: 0.93rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: all 0.2s ease;
+            text-decoration: none;
+        }
+
+        .sidebar .nav-link i {
+            font-size: 1.1rem;
+            width: 22px;
+            text-align: center;
+        }
+
+        .sidebar .nav-link:hover {
+            color: #ffffff;
+            background: rgba(255,255,255,0.06);
+            transform: translateX(-3px);
+        }
+
+        .sidebar .nav-link.active {
+            color: #ffffff;
+            background: var(--primary);
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
+        }
+
+        .sidebar-footer {
+            padding: 16px 14px;
+            border-top: 1px solid rgba(255,255,255,0.08);
+            background: rgba(0,0,0,0.15);
+        }
+
+        .user-pill {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 10px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.04);
+            color: white;
+        }
+
+        .user-avatar {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1rem;
+        }
+
+        .main-content {
+            margin-right: 260px;
+            padding: 30px;
+            min-height: 100vh;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+            margin-bottom: 24px;
+            overflow: hidden;
+        }
+
+        .stat-card {
+            padding: 22px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .stat-icon {
+            width: 54px;
+            height: 54px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.6rem;
+        }
+
+        .table-responsive {
+            border-radius: 14px;
+        }
+
+        .table th {
+            font-weight: 600;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            border-top: none;
+            background: #f8fafc;
+            padding: 14px 16px;
+        }
+
+        .table td {
+            padding: 14px 16px;
+            vertical-align: middle;
+            font-size: 0.92rem;
+        }
+
+        .badge {
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.8rem;
+        }
+
+        .badge-pending { background: rgba(245, 158, 11, 0.15); color: #d97706; }
+        .badge-approved { background: rgba(16, 185, 129, 0.15); color: #059669; }
+        .badge-rejected { background: rgba(239, 68, 68, 0.15); color: #dc2626; }
+        .badge-active { background: rgba(16, 185, 129, 0.15); color: #059669; }
+        .badge-expired { background: rgba(100, 116, 139, 0.15); color: #475569; }
+
+        .btn {
+            font-family: inherit;
+            border-radius: 10px;
+            padding: 8px 16px;
+            font-weight: 500;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            border-color: var(--primary);
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-hover);
+            border-color: var(--primary-hover);
+        }
+
+        .page-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+        }
+
+        .page-title {
+            font-size: 1.45rem;
+            font-weight: 700;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        @media (max-width: 992px) {
+            .sidebar { transform: translateX(100%); }
+            .sidebar.show { transform: translateX(0); }
+            .main-content { margin-right: 0; }
+        }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    {% if session.get('logged_in') %}
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <a href="{% if session.get('role') == 'reseller' %}{{ url_for('reseller_dashboard') }}{% else %}{{ url_for('dashboard') }}{% endif %}" class="brand">
+            <i class="fas fa-shield-halved"></i>
+            <div>
+                <div class="brand-title">پنل مدیریت VPN</div>
+                <div class="brand-badge">
+                    {% if session.get('role') == 'reseller' %}
+                        نماینده: {{ session.get('name', 'همکار') }}
+                    {% else %}
+                        مدیریت اصلی (Super Admin)
+                    {% endif %}
+                </div>
+            </div>
+        </a>
+
+        <nav class="nav flex-column">
+            {% if session.get('role') == 'reseller' %}
+                <!-- منوی پنل نمایندگی -->
+                <div class="nav-category">پنل همکاران</div>
+                <a class="nav-link {% if request.endpoint == 'reseller_dashboard' %}active{% endif %}" href="{{ url_for('reseller_dashboard') }}">
+                    <i class="fas fa-chart-pie"></i> داشبورد نماینده
+                </a>
+                <a class="nav-link {% if request.endpoint == 'reseller_create_user' %}active{% endif %}" href="{{ url_for('reseller_create_user') }}">
+                    <i class="fas fa-user-plus"></i> ساخت اشتراک مشتری
+                </a>
+                <a class="nav-link {% if request.endpoint == 'reseller_users' %}active{% endif %}" href="{{ url_for('reseller_users') }}">
+                    <i class="fas fa-users"></i> مشتریان من
+                </a>
+                <a class="nav-link {% if request.endpoint == 'reseller_transactions' %}active{% endif %}" href="{{ url_for('reseller_transactions') }}">
+                    <i class="fas fa-wallet"></i> تراکنش‌ها و شارژ
+                </a>
+            {% else %}
+                <!-- منوی مدیریت کل -->
+                <div class="nav-category">اصلی و عملیات</div>
+                <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
+                    <i class="fas fa-gauge-high"></i> داشبورد اصلی
+                </a>
+                <a class="nav-link {% if request.endpoint == 'payments' %}active{% endif %}" href="{{ url_for('payments') }}">
+                    <i class="fas fa-receipt"></i> پرداخت‌ها و تایید فیش
+                </a>
+                <a class="nav-link {% if request.endpoint == 'users' %}active{% endif %}" href="{{ url_for('users') }}">
+                    <i class="fas fa-users"></i> کاربران تلگرام
+                </a>
+                <a class="nav-link {% if request.endpoint == 'subscriptions' %}active{% endif %}" href="{{ url_for('subscriptions') }}">
+                    <i class="fas fa-key"></i> اشتراک‌های هیدیفای
+                </a>
+
+                <div class="nav-category">همکاران و بازاریابی</div>
+                <a class="nav-link {% if request.endpoint == 'admin_resellers' %}active{% endif %}" href="{{ url_for('admin_resellers') }}">
+                    <i class="fas fa-handshake"></i> نمایندگان فروش (Resellers)
+                </a>
+                <a class="nav-link {% if request.endpoint == 'broadcast' %}active{% endif %}" href="{{ url_for('broadcast') }}">
+                    <i class="fas fa-bullhorn"></i> پیام همگانی (Broadcast)
+                </a>
+                <a class="nav-link {% if request.endpoint == 'tickets' %}active{% endif %}" href="{{ url_for('tickets') }}">
+                    <i class="fas fa-headset"></i> تیکت‌های پشتیبانی
+                </a>
+
+                <div class="nav-category">سیستم و گزارشات</div>
+                <a class="nav-link {% if request.endpoint == 'cards' %}active{% endif %}" href="{{ url_for('cards') }}">
+                    <i class="fas fa-credit-card"></i> کارت‌های بانکی
+                </a>
+                <a class="nav-link {% if request.endpoint == 'reports' %}active{% endif %}" href="{{ url_for('reports') }}">
+                    <i class="fas fa-chart-line"></i> گزارشات و هوش مالی
+                </a>
+                <a class="nav-link {% if request.endpoint == 'admin_logs' %}active{% endif %}" href="{{ url_for('admin_logs') }}">
+                    <i class="fas fa-terminal"></i> وضعیت سرور و لاگ‌ها
+                </a>
+                <a class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">
+                    <i class="fas fa-sliders"></i> تنظیمات
+                </a>
+            {% endif %}
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="user-pill mb-2">
+                <div class="user-avatar">
+                    {{ session.get('username', 'A')[0]|upper }}
+                </div>
+                <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    <div style="font-weight: 600; font-size: 0.9rem;">{{ session.get('username') }}</div>
+                    {% if session.get('role') == 'reseller' %}
+                        <div style="font-size: 0.75rem; color: #38bdf8;">اعتبار: {{ "{:,}".format(session.get('balance', 0)) }} ت</div>
+                    {% else %}
+                        <div style="font-size: 0.75rem; color: #a5b4fc;">مدیر کل سیستم</div>
+                    {% endif %}
+                </div>
+            </div>
+            <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-sm w-100">
+                <i class="fas fa-power-off me-1"></i> خروج از پنل
+            </a>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'success' if category == 'success' else ('warning' if category == 'warning' else 'danger') }} alert-dismissible fade show shadow-sm" role="alert">
+                        <i class="fas fa-{{ 'check-circle' if category == 'success' else ('exclamation-triangle' if category == 'warning' else 'times-circle') }} me-2"></i>
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+    {% else %}
+        {% block login_content %}{% endblock %}
+    {% endif %}
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

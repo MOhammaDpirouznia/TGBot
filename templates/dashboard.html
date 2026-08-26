@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block title %}داشبورد مدیریت ربات VPN{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-gauge-high text-primary"></i> داشبورد مدیریت و پایش</h1>
+        <p class="text-muted mb-0">نمای کلی سیستم، تراکنش‌های اخیر و وضعیت ارتباط با سرور هیدیفای</p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        {% if server_health.online %}
+            <span class="badge bg-success py-2 px-3"><i class="fas fa-circle-check me-1"></i> هیدیفای آنلاین ({{ server_health.latency }}ms)</span>
+        {% else %}
+            <span class="badge bg-danger py-2 px-3"><i class="fas fa-triangle-exclamation me-1"></i> قطعی سرور هیدیفای</span>
+        {% endif %}
+        <a href="{{ url_for('payments', status='pending') }}" class="btn btn-warning btn-sm">
+            <i class="fas fa-bell me-1"></i> فیش‌های در انتظار ({{ pending_payments }})
+        </a>
+    </div>
+</div>
+
+<!-- ردیف کارت‌های آماری -->
+<div class="row g-3 mb-4">
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card">
+            <div>
+                <span class="text-muted small fw-bold">کل کاربران ربات</span>
+                <h3 class="fw-bold my-1">{{ "{:,}".format(total_users) }}</h3>
+                <span class="text-success small"><i class="fas fa-user-check me-1"></i> ثبت‌نام شده</span>
+            </div>
+            <div class="stat-icon bg-primary bg-opacity-10 text-primary">
+                <i class="fas fa-users"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card">
+            <div>
+                <span class="text-muted small fw-bold">اشتراک‌های فعال</span>
+                <h3 class="fw-bold my-1 text-success">{{ "{:,}".format(active_subscriptions) }}</h3>
+                <span class="text-muted small">از کل {{ total_subscriptions }} اشتراک</span>
+            </div>
+            <div class="stat-icon bg-success bg-opacity-10 text-success">
+                <i class="fas fa-shield-check"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card">
+            <div>
+                <span class="text-muted small fw-bold">درآمد کل تایید شده</span>
+                <h3 class="fw-bold my-1 text-primary">{{ "{:,}".format(total_revenue) }} <span style="font-size: 1rem;">تومان</span></h3>
+                <span class="text-muted small"><i class="fas fa-wallet me-1"></i> فروش مستقیم و همکاری</span>
+            </div>
+            <div class="stat-icon bg-info bg-opacity-10 text-info">
+                <i class="fas fa-coins"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card">
+            <div>
+                <span class="text-muted small fw-bold">نمایندگان و تیکت‌ها</span>
+                <h3 class="fw-bold my-1">{{ total_resellers }} <span style="font-size: 1rem; color: #64748b;">همکار / {{ open_tickets }} تیکت باز</span></h3>
+                <span class="text-warning small"><i class="fas fa-headset me-1"></i> آماده پاسخگویی</span>
+            </div>
+            <div class="stat-icon bg-warning bg-opacity-10 text-warning">
+                <i class="fas fa-handshake"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <!-- نمودار درآمد روزانه -->
+    <div class="col-lg-8">
+        <div class="card h-100">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-chart-area text-primary me-2"></i> روند درآمد ۷ روز گذشته</h5>
+                <span class="badge bg-light text-dark">بروزرسانی زنده</span>
+            </div>
+            <div class="card-body">
+                <canvas id="revenueChart" style="max-height: 280px;"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- دسترسی‌های سریع و پایش سرور -->
+    <div class="col-lg-4">
+        <div class="card h-100">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-bolt text-warning me-2"></i> عملیات سریع</h5>
+            </div>
+            <div class="card-body d-flex flex-column gap-2">
+                <a href="{{ url_for('admin_resellers') }}" class="btn btn-outline-primary text-start py-2">
+                    <i class="fas fa-user-plus me-2 text-primary"></i> تعریف و شارژ نماینده فروش
+                </a>
+                <a href="{{ url_for('broadcast') }}" class="btn btn-outline-info text-start py-2">
+                    <i class="fas fa-bullhorn me-2 text-info"></i> ارسال پیام همگانی به کاربران
+                </a>
+                <a href="{{ url_for('tickets') }}" class="btn btn-outline-warning text-start py-2">
+                    <i class="fas fa-headset me-2 text-warning"></i> پاسخگویی به تیکت‌های پشتیبانی
+                </a>
+                <a href="{{ url_for('cards') }}" class="btn btn-outline-success text-start py-2">
+                    <i class="fas fa-credit-card me-2 text-success"></i> مدیریت کارت‌های بانکی مقصد
+                </a>
+                <a href="{{ url_for('export_transactions') }}" class="btn btn-outline-secondary text-start py-2">
+                    <i class="fas fa-file-excel me-2 text-success"></i> دانلود گزارش اکسل (CSV)
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- آخرین تراکنش‌ها -->
+<div class="card">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 fw-bold"><i class="fas fa-clock-rotate-left text-primary me-2"></i> آخرین پرداخت‌ها و فیش‌های دریافتی</h5>
+        <a href="{{ url_for('payments') }}" class="btn btn-sm btn-outline-primary">مشاهده همه تراکنش‌ها</a>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>کاربر / آیدی</th>
+                        <th>پلن درخواستی</th>
+                        <th>مبلغ پرداختی</th>
+                        <th>شماره پیگیری / فیش</th>
+                        <th>وضعیت</th>
+                        <th>تاریخ و زمان</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tx in recent_transactions %}
+                    <tr>
+                        <td>
+                            <strong>{{ tx['username'] or 'کاربر تلگرام' }}</strong>
+                            <div class="text-muted small"><code>{{ tx['user_id'] }}</code></div>
+                        </td>
+                        <td>{{ tx['plan_name'] or '-' }}</td>
+                        <td><strong class="text-primary">{{ "{:,}".format(tx['amount'] or 0) }} تومان</strong></td>
+                        <td><code>{{ tx['tracking_code'] or '-' }}</code></td>
+                        <td>
+                            {% if tx['status'] == 'pending' %}
+                                <span class="badge badge-pending">در انتظار تایید</span>
+                            {% elif tx['status'] == 'approved' %}
+                                <span class="badge badge-approved">تایید شده</span>
+                            {% else %}
+                                <span class="badge badge-rejected">رد شده</span>
+                            {% endif %}
+                        </td>
+                        <td><small class="text-muted">{{ tx['created_at'][:16] if tx['created_at'] else '-' }}</small></td>
+                        <td>
+                            {% if tx['status'] == 'pending' %}
+                                <a href="{{ url_for('approve_payment', payment_id=tx['id']) }}" class="btn btn-sm btn-success py-1 px-2" title="تایید و ساخت خودکار اشتراک" onclick="return confirm('آیا از تایید این پرداخت و ساخت اشتراک در هیدیفای مطمئن هستید؟')">
+                                    <i class="fas fa-check"></i> تایید
+                                </a>
+                                <a href="{{ url_for('reject_payment', payment_id=tx['id']) }}" class="btn btn-sm btn-outline-danger py-1 px-2" title="رد پرداخت" onclick="return confirm('آیا از رد این پرداخت مطمئن هستید؟')">
+                                    <i class="fas fa-xmark"></i> رد
+                                </a>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not recent_transactions %}
+                    <tr>
+                        <td colspan="7" class="text-center py-4 text-muted">هنوز تراکنشی ثبت نشده است.</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const ctx = document.getElementById('revenueChart').getContext('2d');
+    const revenueLabels = [{% for d in daily_revenue %}'{{ d['date'] }}',{% endfor %}];
+    const revenueData = [{% for d in daily_revenue %}{{ d['total'] or 0 }},{% endfor %}];
+
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: revenueLabels.length ? revenueLabels : ['امروز'],
+            datasets: [{
+                label: 'درآمد (تومان)',
+                data: revenueData.length ? revenueData : [0],
+                borderColor: '#4f46e5',
+                backgroundColor: 'rgba(79, 70, 229, 0.1)',
+                borderWidth: 3,
+                fill: true,
+                tension: 0.35,
+                pointRadius: 5,
+                pointBackgroundColor: '#4f46e5'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) { return value.toLocaleString('fa-IR') + ' ت'; }
+                    }
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}

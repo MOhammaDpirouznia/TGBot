@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}گزارش‌ها - پنل مدیریت VPN{% endblock %}
+
+{% block content %}
+<div class="content-header">
+    <h4><i class="fas fa-chart-bar"></i> گزارش‌ها</h4>
+</div>
+
+<!-- آمار کلی -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body text-center">
+                <i class="fas fa-users fa-3x text-primary mb-3"></i>
+                <h2>{{ total_users }}</h2>
+                <p class="text-muted">کل کاربران</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body text-center">
+                <i class="fas fa-money-bill-wave fa-3x text-success mb-3"></i>
+                <h2>{{ "{:,}".format(total_revenue) }} تومان</h2>
+                <p class="text-muted">درآمد کل</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- درآمد ماهانه -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="fas fa-chart-line"></i> درآمد ماهانه</h5>
+            </div>
+            <div class="card-body">
+                {% for month in monthly_revenue %}
+                <div class="d-flex justify-content-between align-items-center mb-3 p-2 bg-light rounded">
+                    <span><i class="fas fa-calendar"></i> {{ month['month'] }}</span>
+                    <strong class="text-success">{{ "{:,}".format(month['total'] or 0) }} تومان</strong>
+                </div>
+                {% endfor %}
+                {% if not monthly_revenue %}
+                    <p class="text-muted text-center">داده‌ای موجود نیست</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- محبوب‌ترین پلن‌ها -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="fas fa-star"></i> محبوب‌ترین پلن‌ها</h5>
+            </div>
+            <div class="card-body">
+                {% for plan in popular_plans %}
+                <div class="d-flex justify-content-between align-items-center mb-3 p-2 bg-light rounded">
+                    <div>
+                        <strong>{{ plan['plan_name'] or 'ناشناس' }}</strong>
+                        <br><small class="text-muted">{{ plan['count'] }} فروش</small>
+                    </div>
+                    <strong class="text-primary">{{ "{:,}".format(plan['revenue'] or 0) }} تومان</strong>
+                </div>
+                {% endfor %}
+                {% if not popular_plans %}
+                    <p class="text-muted text-center">داده‌ای موجود نیست</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- کاربران فعال -->
+<div class="card mt-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="fas fa-trophy"></i> فعال‌ترین کاربران</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>رتبه</th>
+                        <th>آیدی تلگرام</th>
+                        <th>یوزرنیم</th>
+                        <th>تعداد اشتراک</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in active_users %}
+                    <tr>
+                        <td>
+                            {% if loop.index == 1 %}
+                                <i class="fas fa-medal text-warning"></i>
+                            {% elif loop.index == 2 %}
+                                <i class="fas fa-medal text-secondary"></i>
+                            {% elif loop.index == 3 %}
+                                <i class="fas fa-medal text-danger"></i>
+                            {% else %}
+                                {{ loop.index }}
+                            {% endif %}
+                        </td>
+                        <td><strong>{{ user['telegram_id'] }}</strong></td>
+                        <td>{{ user['username'] or 'ندارد' }}</td>
+                        <td>
+                            <span class="badge bg-primary">{{ user['sub_count'] }} اشتراک</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

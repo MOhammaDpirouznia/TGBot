@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}پشتیبانی و تیکتینگ تحت وب{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-headset text-primary"></i> میز پشتیبانی و تیکت‌های کاربران</h1>
+        <p class="text-muted mb-0">مشاهده و پاسخگویی مستقیم به پیام‌های ارسالی کاربران از طریق تلگرام</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>شماره تیکت</th>
+                        <th>کاربر</th>
+                        <th>متن پیام کاربر</th>
+                        <th>پاسخ پشتیبانی</th>
+                        <th>وضعیت</th>
+                        <th>تاریخ</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in tickets %}
+                    <tr>
+                        <td><code>#{{ t['id'] }}</code></td>
+                        <td>
+                            <strong>{{ t['first_name'] or t['username'] or 'کاربر تلگرام' }}</strong>
+                            <div class="text-muted small"><code>{{ t['telegram_id'] }}</code></div>
+                        </td>
+                        <td style="max-width: 250px;">
+                            <div class="text-truncate" title="{{ t['message'] }}">{{ t['message'] }}</div>
+                        </td>
+                        <td style="max-width: 250px;">
+                            <small class="text-muted">{{ t['reply'] or 'هنوز پاسخی داده نشده' }}</small>
+                        </td>
+                        <td>
+                            {% if t['status'] == 'open' %}
+                                <span class="badge badge-pending">باز و در انتظار</span>
+                            {% else %}
+                                <span class="badge badge-approved">پاسخ داده شده</span>
+                            {% endif %}
+                        </td>
+                        <td><small class="text-muted">{{ t['created_at'][:16] if t['created_at'] else '-' }}</small></td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#replyTicketModal{{ t['id'] }}">
+                                <i class="fas fa-reply me-1"></i> پاسخ
+                            </button>
+
+                            <!-- Modal پاسخ به تیکت -->
+                            <div class="modal fade" id="replyTicketModal{{ t['id'] }}" tabindex="-1">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <form method="POST" action="{{ url_for('ticket_reply', ticket_id=t['id']) }}">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title fw-bold">پاسخ به تیکت #{{ t['id'] }}</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                <div class="p-3 bg-light rounded-3 mb-3">
+                                                    <strong>متن پیام کاربر:</strong>
+                                                    <p class="mb-0 mt-1">{{ t['message'] }}</p>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label class="form-label fw-bold">متن پاسخ شما (مستقیم به تلگرام کاربر ارسال می‌شود):</label>
+                                                    <textarea name="reply" class="form-control" rows="4" placeholder="پاسخ خود را بنویسید..." required></textarea>
+                                                </div>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                                                <button type="submit" class="btn btn-success">ارسال پاسخ به تلگرام</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not tickets %}
+                    <tr>
+                        <td colspan="7" class="text-center py-4 text-muted">هیچ تیکت پشتیبانی ثبت نشده است.</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

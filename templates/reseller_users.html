@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}مشتریان من - پنل نمایندگی{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-users text-primary"></i> لیست مشتریان و اشتراک‌های شما</h1>
+        <p class="text-muted mb-0">مشاهده مشخصات، لینک‌های اتصال و وضعیت مصرف هر مشتری</p>
+    </div>
+    <a href="{{ url_for('reseller_create_user') }}" class="btn btn-primary">
+        <i class="fas fa-user-plus me-1"></i> ساخت اشتراک جدید
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>نام مشتری / اکانت</th>
+                        <th>پلن</th>
+                        <th>مصرف / سقف حجم</th>
+                        <th>مدت اعتبار</th>
+                        <th>وضعیت</th>
+                        <th>تاریخ صدور</th>
+                        <th>لینک اتصال و عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sub in subscriptions %}
+                    {% set sub_url = panel_url + '/' + user_proxy + '/' + sub['hidify_uuid'] + '/' %}
+                    <tr>
+                        <td><strong>{{ sub['account_name'] or 'بدون نام' }}</strong></td>
+                        <td>{{ sub['plan_name'] or '-' }}</td>
+                        <td>
+                            <div>{{ sub['data_used'] or 0 }} / {{ sub['data_limit'] or 0 }} GB</div>
+                            <div class="progress mt-1" style="height: 5px;">
+                                {% set pct = ((sub['data_used'] or 0) / (sub['data_limit'] or 1) * 100)|int %}
+                                <div class="progress-bar {{ 'bg-danger' if pct > 90 else ('bg-warning' if pct > 70 else 'bg-success') }}" style="width: {{ pct if pct <= 100 else 100 }}%"></div>
+                            </div>
+                        </td>
+                        <td>{{ sub['duration'] or 30 }} روز</td>
+                        <td>
+                            {% if sub['status'] == 'active' %}
+                                <span class="badge badge-approved">فعال</span>
+                            {% else %}
+                                <span class="badge badge-expired">منقضی</span>
+                            {% endif %}
+                        </td>
+                        <td><small class="text-muted">{{ sub['created_at'][:10] if sub['created_at'] else '-' }}</small></td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-primary" onclick="copyLink('{{ sub_url }}')" title="کپی لینک ساب">
+                                    <i class="fas fa-copy"></i> کپی لینک
+                                </button>
+                                <a href="{{ sub_url }}" target="_blank" class="btn btn-outline-secondary" title="صفحه مشتری">
+                                    <i class="fas fa-external-link-alt"></i>
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not subscriptions %}
+                    <tr>
+                        <td colspan="7" class="text-center py-4 text-muted">هنوز اشتراکی توسط شما ساخته نشده است.</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function copyLink(url) {
+        navigator.clipboard.writeText(url);
+        alert('لینک اتصال مشتری کپی شد!');
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}تنظیمات - پنل مدیریت VPN{% endblock %}
+
+{% block content %}
+<div class="content-header">
+    <h4><i class="fas fa-cog"></i> تنظیمات</h4>
+</div>
+
+<div class="card">
+    <div class="card-header bg-white">
+        <h5 class="mb-0">تنظیمات فعلی ربات</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>کلید</th>
+                        <th>مقدار</th>
+                        <th>آخرین بروزرسانی</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for setting in settings %}
+                    <tr>
+                        <td><code>{{ setting['key'] }}</code></td>
+                        <td>
+                            {% if 'password' in setting['key'].lower() or 'secret' in setting['key'].lower() or 'key' in setting['key'].lower() %}
+                                <span>••••••••</span>
+                            {% else %}
+                                {{ setting['value'] }}
+                            {% endif %}
+                        </td>
+                        <td><small>{{ setting['updated_at'][:16] if setting['updated_at'] else '-' }}</small></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0">اطلاعات سیستم</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <p><strong>نسخه ربات:</strong> 2.0</p>
+                <p><strong>نسخه API:</strong> Hidify v2</p>
+                <p><strong>پایگاه داده:</strong> SQLite</p>
+            </div>
+            <div class="col-md-6">
+                <p><strong>پنل مدیریت:</strong> Flask</p>
+                <p><strong>وضعیت:</strong> <span class="badge bg-success">فعال</span></p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

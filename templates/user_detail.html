@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}جزئیات کاربر - پنل مدیریت VPN{% endblock %}
+
+{% block content %}
+<div class="content-header d-flex justify-content-between align-items-center">
+    <h4><i class="fas fa-user"></i> جزئیات کاربر</h4>
+    <a href="{{ url_for('users') }}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-right"></i> بازگشت
+    </a>
+</div>
+
+{% if user %}
+<!-- اطلاعات کاربر -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body text-center">
+                <i class="fas fa-user-circle fa-5x text-primary mb-3"></i>
+                <h4>{{ user['username'] or 'ناشناس' }}</h4>
+                <p class="text-muted">{{ user['telegram_id'] }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">اطلاعات حساب</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>آیدی تلگرام:</strong> {{ user['telegram_id'] }}</p>
+                        <p><strong>یوزرنیم:</strong> {{ user['username'] or 'ندارد' }}</p>
+                        <p><strong>UUID:</strong> <code>{{ user['hidify_uuid'] or '-' }}</code></p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>پلن فعلی:</strong> {{ user['plan_id'] or '-' }}</p>
+                        <p><strong>تاریخ عضویت:</strong> {{ user['created_at'][:10] if user['created_at'] else '-' }}</p>
+                        <p><strong>آخرین بروزرسانی:</strong> {{ user['updated_at'][:10] if user['updated_at'] else '-' }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- اشتراک‌ها -->
+<div class="card mb-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="fas fa-id-card"></i> اشتراک‌ها ({{ subscriptions|length }})</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>پلن</th>
+                        <th>نام اکانت</th>
+                        <th>حجم</th>
+                        <th>مدت</th>
+                        <th>تاریخ شروع</th>
+                        <th>تاریخ انقضا</th>
+                        <th>وضعیت</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sub in subscriptions %}
+                    <tr>
+                        <td>{{ sub['plan_name'] or '-' }}</td>
+                        <td>{{ sub['account_name'] or '-' }}</td>
+                        <td>{{ sub['data_limit'] or '-' }} GB</td>
+                        <td>{{ sub['duration'] or '-' }} روز</td>
+                        <td><small>{{ sub['start_date'][:10] if sub['start_date'] else '-' }}</small></td>
+                        <td><small>{{ sub['expire_date'][:10] if sub['expire_date'] else '-' }}</small></td>
+                        <td>
+                            {% if sub['status'] == 'active' %}
+                                <span class="badge bg-success">فعال</span>
+                            {% else %}
+                                <span class="badge bg-danger">{{ sub['status'] }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- تراکنش‌ها -->
+<div class="card">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="fas fa-credit-card"></i> تراکنش‌ها ({{ transactions|length }})</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>شماره سفارش</th>
+                        <th>پلن</th>
+                        <th>مبلغ</th>
+                        <th>درگاه</th>
+                        <th>وضعیت</th>
+                        <th>تاریخ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tx in transactions %}
+                    <tr>
+                        <td><code>{{ tx['order_id'][:15] }}...</code></td>
+                        <td>{{ tx['plan_name'] or '-' }}</td>
+                        <td>{{ "{:,}".format(tx['amount'] or 0) }} تومان</td>
+                        <td>{{ tx['gateway'] or '-' }}</td>
+                        <td>
+                            {% if tx['status'] == 'pending' %}
+                                <span class="badge badge-pending">در انتظار</span>
+                            {% elif tx['status'] == 'approved' %}
+                                <span class="badge badge-approved">تایید شده</span>
+                            {% else %}
+                                <span class="badge badge-rejected">رد شده</span>
+                            {% endif %}
+                        </td>
+                        <td><small>{{ tx['created_at'][:16] if tx['created_at'] else '-' }}</small></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<div class="alert alert-warning">کاربر یافت نشد!</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,38 @@
+{
+  "basic": {
+    "name": "پایه",
+    "price": 50000,
+    "data_limit": 30,
+    "duration": 30,
+    "description": "۳۰ گیگ | ۳۰ روز",
+    "is_active": true,
+    "created_at": "2026-08-27T00:50:36.051569+03:30"
+  },
+  "standard": {
+    "name": "استاندارد",
+    "price": 80000,
+    "data_limit": 60,
+    "duration": 30,
+    "description": "۶۰ گیگ | ۳۰ روز",
+    "is_active": true,
+    "created_at": "2026-08-27T00:50:36.051582+03:30"
+  },
+  "premium": {
+    "name": "پریمیوم",
+    "price": 120000,
+    "data_limit": 100,
+    "duration": 30,
+    "description": "۱۰۰ گیگ | ۳۰ روز",
+    "is_active": true,
+    "created_at": "2026-08-27T00:50:36.051585+03:30"
+  },
+  "unlimited": {
+    "name": "نامحدود",
+    "price": 200000,
+    "data_limit": 0,
+    "duration": 30,
+    "description": "نامحدود | ۳۰ روز",
+    "is_active": true,
+    "created_at": "2026-08-27T00:50:36.051587+03:30"
+  }
+}
