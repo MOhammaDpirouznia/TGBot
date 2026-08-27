@@ -51,6 +51,7 @@ class Database:
     """کلاس مدیریت دیتابیس"""
 
     def __init__(self, db_path=None):
+        self.db_dir = DB_DIR
         self.db_path = db_path or DB_PATH
         self.init_db()
 
@@ -371,6 +372,122 @@ class Database:
         except Exception as e:
             logger.error(f"Error in auto_restore: {e}")
             return {"restored": False, "error": str(e)}
+
+    def sync_from_hidify(self, hidify_users: list) -> dict:
+        """همگام‌سازی و بازیابی خودکار تمامی کاربران و اشتراک‌ها از پنل هیدیفای"""
+        if not hidify_users or not isinstance(hidify_users, list):
+            return {"success": False, "count": 0, "error": "لیست کاربران هیدیفای خالی یا نامعتبر است"}
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        restored_users = 0
+        restored_subs = 0
+
+        try:
+            for u in hidify_users:
+                if not isinstance(u, dict):
+                    continue
+                
+                uuid = u.get("uuid")
+                if not uuid:
+                    continue
+
+                name = u.get("name") or ""
+                comment = str(u.get("comment") or "").strip()
+                usage_limit = float(u.get("usage_limit_GB") or 0)
+                current_usage = float(u.get("current_usage_GB") or 0)
+                package_days = int(u.get("package_days") or 30)
+                is_active = u.get("is_active", True)
+                enable = u.get("enable", True)
+                start_date = u.get("start_date") or now
+                status = "active" if (is_active and enable) else "expired"
+
+                # استخراج telegram_id از کامنت یا نام کاربری
+                telegram_id = 0
+                if comment.isdigit() and len(comment) >= 5:
+                    telegram_id = int(comment)
+                elif name.startswith("tg_") and name.replace("tg_", "").isdigit():
+                    telegram_id = int(name.replace("tg_", ""))
+
+                # ۱. ثبت یا بروزرسانی در جدول users
+                if telegram_id > 0:
+                    cursor.execute("SELECT id FROM users WHERE telegram_id = ?", (telegram_id,))
+                    existing_user = cursor.fetchone()
+                    if not existing_user:
+                        cursor.execute("""
+                            INSERT INTO users (telegram_id, username, hidify_uuid, plan_id, data_limit, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """, (telegram_id, name, uuid, "custom", usage_limit, now, now))
+                        restored_users += 1
+                    else:
+                        cursor.execute("""
+                            UPDATE users SET
+                                username = COALESCE(?, username),
+                                hidify_uuid = COALESCE(?, hidify_uuid),
+                                data_limit = ?,
+                                updated_at = ?
+                            WHERE telegram_id = ?
+                        """, (name, uuid, usage_limit, now, telegram_id))
+
+                    # ایجاد کیف پول در صورت عدم وجود
+                    cursor.execute("SELECT id FROM wallet WHERE telegram_id = ?", (telegram_id,))
+                    if not cursor.fetchone():
+                        cursor.execute("""
+                            INSERT INTO wallet (telegram_id, balance, created_at, updated_at)
+                            VALUES (?, 0, ?, ?)
+                        """, (telegram_id, now, now))
+
+                # ۲. ثبت یا بروزرسانی در جدول subscriptions
+                cursor.execute("SELECT id FROM subscriptions WHERE hidify_uuid = ?", (uuid,))
+                existing_sub = cursor.fetchone()
+
+                plan_name = f"{usage_limit} گیگ {package_days} روزه" if usage_limit > 0 else f"{package_days} روزه"
+                if "test" in name.lower() or (usage_limit > 0 and usage_limit <= 0.5):
+                    plan_id = "test"
+                    plan_name = "اشتراک تست"
+                else:
+                    plan_id = "custom"
+
+                if existing_sub:
+                    # بروزرسانی مصرف، حجم و وضعیت
+                    cursor.execute("""
+                        UPDATE subscriptions SET
+                            data_used = ?,
+                            data_limit = ?,
+                            status = ?,
+                            account_name = COALESCE(?, account_name),
+                            updated_at = ?
+                        WHERE hidify_uuid = ?
+                    """, (current_usage, usage_limit, status, name, now, uuid))
+                else:
+                    # درج اشتراک جدید بازیابی شده
+                    cursor.execute("""
+                        INSERT INTO subscriptions (
+                            telegram_id, hidify_uuid, plan_id, plan_name, account_name,
+                            account_comment, data_limit, data_used, duration, start_date,
+                            status, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        telegram_id, uuid, plan_id, plan_name, name,
+                        comment, usage_limit, current_usage, package_days, start_date,
+                        status, now, now
+                    ))
+                    restored_subs += 1
+
+            conn.commit()
+            logger.info(f"Hiddify sync complete: {restored_users} users, {restored_subs} subscriptions imported/updated.")
+            return {
+                "success": True,
+                "restored_users": restored_users,
+                "restored_subs": restored_subs,
+                "total_hiddify": len(hidify_users)
+            }
+        except Exception as e:
+            logger.error(f"Error syncing from Hiddify: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
 
     # ═══════════════════════════════════════════════════════════════
     # مدیریت مشتریان

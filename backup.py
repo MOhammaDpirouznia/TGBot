@@ -9,14 +9,14 @@ import logging
 import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
-from database import db
+from database import db, DB_DIR
 from utils import get_now_shamsi, get_now_naive, get_now
 
 logger = logging.getLogger(__name__)
 
-# مسیر پشتیبان‌ها
-BACKUP_DIR = Path("backups")
-BACKUP_DIR.mkdir(exist_ok=True)
+# مسیر پشتیبان‌ها - ذخیره در کنار دیتابیس (Railway Volume یا محلی)
+BACKUP_DIR = DB_DIR / "backups"
+BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class BackupManager:

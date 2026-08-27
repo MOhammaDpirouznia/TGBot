@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from flask import (
     Flask, render_template, request, redirect, url_for, session,
-    jsonify, flash, Response
+    jsonify, flash, Response, send_file
 )
 
 from dotenv import load_dotenv
@@ -774,6 +774,66 @@ def settings():
     settings_list = conn.execute("SELECT * FROM settings").fetchall()
     conn.close()
     return render_template("settings.html", settings=settings_list)
+
+
+@app.route("/admin/sync-hidify", methods=["GET", "POST"])
+@admin_required
+def admin_sync_hidify():
+    """همگام‌سازی و بازیابی کاربران از پنل هیدیفای"""
+    try:
+        users = hidify_sync_request("GET", "/admin/user/")
+        if isinstance(users, list):
+            res = db.sync_from_hidify(users)
+            if res.get("success"):
+                flash(f"همگام‌سازی با موفقیت انجام شد! {res.get('total_hiddify', 0)} کاربر از هیدیفای بررسی و دیتابیس بروزرسانی شد.", "success")
+            else:
+                flash(f"خطا در ثبت دیتابیس: {res.get('error')}", "danger")
+        else:
+            flash(f"خطا در دریافت اطلاعات از هیدیفای: {users.get('error', 'پاسخ نامعتبر')}", "danger")
+    except Exception as e:
+        flash(f"خطا: {str(e)}", "danger")
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/admin/backup/download")
+@admin_required
+def download_backup():
+    """دانلود فایل دیتابیس SQLite"""
+    if db.db_path.exists():
+        timestamp = get_now_naive().strftime("%Y%m%d_%H%M%S")
+        return send_file(
+            str(db.db_path),
+            as_attachment=True,
+            download_name=f"bot_database_{timestamp}.db",
+            mimetype="application/x-sqlite3"
+        )
+    flash("فایل دیتابیس یافت نشد!", "danger")
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/admin/backup/upload", methods=["POST"])
+@admin_required
+def upload_backup():
+    """آپلود و بازیابی فایل دیتابیس SQLite"""
+    file = request.files.get("backup_file")
+    if not file or not file.filename.endswith(".db"):
+        flash("لطفاً یک فایل دیتابیس با پسوند .db انتخاب کنید.", "warning")
+        return redirect(url_for("settings"))
+
+    try:
+        from backup import BackupManager
+        bm = BackupManager()
+        temp_path = db.db_dir / f"uploaded_{get_now_naive().strftime('%Y%m%d_%H%M%S')}.db"
+        file.save(temp_path)
+        res = bm.restore_backup(str(temp_path))
+        if res.get("success"):
+            flash("دیتابیس با موفقیت از فایل آپلود شده بازیابی شد!", "success")
+        else:
+            flash(f"خطا در بازیابی دیتابیس: {res.get('error')}", "danger")
+    except Exception as e:
+        flash(f"خطا در پردازش فایل: {str(e)}", "danger")
+
+    return redirect(url_for("settings"))
 
 
 # ═══════════════════════════════════════════════════════════════════════

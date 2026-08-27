@@ -3724,6 +3724,38 @@ async def import_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+async def sync_hidify_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """همگام‌سازی و بازیابی خودکار کاربران و اشتراک‌ها از پنل هیدیفای"""
+    user = update.effective_user
+    if user.id != ADMIN_ID:
+        await update.message.reply_text("❌ شما ادمین نیستید!")
+        return
+
+    msg = await update.message.reply_text("⏳ در حال دریافت اطلاعات کاربران از پنل هیدیفای...")
+    try:
+        h_users = await hidify.get_users()
+        if not h_users or not isinstance(h_users, list):
+            err = h_users.get("error") if isinstance(h_users, dict) else "خطای دریافت لیست کاربران"
+            await msg.edit_text(f"❌ خطا در اتصال به هیدیفای:\n{err}")
+            return
+
+        res = db.sync_from_hidify(h_users)
+        if res.get("success"):
+            await msg.edit_text(
+                f"✅ **همگام‌سازی با هیدیفای با موفقیت انجام شد!**\n\n"
+                f"📊 کل کاربران در هیدیفای: **{res.get('total_hiddify', 0)}**\n"
+                f"👥 کاربران جدید بازیابی‌شده: **{res.get('restored_users', 0)}**\n"
+                f"📋 اشتراک‌های جدید/بروزرسانی‌شده: **{res.get('restored_subs', 0)}**\n\n"
+                f"اطلاعات دیتابیس با موفقیت بروزرسانی شد.",
+                parse_mode="Markdown"
+            )
+        else:
+            await msg.edit_text(f"❌ خطا در ثبت اطلاعات دیتابیس:\n{res.get('error')}")
+    except Exception as e:
+        logger.error(f"Error in sync_hidify_command: {e}")
+        await msg.edit_text(f"❌ خطا در پردازش:\n{str(e)}")
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # اجرای ربات
 # ═══════════════════════════════════════════════════════════════════════
@@ -3951,6 +3983,11 @@ def main():
     application.add_handler(CommandHandler("add_wallet", admin_add_wallet))
     application.add_handler(CommandHandler("tickets", admin_tickets))
     application.add_handler(CommandHandler("reply_ticket", admin_reply_ticket))
+    application.add_handler(CommandHandler("sync_hidify", sync_hidify_command))
+    application.add_handler(CommandHandler("sync", sync_hidify_command))
+
+    # هندلر دریافت مستقیم فایل دیتابیس از ادمین برای بازیابی
+    application.add_handler(MessageHandler(filters.Document.ALL & filters.User(ADMIN_ID), handle_restore_file))
 
     # هندلر بررسی عضویت کانال
     async def handle_check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4012,6 +4049,18 @@ def main():
         notif_scheduler.set_bot(application.bot)
         await notif_scheduler.start()
         logger.info("Notification scheduler started")
+
+        # همگام‌سازی و بازیابی خودکار کاربران از پنل هیدیفای در زمان استارت
+        try:
+            logger.info("Syncing users and subscriptions from Hiddify panel on startup...")
+            h_users = await hidify.get_users()
+            if h_users and isinstance(h_users, list):
+                res = db.sync_from_hidify(h_users)
+                logger.info(f"Startup Hiddify sync result: {res}")
+            else:
+                logger.warning(f"Could not fetch users from Hiddify on startup: {h_users}")
+        except Exception as e:
+            logger.warning(f"Could not auto-sync from Hiddify on startup: {e}")
     
     async def post_shutdown(application):
         """توقف قبل از بسته شدن"""
