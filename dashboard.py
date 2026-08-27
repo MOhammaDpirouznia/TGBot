@@ -88,20 +88,26 @@ def send_telegram_msg(chat_id: int, text: str, reply_markup=None, parse_mode: st
 def send_subscription_card_sync(chat_id: int, sub_url: str, title: str, details: str):
     """ارسال کارت اشتراک همراه با بارکد QR و دکمه‌های اتصال مستقیم از وب به کاربر"""
     bot_token = get_bot_token()
-    qr_bytes = generate_qr_code_bytes(sub_url)
-    hiddify_deep = f"hiddify://install-sub?url={urllib.parse.quote(sub_url, safe='')}"
-    streisand_deep = f"streisand://import/{sub_url}"
+    clean_sub_url = sub_url.strip()
+    qr_bytes = generate_qr_code_bytes(clean_sub_url)
 
     inline_keyboard = {
         "inline_keyboard": [
-            [{"text": "🚀 اتصال مستقیم به Hiddify", "url": hiddify_deep}],
-            [{"text": "⚡ اتصال مستقیم به Streisand", "url": streisand_deep}],
-            [{"text": "🌐 باز کردن در مرورگر", "url": sub_url}],
-            [{"text": "📋 کپی لینک اتصال", "callback_data": "copy_link"}],
+            [{"text": "🌐 صفحه کاربری و اتصال سریع", "url": clean_sub_url}],
+            [{"text": "📋 راهنمای کپی لینک", "callback_data": "copy_link"}],
         ]
     }
 
-    caption = f"{title}\n\n{details}\n\n🔗 <b>لینک اتصال شما:</b>\n<code>{sub_url}</code>\n\n📱 برای اتصال، روی دکمه‌های بالا بزنید یا بارکد QR را اسکن کنید."
+    caption = (
+        f"{title}\n\n"
+        f"{details}\n\n"
+        f"🔗 <b>لینک اتصال شما (برای کپی لمس کنید):</b>\n"
+        f"<code>{clean_sub_url}</code>\n\n"
+        f"💡 <b>راهنمای اتصال:</b>\n"
+        f"1️⃣ کادر لینک بالا را لمس کنید تا کپی شود.\n"
+        f"2️⃣ در اپلیکیشن (Hiddify / v2rayNG / Streisand) دکمه افزودن کانفیگ از کلیپ‌بورد را بزنید.\n"
+        f"3️⃣ یا از دکمه «🌐 صفحه کاربری و اتصال سریع» استفاده نمایید."
+    )
 
     if qr_bytes and bot_token:
         try:

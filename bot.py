@@ -113,31 +113,30 @@ DATA_DIR.mkdir(exist_ok=True)
 
 
 async def send_subscription_card(bot, chat_id: int, sub_url: str, title: str, details: str = ""):
-    """ارسال کارت اشتراک همراه با QR Code و دکمه‌های اتصال مستقیم"""
+    """ارسال کارت اشتراک همراه با QR Code و دکمه‌های استاندارد اتصال"""
+    clean_sub_url = sub_url.strip()
     caption = (
         f"{title}\n\n"
         f"{details}\n\n"
-        f"🔗 **لینک اتصال شما:**\n"
-        f"`{sub_url}`\n\n"
+        f"🔗 **لینک اتصال شما (برای کپی لمس کنید):**\n"
+        f"`{clean_sub_url}`\n\n"
         f"💡 **راهنمای اتصال سریع:**\n"
-        f"• دکمه‌های زیر را لمس کنید تا کانفیگ مستقیماً در اپلیکیشن باز شود.\n"
-        f"• یا لینک بالا را کپی کرده و در اپلیکیشن VPN وارد کنید."
+        f"• لینک بالا را لمس کنید تا در کلیپ‌بورد کپی شود.\n"
+        f"• وارد نرم‌افزار (Hiddify / v2rayNG / Streisand) شوید و دکمه **+** یا **Import** را بزنید.\n"
+        f"• یا از طریق دکمه «🌐 صفحه کاربری و اتصال سریع» وارد شوید."
     )
-    hiddify_deep = f"hiddify://install-sub?url={sub_url}"
-    streisand_deep = f"streisand://import/{sub_url}"
 
     keyboard = [
         [
-            InlineKeyboardButton("📱 اتصال با Hiddify", url=hiddify_deep),
-            InlineKeyboardButton("⚡ Streisand", url=streisand_deep),
+            InlineKeyboardButton("🌐 صفحه کاربری و اتصال سریع", url=clean_sub_url),
         ],
         [
-            InlineKeyboardButton("🌐 باز کردن در مرورگر", url=sub_url),
+            InlineKeyboardButton("📋 راهنمای کپی لینک", callback_data="copy_link"),
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    qr_bytes = generate_qr_code_bytes(sub_url)
+    qr_bytes = generate_qr_code_bytes(clean_sub_url)
     if qr_bytes:
         try:
             await bot.send_photo(
@@ -149,14 +148,35 @@ async def send_subscription_card(bot, chat_id: int, sub_url: str, title: str, de
             )
             return
         except Exception as e:
-            logger.warning(f"Error sending QR Code photo: {e}")
+            logger.warning(f"Error sending QR Code photo markdown: {e}")
+            try:
+                await bot.send_photo(
+                    chat_id=chat_id,
+                    photo=qr_bytes,
+                    caption=caption,
+                    reply_markup=reply_markup,
+                )
+                return
+            except Exception as e2:
+                logger.warning(f"Error sending QR Code photo plain: {e2}")
 
-    await bot.send_message(
-        chat_id=chat_id,
-        text=caption,
-        reply_markup=reply_markup,
-        parse_mode="Markdown",
-    )
+    try:
+        await bot.send_message(
+            chat_id=chat_id,
+            text=caption,
+            reply_markup=reply_markup,
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        logger.warning(f"Error sending subscription text markdown: {e}")
+        try:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=caption,
+                reply_markup=reply_markup,
+            )
+        except Exception as e2:
+            logger.error(f"Error sending subscription text message: {e2}")
 
 
 # ─── دریافت پلن‌ها ───
@@ -1341,16 +1361,16 @@ async def get_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         account_name = sub.get("account_name") or f"tg_{user.id}"
 
         if sub.get("plan_id") == "test":
-            proxy = USER_PROXY_PATH_TEST
-            panel_url = HIDIFY_PANEL_URL_TEST
+            proxy = USER_PROXY_PATH_TEST or USER_PROXY_PATH or HIDIFY_PROXY_PATH
+            panel_url = HIDIFY_PANEL_URL_TEST or HIDIFY_PANEL_URL
         else:
-            proxy = USER_PROXY_PATH
+            proxy = USER_PROXY_PATH or HIDIFY_PROXY_PATH
             panel_url = HIDIFY_PANEL_URL
 
-        subscription_url = f"{panel_url}/{proxy}/{uuid}/"
+        subscription_url = f"{panel_url.rstrip('/')}/{proxy.strip('/')}/{uuid}/"
         status_icon = "🟢 فعال" if status == "active" else "🔴 منقضی"
 
-        details = f"📋 پلن: {plan_name}\n📝 اکانت: {account_name}\n📊 وضعیت: {status_icon}"
+        details = f"📋 پلن: **{plan_name}**\n📝 اکانت: `{account_name}`\n📊 وضعیت: {status_icon}"
         await send_subscription_card(
             context.bot,
             chat_id=user.id,
@@ -1722,18 +1742,27 @@ async def handle_test_subscription(update: Update, context: ContextTypes.DEFAULT
     user_subscriptions = db.get_user_subscriptions(user.id)
     for sub in user_subscriptions:
         if sub.get("plan_id") == "test":
-            # قبلاً اشتراک تست داشته
-            existing_link = f"{HIDIFY_PANEL_URL_TEST}/{USER_PROXY_PATH_TEST}/{sub.get('hidify_uuid', '')}/"
-            await update.message.reply_text(
-                "⚠️ شما قبلاً اشتراک تست دریافت کرده‌اید!\n\n"
-                f"🔗 لینک تست شما:\n"
-                f"{existing_link}\n\n"
-                "برای دریافت اشتراک دائمی، «🛒 خرید اشتراک» را بزنید."
-            )
+            existing_uuid = sub.get("hidify_uuid", "")
+            if existing_uuid:
+                p_url = (HIDIFY_PANEL_URL_TEST or HIDIFY_PANEL_URL).rstrip("/")
+                u_path = (USER_PROXY_PATH_TEST or USER_PROXY_PATH or HIDIFY_PROXY_PATH).strip("/")
+                existing_link = f"{p_url}/{u_path}/{existing_uuid}/"
+                await send_subscription_card(
+                    context.bot,
+                    chat_id=user.id,
+                    sub_url=existing_link,
+                    title="⚠️ **شما قبلاً اشتراک تست دریافت کرده‌اید!**",
+                    details="📋 پلن: **اشتراک تست رایگان**\n💡 برای خرید اشتراک دائمی، از منوی اصلی دکمه «🛒 خرید اشتراک» را لمس کنید."
+                )
+            else:
+                await update.message.reply_text(
+                    "⚠️ شما قبلاً اشتراک تست دریافت کرده‌اید!\n\n"
+                    "برای دریافت اشتراک دائمی، «🛒 خرید اشتراک» را بزنید."
+                )
             return CHOOSING
 
     # ایجاد اشتراک تست جدید
-    await update.message.reply_text("⏳ در حال ساخت اشتراک تست...")
+    status_msg = await update.message.reply_text("⏳ در حال ساخت اشتراک تست...")
 
     # نام اکانت = آیدی تلگرام
     username = f"tg_{user.id}"
@@ -1750,15 +1779,24 @@ async def handle_test_subscription(update: Update, context: ContextTypes.DEFAULT
             timeout=15.0,
         )
     except asyncio.TimeoutError:
-        await update.message.reply_text("❌ خطا: زمان اتصال به سرور تمام شد. لطفاً دوباره تلاش کنید.")
+        try:
+            await status_msg.edit_text("❌ خطا: زمان اتصال به سرور تمام شد. لطفاً دوباره تلاش کنید.")
+        except:
+            await update.message.reply_text("❌ خطا: زمان اتصال به سرور تمام شد. لطفاً دوباره تلاش کنید.")
         return CHOOSING
     except Exception as e:
         logger.error(f"Error creating test user: {e}")
-        await update.message.reply_text(f"❌ خطا در ساخت اشتراک تست:\n{str(e)[:200]}")
+        try:
+            await status_msg.edit_text(f"❌ خطا در ساخت اشتراک تست:\n{str(e)[:200]}")
+        except:
+            await update.message.reply_text(f"❌ خطا در ساخت اشتراک تست:\n{str(e)[:200]}")
         return CHOOSING
 
     if "error" in result:
-        await update.message.reply_text(f"❌ خطا در ساخت اشتراک تست:\n{result['error'][:200]}")
+        try:
+            await status_msg.edit_text(f"❌ خطا در ساخت اشتراک تست:\n{result['error'][:200]}")
+        except:
+            await update.message.reply_text(f"❌ خطا در ساخت اشتراک تست:\n{result['error'][:200]}")
         return CHOOSING
 
     # ذخیره در دیتابیس
@@ -1785,8 +1823,16 @@ async def handle_test_subscription(update: Update, context: ContextTypes.DEFAULT
         "data_limit": 0.3,
     })
 
+    # پاک کردن یا ویرایش پیام موقت در حال ساخت
+    try:
+        await status_msg.delete()
+    except Exception:
+        pass
+
     # ارسال کارت تست همراه با QR Code و دکمه‌های اتصال
-    test_link = f"{HIDIFY_PANEL_URL_TEST}/{USER_PROXY_PATH_TEST}/{user_uuid}/"
+    p_url = (HIDIFY_PANEL_URL_TEST or HIDIFY_PANEL_URL).rstrip("/")
+    u_path = (USER_PROXY_PATH_TEST or USER_PROXY_PATH or HIDIFY_PROXY_PATH).strip("/")
+    test_link = f"{p_url}/{u_path}/{user_uuid}/"
     details = "📋 پلن: **اشتراک تست رایگان**\n📊 حجم: **0.3 گیگابایت**\n⏰ مدت: **1 روز**"
     await send_subscription_card(
         context.bot,
