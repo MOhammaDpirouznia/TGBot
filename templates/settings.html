@@ -7,14 +7,72 @@
     <h4><i class="fas fa-cog"></i> تنظیمات</h4>
 </div>
 
-<div class="card">
-    <div class="card-header bg-white">
-        <h5 class="mb-0">تنظیمات فعلی ربات</h5>
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0 text-primary"><i class="fas fa-database me-2"></i> پشتیبان‌گیری و بازیابی دیتابیس</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small">
+                    می‌توانید فایل کامل پایگاه داده SQLite شامل تمامی مشتریان، اشتراک‌ها، کیف پول‌ها و تراکنش‌ها را دانلود کنید یا یک فایل پشتیبان قبلی را بازیابی نمایید.
+                </p>
+                
+                <div class="d-flex gap-2 mb-4">
+                    <a href="{{ url_for('download_backup') }}" class="btn btn-primary">
+                        <i class="fas fa-download me-1"></i> دانلود فایل پشتیبان (.db)
+                    </a>
+                </div>
+
+                <hr>
+
+                <h6 class="fw-bold mb-2">📤 بازیابی از فایل پشتیبان:</h6>
+                <form action="{{ url_for('upload_backup') }}" method="POST" enctype="multipart/form-data" onsubmit="return confirm('هشدار: بازیابی فایل پشتیبان اطلاعات فعلی را با داده‌های فایل جایگزین خواهد کرد. آیا ادامه می‌دهید؟');">
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">انتخاب فایل .db پشتیبان:</label>
+                        <input type="file" name="backup_file" class="form-control" accept=".db" required>
+                    </div>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="fas fa-upload me-1"></i> آپلود و بازیابی دیتابیس
+                    </button>
+                </form>
+            </div>
+        </div>
     </div>
-    <div class="card-body">
+
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0 text-success"><i class="fas fa-rotate me-2"></i> همگام‌سازی خودکار با پنل هیدیفای</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small">
+                    تمامی اطلاعات کانفیگ‌ها، حجم‌ها و مشتریان همیشه روی پنل هیدیفای محفوظ هستند. در صورت دیپلوی مجدد روی Railway یا خالی شدن دیتابیس، ربات به صورت خودکار یا با زدن دکمه زیر تمام کاربران را از پنل هیدیفای بازگردانی می‌کند.
+                </p>
+
+                <form action="{{ url_for('admin_sync_hidify') }}" method="POST" onsubmit="return confirm('آیا مایل به همگام‌سازی و بازیابی اطلاعات تمامی کاربران از هیدیفای هستید؟');">
+                    <button type="submit" class="btn btn-success mb-3">
+                        <i class="fas fa-cloud-arrow-down me-1"></i> همگام‌سازی و بازیابی کاربران از هیدیفای
+                    </button>
+                </form>
+
+                <div class="alert alert-info py-2 small mb-0">
+                    <i class="fas fa-lightbulb me-1"></i> <strong>نکته Railway:</strong>
+                    برای ماندگاری دائمی فایل‌های دیتابیس در دیپلوی‌های گیت‌هاب، می‌توانید در داشبورد Railway یک <strong>Volume</strong> با مسیر <code>/data</code> اضافه کنید.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mt-4">
+    <div class="card-header bg-white py-3">
+        <h5 class="mb-0"><i class="fas fa-sliders me-2"></i> تنظیمات ثبت‌شده در دیتابیس</h5>
+    </div>
+    <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover mb-0">
-                <thead>
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
                     <tr>
                         <th>کلید</th>
                         <th>مقدار</th>
@@ -27,35 +85,20 @@
                         <td><code>{{ setting['key'] }}</code></td>
                         <td>
                             {% if 'password' in setting['key'].lower() or 'secret' in setting['key'].lower() or 'key' in setting['key'].lower() %}
-                                <span>••••••••</span>
+                                <span class="badge bg-secondary">••••••••</span>
                             {% else %}
                                 {{ setting['value'] }}
                             {% endif %}
                         </td>
-                        <td><small>{{ setting['updated_at'][:16] if setting['updated_at'] else '-' }}</small></td>
+                        <td><small class="text-muted">{{ setting['updated_at'][:16] if setting['updated_at'] else '-' }}</small></td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="3" class="text-center text-muted py-3">تنظیمات خاصی در دیتابیس ثبت نشده است (تنظیمات از فایل .env و پنل Railway خوانده می‌شوند).</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
-        </div>
-    </div>
-</div>
-
-<div class="card mt-4">
-    <div class="card-header bg-white">
-        <h5 class="mb-0">اطلاعات سیستم</h5>
-    </div>
-    <div class="card-body">
-        <div class="row">
-            <div class="col-md-6">
-                <p><strong>نسخه ربات:</strong> 2.0</p>
-                <p><strong>نسخه API:</strong> Hidify v2</p>
-                <p><strong>پایگاه داده:</strong> SQLite</p>
-            </div>
-            <div class="col-md-6">
-                <p><strong>پنل مدیریت:</strong> Flask</p>
-                <p><strong>وضعیت:</strong> <span class="badge bg-success">فعال</span></p>
-            </div>
         </div>
     </div>
 </div>
