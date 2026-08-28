@@ -13,6 +13,7 @@ import urllib.parse
 import urllib.error
 import functools
 import logging
+import httpx
 from datetime import datetime, timedelta
 from pathlib import Path
 from flask import (
@@ -155,8 +156,8 @@ def send_subscription_card_sync(chat_id: int, sub_url: str, title: str, details:
     return send_telegram_msg(chat_id, caption, reply_markup=inline_keyboard)
 
 
-def hidify_sync_request(method: str, endpoint: str, data: dict = None) -> dict:
-    """درخواست همگام به API پنل هیدیفای"""
+def hidify_sync_request(method: str, endpoint: str, data: dict = None):
+    """درخواست همگام به API پنل هیدیفای با استفاده از httpx"""
     panel_url = get_hiddify_url()
     api_key = get_hiddify_key()
     proxy_path = get_hiddify_proxy()
@@ -168,23 +169,41 @@ def hidify_sync_request(method: str, endpoint: str, data: dict = None) -> dict:
     url = f"{base_api}{endpoint}"
     headers = {
         "Hiddify-API-Key": api_key,
-        "User-Agent": "HiddiBot-Web/2.0"
+        "Content-Type": "application/json",
+        "Accept": "application/json",
     }
-    req_data = None
-    if data is not None:
-        headers["Content-Type"] = "application/json"
-        req_data = json.dumps(data).encode("utf-8")
-
-    req = urllib.request.Request(url, data=req_data, headers=headers, method=method)
 
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            resp_body = resp.read().decode("utf-8")
-            return json.loads(resp_body) if resp_body else {}
-    except urllib.error.HTTPError as e:
-        err_msg = e.read().decode("utf-8") if e.fp else str(e)
-        logger.error(f"Hidify sync HTTP error {e.code}: {err_msg[:200]}")
-        return {"error": f"HTTP {e.code}: {err_msg[:200]}"}
+        with httpx.Client(verify=False, follow_redirects=True, timeout=15.0) as client:
+            m = method.upper()
+            if m == "GET":
+                resp = client.get(url, headers=headers, params=data)
+            elif m == "POST":
+                resp = client.post(url, headers=headers, json=data)
+            elif m == "PATCH":
+                resp = client.patch(url, headers=headers, json=data)
+            elif m == "PUT":
+                resp = client.put(url, headers=headers, json=data)
+            elif m == "DELETE":
+                resp = client.delete(url, headers=headers)
+            else:
+                return {"error": "Invalid HTTP method"}
+
+            logger.info(f"Hidify sync API: {method} {url} -> {resp.status_code}")
+            if resp.status_code in (200, 201):
+                return resp.json()
+            elif resp.status_code == 204:
+                return {"success": True}
+            else:
+                err_text = resp.text[:200]
+                logger.error(f"Hidify sync API error {resp.status_code}: {err_text}")
+                return {"error": f"HTTP {resp.status_code}: {err_text}"}
+    except httpx.TimeoutException:
+        logger.error(f"Hidify sync timeout: {url}")
+        return {"error": "Timeout: زمان پاسخگویی سرور هیدیفای بیش از حد طول کشید"}
+    except httpx.ConnectError as e:
+        logger.error(f"Hidify sync connect error: {e}")
+        return {"error": f"خطا در برقراری اتصال به سرور: {e}"}
     except Exception as e:
         logger.error(f"Hidify sync request error: {e}")
         return {"error": str(e)}
