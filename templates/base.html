@@ -300,6 +300,7 @@
                 </a>
                 <a class="nav-link {% if request.endpoint == 'payments' %}active{% endif %}" href="{{ url_for('payments') }}">
                     <i class="fas fa-receipt"></i> پرداخت‌ها و تایید فیش
+                    <span id="sidebarPendingBadge" class="badge bg-danger ms-auto rounded-pill" style="display: none; font-size: 0.75rem;">0</span>
                 </a>
                 <a class="nav-link {% if request.endpoint == 'users' %}active{% endif %}" href="{{ url_for('users') }}">
                     <i class="fas fa-users"></i> کاربران تلگرام
@@ -323,6 +324,7 @@
                 </a>
                 <a class="nav-link {% if request.endpoint == 'tickets' %}active{% endif %}" href="{{ url_for('tickets') }}">
                     <i class="fas fa-headset"></i> تیکت‌های پشتیبانی
+                    <span id="sidebarTicketsBadge" class="badge bg-warning text-dark ms-auto rounded-pill" style="display: none; font-size: 0.75rem;">0</span>
                 </a>
 
                 <div class="nav-category">سیستم و گزارشات</div>
@@ -381,8 +383,240 @@
         {% block login_content %}{% endblock %}
     {% endif %}
 
+    <!-- ─── Modal نمایش بارکد QR و لینک اتصال ─── -->
+    <div class="modal fade" id="qrCodeModal" tabindex="-1" aria-labelledby="qrModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content shadow-lg border-0">
+                <div class="modal-header bg-primary text-white py-3">
+                    <h5 class="modal-title fw-bold" id="qrModalTitle">
+                        <i class="fas fa-qrcode me-2"></i> بارکد و لینک اتصال
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-center p-4">
+                    <div class="p-3 bg-light rounded-3 d-inline-block shadow-sm mb-3 border">
+                        <div id="qrCodeContainer" class="d-flex justify-content-center"></div>
+                    </div>
+                    <div class="mb-3 text-start">
+                        <label class="form-label small text-muted fw-bold">لینک اتصال مستقیم:</label>
+                        <div class="input-group">
+                            <input type="text" id="qrModalLinkInput" class="form-control text-center font-monospace small" readonly style="direction: ltr;">
+                            <button class="btn btn-primary" onclick="copyModalLink()"><i class="fas fa-copy me-1"></i> کپی</button>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 justify-content-center mt-3">
+                        <a id="hiddifyDirectBtn" href="#" class="btn btn-sm btn-outline-primary"><i class="fas fa-rocket me-1"></i> اتصال Hiddify</a>
+                        <a id="streisandDirectBtn" href="#" class="btn btn-sm btn-outline-info"><i class="fas fa-bolt me-1"></i> اتصال Streisand</a>
+                    </div>
+                </div>
+                <div class="modal-footer py-2 bg-light d-flex justify-content-between">
+                    <span class="small text-muted"><i class="fas fa-shield-halved me-1"></i> لینک اختصاصی پرسرعت</span>
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">بستن</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast کانتینر اعلان‌های زنده سیستم -->
+    <div class="toast-container position-fixed bottom-0 start-0 p-3" style="z-index: 1090;">
+        <div id="liveAlertToast" class="toast align-items-center text-bg-primary border-0 shadow-lg" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body d-flex align-items-center gap-2" id="liveAlertToastBody">
+                    <i class="fas fa-bell fa-lg text-warning"></i>
+                    <div>
+                        <strong id="liveAlertToastTitle">اعلان جدید</strong>
+                        <div class="small" id="liveAlertToastMsg">یک رویداد جدید ثبت شد.</div>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <script>
+        // ─── تابع عمومی نمایش بارکد QR و لینک ───
+        let currentQrCodeInstance = null;
+        function showQrModal(url, title, type) {
+            if (!url) return;
+            const container = document.getElementById('qrCodeContainer');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const modalTitle = document.getElementById('qrModalTitle');
+            if (modalTitle) {
+                modalTitle.innerHTML = `<i class="fas fa-qrcode me-2"></i> ${title || 'بارکد و لینک اتصال'}`;
+            }
+
+            const input = document.getElementById('qrModalLinkInput');
+            if (input) input.value = url;
+
+            const hBtn = document.getElementById('hiddifyDirectBtn');
+            if (hBtn) hBtn.href = 'hiddify://install-sub?url=' + encodeURIComponent(url);
+
+            const sBtn = document.getElementById('streisandDirectBtn');
+            if (sBtn) sBtn.href = 'streisand://import/' + encodeURIComponent(url);
+
+            try {
+                new QRCode(container, {
+                    text: url,
+                    width: 200,
+                    height: 200,
+                    colorDark: "#0f172a",
+                    colorLight: "#ffffff",
+                    correctLevel: QRCode.CorrectLevel.M
+                });
+            } catch (e) {
+                container.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}" alt="QR Code" class="img-fluid rounded">`;
+            }
+
+            const modal = new bootstrap.Modal(document.getElementById('qrCodeModal'));
+            modal.show();
+        }
+
+        function copyModalLink() {
+            const input = document.getElementById('qrModalLinkInput');
+            if (!input) return;
+            input.select();
+            navigator.clipboard.writeText(input.value).then(() => {
+                alert('لینک با موفقیت در کلیپ‌بورد کپی شد! ✅');
+            }).catch(() => {
+                prompt('لینک را کپی کنید:', input.value);
+            });
+        }
+
+        // تابع سازگار با دکمه‌های کپی قبلی
+        function copyLink(url, label) {
+            if (!url) return;
+            showQrModal(url, label || 'لینک اتصال');
+        }
+
+        // ─── سیستم اعلان زنده و پخش صدای ملایم ───
+        function playChimeAlert() {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                const ctx = new AudioContext();
+                const now = ctx.currentTime;
+
+                // نت اول (Chime)
+                const osc1 = ctx.createOscillator();
+                const gain1 = ctx.createGain();
+                osc1.type = 'sine';
+                osc1.frequency.setValueAtTime(880, now);
+                osc1.frequency.exponentialRampToValueAtTime(1760, now + 0.12);
+                gain1.gain.setValueAtTime(0.25, now);
+                gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+                osc1.connect(gain1);
+                gain1.connect(ctx.destination);
+                osc1.start(now);
+                osc1.stop(now + 0.5);
+
+                // نت دوم (Message Bell)
+                const osc2 = ctx.createOscillator();
+                const gain2 = ctx.createGain();
+                osc2.type = 'sine';
+                osc2.frequency.setValueAtTime(1320, now + 0.08);
+                gain2.gain.setValueAtTime(0.2, now + 0.08);
+                gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+                osc2.connect(gain2);
+                gain2.connect(ctx.destination);
+                osc2.start(now + 0.08);
+                osc2.stop(now + 0.7);
+            } catch (err) {
+                console.warn('Audio notification notice:', err);
+            }
+        }
+
+        // درخواست مجوز اعلان‌های مرورگر
+        if ("Notification" in window && Notification.permission === "default") {
+            document.addEventListener('click', function reqNotif() {
+                Notification.requestPermission();
+                document.removeEventListener('click', reqNotif);
+            }, { once: true });
+        }
+
+        let lastPendingCount = -1;
+        let lastTicketsCount = -1;
+
+        async function pollAdminNotifications() {
+            try {
+                const res = await fetch('/api/admin/notifications-check');
+                if (!res.ok) return;
+                const data = await res.json();
+
+                const pendingBadge = document.getElementById('sidebarPendingBadge');
+                if (pendingBadge) {
+                    if (data.pending_payments_count > 0) {
+                        pendingBadge.textContent = data.pending_payments_count;
+                        pendingBadge.style.display = 'inline-block';
+                    } else {
+                        pendingBadge.style.display = 'none';
+                    }
+                }
+
+                const ticketsBadge = document.getElementById('sidebarTicketsBadge');
+                if (ticketsBadge) {
+                    if (data.open_tickets_count > 0) {
+                        ticketsBadge.textContent = data.open_tickets_count;
+                        ticketsBadge.style.display = 'inline-block';
+                    } else {
+                        ticketsBadge.style.display = 'none';
+                    }
+                }
+
+                // اگر تعداد پرداخت‌های در انتظار افزایش یافته باشد
+                if (lastPendingCount !== -1 && data.pending_payments_count > lastPendingCount) {
+                    playChimeAlert();
+                    const toastEl = document.getElementById('liveAlertToast');
+                    if (toastEl) {
+                        document.getElementById('liveAlertToastTitle').textContent = '💳 پرداخت کارت به کارت جدید!';
+                        document.getElementById('liveAlertToastMsg').textContent = `یک فیش واریزی جدید نیازمند تایید است. (کل: ${data.pending_payments_count})`;
+                        const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
+                        toast.show();
+                    }
+                    if ("Notification" in window && Notification.permission === "granted") {
+                        new Notification("💳 فیش واریزی جدید", {
+                            body: "یک پرداخت جدید برای بررسی و تایید ثبت شده است.",
+                            icon: "https://cdn-icons-png.flaticon.com/512/3135/3135706.png"
+                        });
+                    }
+                }
+
+                // اگر تیکت جدیدی ثبت شده باشد
+                if (lastTicketsCount !== -1 && data.open_tickets_count > lastTicketsCount) {
+                    playChimeAlert();
+                    const toastEl = document.getElementById('liveAlertToast');
+                    if (toastEl) {
+                        document.getElementById('liveAlertToastTitle').textContent = '💬 تیکت پشتیبانی جدید!';
+                        document.getElementById('liveAlertToastMsg').textContent = `یک پیام پشتیبانی جدید از کاربران دریافت شد.`;
+                        const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
+                        toast.show();
+                    }
+                    if ("Notification" in window && Notification.permission === "granted") {
+                        new Notification("💬 تیکت پشتیبانی جدید", {
+                            body: "یک پیام پشتیبانی جدید از کاربران دریافت شد.",
+                            icon: "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
+                        });
+                    }
+                }
+
+                lastPendingCount = data.pending_payments_count;
+                lastTicketsCount = data.open_tickets_count;
+            } catch (e) {
+                // Ignore network errors in background polling
+            }
+        }
+
+        // اجرای پایش هر ۱۲ ثانیه برای مدیر
+        {% if session.get('role') == 'admin' %}
+        setInterval(pollAdminNotifications, 12000);
+        setTimeout(pollAdminNotifications, 1500);
+        {% endif %}
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

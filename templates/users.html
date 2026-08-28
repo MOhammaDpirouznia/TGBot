@@ -66,15 +66,4 @@
 </div>
 {% endblock %}
 
-{% block scripts %}
-<script>
-    function copyLink(url, label) {
-        if (!url) return;
-        navigator.clipboard.writeText(url).then(() => {
-            alert((label || 'لینک') + ' با موفقیت در کلیپ‌بورد کپی شد! ✅');
-        }).catch(() => {
-            prompt('لینک را کپی کنید:', url);
-        });
-    }
-</script>
 {% endblock %}

@@ -65,8 +65,15 @@
                     <tr>
                         <td><small class="text-muted"><code>{{ tx['order_id'] }}</code></small></td>
                         <td>
-                            <strong>{{ tx['username'] or 'کاربر تلگرام' }}</strong>
-                            <br><small class="text-muted"><code>{{ tx['user_id'] }}</code></small>
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div>
+                                    <strong>{{ tx['username'] or 'کاربر تلگرام' }}</strong>
+                                    <br><small class="text-muted"><code>{{ tx['user_id'] }}</code></small>
+                                </div>
+                                <a href="tg://user?id={{ tx['user_id'] }}" class="btn btn-sm btn-outline-info py-0 px-2 ms-2" title="باز کردن چت در تلگرام">
+                                    <i class="fab fa-telegram-plane"></i>
+                                </a>
+                            </div>
                         </td>
                         <td>
                             <div>{{ tx['plan_name'] or '-' }}</div>
@@ -81,7 +88,23 @@
                         </td>
                         <td><strong class="text-primary">{{ "{:,}".format(tx['amount'] or 0) }} تومان</strong></td>
                         <td>
-                            <code class="fw-bold fs-6">{{ tx['tracking_code'] or '-' }}</code>
+                            <div class="d-flex flex-column gap-1 align-items-start">
+                                <code class="fw-bold fs-6">{{ tx['tracking_code'] or '-' }}</code>
+                                {% if tx['receipt_image'] or tx['receipt_photo_id'] %}
+                                    <div class="d-flex align-items-center gap-2 mt-1">
+                                        <img src="{{ url_for('admin_payment_receipt', payment_id=tx['id']) }}" 
+                                             class="rounded border shadow-sm" 
+                                             style="height: 38px; width: 38px; object-fit: cover; cursor: pointer;" 
+                                             alt="فیش"
+                                             onclick="openReceiptPreview('{{ url_for('admin_payment_receipt', payment_id=tx['id']) }}', '{{ tx['username'] }}', '{{ tx['id'] }}', '{{ tx['user_id'] }}')"
+                                             title="کلیک جهت بزرگنمایی">
+                                        <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size: 0.75rem;"
+                                                onclick="openReceiptPreview('{{ url_for('admin_payment_receipt', payment_id=tx['id']) }}', '{{ tx['username'] }}', '{{ tx['id'] }}', '{{ tx['user_id'] }}')">
+                                            <i class="fas fa-image me-1"></i> مشاهده فیش
+                                        </button>
+                                    </div>
+                                {% endif %}
+                            </div>
                         </td>
                         <td><code>{{ tx['account_name'] or '-' }}</code></td>
                         <td>
@@ -148,4 +171,51 @@
         </div>
     </div>
 </div>
+
+<!-- Modal مشاهده کامل تصویر فیش واریزی -->
+<div class="modal fade" id="receiptPreviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-dark text-white py-3">
+                <h5 class="modal-title fw-bold" id="receiptModalTitle">
+                    <i class="fas fa-image me-2 text-primary"></i> مشاهده تصویر فیش واریزی
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center p-3 bg-light">
+                <div class="p-2 border rounded bg-white d-inline-block shadow-sm mb-2" style="max-height: 70vh; overflow: auto;">
+                    <img id="receiptModalImg" src="" alt="تصویر فیش" class="img-fluid rounded" style="max-height: 65vh; object-fit: contain;">
+                </div>
+                <div id="receiptModalChatLink" class="mt-2"></div>
+            </div>
+            <div class="modal-footer bg-light py-2 d-flex justify-content-between">
+                <a id="receiptDownloadBtn" href="#" target="_blank" download="receipt.jpg" class="btn btn-sm btn-outline-primary">
+                    <i class="fas fa-download me-1"></i> دانلود تصویر با کیفیت بالا
+                </a>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">بستن پنجره</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function openReceiptPreview(imgUrl, username, orderId, userId) {
+    document.getElementById('receiptModalImg').src = imgUrl;
+    document.getElementById('receiptDownloadBtn').href = imgUrl;
+    document.getElementById('receiptModalTitle').innerHTML = `<i class="fas fa-image me-2 text-primary"></i> تصویر رسید سفارش #${orderId} - ${username || 'کاربر'}`;
+    
+    if (userId) {
+        document.getElementById('receiptModalChatLink').innerHTML = `
+            <a href="tg://user?id=${userId}" class="btn btn-sm btn-outline-info">
+                <i class="fab fa-telegram me-1"></i> باز کردن مستقیم صفحه چت کاربر در تلگرام
+            </a>
+        `;
+    } else {
+        document.getElementById('receiptModalChatLink').innerHTML = '';
+    }
+
+    const modal = new bootstrap.Modal(document.getElementById('receiptPreviewModal'));
+    modal.show();
+}
+</script>
 {% endblock %}
