@@ -190,20 +190,60 @@ def hidify_sync_request(method: str, endpoint: str, data: dict = None) -> dict:
         return {"error": str(e)}
 
 
-def hidify_sync_create_user(name: str, usage_limit_gb: float = None, package_days: int = 30, comment: str = None) -> dict:
-    """ساخت کاربر در هیدیفای"""
+def hidify_sync_create_user(name: str, usage_limit_gb: float = None, package_days: int = None, comment: str = None) -> dict:
+    """ساخت کاربر در هیدیفای با پاکسازی نام و سازگاری کامل با API v2"""
+    import re
+    raw_name = str(name or "").strip()
+    clean_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', raw_name).strip("_")
+    if not clean_name:
+        clean_name = f"user_{int(time.time())}"
+
+    # اگر نام اصلی شامل حروف فارسی بود، آن را در کامنت حفظ می‌کنیم
+    full_comment = comment or ""
+    if raw_name != clean_name and raw_name not in full_comment:
+        full_comment = f"{raw_name} | {full_comment}".strip(" |")
+
     payload = {
-        "name": name,
+        "name": clean_name,
         "enable": True,
         "is_active": True,
-        "package_days": package_days,
-        "mode": "no_reset",
     }
-    if usage_limit_gb is not None and usage_limit_gb > 0:
-        payload["usage_limit_GB"] = usage_limit_gb
-    if comment:
-        payload["comment"] = comment
-    return hidify_sync_request("POST", "/admin/user/", payload)
+    if usage_limit_gb is not None:
+        try:
+            val_gb = float(usage_limit_gb)
+            if val_gb > 0:
+                payload["usage_limit_GB"] = val_gb
+        except Exception:
+            pass
+
+    if package_days is not None:
+        try:
+            val_days = int(package_days)
+            if val_days > 0:
+                payload["package_days"] = val_days
+        except Exception:
+            pass
+
+    if full_comment:
+        payload["comment"] = str(full_comment)[:200]
+
+    # ارسال درخواست ساخت به هیدیفای
+    res = hidify_sync_request("POST", "/admin/user/", payload)
+
+    # در صورت بروز خطای 400، با حداقل فیلدهای استاندارد مجدداً تلاش می‌کنیم
+    if "error" in res and ("400" in str(res.get("error")) or "invalid" in str(res.get("error")).lower()):
+        logger.warning(f"Standard create_user failed ({res.get('error')}), trying fallback minimal payload...")
+        minimal_payload = {
+            "name": clean_name,
+            "enable": True
+        }
+        if "usage_limit_GB" in payload:
+            minimal_payload["usage_limit_GB"] = payload["usage_limit_GB"]
+        if "package_days" in payload:
+            minimal_payload["package_days"] = payload["package_days"]
+        res = hidify_sync_request("POST", "/admin/user/", minimal_payload)
+
+    return res
 
 
 def hidify_sync_update_user(uuid: str, **kwargs) -> dict:
@@ -1036,13 +1076,7 @@ def reseller_create_user():
         if not account_name:
             account_name = f"res_{reseller_id}_{int(time.time()) % 10000}"
 
-        # کسر از موجودی نماینده
-        deduct_res = db.deduct_reseller_balance(reseller_id, final_price, plan["name"], account_name)
-        if not deduct_res.get("success"):
-            flash(deduct_res.get("error", "خطا در کسر اعتبار"), "danger")
-            return redirect(url_for("reseller_create_user"))
-
-        # ساخت کاربر در هیدیفای
+        # ۱. ابتدا ساخت کاربر در سرور هیدیفای انجام می‌شود
         h_res = hidify_sync_create_user(
             name=account_name,
             usage_limit_gb=plan["data_limit"],
@@ -1052,12 +1086,16 @@ def reseller_create_user():
 
         user_uuid = h_res.get("uuid", "")
         if not user_uuid:
-            # برگشت اعتبار در صورت خطای هیدیفای
-            db.add_reseller_balance(reseller_id, final_price, "برگشت اعتبار به دلیل خطای سرور هیدیفای")
-            flash(f"خطا در ساخت اکانت روی سرور هیدیفای: {h_res.get('error', 'نامشخص')}", "danger")
+            err_msg = h_res.get("error", "پاسخ نامعتبر از سرور")
+            flash(f"خطا در ساخت اکانت روی سرور هیدیفای: {err_msg}", "danger")
             return redirect(url_for("reseller_create_user"))
 
-        # ثبت اشتراک با شناسه نماینده
+        # ۲. پس از تایید ۱۰۰٪ ساخت در هیدیفای، موجودی کسر و تراکنش خرید ثبت می‌گردد
+        deduct_res = db.deduct_reseller_balance(reseller_id, final_price, plan["name"], account_name)
+        if not deduct_res.get("success"):
+            logger.error(f"Failed to deduct balance after user creation: {deduct_res.get('error')}")
+
+        # ۳. ثبت اشتراک با شناسه نماینده در دیتابیس
         conn = db.get_connection()
         conn.execute("""
             INSERT INTO subscriptions 
@@ -1071,6 +1109,7 @@ def reseller_create_user():
         conn.close()
 
         subscription_url = f"{get_hiddify_url()}/{get_user_proxy()}/{user_uuid}/"
+        single_url = format_single_link(get_single_link_template(db), uuid=user_uuid, name=account_name)
         flash(f"اشتراک «{account_name}» با موفقیت ساخته شد و مبلغ {final_price:,} تومان از کیف پول شما کسر گردید.", "success")
 
         return render_template(
@@ -1078,6 +1117,7 @@ def reseller_create_user():
             account_name=account_name,
             plan=plan,
             sub_url=subscription_url,
+            single_url=single_url,
             final_price=final_price
         )
 

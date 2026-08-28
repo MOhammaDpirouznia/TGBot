@@ -1959,8 +1959,16 @@ class Database:
         cursor.execute("SELECT COUNT(*) FROM subscriptions WHERE reseller_id=? AND status='active'", (reseller_id,))
         active_users = cursor.fetchone()[0]
         
-        cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions WHERE reseller_id=? AND type='purchase'", (reseller_id,))
-        total_purchases = cursor.fetchone()[0]
+        # مجموع خریدهای واقعی (کسر مبالغ مرجوعی/خطا در صورت وجود)
+        cursor.execute("""
+            SELECT COALESCE(
+                (SELECT SUM(amount) FROM reseller_transactions WHERE reseller_id=? AND type='purchase'), 0
+            ) - COALESCE(
+                (SELECT SUM(amount) FROM reseller_transactions WHERE reseller_id=? AND (type='refund' OR description LIKE '%برگشت%')), 0
+            )
+        """, (reseller_id, reseller_id))
+        total_purchases_val = cursor.fetchone()[0] or 0
+        total_purchases = max(0, total_purchases_val)
 
         cursor.execute("SELECT COALESCE(SUM(data_used), 0), COALESCE(SUM(data_limit), 0) FROM subscriptions WHERE reseller_id=?", (reseller_id,))
         traffic_row = cursor.fetchone()
