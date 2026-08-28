@@ -102,6 +102,7 @@ DATA_DIR.mkdir(exist_ok=True)
     ADMIN_ADD_PLAN_PRICE,
     ADMIN_ADD_PLAN_DATA,
     ADMIN_ADD_PLAN_DURATION,
+    ADMIN_EDIT_PLAN_VALUE,
     ADMIN_RESTORE_FILE,
     SELECTING_NAME_TYPE,
     ENTERING_CUSTOM_NAME,
@@ -109,7 +110,25 @@ DATA_DIR.mkdir(exist_ok=True)
     ENTERING_DISCOUNT_CODE,
     ENTERING_TICKET_MESSAGE,
     ADMIN_REPLYING_TICKET,
-) = range(24)
+) = range(25)
+
+
+async def edit_admin_message_safe(query, text, reply_markup=None, parse_mode="Markdown"):
+    """ویرایش امن پیام ادمین چه متن باشد چه تصویر یا داکیومنت"""
+    try:
+        if query.message.photo or query.message.document:
+            await query.edit_message_caption(caption=text, reply_markup=reply_markup, parse_mode=parse_mode)
+        else:
+            await query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode=parse_mode)
+    except Exception as e:
+        logger.warning(f"Error in edit_admin_message_safe with parse_mode: {e}")
+        try:
+            if query.message.photo or query.message.document:
+                await query.edit_message_caption(caption=text, reply_markup=reply_markup)
+            else:
+                await query.edit_message_text(text=text, reply_markup=reply_markup)
+        except Exception as e2:
+            logger.error(f"Fallback edit_admin_message_safe failed: {e2}")
 
 
 async def send_subscription_card(bot, chat_id: int, sub_url: str, title: str, details: str = ""):
@@ -981,6 +1000,44 @@ async def enter_tracking_photo(update: Update, context: ContextTypes.DEFAULT_TYP
     return CONFIRMING_PURCHASE
 
 
+async def enter_tracking_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """دریافت فایل رسید پرداخت (تصویر یا PDF ارسالی بصورت فایل)"""
+    user = update.effective_user
+    plan_id = context.user_data.get("selected_plan")
+    plans = get_plans()
+    plan = plans.get(plan_id, {})
+    price_formatted = f"{plan.get('price', 0):,}".replace(",", "،")
+
+    doc = update.message.document
+    if not doc:
+        await update.message.reply_text("❌ لطفاً فایل یا تصویر رسید را ارسال کنید.")
+        return ENTERING_TRACKING_CODE
+
+    file_id = doc.file_id
+    file_name = doc.file_name or "رسید فایل"
+
+    # ذخیره اطلاعات
+    context.user_data["tracking_code"] = f"فایل رسید ({file_name})"
+    context.user_data["receipt_photo"] = file_id
+    context.user_data["receipt_is_document"] = True
+
+    # تایید اطلاعات
+    text = (
+        f"✅ **تایید پرداخت کارت به کارت**\n\n"
+        f"📋 پلن: **{plan.get('name', 'نامشخص')}**\n"
+        f"💰 مبلغ: **{price_formatted}** تومان\n"
+        f"📁 رسید: `{file_name}` دریافت شد\n\n"
+        f"آیا اطلاعات برای بررسی ادمین ارسال شود؟"
+    )
+    keyboard = [
+        [InlineKeyboardButton("✅ تایید و ارسال", callback_data="confirm_card_payment")],
+        [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_enter_tracking"), InlineKeyboardButton("❌ انصراف", callback_data="cancel")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+    return CONFIRMING_PURCHASE
+
+
 async def apply_discount_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """درخواست ورود کد تخفیف"""
     query = update.callback_query
@@ -1140,14 +1197,24 @@ async def confirm_card_payment(update: Update, context: ContextTypes.DEFAULT_TYP
             reply_markup = InlineKeyboardMarkup(keyboard)
 
             receipt_photo = context.user_data.get("receipt_photo")
+            is_doc = context.user_data.get("receipt_is_document", False)
             if receipt_photo:
-                await context.bot.send_photo(
-                    chat_id=ADMIN_ID,
-                    photo=receipt_photo,
-                    caption=admin_text,
-                    reply_markup=reply_markup,
-                    parse_mode="HTML",
-                )
+                if is_doc:
+                    await context.bot.send_document(
+                        chat_id=ADMIN_ID,
+                        document=receipt_photo,
+                        caption=admin_text,
+                        reply_markup=reply_markup,
+                        parse_mode="HTML",
+                    )
+                else:
+                    await context.bot.send_photo(
+                        chat_id=ADMIN_ID,
+                        photo=receipt_photo,
+                        caption=admin_text,
+                        reply_markup=reply_markup,
+                        parse_mode="HTML",
+                    )
             else:
                 await context.bot.send_message(
                     chat_id=ADMIN_ID,
@@ -2633,7 +2700,7 @@ async def admin_approve_payment(update: Update, context: ContextTypes.DEFAULT_TY
     data = query.data.replace("admin_approve_", "")
     parts = data.split("_")
     if len(parts) < 2:
-        await query.edit_message_text("❌ داده نامعتبر!")
+        await edit_admin_message_safe(query, "❌ داده نامعتبر!")
         return
 
     user_id = int(parts[0])
@@ -2641,39 +2708,60 @@ async def admin_approve_payment(update: Update, context: ContextTypes.DEFAULT_TY
 
     plans = get_plans()
     plan = plans.get(plan_id, {})
-    
-    # دریافت اطلاعات تراکنش برای نام اکانت
-    user_transactions = db.get_user_transactions(user_id)
-    latest_transaction = user_transactions[0] if user_transactions else None
-    
-    if latest_transaction and latest_transaction.get("account_name"):
-        username = latest_transaction["account_name"]
-        account_comment = latest_transaction.get("account_comment")
-    else:
-        username = f"tg_{user_id}"
-        account_comment = None
+    if not plan:
+        all_p = get_all_plans()
+        plan = all_p.get(plan_id, {})
 
-    # ساخت اشتراک در Hidify
+    # ۱. بررسی تراکنش برای جلوگیری از تایید تکراری (Idempotency / Double-Click Lock)
+    user_transactions = db.get_user_transactions(user_id)
+    target_tx = None
+    for tx in user_transactions:
+        if tx.get("status") == "pending" or str(tx.get("plan_id")) == str(plan_id):
+            target_tx = tx
+            break
+    if not target_tx and user_transactions:
+        target_tx = user_transactions[0]
+
+    if target_tx and target_tx.get("status") == "approved":
+        await query.answer("⚠️ این تراکنش قبلاً تایید و اشتراک آن ساخته شده است!", show_alert=True)
+        price_fmt = f"{plan.get('price', 0):,}".replace(",", "،")
+        admin_done_text = (
+            f"✅ **این اشتراک قبلاً تایید و فعال شده است.**\n\n"
+            f"👤 کاربر: `{user_id}`\n"
+            f"📋 پلن: {plan.get('name', 'نامشخص')}\n"
+            f"💰 مبلغ: {price_fmt} تومان"
+        )
+        await edit_admin_message_safe(query, admin_done_text)
+        return
+
+    username = target_tx.get("account_name") if target_tx and target_tx.get("account_name") else f"tg_{user_id}"
+    account_comment = target_tx.get("account_comment") if target_tx else str(user_id)
+
+    # ۲. ساخت اشتراک در Hidify
     try:
         result = await hidify.create_user(
             name=username,
             usage_limit_gb=plan.get("data_limit") if plan.get("data_limit", 0) > 0 else None,
             package_days=plan.get("duration", 30),
             enable=True,
-            comment=account_comment
+            comment=str(account_comment or user_id)
         )
     except Exception as e:
-        logger.error(f"Error creating user: {e}")
-        await query.edit_message_text(f"❌ خطا در ساخت اشتراک:\n{str(e)[:200]}")
+        logger.error(f"Error creating user in Hiddify: {e}")
+        await edit_admin_message_safe(query, f"❌ خطا در ساخت اشتراک:\n{str(e)[:200]}")
         return
 
     if "error" in result:
-        await query.edit_message_text(f"❌ خطا در ساخت اشتراک:\n{result['error'][:200]}")
+        await edit_admin_message_safe(query, f"❌ خطا در ساخت اشتراک در هیدیفای:\n{result['error'][:200]}")
         return
 
-    # ذخیره اطلاعات کاربر و اشتراک
+    user_uuid = result.get("uuid", "")
+    if not user_uuid:
+        await edit_admin_message_safe(query, "❌ خطا: UUID اشتراک از سرور دریافت نشد.")
+        return
+
+    # ۳. ذخیره اطلاعات کاربر و اشتراک در دیتابیس
     try:
-        user_uuid = result.get("uuid", "")
         user_data = {
             "telegram_id": user_id,
             "username": username,
@@ -2684,7 +2772,6 @@ async def admin_approve_payment(update: Update, context: ContextTypes.DEFAULT_TY
         }
         save_user_data(user_id, user_data)
 
-        # ذخیره اشتراک جدید در دیتابیس
         db.save_subscription(
             telegram_id=user_id,
             hidify_uuid=user_uuid,
@@ -2696,52 +2783,57 @@ async def admin_approve_payment(update: Update, context: ContextTypes.DEFAULT_TY
             account_name=username,
             account_comment=account_comment,
         )
-    except Exception as e:
-        logger.error(f"Error saving user data: {e}")
 
-    # بروزرسانی تراکنش
+        # بروزرسانی وضعیت تراکنش به approved
+        if target_tx and target_tx.get("order_id"):
+            db.update_transaction(target_tx["order_id"], "approved")
+        else:
+            pending = db.get_pending_transactions()
+            for trans in pending:
+                if trans.get("user_id") == user_id:
+                    db.update_transaction(trans["order_id"], "approved")
+                    break
+    except Exception as e:
+        logger.error(f"Error saving user/sub in DB: {e}")
+
+    # ۴. پاداش رفرال به معرف در صورت وجود
     try:
-        # پیدا کردن تراکنش در انتظار کاربر
-        pending = db.get_pending_transactions()
-        for trans in pending:
-            if trans.get("user_id") == user_id:
-                db.update_transaction(trans["order_id"], "completed")
-                break
-    except Exception as e:
-        logger.error(f"Error updating transaction: {e}")
+        ref_res = db.complete_referral(user_id)
+        if ref_res.get("success"):
+            ref_id = ref_res["referrer_id"]
+            try:
+                await context.bot.send_message(
+                    chat_id=ref_id,
+                    text="🎁 **تبریک!** کاربر معرفی شده توسط شما خرید انجام داد و مبلغ به کیف پول شما واریز شد!",
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                pass
+    except Exception:
+        pass
 
-    # پاداش رفرال به معرف در صورت وجود
-    ref_res = db.complete_referral(user_id)
-    if ref_res.get("success"):
-        ref_id = ref_res["referrer_id"]
-        try:
-            await context.bot.send_message(
-                chat_id=ref_id,
-                text="🎁 **تبریک!** کاربر معرفی شده توسط شما خرید انجام داد و مبلغ ۱۰,۰۰۰ تومان به کیف پول شما واریز شد!",
-                parse_mode="Markdown"
-            )
-        except Exception:
-            pass
-
-    # پیام به ادمین
+    # ۵. ویرایش امن پیام ادمین
     price_formatted = f"{plan.get('price', 0):,}".replace(",", "،")
-    await query.edit_message_text(
-        f"✅ **اشتراک جدید فعال شد!**\n\n"
+    admin_success_text = (
+        f"✅ **اشتراک جدید با موفقیت تایید و فعال شد!**\n\n"
         f"👤 کاربر: `{user_id}`\n"
         f"📋 پلن: {plan.get('name', 'نامشخص')}\n"
         f"📊 حجم: {plan.get('data_limit', 0) if plan.get('data_limit', 0) > 0 else 'نامحدود'} گیگ\n"
-        f"💰 مبلغ: {price_formatted} تومان",
-        parse_mode="Markdown",
+        f"💰 مبلغ: {price_formatted} تومان\n"
+        f"⏰ مدت: {plan.get('duration', 30)} روز"
     )
+    await edit_admin_message_safe(query, admin_success_text)
 
-    # پیام به کاربر + ارسال کارت اشتراک و QR Code
+    # ۶. پیام به کاربر + ارسال کارت اشتراک و QR Code
     plan_data_limit = plan.get('data_limit', 0)
     plan_duration = plan.get('duration', 30)
     data_text = str(plan_data_limit) if plan_data_limit > 0 else 'نامحدود'
-    subscription_url = f"{HIDIFY_PANEL_URL}/{USER_PROXY_PATH}/{user_uuid}/"
+    base_url = (HIDIFY_PANEL_URL or "").rstrip("/")
+    proxy_path = (USER_PROXY_PATH or HIDIFY_PROXY_PATH or "").strip("/")
+    subscription_url = f"{base_url}/{proxy_path}/{user_uuid}/"
 
     details = (
-        f"✅ پرداخت تایید شد و اشتراک شما با موفقیت فعال گردید!\n\n"
+        f"✅ پرداخت شما تایید شد و اشتراک با موفقیت فعال گردید!\n\n"
         f"📋 پلن: **{plan.get('name', 'نامشخص')}**\n"
         f"📊 حجم: **{data_text} گیگابایت**\n"
         f"⏰ مدت: **{plan_duration} روز**"
@@ -2767,7 +2859,7 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
     data = query.data.replace("admin_approve_renew_", "")
     parts = data.split("_")
     if len(parts) < 3:
-        await query.edit_message_text("❌ داده نامعتبر!")
+        await edit_admin_message_safe(query, "❌ داده نامعتبر!")
         return
 
     user_id = int(parts[0])
@@ -2777,7 +2869,30 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
     plans = get_plans()
     plan = plans.get(plan_id, {})
     if not plan:
-        await query.edit_message_text("❌ پلن مورد نظر یافت نشد!")
+        all_p = get_all_plans()
+        plan = all_p.get(plan_id, {})
+    if not plan:
+        await edit_admin_message_safe(query, "❌ پلن مورد نظر یافت نشد!")
+        return
+
+    # ۱. بررسی وضعیت تراکنش در دیتابیس برای جلوگیری از تایید تکراری (Idempotency)
+    user_transactions = db.get_user_transactions(user_id)
+    target_tx = None
+    for tx in user_transactions:
+        if tx.get("status") == "pending" or tx.get("is_renewal"):
+            target_tx = tx
+            break
+    if not target_tx and user_transactions:
+        target_tx = user_transactions[0]
+
+    if target_tx and target_tx.get("status") == "approved":
+        await query.answer("⚠️ این تمدید قبلاً تایید و اعمال شده است!", show_alert=True)
+        admin_done_text = (
+            f"✅ **این تمدید قبلاً تایید و اعمال شده است.**\n\n"
+            f"👤 کاربر: `{user_id}`\n"
+            f"📋 پلن: {plan.get('name', 'نامشخص')}"
+        )
+        await edit_admin_message_safe(query, admin_done_text)
         return
 
     user_subscriptions = db.get_user_subscriptions(user_id)
@@ -2792,7 +2907,7 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
             user_uuid = user_data.get("hidify_uuid", "")
 
     if not user_uuid:
-        await query.edit_message_text("❌ UUID اشتراک یافت نشد!")
+        await edit_admin_message_safe(query, "❌ UUID اشتراک یافت نشد!")
         return
 
     now_ts = get_now_timestamp()
@@ -2839,14 +2954,15 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
         new_expire_date = datetime.fromtimestamp(new_expire_ts).isoformat()
         renewal_type = "extend"
 
-    # بروزرسانی در Hiddify
+    # ۲. بروزرسانی در Hiddify
     update_payload = {}
     if new_data_limit is not None:
         update_payload["usage_limit_GB"] = new_data_limit
     update_payload["package_days"] = new_duration
     if renewal_type == "replace":
         update_payload["current_usage_GB"] = 0
-        update_payload["start_date"] = new_start_date
+        if new_start_date:
+            update_payload["start_date"] = new_start_date
 
     try:
         res = await hidify.update_user(user_uuid, **update_payload)
@@ -2854,8 +2970,10 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
             logger.warning(f"Hidify update user error: {res['error']}")
     except Exception as e:
         logger.error(f"Error updating user in hidify: {e}")
+        await edit_admin_message_safe(query, f"❌ خطا در اتصال به هیدیفای:\n{str(e)[:200]}")
+        return
 
-    # بروزرسانی اشتراک در دیتابیس
+    # ۳. بروزرسانی اشتراک در دیتابیس
     if sub_id and target_sub:
         update_fields = {
             "plan_id": plan_id,
@@ -2883,43 +3001,51 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
             account_comment=target_sub.get("account_comment") if target_sub else None,
         )
 
-    # بروزرسانی وضعیت تراکنش
+    # ۴. بروزرسانی وضعیت تراکنش
     try:
-        pending = db.get_pending_transactions()
-        for trans in pending:
-            if trans.get("user_id") == user_id:
-                db.update_transaction(trans["order_id"], "completed")
-                break
+        if target_tx and target_tx.get("order_id"):
+            db.update_transaction(target_tx["order_id"], "approved")
+        else:
+            pending = db.get_pending_transactions()
+            for trans in pending:
+                if trans.get("user_id") == user_id:
+                    db.update_transaction(trans["order_id"], "approved")
+                    break
     except Exception as e:
         logger.error(f"Error updating transaction: {e}")
 
-    # پاداش رفرال به معرف در صورت وجود
-    ref_res = db.complete_referral(user_id)
-    if ref_res.get("success"):
-        ref_id = ref_res["referrer_id"]
-        try:
-            await context.bot.send_message(
-                chat_id=ref_id,
-                text="🎁 **تبریک!** کاربر معرفی شده توسط شما خرید/تمدید انجام داد و مبلغ ۱۰,۰۰۰ تومان به کیف پول شما واریز شد!",
-                parse_mode="Markdown"
-            )
-        except Exception:
-            pass
+    # ۵. پاداش رفرال به معرف در صورت وجود
+    try:
+        ref_res = db.complete_referral(user_id)
+        if ref_res.get("success"):
+            ref_id = ref_res["referrer_id"]
+            try:
+                await context.bot.send_message(
+                    chat_id=ref_id,
+                    text="🎁 **تبریک!** کاربر معرفی شده توسط شما تمدید انجام داد و مبلغ به کیف پول شما واریز شد!",
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                pass
+    except Exception:
+        pass
 
-    # پیام به ادمین
+    # ۶. ویرایش امن پیام ادمین
     price_formatted = f"{plan.get('price', 0):,}".replace(",", "،")
-    renew_type_fa = "جایگزین (ریست)" if renewal_type == "replace" else "افزایش حجم و مدت"
-    await query.edit_message_text(
+    renew_type_fa = "ریست حجم و تمدید مجدد" if renewal_type == "replace" else "افزایش حجم و تمدید مدت"
+    admin_success_text = (
         f"✅ **تمدید اشتراک با موفقیت تایید شد!**\n\n"
         f"👤 کاربر: `{user_id}`\n"
         f"📋 پلن: {plan.get('name', 'نامشخص')}\n"
         f"💰 مبلغ: {price_formatted} تومان\n"
-        f"🔄 نحوه تمدید: {renew_type_fa}",
-        parse_mode="Markdown",
+        f"🔄 نوع تمدید: {renew_type_fa}"
     )
+    await edit_admin_message_safe(query, admin_success_text)
 
-    # پیام و کارت اشتراک به کاربر
-    subscription_url = f"{HIDIFY_PANEL_URL}/{USER_PROXY_PATH}/{user_uuid}/"
+    # ۷. پیام و کارت اشتراک به کاربر
+    base_url = (HIDIFY_PANEL_URL or "").rstrip("/")
+    proxy_path = (USER_PROXY_PATH or HIDIFY_PROXY_PATH or "").strip("/")
+    subscription_url = f"{base_url}/{proxy_path}/{user_uuid}/"
     details = (
         f"✅ اشتراک شما با موفقیت تمدید شد!\n\n"
         f"📋 پلن: **{plan.get('name', 'نامشخص')}**\n"
@@ -2950,32 +3076,30 @@ async def admin_reject_payment(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # بروزرسانی تراکنش
     try:
-        # پیدا کردن تراکنش در انتظار کاربر
-        pending = db.get_pending_transactions()
-        for trans in pending:
-            if trans.get("user_id") == user_id:
+        user_transactions = db.get_user_transactions(user_id)
+        for trans in user_transactions:
+            if trans.get("status") == "pending":
                 db.update_transaction(trans["order_id"], "rejected")
                 break
     except Exception as e:
         logger.error(f"Error updating transaction: {e}")
 
     # پیام به ادمین
-    await query.edit_message_text(
-        f"❌ **پرداخت رد شد**\n\n"
-        f"👤 کاربر: `{user_id}`",
-        parse_mode="Markdown",
+    await edit_admin_message_safe(
+        query,
+        f"❌ **تراکنش کاربر `{user_id}` رد شد.**"
     )
 
     # پیام به کاربر
     try:
         await context.bot.send_message(
             chat_id=user_id,
-            text="❌ **پرداخت شما تایید نشد!**\n\n"
-                 "لطفاً با پشتیبانی تماس بگیرید.",
+            text="❌ **رسید پرداخت شما تایید نشد!**\n\n"
+                 "💡 در صورت وجود هرگونه مغایرت، از دکمه «💬 پشتیبانی» با ما در ارتباط باشید.",
             parse_mode="Markdown",
         )
     except Exception as e:
-        logger.error(f"Error sending message to user: {e}")
+        logger.error(f"Error sending reject message to user: {e}")
 
 
 async def admin_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3311,22 +3435,62 @@ async def plans_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if plan_id in plans:
             plan = plans[plan_id]
             price_formatted = f"{plan['price']:,}".replace(",", "،")
-            text = f"""
-✏️ **ویرایش پلن** `{plan_id}`
-
-📋 نام: {plan['name']}
-💰 قیمت: {price_formatted} تومان
-📊 حجم: {plan.get('data_limit', 0) if plan.get('data_limit', 0) > 0 else 'نامحدود'} گیگ
-⏰ مدت: {plan.get('duration', 30)} روز
-{'🟢 فعال' if plan.get('is_active') else '🔴 غیرفعال'}
-"""
+            status_text = "🟢 فعال" if plan.get("is_active") else "🔴 غیرفعال"
+            data_text = f"{plan.get('data_limit', 0)} گیگ" if plan.get('data_limit', 0) > 0 else "نامحدود"
+            text = (
+                f"⚙️ **مدیریت و ویرایش پلن:**\n\n"
+                f"🆔 شناسه: `{plan_id}`\n"
+                f"📋 نام پلن: **{plan['name']}**\n"
+                f"💰 قیمت: **{price_formatted}** تومان\n"
+                f"📊 حجم: **{data_text}**\n"
+                f"⏰ مدت: **{plan.get('duration', 30)}** روز\n"
+                f"📌 وضعیت: {status_text}\n\n"
+                f"برای ویرایش هر بخش، دکمه مربوطه را لمس کنید:"
+            )
             keyboard = [
-                [InlineKeyboardButton("🔄 تغییر وضعیت", callback_data=f"toggle_plan_{plan_id}")],
-                [InlineKeyboardButton("🔙 بازگشت", callback_data="admin_plans")],
+                [
+                    InlineKeyboardButton("✏️ ویرایش نام", callback_data=f"plan_field_name_{plan_id}"),
+                    InlineKeyboardButton("💰 ویرایش قیمت", callback_data=f"plan_field_price_{plan_id}"),
+                ],
+                [
+                    InlineKeyboardButton("📊 ویرایش حجم", callback_data=f"plan_field_data_{plan_id}"),
+                    InlineKeyboardButton("⏰ ویرایش مدت", callback_data=f"plan_field_duration_{plan_id}"),
+                ],
+                [
+                    InlineKeyboardButton("🔄 فعال / غیرفعال", callback_data=f"toggle_plan_{plan_id}"),
+                    InlineKeyboardButton("🗑️ حذف پلن", callback_data=f"del_plan_{plan_id}"),
+                ],
+                [InlineKeyboardButton("🔙 بازگشت به لیست پلن‌ها", callback_data="admin_plans")],
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown")
         return ADMIN_PLANS_MENU
+
+    if query.data.startswith("plan_field_"):
+        data = query.data.replace("plan_field_", "")
+        parts = data.split("_", 1)
+        if len(parts) < 2:
+            return ADMIN_PLANS_MENU
+        field_type = parts[0]
+        plan_id = parts[1]
+        plans = get_all_plans()
+        if plan_id not in plans:
+            await query.answer("❌ پلن یافت نشد!", show_alert=True)
+            return ADMIN_PLANS_MENU
+
+        context.user_data["editing_plan_id"] = plan_id
+        context.user_data["editing_plan_field"] = field_type
+
+        prompts = {
+            "name": "✏️ **نام جدید پلن را وارد کنید:**\n\nمثال: `پلن ۱ ماهه ۱۰۰ گیگ VIP`",
+            "price": "💰 **قیمت جدید پلن (به تومان) را وارد کنید:**\n\nمثال: `150000` (برای رایگان عدد `0` وارد کنید)",
+            "data": "📊 **حجم جدید پلن (به گیگابایت) را وارد کنید:**\n\nمثال: `50` (برای نامحدود عدد `0` وارد کنید)",
+            "duration": "⏰ **مدت زمان جدید پلن (تعداد روز) را وارد کنید:**\n\nمثال: `30` یا `60` یا `365`",
+        }
+        prompt_text = prompts.get(field_type, "لطفاً مقدار جدید را وارد کنید:")
+        keyboard = [[InlineKeyboardButton("◀️ انصراف و بازگشت", callback_data=f"edit_plan_{plan_id}")]]
+        await query.edit_message_text(prompt_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        return ADMIN_EDIT_PLAN_VALUE
 
     if query.data.startswith("toggle_plan_"):
         plan_id = query.data.replace("toggle_plan_", "")
@@ -3335,18 +3499,151 @@ async def plans_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             current_status = plans[plan_id].get("is_active", False)
             update_plan(plan_id, is_active=not current_status)
             status = "فعال" if not current_status else "غیرفعال"
-            await query.answer(f"پلن {status} شد!", show_alert=True)
+            await query.answer(f"پلن {status} شد! ✅", show_alert=True)
+            # نمایش مجدد کارت همان پلن
+            return await plans_menu_handler_show_card(query, plan_id)
         return await show_plans_menu(update, context)
 
     if query.data.startswith("del_plan_"):
         plan_id = query.data.replace("del_plan_", "")
         result = delete_plan(plan_id)
         if result.get("success"):
-            await query.answer("پلن حذف شد!", show_alert=True)
+            await query.answer("پلن با موفقیت حذف شد! 🗑️", show_alert=True)
         else:
             await query.answer(f"خطا: {result.get('error')}", show_alert=True)
         return await show_plans_menu(update, context)
 
+    return ADMIN_PLANS_MENU
+
+
+async def plans_menu_handler_show_card(query, plan_id: str):
+    """نمایش مجدد کارت ویرایش پلن"""
+    plans = get_all_plans()
+    if plan_id in plans:
+        plan = plans[plan_id]
+        price_formatted = f"{plan['price']:,}".replace(",", "،")
+        status_text = "🟢 فعال" if plan.get("is_active") else "🔴 غیرفعال"
+        data_text = f"{plan.get('data_limit', 0)} گیگ" if plan.get('data_limit', 0) > 0 else "نامحدود"
+        text = (
+            f"⚙️ **مدیریت و ویرایش پلن:**\n\n"
+            f"🆔 شناسه: `{plan_id}`\n"
+            f"📋 نام پلن: **{plan['name']}**\n"
+            f"💰 قیمت: **{price_formatted}** تومان\n"
+            f"📊 حجم: **{data_text}**\n"
+            f"⏰ مدت: **{plan.get('duration', 30)}** روز\n"
+            f"📌 وضعیت: {status_text}\n\n"
+            f"برای ویرایش هر بخش، دکمه مربوطه را لمس کنید:"
+        )
+        keyboard = [
+            [
+                InlineKeyboardButton("✏️ ویرایش نام", callback_data=f"plan_field_name_{plan_id}"),
+                InlineKeyboardButton("💰 ویرایش قیمت", callback_data=f"plan_field_price_{plan_id}"),
+            ],
+            [
+                InlineKeyboardButton("📊 ویرایش حجم", callback_data=f"plan_field_data_{plan_id}"),
+                InlineKeyboardButton("⏰ ویرایش مدت", callback_data=f"plan_field_duration_{plan_id}"),
+            ],
+            [
+                InlineKeyboardButton("🔄 فعال / غیرفعال", callback_data=f"toggle_plan_{plan_id}"),
+                InlineKeyboardButton("🗑️ حذف پلن", callback_data=f"del_plan_{plan_id}"),
+            ],
+            [InlineKeyboardButton("🔙 بازگشت به لیست پلن‌ها", callback_data="admin_plans")],
+        ]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    return ADMIN_PLANS_MENU
+
+
+async def edit_plan_value_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """دریافت و ذخیره مقدار جدید برای فیلدهای پلن (نام، قیمت، حجم، مدت)"""
+    text_val = update.message.text.strip()
+    plan_id = context.user_data.get("editing_plan_id")
+    field = context.user_data.get("editing_plan_field")
+
+    if not plan_id or not field:
+        await update.message.reply_text("❌ خطایی رخ داد. لطفاً از پنل مدیریت دوباره اقدام کنید.")
+        return ADMIN_MENU
+
+    plans = get_all_plans()
+    if plan_id not in plans:
+        await update.message.reply_text("❌ پلن مورد نظر یافت نشد.")
+        return ADMIN_MENU
+
+    update_kwargs = {}
+    if field == "name":
+        if len(text_val) < 2:
+            await update.message.reply_text("❌ نام پلن باید حداقل ۲ حرف باشد. لطفاً دوباره ارسال کنید:")
+            return ADMIN_EDIT_PLAN_VALUE
+        update_kwargs["name"] = text_val
+
+    elif field == "price":
+        try:
+            val = int(text_val.replace(",", "").replace("،", ""))
+            if val < 0:
+                raise ValueError()
+            update_kwargs["price"] = val
+        except Exception:
+            await update.message.reply_text("❌ قیمت نامعتبر است! لطفاً یک عدد صحیح به تومان وارد کنید:")
+            return ADMIN_EDIT_PLAN_VALUE
+
+    elif field == "data":
+        try:
+            val = int(text_val)
+            if val < 0:
+                raise ValueError()
+            update_kwargs["data_limit"] = val
+        except Exception:
+            await update.message.reply_text("❌ حجم نامعتبر است! لطفاً عدد گیگابایت (مثلاً 50 یا 0 برای نامحدود) وارد کنید:")
+            return ADMIN_EDIT_PLAN_VALUE
+
+    elif field == "duration":
+        try:
+            val = int(text_val)
+            if val < 1:
+                raise ValueError()
+            update_kwargs["duration"] = val
+        except Exception:
+            await update.message.reply_text("❌ مدت زمان نامعتبر است! لطفاً تعداد روز (مثلاً 30) را وارد کنید:")
+            return ADMIN_EDIT_PLAN_VALUE
+
+    res = update_plan(plan_id, **update_kwargs)
+    if res.get("success"):
+        plans = get_all_plans()
+        plan = plans[plan_id]
+        price_formatted = f"{plan['price']:,}".replace(",", "،")
+        status_text = "🟢 فعال" if plan.get("is_active") else "🔴 غیرفعال"
+        data_text = f"{plan.get('data_limit', 0)} گیگ" if plan.get('data_limit', 0) > 0 else "نامحدود"
+
+        msg_text = (
+            f"✅ **پلن با موفقیت بروزرسانی شد!**\n\n"
+            f"🆔 شناسه: `{plan_id}`\n"
+            f"📋 نام: **{plan['name']}**\n"
+            f"💰 قیمت: **{price_formatted}** تومان\n"
+            f"📊 حجم: **{data_text}**\n"
+            f"⏰ مدت: **{plan.get('duration', 30)}** روز\n"
+            f"📌 وضعیت: {status_text}"
+        )
+        keyboard = [
+            [
+                InlineKeyboardButton("✏️ ویرایش نام", callback_data=f"plan_field_name_{plan_id}"),
+                InlineKeyboardButton("💰 ویرایش قیمت", callback_data=f"plan_field_price_{plan_id}"),
+            ],
+            [
+                InlineKeyboardButton("📊 ویرایش حجم", callback_data=f"plan_field_data_{plan_id}"),
+                InlineKeyboardButton("⏰ ویرایش مدت", callback_data=f"plan_field_duration_{plan_id}"),
+            ],
+            [
+                InlineKeyboardButton("🔄 فعال / غیرفعال", callback_data=f"toggle_plan_{plan_id}"),
+                InlineKeyboardButton("🗑️ حذف پلن", callback_data=f"del_plan_{plan_id}"),
+            ],
+            [InlineKeyboardButton("🔙 بازگشت به لیست پلن‌ها", callback_data="admin_plans")],
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(msg_text, reply_markup=reply_markup, parse_mode="Markdown")
+    else:
+        await update.message.reply_text(f"❌ خطا در بروزرسانی پلن: {res.get('error')}")
+
+    context.user_data.pop("editing_plan_id", None)
+    context.user_data.pop("editing_plan_field", None)
     return ADMIN_PLANS_MENU
 
 
@@ -3987,6 +4284,7 @@ def main():
             ENTERING_TRACKING_CODE: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, enter_tracking_code),
                 MessageHandler(filters.PHOTO, enter_tracking_photo),
+                MessageHandler(filters.Document.ALL, enter_tracking_document),
                 CallbackQueryHandler(confirm_card_payment, pattern="^(confirm_card_payment|cancel)$"),
                 CallbackQueryHandler(back_to_select_payment, pattern="^back_to_select_payment$"),
                 CallbackQueryHandler(back_to_enter_tracking, pattern="^back_to_enter_tracking$"),
@@ -4042,6 +4340,11 @@ def main():
             ] + main_menu_handlers,
             ADMIN_ADD_PLAN_DURATION: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, add_plan_duration),
+            ] + main_menu_handlers,
+            ADMIN_EDIT_PLAN_VALUE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, edit_plan_value_handler),
+                CallbackQueryHandler(plans_menu_handler),
+                CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"),
             ] + main_menu_handlers,
             ADMIN_RESTORE_FILE: [
                 MessageHandler(filters.Document.ALL, handle_restore_file),

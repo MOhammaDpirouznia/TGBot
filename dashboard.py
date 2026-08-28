@@ -25,6 +25,7 @@ load_dotenv()
 
 from database import db
 from utils import generate_qr_code_bytes, get_now_iso, get_now_naive
+from admin_manager import get_all_plans, add_plan, update_plan, delete_plan
 
 logger = logging.getLogger(__name__)
 
@@ -222,13 +223,19 @@ def hidify_sync_ping() -> dict:
 
 
 def get_plans_dict():
-    """دریافت لیست پلن‌ها"""
+    """دریافت لیست پلن‌ها به صورت داینامیک"""
+    try:
+        plans = get_all_plans()
+        if plans:
+            return plans
+    except Exception as e:
+        logger.error(f"Error loading plans in get_plans_dict: {e}")
     return {
-        "1month_30gb": {"name": "۱ ماهه ۳۰ گیگ", "price": 100000, "data_limit": 30, "duration": 30},
-        "1month_50gb": {"name": "۱ ماهه ۵۰ گیگ", "price": 150000, "data_limit": 50, "duration": 30},
-        "1month_100gb": {"name": "۱ ماهه ۱۰۰ گیگ", "price": 250000, "data_limit": 100, "duration": 30},
-        "3month_100gb": {"name": "۳ ماهه ۱۰۰ گیگ", "price": 300000, "data_limit": 100, "duration": 90},
-        "3month_200gb": {"name": "۳ ماهه ۲۰۰ گیگ", "price": 500000, "data_limit": 200, "duration": 90},
+        "1month_30gb": {"name": "۱ ماهه ۳۰ گیگ", "price": 100000, "data_limit": 30, "duration": 30, "is_active": True},
+        "1month_50gb": {"name": "۱ ماهه ۵۰ گیگ", "price": 150000, "data_limit": 50, "duration": 30, "is_active": True},
+        "1month_100gb": {"name": "۱ ماهه ۱۰۰ گیگ", "price": 250000, "data_limit": 100, "duration": 30, "is_active": True},
+        "3month_100gb": {"name": "۳ ماهه ۱۰۰ گیگ", "price": 300000, "data_limit": 100, "duration": 90, "is_active": True},
+        "3month_200gb": {"name": "۳ ماهه ۲۰۰ گیگ", "price": 500000, "data_limit": 200, "duration": 90, "is_active": True},
     }
 
 
@@ -708,6 +715,74 @@ def card_delete(card_id):
     db.delete_bank_card(card_id)
     flash("کارت بانکی حذف شد.", "info")
     return redirect(url_for("cards"))
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# مدیریت و ویرایش کامل پلن‌های فروش
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/plans", methods=["GET", "POST"])
+@admin_required
+def admin_plans_page():
+    """مدیریت و ویرایش کامل پلن‌ها"""
+    if request.method == "POST":
+        action = request.form.get("action")
+        if action == "add":
+            name = request.form.get("name", "").strip()
+            price = int(request.form.get("price", 0))
+            data_limit = int(request.form.get("data_limit", 0))
+            duration = int(request.form.get("duration", 30))
+            res = add_plan(name, price, data_limit, duration)
+            if res.get("success"):
+                flash("پلن جدید با موفقیت افزوده شد.", "success")
+            else:
+                flash(f"خطا در افزودن پلن: {res.get('error')}", "danger")
+        return redirect(url_for("admin_plans_page"))
+
+    plans = get_all_plans()
+    return render_template("plans.html", plans=plans)
+
+
+@app.route("/plans/edit/<plan_id>", methods=["POST"])
+@admin_required
+def admin_plan_edit(plan_id):
+    """ویرایش کامل مشخصات پلن"""
+    name = request.form.get("name", "").strip()
+    price = int(request.form.get("price", 0))
+    data_limit = int(request.form.get("data_limit", 0))
+    duration = int(request.form.get("duration", 30))
+    is_active = request.form.get("is_active") == "1"
+
+    res = update_plan(plan_id, name=name, price=price, data_limit=data_limit, duration=duration, is_active=is_active)
+    if res.get("success"):
+        flash("پلن با موفقیت بروزرسانی شد.", "success")
+    else:
+        flash(f"خطا در ویرایش پلن: {res.get('error')}", "danger")
+    return redirect(url_for("admin_plans_page"))
+
+
+@app.route("/plans/toggle/<plan_id>")
+@admin_required
+def admin_plan_toggle(plan_id):
+    """فعال/غیرفعال کردن پلن"""
+    plans = get_all_plans()
+    if plan_id in plans:
+        current = plans[plan_id].get("is_active", False)
+        update_plan(plan_id, is_active=not current)
+        flash("وضعیت پلن تغییر یافت.", "info")
+    return redirect(url_for("admin_plans_page"))
+
+
+@app.route("/plans/delete/<plan_id>")
+@admin_required
+def admin_plan_delete(plan_id):
+    """حذف پلن"""
+    res = delete_plan(plan_id)
+    if res.get("success"):
+        flash("پلن حذف شد.", "warning")
+    else:
+        flash(f"خطا در حذف پلن: {res.get('error')}", "danger")
+    return redirect(url_for("admin_plans_page"))
 
 
 # ═══════════════════════════════════════════════════════════════════════
