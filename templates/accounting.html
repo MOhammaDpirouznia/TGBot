@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+{% block title %}حسابداری و سود/زیان پیشرفته{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-file-invoice-dollar text-success"></i> سیستم حسابداری و مدیریت سود و زیان</h1>
+        <p class="text-muted mb-0">محاسبه درآمدهای خودکار، ثبت مخارج و هزینه‌های سرور، سود خالص و دفتر کل مالی</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('export_accounting') }}" class="btn btn-outline-success">
+            <i class="fas fa-file-excel me-1"></i> خروجی اکسل دفتر کل
+        </a>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addRecordModal">
+            <i class="fas fa-plus me-1"></i> ثبت سند جدید (درآمد / هزینه)
+        </button>
+    </div>
+</div>
+
+<!-- کارت‌های آماری شاخص‌های مالی -->
+<div class="row g-3 mb-4">
+    <div class="col-xl-3 col-md-6">
+        <div class="card h-100 border-start border-success border-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="text-muted fw-bold">کل درآمد ناخالص</span>
+                    <span class="badge bg-success-subtle text-success p-2 rounded-circle"><i class="fas fa-arrow-down-left"></i></span>
+                </div>
+                <h3 class="mb-1 fw-bold text-success">{{ "{:,}".format(summary.total_income) }} <small class="fs-6 text-muted">تومان</small></h3>
+                <div class="text-muted small">
+                    خودکار: {{ "{:,}".format(summary.auto_tx_income + summary.auto_reseller_income) }} | دستی: {{ "{:,}".format(summary.manual_income) }}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card h-100 border-start border-danger border-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="text-muted fw-bold">کل هزینه‌ها و مخارج</span>
+                    <span class="badge bg-danger-subtle text-danger p-2 rounded-circle"><i class="fas fa-arrow-up-right"></i></span>
+                </div>
+                <h3 class="mb-1 fw-bold text-danger">{{ "{:,}".format(summary.total_expense) }} <small class="fs-6 text-muted">تومان</small></h3>
+                <div class="text-muted small">
+                    سرورها، هیدیفای، تبلیغات و دستمزدها
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card h-100 border-start {% if summary.net_profit >= 0 %}border-primary{% else %}border-danger{% endif %} border-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="text-muted fw-bold">سود خالص کل</span>
+                    <span class="badge bg-primary-subtle text-primary p-2 rounded-circle"><i class="fas fa-vault"></i></span>
+                </div>
+                <h3 class="mb-1 fw-bold {% if summary.net_profit >= 0 %}text-primary{% else %}text-danger{% endif %}">
+                    {{ "{:,}".format(summary.net_profit) }} <small class="fs-6 text-muted">تومان</small>
+                </h3>
+                <div class="text-muted small">
+                    حاشیه سودآوری: <strong class="text-primary">{{ summary.profit_margin }}%</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card h-100 border-start border-warning border-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="text-muted fw-bold">سود خالص ماه جاری</span>
+                    <span class="badge bg-warning-subtle text-warning p-2 rounded-circle"><i class="fas fa-calendar-check"></i></span>
+                </div>
+                <h3 class="mb-1 fw-bold text-warning">{{ "{:,}".format(summary.month_net_profit) }} <small class="fs-6 text-muted">تومان</small></h3>
+                <div class="text-muted small">
+                    درآمد ماه: {{ "{:,}".format(summary.month_total_income) }} | مخارج: {{ "{:,}".format(summary.month_total_expense) }}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- بخش تفکیک دسته‌بندی مخارج -->
+{% if summary.expense_categories %}
+<div class="card mb-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0 fw-bold"><i class="fas fa-chart-pie text-danger me-2"></i>تفکیک و سهم مخارج بر اساس دسته‌بندی</h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            {% for cat in summary.expense_categories %}
+            {% set percent = (cat['total'] / summary.total_expense * 100)|round(1) if summary.total_expense > 0 else 0 %}
+            <div class="col-md-4 col-sm-6">
+                <div class="p-3 border rounded bg-light-subtle">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span class="fw-bold">{{ cat['category'] }}</span>
+                        <span class="text-danger fw-bold">{{ "{:,}".format(cat['total']) }} تومان</span>
+                    </div>
+                    <div class="progress" style="height: 6px;">
+                        <div class="progress-bar bg-danger" role="progressbar" style="width: {{ percent }}%;"></div>
+                    </div>
+                    <div class="d-flex justify-content-between mt-1 text-muted small">
+                        <span>{{ cat['count'] }} سند ثبت شده</span>
+                        <span>{{ percent }}% از کل مخارج</span>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- فیلتر و جستجو در اسناد مالی -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('accounting') }}" class="row g-2 align-items-center">
+            <div class="col-md-3">
+                <label class="form-label small text-muted mb-1">نوع سند:</label>
+                <select name="type" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="all" {% if current_type == 'all' %}selected{% endif %}>همه (درآمدها و هزینه‌ها)</option>
+                    <option value="income" {% if current_type == 'income' %}selected{% endif %}>فقط درآمدها</option>
+                    <option value="expense" {% if current_type == 'expense' %}selected{% endif %}>فقط هزینه‌ها / مخارج</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted mb-1">دسته‌بندی:</label>
+                <select name="category" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="all" {% if current_category == 'all' %}selected{% endif %}>همه دسته‌بندی‌ها</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat }}" {% if current_category == cat %}selected{% endif %}>{{ cat }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted mb-1">بازه زمانی:</label>
+                <select name="period" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="all" {% if current_period == 'all' %}selected{% endif %}>کل زمان‌ها</option>
+                    <option value="today" {% if current_period == 'today' %}selected{% endif %}>امروز</option>
+                    <option value="week" {% if current_period == 'week' %}selected{% endif %}>۷ روز اخیر</option>
+                    <option value="month" {% if current_period == 'month' %}selected{% endif %}>ماه جاری</option>
+                    <option value="year" {% if current_period == 'year' %}selected{% endif %}>سال جاری</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted mb-1">جستجو:</label>
+                <input type="text" name="search" class="form-control form-select-sm" placeholder="عنوان یا توضیحات..." value="{{ search }}">
+            </div>
+            <div class="col-md-1 d-flex align-items-end pt-4">
+                <button type="submit" class="btn btn-sm btn-primary w-100"><i class="fas fa-filter"></i></button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- جدول اسناد حسابداری (دفتر کل) -->
+<div class="card">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 fw-bold"><i class="fas fa-book text-primary me-2"></i>دفتر کل اسناد مالی ({{ records|length }} سند)</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th style="width: 70px;">شناسه</th>
+                        <th>نوع</th>
+                        <th>دسته‌بندی</th>
+                        <th>عنوان سند</th>
+                        <th>مبلغ</th>
+                        <th>منبع</th>
+                        <th>تاریخ سند</th>
+                        <th>توضیحات</th>
+                        <th style="width: 80px;">عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in records %}
+                    <tr>
+                        <td><code>#{{ r['id'] }}</code></td>
+                        <td>
+                            {% if r['type'] == 'income' %}
+                                <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-arrow-down me-1"></i>درآمد</span>
+                            {% else %}
+                                <span class="badge bg-danger-subtle text-danger border border-danger"><i class="fas fa-arrow-up me-1"></i>هزینه</span>
+                            {% endif %}
+                        </td>
+                        <td><span class="badge bg-secondary-subtle text-dark border">{{ r['category'] }}</span></td>
+                        <td><strong>{{ r['title'] }}</strong></td>
+                        <td>
+                            <strong class="{% if r['type'] == 'income' %}text-success{% else %}text-danger{% endif %}">
+                                {% if r['type'] == 'income' %}+{% else %}-{% endif %}{{ "{:,}".format(r['amount'] or 0) }} تومان
+                            </strong>
+                        </td>
+                        <td>
+                            {% if r['source'] == 'auto' %}
+                                <span class="badge bg-info-subtle text-info"><i class="fas fa-robot me-1"></i>خودکار</span>
+                            {% else %}
+                                <span class="badge bg-light text-dark border"><i class="fas fa-user-pen me-1"></i>دستی</span>
+                            {% endif %}
+                        </td>
+                        <td><small>{{ r['date'] }}</small></td>
+                        <td><small class="text-muted">{{ r['description'] or '-' }}</small></td>
+                        <td>
+                            {% if r['source'] != 'auto' %}
+                            <a href="{{ url_for('accounting_delete_record', record_id=r['id']) }}" class="btn btn-sm btn-outline-danger py-0 px-2" title="حذف سند" onclick="return confirm('آیا از حذف این سند حسابداری اطمینان دارید؟')">
+                                <i class="fas fa-trash-can"></i>
+                            </a>
+                            {% else %}
+                            <span class="text-muted small">-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not records %}
+                    <tr>
+                        <td colspan="9" class="text-center py-5 text-muted">
+                            <i class="fas fa-receipt fa-2x mb-2 text-secondary d-block"></i>
+                            هنوز هیچ سند مالی دستی یا فیلترشده‌ای در این بخش یافت نشد.
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal ثبت سند جدید -->
+<div class="modal fade" id="addRecordModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('accounting_add_record') }}">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-file-invoice-dollar text-primary me-2"></i>ثبت سند جدید در حسابداری</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">نوع سند:</label>
+                            <select name="type" class="form-select" required>
+                                <option value="expense" selected>هزینه / مخارج (کاهنده سود)</option>
+                                <option value="income">درآمد متفرقه (افزاینده سود)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">دسته‌بندی:</label>
+                            <select name="category" class="form-select" required>
+                                {% for cat in categories %}
+                                <option value="{{ cat }}">{{ cat }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">عنوان سند / شرح مختصر:</label>
+                        <input type="text" name="title" class="form-control" placeholder="مثال: تمدید سرور هتزنر آلمان / هزینه ترافیک" required>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">مبلغ (تومان):</label>
+                            <input type="number" name="amount" class="form-control" placeholder="مثال: 850000" min="1000" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">تاریخ سند:</label>
+                            <input type="date" name="date" class="form-control">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">توضیحات و جزئیات تکمیلی (اختیاری):</label>
+                        <textarea name="description" class="form-control" rows="2" placeholder="جزئیات فاکتور، شماره رهگیری، یا یادداشت حسابداری"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary">ثبت نهایی سند</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

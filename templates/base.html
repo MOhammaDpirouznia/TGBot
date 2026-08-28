@@ -428,6 +428,9 @@
                 <a class="nav-link {% if request.endpoint == 'reports' %}active{% endif %}" href="{{ url_for('reports') }}">
                     <i class="fas fa-chart-line"></i> گزارشات و هوش مالی
                 </a>
+                <a class="nav-link {% if request.endpoint == 'accounting' %}active{% endif %}" href="{{ url_for('accounting') }}">
+                    <i class="fas fa-file-invoice-dollar"></i> حسابداری و سود/زیان
+                </a>
                 <a class="nav-link {% if request.endpoint == 'admin_logs' %}active{% endif %}" href="{{ url_for('admin_logs') }}">
                     <i class="fas fa-terminal"></i> وضعیت سرور و لاگ‌ها
                 </a>

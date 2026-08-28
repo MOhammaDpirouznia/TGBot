@@ -107,10 +107,10 @@
 
 <!-- تراکنش‌ها -->
 <div class="card">
-    <div class="card-header bg-white">
-        <h5 class="mb-0"><i class="fas fa-credit-card"></i> تراکنش‌ها ({{ transactions|length }})</h5>
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-credit-card text-primary me-2"></i>تراکنش‌ها و سوابق پرداخت ({{ transactions|length }})</h5>
     </div>
-    <div class="card-body">
+    <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover mb-0">
                 <thead>
@@ -121,27 +121,124 @@
                         <th>درگاه</th>
                         <th>وضعیت</th>
                         <th>تاریخ</th>
+                        <th>جزئیات</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for tx in transactions %}
                     <tr>
-                        <td><code>{{ tx['order_id'][:15] }}...</code></td>
+                        <td>
+                            <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none fw-bold" data-bs-toggle="modal" data-bs-target="#txDetailModal{{ tx['id'] }}" title="مشاهده جزئیات کامل سفارش">
+                                <code>{{ tx['order_id'] }}</code>
+                                <i class="fas fa-circle-info ms-1 text-primary"></i>
+                            </button>
+                        </td>
                         <td>{{ tx['plan_name'] or '-' }}</td>
-                        <td>{{ "{:,}".format(tx['amount'] or 0) }} تومان</td>
+                        <td><strong>{{ "{:,}".format(tx['amount'] or 0) }} تومان</strong></td>
                         <td>{{ tx['gateway'] or '-' }}</td>
                         <td>
                             {% if tx['status'] == 'pending' %}
                                 <span class="badge badge-pending">در انتظار</span>
-                            {% elif tx['status'] == 'approved' %}
+                            {% elif tx['status'] == 'approved' or tx['status'] == 'completed' %}
                                 <span class="badge badge-approved">تایید شده</span>
                             {% else %}
                                 <span class="badge badge-rejected">رد شده</span>
                             {% endif %}
                         </td>
-                        <td><small>{{ tx['created_at'][:16] if tx['created_at'] else '-' }}</small></td>
+                        <td><small>{{ tx['created_at'][:19] if tx['created_at'] else '-' }}</small></td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#txDetailModal{{ tx['id'] }}">
+                                <i class="fas fa-eye me-1"></i> مشاهده
+                            </button>
+
+                            <!-- Modal جزئیات کامل تراکنش -->
+                            <div class="modal fade" id="txDetailModal{{ tx['id'] }}" tabindex="-1">
+                                <div class="modal-dialog modal-dialog-centered">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title fw-bold"><i class="fas fa-receipt text-primary me-2"></i>جزئیات کامل سفارش #{{ tx['id'] }}</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                        </div>
+                                        <div class="modal-body">
+                                            <div class="list-group list-group-flush">
+                                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                                    <span class="text-muted">شماره سفارش:</span>
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <code class="user-select-all">{{ tx['order_id'] }}</code>
+                                                        <button class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="navigator.clipboard.writeText('{{ tx['order_id'] }}'); alert('کد سفارش کپی شد!')" title="کپی کد سفارش">
+                                                            <i class="fas fa-copy"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div class="list-group-item d-flex justify-content-between">
+                                                    <span class="text-muted">پلن خریداری شده:</span>
+                                                    <strong>{{ tx['plan_name'] or 'نامشخص' }}</strong>
+                                                </div>
+                                                <div class="list-group-item d-flex justify-content-between">
+                                                    <span class="text-muted">مبلغ تراکنش:</span>
+                                                    <strong class="text-success">{{ "{:,}".format(tx['amount'] or 0) }} تومان</strong>
+                                                </div>
+                                                <div class="list-group-item d-flex justify-content-between">
+                                                    <span class="text-muted">وضعیت تراکنش:</span>
+                                                    <div>
+                                                        {% if tx['status'] == 'pending' %}
+                                                            <span class="badge badge-pending">در انتظار بررسی</span>
+                                                        {% elif tx['status'] == 'approved' or tx['status'] == 'completed' %}
+                                                            <span class="badge badge-approved">تایید شده</span>
+                                                        {% else %}
+                                                            <span class="badge badge-rejected">رد شده</span>
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+                                                <div class="list-group-item d-flex justify-content-between">
+                                                    <span class="text-muted">روش پرداخت / درگاه:</span>
+                                                    <span>{{ tx['gateway'] or 'کارت به کارت' }}</span>
+                                                </div>
+                                                <div class="list-group-item d-flex justify-content-between">
+                                                    <span class="text-muted">کد پیگیری / شماره فیش:</span>
+                                                    <code>{{ tx['tracking_code'] or 'ثبت نشده' }}</code>
+                                                </div>
+                                                <div class="list-group-item d-flex justify-content-between">
+                                                    <span class="text-muted">نام اکانت متصل:</span>
+                                                    <span>{{ tx['account_name'] or '-' }}</span>
+                                                </div>
+                                                <div class="list-group-item d-flex justify-content-between">
+                                                    <span class="text-muted">نوع خرید:</span>
+                                                    <span>{{ '🔄 تمدید اشتراک' if tx.get('is_renewal') else '🛒 خرید جدید' }}</span>
+                                                </div>
+                                                {% if tx.get('discount_code') %}
+                                                <div class="list-group-item d-flex justify-content-between">
+                                                    <span class="text-muted">کد تخفیف استفاده شده:</span>
+                                                    <span class="badge bg-warning text-dark">{{ tx.get('discount_code') }}</span>
+                                                </div>
+                                                {% endif %}
+                                                <div class="list-group-item d-flex justify-content-between">
+                                                    <span class="text-muted">تاریخ و زمان ثبت:</span>
+                                                    <span>{{ tx['created_at'] or '-' }}</span>
+                                                </div>
+                                                {% if tx.get('receipt_image') or tx.get('receipt_photo_id') %}
+                                                <div class="list-group-item text-center mt-2">
+                                                    <a href="{{ url_for('admin_payment_receipt', payment_id=tx['id']) }}" target="_blank" class="btn btn-sm btn-outline-primary w-100">
+                                                        <i class="fas fa-image me-1"></i> مشاهده تصویر رسید و فیش واریزی
+                                                    </a>
+                                                </div>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">بستن</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
                     </tr>
                     {% endfor %}
+                    {% if not transactions %}
+                    <tr>
+                        <td colspan="7" class="text-center py-4 text-muted">هنوز تراکنشی برای این کاربر ثبت نشده است.</td>
+                    </tr>
+                    {% endif %}
                 </tbody>
             </table>
         </div>

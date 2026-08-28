@@ -57,8 +57,14 @@
                                 <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#topupModal{{ r['id'] }}" title="شارژ کیف پول">
                                     <i class="fas fa-wallet me-1"></i> شارژ
                                 </button>
+                                <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editResellerModal{{ r['id'] }}" title="ویرایش اطلاعات">
+                                    <i class="fas fa-pen"></i>
+                                </button>
                                 <a href="{{ url_for('admin_reseller_toggle', reseller_id=r['id']) }}" class="btn btn-outline-warning" title="تغییر وضعیت فعال/غیرفعال" onclick="return confirm('آیا از تغییر وضعیت این نماینده مطمئن هستید؟')">
                                     <i class="fas fa-power-off"></i>
+                                </a>
+                                <a href="{{ url_for('admin_reseller_delete', reseller_id=r['id']) }}" class="btn btn-outline-danger" title="حذف نماینده" onclick="return confirm('آیا از حذف کامل این نماینده و سوابق آن اطمینان دارید؟ این عمل غیرقابل بازگشت است.')">
+                                    <i class="fas fa-trash-can"></i>
                                 </a>
                             </div>
 
@@ -85,6 +91,57 @@
                                             <div class="modal-footer">
                                                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
                                                 <button type="submit" class="btn btn-success">افزایش موجودی</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Modal ویرایش نماینده -->
+                            <div class="modal fade" id="editResellerModal{{ r['id'] }}" tabindex="-1">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <form method="POST" action="{{ url_for('admin_reseller_edit', reseller_id=r['id']) }}">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title fw-bold"><i class="fas fa-user-pen text-primary me-2"></i>ویرایش نماینده «{{ r['name'] }}»</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                <div class="mb-3">
+                                                    <label class="form-label">نام و عنوان نماینده:</label>
+                                                    <input type="text" name="name" class="form-control" value="{{ r['name'] }}" required>
+                                                </div>
+                                                <div class="row g-2 mb-3">
+                                                    <div class="col-md-6">
+                                                        <label class="form-label">نام کاربری ورود:</label>
+                                                        <input type="text" name="username" class="form-control" value="{{ r['username'] }}" required>
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <label class="form-label">رمز عبور جدید (اختیاری):</label>
+                                                        <input type="password" name="new_password" class="form-control" placeholder="برای عدم تغییر خالی بگذارید">
+                                                    </div>
+                                                </div>
+                                                <div class="row g-2 mb-3">
+                                                    <div class="col-md-6">
+                                                        <label class="form-label">درصد تخفیف همکاری (%):</label>
+                                                        <input type="number" name="discount_percent" class="form-control" value="{{ r['discount_percent'] }}" min="1" max="99" required>
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <label class="form-label">وضعیت حساب:</label>
+                                                        <select name="status" class="form-select">
+                                                            <option value="active" {% if r['status'] == 'active' %}selected{% endif %}>فعال</option>
+                                                            <option value="suspended" {% if r['status'] != 'active' %}selected{% endif %}>معلق / غیرفعال</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label class="form-label">آیدی عددی تلگرام:</label>
+                                                    <input type="number" name="telegram_id" class="form-control" value="{{ r['telegram_id'] or '' }}" placeholder="مثال: 123456789">
+                                                </div>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                                                <button type="submit" class="btn btn-primary">ذخیره تغییرات</button>
                                             </div>
                                         </form>
                                     </div>
