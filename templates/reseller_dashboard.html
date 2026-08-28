@@ -66,6 +66,94 @@
     </div>
 </div>
 
+<!-- ردیف هوش مالی سریع داشبورد نماینده: برترین مشتریان ماه و سوابق تمدید -->
+<div class="row g-4 mb-4">
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-medal text-warning me-2"></i> برترین مشتریان ماه جاری شما</h5>
+                <a href="{{ url_for('reseller_reports') }}" class="btn btn-sm btn-outline-primary">گزارش کامل</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>رتبه</th>
+                                <th>نام مشتری</th>
+                                <th>تعداد سفارش</th>
+                                <th>مجموع خرید</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for u in analytics.get('top_users_month', []) %}
+                            <tr>
+                                <td>
+                                    {% if loop.index == 1 %}🥇
+                                    {% elif loop.index == 2 %}🥈
+                                    {% elif loop.index == 3 %}🥉
+                                    {% else %}#{{ loop.index }}{% endif %}
+                                </td>
+                                <td><strong><code>{{ u['username'] }}</code></strong></td>
+                                <td>{{ u['tx_count'] }} بار</td>
+                                <td><strong class="text-success">{{ "{:,}".format(u['total_spent'] or 0) }} ت</strong></td>
+                            </tr>
+                            {% endfor %}
+                            {% if not analytics.get('top_users_month') %}
+                            <tr>
+                                <td colspan="4" class="text-center py-3 text-muted">خریدی در این ماه ثبت نشده است.</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-history text-info me-2"></i> سوابق مصرف دوره‌های قبل (تمدیدها)</h5>
+                <a href="{{ url_for('reseller_reports') }}" class="btn btn-sm btn-outline-primary">آرشیو</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>نام مشتری</th>
+                                <th>پلن قبل</th>
+                                <th>مصرف دوره قبل</th>
+                                <th>تاریخ تمدید</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for h in analytics.get('usage_history', [])[:5] %}
+                            <tr>
+                                <td><strong><code>{{ h['account_name'] }}</code></strong></td>
+                                <td><small>{{ h['plan_name'] }}</small></td>
+                                <td>
+                                    <span class="badge bg-secondary">
+                                        {{ "%.2f"|format(h['previous_usage_gb'] or 0) }} / {{ h['previous_limit_gb'] }} GB
+                                    </span>
+                                </td>
+                                <td><small class="text-muted">{{ h['renewed_at'][:16].replace('T', ' ') if h['renewed_at'] else '-' }}</small></td>
+                            </tr>
+                            {% endfor %}
+                            {% if not analytics.get('usage_history') %}
+                            <tr>
+                                <td colspan="4" class="text-center py-3 text-muted">سابقه‌ای ثبت نشده است.</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="row g-4">
     <!-- تراکنش‌های اخیر نماینده -->
     <div class="col-lg-8">
@@ -135,8 +223,11 @@
                     <span class="text-muted small d-block mb-1">برای افزایش اعتبار کیف پول با پشتیبانی هماهنگ فرمایید:</span>
                     <strong class="text-primary fs-5">شارژ آنی توسط مدیریت</strong>
                 </div>
-                <a href="{{ url_for('reseller_create_user') }}" class="btn btn-primary w-100 py-2">
+                <a href="{{ url_for('reseller_create_user') }}" class="btn btn-primary w-100 py-2 mb-2">
                     <i class="fas fa-plus-circle me-1"></i> ساخت اشتراک جدید
+                </a>
+                <a href="{{ url_for('reseller_reports') }}" class="btn btn-outline-primary w-100 py-2">
+                    <i class="fas fa-chart-line me-1"></i> هوش مالی و گزارشات
                 </a>
             </div>
         </div>

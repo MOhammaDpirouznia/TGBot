@@ -70,9 +70,15 @@
                                     <strong>{{ tx['username'] or 'کاربر تلگرام' }}</strong>
                                     <br><small class="text-muted"><code>{{ tx['user_id'] }}</code></small>
                                 </div>
-                                <a href="tg://user?id={{ tx['user_id'] }}" class="btn btn-sm btn-outline-info py-0 px-2 ms-2" title="باز کردن چت در تلگرام">
-                                    <i class="fab fa-telegram-plane"></i>
-                                </a>
+                                {% if tx['username'] and not tx['username'].startswith('tg_') and tx['username'] != 'کاربر' %}
+                                    <a href="https://t.me/{{ tx['username'].replace('@', '') }}" target="_blank" class="btn btn-sm btn-outline-primary py-0 px-2 ms-2" title="چت در تلگرام با @{{ tx['username'].replace('@', '') }}">
+                                        <i class="fab fa-telegram"></i>
+                                    </a>
+                                {% else %}
+                                    <a href="tg://user?id={{ tx['user_id'] }}" class="btn btn-sm btn-outline-info py-0 px-2 ms-2" title="چت مستقیم با آیدی عددی {{ tx['user_id'] }}">
+                                        <i class="fab fa-telegram-plane"></i>
+                                    </a>
+                                {% endif %}
                             </div>
                         </td>
                         <td>
@@ -109,25 +115,24 @@
                         <td><code>{{ tx['account_name'] or '-' }}</code></td>
                         <td>
                             {% if tx['status'] == 'pending' %}
-                                <span class="badge badge-pending">در انتظار</span>
-                            {% elif tx['status'] == 'approved' %}
-                                <span class="badge badge-approved">تایید شده</span>
+                                <span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i> در انتظار بررسی</span>
+                            {% elif tx['status'] == 'approved' or tx['status'] == 'completed' %}
+                                <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i> تایید شده</span>
                             {% else %}
-                                <span class="badge badge-rejected" title="{{ tx['rejection_reason'] or 'بدون دلیل' }}">رد شده</span>
-                                {% if tx['rejection_reason'] %}
-                                    <div class="text-danger small" style="font-size: 0.75rem;">{{ tx['rejection_reason'] }}</div>
-                                {% endif %}
+                                <span class="badge bg-danger"><i class="fas fa-times-circle me-1"></i> رد شده</span>
                             {% endif %}
                         </td>
-                        <td><small class="text-muted">{{ tx['created_at'][:16] if tx['created_at'] else '-' }}</small></td>
+                        <td><small>{{ tx['created_at'][:16].replace('T', ' ') if tx['created_at'] else '-' }}</small></td>
                         <td>
                             {% if tx['status'] == 'pending' %}
-                                <div class="btn-group btn-group-sm">
-                                    <a href="{{ url_for('approve_payment', payment_id=tx['id']) }}" class="btn btn-success" title="تایید پرداخت و صدور آنی اکانت در هیدیفای" onclick="return confirm('آیا از تایید این پرداخت مطمئن هستید؟ اکانت به صورت خودکار در هیدیفای فعال و برای کاربر ارسال خواهد شد.')">
-                                        <i class="fas fa-check me-1"></i> تایید
+                                <div class="d-flex gap-1">
+                                    <a href="{{ url_for('approve_payment', payment_id=tx['id']) }}" 
+                                       class="btn btn-sm btn-success py-1 px-2" 
+                                       onclick="return confirm('آیا از تایید این پرداخت و صدور آنی اکانت در هیدیفای مطمئن هستید؟')">
+                                        <i class="fas fa-check"></i> تایید
                                     </a>
-                                    <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#rejectModal{{ tx['id'] }}">
-                                        <i class="fas fa-times me-1"></i> رد
+                                    <button type="button" class="btn btn-sm btn-outline-danger py-1 px-2" data-bs-toggle="modal" data-bs-target="#rejectModal{{ tx['id'] }}">
+                                        <i class="fas fa-times"></i> رد
                                     </button>
                                 </div>
 
@@ -156,7 +161,7 @@
                                     </div>
                                 </div>
                             {% else %}
-                                <span class="text-muted">-</span>
+                                <span class="text-muted small">انجام شده</span>
                             {% endif %}
                         </td>
                     </tr>
@@ -204,15 +209,19 @@ function openReceiptPreview(imgUrl, username, orderId, userId) {
     document.getElementById('receiptDownloadBtn').href = imgUrl;
     document.getElementById('receiptModalTitle').innerHTML = `<i class="fas fa-image me-2 text-primary"></i> تصویر رسید سفارش #${orderId} - ${username || 'کاربر'}`;
     
-    if (userId) {
-        document.getElementById('receiptModalChatLink').innerHTML = `
-            <a href="tg://user?id=${userId}" class="btn btn-sm btn-outline-info">
-                <i class="fab fa-telegram me-1"></i> باز کردن مستقیم صفحه چت کاربر در تلگرام
-            </a>
-        `;
-    } else {
-        document.getElementById('receiptModalChatLink').innerHTML = '';
+    let chatHtml = '';
+    if (username && !username.startsWith('tg_') && username !== 'کاربر') {
+        const cleanUser = username.replace('@', '');
+        chatHtml += `<a href="https://t.me/${cleanUser}" target="_blank" class="btn btn-sm btn-primary me-2">
+            <i class="fab fa-telegram me-1"></i> چت با @${cleanUser}
+        </a>`;
     }
+    if (userId) {
+        chatHtml += `<a href="tg://user?id=${userId}" target="_blank" class="btn btn-sm btn-outline-info">
+            <i class="fab fa-telegram-plane me-1"></i> چت با آیدی عددی (${userId})
+        </a>`;
+    }
+    document.getElementById('receiptModalChatLink').innerHTML = chatHtml;
 
     const modal = new bootstrap.Modal(document.getElementById('receiptPreviewModal'));
     modal.show();

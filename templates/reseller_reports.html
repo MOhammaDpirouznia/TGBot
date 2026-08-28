@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+
+{% block title %}هوش مالی و گزارشات نماینده فروش{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-chart-line text-primary"></i> هوش مالی و عملکرد فروش نماینده</h1>
+        <p class="text-muted mb-0">تحلیل رفتار مشتریان شما، محبوبیت پلن‌ها، سوابق مصرف دوره‌های قبل و تراز مالی</p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <a href="{{ url_for('reseller_export_transactions') }}" class="btn btn-success btn-sm">
+            <i class="fas fa-file-excel me-1"></i> دانلود گزارش اکسل (CSV)
+        </a>
+    </div>
+</div>
+
+<!-- ۴ کارت آماری نماینده -->
+<div class="row g-3 mb-4">
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card border-primary">
+            <div>
+                <span class="text-muted small fw-bold">موجودی کیف پول شما</span>
+                <h3 class="fw-bold my-1 text-primary">{{ "{:,}".format(stats['balance'] or 0) }} <span style="font-size: 0.95rem;">تومان</span></h3>
+                <span class="badge bg-primary bg-opacity-10 text-primary">تخفیف همکاری: {{ stats['discount_percent'] }}%</span>
+            </div>
+            <div class="stat-icon bg-primary bg-opacity-10 text-primary">
+                <i class="fas fa-wallet"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card">
+            <div>
+                <span class="text-muted small fw-bold">مجموع خریدها (با تخفیف)</span>
+                <h3 class="fw-bold my-1 text-warning">{{ "{:,}".format(stats['total_purchases'] or 0) }} <span style="font-size: 0.95rem;">تومان</span></h3>
+                <span class="text-muted small"><i class="fas fa-bag-shopping me-1"></i> کل خریدهای ثبت شده</span>
+            </div>
+            <div class="stat-icon bg-warning bg-opacity-10 text-warning">
+                <i class="fas fa-coins"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card">
+            <div>
+                <span class="text-muted small fw-bold">مشتریان فعال</span>
+                <h3 class="fw-bold my-1 text-success">{{ stats['active_users'] }} <span style="font-size: 0.95rem; color:#64748b;">از {{ stats['total_users'] }}</span></h3>
+                <span class="text-success small"><i class="fas fa-circle-check me-1"></i> در حال استفاده</span>
+            </div>
+            <div class="stat-icon bg-success bg-opacity-10 text-success">
+                <i class="fas fa-users-gear"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card">
+            <div>
+                <span class="text-muted small fw-bold">محبوب‌ترین پلن مشتریان</span>
+                <h4 class="fw-bold my-1 text-info" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    {{ popular_plans[0]['plan_name'] if popular_plans else 'بدون داده' }}
+                </h4>
+                <span class="text-muted small">{{ popular_plans[0]['count'] if popular_plans else 0 }} بار سفارش</span>
+            </div>
+            <div class="stat-icon bg-info bg-opacity-10 text-info">
+                <i class="fas fa-star"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ردیف اول: محبوب‌ترین پلن‌ها و برترین مشتریان ماه -->
+<div class="row g-4 mb-4">
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-fire text-danger me-2"></i> پرفروش‌ترین پلن‌های شما</h5>
+                <span class="badge bg-light text-dark">آمار کلی</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>نام پلن</th>
+                                <th>تعداد سفارش</th>
+                                <th>مجموع خرید</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in popular_plans %}
+                            <tr>
+                                <td><strong class="text-primary">{{ p['plan_name'] }}</strong></td>
+                                <td><span class="badge bg-primary bg-opacity-10 text-primary">{{ p['count'] }} بار</span></td>
+                                <td><strong class="text-success">{{ "{:,}".format(p['revenue'] or 0) }} تومان</strong></td>
+                            </tr>
+                            {% endfor %}
+                            {% if not popular_plans %}
+                            <tr>
+                                <td colspan="3" class="text-center py-3 text-muted">هنوز خریدی ثبت نشده است.</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-medal text-warning me-2"></i> برترین مشتریان ماه جاری</h5>
+                <span class="badge bg-warning text-dark">ماه فعلی</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>رتبه</th>
+                                <th>نام مشتری / اشتراک</th>
+                                <th>تعداد تمدید و خرید</th>
+                                <th>مبلغ کل</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for u in top_users_month %}
+                            <tr>
+                                <td>
+                                    {% if loop.index == 1 %}🥇
+                                    {% elif loop.index == 2 %}🥈
+                                    {% elif loop.index == 3 %}🥉
+                                    {% else %}#{{ loop.index }}{% endif %}
+                                </td>
+                                <td><strong><code>{{ u['username'] }}</code></strong></td>
+                                <td>{{ u['tx_count'] }} بار</td>
+                                <td><strong class="text-success">{{ "{:,}".format(u['total_spent'] or 0) }} تومان</strong></td>
+                            </tr>
+                            {% endfor %}
+                            {% if not top_users_month %}
+                            <tr>
+                                <td colspan="4" class="text-center py-3 text-muted">خریدی در ماه جاری ثبت نشده است.</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ردیف دوم: پرمصرف‌ترین مشتریان و گزارش سوابق دوره‌های گذشته -->
+<div class="row g-4 mb-4">
+    <div class="col-lg-5">
+        <div class="card h-100">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-network-wired text-info me-2"></i> فعال‌ترین مشتریان (مصرف حجم)</h5>
+                <span class="badge bg-info bg-opacity-10 text-info">ترافیک گیگابایت</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>نام مشتری</th>
+                                <th>پلن</th>
+                                <th>مصرف</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for a in most_active_users %}
+                            <tr>
+                                <td><strong><code>{{ a['account_name'] }}</code></strong></td>
+                                <td><small>{{ a['plan_name'] }}</small></td>
+                                <td>
+                                    <strong class="text-danger">{{ "%.2f"|format(a['data_used'] or 0) }} GB</strong>
+                                    <small class="text-muted">/ {{ a['data_limit'] }} GB</small>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            {% if not most_active_users %}
+                            <tr>
+                                <td colspan="3" class="text-center py-3 text-muted">مشتری فعالی یافت نشد.</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-7">
+        <div class="card h-100">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-clock-rotate-left text-primary me-2"></i> سوابق مصرف دوره‌های گذشته (هنگام تمدید)</h5>
+                <span class="badge bg-light text-dark">آرشیو تمدیدها</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>نام مشتری</th>
+                                <th>پلن دوره قبل</th>
+                                <th>مصرف دوره قبل</th>
+                                <th>نوع تمدید</th>
+                                <th>تاریخ تمدید</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for h in usage_history %}
+                            <tr>
+                                <td><strong><code>{{ h['account_name'] }}</code></strong></td>
+                                <td>{{ h['plan_name'] }}</td>
+                                <td>
+                                    <span class="badge bg-secondary">
+                                        {{ "%.2f"|format(h['previous_usage_gb'] or 0) }} GB از {{ h['previous_limit_gb'] }} GB
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if h['renewal_type'] == 'reset_and_replaced' or h['renewal_type'] == 'replace' %}
+                                        <span class="badge bg-warning text-dark">ریست و جایگزین</span>
+                                    {% else %}
+                                        <span class="badge bg-success">افزایش حجم</span>
+                                    {% endif %}
+                                </td>
+                                <td><small>{{ h['renewed_at'][:16].replace('T', ' ') if h['renewed_at'] else '-' }}</small></td>
+                            </tr>
+                            {% endfor %}
+                            {% if not usage_history %}
+                            <tr>
+                                <td colspan="5" class="text-center py-3 text-muted">هنوز تمدیدی برای مشتریان شما ثبت نشده است.</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ردیف سوم: تایم‌لاین آخرین مشتریان، تاریخ ساخت و بروزرسانی -->
+<div class="card">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 fw-bold"><i class="fas fa-timeline text-primary me-2"></i> تایم‌لاین مشتریان (تاریخ ساخت، تمدید و وضعیت)</h5>
+        <span class="badge bg-light text-dark">۱۰ رویداد اخیر</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>نام مشتری</th>
+                        <th>پلن فعال</th>
+                        <th>سقف ترافیک</th>
+                        <th>وضعیت</th>
+                        <th>تاریخ ساخت</th>
+                        <th>آخرین بروزرسانی / تمدید</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in timeline_subscriptions %}
+                    <tr>
+                        <td><strong><code>{{ s['account_name'] }}</code></strong></td>
+                        <td><span class="badge bg-primary bg-opacity-10 text-primary">{{ s['plan_name'] }}</span></td>
+                        <td>{{ s['data_limit'] }} گیگابایت ({{ s['duration'] }} روز)</td>
+                        <td>
+                            {% if s['status'] == 'active' %}
+                                <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i> فعال</span>
+                            {% else %}
+                                <span class="badge bg-danger">منقضی</span>
+                            {% endif %}
+                        </td>
+                        <td><small>{{ s['created_at'][:16].replace('T', ' ') if s['created_at'] else '-' }}</small></td>
+                        <td><small class="text-primary">{{ s['updated_at'][:16].replace('T', ' ') if s['updated_at'] else '-' }}</small></td>
+                    </tr>
+                    {% endfor %}
+                    {% if not timeline_subscriptions %}
+                    <tr>
+                        <td colspan="6" class="text-center py-4 text-muted">هنوز اشتراکی ایجاد نشده است.</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

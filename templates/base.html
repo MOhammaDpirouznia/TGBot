@@ -19,7 +19,12 @@
             --danger: #ef4444;
             --dark: #0f172a;
             --dark-card: #1e293b;
-            --sidebar-bg: #0f172a;
+            --sidebar-bg: #eaeff5; /* رنگ متمایز و ملایم منو در حالت روشن */
+            --sidebar-border: #dbe4ee;
+            --sidebar-text: #334155;
+            --sidebar-text-muted: #64748b;
+            --sidebar-hover-bg: #dbe4ee;
+            --sidebar-brand: #0f172a;
             --body-bg: #f8fafc;
             --card-bg: #ffffff;
             --card-border: rgba(0,0,0,0.06);
@@ -32,6 +37,11 @@
             --card-bg: #151e2e;
             --card-border: #1e293b;
             --sidebar-bg: #090d16;
+            --sidebar-border: rgba(255,255,255,0.08);
+            --sidebar-text: #94a3b8;
+            --sidebar-text-muted: #64748b;
+            --sidebar-hover-bg: rgba(255,255,255,0.06);
+            --sidebar-brand: #ffffff;
             --text-main: #f8fafc;
             --text-muted: #94a3b8;
         }
@@ -100,7 +110,8 @@
             z-index: 1000;
             display: flex;
             flex-direction: column;
-            box-shadow: -4px 0 15px rgba(0,0,0,0.05);
+            box-shadow: -4px 0 15px rgba(0,0,0,0.04);
+            border-left: 1px solid var(--sidebar-border);
             transition: all 0.3s ease;
         }
 
@@ -109,8 +120,8 @@
             display: flex;
             align-items: center;
             gap: 12px;
-            border-bottom: 1px solid rgba(255,255,255,0.08);
-            color: white;
+            border-bottom: 1px solid var(--sidebar-border);
+            color: var(--sidebar-brand);
             text-decoration: none;
         }
 
@@ -144,18 +155,18 @@
             font-size: 0.75rem;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            color: #64748b;
+            color: var(--sidebar-text-muted);
             padding: 12px 14px 6px;
             font-weight: 700;
         }
 
         .sidebar .nav-link {
-            color: #94a3b8;
+            color: var(--sidebar-text);
             padding: 11px 14px;
             border-radius: 10px;
             margin-bottom: 4px;
             font-size: 0.93rem;
-            font-weight: 500;
+            font-weight: 600;
             display: flex;
             align-items: center;
             gap: 12px;
@@ -170,21 +181,25 @@
         }
 
         .sidebar .nav-link:hover {
-            color: #ffffff;
-            background: rgba(255,255,255,0.06);
+            color: var(--primary);
+            background: var(--sidebar-hover-bg);
             transform: translateX(-3px);
         }
 
         .sidebar .nav-link.active {
-            color: #ffffff;
-            background: var(--primary);
+            color: #ffffff !important;
+            background: var(--primary) !important;
             box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
         }
 
         .sidebar-footer {
             padding: 16px 14px;
-            border-top: 1px solid rgba(255,255,255,0.08);
-            background: rgba(0,0,0,0.15);
+            border-top: 1px solid var(--sidebar-border);
+            background: rgba(0,0,0,0.03);
+        }
+
+        [data-bs-theme="dark"] .sidebar-footer {
+            background: rgba(0,0,0,0.25);
         }
 
         .user-pill {
@@ -193,8 +208,8 @@
             gap: 12px;
             padding: 8px 10px;
             border-radius: 10px;
-            background: rgba(255,255,255,0.04);
-            color: white;
+            background: var(--sidebar-hover-bg);
+            color: var(--sidebar-brand);
         }
 
         .user-avatar {
@@ -202,11 +217,31 @@
             height: 38px;
             border-radius: 50%;
             background: var(--primary);
+            color: white;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: bold;
             font-size: 1rem;
+        }
+
+        /* استایل اختصاصی زرد برای لینک‌های تکی */
+        .btn-outline-warning {
+            color: #ca8a04 !important;
+            border-color: #facc15 !important;
+            font-weight: 700 !important;
+        }
+        .btn-outline-warning:hover {
+            background-color: #facc15 !important;
+            color: #000000 !important;
+        }
+        [data-bs-theme="dark"] .btn-outline-warning {
+            color: #facc15 !important;
+            border-color: #eab308 !important;
+        }
+        .text-single-yellow {
+            color: #eab308 !important;
+            font-weight: 700 !important;
         }
 
         .main-content {
@@ -347,6 +382,9 @@
                 </a>
                 <a class="nav-link {% if request.endpoint == 'reseller_transactions' %}active{% endif %}" href="{{ url_for('reseller_transactions') }}">
                     <i class="fas fa-wallet"></i> تراکنش‌ها و شارژ
+                </a>
+                <a class="nav-link {% if request.endpoint == 'reseller_reports' %}active{% endif %}" href="{{ url_for('reseller_reports') }}">
+                    <i class="fas fa-chart-line"></i> گزارشات و هوش مالی
                 </a>
             {% else %}
                 <!-- منوی مدیریت کل -->
