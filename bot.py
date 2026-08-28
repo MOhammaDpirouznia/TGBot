@@ -152,12 +152,14 @@ async def send_subscription_card(bot, chat_id: int, sub_url: str, title: str, de
         if match:
             target_uuid = match.group(1)
 
+    import html
+    safe_clean_url = html.escape(str(clean_sub_url))
     caption = (
         f"{title}\n\n"
         f"{details}\n\n"
-        f"{t('link_card_title', lang)}\n"
-        f"`{clean_sub_url}`\n\n"
-        f"{t('link_card_hint', lang)}"
+        f"🔗 <b>{t('link_card_title', lang).replace('**', '').replace('🔗', '').strip()}</b>\n"
+        f"<code>{safe_clean_url}</code>\n\n"
+        f"{t('link_card_hint', lang).replace('**', '')}"
     )
 
     keyboard = [
@@ -184,11 +186,11 @@ async def send_subscription_card(bot, chat_id: int, sub_url: str, title: str, de
                 photo=qr_bytes,
                 caption=caption,
                 reply_markup=reply_markup,
-                parse_mode="Markdown",
+                parse_mode="HTML",
             )
             return
         except Exception as e:
-            logger.warning(f"Error sending QR Code photo markdown: {e}")
+            logger.warning(f"Error sending QR Code photo HTML: {e}")
             try:
                 await bot.send_photo(
                     chat_id=chat_id,
@@ -205,10 +207,10 @@ async def send_subscription_card(bot, chat_id: int, sub_url: str, title: str, de
             chat_id=chat_id,
             text=caption,
             reply_markup=reply_markup,
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
     except Exception as e:
-        logger.warning(f"Error sending subscription text markdown: {e}")
+        logger.warning(f"Error sending subscription text HTML: {e}")
         try:
             await bot.send_message(
                 chat_id=chat_id,
@@ -220,7 +222,7 @@ async def send_subscription_card(bot, chat_id: int, sub_url: str, title: str, de
 
 
 async def single_link_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """تولید و ارسال کانفیگ / لینک تکی مستقیم با جایگذاری خودکار UUID و نام مشتری در قالب آماده"""
+    """تولید و ارسال کانفیگ / لینک تکی مستقیم با جایگذاری خودکار UUID و نام مشتری در قالب آماده با قالب‌بندی استاندارد و رفع بهم‌ریختگی BiDi"""
     query = update.callback_query
     await query.answer()
     user = update.effective_user
@@ -240,13 +242,43 @@ async def single_link_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     template = get_single_link_template(db)
     single_direct_link = format_single_link(template, uuid=uuid, name=account_name)
 
+    import html
+    safe_account_name = html.escape(str(account_name))
+    safe_uuid = html.escape(str(uuid))
+    safe_link = html.escape(str(single_direct_link))
+
+    if user_lang == "en":
+        title_text = "⚡ <b>Single Direct Connection Link:</b>"
+        account_label = "Account Name"
+        uuid_label = "UUID"
+        link_label = "🔗 <b>Your Single Link (tap to copy):</b>"
+        hint_text = "💡 <b>Single Link Guide:</b>\n• This is a direct configuration link containing your credentials.\n• Copy the link above and import it into your VPN client."
+    elif user_lang == "ru":
+        title_text = "⚡ <b>Прямая ссылка для подключения (Single):</b>"
+        account_label = "Имя аккаунта"
+        uuid_label = "UUID"
+        link_label = "🔗 <b>Ваша прямая ссылка (нажмите для копирования):</b>"
+        hint_text = "💡 <b>Инструкция:</b>\n• Это прямая ссылка с вашей персональной конфигурацией.\n• Скопируйте ссылку выше и импортируйте в приложение."
+    elif user_lang == "zh":
+        title_text = "⚡ <b>单节点直接连接配置：</b>"
+        account_label = "账户名称"
+        uuid_label = "UUID"
+        link_label = "🔗 <b>您的直连节点链接（点击复制）：</b>"
+        hint_text = "💡 <b>使用说明：</b>\n• 此链接为包含您专属配置的直连节点。\n• 复制上方链接后直接导入客户端即可。"
+    else:
+        title_text = "⚡ <b>لینک اتصال مستقیم (تکی):</b>"
+        account_label = "نام اکانت"
+        uuid_label = "شناسه (UUID)"
+        link_label = "🔗 <b>لینک تکی شما (برای کپی لمس کنید):</b>"
+        hint_text = "💡 <b>راهنمای استفاده از لینک تکی:</b>\n• این لینک به صورت مستقیم کانفیگ اتصال اختصاصی شما را در بر دارد.\n• لینک بالا را کپی کرده و در نرم‌افزار خود Import نمایید."
+
     caption = (
-        f"{t('single_link_card_title', user_lang)}\n\n"
-        f"📋 نام اکانت: `{account_name}`\n"
-        f"🆔 شناسه: `{uuid}`\n\n"
-        f"🔗 **لینک تکی شما (برای کپی لمس کنید):**\n"
-        f"`{single_direct_link}`\n\n"
-        f"{t('single_link_card_hint', user_lang)}"
+        f"{title_text}\n\n"
+        f"📋 {account_label}: <code>{safe_account_name}</code>\n"
+        f"🆔 {uuid_label}: <code>\u200e{safe_uuid}</code>\n\n"
+        f"{link_label}\n"
+        f"<code>{safe_link}</code>\n\n"
+        f"{hint_text}"
     )
 
     keyboard = [
@@ -263,11 +295,11 @@ async def single_link_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 photo=qr_bytes,
                 caption=caption,
                 reply_markup=reply_markup,
-                parse_mode="Markdown",
+                parse_mode="HTML",
             )
             return
         except Exception as e:
-            logger.warning(f"Error sending single link QR Code photo markdown: {e}")
+            logger.warning(f"Error sending single link QR Code photo HTML: {e}")
             try:
                 await context.bot.send_photo(
                     chat_id=user.id,
@@ -284,7 +316,7 @@ async def single_link_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             chat_id=user.id,
             text=caption,
             reply_markup=reply_markup,
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
     except Exception as e:
         logger.warning(f"Error sending single link text: {e}")
