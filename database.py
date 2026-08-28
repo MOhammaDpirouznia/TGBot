@@ -684,6 +684,32 @@ class Database:
         """لغو اشتراک"""
         return self.update_subscription(subscription_id, status="cancelled")
 
+    def update_subscription_by_uuid(self, hidify_uuid, **kwargs):
+        """بروزرسانی اشتراک بر اساس hidify_uuid"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+
+        try:
+            updates = []
+            values = []
+            for key, value in kwargs.items():
+                updates.append(f"{key} = ?")
+                values.append(value)
+            updates.append("updated_at = ?")
+            values.append(now)
+            values.append(hidify_uuid)
+
+            query = f"UPDATE subscriptions SET {', '.join(updates)} WHERE hidify_uuid = ?"
+            cursor.execute(query, values)
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error updating subscription by uuid {hidify_uuid}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
     # ═══════════════════════════════════════════════════════════════
     # مدیریت تراکنش‌ها
     # ═══════════════════════════════════════════════════════════════

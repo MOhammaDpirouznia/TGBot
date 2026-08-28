@@ -18,14 +18,19 @@ logger = logging.getLogger(__name__)
 class NotificationScheduler:
     """برنامه‌ریز اعلان‌های خودکار"""
     
-    def __init__(self, bot=None):
+    def __init__(self, bot=None, hidify=None):
         self.bot = bot
+        self.hidify = hidify
         self.running = False
         self.task = None
     
     def set_bot(self, bot):
         """تنظیم ربات"""
         self.bot = bot
+
+    def set_hidify(self, hidify):
+        """تنظیم کلاینت هیدیفای برای استعلام مصرف زنده"""
+        self.hidify = hidify
     
     async def start(self):
         """شروع برنامه‌ریز"""
@@ -60,12 +65,22 @@ class NotificationScheduler:
                 await asyncio.sleep(300)
     
     async def _check_all_notifications(self):
-        """بررسی تمام اعلان‌ها"""
+        """بررسی تمام اعلان‌ها با همگام‌سازی مصرف زنده هیدیفای"""
         if not self.bot:
             return
         
         try:
-            # دریافت تمام کاربران فعال
+            # ۱. دریافت آخرین اطلاعات مصرف و وضعیت زنده از سرور هیدیفای
+            if self.hidify:
+                try:
+                    h_users = await self.hidify.get_users()
+                    if h_users and isinstance(h_users, list):
+                        db.sync_from_hidify(h_users)
+                        logger.info(f"Live Hiddify usage synced before notification check ({len(h_users)} users)")
+                except Exception as e:
+                    logger.warning(f"Could not live sync Hiddify users for notifications: {e}")
+
+            # ۲. دریافت تمام کاربران فعال
             users = db.get_all_users()
             
             for user in users:
@@ -90,35 +105,57 @@ class NotificationScheduler:
             logger.error(f"Error checking notifications: {e}")
     
     async def _check_expiration(self, telegram_id, subscription):
-        """بررسی منقضی شدن اشتراک"""
+        """بررسی منقضی شدن اشتراک بر اساس تاریخ دقیق انقضا"""
         try:
-            expire_date = subscription.get("expire_date")
-            if not expire_date:
-                return
+            start_date_str = subscription.get("start_date")
+            duration = subscription.get("duration", 30)
+            expire_date_str = subscription.get("expire_date")
             
-            expire_dt = datetime.fromisoformat(expire_date)
+            expire_dt = None
+            if expire_date_str:
+                try:
+                    expire_dt = datetime.fromisoformat(expire_date_str)
+                except Exception:
+                    try:
+                        expire_dt = datetime.strptime(str(expire_date_str)[:10], "%Y-%m-%d")
+                    except Exception:
+                        pass
+
+            if not expire_dt and start_date_str:
+                try:
+                    start_dt = datetime.fromisoformat(start_date_str)
+                except Exception:
+                    try:
+                        start_dt = datetime.strptime(str(start_date_str)[:10], "%Y-%m-%d")
+                    except Exception:
+                        start_dt = get_now_naive()
+                expire_dt = start_dt + timedelta(days=duration)
+
+            if not expire_dt:
+                return
+
             now = get_now_naive()
-            days_left = (expire_dt - now).days
+            days_left = (expire_dt.date() - now.date()).days
             
             # اعلان ۳ روز قبل
-            if days_left <= 3 and days_left > 0:
+            if 0 < days_left <= 3:
                 sub_id = subscription.get("id")
-                notif_type = f"expiring_{sub_id}"
+                notif_type = f"expiring_{sub_id}_{days_left}d"
                 
                 if not db.was_notification_sent(telegram_id, notif_type, sub_id):
                     plan_name = subscription.get("plan_name", "نامشخص")
-                    expire_shamsi = gregorian_to_shamsi_full(expire_date)
+                    expire_shamsi = gregorian_to_shamsi_full(expire_dt.isoformat())
                     
                     text = f"""
 ⚠️ <b>اشتراک شما در حال منقضی شدن است!</b>
 
-📋 پلن: {plan_name}
-📅 تاریخ انقضا: {expire_shamsi}
-⏰ زمان باقیمانده: {days_left} روز
+📋 پلن: <b>{plan_name}</b>
+📅 تاریخ انقضا: <b>{expire_shamsi}</b>
+⏰ زمان باقیمانده: <b>{days_left} روز</b>
 
-💡 برای جلوگیری از قطع سرویس، اشتراک خود را تمدید کنید.
+💡 برای جلوگیری از قطع اتصال اینترنت، اشتراک خود را تمدید فرمایید.
 
-🔄 برای تمدید، روی دکمه «🔄 تمدید اشتراک» کلیک کنید.
+🔄 برای تمدید، روی دکمه «🔄 تمدید اشتراک» در منوی ربات کلیک کنید.
 """
                     try:
                         await self.bot.send_message(
@@ -127,7 +164,7 @@ class NotificationScheduler:
                             parse_mode="HTML"
                         )
                         db.save_notification(telegram_id, notif_type, sub_id)
-                        logger.info(f"Expiration notification sent to {telegram_id}")
+                        logger.info(f"Expiration notification ({days_left}d) sent to {telegram_id}")
                     except Exception as e:
                         logger.error(f"Error sending expiration notification: {e}")
             

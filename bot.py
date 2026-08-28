@@ -329,9 +329,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [KeyboardButton("🛒 خرید اشتراک"), KeyboardButton("🧪 اشتراک تست")],
         [KeyboardButton("🔄 تمدید اشتراک"), KeyboardButton("📊 وضعیت اشتراک")],
-        [KeyboardButton("🔗 لینک اتصال"), KeyboardButton("💰 کیف پول")],
+        [KeyboardButton("🔗 لینک اتصال"), KeyboardButton("🧾 پرداخت‌های من")],
         [KeyboardButton("👥 زیرمجموعه‌گیری"), KeyboardButton("💬 پشتیبانی")],
-        [KeyboardButton("❓ راهنمای ربات"), KeyboardButton("📚 آموزش‌ها (بزودی)")],
     ]
     
     # اضافه کردن دکمه ادمین
@@ -343,19 +342,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = f"""
 سلام {user.first_name}! 👋
 
-به ربات مدیریت و خرید VPN خوش آمدید!
+به ربات هوشمند مدیریت و خرید VPN خوش آمدید!
 
 از منوی زیر می‌توانید:
 • 🛒 خرید اشتراک جدید
 • 🧪 اشتراک تست (رایگان)
 • 🔄 تمدید اشتراک
-• 📊 مشاهده وضعیت اشتراک
-• 🔗 دریافت لینک اتصال
-• 💰 مشاهده کیف پول
+• 📊 مشاهده وضعیت و حجم لحظه‌ای اشتراک
+• 🔗 دریافت لینک اتصال و بارکد QR
+• 🧾 مشاهده سوابق و وضعیت پرداخت‌ها
 • 👥 زیرمجموعه‌گیری و کسب درآمد
 • 💬 پشتیبانی و ارسال تیکت
-• ❓ راهنمای ربات
-• 📚 آموزش‌ها (بزودی)
 """
     
     if user.id == ADMIN_ID:
@@ -406,9 +403,8 @@ async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [KeyboardButton("🛒 خرید اشتراک"), KeyboardButton("🧪 اشتراک تست")],
         [KeyboardButton("🔄 تمدید اشتراک"), KeyboardButton("📊 وضعیت اشتراک")],
-        [KeyboardButton("🔗 لینک اتصال"), KeyboardButton("💰 کیف پول")],
+        [KeyboardButton("🔗 لینک اتصال"), KeyboardButton("🧾 پرداخت‌های من")],
         [KeyboardButton("👥 زیرمجموعه‌گیری"), KeyboardButton("💬 پشتیبانی")],
-        [KeyboardButton("❓ راهنمای ربات"), KeyboardButton("📚 آموزش‌ها (بزودی)")],
     ]
     if user.id == ADMIN_ID:
         keyboard.append([KeyboardButton("🔧 پنل مدیریت")])
@@ -1254,7 +1250,7 @@ async def confirm_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def show_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش وضعیت تمام اشتراک‌ها"""
+    """نمایش وضعیت تمام اشتراک‌ها با استعلام مصرف و روزهای مانده زنده از سرور هیدیفای"""
     user = update.effective_user
     try:
         subscriptions = db.get_user_subscriptions(user.id)
@@ -1270,65 +1266,176 @@ async def show_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return CHOOSING
 
-    text = "📊 وضعیت اشتراک‌های شما:\n\n"
+    status_msg = await update.message.reply_text("⏳ در حال استعلام لحظه‌ای حجم و روزهای مانده از سرور...")
+
+    text = "📊 **وضعیت لحظه‌ای اشتراک‌های شما:**\n\n"
 
     for i, sub in enumerate(subscriptions, 1):
-        status = sub.get("status", "unknown")
+        uuid = sub.get("hidify_uuid")
+        plan_name = sub.get("plan_name", "نامشخص")
+        data_limit = float(sub.get("data_limit") or 0)
+        data_used = float(sub.get("data_used") or 0)
+        start_date = sub.get("start_date")
+        duration = int(sub.get("duration") or 30)
+        expire_date = sub.get("expire_date")
+        status = sub.get("status", "active")
+        account_name = sub.get("account_name") or f"tg_{user.id}"
+
+        # استعلام مستقیم و زنده از سرور هیدیفای
+        if uuid:
+            try:
+                h_user = await hidify.get_user(uuid)
+                if isinstance(h_user, dict) and "error" not in h_user:
+                    data_used = round(float(h_user.get("current_usage_GB") or 0), 2)
+                    h_limit = float(h_user.get("usage_limit_GB") or 0)
+                    if h_limit > 0:
+                        data_limit = round(h_limit, 2)
+                    h_days = h_user.get("package_days")
+                    if h_days:
+                        duration = int(h_days)
+                    if h_user.get("start_date"):
+                        start_date = h_user.get("start_date")
+                    is_active = h_user.get("is_active", True)
+                    enable = h_user.get("enable", True)
+                    status = "active" if (is_active and enable) else "expired"
+
+                    # بروزرسانی در دیتابیس محلی
+                    db.update_subscription_by_uuid(
+                        uuid,
+                        data_used=data_used,
+                        data_limit=data_limit,
+                        status=status,
+                        start_date=start_date,
+                        duration=duration
+                    )
+            except Exception as e:
+                logger.warning(f"Error fetching live user {uuid} from Hiddify: {e}")
+
+        # وضعیت اشتراک
         if status == "active":
             status_icon = "🟢 فعال"
         elif status == "expired":
             status_icon = "🔴 منقضی"
         else:
-            status_icon = "⚪ لغو شده"
+            status_icon = "⚪ غیرفعال"
 
-        plan_name = sub.get("plan_name", "نامشخص")
-        data_limit = sub.get("data_limit", 0)
-        data_used = sub.get("data_used", 0)
-        start_date = sub.get("start_date", "نامشخص")
-        expire_date = sub.get("expire_date", "نامشخص")
+        # محاسبه حجم با نوار پیشرفت
+        if data_limit > 0:
+            remaining_gb = max(0.0, round(data_limit - data_used, 2))
+            usage_percent = min((data_used / data_limit) * 100, 100.0)
 
-        # نمایش حجم با نوار پیشرفت
-        if data_limit and data_limit > 0:
-            remaining = round(data_limit - data_used, 2)
-            usage_percent = min((data_used / data_limit) * 100, 100)
-            
-            # نوار پیشرفت
             bar_length = 10
-            filled = int(usage_percent / 10)
+            filled = min(10, int(usage_percent / 10))
             bar = "█" * filled + "░" * (bar_length - filled)
-            
-            # رنگ بر اساس درصد مصرف
+
             if usage_percent >= 90:
                 status_emoji = "🔴"
             elif usage_percent >= 70:
                 status_emoji = "🟡"
             else:
                 status_emoji = "🟢"
-            
-            data_text = f"📊 حجم: {data_used} از {data_limit} گیگ\n"
-            data_text += f"   {status_emoji} {bar} {usage_percent:.1f}%\n"
-            data_text += f"   💾 باقیمانده: {remaining} گیگ"
+
+            data_text = (
+                f"📊 مصرف: **{data_used}** از **{data_limit}** گیگ\n"
+                f"   {status_emoji} `{bar}` {usage_percent:.1f}%\n"
+                f"   💾 باقیمانده: **{remaining_gb}** گیگابایت"
+            )
         else:
-            data_text = f"📊 حجم: {data_used} گیگ (نامحدود)"
+            data_text = f"📊 مصرف: **{data_used}** گیگابایت (حجم نامحدود)"
 
-        # نمایش تاریخ شروع و انقضا (شمسی)
+        # محاسبه تاریخ شروع و روزهای باقیمانده
         start_fmt = gregorian_to_shamsi(start_date) if start_date else "نامشخص"
-        expire_fmt = gregorian_to_shamsi(expire_date) if expire_date else "نامشخص"
         
-        # نمایش روزهای باقی‌مانده
-        remaining_days = days_remaining_shamsi(expire_date)
-        remaining_text = f" (باقیمانده: {remaining_days} روز)" if remaining_days is not None else ""
+        # محاسبه دقیق روزهای مانده
+        remaining_days = None
+        if start_date and duration:
+            try:
+                st = datetime.fromisoformat(start_date) if "T" in str(start_date) else datetime.strptime(str(start_date)[:10], "%Y-%m-%d")
+                exp = st + timedelta(days=duration)
+                expire_fmt = gregorian_to_shamsi(exp.isoformat())
+                remaining_days = max(0, (exp.date() - get_now_naive().date()).days)
+            except Exception:
+                expire_fmt = gregorian_to_shamsi(expire_date) if expire_date else "نامشخص"
+                remaining_days = days_remaining_shamsi(expire_date)
+        else:
+            expire_fmt = gregorian_to_shamsi(expire_date) if expire_date else "نامشخص"
+            remaining_days = days_remaining_shamsi(expire_date)
 
-        account_name = sub.get("account_name") or f"tg_{user.id}"
-        text += f"{i}. {plan_name} - {status_icon}\n"
-        text += f"   📝 نام اکانت: {account_name}\n"
-        text += f"   {data_text}\n"
-        text += f"   📅 شروع: {start_fmt} | انقضا: {expire_fmt}{remaining_text}\n\n"
+        remaining_text = f" (⏰ **{remaining_days} روز مانده**)" if remaining_days is not None else ""
+
+        text += (
+            f"**{i}. {plan_name}** - {status_icon}\n"
+            f"   📝 نام اکانت: `{account_name}`\n"
+            f"   {data_text}\n"
+            f"   📅 شروع: {start_fmt} | انقضا: {expire_fmt}{remaining_text}\n\n"
+        )
 
     try:
-        await update.message.reply_text(text)
+        await status_msg.edit_text(text, parse_mode="Markdown")
     except Exception as e:
         logger.error(f"Error sending status: {e}")
+        try:
+            await update.message.reply_text(text, parse_mode="Markdown")
+        except:
+            pass
+    return CHOOSING
+
+
+async def show_payments_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمایش سوابق و گزارش پرداخت‌های مشتری"""
+    user = update.effective_user
+    try:
+        transactions = db.get_user_transactions(user.id)
+    except Exception as e:
+        logger.error(f"Error getting user transactions: {e}")
+        await update.message.reply_text("❌ خطا در دریافت سوابق پرداخت.")
+        return CHOOSING
+
+    if not transactions:
+        text = (
+            "🧾 **سوابق و گزارش پرداخت‌ها:**\n\n"
+            "شما تاکنون هیچ پرداخت یا تراکنشی در ربات ثبت نکرده‌اید.\n\n"
+            "💡 برای خرید اشتراک جدید، از دکمه «🛒 خرید اشتراک» استفاده فرمایید."
+        )
+        await update.message.reply_text(text, parse_mode="Markdown")
+        return CHOOSING
+
+    text = f"🧾 **سوابق و گزارش پرداخت‌های شما ({len(transactions)} تراکنش):**\n\n"
+
+    for i, tx in enumerate(transactions[:10], 1):
+        status = tx.get("status", "pending")
+        if status == "approved":
+            status_badge = "🟢 تایید شده"
+        elif status == "pending":
+            status_badge = "🟡 در انتظار بررسی"
+        elif status == "rejected":
+            status_badge = "🔴 رد شده"
+        else:
+            status_badge = f"⚪ {status}"
+
+        plan_name = tx.get("plan_name") or "خرید اشتراک"
+        amount = tx.get("amount", 0)
+        try:
+            amount_fmt = f"{int(amount):,}"
+        except Exception:
+            amount_fmt = str(amount)
+
+        created_at = tx.get("created_at", "")
+        shamsi_date = gregorian_to_shamsi(created_at) if created_at else "نامشخص"
+        tracking_code = tx.get("tracking_code") or tx.get("order_id") or "---"
+        gateway = tx.get("gateway", "card_to_card")
+        gw_text = "کارت به کارت" if gateway == "card_to_card" else ("درگاه پرداخت" if gateway == "gateway" else gateway)
+
+        text += f"**{i}. {plan_name}** | {status_badge}\n"
+        text += f"   💰 مبلغ: `{amount_fmt}` تومان\n"
+        text += f"   💳 روش: {gw_text}\n"
+        text += f"   🔢 کد پیگیری: `{tracking_code}`\n"
+        text += f"   📅 تاریخ: {shamsi_date}\n\n"
+
+    if len(transactions) > 10:
+        text += "💡 *۱۰ تراکنش اخیر نمایش داده شده است.*"
+
+    await update.message.reply_text(text, parse_mode="Markdown")
     return CHOOSING
 
 
@@ -3806,15 +3913,13 @@ def main():
     # هندلرهای دکمه‌های منوی اصلی (Keyboard)
     main_menu_handlers = [
         MessageHandler(filters.Regex("^🛒 خرید اشتراک$"), show_plans),
+        MessageHandler(filters.Regex("^🧪 اشتراک تست$"), handle_test_subscription),
         MessageHandler(filters.Regex("^🔄 تمدید اشتراک$"), renew_subscription),
         MessageHandler(filters.Regex("^📊 وضعیت اشتراک$"), show_status),
         MessageHandler(filters.Regex("^🔗 لینک اتصال$"), get_link),
-        MessageHandler(filters.Regex("^💰 کیف پول$"), show_wallet),
+        MessageHandler(filters.Regex("^(🧾 پرداخت‌های من|پرداخت‌ها|سوابق خرید)$"), show_payments_history),
         MessageHandler(filters.Regex("^👥 زیرمجموعه‌گیری$"), referral_menu),
         MessageHandler(filters.Regex("^💬 پشتیبانی$"), support_menu),
-        MessageHandler(filters.Regex("^🧪 اشتراک تست$"), handle_test_subscription),
-        MessageHandler(filters.Regex("^❓ راهنمای ربات$"), help_command),
-        MessageHandler(filters.Regex(r"^📚 آموزش\u200cها \(بزودی\)$"), help_command),
         MessageHandler(filters.Regex("^🔧 پنل مدیریت$"), admin_panel),
     ]
 
@@ -3826,7 +3931,7 @@ def main():
             CommandHandler("renew", renew_subscription),
             CommandHandler("status", show_status),
             CommandHandler("link", get_link),
-            CommandHandler("wallet", show_wallet),
+            CommandHandler("payments", show_payments_history),
             CallbackQueryHandler(ticket_new_prompt, pattern="^ticket_new$"),
             CallbackQueryHandler(ticket_list, pattern="^ticket_list$"),
             CallbackQueryHandler(handle_renew, pattern="^renew_"),
@@ -3959,6 +4064,7 @@ def main():
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("status", show_status))
     application.add_handler(CommandHandler("link", get_link))
+    application.add_handler(CommandHandler("payments", show_payments_history))
     application.add_handler(CommandHandler("admin_stats", admin_stats))
     application.add_handler(CommandHandler("admin_test", admin_test))
     application.add_handler(CommandHandler("admin_panel", admin_panel))
@@ -4002,9 +4108,8 @@ def main():
             keyboard = [
                 [KeyboardButton("🛒 خرید اشتراک"), KeyboardButton("🧪 اشتراک تست")],
                 [KeyboardButton("🔄 تمدید اشتراک"), KeyboardButton("📊 وضعیت اشتراک")],
-                [KeyboardButton("🔗 لینک اتصال"), KeyboardButton("💰 کیف پول")],
+                [KeyboardButton("🔗 لینک اتصال"), KeyboardButton("🧾 پرداخت‌های من")],
                 [KeyboardButton("👥 زیرمجموعه‌گیری"), KeyboardButton("💬 پشتیبانی")],
-                [KeyboardButton("❓ راهنمای ربات"), KeyboardButton("📚 آموزش\u200cها (بزودی)")],
             ]
             if user.id == ADMIN_ID:
                 keyboard.append([KeyboardButton("🔧 پنل مدیریت")])
@@ -4037,7 +4142,7 @@ def main():
     backup_scheduler = AutoBackupScheduler(admin_id=ADMIN_ID)
     
     # ─── راه‌اندازی سیستم اعلان‌ها ───
-    notif_scheduler = NotificationScheduler()
+    notif_scheduler = NotificationScheduler(hidify=hidify)
     
     async def post_init(application):
         """تنظیمات بعد از شروع application"""
