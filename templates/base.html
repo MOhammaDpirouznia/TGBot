@@ -307,6 +307,9 @@
                 <a class="nav-link {% if request.endpoint == 'subscriptions' %}active{% endif %}" href="{{ url_for('subscriptions') }}">
                     <i class="fas fa-key"></i> اشتراک‌های هیدیفای
                 </a>
+                <a class="nav-link {% if request.endpoint == 'admin_plans_page' %}active{% endif %}" href="{{ url_for('admin_plans_page') }}">
+                    <i class="fas fa-box-open"></i> پلن‌های فروش
+                </a>
 
                 <div class="nav-category">همکاران و بازاریابی</div>
                 <a class="nav-link {% if request.endpoint == 'admin_resellers' %}active{% endif %}" href="{{ url_for('admin_resellers') }}">

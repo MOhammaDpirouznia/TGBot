@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h4 class="mb-1 fw-bold"><i class="bi bi-box-seam me-2 text-primary"></i>مدیریت و ویرایش پلن‌ها</h4>
+        <p class="text-muted mb-0">تعریف، ویرایش قیمت، حجم، زمان و فعال/غیرفعال‌سازی پلن‌های فروش</p>
+    </div>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addPlanModal">
+        <i class="bi bi-plus-lg me-1"></i> افزودن پلن جدید
+    </button>
+</div>
+
+<!-- جدول پلن‌ها -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">شناسه پلن</th>
+                        <th>نام پلن</th>
+                        <th>قیمت (تومان)</th>
+                        <th>حجم (GB)</th>
+                        <th>مدت (روز)</th>
+                        <th>وضعیت</th>
+                        <th class="text-end pe-3">عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pid, p in plans.items() %}
+                    <tr>
+                        <td class="ps-3"><code class="text-primary">{{ pid }}</code></td>
+                        <td class="fw-bold">{{ p.name }}</td>
+                        <td><span class="badge bg-success-subtle text-success fs-6">{{ "{:,}".format(p.price) }} تومان</span></td>
+                        <td>
+                            {% if p.data_limit and p.data_limit > 0 %}
+                                <span class="badge bg-info-subtle text-info fs-6">{{ p.data_limit }} گیگابایت</span>
+                            {% else %}
+                                <span class="badge bg-secondary-subtle text-secondary fs-6">نامحدود</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ p.duration }} روز</td>
+                        <td>
+                            {% if p.is_active %}
+                                <span class="badge bg-success">فعال</span>
+                            {% else %}
+                                <span class="badge bg-danger">غیرفعال</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end pe-3">
+                            <button class="btn btn-sm btn-outline-primary me-1" data-bs-toggle="modal" data-bs-target="#editModal{{ pid }}">
+                                <i class="bi bi-pencil me-1"></i> ویرایش
+                            </button>
+                            <a href="{{ url_for('admin_plan_toggle', plan_id=pid) }}" class="btn btn-sm btn-outline-secondary me-1" title="تغییر وضعیت">
+                                <i class="bi bi-power"></i>
+                            </a>
+                            <a href="{{ url_for('admin_plan_delete', plan_id=pid) }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('آیا از حذف این پلن مطمئن هستید؟');" title="حذف پلن">
+                                <i class="bi bi-trash"></i>
+                            </a>
+                        </td>
+                    </tr>
+
+                    <!-- مودال ویرایش پلن -->
+                    <div class="modal fade" id="editModal{{ pid }}" tabindex="-1" aria-hidden="true">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title fw-bold">ویرایش پلن: {{ p.name }}</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <form method="POST" action="{{ url_for('admin_plan_edit', plan_id=pid) }}">
+                                    <div class="modal-body">
+                                        <div class="mb-3">
+                                            <label class="form-label fw-semibold">نام پلن</label>
+                                            <input type="text" name="name" class="form-control" value="{{ p.name }}" required>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label fw-semibold">قیمت (تومان)</label>
+                                            <input type="number" name="price" class="form-control" value="{{ p.price }}" required min="0">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label fw-semibold">حجم به گیگابایت (0 = نامحدود)</label>
+                                            <input type="number" name="data_limit" class="form-control" value="{{ p.data_limit or 0 }}" required min="0">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label fw-semibold">مدت زمان (روز)</label>
+                                            <input type="number" name="duration" class="form-control" value="{{ p.duration or 30 }}" required min="1">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label fw-semibold">وضعیت فروش</label>
+                                            <select name="is_active" class="form-select">
+                                                <option value="1" {% if p.is_active %}selected{% endif %}>🟢 فعال</option>
+                                                <option value="0" {% if not p.is_active %}selected{% endif %}>🔴 غیرفعال</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                                        <button type="submit" class="btn btn-primary">ذخیره تغییرات</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center py-4 text-muted">هیچ پلنی یافت نشد. برای شروع، روی «افزودن پلن جدید» کلیک کنید.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- مودال افزودن پلن -->
+<div class="modal fade" id="addPlanModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">افزودن پلن فروش جدید</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('admin_plans_page') }}">
+                <input type="hidden" name="action" value="add">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">نام پلن</label>
+                        <input type="text" name="name" class="form-control" placeholder="مثال: ۱ ماهه ۵۰ گیگ VIP" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">قیمت (تومان)</label>
+                        <input type="number" name="price" class="form-control" placeholder="مثال: 150000" required min="0">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">حجم به گیگابایت (0 = نامحدود)</label>
+                        <input type="number" name="data_limit" class="form-control" placeholder="مثال: 50" required min="0">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">مدت زمان (روز)</label>
+                        <input type="number" name="duration" class="form-control" placeholder="مثال: 30" value="30" required min="1">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary">ثبت و ایجاد پلن</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
