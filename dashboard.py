@@ -26,7 +26,7 @@ load_dotenv()
 
 from database import db
 from utils import generate_qr_code_bytes, get_now_iso, get_now_naive, get_single_link_template, format_single_link
-from admin_manager import get_all_plans, add_plan, update_plan, delete_plan
+from admin_manager import get_all_plans, add_plan, update_plan, delete_plan, move_plan_up, move_plan_down
 
 logger = logging.getLogger(__name__)
 
@@ -460,11 +460,27 @@ def captcha_image():
     return resp
 
 
+@app.context_processor
+def inject_permissions():
+    """تزریق دسترسی‌ها به قالب‌های Jinja"""
+    def has_permission(perm):
+        if not session.get("logged_in") or session.get("role") != "admin":
+            return False
+        admin_role = session.get("admin_role", "super_admin")
+        if admin_role == "super_admin":
+            return True
+        perms = session.get("permissions", "")
+        if perms == "*" or perm in perms.split(","):
+            return True
+        return False
+    return dict(has_permission=has_permission)
+
+
 # ─── مسیرهای احراز هویت (Authentication) ───
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    """صفحه ورود با پشتیبانی از دو نقش Admin و Reseller به همراه کد امنیتی کپچا"""
+    """صفحه ورود با پشتیبانی از چند مدیر، نقش‌های دسترسی (RBAC) و نمایندگان فروش به همراه کپچا"""
     if session.get("logged_in"):
         if session.get("role") == "reseller":
             return redirect(url_for("reseller_dashboard"))
@@ -483,12 +499,30 @@ def login():
         # مصرف کد کپچا
         session.pop("captcha_code", None)
 
-        # ۱. بررسی ادمین اصلی
-        if username == get_admin_username() and password == get_admin_password():
+        # ۱. بررسی جدول مدیران سیستم (RBAC)
+        admin_user = db.authenticate_admin(username, password)
+        if admin_user:
             session["logged_in"] = True
             session["role"] = "admin"
+            session["admin_id"] = admin_user["id"]
+            session["username"] = admin_user["username"]
+            session["name"] = admin_user.get("display_name") or "مدیر"
+            session["admin_role"] = admin_user.get("role", "super_admin")
+            session["permissions"] = admin_user.get("permissions", "*")
+            flash(f"خوش آمدید {session['name']}! ورود به پنل مدیریت با موفقیت انجام شد.", "success")
+            return redirect(url_for("dashboard"))
+
+        # بررسی حساب پیش‌فرض محیطی (Fallback / Initial Setup)
+        if username == get_admin_username() and password == get_admin_password():
+            res_admin = db.create_admin_user(username, password, "مدیر ارشد", role="super_admin", permissions="*")
+            admin_id = res_admin.get("admin_id") if res_admin.get("success") else 1
+            session["logged_in"] = True
+            session["role"] = "admin"
+            session["admin_id"] = admin_id
             session["username"] = username
-            session["name"] = "مدیر کل"
+            session["name"] = "مدیر ارشد"
+            session["admin_role"] = "super_admin"
+            session["permissions"] = "*"
             flash("خوش آمدید! ورود به عنوان مدیر کل انجام شد.", "success")
             return redirect(url_for("dashboard"))
 
@@ -1367,6 +1401,30 @@ def admin_plan_delete(plan_id):
     return redirect(url_for("admin_plans_page"))
 
 
+@app.route("/plans/move-up/<plan_id>")
+@admin_required
+def admin_plan_move_up(plan_id):
+    """انتقال پلن به بالا در ترتیب عمودی"""
+    res = move_plan_up(plan_id)
+    if res.get("success"):
+        flash("ترتیب پلن با موفقیت به سمت بالا تغییر یافت.", "success")
+    else:
+        flash(f"خطا: {res.get('error', 'امکان جابجایی وجود ندارد')}", "warning")
+    return redirect(url_for("admin_plans_page"))
+
+
+@app.route("/plans/move-down/<plan_id>")
+@admin_required
+def admin_plan_move_down(plan_id):
+    """انتقال پلن به پایین در ترتیب عمودی"""
+    res = move_plan_down(plan_id)
+    if res.get("success"):
+        flash("ترتیب پلن با موفقیت به سمت پایین تغییر یافت.", "success")
+    else:
+        flash(f"خطا: {res.get('error', 'امکان جابجایی وجود ندارد')}", "warning")
+    return redirect(url_for("admin_plans_page"))
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # مدیریت کدهای تخفیف
 # ═══════════════════════════════════════════════════════════════════════
@@ -1746,6 +1804,212 @@ def reseller_export_transactions():
         mimetype="text/csv; charset=utf-8",
         headers={"Content-Disposition": "attachment;filename=reseller_transactions_export.csv"}
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# مدیریت مدیران و سطوح دسترسی (Admin Management & RBAC)
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/admin/managers", methods=["GET", "POST"])
+@admin_required
+def admin_managers():
+    """لیست و افزودن مدیران با سطوح دسترسی مختلف"""
+    if request.method == "POST":
+        display_name = request.form.get("display_name", "").strip()
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "").strip()
+        role = request.form.get("role", "support").strip()
+
+        # نقشه‌برداری دسترسی‌ها بر اساس نقش
+        perms_map = {
+            "super_admin": "*",
+            "finance": "dashboard,payments,accounting,cards,reports",
+            "support": "dashboard,users,subs,tickets,broadcast",
+            "viewer": "dashboard,users,subs,reports,logs",
+        }
+        permissions = perms_map.get(role, "*")
+
+        if username and password and display_name:
+            res = db.create_admin_user(username, password, display_name, role=role, permissions=permissions)
+            if res.get("success"):
+                flash(f"مدیر جدید «{display_name}» با موفقیت افزوده شد.", "success")
+            else:
+                flash(f"خطا در ایجاد مدیر: {res.get('error')}", "danger")
+        else:
+            flash("لطفاً تمامی فیلدهای الزامی را تکمیل نمایید.", "warning")
+        return redirect(url_for("admin_managers"))
+
+    managers_list = db.get_admin_users()
+    return render_template("managers.html", managers=managers_list)
+
+
+@app.route("/admin/manager/<int:admin_id>/edit", methods=["POST"])
+@admin_required
+def admin_manager_edit(admin_id):
+    """ویرایش اطلاعات و دسترسی‌های مدیر"""
+    display_name = request.form.get("display_name", "").strip()
+    username = request.form.get("username", "").strip()
+    password = request.form.get("password", "").strip()
+    role = request.form.get("role", "support").strip()
+
+    perms_map = {
+        "super_admin": "*",
+        "finance": "dashboard,payments,accounting,cards,reports",
+        "support": "dashboard,users,subs,tickets,broadcast",
+        "viewer": "dashboard,users,subs,reports,logs",
+    }
+    permissions = perms_map.get(role, "*")
+
+    update_kwargs = {
+        "display_name": display_name,
+        "username": username,
+        "role": role,
+        "permissions": permissions,
+    }
+    if password and len(password) > 0:
+        update_kwargs["password"] = password
+
+    res = db.update_admin_user(admin_id, **update_kwargs)
+    if res.get("success"):
+        flash("مشخصات مدیر با موفقیت بروزرسانی شد.", "success")
+    else:
+        flash(f"خطا در ویرایش مدیر: {res.get('error')}", "danger")
+    return redirect(url_for("admin_managers"))
+
+
+@app.route("/admin/manager/<int:admin_id>/toggle")
+@admin_required
+def admin_manager_toggle(admin_id):
+    """تغییر وضعیت فعال/غیرفعال مدیر"""
+    if admin_id == session.get("admin_id"):
+        flash("شما نمی‌توانید حساب کاربری خودتان را غیرفعال کنید!", "warning")
+        return redirect(url_for("admin_managers"))
+
+    res = db.toggle_admin_user(admin_id)
+    if res.get("success"):
+        flash("وضعیت مدیر با موفقیت تغییر یافت.", "info")
+    else:
+        flash(f"خطا: {res.get('error')}", "danger")
+    return redirect(url_for("admin_managers"))
+
+
+@app.route("/admin/manager/<int:admin_id>/delete")
+@admin_required
+def admin_manager_delete(admin_id):
+    """حذف مدیر"""
+    if admin_id == session.get("admin_id"):
+        flash("شما نمی‌توانید حساب کاربری خودتان را حذف کنید!", "danger")
+        return redirect(url_for("admin_managers"))
+
+    res = db.delete_admin_user(admin_id)
+    if res.get("success"):
+        flash("حساب مدیر با موفقیت حذف شد.", "warning")
+    else:
+        flash(f"خطا در حذف مدیر: {res.get('error')}", "danger")
+    return redirect(url_for("admin_managers"))
+
+
+@app.route("/admin/profile", methods=["GET", "POST"])
+@admin_required
+def admin_profile():
+    """مشاهده و ویرایش مشخصات، نام کاربری و رمز عبور مدیر فعال"""
+    admin_id = session.get("admin_id")
+    admin_user = db.get_admin_user(admin_id) if admin_id else None
+    if not admin_user:
+        admins = db.get_admin_users()
+        admin_user = admins[0] if admins else {
+            "id": 1,
+            "username": session.get("username", "admin"),
+            "display_name": session.get("name", "مدیر سیستم"),
+            "role": session.get("admin_role", "super_admin"),
+            "created_at": get_now_iso(),
+            "last_login": get_now_iso()
+        }
+
+    if request.method == "POST":
+        display_name = request.form.get("display_name", "").strip()
+        username = request.form.get("username", "").strip()
+        new_password = request.form.get("new_password", "").strip()
+        confirm_password = request.form.get("confirm_password", "").strip()
+
+        if new_password:
+            if new_password != confirm_password:
+                flash("رمز عبور جدید با تکرار آن مطابقت ندارد!", "danger")
+                return render_template("admin_profile.html", admin=admin_user)
+            if len(new_password) < 6:
+                flash("رمز عبور باید حداقل ۶ کاراکتر باشد.", "warning")
+                return render_template("admin_profile.html", admin=admin_user)
+
+        res = db.update_admin_profile(
+            admin_user["id"],
+            username=username,
+            password=new_password if new_password else None,
+            display_name=display_name
+        )
+        if res.get("success"):
+            session["username"] = username
+            session["name"] = display_name
+            flash("مشخصات حساب کاربری و رمز عبور شما با موفقیت بروزرسانی شد.", "success")
+            return redirect(url_for("admin_profile"))
+        else:
+            flash(f"خطا در ذخیره مشخصات: {res.get('error')}", "danger")
+
+    return render_template("admin_profile.html", admin=admin_user)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# پروفایل و مشخصات کاربری نماینده (Reseller Profile)
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/reseller/profile", methods=["GET", "POST"])
+@reseller_required
+def reseller_profile():
+    """مشاهده و ویرایش مشخصات فردی، بانکی و تغییر رمز عبور توسط نماینده"""
+    reseller_id = session.get("reseller_id")
+    reseller = db.get_reseller(reseller_id)
+    if not reseller:
+        flash("اطلاعات نماینده یافت نشد!", "danger")
+        return redirect(url_for("reseller_dashboard"))
+
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        username = request.form.get("username", "").strip()
+        phone = request.form.get("phone", "").strip()
+        email = request.form.get("email", "").strip()
+        telegram_id = request.form.get("telegram_id", "").strip()
+        bank_card = request.form.get("bank_card", "").strip()
+        notes = request.form.get("notes", "").strip()
+        new_password = request.form.get("new_password", "").strip()
+        confirm_password = request.form.get("confirm_password", "").strip()
+
+        if new_password:
+            if new_password != confirm_password:
+                flash("رمز عبور جدید با تکرار آن همخوانی ندارد!", "danger")
+                return render_template("reseller_profile.html", reseller=reseller)
+            if len(new_password) < 6:
+                flash("رمز عبور باید حداقل ۶ کاراکتر باشد.", "warning")
+                return render_template("reseller_profile.html", reseller=reseller)
+
+        res = db.update_reseller_profile(
+            reseller_id,
+            name=name,
+            username=username,
+            phone=phone,
+            email=email,
+            telegram_id=telegram_id,
+            bank_card=bank_card,
+            notes=notes,
+            password=new_password if new_password else None
+        )
+        if res.get("success"):
+            session["name"] = name
+            session["username"] = username
+            flash("مشخصات حساب کاربری و اطلاعات تماس شما با موفقیت بروزرسانی شد.", "success")
+            return redirect(url_for("reseller_profile"))
+        else:
+            flash(f"خطا در بروزرسانی حساب: {res.get('error')}", "danger")
+
+    return render_template("reseller_profile.html", reseller=reseller)
 
 
 # ─── راه‌اندازی سرور وب ───

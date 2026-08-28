@@ -380,3 +380,36 @@ def get_plan(plan_id: str) -> dict:
     """دریافت یک پلن"""
     plans = load_plans()
     return plans.get(plan_id, {})
+
+
+def move_plan_up(plan_id: str) -> dict:
+    """انتقال یک پلن به سمت بالا در لیست ترتیب"""
+    plans = load_plans()
+    keys = list(plans.keys())
+    if plan_id not in keys:
+        return {"success": False, "error": "پلن یافت نشد"}
+    idx = keys.index(plan_id)
+    if idx == 0:
+        return {"success": True, "message": "پلن در بالاترین جایگاه است"}
+    # جابجایی با پلن قبلی
+    keys[idx - 1], keys[idx] = keys[idx], keys[idx - 1]
+    reordered_plans = {k: plans[k] for k in keys}
+    save_plans(reordered_plans)
+    return {"success": True}
+
+
+def move_plan_down(plan_id: str) -> dict:
+    """انتقال یک پلن به سمت پایین در لیست ترتیب"""
+    plans = load_plans()
+    keys = list(plans.keys())
+    if plan_id not in keys:
+        return {"success": False, "error": "پلن یافت نشد"}
+    idx = keys.index(plan_id)
+    if idx >= len(keys) - 1:
+        return {"success": True, "message": "پلن در پایین‌ترین جایگاه است"}
+    # جابجایی با پلن بعدی
+    keys[idx], keys[idx + 1] = keys[idx + 1], keys[idx]
+    reordered_plans = {k: plans[k] for k in keys}
+    save_plans(reordered_plans)
+    return {"success": True}
+

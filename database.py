@@ -307,6 +307,21 @@ class Database:
             )
         """)
 
+        # جدول مدیران پنل و سطوح دسترسی (RBAC)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS admin_users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'super_admin',
+                permissions TEXT NOT NULL DEFAULT '*',
+                is_active BOOLEAN DEFAULT 1,
+                created_at TEXT NOT NULL,
+                last_login TEXT
+            )
+        """)
+
         # مایگریشن خودکار ستون‌های جدید
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN referred_by INTEGER")
@@ -353,6 +368,27 @@ class Database:
         except Exception:
             pass
 
+        # ستون‌های پروفایل و مشخصات فردی نمایندگان
+        try:
+            cursor.execute("ALTER TABLE resellers ADD COLUMN phone TEXT")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE resellers ADD COLUMN email TEXT")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE resellers ADD COLUMN bank_card TEXT")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE resellers ADD COLUMN notes TEXT")
+        except Exception:
+            pass
+
         conn.commit()
         conn.close()
         logger.info("Database initialized successfully")
@@ -377,7 +413,7 @@ class Database:
             "users", "subscriptions", "transactions", "resellers",
             "reseller_transactions", "bank_cards", "discount_codes",
             "settings", "support_tickets", "referrals", "subscription_history",
-            "accounting_records"
+            "accounting_records", "admin_users"
         ]
         
         for table in tables:
@@ -2692,6 +2728,170 @@ class Database:
                 "month_total_income": 0, "month_total_expense": 0, "month_net_profit": 0,
                 "expense_categories": [], "monthly_trend": []
             }
+        finally:
+            conn.close()
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # سیستم مدیریت مدیران و سطوح دسترسی (Admin Management & RBAC)
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def authenticate_admin(self, username: str, password: str):
+        """احراز هویت مدیران از جدول admin_users"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        password_hash = self.hash_password(password)
+        now = get_now_iso()
+        cursor.execute("SELECT * FROM admin_users WHERE username=? AND (password_hash=? OR password_hash=?) AND is_active=1",
+                       (username.strip(), password_hash, password.strip()))
+        row = cursor.fetchone()
+        if row:
+            admin_dict = dict(row)
+            cursor.execute("UPDATE admin_users SET last_login=? WHERE id=?", (now, admin_dict["id"]))
+            conn.commit()
+            conn.close()
+            return admin_dict
+        conn.close()
+        return None
+
+    def get_admin_users(self):
+        """لیست تمام مدیران سیستم"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM admin_users ORDER BY id ASC")
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+
+    def get_admin_user(self, admin_id: int):
+        """دریافت اطلاعات یک مدیر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM admin_users WHERE id=?", (admin_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def create_admin_user(self, username: str, password: str, display_name: str,
+                          role: str = "super_admin", permissions: str = "*", is_active: bool = True) -> dict:
+        """افزودن مدیر جدید با نقش و دسترسی‌های مشخص"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        password_hash = self.hash_password(password)
+        try:
+            cursor.execute("""
+                INSERT INTO admin_users (username, password_hash, display_name, role, permissions, is_active, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (username.strip(), password_hash, display_name.strip(), role, permissions, 1 if is_active else 0, now))
+            admin_id = cursor.lastrowid
+            conn.commit()
+            return {"success": True, "admin_id": admin_id}
+        except sqlite3.IntegrityError:
+            return {"success": False, "error": "این نام کاربری قبلاً برای مدیر دیگری ثبت شده است."}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def update_admin_user(self, admin_id: int, **kwargs) -> dict:
+        """ویرایش اطلاعات و دسترسی‌های یک مدیر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            fields = []
+            params = []
+            for key, val in kwargs.items():
+                if key == "password" and val:
+                    fields.append("password_hash=?")
+                    params.append(self.hash_password(val))
+                elif key in ["username", "display_name", "role", "permissions", "is_active"]:
+                    fields.append(f"{key}=?")
+                    params.append(val)
+
+            if not fields:
+                return {"success": True}
+
+            params.append(admin_id)
+            query = f"UPDATE admin_users SET {', '.join(fields)} WHERE id=?"
+            cursor.execute(query, params)
+            conn.commit()
+            return {"success": True}
+        except sqlite3.IntegrityError:
+            return {"success": False, "error": "این نام کاربری تکراری است."}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def toggle_admin_user(self, admin_id: int) -> dict:
+        """تغییر وضعیت فعال/غیرفعال مدیر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT is_active FROM admin_users WHERE id=?", (admin_id,))
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "error": "مدیر یافت نشد."}
+            new_status = 0 if row["is_active"] else 1
+            cursor.execute("UPDATE admin_users SET is_active=? WHERE id=?", (new_status, admin_id))
+            conn.commit()
+            return {"success": True, "is_active": new_status}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def delete_admin_user(self, admin_id: int) -> dict:
+        """حذف مدیر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM admin_users WHERE id=?", (admin_id,))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def update_admin_profile(self, admin_id: int, username: str, password: str = None, display_name: str = None) -> dict:
+        """تغییر مشخصات فردی، یوزرنیم و پسورد مدیر فعال"""
+        kwargs = {"username": username}
+        if display_name:
+            kwargs["display_name"] = display_name
+        if password and len(password.strip()) > 0:
+            kwargs["password"] = password.strip()
+        return self.update_admin_user(admin_id, **kwargs)
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # پروفایل و مشخصات کاربری نماینده (Reseller Profile)
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def update_reseller_profile(self, reseller_id: int, **kwargs) -> dict:
+        """ویرایش مشخصات فردی، اطلاعات تماس، حساب بانکی و تغییر رمز عبور توسط خود نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            fields = ["updated_at=?"]
+            params = [now]
+            for key, val in kwargs.items():
+                if key == "password" and val:
+                    fields.append("password_hash=?")
+                    params.append(self.hash_password(val))
+                elif key in ["username", "name", "phone", "email", "telegram_id", "bank_card", "notes"]:
+                    fields.append(f"{key}=?")
+                    params.append(val)
+
+            params.append(reseller_id)
+            query = f"UPDATE resellers SET {', '.join(fields)} WHERE id=?"
+            cursor.execute(query, params)
+            conn.commit()
+            return {"success": True}
+        except sqlite3.IntegrityError:
+            return {"success": False, "error": "این نام کاربری قبلاً ثبت شده است."}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
         finally:
             conn.close()
 
