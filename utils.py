@@ -170,29 +170,33 @@ DEFAULT_SINGLE_CONFIG_TEMPLATE = """{
 def get_single_link_template(db_instance=None) -> str:
     """دریافت قالب لینک تکی از دیتابیس یا متغیرهای محیطی"""
     import os
+    import json
+    tpl = None
     if db_instance is not None:
         try:
             tpl = db_instance.get_setting("single_link_template")
-            if tpl and isinstance(tpl, str) and tpl.strip():
-                return tpl.strip()
         except Exception:
             pass
-    else:
+    if tpl is None:
         try:
             from database import db
             tpl = db.get_setting("single_link_template")
-            if tpl and isinstance(tpl, str) and tpl.strip():
-                return tpl.strip()
         except Exception:
             pass
+
+    if tpl is not None:
+        if isinstance(tpl, dict):
+            return json.dumps(tpl, indent=2, ensure_ascii=False)
+        if isinstance(tpl, str) and tpl.strip():
+            return tpl.strip()
 
     return os.getenv("SINGLE_LINK_TEMPLATE", DEFAULT_SINGLE_CONFIG_TEMPLATE)
 
 
-def format_single_link(template: str, uuid: str, name: str) -> str:
+def format_single_link(template, uuid: str, name: str) -> str:
     """
     جایگذاری خودکار UUID و نام مشتری در قالب لینک تکی و تولید خروجی VMess یا URI
-    - در صورت ورودی JSON (یا vmess://): مشخصات مشتری در فیلدهای id و ps قرار گرفته و خروجی به فرمت استاندارد vmess://Base64 تولید می‌شود.
+    - در صورت ورودی JSON (یا vmess:// یا dict): مشخصات مشتری در فیلدهای id و ps قرار گرفته و خروجی به فرمت استاندارد vmess://Base64 تولید می‌شود.
     - در صورت ورودی URI (مانند vless:// یا trojan://): متغیرهای {uuid} و {name} جایگذاری می‌شوند.
     """
     import base64
@@ -202,7 +206,11 @@ def format_single_link(template: str, uuid: str, name: str) -> str:
     clean_uuid = str(uuid or "").strip()
     clean_name = str(name or "User").strip()
     encoded_name = urllib.parse.quote(clean_name)
-    tpl_str = (template or "").strip()
+
+    if isinstance(template, dict):
+        tpl_str = json.dumps(template, ensure_ascii=False)
+    else:
+        tpl_str = str(template or "").strip()
 
     if not tpl_str:
         tpl_str = DEFAULT_SINGLE_CONFIG_TEMPLATE

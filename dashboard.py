@@ -463,7 +463,15 @@ def users():
         """).fetchall()
 
     conn.close()
-    return render_template("users.html", users=user_list, search=search)
+    single_link_template = get_single_link_template(db)
+    return render_template(
+        "users.html",
+        users=user_list,
+        search=search,
+        panel_url=get_hiddify_url(),
+        user_proxy=get_user_proxy(),
+        single_link_template=single_link_template
+    )
 
 
 @app.route("/user/<int:telegram_id>")
@@ -476,7 +484,17 @@ def user_detail(telegram_id):
     transactions = conn.execute("SELECT * FROM transactions WHERE user_id=? ORDER BY created_at DESC", (telegram_id,)).fetchall()
     tickets = conn.execute("SELECT * FROM support_tickets WHERE telegram_id=? ORDER BY created_at DESC", (telegram_id,)).fetchall()
     conn.close()
-    return render_template("user_detail.html", user=user, subscriptions=subscriptions, transactions=transactions, tickets=tickets)
+    single_link_template = get_single_link_template(db)
+    return render_template(
+        "user_detail.html",
+        user=user,
+        subscriptions=subscriptions,
+        transactions=transactions,
+        tickets=tickets,
+        panel_url=get_hiddify_url(),
+        user_proxy=get_user_proxy(),
+        single_link_template=single_link_template
+    )
 
 
 @app.route("/payments")
