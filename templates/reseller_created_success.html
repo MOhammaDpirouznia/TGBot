@@ -21,10 +21,18 @@
                 </div>
 
                 <h6 class="fw-bold mb-2">لینک سابسکریپشن اتصال مشتری:</h6>
-                <div class="input-group mb-4">
-                    <input type="text" id="subUrlInput" class="form-control text-center" value="{{ sub_url }}" readonly>
-                    <button class="btn btn-primary" onclick="copySubUrl()"><i class="fas fa-copy me-1"></i> کپی لینک</button>
+                <div class="input-group mb-3">
+                    <input type="text" id="subUrlInput" class="form-control text-center font-monospace small" value="{{ sub_url }}" readonly style="direction: ltr;">
+                    <button class="btn btn-primary" onclick="copyText('subUrlInput', 'لینک سابسکریپشن')"><i class="fas fa-copy me-1"></i> کپی ساب</button>
                 </div>
+
+                {% if single_url %}
+                <h6 class="fw-bold mb-2 text-warning"><i class="fas fa-bolt me-1"></i> لینک مستقیم تکی (VMess Config):</h6>
+                <div class="input-group mb-4">
+                    <input type="text" id="singleUrlInput" class="form-control text-center font-monospace small" value="{{ single_url }}" readonly style="direction: ltr;">
+                    <button class="btn btn-warning" onclick="copyText('singleUrlInput', 'لینک تکی')"><i class="fas fa-copy me-1"></i> کپی تکی</button>
+                </div>
+                {% endif %}
 
                 <div class="d-flex flex-wrap gap-2 justify-content-center mb-3">
                     <a href="hiddify://install-sub?url={{ sub_url }}" class="btn btn-outline-primary">
@@ -54,11 +62,15 @@
 
 {% block scripts %}
 <script>
-    function copySubUrl() {
-        const input = document.getElementById('subUrlInput');
+    function copyText(elemId, label) {
+        const input = document.getElementById(elemId);
+        if (!input) return;
         input.select();
-        navigator.clipboard.writeText(input.value);
-        alert('لینک اتصال با موفقیت کپی شد!');
+        navigator.clipboard.writeText(input.value).then(() => {
+            alert((label || 'لینک') + ' با موفقیت کپی شد! ✅');
+        }).catch(() => {
+            alert((label || 'لینک') + ' کپی شد!');
+        });
     }
 </script>
 {% endblock %}
