@@ -22,7 +22,7 @@ from utils import (
     gregorian_to_shamsi, gregorian_to_shamsi_full, 
     get_now_shamsi, days_remaining_shamsi, is_expired,
     get_now, get_now_naive, get_now_iso, get_now_timestamp,
-    generate_qr_code_bytes
+    generate_qr_code_bytes, get_single_link_template, format_single_link
 )
 from admin_manager import (
     load_cards, add_card, update_card, delete_card, get_active_card, get_all_cards,
@@ -31,6 +31,9 @@ from admin_manager import (
 from database import db
 from backup import BackupManager, AutoBackupScheduler, send_backup_to_admin
 from notifications import NotificationScheduler
+from i18n import (
+    t, get_language_keyboard, get_main_keyboard, get_all_lang_regex, SUPPORTED_LANGUAGES
+)
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -131,28 +134,45 @@ async def edit_admin_message_safe(query, text, reply_markup=None, parse_mode="Ma
             logger.error(f"Fallback edit_admin_message_safe failed: {e2}")
 
 
-async def send_subscription_card(bot, chat_id: int, sub_url: str, title: str, details: str = ""):
-    """ارسال کارت اشتراک همراه با QR Code و دکمه‌های استاندارد اتصال"""
+async def send_subscription_card(bot, chat_id: int, sub_url: str, title: str, details: str = "", lang: str = None, uuid: str = "", account_name: str = ""):
+    """ارسال کارت اشتراک همراه با QR Code و دکمه‌های استاندارد اتصال و دکمه تبدیل به لینک تکی"""
+    import re
     clean_sub_url = sub_url.strip()
+    if not lang:
+        try:
+            lang = db.get_user_language(chat_id)
+        except Exception:
+            lang = "fa"
+
+    # استخراج خودکار UUID
+    target_uuid = uuid
+    if not target_uuid:
+        match = re.search(r"([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})", clean_sub_url, re.IGNORECASE)
+        if match:
+            target_uuid = match.group(1)
+
     caption = (
         f"{title}\n\n"
         f"{details}\n\n"
-        f"🔗 **لینک اتصال شما (برای کپی لمس کنید):**\n"
+        f"{t('link_card_title', lang)}\n"
         f"`{clean_sub_url}`\n\n"
-        f"💡 **راهنمای اتصال سریع:**\n"
-        f"• لینک بالا را لمس کنید تا در کلیپ‌بورد کپی شود.\n"
-        f"• وارد نرم‌افزار (Hiddify / v2rayNG / Streisand) شوید و دکمه **+** یا **Import** را بزنید.\n"
-        f"• یا از طریق دکمه «🌐 صفحه کاربری و اتصال سریع» وارد شوید."
+        f"{t('link_card_hint', lang)}"
     )
 
     keyboard = [
         [
-            InlineKeyboardButton("🌐 صفحه کاربری و اتصال سریع", url=clean_sub_url),
+            InlineKeyboardButton(t("btn_quick_connect", lang), url=clean_sub_url),
         ],
-        [
-            InlineKeyboardButton("📋 راهنمای کپی لینک", callback_data="copy_link"),
-        ]
     ]
+
+    if target_uuid:
+        keyboard.append([
+            InlineKeyboardButton(t("btn_single_link", lang), callback_data=f"single_link_{target_uuid}"),
+        ])
+
+    keyboard.append([
+        InlineKeyboardButton(t("btn_copy_help", lang), callback_data="copy_link"),
+    ])
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     qr_bytes = generate_qr_code_bytes(clean_sub_url)
@@ -195,7 +215,83 @@ async def send_subscription_card(bot, chat_id: int, sub_url: str, title: str, de
                 reply_markup=reply_markup,
             )
         except Exception as e2:
-            logger.error(f"Error sending subscription text message: {e2}")
+            logger.error(f"Error sending subscription text plain: {e2}")
+
+
+async def single_link_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تولید و ارسال کانفیگ / لینک تکی مستقیم با جایگذاری خودکار UUID و نام مشتری در قالب آماده"""
+    query = update.callback_query
+    await query.answer()
+    user = update.effective_user
+    uuid = query.data.replace("single_link_", "").strip()
+
+    user_lang = context.user_data.get("lang") or db.get_user_language(user.id)
+
+    # دریافت اطلاعات اکانت و نام مشتری
+    account_name = f"tg_{user.id}"
+    subs = db.get_user_subscriptions(user.id)
+    for s in subs:
+        if s.get("hidify_uuid") == uuid:
+            if s.get("account_name"):
+                account_name = s.get("account_name")
+            break
+
+    template = get_single_link_template(db)
+    single_direct_link = format_single_link(template, uuid=uuid, name=account_name)
+
+    caption = (
+        f"{t('single_link_card_title', user_lang)}\n\n"
+        f"📋 نام اکانت: `{account_name}`\n"
+        f"🆔 شناسه: `{uuid}`\n\n"
+        f"🔗 **لینک تکی شما (برای کپی لمس کنید):**\n"
+        f"`{single_direct_link}`\n\n"
+        f"{t('single_link_card_hint', user_lang)}"
+    )
+
+    keyboard = [
+        [InlineKeyboardButton(t("btn_copy_help", user_lang), callback_data="copy_link")],
+        [InlineKeyboardButton("🏠 " + t("btn_back", user_lang), callback_data="back_to_menu")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    qr_bytes = generate_qr_code_bytes(single_direct_link)
+    if qr_bytes:
+        try:
+            await context.bot.send_photo(
+                chat_id=user.id,
+                photo=qr_bytes,
+                caption=caption,
+                reply_markup=reply_markup,
+                parse_mode="Markdown",
+            )
+            return
+        except Exception as e:
+            logger.warning(f"Error sending single link QR Code photo markdown: {e}")
+            try:
+                await context.bot.send_photo(
+                    chat_id=user.id,
+                    photo=qr_bytes,
+                    caption=caption,
+                    reply_markup=reply_markup,
+                )
+                return
+            except Exception as e2:
+                logger.warning(f"Error sending single link QR Code photo plain: {e2}")
+
+    try:
+        await context.bot.send_message(
+            chat_id=user.id,
+            text=caption,
+            reply_markup=reply_markup,
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        logger.warning(f"Error sending single link text: {e}")
+        await context.bot.send_message(
+            chat_id=user.id,
+            text=caption,
+            reply_markup=reply_markup,
+        )
 
 
 # ─── دریافت پلن‌ها ───
@@ -312,30 +408,18 @@ def save_user_data(telegram_user_id: int, data: dict):
 # ═══════════════════════════════════════════════════════════════════════
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """دستور /start - شروع ربات"""
+    """دستور /start - شروع ربات همراه با انتخاب زبان"""
     user = update.effective_user
     
     # ثبت کاربر در دیتابیس
     db.save_user(telegram_id=user.id, username=user.username or user.first_name)
 
-    # پردازش کد معرف / رفرال
+    # پردازش کد معرف / رفرال و نگهداری در سشن
     if context.args and len(context.args) > 0:
         arg = context.args[0].strip()
         if arg.startswith("ref_"):
-            try:
-                referrer_id = int(arg.replace("ref_", ""))
-                if referrer_id != user.id:
-                    db.add_referral(referrer_id, user.id)
-            except Exception as e:
-                logger.warning(f"Referral parsing error: {e}")
+            context.user_data["pending_ref"] = arg.replace("ref_", "")
 
-    # بررسی عضویت در کانال‌ها
-    if REQUIRED_CHANNELS:
-        is_member = await check_channel_membership(user.id, context)
-        if not is_member:
-            await show_join_channels_message(update, context)
-            return CHOOSING
-    
     # بررسی بلاک بودن کاربر
     if db.is_blocked(user.id) and user.id != ADMIN_ID:
         await update.message.reply_text(
@@ -343,74 +427,103 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "برای رفع بلاک با پشتیبانی تماس بگیرید."
         )
         return CHOOSING
-    
-    # منوی معمولی
-    keyboard = [
-        [KeyboardButton("🛒 خرید اشتراک"), KeyboardButton("🧪 اشتراک تست")],
-        [KeyboardButton("🔄 تمدید اشتراک"), KeyboardButton("📊 وضعیت اشتراک")],
-        [KeyboardButton("🔗 لینک اتصال"), KeyboardButton("🧾 پرداخت‌های من")],
-        [KeyboardButton("👥 زیرمجموعه‌گیری"), KeyboardButton("💬 پشتیبانی")],
-    ]
-    
-    # اضافه کردن دکمه ادمین
+
+    # ارسال منوی انتخاب زبان
+    prompt = t("lang_select_prompt", "fa")
+    await update.message.reply_text(
+        prompt,
+        reply_markup=get_language_keyboard()
+    )
+    return CHOOSING
+
+
+async def select_language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ثبت زبان انتخابی کاربر و نمایش منوی اصلی"""
+    query = update.callback_query
+    await query.answer()
+    user = update.effective_user
+    lang = query.data.replace("lang_", "")
+    if lang not in SUPPORTED_LANGUAGES:
+        lang = "fa"
+
+    # ذخیره در دیتابیس و حافظه سشن
+    db.set_user_language(user.id, lang)
+    context.user_data["lang"] = lang
+
+    # پردازش رفرال در صورت وجود
+    if context.user_data.get("pending_ref"):
+        try:
+            ref_id = int(context.user_data.pop("pending_ref"))
+            if ref_id != user.id:
+                db.add_referral(ref_id, user.id)
+        except Exception as e:
+            logger.warning(f"Error saving referral on language select: {e}")
+
+    # بررسی عضویت در کانال‌ها
+    if REQUIRED_CHANNELS:
+        is_member = await check_channel_membership(user.id, context)
+        if not is_member:
+            await show_join_channels_message(update, context)
+            return CHOOSING
+
+    reply_markup = get_main_keyboard(user.id, ADMIN_ID, lang)
+    welcome_text = t("welcome_msg", lang, name=user.first_name)
     if user.id == ADMIN_ID:
-        keyboard.append([KeyboardButton("🔧 پنل مدیریت")])
-    
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        welcome_text += f"• {t('btn_admin', lang)}\n"
+    welcome_text += f"\n{t('choose_option', lang)}"
 
-    welcome_text = f"""
-سلام {user.first_name}! 👋
+    try:
+        await query.edit_message_text(f"{t('lang_changed', lang)}\n\n{welcome_text}", parse_mode="Markdown")
+    except Exception:
+        pass
 
-به ربات هوشمند مدیریت و خرید VPN خوش آمدید!
+    await context.bot.send_message(
+        chat_id=user.id,
+        text=t("choose_option", lang),
+        reply_markup=reply_markup
+    )
+    return CHOOSING
 
-از منوی زیر می‌توانید:
-• 🛒 خرید اشتراک جدید
-• 🧪 اشتراک تست (رایگان)
-• 🔄 تمدید اشتراک
-• 📊 مشاهده وضعیت و حجم لحظه‌ای اشتراک
-• 🔗 دریافت لینک اتصال و بارکد QR
-• 🧾 مشاهده سوابق و وضعیت پرداخت‌ها
-• 👥 زیرمجموعه‌گیری و کسب درآمد
-• 💬 پشتیبانی و ارسال تیکت
-"""
-    
-    if user.id == ADMIN_ID:
-        welcome_text += "• 🔧 پنل مدیریت\n"
-    
-    welcome_text += "\nلطفاً یکی از گزینه‌ها را انتخاب کنید:"
-    
-    await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+
+async def change_language_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """منوی تغییر زبان"""
+    user = update.effective_user
+    user_lang = context.user_data.get("lang") or db.get_user_language(user.id)
+    prompt = t("lang_select_prompt", user_lang)
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.edit_message_text(prompt, reply_markup=get_language_keyboard())
+    else:
+        await update.message.reply_text(prompt, reply_markup=get_language_keyboard())
     return CHOOSING
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """لغو مکالمه"""
+    user = update.effective_user
+    user_lang = context.user_data.get("lang") or db.get_user_language(user.id)
+    msg = t("op_cancelled", user_lang)
     if update.callback_query:
         query = update.callback_query
         await query.answer()
-        await query.edit_message_text(
-            "❌ عملیات لغو شد.\n\n"
-            "برای شروع مجدد، دکمه «🛒 خرید اشتراک» رو بزنید."
-        )
+        await query.edit_message_text(msg)
     else:
-        await update.message.reply_text(
-            "❌ عملیات لغو شد.\n\n"
-            "برای شروع مجدد، دکمه «🛒 خرید اشتراک» رو بزنید."
-        )
+        await update.message.reply_text(msg)
     return ConversationHandler.END
 
 
 async def timeout(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """ timeout مکالمه """
+    user = update.effective_user
+    user_lang = context.user_data.get("lang") or db.get_user_language(user.id)
     await update.message.reply_text(
-        "⏰ زمان مکالمه تمام شد.\n\n"
-        "برای شروع مجدد، دکمه «🛒 خرید اشتراک» رو بزنید."
+        "⏰ " + t("op_cancelled", user_lang)
     )
     return ConversationHandler.END
 
 
 async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """بازگشت به منوی اصلی"""
+    """بازگشت به منوی اصلی با زبان کاربر"""
     query = update.callback_query
     if query:
         await query.answer()
@@ -419,23 +532,15 @@ async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("replying_ticket_id", None)
     
     user = update.effective_user
-    keyboard = [
-        [KeyboardButton("🛒 خرید اشتراک"), KeyboardButton("🧪 اشتراک تست")],
-        [KeyboardButton("🔄 تمدید اشتراک"), KeyboardButton("📊 وضعیت اشتراک")],
-        [KeyboardButton("🔗 لینک اتصال"), KeyboardButton("🧾 پرداخت‌های من")],
-        [KeyboardButton("👥 زیرمجموعه‌گیری"), KeyboardButton("💬 پشتیبانی")],
-    ]
-    if user.id == ADMIN_ID:
-        keyboard.append([KeyboardButton("🔧 پنل مدیریت")])
-    
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    user_lang = context.user_data.get("lang") or db.get_user_language(user.id)
+    reply_markup = get_main_keyboard(user.id, ADMIN_ID, user_lang)
     try:
-        await query.edit_message_text("🏠 منوی اصلی")
+        await query.edit_message_text("🏠 " + t("choose_option", user_lang))
     except Exception:
         pass
     await context.bot.send_message(
         chat_id=user.id,
-        text="لطفاً یکی از گزینه‌ها را انتخاب کنید:",
+        text=t("choose_option", user_lang),
         reply_markup=reply_markup
     )
     return CHOOSING
@@ -3449,18 +3554,21 @@ async def plans_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
             keyboard = [
                 [
+                    InlineKeyboardButton("🆔 ویرایش شناسه", callback_data=f"plan_field_id_{plan_id}"),
                     InlineKeyboardButton("✏️ ویرایش نام", callback_data=f"plan_field_name_{plan_id}"),
+                ],
+                [
                     InlineKeyboardButton("💰 ویرایش قیمت", callback_data=f"plan_field_price_{plan_id}"),
-                ],
-                [
                     InlineKeyboardButton("📊 ویرایش حجم", callback_data=f"plan_field_data_{plan_id}"),
-                    InlineKeyboardButton("⏰ ویرایش مدت", callback_data=f"plan_field_duration_{plan_id}"),
                 ],
                 [
+                    InlineKeyboardButton("⏰ ویرایش مدت", callback_data=f"plan_field_duration_{plan_id}"),
                     InlineKeyboardButton("🔄 فعال / غیرفعال", callback_data=f"toggle_plan_{plan_id}"),
-                    InlineKeyboardButton("🗑️ حذف پلن", callback_data=f"del_plan_{plan_id}"),
                 ],
-                [InlineKeyboardButton("🔙 بازگشت به لیست پلن‌ها", callback_data="admin_plans")],
+                [
+                    InlineKeyboardButton("🗑️ حذف پلن", callback_data=f"del_plan_{plan_id}"),
+                    InlineKeyboardButton("🔙 بازگشت به لیست", callback_data="admin_plans"),
+                ],
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown")
@@ -3482,6 +3590,7 @@ async def plans_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         context.user_data["editing_plan_field"] = field_type
 
         prompts = {
+            "id": "🆔 **شناسه جدید پلن را وارد کنید (انگلیسی بدون فاصله):**\n\nمثال: `vip_100gb_1m` یا `plan_30days`",
             "name": "✏️ **نام جدید پلن را وارد کنید:**\n\nمثال: `پلن ۱ ماهه ۱۰۰ گیگ VIP`",
             "price": "💰 **قیمت جدید پلن (به تومان) را وارد کنید:**\n\nمثال: `150000` (برای رایگان عدد `0` وارد کنید)",
             "data": "📊 **حجم جدید پلن (به گیگابایت) را وارد کنید:**\n\nمثال: `50` (برای نامحدود عدد `0` وارد کنید)",
@@ -3536,25 +3645,28 @@ async def plans_menu_handler_show_card(query, plan_id: str):
         )
         keyboard = [
             [
+                InlineKeyboardButton("🆔 ویرایش شناسه", callback_data=f"plan_field_id_{plan_id}"),
                 InlineKeyboardButton("✏️ ویرایش نام", callback_data=f"plan_field_name_{plan_id}"),
+            ],
+            [
                 InlineKeyboardButton("💰 ویرایش قیمت", callback_data=f"plan_field_price_{plan_id}"),
-            ],
-            [
                 InlineKeyboardButton("📊 ویرایش حجم", callback_data=f"plan_field_data_{plan_id}"),
-                InlineKeyboardButton("⏰ ویرایش مدت", callback_data=f"plan_field_duration_{plan_id}"),
             ],
             [
+                InlineKeyboardButton("⏰ ویرایش مدت", callback_data=f"plan_field_duration_{plan_id}"),
                 InlineKeyboardButton("🔄 فعال / غیرفعال", callback_data=f"toggle_plan_{plan_id}"),
-                InlineKeyboardButton("🗑️ حذف پلن", callback_data=f"del_plan_{plan_id}"),
             ],
-            [InlineKeyboardButton("🔙 بازگشت به لیست پلن‌ها", callback_data="admin_plans")],
+            [
+                InlineKeyboardButton("🗑️ حذف پلن", callback_data=f"del_plan_{plan_id}"),
+                InlineKeyboardButton("🔙 بازگشت به لیست", callback_data="admin_plans"),
+            ],
         ]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
     return ADMIN_PLANS_MENU
 
 
 async def edit_plan_value_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """دریافت و ذخیره مقدار جدید برای فیلدهای پلن (نام، قیمت، حجم، مدت)"""
+    """دریافت و ذخیره مقدار جدید برای فیلدهای پلن (شناسه، نام، قیمت، حجم، مدت)"""
     text_val = update.message.text.strip()
     plan_id = context.user_data.get("editing_plan_id")
     field = context.user_data.get("editing_plan_field")
@@ -3569,7 +3681,18 @@ async def edit_plan_value_handler(update: Update, context: ContextTypes.DEFAULT_
         return ADMIN_MENU
 
     update_kwargs = {}
-    if field == "name":
+    if field == "id":
+        new_id = text_val.strip().lower().replace(" ", "_")
+        import re
+        if not re.match(r"^[a-zA-Z0-9_-]+$", new_id):
+            await update.message.reply_text("❌ شناسه باید فقط شامل حروف انگلیسی، اعداد و خط فاصله/آندرلاین باشد. دوباره وارد کنید:")
+            return ADMIN_EDIT_PLAN_VALUE
+        if new_id != plan_id and new_id in plans:
+            await update.message.reply_text("❌ این شناسه پلن قبلاً ثبت شده است! شناسه دیگری وارد کنید:")
+            return ADMIN_EDIT_PLAN_VALUE
+        update_kwargs["new_plan_id"] = new_id
+
+    elif field == "name":
         if len(text_val) < 2:
             await update.message.reply_text("❌ نام پلن باید حداقل ۲ حرف باشد. لطفاً دوباره ارسال کنید:")
             return ADMIN_EDIT_PLAN_VALUE
@@ -3607,15 +3730,16 @@ async def edit_plan_value_handler(update: Update, context: ContextTypes.DEFAULT_
 
     res = update_plan(plan_id, **update_kwargs)
     if res.get("success"):
+        current_plan_id = res.get("plan_id", plan_id)
         plans = get_all_plans()
-        plan = plans[plan_id]
+        plan = plans[current_plan_id]
         price_formatted = f"{plan['price']:,}".replace(",", "،")
         status_text = "🟢 فعال" if plan.get("is_active") else "🔴 غیرفعال"
         data_text = f"{plan.get('data_limit', 0)} گیگ" if plan.get('data_limit', 0) > 0 else "نامحدود"
 
         msg_text = (
             f"✅ **پلن با موفقیت بروزرسانی شد!**\n\n"
-            f"🆔 شناسه: `{plan_id}`\n"
+            f"🆔 شناسه: `{current_plan_id}`\n"
             f"📋 نام: **{plan['name']}**\n"
             f"💰 قیمت: **{price_formatted}** تومان\n"
             f"📊 حجم: **{data_text}**\n"
@@ -3624,18 +3748,21 @@ async def edit_plan_value_handler(update: Update, context: ContextTypes.DEFAULT_
         )
         keyboard = [
             [
-                InlineKeyboardButton("✏️ ویرایش نام", callback_data=f"plan_field_name_{plan_id}"),
-                InlineKeyboardButton("💰 ویرایش قیمت", callback_data=f"plan_field_price_{plan_id}"),
+                InlineKeyboardButton("🆔 ویرایش شناسه", callback_data=f"plan_field_id_{current_plan_id}"),
+                InlineKeyboardButton("✏️ ویرایش نام", callback_data=f"plan_field_name_{current_plan_id}"),
             ],
             [
-                InlineKeyboardButton("📊 ویرایش حجم", callback_data=f"plan_field_data_{plan_id}"),
-                InlineKeyboardButton("⏰ ویرایش مدت", callback_data=f"plan_field_duration_{plan_id}"),
+                InlineKeyboardButton("💰 ویرایش قیمت", callback_data=f"plan_field_price_{current_plan_id}"),
+                InlineKeyboardButton("📊 ویرایش حجم", callback_data=f"plan_field_data_{current_plan_id}"),
             ],
             [
-                InlineKeyboardButton("🔄 فعال / غیرفعال", callback_data=f"toggle_plan_{plan_id}"),
-                InlineKeyboardButton("🗑️ حذف پلن", callback_data=f"del_plan_{plan_id}"),
+                InlineKeyboardButton("⏰ ویرایش مدت", callback_data=f"plan_field_duration_{current_plan_id}"),
+                InlineKeyboardButton("🔄 فعال / غیرفعال", callback_data=f"toggle_plan_{current_plan_id}"),
             ],
-            [InlineKeyboardButton("🔙 بازگشت به لیست پلن‌ها", callback_data="admin_plans")],
+            [
+                InlineKeyboardButton("🗑️ حذف پلن", callback_data=f"del_plan_{current_plan_id}"),
+                InlineKeyboardButton("🔙 بازگشت به لیست", callback_data="admin_plans"),
+            ],
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(msg_text, reply_markup=reply_markup, parse_mode="Markdown")
@@ -4207,28 +4334,33 @@ def main():
     # ساخت Application
     application = Application.builder().token(BOT_TOKEN).build()
 
-    # هندلرهای دکمه‌های منوی اصلی (Keyboard)
+    # هندلرهای دکمه‌های منوی اصلی (Keyboard) با پشتیبانی از ۴ زبان
     main_menu_handlers = [
-        MessageHandler(filters.Regex("^🛒 خرید اشتراک$"), show_plans),
-        MessageHandler(filters.Regex("^🧪 اشتراک تست$"), handle_test_subscription),
-        MessageHandler(filters.Regex("^🔄 تمدید اشتراک$"), renew_subscription),
-        MessageHandler(filters.Regex("^📊 وضعیت اشتراک$"), show_status),
-        MessageHandler(filters.Regex("^🔗 لینک اتصال$"), get_link),
-        MessageHandler(filters.Regex("^(🧾 پرداخت‌های من|پرداخت‌ها|سوابق خرید)$"), show_payments_history),
-        MessageHandler(filters.Regex("^👥 زیرمجموعه‌گیری$"), referral_menu),
-        MessageHandler(filters.Regex("^💬 پشتیبانی$"), support_menu),
-        MessageHandler(filters.Regex("^🔧 پنل مدیریت$"), admin_panel),
+        MessageHandler(filters.Regex(get_all_lang_regex("btn_buy")), show_plans),
+        MessageHandler(filters.Regex(get_all_lang_regex("btn_test")), handle_test_subscription),
+        MessageHandler(filters.Regex(get_all_lang_regex("btn_renew")), renew_subscription),
+        MessageHandler(filters.Regex(get_all_lang_regex("btn_status")), show_status),
+        MessageHandler(filters.Regex(get_all_lang_regex("btn_link")), get_link),
+        MessageHandler(filters.Regex(get_all_lang_regex("btn_payments")), show_payments_history),
+        MessageHandler(filters.Regex(get_all_lang_regex("btn_referral")), referral_menu),
+        MessageHandler(filters.Regex(get_all_lang_regex("btn_support")), support_menu),
+        MessageHandler(filters.Regex(get_all_lang_regex("btn_language")), change_language_prompt),
+        MessageHandler(filters.Regex(get_all_lang_regex("btn_admin")), admin_panel),
     ]
 
     # Conversation Handler برای فرآیند خرید، تمدید، پشتیبانی و پنل ادمین
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
+            CommandHandler("language", change_language_prompt),
+            CommandHandler("lang", change_language_prompt),
             CommandHandler("admin_panel", admin_panel),
             CommandHandler("renew", renew_subscription),
             CommandHandler("status", show_status),
             CommandHandler("link", get_link),
             CommandHandler("payments", show_payments_history),
+            CallbackQueryHandler(select_language_callback, pattern="^lang_"),
+            CallbackQueryHandler(single_link_callback, pattern="^single_link_"),
             CallbackQueryHandler(ticket_new_prompt, pattern="^ticket_new$"),
             CallbackQueryHandler(ticket_list, pattern="^ticket_list$"),
             CallbackQueryHandler(handle_renew, pattern="^renew_"),
@@ -4237,6 +4369,8 @@ def main():
         ] + main_menu_handlers,
         states={
             CHOOSING: [
+                CallbackQueryHandler(select_language_callback, pattern="^lang_"),
+                CallbackQueryHandler(single_link_callback, pattern="^single_link_"),
                 CallbackQueryHandler(ticket_new_prompt, pattern="^ticket_new$"),
                 CallbackQueryHandler(ticket_list, pattern="^ticket_list$"),
                 CallbackQueryHandler(handle_renew, pattern="^renew_"),
@@ -4402,30 +4536,31 @@ def main():
     async def handle_check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
         await query.answer()
-        user_id = query.from_user.id
+        user = update.effective_user
         
-        is_member = await check_channel_membership(user_id, context)
+        is_member = await check_channel_membership(user.id, context)
         if is_member:
-            await query.edit_message_text("✅ عضویت شما تایید شد!\n\nحالا می‌توانید از ربات استفاده کنید.")
-            user = update.effective_user
-            keyboard = [
-                [KeyboardButton("🛒 خرید اشتراک"), KeyboardButton("🧪 اشتراک تست")],
-                [KeyboardButton("🔄 تمدید اشتراک"), KeyboardButton("📊 وضعیت اشتراک")],
-                [KeyboardButton("🔗 لینک اتصال"), KeyboardButton("🧾 پرداخت‌های من")],
-                [KeyboardButton("👥 زیرمجموعه‌گیری"), KeyboardButton("💬 پشتیبانی")],
-            ]
+            user_lang = db.get_user_language(user.id)
+            await query.edit_message_text("✅ " + t("choose_option", user_lang))
+            reply_markup = get_main_keyboard(user.id, ADMIN_ID, user_lang)
+            welcome_text = t("welcome_msg", user_lang, name=user.first_name)
             if user.id == ADMIN_ID:
-                keyboard.append([KeyboardButton("🔧 پنل مدیریت")])
-            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                welcome_text += f"• {t('btn_admin', user_lang)}\n"
+            welcome_text += f"\n{t('choose_option', user_lang)}"
             await context.bot.send_message(
-                chat_id=query.message.chat_id,
-                text=f"سلام {user.first_name}! 👋\n\nاز منوی زیر یکی از گزینه‌ها را انتخاب کنید:",
-                reply_markup=reply_markup
+                chat_id=user.id,
+                text=welcome_text,
+                reply_markup=reply_markup,
+                parse_mode="Markdown"
             )
         else:
             await show_join_channels_message(update, context)
     
     application.add_handler(CallbackQueryHandler(handle_check_membership, pattern="^check_membership$"))
+    application.add_handler(CommandHandler("language", change_language_prompt))
+    application.add_handler(CommandHandler("lang", change_language_prompt))
+    application.add_handler(CallbackQueryHandler(select_language_callback, pattern="^lang_"))
+    application.add_handler(CallbackQueryHandler(single_link_callback, pattern="^single_link_"))
     application.add_handler(CallbackQueryHandler(copy_link_callback, pattern="^copy_link$"))
 
     # دکمه‌های اینلاین پشتیبانی

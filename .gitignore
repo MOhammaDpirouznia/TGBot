@@ -1,0 +1,41 @@
+# ─── اطلاعات محرمانه ───
+.env
+*.env
+.env.local
+.env.production
+
+# ─── داده‌های کاربران ───
+data/
+*.json
+
+# ─── پایتون ───
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+
+# ─── لاگ‌ها ───
+*.log
+logs/
+
+# ─── تست‌ها ───
+test_*.py
+*_test.py
+
+# ─── IDE ───
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ─── سیستم ───
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Freebuff ───
+.freebuff/

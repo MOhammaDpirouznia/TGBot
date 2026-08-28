@@ -192,25 +192,35 @@ def add_plan(name: str, price: int, data_limit: int, duration: int) -> dict:
 
 
 def update_plan(plan_id: str, **kwargs) -> dict:
-    """بروزرسانی پلن"""
+    """بروزرسانی پلن و امکان تغییر شناسه پلن"""
     plans = load_plans()
     
     if plan_id not in plans:
         return {"success": False, "error": "پلن یافت نشد"}
-    
+
+    # تغییر شناسه پلن (در صورت ارسال new_plan_id)
+    new_plan_id = kwargs.pop("new_plan_id", None)
+    current_id = plan_id
+    if new_plan_id and new_plan_id != plan_id:
+        if new_plan_id in plans:
+            return {"success": False, "error": "این شناسه پلن قبلاً وجود دارد"}
+        # انتقال اطلاعات به کلید جدید
+        plans[new_plan_id] = plans.pop(plan_id)
+        current_id = new_plan_id
+
     for key, value in kwargs.items():
         if key in ["name", "price", "data_limit", "duration", "is_active"]:
-            plans[plan_id][key] = value
+            plans[current_id][key] = value
     
     # بروزرسانی توضیحات
-    data_limit = plans[plan_id].get("data_limit", 0)
-    duration = plans[plan_id].get("duration", 30)
+    data_limit = plans[current_id].get("data_limit", 0)
+    duration = plans[current_id].get("duration", 30)
     data_text = f"{data_limit} گیگ" if data_limit > 0 else "نامحدود"
-    plans[plan_id]["description"] = f"{data_text} | {duration} روز"
+    plans[current_id]["description"] = f"{data_text} | {duration} روز"
     
-    plans[plan_id]["updated_at"] = get_now_iso()
+    plans[current_id]["updated_at"] = get_now_iso()
     save_plans(plans)
-    return {"success": True}
+    return {"success": True, "plan_id": current_id}
 
 
 def delete_plan(plan_id: str) -> dict:

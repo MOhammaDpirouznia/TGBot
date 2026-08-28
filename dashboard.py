@@ -24,7 +24,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from database import db
-from utils import generate_qr_code_bytes, get_now_iso, get_now_naive
+from utils import generate_qr_code_bytes, get_now_iso, get_now_naive, get_single_link_template, format_single_link
 from admin_manager import get_all_plans, add_plan, update_plan, delete_plan
 
 logger = logging.getLogger(__name__)
@@ -59,6 +59,19 @@ def get_hiddify_proxy() -> str:
 
 def get_user_proxy() -> str:
     return os.getenv("USER_PROXY_PATH", "user").strip("/")
+
+
+@app.template_filter("format_single_link")
+def jinja_format_single_link(sub, template=None):
+    """تولید لینک تکی استاندارد VMess یا URI برای اشتراک"""
+    if not template:
+        template = get_single_link_template(db)
+    uuid = sub["hidify_uuid"] if isinstance(sub, dict) or hasattr(sub, "__getitem__") else ""
+    try:
+        name = sub["account_name"] or f"tg_{sub['telegram_id']}"
+    except Exception:
+        name = "User"
+    return format_single_link(template, uuid=uuid, name=name)
 
 
 # ─── هلپرهای ارتباط همگام با تلگرام و هیدیفای (Sync Helpers) ───
@@ -542,7 +555,8 @@ def subscriptions():
     else:
         sub_list = conn.execute("SELECT * FROM subscriptions WHERE status=? ORDER BY created_at DESC LIMIT 150", (status_filter,)).fetchall()
     conn.close()
-    return render_template("subscriptions.html", subscriptions=sub_list, status_filter=status_filter, panel_url=get_hiddify_url(), user_proxy=get_user_proxy())
+    single_link_template = get_single_link_template(db)
+    return render_template("subscriptions.html", subscriptions=sub_list, status_filter=status_filter, panel_url=get_hiddify_url(), user_proxy=get_user_proxy(), single_link_template=single_link_template)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -899,14 +913,23 @@ def admin_logs():
     return render_template("logs.html", health=health)
 
 
-@app.route("/settings")
+@app.route("/settings", methods=["GET", "POST"])
 @admin_required
 def settings():
-    """تنظیمات کلی سیستم"""
+    """تنظیمات کلی سیستم و قالب لینک اتصال تکی"""
+    if request.method == "POST":
+        action = request.form.get("action")
+        if action == "save_single_link_template":
+            tpl = request.form.get("single_link_template", "").strip()
+            db.set_setting("single_link_template", tpl)
+            flash("قالب آماده لینک اتصال تکی با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("settings"))
+
     conn = db.get_connection()
     settings_list = conn.execute("SELECT * FROM settings").fetchall()
     conn.close()
-    return render_template("settings.html", settings=settings_list)
+    single_link_template = get_single_link_template(db)
+    return render_template("settings.html", settings=settings_list, single_link_template=single_link_template)
 
 
 @app.route("/admin/sync-hidify", methods=["GET", "POST"])
@@ -1067,7 +1090,8 @@ def reseller_users():
     """لیست مشتریان نماینده"""
     reseller_id = session.get("reseller_id")
     subs = db.get_reseller_subscriptions(reseller_id)
-    return render_template("reseller_users.html", subscriptions=subs, panel_url=get_hiddify_url(), user_proxy=get_user_proxy())
+    single_link_template = get_single_link_template(db)
+    return render_template("reseller_users.html", subscriptions=subs, panel_url=get_hiddify_url(), user_proxy=get_user_proxy(), single_link_template=single_link_template)
 
 
 @app.route("/reseller/transactions")

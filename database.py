@@ -54,6 +54,7 @@ class Database:
         self.db_dir = DB_DIR
         self.db_path = db_path or DB_PATH
         self.init_db()
+        self.migrate_add_columns()
 
     def get_connection(self):
         """دریافت اتصال دیتابیس"""
@@ -77,6 +78,7 @@ class Database:
                 plan_id TEXT,
                 data_limit REAL DEFAULT 0,
                 expire_at INTEGER,
+                language TEXT DEFAULT 'fa',
                 created_at TEXT,
                 updated_at TEXT
             )
@@ -842,6 +844,10 @@ class Database:
         finally:
             conn.close()
 
+    def set_setting(self, key, value):
+        """نام مستعار برای save_setting"""
+        return self.save_setting(key, value)
+
     def get_setting(self, key, default=None):
         """دریافت تنظیم"""
         conn = self.get_connection()
@@ -1576,11 +1582,60 @@ class Database:
             if "account_comment" not in columns:
                 cursor.execute("ALTER TABLE subscriptions ADD COLUMN account_comment TEXT")
                 logger.info("Added account_comment column to subscriptions")
+
+            # بررسی وجود ستون language در users
+            cursor.execute("PRAGMA table_info(users)")
+            u_cols = [row[1] for row in cursor.fetchall()]
+            if "language" not in u_cols:
+                cursor.execute("ALTER TABLE users ADD COLUMN language TEXT DEFAULT 'fa'")
+                logger.info("Added language column to users")
+
             conn.commit()
             return {"success": True}
         except Exception as e:
             logger.error(f"Error migrating columns: {e}")
             return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_user_language(self, telegram_id: int) -> str:
+        """دریافت زبان انتخابی کاربر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT language FROM users WHERE telegram_id = ?", (telegram_id,))
+            row = cursor.fetchone()
+            if row and row["language"]:
+                return str(row["language"])
+            return "fa"
+        except Exception as e:
+            logger.error(f"Error getting user language: {e}")
+            return "fa"
+        finally:
+            conn.close()
+
+    def set_user_language(self, telegram_id: int, language: str) -> bool:
+        """تنظیم و ذخیره زبان انتخابی کاربر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            now = get_now_iso()
+            # مطمئن شویم کاربر در جدول وجود دارد
+            cursor.execute("SELECT id FROM users WHERE telegram_id = ?", (telegram_id,))
+            if cursor.fetchone():
+                cursor.execute("""
+                    UPDATE users SET language = ?, updated_at = ? WHERE telegram_id = ?
+                """, (language, now, telegram_id))
+            else:
+                cursor.execute("""
+                    INSERT INTO users (telegram_id, language, created_at, updated_at)
+                    VALUES (?, ?, ?, ?)
+                """, (telegram_id, language, now, now))
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error setting user language: {e}")
+            return False
         finally:
             conn.close()
 
