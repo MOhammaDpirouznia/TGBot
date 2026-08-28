@@ -22,10 +22,44 @@ PLANS_FILE = DATA_DIR / "plans.json"
 # ═══════════════════════════════════════════════════════════════════════
 
 def load_cards() -> dict:
-    """بارگذاری کارت‌ها"""
+    """بارگذاری کارت‌ها با اولویت فایل محلی -> دیتابیس -> فایل پشتیبان"""
     if CARDS_FILE.exists():
-        with open(CARDS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            with open(CARDS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if data and isinstance(data, dict):
+                    return data
+        except Exception:
+            pass
+
+    # بررسی دیتابیس
+    try:
+        from database import db
+        setting_cards = db.get_setting("cards_config")
+        if setting_cards and isinstance(setting_cards, dict):
+            with open(CARDS_FILE, "w", encoding="utf-8") as f:
+                json.dump(setting_cards, f, ensure_ascii=False, indent=2)
+            return setting_cards
+
+        # بررسی جدول bank_cards
+        db_cards = db.get_all_bank_cards()
+        if db_cards:
+            res = {}
+            for c in db_cards:
+                cid = f"card_{c['id']}"
+                res[cid] = {
+                    "card_number": c["card_number"],
+                    "card_holder": c["card_holder"],
+                    "bank_name": c["bank_name"],
+                    "is_active": bool(c.get("is_active", True)),
+                    "created_at": c.get("created_at") or get_now_iso(),
+                }
+            with open(CARDS_FILE, "w", encoding="utf-8") as f:
+                json.dump(res, f, ensure_ascii=False, indent=2)
+            return res
+    except Exception:
+        pass
+
     return {}
 
 
@@ -116,12 +150,43 @@ def get_all_cards() -> dict:
 # ═══════════════════════════════════════════════════════════════════════
 
 def load_plans() -> dict:
-    """بارگذاری پلن‌ها"""
+    """بارگذاری پلن‌ها با اولویت فایل محلی -> دیتابیس -> بک‌آپ جامع -> پلن‌های پیش‌فرض"""
     if PLANS_FILE.exists():
-        with open(PLANS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    
-    # پلن‌های پیش‌فرض
+        try:
+            with open(PLANS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if data and isinstance(data, dict):
+                    return data
+        except Exception:
+            pass
+
+    # بررسی دیتابیس
+    try:
+        from database import db
+        setting_plans = db.get_setting("plans_config")
+        if setting_plans and isinstance(setting_plans, dict):
+            with open(PLANS_FILE, "w", encoding="utf-8") as f:
+                json.dump(setting_plans, f, ensure_ascii=False, indent=2)
+            return setting_plans
+
+        # بررسی فایل پشتیبان جامع backup_full_latest.json
+        for backup_path in [Path("data/backup_full_latest.json"), Path("/data/backup_full_latest.json")]:
+            if backup_path.exists():
+                with open(backup_path, "r", encoding="utf-8") as f:
+                    bdata = json.load(f)
+                    settings_rows = bdata.get("tables", {}).get("settings", [])
+                    for s in settings_rows:
+                        if s.get("key") == "plans_config":
+                            val = s.get("value")
+                            pdict = json.loads(val) if isinstance(val, str) else val
+                            if pdict and isinstance(pdict, dict):
+                                with open(PLANS_FILE, "w", encoding="utf-8") as pf:
+                                    json.dump(pdict, pf, ensure_ascii=False, indent=2)
+                                return pdict
+    except Exception:
+        pass
+
+    # پلن‌های پیش‌فرض فقط در صورتی که دیتابیس و بک‌آپ نیز کاملاً خالی باشند
     default_plans = {
         "basic": {
             "name": "پایه",
@@ -160,7 +225,8 @@ def load_plans() -> dict:
             "created_at": get_now_iso(),
         },
     }
-    save_plans(default_plans)
+    with open(PLANS_FILE, "w", encoding="utf-8") as f:
+        json.dump(default_plans, f, ensure_ascii=False, indent=2)
     return default_plans
 
 

@@ -3190,6 +3190,7 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
         is_exp = True
 
     if is_exp:
+        new_plan_name = plan["name"]
         new_data_limit = plan["data_limit"] if plan["data_limit"] > 0 else None
         new_duration = plan["duration"]
         new_data_used = 0
@@ -3197,6 +3198,7 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
         new_expire_date = (get_now_naive() + timedelta(days=plan["duration"])).isoformat()
         renewal_type = "replace"
     else:
+        new_plan_name = (target_sub.get("plan_name") if target_sub and old_data_limit > plan["data_limit"] else plan["name"])
         new_data_limit = (old_data_limit + plan["data_limit"]) if plan["data_limit"] > 0 else None
         new_duration = old_duration + plan["duration"]
         new_data_used = old_data_used
@@ -3207,6 +3209,21 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
             new_expire_ts = now_ts + (plan["duration"] * 86400)
         new_expire_date = datetime.fromtimestamp(new_expire_ts).isoformat()
         renewal_type = "extend"
+
+    # ثبت در تاریخچه مصرف دوره‌های گذشته
+    if target_sub:
+        db.save_subscription_history(
+            subscription_id=sub_id,
+            telegram_id=user_id,
+            hidify_uuid=user_uuid,
+            account_name=target_sub.get("account_name") or f"tg_{user_id}",
+            plan_name=target_sub.get("plan_name") or plan["name"],
+            previous_usage_gb=old_data_used,
+            previous_limit_gb=old_data_limit,
+            period_days=target_sub.get("duration") or plan["duration"],
+            renewal_type=renewal_type,
+            reseller_id=target_sub.get("reseller_id")
+        )
 
     # ۲. بروزرسانی در Hiddify
     update_payload = {}
@@ -3231,7 +3248,7 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
     if sub_id and target_sub:
         update_fields = {
             "plan_id": plan_id,
-            "plan_name": plan["name"],
+            "plan_name": new_plan_name,
             "data_limit": new_data_limit if new_data_limit else 0,
             "data_used": new_data_used,
             "duration": new_duration,
@@ -3246,7 +3263,7 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
             telegram_id=user_id,
             hidify_uuid=user_uuid,
             plan_id=plan_id,
-            plan_name=plan["name"],
+            plan_name=new_plan_name,
             data_limit=new_data_limit if new_data_limit else 0,
             duration=new_duration,
             data_used=new_data_used,
@@ -4052,6 +4069,8 @@ async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # دریافت آمار از دیتابیس
     stats = db.get_stats()
     total_users = stats.get("total_users", 0)
+    total_subs = stats.get("total_subscriptions", 0)
+    active_subs = stats.get("active_subscriptions", 0)
     pending = stats.get("pending_transactions", 0)
     completed = stats.get("completed_transactions", 0)
     rejected = stats.get("rejected_transactions", 0)
@@ -4071,27 +4090,30 @@ async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         active_plans = len([p for p in plans.values() if p.get("is_active")])
         cards = get_all_cards()
         active_cards = len([c for c in cards.values() if c.get("is_active")])
+        if active_cards == 0:
+            db_cards = db.get_all_bank_cards()
+            active_cards = len([c for c in db_cards if c.get("is_active")])
     except:
         active_plans = active_cards = 0
 
     revenue_formatted = f"{total_revenue:,}".replace(",", "،")
     text = f"""
-📊 **آمار ربات**
+📊 **آمار دقیق سامانه و ربات**
 
-👥 **کاربران ربات:** {total_users}
-🌐 **کاربران Hidify:** {hidify_users}
+👥 **کاربران تلگرام:** {total_users}
+🌐 **کاربران سرور هیدیفای:** {hidify_users}
+🛡 **اشتراک‌های فعال:** {active_subs} (از کل {total_subs})
 
-📦 **پلن‌ها:** {active_plans} فعال
-💳 **کارت‌ها:** {active_cards} فعال
+📦 **پلن‌های فعال:** {active_plans} پلن
+💳 **کارت‌های بانکی فعال:** {active_cards} کارت
 
-💰 **تراکنش‌ها:**
-• ⏳ در انتظار: {pending}
+💰 **وضعیت تراکنش‌ها:**
+• ⏳ در انتظار تایید: {pending}
 • ✅ تایید شده: {completed}
 • ❌ رد شده: {rejected}
 
-💵 **درآمد کل:** {revenue_formatted} تومان
-
-🔒 **پشتیبان‌ها:** {total_backups} عدد
+💵 **مجموع درآمد:** {revenue_formatted} تومان
+🔒 **تعداد بکاپ‌ها:** {total_backups} فایل
 """
 
     # ارسال پاسخ (چه از دکمه چه از دستور)

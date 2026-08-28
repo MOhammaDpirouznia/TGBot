@@ -272,6 +272,24 @@ class Database:
             )
         """)
 
+        # جدول سابقه و تاریخچه مصرف دوره‌های گذشته اشتراک‌ها هنگام تمدید
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS subscription_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                subscription_id INTEGER,
+                telegram_id INTEGER,
+                hidify_uuid TEXT,
+                account_name TEXT,
+                plan_name TEXT,
+                previous_usage_gb REAL,
+                previous_limit_gb REAL,
+                period_days INTEGER,
+                renewal_type TEXT,
+                renewed_at TEXT,
+                reseller_id INTEGER
+            )
+        """)
+
         # مایگریشن خودکار ستون‌های جدید
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN referred_by INTEGER")
@@ -341,7 +359,7 @@ class Database:
         tables = [
             "users", "subscriptions", "transactions", "resellers",
             "reseller_transactions", "bank_cards", "discount_codes",
-            "settings", "support_tickets", "referrals"
+            "settings", "support_tickets", "referrals", "subscription_history"
         ]
         
         for table in tables:
@@ -1566,7 +1584,7 @@ class Database:
     # ═══════════════════════════════════════════════════════════════
 
     def get_stats(self):
-        """دریافت آمار دیتابیس"""
+        """دریافت آمار دقیق دیتابیس"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -1586,7 +1604,7 @@ class Database:
             stats["pending_transactions"] = cursor.fetchone()["count"]
 
             # تراکنش‌های تایید شده
-            cursor.execute("SELECT COUNT(*) as count FROM transactions WHERE status = 'completed'")
+            cursor.execute("SELECT COUNT(*) as count FROM transactions WHERE status IN ('approved', 'completed')")
             stats["completed_transactions"] = cursor.fetchone()["count"]
 
             # تراکنش‌های رد شده
@@ -1594,17 +1612,213 @@ class Database:
             stats["rejected_transactions"] = cursor.fetchone()["count"]
 
             # درآمد کل
-            cursor.execute("SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE status = 'completed'")
+            cursor.execute("SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE status IN ('approved', 'completed')")
             stats["total_revenue"] = cursor.fetchone()["total"]
 
             # تعداد پشتیبان‌ها
             cursor.execute("SELECT COUNT(*) as count FROM backups")
             stats["total_backups"] = cursor.fetchone()["count"]
 
+            # تعداد اشتراک‌ها
+            cursor.execute("SELECT COUNT(*) as count FROM subscriptions")
+            stats["total_subscriptions"] = cursor.fetchone()["count"]
+
+            cursor.execute("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'active'")
+            stats["active_subscriptions"] = cursor.fetchone()["count"]
+
+            # کارت‌های فعال بانکی
+            cursor.execute("SELECT COUNT(*) as count FROM bank_cards WHERE is_active = 1")
+            stats["active_cards"] = cursor.fetchone()["count"]
+
             return stats
         except Exception as e:
             logger.error(f"Error getting stats: {e}")
             return {}
+        finally:
+            conn.close()
+
+    def save_subscription_history(self, subscription_id: int, telegram_id: int, hidify_uuid: str,
+                                account_name: str, plan_name: str, previous_usage_gb: float,
+                                previous_limit_gb: float, period_days: int, renewal_type: str = "replace",
+                                reseller_id: int = None) -> bool:
+        """ثبت تاریخچه و میزان مصرف دوره قبلی هنگام تمدید اشتراک"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                INSERT INTO subscription_history (
+                    subscription_id, telegram_id, hidify_uuid, account_name, plan_name,
+                    previous_usage_gb, previous_limit_gb, period_days, renewal_type,
+                    renewed_at, reseller_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                subscription_id, telegram_id, hidify_uuid, account_name, plan_name,
+                float(previous_usage_gb or 0), float(previous_limit_gb or 0),
+                int(period_days or 30), renewal_type, get_now_iso(), reseller_id
+            ))
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error saving subscription history: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def get_subscription_history(self, subscription_id: int = None, telegram_id: int = None,
+                                reseller_id: int = None, limit: int = 50) -> list:
+        """دریافت سوابق مصرف دوره‌های قبلی اشتراک‌ها"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            query = "SELECT * FROM subscription_history WHERE 1=1"
+            params = []
+            if subscription_id:
+                query += " AND subscription_id = ?"
+                params.append(subscription_id)
+            if telegram_id:
+                query += " AND telegram_id = ?"
+                params.append(telegram_id)
+            if reseller_id:
+                query += " AND reseller_id = ?"
+                params.append(reseller_id)
+            query += " ORDER BY renewed_at DESC LIMIT ?"
+            params.append(limit)
+
+            cursor.execute(query, params)
+            return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error getting subscription history: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_advanced_analytics(self, reseller_id: int = None) -> dict:
+        """گزارشات و تحلیل‌های پیشرفته هوش مالی و عملکردی برای مدیر و نمایندگان"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        res = {}
+        
+        try:
+            # ۱. محبوب‌ترین پلن‌ها (پرفروش‌ترین)
+            if reseller_id:
+                cursor.execute("""
+                    SELECT plan_name, COUNT(*) as count, SUM(amount) as revenue 
+                    FROM reseller_transactions 
+                    WHERE reseller_id = ? AND type = 'purchase' AND plan_name IS NOT NULL
+                    GROUP BY plan_name 
+                    ORDER BY count DESC LIMIT 8
+                """, (reseller_id,))
+            else:
+                cursor.execute("""
+                    SELECT plan_name, COUNT(*) as count, SUM(amount) as revenue 
+                    FROM transactions 
+                    WHERE status IN ('approved', 'completed') AND plan_name IS NOT NULL
+                    GROUP BY plan_name 
+                    ORDER BY count DESC LIMIT 8
+                """)
+            res["popular_plans"] = [dict(r) for r in cursor.fetchall()]
+
+            # ۲. برترین کاربران ماه جاری (Top users of the month)
+            current_month = now[:7]
+            if reseller_id:
+                cursor.execute("""
+                    SELECT account_name as username, 0 as telegram_id, SUM(amount) as total_spent, COUNT(*) as tx_count
+                    FROM reseller_transactions
+                    WHERE reseller_id = ? AND type = 'purchase' AND created_at LIKE ?
+                    GROUP BY account_name
+                    ORDER BY total_spent DESC LIMIT 5
+                """, (reseller_id, f"{current_month}%"))
+            else:
+                cursor.execute("""
+                    SELECT user_id as telegram_id, username, SUM(amount) as total_spent, COUNT(*) as tx_count
+                    FROM transactions
+                    WHERE status IN ('approved', 'completed') AND created_at LIKE ?
+                    GROUP BY user_id
+                    ORDER BY total_spent DESC LIMIT 5
+                """, (f"{current_month}%",))
+            res["top_users_month"] = [dict(r) for r in cursor.fetchall()]
+
+            # ۳. برترین کاربران سال جاری (Top users of the year)
+            current_year = now[:4]
+            if reseller_id:
+                cursor.execute("""
+                    SELECT account_name as username, 0 as telegram_id, SUM(amount) as total_spent, COUNT(*) as tx_count
+                    FROM reseller_transactions
+                    WHERE reseller_id = ? AND type = 'purchase' AND created_at LIKE ?
+                    GROUP BY account_name
+                    ORDER BY total_spent DESC LIMIT 5
+                """, (reseller_id, f"{current_year}%"))
+            else:
+                cursor.execute("""
+                    SELECT user_id as telegram_id, username, SUM(amount) as total_spent, COUNT(*) as tx_count
+                    FROM transactions
+                    WHERE status IN ('approved', 'completed') AND created_at LIKE ?
+                    GROUP BY user_id
+                    ORDER BY total_spent DESC LIMIT 5
+                """, (f"{current_year}%",))
+            res["top_users_year"] = [dict(r) for r in cursor.fetchall()]
+
+            # ۴. فعال‌ترین کاربران از نظر مصرف گیگابایت (Most active users)
+            if reseller_id:
+                cursor.execute("""
+                    SELECT account_name, plan_name, data_used, data_limit, duration, status, created_at
+                    FROM subscriptions
+                    WHERE reseller_id = ?
+                    ORDER BY data_used DESC LIMIT 6
+                """, (reseller_id,))
+            else:
+                cursor.execute("""
+                    SELECT s.telegram_id, s.account_name, s.plan_name, s.data_used, s.data_limit, s.duration, s.status, s.created_at, u.username
+                    FROM subscriptions s
+                    LEFT JOIN users u ON s.telegram_id = u.telegram_id
+                    ORDER BY s.data_used DESC LIMIT 6
+                """)
+            res["most_active_users"] = [dict(r) for r in cursor.fetchall()]
+
+            # ۵. گزارش مصرف دوره‌های گذشته (Previous periods usage history)
+            if reseller_id:
+                cursor.execute("""
+                    SELECT * FROM subscription_history
+                    WHERE reseller_id = ?
+                    ORDER BY renewed_at DESC LIMIT 15
+                """, (reseller_id,))
+            else:
+                cursor.execute("""
+                    SELECT * FROM subscription_history
+                    ORDER BY renewed_at DESC LIMIT 15
+                """)
+            res["usage_history"] = [dict(r) for r in cursor.fetchall()]
+
+            # ۶. آخرین تمدیدها و خریدها به همراه تاریخ عضویت و آخرین بروزرسانی
+            if reseller_id:
+                cursor.execute("""
+                    SELECT s.*, r.name as reseller_name
+                    FROM subscriptions s
+                    LEFT JOIN resellers r ON s.reseller_id = r.id
+                    WHERE s.reseller_id = ?
+                    ORDER BY s.updated_at DESC LIMIT 10
+                """, (reseller_id,))
+            else:
+                cursor.execute("""
+                    SELECT s.*, u.created_at as user_registered_at, u.username
+                    FROM subscriptions s
+                    LEFT JOIN users u ON s.telegram_id = u.telegram_id
+                    ORDER BY s.updated_at DESC LIMIT 10
+                """)
+            res["timeline_subscriptions"] = [dict(r) for r in cursor.fetchall()]
+
+            return res
+        except Exception as e:
+            logger.error(f"Error in get_advanced_analytics: {e}")
+            return {
+                "popular_plans": [],
+                "top_users_month": [],
+                "top_users_year": [],
+                "most_active_users": [],
+                "usage_history": [],
+                "timeline_subscriptions": []
+            }
         finally:
             conn.close()
 

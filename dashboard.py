@@ -531,7 +531,7 @@ def dashboard():
     total_users = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
     total_subscriptions = conn.execute("SELECT COUNT(*) FROM subscriptions").fetchone()[0]
     active_subscriptions = conn.execute("SELECT COUNT(*) FROM subscriptions WHERE status='active'").fetchone()[0]
-    total_revenue = conn.execute("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE status='approved'").fetchone()[0]
+    total_revenue = conn.execute("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE status IN ('approved', 'completed')").fetchone()[0]
     pending_payments = conn.execute("SELECT COUNT(*) FROM transactions WHERE status='pending'").fetchone()[0]
     open_tickets = conn.execute("SELECT COUNT(*) FROM support_tickets WHERE status='open'").fetchone()[0]
     total_resellers = conn.execute("SELECT COUNT(*) FROM resellers").fetchone()[0]
@@ -543,7 +543,7 @@ def dashboard():
     daily_revenue = conn.execute("""
         SELECT DATE(created_at) as date, SUM(amount) as total
         FROM transactions 
-        WHERE status='approved' AND created_at >= DATE('now', '-7 days')
+        WHERE status IN ('approved', 'completed') AND created_at >= DATE('now', '-7 days')
         GROUP BY DATE(created_at)
         ORDER BY date ASC
     """).fetchall()
@@ -551,6 +551,7 @@ def dashboard():
     conn.close()
 
     server_health = hidify_sync_ping()
+    analytics = db.get_advanced_analytics()
 
     return render_template(
         "dashboard.html",
@@ -563,7 +564,8 @@ def dashboard():
         total_resellers=total_resellers,
         recent_transactions=recent_transactions,
         daily_revenue=daily_revenue,
-        server_health=server_health
+        server_health=server_health,
+        analytics=analytics
     )
 
 
@@ -686,14 +688,41 @@ def approve_payment(payment_id):
         target_sub = next((s for s in user_subs if s["id"] == renew_sub_id), None)
         if target_sub:
             user_uuid = target_sub.get("hidify_uuid", "")
+            old_limit = float(target_sub.get("data_limit") or 0)
+            old_used = float(target_sub.get("data_used") or 0)
+            old_plan_name = target_sub.get("plan_name") or ""
+
             # تمدید هوشمند هیدیفای با رعایت ۲ حالت منقضی یا فعال
             renew_res = hidify_sync_renew_user(user_uuid, float(data_limit), int(duration))
             final_limit = renew_res.get("new_limit", data_limit)
             final_days = renew_res.get("new_days", duration)
-            final_used = 0 if renew_res.get("renewal_type") == "reset_and_replaced" else target_sub.get("data_used", 0)
+            renewal_type = renew_res.get("renewal_type", "fallback")
+
+            # تعیین نام پلن: اگر منقضی بود نام پلن جدید، اگر فعال بود نام پلنی که بیشترین حجم را دارد
+            if renewal_type == "reset_and_replaced":
+                final_plan_name = plan_name
+                final_used = 0
+            else:
+                final_plan_name = old_plan_name if old_limit > float(data_limit) else plan_name
+                final_used = old_used
+
+            # ثبت مصرف دوره گذشته در تاریخچه
+            db.save_subscription_history(
+                subscription_id=renew_sub_id,
+                telegram_id=user_id,
+                hidify_uuid=user_uuid,
+                account_name=target_sub.get("account_name") or account_name,
+                plan_name=old_plan_name or plan_name,
+                previous_usage_gb=old_used,
+                previous_limit_gb=old_limit,
+                period_days=target_sub.get("duration") or duration,
+                renewal_type=renewal_type,
+                reseller_id=target_sub.get("reseller_id")
+            )
+
             db.update_subscription(
                 renew_sub_id,
-                plan_name=plan_name,
+                plan_name=final_plan_name,
                 data_limit=final_limit,
                 duration=final_days,
                 data_used=final_used,
@@ -759,10 +788,27 @@ def reject_payment(payment_id):
     return redirect(url_for("payments"))
 
 
+RECEIPTS_DIR = Path("data/receipts")
+RECEIPTS_DIR.mkdir(parents=True, exist_ok=True)
+
+
 @app.route("/admin/payment-receipt/<int:payment_id>")
 @admin_required
 def admin_payment_receipt(payment_id):
-    """دانلود و نمایش مستقیم تصویر رسید پرداخت کارت‌به‌کارت از تلگرام در مرورگر"""
+    """دانلود و نمایش مستقیم تصویر رسید پرداخت کارت‌به‌کارت با کش محلی پرسرعت"""
+    # ۱. بررسی کش محلی
+    for ext, mtype in [(".jpg", "image/jpeg"), (".png", "image/png"), (".pdf", "application/pdf")]:
+        cached_file = RECEIPTS_DIR / f"receipt_{payment_id}{ext}"
+        if cached_file.exists():
+            try:
+                with open(cached_file, "rb") as f:
+                    content = f.read()
+                resp = Response(content, mimetype=mtype)
+                resp.headers["Cache-Control"] = "public, max-age=86400"
+                return resp
+            except Exception:
+                pass
+
     conn = db.get_connection()
     tx = conn.execute("SELECT * FROM transactions WHERE id=?", (payment_id,)).fetchone()
     conn.close()
@@ -785,7 +831,7 @@ def admin_payment_receipt(payment_id):
 
     try:
         get_file_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
-        with httpx.Client(timeout=10.0) as client:
+        with httpx.Client(timeout=12.0) as client:
             resp = client.get(get_file_url)
             if resp.status_code != 200:
                 return Response("خطا در دریافت مسیر فایل از تلگرام", status=502)
@@ -801,17 +847,27 @@ def admin_payment_receipt(payment_id):
                 return Response("خطا در دانلود تصویر رسید از تلگرام", status=502)
 
             content_type = "image/jpeg"
+            ext = ".jpg"
             if file_path.lower().endswith(".png"):
                 content_type = "image/png"
+                ext = ".png"
             elif file_path.lower().endswith(".pdf"):
                 content_type = "application/pdf"
+                ext = ".pdf"
+
+            # ذخیره در کش محلی دیسک برای لود فوری دفعات بعد
+            try:
+                with open(RECEIPTS_DIR / f"receipt_{payment_id}{ext}", "wb") as f:
+                    f.write(dl_resp.content)
+            except Exception:
+                pass
 
             response = Response(dl_resp.content, mimetype=content_type)
             response.headers["Cache-Control"] = "public, max-age=86400"
             return response
     except Exception as e:
         logger.error(f"Error serving payment receipt {payment_id}: {e}")
-        return Response(f"خطا در دریافت تصویر: {e}", status=500)
+        return Response(f"خطا در دریافت تصویر رسید: {str(e)}", status=500)
 
 
 @app.route("/api/admin/notifications-check")
@@ -1165,43 +1221,75 @@ def admin_discount_delete(code):
 @app.route("/reports")
 @admin_required
 def reports():
-    """گزارشات آماری و هوش مالی"""
+    """گزارشات آماری و هوش مالی پیشرفته مدیر کل"""
     conn = db.get_connection()
-    total_revenue = conn.execute("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE status='approved'").fetchone()[0]
+    total_revenue = conn.execute("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE status IN ('approved', 'completed')").fetchone()[0]
+    total_users = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    active_subs = conn.execute("SELECT COUNT(*) FROM subscriptions WHERE status='active'").fetchone()[0]
     monthly_revenue = conn.execute("""
         SELECT strftime('%Y-%m', created_at) as month, SUM(amount) as total, COUNT(*) as count
-        FROM transactions WHERE status='approved'
+        FROM transactions WHERE status IN ('approved', 'completed')
         GROUP BY strftime('%Y-%m', created_at) ORDER BY month DESC LIMIT 12
-    """).fetchall()
-
-    popular_plans = conn.execute("""
-        SELECT plan_name, COUNT(*) as count, SUM(amount) as revenue
-        FROM transactions WHERE status='approved'
-        GROUP BY plan_name ORDER BY count DESC LIMIT 10
     """).fetchall()
     conn.close()
 
-    return render_template("reports.html", total_revenue=total_revenue, monthly_revenue=monthly_revenue, popular_plans=popular_plans)
+    analytics = db.get_advanced_analytics()
+
+    return render_template(
+        "reports.html",
+        total_revenue=total_revenue,
+        total_users=total_users,
+        active_subs=active_subs,
+        monthly_revenue=monthly_revenue,
+        popular_plans=analytics.get("popular_plans", []),
+        top_users_month=analytics.get("top_users_month", []),
+        top_users_year=analytics.get("top_users_year", []),
+        most_active_users=analytics.get("most_active_users", []),
+        usage_history=analytics.get("usage_history", []),
+        timeline_subscriptions=analytics.get("timeline_subscriptions", [])
+    )
 
 
 @app.route("/export/transactions")
 @admin_required
 def export_transactions():
-    """خروجی CSV از تراکنش‌ها"""
+    """خروجی اکسل/CSV استاندارد با پشتیبانی کامل از زبان فارسی (UTF-8 BOM)"""
     conn = db.get_connection()
-    rows = conn.execute("SELECT id, order_id, user_id, username, plan_name, amount, gateway, tracking_code, status, created_at FROM transactions ORDER BY created_at DESC").fetchall()
+    rows = conn.execute("""
+        SELECT id, order_id, user_id, username, plan_name, amount, gateway, tracking_code, 
+               CASE 
+                   WHEN status IN ('approved', 'completed') THEN 'تایید شده'
+                   WHEN status = 'pending' THEN 'در انتظار بررسی'
+                   WHEN status = 'rejected' THEN 'رد شده'
+                   ELSE status 
+               END as status_fa,
+               created_at 
+        FROM transactions 
+        ORDER BY created_at DESC
+    """).fetchall()
     conn.close()
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["ID", "Order ID", "User ID", "Username", "Plan", "Amount (Tomans)", "Gateway", "Tracking Code", "Status", "Date"])
+    writer.writerow(["شناسه", "شماره سفارش", "آیدی عددی تلگرام", "نام کاربری", "نام پلن", "مبلغ (تومان)", "درگاه پرداخت", "کد پیگیری / فیش", "وضعیت", "تاریخ ثبت"])
     for r in rows:
-        writer.writerow(list(r))
+        writer.writerow([
+            r["id"],
+            r["order_id"] or "",
+            r["user_id"] or "",
+            r["username"] or "",
+            r["plan_name"] or "",
+            r["amount"] or 0,
+            r["gateway"] or "",
+            r["tracking_code"] or "",
+            r["status_fa"] or "",
+            r["created_at"] or ""
+        ])
 
-    output.seek(0)
+    csv_data = "\ufeff" + output.getvalue()
     return Response(
-        output.getvalue(),
-        mimetype="text/csv",
+        csv_data.encode("utf-8-sig"),
+        mimetype="text/csv; charset=utf-8",
         headers={"Content-Disposition": "attachment;filename=transactions_export.csv"}
     )
 
@@ -1301,12 +1389,18 @@ def upload_backup():
 @app.route("/reseller/dashboard")
 @reseller_required
 def reseller_dashboard():
-    """داشبورد اصلی نماینده فروش"""
+    """داشبورد اصلی نماینده فروش به همراه هوش مالی و خلاصه وضعیت"""
     reseller_id = session.get("reseller_id")
     stats = db.get_reseller_stats(reseller_id)
     session["balance"] = stats["balance"]
     recent_transactions = db.get_reseller_transactions(reseller_id, limit=6)
-    return render_template("reseller_dashboard.html", stats=stats, recent_transactions=recent_transactions)
+    analytics = db.get_advanced_analytics(reseller_id=reseller_id)
+    return render_template(
+        "reseller_dashboard.html",
+        stats=stats,
+        recent_transactions=recent_transactions,
+        analytics=analytics
+    )
 
 
 @app.route("/reseller/create-user", methods=["GET", "POST"])
@@ -1404,6 +1498,56 @@ def reseller_transactions():
     tx_list = db.get_reseller_transactions(reseller_id)
     stats = db.get_reseller_stats(reseller_id)
     return render_template("reseller_transactions.html", transactions=tx_list, stats=stats)
+
+
+@app.route("/reseller/reports")
+@reseller_required
+def reseller_reports():
+    """گزارشات و هوش مالی پیشرفته نماینده فروش"""
+    reseller_id = session.get("reseller_id")
+    stats = db.get_reseller_stats(reseller_id)
+    analytics = db.get_advanced_analytics(reseller_id=reseller_id)
+    
+    return render_template(
+        "reseller_reports.html",
+        stats=stats,
+        popular_plans=analytics.get("popular_plans", []),
+        top_users_month=analytics.get("top_users_month", []),
+        top_users_year=analytics.get("top_users_year", []),
+        most_active_users=analytics.get("most_active_users", []),
+        usage_history=analytics.get("usage_history", []),
+        timeline_subscriptions=analytics.get("timeline_subscriptions", [])
+    )
+
+
+@app.route("/reseller/export/transactions")
+@reseller_required
+def reseller_export_transactions():
+    """خروجی اکسل/CSV تراکنش‌های نماینده با پشتیبانی کامل از فونت فارسی (UTF-8 BOM)"""
+    reseller_id = session.get("reseller_id")
+    tx_list = db.get_reseller_transactions(reseller_id, limit=500)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["شناسه", "نوع تراکنش", "مبلغ (تومان)", "نام پلن", "نام کاربری اشتراک", "توضیحات", "تاریخ ثبت"])
+    for t in tx_list:
+        ttype = "شارژ کیف پول" if t.get("type") == "deposit" else "خرید اشتراک"
+        writer.writerow([
+            t.get("id"),
+            ttype,
+            t.get("amount") or 0,
+            t.get("plan_name") or "",
+            t.get("account_name") or "",
+            t.get("description") or "",
+            t.get("created_at") or ""
+        ])
+
+    csv_data = "\ufeff" + output.getvalue()
+    return Response(
+        csv_data.encode("utf-8-sig"),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment;filename=reseller_transactions_export.csv"}
+    )
 
 
 # ─── راه‌اندازی سرور وب ───
