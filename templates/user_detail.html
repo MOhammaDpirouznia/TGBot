@@ -62,10 +62,13 @@
                         <th>تاریخ شروع</th>
                         <th>تاریخ انقضا</th>
                         <th>وضعیت</th>
+                        <th>لینک اتصال</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for sub in subscriptions %}
+                    {% set sub_url = (panel_url + '/' + user_proxy + '/' + sub['hidify_uuid'] + '/') if sub['hidify_uuid'] else '' %}
+                    {% set single_url = sub|format_single_link(single_link_template) if sub['hidify_uuid'] else '' %}
                     <tr>
                         <td>{{ sub['plan_name'] or '-' }}</td>
                         <td>{{ sub['account_name'] or '-' }}</td>
@@ -78,6 +81,20 @@
                                 <span class="badge bg-success">فعال</span>
                             {% else %}
                                 <span class="badge bg-danger">{{ sub['status'] }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if sub_url %}
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-primary py-1 px-2" onclick="copyLink('{{ sub_url }}', 'لینک سابسکریپشن')" title="کپی لینک سابسکریپشن">
+                                    <i class="fas fa-link me-1"></i> ساب
+                                </button>
+                                <button type="button" class="btn btn-outline-warning text-dark py-1 px-2" onclick="copyLink('{{ single_url }}', 'لینک اتصال تکی')" title="کپی لینک اتصال مستقیم (تکی)">
+                                    <i class="fas fa-bolt text-warning me-1"></i> تکی
+                                </button>
+                            </div>
+                            {% else %}
+                                <span class="text-muted">-</span>
                             {% endif %}
                         </td>
                     </tr>
@@ -134,4 +151,17 @@
 {% else %}
 <div class="alert alert-warning">کاربر یافت نشد!</div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function copyLink(url, label) {
+        if (!url) return;
+        navigator.clipboard.writeText(url).then(() => {
+            alert((label || 'لینک') + ' با موفقیت در کلیپ‌بورد کپی شد! ✅');
+        }).catch(() => {
+            prompt('لینک را کپی کنید:', url);
+        });
+    }
+</script>
 {% endblock %}

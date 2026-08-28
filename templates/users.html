@@ -24,17 +24,34 @@
                         <th>UUID</th>
                         <th>پلن</th>
                         <th>تاریخ عضویت</th>
+                        <th>لینک‌های اتصال</th>
                         <th>عملیات</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for user in users %}
+                    {% set sub_url = (panel_url + '/' + user_proxy + '/' + user['hidify_uuid'] + '/') if user['hidify_uuid'] else '' %}
+                    {% set single_url = user|format_single_link(single_link_template) if user['hidify_uuid'] else '' %}
                     <tr>
                         <td><strong>{{ user['telegram_id'] }}</strong></td>
                         <td>{{ user['username'] or 'ندارد' }}</td>
                         <td><code>{{ user['hidify_uuid'][:8] if user['hidify_uuid'] else '-' }}...</code></td>
                         <td>{{ user['plan_id'] or '-' }}</td>
                         <td><small>{{ user['created_at'][:10] if user['created_at'] else '-' }}</small></td>
+                        <td>
+                            {% if sub_url %}
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-primary py-1 px-2" onclick="copyLink('{{ sub_url }}', 'لینک سابسکریپشن')" title="کپی لینک سابسکریپشن">
+                                    <i class="fas fa-link me-1"></i> ساب
+                                </button>
+                                <button type="button" class="btn btn-outline-warning text-dark py-1 px-2" onclick="copyLink('{{ single_url }}', 'لینک اتصال تکی')" title="کپی لینک اتصال مستقیم (تکی)">
+                                    <i class="fas fa-bolt text-warning me-1"></i> تکی
+                                </button>
+                            </div>
+                            {% else %}
+                                <span class="text-muted small">فاقد اشتراک فعال</span>
+                            {% endif %}
+                        </td>
                         <td>
                             <a href="{{ url_for('user_detail', telegram_id=user['telegram_id']) }}" class="btn btn-sm btn-outline-primary btn-action">
                                 <i class="fas fa-eye"></i> جزئیات
@@ -47,4 +64,17 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function copyLink(url, label) {
+        if (!url) return;
+        navigator.clipboard.writeText(url).then(() => {
+            alert((label || 'لینک') + ' با موفقیت در کلیپ‌بورد کپی شد! ✅');
+        }).catch(() => {
+            prompt('لینک را کپی کنید:', url);
+        });
+    }
+</script>
 {% endblock %}
