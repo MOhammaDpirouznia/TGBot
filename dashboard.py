@@ -608,14 +608,21 @@ def users():
 def user_detail(telegram_id):
     """جزئیات کاربر ۳۶۰ درجه"""
     conn = db.get_connection()
-    user = conn.execute("SELECT * FROM users WHERE telegram_id=?", (telegram_id,)).fetchone()
-    subscriptions = conn.execute("SELECT * FROM subscriptions WHERE telegram_id=? ORDER BY created_at DESC", (telegram_id,)).fetchall()
-    transactions = conn.execute("SELECT * FROM transactions WHERE user_id=? ORDER BY created_at DESC", (telegram_id,)).fetchall()
-    tickets = conn.execute("SELECT * FROM support_tickets WHERE telegram_id=? ORDER BY created_at DESC", (telegram_id,)).fetchall()
+    user_row = conn.execute("SELECT * FROM users WHERE telegram_id=?", (telegram_id,)).fetchone()
+    subs_rows = conn.execute("SELECT * FROM subscriptions WHERE telegram_id=? ORDER BY created_at DESC", (telegram_id,)).fetchall()
+    tx_rows = conn.execute("SELECT * FROM transactions WHERE user_id=? ORDER BY created_at DESC", (telegram_id,)).fetchall()
+    ticket_rows = conn.execute("SELECT * FROM support_tickets WHERE telegram_id=? ORDER BY created_at DESC", (telegram_id,)).fetchall()
     conn.close()
+
+    user = dict(user_row) if user_row else None
+    subscriptions = [dict(r) for r in subs_rows]
+    transactions = [dict(r) for r in tx_rows]
+    tickets = [dict(r) for r in ticket_rows]
+
     single_link_template = get_single_link_template(db)
     return render_template(
         "user_detail.html",
+        telegram_id=telegram_id,
         user=user,
         subscriptions=subscriptions,
         transactions=transactions,
