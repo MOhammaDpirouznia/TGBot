@@ -35,6 +35,7 @@
                 <tbody>
                     {% for sub in subscriptions %}
                     {% set sub_url = (panel_url + '/' + user_proxy + '/' + sub['hidify_uuid'] + '/') if sub['hidify_uuid'] else '' %}
+                    {% set single_url = sub|format_single_link(single_link_template) if sub['hidify_uuid'] else '' %}
                     <tr>
                         <td>
                             {% if sub['telegram_id'] and sub['telegram_id'] != 0 %}
@@ -69,8 +70,11 @@
                         <td>
                             {% if sub_url %}
                             <div class="btn-group btn-group-sm">
-                                <button type="button" class="btn btn-outline-primary py-1 px-2" onclick="copyLink('{{ sub_url }}')" title="کپی لینک ساب">
-                                    <i class="fas fa-copy"></i>
+                                <button type="button" class="btn btn-outline-primary py-1 px-2" onclick="copyLink('{{ sub_url }}', 'لینک سابسکریپشن')" title="کپی لینک سابسکریپشن">
+                                    <i class="fas fa-link me-1"></i> ساب
+                                </button>
+                                <button type="button" class="btn btn-outline-warning text-dark py-1 px-2" onclick="copyLink('{{ single_url }}', 'لینک اتصال تکی')" title="کپی لینک اتصال مستقیم (تکی)">
+                                    <i class="fas fa-bolt text-warning me-1"></i> تکی
                                 </button>
                                 <a href="{{ sub_url }}" target="_blank" class="btn btn-outline-secondary py-1 px-2" title="باز کردن در مرورگر">
                                     <i class="fas fa-external-link-alt"></i>
@@ -96,9 +100,13 @@
 
 {% block scripts %}
 <script>
-    function copyLink(url) {
-        navigator.clipboard.writeText(url);
-        alert('لینک اتصال با موفقیت کپی شد!');
+    function copyLink(url, label) {
+        if (!url) return;
+        navigator.clipboard.writeText(url).then(() => {
+            alert((label || 'لینک') + ' با موفقیت در کلیپ‌بورد کپی شد! ✅');
+        }).catch(() => {
+            prompt('لینک را کپی کنید:', url);
+        });
     }
 </script>
 {% endblock %}

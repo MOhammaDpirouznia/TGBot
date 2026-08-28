@@ -65,6 +65,207 @@
     </div>
 </div>
 
+<!-- کارت ساخت و تنظیم قالب لینک اتصال تکی (پروتکل VMess JSON) -->
+<div class="card shadow-sm mt-4 border-0">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 text-primary fw-bold">
+            <i class="fas fa-bolt text-warning me-2"></i> تنظیم قالب نمونه JSON برای لینک تکی (VMess Config)
+        </h5>
+        <span class="badge bg-success-subtle text-success fs-6">پشتیبانی از خروجی استاندارد vmess://</span>
+    </div>
+    <div class="card-body">
+        <p class="text-muted">
+            شما می‌توانید یک فایل یا متن نمونه <strong>JSON پروتکل VMess</strong> را در کادر زیر قرار دهید. سیستم به طور خودکار هنگام درخواست مشتری یا همکار، شناسه <code>UUID</code> و <code>نام اکانت</code> مشتری را در متغیرهای <code>{uuid}</code> و <code>{name}</code> قرار داده و خروجی را به صورت یک لینک رمزنگاری‌شده استاندارد <strong><code>vmess://Base64...</code></strong> (همراه با بارکد QR) تولید و ارسال می‌کند.
+        </p>
+
+        <!-- ابزار هوشمند تبدیل مستقیم لینک vmess:// به JSON -->
+        <div class="card bg-light border-dashed mb-4">
+            <div class="card-body py-3">
+                <label class="form-label fw-bold text-dark mb-1 small">
+                    <i class="fas fa-wand-magic-sparkles text-primary me-1"></i> ابزار هوشمند: تبدیل مستقیم لینک <code>vmess://</code> موجود به قالب JSON:
+                </label>
+                <div class="input-group">
+                    <input type="text" id="rawVmessInput" class="form-control font-monospace form-control-sm" placeholder="لینک کامل vmess://ey... خود را اینجا پیست کنید" style="direction: ltr; text-align: left;">
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="convertVmessToTemplateJson()">
+                        <i class="fas fa-code me-1"></i> استخراج و درج در قالب JSON
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <form action="{{ url_for('settings') }}" method="POST">
+            <input type="hidden" name="action" value="save_single_link_template">
+            
+            <div class="mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <label class="form-label fw-bold mb-0">متن فایل نمونه JSON (قالب VMess):</label>
+                    <button type="button" class="btn btn-sm btn-link text-decoration-none py-0" onclick="formatJsonEditor()">
+                        <i class="fas fa-align-left me-1"></i> مرتب‌سازی JSON (Format)
+                    </button>
+                </div>
+                <textarea id="singleLinkTemplateInput" name="single_link_template" class="form-control font-monospace" rows="12" placeholder='{\n  "v": "2",\n  "ps": "HiddiBot-{name}",\n  "add": "your-domain.com",\n  "port": "443",\n  "id": "{uuid}",\n  "aid": "0",\n  "scy": "auto",\n  "net": "ws",\n  "type": "none",\n  "host": "your-domain.com",\n  "path": "/ws",\n  "tls": "tls",\n  "sni": "your-domain.com",\n  "alpn": ""\n}' required style="direction: ltr; text-align: left; font-size: 0.9rem; background-color: #fcfcfd;">{{ single_link_template }}</textarea>
+            </div>
+
+            <!-- راهنمای متغیرها و جانمایی -->
+            <div class="alert alert-light border p-3 mb-3">
+                <h6 class="fw-bold mb-2 text-dark"><i class="fas fa-info-circle text-primary me-1"></i> راهنمای متغیرهای جانمایی در فایل JSON:</h6>
+                <div class="row g-2 small">
+                    <div class="col-md-6">
+                        <div class="p-2 bg-white rounded border">
+                            <code class="fw-bold text-danger">"id": "{uuid}"</code>
+                            <div class="text-muted mt-1">شناسه یکتای UUID اشتراک مشتری به صورت خودکار در این فیلد قرار می‌گیرد.</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="p-2 bg-white rounded border">
+                            <code class="fw-bold text-success">"ps": "HiddiBot-{name}"</code>
+                            <div class="text-muted mt-1">نام اکانت یا مشتری (ریمارک/عنوان نمایشی کانفیگ در نرم‌افزار).</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- قالب‌های آماده پیش‌فرض -->
+            <div class="mb-4">
+                <label class="form-label small text-muted fw-bold">نمونه قالب‌های آماده استاندارد VMess (کلیک برای جایگذاری):</label>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="loadPreset('vmess_ws')">
+                        <i class="fas fa-globe me-1"></i> VMess WebSocket TLS (Cloudflare)
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="loadPreset('vmess_grpc')">
+                        <i class="fas fa-bolt me-1"></i> VMess gRPC TLS
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="loadPreset('vmess_tcp')">
+                        <i class="fas fa-network-wired me-1"></i> VMess TCP (HTTP Header)
+                    </button>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save me-1"></i> ذخیره قالب لینک تکی
+                </button>
+                <button type="button" class="btn btn-outline-info" onclick="testLiveVmessOutput()">
+                    <i class="fas fa-play me-1"></i> آزمایش و پیش‌نمایش خروجی vmess://
+                </button>
+            </div>
+        </form>
+
+        <!-- باکس نمایش تست خروجی -->
+        <div id="testOutputBox" class="mt-3 p-3 bg-light rounded border" style="display: none;">
+            <h6 class="fw-bold text-success mb-2"><i class="fas fa-check-circle me-1"></i> نتیجه خروجی استاندارد تولیدشده (با مقادیر تستی):</h6>
+            <div class="p-2 bg-white rounded border text-break font-monospace small text-dark" id="testOutputText" style="direction: ltr; text-align: left;"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+const PRESETS = {
+    vmess_ws: JSON.stringify({
+        "v": "2",
+        "ps": "HiddiBot-{name}",
+        "add": "your-domain.com",
+        "port": "443",
+        "id": "{uuid}",
+        "aid": "0",
+        "scy": "auto",
+        "net": "ws",
+        "type": "none",
+        "host": "your-domain.com",
+        "path": "/ws",
+        "tls": "tls",
+        "sni": "your-domain.com",
+        "alpn": ""
+    }, null, 2),
+    vmess_grpc: JSON.stringify({
+        "v": "2",
+        "ps": "HiddiBot-gRPC-{name}",
+        "add": "your-domain.com",
+        "port": "443",
+        "id": "{uuid}",
+        "aid": "0",
+        "scy": "auto",
+        "net": "grpc",
+        "type": "gun",
+        "host": "your-domain.com",
+        "path": "vmess-grpc",
+        "tls": "tls",
+        "sni": "your-domain.com",
+        "alpn": ""
+    }, null, 2),
+    vmess_tcp: JSON.stringify({
+        "v": "2",
+        "ps": "HiddiBot-TCP-{name}",
+        "add": "your-domain.com",
+        "port": "80",
+        "id": "{uuid}",
+        "aid": "0",
+        "scy": "auto",
+        "net": "tcp",
+        "type": "http",
+        "host": "your-domain.com",
+        "path": "/",
+        "tls": "",
+        "sni": "",
+        "alpn": ""
+    }, null, 2)
+};
+
+function loadPreset(key) {
+    if (PRESETS[key]) {
+        document.getElementById('singleLinkTemplateInput').value = PRESETS[key];
+    }
+}
+
+function formatJsonEditor() {
+    const editor = document.getElementById('singleLinkTemplateInput');
+    try {
+        const parsed = JSON.parse(editor.value);
+        editor.value = JSON.stringify(parsed, null, 2);
+    } catch (e) {
+        alert('متن وارد شده ساختار معتبر JSON ندارد: ' + e.message);
+    }
+}
+
+function convertVmessToTemplateJson() {
+    const input = document.getElementById('rawVmessInput').value.trim();
+    if (!input.startsWith('vmess://')) {
+        alert('لطفاً یک لینک معتبر که با vmess:// شروع می‌شود وارد کنید.');
+        return;
+    }
+    const b64 = input.replace('vmess://', '').trim();
+    try {
+        const decoded = atob(b64);
+        const obj = JSON.parse(decoded);
+        obj.id = "{uuid}";
+        obj.ps = obj.ps ? obj.ps.replace(/[a-zA-Z0-9_\-]+$/, '{name}') : "HiddiBot-{name}";
+        document.getElementById('singleLinkTemplateInput').value = JSON.stringify(obj, null, 2);
+        alert('✅ لینک با موفقیت رمزگشایی شد و متغیرهای {uuid} و {name} در قالب درج شدند!');
+    } catch (e) {
+        alert('خطا در رمزگشایی لینک VMess: ' + e.message);
+    }
+}
+
+function testLiveVmessOutput() {
+    const raw = document.getElementById('singleLinkTemplateInput').value.trim();
+    const testUuid = "11111111-2222-3333-4444-555555555555";
+    const testName = "Alex_Test";
+    try {
+        let replaced = raw.replaceAll('{uuid}', testUuid).replaceAll('{name}', testName);
+        let parsed = JSON.parse(replaced);
+        parsed.id = testUuid;
+        let compact = JSON.stringify(parsed);
+        let b64 = btoa(unescape(encodeURIComponent(compact)));
+        let finalVmess = "vmess://" + b64;
+        
+        document.getElementById('testOutputBox').style.display = 'block';
+        document.getElementById('testOutputText').innerText = finalVmess;
+    } catch (e) {
+        alert('خطا در تبدیل JSON به vmess://: ' + e.message);
+    }
+}
+</script>
+
 <div class="card shadow-sm mt-4">
     <div class="card-header bg-white py-3">
         <h5 class="mb-0"><i class="fas fa-sliders me-2"></i> تنظیمات ثبت‌شده در دیتابیس</h5>

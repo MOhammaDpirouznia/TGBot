@@ -72,6 +72,11 @@
                                 <form method="POST" action="{{ url_for('admin_plan_edit', plan_id=pid) }}">
                                     <div class="modal-body">
                                         <div class="mb-3">
+                                            <label class="form-label fw-semibold">شناسه پلن (انگلیسی / ID)</label>
+                                            <input type="text" name="new_plan_id" class="form-control font-monospace" value="{{ pid }}" required pattern="^[a-zA-Z0-9_-]+$">
+                                            <small class="text-muted">فقط حروف انگلیسی، اعداد و خط فاصله/آندرلاین</small>
+                                        </div>
+                                        <div class="mb-3">
                                             <label class="form-label fw-semibold">نام پلن</label>
                                             <input type="text" name="name" class="form-control" value="{{ p.name }}" required>
                                         </div>
