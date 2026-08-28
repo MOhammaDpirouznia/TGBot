@@ -75,6 +75,114 @@ def jinja_format_single_link(sub, template=None):
     return format_single_link(template, uuid=uuid, name=name)
 
 
+# ─── سرویس دریافت و کش آواتار پروفایل تلگرام (Telegram Profile Avatar Service) ───
+
+AVATAR_CACHE_DIR = Path("data/avatars")
+AVATAR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+def generate_fallback_avatar_svg(identifier: str) -> str:
+    """تولید آواتار وکتور SVG زیبا با رنگ‌های گرادیان متناسب با شناسه یا نام کاربر"""
+    name_clean = str(identifier).lstrip("@").strip()
+    initial = (name_clean[0].upper() if name_clean else "U")
+    colors = [
+        ("#4f46e5", "#7c3aed"),
+        ("#0284c7", "#0ea5e9"),
+        ("#059669", "#10b981"),
+        ("#d97706", "#f59e0b"),
+        ("#e11d48", "#f43f5e"),
+        ("#7c2d12", "#c2410c"),
+        ("#475569", "#64748b"),
+    ]
+    idx = sum(ord(c) for c in name_clean) % len(colors)
+    c1, c2 = colors[idx]
+    
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+        <defs>
+            <linearGradient id="grad_{idx}" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="{c1}" />
+                <stop offset="100%" stop-color="{c2}" />
+            </linearGradient>
+        </defs>
+        <circle cx="50" cy="50" r="50" fill="url(#grad_{idx})" />
+        <text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle" fill="#ffffff" font-size="44" font-family="Segoe UI, Tahoma, sans-serif" font-weight="bold">{initial}</text>
+    </svg>"""
+
+
+def fetch_telegram_avatar_bytes(telegram_id=None, username=None) -> tuple[bytes, str]:
+    """دریافت تصویر پروفایل تلگرام با استفاده از Bot API یا کش محلی"""
+    bot_token = get_bot_token()
+    
+    # ۱. اگر telegram_id ارسال شده باشد
+    if telegram_id:
+        try:
+            tg_id = int(str(telegram_id).strip())
+            if tg_id > 0:
+                cache_file = AVATAR_CACHE_DIR / f"{tg_id}.jpg"
+                if cache_file.exists() and (time.time() - cache_file.stat().st_mtime < 86400):
+                    return cache_file.read_bytes(), "image/jpeg"
+
+                if bot_token:
+                    url = f"https://api.telegram.org/bot{bot_token}/getUserProfilePhotos?user_id={tg_id}&limit=1"
+                    with httpx.Client(timeout=4.0) as client:
+                        resp = client.get(url)
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            photos = data.get("result", {}).get("photos", [])
+                            if photos and len(photos) > 0 and len(photos[0]) > 0:
+                                file_id = photos[0][-1].get("file_id") or photos[0][0].get("file_id")
+                                file_info_resp = client.get(f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}")
+                                if file_info_resp.status_code == 200:
+                                    file_path = file_info_resp.json().get("result", {}).get("file_path")
+                                    if file_path:
+                                        img_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+                                        img_resp = client.get(img_url)
+                                        if img_resp.status_code == 200 and len(img_resp.content) > 100:
+                                            cache_file.write_bytes(img_resp.content)
+                                            return img_resp.content, "image/jpeg"
+        except Exception as e:
+            logger.debug(f"Error fetching telegram avatar for id {telegram_id}: {e}")
+
+    # ۲. بررسی نام کاربری در صورت وجود
+    if username:
+        clean_user = str(username).lstrip("@").strip()
+        if clean_user:
+            cache_file_u = AVATAR_CACHE_DIR / f"user_{clean_user}.jpg"
+            if cache_file_u.exists() and (time.time() - cache_file_u.stat().st_mtime < 86400):
+                return cache_file_u.read_bytes(), "image/jpeg"
+            try:
+                with httpx.Client(timeout=3.0, follow_redirects=True) as client:
+                    resp = client.get(f"https://t.me/i/userpic/320/{clean_user}.jpg")
+                    if resp.status_code == 200 and len(resp.content) > 500:
+                        cache_file_u.write_bytes(resp.content)
+                        return resp.content, "image/jpeg"
+            except Exception:
+                pass
+
+    # ۳. فال‌بک به آواتار SVG زیبا
+    ident = str(telegram_id or username or "User")
+    svg_code = generate_fallback_avatar_svg(ident)
+    return svg_code.encode("utf-8"), "image/svg+xml"
+
+
+@app.route("/avatar/<identifier>")
+def telegram_avatar(identifier):
+    """ارائه تصویر آواتار تلگرام با هدر کش ۲۴ ساعته"""
+    telegram_id = None
+    username = None
+    
+    clean_id = str(identifier).strip()
+    if clean_id.isdigit():
+        telegram_id = int(clean_id)
+    else:
+        username = clean_id
+        
+    img_bytes, mime_type = fetch_telegram_avatar_bytes(telegram_id=telegram_id, username=username)
+    
+    resp = Response(img_bytes, mimetype=mime_type)
+    resp.headers["Cache-Control"] = "public, max-age=86400"
+    return resp
+
+
 # ─── هلپرهای ارتباط همگام با تلگرام و هیدیفای (Sync Helpers) ───
 
 def send_telegram_msg(chat_id: int, text: str, reply_markup=None, parse_mode: str = "HTML") -> bool:
@@ -509,12 +617,13 @@ def login():
             session["name"] = admin_user.get("display_name") or "مدیر"
             session["admin_role"] = admin_user.get("role", "super_admin")
             session["permissions"] = admin_user.get("permissions", "*")
+            session["telegram_id"] = admin_user.get("telegram_id") or get_admin_id()
             flash(f"خوش آمدید {session['name']}! ورود به پنل مدیریت با موفقیت انجام شد.", "success")
             return redirect(url_for("dashboard"))
 
         # بررسی حساب پیش‌فرض محیطی (Fallback / Initial Setup)
         if username == get_admin_username() and password == get_admin_password():
-            res_admin = db.create_admin_user(username, password, "مدیر ارشد", role="super_admin", permissions="*")
+            res_admin = db.create_admin_user(username, password, "مدیر ارشد", role="super_admin", permissions="*", telegram_id=get_admin_id())
             admin_id = res_admin.get("admin_id") if res_admin.get("success") else 1
             session["logged_in"] = True
             session["role"] = "admin"
@@ -523,6 +632,7 @@ def login():
             session["name"] = "مدیر ارشد"
             session["admin_role"] = "super_admin"
             session["permissions"] = "*"
+            session["telegram_id"] = get_admin_id()
             flash("خوش آمدید! ورود به عنوان مدیر کل انجام شد.", "success")
             return redirect(url_for("dashboard"))
 
@@ -535,6 +645,7 @@ def login():
             session["username"] = reseller["username"]
             session["name"] = reseller["name"]
             session["balance"] = reseller["balance"]
+            session["telegram_id"] = reseller.get("telegram_id")
             flash(f"سلام {reseller['name']}! ورود به پنل نمایندگی با موفقیت انجام شد.", "success")
             return redirect(url_for("reseller_dashboard"))
 
@@ -1829,8 +1940,11 @@ def admin_managers():
         }
         permissions = perms_map.get(role, "*")
 
+        telegram_id_raw = request.form.get("telegram_id", "").strip()
+        telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else None
+
         if username and password and display_name:
-            res = db.create_admin_user(username, password, display_name, role=role, permissions=permissions)
+            res = db.create_admin_user(username, password, display_name, role=role, permissions=permissions, telegram_id=telegram_id)
             if res.get("success"):
                 flash(f"مدیر جدید «{display_name}» با موفقیت افزوده شد.", "success")
             else:
@@ -1851,6 +1965,8 @@ def admin_manager_edit(admin_id):
     username = request.form.get("username", "").strip()
     password = request.form.get("password", "").strip()
     role = request.form.get("role", "support").strip()
+    telegram_id_raw = request.form.get("telegram_id", "").strip()
+    telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else None
 
     perms_map = {
         "super_admin": "*",
@@ -1865,6 +1981,7 @@ def admin_manager_edit(admin_id):
         "username": username,
         "role": role,
         "permissions": permissions,
+        "telegram_id": telegram_id,
     }
     if password and len(password) > 0:
         update_kwargs["password"] = password
@@ -1922,6 +2039,7 @@ def admin_profile():
             "username": session.get("username", "admin"),
             "display_name": session.get("name", "مدیر سیستم"),
             "role": session.get("admin_role", "super_admin"),
+            "telegram_id": get_admin_id(),
             "created_at": get_now_iso(),
             "last_login": get_now_iso()
         }
@@ -1929,6 +2047,8 @@ def admin_profile():
     if request.method == "POST":
         display_name = request.form.get("display_name", "").strip()
         username = request.form.get("username", "").strip()
+        telegram_id_raw = request.form.get("telegram_id", "").strip()
+        telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else None
         new_password = request.form.get("new_password", "").strip()
         confirm_password = request.form.get("confirm_password", "").strip()
 
@@ -1944,11 +2064,14 @@ def admin_profile():
             admin_user["id"],
             username=username,
             password=new_password if new_password else None,
-            display_name=display_name
+            display_name=display_name,
+            telegram_id=telegram_id
         )
         if res.get("success"):
             session["username"] = username
             session["name"] = display_name
+            if telegram_id:
+                session["telegram_id"] = telegram_id
             flash("مشخصات حساب کاربری و رمز عبور شما با موفقیت بروزرسانی شد.", "success")
             return redirect(url_for("admin_profile"))
         else:

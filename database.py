@@ -316,6 +316,7 @@ class Database:
                 username TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
                 display_name TEXT NOT NULL,
+                telegram_id INTEGER,
                 role TEXT NOT NULL DEFAULT 'super_admin',
                 permissions TEXT NOT NULL DEFAULT '*',
                 is_active BOOLEAN DEFAULT 1,
@@ -325,6 +326,10 @@ class Database:
         """)
 
         # مایگریشن خودکار ستون‌های جدید
+        try:
+            cursor.execute("ALTER TABLE admin_users ADD COLUMN telegram_id INTEGER")
+        except Exception:
+            pass
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN referred_by INTEGER")
         except Exception:
@@ -2822,17 +2827,18 @@ class Database:
         return dict(row) if row else None
 
     def create_admin_user(self, username: str, password: str, display_name: str,
-                          role: str = "super_admin", permissions: str = "*", is_active: bool = True) -> dict:
-        """افزودن مدیر جدید با نقش و دسترسی‌های مشخص"""
+                          role: str = "super_admin", permissions: str = "*", is_active: bool = True,
+                          telegram_id: int = None) -> dict:
+        """افزودن مدیر جدید با نقش و دسترسی‌های مشخص و آیدی تلگرام"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         password_hash = self.hash_password(password)
         try:
             cursor.execute("""
-                INSERT INTO admin_users (username, password_hash, display_name, role, permissions, is_active, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (username.strip(), password_hash, display_name.strip(), role, permissions, 1 if is_active else 0, now))
+                INSERT INTO admin_users (username, password_hash, display_name, role, permissions, is_active, created_at, telegram_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (username.strip(), password_hash, display_name.strip(), role, permissions, 1 if is_active else 0, now, telegram_id))
             admin_id = cursor.lastrowid
             conn.commit()
             return {"success": True, "admin_id": admin_id}
@@ -2854,7 +2860,7 @@ class Database:
                 if key == "password" and val:
                     fields.append("password_hash=?")
                     params.append(self.hash_password(val))
-                elif key in ["username", "display_name", "role", "permissions", "is_active"]:
+                elif key in ["username", "display_name", "role", "permissions", "is_active", "telegram_id"]:
                     fields.append(f"{key}=?")
                     params.append(val)
 
@@ -2904,11 +2910,13 @@ class Database:
         finally:
             conn.close()
 
-    def update_admin_profile(self, admin_id: int, username: str, password: str = None, display_name: str = None) -> dict:
-        """تغییر مشخصات فردی، یوزرنیم و پسورد مدیر فعال"""
+    def update_admin_profile(self, admin_id: int, username: str, password: str = None, display_name: str = None, telegram_id: int = None) -> dict:
+        """تغییر مشخصات فردی، یوزرنیم، آیدی تلگرام و پسورد مدیر فعال"""
         kwargs = {"username": username}
         if display_name:
             kwargs["display_name"] = display_name
+        if telegram_id is not None:
+            kwargs["telegram_id"] = telegram_id
         if password and len(password.strip()) > 0:
             kwargs["password"] = password.strip()
         return self.update_admin_user(admin_id, **kwargs)
