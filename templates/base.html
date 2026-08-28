@@ -102,7 +102,8 @@
 
         .sidebar {
             background: var(--sidebar-bg);
-            min-height: 100vh;
+            height: 100vh;
+            max-height: 100vh;
             width: 260px;
             position: fixed;
             top: 0;
@@ -113,16 +114,18 @@
             box-shadow: -4px 0 15px rgba(0,0,0,0.04);
             border-left: 1px solid var(--sidebar-border);
             transition: all 0.3s ease;
+            overflow: hidden;
         }
 
         .sidebar .brand {
-            padding: 24px 20px;
+            padding: 20px 18px;
             display: flex;
             align-items: center;
             gap: 12px;
             border-bottom: 1px solid var(--sidebar-border);
             color: var(--sidebar-brand);
             text-decoration: none;
+            flex-shrink: 0;
         }
 
         .sidebar .brand i {
@@ -146,9 +149,29 @@
         }
 
         .sidebar .nav {
-            padding: 15px 12px;
-            flex-grow: 1;
+            padding: 12px 10px;
+            flex: 1 1 auto;
             overflow-y: auto;
+            overflow-x: hidden;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+        }
+
+        .sidebar .nav::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .sidebar .nav::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .sidebar .nav::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+
+        .sidebar .nav::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.35);
         }
 
         .sidebar .nav-category {
@@ -386,6 +409,9 @@
                 <a class="nav-link {% if request.endpoint == 'reseller_reports' %}active{% endif %}" href="{{ url_for('reseller_reports') }}">
                     <i class="fas fa-chart-line"></i> گزارشات و هوش مالی
                 </a>
+                <a class="nav-link {% if request.endpoint == 'reseller_profile' %}active{% endif %}" href="{{ url_for('reseller_profile') }}">
+                    <i class="fas fa-user-gear"></i> حساب کاربری و مشخصات
+                </a>
             {% else %}
                 <!-- منوی مدیریت کل -->
                 <div class="nav-category">اصلی و عملیات</div>
@@ -431,6 +457,12 @@
                 <a class="nav-link {% if request.endpoint == 'accounting' %}active{% endif %}" href="{{ url_for('accounting') }}">
                     <i class="fas fa-file-invoice-dollar"></i> حسابداری و سود/زیان
                 </a>
+                <a class="nav-link {% if request.endpoint == 'admin_managers' %}active{% endif %}" href="{{ url_for('admin_managers') }}">
+                    <i class="fas fa-user-shield"></i> مدیران و دسترسی‌ها
+                </a>
+                <a class="nav-link {% if request.endpoint == 'admin_profile' %}active{% endif %}" href="{{ url_for('admin_profile') }}">
+                    <i class="fas fa-user-gear"></i> حساب کاربری من
+                </a>
                 <a class="nav-link {% if request.endpoint == 'admin_logs' %}active{% endif %}" href="{{ url_for('admin_logs') }}">
                     <i class="fas fa-terminal"></i> وضعیت سرور و لاگ‌ها
                 </a>
@@ -441,19 +473,19 @@
         </nav>
 
         <div class="sidebar-footer">
-            <div class="user-pill mb-2">
+            <a href="{% if session.get('role') == 'reseller' %}{{ url_for('reseller_profile') }}{% else %}{{ url_for('admin_profile') }}{% endif %}" class="user-pill mb-2 text-decoration-none d-flex align-items-center gap-2" title="مشاهده و ویرایش حساب کاربری">
                 <div class="user-avatar">
                     {{ session.get('username', 'A')[0]|upper }}
                 </div>
                 <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                    <div style="font-weight: 600; font-size: 0.9rem;">{{ session.get('username') }}</div>
+                    <div style="font-weight: 600; font-size: 0.9rem; color: #fff;">{{ session.get('username') }}</div>
                     {% if session.get('role') == 'reseller' %}
                         <div style="font-size: 0.75rem; color: #38bdf8;">اعتبار: {{ "{:,}".format(session.get('balance', 0)) }} ت</div>
                     {% else %}
-                        <div style="font-size: 0.75rem; color: #a5b4fc;">مدیر کل سیستم</div>
+                        <div style="font-size: 0.75rem; color: #a5b4fc;">{{ session.get('name', 'مدیر سیستم') }}</div>
                     {% endif %}
                 </div>
-            </div>
+            </a>
             <button type="button" class="btn btn-outline-light btn-sm w-100 mb-2 d-flex align-items-center justify-content-center gap-2" id="themeToggleBtn" onclick="toggleTheme()">
                 <i id="themeIcon" class="fas fa-moon text-info"></i> <span id="themeLabel">حالت تیره</span>
             </button>

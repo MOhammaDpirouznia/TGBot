@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}حساب کاربری و امنیت مدیریت{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-user-gear text-primary"></i> حساب کاربری من</h1>
+        <p class="text-muted mb-0">مشاهده و ویرایش نام کاربری، عنوان نمایشی و تغییر رمز عبور پنل مدیریت</p>
+    </div>
+    <div>
+        <a href="{{ url_for('admin_managers') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-user-shield me-1"></i> مدیریت همه مدیران
+        </a>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-4">
+        <div class="card shadow-sm border-0 text-center p-4">
+            <div class="user-avatar mx-auto mb-3" style="width: 80px; height: 80px; font-size: 2.2rem;">
+                {{ admin['username'][0]|upper }}
+            </div>
+            <h4 class="fw-bold mb-1">{{ admin['display_name'] }}</h4>
+            <div class="text-muted small mb-2"><code>{{ admin['username'] }}</code></div>
+            <div>
+                {% if admin['role'] == 'super_admin' %}
+                    <span class="badge bg-primary-subtle text-primary border border-primary px-3 py-2"><i class="fas fa-crown me-1"></i>مدیر ارشد (Super Admin)</span>
+                {% elif admin['role'] == 'finance' %}
+                    <span class="badge bg-success-subtle text-success border border-success px-3 py-2"><i class="fas fa-coins me-1"></i>مدیر مالی</span>
+                {% elif admin['role'] == 'support' %}
+                    <span class="badge bg-info-subtle text-info border border-info px-3 py-2"><i class="fas fa-headset me-1"></i>پشتیبان و اپراتور</span>
+                {% else %}
+                    <span class="badge bg-secondary-subtle text-dark border px-3 py-2">{{ admin['role'] }}</span>
+                {% endif %}
+            </div>
+            <hr class="my-4">
+            <div class="text-start small text-muted">
+                <div class="mb-2"><i class="fas fa-calendar-plus me-2 text-primary"></i>تاریخ ساخت حساب: <strong>{{ admin['created_at'][:10] if admin['created_at'] else '-' }}</strong></div>
+                <div><i class="fas fa-clock-rotate-left me-2 text-info"></i>آخرین ورود: <strong>{{ admin['last_login'][:19] if admin['last_login'] else '-' }}</strong></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-key text-primary me-2"></i>ویرایش مشخصات و رمز عبور</h5>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" action="{{ url_for('admin_profile') }}">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">نام و عنوان نمایشی:</label>
+                            <input type="text" name="display_name" class="form-control" value="{{ admin['display_name'] }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">نام کاربری ورود (Username):</label>
+                            <input type="text" name="username" class="form-control font-monospace" value="{{ admin['username'] }}" required pattern="^[a-zA-Z0-9_.-]+$">
+                        </div>
+                    </div>
+                    
+                    <hr class="my-4">
+                    <h6 class="fw-bold text-danger mb-3"><i class="fas fa-lock me-1"></i>تغییر رمز عبور (اختیاری)</h6>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label">رمز عبور جدید:</label>
+                            <input type="password" name="new_password" class="form-control" placeholder="برای عدم تغییر خالی بگذارید" minlength="6">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">تکرار رمز عبور جدید:</label>
+                            <input type="password" name="confirm_password" class="form-control" placeholder="تکرار رمز جدید">
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-end">
+                        <button type="submit" class="btn btn-primary px-4">
+                            <i class="fas fa-floppy-disk me-1"></i> ذخیره مشخصات و بروزرسانی
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

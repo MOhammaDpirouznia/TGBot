@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block title %}مدیریت مدیران و سطوح دسترسی{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-user-shield text-primary"></i> مدیریت مدیران و سطوح دسترسی (RBAC)</h1>
+        <p class="text-muted mb-0">تعریف مدیران جدید، تعیین نقش‌ها و سطح دسترسی به بخش‌های مختلف پنل مدیریت</p>
+    </div>
+    <div>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addManagerModal">
+            <i class="fas fa-user-plus me-1"></i> افزودن مدیر جدید
+        </button>
+    </div>
+</div>
+
+<!-- کارت معرفی سطوح دسترسی -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3 col-sm-6">
+        <div class="card h-100 border-start border-primary border-4 shadow-sm">
+            <div class="card-body">
+                <div class="fw-bold text-primary mb-1"><i class="fas fa-crown me-1"></i> مدیر ارشد (Super Admin)</div>
+                <div class="small text-muted">دسترسی کامل و نامحدود به تمامی منوها، تنظیمات سرور، مالی و مدیران.</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <div class="card h-100 border-start border-success border-4 shadow-sm">
+            <div class="card-body">
+                <div class="fw-bold text-success mb-1"><i class="fas fa-file-invoice-dollar me-1"></i> مدیر مالی (Finance)</div>
+                <div class="small text-muted">مدیریت پرداخت‌ها، تایید فیش‌ها، کارت‌های بانکی، حسابداری و گزارشات مالی.</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <div class="card h-100 border-start border-info border-4 shadow-sm">
+            <div class="card-body">
+                <div class="fw-bold text-info mb-1"><i class="fas fa-headset me-1"></i> پشتیبان و اپراتور (Support)</div>
+                <div class="small text-muted">پاسخ به تیکت‌ها، مشاهده کاربران تلگرام، اشتراک‌های هیدیفای و ارسال پیام همگانی.</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <div class="card h-100 border-start border-warning border-4 shadow-sm">
+            <div class="card-body">
+                <div class="fw-bold text-warning mb-1"><i class="fas fa-eye me-1"></i> ناظر سیستم (Viewer)</div>
+                <div class="small text-muted">مشاهده داشبورد، آمار کلی، کاربران و گزارش‌ها به صورت فقط‌خواندنی بدون امکان تغییر.</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- جدول مدیران سیستم -->
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 fw-bold"><i class="fas fa-users-gear text-primary me-2"></i>لیست مدیران ثبت‌شده ({{ managers|length }})</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th class="ps-3" style="width: 70px;">شناسه</th>
+                        <th>نام و عنوان</th>
+                        <th>نام کاربری ورود</th>
+                        <th>سطح دسترسی (نقش)</th>
+                        <th>وضعیت</th>
+                        <th>تاریخ ایجاد</th>
+                        <th>آخرین ورود</th>
+                        <th class="text-end pe-3" style="width: 140px;">عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in managers %}
+                    <tr>
+                        <td class="ps-3"><code>#{{ m['id'] }}</code></td>
+                        <td>
+                            <strong>{{ m['display_name'] }}</strong>
+                            {% if m['id'] == session.get('admin_id') %}
+                                <span class="badge bg-info-subtle text-info border border-info ms-1">حساب شما</span>
+                            {% endif %}
+                        </td>
+                        <td><code class="text-primary">{{ m['username'] }}</code></td>
+                        <td>
+                            {% if m['role'] == 'super_admin' %}
+                                <span class="badge bg-primary-subtle text-primary border border-primary"><i class="fas fa-crown me-1"></i>مدیر ارشد</span>
+                            {% elif m['role'] == 'finance' %}
+                                <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-coins me-1"></i>مدیر مالی</span>
+                            {% elif m['role'] == 'support' %}
+                                <span class="badge bg-info-subtle text-info border border-info"><i class="fas fa-headset me-1"></i>پشتیبان و اپراتور</span>
+                            {% elif m['role'] == 'viewer' %}
+                                <span class="badge bg-warning-subtle text-warning border border-warning"><i class="fas fa-eye me-1"></i>ناظر (فقط خواندنی)</span>
+                            {% else %}
+                                <span class="badge bg-secondary-subtle text-dark border">{{ m['role'] }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if m['is_active'] %}
+                                <span class="badge bg-success">فعال</span>
+                            {% else %}
+                                <span class="badge bg-danger">معلق / غیرفعال</span>
+                            {% endif %}
+                        </td>
+                        <td><small class="text-muted">{{ m['created_at'][:10] if m['created_at'] else '-' }}</small></td>
+                        <td><small class="text-muted">{{ m['last_login'][:19] if m['last_login'] else 'هنوز وارد نشده' }}</small></td>
+                        <td class="text-end pe-3">
+                            <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2" data-bs-toggle="modal" data-bs-target="#editManagerModal{{ m['id'] }}" title="ویرایش مدیر">
+                                <i class="fas fa-pen-to-square"></i>
+                            </button>
+                            <a href="{{ url_for('admin_manager_toggle', admin_id=m['id']) }}" class="btn btn-sm {% if m['is_active'] %}btn-outline-warning{% else %}btn-outline-success{% endif %} py-1 px-2" title="{% if m['is_active'] %}غیرفعال‌سازی{% else %}فعال‌سازی{% endif %}" onclick="return confirm('آیا از تغییر وضعیت این مدیر اطمینان دارید؟')">
+                                <i class="fas {% if m['is_active'] %}fa-user-slash{% else %}fa-user-check{% endif %}"></i>
+                            </a>
+                            {% if m['id'] != session.get('admin_id') and managers|length > 1 %}
+                            <a href="{{ url_for('admin_manager_delete', admin_id=m['id']) }}" class="btn btn-sm btn-outline-danger py-1 px-2" title="حذف مدیر" onclick="return confirm('آیا از حذف کامل این مدیر مطمئن هستید؟')">
+                                <i class="fas fa-trash-can"></i>
+                            </a>
+                            {% endif %}
+                        </td>
+                    </tr>
+
+                    <!-- Modal ویرایش مدیر -->
+                    <div class="modal fade" id="editManagerModal{{ m['id'] }}" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <form method="POST" action="{{ url_for('admin_manager_edit', admin_id=m['id']) }}">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title fw-bold"><i class="fas fa-user-pen text-primary me-2"></i>ویرایش مشخصات مدیر #{{ m['id'] }}</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div class="mb-3">
+                                            <label class="form-label">نام و نام خانوادگی / عنوان:</label>
+                                            <input type="text" name="display_name" class="form-control" value="{{ m['display_name'] }}" required>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">نام کاربری ورود (انگلیسی):</label>
+                                            <input type="text" name="username" class="form-control" value="{{ m['username'] }}" required pattern="^[a-zA-Z0-9_.-]+$">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">رمز عبور جدید (در صورت تمایل به تغییر وارد کنید):</label>
+                                            <input type="password" name="password" class="form-control" placeholder="برای عدم تغییر خالی بگذارید">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">نقش و سطح دسترسی:</label>
+                                            <select name="role" class="form-select">
+                                                <option value="super_admin" {% if m['role'] == 'super_admin' %}selected{% endif %}>👑 مدیر ارشد (دسترسی نامحدود)</option>
+                                                <option value="finance" {% if m['role'] == 'finance' %}selected{% endif %}>💰 مدیر مالی و حسابدار</option>
+                                                <option value="support" {% if m['role'] == 'support' %}selected{% endif %}>🎧 پشتیبان و اپراتور</option>
+                                                <option value="viewer" {% if m['role'] == 'viewer' %}selected{% endif %}>👁️ ناظر (فقط مشاهده آمار)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                                        <button type="submit" class="btn btn-primary">ذخیره تغییرات</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal افزودن مدیر جدید -->
+<div class="modal fade" id="addManagerModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('admin_managers') }}">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-user-plus text-primary me-2"></i>افزودن مدیر جدید به پنل</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">نام و عنوان نمایشی:</label>
+                        <input type="text" name="display_name" class="form-control" placeholder="مثال: مهندس حسینی / پشتیبان شیفت شب" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">نام کاربری ورود (انگلیسی):</label>
+                        <input type="text" name="username" class="form-control" placeholder="مثال: admin_hosseini" required pattern="^[a-zA-Z0-9_.-]+$">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">رمز عبور ورود:</label>
+                        <input type="password" name="password" class="form-control" placeholder="رمز عبور ایمن حداقل ۶ کاراکتر" required minlength="6">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">نقش و سطح دسترسی:</label>
+                        <select name="role" class="form-select">
+                            <option value="super_admin">👑 مدیر ارشد (دسترسی نامحدود به همه بخش‌ها)</option>
+                            <option value="finance">💰 مدیر مالی و حسابدار (تایید فیش‌ها، کارت‌ها و حسابداری)</option>
+                            <option value="support" selected>🎧 پشتیبان و اپراتور (تیکت‌ها، کاربران تلگرام و پیام همگانی)</option>
+                            <option value="viewer">👁️ ناظر (فقط مشاهده آمار و گزارش‌ها)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary">ثبت و ایجاد حساب مدیر</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

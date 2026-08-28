@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}حساب کاربری و مشخصات نماینده{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-user-gear text-primary"></i> حساب کاربری و مشخصات فردی نماینده</h1>
+        <p class="text-muted mb-0">تکمیل مشخصات هویتی، اطلاعات تماس، شماره حساب بانکی و تغییر رمز عبور پنل نمایندگی</p>
+    </div>
+    <div>
+        <a href="{{ url_for('reseller_dashboard') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-right me-1"></i> بازگشت به داشبورد
+        </a>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-4">
+        <div class="card shadow-sm border-0 text-center p-4 mb-4">
+            <div class="user-avatar mx-auto mb-3" style="width: 80px; height: 80px; font-size: 2.2rem; background: linear-gradient(135deg, #0ea5e9, #0284c7);">
+                {{ reseller['username'][0]|upper }}
+            </div>
+            <h4 class="fw-bold mb-1">{{ reseller['name'] }}</h4>
+            <div class="text-muted small mb-3"><code>{{ reseller['username'] }}</code></div>
+            
+            <div class="p-3 bg-light rounded text-start mb-3">
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">موجودی کیف پول:</span>
+                    <strong class="text-primary">{{ "{:,}".format(reseller['balance']) }} تومان</strong>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">درصد تخفیف همکاری:</span>
+                    <span class="badge bg-success">{{ reseller['discount_percent'] }}%</span>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span class="text-muted">وضعیت حساب:</span>
+                    {% if reseller['status'] == 'active' %}
+                        <span class="badge bg-success">فعال</span>
+                    {% else %}
+                        <span class="badge bg-danger">معلق</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="text-start small text-muted">
+                <div><i class="fas fa-calendar me-2 text-primary"></i>عضویت: <strong>{{ reseller['created_at'][:10] if reseller['created_at'] else '-' }}</strong></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-id-card text-primary me-2"></i>تکمیل و ویرایش اطلاعات حساب کاربری</h5>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" action="{{ url_for('reseller_profile') }}">
+                    <h6 class="fw-bold text-primary mb-3"><i class="fas fa-user me-1"></i>مشخصات فردی و ورود</h6>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">نام و نام خانوادگی:</label>
+                            <input type="text" name="name" class="form-control" value="{{ reseller['name'] }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">نام کاربری ورود (Username):</label>
+                            <input type="text" name="username" class="form-control font-monospace" value="{{ reseller['username'] }}" required pattern="^[a-zA-Z0-9_.-]+$">
+                        </div>
+                    </div>
+
+                    <h6 class="fw-bold text-primary mt-4 mb-3"><i class="fas fa-address-book me-1"></i>اطلاعات تماس و شبکه‌های اجتماعی</h6>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">شماره تلفن همراه:</label>
+                            <input type="text" name="phone" class="form-control" placeholder="0912XXXXXXX" value="{{ reseller.get('phone') or '' }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">آیدی عددی یا یوزرنیم تلگرام:</label>
+                            <input type="text" name="telegram_id" class="form-control font-monospace" placeholder="12345678 یا @username" value="{{ reseller.get('telegram_id') or '' }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">آدرس ایمیل:</label>
+                            <input type="email" name="email" class="form-control" placeholder="name@example.com" value="{{ reseller.get('email') or '' }}">
+                        </div>
+                    </div>
+
+                    <h6 class="fw-bold text-primary mt-4 mb-3"><i class="fas fa-credit-card me-1"></i>اطلاعات بانکی (جهت تسویه حساب و ارجاع)</h6>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-12">
+                            <label class="form-label">شماره شبا یا کارت بانکی:</label>
+                            <input type="text" name="bank_card" class="form-control font-monospace" placeholder="IRXXXXXXXXXXXXXXXXXXXXXXXX یا شماره کارت ۱۶ رقمی" value="{{ reseller.get('bank_card') or '' }}">
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label">توضیحات و یادداشت تکمیلی (اختیاری):</label>
+                            <textarea name="notes" class="form-control" rows="2" placeholder="توضیحات همکاری یا آدرس کانال...">{{ reseller.get('notes') or '' }}</textarea>
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+                    <h6 class="fw-bold text-danger mb-3"><i class="fas fa-lock me-1"></i>تغییر رمز عبور پنل نمایندگی (اختیاری)</h6>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label">رمز عبور جدید:</label>
+                            <input type="password" name="new_password" class="form-control" placeholder="برای عدم تغییر خالی بگذارید" minlength="6">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">تکرار رمز عبور جدید:</label>
+                            <input type="password" name="confirm_password" class="form-control" placeholder="تکرار رمز عبور">
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-end">
+                        <button type="submit" class="btn btn-primary px-4">
+                            <i class="fas fa-floppy-disk me-1"></i> ذخیره تغییرات حساب کاربری
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

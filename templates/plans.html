@@ -49,6 +49,14 @@
                             {% endif %}
                         </td>
                         <td class="text-end pe-3">
+                            <div class="btn-group btn-group-sm me-1">
+                                <a href="{{ url_for('admin_plan_move_up', plan_id=pid) }}" class="btn btn-outline-secondary" title="انتقال به بالا (اولویت بالاتر)">
+                                    <i class="fas fa-arrow-up"></i>
+                                </a>
+                                <a href="{{ url_for('admin_plan_move_down', plan_id=pid) }}" class="btn btn-outline-secondary" title="انتقال به پایین (اولویت پایین‌تر)">
+                                    <i class="fas fa-arrow-down"></i>
+                                </a>
+                            </div>
                             <button class="btn btn-sm btn-outline-primary me-1" data-bs-toggle="modal" data-bs-target="#editModal{{ pid }}">
                                 <i class="bi bi-pencil me-1"></i> ویرایش
                             </button>
