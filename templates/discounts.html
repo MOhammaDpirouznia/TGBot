@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h4 class="mb-1 fw-bold"><i class="bi bi-tag me-2 text-primary"></i>مدیریت کدهای تخفیف</h4>
+        <p class="text-muted mb-0">ایجاد کوپن‌های تخفیف درصدی یا مبلغی برای جذب مشتریان جدید</p>
+    </div>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addDiscountModal">
+        <i class="bi bi-plus-lg me-1"></i> ایجاد کد تخفیف جدید
+    </button>
+</div>
+
+<!-- جدول کدهای تخفیف -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">کد تخفیف</th>
+                        <th>میزان تخفیف</th>
+                        <th>تعداد استفاده شده / سقف</th>
+                        <th>تاریخ انقضا</th>
+                        <th>وضعیت</th>
+                        <th class="text-end pe-3">عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for d in discounts %}
+                    <tr>
+                        <td class="ps-3"><span class="badge bg-primary-subtle text-primary fs-6 font-monospace">{{ d.code }}</span></td>
+                        <td>
+                            {% if d.discount_percent and d.discount_percent > 0 %}
+                                <span class="badge bg-success-subtle text-success fs-6">{{ d.discount_percent }}% تخفیف</span>
+                            {% elif d.discount_amount and d.discount_amount > 0 %}
+                                <span class="badge bg-success-subtle text-success fs-6">{{ "{:,}".format(d.discount_amount) }} تومان</span>
+                            {% else %}
+                                <span class="text-muted">نامشخص</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {{ d.used_count or 0 }} / 
+                            {% if d.max_uses and d.max_uses > 0 %}
+                                {{ d.max_uses }}
+                            {% else %}
+                                <span class="text-muted">نامحدود</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if d.valid_until %}
+                                {{ d.valid_until[:10] }}
+                            {% else %}
+                                <span class="text-muted">بدون انقضا</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if d.is_active %}
+                                <span class="badge bg-success">فعال</span>
+                            {% else %}
+                                <span class="badge bg-secondary">غیرفعال</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end pe-3">
+                            <a href="{{ url_for('admin_discount_delete', code=d.code) }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('آیا از حذف این کد تخفیف اطمینان دارید؟');">
+                                <i class="bi bi-trash me-1"></i> حذف
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center py-4 text-muted">هیچ کد تخفیفی تاکنون ایجاد نشده است.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- مودال ایجاد کد تخفیف -->
+<div class="modal fade" id="addDiscountModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">ایجاد کوپن تخفیف جدید</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('admin_discounts_page') }}">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">کد تخفیف (لاتین و بدون فاصله)</label>
+                        <input type="text" name="code" class="form-control text-uppercase" placeholder="مثال: NOROOZ1404" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">نوع تخفیف</label>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="small text-muted mb-1">درصد تخفیف (٪)</label>
+                                <input type="number" name="discount_percent" class="form-control" placeholder="مثال: 20" min="0" max="100">
+                            </div>
+                            <div class="col-6">
+                                <label class="small text-muted mb-1">یا مبلغ ثابت (تومان)</label>
+                                <input type="number" name="discount_amount" class="form-control" placeholder="مثال: 30000" min="0">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">حداکثر تعداد مجاز استفاده (0 = نامحدود)</label>
+                        <input type="number" name="max_uses" class="form-control" value="0" min="0">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">مدت اعتبار (تعداد روز از الان)</label>
+                        <input type="number" name="valid_days" class="form-control" placeholder="مثال: 30 (اختیاری)" min="1">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary">ایجاد کد تخفیف</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -318,6 +318,9 @@
                 <a class="nav-link {% if request.endpoint == 'broadcast' %}active{% endif %}" href="{{ url_for('broadcast') }}">
                     <i class="fas fa-bullhorn"></i> پیام همگانی (Broadcast)
                 </a>
+                <a class="nav-link {% if request.endpoint == 'admin_discounts_page' %}active{% endif %}" href="{{ url_for('admin_discounts_page') }}">
+                    <i class="fas fa-tags"></i> کدهای تخفیف
+                </a>
                 <a class="nav-link {% if request.endpoint == 'tickets' %}active{% endif %}" href="{{ url_for('tickets') }}">
                     <i class="fas fa-headset"></i> تیکت‌های پشتیبانی
                 </a>
