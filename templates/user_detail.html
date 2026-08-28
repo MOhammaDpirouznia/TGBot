@@ -31,6 +31,13 @@
                     <div class="col-md-6">
                         <p><strong>آیدی تلگرام:</strong> <code>{{ (user['telegram_id'] if user else telegram_id) }}</code></p>
                         <p><strong>یوزرنیم:</strong> {{ ('@' + user['username']) if (user and user['username']) else 'ندارد' }}</p>
+                        <p><strong>شماره تلفن تلگرام:</strong>
+                            {% if user and user.get('phone_number') %}
+                                <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-phone me-1"></i><code>{{ user['phone_number'] }}</code> (احراز هویت شده)</span>
+                            {% else %}
+                                <span class="badge bg-warning-subtle text-warning border border-warning"><i class="fas fa-triangle-exclamation me-1"></i>تایید نشده</span>
+                            {% endif %}
+                        </p>
                         <p><strong>UUID:</strong> <code>{{ (user['hidify_uuid'] if user else (subscriptions[0]['hidify_uuid'] if subscriptions else '-')) or '-' }}</code></p>
                     </div>
                     <div class="col-md-6">

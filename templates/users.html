@@ -20,7 +20,8 @@
                 <thead>
                     <tr>
                         <th>آیدی تلگرام</th>
-                        <th>یوزرنیم</th>
+                        <th>نام کاربری</th>
+                        <th>شماره تلفن تلگرام</th>
                         <th>UUID</th>
                         <th>پلن</th>
                         <th>تاریخ عضویت</th>
@@ -35,6 +36,13 @@
                     <tr>
                         <td><strong>{{ user['telegram_id'] }}</strong></td>
                         <td>{{ user['username'] or 'ندارد' }}</td>
+                        <td>
+                            {% if user['phone_number'] %}
+                                <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-phone me-1"></i><code>{{ user['phone_number'] }}</code></span>
+                            {% else %}
+                                <span class="badge bg-warning-subtle text-warning border border-warning"><i class="fas fa-triangle-exclamation me-1"></i>تایید نشده</span>
+                            {% endif %}
+                        </td>
                         <td><code>{{ user['hidify_uuid'][:8] if user['hidify_uuid'] else '-' }}...</code></td>
                         <td>{{ user['plan_id'] or '-' }}</td>
                         <td><small>{{ user['created_at'][:10] if user['created_at'] else '-' }}</small></td>
