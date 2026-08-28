@@ -190,7 +190,7 @@ def load_plans() -> dict:
     default_plans = {
         "basic": {
             "name": "پایه",
-            "price": 50000,
+            "price": 250000,
             "data_limit": 30,
             "duration": 30,
             "description": "۳۰ گیگ | ۳۰ روز",
@@ -199,7 +199,7 @@ def load_plans() -> dict:
         },
         "standard": {
             "name": "استاندارد",
-            "price": 80000,
+            "price": 400000,
             "data_limit": 60,
             "duration": 30,
             "description": "۶۰ گیگ | ۳۰ روز",
@@ -208,19 +208,19 @@ def load_plans() -> dict:
         },
         "premium": {
             "name": "پریمیوم",
-            "price": 120000,
+            "price": 600000,
             "data_limit": 100,
             "duration": 30,
             "description": "۱۰۰ گیگ | ۳۰ روز",
             "is_active": True,
             "created_at": get_now_iso(),
         },
-        "unlimited": {
-            "name": "نامحدود",
-            "price": 200000,
-            "data_limit": 0,
+        "gem": {
+            "name": "الماس",
+            "price": 990000,
+            "data_limit": 180,
             "duration": 30,
-            "description": "نامحدود | ۳۰ روز",
+            "description": "۱۸۰ گیگ | ۳۰ روز",
             "is_active": True,
             "created_at": get_now_iso(),
         },
