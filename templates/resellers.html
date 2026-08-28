@@ -34,10 +34,19 @@
                     {% for r in resellers %}
                     <tr>
                         <td>
-                            <strong>{{ r['name'] }}</strong>
-                            {% if r['telegram_id'] %}
-                                <div class="text-muted small"><code>{{ r['telegram_id'] }}</code></div>
-                            {% endif %}
+                            <div class="d-flex align-items-center gap-2">
+                                <img src="{{ url_for('telegram_avatar', identifier=(r.get('telegram_id') or r['username'])) }}" 
+                                     alt="{{ r['name'] }}" 
+                                     class="rounded-circle border shadow-sm flex-shrink-0" 
+                                     style="width: 38px; height: 38px; object-fit: cover;" 
+                                     loading="lazy">
+                                <div>
+                                    <strong>{{ r['name'] }}</strong>
+                                    {% if r['telegram_id'] %}
+                                        <div class="text-muted small"><code>ID: {{ r['telegram_id'] }}</code></div>
+                                    {% endif %}
+                                </div>
+                            </div>
                         </td>
                         <td><code>{{ r['username'] }}</code></td>
                         <td><span class="badge bg-primary fs-6">{{ r['discount_percent'] }}%</span></td>

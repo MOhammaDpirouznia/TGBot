@@ -17,9 +17,11 @@
 <div class="row g-4">
     <div class="col-lg-4">
         <div class="card shadow-sm border-0 text-center p-4">
-            <div class="user-avatar mx-auto mb-3" style="width: 80px; height: 80px; font-size: 2.2rem;">
-                {{ admin['username'][0]|upper }}
-            </div>
+            <img src="{{ url_for('telegram_avatar', identifier=(admin.get('telegram_id') or admin['username'])) }}" 
+                 alt="{{ admin['display_name'] }}" 
+                 class="rounded-circle border shadow mx-auto mb-3" 
+                 style="width: 90px; height: 90px; object-fit: cover;" 
+                 loading="lazy">
             <h4 class="fw-bold mb-1">{{ admin['display_name'] }}</h4>
             <div class="text-muted small mb-2"><code>{{ admin['username'] }}</code></div>
             <div>
@@ -35,6 +37,9 @@
             </div>
             <hr class="my-4">
             <div class="text-start small text-muted">
+                {% if admin.get('telegram_id') %}
+                    <div class="mb-2"><i class="fab fa-telegram me-2 text-info"></i>آیدی عددی تلگرام: <strong><code>{{ admin['telegram_id'] }}</code></strong></div>
+                {% endif %}
                 <div class="mb-2"><i class="fas fa-calendar-plus me-2 text-primary"></i>تاریخ ساخت حساب: <strong>{{ admin['created_at'][:10] if admin['created_at'] else '-' }}</strong></div>
                 <div><i class="fas fa-clock-rotate-left me-2 text-info"></i>آخرین ورود: <strong>{{ admin['last_login'][:19] if admin['last_login'] else '-' }}</strong></div>
             </div>
@@ -56,6 +61,10 @@
                         <div class="col-md-6">
                             <label class="form-label fw-bold">نام کاربری ورود (Username):</label>
                             <input type="text" name="username" class="form-control font-monospace" value="{{ admin['username'] }}" required pattern="^[a-zA-Z0-9_.-]+$">
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label fw-bold">آیدی عددی تلگرام (جهت بارگذاری خودکار تصویر پروفایل تلگرام):</label>
+                            <input type="number" name="telegram_id" class="form-control font-monospace" placeholder="مثال: 12345678" value="{{ admin.get('telegram_id') or '' }}">
                         </div>
                     </div>
                     

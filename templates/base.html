@@ -474,9 +474,11 @@
 
         <div class="sidebar-footer">
             <a href="{% if session.get('role') == 'reseller' %}{{ url_for('reseller_profile') }}{% else %}{{ url_for('admin_profile') }}{% endif %}" class="user-pill mb-2 text-decoration-none d-flex align-items-center gap-2" title="مشاهده و ویرایش حساب کاربری">
-                <div class="user-avatar">
-                    {{ session.get('username', 'A')[0]|upper }}
-                </div>
+                <img src="{{ url_for('telegram_avatar', identifier=(session.get('telegram_id') or session.get('username') or 'Admin')) }}" 
+                     alt="{{ session.get('username') }}" 
+                     class="rounded-circle border border-light flex-shrink-0" 
+                     style="width: 38px; height: 38px; object-fit: cover;" 
+                     loading="lazy">
                 <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                     <div style="font-weight: 600; font-size: 0.9rem; color: #fff;">{{ session.get('username') }}</div>
                     {% if session.get('role') == 'reseller' %}

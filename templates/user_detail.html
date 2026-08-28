@@ -13,11 +13,15 @@
 <!-- اطلاعات کاربر -->
 <div class="row mb-4">
     <div class="col-md-4">
-        <div class="card">
-            <div class="card-body text-center">
-                <i class="fas fa-user-circle fa-5x text-primary mb-3"></i>
-                <h4>{{ (user['username'] if user else None) or 'کاربر هیدیفای' }}</h4>
-                <p class="text-muted"><code>{{ (user['telegram_id'] if user else telegram_id) }}</code></p>
+        <div class="card shadow-sm border-0">
+            <div class="card-body text-center p-4">
+                <img src="{{ url_for('telegram_avatar', identifier=(user['telegram_id'] if user else telegram_id)) }}" 
+                     alt="{{ (user['username'] if user else '') or telegram_id }}" 
+                     class="rounded-circle border shadow-sm mx-auto mb-3" 
+                     style="width: 96px; height: 96px; object-fit: cover;" 
+                     loading="lazy">
+                <h4 class="fw-bold mb-1">{{ (user['username'] if user else None) or 'کاربر هیدیفای' }}</h4>
+                <p class="text-muted mb-0"><code>{{ (user['telegram_id'] if user else telegram_id) }}</code></p>
             </div>
         </div>
     </div>

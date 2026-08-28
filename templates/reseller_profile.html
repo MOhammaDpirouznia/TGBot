@@ -17,9 +17,11 @@
 <div class="row g-4">
     <div class="col-lg-4">
         <div class="card shadow-sm border-0 text-center p-4 mb-4">
-            <div class="user-avatar mx-auto mb-3" style="width: 80px; height: 80px; font-size: 2.2rem; background: linear-gradient(135deg, #0ea5e9, #0284c7);">
-                {{ reseller['username'][0]|upper }}
-            </div>
+            <img src="{{ url_for('telegram_avatar', identifier=(reseller.get('telegram_id') or reseller['username'])) }}" 
+                 alt="{{ reseller['name'] }}" 
+                 class="rounded-circle border shadow mx-auto mb-3" 
+                 style="width: 84px; height: 84px; object-fit: cover;" 
+                 loading="lazy">
             <h4 class="fw-bold mb-1">{{ reseller['name'] }}</h4>
             <div class="text-muted small mb-3"><code>{{ reseller['username'] }}</code></div>
             

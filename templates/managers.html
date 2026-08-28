@@ -75,10 +75,23 @@
                     <tr>
                         <td class="ps-3"><code>#{{ m['id'] }}</code></td>
                         <td>
-                            <strong>{{ m['display_name'] }}</strong>
-                            {% if m['id'] == session.get('admin_id') %}
-                                <span class="badge bg-info-subtle text-info border border-info ms-1">حساب شما</span>
-                            {% endif %}
+                            <div class="d-flex align-items-center gap-2">
+                                <img src="{{ url_for('telegram_avatar', identifier=(m.get('telegram_id') or m['username'])) }}" 
+                                     alt="{{ m['display_name'] }}" 
+                                     class="rounded-circle border shadow-sm flex-shrink-0" 
+                                     style="width: 38px; height: 38px; object-fit: cover;" 
+                                     loading="lazy">
+                                <div>
+                                    <div class="fw-bold">{{ m['display_name'] }}
+                                        {% if m['id'] == session.get('admin_id') %}
+                                            <span class="badge bg-info-subtle text-info border border-info ms-1">حساب شما</span>
+                                        {% endif %}
+                                    </div>
+                                    {% if m.get('telegram_id') %}
+                                        <small class="text-muted"><code>ID: {{ m['telegram_id'] }}</code></small>
+                                    {% endif %}
+                                </div>
+                            </div>
                         </td>
                         <td><code class="text-primary">{{ m['username'] }}</code></td>
                         <td>
@@ -137,6 +150,10 @@
                                             <input type="text" name="username" class="form-control" value="{{ m['username'] }}" required pattern="^[a-zA-Z0-9_.-]+$">
                                         </div>
                                         <div class="mb-3">
+                                            <label class="form-label">آیدی عددی تلگرام (جهت دریافت عکس پروفایل):</label>
+                                            <input type="number" name="telegram_id" class="form-control font-monospace" placeholder="مثال: 12345678" value="{{ m.get('telegram_id') or '' }}">
+                                        </div>
+                                        <div class="mb-3">
                                             <label class="form-label">رمز عبور جدید (در صورت تمایل به تغییر وارد کنید):</label>
                                             <input type="password" name="password" class="form-control" placeholder="برای عدم تغییر خالی بگذارید">
                                         </div>
@@ -182,6 +199,10 @@
                     <div class="mb-3">
                         <label class="form-label">نام کاربری ورود (انگلیسی):</label>
                         <input type="text" name="username" class="form-control" placeholder="مثال: admin_hosseini" required pattern="^[a-zA-Z0-9_.-]+$">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">آیدی عددی تلگرام (اختیاری - جهت نمایش عکس پروفایل):</label>
+                        <input type="number" name="telegram_id" class="form-control font-monospace" placeholder="مثال: 12345678">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">رمز عبور ورود:</label>
