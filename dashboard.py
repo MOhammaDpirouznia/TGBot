@@ -277,6 +277,68 @@ def hidify_sync_update_user(uuid: str, **kwargs) -> dict:
     return res
 
 
+def hidify_sync_renew_user(uuid: str, new_limit_gb: float, new_duration_days: int) -> dict:
+    """
+    تمدید هوشمند کاربر در هیدیفای با رعایت ۲ حالت:
+    حالت اول: اگر زمان یا حجم اشتراک تمام شده باشد -> جایگزینی حجم و روز با مقادیر پلن جدید + ریست حجم مصرفی و ریست زمان شروع
+    حالت دوم: اگر زمان یا حجم اشتراک هنوز تمام نشده باشد -> فقط اضافه کردن حجم و روز به مقادیر قبلی
+    """
+    try:
+        user_info = hidify_sync_request("GET", f"/admin/user/{uuid}/")
+        if not user_info or "error" in user_info or not isinstance(user_info, dict):
+            res = hidify_sync_update_user(
+                uuid,
+                usage_limit_GB=new_limit_gb,
+                package_days=new_duration_days,
+                current_usage_GB=0,
+                start_date=None,
+                enable=True,
+                is_active=True
+            )
+            return {"renewal_type": "reset_and_replaced", "new_limit": new_limit_gb, "new_days": new_duration_days, "res": res}
+
+        current_usage = float(user_info.get("current_usage_GB") or 0)
+        curr_limit = float(user_info.get("usage_limit_GB") or 0)
+        curr_days = int(user_info.get("package_days") or 0)
+        is_active = user_info.get("is_active", True)
+        enable = user_info.get("enable", True)
+
+        # بررسی اتمام حجم یا زمان اشتراک
+        is_traffic_finished = (curr_limit > 0 and current_usage >= curr_limit)
+        is_expired = (not is_active or not enable or is_traffic_finished)
+
+        if is_expired:
+            # حالت اول: زمان یا حجم تمام شده -> جایگزینی مقادیر و ریست حجم مصرفی و زمان شروع
+            logger.info(f"Sync Renew {uuid}: Expired/Finished -> Resetting usage and replacing plan ({new_limit_gb} GB, {new_duration_days} days)")
+            payload = {
+                "usage_limit_GB": new_limit_gb,
+                "package_days": new_duration_days,
+                "current_usage_GB": 0,
+                "start_date": None,
+                "enable": True,
+                "is_active": True
+            }
+            res = hidify_sync_update_user(uuid, **payload)
+            return {"renewal_type": "reset_and_replaced", "new_limit": new_limit_gb, "new_days": new_duration_days, "res": res}
+        else:
+            # حالت دوم: هنوز حجم یا زمان باقی مانده -> اضافه کردن حجم و روز به مقادیر قبلی
+            combined_limit = (curr_limit + new_limit_gb) if curr_limit > 0 and new_limit_gb > 0 else (new_limit_gb if new_limit_gb > 0 else 0)
+            combined_days = curr_days + new_duration_days
+            logger.info(f"Sync Renew {uuid}: Active -> Appending volume & days ({curr_limit}+{new_limit_gb}={combined_limit} GB, {curr_days}+{new_duration_days}={combined_days} days)")
+            payload = {
+                "usage_limit_GB": combined_limit,
+                "package_days": combined_days,
+                "enable": True,
+                "is_active": True
+            }
+            res = hidify_sync_update_user(uuid, **payload)
+            return {"renewal_type": "appended", "new_limit": combined_limit, "new_days": combined_days, "res": res}
+    except Exception as e:
+        logger.error(f"Error in hidify_sync_renew_user for {uuid}: {e}")
+        res = hidify_sync_update_user(uuid, usage_limit_GB=new_limit_gb, package_days=new_duration_days, enable=True, is_active=True)
+        return {"renewal_type": "fallback", "new_limit": new_limit_gb, "new_days": new_duration_days, "res": res}
+
+
 def hidify_sync_ping() -> dict:
     """تست اتصال و پینگ سرور هیدیفای"""
     panel_url = get_hiddify_url()
@@ -342,11 +404,68 @@ def reseller_required(f):
     return decorated_function
 
 
+import random
+
+def generate_svg_captcha() -> tuple[str, str]:
+    """تولید کپچای تصویری امن SVG با نویز و کاراکترهای چرخانده شده بدون نیاز به کتابخانه جانبی"""
+    chars = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+    code = "".join(random.choices(chars, k=5))
+    width, height = 150, 48
+    
+    # خطوط نویز
+    lines_svg = []
+    palette = ["#4f46e5", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"]
+    for _ in range(5):
+        x1, y1 = random.randint(5, width - 5), random.randint(5, height - 5)
+        x2, y2 = random.randint(5, width - 5), random.randint(5, height - 5)
+        stroke = random.choice(palette)
+        lines_svg.append(f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{stroke}" stroke-width="{random.choice([1, 2])}" opacity="0.45" />')
+        
+    # نقاط نویز
+    dots_svg = []
+    for _ in range(25):
+        cx, cy = random.randint(2, width - 2), random.randint(2, height - 2)
+        r = random.uniform(1.0, 2.2)
+        color = random.choice(palette)
+        dots_svg.append(f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="{color}" opacity="0.35" />')
+        
+    # حروف با زاویه و استایل
+    chars_svg = []
+    for i, ch in enumerate(code):
+        x = 16 + (i * 25) + random.randint(-2, 2)
+        y = 33 + random.randint(-3, 3)
+        angle = random.randint(-22, 22)
+        color = random.choice(["#0f172a", "#1e1b4b", "#0369a1", "#047857", "#b91c1c", "#4338ca"])
+        chars_svg.append(
+            f'<text x="{x}" y="{y}" font-family="Verdana, Tahoma, sans-serif" font-size="25" font-weight="bold" fill="{color}" transform="rotate({angle}, {x}, {y})">{ch}</text>'
+        )
+        
+    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
+        <rect width="100%" height="100%" fill="#f1f5f9" rx="8" />
+        {''.join(dots_svg)}
+        {''.join(lines_svg)}
+        {''.join(chars_svg)}
+    </svg>"""
+    return code, svg
+
+
+@app.route("/captcha-image")
+def captcha_image():
+    """ارائه تصویر کپچا برای اعتبارسنجی فرم ورود"""
+    code, svg = generate_svg_captcha()
+    session["captcha_code"] = code
+    resp = Response(svg, mimetype="image/svg+xml")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
+
+
 # ─── مسیرهای احراز هویت (Authentication) ───
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    """صفحه ورود با پشتیبانی از دو نقش Admin و Reseller"""
+    """صفحه ورود با پشتیبانی از دو نقش Admin و Reseller به همراه کد امنیتی کپچا"""
     if session.get("logged_in"):
         if session.get("role") == "reseller":
             return redirect(url_for("reseller_dashboard"))
@@ -355,6 +474,15 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "").strip()
+        captcha_input = request.form.get("captcha", "").strip().upper()
+
+        real_captcha = str(session.get("captcha_code", "")).upper()
+        if not real_captcha or captcha_input != real_captcha:
+            flash("کد امنیتی (کپچا) وارد شده نادرست یا منقضی شده است!", "danger")
+            return render_template("login.html")
+
+        # مصرف کد کپچا
+        session.pop("captcha_code", None)
 
         # ۱. بررسی ادمین اصلی
         if username == get_admin_username() and password == get_admin_password():
@@ -558,9 +686,19 @@ def approve_payment(payment_id):
         target_sub = next((s for s in user_subs if s["id"] == renew_sub_id), None)
         if target_sub:
             user_uuid = target_sub.get("hidify_uuid", "")
-            # بروزرسانی در هیدیفای
-            hidify_sync_update_user(user_uuid, usage_limit_GB=data_limit, package_days=duration)
-            db.update_subscription(renew_sub_id, plan_name=plan_name, data_limit=data_limit, duration=duration, status="active")
+            # تمدید هوشمند هیدیفای با رعایت ۲ حالت منقضی یا فعال
+            renew_res = hidify_sync_renew_user(user_uuid, float(data_limit), int(duration))
+            final_limit = renew_res.get("new_limit", data_limit)
+            final_days = renew_res.get("new_days", duration)
+            final_used = 0 if renew_res.get("renewal_type") == "reset_and_replaced" else target_sub.get("data_used", 0)
+            db.update_subscription(
+                renew_sub_id,
+                plan_name=plan_name,
+                data_limit=final_limit,
+                duration=final_days,
+                data_used=final_used,
+                status="active"
+            )
     else:
         # خرید جدید
         res = hidify_sync_create_user(name=account_name, usage_limit_gb=data_limit, package_days=duration, comment=str(user_id))

@@ -128,6 +128,62 @@ class HidifyClient:
         return res
 
 
+    async def renew_user(self, uuid: str, new_limit_gb: float, new_duration_days: int) -> dict:
+        """
+        تمدید هوشمند اشتراک در هیدیفای:
+        حالت اول: اتمام زمان یا حجم -> جایگزینی حجم و روز + ریست حجم مصرفی و ریست زمان شروع
+        حالت دوم: باقی‌ماندن حجم و زمان -> اضافه کردن حجم و روز به مقادیر قبلی
+        """
+        try:
+            user_info = await self.get_user(uuid)
+            if not user_info or "error" in user_info or not isinstance(user_info, dict):
+                return await self.update_user(
+                    uuid,
+                    usage_limit_GB=new_limit_gb,
+                    package_days=new_duration_days,
+                    current_usage_GB=0,
+                    start_date=None,
+                    enable=True,
+                    is_active=True
+                )
+
+            current_usage = float(user_info.get("current_usage_GB") or 0)
+            curr_limit = float(user_info.get("usage_limit_GB") or 0)
+            curr_days = int(user_info.get("package_days") or 0)
+            is_active = user_info.get("is_active", True)
+            enable = user_info.get("enable", True)
+
+            is_traffic_finished = (curr_limit > 0 and current_usage >= curr_limit)
+            is_expired = (not is_active or not enable or is_traffic_finished)
+
+            if is_expired:
+                # حالت اول: جایگزینی و ریست کامل
+                logger.info(f"Async Renew {uuid}: Expired -> Full Reset & Replace ({new_limit_gb} GB, {new_duration_days} days)")
+                return await self.update_user(
+                    uuid,
+                    usage_limit_GB=new_limit_gb,
+                    package_days=new_duration_days,
+                    current_usage_GB=0,
+                    start_date=None,
+                    enable=True,
+                    is_active=True
+                )
+            else:
+                # حالت دوم: افزایش حجم و زمان
+                combined_limit = (curr_limit + new_limit_gb) if curr_limit > 0 and new_limit_gb > 0 else (new_limit_gb if new_limit_gb > 0 else 0)
+                combined_days = curr_days + new_duration_days
+                logger.info(f"Async Renew {uuid}: Active -> Appended ({combined_limit} GB, {combined_days} days)")
+                return await self.update_user(
+                    uuid,
+                    usage_limit_GB=combined_limit,
+                    package_days=combined_days,
+                    enable=True,
+                    is_active=True
+                )
+        except Exception as e:
+            logger.error(f"Error in async renew_user for {uuid}: {e}")
+            return await self.update_user(uuid, usage_limit_GB=new_limit_gb, package_days=new_duration_days, enable=True, is_active=True)
+
     async def delete_user(self, uuid: str) -> dict:
         """حذف کاربر"""
         return await self._request("DELETE", f"/admin/user/{uuid}/")
