@@ -32,12 +32,23 @@
                             </div>
                         </div>
 
-                        <div class="mb-4">
+                        <div class="mb-3">
                             <label class="form-label small fw-bold">رمز عبور:</label>
                             <div class="input-group">
                                 <span class="input-group-text bg-light"><i class="fas fa-lock text-muted"></i></span>
                                 <input type="password" class="form-control" name="password" placeholder="Password" required>
                             </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label small fw-bold">کد امنیتی (کپچا):</label>
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <img id="captchaImg" src="{{ url_for('captcha_image') }}" alt="کپچا" class="rounded border shadow-sm flex-grow-1" style="height: 46px; object-fit: contain; background: #f8fafc; cursor: pointer;" onclick="refreshCaptcha()" title="برای تغییر تصویر کلیک کنید">
+                                <button type="button" class="btn btn-outline-secondary" onclick="refreshCaptcha()" title="تغییر تصویر کد امنیتی" style="height: 46px; width: 46px;">
+                                    <i class="fas fa-rotate"></i>
+                                </button>
+                            </div>
+                            <input type="text" class="form-control text-center font-monospace fs-5 text-uppercase fw-bold" name="captcha" placeholder="کد داخل تصویر" maxlength="6" autocomplete="off" required>
                         </div>
 
                         <button type="submit" class="btn btn-primary w-100 py-2 fw-bold">
@@ -52,4 +63,13 @@
         </div>
     </div>
 </div>
+
+<script>
+function refreshCaptcha() {
+    const img = document.getElementById('captchaImg');
+    if (img) {
+        img.src = "{{ url_for('captcha_image') }}?t=" + new Date().getTime();
+    }
+}
+</script>
 {% endblock %}

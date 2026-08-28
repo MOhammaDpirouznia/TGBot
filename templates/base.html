@@ -22,8 +22,18 @@
             --sidebar-bg: #0f172a;
             --body-bg: #f8fafc;
             --card-bg: #ffffff;
+            --card-border: rgba(0,0,0,0.06);
             --text-main: #1e293b;
             --text-muted: #64748b;
+        }
+
+        [data-bs-theme="dark"] {
+            --body-bg: #0b0f19;
+            --card-bg: #151e2e;
+            --card-border: #1e293b;
+            --sidebar-bg: #090d16;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
         }
 
         body {
@@ -32,6 +42,52 @@
             color: var(--text-main);
             min-height: 100vh;
             margin: 0;
+            transition: background-color 0.25s ease, color 0.25s ease;
+        }
+
+        [data-bs-theme="dark"] .card {
+            background-color: var(--card-bg);
+            border-color: var(--card-border);
+            color: var(--text-main);
+        }
+
+        [data-bs-theme="dark"] .card-header,
+        [data-bs-theme="dark"] .card-footer {
+            background-color: rgba(255, 255, 255, 0.02) !important;
+            border-color: var(--card-border) !important;
+            color: var(--text-main);
+        }
+
+        [data-bs-theme="dark"] .table {
+            color: var(--text-main);
+            --bs-table-bg: var(--card-bg);
+            --bs-table-hover-bg: #1e293b;
+            border-color: var(--card-border);
+        }
+
+        [data-bs-theme="dark"] .table th {
+            color: #94a3b8;
+            background-color: rgba(255, 255, 255, 0.02);
+            border-color: var(--card-border);
+        }
+
+        [data-bs-theme="dark"] .form-control,
+        [data-bs-theme="dark"] .form-select,
+        [data-bs-theme="dark"] .input-group-text {
+            background-color: #0f172a;
+            border-color: #334155;
+            color: #f8fafc;
+        }
+
+        [data-bs-theme="dark"] .modal-content {
+            background-color: var(--card-bg);
+            border-color: var(--card-border);
+            color: var(--text-main);
+        }
+
+        [data-bs-theme="dark"] .modal-footer,
+        [data-bs-theme="dark"] .modal-body.bg-light {
+            background-color: rgba(0, 0, 0, 0.25) !important;
         }
 
         .sidebar {
@@ -357,6 +413,9 @@
                     {% endif %}
                 </div>
             </div>
+            <button type="button" class="btn btn-outline-light btn-sm w-100 mb-2 d-flex align-items-center justify-content-center gap-2" id="themeToggleBtn" onclick="toggleTheme()">
+                <i id="themeIcon" class="fas fa-moon text-info"></i> <span id="themeLabel">حالت تیره</span>
+            </button>
             <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-sm w-100">
                 <i class="fas fa-power-off me-1"></i> خروج از پنل
             </a>
@@ -610,6 +669,33 @@
                 // Ignore network errors in background polling
             }
         }
+
+        // ─── سیستم تغییر تم تیره / روشن (Dark/Light Mode) ───
+        function applyTheme(theme) {
+            document.documentElement.setAttribute('data-bs-theme', theme);
+            localStorage.setItem('app_theme', theme);
+            const icon = document.getElementById('themeIcon');
+            const label = document.getElementById('themeLabel');
+            if (icon && label) {
+                if (theme === 'dark') {
+                    icon.className = 'fas fa-sun text-warning';
+                    label.textContent = 'حالت روشن';
+                } else {
+                    icon.className = 'fas fa-moon text-info';
+                    label.textContent = 'حالت تیره';
+                }
+            }
+        }
+
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-bs-theme') || 'light';
+            const next = current === 'dark' ? 'light' : 'dark';
+            applyTheme(next);
+        }
+
+        // مقداردهی اولیه تم
+        const savedTheme = localStorage.getItem('app_theme') || 'light';
+        applyTheme(savedTheme);
 
         // اجرای پایش هر ۱۲ ثانیه برای مدیر
         {% if session.get('role') == 'admin' %}
