@@ -74,6 +74,8 @@ class Database:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 telegram_id INTEGER UNIQUE NOT NULL,
                 username TEXT,
+                phone_number TEXT,
+                is_verified BOOLEAN DEFAULT 0,
                 hidify_uuid TEXT,
                 plan_id TEXT,
                 data_limit REAL DEFAULT 0,
@@ -325,6 +327,16 @@ class Database:
         # مایگریشن خودکار ستون‌های جدید
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN referred_by INTEGER")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN phone_number TEXT")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT 0")
         except Exception:
             pass
 
@@ -746,6 +758,44 @@ class Database:
             return None
         finally:
             conn.close()
+
+    def set_user_phone(self, telegram_id: int, phone_number: str) -> bool:
+        """ثبت و تایید شماره تماس تلگرام کاربر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        clean_phone = str(phone_number).strip().replace(" ", "").replace("-", "")
+        if not clean_phone.startswith("+") and clean_phone.startswith("98"):
+            clean_phone = "+" + clean_phone
+        elif not clean_phone.startswith("+") and not clean_phone.startswith("0"):
+            clean_phone = "+" + clean_phone
+
+        try:
+            cursor.execute("SELECT id FROM users WHERE telegram_id = ?", (telegram_id,))
+            if cursor.fetchone():
+                cursor.execute("""
+                    UPDATE users SET phone_number = ?, is_verified = 1, updated_at = ? WHERE telegram_id = ?
+                """, (clean_phone, now, telegram_id))
+            else:
+                cursor.execute("""
+                    INSERT INTO users (telegram_id, username, phone_number, is_verified, created_at, updated_at)
+                    VALUES (?, ?, ?, 1, ?, ?)
+                """, (telegram_id, f"user_{telegram_id}", clean_phone, now, now))
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error setting user phone {telegram_id}: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def is_user_verified(self, telegram_id: int) -> bool:
+        """بررسی احراز هویت شماره تلفن کاربر"""
+        user = self.get_user(telegram_id)
+        if not user:
+            return False
+        phone = user.get("phone_number")
+        return bool(phone and str(phone).strip())
 
     def get_all_users(self):
         """دریافت تمام کاربران"""

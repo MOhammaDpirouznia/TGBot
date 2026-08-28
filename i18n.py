@@ -117,6 +117,36 @@ STRINGS = {
         "ru": "📋 Скопировать ссылку",
         "zh": "📋 复制链接",
     },
+    "btn_send_contact": {
+        "fa": "📱 تایید و ارسال شماره تلفن",
+        "en": "📱 Share & Verify Phone Number",
+        "ru": "📱 Отправить номер телефона",
+        "zh": "📱 发送并验证手机号",
+    },
+    "contact_auth_prompt": {
+        "fa": "🔐 **احراز هویت و فعال‌سازی حساب کاربری**\n\nبرای امنیت و دسترسی به خدمات ربات، لطفاً با لمس دکمه زیر شماره تماس اکانت تلگرام خود را ارسال نمایید تا حسابتان فعال شود:",
+        "en": "🔐 **Account Verification**\n\nFor security and account activation, please tap the button below to share and verify your Telegram phone number:",
+        "ru": "🔐 **Верификация аккаунта**\n\nДля активации аккаунта отправьте ваш номер телефона с помощью кнопки ниже:",
+        "zh": "🔐 **账户身份验证**\n\n为了激活您的账户，请点击下方按钮发送并验证您的 Telegram 手机号码：",
+    },
+    "contact_auth_success": {
+        "fa": "✅ **احراز هویت شما با موفقیت انجام شد!**\n\nشماره تماس ثبت‌شده: `{phone}`\nاکنون می‌توانید از تمامی خدمات ربات استفاده فرمایید.",
+        "en": "✅ **Verification successful!**\n\nRegistered Phone: `{phone}`\nYou can now use all bot features.",
+        "ru": "✅ **Верификация успешно завершена!**\n\nНомер телефона: `{phone}`",
+        "zh": "✅ **验证成功！**\n\n已登记手机号：`{phone}`",
+    },
+    "contact_auth_invalid": {
+        "fa": "❌ خطا: لطفاً فقط شماره اختصاصی اکانت تلگرام خودتان را با لمس دکمه زیر ارسال فرمایید.",
+        "en": "❌ Error: Please send only your own Telegram phone number using the button below.",
+        "ru": "❌ Ошибка: Пожалуйста, отправьте именно ваш номер телефона с помощью кнопки.",
+        "zh": "❌ 错误：请仅通过下方按钮发送您本人的 Telegram 手机号码。",
+    },
+    "contact_auth_required": {
+        "fa": "⚠️ برای استفاده از این بخش، ابتدا باید احراز هویت شماره تلفن خود را تکمیل نمایید.",
+        "en": "⚠️ Please verify your phone number first to access this feature.",
+        "ru": "⚠️ Для доступа к этому разделу сначала подтвердите номер телефона.",
+        "zh": "⚠️ 请先完成手机号码验证以使用此功能。",
+    },
     "btn_quick_connect": {
         "fa": "🌐 صفحه کاربری و اتصال سریع",
         "en": "🌐 Quick Connect Portal",
@@ -503,6 +533,16 @@ def get_language_keyboard() -> InlineKeyboardMarkup:
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
+
+
+def get_contact_keyboard(lang: str = "fa") -> ReplyKeyboardMarkup:
+    """کیبورد درخواست ارسال و احراز هویت شماره تلفن تلگرام"""
+    lang = lang if lang in SUPPORTED_LANGUAGES else "fa"
+    btn_text = t("btn_send_contact", lang)
+    keyboard = [
+        [KeyboardButton(btn_text, request_contact=True)]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
 
 
 def get_main_keyboard(user_id: int, admin_id: int, lang: str = "fa") -> ReplyKeyboardMarkup:

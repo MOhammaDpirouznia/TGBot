@@ -614,9 +614,9 @@ def users():
             SELECT u.*, 
                    (SELECT COUNT(*) FROM subscriptions WHERE telegram_id=u.telegram_id) as subs_count
             FROM users u
-            WHERE u.username LIKE ? OR u.telegram_id LIKE ?
+            WHERE u.username LIKE ? OR u.telegram_id LIKE ? OR u.phone_number LIKE ?
             ORDER BY u.created_at DESC
-        """, (f"%{search}%", f"%{search}%")).fetchall()
+        """, (f"%{search}%", f"%{search}%", f"%{search}%")).fetchall()
     else:
         user_list = conn.execute("""
             SELECT u.*, 

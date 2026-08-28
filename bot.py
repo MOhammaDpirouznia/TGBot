@@ -32,7 +32,7 @@ from database import db
 from backup import BackupManager, AutoBackupScheduler, send_backup_to_admin
 from notifications import NotificationScheduler
 from i18n import (
-    t, get_language_keyboard, get_main_keyboard, get_all_lang_regex, SUPPORTED_LANGUAGES
+    t, get_language_keyboard, get_main_keyboard, get_contact_keyboard, get_all_lang_regex, SUPPORTED_LANGUAGES
 )
 from telegram import (
     Update,
@@ -440,8 +440,40 @@ def save_user_data(telegram_user_id: int, data: dict):
 # هندلرهای ربات
 # ═══════════════════════════════════════════════════════════════════════
 
+async def ensure_user_verified(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """بررسی احراز هویت شماره تلفن کاربر. اگر تایید نشده باشد پیام درخواست شماره با کیبورد ارسال می‌شود."""
+    user = update.effective_user
+    if user.id == ADMIN_ID:
+        return True
+    if db.is_user_verified(user.id):
+        return True
+
+    lang = context.user_data.get("lang") or db.get_user_language(user.id) or "fa"
+    contact_markup = get_contact_keyboard(lang)
+    warning_text = f"{t('contact_auth_required', lang)}\n\n{t('contact_auth_prompt', lang)}"
+
+    if update.callback_query:
+        try:
+            await update.callback_query.answer(t("contact_auth_required", lang), show_alert=True)
+        except Exception:
+            pass
+        await context.bot.send_message(
+            chat_id=user.id,
+            text=warning_text,
+            reply_markup=contact_markup,
+            parse_mode="Markdown"
+        )
+    elif update.message:
+        await update.message.reply_text(
+            warning_text,
+            reply_markup=contact_markup,
+            parse_mode="Markdown"
+        )
+    return False
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """دستور /start - شروع ربات همراه با انتخاب زبان"""
+    """دستور /start - شروع ربات همراه با انتخاب زبان و احراز هویت شماره تلفن"""
     user = update.effective_user
     
     # ثبت کاربر در دیتابیس
@@ -461,7 +493,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return CHOOSING
 
-    # ارسال منوی انتخاب زبان
+    # اگر کاربر قبلاً زبان انتخاب کرده و احراز هویت نشده است، دکمه شماره تماس را بفرست
+    if user.id != ADMIN_ID and not db.is_user_verified(user.id):
+        user_lang = db.get_user_language(user.id)
+        if user_lang:
+            context.user_data["lang"] = user_lang
+            if REQUIRED_CHANNELS:
+                is_member = await check_channel_membership(user.id, context)
+                if not is_member:
+                    await show_join_channels_message(update, context)
+                    return CHOOSING
+
+            contact_markup = get_contact_keyboard(user_lang)
+            auth_msg = t("contact_auth_prompt", user_lang)
+            await update.message.reply_text(
+                auth_msg,
+                reply_markup=contact_markup,
+                parse_mode="Markdown"
+            )
+            return CHOOSING
+
+    # ارسال منوی انتخاب زبان برای ورود اولیه
     prompt = t("lang_select_prompt", "fa")
     await update.message.reply_text(
         prompt,
@@ -471,7 +523,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def select_language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ثبت زبان انتخابی کاربر و نمایش منوی اصلی"""
+    """ثبت زبان انتخابی کاربر و بررسی احراز هویت شماره تلفن یا نمایش منوی اصلی"""
     query = update.callback_query
     await query.answer()
     user = update.effective_user
@@ -499,6 +551,22 @@ async def select_language_callback(update: Update, context: ContextTypes.DEFAULT
             await show_join_channels_message(update, context)
             return CHOOSING
 
+    # احراز هویت با شماره تلفن تلگرام برای کاربران تایید نشده
+    if user.id != ADMIN_ID and not db.is_user_verified(user.id):
+        contact_markup = get_contact_keyboard(lang)
+        auth_msg = t("contact_auth_prompt", lang)
+        try:
+            await query.edit_message_text(f"{t('lang_changed', lang)}\n\n{auth_msg}", parse_mode="Markdown")
+        except Exception:
+            pass
+        await context.bot.send_message(
+            chat_id=user.id,
+            text=auth_msg,
+            reply_markup=contact_markup,
+            parse_mode="Markdown"
+        )
+        return CHOOSING
+
     reply_markup = get_main_keyboard(user.id, ADMIN_ID, lang)
     welcome_text = t("welcome_msg", lang, name=user.first_name)
     if user.id == ADMIN_ID:
@@ -514,6 +582,45 @@ async def select_language_callback(update: Update, context: ContextTypes.DEFAULT
         chat_id=user.id,
         text=t("choose_option", lang),
         reply_markup=reply_markup
+    )
+    return CHOOSING
+
+
+async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """دریافت شماره تلفن ارسالی کاربر از طریق دکمه تلگرام و ثبت در دیتابیس"""
+    message = update.message
+    user = update.effective_user
+    lang = context.user_data.get("lang") or db.get_user_language(user.id) or "fa"
+
+    if not message.contact:
+        return CHOOSING
+
+    contact = message.contact
+
+    # اعتبارسنجی امنیتی: شماره باید متعلق به اکانت خود کاربر باشد
+    if contact.user_id and contact.user_id != user.id:
+        await message.reply_text(
+            t("contact_auth_invalid", lang),
+            reply_markup=get_contact_keyboard(lang)
+        )
+        return CHOOSING
+
+    phone_number = contact.phone_number
+    db.set_user_phone(user.id, phone_number)
+    logger.info(f"User {user.id} ({user.username}) successfully authenticated with phone: {phone_number}")
+
+    # ارسال پیام موفقیت و کیبورد منوی اصلی
+    reply_markup = get_main_keyboard(user.id, ADMIN_ID, lang)
+    success_text = t("contact_auth_success", lang, phone=phone_number)
+    welcome_text = t("welcome_msg", lang, name=user.first_name)
+    if user.id == ADMIN_ID:
+        welcome_text += f"• {t('btn_admin', lang)}\n"
+
+    full_msg = f"{success_text}\n\n{welcome_text}\n{t('choose_option', lang)}"
+    await message.reply_text(
+        full_msg,
+        reply_markup=reply_markup,
+        parse_mode="Markdown"
     )
     return CHOOSING
 
@@ -762,6 +869,9 @@ async def dashboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """نمایش پلن‌های اشتراک"""
+    if not await ensure_user_verified(update, context):
+        return CHOOSING
+
     plans = get_plans()
     
     if not plans:
@@ -1463,6 +1573,9 @@ async def confirm_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """نمایش وضعیت تمام اشتراک‌ها با استعلام مصرف و روزهای مانده زنده از سرور هیدیفای"""
+    if not await ensure_user_verified(update, context):
+        return CHOOSING
+
     user = update.effective_user
     try:
         subscriptions = db.get_user_subscriptions(user.id)
@@ -1595,6 +1708,9 @@ async def show_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_payments_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """نمایش سوابق و گزارش پرداخت‌های مشتری"""
+    if not await ensure_user_verified(update, context):
+        return CHOOSING
+
     user = update.effective_user
     try:
         transactions = db.get_user_transactions(user.id)
@@ -1662,6 +1778,9 @@ async def show_payments_history(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def get_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """دریافت لینک اشتراک‌ها همراه با QR Code و دکمه‌های اتصال مستقیم"""
+    if not await ensure_user_verified(update, context):
+        return CHOOSING
+
     user = update.effective_user
     try:
         subscriptions = db.get_user_subscriptions(user.id)
@@ -1854,6 +1973,9 @@ async def handle_import_sub_text(update: Update, context: ContextTypes.DEFAULT_T
 
 async def renew_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """تمدید اشتراک - نمایش اشتراک‌های موجود"""
+    if not await ensure_user_verified(update, context):
+        return CHOOSING
+
     user = update.effective_user
     
     # دریافت اشتراک‌های کاربر از دیتابیس
@@ -2206,6 +2328,9 @@ async def verify_payment_callback(update: Update, context: ContextTypes.DEFAULT_
 
 async def handle_test_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """اشتراک تست - فقط یکبار برای هر کاربر"""
+    if not await ensure_user_verified(update, context):
+        return CHOOSING
+
     user = update.effective_user
 
     # بررسی آیا قبلاً اشتراک تست گرفته
@@ -2357,6 +2482,9 @@ async def show_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def referral_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """منوی زیرمجموعه‌گیری و کسب درآمد"""
+    if not await ensure_user_verified(update, context):
+        return CHOOSING
+
     user = update.effective_user
     bot_info = await context.bot.get_me()
     bot_username = bot_info.username
@@ -2401,6 +2529,9 @@ async def referral_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def support_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """منوی پشتیبانی و ارتباط مستقیم با ادمین"""
+    if not await ensure_user_verified(update, context):
+        return CHOOSING
+
     text = (
         "💬 <b>مرکز پشتیبانی و ارتباط با مدیریت</b>\n\n"
         "در صورتی که سوال، مشکل در اتصال، نیاز به کانفیگ اختصاصی یا راهنمایی دارید، می‌توانید تیکت ثبت کنید یا مستقیماً با مدیریت در ارتباط باشید:"
@@ -4551,6 +4682,7 @@ def main():
 
     # هندلرهای دکمه‌های منوی اصلی (Keyboard) با پشتیبانی از ۴ زبان
     main_menu_handlers = [
+        MessageHandler(filters.CONTACT, handle_contact),
         MessageHandler(filters.Regex(get_all_lang_regex("btn_buy")), show_plans),
         MessageHandler(filters.Regex(get_all_lang_regex("btn_test")), handle_test_subscription),
         MessageHandler(filters.Regex(get_all_lang_regex("btn_renew")), renew_subscription),
