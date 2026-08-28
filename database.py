@@ -304,6 +304,16 @@ class Database:
             pass
 
         try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN receipt_image TEXT")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN receipt_file_type TEXT")
+        except Exception:
+            pass
+
+        try:
             cursor.execute("ALTER TABLE subscriptions ADD COLUMN reseller_id INTEGER")
         except Exception:
             pass
@@ -311,6 +321,120 @@ class Database:
         conn.commit()
         conn.close()
         logger.info("Database initialized successfully")
+
+        # بازیابی جامع اطلاعات در صورت خالی بودن دیتابیس پس از دیپلوی
+        try:
+            self.auto_restore_full()
+        except Exception as e:
+            logger.warning(f"Initial auto_restore_full check: {e}")
+
+    def export_full_backup_json(self) -> dict:
+        """پشتیبان‌گیری کامل از تمام جداول، کاربران، پلن‌ها، کارت‌ها، تنظیمات، تخفیف‌ها و نمایندگان در قالب یک فایل JSON پایدار"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        backup_data = {
+            "version": "2.0",
+            "timestamp": get_now_iso(),
+            "tables": {}
+        }
+        
+        tables = [
+            "users", "subscriptions", "transactions", "resellers",
+            "reseller_transactions", "bank_cards", "discount_codes",
+            "settings", "support_tickets", "referrals"
+        ]
+        
+        for table in tables:
+            try:
+                cursor.execute(f"SELECT * FROM {table}")
+                rows = cursor.fetchall()
+                backup_data["tables"][table] = [dict(r) for r in rows]
+            except Exception as e:
+                logger.warning(f"Could not export table {table}: {e}")
+                backup_data["tables"][table] = []
+        
+        conn.close()
+        
+        # ذخیره در فایل‌های پشتیبان پایدار
+        try:
+            backup_dirs = [Path("data"), Path("/data"), DB_DIR]
+            for bdir in backup_dirs:
+                if bdir.exists():
+                    fpath = bdir / "backup_full_latest.json"
+                    with open(fpath, "w", encoding="utf-8") as f:
+                        json.dump(backup_data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.error(f"Error writing backup_full_latest.json: {e}")
+            
+        return backup_data
+
+    def auto_restore_full(self) -> dict:
+        """بازیابی جامع اطلاعات تمام جداول (کاربران، کارت‌ها، پلن‌ها، نمایندگان، کد تخفیف و تنظیمات) پس از دیپلوی"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # بررسی خالی بودن جداول کلیدی
+            cursor.execute("SELECT COUNT(*) FROM users")
+            users_count = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM bank_cards")
+            cards_count = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM resellers")
+            resellers_count = cursor.fetchone()[0]
+            
+            needs_restore = (users_count == 0 and cards_count == 0 and resellers_count == 0)
+            if not needs_restore and users_count > 0:
+                conn.close()
+                logger.info(f"Database contains {users_count} users, full restore skipped.")
+                return {"restored": False, "reason": "database_not_empty"}
+            
+            # جستجوی فایل JSON فول بک‌آپ
+            candidate_files = [
+                Path("data/backup_full_latest.json"),
+                Path("/data/backup_full_latest.json"),
+                Path("/data/backups/backup_full_latest.json"),
+                DB_DIR / "backup_full_latest.json",
+            ]
+            
+            found_file = None
+            for cand in candidate_files:
+                if cand.exists():
+                    found_file = cand
+                    break
+            
+            if not found_file:
+                # تلاش برای بازیابی از فایل‌های .db
+                conn.close()
+                return self.auto_restore()
+                
+            logger.info(f"Restoring full database from {found_file}...")
+            with open(found_file, "r", encoding="utf-8") as f:
+                backup_data = json.load(f)
+                
+            tables_data = backup_data.get("tables", {})
+            restored_stats = {}
+            
+            for table_name, rows in tables_data.items():
+                if not rows:
+                    continue
+                try:
+                    for row in rows:
+                        columns = list(row.keys())
+                        placeholders = ", ".join(["?"] * len(columns))
+                        col_names = ", ".join(columns)
+                        values = [row[c] for c in columns]
+                        cursor.execute(f"INSERT OR REPLACE INTO {table_name} ({col_names}) VALUES ({placeholders})", values)
+                    restored_stats[table_name] = len(rows)
+                except Exception as ex:
+                    logger.warning(f"Error restoring table {table_name}: {ex}")
+            
+            conn.commit()
+            conn.close()
+            logger.info(f"Full restore completed successfully: {restored_stats}")
+            return {"restored": True, "stats": restored_stats, "source": str(found_file)}
+        except Exception as e:
+            logger.error(f"Error in auto_restore_full: {e}")
+            return {"restored": False, "error": str(e)}
 
     def auto_restore(self):
         """بازیابی خودکار از آخرین پشتیبان اگر دیتابیس خالی باشد"""
@@ -716,7 +840,7 @@ class Database:
     # مدیریت تراکنش‌ها
     # ═══════════════════════════════════════════════════════════════
 
-    def save_transaction(self, order_id, user_id, username, plan_name, amount, gateway, tracking_code, status="pending", account_name=None, account_comment=None, is_renewal=0, renew_sub_id=None, discount_code=None):
+    def save_transaction(self, order_id, user_id, username, plan_name, amount, gateway, tracking_code, status="pending", account_name=None, account_comment=None, is_renewal=0, renew_sub_id=None, discount_code=None, receipt_image=None, receipt_file_type=None):
         """ذخیره تراکنش"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -725,11 +849,18 @@ class Database:
         try:
             cursor.execute("""
                 INSERT OR REPLACE INTO transactions
-                (order_id, user_id, username, plan_name, amount, gateway, tracking_code, account_name, account_comment, status, is_renewal, renew_sub_id, discount_code, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (order_id, user_id, username, plan_name, amount, gateway, tracking_code, account_name, account_comment, status, 1 if is_renewal else 0, renew_sub_id, discount_code, now, now))
+                (order_id, user_id, username, plan_name, amount, gateway, tracking_code, account_name, account_comment, status, is_renewal, renew_sub_id, discount_code, receipt_image, receipt_photo_id, receipt_file_type, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (order_id, user_id, username, plan_name, amount, gateway, tracking_code, account_name, account_comment, status, 1 if is_renewal else 0, renew_sub_id, discount_code, receipt_image, receipt_image, receipt_file_type, now, now))
             conn.commit()
             logger.info(f"Transaction {order_id} saved (is_renewal={is_renewal})")
+            
+            # ذخیره بک‌آپ فوری
+            try:
+                self.export_full_backup_json()
+            except Exception:
+                pass
+
             return {"success": True}
         except Exception as e:
             logger.error(f"Error saving transaction {order_id}: {e}")
@@ -837,6 +968,10 @@ class Database:
             """, (key, str(value), now))
             conn.commit()
             logger.info(f"Setting {key} saved")
+            try:
+                self.export_full_backup_json()
+            except Exception:
+                pass
             return {"success": True}
         except Exception as e:
             logger.error(f"Error saving setting {key}: {e}")
@@ -2047,6 +2182,10 @@ class Database:
         """, (card_number.strip(), card_holder.strip(), bank_name.strip(), daily_limit, now))
         conn.commit()
         conn.close()
+        try:
+            self.export_full_backup_json()
+        except Exception:
+            pass
         return {"success": True}
 
     def toggle_bank_card(self, card_id: int, is_active: bool):
@@ -2056,6 +2195,10 @@ class Database:
         cursor.execute("UPDATE bank_cards SET is_active=? WHERE id=?", (1 if is_active else 0, card_id))
         conn.commit()
         conn.close()
+        try:
+            self.export_full_backup_json()
+        except Exception:
+            pass
         return {"success": True}
 
     def delete_bank_card(self, card_id: int):
@@ -2065,6 +2208,10 @@ class Database:
         cursor.execute("DELETE FROM bank_cards WHERE id=?", (card_id,))
         conn.commit()
         conn.close()
+        try:
+            self.export_full_backup_json()
+        except Exception:
+            pass
         return {"success": True}
 
 

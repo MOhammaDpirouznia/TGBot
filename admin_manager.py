@@ -33,6 +33,12 @@ def save_cards(cards: dict):
     """ذخیره کارت‌ها"""
     with open(CARDS_FILE, "w", encoding="utf-8") as f:
         json.dump(cards, f, ensure_ascii=False, indent=2)
+    try:
+        from database import db
+        db.save_setting("cards_config", cards)
+        db.export_full_backup_json()
+    except Exception:
+        pass
 
 
 def add_card(card_number: str, card_holder: str, bank_name: str) -> dict:
@@ -162,6 +168,12 @@ def save_plans(plans: dict):
     """ذخیره پلن‌ها"""
     with open(PLANS_FILE, "w", encoding="utf-8") as f:
         json.dump(plans, f, ensure_ascii=False, indent=2)
+    try:
+        from database import db
+        db.save_setting("plans_config", plans)
+        db.export_full_backup_json()
+    except Exception:
+        pass
 
 
 def add_plan(name: str, price: int, data_limit: int, duration: int) -> dict:

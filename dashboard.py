@@ -621,6 +621,93 @@ def reject_payment(payment_id):
     return redirect(url_for("payments"))
 
 
+@app.route("/admin/payment-receipt/<int:payment_id>")
+@admin_required
+def admin_payment_receipt(payment_id):
+    """دانلود و نمایش مستقیم تصویر رسید پرداخت کارت‌به‌کارت از تلگرام در مرورگر"""
+    conn = db.get_connection()
+    tx = conn.execute("SELECT * FROM transactions WHERE id=?", (payment_id,)).fetchone()
+    conn.close()
+
+    if not tx:
+        return Response("تراکنش یافت نشد", status=404)
+
+    file_id = None
+    if "receipt_image" in tx.keys() and tx["receipt_image"]:
+        file_id = tx["receipt_image"]
+    elif "receipt_photo_id" in tx.keys() and tx["receipt_photo_id"]:
+        file_id = tx["receipt_photo_id"]
+
+    if not file_id:
+        return Response("تصویر رسیدی برای این پرداخت ثبت نشده است", status=404)
+
+    bot_token = get_bot_token()
+    if not bot_token:
+        return Response("توکن ربات تلگرام تنظیم نشده است", status=500)
+
+    try:
+        get_file_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.get(get_file_url)
+            if resp.status_code != 200:
+                return Response("خطا در دریافت مسیر فایل از تلگرام", status=502)
+
+            file_info = resp.json()
+            file_path = file_info.get("result", {}).get("file_path")
+            if not file_path:
+                return Response("مسیر فایل یافت نشد", status=404)
+
+            download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+            dl_resp = client.get(download_url)
+            if dl_resp.status_code != 200:
+                return Response("خطا در دانلود تصویر رسید از تلگرام", status=502)
+
+            content_type = "image/jpeg"
+            if file_path.lower().endswith(".png"):
+                content_type = "image/png"
+            elif file_path.lower().endswith(".pdf"):
+                content_type = "application/pdf"
+
+            response = Response(dl_resp.content, mimetype=content_type)
+            response.headers["Cache-Control"] = "public, max-age=86400"
+            return response
+    except Exception as e:
+        logger.error(f"Error serving payment receipt {payment_id}: {e}")
+        return Response(f"خطا در دریافت تصویر: {e}", status=500)
+
+
+@app.route("/api/admin/notifications-check")
+@admin_required
+def api_admin_notifications_check():
+    """بررسی لحظه‌ای اعلان‌های جدید (پرداخت‌های معلق و تیکت‌های باز) برای پخش صدا و هشدار وب"""
+    conn = db.get_connection()
+    pending_payments = conn.execute("""
+        SELECT id, user_id, username, amount, plan_name, tracking_code, created_at 
+        FROM transactions 
+        WHERE status='pending' 
+        ORDER BY created_at DESC LIMIT 10
+    """).fetchall()
+
+    open_tickets = conn.execute("""
+        SELECT id, telegram_id, subject, message, created_at 
+        FROM support_tickets 
+        WHERE status='open' 
+        ORDER BY created_at DESC LIMIT 10
+    """).fetchall()
+    conn.close()
+
+    pending_list = [dict(p) for p in pending_payments]
+    ticket_list = [dict(t) for t in open_tickets]
+
+    return jsonify({
+        "pending_payments_count": len(pending_list),
+        "open_tickets_count": len(ticket_list),
+        "total_alerts": len(pending_list) + len(ticket_list),
+        "pending_payments": pending_list,
+        "open_tickets": ticket_list
+    })
+
+
 @app.route("/subscriptions")
 @admin_required
 def subscriptions():

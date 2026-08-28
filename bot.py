@@ -113,7 +113,8 @@ DATA_DIR.mkdir(exist_ok=True)
     ENTERING_DISCOUNT_CODE,
     ENTERING_TICKET_MESSAGE,
     ADMIN_REPLYING_TICKET,
-) = range(25)
+    ENTERING_IMPORT_SUB,
+) = range(26)
 
 
 async def edit_admin_message_safe(query, text, reply_markup=None, parse_mode="Markdown"):
@@ -1245,6 +1246,10 @@ async def confirm_card_payment(update: Update, context: ContextTypes.DEFAULT_TYP
         account_name = context.user_data.get("account_name", f"tg_{user.id}")
         account_comment = context.user_data.get("account_comment")
 
+        receipt_photo = context.user_data.get("receipt_photo")
+        receipt_is_doc = context.user_data.get("receipt_is_document", False)
+        receipt_type = "document" if receipt_is_doc else ("photo" if receipt_photo else None)
+
         db.save_transaction(
             order_id=order_id,
             user_id=user.id,
@@ -1259,6 +1264,8 @@ async def confirm_card_payment(update: Update, context: ContextTypes.DEFAULT_TYP
             is_renewal=is_renewal,
             renew_sub_id=renew_sub_id,
             discount_code=discount_code,
+            receipt_image=receipt_photo,
+            receipt_file_type=receipt_type
         )
 
         logger.info(f"Transaction saved for user {user.id} (renewal={is_renewal})")
@@ -1621,16 +1628,25 @@ async def get_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ خطا در دریافت اطلاعات اشتراک!")
         return CHOOSING
 
+    import_keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("➕ افزودن اشتراک قدیمی / قبلی", callback_data="btn_import_sub")]
+    ])
+
     if not subscriptions:
         await update.message.reply_text(
             "❌ شما هنوز اشتراکی ندارید!\n\n"
-            "برای خرید اشتراک، روی «🛒 خرید اشتراک» کلیک کنید."
+            "💡 اگر قبلاً خارج از ربات اشتراک تهیه کرده‌اید، می‌توانید با زدن دکمه زیر آن را به حساب خود متصل کنید:",
+            reply_markup=import_keyboard
         )
         return CHOOSING
 
     active_subs = [s for s in subscriptions if s.get("hidify_uuid")]
     if not active_subs:
-        await update.message.reply_text("❌ اشتراک فعالی یافت نشد.")
+        await update.message.reply_text(
+            "❌ اشتراک فعالی یافت نشد.\n\n"
+            "💡 برای اتصال اشتراک‌های قبلی، دکمه زیر را لمس کنید:",
+            reply_markup=import_keyboard
+        )
         return CHOOSING
 
     for sub in active_subs:
@@ -1657,6 +1673,139 @@ async def get_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
             title="🔗 **اطلاعات و لینک اتصال اشتراک:**",
             details=details
         )
+
+    # ارسال دکمه افزودن اشتراک قدیمی در انتهای لیست
+    await update.message.reply_text(
+        "➕ برای افزودن سایر اشتراک‌های خریداری‌شده قبلی، دکمه زیر را لمس کنید:",
+        reply_markup=import_keyboard
+    )
+
+    return CHOOSING
+
+
+async def import_sub_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """شروع فرآیند افزودن اشتراک قدیمی خریداری‌شده قبل از ربات"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
+    text = (
+        "➕ **افزودن اشتراک خریداری‌شده قبلی**\n\n"
+        "لطفاً **لینک سابسکریپشن**، **لینک کانفیگ (VMess / VLESS / Trojan)** یا **کد ۳۶ کاراکتری UUID** اشتراک خود را ارسال نمایید:\n\n"
+        "💡 *ربات وجود این اشتراک را در سرور هیدیفای بررسی کرده و در صورت صحت، آن را به حساب شما متصل می‌کند تا بتوانید مشخصات آن را مشاهده یا تمدید نمایید.*"
+    )
+    keyboard = [[InlineKeyboardButton("◀️ انصراف و بازگشت", callback_data="cancel_import_sub")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    if query:
+        await query.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+    else:
+        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+
+    return ENTERING_IMPORT_SUB
+
+
+async def handle_import_sub_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """پردازش متن یا لینک ارسالی کاربر برای اتصال اشتراک به حساب"""
+    user = update.effective_user
+    raw_text = update.message.text.strip() if update.message.text else ""
+
+    if not raw_text:
+        await update.message.reply_text("❌ لطفاً لینک یا کد UUID اشتراک را ارسال فرمایید.")
+        return ENTERING_IMPORT_SUB
+
+    import re
+    import base64
+    import json
+
+    extracted_uuid = ""
+    # ۱. جستجوی الگوی استاندارد UUID
+    uuid_match = re.search(r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}', raw_text)
+    if uuid_match:
+        extracted_uuid = uuid_match.group(0).lower()
+    elif raw_text.startswith("vmess://"):
+        try:
+            b64_part = raw_text.replace("vmess://", "").strip()
+            padded = b64_part + "=" * ((4 - len(b64_part) % 4) % 4)
+            obj = json.loads(base64.b64decode(padded).decode("utf-8"))
+            if "id" in obj:
+                extracted_uuid = str(obj["id"]).strip().lower()
+        except Exception:
+            pass
+
+    if not extracted_uuid:
+        keyboard = [[InlineKeyboardButton("◀️ انصراف", callback_data="cancel_import_sub")]]
+        await update.message.reply_text(
+            "❌ **شناسه UUID معتبری در متن ارسالی یافت نشد!**\n\n"
+            "لطفاً لینک کامل اتصال یا کد ۳۶ کاراکتری UUID را با دقت ارسال فرمایید.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+        return ENTERING_IMPORT_SUB
+
+    await update.message.reply_text("⏳ در حال استعلام و اعتبارسنجی اشتراک از سرور هیدیفای...")
+
+    # ۲. استعلام از سرور هیدیفای
+    try:
+        h_user = await hidify.get_user(extracted_uuid)
+    except Exception as e:
+        logger.error(f"Error checking user in Hiddify: {e}")
+        h_user = {"error": str(e)}
+
+    if not h_user or "error" in h_user or not isinstance(h_user, dict) or not h_user.get("uuid"):
+        keyboard = [[InlineKeyboardButton("◀️ بازگشت به منو", callback_data="cancel_import_sub")]]
+        await update.message.reply_text(
+            "❌ **اشتراکی با این مشخصات در سرور هیدیفای یافت نشد!**\n\n"
+            "ممکن است این اشتراک حذف یا منقضی شده باشد. لطفاً لینک معتبر ارسال کنید.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+        return CHOOSING
+
+    # ۳. ثبت و اتصال اشتراک به حساب کاربر
+    account_name = h_user.get("name") or f"user_{user.id}"
+    data_limit = h_user.get("usage_limit_GB") or 30
+    duration = h_user.get("package_days") or 30
+    current_usage = h_user.get("current_usage_GB") or 0
+    is_active = h_user.get("is_active", True)
+    status_str = "active" if is_active else "expired"
+
+    # بررسی و بروزرسانی در دیتابیس
+    conn = db.get_connection()
+    existing_sub = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=?", (extracted_uuid,)).fetchone()
+    
+    if existing_sub:
+        conn.execute("""
+            UPDATE subscriptions 
+            SET telegram_id=?, account_name=?, data_limit=?, data_used=?, duration=?, status=?, updated_at=?
+            WHERE hidify_uuid=?
+        """, (user.id, account_name, data_limit, current_usage, duration, status_str, get_now_iso(), extracted_uuid))
+    else:
+        conn.execute("""
+            INSERT INTO subscriptions 
+            (telegram_id, hidify_uuid, plan_id, plan_name, account_name, data_limit, data_used, duration, status, created_at, updated_at)
+            VALUES (?, ?, 'imported', 'اشتراک متصل‌شده', ?, ?, ?, ?, ?, ?, ?)
+        """, (user.id, extracted_uuid, account_name, data_limit, current_usage, duration, status_str, get_now_iso(), get_now_iso()))
+    
+    conn.commit()
+    conn.close()
+
+    # ۴. ارسال کارت اشتراک به مشتری
+    sub_url = f"{HIDIFY_PANEL_URL.rstrip('/')}/{USER_PROXY_PATH.strip('/')}/{extracted_uuid}/"
+    details = (
+        f"✅ **اشتراک با موفقیت به حساب شما متصل شد!**\n\n"
+        f"📝 نام اکانت: `{account_name}`\n"
+        f"📊 مصرف: {current_usage:.1f} از {data_limit} گیگابایت\n"
+        f"⏳ مدت زمان: {duration} روز\n\n"
+        f"از این پس می‌توانید این اشتراک را از منوی «🔗 لینک اتصال» دریافت کرده یا از منوی «🔄 تمدید اشتراک» آن را تمدید فرمایید."
+    )
+    await send_subscription_card(
+        context.bot,
+        chat_id=user.id,
+        sub_url=sub_url,
+        title="🎉 **اشتراک شما با موفقیت فعال شد:**",
+        details=details
+    )
 
     return CHOOSING
 
@@ -4360,9 +4509,9 @@ def main():
             CommandHandler("link", get_link),
             CommandHandler("payments", show_payments_history),
             CallbackQueryHandler(select_language_callback, pattern="^lang_"),
-            CallbackQueryHandler(single_link_callback, pattern="^single_link_"),
             CallbackQueryHandler(ticket_new_prompt, pattern="^ticket_new$"),
             CallbackQueryHandler(ticket_list, pattern="^ticket_list$"),
+            CallbackQueryHandler(import_sub_start, pattern="^btn_import_sub$"),
             CallbackQueryHandler(handle_renew, pattern="^renew_"),
             CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"),
             CallbackQueryHandler(admin_reply_ticket_callback, pattern="^admin_reply_ticket_"),
@@ -4373,6 +4522,7 @@ def main():
                 CallbackQueryHandler(single_link_callback, pattern="^single_link_"),
                 CallbackQueryHandler(ticket_new_prompt, pattern="^ticket_new$"),
                 CallbackQueryHandler(ticket_list, pattern="^ticket_list$"),
+                CallbackQueryHandler(import_sub_start, pattern="^btn_import_sub$"),
                 CallbackQueryHandler(handle_renew, pattern="^renew_"),
                 CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"),
                 CallbackQueryHandler(admin_reply_ticket_callback, pattern="^admin_reply_ticket_"),
@@ -4440,6 +4590,10 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, admin_send_ticket_reply),
                 CommandHandler("cancel", cancel),
                 CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"),
+            ] + main_menu_handlers,
+            ENTERING_IMPORT_SUB: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_import_sub_text),
+                CallbackQueryHandler(back_to_menu, pattern="^(cancel_import_sub|back_to_menu|cancel)$"),
             ] + main_menu_handlers,
             # وضعیت‌های مدیریت ادمین
             ADMIN_MENU: [

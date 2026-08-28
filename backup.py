@@ -41,6 +41,12 @@ class BackupManager:
                 # ذخیره رکورد پشتیبان
                 result = db.save_backup_record(str(backup_path), backup_size)
 
+                # خروجی نسخه جامع JSON
+                try:
+                    db.export_full_backup_json()
+                except Exception:
+                    pass
+
                 logger.info(f"Backup created: {backup_filename} ({backup_size} bytes)")
                 return {
                     "success": True,
