@@ -322,6 +322,7 @@ def logout():
 # ═══════════════════════════════════════════════════════════════════════
 
 @app.route("/")
+@app.route("/dashboard")
 @admin_required
 def dashboard():
     """داشبورد اصلی مدیر کل"""
@@ -746,14 +747,25 @@ def admin_plans_page():
 @app.route("/plans/edit/<plan_id>", methods=["POST"])
 @admin_required
 def admin_plan_edit(plan_id):
-    """ویرایش کامل مشخصات پلن"""
+    """ویرایش کامل مشخصات پلن و تغییر شناسه"""
+    new_plan_id = request.form.get("new_plan_id", "").strip().lower().replace(" ", "_")
     name = request.form.get("name", "").strip()
     price = int(request.form.get("price", 0))
     data_limit = int(request.form.get("data_limit", 0))
     duration = int(request.form.get("duration", 30))
     is_active = request.form.get("is_active") == "1"
 
-    res = update_plan(plan_id, name=name, price=price, data_limit=data_limit, duration=duration, is_active=is_active)
+    update_kwargs = {
+        "name": name,
+        "price": price,
+        "data_limit": data_limit,
+        "duration": duration,
+        "is_active": is_active,
+    }
+    if new_plan_id and new_plan_id != plan_id:
+        update_kwargs["new_plan_id"] = new_plan_id
+
+    res = update_plan(plan_id, **update_kwargs)
     if res.get("success"):
         flash("پلن با موفقیت بروزرسانی شد.", "success")
     else:
@@ -783,6 +795,51 @@ def admin_plan_delete(plan_id):
     else:
         flash(f"خطا در حذف پلن: {res.get('error')}", "danger")
     return redirect(url_for("admin_plans_page"))
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# مدیریت کدهای تخفیف
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/discounts", methods=["GET", "POST"])
+@admin_required
+def admin_discounts_page():
+    """مشاهده و ایجاد کدهای تخفیف"""
+    if request.method == "POST":
+        code = request.form.get("code", "").strip().upper()
+        percent = int(request.form.get("discount_percent") or 0)
+        amount = int(request.form.get("discount_amount") or 0)
+        max_uses = int(request.form.get("max_uses") or 0)
+        valid_days = request.form.get("valid_days")
+
+        valid_until = None
+        if valid_days and int(valid_days) > 0:
+            valid_until = (get_now_naive() + timedelta(days=int(valid_days))).isoformat()
+
+        if code and (percent > 0 or amount > 0):
+            res = db.create_discount_code(code, discount_percent=percent, discount_amount=amount, max_uses=max_uses, valid_until=valid_until)
+            if res.get("success"):
+                flash(f"کد تخفیف {code} با موفقیت ایجاد شد.", "success")
+            else:
+                flash(f"خطا در ایجاد کد تخفیف: {res.get('error')}", "danger")
+        else:
+            flash("لطفاً کد تخفیف و درصد یا مبلغ تخفیف را وارد کنید.", "warning")
+        return redirect(url_for("admin_discounts_page"))
+
+    discounts = db.get_all_discount_codes()
+    return render_template("discounts.html", discounts=discounts)
+
+
+@app.route("/discounts/delete/<code>")
+@admin_required
+def admin_discount_delete(code):
+    """حذف کد تخفیف"""
+    res = db.delete_discount_code(code)
+    if res.get("success"):
+        flash(f"کد تخفیف {code} حذف شد.", "info")
+    else:
+        flash("خطا در حذف کد تخفیف.", "danger")
+    return redirect(url_for("admin_discounts_page"))
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -834,6 +891,7 @@ def export_transactions():
 
 
 @app.route("/admin/logs")
+@app.route("/logs")
 @admin_required
 def admin_logs():
     """مشاهده لاگ‌های زنده سرور"""
