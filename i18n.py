@@ -522,11 +522,24 @@ def get_main_keyboard(user_id: int, admin_id: int, lang: str = "fa") -> ReplyKey
 
 
 def get_all_lang_regex(key: str) -> str:
-    """تولید رجکس تطبیق دکمه در تمام ۴ زبان"""
-    options = []
+    """تولید رجکس تطبیق دکمه در تمام ۴ زبان با پشتیبانی کامل از نیم‌فاصله، فاصله و بدون ایموجی"""
+    import re
+    options = set()
     for l in SUPPORTED_LANGUAGES:
         val = t(key, l).strip()
-        options.append(val)
-    # ساخت regex
-    escaped = [r"\^" + v.replace("[", r"\[").replace("]", r"\]").replace("(", r"\(").replace(")", r"\)") + r"\$" for v in options]
-    return "^(" + "|".join(options) + ")$"
+        if not val:
+            continue
+        options.add(val)
+        if "\u200c" in val:
+            options.add(val.replace("\u200c", " "))
+            options.add(val.replace("\u200c", ""))
+        # پشتیبانی از پیام متنی بدون ایموجی
+        no_emoji = re.sub(r"^[^\w\s\u0600-\u06FF]+", "", val).strip()
+        if no_emoji:
+            options.add(no_emoji)
+            if "\u200c" in no_emoji:
+                options.add(no_emoji.replace("\u200c", " "))
+                options.add(no_emoji.replace("\u200c", ""))
+
+    escaped = [re.escape(v) for v in options]
+    return "^(" + "|".join(escaped) + ")$"

@@ -1605,18 +1605,21 @@ async def show_payments_history(update: Update, context: ContextTypes.DEFAULT_TY
 
     if not transactions:
         text = (
-            "🧾 **سوابق و گزارش پرداخت‌ها:**\n\n"
+            "🧾 <b>سوابق و گزارش پرداخت‌ها:</b>\n\n"
             "شما تاکنون هیچ پرداخت یا تراکنشی در ربات ثبت نکرده‌اید.\n\n"
             "💡 برای خرید اشتراک جدید، از دکمه «🛒 خرید اشتراک» استفاده فرمایید."
         )
-        await update.message.reply_text(text, parse_mode="Markdown")
+        if update.callback_query:
+            await update.callback_query.edit_message_text(text, parse_mode="HTML")
+        else:
+            await update.message.reply_text(text, parse_mode="HTML")
         return CHOOSING
 
-    text = f"🧾 **سوابق و گزارش پرداخت‌های شما ({len(transactions)} تراکنش):**\n\n"
+    text = f"🧾 <b>سوابق و گزارش پرداخت‌های شما ({len(transactions)} تراکنش):</b>\n\n"
 
     for i, tx in enumerate(transactions[:10], 1):
         status = tx.get("status", "pending")
-        if status == "approved":
+        if status in ("approved", "completed"):
             status_badge = "🟢 تایید شده"
         elif status == "pending":
             status_badge = "🟡 در انتظار بررسی"
@@ -1636,19 +1639,24 @@ async def show_payments_history(update: Update, context: ContextTypes.DEFAULT_TY
         tracking_code = tx.get("tracking_code") or "---"
         gateway = tx.get("gateway", "card_to_card")
         gw_text = "کارت به کارت" if gateway == "card_to_card" else ("درگاه پرداخت" if gateway == "gateway" else gateway)
+        created_at = tx.get("created_at", "")
+        shamsi_date = gregorian_to_shamsi(created_at) if created_at else "نامشخص"
 
-        text += f"**{i}. {plan_name}** | {status_badge}\n"
-        text += f"   🧾 شماره سفارش: `{order_id}`\n"
-        text += f"   💰 مبلغ: `{amount_fmt}` تومان\n"
+        text += f"<b>{i}. {plan_name}</b> | {status_badge}\n"
+        text += f"   🧾 شماره سفارش: <code>{order_id}</code>\n"
+        text += f"   💰 مبلغ: <b>{amount_fmt} تومان</b>\n"
         text += f"   💳 روش: {gw_text}\n"
         if tracking_code and tracking_code != "---":
-            text += f"   🔢 کد پیگیری: `{tracking_code}`\n"
+            text += f"   🔢 کد پیگیری: <code>{tracking_code}</code>\n"
         text += f"   📅 تاریخ: {shamsi_date}\n\n"
 
     if len(transactions) > 10:
-        text += "💡 *۱۰ تراکنش اخیر نمایش داده شده است.*"
+        text += "💡 <i>۱۰ تراکنش اخیر نمایش داده شده است.</i>"
 
-    await update.message.reply_text(text, parse_mode="Markdown")
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text, parse_mode="HTML")
+    else:
+        await update.message.reply_text(text, parse_mode="HTML")
     return CHOOSING
 
 
