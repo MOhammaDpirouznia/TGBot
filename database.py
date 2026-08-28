@@ -290,6 +290,23 @@ class Database:
             )
         """)
 
+        # جدول اسناد حسابداری و مدیریت مالی پیشرفته (درآمدها و مخارج)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS accounting_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,
+                category TEXT NOT NULL,
+                title TEXT NOT NULL,
+                amount INTEGER NOT NULL,
+                source TEXT DEFAULT 'manual',
+                ref_type TEXT,
+                ref_id TEXT,
+                description TEXT,
+                date TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+
         # مایگریشن خودکار ستون‌های جدید
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN referred_by INTEGER")
@@ -359,7 +376,8 @@ class Database:
         tables = [
             "users", "subscriptions", "transactions", "resellers",
             "reseller_transactions", "bank_cards", "discount_codes",
-            "settings", "support_tickets", "referrals", "subscription_history"
+            "settings", "support_tickets", "referrals", "subscription_history",
+            "accounting_records"
         ]
         
         for table in tables:
@@ -2231,6 +2249,45 @@ class Database:
         cursor.execute(f"UPDATE resellers SET {fields} WHERE id=?", values)
         conn.commit()
         conn.close()
+        try:
+            self.export_full_backup_json()
+        except Exception:
+            pass
+        return {"success": True}
+
+    def toggle_reseller_status(self, reseller_id: int, is_active: bool = None):
+        """فعال یا غیرفعال کردن نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        if is_active is None:
+            cursor.execute("SELECT status FROM resellers WHERE id=?", (reseller_id,))
+            row = cursor.fetchone()
+            current_status = row["status"] if row else "active"
+            new_status = "inactive" if current_status == "active" else "active"
+        else:
+            new_status = "active" if is_active else "inactive"
+        
+        cursor.execute("UPDATE resellers SET status=?, updated_at=? WHERE id=?", (new_status, get_now_iso(), reseller_id))
+        conn.commit()
+        conn.close()
+        try:
+            self.export_full_backup_json()
+        except Exception:
+            pass
+        return {"success": True, "status": new_status}
+
+    def delete_reseller(self, reseller_id: int):
+        """حذف نماینده فروش"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM reseller_transactions WHERE reseller_id=?", (reseller_id,))
+        cursor.execute("DELETE FROM resellers WHERE id=?", (reseller_id,))
+        conn.commit()
+        conn.close()
+        try:
+            self.export_full_backup_json()
+        except Exception:
+            pass
         return {"success": True}
 
     def add_reseller_balance(self, reseller_id: int, amount: int, description: str = "شارژ کیف پول توسط مدیریت"):
@@ -2427,6 +2484,216 @@ class Database:
         except Exception:
             pass
         return {"success": True}
+
+    # ═══════════════════════════════════════════════════════════════
+    # سیستم حسابداری و مدیریت مالی پیشرفته (Accounting & Profit/Loss)
+    # ═══════════════════════════════════════════════════════════════
+
+    def add_accounting_record(self, type: str, category: str, title: str, amount: int,
+                              source: str = "manual", ref_type: str = None, ref_id: str = None,
+                              description: str = None, date: str = None) -> dict:
+        """ثبت سند جدید درآمد یا هزینه در حسابداری"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now_iso = get_now_iso()
+        record_date = date.strip() if date else now_iso[:10]
+        try:
+            cursor.execute("""
+                INSERT INTO accounting_records 
+                (type, category, title, amount, source, ref_type, ref_id, description, date, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                type.strip().lower(), category.strip(), title.strip(),
+                int(amount), source, ref_type, ref_id, description,
+                record_date, now_iso
+            ))
+            record_id = cursor.lastrowid
+            conn.commit()
+            try:
+                self.export_full_backup_json()
+            except Exception:
+                pass
+            return {"success": True, "record_id": record_id}
+        except Exception as e:
+            logger.error(f"Error adding accounting record: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def update_accounting_record(self, record_id: int, **kwargs) -> dict:
+        """ویرایش سند حسابداری"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            allowed = ["type", "category", "title", "amount", "description", "date"]
+            updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
+            if not updates:
+                return {"success": False, "error": "داده‌ای برای بروزرسانی ارسال نشده است."}
+
+            fields = ", ".join([f"{k}=?" for k in updates.keys()])
+            values = list(updates.values()) + [record_id]
+            cursor.execute(f"UPDATE accounting_records SET {fields} WHERE id=?", values)
+            conn.commit()
+            try:
+                self.export_full_backup_json()
+            except Exception:
+                pass
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def delete_accounting_record(self, record_id: int) -> dict:
+        """حذف سند حسابداری"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM accounting_records WHERE id=?", (record_id,))
+            conn.commit()
+            try:
+                self.export_full_backup_json()
+            except Exception:
+                pass
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_accounting_records(self, limit: int = 300, type_filter: str = "all",
+                               category_filter: str = "all", period: str = "all",
+                               search: str = None) -> list:
+        """دریافت لیست اسناد حسابداری با فیلترهای پیشرفته"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            query = "SELECT * FROM accounting_records WHERE 1=1"
+            params = []
+
+            if type_filter and type_filter != "all":
+                query += " AND type = ?"
+                params.append(type_filter)
+
+            if category_filter and category_filter != "all":
+                query += " AND category = ?"
+                params.append(category_filter)
+
+            if period == "today":
+                query += " AND date = DATE('now')"
+            elif period == "week":
+                query += " AND date >= DATE('now', '-7 days')"
+            elif period == "month":
+                query += " AND date >= DATE('now', 'start of month')"
+            elif period == "year":
+                query += " AND date >= DATE('now', 'start of year')"
+
+            if search and search.strip():
+                query += " AND (title LIKE ? OR description LIKE ? OR category LIKE ?)"
+                kw = f"%{search.strip()}%"
+                params.extend([kw, kw, kw])
+
+            query += " ORDER BY date DESC, id DESC LIMIT ?"
+            params.append(limit)
+
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"Error in get_accounting_records: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_accounting_summary(self) -> dict:
+        """محاسبه شاخص‌های جامع مالی، درآمد کل، مخارج، سود خالص و حاشیه سودآوری"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            # ۱. درآمدهای خودکار از اشتراک‌های تایید شده کاربران
+            cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE status IN ('approved', 'completed')")
+            auto_tx_income = cursor.fetchone()[0] or 0
+
+            # ۲. درآمدهای خودکار از شارژ نمایندگان
+            cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions WHERE type='deposit'")
+            auto_reseller_income = cursor.fetchone()[0] or 0
+
+            # ۳. درآمدهای دستی ثبت شده در سیستم حسابداری
+            cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM accounting_records WHERE type='income'")
+            manual_income = cursor.fetchone()[0] or 0
+
+            # کل درآمد ناخالص
+            total_income = auto_tx_income + auto_reseller_income + manual_income
+
+            # ۴. کل مخارج و هزینه‌ها
+            cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM accounting_records WHERE type='expense'")
+            total_expense = cursor.fetchone()[0] or 0
+
+            # ۵. سود خالص و حاشیه سود
+            net_profit = total_income - total_expense
+            profit_margin = round((net_profit / total_income * 100), 1) if total_income > 0 else 0.0
+
+            # ۶. آمار ماه جاری
+            current_month = get_now_naive().strftime("%Y-%m")
+            cursor.execute("""
+                SELECT COALESCE(SUM(amount), 0) FROM transactions 
+                WHERE status IN ('approved', 'completed') AND created_at LIKE ?
+            """, (f"{current_month}%",))
+            month_auto_income = cursor.fetchone()[0] or 0
+
+            cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM accounting_records WHERE type='income' AND date LIKE ?", (f"{current_month}%",))
+            month_manual_income = cursor.fetchone()[0] or 0
+            month_total_income = month_auto_income + month_manual_income
+
+            cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM accounting_records WHERE type='expense' AND date LIKE ?", (f"{current_month}%",))
+            month_total_expense = cursor.fetchone()[0] or 0
+            month_net_profit = month_total_income - month_total_expense
+
+            # ۷. تفکیک مخارج بر اساس دسته‌بندی
+            cursor.execute("""
+                SELECT category, SUM(amount) as total, COUNT(*) as count
+                FROM accounting_records
+                WHERE type='expense'
+                GROUP BY category
+                ORDER BY total DESC
+            """)
+            expense_categories = [dict(r) for r in cursor.fetchall()]
+
+            # ۸. روند ماهانه سود و مخارج (۶ ماه گذشته)
+            cursor.execute("""
+                SELECT strftime('%Y-%m', date) as month,
+                       SUM(CASE WHEN type='income' THEN amount ELSE 0 END) as manual_inc,
+                       SUM(CASE WHEN type='expense' THEN amount ELSE 0 END) as exp
+                FROM accounting_records
+                GROUP BY strftime('%Y-%m', date)
+                ORDER BY month DESC LIMIT 6
+            """)
+            monthly_trend = [dict(r) for r in cursor.fetchall()]
+
+            return {
+                "total_income": total_income,
+                "auto_tx_income": auto_tx_income,
+                "auto_reseller_income": auto_reseller_income,
+                "manual_income": manual_income,
+                "total_expense": total_expense,
+                "net_profit": net_profit,
+                "profit_margin": profit_margin,
+                "month_total_income": month_total_income,
+                "month_total_expense": month_total_expense,
+                "month_net_profit": month_net_profit,
+                "expense_categories": expense_categories,
+                "monthly_trend": monthly_trend,
+            }
+        except Exception as e:
+            logger.error(f"Error in get_accounting_summary: {e}")
+            return {
+                "total_income": 0, "auto_tx_income": 0, "auto_reseller_income": 0, "manual_income": 0,
+                "total_expense": 0, "net_profit": 0, "profit_margin": 0.0,
+                "month_total_income": 0, "month_total_expense": 0, "month_net_profit": 0,
+                "expense_categories": [], "monthly_trend": []
+            }
+        finally:
+            conn.close()
 
 
 # نمونه singleton

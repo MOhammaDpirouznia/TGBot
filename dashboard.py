@@ -109,7 +109,7 @@ def send_subscription_card_sync(chat_id: int, sub_url: str, title: str, details:
     inline_keyboard = {
         "inline_keyboard": [
             [{"text": "🌐 صفحه کاربری و اتصال سریع", "url": clean_sub_url}],
-            [{"text": "📋 راهنمای کپی لینک", "callback_data": "copy_link"}],
+            [{"text": "📋 کپی لینک", "callback_data": "copy_link"}],
         ]
     }
 
@@ -791,10 +791,27 @@ RECEIPTS_DIR = Path("data/receipts")
 RECEIPTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def prune_receipt_cache(max_files: int = 50):
+    """مدیریت فضای ذخیره‌سازی: نگهداری فقط ۵۰ تصویر آخر رسیدها و حذف فایل‌های قدیمی‌تر"""
+    try:
+        files = [f for f in RECEIPTS_DIR.glob("receipt_*.*") if f.is_file()]
+        if len(files) > max_files:
+            # مرتب‌سازی بر اساس تاریخ ویرایش/ساخت نزولی (جدیدترین اول)
+            files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+            # حذف فایل‌های قدیمی‌تر از ۵۰ مورد
+            for old_file in files[max_files:]:
+                try:
+                    old_file.unlink()
+                except Exception:
+                    pass
+    except Exception as e:
+        logger.warning(f"Error pruning receipt cache: {e}")
+
+
 @app.route("/admin/payment-receipt/<int:payment_id>")
 @admin_required
 def admin_payment_receipt(payment_id):
-    """دانلود و نمایش مستقیم تصویر رسید پرداخت کارت‌به‌کارت با کش محلی پرسرعت"""
+    """دانلود و نمایش مستقیم تصویر رسید پرداخت کارت‌به‌کارت با کش محلی پرسرعت (حداکثر ۵۰ فایل آخر)"""
     # ۱. بررسی کش محلی
     for ext, mtype in [(".jpg", "image/jpeg"), (".png", "image/png"), (".pdf", "application/pdf")]:
         cached_file = RECEIPTS_DIR / f"receipt_{payment_id}{ext}"
@@ -858,6 +875,8 @@ def admin_payment_receipt(payment_id):
             try:
                 with open(RECEIPTS_DIR / f"receipt_{payment_id}{ext}", "wb") as f:
                     f.write(dl_resp.content)
+                # پاکسازی هوشمند و نگهداری حداکثر ۵۰ تصویر آخر
+                prune_receipt_cache(50)
             except Exception:
                 pass
 
@@ -955,16 +974,189 @@ def admin_reseller_add_balance(reseller_id):
     return redirect(url_for("admin_resellers"))
 
 
+@app.route("/admin/reseller/<int:reseller_id>/edit", methods=["POST"])
+@admin_required
+def admin_reseller_edit(reseller_id):
+    """ویرایش اطلاعات و مشخصات نماینده فروش"""
+    r = db.get_reseller(reseller_id)
+    if not r:
+        flash("نماینده یافت نشد.", "danger")
+        return redirect(url_for("admin_resellers"))
+
+    name = request.form.get("name", "").strip()
+    username = request.form.get("username", "").strip().lower()
+    telegram_id = int(request.form.get("telegram_id")) if request.form.get("telegram_id") else None
+    discount_percent = int(request.form.get("discount_percent", 20))
+    status = request.form.get("status", "active")
+    new_password = request.form.get("new_password", "").strip()
+
+    updates = {
+        "name": name or r["name"],
+        "username": username or r["username"],
+        "telegram_id": telegram_id,
+        "discount_percent": discount_percent,
+        "status": status,
+    }
+    if new_password:
+        updates["password"] = new_password
+
+    res = db.update_reseller(reseller_id, **updates)
+    if res.get("success"):
+        flash(f"اطلاعات نماینده «{updates['name']}» با موفقیت ویرایش شد.", "success")
+    else:
+        flash(f"خطا در ویرایش نماینده: {res.get('error')}", "danger")
+    return redirect(url_for("admin_resellers"))
+
+
 @app.route("/admin/reseller/<int:reseller_id>/toggle")
 @admin_required
 def admin_reseller_toggle(reseller_id):
-    """تغییر وضعیت فعال/غیرفعال نماینده"""
+    """تغییر وضعیت فعال / غیرفعال نماینده"""
     r = db.get_reseller(reseller_id)
-    if r:
-        new_status = "suspended" if r["status"] == "active" else "active"
-        db.update_reseller(reseller_id, status=new_status)
-        flash(f"وضعیت نماینده به {new_status} تغییر یافت.", "info")
+    if not r:
+        flash("نماینده یافت نشد.", "danger")
+        return redirect(url_for("admin_resellers"))
+
+    res = db.toggle_reseller_status(reseller_id)
+    new_st = res.get("status", "inactive")
+    status_label = "فعال" if new_st == "active" else "غیرفعال"
+    flash(f"وضعیت نماینده «{r['name']}» به «{status_label}» تغییر یافت.", "info")
     return redirect(url_for("admin_resellers"))
+
+
+@app.route("/admin/reseller/<int:reseller_id>/delete")
+@admin_required
+def admin_reseller_delete(reseller_id):
+    """حذف کامل نماینده فروش"""
+    r = db.get_reseller(reseller_id)
+    if not r:
+        flash("نماینده یافت نشد.", "danger")
+        return redirect(url_for("admin_resellers"))
+
+    db.delete_reseller(reseller_id)
+    flash(f"نماینده «{r['name']}» با موفقیت حذف شد.", "success")
+    return redirect(url_for("admin_resellers"))
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# بخش حسابداری پیشرفته و مدیریت سود و زیان (Accounting & Profit Desk)
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/accounting", methods=["GET"])
+@admin_required
+def accounting():
+    """داشبورد حسابداری و مدیریت مالی، هزینه‌ها، سود خالص و اسناد مالی"""
+    type_filter = request.args.get("type", "all")
+    category_filter = request.args.get("category", "all")
+    period = request.args.get("period", "all")
+    search = request.args.get("search", "")
+
+    summary = db.get_accounting_summary()
+    records = db.get_accounting_records(
+        limit=250,
+        type_filter=type_filter,
+        category_filter=category_filter,
+        period=period,
+        search=search
+    )
+
+    categories = [
+        "هزینه سرور",
+        "هزینه ترافیک هیدیفای",
+        "دامنه و CDN",
+        "تبلیغات و بازاریابی",
+        "دستمزد و پشتیبانی",
+        "فروش اشتراک",
+        "شارژ نماینده",
+        "متفرقه"
+    ]
+
+    return render_template(
+        "accounting.html",
+        summary=summary,
+        records=records,
+        categories=categories,
+        current_type=type_filter,
+        current_category=category_filter,
+        current_period=period,
+        search=search
+    )
+
+
+@app.route("/accounting/record/add", methods=["POST"])
+@admin_required
+def accounting_add_record():
+    """ثبت سند جدید درآمد یا مخارج در سیستم حسابداری"""
+    rec_type = request.form.get("type", "expense").strip()
+    category = request.form.get("category", "متفرقه").strip()
+    title = request.form.get("title", "").strip()
+    amount = int(request.form.get("amount", 0))
+    date = request.form.get("date", "").strip()
+    description = request.form.get("description", "").strip()
+
+    if not title or amount <= 0:
+        flash("لطفاً عنوان سند و مبلغ معتبر وارد کنید.", "warning")
+        return redirect(url_for("accounting"))
+
+    res = db.add_accounting_record(
+        type=rec_type,
+        category=category,
+        title=title,
+        amount=amount,
+        source="manual",
+        description=description,
+        date=date
+    )
+
+    if res.get("success"):
+        label = "درآمد" if rec_type == "income" else "هزینه/مخارج"
+        flash(f"سند {label} «{title}» با مبلغ {amount:,} تومان با موفقیت ثبت شد.", "success")
+    else:
+        flash(f"خطا در ثبت سند: {res.get('error')}", "danger")
+
+    return redirect(url_for("accounting"))
+
+
+@app.route("/accounting/record/delete/<int:record_id>")
+@admin_required
+def accounting_delete_record(record_id):
+    """حذف سند حسابداری"""
+    db.delete_accounting_record(record_id)
+    flash("سند حسابداری با موفقیت حذف شد.", "success")
+    return redirect(url_for("accounting"))
+
+
+@app.route("/export/accounting")
+@admin_required
+def export_accounting():
+    """خروجی اکسل و CSV استاندارد از دفتر کل حسابداری با فرمت UTF-8 BOM"""
+    records = db.get_accounting_records(limit=1000)
+    summary = db.get_accounting_summary()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow(["شناسه سند", "نوع (درآمد/هزینه)", "دسته‌بندی", "عنوان سند", "مبلغ (تومان)", "منبع", "تاریخ", "توضیحات"])
+    for r in records:
+        type_fa = "درآمد" if r.get("type") == "income" else "هزینه"
+        source_fa = "خودکار" if r.get("source") == "auto" else "دستی"
+        writer.writerow([
+            r.get("id"),
+            type_fa,
+            r.get("category") or "",
+            r.get("title") or "",
+            r.get("amount") or 0,
+            source_fa,
+            r.get("date") or "",
+            r.get("description") or ""
+        ])
+
+    csv_data = "\ufeff" + output.getvalue()
+    return Response(
+        csv_data.encode("utf-8-sig"),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment;filename=accounting_ledger_export.csv"}
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════

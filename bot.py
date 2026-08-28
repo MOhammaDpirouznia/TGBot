@@ -1345,9 +1345,10 @@ async def confirm_card_payment(update: Update, context: ContextTypes.DEFAULT_TYP
     try:
         await query.edit_message_text(
             f"✅ **رسید پرداخت شما با موفقیت ثبت شد!**\n\n"
-            f"📋 پلن: {plan.get('name', 'نامشخص')}\n"
-            f"💰 مبلغ: {price_formatted} تومان\n"
-            f"🔢 پیگیری: {tracking_code}\n\n"
+            f"🧾 **شماره سفارش:** `{order_id}`\n"
+            f"📋 **پلن:** {plan.get('name', 'نامشخص')}\n"
+            f"💰 **مبلغ:** {price_formatted} تومان\n"
+            f"🔢 **شماره پیگیری / فیش:** `{tracking_code}`\n\n"
             f"⏳ فیش شما برای ادمین ارسال گردید و در حال بررسی است.\n"
             f"به محض تایید، اشتراک شما فعال/تمدید شده و لینک اتصال به صورت خودکار برای شما ارسال می‌شود.",
             parse_mode="Markdown"
@@ -1599,16 +1600,17 @@ async def show_payments_history(update: Update, context: ContextTypes.DEFAULT_TY
         except Exception:
             amount_fmt = str(amount)
 
-        created_at = tx.get("created_at", "")
-        shamsi_date = gregorian_to_shamsi(created_at) if created_at else "نامشخص"
-        tracking_code = tx.get("tracking_code") or tx.get("order_id") or "---"
+        order_id = tx.get("order_id") or "---"
+        tracking_code = tx.get("tracking_code") or "---"
         gateway = tx.get("gateway", "card_to_card")
         gw_text = "کارت به کارت" if gateway == "card_to_card" else ("درگاه پرداخت" if gateway == "gateway" else gateway)
 
         text += f"**{i}. {plan_name}** | {status_badge}\n"
+        text += f"   🧾 شماره سفارش: `{order_id}`\n"
         text += f"   💰 مبلغ: `{amount_fmt}` تومان\n"
         text += f"   💳 روش: {gw_text}\n"
-        text += f"   🔢 کد پیگیری: `{tracking_code}`\n"
+        if tracking_code and tracking_code != "---":
+            text += f"   🔢 کد پیگیری: `{tracking_code}`\n"
         text += f"   📅 تاریخ: {shamsi_date}\n\n"
 
     if len(transactions) > 10:
@@ -2358,17 +2360,19 @@ async def referral_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ═══════════════════════════════════════════════════════════════════════
 
 async def support_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """منوی پشتیبانی و تیکت"""
-    text = """
-💬 <b>مرکز پشتیبانی و ارتباط با مدیریت</b>
-
-در صورتی که سوال، مشکل در اتصال، نیاز به کانفیگ اختصاصی یا راهنمایی دارید، می‌توانید از گزینه‌های زیر استفاده کنید:
-"""
+    """منوی پشتیبانی و ارتباط مستقیم با ادمین"""
+    text = (
+        "💬 <b>مرکز پشتیبانی و ارتباط با مدیریت</b>\n\n"
+        "در صورتی که سوال، مشکل در اتصال، نیاز به کانفیگ اختصاصی یا راهنمایی دارید، می‌توانید تیکت ثبت کنید یا مستقیماً با مدیریت در ارتباط باشید:"
+    )
     keyboard = [
-        [InlineKeyboardButton("✍️ ارسال پیام به پشتیبانی", callback_data="ticket_new")],
-        [InlineKeyboardButton("📋 تیکت‌های قبلی من", callback_data="ticket_list")],
-        [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_menu")],
+        [InlineKeyboardButton("✍️ ارسال پیام به پشتیبانی (ثبت تیکت)", callback_data="ticket_new")],
     ]
+    if ADMIN_ID and ADMIN_ID != 0:
+        keyboard.append([InlineKeyboardButton("💬 گفتگو مستقیم با ادمین", url=f"tg://user?id={ADMIN_ID}")])
+    keyboard.append([InlineKeyboardButton("📋 تیکت‌های قبلی من", callback_data="ticket_list")])
+    keyboard.append([InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_menu")])
+
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     if update.callback_query:
