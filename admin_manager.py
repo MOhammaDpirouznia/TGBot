@@ -3,16 +3,37 @@
 ماژول مدیریت کارت‌ها و پلن‌ها توسط ادمین
 """
 
+import os
 import json
 from pathlib import Path
 from datetime import datetime
 from utils import get_now_iso
 
-# مسیر ذخیره اطلاعات
-DATA_DIR = Path("data")
-DATA_DIR.mkdir(exist_ok=True)
+# تشخیص مسیر پویا بر اساس متغیرهای محیطی یا مسیرهای پیش‌فرض
+POSSIBLE_DIRS = [
+    Path(os.environ.get("DATA_DIR", "")) if os.environ.get("DATA_DIR") else None,
+    Path("/data"),
+    Path(os.path.expanduser("~/.vpn-bot/data")),
+    Path("data"),
+    Path("."),
+]
 
-# فایل‌های ذخیره‌سازی
+def get_storage_dir() -> Path:
+    for p in POSSIBLE_DIRS:
+        if p and p != Path(""):
+            try:
+                p.mkdir(parents=True, exist_ok=True)
+                test_f = p / ".write_test_admin"
+                test_f.write_text("ok")
+                test_f.unlink()
+                return p
+            except Exception:
+                continue
+    p = Path("data")
+    p.mkdir(exist_ok=True)
+    return p
+
+DATA_DIR = get_storage_dir()
 CARDS_FILE = DATA_DIR / "cards.json"
 PLANS_FILE = DATA_DIR / "plans.json"
 
@@ -22,23 +43,29 @@ PLANS_FILE = DATA_DIR / "plans.json"
 # ═══════════════════════════════════════════════════════════════════════
 
 def load_cards() -> dict:
-    """بارگذاری کارت‌ها با اولویت فایل محلی -> دیتابیس -> فایل پشتیبان"""
-    if CARDS_FILE.exists():
-        try:
-            with open(CARDS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if data and isinstance(data, dict):
-                    return data
-        except Exception:
-            pass
+    """بارگذاری کارت‌ها با اولویت تمام مسیرهای فایل محلی -> دیتابیس -> فایل پشتیبان"""
+    candidate_files = [
+        CARDS_FILE,
+        Path("data/cards.json"),
+        Path("/data/cards.json"),
+        Path("cards.json"),
+    ]
+    for cfile in candidate_files:
+        if cfile.exists():
+            try:
+                with open(cfile, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if data and isinstance(data, dict):
+                        return data
+            except Exception:
+                pass
 
     # بررسی دیتابیس
     try:
         from database import db
         setting_cards = db.get_setting("cards_config")
         if setting_cards and isinstance(setting_cards, dict):
-            with open(CARDS_FILE, "w", encoding="utf-8") as f:
-                json.dump(setting_cards, f, ensure_ascii=False, indent=2)
+            save_cards(setting_cards)
             return setting_cards
 
         # بررسی جدول bank_cards
@@ -54,8 +81,7 @@ def load_cards() -> dict:
                     "is_active": bool(c.get("is_active", True)),
                     "created_at": c.get("created_at") or get_now_iso(),
                 }
-            with open(CARDS_FILE, "w", encoding="utf-8") as f:
-                json.dump(res, f, ensure_ascii=False, indent=2)
+            save_cards(res)
             return res
     except Exception:
         pass
@@ -64,9 +90,19 @@ def load_cards() -> dict:
 
 
 def save_cards(cards: dict):
-    """ذخیره کارت‌ها"""
-    with open(CARDS_FILE, "w", encoding="utf-8") as f:
-        json.dump(cards, f, ensure_ascii=False, indent=2)
+    """ذخیره کارت‌ها در تمامی مسیرهای ذخیره‌سازی و دیتابیس"""
+    targets = [CARDS_FILE, Path("data/cards.json"), Path("cards.json")]
+    if Path("/data").exists():
+        targets.append(Path("/data/cards.json"))
+        
+    for target in targets:
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with open(target, "w", encoding="utf-8") as f:
+                json.dump(cards, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
     try:
         from database import db
         db.save_setting("cards_config", cards)
@@ -124,19 +160,21 @@ def delete_card(card_id: str) -> dict:
     return {"success": True}
 
 
-def get_active_card() -> dict:
-    """دریافت کارت فعال"""
+def get_active_cards() -> dict:
+    """دریافت کارت‌های فعال"""
     cards = load_cards()
-    
+    return {cid: c for cid, c in cards.items() if c.get("is_active", False)}
+
+
+def get_active_card() -> dict:
+    """دریافت کارت فعال برای پرداخت"""
+    cards = load_cards()
     for card_id, card in cards.items():
         if card.get("is_active", False):
             return {"card_id": card_id, **card}
-    
-    # اگه کارت فعال نبود، اولین کارت رو برگردون
     if cards:
         first_card_id = next(iter(cards))
         return {"card_id": first_card_id, **cards[first_card_id]}
-    
     return {}
 
 
@@ -151,26 +189,32 @@ def get_all_cards() -> dict:
 
 def load_plans() -> dict:
     """بارگذاری پلن‌ها با اولویت فایل محلی -> دیتابیس -> بک‌آپ جامع -> پلن‌های پیش‌فرض"""
-    if PLANS_FILE.exists():
-        try:
-            with open(PLANS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if data and isinstance(data, dict):
-                    return data
-        except Exception:
-            pass
+    candidate_files = [
+        PLANS_FILE,
+        Path("data/plans.json"),
+        Path("/data/plans.json"),
+        Path("plans.json"),
+    ]
+    for pfile in candidate_files:
+        if pfile.exists():
+            try:
+                with open(pfile, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if data and isinstance(data, dict):
+                        return data
+            except Exception:
+                pass
 
     # بررسی دیتابیس
     try:
         from database import db
         setting_plans = db.get_setting("plans_config")
         if setting_plans and isinstance(setting_plans, dict):
-            with open(PLANS_FILE, "w", encoding="utf-8") as f:
-                json.dump(setting_plans, f, ensure_ascii=False, indent=2)
+            save_plans(setting_plans)
             return setting_plans
 
         # بررسی فایل پشتیبان جامع backup_full_latest.json
-        for backup_path in [Path("data/backup_full_latest.json"), Path("/data/backup_full_latest.json")]:
+        for backup_path in [Path("data/backup_full_latest.json"), Path("/data/backup_full_latest.json"), Path("backup_full_latest.json")]:
             if backup_path.exists():
                 with open(backup_path, "r", encoding="utf-8") as f:
                     bdata = json.load(f)
@@ -180,13 +224,12 @@ def load_plans() -> dict:
                             val = s.get("value")
                             pdict = json.loads(val) if isinstance(val, str) else val
                             if pdict and isinstance(pdict, dict):
-                                with open(PLANS_FILE, "w", encoding="utf-8") as pf:
-                                    json.dump(pdict, pf, ensure_ascii=False, indent=2)
+                                save_plans(pdict)
                                 return pdict
     except Exception:
         pass
 
-    # پلن‌های پیش‌فرض فقط در صورتی که دیتابیس و بک‌آپ نیز کاملاً خالی باشند
+    # پلن‌های پیش‌فرض
     default_plans = {
         "basic": {
             "name": "پایه",
@@ -225,15 +268,24 @@ def load_plans() -> dict:
             "created_at": get_now_iso(),
         },
     }
-    with open(PLANS_FILE, "w", encoding="utf-8") as f:
-        json.dump(default_plans, f, ensure_ascii=False, indent=2)
+    save_plans(default_plans)
     return default_plans
 
 
 def save_plans(plans: dict):
-    """ذخیره پلن‌ها"""
-    with open(PLANS_FILE, "w", encoding="utf-8") as f:
-        json.dump(plans, f, ensure_ascii=False, indent=2)
+    """ذخیره پلن‌ها در تمامی فایل‌های محلی، دیتابیس و بک‌آپ"""
+    targets = [PLANS_FILE, Path("data/plans.json"), Path("plans.json")]
+    if Path("/data").exists():
+        targets.append(Path("/data/plans.json"))
+
+    for target in targets:
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with open(target, "w", encoding="utf-8") as f:
+                json.dump(plans, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
     try:
         from database import db
         db.save_setting("plans_config", plans)

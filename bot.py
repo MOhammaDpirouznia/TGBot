@@ -4489,8 +4489,8 @@ def main():
         print("ERROR: Missing environment variables. Check .env file.")
         return
     
-    # بازیابی خودکار دیتابیس
-    restore_result = db.auto_restore()
+    # بازیابی خودکار جامع دیتابیس (جداول، تنظیمات، کارت‌ها و پلن‌ها)
+    restore_result = db.auto_restore_full()
     if restore_result.get("restored"):
         logger.info(f"Database restored: {restore_result}")
     else:

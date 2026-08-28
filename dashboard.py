@@ -365,11 +365,10 @@ def get_plans_dict():
     except Exception as e:
         logger.error(f"Error loading plans in get_plans_dict: {e}")
     return {
-        "1month_30gb": {"name": "۱ ماهه ۳۰ گیگ", "price": 100000, "data_limit": 30, "duration": 30, "is_active": True},
-        "1month_50gb": {"name": "۱ ماهه ۵۰ گیگ", "price": 150000, "data_limit": 50, "duration": 30, "is_active": True},
-        "1month_100gb": {"name": "۱ ماهه ۱۰۰ گیگ", "price": 250000, "data_limit": 100, "duration": 30, "is_active": True},
-        "3month_100gb": {"name": "۳ ماهه ۱۰۰ گیگ", "price": 300000, "data_limit": 100, "duration": 90, "is_active": True},
-        "3month_200gb": {"name": "۳ ماهه ۲۰۰ گیگ", "price": 500000, "data_limit": 200, "duration": 90, "is_active": True},
+        "basic": {"name": "پایه", "price": 250000, "data_limit": 30, "duration": 30, "is_active": True},
+        "standard": {"name": "استاندارد", "price": 400000, "data_limit": 60, "duration": 30, "is_active": True},
+        "premium": {"name": "پریمیوم", "price": 600000, "data_limit": 100, "duration": 30, "is_active": True},
+        "gem": {"name": "الماس", "price": 990000, "data_limit": 180, "duration": 30, "is_active": True},
     }
 
 

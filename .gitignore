@@ -4,9 +4,22 @@
 .env.local
 .env.production
 
-# ─── داده‌های کاربران ───
-data/
-*.json
+# ─── فایل‌های موقت دیتابیس، کش رسیدها و لاگ ───
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/receipts/
+data/.write_test
+*.db
+*.db-wal
+*.db-shm
+
+# ─── تنظیمات، پلن‌ها و فایل بک‌آپ برای ماندگاری در دیپلوی گیت ───
+!data/plans.json
+!data/cards.json
+!data/backup_full_latest.json
+!plans.json
+!cards.json
 
 # ─── پایتون ───
 __pycache__/
