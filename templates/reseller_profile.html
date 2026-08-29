@@ -306,28 +306,41 @@
                             <div class="text-center mb-3 p-3 bg-light rounded-4">
                                 <div class="position-relative d-inline-block">
                                     <img id="resellerPresetBigPreview" 
-                                         src="https://api.dicebear.com/9.x/bottts-neutral/svg?seed={{ reseller['username'] }}_1&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc" 
+                                         src="{{ url_for('preset_avatar_img', preset_id='cyber_bot', seed=reseller['username']) }}" 
                                          class="rounded-circle border shadow" 
                                          style="width: 90px; height: 90px; object-fit: cover;">
                                     <span class="badge bg-primary position-absolute bottom-0 start-50 translate-middle-x rounded-pill px-2" style="font-size: 10px;">
                                         طرح انتخابی
                                     </span>
                                 </div>
-                                <div class="small text-muted mt-2">روی یکی از کاراکترهای زیر کلیک کنید:</div>
+                                <div class="small text-muted mt-2">روی یکی از کاراکترهای سه‌بعدی زیر کلیک کنید:</div>
                             </div>
 
-                            <div class="row g-3 text-center mb-3" id="resellerPresetList">
-                                {% for style_id, style_name in [('bottts-neutral', 'ربات مدرن'), ('avataaars', 'کاراکتر کلاسیک'), ('adventurer', 'ماجراجو'), ('personas', 'مینیمال'), ('fun-emoji', 'ایموجی سه‌بعدی'), ('thumbs', 'طرح مدرن')] %}
-                                {% set card_img = "https://api.dicebear.com/9.x/" ~ style_id ~ "/svg?seed=" ~ reseller['username'] ~ "_" ~ loop.index ~ "&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc" %}
-                                <div class="col-4">
+                            <div class="row g-2 text-center mb-3" id="resellerPresetList" style="max-height: 280px; overflow-y: auto;">
+                                {% for style_id, style_name in [
+                                    ('cyber_bot', 'ربات سایبرپانک'),
+                                    ('robot_neon', 'ربات نئونی'),
+                                    ('adventurer_boy', 'ماجراجوی جوان'),
+                                    ('adventurer_girl', 'ماجراجوی مدرن'),
+                                    ('cyber_ninja', 'نینجای تکنولوژی'),
+                                    ('astronaut', 'فضانورد کیهانی'),
+                                    ('agent_pro', 'ایجنت حرفه‌ای'),
+                                    ('wizard_mystic', 'حکیم کوانتومی'),
+                                    ('cyber_cat', 'گربه رباتیک'),
+                                    ('cyber_fox', 'روباه هوشمند'),
+                                    ('emoji_cool', 'کاراکتر عینک‌دودی'),
+                                    ('emoji_happy', 'کاراکتر شاد سه‌بعدی')
+                                ] %}
+                                {% set card_img = url_for('preset_avatar_img', preset_id=style_id, seed=reseller['username']) %}
+                                <div class="col-4 col-sm-3">
                                     <div class="avatar-preset-card h-100 p-2 text-center cursor-pointer {% if loop.first %}active-preset{% endif %}" 
                                          style="cursor: pointer;"
                                          onclick="selectResellerPresetCard(this, '{{ style_id }}', '{{ card_img }}')">
                                         <div class="check-indicator"><i class="fas fa-check"></i></div>
                                         <input type="radio" name="style" value="{{ style_id }}" class="d-none preset-radio" {% if loop.first %}checked{% endif %}>
                                         <img src="{{ card_img }}" 
-                                             class="rounded-circle mx-auto mb-1 border" style="width: 52px; height: 52px;">
-                                        <div class="fw-bold" style="font-size: 12px;">{{ style_name }}</div>
+                                             class="rounded-circle mx-auto mb-1 border" style="width: 52px; height: 52px; object-fit: cover;">
+                                        <div class="fw-bold text-truncate" style="font-size: 11px;" title="{{ style_name }}">{{ style_name }}</div>
                                     </div>
                                 </div>
                                 {% endfor %}

@@ -208,14 +208,21 @@
 
                             <!-- ─── Modal ویرایش اطلاعات مشتری ─── -->
                             <div class="modal fade text-start" id="editModal{{ sub['id'] }}" tabindex="-1">
-                                <div class="modal-dialog">
+                                <div class="modal-dialog modal-dialog-centered">
                                     <div class="modal-content">
-                                        <form method="POST" action="{{ url_for('reseller_edit_user', sub_id=sub['id']) }}">
+                                        <form method="POST" action="{{ url_for('reseller_edit_user', sub_id=sub['id']) }}" enctype="multipart/form-data">
                                             <div class="modal-header">
-                                                <h5 class="modal-title fw-bold"><i class="fas fa-pen-to-square text-primary me-2"></i>ویرایش مشخصات مشتری</h5>
+                                                <h5 class="modal-title fw-bold"><i class="fas fa-pen-to-square text-primary me-2"></i>ویرایش مشخصات و آواتار مشتری</h5>
                                                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                             </div>
                                             <div class="modal-body">
+                                                <div class="text-center mb-3 p-2 bg-light rounded-3">
+                                                    <img src="{{ avatar_url(sub['phone_number'] or sub['account_name'] or 'Customer') }}" 
+                                                         class="rounded-circle border shadow-sm mb-2" 
+                                                         style="width: 60px; height: 60px; object-fit: cover;">
+                                                    <div class="small fw-bold">{{ sub['account_name'] }}</div>
+                                                </div>
+
                                                 <div class="mb-3">
                                                     <label class="form-label fw-bold">نام یا شناسه مشتری:</label>
                                                     <input type="text" name="account_name" class="form-control" value="{{ sub['account_name'] }}" required>
@@ -225,6 +232,32 @@
                                                     <label class="form-label fw-bold">شماره تلفن همراه (اختیاری):</label>
                                                     <input type="text" name="phone_number" class="form-control font-monospace" placeholder="09121234567" value="{{ sub['phone_number'] or '' }}">
                                                 </div>
+
+                                                <!-- بخش انتخاب یا تغییر آواتار مشتری -->
+                                                <div class="mb-3">
+                                                    <label class="form-label fw-bold"><i class="fas fa-icons text-primary me-1"></i>انتخاب طرح آواتار سه‌بعدی مشتری:</label>
+                                                    <select name="avatar_preset" class="form-select form-select-sm">
+                                                        <option value="">-- حفظ آواتار فعلی / تولید هوشمند خودکار --</option>
+                                                        <option value="cyber_bot">🤖 ربات سایبرپانک</option>
+                                                        <option value="robot_neon">⚡ ربات نئونی هوشمند</option>
+                                                        <option value="adventurer_boy">👦 ماجراجوی جوان</option>
+                                                        <option value="adventurer_girl">👧 ماجراجوی مدرن</option>
+                                                        <option value="cyber_ninja">🥷 نینجای تکنولوژی</option>
+                                                        <option value="astronaut">👨‍🚀 فضانورد کیهانی</option>
+                                                        <option value="agent_pro">🕶️ ایجنت حرفه‌ای</option>
+                                                        <option value="wizard_mystic">🔮 حکیم کوانتومی</option>
+                                                        <option value="cyber_cat">🐱 گربه رباتیک</option>
+                                                        <option value="cyber_fox">🦊 روباه هوشمند</option>
+                                                        <option value="emoji_cool">😎 کاراکتر عینک‌دودی</option>
+                                                        <option value="emoji_happy">😃 کاراکتر شاد سه‌بعدی</option>
+                                                    </select>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label class="form-label small text-muted">یا بارگذاری تصویر اختصاصی برای مشتری (اختیاری):</label>
+                                                    <input type="file" name="avatar_file" class="form-control form-control-sm" accept="image/jpeg,image/png,image/webp,image/svg+xml">
+                                                </div>
+
                                                 <div class="mb-3">
                                                     <label class="form-label">توضیحات و یادداشت (اختیاری):</label>
                                                     <textarea name="comment" class="form-control" rows="2" placeholder="یادداشت خصوصی برای این مشتری...">{{ sub['account_comment'] or '' }}</textarea>
