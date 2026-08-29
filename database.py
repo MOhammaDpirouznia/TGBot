@@ -492,6 +492,16 @@ class Database:
             pass
 
         try:
+            cursor.execute("ALTER TABLE admin_users ADD COLUMN custom_avatar TEXT")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE resellers ADD COLUMN custom_avatar TEXT")
+        except Exception:
+            pass
+
+        try:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS wallet_transactions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3632,7 +3642,7 @@ class Database:
                 if key == "password" and val:
                     fields.append("password_hash=?")
                     params.append(self.hash_password(val))
-                elif key in ["username", "display_name", "role", "permissions", "is_active", "telegram_id", "phone"]:
+                elif key in ["username", "display_name", "role", "permissions", "is_active", "telegram_id", "phone", "custom_avatar"]:
                     fields.append(f"{key}=?")
                     params.append(val)
 
@@ -3756,7 +3766,7 @@ class Database:
                 if key == "password" and val:
                     fields.append("password_hash=?")
                     params.append(self.hash_password(val))
-                elif key in ["username", "name", "phone", "email", "telegram_id", "bank_card", "notes"]:
+                elif key in ["username", "name", "phone", "email", "telegram_id", "bank_card", "notes", "custom_avatar"]:
                     fields.append(f"{key}=?")
                     params.append(val)
 

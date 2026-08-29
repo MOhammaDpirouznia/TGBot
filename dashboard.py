@@ -131,6 +131,33 @@ def fetch_smart_avatar_bytes(identifier: str) -> tuple[bytes, str]:
     raw_ident = str(identifier).strip()
     clean_ident = raw_ident.lstrip("@").strip()
 
+    # ۰. بررسی اولویت اول: تصویر اختصاصی آپلود شده توسط مدیر یا نماینده
+    custom_candidates = [
+        AVATAR_CACHE_DIR / f"custom_{clean_ident}.jpg",
+        AVATAR_CACHE_DIR / f"custom_{clean_ident}.png",
+        AVATAR_CACHE_DIR / f"custom_{clean_ident}.webp",
+        AVATAR_CACHE_DIR / f"custom_admin_{clean_ident}.jpg",
+        AVATAR_CACHE_DIR / f"custom_reseller_{clean_ident}.jpg",
+    ]
+    for c_file in custom_candidates:
+        if c_file.exists() and c_file.stat().st_size > 0:
+            ext = c_file.suffix.lower()
+            mime = "image/png" if ext == ".png" else ("image/webp" if ext == ".webp" else "image/jpeg")
+            return c_file.read_bytes(), mime
+
+    try:
+        contact_info = db.find_user_contact_info(clean_ident)
+        if contact_info:
+            u_type = contact_info.get("user_type")
+            u_id = contact_info.get("user_id")
+            for c_f in [AVATAR_CACHE_DIR / f"custom_{u_type}_{u_id}.jpg", AVATAR_CACHE_DIR / f"custom_{u_type}_{u_id}.png"]:
+                if c_f.exists() and c_f.stat().st_size > 0:
+                    ext = c_f.suffix.lower()
+                    mime = "image/png" if ext == ".png" else "image/jpeg"
+                    return c_f.read_bytes(), mime
+    except Exception:
+        pass
+
     # ۱. بررسی شماره همراه و جستجوی telegram_id مرتبط در دیتابیس
     matched_tg_id = None
     is_phone = bool(re.match(r"^(\+98|0098|98|0)?9\d{9}$", clean_ident))
@@ -2978,6 +3005,223 @@ def reseller_profile():
     login_history = db.get_user_login_history("reseller", reseller_id, limit=20)
     current_token = session.get("session_token", "")
     return render_template("reseller_profile.html", reseller=reseller, login_history=login_history, current_token=current_token)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# مسیرهای آپلود و مدیریت آواتار مدیر و نماینده (Profile Avatar Management)
+# ═══════════════════════════════════════════════════════════════════════
+
+ALLOWED_AVATAR_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+
+
+@app.route("/admin/avatar/upload", methods=["POST"])
+@admin_required
+def admin_avatar_upload():
+    """آپلود و تنظیم تصویر پروفایل اختصاصی برای مدیر"""
+    admin_id = session.get("admin_id")
+    admin_user = db.get_admin_user(admin_id) if admin_id else None
+    username = session.get("username", "admin")
+    if admin_user:
+        username = admin_user.get("username", username)
+        admin_id = admin_user.get("id", admin_id)
+
+    if "avatar_file" not in request.files:
+        flash("هیچ فایلی برای آپلود انتخاب نشده است.", "warning")
+        return redirect(url_for("admin_profile"))
+
+    file = request.files["avatar_file"]
+    if not file or not file.filename:
+        flash("لطفاً یک فایل تصویر معتبر انتخاب فرمایید.", "warning")
+        return redirect(url_for("admin_profile"))
+
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_AVATAR_EXTENSIONS:
+        flash("فرمت فایل نامعتبر است! فقط فرمت‌های JPG, PNG, WEBP مجاز هستند.", "danger")
+        return redirect(url_for("admin_profile"))
+
+    file_bytes = file.read()
+    if len(file_bytes) > 5 * 1024 * 1024:
+        flash("حجم فایل نباید بیش از ۵ مگابایت باشد.", "danger")
+        return redirect(url_for("admin_profile"))
+
+    AVATAR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    custom_name = f"custom_admin_{admin_id}.jpg"
+    (AVATAR_CACHE_DIR / custom_name).write_bytes(file_bytes)
+    (AVATAR_CACHE_DIR / f"custom_{username}.jpg").write_bytes(file_bytes)
+    if admin_user and admin_user.get("telegram_id"):
+        (AVATAR_CACHE_DIR / f"custom_{admin_user['telegram_id']}.jpg").write_bytes(file_bytes)
+
+    if admin_user:
+        db.update_admin_user(admin_id, custom_avatar=custom_name)
+
+    flash("تصویر پروفایل شما با موفقیت بروزرسانی شد.", "success")
+    return redirect(url_for("admin_profile"))
+
+
+@app.route("/admin/avatar/preset", methods=["POST"])
+@admin_required
+def admin_avatar_preset():
+    """انتخاب آواتار از میان کاراکترهای سه‌بعدی جذاب برای مدیر"""
+    admin_id = session.get("admin_id")
+    admin_user = db.get_admin_user(admin_id) if admin_id else None
+    username = session.get("username", "admin")
+    if admin_user:
+        username = admin_user.get("username", username)
+        admin_id = admin_user.get("id", admin_id)
+
+    seed = request.form.get("seed", f"Admin_{admin_id}_{int(time.time())}")
+    style = request.form.get("style", "bottts-neutral")
+    dicebear_url = f"https://api.dicebear.com/9.x/{style}/svg?seed={urllib.parse.quote(seed)}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf,c1f4c5,ffecb3,e1bee7"
+
+    try:
+        with httpx.Client(timeout=4.0) as client:
+            resp = client.get(dicebear_url)
+            if resp.status_code == 200 and len(resp.content) > 100:
+                AVATAR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                (AVATAR_CACHE_DIR / f"custom_admin_{admin_id}.jpg").write_bytes(resp.content)
+                (AVATAR_CACHE_DIR / f"custom_{username}.jpg").write_bytes(resp.content)
+                if admin_user and admin_user.get("telegram_id"):
+                    (AVATAR_CACHE_DIR / f"custom_{admin_user['telegram_id']}.jpg").write_bytes(resp.content)
+                if admin_user:
+                    db.update_admin_user(admin_id, custom_avatar=f"custom_admin_{admin_id}.jpg")
+                flash("آواتار سه‌بعدی جدید با موفقیت اعمال شد.", "success")
+                return redirect(url_for("admin_profile"))
+    except Exception as e:
+        logger.error(f"Error setting preset avatar: {e}")
+
+    flash("خطا در اعمال آواتار، لطفاً مجدداً امتحان کنید.", "danger")
+    return redirect(url_for("admin_profile"))
+
+
+@app.route("/admin/avatar/delete", methods=["POST"])
+@admin_required
+def admin_avatar_delete():
+    """حذف تصویر سفارشی و بازگشت به آواتار هوشمند پیش‌فرض مدیر"""
+    admin_id = session.get("admin_id")
+    admin_user = db.get_admin_user(admin_id) if admin_id else None
+    username = session.get("username", "admin")
+    if admin_user:
+        username = admin_user.get("username", username)
+        admin_id = admin_user.get("id", admin_id)
+
+    tg_id = admin_user.get("telegram_id") if admin_user else None
+    for fn in [f"custom_admin_{admin_id}.jpg", f"custom_admin_{admin_id}.png", f"custom_{username}.jpg", f"custom_{username}.png", f"custom_{tg_id}.jpg" if tg_id else None]:
+        if fn:
+            p = AVATAR_CACHE_DIR / fn
+            if p.exists():
+                try:
+                    p.unlink()
+                except Exception:
+                    pass
+
+    if admin_user:
+        db.update_admin_user(admin_id, custom_avatar="")
+
+    flash("تصویر اختصاصی حذف شد و به حالت پیش‌فرض بازگشت.", "info")
+    return redirect(url_for("admin_profile"))
+
+
+@app.route("/reseller/avatar/upload", methods=["POST"])
+@reseller_required
+def reseller_avatar_upload():
+    """آپلود و تنظیم تصویر پروفایل اختصاصی برای نماینده"""
+    reseller_id = session.get("reseller_id")
+    reseller = db.get_reseller(reseller_id)
+    if not reseller:
+        flash("نماینده یافت نشد!", "danger")
+        return redirect(url_for("reseller_dashboard"))
+
+    username = reseller.get("username", f"reseller_{reseller_id}")
+
+    if "avatar_file" not in request.files:
+        flash("هیچ فایلی برای آپلود انتخاب نشده است.", "warning")
+        return redirect(url_for("reseller_profile"))
+
+    file = request.files["avatar_file"]
+    if not file or not file.filename:
+        flash("لطفاً یک فایل تصویر انتخاب فرمایید.", "warning")
+        return redirect(url_for("reseller_profile"))
+
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_AVATAR_EXTENSIONS:
+        flash("فرمت فایل نامعتبر است! فقط JPG, PNG, WEBP مجاز هستند.", "danger")
+        return redirect(url_for("reseller_profile"))
+
+    file_bytes = file.read()
+    if len(file_bytes) > 5 * 1024 * 1024:
+        flash("حجم فایل نباید بیش از ۵ مگابایت باشد.", "danger")
+        return redirect(url_for("reseller_profile"))
+
+    AVATAR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    custom_name = f"custom_reseller_{reseller_id}.jpg"
+    (AVATAR_CACHE_DIR / custom_name).write_bytes(file_bytes)
+    (AVATAR_CACHE_DIR / f"custom_{username}.jpg").write_bytes(file_bytes)
+    if reseller and reseller.get("telegram_id"):
+        (AVATAR_CACHE_DIR / f"custom_{reseller['telegram_id']}.jpg").write_bytes(file_bytes)
+
+    db.update_reseller_profile(reseller_id, custom_avatar=custom_name)
+
+    flash("تصویر پروفایل شما با موفقیت بروزرسانی شد.", "success")
+    return redirect(url_for("reseller_profile"))
+
+
+@app.route("/reseller/avatar/preset", methods=["POST"])
+@reseller_required
+def reseller_avatar_preset():
+    """انتخاب آواتار از میان کاراکترهای سه‌بعدی برای نماینده"""
+    reseller_id = session.get("reseller_id")
+    reseller = db.get_reseller(reseller_id)
+    if not reseller:
+        flash("نماینده یافت نشد!", "danger")
+        return redirect(url_for("reseller_dashboard"))
+
+    username = reseller.get("username", f"reseller_{reseller_id}")
+    seed = request.form.get("seed", f"Reseller_{reseller_id}_{int(time.time())}")
+    style = request.form.get("style", "bottts-neutral")
+    dicebear_url = f"https://api.dicebear.com/9.x/{style}/svg?seed={urllib.parse.quote(seed)}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf,c1f4c5,ffecb3,e1bee7"
+
+    try:
+        with httpx.Client(timeout=4.0) as client:
+            resp = client.get(dicebear_url)
+            if resp.status_code == 200 and len(resp.content) > 100:
+                AVATAR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                (AVATAR_CACHE_DIR / f"custom_reseller_{reseller_id}.jpg").write_bytes(resp.content)
+                (AVATAR_CACHE_DIR / f"custom_{username}.jpg").write_bytes(resp.content)
+                if reseller and reseller.get("telegram_id"):
+                    (AVATAR_CACHE_DIR / f"custom_{reseller['telegram_id']}.jpg").write_bytes(resp.content)
+                db.update_reseller_profile(reseller_id, custom_avatar=f"custom_reseller_{reseller_id}.jpg")
+                flash("آواتار سه‌بعدی با موفقیت اعمال شد.", "success")
+                return redirect(url_for("reseller_profile"))
+    except Exception as e:
+        logger.error(f"Error setting preset avatar for reseller: {e}")
+
+    flash("خطا در اعمال آواتار.", "danger")
+    return redirect(url_for("reseller_profile"))
+
+
+@app.route("/reseller/avatar/delete", methods=["POST"])
+@reseller_required
+def reseller_avatar_delete():
+    """حذف تصویر سفارشی نماینده و بازگشت به حالت پیش‌فرض"""
+    reseller_id = session.get("reseller_id")
+    reseller = db.get_reseller(reseller_id)
+    username = reseller.get("username", "") if reseller else ""
+
+    tg_id = reseller.get("telegram_id") if reseller else None
+    for fn in [f"custom_reseller_{reseller_id}.jpg", f"custom_reseller_{reseller_id}.png", f"custom_{username}.jpg", f"custom_{username}.png", f"custom_{tg_id}.jpg" if tg_id else None]:
+        if fn:
+            p = AVATAR_CACHE_DIR / fn
+            if p.exists():
+                try:
+                    p.unlink()
+                except Exception:
+                    pass
+
+    if reseller_id:
+        db.update_reseller_profile(reseller_id, custom_avatar="")
+
+    flash("تصویر اختصاصی حذف شد و به حالت پیش‌فرض بازگشت.", "info")
+    return redirect(url_for("reseller_profile"))
 
 
 # ─── راه‌اندازی سرور وب ───
