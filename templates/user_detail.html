@@ -15,7 +15,7 @@
     <div class="col-md-4">
         <div class="card shadow-sm border-0">
             <div class="card-body text-center p-4">
-                <img src="{{ url_for('telegram_avatar', identifier=(user['telegram_id'] if user else telegram_id)) }}" 
+                <img src="{{ avatar_url((user['telegram_id'] if user else telegram_id) or (user['username'] if (user and user['username']) else '') or 'User') }}" 
                      alt="{{ (user['username'] if user else '') or telegram_id }}" 
                      class="rounded-circle border shadow-sm mx-auto mb-3" 
                      style="width: 96px; height: 96px; object-fit: cover;" 
@@ -36,7 +36,7 @@
                         <p><strong>آیدی تلگرام:</strong> <code>{{ (user['telegram_id'] if user else telegram_id) }}</code></p>
                         <p><strong>یوزرنیم:</strong> {{ ('@' + user['username']) if (user and user['username']) else 'ندارد' }}</p>
                         <p><strong>شماره تلفن تلگرام:</strong>
-                            {% if user and user.get('phone_number') %}
+                            {% if user and user['phone_number'] %}
                                 <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-phone me-1"></i><code>{{ user['phone_number'] }}</code> (احراز هویت شده)</span>
                             {% else %}
                                 <span class="badge bg-warning-subtle text-warning border border-warning"><i class="fas fa-triangle-exclamation me-1"></i>تایید نشده</span>
@@ -46,8 +46,8 @@
                     </div>
                     <div class="col-md-6">
                         <p><strong>پلن فعلی:</strong> {{ (user['plan_id'] if user else (subscriptions[0]['plan_name'] if subscriptions else '-')) or '-' }}</p>
-                        <p><strong>تاریخ عضویت:</strong> {{ user['created_at'][:10] if (user and user.get('created_at')) else '-' }}</p>
-                        <p><strong>آخرین بروزرسانی:</strong> {{ user['updated_at'][:10] if (user and user.get('updated_at')) else '-' }}</p>
+                        <p><strong>تاریخ عضویت:</strong> {{ user['created_at'][:10] if (user and user['created_at']) else '-' }}</p>
+                        <p><strong>آخرین بروزرسانی:</strong> {{ user['updated_at'][:10] if (user and user['updated_at']) else '-' }}</p>
                     </div>
                 </div>
             </div>
@@ -214,19 +214,19 @@
                                                 </div>
                                                 <div class="list-group-item d-flex justify-content-between">
                                                     <span class="text-muted">نوع خرید:</span>
-                                                    <span>{{ '🔄 تمدید اشتراک' if tx.get('is_renewal') else '🛒 خرید جدید' }}</span>
+                                                    <span>{{ '🔄 تمدید اشتراک' if tx['is_renewal'] else '🛒 خرید جدید' }}</span>
                                                 </div>
-                                                {% if tx.get('discount_code') %}
+                                                {% if tx['discount_code'] %}
                                                 <div class="list-group-item d-flex justify-content-between">
                                                     <span class="text-muted">کد تخفیف استفاده شده:</span>
-                                                    <span class="badge bg-warning text-dark">{{ tx.get('discount_code') }}</span>
+                                                    <span class="badge bg-warning text-dark">{{ tx['discount_code'] }}</span>
                                                 </div>
                                                 {% endif %}
                                                 <div class="list-group-item d-flex justify-content-between">
                                                     <span class="text-muted">تاریخ و زمان ثبت:</span>
                                                     <span>{{ tx['created_at'] or '-' }}</span>
                                                 </div>
-                                                {% if tx.get('receipt_image') or tx.get('receipt_photo_id') %}
+                                                {% if tx['receipt_image'] or tx['receipt_photo_id'] %}
                                                 <div class="list-group-item text-center mt-2">
                                                     <a href="{{ url_for('admin_payment_receipt', payment_id=tx['id']) }}" target="_blank" class="btn btn-sm btn-outline-primary w-100">
                                                         <i class="fas fa-image me-1"></i> مشاهده تصویر رسید و فیش واریزی

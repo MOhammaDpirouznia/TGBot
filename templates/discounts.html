@@ -13,9 +13,20 @@
 
 <!-- جدول کدهای تخفیف -->
 <div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0 fw-bold"><i class="bi bi-tag text-primary me-2"></i>کدهای تخفیف تعریف‌شده</h5>
+            <span class="badge bg-secondary" data-table-count="discountsTable">{{ discounts|length }} مورد</span>
+        </div>
+        <div class="table-search-wrapper">
+            <i class="fas fa-search table-search-icon"></i>
+            <input type="text" class="form-control table-search-input" data-table="discountsTable" placeholder="جستجو در کدهای تخفیف...">
+            <button type="button" class="table-search-clear" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
+        </div>
+    </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
+            <table class="table table-hover align-middle mb-0" id="discountsTable">
                 <thead class="table-light">
                     <tr>
                         <th class="ps-3">کد تخفیف</th>

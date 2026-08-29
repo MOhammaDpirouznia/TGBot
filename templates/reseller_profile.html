@@ -17,7 +17,7 @@
 <div class="row g-4">
     <div class="col-lg-4">
         <div class="card shadow-sm border-0 text-center p-4 mb-4">
-            <img src="{{ url_for('telegram_avatar', identifier=(reseller.get('telegram_id') or reseller['username'])) }}" 
+            <img src="{{ avatar_url(reseller['telegram_id'] or reseller['username'] or 'Reseller') }}" 
                  alt="{{ reseller['name'] }}" 
                  class="rounded-circle border shadow mx-auto mb-3" 
                  style="width: 84px; height: 84px; object-fit: cover;" 
@@ -73,15 +73,15 @@
                     <div class="row g-3 mb-3">
                         <div class="col-md-4">
                             <label class="form-label">شماره تلفن همراه:</label>
-                            <input type="text" name="phone" class="form-control" placeholder="0912XXXXXXX" value="{{ reseller.get('phone') or '' }}">
+                            <input type="text" name="phone" class="form-control" placeholder="0912XXXXXXX" value="{{ reseller['phone'] or '' }}">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">آیدی عددی یا یوزرنیم تلگرام:</label>
-                            <input type="text" name="telegram_id" class="form-control font-monospace" placeholder="12345678 یا @username" value="{{ reseller.get('telegram_id') or '' }}">
+                            <input type="text" name="telegram_id" class="form-control font-monospace" placeholder="12345678 یا @username" value="{{ reseller['telegram_id'] or '' }}">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">آدرس ایمیل:</label>
-                            <input type="email" name="email" class="form-control" placeholder="name@example.com" value="{{ reseller.get('email') or '' }}">
+                            <input type="email" name="email" class="form-control" placeholder="name@example.com" value="{{ reseller['email'] or '' }}">
                         </div>
                     </div>
 
@@ -89,11 +89,11 @@
                     <div class="row g-3 mb-3">
                         <div class="col-md-12">
                             <label class="form-label">شماره شبا یا کارت بانکی:</label>
-                            <input type="text" name="bank_card" class="form-control font-monospace" placeholder="IRXXXXXXXXXXXXXXXXXXXXXXXX یا شماره کارت ۱۶ رقمی" value="{{ reseller.get('bank_card') or '' }}">
+                            <input type="text" name="bank_card" class="form-control font-monospace" placeholder="IRXXXXXXXXXXXXXXXXXXXXXXXX یا شماره کارت ۱۶ رقمی" value="{{ reseller['bank_card'] or '' }}">
                         </div>
                         <div class="col-md-12">
                             <label class="form-label">توضیحات و یادداشت تکمیلی (اختیاری):</label>
-                            <textarea name="notes" class="form-control" rows="2" placeholder="توضیحات همکاری یا آدرس کانال...">{{ reseller.get('notes') or '' }}</textarea>
+                            <textarea name="notes" class="form-control" rows="2" placeholder="توضیحات همکاری یا آدرس کانال...">{{ reseller['notes'] or '' }}</textarea>
                         </div>
                     </div>
 

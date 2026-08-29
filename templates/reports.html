@@ -174,7 +174,7 @@
                                 </td>
                                 <td>
                                     <div class="d-flex align-items-center gap-2">
-                                        <img src="{{ url_for('telegram_avatar', identifier=(u['telegram_id'] or u['username'])) }}" 
+                                        <img src="{{ avatar_url(u['telegram_id'] or u['username'] or 'User') }}" 
                                              alt="{{ u['username'] or u['telegram_id'] }}" 
                                              class="rounded-circle border shadow-sm flex-shrink-0" 
                                              style="width: 36px; height: 36px; object-fit: cover;" 
@@ -229,7 +229,7 @@
                                 </td>
                                 <td>
                                     <div class="d-flex align-items-center gap-2">
-                                        <img src="{{ url_for('telegram_avatar', identifier=(u['telegram_id'] or u['username'])) }}" 
+                                        <img src="{{ avatar_url(u['telegram_id'] or u['username'] or 'User') }}" 
                                              alt="{{ u['username'] or u['telegram_id'] }}" 
                                              class="rounded-circle border shadow-sm flex-shrink-0" 
                                              style="width: 36px; height: 36px; object-fit: cover;" 
@@ -280,7 +280,7 @@
                             <tr>
                                 <td>
                                     <div class="d-flex align-items-center gap-2">
-                                        <img src="{{ url_for('telegram_avatar', identifier=(a.get('telegram_id') or a.get('username') or a.get('account_name') or 'Customer')) }}" 
+                                        <img src="{{ avatar_url(a['telegram_id'] or a['username'] or a['account_name'] or 'Customer') }}" 
                                              alt="{{ a['account_name'] }}" 
                                              class="rounded-circle border shadow-sm flex-shrink-0" 
                                              style="width: 34px; height: 34px; object-fit: cover;" 
@@ -362,14 +362,21 @@
 </div>
 
 <!-- ردیف چهارم: تایم‌لاین آخرین خریدها، تمدیدها و تاریخ عضویت کاربر -->
-<div class="card">
-    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-        <h5 class="mb-0 fw-bold"><i class="fas fa-timeline text-primary me-2"></i> تایم‌لاین جامع اشتراک‌ها (تاریخ خرید، تمدید و تاریخ عضویت)</h5>
-        <span class="badge bg-light text-dark">۱۰ رویداد اخیر</span>
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0 fw-bold"><i class="fas fa-timeline text-primary me-2"></i> تایم‌لاین جامع اشتراک‌ها (تاریخ خرید، تمدید و تاریخ عضویت)</h5>
+            <span class="badge bg-secondary" data-table-count="reportsTimelineTable">{{ timeline_subscriptions|length }} مورد</span>
+        </div>
+        <div class="table-search-wrapper">
+            <i class="fas fa-search table-search-icon"></i>
+            <input type="text" class="form-control table-search-input" data-table="reportsTimelineTable" placeholder="جستجو در تایم‌لاین اشتراک‌ها...">
+            <button type="button" class="table-search-clear" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
+        </div>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover mb-0">
+            <table class="table table-hover align-middle mb-0" id="reportsTimelineTable">
                 <thead>
                     <tr>
                         <th>نام اکانت</th>
@@ -387,7 +394,7 @@
                         <td><code>{{ s['account_name'] }}</code></td>
                         <td>
                             <div class="d-flex align-items-center gap-2">
-                                <img src="{{ url_for('telegram_avatar', identifier=(s['telegram_id'] or s['username'])) }}" 
+                                <img src="{{ avatar_url(s['telegram_id'] or s['username'] or s['account_name'] or 'Customer') }}" 
                                      alt="{{ s['username'] or s['telegram_id'] }}" 
                                      class="rounded-circle border shadow-sm flex-shrink-0" 
                                      style="width: 34px; height: 34px; object-fit: cover;" 
@@ -406,7 +413,7 @@
                                 <span class="badge bg-danger">منقضی</span>
                             {% endif %}
                         </td>
-                        <td><small>{{ s['user_registered_at'][:10] if s.get('user_registered_at') else '-' }}</small></td>
+                        <td><small>{{ s['user_registered_at'][:10] if s['user_registered_at'] else '-' }}</small></td>
                         <td><small>{{ s['created_at'][:16].replace('T', ' ') if s['created_at'] else '-' }}</small></td>
                         <td><small class="text-primary">{{ s['updated_at'][:16].replace('T', ' ') if s['updated_at'] else '-' }}</small></td>
                     </tr>

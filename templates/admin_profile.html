@@ -17,7 +17,7 @@
 <div class="row g-4">
     <div class="col-lg-4">
         <div class="card shadow-sm border-0 text-center p-4">
-            <img src="{{ url_for('telegram_avatar', identifier=(admin.get('telegram_id') or admin['username'])) }}" 
+            <img src="{{ avatar_url(admin['telegram_id'] or admin['username'] or 'Admin') }}" 
                  alt="{{ admin['display_name'] }}" 
                  class="rounded-circle border shadow mx-auto mb-3" 
                  style="width: 90px; height: 90px; object-fit: cover;" 
@@ -37,7 +37,7 @@
             </div>
             <hr class="my-4">
             <div class="text-start small text-muted">
-                {% if admin.get('telegram_id') %}
+                {% if admin['telegram_id'] %}
                     <div class="mb-2"><i class="fab fa-telegram me-2 text-info"></i>آیدی عددی تلگرام: <strong><code>{{ admin['telegram_id'] }}</code></strong></div>
                 {% endif %}
                 <div class="mb-2"><i class="fas fa-calendar-plus me-2 text-primary"></i>تاریخ ساخت حساب: <strong>{{ admin['created_at'][:10] if admin['created_at'] else '-' }}</strong></div>
@@ -64,7 +64,7 @@
                         </div>
                         <div class="col-md-12">
                             <label class="form-label fw-bold">آیدی عددی تلگرام (جهت بارگذاری خودکار تصویر پروفایل تلگرام):</label>
-                            <input type="number" name="telegram_id" class="form-control font-monospace" placeholder="مثال: 12345678" value="{{ admin.get('telegram_id') or '' }}">
+                            <input type="number" name="telegram_id" class="form-control font-monospace" placeholder="مثال: 12345678" value="{{ admin['telegram_id'] or '' }}">
                         </div>
                     </div>
                     

@@ -20,13 +20,23 @@
             </div>
             <div class="card-body p-4">
                 <form method="POST" id="createSubForm">
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">نام یا شناسه مشتری (اختیاری):</label>
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="fas fa-user"></i></span>
-                            <input type="text" name="account_name" class="form-control" placeholder="مثال: omid_01 یا خالی بگذارید">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">نام یا شناسه مشتری (اختیاری):</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-user"></i></span>
+                                <input type="text" name="account_name" class="form-control" placeholder="مثال: omid_01 یا خالی بگذارید">
+                            </div>
+                            <small class="text-muted">این نام در پنل هیدیفای نیز به عنوان نام اکانت ثبت می‌شود.</small>
                         </div>
-                        <small class="text-muted">در صورت خالی بودن، نام تصادفی تولید خواهد شد.</small>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">شماره تلفن مشتری (اختیاری):</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-phone"></i></span>
+                                <input type="text" name="phone_number" class="form-control font-monospace" placeholder="مثال: 09121234567">
+                            </div>
+                            <small class="text-muted">جهت ساخت خودکار تصویر پروفایل و ذخیره در مشخصات مشتری.</small>
+                        </div>
                     </div>
 
                     <div class="mb-4">

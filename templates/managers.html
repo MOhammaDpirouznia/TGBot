@@ -52,12 +52,20 @@
 
 <!-- جدول مدیران سیستم -->
 <div class="card shadow-sm border-0">
-    <div class="card-header bg-white d-flex justify-content-between align-items-center">
-        <h5 class="mb-0 fw-bold"><i class="fas fa-users-gear text-primary me-2"></i>لیست مدیران ثبت‌شده ({{ managers|length }})</h5>
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0 fw-bold"><i class="fas fa-users-gear text-primary me-2"></i>لیست مدیران ثبت‌شده</h5>
+            <span class="badge bg-secondary" data-table-count="managersTable">{{ managers|length }} مورد</span>
+        </div>
+        <div class="table-search-wrapper">
+            <i class="fas fa-search table-search-icon"></i>
+            <input type="text" class="form-control table-search-input" data-table="managersTable" placeholder="جستجو در مدیران، نام، یوزرنیم، نقش...">
+            <button type="button" class="table-search-clear" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
+        </div>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
+            <table class="table table-hover align-middle mb-0" id="managersTable">
                 <thead>
                     <tr>
                         <th class="ps-3" style="width: 70px;">شناسه</th>
@@ -76,7 +84,7 @@
                         <td class="ps-3"><code>#{{ m['id'] }}</code></td>
                         <td>
                             <div class="d-flex align-items-center gap-2">
-                                <img src="{{ url_for('telegram_avatar', identifier=(m.get('telegram_id') or m['username'])) }}" 
+                                <img src="{{ avatar_url(m['telegram_id'] or m['username'] or 'Manager') }}" 
                                      alt="{{ m['display_name'] }}" 
                                      class="rounded-circle border shadow-sm flex-shrink-0" 
                                      style="width: 38px; height: 38px; object-fit: cover;" 
@@ -84,10 +92,10 @@
                                 <div>
                                     <div class="fw-bold">{{ m['display_name'] }}
                                         {% if m['id'] == session.get('admin_id') %}
-                                            <span class="badge bg-info-subtle text-info border border-info ms-1">حساب شما</span>
+                                             <span class="badge bg-info-subtle text-info border border-info ms-1">حساب شما</span>
                                         {% endif %}
                                     </div>
-                                    {% if m.get('telegram_id') %}
+                                    {% if m['telegram_id'] %}
                                         <small class="text-muted"><code>ID: {{ m['telegram_id'] }}</code></small>
                                     {% endif %}
                                 </div>
@@ -151,7 +159,7 @@
                                         </div>
                                         <div class="mb-3">
                                             <label class="form-label">آیدی عددی تلگرام (جهت دریافت عکس پروفایل):</label>
-                                            <input type="number" name="telegram_id" class="form-control font-monospace" placeholder="مثال: 12345678" value="{{ m.get('telegram_id') or '' }}">
+                                            <input type="number" name="telegram_id" class="form-control font-monospace" placeholder="مثال: 12345678" value="{{ m['telegram_id'] or '' }}">
                                         </div>
                                         <div class="mb-3">
                                             <label class="form-label">رمز عبور جدید (در صورت تمایل به تغییر وارد کنید):</label>

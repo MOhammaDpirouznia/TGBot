@@ -151,7 +151,7 @@
                                 </td>
                                 <td>
                                     <div class="d-flex align-items-center gap-2">
-                                        <img src="{{ url_for('telegram_avatar', identifier=(u['telegram_id'] or u['username'])) }}" 
+                                        <img src="{{ avatar_url(u['telegram_id'] or u['username'] or 'User') }}" 
                                              alt="{{ u['username'] or u['telegram_id'] }}" 
                                              class="rounded-circle border shadow-sm flex-shrink-0" 
                                              style="width: 36px; height: 36px; object-fit: cover;" 
@@ -246,7 +246,7 @@
                     <tr>
                         <td>
                             <div class="d-flex align-items-center gap-2">
-                                <img src="{{ url_for('telegram_avatar', identifier=(tx['user_id'] or tx['username'])) }}" 
+                                <img src="{{ avatar_url(tx['user_id'] or tx['username'] or 'User') }}" 
                                      alt="{{ tx['username'] or tx['user_id'] }}" 
                                      class="rounded-circle border shadow-sm flex-shrink-0" 
                                      style="width: 36px; height: 36px; object-fit: cover;" 

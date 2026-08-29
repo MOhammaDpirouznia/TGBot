@@ -15,10 +15,21 @@
     </div>
 </div>
 
-<div class="card">
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0 fw-bold"><i class="fas fa-key text-primary me-2"></i>لیست اشتراک‌ها</h5>
+            <span class="badge bg-secondary" data-table-count="subscriptionsTable">{{ subscriptions|length }} مورد</span>
+        </div>
+        <div class="table-search-wrapper">
+            <i class="fas fa-search table-search-icon"></i>
+            <input type="text" class="form-control table-search-input" data-table="subscriptionsTable" placeholder="جستجو در اشتراک‌ها، کاربر، نام اکانت، پلن...">
+            <button type="button" class="table-search-clear" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
+        </div>
+    </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover mb-0">
+            <table class="table table-hover align-middle mb-0" id="subscriptionsTable">
                 <thead>
                     <tr>
                         <th>مالک / کاربر</th>
@@ -40,7 +51,7 @@
                         <td>
                             {% if sub['telegram_id'] and sub['telegram_id'] != 0 %}
                                 <div class="d-flex align-items-center gap-2">
-                                    <img src="{{ url_for('telegram_avatar', identifier=sub['telegram_id']) }}" 
+                                    <img src="{{ avatar_url(sub['telegram_id']) }}" 
                                          alt="{{ sub['telegram_id'] }}" 
                                          class="rounded-circle border shadow-sm flex-shrink-0" 
                                          style="width: 34px; height: 34px; object-fit: cover;" 
@@ -51,7 +62,7 @@
                                 </div>
                             {% else %}
                                 <div class="d-flex align-items-center gap-2">
-                                    <img src="{{ url_for('telegram_avatar', identifier=(sub['account_name'] or 'Customer')) }}" 
+                                    <img src="{{ avatar_url(sub['account_name'] or 'Customer') }}" 
                                          alt="مشتری همکار" 
                                          class="rounded-circle border shadow-sm flex-shrink-0" 
                                          style="width: 34px; height: 34px; object-fit: cover;" 

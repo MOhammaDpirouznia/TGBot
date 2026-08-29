@@ -135,7 +135,7 @@
                                 </td>
                                 <td>
                                     <div class="d-flex align-items-center gap-2">
-                                        <img src="{{ url_for('telegram_avatar', identifier=u['username']) }}" 
+                                        <img src="{{ avatar_url(u['username'] or 'User') }}" 
                                              alt="{{ u['username'] }}" 
                                              class="rounded-circle border shadow-sm flex-shrink-0" 
                                              style="width: 32px; height: 32px; object-fit: cover;" 
@@ -183,7 +183,7 @@
                             <tr>
                                 <td>
                                     <div class="d-flex align-items-center gap-2">
-                                        <img src="{{ url_for('telegram_avatar', identifier=a['account_name']) }}" 
+                                        <img src="{{ avatar_url(a['account_name'] or 'Customer') }}" 
                                              alt="{{ a['account_name'] }}" 
                                              class="rounded-circle border shadow-sm flex-shrink-0" 
                                              style="width: 32px; height: 32px; object-fit: cover;" 
@@ -262,14 +262,21 @@
 </div>
 
 <!-- ردیف سوم: تایم‌لاین آخرین مشتریان، تاریخ ساخت و بروزرسانی -->
-<div class="card">
-    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-        <h5 class="mb-0 fw-bold"><i class="fas fa-timeline text-primary me-2"></i> تایم‌لاین مشتریان (تاریخ ساخت، تمدید و وضعیت)</h5>
-        <span class="badge bg-light text-dark">۱۰ رویداد اخیر</span>
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0 fw-bold"><i class="fas fa-timeline text-primary me-2"></i> تایم‌لاین مشتریان (تاریخ ساخت، تمدید و وضعیت)</h5>
+            <span class="badge bg-secondary" data-table-count="resellerTimelineTable">{{ timeline_subscriptions|length }} مورد</span>
+        </div>
+        <div class="table-search-wrapper">
+            <i class="fas fa-search table-search-icon"></i>
+            <input type="text" class="form-control table-search-input" data-table="resellerTimelineTable" placeholder="جستجو در تایم‌لاین مشتریان...">
+            <button type="button" class="table-search-clear" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
+        </div>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover mb-0">
+            <table class="table table-hover align-middle mb-0" id="resellerTimelineTable">
                 <thead>
                     <tr>
                         <th>نام مشتری</th>
@@ -285,7 +292,7 @@
                     <tr>
                         <td>
                             <div class="d-flex align-items-center gap-2">
-                                <img src="{{ url_for('telegram_avatar', identifier=s['account_name']) }}" 
+                                <img src="{{ avatar_url(s['account_name'] or 'Customer') }}" 
                                      alt="{{ s['account_name'] }}" 
                                      class="rounded-circle border shadow-sm flex-shrink-0" 
                                      style="width: 32px; height: 32px; object-fit: cover;" 

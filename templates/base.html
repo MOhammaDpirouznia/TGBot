@@ -132,62 +132,70 @@
         .sidebar {
             background: var(--sidebar-bg);
             height: 100vh;
+            height: 100dvh;
             max-height: 100vh;
+            max-height: 100dvh;
             width: 260px;
             position: fixed;
             top: 0;
             right: 0;
-            z-index: 1000;
+            z-index: 1040;
             display: flex;
             flex-direction: column;
-            box-shadow: -4px 0 15px rgba(0,0,0,0.04);
+            box-shadow: -4px 0 15px rgba(0,0,0,0.06);
             border-left: 1px solid var(--sidebar-border);
-            transition: all 0.3s ease;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             overflow: hidden;
         }
 
         .sidebar .brand {
-            padding: 20px 18px;
+            padding: 16px 16px;
             display: flex;
             align-items: center;
             gap: 12px;
             border-bottom: 1px solid var(--sidebar-border);
             color: var(--sidebar-brand);
             text-decoration: none;
-            flex-shrink: 0;
+            flex-shrink: 0 !important;
         }
 
         .sidebar .brand i {
-            font-size: 1.8rem;
+            font-size: 1.6rem;
             color: var(--secondary);
+            flex-shrink: 0;
         }
 
         .sidebar .brand-title {
-            font-size: 1.15rem;
+            font-size: 1.05rem;
             font-weight: 700;
-            line-height: 1.3;
+            line-height: 1.2;
         }
 
         .sidebar .brand-badge {
-            font-size: 0.7rem;
-            padding: 2px 8px;
+            font-size: 0.68rem;
+            padding: 2px 7px;
             border-radius: 6px;
             background: rgba(14, 165, 233, 0.2);
             color: var(--secondary);
             font-weight: 600;
+            margin-top: 3px;
+            display: inline-block;
         }
 
         .sidebar .nav {
-            padding: 12px 10px;
-            flex: 1 1 auto;
-            overflow-y: auto;
-            overflow-x: hidden;
+            padding: 8px 10px;
+            flex: 1 1 0px !important;
+            min-height: 0 !important;
+            max-height: 100% !important;
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
             scrollbar-width: thin;
-            scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+            scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+            -webkit-overflow-scrolling: touch;
         }
 
         .sidebar .nav::-webkit-scrollbar {
-            width: 4px;
+            width: 5px;
         }
 
         .sidebar .nav::-webkit-scrollbar-track {
@@ -195,41 +203,43 @@
         }
 
         .sidebar .nav::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.2);
+            background: rgba(148, 163, 184, 0.3);
             border-radius: 4px;
         }
 
         .sidebar .nav::-webkit-scrollbar-thumb:hover {
-            background: rgba(255, 255, 255, 0.35);
+            background: rgba(148, 163, 184, 0.55);
         }
 
         .sidebar .nav-category {
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             color: var(--sidebar-text-muted);
-            padding: 12px 14px 6px;
+            padding: 10px 12px 3px;
             font-weight: 700;
         }
 
         .sidebar .nav-link {
             color: var(--sidebar-text);
-            padding: 11px 14px;
-            border-radius: 10px;
-            margin-bottom: 4px;
-            font-size: 0.93rem;
-            font-weight: 600;
+            padding: 8px 12px;
+            border-radius: 8px;
+            margin-bottom: 2px;
+            font-size: 0.88rem;
+            font-weight: 500;
             display: flex;
             align-items: center;
-            gap: 12px;
-            transition: all 0.2s ease;
+            gap: 10px;
+            transition: all 0.15s ease;
             text-decoration: none;
+            white-space: nowrap;
         }
 
         .sidebar .nav-link i {
-            font-size: 1.1rem;
-            width: 22px;
+            font-size: 1rem;
+            width: 20px;
             text-align: center;
+            flex-shrink: 0;
         }
 
         .sidebar .nav-link:hover {
@@ -245,13 +255,40 @@
         }
 
         .sidebar-footer {
-            padding: 16px 14px;
+            flex-shrink: 0 !important;
+            padding: 12px 14px;
             border-top: 1px solid var(--sidebar-border);
             background: rgba(0,0,0,0.03);
         }
 
         [data-bs-theme="dark"] .sidebar-footer {
             background: rgba(0,0,0,0.25);
+        }
+
+        .sidebar-backdrop {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(3px);
+            z-index: 1035;
+            transition: opacity 0.25s ease;
+        }
+
+        .sidebar-backdrop.show {
+            display: block;
+        }
+
+        .mobile-top-bar {
+            background: var(--card-bg);
+            border-color: var(--card-border) !important;
+            position: sticky;
+            top: 0;
+            z-index: 1020;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
         }
 
         .user-pill {
@@ -298,111 +335,137 @@
 
         .main-content {
             margin-right: 260px;
-            padding: 30px;
+            padding: 24px 28px;
             min-height: 100vh;
+            min-width: 0;
+            transition: margin-right 0.3s ease;
         }
 
-        .card {
-            background: var(--card-bg);
-            border: 1px solid #e2e8f0;
-            border-radius: 16px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.03);
-            margin-bottom: 24px;
-            overflow: hidden;
+        /* ─── نوار جستجوی پیشرفته جداول (Instant Table Search) ─── */
+        .table-search-wrapper {
+            position: relative;
+            min-width: 240px;
+            max-width: 380px;
+            width: 100%;
         }
 
-        .stat-card {
-            padding: 22px 24px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .stat-icon {
-            width: 54px;
-            height: 54px;
-            border-radius: 14px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.6rem;
-        }
-
-        .table-responsive {
-            border-radius: 14px;
-        }
-
-        .table th {
-            font-weight: 600;
-            color: var(--text-muted);
-            font-size: 0.85rem;
-            border-top: none;
-            background: #f8fafc;
-            padding: 14px 16px;
-        }
-
-        .table td {
-            padding: 14px 16px;
-            vertical-align: middle;
-            font-size: 0.92rem;
-        }
-
-        .badge {
-            padding: 6px 12px;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 0.8rem;
-        }
-
-        .badge-pending { background: rgba(245, 158, 11, 0.15); color: #d97706; }
-        .badge-approved { background: rgba(16, 185, 129, 0.15); color: #059669; }
-        .badge-rejected { background: rgba(239, 68, 68, 0.15); color: #dc2626; }
-        .badge-active { background: rgba(16, 185, 129, 0.15); color: #059669; }
-        .badge-expired { background: rgba(100, 116, 139, 0.15); color: #475569; }
-
-        .btn {
-            font-family: inherit;
+        .table-search-input {
+            padding-right: 38px !important;
+            padding-left: 32px !important;
             border-radius: 10px;
-            padding: 8px 16px;
-            font-weight: 500;
+            font-size: 0.88rem;
+            transition: all 0.2s ease;
+            background-color: var(--card-bg);
+            border: 1px solid var(--card-border);
+            color: var(--text-main);
         }
 
-        .btn-primary {
-            background: var(--primary);
+        .table-search-input:focus {
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
             border-color: var(--primary);
         }
 
-        .btn-primary:hover {
-            background: var(--primary-hover);
-            border-color: var(--primary-hover);
+        .table-search-icon {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            pointer-events: none;
+            font-size: 0.9rem;
         }
 
-        .page-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 24px;
+        .table-search-clear {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            cursor: pointer;
+            display: none;
+            font-size: 0.85rem;
+            background: none;
+            border: none;
+            padding: 2px 4px;
         }
 
-        .page-title {
-            font-size: 1.45rem;
-            font-weight: 700;
-            margin: 0;
-            display: flex;
-            align-items: center;
-            gap: 12px;
+        .table-search-clear:hover {
+            color: var(--danger);
+        }
+
+        .table-responsive {
+            -webkit-overflow-scrolling: touch;
+            border-radius: 10px;
         }
 
         @media (max-width: 992px) {
-            .sidebar { transform: translateX(100%); }
-            .sidebar.show { transform: translateX(0); }
-            .main-content { margin-right: 0; }
+            .sidebar {
+                transform: translateX(100%);
+            }
+            .sidebar.show {
+                transform: translateX(0);
+            }
+            .main-content {
+                margin-right: 0;
+                padding: 14px 12px;
+            }
+            .table-search-wrapper {
+                max-width: 100%;
+                margin-bottom: 8px;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .page-header {
+                flex-direction: column;
+                align-items: flex-start !important;
+                gap: 12px;
+            }
+            .page-title {
+                font-size: 1.2rem;
+            }
+            .stat-card {
+                padding: 14px;
+            }
+            .card-header {
+                flex-direction: column;
+                align-items: flex-start !important;
+                gap: 10px;
+            }
+            .card-header .table-search-wrapper {
+                width: 100%;
+            }
+            .table th, .table td {
+                padding: 8px 10px;
+                font-size: 0.85rem;
+            }
+            .btn-sm {
+                padding: 4px 8px;
+                font-size: 0.8rem;
+            }
         }
     </style>
     {% block extra_head %}{% endblock %}
 </head>
 <body>
     {% if session.get('logged_in') %}
+    <!-- Mobile Top Header Bar -->
+    <div class="mobile-top-bar d-lg-none d-flex align-items-center justify-content-between px-3 py-2 border-bottom">
+        <button type="button" class="btn btn-outline-secondary btn-sm px-2 py-1" onclick="toggleSidebar()" aria-label="منوی پنل">
+            <i class="fas fa-bars fs-5"></i>
+        </button>
+        <div class="fw-bold d-flex align-items-center gap-2">
+            <i class="fas fa-shield-halved text-primary"></i>
+            <span class="small">پنل مدیریت VPN</span>
+        </div>
+        <button type="button" class="btn btn-outline-secondary btn-sm px-2 py-1" onclick="toggleTheme()" aria-label="تغییر تم">
+            <i class="fas fa-circle-half-stroke"></i>
+        </button>
+    </div>
+
+    <!-- Sidebar Backdrop for Mobile -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar()"></div>
+
     <!-- Sidebar -->
     <aside class="sidebar">
         <a href="{% if session.get('role') == 'reseller' %}{{ url_for('reseller_dashboard') }}{% else %}{{ url_for('dashboard') }}{% endif %}" class="brand">
@@ -503,7 +566,7 @@
 
         <div class="sidebar-footer">
             <a href="{% if session.get('role') == 'reseller' %}{{ url_for('reseller_profile') }}{% else %}{{ url_for('admin_profile') }}{% endif %}" class="user-pill mb-2 text-decoration-none d-flex align-items-center gap-2" title="مشاهده و ویرایش حساب کاربری">
-                <img src="{{ url_for('telegram_avatar', identifier=(session.get('telegram_id') or session.get('username') or 'Admin')) }}" 
+                <img src="{{ avatar_url(session.get('telegram_id') or session.get('username') or 'Admin') }}" 
                      alt="{{ session.get('username') }}" 
                      class="rounded-circle border border-light flex-shrink-0" 
                      style="width: 38px; height: 38px; object-fit: cover;" 
@@ -797,6 +860,17 @@
             applyTheme(next);
         }
 
+        function toggleSidebar() {
+            const sidebar = document.querySelector('.sidebar');
+            const backdrop = document.getElementById('sidebarBackdrop');
+            if (sidebar) {
+                sidebar.classList.toggle('show');
+                if (backdrop) {
+                    backdrop.classList.toggle('show', sidebar.classList.contains('show'));
+                }
+            }
+        }
+
         // مقداردهی اولیه تم
         const savedTheme = localStorage.getItem('app_theme') || 'light';
         applyTheme(savedTheme);
@@ -806,6 +880,84 @@
         setInterval(pollAdminNotifications, 12000);
         setTimeout(pollAdminNotifications, 1500);
         {% endif %}
+
+        // ─── موتور جستجوی زنده سراسری جداول (Universal Instant Table Search) ───
+        function initTableSearch() {
+            document.querySelectorAll('.table-search-input').forEach(input => {
+                const targetTableId = input.getAttribute('data-table');
+                const clearBtn = input.parentElement.querySelector('.table-search-clear');
+                const counterBadge = document.querySelector(`[data-table-count="${targetTableId}"]`);
+                const table = document.getElementById(targetTableId);
+                
+                if (!table) return;
+
+                function performSearch() {
+                    const query = input.value.trim().toLowerCase();
+                    const words = query.split(/\s+/).filter(w => w.length > 0);
+                    
+                    if (clearBtn) {
+                        clearBtn.style.display = query ? 'block' : 'none';
+                    }
+
+                    const tbody = table.querySelector('tbody');
+                    if (!tbody) return;
+
+                    const rows = Array.from(tbody.querySelectorAll('tr:not(.no-search-results):not(.static-row)'));
+                    let visibleCount = 0;
+
+                    // پاک کردن پیام قبلی نتیجه نیافت
+                    const existingEmptyRow = tbody.querySelector('.no-search-results');
+                    if (existingEmptyRow) {
+                        existingEmptyRow.remove();
+                    }
+
+                    rows.forEach(row => {
+                        // متن کل ردیف
+                        const text = row.textContent.toLowerCase().replace(/\s+/g, ' ');
+                        const isMatch = words.every(word => text.includes(word));
+                        
+                        if (isMatch) {
+                            row.style.display = '';
+                            visibleCount++;
+                        } else {
+                            row.style.display = 'none';
+                        }
+                    });
+
+                    // بروزرسانی بج شمارنده نتایج
+                    if (counterBadge) {
+                        counterBadge.textContent = query ? `${visibleCount} مورد یافت شد` : `${rows.length} مورد`;
+                        if (query) {
+                            counterBadge.className = visibleCount > 0 ? 'badge bg-success' : 'badge bg-danger';
+                        } else {
+                            counterBadge.className = 'badge bg-secondary';
+                        }
+                    }
+
+                    // اگر موردی یافت نشد
+                    if (visibleCount === 0 && rows.length > 0 && query) {
+                        const colSpan = table.querySelectorAll('thead th').length || 6;
+                        const emptyRow = document.createElement('tr');
+                        emptyRow.className = 'no-search-results';
+                        emptyRow.innerHTML = `<td colspan="${colSpan}" class="text-center py-4 text-muted"><i class="fas fa-search-minus fa-2x mb-2 d-block text-secondary"></i> موردی با عبارت «<strong>${query}</strong>» در جدول یافت نشد.</td>`;
+                        tbody.appendChild(emptyRow);
+                    }
+                }
+
+                input.addEventListener('input', performSearch);
+
+                if (clearBtn) {
+                    clearBtn.addEventListener('click', () => {
+                        input.value = '';
+                        performSearch();
+                        input.focus();
+                    });
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', initTableSearch);
+        initTableSearch();
     </script>
     {% block scripts %}{% endblock %}
 </body>
