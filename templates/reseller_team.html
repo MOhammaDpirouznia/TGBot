@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}مدیریت تیم و کارمندان نماینده{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+    <div>
+        <h1 class="page-title mb-0"><i class="fas fa-users-gear text-primary me-2"></i> مدیریت تیم و دسترسی‌ها</h1>
+        <p class="text-muted mb-0">تعریف کارمندان و شرکای زیرمجموعه با نقش‌های شریک (درصدی)، مالی و پشتیبانی (فقط به پنل شما دسترسی دارند)</p>
+    </div>
+    <button type="button" class="btn btn-primary fw-bold" data-bs-toggle="modal" data-bs-target="#addMemberModal">
+        <i class="fas fa-user-plus me-1"></i> افزودن عضو جدید به تیم
+    </button>
+</div>
+
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0 fw-bold"><i class="fas fa-id-badge text-primary me-2"></i>اعضای تیم نمایندگی</h5>
+            <span class="badge bg-secondary">{{ team_members|length }} نفر</span>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>نام و نام خانوادگی</th>
+                        <th>نام کاربری ورود</th>
+                        <th>نقش و دسترسی</th>
+                        <th>درصد شراکت</th>
+                        <th>شماره تماس</th>
+                        <th>وضعیت</th>
+                        <th>تاریخ عضویت</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in team_members %}
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="stat-icon bg-primary bg-opacity-10 text-primary rounded-circle p-2" style="width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;">
+                                    <i class="fas fa-user"></i>
+                                </div>
+                                <strong>{{ m.get('display_name') }}</strong>
+                            </div>
+                        </td>
+                        <td><code>{{ m.get('username') }}</code></td>
+                        <td>
+                            {% if m.get('role') == 'partner' %}
+                                <span class="badge bg-purple bg-opacity-10 text-purple border border-purple" style="color: #7c3aed; border-color: #7c3aed !important;"><i class="fas fa-handshake me-1"></i> شریک نماینده</span>
+                            {% elif m.get('role') == 'finance' %}
+                                <span class="badge bg-success bg-opacity-10 text-success border border-success"><i class="fas fa-coins me-1"></i> امور مالی و فیش‌ها</span>
+                            {% elif m.get('role') == 'support' %}
+                                <span class="badge bg-info bg-opacity-10 text-info border border-info"><i class="fas fa-headset me-1"></i> کارشناس پشتیبانی</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ m.get('role') }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if m.get('share_percent') > 0 %}
+                                <span class="badge bg-primary fs-6">{{ m.get('share_percent') }}%</span>
+                            {% else %}
+                                <span class="text-muted small">-</span>
+                            {% endif %}
+                        </td>
+                        <td><small>{{ m.get('phone') or '-' }}</small></td>
+                        <td>
+                            {% if m.get('is_active') %}
+                                <span class="badge bg-success bg-opacity-10 text-success border border-success">فعال</span>
+                            {% else %}
+                                <span class="badge bg-secondary">معلق</span>
+                            {% endif %}
+                        </td>
+                        <td><small class="text-muted">{{ m.get('created_at')[:10] if m.get('created_at') else '-' }}</small></td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <form action="{{ url_for('reseller_team_toggle', member_id=m['id']) }}" method="POST" class="d-inline">
+                                    <button type="submit" class="btn {{ 'btn-outline-warning' if m.get('is_active') else 'btn-outline-success' }}" title="تغییر وضعیت فعال/معلق">
+                                        <i class="fas fa-power-off"></i>
+                                    </button>
+                                </form>
+                                <form action="{{ url_for('reseller_team_delete', member_id=m['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از حذف این عضو اطمینان دارید؟');">
+                                    <button type="submit" class="btn btn-outline-danger" title="حذف کاربر">
+                                        <i class="fas fa-trash-can"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+
+                    {% if not team_members %}
+                    <tr>
+                        <td colspan="8" class="text-center py-5 text-muted">
+                            <i class="fas fa-users-slash fs-1 d-block mb-2 text-secondary opacity-50"></i>
+                            هنوز کارمند یا شریکی به تیم خود اضافه نکرده‌اید.
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- مدال افزودن عضو جدید -->
+<div class="modal fade" id="addMemberModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content text-start">
+            <form action="{{ url_for('reseller_team') }}" method="POST">
+                <div class="modal-header bg-primary text-white py-3">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-user-plus me-2"></i>افزودن عضو جدید به تیم</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">نام و نام خانوادگی نمایشی <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="display_name" placeholder="مثال: رضا احمدی" required>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">نام کاربری ورود <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="username" placeholder="انگلیسی، مثال: reza_sup" dir="ltr" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">رمز عبور ورود <span class="text-danger">*</span></label>
+                            <input type="password" class="form-control" name="password" placeholder="حداقل ۶ کاراکتر" dir="ltr" required>
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">نقش و سطح دسترسی <span class="text-danger">*</span></label>
+                            <select class="form-select" name="role" id="memberRoleSelect" onchange="toggleSharePercent()" required>
+                                <option value="support">🎧 کارشناس پشتیبانی (تیکت‌ها و کاربران)</option>
+                                <option value="finance">💰 امور مالی (تایید فیش‌ها و تراکنش‌ها)</option>
+                                <option value="partner">🤝 شریک تجاری (دسترسی کامل + درصد سود)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">شماره موبایل</label>
+                            <input type="text" class="form-control" name="phone" placeholder="0912xxxxxxx" dir="ltr">
+                        </div>
+                    </div>
+                    <div class="mb-3" id="sharePercentDiv" style="display: none;">
+                        <label class="form-label fw-bold">درصد سهم سود شریک از فروش شما</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" name="share_percent" min="0" max="100" value="0">
+                            <span class="input-group-text">%</span>
+                        </div>
+                        <div class="form-text text-muted">این درصد از سود خالص خود شما برای این شریک در نظر گرفته می‌شود.</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold">ایجاد و ذخیره کاربر</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleSharePercent() {
+    const sel = document.getElementById('memberRoleSelect');
+    const div = document.getElementById('sharePercentDiv');
+    if (sel.value === 'partner') {
+        div.style.display = 'block';
+    } else {
+        div.style.display = 'none';
+    }
+}
+</script>
+{% endblock %}

@@ -544,12 +544,24 @@
     <!-- Sidebar -->
     <aside class="sidebar">
         <a href="{% if session.get('role') == 'reseller' %}{{ url_for('reseller_dashboard') }}{% else %}{{ url_for('dashboard') }}{% endif %}" class="brand">
-            <i class="fas fa-shield-halved"></i>
+            {% if branding.get('logo_url') %}
+                <img src="{{ branding.get('logo_url') }}" alt="لوگو" style="width: 32px; height: 32px; object-fit: contain; border-radius: 6px;">
+            {% else %}
+                <i class="fas fa-shield-halved"></i>
+            {% endif %}
             <div>
-                <div class="brand-title">پنل مدیریت VPN</div>
+                <div class="brand-title">{{ branding.get('brand_title') or 'پنل مدیریت VPN' }}</div>
                 <div class="brand-badge">
                     {% if session.get('role') == 'reseller' %}
-                        نماینده: {{ session.get('name', 'همکار') }}
+                        {% if sub_role == 'partner' %}
+                            🤝 شریک: {{ session.get('name', 'همکار') }}
+                        {% elif sub_role == 'finance' %}
+                            💰 امور مالی: {{ session.get('name', 'همکار') }}
+                        {% elif sub_role == 'support' %}
+                            🎧 پشتیبانی: {{ session.get('name', 'همکار') }}
+                        {% else %}
+                            نماینده: {{ session.get('name', 'همکار') }}
+                        {% endif %}
                     {% else %}
                         {% if session.get('admin_role') == 'partner' %}
                             🤝 شریک: {{ session.get('name', 'شریک تجاری') }}
@@ -569,26 +581,60 @@
 
         <nav class="nav flex-column flex-nowrap w-100">
             {% if session.get('role') == 'reseller' %}
-                <!-- منوی پنل نمایندگی -->
-                <div class="nav-category">پنل همکاران</div>
+                <!-- منوی پنل نمایندگی با پشتیبانی از نقش‌های زیرمدیران -->
+                <div class="nav-category">
+                    {{ branding.get('brand_title') or 'پنل همکاران' }}
+                </div>
+
                 <a class="nav-link {% if request.endpoint == 'reseller_dashboard' %}active{% endif %}" href="{{ url_for('reseller_dashboard') }}">
                     <i class="fas fa-chart-pie"></i> داشبورد نماینده
                 </a>
+
+                {% if not sub_role or sub_role in ['partner', 'finance'] %}
+                <a class="nav-link {% if request.endpoint == 'reseller_payments' %}active{% endif %}" href="{{ url_for('reseller_payments') }}">
+                    <i class="fas fa-receipt text-warning"></i> فیش‌ها و تایید پرداخت
+                </a>
+                {% endif %}
+
+                {% if not sub_role or sub_role in ['partner', 'support'] %}
                 <a class="nav-link {% if request.endpoint == 'reseller_create_user' %}active{% endif %}" href="{{ url_for('reseller_create_user') }}">
-                    <i class="fas fa-user-plus"></i> ساخت اشتراک مشتری
+                    <i class="fas fa-user-plus text-success"></i> ساخت اشتراک مشتری
                 </a>
                 <a class="nav-link {% if request.endpoint == 'reseller_users' %}active{% endif %}" href="{{ url_for('reseller_users') }}">
                     <i class="fas fa-users"></i> مشتریان من
                 </a>
-                <a class="nav-link {% if request.endpoint == 'reseller_bot_settings' %}active{% endif %}" href="{{ url_for('reseller_bot_settings') }}">
-                    <i class="fas fa-robot text-info"></i> ربات اختصاصی من
+                <a class="nav-link {% if request.endpoint == 'reseller_tickets' %}active{% endif %}" href="{{ url_for('reseller_tickets') }}">
+                    <i class="fas fa-headset text-info"></i> تیکت‌ها و پشتیبانی
                 </a>
+                {% endif %}
+
+                {% if not sub_role or sub_role == 'partner' %}
+                <a class="nav-link {% if request.endpoint == 'reseller_bot_settings' %}active{% endif %}" href="{{ url_for('reseller_bot_settings') }}">
+                    <i class="fas fa-robot text-primary"></i> ربات اختصاصی من
+                </a>
+                <a class="nav-link {% if request.endpoint == 'reseller_cards' %}active{% endif %}" href="{{ url_for('reseller_cards') }}">
+                    <i class="fas fa-credit-card text-success"></i> کارت‌های بانکی مقصد
+                </a>
+                <a class="nav-link {% if request.endpoint == 'reseller_discounts' %}active{% endif %}" href="{{ url_for('reseller_discounts') }}">
+                    <i class="fas fa-ticket text-danger"></i> کدهای تخفیف
+                </a>
+                <a class="nav-link {% if request.endpoint == 'reseller_team' %}active{% endif %}" href="{{ url_for('reseller_team') }}">
+                    <i class="fas fa-users-gear" style="color: #8b5cf6;"></i> مدیریت تیم و دسترسی‌ها
+                </a>
+                <a class="nav-link {% if request.endpoint == 'reseller_branding' %}active{% endif %}" href="{{ url_for('reseller_branding') }}">
+                    <i class="fas fa-palette text-warning"></i> هویت بصری و دامنه
+                </a>
+                {% endif %}
+
+                {% if not sub_role or sub_role in ['partner', 'finance'] %}
                 <a class="nav-link {% if request.endpoint == 'reseller_transactions' %}active{% endif %}" href="{{ url_for('reseller_transactions') }}">
                     <i class="fas fa-wallet"></i> تراکنش‌ها و شارژ
                 </a>
                 <a class="nav-link {% if request.endpoint == 'reseller_reports' %}active{% endif %}" href="{{ url_for('reseller_reports') }}">
                     <i class="fas fa-chart-line"></i> گزارشات و هوش مالی
                 </a>
+                {% endif %}
+
                 <a class="nav-link {% if request.endpoint == 'reseller_profile' %}active{% endif %}" href="{{ url_for('reseller_profile') }}">
                     <i class="fas fa-user-gear"></i> حساب کاربری و مشخصات
                 </a>

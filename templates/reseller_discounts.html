@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}کدهای تخفیف اختصاصی{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+    <div>
+        <h1 class="page-title mb-0"><i class="fas fa-ticket text-primary me-2"></i> کدهای تخفیف اختصاصی</h1>
+        <p class="text-muted mb-0">ایجاد کوپن‌های تخفیف درصدی یا ثابت برای مشتریان (مبلغ تخفیف از سهم سود شما کسر می‌گردد)</p>
+    </div>
+    <button type="button" class="btn btn-primary fw-bold" data-bs-toggle="modal" data-bs-target="#addDiscountModal">
+        <i class="fas fa-plus me-1"></i> ساخت کد تخفیف جدید
+    </button>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0 fw-bold"><i class="fas fa-tags text-primary me-2"></i>لیست کدهای تخفیف فعال</h5>
+            <span class="badge bg-secondary">{{ discounts|length }} کد</span>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>کد تخفیف</th>
+                        <th>میزان تخفیف</th>
+                        <th>سقف استفاده</th>
+                        <th>تعداد استفاده شده</th>
+                        <th>مهلت اعتبار</th>
+                        <th>وضعیت</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for d in discounts %}
+                    <tr>
+                        <td><strong class="font-monospace fs-6 text-primary">{{ d.get('code') }}</strong></td>
+                        <td>
+                            {% if d.get('discount_percent') > 0 %}
+                                <span class="badge bg-primary fs-6">{{ d.get('discount_percent') }}%</span>
+                            {% else %}
+                                <span class="badge bg-success fs-6">{{ "{:,}".format(d.get('discount_amount') or 0) }} تومان</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ d.get('max_uses') if d.get('max_uses') > 0 else 'نامحدود' }}</td>
+                        <td><span class="badge bg-secondary">{{ d.get('used_count', 0) }} بار</span></td>
+                        <td><small class="text-muted">{{ d.get('valid_until') or 'همیشگی' }}</small></td>
+                        <td>
+                            {% if d.get('is_active') %}
+                                <span class="badge bg-success bg-opacity-10 text-success border border-success">فعال</span>
+                            {% else %}
+                                <span class="badge bg-secondary">غیرفعال</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <form action="{{ url_for('reseller_discount_toggle', discount_id=d['id']) }}" method="POST" class="d-inline">
+                                    <button type="submit" class="btn {{ 'btn-outline-warning' if d.get('is_active') else 'btn-outline-success' }}" title="تغییر وضعیت">
+                                        <i class="fas fa-power-off"></i>
+                                    </button>
+                                </form>
+                                <form action="{{ url_for('reseller_discount_delete', discount_id=d['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از حذف این کد تخفیف اطمینان دارید؟');">
+                                    <button type="submit" class="btn btn-outline-danger" title="حذف کد">
+                                        <i class="fas fa-trash-can"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+
+                    {% if not discounts %}
+                    <tr>
+                        <td colspan="7" class="text-center py-5 text-muted">
+                            <i class="fas fa-ticket fs-1 d-block mb-2 text-secondary opacity-50"></i>
+                            هنوز هیچ کد تخفیفی برای مشتریان خود ایجاد نکرده‌اید.
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- مدال ساخت کد تخفیف -->
+<div class="modal fade" id="addDiscountModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content text-start">
+            <form action="{{ url_for('reseller_discounts') }}" method="POST">
+                <div class="modal-header bg-primary text-white py-3">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-ticket me-2"></i>ایجاد کد تخفیف جدید</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">کد تخفیف (انگلیسی) <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control font-monospace text-uppercase" name="code" placeholder="مثال: NOROOZ1405" dir="ltr" required>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">درصد تخفیف (درصدی)</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" name="discount_percent" min="0" max="100" placeholder="0">
+                                <span class="input-group-text">%</span>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">یا مبلغ ثابت (تومان)</label>
+                            <input type="number" class="form-control" name="discount_amount" min="0" placeholder="0">
+                        </div>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">حداکثر دفعات استفاده</label>
+                            <input type="number" class="form-control" name="max_uses" placeholder="0 برای نامحدود" min="0" value="0">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">تاریخ انقضا (اختیاری)</label>
+                            <input type="date" class="form-control" name="valid_until">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold">ایجاد کد تخفیف</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}هویت بصری و دامنه اختصاصی{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+    <div>
+        <h1 class="page-title mb-0"><i class="fas fa-palette text-primary me-2"></i> هویت بصری و دامنه اختصاصی</h1>
+        <p class="text-muted mb-0">شخصی‌سازی نام فروشگاه، آپلود لوگو، فاویکون و اتصال دامنه اختصاصی به پنل مدیریت شما</p>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- فرم تنظیمات هویت بصری و دامنه -->
+    <div class="col-lg-8">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-sliders text-primary me-2"></i> تنظیمات شخصی‌سازی و برندینگ</h5>
+            </div>
+            <div class="card-body p-4">
+                <form action="{{ url_for('reseller_branding') }}" method="POST" enctype="multipart/form-data">
+                    
+                    <!-- دامنه اختصاصی -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">دامنه اختصاصی پورتال شما (Custom Domain)</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light"><i class="fas fa-globe text-muted"></i></span>
+                            <input type="text" class="form-control font-monospace" name="custom_domain" 
+                                   value="{{ reseller.get('custom_domain') or '' }}" 
+                                   placeholder="مثال: panel.myvpnbrand.com" dir="ltr">
+                        </div>
+                        <div class="form-text text-muted">هنگامی که این دامنه در مرورگر باز شود، پنل با لوگو و عنوان برند شما بارگذاری خواهد شد.</div>
+                    </div>
+
+                    <!-- عنوان فروشگاه و تب مرورگر -->
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">عنوان فروشگاه / عنوان پنل</label>
+                            <input type="text" class="form-control" name="brand_title" 
+                                   value="{{ reseller.get('brand_title') or reseller.get('name') or '' }}" 
+                                   placeholder="مثال: توربو نت | TurboNet">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">رنگ سازمانی اصلی (Hex Color)</label>
+                            <div class="input-group">
+                                <input type="color" class="form-control form-control-color w-25" name="primary_color" 
+                                       value="{{ reseller.get('primary_color') or '#4f46e5' }}" title="انتخاب رنگ">
+                                <input type="text" class="form-control font-monospace" value="{{ reseller.get('primary_color') or '#4f46e5' }}" readonly>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- لوگو و فاویکون -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">فایل لوگوی اختصاصی</label>
+                            <input type="file" class="form-control" name="logo_file" accept="image/*">
+                            {% if reseller.get('logo_url') %}
+                                <div class="mt-2 d-flex align-items-center gap-2">
+                                    <span class="small text-muted">لوگوی فعلی:</span>
+                                    <img src="{{ reseller.get('logo_url') }}" alt="لوگو" style="max-height: 36px;" class="border rounded p-1">
+                                </div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">آدرس مستقیم آیکون تب مرورگر (Favicon URL)</label>
+                            <input type="text" class="form-control font-monospace" name="favicon_url" 
+                                   value="{{ reseller.get('favicon_url') or '' }}" placeholder="https://.../favicon.ico" dir="ltr">
+                        </div>
+                    </div>
+
+                    <!-- متن کپی رایت پاورقی -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">متن پاورقی و کپی‌رایت پنل (Footer Text)</label>
+                        <input type="text" class="form-control" name="footer_text" 
+                               value="{{ reseller.get('footer_text') or '' }}" 
+                               placeholder="مثال: کلیه حقوق برای برند توربو نت محفوظ است © 2026">
+                    </div>
+
+                    <div class="d-flex justify-content-end">
+                        <button type="submit" class="btn btn-primary px-4 py-2 fw-bold">
+                            <i class="fas fa-floppy-disk me-1"></i> ذخیره تغییرات هویت بصری
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- راهنمای اتصال دامنه -->
+    <div class="col-lg-4">
+        <div class="card shadow-sm border-0 mb-4 bg-light">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-book-open text-primary me-2"></i> راهنمای اتصال دامنه به پنل</h6>
+            </div>
+            <div class="card-body">
+                <ol class="small text-muted ps-3 mb-0" style="line-height: 1.9;">
+                    <li>وارد پنل مدیریت دامنه یا کلودفلر (Cloudflare) خود شوید.</li>
+                    <li>یک زیردامنه دلخواه (مثلاً <code>panel</code>) بسازید.</li>
+                    <li>یک رکورد <strong>A Record</strong> یا <strong>CNAME</strong> به سمت آی‌پی سرور اصلی ثبت کنید.</li>
+                    <li>دامنه کامل (مثلاً <code>panel.yourbrand.com</code>) را در کادر روبرو وارد نمایید.</li>
+                    <li>دکمه ذخیره را بزنید؛ از این پس با باز کردن دامنه خود، پنل اختصاصی شما بارگذاری خواهد شد!</li>
+                </ol>
+            </div>
+        </div>
+
+        <div class="card shadow-sm border-0 border-start border-info border-4">
+            <div class="card-body p-3">
+                <h6 class="fw-bold text-info mb-2"><i class="fas fa-shield-halved me-1"></i> حفظ کامل حریم خصوصی:</h6>
+                <p class="small text-muted mb-0">
+                    با ست کردن دامنه اختصاصی، مشتریان و همکاران شما آدرس سرور اصلی را مشاهده نخواهند کرد و با اطمینان کامل به برند شما متصل خواهند بود.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

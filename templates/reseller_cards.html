@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}مدیریت کارت‌های بانکی مقصد{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+    <div>
+        <h1 class="page-title mb-0"><i class="fas fa-credit-card text-primary me-2"></i> کارت‌های بانکی مقصد</h1>
+        <p class="text-muted mb-0">مدیریت شماره کارت‌های واریزی جهت دریافت مستقیم مبالغ مشتریان در ربات تلگرام اختصاصی</p>
+    </div>
+    <button type="button" class="btn btn-primary fw-bold" data-bs-toggle="modal" data-bs-target="#addCardModal">
+        <i class="fas fa-plus me-1"></i> افزودن کارت بانکی جدید
+    </button>
+</div>
+
+<!-- لیست کارت‌های ثبت شده -->
+<div class="row g-4 mb-4">
+    {% for card in cards %}
+    <div class="col-md-6 col-lg-4">
+        <div class="card shadow-sm border-0 h-100 {% if card.get('is_active') %}border-start border-success border-4{% else %}border-start border-secondary border-4 opacity-75{% endif %}">
+            <div class="card-body p-4 d-flex flex-column justify-content-between">
+                <div>
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <span class="badge {% if card.get('is_active') %}bg-success bg-opacity-10 text-success border border-success{% else %}bg-secondary text-white{% endif %}">
+                            {{ '🟢 فعال برای ربات' if card.get('is_active') else '⚪ غیرفعال' }}
+                        </span>
+                        <span class="fw-bold text-muted small"><i class="fas fa-building-columns me-1"></i>{{ card.get('bank_name') or 'بانک' }}</span>
+                    </div>
+
+                    <div class="my-3 text-center">
+                        <div class="font-monospace fs-5 fw-bold text-primary" dir="ltr" style="letter-spacing: 2px;">
+                            {{ card.get('card_number') }}
+                        </div>
+                        <div class="text-dark fw-bold mt-2">{{ card.get('card_holder') }}</div>
+                    </div>
+
+                    <div class="text-muted small d-flex justify-content-between border-top pt-2">
+                        <span>سقف روزانه:</span>
+                        <span>{{ "{:,}".format(card.get('daily_limit') or 50000000) }} تومان</span>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end gap-2 mt-4 pt-2 border-top">
+                    <form action="{{ url_for('reseller_card_toggle', card_id=card['id']) }}" method="POST" class="d-inline">
+                        <button type="submit" class="btn btn-sm {{ 'btn-outline-warning' if card.get('is_active') else 'btn-outline-success' }}" title="تغییر وضعیت فعال/غیرفعال">
+                            <i class="fas fa-power-off me-1"></i> {{ 'غیرفعال‌سازی' if card.get('is_active') else 'فعال‌سازی' }}
+                        </button>
+                    </form>
+                    <form action="{{ url_for('reseller_card_delete', card_id=card['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از حذف این کارت مطمئن هستید؟');">
+                        <button type="submit" class="btn btn-sm btn-outline-danger" title="حذف کارت">
+                            <i class="fas fa-trash-can"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+
+    {% if not cards %}
+    <div class="col-12">
+        <div class="card border-0 shadow-sm text-center py-5">
+            <i class="fas fa-credit-card fs-1 text-secondary opacity-50 mb-3"></i>
+            <h5 class="fw-bold text-muted">هنوز هیچ کارت بانکی ثبت نکرده‌اید!</h5>
+            <p class="text-muted small">برای اینکه مشتریان در ربات تلگرام شماره کارت شما را ببینند، روی دکمه «افزودن کارت بانکی جدید» کلیک کنید.</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- مدال افزودن کارت بانکی -->
+<div class="modal fade" id="addCardModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content text-start">
+            <form action="{{ url_for('reseller_cards') }}" method="POST">
+                <div class="modal-header bg-primary text-white py-3">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-credit-card me-2"></i>افزودن کارت بانکی مقصد</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">شماره کارت ۱۶ رقمی <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control font-monospace text-center fs-5" name="card_number" placeholder="xxxx-xxxx-xxxx-xxxx" maxlength="19" dir="ltr" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">نام و نام خانوادگی صاحب حساب <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="card_holder" placeholder="مثال: علی رضایی" required>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">نام بانک</label>
+                            <input type="text" class="form-control" name="bank_name" placeholder="مثال: ملی، ملت، سامان" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">سقف واریز روزانه (تومان)</label>
+                            <input type="number" class="form-control" name="daily_limit" value="50000000">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold">ثبت کارت بانکی</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

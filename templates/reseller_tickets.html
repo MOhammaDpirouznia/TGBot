@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}تیکت‌ها و پشتیبانی مشتریان{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+    <div>
+        <h1 class="page-title mb-0"><i class="fas fa-headset text-primary me-2"></i> تیکت‌ها و پشتیبانی مشتریان</h1>
+        <p class="text-muted mb-0">مشاهده و پاسخگویی به پیام‌های ارسالی مشتریان ربات تلگرام اختصاصی شما</p>
+    </div>
+    <div class="badge bg-primary fs-6 py-2 px-3">
+        کل تیکت‌ها: {{ tickets|length }} مورد
+    </div>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0 fw-bold"><i class="fas fa-comments text-primary me-2"></i>لیست تیکت‌های پشتیبانی</h5>
+        </div>
+        <div class="table-search-wrapper">
+            <i class="fas fa-search table-search-icon"></i>
+            <input type="text" class="form-control table-search-input" data-table="resellerTicketsTable" placeholder="جستجو در متن تیکت، کاربر...">
+            <button type="button" class="table-search-clear" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" id="resellerTicketsTable">
+                <thead>
+                    <tr>
+                        <th>شماره</th>
+                        <th>کاربر تلگرام</th>
+                        <th>موضوع</th>
+                        <th>متن پیام</th>
+                        <th>وضعیت</th>
+                        <th>تاریخ ثبت</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ticket in tickets %}
+                    <tr class="{% if ticket.get('status') == 'open' %}table-warning bg-opacity-10{% endif %}">
+                        <td><code>#{{ ticket['id'] }}</code></td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="fab fa-telegram text-primary fs-5"></i>
+                                <div>
+                                    <strong>{{ ticket.get('username') or 'مشتری' }}</strong>
+                                    <div class="text-muted small"><code>ID: {{ ticket.get('user_id') }}</code></div>
+                                </div>
+                            </div>
+                        </td>
+                        <td><span class="badge bg-secondary">{{ ticket.get('subject') or 'پشتیبانی' }}</span></td>
+                        <td>
+                            <div class="text-truncate" style="max-width: 250px;" title="{{ ticket.get('message') }}">
+                                {{ ticket.get('message') }}
+                            </div>
+                        </td>
+                        <td>
+                            {% if ticket.get('status') == 'open' %}
+                                <span class="badge bg-warning text-dark"><i class="fas fa-envelope-open me-1"></i> باز / در انتظار پاسخ</span>
+                            {% elif ticket.get('status') == 'replied' %}
+                                <span class="badge bg-success"><i class="fas fa-reply me-1"></i> پاسخ داده شده</span>
+                            {% else %}
+                                <span class="badge bg-secondary"><i class="fas fa-check-double me-1"></i> بسته شده</span>
+                            {% endif %}
+                        </td>
+                        <td><small class="text-muted">{{ ticket.get('created_at')[:16] if ticket.get('created_at') else '-' }}</small></td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#replyTicketModal{{ ticket['id'] }}" title="مشاهده و پاسخ">
+                                    <i class="fas fa-reply me-1"></i> پاسخ
+                                </button>
+                                {% if ticket.get('status') != 'closed' %}
+                                <form action="{{ url_for('reseller_ticket_close', ticket_id=ticket['id']) }}" method="POST" class="d-inline">
+                                    <button type="submit" class="btn btn-outline-secondary" title="بستن تیکت">
+                                        <i class="fas fa-check"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+
+                            <!-- مدال پاسخ به تیکت -->
+                            <div class="modal fade" id="replyTicketModal{{ ticket['id'] }}" tabindex="-1" aria-hidden="true">
+                                <div class="modal-dialog modal-lg">
+                                    <div class="modal-content text-start">
+                                        <form action="{{ url_for('reseller_ticket_reply', ticket_id=ticket['id']) }}" method="POST">
+                                            <div class="modal-header bg-primary text-white py-3">
+                                                <h5 class="modal-title fw-bold"><i class="fas fa-comments me-2"></i>پاسخ به تیکت #{{ ticket['id'] }}</h5>
+                                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body p-4">
+                                                <div class="p-3 bg-light rounded mb-3 border">
+                                                    <div class="d-flex justify-content-between text-muted small mb-1">
+                                                        <span>ارسال شده توسط مشتری (<code>{{ ticket.get('user_id') }}</code>):</span>
+                                                        <span>{{ ticket.get('created_at') }}</span>
+                                                    </div>
+                                                    <p class="mb-0 fw-bold text-dark">{{ ticket.get('message') }}</p>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label class="form-label fw-bold">متن پاسخ شما (در تلگرام برای مشتری ارسال می‌شود): <span class="text-danger">*</span></label>
+                                                    <textarea class="form-control" name="reply_message" rows="4" placeholder="پاسخ خود را اینجا بنویسید..." required></textarea>
+                                                </div>
+
+                                                <div class="form-check form-switch">
+                                                    <input class="form-check-input" type="checkbox" name="close_ticket" id="closeCheck{{ ticket['id'] }}" value="1" checked>
+                                                    <label class="form-check-label small" for="closeCheck{{ ticket['id'] }}">بستن تیکت پس از ارسال پاسخ</label>
+                                                </div>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-light" data-bs-dismiss="modal">انصراف</button>
+                                                <button type="submit" class="btn btn-success px-4 fw-bold"><i class="fas fa-paper-plane me-1"></i> ارسال پاسخ به مشتری</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+
+                    {% if not tickets %}
+                    <tr>
+                        <td colspan="7" class="text-center py-5 text-muted">
+                            <i class="fas fa-headset fs-1 d-block mb-2 text-secondary opacity-50"></i>
+                            هنوز تیکتی از سمت مشتریان شما ثبت نشده است.
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
