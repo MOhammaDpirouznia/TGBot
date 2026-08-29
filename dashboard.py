@@ -2951,8 +2951,20 @@ def admin_create_customer():
         # ثبت تراکنش و حسابداری بدهی نقدی مدیر
         debt_info_text = ""
         if payment_method == "cash" and price > 0:
+            order_id = f"ADM_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
+            db.save_transaction(
+                order_id=order_id,
+                user_id=telegram_id or 0,
+                username=account_name,
+                plan_name=plan_name,
+                amount=price,
+                gateway="cash_admin",
+                tracking_code=f"CASH_{session.get('username')}",
+                status="approved",
+                account_name=account_name
+            )
+
             if admin_role == "super_admin":
-                db.save_transaction(telegram_id or 0, plan_id or "custom", price, "cash_admin", "approved", None, plan_name=plan_name)
                 debt_info_text = " (مبلغ نقدی به صندوق اصلی ثبت شد)"
             else:
                 debt_res = db.record_admin_cash_sale(
@@ -2964,7 +2976,6 @@ def admin_create_customer():
                     created_by=admin_id,
                     description=f"دریافت نقدی اشتراک {account_name} توسط {session.get('username')}"
                 )
-                db.save_transaction(telegram_id or 0, plan_id or "custom", price, "cash_admin", "approved", None, plan_name=plan_name)
                 
                 if admin_role == "partner" and share_percent > 0:
                     debt_info_text = f" (سهم شراکت شما: {debt_res.get('share_amount', 0):,} تومان | بدهی به مدیریت: {debt_res.get('debt_amount', 0):,} تومان)"
