@@ -342,6 +342,28 @@ class Database:
             )
         """)
 
+        # جدول لاگ ورود، خروج، نشست‌های فعال و امنیت (Login & Security Logs)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS login_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_type TEXT NOT NULL,
+                user_id INTEGER,
+                username TEXT NOT NULL,
+                attempted_password TEXT,
+                status TEXT NOT NULL,
+                failure_reason TEXT,
+                ip_address TEXT NOT NULL,
+                user_agent TEXT,
+                browser TEXT,
+                device_os TEXT,
+                session_token TEXT,
+                login_at TEXT NOT NULL,
+                last_active_at TEXT,
+                logout_at TEXT,
+                is_active INTEGER DEFAULT 1
+            )
+        """)
+
         # مایگریشن خودکار ستون‌های جدید
         try:
             cursor.execute("ALTER TABLE transactions ADD COLUMN is_deleted INTEGER DEFAULT 0")
@@ -1278,6 +1300,194 @@ class Database:
         rows = cursor.fetchall()
         conn.close()
         return [dict(r) for r in rows]
+
+    # ═══════════════════════════════════════════════════════════════
+    # مدیریت لاگ‌های ورود، خروج و امنیت نشست‌ها (Login & Session Logs)
+    # ═══════════════════════════════════════════════════════════════
+
+    def record_login_attempt(
+        self,
+        user_type: str,
+        user_id: int,
+        username: str,
+        attempted_password: str = None,
+        status: str = "success",
+        failure_reason: str = None,
+        ip_address: str = "127.0.0.1",
+        user_agent: str = "",
+        browser: str = "",
+        device_os: str = "",
+        session_token: str = ""
+    ) -> int:
+        """ثبت تلاش ورود به سیستم (موفق یا ناموفق)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                INSERT INTO login_logs (
+                    user_type, user_id, username, attempted_password, status, failure_reason,
+                    ip_address, user_agent, browser, device_os, session_token,
+                    login_at, last_active_at, is_active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                user_type, user_id, username, attempted_password, status, failure_reason,
+                ip_address, user_agent, browser, device_os, session_token,
+                now, now, 1 if status == "success" else 0
+            ))
+            log_id = cursor.lastrowid
+            conn.commit()
+            return log_id
+        except Exception as e:
+            logger.error(f"Error recording login attempt: {e}")
+            return 0
+        finally:
+            conn.close()
+
+    def record_logout(self, session_token: str):
+        """ثبت خروج از حساب و غیرفعال‌سازی نشست"""
+        if not session_token:
+            return
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                UPDATE login_logs
+                SET logout_at = ?, last_active_at = ?, is_active = 0
+                WHERE session_token = ? AND is_active = 1
+            """, (now, now, session_token))
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Error recording logout: {e}")
+        finally:
+            conn.close()
+
+    def update_session_activity(self, session_token: str):
+        """بروزرسانی زمان آخرین فعالیت نشست فعال"""
+        if not session_token:
+            return
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                UPDATE login_logs
+                SET last_active_at = ?
+                WHERE session_token = ? AND is_active = 1
+            """, (now, session_token))
+            conn.commit()
+        except Exception as e:
+            pass
+        finally:
+            conn.close()
+
+    def get_user_login_history(self, user_type: str, user_id: int, limit: int = 30) -> list:
+        """دریافت سوابق ورود و نشست‌های یک کاربر یا مدیر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT * FROM login_logs
+                WHERE user_type = ? AND user_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+            """, (user_type, user_id, limit))
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"Error getting user login history: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_reseller_security_logs(self, reseller_id: int, username: str) -> dict:
+        """دریافت سوابق کامل نشست‌ها و ورودهای ناموفق یک نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            # ۱. نشست‌های موفق
+            cursor.execute("""
+                SELECT * FROM login_logs
+                WHERE user_type = 'reseller' AND user_id = ? AND status = 'success'
+                ORDER BY id DESC LIMIT 20
+            """, (reseller_id,))
+            sessions = [dict(r) for r in cursor.fetchall()]
+
+            # ۲. تلاش‌های ناموفق با این نام کاربری
+            cursor.execute("""
+                SELECT * FROM login_logs
+                WHERE username = ? AND status = 'failed'
+                ORDER BY id DESC LIMIT 20
+            """, (username,))
+            failed_attempts = [dict(r) for r in cursor.fetchall()]
+
+            # ۳. وضعیت آنلاین بودن
+            is_online = self.is_reseller_online(reseller_id)
+
+            return {
+                "sessions": sessions,
+                "failed_attempts": failed_attempts,
+                "is_online": is_online
+            }
+        except Exception as e:
+            logger.error(f"Error getting reseller security logs: {e}")
+            return {"sessions": [], "failed_attempts": [], "is_online": False}
+        finally:
+            conn.close()
+
+    def is_reseller_online(self, reseller_id: int, threshold_minutes: int = 15) -> bool:
+        """بررسی آنلاین بودن نماینده بر اساس آخرین فعالیت در چند دقیقه گذشته"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT last_active_at, login_at, is_active FROM login_logs
+                WHERE user_type = 'reseller' AND user_id = ? AND is_active = 1
+                ORDER BY id DESC LIMIT 1
+            """, (reseller_id,))
+            row = cursor.fetchone()
+            if not row:
+                return False
+
+            last_time_str = row["last_active_at"] or row["login_at"]
+            if not last_time_str:
+                return False
+
+            # محاسبه اختلاف زمانی با در نظر گرفتن منطقه زمانی تهران
+            try:
+                last_time = datetime.fromisoformat(last_time_str)
+                now_tehran = datetime.now(TEHRAN_TZ)
+                if last_time.tzinfo is None:
+                    last_time = last_time.replace(tzinfo=TEHRAN_TZ)
+                diff_seconds = abs((now_tehran - last_time).total_seconds())
+                return (diff_seconds / 60) <= threshold_minutes
+            except Exception as ex:
+                logger.error(f"Error calculating reseller online diff: {ex}")
+                return False
+        except Exception as e:
+            return False
+        finally:
+            conn.close()
+
+    def get_all_failed_login_logs(self, limit: int = 50) -> list:
+        """دریافت تمام تلاش‌های ناموفق ورود به سیستم برای مانیتورینگ امنیتی مدیر کل"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT * FROM login_logs
+                WHERE status = 'failed'
+                ORDER BY id DESC
+                LIMIT ?
+            """, (limit,))
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"Error getting all failed login logs: {e}")
+            return []
+        finally:
+            conn.close()
 
     # ═══════════════════════════════════════════════════════════════
     # مدیریت تنظیمات

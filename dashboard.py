@@ -14,6 +14,7 @@ import urllib.error
 import functools
 import logging
 import httpx
+import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 from flask import (
@@ -25,7 +26,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from database import db
-from utils import generate_qr_code_bytes, get_now_iso, get_now_naive, get_single_link_template, format_single_link
+from utils import generate_qr_code_bytes, get_now_iso, get_now_naive, get_single_link_template, format_single_link, TEHRAN_TZ
 from admin_manager import get_all_plans, add_plan, update_plan, delete_plan, move_plan_up, move_plan_down
 
 logger = logging.getLogger(__name__)
@@ -218,6 +219,101 @@ def send_telegram_msg(chat_id: int, text: str, reply_markup=None, parse_mode: st
     except Exception as e:
         logger.error(f"Error sending telegram msg to {chat_id}: {e}")
         return False
+
+
+def parse_client_info(req) -> dict:
+    """استخراج هوشمند آدرس آی‌پی، نام مرورگر، سیستم‌عامل و نوع دستگاه کاربر"""
+    # ۱. استخراج آی‌پی (با پشتیبانی از CDN و پروکسی‌های معکوس)
+    ip = "127.0.0.1"
+    if req.headers.get("CF-Connecting-IP"):
+        ip = req.headers.get("CF-Connecting-IP").strip()
+    elif req.headers.get("X-Forwarded-For"):
+        ip = req.headers.get("X-Forwarded-For").split(",")[0].strip()
+    elif req.headers.get("X-Real-IP"):
+        ip = req.headers.get("X-Real-IP").strip()
+    elif req.remote_addr:
+        ip = req.remote_addr.strip()
+
+    ua = req.headers.get("User-Agent", "")
+
+    # ۲. تشخیص سیستم‌عامل و دستگاه
+    os_name = "💻 نامشخص"
+    ua_lower = ua.lower()
+
+    if "windows nt 10.0" in ua_lower:
+        os_name = "💻 ویندوز (Windows 10/11)"
+    elif "windows nt 6.3" in ua_lower or "windows nt 6.2" in ua_lower:
+        os_name = "💻 ویندوز (Windows 8/8.1)"
+    elif "windows nt 6.1" in ua_lower:
+        os_name = "💻 ویندوز (Windows 7)"
+    elif "windows" in ua_lower:
+        os_name = "💻 ویندوز (Windows)"
+    elif "android" in ua_lower:
+        os_name = "📱 اندروید (Android)"
+    elif "iphone" in ua_lower:
+        os_name = "📱 آیفون (iOS / iPhone)"
+    elif "ipad" in ua_lower:
+        os_name = "📱 آیپد (iPadOS)"
+    elif "macintosh" in ua_lower or "mac os x" in ua_lower:
+        os_name = "💻 مک (macOS)"
+    elif "linux" in ua_lower:
+        os_name = "💻 لینوکس (Linux)"
+
+    # ۳. تشخیص مرورگر
+    browser = "🌐 نامشخص"
+    if "edg/" in ua_lower:
+        browser = "🌐 Microsoft Edge"
+    elif "samsungbrowser/" in ua_lower:
+        browser = "🌐 Samsung Internet"
+    elif "telegram" in ua_lower:
+        browser = "✈️ Telegram In-App"
+    elif "chrome/" in ua_lower or "crios/" in ua_lower:
+        browser = "🌐 Google Chrome"
+    elif "firefox/" in ua_lower or "fxios/" in ua_lower:
+        browser = "🦊 Mozilla Firefox"
+    elif "safari/" in ua_lower and "chrome" not in ua_lower:
+        browser = "🧭 Apple Safari"
+    elif "opera" in ua_lower or "opr/" in ua_lower:
+        browser = "🔴 Opera"
+    elif "postman" in ua_lower or "curl" in ua_lower:
+        browser = "⚡ API Tool"
+
+    return {
+        "ip": ip,
+        "user_agent": ua,
+        "browser": browser,
+        "device_os": os_name
+    }
+
+
+def send_failed_login_telegram_alert(username: str, password: str, ip: str, browser: str, device_os: str, failure_reason: str):
+    """ارسال هشدار آنی تلاش ناموفق ورود به تلگرام مدیر کل"""
+    admin_id = get_admin_id()
+    if not admin_id:
+        return
+
+    now_str = datetime.now(TEHRAN_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    # ایمن‌سازی نمایش رمز و متون برای HTML تلگرام
+    safe_username = str(username).replace("<", "&lt;").replace(">", "&gt;")
+    safe_password = str(password).replace("<", "&lt;").replace(">", "&gt;")
+    safe_reason = str(failure_reason).replace("<", "&lt;").replace(">", "&gt;")
+
+    alert_text = (
+        f"🚨 <b>هشدار امنیتی: تلاش برای ورود ناموفق به پنل!</b>\n\n"
+        f"👤 <b>نام کاربری وارد شده:</b> <code>{safe_username}</code>\n"
+        f"🔑 <b>رمز عبور وارد شده:</b> <code>{safe_password}</code>\n"
+        f"🌐 <b>آدرس آی‌پی (IP):</b> <code>{ip}</code>\n"
+        f"💻 <b>دستگاه و سیستم‌عامل:</b> {device_os}\n"
+        f"🌐 <b>مرورگر:</b> {browser}\n"
+        f"⚠️ <b>علت خطا:</b> <i>{safe_reason}</i>\n"
+        f"⏰ <b>زمان رویداد:</b> <code>{now_str}</code>\n\n"
+        f"🛡 <i>این هشدار به صورت هوشمند توسط سامانه امنیت پنل مدیریت ارسال شده است.</i>"
+    )
+
+    try:
+        send_telegram_msg(admin_id, alert_text)
+    except Exception as e:
+        logger.error(f"Error sending failed login telegram alert: {e}")
 
 
 def send_subscription_card_sync(chat_id: int, sub_url: str, title: str, details: str):
@@ -496,6 +592,15 @@ def get_plans_dict():
 
 # ─── دکوریتورهای احراز هویت (Auth Decorators) ───
 
+@app.before_request
+def update_user_session_activity():
+    if session.get("logged_in") and session.get("session_token"):
+        try:
+            db.update_session_activity(session.get("session_token"))
+        except Exception:
+            pass
+
+
 def login_required(f):
     @functools.wraps(f)
     def decorated_function(*args, **kwargs):
@@ -615,19 +720,39 @@ def inject_permissions():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    """صفحه ورود با پشتیبانی از چند مدیر، نقش‌های دسترسی (RBAC) و نمایندگان فروش به همراه کپچا"""
+    """صفحه ورود با پشتیبانی از چند مدیر، نقش‌های دسترسی (RBAC) و نمایندگان فروش به همراه ثبت لاگ نشست و کپچا"""
     if session.get("logged_in"):
         if session.get("role") == "reseller":
             return redirect(url_for("reseller_dashboard"))
         return redirect(url_for("dashboard"))
 
     if request.method == "POST":
+        client_info = parse_client_info(request)
+        ip = client_info["ip"]
+        ua = client_info["user_agent"]
+        browser = client_info["browser"]
+        device_os = client_info["device_os"]
+
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "").strip()
         captcha_input = request.form.get("captcha", "").strip().upper()
 
         real_captcha = str(session.get("captcha_code", "")).upper()
         if not real_captcha or captcha_input != real_captcha:
+            # ثبت لاگ تلاش ناموفق به دلیل کپچا
+            db.record_login_attempt(
+                user_type="unknown",
+                user_id=None,
+                username=username,
+                attempted_password=password,
+                status="failed",
+                failure_reason="کد امنیتی (کپچا) نادرست یا منقضی شده",
+                ip_address=ip,
+                user_agent=ua,
+                browser=browser,
+                device_os=device_os
+            )
+            send_failed_login_telegram_alert(username, password, ip, browser, device_os, "کد امنیتی (کپچا) نادرست یا منقضی شده")
             flash("کد امنیتی (کپچا) وارد شده نادرست یا منقضی شده است!", "danger")
             return render_template("login.html")
 
@@ -637,6 +762,7 @@ def login():
         # ۱. بررسی جدول مدیران سیستم (RBAC)
         admin_user = db.authenticate_admin(username, password)
         if admin_user:
+            session_token = str(uuid.uuid4())
             session["logged_in"] = True
             session["role"] = "admin"
             session["admin_id"] = admin_user["id"]
@@ -645,6 +771,21 @@ def login():
             session["admin_role"] = admin_user.get("role", "super_admin")
             session["permissions"] = admin_user.get("permissions", "*")
             session["telegram_id"] = admin_user.get("telegram_id") or get_admin_id()
+            session["session_token"] = session_token
+
+            # ثبت لاگ نشست موفق مدیر
+            db.record_login_attempt(
+                user_type="admin",
+                user_id=admin_user["id"],
+                username=username,
+                status="success",
+                ip_address=ip,
+                user_agent=ua,
+                browser=browser,
+                device_os=device_os,
+                session_token=session_token
+            )
+
             flash(f"خوش آمدید {session['name']}! ورود به پنل مدیریت با موفقیت انجام شد.", "success")
             return redirect(url_for("dashboard"))
 
@@ -652,6 +793,7 @@ def login():
         if username == get_admin_username() and password == get_admin_password():
             res_admin = db.create_admin_user(username, password, "مدیر ارشد", role="super_admin", permissions="*", telegram_id=get_admin_id())
             admin_id = res_admin.get("admin_id") if res_admin.get("success") else 1
+            session_token = str(uuid.uuid4())
             session["logged_in"] = True
             session["role"] = "admin"
             session["admin_id"] = admin_id
@@ -660,12 +802,28 @@ def login():
             session["admin_role"] = "super_admin"
             session["permissions"] = "*"
             session["telegram_id"] = get_admin_id()
+            session["session_token"] = session_token
+
+            # ثبت لاگ نشست موفق مدیر پیش‌فرض
+            db.record_login_attempt(
+                user_type="admin",
+                user_id=admin_id,
+                username=username,
+                status="success",
+                ip_address=ip,
+                user_agent=ua,
+                browser=browser,
+                device_os=device_os,
+                session_token=session_token
+            )
+
             flash("خوش آمدید! ورود به عنوان مدیر کل انجام شد.", "success")
             return redirect(url_for("dashboard"))
 
         # ۲. بررسی نماینده فروش (Reseller)
         reseller = db.authenticate_reseller(username, password)
         if reseller:
+            session_token = str(uuid.uuid4())
             session["logged_in"] = True
             session["role"] = "reseller"
             session["reseller_id"] = reseller["id"]
@@ -673,8 +831,38 @@ def login():
             session["name"] = reseller["name"]
             session["balance"] = reseller["balance"]
             session["telegram_id"] = reseller.get("telegram_id")
+            session["session_token"] = session_token
+
+            # ثبت لاگ نشست موفق نماینده
+            db.record_login_attempt(
+                user_type="reseller",
+                user_id=reseller["id"],
+                username=username,
+                status="success",
+                ip_address=ip,
+                user_agent=ua,
+                browser=browser,
+                device_os=device_os,
+                session_token=session_token
+            )
+
             flash(f"سلام {reseller['name']}! ورود به پنل نمایندگی با موفقیت انجام شد.", "success")
             return redirect(url_for("reseller_dashboard"))
+
+        # ۳. ورود ناموفق: ثبت لاگ با پسورد وارد شده و ارسال هشدار به تلگرام مدیر کل
+        db.record_login_attempt(
+            user_type="unknown",
+            user_id=None,
+            username=username,
+            attempted_password=password,
+            status="failed",
+            failure_reason="نام کاربری یا رمز عبور نامعتبر است",
+            ip_address=ip,
+            user_agent=ua,
+            browser=browser,
+            device_os=device_os
+        )
+        send_failed_login_telegram_alert(username, password, ip, browser, device_os, "نام کاربری یا رمز عبور نامعتبر است")
 
         flash("نام کاربری یا رمز عبور اشتباه است!", "danger")
 
@@ -683,6 +871,9 @@ def login():
 
 @app.route("/logout")
 def logout():
+    session_token = session.get("session_token")
+    if session_token:
+        db.record_logout(session_token)
     session.clear()
     flash("با موفقیت از سیستم خارج شدید.", "info")
     return redirect(url_for("login"))
@@ -1271,8 +1462,16 @@ def admin_resellers():
             flash(f"خطا در ایجاد نماینده: {res.get('error')}", "danger")
         return redirect(url_for("admin_resellers"))
 
-    reseller_list = db.get_all_resellers()
-    return render_template("resellers.html", resellers=reseller_list)
+    raw_reseller_list = db.get_all_resellers()
+    reseller_list = []
+    for r in raw_reseller_list:
+        r_dict = dict(r)
+        r_dict["is_online"] = db.is_reseller_online(r["id"])
+        r_dict["security_logs"] = db.get_reseller_security_logs(r["id"], r["username"])
+        reseller_list.append(r_dict)
+
+    all_failed_logins = db.get_all_failed_login_logs(limit=50)
+    return render_template("resellers.html", resellers=reseller_list, all_failed_logins=all_failed_logins)
 
 
 @app.route("/admin/reseller/<int:reseller_id>/add-balance", methods=["POST"])
@@ -2422,7 +2621,9 @@ def admin_profile():
         else:
             flash(f"خطا در ذخیره مشخصات: {res.get('error')}", "danger")
 
-    return render_template("admin_profile.html", admin=admin_user)
+    login_history = db.get_user_login_history("admin", admin_user["id"], limit=20)
+    current_token = session.get("session_token", "")
+    return render_template("admin_profile.html", admin=admin_user, login_history=login_history, current_token=current_token)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -2477,7 +2678,9 @@ def reseller_profile():
         else:
             flash(f"خطا در بروزرسانی حساب: {res.get('error')}", "danger")
 
-    return render_template("reseller_profile.html", reseller=reseller)
+    login_history = db.get_user_login_history("reseller", reseller_id, limit=20)
+    current_token = session.get("session_token", "")
+    return render_template("reseller_profile.html", reseller=reseller, login_history=login_history, current_token=current_token)
 
 
 # ─── راه‌اندازی سرور وب ───
