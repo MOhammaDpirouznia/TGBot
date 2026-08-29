@@ -17,13 +17,36 @@
 <div class="row g-4">
     <div class="col-lg-4">
         <div class="card shadow-sm border-0 text-center p-4 mb-4">
-            <img src="{{ avatar_url(reseller['telegram_id'] or reseller['username'] or 'Reseller') }}" 
-                 alt="{{ reseller['name'] }}" 
-                 class="rounded-circle border shadow mx-auto mb-3" 
-                 style="width: 84px; height: 84px; object-fit: cover;" 
-                 loading="lazy">
+            <!-- تصویر پروفایل نماینده با قابلیت تغییر -->
+            <div class="position-relative d-inline-block mx-auto mb-3">
+                <img src="{{ avatar_url(reseller['telegram_id'] or reseller['username'] or 'Reseller') }}" 
+                     alt="{{ reseller['name'] }}" 
+                     class="rounded-circle border shadow" 
+                     style="width: 96px; height: 96px; object-fit: cover;" 
+                     loading="lazy">
+                <button type="button" class="btn btn-sm btn-primary rounded-circle position-absolute bottom-0 end-0 shadow" 
+                        data-bs-toggle="modal" data-bs-target="#changeResellerAvatarModal" 
+                        title="تغییر تصویر پروفایل" 
+                        style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; border: 2px solid white;">
+                    <i class="fas fa-camera" style="font-size: 12px;"></i>
+                </button>
+            </div>
+
             <h4 class="fw-bold mb-1">{{ reseller['name'] }}</h4>
-            <div class="text-muted small mb-3"><code>{{ reseller['username'] }}</code></div>
+            <div class="text-muted small mb-2"><code>{{ reseller['username'] }}</code></div>
+
+            <div class="d-flex justify-content-center gap-2 mb-3">
+                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" data-bs-toggle="modal" data-bs-target="#changeResellerAvatarModal">
+                    <i class="fas fa-image me-1"></i> تغییر تصویر پروفایل
+                </button>
+                {% if reseller.get('custom_avatar') %}
+                <form action="{{ url_for('reseller_avatar_delete') }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از حذف تصویر اختصاصی اطمینان دارید؟');">
+                    <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill px-2" title="حذف تصویر اختصاصی">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </form>
+                {% endif %}
+            </div>
             
             <div class="p-3 bg-light rounded text-start mb-3">
                 <div class="d-flex justify-content-between mb-2">
@@ -183,4 +206,94 @@
         </div>
     </div>
 </div>
+
+<!-- مودال هوشمند تغییر تصویر پروفایل نماینده -->
+<div class="modal fade" id="changeResellerAvatarModal" tabindex="-1" aria-labelledby="changeResellerAvatarModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white py-3">
+                <h5 class="modal-title fw-bold" id="changeResellerAvatarModalLabel">
+                    <i class="fas fa-camera me-2"></i>تغییر تصویر پروفایل نماینده
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <ul class="nav nav-pills nav-fill mb-4 p-1 bg-light rounded-pill" id="resellerAvatarTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active rounded-pill fw-bold" id="reseller-upload-tab" data-bs-toggle="tab" data-bs-target="#resellerUploadPane" type="button" role="tab">
+                            <i class="fas fa-upload me-1"></i> بارگذاری عکس
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link rounded-pill fw-bold" id="reseller-presets-tab" data-bs-toggle="tab" data-bs-target="#resellerPresetsPane" type="button" role="tab">
+                            <i class="fas fa-icons me-1"></i> آواتارهای سه‌بعدی
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content" id="resellerAvatarTabContent">
+                    <!-- تب ۱: بارگذاری فایل -->
+                    <div class="tab-pane fade show active text-center" id="resellerUploadPane" role="tabpanel">
+                        <form action="{{ url_for('reseller_avatar_upload') }}" method="POST" enctype="multipart/form-data">
+                            <div class="mb-3">
+                                <div class="position-relative d-inline-block mb-3">
+                                    <img id="resellerUploadPreview" src="{{ avatar_url(reseller['telegram_id'] or reseller['username'] or 'Reseller') }}" 
+                                         class="rounded-circle border shadow" 
+                                         style="width: 110px; height: 110px; object-fit: cover;">
+                                </div>
+                                <input type="file" name="avatar_file" id="resellerAvatarFileInput" class="form-control" accept="image/jpeg,image/png,image/webp" required onchange="previewResellerAvatar(event)">
+                                <div class="form-text mt-2 small text-muted">
+                                    فرمت‌های مجاز: JPG, PNG, WEBP (حداکثر حجم: ۵ مگابایت)
+                                </div>
+                            </div>
+                            <div class="d-grid mt-4">
+                                <button type="submit" class="btn btn-primary py-2 fw-bold">
+                                    <i class="fas fa-cloud-arrow-up me-1"></i> ذخیره و اعمال تصویر
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- تب ۲: انتخاب آواتار سه‌بعدی -->
+                    <div class="tab-pane fade" id="resellerPresetsPane" role="tabpanel">
+                        <form action="{{ url_for('reseller_avatar_preset') }}" method="POST">
+                            <p class="text-muted small text-center mb-3">یکی از کاراکترهای سه‌بعدی زیر را به عنوان آواتار حساب خود انتخاب نمایید:</p>
+                            <div class="row g-3 text-center mb-3">
+                                {% for style_id, style_name in [('bottts-neutral', 'ربات مدرن'), ('avataaars', 'کاراکتر کلاسیک'), ('adventurer', 'ماجراجو'), ('personas', 'مینیمال'), ('fun-emoji', 'ایموجی سه‌بعدی'), ('thumbs', 'طرح مدرن')] %}
+                                <div class="col-4">
+                                    <label class="card h-100 border p-2 text-center cursor-pointer avatar-preset-card" style="cursor: pointer;">
+                                        <input type="radio" name="style" value="{{ style_id }}" class="d-none preset-radio" {% if loop.first %}checked{% endif %}>
+                                        <img src="https://api.dicebear.com/9.x/{{ style_id }}/svg?seed={{ reseller['username'] }}_{{ loop.index }}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc" 
+                                             class="rounded-circle mx-auto mb-1 border" style="width: 50px; height: 50px;">
+                                        <span class="small" style="font-size: 11px;">{{ style_name }}</span>
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <input type="hidden" name="seed" value="{{ reseller['username'] }}_{{ reseller['id'] }}">
+                            <div class="d-grid mt-3">
+                                <button type="submit" class="btn btn-success py-2 fw-bold">
+                                    <i class="fas fa-check-circle me-1"></i> انتخاب و تنظیم این آواتار
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function previewResellerAvatar(event) {
+    const input = event.target;
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('resellerUploadPreview').src = e.target.result;
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+</script>
 {% endblock %}

@@ -17,13 +17,37 @@
 <div class="row g-4">
     <div class="col-lg-4">
         <div class="card shadow-sm border-0 text-center p-4">
-            <img src="{{ avatar_url(admin['telegram_id'] or admin['username'] or 'Admin') }}" 
-                 alt="{{ admin['display_name'] }}" 
-                 class="rounded-circle border shadow mx-auto mb-3" 
-                 style="width: 90px; height: 90px; object-fit: cover;" 
-                 loading="lazy">
+            <!-- تصویر پروفایل تعاملی با دکمه تغییر سریع -->
+            <div class="position-relative d-inline-block mx-auto mb-3">
+                <img src="{{ avatar_url(admin['telegram_id'] or admin['username'] or 'Admin') }}" 
+                     alt="{{ admin['display_name'] }}" 
+                     class="rounded-circle border shadow" 
+                     style="width: 100px; height: 100px; object-fit: cover;" 
+                     loading="lazy">
+                <button type="button" class="btn btn-sm btn-primary rounded-circle position-absolute bottom-0 end-0 shadow" 
+                        data-bs-toggle="modal" data-bs-target="#changeAvatarModal" 
+                        title="تغییر تصویر پروفایل" 
+                        style="width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; border: 2px solid white;">
+                    <i class="fas fa-camera" style="font-size: 13px;"></i>
+                </button>
+            </div>
+
             <h4 class="fw-bold mb-1">{{ admin['display_name'] }}</h4>
             <div class="text-muted small mb-2"><code>{{ admin['username'] }}</code></div>
+            
+            <div class="d-flex justify-content-center gap-2 mb-3">
+                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" data-bs-toggle="modal" data-bs-target="#changeAvatarModal">
+                    <i class="fas fa-image me-1"></i> تغییر تصویر پروفایل
+                </button>
+                {% if admin.get('custom_avatar') %}
+                <form action="{{ url_for('admin_avatar_delete') }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از حذف تصویر اختصاصی اطمینان دارید؟');">
+                    <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill px-2" title="حذف تصویر اختصاصی">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+
             <div>
                 {% if admin['role'] == 'super_admin' %}
                     <span class="badge bg-primary-subtle text-primary border border-primary px-3 py-2"><i class="fas fa-crown me-1"></i>مدیر ارشد (Super Admin)</span>
@@ -158,4 +182,94 @@
         </div>
     </div>
 </div>
+
+<!-- مودال هوشمند تغییر تصویر پروفایل مدیر -->
+<div class="modal fade" id="changeAvatarModal" tabindex="-1" aria-labelledby="changeAvatarModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white py-3">
+                <h5 class="modal-title fw-bold" id="changeAvatarModalLabel">
+                    <i class="fas fa-camera me-2"></i>تغییر تصویر پروفایل
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <ul class="nav nav-pills nav-fill mb-4 p-1 bg-light rounded-pill" id="avatarTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active rounded-pill fw-bold" id="upload-tab" data-bs-toggle="tab" data-bs-target="#uploadPane" type="button" role="tab">
+                            <i class="fas fa-upload me-1"></i> بارگذاری عکس
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link rounded-pill fw-bold" id="presets-tab" data-bs-toggle="tab" data-bs-target="#presetsPane" type="button" role="tab">
+                            <i class="fas fa-icons me-1"></i> آواتارهای سه‌بعدی
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content" id="avatarTabContent">
+                    <!-- تب ۱: بارگذاری فایل -->
+                    <div class="tab-pane fade show active text-center" id="uploadPane" role="tabpanel">
+                        <form action="{{ url_for('admin_avatar_upload') }}" method="POST" enctype="multipart/form-data">
+                            <div class="mb-3">
+                                <div class="position-relative d-inline-block mb-3">
+                                    <img id="adminUploadPreview" src="{{ avatar_url(admin['telegram_id'] or admin['username'] or 'Admin') }}" 
+                                         class="rounded-circle border shadow" 
+                                         style="width: 110px; height: 110px; object-fit: cover;">
+                                </div>
+                                <input type="file" name="avatar_file" id="adminAvatarFileInput" class="form-control" accept="image/jpeg,image/png,image/webp" required onchange="previewAdminAvatar(event)">
+                                <div class="form-text mt-2 small text-muted">
+                                    فرمت‌های مجاز: JPG, PNG, WEBP (حداکثر حجم: ۵ مگابایت)
+                                </div>
+                            </div>
+                            <div class="d-grid mt-4">
+                                <button type="submit" class="btn btn-primary py-2 fw-bold">
+                                    <i class="fas fa-cloud-arrow-up me-1"></i> ذخیره و اعمال تصویر
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- تب ۲: انتخاب آواتار سه‌بعدی -->
+                    <div class="tab-pane fade" id="presetsPane" role="tabpanel">
+                        <form action="{{ url_for('admin_avatar_preset') }}" method="POST">
+                            <p class="text-muted small text-center mb-3">یکی از کاراکترهای سه‌بعدی زیر را به عنوان آواتار حساب خود انتخاب نمایید:</p>
+                            <div class="row g-3 text-center mb-3">
+                                {% for style_id, style_name in [('bottts-neutral', 'ربات مدرن'), ('avataaars', 'کاراکتر کلاسیک'), ('adventurer', 'ماجراجو'), ('personas', 'مینیمال'), ('fun-emoji', 'ایموجی سه‌بعدی'), ('thumbs', 'طرح مدرن')] %}
+                                <div class="col-4">
+                                    <label class="card h-100 border p-2 text-center cursor-pointer avatar-preset-card" style="cursor: pointer;">
+                                        <input type="radio" name="style" value="{{ style_id }}" class="d-none preset-radio" {% if loop.first %}checked{% endif %}>
+                                        <img src="https://api.dicebear.com/9.x/{{ style_id }}/svg?seed={{ admin['username'] }}_{{ loop.index }}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc" 
+                                             class="rounded-circle mx-auto mb-1 border" style="width: 50px; height: 50px;">
+                                        <span class="small" style="font-size: 11px;">{{ style_name }}</span>
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <input type="hidden" name="seed" value="{{ admin['username'] }}_{{ admin['id'] }}">
+                            <div class="d-grid mt-3">
+                                <button type="submit" class="btn btn-success py-2 fw-bold">
+                                    <i class="fas fa-check-circle me-1"></i> انتخاب و تنظیم این آواتار
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function previewAdminAvatar(event) {
+    const input = event.target;
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('adminUploadPreview').src = e.target.result;
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+</script>
 {% endblock %}
