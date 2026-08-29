@@ -385,6 +385,16 @@ class Database:
         except Exception:
             pass
 
+        try:
+            cursor.execute("ALTER TABLE subscriptions ADD COLUMN phone_number TEXT")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE subscriptions ADD COLUMN cost_paid INTEGER DEFAULT 0")
+        except Exception:
+            pass
+
         # ستون‌های پروفایل و مشخصات فردی نمایندگان
         try:
             cursor.execute("ALTER TABLE resellers ADD COLUMN phone TEXT")
@@ -2482,6 +2492,191 @@ class Database:
             "total_used_gb": round(total_used_gb, 2),
             "total_limit_gb": round(total_limit_gb, 2),
         }
+
+    def get_reseller_subscription(self, reseller_id: int, sub_id: int):
+        """دریافت اطلاعات یک اشتراک متعلق به نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM subscriptions WHERE id=? AND reseller_id=?", (sub_id, reseller_id))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def update_reseller_subscription(self, reseller_id: int, sub_id: int, account_name: str, phone_number: str = None, comment: str = None):
+        """ویرایش مشخصات مشتری نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                UPDATE subscriptions
+                SET account_name=?, phone_number=?, account_comment=?, updated_at=?
+                WHERE id=? AND reseller_id=?
+            """, (account_name.strip(), phone_number.strip() if phone_number else None, comment.strip() if comment else None, now, sub_id, reseller_id))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def toggle_reseller_subscription(self, reseller_id: int, sub_id: int, enable: bool = None):
+        """فعال یا غیرفعال کردن مشتری نماینده بدون کسر یا بازگشت هزینه"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT status FROM subscriptions WHERE id=? AND reseller_id=?", (sub_id, reseller_id))
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "error": "اشتراک یافت نشد."}
+            
+            if enable is None:
+                new_status = "disabled" if row["status"] == "active" else "active"
+            else:
+                new_status = "active" if enable else "disabled"
+            
+            cursor.execute("UPDATE subscriptions SET status=?, updated_at=? WHERE id=? AND reseller_id=?",
+                           (new_status, now, sub_id, reseller_id))
+            conn.commit()
+            return {"success": True, "status": new_status}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def renew_reseller_subscription(self, reseller_id: int, sub_id: int, plan_id: str, plan_name: str,
+                                    cost: int, data_limit: float, duration: int, renewal_type: str = "reset_and_replaced"):
+        """تمدید اشتراک مشتری توسط نماینده با کسر هزینه از کیف پول"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            # بررسی موجودی
+            cursor.execute("SELECT balance FROM resellers WHERE id=?", (reseller_id,))
+            res_row = cursor.fetchone()
+            if not res_row or res_row["balance"] < cost:
+                return {"success": False, "error": "موجودی کیف پول نماینده برای تمدید این پلن کافی نیست."}
+
+            cursor.execute("SELECT * FROM subscriptions WHERE id=? AND reseller_id=?", (sub_id, reseller_id))
+            sub = cursor.fetchone()
+            if not sub:
+                return {"success": False, "error": "اشتراک مورد نظر یافت نشد."}
+
+            # ۱. کسر هزینه از کیف پول
+            cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (cost, now, reseller_id))
+
+            # ۲. ثبت تراکنش تمدید در تاریخچه مالی نماینده
+            cursor.execute("""
+                INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
+                VALUES (?, 'renewal', ?, ?, ?, ?, ?)
+            """, (reseller_id, cost, plan_name, sub["account_name"], f"تمدید اشتراک «{sub['account_name']}» با پلن {plan_name}", now))
+
+            # ۳. به‌روزرسانی مشخصات اشتراک
+            cursor.execute("""
+                UPDATE subscriptions
+                SET plan_id=?, plan_name=?, data_limit=?, duration=?, status='active', updated_at=?, cost_paid=?
+                WHERE id=? AND reseller_id=?
+            """, (plan_id, plan_name, data_limit, duration, now, cost, sub_id, reseller_id))
+
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def calculate_reseller_refund(self, reseller_id: int, sub_id: int):
+        """
+        محاسبه شرایط و درصد استرداد وجه حذف مشتری بر اساس قوانین:
+        - تا ۱۲ ساعت پس از ساخت: ۱۰۰٪ مبلغ
+        - بین ۱۲ تا ۲۴ ساعت پس از ساخت: ۹۰٪ مبلغ
+        - بیش از ۲۴ ساعت پس از ساخت: ۰٪ مبلغ
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM subscriptions WHERE id=? AND reseller_id=?", (sub_id, reseller_id))
+        sub = cursor.fetchone()
+        conn.close()
+
+        if not sub:
+            return None
+
+        created_str = sub["created_at"] or get_now_iso()
+        try:
+            created_dt = datetime.fromisoformat(created_str)
+        except Exception:
+            created_dt = get_now_naive()
+
+        now_dt = get_now_naive()
+        elapsed_seconds = max(0, (now_dt - created_dt).total_seconds())
+        elapsed_hours = elapsed_seconds / 3600.0
+
+        if elapsed_hours <= 12.0:
+            refund_percent = 100
+        elif elapsed_hours <= 24.0:
+            refund_percent = 90
+        else:
+            refund_percent = 0
+
+        cost_paid = sub["cost_paid"] or 0
+        if cost_paid <= 0:
+            # در صورتی که فیلد هزینه در نسخه‌های قدیمی ثبت نشده بود، از پلن اولیه بازیابی شود
+            pass
+
+        refund_amount = int((cost_paid * refund_percent) / 100)
+
+        hours_int = int(elapsed_hours)
+        minutes_int = int((elapsed_hours - hours_int) * 60)
+        time_passed_text = f"{hours_int} ساعت و {minutes_int} دقیقه پیش" if hours_int > 0 else f"{minutes_int} دقیقه پیش"
+
+        return {
+            "sub_id": sub_id,
+            "account_name": sub["account_name"],
+            "created_at": created_str,
+            "elapsed_hours": round(elapsed_hours, 1),
+            "time_passed_text": time_passed_text,
+            "refund_percent": refund_percent,
+            "cost_paid": cost_paid,
+            "refund_amount": refund_amount,
+        }
+
+    def delete_reseller_subscription(self, reseller_id: int, sub_id: int):
+        """حذف مشتری نماینده با استرداد هوشمند وجه طبق قوانین ۱۲ و ۲۴ ساعته"""
+        refund_info = self.calculate_reseller_refund(reseller_id, sub_id)
+        if not refund_info:
+            return {"success": False, "error": "اشتراک مورد نظر یافت نشد."}
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            refund_amount = refund_info["refund_amount"]
+            refund_percent = refund_info["refund_percent"]
+            account_name = refund_info["account_name"]
+
+            # ۱. در صورت تعلق استرداد وجه، موجودی نماینده افزایش یافته و تراکنش ثبت می‌شود
+            if refund_amount > 0:
+                cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at=? WHERE id=?", (refund_amount, now, reseller_id))
+                cursor.execute("""
+                    INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
+                    VALUES (?, 'refund', ?, 'استرداد وجه', ?, ?, ?)
+                """, (reseller_id, refund_amount, account_name, f"استرداد وجه {refund_percent}٪ بابت حذف اشتراک «{account_name}» ({refund_info['time_passed_text']})", now))
+
+            # ۲. حذف فیزیکی اشتراک از جدول محلی
+            cursor.execute("DELETE FROM subscriptions WHERE id=? AND reseller_id=?", (sub_id, reseller_id))
+            conn.commit()
+
+            return {
+                "success": True,
+                "refund_amount": refund_amount,
+                "refund_percent": refund_percent,
+                "time_passed_text": refund_info["time_passed_text"]
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
 
     # ═══════════════════════════════════════════════════════════════════════
     # ارسال پیام هدفمند به دسته‌های کاربری (Broadcast Engine)

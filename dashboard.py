@@ -164,9 +164,12 @@ def fetch_telegram_avatar_bytes(telegram_id=None, username=None) -> tuple[bytes,
     return svg_code.encode("utf-8"), "image/svg+xml"
 
 
+@app.route("/avatar/", defaults={"identifier": "User"})
 @app.route("/avatar/<identifier>")
-def telegram_avatar(identifier):
+def telegram_avatar(identifier="User"):
     """ارائه تصویر آواتار تلگرام با هدر کش ۲۴ ساعته"""
+    if not identifier:
+        identifier = "User"
     telegram_id = None
     username = None
     
@@ -181,6 +184,15 @@ def telegram_avatar(identifier):
     resp = Response(img_bytes, mimetype=mime_type)
     resp.headers["Cache-Control"] = "public, max-age=86400"
     return resp
+
+
+@app.template_filter("avatar_url")
+@app.template_global("avatar_url")
+def avatar_url_helper(identifier=None):
+    """هلپر امن برای تولید آدرس آواتار در تمامی قالب‌ها بدون خطای BuildError"""
+    if not identifier:
+        identifier = "User"
+    return url_for("telegram_avatar", identifier=str(identifier))
 
 
 # ─── هلپرهای ارتباط همگام با تلگرام و هیدیفای (Sync Helpers) ───
@@ -445,6 +457,13 @@ def hidify_sync_renew_user(uuid: str, new_limit_gb: float, new_duration_days: in
         logger.error(f"Error in hidify_sync_renew_user for {uuid}: {e}")
         res = hidify_sync_update_user(uuid, usage_limit_GB=new_limit_gb, package_days=new_duration_days, enable=True, is_active=True)
         return {"renewal_type": "fallback", "new_limit": new_limit_gb, "new_days": new_duration_days, "res": res}
+
+
+def hidify_sync_delete_user(uuid: str) -> dict:
+    """حذف کاربر از سرور هیدیفای"""
+    if not uuid:
+        return {"error": "UUID نامعتبر است."}
+    return hidify_sync_request("DELETE", f"/admin/user/{uuid}/")
 
 
 def hidify_sync_ping() -> dict:
@@ -1782,6 +1801,7 @@ def reseller_create_user():
     if request.method == "POST":
         plan_key = request.form.get("plan_id")
         account_name = request.form.get("account_name", "").strip()
+        phone_number = request.form.get("phone_number", "").strip()
 
         if plan_key not in plans:
             flash("پلن انتخابی نامعتبر است.", "danger")
@@ -1799,12 +1819,16 @@ def reseller_create_user():
         if not account_name:
             account_name = f"res_{reseller_id}_{int(time.time()) % 10000}"
 
+        user_comment = f"Reseller #{reseller_id} ({session.get('name')})"
+        if phone_number:
+            user_comment += f" | Phone: {phone_number}"
+
         # ۱. ابتدا ساخت کاربر در سرور هیدیفای انجام می‌شود
         h_res = hidify_sync_create_user(
             name=account_name,
             usage_limit_gb=plan["data_limit"],
             package_days=plan["duration"],
-            comment=f"Reseller #{reseller_id} ({session.get('name')})"
+            comment=user_comment
         )
 
         user_uuid = h_res.get("uuid", "")
@@ -1818,21 +1842,22 @@ def reseller_create_user():
         if not deduct_res.get("success"):
             logger.error(f"Failed to deduct balance after user creation: {deduct_res.get('error')}")
 
-        # ۳. ثبت اشتراک با شناسه نماینده در دیتابیس
+        # ۳. ثبت اشتراک با شناسه نماینده، شماره تلفن و هزینه پرداخت‌شده در دیتابیس
         conn = db.get_connection()
         conn.execute("""
             INSERT INTO subscriptions 
-            (telegram_id, hidify_uuid, plan_id, plan_name, account_name, data_limit, duration, status, reseller_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
+            (telegram_id, hidify_uuid, plan_id, plan_name, account_name, phone_number, data_limit, duration, status, reseller_id, cost_paid, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)
         """, (
-            0, user_uuid, plan_key, plan["name"], account_name,
-            plan["data_limit"], plan["duration"], reseller_id, get_now_iso(), get_now_iso()
+            0, user_uuid, plan_key, plan["name"], account_name, phone_number or None,
+            plan["data_limit"], plan["duration"], reseller_id, final_price, get_now_iso(), get_now_iso()
         ))
         conn.commit()
         conn.close()
 
         subscription_url = f"{get_hiddify_url()}/{get_user_proxy()}/{user_uuid}/"
-        single_url = format_single_link(get_single_link_template(db), uuid=user_uuid, name=account_name)
+        single_link_template = get_single_link_template(db)
+        single_url = format_single_link(single_link_template, uuid=user_uuid, name=account_name)
         flash(f"اشتراک «{account_name}» با موفقیت ساخته شد و مبلغ {final_price:,} تومان از کیف پول شما کسر گردید.", "success")
 
         return render_template(
@@ -1850,11 +1875,189 @@ def reseller_create_user():
 @app.route("/reseller/users")
 @reseller_required
 def reseller_users():
-    """لیست مشتریان نماینده"""
+    """لیست مشتریان نماینده به همراه آمار و دسترسی به ویرایش، تمدید و حذف"""
     reseller_id = session.get("reseller_id")
-    subs = db.get_reseller_subscriptions(reseller_id)
+    stats = db.get_reseller_stats(reseller_id)
+    discount = stats["discount_percent"]
+    plans = get_plans_dict()
+    
+    raw_subs = db.get_reseller_subscriptions(reseller_id)
+    subs = []
+    for s in raw_subs:
+        item = dict(s)
+        refund_calc = db.calculate_reseller_refund(reseller_id, item["id"])
+        item["refund_info"] = refund_calc
+        subs.append(item)
+
     single_link_template = get_single_link_template(db)
-    return render_template("reseller_users.html", subscriptions=subs, panel_url=get_hiddify_url(), user_proxy=get_user_proxy(), single_link_template=single_link_template)
+    return render_template(
+        "reseller_users.html",
+        subscriptions=subs,
+        plans=plans,
+        discount=discount,
+        balance=stats["balance"],
+        panel_url=get_hiddify_url(),
+        user_proxy=get_user_proxy(),
+        single_link_template=single_link_template
+    )
+
+
+@app.route("/reseller/subscription/<int:sub_id>/edit", methods=["POST"])
+@reseller_required
+def reseller_edit_user(sub_id: int):
+    """ویرایش مشخصات مشتری نماینده"""
+    reseller_id = session.get("reseller_id")
+    sub = db.get_reseller_subscription(reseller_id, sub_id)
+    if not sub:
+        flash("اشتراک مورد نظر یافت نشد.", "danger")
+        return redirect(url_for("reseller_users"))
+
+    account_name = request.form.get("account_name", "").strip() or sub["account_name"]
+    phone_number = request.form.get("phone_number", "").strip()
+    comment = request.form.get("comment", "").strip()
+
+    # ۱. بروزرسانی در دیتابیس محلی
+    db.update_reseller_subscription(reseller_id, sub_id, account_name, phone_number, comment)
+
+    # ۲. بروزرسانی در هیدیفای
+    if sub.get("hidify_uuid"):
+        full_comment = f"Reseller #{reseller_id} ({session.get('name')})"
+        if phone_number:
+            full_comment += f" | Phone: {phone_number}"
+        if comment:
+            full_comment += f" | {comment}"
+        hidify_sync_update_user(sub["hidify_uuid"], name=account_name, comment=full_comment[:200])
+
+    flash(f"مشخصات اشتراک «{account_name}» با موفقیت بروزرسانی شد.", "success")
+    return redirect(url_for("reseller_users"))
+
+
+@app.route("/reseller/subscription/<int:sub_id>/toggle", methods=["POST"])
+@reseller_required
+def reseller_toggle_user(sub_id: int):
+    """فعال یا غیرفعال کردن مشتری نماینده (بدون کسر یا استرداد هزینه)"""
+    reseller_id = session.get("reseller_id")
+    sub = db.get_reseller_subscription(reseller_id, sub_id)
+    if not sub:
+        flash("اشتراک مورد نظر یافت نشد.", "danger")
+        return redirect(url_for("reseller_users"))
+
+    res = db.toggle_reseller_subscription(reseller_id, sub_id)
+    if res.get("success"):
+        new_status = res.get("status")
+        is_active = (new_status == "active")
+        if sub.get("hidify_uuid"):
+            hidify_sync_update_user(sub["hidify_uuid"], enable=is_active, is_active=is_active)
+        
+        status_fa = "فعال" if is_active else "غیرفعال"
+        flash(f"وضعیت اشتراک «{sub['account_name']}» به حالت «{status_fa}» تغییر یافت. (هیچ مبلغی کسر یا اضافه نشد)", "info")
+    else:
+        flash(f"خطا در تغییر وضعیت: {res.get('error')}", "danger")
+
+    return redirect(url_for("reseller_users"))
+
+
+@app.route("/reseller/subscription/<int:sub_id>/renew", methods=["POST"])
+@reseller_required
+def reseller_renew_user(sub_id: int):
+    """تمدید اشتراک مشتری با کسر اعتبار تخفیف‌دار نماینده"""
+    reseller_id = session.get("reseller_id")
+    sub = db.get_reseller_subscription(reseller_id, sub_id)
+    if not sub:
+        flash("اشتراک مورد نظر یافت نشد.", "danger")
+        return redirect(url_for("reseller_users"))
+
+    plan_key = request.form.get("plan_id")
+    plans = get_plans_dict()
+    if plan_key not in plans:
+        flash("پلن انتخابی نامعتبر است.", "danger")
+        return redirect(url_for("reseller_users"))
+
+    plan = plans[plan_key]
+    stats = db.get_reseller_stats(reseller_id)
+    discount = stats["discount_percent"]
+    original_price = plan["price"]
+    discount_amount = int((original_price * discount) / 100)
+    final_price = original_price - discount_amount
+
+    if stats["balance"] < final_price:
+        flash(f"موجودی کیف پول شما برای تمدید این پلن کافی نیست! موجودی: {stats['balance']:,} ت | هزینه تمدید: {final_price:,} ت", "danger")
+        return redirect(url_for("reseller_users"))
+
+    # ۱. تمدید هوشمند در هیدیفای
+    renewal_res = {"renewal_type": "reset_and_replaced"}
+    if sub.get("hidify_uuid"):
+        renewal_res = hidify_sync_renew_user(sub["hidify_uuid"], plan["data_limit"], plan["duration"])
+
+    # ۲. ثبت در دیتابیس و کسر موجودی
+    renew_db = db.renew_reseller_subscription(
+        reseller_id=reseller_id,
+        sub_id=sub_id,
+        plan_id=plan_key,
+        plan_name=plan["name"],
+        cost=final_price,
+        data_limit=plan["data_limit"],
+        duration=plan["duration"],
+        renewal_type=renewal_res.get("renewal_type", "reset_and_replaced")
+    )
+
+    if renew_db.get("success"):
+        # ثبت در تاریخچه سوابق مصرف دوره‌های گذشته
+        try:
+            db.log_subscription_history(
+                subscription_id=sub_id,
+                telegram_id=sub.get("telegram_id") or 0,
+                hidify_uuid=sub.get("hidify_uuid") or "",
+                account_name=sub["account_name"],
+                plan_name=plan["name"],
+                previous_usage_gb=sub.get("data_used") or 0,
+                previous_limit_gb=sub.get("data_limit") or 0,
+                period_days=plan["duration"],
+                renewal_type=renewal_res.get("renewal_type", "reset_and_replaced"),
+                reseller_id=reseller_id
+            )
+        except Exception as e:
+            logger.warning(f"Failed to log subscription history on reseller renew: {e}")
+
+        flash(f"اشتراک «{sub['account_name']}» با پلن «{plan['name']}» با موفقیت تمدید شد و مبلغ {final_price:,} تومان از کیف پول شما کسر گردید.", "success")
+    else:
+        flash(f"خطا در تمدید اشتراک: {renew_db.get('error')}", "danger")
+
+    return redirect(url_for("reseller_users"))
+
+
+@app.route("/reseller/subscription/<int:sub_id>/delete", methods=["POST"])
+@reseller_required
+def reseller_delete_user(sub_id: int):
+    """حذف اشتراک مشتری توسط نماینده با استرداد وجه طبق قوانین بازه ۱۲ و ۲۴ ساعته"""
+    reseller_id = session.get("reseller_id")
+    sub = db.get_reseller_subscription(reseller_id, sub_id)
+    if not sub:
+        flash("اشتراک مورد نظر یافت نشد.", "danger")
+        return redirect(url_for("reseller_users"))
+
+    # ۱. حذف کاربر از سرور هیدیفای
+    if sub.get("hidify_uuid"):
+        try:
+            hidify_sync_delete_user(sub["hidify_uuid"])
+        except Exception as e:
+            logger.warning(f"Error deleting user {sub['hidify_uuid']} from Hiddify: {e}")
+
+    # ۲. اجرای حذف در دیتابیس با محاسبه استرداد وجه
+    del_res = db.delete_reseller_subscription(reseller_id, sub_id)
+    if del_res.get("success"):
+        refund_amount = del_res.get("refund_amount", 0)
+        refund_percent = del_res.get("refund_percent", 0)
+        time_passed = del_res.get("time_passed_text", "")
+
+        if refund_amount > 0:
+            flash(f"اشتراک «{sub['account_name']}» با موفقیت حذف گردید و مبلغ {refund_amount:,} تومان ({refund_percent}٪ استرداد - مدت زمان گذشته: {time_passed}) به کیف پول شما بازگردانده شد.", "success")
+        else:
+            flash(f"اشتراک «{sub['account_name']}» با موفقیت حذف گردید. (به دلیل سپری شدن بیش از ۲۴ ساعت از زمان ساخت، استرداد وجه تعلق نگرفت)", "warning")
+    else:
+        flash(f"خطا در حذف اشتراک: {del_res.get('error')}", "danger")
+
+    return redirect(url_for("reseller_users"))
 
 
 @app.route("/reseller/transactions")
