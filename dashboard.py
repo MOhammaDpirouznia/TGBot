@@ -824,7 +824,66 @@ def login_required(f):
     return decorated_function
 
 
+ROLE_PERMISSIONS = {
+    "super_admin": {"*"},
+    "partner": {
+        "dashboard", "users", "users_view", "user_manage", "subscriptions", "subscriptions_view", 
+        "sub_manage", "sub_delete", "user_delete", "create_customer", "plans", "plans_manage", 
+        "tickets", "payments", "payments_view", "reports", "servers_view", "accounting", 
+        "accounting_view_self", "profile", "broadcast"
+    },
+    "finance": {
+        "dashboard", "payments", "payments_view", "verify_payments", "discounts", "cards", 
+        "accounting", "settle_debts", "reports", "users_view", "create_customer", "profile"
+    },
+    "support": {
+        "dashboard", "tickets", "users", "users_view", "subscriptions", "subscriptions_view", 
+        "sub_manage", "create_customer", "servers_view", "broadcast", "profile"
+    },
+    "viewer": {
+        "dashboard", "users_view", "subscriptions_view", "reports", "servers_view", "profile", "payments_view"
+    }
+}
+
+
+def has_permission(perm: str) -> bool:
+    """بررسی اعتبارسنجی سطح دسترسی مدیر فعلی بر اساس ماتریس RBAC"""
+    if not session.get("logged_in") or session.get("role") != "admin":
+        return False
+    admin_role = session.get("admin_role", "super_admin")
+    allowed_perms = ROLE_PERMISSIONS.get(admin_role, set())
+    if "*" in allowed_perms or perm in allowed_perms:
+        return True
+    perms = session.get("permissions", "")
+    if perms == "*" or perm in perms.split(","):
+        return True
+    return False
+
+
+def permission_required(perm: str):
+    """دکوریتور اعمال دقیق دسترسی‌ها روی روت‌های پنل مدیریت"""
+    def decorator(f):
+        @functools.wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not session.get("logged_in") or session.get("role") != "admin":
+                flash("دسترسی به این صفحه فقط برای مدیران مجاز است.", "danger")
+                return redirect(url_for("login"))
+            if not has_permission(perm):
+                flash("⛔ دسترسی غیرمجاز: نقش شما مجوز استفاده از این بخش را ندارد.", "danger")
+                if has_permission("dashboard"):
+                    return redirect(url_for("dashboard"))
+                elif has_permission("tickets"):
+                    return redirect(url_for("tickets"))
+                elif has_permission("payments_view"):
+                    return redirect(url_for("payments"))
+                return redirect(url_for("admin_profile"))
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+
 def admin_required(f):
+    """احراز هویت عمومی مدیر (هر نقشی از مدیران)"""
     @functools.wraps(f)
     def decorated_function(*args, **kwargs):
         if not session.get("logged_in") or session.get("role") != "admin":
@@ -835,19 +894,21 @@ def admin_required(f):
 
 
 def super_admin_required(f):
+    """دسترسی انحصاری فقط برای مدیر ارشد (Super Admin)"""
     @functools.wraps(f)
     def decorated_function(*args, **kwargs):
         if not session.get("logged_in") or session.get("role") != "admin":
             flash("دسترسی به این صفحه فقط برای مدیران مجاز است.", "danger")
             return redirect(url_for("login"))
         if session.get("admin_role") != "super_admin":
-            flash("دسترسی به این عملیات حساس فقط برای مدیر ارشد (Super Admin) مجاز است.", "danger")
-            return redirect(url_for("payments"))
+            flash("⛔ این عملیات حساس و کلیدی فقط توسط مدیر ارشد (Super Admin) قابل انجام است.", "danger")
+            return redirect(url_for("dashboard"))
         return f(*args, **kwargs)
     return decorated_function
 
 
 def reseller_required(f):
+    """دسترسی اختصاصی نمایندگان و همکاران فروش"""
     @functools.wraps(f)
     def decorated_function(*args, **kwargs):
         if not session.get("logged_in") or session.get("role") != "reseller":
@@ -916,17 +977,7 @@ def captcha_image():
 
 @app.context_processor
 def inject_permissions():
-    """تزریق دسترسی‌ها به قالب‌های Jinja"""
-    def has_permission(perm):
-        if not session.get("logged_in") or session.get("role") != "admin":
-            return False
-        admin_role = session.get("admin_role", "super_admin")
-        if admin_role == "super_admin":
-            return True
-        perms = session.get("permissions", "")
-        if perms == "*" or perm in perms.split(","):
-            return True
-        return False
+    """تزریق تابع بررسی دسترسی‌ها به قالب‌های Jinja"""
     return dict(has_permission=has_permission)
 
 
@@ -987,6 +1038,8 @@ def login():
             session["name"] = admin_user.get("display_name") or "مدیر"
             session["admin_role"] = admin_user.get("role", "super_admin")
             session["permissions"] = admin_user.get("permissions", "*")
+            session["share_percent"] = admin_user.get("share_percent", 0)
+            session["debt_balance"] = admin_user.get("debt_balance", 0)
             session["telegram_id"] = admin_user.get("telegram_id") or get_admin_id()
             session["phone"] = admin_user.get("phone")
             session["session_token"] = session_token
@@ -1822,9 +1875,9 @@ def admin_reseller_delete(reseller_id):
 # ═══════════════════════════════════════════════════════════════════════
 
 @app.route("/accounting", methods=["GET"])
-@admin_required
+@permission_required("accounting")
 def accounting():
-    """داشبورد حسابداری و مدیریت مالی، هزینه‌ها، سود خالص و اسناد مالی"""
+    """داشبورد حسابداری و مدیریت مالی، هزینه‌ها، سود خالص، اسناد مالی و تراز بدهی مدیران و شرکا"""
     type_filter = request.args.get("type", "all")
     category_filter = request.args.get("category", "all")
     period = request.args.get("period", "all")
@@ -1838,6 +1891,13 @@ def accounting():
         period=period,
         search=search
     )
+
+    admin_role = session.get("admin_role", "super_admin")
+    admin_id = session.get("admin_id")
+    target_admin_id = admin_id if admin_role == "partner" else None
+
+    admin_debts_summary = db.get_admins_accounting_summary(admin_id=target_admin_id)
+    admin_debts_logs = db.get_admin_debts(admin_id=target_admin_id, limit=100)
 
     categories = [
         "هزینه سرور",
@@ -1858,8 +1918,32 @@ def accounting():
         current_type=type_filter,
         current_category=category_filter,
         current_period=period,
-        search=search
+        search=search,
+        admin_debts_summary=admin_debts_summary,
+        admin_debts_logs=admin_debts_logs
     )
+
+
+@app.route("/admin/accounting/settle", methods=["POST"])
+@permission_required("settle_debts")
+def admin_accounting_settle():
+    """ثبت تسویه حساب بدهی مدیر یا شریک تجاری توسط مدیر ارشد یا مالی"""
+    admin_id = int(request.form.get("admin_id", 0))
+    amount = int(request.form.get("amount", 0))
+    description = request.form.get("description", "تسویه حساب نقدی").strip()
+
+    if admin_id <= 0 or amount <= 0:
+        flash("شناسه مدیر و مبلغ تسویه باید معتبر باشند.", "warning")
+        return redirect(url_for("accounting"))
+
+    settler_id = session.get("admin_id", 1)
+    res = db.settle_admin_debt(admin_id, amount, description, settled_by=settler_id)
+    if res.get("success"):
+        flash(f"تسویه حساب به مبلغ {amount:,} تومان با موفقیت ثبت شد. مانده بدهی فعلی: {res.get('remaining_debt', 0):,} تومان", "success")
+    else:
+        flash(f"خطا در ثبت تسویه حساب: {res.get('error')}", "danger")
+
+    return redirect(url_for("accounting"))
 
 
 @app.route("/accounting/record/add", methods=["POST"])
@@ -1943,7 +2027,7 @@ def export_accounting():
 # ═══════════════════════════════════════════════════════════════════════
 
 @app.route("/broadcast", methods=["GET", "POST"])
-@admin_required
+@permission_required("broadcast")
 def broadcast():
     """ارسال پیام انبوه هدفمند به کاربران تلگرام"""
     if request.method == "POST":
@@ -1985,7 +2069,7 @@ def broadcast():
 # ═══════════════════════════════════════════════════════════════════════
 
 @app.route("/tickets")
-@admin_required
+@permission_required("tickets")
 def tickets():
     """لیست تیکت‌های پشتیبانی"""
     conn = db.get_connection()
@@ -2000,7 +2084,7 @@ def tickets():
 
 
 @app.route("/ticket/reply/<int:ticket_id>", methods=["POST"])
-@admin_required
+@permission_required("tickets")
 def ticket_reply(ticket_id):
     """ارسال پاسخ به تیکت از پنل وب مستقیم به تلگرام کاربر"""
     reply_text = request.form.get("reply", "").strip()
@@ -2024,7 +2108,7 @@ def ticket_reply(ticket_id):
 # ═══════════════════════════════════════════════════════════════════════
 
 @app.route("/cards", methods=["GET", "POST"])
-@admin_required
+@permission_required("cards")
 def cards():
     """مدیریت کارت‌های بانکی و سقف تراکنش"""
     if request.method == "POST":
@@ -2041,7 +2125,7 @@ def cards():
 
 
 @app.route("/card/toggle/<int:card_id>")
-@admin_required
+@permission_required("cards")
 def card_toggle(card_id):
     """فعال/غیرفعال کردن کارت"""
     cards_list = db.get_all_bank_cards()
@@ -2052,7 +2136,7 @@ def card_toggle(card_id):
 
 
 @app.route("/card/delete/<int:card_id>")
-@admin_required
+@permission_required("cards")
 def card_delete(card_id):
     """حذف کارت"""
     db.delete_bank_card(card_id)
@@ -2065,7 +2149,7 @@ def card_delete(card_id):
 # ═══════════════════════════════════════════════════════════════════════
 
 @app.route("/plans", methods=["GET", "POST"])
-@admin_required
+@permission_required("plans")
 def admin_plans_page():
     """مدیریت و ویرایش کامل پلن‌ها"""
     if request.method == "POST":
@@ -2087,7 +2171,7 @@ def admin_plans_page():
 
 
 @app.route("/plans/edit/<plan_id>", methods=["POST"])
-@admin_required
+@permission_required("plans_manage")
 def admin_plan_edit(plan_id):
     """ویرایش کامل مشخصات پلن و تغییر شناسه"""
     new_plan_id = request.form.get("new_plan_id", "").strip().lower().replace(" ", "_")
@@ -2116,7 +2200,7 @@ def admin_plan_edit(plan_id):
 
 
 @app.route("/plans/toggle/<plan_id>")
-@admin_required
+@permission_required("plans_manage")
 def admin_plan_toggle(plan_id):
     """فعال/غیرفعال کردن پلن"""
     plans = get_all_plans()
@@ -2128,7 +2212,7 @@ def admin_plan_toggle(plan_id):
 
 
 @app.route("/plans/delete/<plan_id>")
-@admin_required
+@permission_required("plans_manage")
 def admin_plan_delete(plan_id):
     """حذف پلن"""
     res = delete_plan(plan_id)
@@ -2140,7 +2224,7 @@ def admin_plan_delete(plan_id):
 
 
 @app.route("/plans/move-up/<plan_id>")
-@admin_required
+@permission_required("plans_manage")
 def admin_plan_move_up(plan_id):
     """انتقال پلن به بالا در ترتیب عمودی"""
     res = move_plan_up(plan_id)
@@ -2152,7 +2236,7 @@ def admin_plan_move_up(plan_id):
 
 
 @app.route("/plans/move-down/<plan_id>")
-@admin_required
+@permission_required("plans_manage")
 def admin_plan_move_down(plan_id):
     """انتقال پلن به پایین در ترتیب عمودی"""
     res = move_plan_down(plan_id)
@@ -2168,7 +2252,7 @@ def admin_plan_move_down(plan_id):
 # ═══════════════════════════════════════════════════════════════════════
 
 @app.route("/discounts", methods=["GET", "POST"])
-@admin_required
+@permission_required("discounts")
 def admin_discounts_page():
     """مشاهده و ایجاد کدهای تخفیف"""
     if request.method == "POST":
@@ -2197,7 +2281,7 @@ def admin_discounts_page():
 
 
 @app.route("/discounts/delete/<code>")
-@admin_required
+@permission_required("discounts")
 def admin_discount_delete(code):
     """حذف کد تخفیف"""
     res = db.delete_discount_code(code)
@@ -2213,7 +2297,7 @@ def admin_discount_delete(code):
 # ═══════════════════════════════════════════════════════════════════════
 
 @app.route("/reports")
-@admin_required
+@permission_required("reports")
 def reports():
     """گزارشات آماری و هوش مالی پیشرفته مدیر کل"""
     conn = db.get_connection()
@@ -2290,7 +2374,7 @@ def export_transactions():
 
 @app.route("/admin/logs")
 @app.route("/logs")
-@admin_required
+@permission_required("servers_view")
 def admin_logs():
     """مشاهده لاگ‌های زنده سرور"""
     health = hidify_sync_ping()
@@ -2298,7 +2382,7 @@ def admin_logs():
 
 
 @app.route("/settings", methods=["GET", "POST"])
-@admin_required
+@super_admin_required
 def settings():
     """تنظیمات کلی سیستم، قالب لینک اتصال تکی و سامانه پیامک"""
     if request.method == "POST":
@@ -2393,7 +2477,7 @@ def admin_sync_hidify():
 
 
 @app.route("/admin/backup/download")
-@admin_required
+@super_admin_required
 def download_backup():
     """دانلود فایل دیتابیس SQLite"""
     if db.db_path.exists():
@@ -2409,7 +2493,7 @@ def download_backup():
 
 
 @app.route("/admin/backup/upload", methods=["POST"])
-@admin_required
+@super_admin_required
 def upload_backup():
     """آپلود و بازیابی فایل دیتابیس SQLite"""
     file = request.files.get("backup_file")
@@ -2786,11 +2870,131 @@ def reseller_export_transactions():
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# افزودن و ایجاد دستی مشتری و اشتراک (Create Customer & Partner Cash Sale)
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/admin/create_customer", methods=["GET", "POST"])
+@permission_required("create_customer")
+def admin_create_customer():
+    """افزودن و ایجاد دستی مشتری توسط مدیر/شریک همراه با ثبت بدهی نقدی و محاسبه درصد شراکت"""
+    plans = get_plans_dict()
+    admin_id = session.get("admin_id")
+    admin_user = db.get_admin_user(admin_id) if admin_id else None
+    admin_role = session.get("admin_role", "super_admin")
+    share_percent = admin_user.get("share_percent", 0) if admin_user else 0
+
+    if request.method == "POST":
+        account_name = request.form.get("name", "").strip()
+        telegram_id_raw = request.form.get("telegram_id", "").strip()
+        phone_number = request.form.get("phone", "").strip()
+        plan_id = request.form.get("plan_id", "").strip()
+        payment_method = request.form.get("payment_method", "cash").strip() # 'cash', 'free', 'wallet'
+        comment = request.form.get("comment", "").strip()
+
+        if not account_name:
+            flash("لطفاً نام یا شناسه مشتری را وارد نمایید.", "warning")
+            return redirect(url_for("admin_create_customer"))
+
+        # محاسبه حجم، مدت و قیمت پلن
+        selected_plan = plans.get(plan_id)
+        if selected_plan:
+            plan_name = selected_plan["name"]
+            data_limit = float(selected_plan["data_limit"])
+            duration = int(selected_plan["duration"])
+            price = int(selected_plan["price"])
+        else:
+            try:
+                data_limit = float(request.form.get("custom_data", 30))
+                duration = int(request.form.get("custom_duration", 30))
+                price = int(request.form.get("custom_price", 0))
+                plan_name = f"پلن دستی {data_limit}GB ({duration} روزه)"
+            except Exception:
+                flash("اطلاعات پلن یا قیمت نامعتبر است.", "danger")
+                return redirect(url_for("admin_create_customer"))
+
+        telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else None
+
+        # بررسی موجودی کیف پول در صورت پرداخت از کیف پول
+        if payment_method == "wallet" and telegram_id:
+            wallet_bal = db.get_user_wallet_balance(telegram_id)
+            if wallet_bal < price:
+                flash(f"موجودی کیف پول کاربر ({wallet_bal:,} تومان) کمتر از قیمت پلن ({price:,} تومان) است.", "danger")
+                return redirect(url_for("admin_create_customer"))
+            db.deduct_wallet_balance(telegram_id, price, f"خرید اشتراک {plan_name} توسط مدیریت")
+
+        # ایجاد کاربر در سرور هیدیفای
+        h_comment = f"Admin:{session.get('username')}|{telegram_id or ''}"
+        h_res = hidify_sync_create_user(name=account_name, usage_limit_gb=data_limit, package_days=duration, comment=h_comment)
+        user_uuid = h_res.get("uuid", "")
+        if not user_uuid:
+            flash(f"خطا در ایجاد اکانت در سرور هیدیفای: {h_res.get('error')}", "danger")
+            return redirect(url_for("admin_create_customer"))
+
+        # ذخیره در دیتابیس
+        sub_id = db.save_subscription(
+            telegram_id=telegram_id or 0,
+            hidify_uuid=user_uuid,
+            plan_id=plan_id or "custom_admin",
+            plan_name=plan_name,
+            data_limit=data_limit,
+            duration=duration,
+            status="active",
+            account_name=account_name
+        )
+
+        # ثبت کاربر در جدول users
+        if telegram_id:
+            db.save_user(telegram_id, account_name, None, None, 0, phone_number)
+            if phone_number:
+                db.set_user_phone(telegram_id, phone_number)
+
+        # ثبت تراکنش و حسابداری بدهی نقدی مدیر
+        debt_info_text = ""
+        if payment_method == "cash" and price > 0:
+            if admin_role == "super_admin":
+                db.save_transaction(telegram_id or 0, plan_id or "custom", price, "cash_admin", "approved", None, plan_name=plan_name)
+                debt_info_text = " (مبلغ نقدی به صندوق اصلی ثبت شد)"
+            else:
+                debt_res = db.record_admin_cash_sale(
+                    admin_id=admin_id or 1,
+                    customer_name=account_name,
+                    plan_name=plan_name,
+                    total_amount=price,
+                    share_percent=share_percent,
+                    created_by=admin_id,
+                    description=f"دریافت نقدی اشتراک {account_name} توسط {session.get('username')}"
+                )
+                db.save_transaction(telegram_id or 0, plan_id or "custom", price, "cash_admin", "approved", None, plan_name=plan_name)
+                
+                if admin_role == "partner" and share_percent > 0:
+                    debt_info_text = f" (سهم شراکت شما: {debt_res.get('share_amount', 0):,} تومان | بدهی به مدیریت: {debt_res.get('debt_amount', 0):,} تومان)"
+                else:
+                    debt_info_text = f" (مبلغ {price:,} تومان به عنوان بدهی نقدی در حساب شما ثبت گردید)"
+
+        # ارسال خودکار کارت اشتراک به تلگرام
+        h_url = get_hiddify_url()
+        u_proxy = get_user_proxy()
+        sub_url = f"{h_url}/{u_proxy}/{user_uuid}/" if user_uuid and h_url else ""
+        if telegram_id and sub_url:
+            send_subscription_card_sync(
+                telegram_id,
+                sub_url,
+                "🎉 **اشتراک جدید شما آماده شد!**",
+                f"📋 پلن: **{plan_name}**\n📊 حجم: **{data_limit} گیگابایت**\n⏰ مدت: **{duration} روز**"
+            )
+
+        flash(f"✅ اشتراک «{account_name}» با موفقیت ایجاد شد!{debt_info_text}", "success")
+        return render_template("admin_customer_created.html", sub_url=sub_url, account_name=account_name, plan_name=plan_name, data_limit=data_limit, duration=duration, user_uuid=user_uuid, debt_info=debt_info_text)
+
+    return render_template("admin_create_customer.html", plans=plans, admin_role=admin_role, share_percent=share_percent)
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # مدیریت مدیران و سطوح دسترسی (Admin Management & RBAC)
 # ═══════════════════════════════════════════════════════════════════════
 
 @app.route("/admin/managers", methods=["GET", "POST"])
-@admin_required
+@super_admin_required
 def admin_managers():
     """لیست و افزودن مدیران با سطوح دسترسی مختلف"""
     if request.method == "POST":
@@ -2798,21 +3002,34 @@ def admin_managers():
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "").strip()
         role = request.form.get("role", "support").strip()
+        share_percent_raw = request.form.get("share_percent", "0").strip()
+        share_percent = int(share_percent_raw) if share_percent_raw.isdigit() else 0
 
         # نقشه‌برداری دسترسی‌ها بر اساس نقش
         perms_map = {
             "super_admin": "*",
-            "finance": "dashboard,payments,accounting,cards,reports",
-            "support": "dashboard,users,subs,tickets,broadcast",
+            "partner": "dashboard,users,subs,plans,tickets,reports,create_customer,accounting",
+            "finance": "dashboard,payments,accounting,cards,reports,create_customer",
+            "support": "dashboard,users,subs,tickets,broadcast,create_customer",
             "viewer": "dashboard,users,subs,reports,logs",
         }
         permissions = perms_map.get(role, "*")
 
         telegram_id_raw = request.form.get("telegram_id", "").strip()
         telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else None
+        phone = request.form.get("phone", "").strip()
 
         if username and password and display_name:
-            res = db.create_admin_user(username, password, display_name, role=role, permissions=permissions, telegram_id=telegram_id)
+            res = db.create_admin_user(
+                username=username,
+                password=password,
+                display_name=display_name,
+                role=role,
+                permissions=permissions,
+                telegram_id=telegram_id,
+                phone=phone,
+                share_percent=share_percent
+            )
             if res.get("success"):
                 flash(f"مدیر جدید «{display_name}» با موفقیت افزوده شد.", "success")
             else:
@@ -2826,20 +3043,24 @@ def admin_managers():
 
 
 @app.route("/admin/manager/<int:admin_id>/edit", methods=["POST"])
-@admin_required
+@super_admin_required
 def admin_manager_edit(admin_id):
     """ویرایش اطلاعات و دسترسی‌های مدیر"""
     display_name = request.form.get("display_name", "").strip()
     username = request.form.get("username", "").strip()
     password = request.form.get("password", "").strip()
     role = request.form.get("role", "support").strip()
+    share_percent_raw = request.form.get("share_percent", "0").strip()
+    share_percent = int(share_percent_raw) if share_percent_raw.isdigit() else 0
     telegram_id_raw = request.form.get("telegram_id", "").strip()
     telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else None
+    phone = request.form.get("phone", "").strip()
 
     perms_map = {
         "super_admin": "*",
-        "finance": "dashboard,payments,accounting,cards,reports",
-        "support": "dashboard,users,subs,tickets,broadcast",
+        "partner": "dashboard,users,subs,plans,tickets,reports,create_customer,accounting",
+        "finance": "dashboard,payments,accounting,cards,reports,create_customer",
+        "support": "dashboard,users,subs,tickets,broadcast,create_customer",
         "viewer": "dashboard,users,subs,reports,logs",
     }
     permissions = perms_map.get(role, "*")
@@ -2850,6 +3071,8 @@ def admin_manager_edit(admin_id):
         "role": role,
         "permissions": permissions,
         "telegram_id": telegram_id,
+        "phone": phone,
+        "share_percent": share_percent,
     }
     if password and len(password) > 0:
         update_kwargs["password"] = password
@@ -2863,7 +3086,7 @@ def admin_manager_edit(admin_id):
 
 
 @app.route("/admin/manager/<int:admin_id>/toggle")
-@admin_required
+@super_admin_required
 def admin_manager_toggle(admin_id):
     """تغییر وضعیت فعال/غیرفعال مدیر"""
     if admin_id == session.get("admin_id"):
@@ -2879,7 +3102,7 @@ def admin_manager_toggle(admin_id):
 
 
 @app.route("/admin/manager/<int:admin_id>/delete")
-@admin_required
+@super_admin_required
 def admin_manager_delete(admin_id):
     """حذف مدیر"""
     if admin_id == session.get("admin_id"):

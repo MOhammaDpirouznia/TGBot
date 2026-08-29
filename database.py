@@ -497,6 +497,16 @@ class Database:
             pass
 
         try:
+            cursor.execute("ALTER TABLE admin_users ADD COLUMN share_percent INTEGER DEFAULT 0")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE admin_users ADD COLUMN debt_balance INTEGER DEFAULT 0")
+        except Exception:
+            pass
+
+        try:
             cursor.execute("ALTER TABLE resellers ADD COLUMN custom_avatar TEXT")
         except Exception:
             pass
@@ -512,6 +522,28 @@ class Database:
                     description TEXT,
                     ref_id TEXT,
                     created_at TEXT NOT NULL
+                )
+            """)
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS admin_debts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    admin_id INTEGER NOT NULL,
+                    admin_username TEXT NOT NULL,
+                    customer_name TEXT,
+                    plan_name TEXT,
+                    total_amount INTEGER NOT NULL,
+                    share_percent INTEGER DEFAULT 0,
+                    share_amount INTEGER DEFAULT 0,
+                    debt_amount INTEGER NOT NULL,
+                    type TEXT NOT NULL,
+                    description TEXT,
+                    created_by INTEGER,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (admin_id) REFERENCES admin_users(id)
                 )
             """)
         except Exception:
@@ -3610,17 +3642,17 @@ class Database:
 
     def create_admin_user(self, username: str, password: str, display_name: str,
                           role: str = "super_admin", permissions: str = "*", is_active: bool = True,
-                          telegram_id: int = None, phone: str = None) -> dict:
-        """افزودن مدیر جدید با نقش و دسترسی‌های مشخص، آیدی تلگرام و شماره تماس"""
+                          telegram_id: int = None, phone: str = None, share_percent: int = 0) -> dict:
+        """افزودن مدیر جدید با نقش و دسترسی‌های مشخص، آیدی تلگرام، شماره تماس و درصد شراکت"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         password_hash = self.hash_password(password)
         try:
             cursor.execute("""
-                INSERT INTO admin_users (username, password_hash, display_name, role, permissions, is_active, created_at, telegram_id, phone)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (username.strip(), password_hash, display_name.strip(), role, permissions, 1 if is_active else 0, now, telegram_id, phone.strip() if phone else None))
+                INSERT INTO admin_users (username, password_hash, display_name, role, permissions, is_active, created_at, telegram_id, phone, share_percent, debt_balance)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+            """, (username.strip(), password_hash, display_name.strip(), role, permissions, 1 if is_active else 0, now, telegram_id, phone.strip() if phone else None, int(share_percent or 0)))
             admin_id = cursor.lastrowid
             conn.commit()
             return {"success": True, "admin_id": admin_id}
@@ -3632,7 +3664,7 @@ class Database:
             conn.close()
 
     def update_admin_user(self, admin_id: int, **kwargs) -> dict:
-        """ویرایش اطلاعات و دسترسی‌های یک مدیر"""
+        """ویرایش اطلاعات، نقش، دسترسی‌ها و درصد شراکت یک مدیر"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -3642,7 +3674,7 @@ class Database:
                 if key == "password" and val:
                     fields.append("password_hash=?")
                     params.append(self.hash_password(val))
-                elif key in ["username", "display_name", "role", "permissions", "is_active", "telegram_id", "phone", "custom_avatar"]:
+                elif key in ["username", "display_name", "role", "permissions", "is_active", "telegram_id", "phone", "custom_avatar", "share_percent", "debt_balance"]:
                     fields.append(f"{key}=?")
                     params.append(val)
 
@@ -3704,6 +3736,150 @@ class Database:
         if password and len(password.strip()) > 0:
             kwargs["password"] = password.strip()
         return self.update_admin_user(admin_id, **kwargs)
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # حسابداری بدهی مدیران و شرکای تجاری (Admin & Partner Debts & Ledger)
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def record_admin_cash_sale(self, admin_id: int, customer_name: str, plan_name: str, total_amount: int, share_percent: int = 0, created_by: int = None, description: str = "") -> dict:
+        """ثبت فروش نقدی توسط مدیر/شریک، محاسبه درصد سهم شراکت و ثبت بدهی به مدیریت"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            # دریافت اطلاعات مدیر
+            cursor.execute("SELECT username, display_name, role, share_percent, debt_balance FROM admin_users WHERE id=?", (admin_id,))
+            admin_row = cursor.fetchone()
+            if not admin_row:
+                return {"success": False, "error": "مدیر یافت نشد."}
+
+            admin_dict = dict(admin_row)
+            username = admin_dict.get("username", f"admin_{admin_id}")
+            effective_share_percent = int(share_percent if share_percent is not None else admin_dict.get("share_percent", 0))
+            
+            # محاسبه سهم شراکت و مبلغ بدهی به مدیریت
+            share_amount = int(total_amount * (effective_share_percent / 100)) if effective_share_percent > 0 else 0
+            debt_amount = total_amount - share_amount
+
+            # ثبت در جدول لاگ بدهی
+            cursor.execute("""
+                INSERT INTO admin_debts (admin_id, admin_username, customer_name, plan_name, total_amount, share_percent, share_amount, debt_amount, type, description, created_by, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'cash_sale', ?, ?, ?)
+            """, (admin_id, username, customer_name, plan_name, total_amount, effective_share_percent, share_amount, debt_amount, description, created_by or admin_id, now))
+
+            # افزایش مانده بدهی مدیر
+            new_debt_balance = (admin_dict.get("debt_balance") or 0) + debt_amount
+            cursor.execute("UPDATE admin_users SET debt_balance=? WHERE id=?", (new_debt_balance, admin_id))
+            conn.commit()
+
+            return {
+                "success": True,
+                "total_amount": total_amount,
+                "share_percent": effective_share_percent,
+                "share_amount": share_amount,
+                "debt_amount": debt_amount,
+                "new_debt_balance": new_debt_balance
+            }
+        except Exception as e:
+            logger.error(f"Error recording admin cash sale: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def settle_admin_debt(self, admin_id: int, amount: int, description: str, settled_by: int) -> dict:
+        """ثبت تسویه حساب نقدی یا واریزی مدیر/شریک و کاهش بدهی"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT username, debt_balance FROM admin_users WHERE id=?", (admin_id,))
+            admin_row = cursor.fetchone()
+            if not admin_row:
+                return {"success": False, "error": "مدیر یافت نشد."}
+
+            admin_dict = dict(admin_row)
+            username = admin_dict.get("username", f"admin_{admin_id}")
+            current_debt = admin_dict.get("debt_balance") or 0
+            settle_amount = int(amount)
+
+            # ثبت تراکنش تسویه در جدول بدهی‌ها
+            cursor.execute("""
+                INSERT INTO admin_debts (admin_id, admin_username, customer_name, plan_name, total_amount, share_percent, share_amount, debt_amount, type, description, created_by, created_at)
+                VALUES (?, ?, '-', 'تسویه حساب بدهی', ?, 0, 0, ?, 'settlement', ?, ?, ?)
+            """, (admin_id, username, settle_amount, -settle_amount, description, settled_by, now))
+
+            # کاهش مانده بدهی
+            new_debt = max(0, current_debt - settle_amount)
+            cursor.execute("UPDATE admin_users SET debt_balance=? WHERE id=?", (new_debt, admin_id))
+            conn.commit()
+
+            return {"success": True, "settled_amount": settle_amount, "remaining_debt": new_debt}
+        except Exception as e:
+            logger.error(f"Error settling admin debt: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_admin_debts(self, admin_id: int = None, limit: int = 100) -> list:
+        """دریافت سوابق فروش‌های نقدی، سهم شراکت و تسویه‌حساب‌های مدیران"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if admin_id:
+                cursor.execute("""
+                    SELECT d.*, u.display_name as admin_name, u.role as admin_role
+                    FROM admin_debts d
+                    LEFT JOIN admin_users u ON d.admin_id = u.id
+                    WHERE d.admin_id=?
+                    ORDER BY d.id DESC LIMIT ?
+                """, (admin_id, limit))
+            else:
+                cursor.execute("""
+                    SELECT d.*, u.display_name as admin_name, u.role as admin_role
+                    FROM admin_debts d
+                    LEFT JOIN admin_users u ON d.admin_id = u.id
+                    ORDER BY d.id DESC LIMIT ?
+                """, (limit,))
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"Error getting admin debts: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_admins_accounting_summary(self, admin_id: int = None) -> list:
+        """گزارش تراز مالی و خلاصه وضعیت فروش و بدهی مدیران و شرکا"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if admin_id:
+                cursor.execute("""
+                    SELECT u.id, u.username, u.display_name, u.role, u.share_percent, u.debt_balance, u.telegram_id, u.phone,
+                           COALESCE((SELECT COUNT(*) FROM admin_debts WHERE admin_id=u.id AND type='cash_sale'), 0) as total_sales_count,
+                           COALESCE((SELECT SUM(total_amount) FROM admin_debts WHERE admin_id=u.id AND type='cash_sale'), 0) as total_cash_collected,
+                           COALESCE((SELECT SUM(share_amount) FROM admin_debts WHERE admin_id=u.id AND type='cash_sale'), 0) as total_share_earned,
+                           COALESCE((SELECT SUM(total_amount) FROM admin_debts WHERE admin_id=u.id AND type='settlement'), 0) as total_settled_amount
+                    FROM admin_users u
+                    WHERE u.id=?
+                """, (admin_id,))
+            else:
+                cursor.execute("""
+                    SELECT u.id, u.username, u.display_name, u.role, u.share_percent, u.debt_balance, u.telegram_id, u.phone,
+                           COALESCE((SELECT COUNT(*) FROM admin_debts WHERE admin_id=u.id AND type='cash_sale'), 0) as total_sales_count,
+                           COALESCE((SELECT SUM(total_amount) FROM admin_debts WHERE admin_id=u.id AND type='cash_sale'), 0) as total_cash_collected,
+                           COALESCE((SELECT SUM(share_amount) FROM admin_debts WHERE admin_id=u.id AND type='cash_sale'), 0) as total_share_earned,
+                           COALESCE((SELECT SUM(total_amount) FROM admin_debts WHERE admin_id=u.id AND type='settlement'), 0) as total_settled_amount
+                    FROM admin_users u
+                    ORDER BY u.id ASC
+                """)
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"Error getting admins accounting summary: {e}")
+            return []
+        finally:
+            conn.close()
 
     def find_user_contact_info(self, username: str) -> dict:
         """یافتن مشخصات و اطلاعات تماس مدیر یا نماینده بر اساس نام کاربری"""
