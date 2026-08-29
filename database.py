@@ -8,7 +8,7 @@ import json
 import os
 import logging
 from datetime import datetime, timedelta
-from utils import get_now_naive, get_now_iso
+from utils import get_now_naive, get_now_iso, TEHRAN_TZ
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -2604,12 +2604,15 @@ class Database:
 
         created_str = sub["created_at"] or get_now_iso()
         try:
-            created_dt = datetime.fromisoformat(created_str)
+            clean = str(created_str).strip().replace("Z", "")
+            created_dt = datetime.fromisoformat(clean)
+            if created_dt.tzinfo is not None:
+                created_dt = created_dt.astimezone(TEHRAN_TZ).replace(tzinfo=None)
         except Exception:
             created_dt = get_now_naive()
 
         now_dt = get_now_naive()
-        elapsed_seconds = max(0, (now_dt - created_dt).total_seconds())
+        elapsed_seconds = max(0.0, (now_dt - created_dt).total_seconds())
         elapsed_hours = elapsed_seconds / 3600.0
 
         if elapsed_hours <= 12.0:
@@ -2622,7 +2625,17 @@ class Database:
         cost_paid = sub["cost_paid"] or 0
         if cost_paid <= 0:
             # در صورتی که فیلد هزینه در نسخه‌های قدیمی ثبت نشده بود، از پلن اولیه بازیابی شود
-            pass
+            try:
+                plan_price = 0
+                if sub["plan_id"]:
+                    p_id = sub["plan_id"]
+                    # تلاش برای پیدا کردن قیمت
+                    res_row = cursor.execute("SELECT discount_percent FROM resellers WHERE id=?", (reseller_id,)).fetchone()
+                    disc = res_row["discount_percent"] if res_row else 20
+                    # تخمین هزینه پرداختی
+                    cost_paid = 0
+            except Exception:
+                pass
 
         refund_amount = int((cost_paid * refund_percent) / 100)
 
@@ -2632,7 +2645,7 @@ class Database:
 
         return {
             "sub_id": sub_id,
-            "account_name": sub["account_name"],
+            "account_name": sub["account_name"] or "بدون نام",
             "created_at": created_str,
             "elapsed_hours": round(elapsed_hours, 1),
             "time_passed_text": time_passed_text,
