@@ -158,8 +158,12 @@
                                             <input type="text" name="username" class="form-control" value="{{ m['username'] }}" required pattern="^[a-zA-Z0-9_.-]+$">
                                         </div>
                                         <div class="mb-3">
-                                            <label class="form-label">آیدی عددی تلگرام (جهت دریافت عکس پروفایل):</label>
+                                            <label class="form-label">آیدی عددی تلگرام (جهت دریافت عکس و هشدارها):</label>
                                             <input type="number" name="telegram_id" class="form-control font-monospace" placeholder="مثال: 12345678" value="{{ m['telegram_id'] or '' }}">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">شماره همراه (جهت دریافت پیامک ورود/خروج):</label>
+                                            <input type="text" name="phone" class="form-control font-monospace" placeholder="مثال: 09123456789" value="{{ m['phone'] or '' }}">
                                         </div>
                                         <div class="mb-3">
                                             <label class="form-label">رمز عبور جدید (در صورت تمایل به تغییر وارد کنید):</label>
@@ -209,8 +213,12 @@
                         <input type="text" name="username" class="form-control" placeholder="مثال: admin_hosseini" required pattern="^[a-zA-Z0-9_.-]+$">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">آیدی عددی تلگرام (اختیاری - جهت نمایش عکس پروفایل):</label>
+                        <label class="form-label">آیدی عددی تلگرام (اختیاری - جهت نمایش عکس و دریافت هشدار):</label>
                         <input type="number" name="telegram_id" class="form-control font-monospace" placeholder="مثال: 12345678">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">شماره همراه (اختیاری - جهت ارسال پیامک ورود):</label>
+                        <input type="text" name="phone" class="form-control font-monospace" placeholder="مثال: 09123456789">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">رمز عبور ورود:</label>

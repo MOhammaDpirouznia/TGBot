@@ -264,7 +264,131 @@ function testLiveVmessOutput() {
         alert('خطا در تبدیل JSON به vmess://: ' + e.message);
     }
 }
+
+function sendTestSms() {
+    const phone = document.getElementById('testSmsPhone').value.trim();
+    const resultBox = document.getElementById('testSmsResult');
+    if (!phone) {
+        alert('لطفاً شماره تلفن همراه را وارد کنید.');
+        return;
+    }
+    resultBox.innerHTML = '<span class="text-muted"><i class="fas fa-spinner fa-spin me-1"></i> در حال ارسال پیامک آزمایشی...</span>';
+    resultBox.style.display = 'block';
+
+    const formData = new FormData();
+    formData.append('test_phone', phone);
+
+    fetch('{{ url_for("admin_sms_test") }}', {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            resultBox.innerHTML = '<div class="alert alert-success py-2 mb-0"><i class="fas fa-check-circle me-1"></i> ' + data.message + '</div>';
+        } else {
+            resultBox.innerHTML = '<div class="alert alert-danger py-2 mb-0"><i class="fas fa-triangle-exclamation me-1"></i> ' + (data.error || 'خطا در ارسال پیامک') + '</div>';
+        }
+    })
+    .catch(err => {
+        resultBox.innerHTML = '<div class="alert alert-danger py-2 mb-0"><i class="fas fa-triangle-exclamation me-1"></i> خطای ارتباط: ' + err + '</div>';
+    });
+}
 </script>
+
+<!-- کارت تنظیمات درگاه پیامک (SMS Gateway) -->
+<div class="card shadow-sm mt-4 border-0">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h5 class="mb-0 text-success fw-bold">
+            <i class="fas fa-comment-sms text-success me-2"></i> پیکربندی درگاه پیامک و اطلاع‌رسانی‌ها (SMS Gateway)
+        </h5>
+        {% if sms_config and sms_config.get('enabled') %}
+            <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-circle-check me-1"></i>پیامک فعال است</span>
+        {% else %}
+            <span class="badge bg-secondary-subtle text-muted border"><i class="fas fa-circle-pause me-1"></i>غیرفعال</span>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <p class="text-muted small">
+            با اتصال سامانه به درگاه پیامکی، هشدارهای امنیتی ورود، تلاش‌های ناموفق و خروج علاوه بر تلگرام به شماره همراه مدیران و همکاران نیز پیامک خواهد شد.
+        </p>
+
+        <form action="{{ url_for('settings') }}" method="POST">
+            <input type="hidden" name="action" value="save_sms_settings">
+
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" name="sms_enabled" id="smsEnabledSwitch" {% if sms_config and sms_config.get('enabled') %}checked{% endif %}>
+                <label class="form-check-label fw-bold" for="smsEnabledSwitch">فعال‌سازی ارسال پیامک‌های سیستمی و امنیتی</label>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">ارائه‌دهنده وب‌سرویس پیامک (Provider):</label>
+                    <select name="sms_provider" class="form-select">
+                        <option value="ippanel" {% if sms_config and sms_config.get('provider') == 'ippanel' %}selected{% endif %}>فراز اس‌ام‌اس / IPPanel / MaxSMS (پیش‌فرض)</option>
+                        <option value="kavenegar" {% if sms_config and sms_config.get('provider') == 'kavenegar' %}selected{% endif %}>کاوه‌نگار (Kavenegar)</option>
+                        <option value="melipayamak" {% if sms_config and sms_config.get('provider') == 'melipayamak' %}selected{% endif %}>ملی پیامک (MeliPayamak)</option>
+                        <option value="ghasedak" {% if sms_config and sms_config.get('provider') == 'ghasedak' %}selected{% endif %}>قاصدک (Ghasedak)</option>
+                        <option value="generic" {% if sms_config and sms_config.get('provider') == 'generic' %}selected{% endif %}>درگاه دلخواه / وب‌هوک (Generic Webhook)</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">شماره اختصاصی / خط ارسال‌کننده (Sender):</label>
+                    <input type="text" name="sms_originator" class="form-control font-monospace" placeholder="مثال: +983000505 یا 5000..." value="{{ sms_config.get('originator', '') if sms_config else '' }}">
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label fw-bold">کلید دسترسی وب‌سرویس / توکن API (API Key):</label>
+                    <input type="password" name="sms_api_key" class="form-control font-monospace" placeholder="کلید API خود را وارد کنید" value="{{ sms_config.get('api_key', '') if sms_config else '' }}">
+                </div>
+            </div>
+
+            <div class="card bg-light border-0 p-3 mb-3">
+                <h6 class="fw-bold text-dark mb-2"><i class="fas fa-bolt text-warning me-1"></i>کدهای پترن/الگوی خدماتی (جهت ارسال سریع و عبور از بلک‌لیست مخابرات):</h6>
+                <p class="text-muted small mb-3">در صورت تعریف الگو در پنل پیامکی خود، کدهای آن را وارد نمایید. در غیر این صورت فیلدها را خالی بگذارید تا ارسال به صورت متن مستقیم انجام شود.</p>
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <label class="form-label small">کد پترن ورود موفق:</label>
+                        <input type="text" name="sms_pattern_login" class="form-control form-control-sm font-monospace" placeholder="مثال: log-ok-90" value="{{ sms_config.get('pattern_login', '') if sms_config else '' }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small">کد پترن تلاش ناموفق:</label>
+                        <input type="text" name="sms_pattern_failed" class="form-control form-control-sm font-monospace" placeholder="مثال: log-fail-91" value="{{ sms_config.get('pattern_failed', '') if sms_config else '' }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small">کد پترن خروج از حساب:</label>
+                        <input type="text" name="sms_pattern_logout" class="form-control form-control-sm font-monospace" placeholder="مثال: log-out-92" value="{{ sms_config.get('pattern_logout', '') if sms_config else '' }}">
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <button type="submit" class="btn btn-success px-4">
+                    <i class="fas fa-save me-1"></i> ذخیره تنظیمات سامانه پیامک
+                </button>
+            </div>
+        </form>
+
+        <hr class="my-4">
+
+        <!-- ابزار تست ارسال پیامک -->
+        <div class="bg-white border rounded p-3">
+            <h6 class="fw-bold text-primary mb-2"><i class="fas fa-paper-plane me-1"></i> تست ارسال پیامک آزمایشی:</h6>
+            <div class="row g-2 align-items-center">
+                <div class="col-md-5">
+                    <input type="text" id="testSmsPhone" class="form-control font-monospace form-control-sm" placeholder="شماره همراه تست (مثال: 09123456789)">
+                </div>
+                <div class="col-md-3">
+                    <button type="button" class="btn btn-sm btn-outline-success w-100" onclick="sendTestSms()">
+                        <i class="fas fa-envelope-circle-check me-1"></i> ارسال پیامک تست
+                    </button>
+                </div>
+                <div class="col-md-12 mt-2">
+                    <div id="testSmsResult" style="display: none;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <div class="card shadow-sm mt-4">
     <div class="card-header bg-white py-3">

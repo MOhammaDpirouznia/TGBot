@@ -62,9 +62,13 @@
                             <label class="form-label fw-bold">نام کاربری ورود (Username):</label>
                             <input type="text" name="username" class="form-control font-monospace" value="{{ admin['username'] }}" required pattern="^[a-zA-Z0-9_.-]+$">
                         </div>
-                        <div class="col-md-12">
-                            <label class="form-label fw-bold">آیدی عددی تلگرام (جهت بارگذاری خودکار تصویر پروفایل تلگرام):</label>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">آیدی عددی تلگرام (جهت هشدارها و تصویر):</label>
                             <input type="number" name="telegram_id" class="form-control font-monospace" placeholder="مثال: 12345678" value="{{ admin['telegram_id'] or '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">شماره همراه (جهت هشدارهای پیامکی ورود):</label>
+                            <input type="text" name="phone" class="form-control font-monospace" placeholder="مثال: 09123456789" value="{{ admin['phone'] or '' }}">
                         </div>
                     </div>
                     
