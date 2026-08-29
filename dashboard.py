@@ -35,6 +35,7 @@ from utils import generate_qr_code_bytes, get_now_iso, get_now_naive, get_single
 from admin_manager import get_all_plans, add_plan, update_plan, delete_plan, move_plan_up, move_plan_down
 from sms_service import send_auth_sms_notification, send_sms, get_sms_config, format_iranian_phone
 from payment import CryptoPaymentGateway
+import avatar_generator
 
 logger = logging.getLogger(__name__)
 
@@ -90,42 +91,17 @@ AVATAR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def generate_fallback_avatar_svg(identifier: str) -> str:
-    """تولید آواتار وکتور گرادیان مدرن محلی در صورت عدم دسترسی به اینترنت"""
-    name_clean = str(identifier).lstrip("@").strip()
-    # اگر شماره تلفن بود، از آخرین رقم‌ها یا شناسه برای گرادیان استفاده شود
-    initial = name_clean[0].upper() if name_clean else "U"
-    colors = [
-        ("#4f46e5", "#7c3aed"),
-        ("#0284c7", "#0ea5e9"),
-        ("#059669", "#10b981"),
-        ("#d97706", "#f59e0b"),
-        ("#e11d48", "#f43f5e"),
-        ("#7c2d12", "#c2410c"),
-        ("#0891b2", "#06b6d4"),
-        ("#9333ea", "#c084fc"),
-    ]
-    idx = sum(ord(c) for c in name_clean) % len(colors)
-    c1, c2 = colors[idx]
-
-    return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
-        <defs>
-            <linearGradient id="grad_{idx}" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stop-color="{c1}" />
-                <stop offset="100%" stop-color="{c2}" />
-            </linearGradient>
-        </defs>
-        <circle cx="50" cy="50" r="50" fill="url(#grad_{idx})" />
-        <text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle" fill="#ffffff" font-size="42" font-family="Segoe UI, Vazirmatn, Tahoma, sans-serif" font-weight="bold">{initial}</text>
-    </svg>"""
+    """تولید آواتار سه‌بعدی و مدرن محلی و ۱۰۰٪ آفلاین"""
+    return avatar_generator.generate_procedural_avatar_svg(str(identifier))
 
 
 def fetch_smart_avatar_bytes(identifier: str) -> tuple[bytes, str]:
     """
     دریافت هوشمند تصویر پروفایل:
-    ۱. بررسی آیا شماره تلفن به کاربری در تلگرام متصل است؟ (استخراج خودکار telegram_id)
-    ۲. تلاش برای دریافت عکس واقعی پروفایل تلگرام از Bot API یا t.me
-    ۳. در صورت عدم وجود، تولید آواتار سه‌بعدی و کارتونی یونیک بر اساس شماره/شناسه با DiceBear
-    ۴. کش محلی خودکار جهت افزایش سرعت لود و کارکرد بدون وقفه
+    ۱. بررسی تصویر اختصاصی آپلود شده یا تنظیم شده در پایگاه داده
+    ۲. تلاش برای دریافت عکس واقعی پروفایل تلگرام
+    ۳. تولید آواتار سه‌بعدی و مدرن محلی و بدون نیاز به اینترنت (Procedural SVG)
+    ۴. کش محلی خودکار جهت افزایش سرعت لود و عملکرد بلادرنگ
     """
     if not identifier:
         identifier = "Customer"
@@ -133,29 +109,49 @@ def fetch_smart_avatar_bytes(identifier: str) -> tuple[bytes, str]:
     raw_ident = str(identifier).strip()
     clean_ident = raw_ident.lstrip("@").strip()
 
-    # ۰. بررسی اولویت اول: تصویر اختصاصی آپلود شده توسط مدیر یا نماینده
+    # ۰. بررسی اولویت اول: تصویر اختصاصی آپلود شده یا تنظیم شده
     custom_candidates = [
+        AVATAR_CACHE_DIR / f"custom_{clean_ident}.svg",
         AVATAR_CACHE_DIR / f"custom_{clean_ident}.jpg",
         AVATAR_CACHE_DIR / f"custom_{clean_ident}.png",
         AVATAR_CACHE_DIR / f"custom_{clean_ident}.webp",
+        AVATAR_CACHE_DIR / f"custom_admin_{clean_ident}.svg",
         AVATAR_CACHE_DIR / f"custom_admin_{clean_ident}.jpg",
+        AVATAR_CACHE_DIR / f"custom_reseller_{clean_ident}.svg",
         AVATAR_CACHE_DIR / f"custom_reseller_{clean_ident}.jpg",
     ]
     for c_file in custom_candidates:
         if c_file.exists() and c_file.stat().st_size > 0:
             ext = c_file.suffix.lower()
-            mime = "image/png" if ext == ".png" else ("image/webp" if ext == ".webp" else "image/jpeg")
+            mime = "image/svg+xml" if ext == ".svg" else ("image/png" if ext == ".png" else ("image/webp" if ext == ".webp" else "image/jpeg"))
             return c_file.read_bytes(), mime
 
     try:
+        # جستجو در جدول اشتراک‌ها
+        sub_custom = db.find_subscription_avatar(clean_ident)
+        if sub_custom:
+            c_f = AVATAR_CACHE_DIR / sub_custom
+            if c_f.exists() and c_f.stat().st_size > 0:
+                ext = c_f.suffix.lower()
+                mime = "image/svg+xml" if ext == ".svg" else ("image/png" if ext == ".png" else "image/jpeg")
+                return c_f.read_bytes(), mime
+    except Exception:
+        pass
+
+    try:
+        # جستجو در مشخصات مدیر یا نماینده
         contact_info = db.find_user_contact_info(clean_ident)
         if contact_info:
             u_type = contact_info.get("user_type")
             u_id = contact_info.get("user_id")
-            for c_f in [AVATAR_CACHE_DIR / f"custom_{u_type}_{u_id}.jpg", AVATAR_CACHE_DIR / f"custom_{u_type}_{u_id}.png"]:
+            for c_f in [
+                AVATAR_CACHE_DIR / f"custom_{u_type}_{u_id}.svg",
+                AVATAR_CACHE_DIR / f"custom_{u_type}_{u_id}.jpg",
+                AVATAR_CACHE_DIR / f"custom_{u_type}_{u_id}.png"
+            ]:
                 if c_f.exists() and c_f.stat().st_size > 0:
                     ext = c_f.suffix.lower()
-                    mime = "image/png" if ext == ".png" else "image/jpeg"
+                    mime = "image/svg+xml" if ext == ".svg" else ("image/png" if ext == ".png" else "image/jpeg")
                     return c_f.read_bytes(), mime
     except Exception:
         pass
@@ -176,14 +172,14 @@ def fetch_smart_avatar_bytes(identifier: str) -> tuple[bytes, str]:
 
     if target_tg_id and target_tg_id > 0:
         cache_file_tg = AVATAR_CACHE_DIR / f"tg_{target_tg_id}.jpg"
-        if cache_file_tg.exists() and (time.time() - cache_file_tg.stat().st_mtime < 86400 * 3):
+        if cache_file_tg.exists() and (time.time() - cache_file_tg.stat().st_mtime < 86400 * 7):
             return cache_file_tg.read_bytes(), "image/jpeg"
 
         bot_token = get_bot_token()
         if bot_token:
             try:
                 url = f"https://api.telegram.org/bot{bot_token}/getUserProfilePhotos?user_id={target_tg_id}&limit=1"
-                with httpx.Client(timeout=3.0) as client:
+                with httpx.Client(timeout=2.0) as client:
                     resp = client.get(url)
                     if resp.status_code == 200:
                         data = resp.json()
@@ -200,15 +196,15 @@ def fetch_smart_avatar_bytes(identifier: str) -> tuple[bytes, str]:
                                         cache_file_tg.write_bytes(img_resp.content)
                                         return img_resp.content, "image/jpeg"
             except Exception as e:
-                logger.debug(f"Error fetching telegram photo for {target_tg_id}: {e}")
+                logger.debug(f"Telegram photo fetch error for {target_tg_id}: {e}")
 
-    # ۳. بررسی یوزرنیم تلگرام (اگر با @ شروع شده یا کاراکترهای حروفی داشت)
+    # ۳. بررسی یوزرنیم تلگرام
     if raw_ident.startswith("@") or (not clean_ident.isdigit() and len(clean_ident) > 3 and not is_phone):
         cache_file_u = AVATAR_CACHE_DIR / f"user_{clean_ident}.jpg"
-        if cache_file_u.exists() and (time.time() - cache_file_u.stat().st_mtime < 86400 * 3):
+        if cache_file_u.exists() and (time.time() - cache_file_u.stat().st_mtime < 86400 * 7):
             return cache_file_u.read_bytes(), "image/jpeg"
         try:
-            with httpx.Client(timeout=2.5, follow_redirects=True) as client:
+            with httpx.Client(timeout=1.8, follow_redirects=True) as client:
                 resp = client.get(f"https://t.me/i/userpic/320/{clean_ident}.jpg")
                 if resp.status_code == 200 and len(resp.content) > 500:
                     cache_file_u.write_bytes(resp.content)
@@ -216,31 +212,21 @@ def fetch_smart_avatar_bytes(identifier: str) -> tuple[bytes, str]:
         except Exception:
             pass
 
-    # ۴. تولید آواتار سه‌بعدی و یونیک با DiceBear بر اساس شماره همراه یا شناسه کاربر
-    safe_seed = urllib.parse.quote(clean_ident)
+    # ۴. تولید آواتار سه‌بعدی و مدرن به صورت محلی و کاملاً آفلاین
     hash_key = hashlib.md5(clean_ident.encode("utf-8")).hexdigest()[:12]
     cache_file_3d = AVATAR_CACHE_DIR / f"smart3d_{hash_key}.svg"
 
-    if cache_file_3d.exists() and (time.time() - cache_file_3d.stat().st_mtime < 86400 * 15):
+    if cache_file_3d.exists() and (time.time() - cache_file_3d.stat().st_mtime < 86400 * 30):
         return cache_file_3d.read_bytes(), "image/svg+xml"
 
-    # استایل مدرن ربات‌ها و کاراکترهای سه‌بعدی DiceBear با پالت‌های رنگی جذاب
-    dicebear_url = (
-        f"https://api.dicebear.com/9.x/bottts-neutral/svg?seed={safe_seed}"
-        f"&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf,c1f4c5,ffecb3,e1bee7"
-    )
+    svg_code = avatar_generator.generate_procedural_avatar_svg(clean_ident)
+    svg_bytes = svg_code.encode("utf-8")
     try:
-        with httpx.Client(timeout=3.0) as client:
-            resp = client.get(dicebear_url, headers={"User-Agent": "Mozilla/5.0 HiddiBot/1.0"})
-            if resp.status_code == 200 and len(resp.content) > 100:
-                cache_file_3d.write_bytes(resp.content)
-                return resp.content, "image/svg+xml"
-    except Exception as e:
-        logger.debug(f"DiceBear avatar fetch fallback: {e}")
+        cache_file_3d.write_bytes(svg_bytes)
+    except Exception:
+        pass
 
-    # ۵. در صورت آفلاین بودن سرور یا عدم پاسخ‌دهی، استفاده از وکتور گرادیان آفلاین
-    svg_code = generate_fallback_avatar_svg(clean_ident)
-    return svg_code.encode("utf-8"), "image/svg+xml"
+    return svg_bytes, "image/svg+xml"
 
 
 @app.route("/avatar/", defaults={"identifier": "User"})
@@ -252,6 +238,16 @@ def telegram_avatar(identifier="User"):
     img_bytes, mime_type = fetch_smart_avatar_bytes(str(identifier))
     resp = Response(img_bytes, mimetype=mime_type)
     resp.headers["Cache-Control"] = "public, max-age=259200"
+    return resp
+
+
+@app.route("/avatar/preset/<preset_id>")
+def preset_avatar_img(preset_id: str):
+    """نمایش آواتار پریست با موتور محلی و آفلاین بدون نیاز به سایت‌های خارجی"""
+    seed = request.args.get("seed", preset_id)
+    svg_code = avatar_generator.generate_procedural_avatar_svg(seed, preset_id=preset_id)
+    resp = Response(svg_code.encode("utf-8"), mimetype="image/svg+xml")
+    resp.headers["Cache-Control"] = "public, max-age=604800"
     return resp
 
 
@@ -2738,7 +2734,7 @@ def reseller_users():
 @app.route("/reseller/subscription/<int:sub_id>/edit", methods=["POST"])
 @reseller_required
 def reseller_edit_user(sub_id: int):
-    """ویرایش مشخصات مشتری نماینده"""
+    """ویرایش مشخصات و آواتار مشتری نماینده"""
     reseller_id = session.get("reseller_id")
     sub = db.get_reseller_subscription(reseller_id, sub_id)
     if not sub:
@@ -2748,11 +2744,40 @@ def reseller_edit_user(sub_id: int):
     account_name = request.form.get("account_name", "").strip() or sub["account_name"]
     phone_number = request.form.get("phone_number", "").strip()
     comment = request.form.get("comment", "").strip()
+    avatar_preset = request.form.get("avatar_preset", "").strip()
 
     # ۱. بروزرسانی در دیتابیس محلی
     db.update_reseller_subscription(reseller_id, sub_id, account_name, phone_number, comment)
 
-    # ۲. بروزرسانی در هیدیفای
+    # ۲. بروزرسانی یا اعمال آواتار اختصاصی مشتری
+    if avatar_preset:
+        try:
+            svg_code = avatar_generator.generate_procedural_avatar_svg(account_name, preset_id=avatar_preset)
+            AVATAR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            custom_fn = f"custom_{account_name}.svg"
+            (AVATAR_CACHE_DIR / custom_fn).write_bytes(svg_code.encode("utf-8"))
+            if phone_number:
+                (AVATAR_CACHE_DIR / f"custom_{phone_number}.svg").write_bytes(svg_code.encode("utf-8"))
+            db.update_subscription_avatar(sub_id, custom_fn)
+        except Exception as e:
+            logger.error(f"Error setting customer preset avatar: {e}")
+
+    # در صورت آپلود فایل تصویر برای مشتری
+    if "avatar_file" in request.files:
+        file = request.files["avatar_file"]
+        if file and file.filename:
+            ext = Path(file.filename).suffix.lower()
+            if ext in ALLOWED_AVATAR_EXTENSIONS or ext == ".svg":
+                file_bytes = file.read()
+                if len(file_bytes) <= 5 * 1024 * 1024:
+                    custom_fn = f"custom_{account_name}{ext}"
+                    AVATAR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                    (AVATAR_CACHE_DIR / custom_fn).write_bytes(file_bytes)
+                    if phone_number:
+                        (AVATAR_CACHE_DIR / f"custom_{phone_number}{ext}").write_bytes(file_bytes)
+                    db.update_subscription_avatar(sub_id, custom_fn)
+
+    # ۳. بروزرسانی در هیدیفای
     if sub.get("hidify_uuid"):
         full_comment = f"Reseller #{reseller_id} ({session.get('name')})"
         if phone_number:
@@ -2761,7 +2786,7 @@ def reseller_edit_user(sub_id: int):
             full_comment += f" | {comment}"
         hidify_sync_update_user(sub["hidify_uuid"], name=account_name, comment=full_comment[:200])
 
-    flash(f"مشخصات اشتراک «{account_name}» با موفقیت بروزرسانی شد.", "success")
+    flash(f"مشخصات و آواتار اشتراک «{account_name}» با موفقیت بروزرسانی شد.", "success")
     return redirect(url_for("reseller_users"))
 
 
@@ -3353,8 +3378,8 @@ def admin_avatar_upload():
         return redirect(url_for("admin_profile"))
 
     ext = Path(file.filename).suffix.lower()
-    if ext not in ALLOWED_AVATAR_EXTENSIONS:
-        flash("فرمت فایل نامعتبر است! فقط فرمت‌های JPG, PNG, WEBP مجاز هستند.", "danger")
+    if ext not in ALLOWED_AVATAR_EXTENSIONS and ext != ".svg":
+        flash("فرمت فایل نامعتبر است! فقط فرمت‌های JPG, PNG, WEBP, SVG مجاز هستند.", "danger")
         return redirect(url_for("admin_profile"))
 
     file_bytes = file.read()
@@ -3363,11 +3388,11 @@ def admin_avatar_upload():
         return redirect(url_for("admin_profile"))
 
     AVATAR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    custom_name = f"custom_admin_{admin_id}.jpg"
+    custom_name = f"custom_admin_{admin_id}{ext}"
     (AVATAR_CACHE_DIR / custom_name).write_bytes(file_bytes)
-    (AVATAR_CACHE_DIR / f"custom_{username}.jpg").write_bytes(file_bytes)
+    (AVATAR_CACHE_DIR / f"custom_{username}{ext}").write_bytes(file_bytes)
     if admin_user and admin_user.get("telegram_id"):
-        (AVATAR_CACHE_DIR / f"custom_{admin_user['telegram_id']}.jpg").write_bytes(file_bytes)
+        (AVATAR_CACHE_DIR / f"custom_{admin_user['telegram_id']}{ext}").write_bytes(file_bytes)
 
     if admin_user:
         db.update_admin_user(admin_id, custom_avatar=custom_name)
@@ -3379,7 +3404,7 @@ def admin_avatar_upload():
 @app.route("/admin/avatar/preset", methods=["POST"])
 @admin_required
 def admin_avatar_preset():
-    """انتخاب آواتار از میان کاراکترهای سه‌بعدی جذاب برای مدیر"""
+    """انتخاب آواتار از میان کاراکترهای سه‌بعدی جذاب برای مدیر با موتور محلی"""
     admin_id = session.get("admin_id")
     admin_user = db.get_admin_user(admin_id) if admin_id else None
     username = session.get("username", "admin")
@@ -3387,28 +3412,27 @@ def admin_avatar_preset():
         username = admin_user.get("username", username)
         admin_id = admin_user.get("id", admin_id)
 
-    seed = request.form.get("seed", f"Admin_{admin_id}_{int(time.time())}")
-    style = request.form.get("style", "bottts-neutral")
-    dicebear_url = f"https://api.dicebear.com/9.x/{style}/svg?seed={urllib.parse.quote(seed)}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf,c1f4c5,ffecb3,e1bee7"
+    seed = request.form.get("seed", f"{username}_{admin_id}")
+    style = request.form.get("style", "cyber_bot")
 
     try:
-        with httpx.Client(timeout=4.0) as client:
-            resp = client.get(dicebear_url)
-            if resp.status_code == 200 and len(resp.content) > 100:
-                AVATAR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-                (AVATAR_CACHE_DIR / f"custom_admin_{admin_id}.jpg").write_bytes(resp.content)
-                (AVATAR_CACHE_DIR / f"custom_{username}.jpg").write_bytes(resp.content)
-                if admin_user and admin_user.get("telegram_id"):
-                    (AVATAR_CACHE_DIR / f"custom_{admin_user['telegram_id']}.jpg").write_bytes(resp.content)
-                if admin_user:
-                    db.update_admin_user(admin_id, custom_avatar=f"custom_admin_{admin_id}.jpg")
-                flash("آواتار سه‌بعدی جدید با موفقیت اعمال شد.", "success")
-                return redirect(url_for("admin_profile"))
+        svg_code = avatar_generator.generate_procedural_avatar_svg(seed, preset_id=style)
+        AVATAR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        svg_bytes = svg_code.encode("utf-8")
+        custom_name = f"custom_admin_{admin_id}.svg"
+        (AVATAR_CACHE_DIR / custom_name).write_bytes(svg_bytes)
+        (AVATAR_CACHE_DIR / f"custom_{username}.svg").write_bytes(svg_bytes)
+        if admin_user and admin_user.get("telegram_id"):
+            (AVATAR_CACHE_DIR / f"custom_{admin_user['telegram_id']}.svg").write_bytes(svg_bytes)
+
+        if admin_user:
+            db.update_admin_user(admin_id, custom_avatar=custom_name)
+        flash("آواتار سه‌بعدی جدید با موفقیت اعمال شد.", "success")
+        return redirect(url_for("admin_profile"))
     except Exception as e:
         logger.error(f"Error setting preset avatar: {e}")
-
-    flash("خطا در اعمال آواتار، لطفاً مجدداً امتحان کنید.", "danger")
-    return redirect(url_for("admin_profile"))
+        flash(f"خطا در اعمال آواتار: {e}", "danger")
+        return redirect(url_for("admin_profile"))
 
 
 @app.route("/admin/avatar/delete", methods=["POST"])
@@ -3423,7 +3447,11 @@ def admin_avatar_delete():
         admin_id = admin_user.get("id", admin_id)
 
     tg_id = admin_user.get("telegram_id") if admin_user else None
-    for fn in [f"custom_admin_{admin_id}.jpg", f"custom_admin_{admin_id}.png", f"custom_{username}.jpg", f"custom_{username}.png", f"custom_{tg_id}.jpg" if tg_id else None]:
+    for fn in [
+        f"custom_admin_{admin_id}.svg", f"custom_admin_{admin_id}.jpg", f"custom_admin_{admin_id}.png",
+        f"custom_{username}.svg", f"custom_{username}.jpg", f"custom_{username}.png",
+        f"custom_{tg_id}.svg" if tg_id else None, f"custom_{tg_id}.jpg" if tg_id else None
+    ]:
         if fn:
             p = AVATAR_CACHE_DIR / fn
             if p.exists():
@@ -3461,8 +3489,8 @@ def reseller_avatar_upload():
         return redirect(url_for("reseller_profile"))
 
     ext = Path(file.filename).suffix.lower()
-    if ext not in ALLOWED_AVATAR_EXTENSIONS:
-        flash("فرمت فایل نامعتبر است! فقط JPG, PNG, WEBP مجاز هستند.", "danger")
+    if ext not in ALLOWED_AVATAR_EXTENSIONS and ext != ".svg":
+        flash("فرمت فایل نامعتبر است! فقط JPG, PNG, WEBP, SVG مجاز هستند.", "danger")
         return redirect(url_for("reseller_profile"))
 
     file_bytes = file.read()
@@ -3471,11 +3499,11 @@ def reseller_avatar_upload():
         return redirect(url_for("reseller_profile"))
 
     AVATAR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    custom_name = f"custom_reseller_{reseller_id}.jpg"
+    custom_name = f"custom_reseller_{reseller_id}{ext}"
     (AVATAR_CACHE_DIR / custom_name).write_bytes(file_bytes)
-    (AVATAR_CACHE_DIR / f"custom_{username}.jpg").write_bytes(file_bytes)
+    (AVATAR_CACHE_DIR / f"custom_{username}{ext}").write_bytes(file_bytes)
     if reseller and reseller.get("telegram_id"):
-        (AVATAR_CACHE_DIR / f"custom_{reseller['telegram_id']}.jpg").write_bytes(file_bytes)
+        (AVATAR_CACHE_DIR / f"custom_{reseller['telegram_id']}{ext}").write_bytes(file_bytes)
 
     db.update_reseller_profile(reseller_id, custom_avatar=custom_name)
 
@@ -3486,7 +3514,7 @@ def reseller_avatar_upload():
 @app.route("/reseller/avatar/preset", methods=["POST"])
 @reseller_required
 def reseller_avatar_preset():
-    """انتخاب آواتار از میان کاراکترهای سه‌بعدی برای نماینده"""
+    """انتخاب آواتار از میان کاراکترهای سه‌بعدی برای نماینده با موتور محلی"""
     reseller_id = session.get("reseller_id")
     reseller = db.get_reseller(reseller_id)
     if not reseller:
@@ -3494,27 +3522,26 @@ def reseller_avatar_preset():
         return redirect(url_for("reseller_dashboard"))
 
     username = reseller.get("username", f"reseller_{reseller_id}")
-    seed = request.form.get("seed", f"Reseller_{reseller_id}_{int(time.time())}")
-    style = request.form.get("style", "bottts-neutral")
-    dicebear_url = f"https://api.dicebear.com/9.x/{style}/svg?seed={urllib.parse.quote(seed)}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf,c1f4c5,ffecb3,e1bee7"
+    seed = request.form.get("seed", f"{username}_{reseller_id}")
+    style = request.form.get("style", "cyber_bot")
 
     try:
-        with httpx.Client(timeout=4.0) as client:
-            resp = client.get(dicebear_url)
-            if resp.status_code == 200 and len(resp.content) > 100:
-                AVATAR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-                (AVATAR_CACHE_DIR / f"custom_reseller_{reseller_id}.jpg").write_bytes(resp.content)
-                (AVATAR_CACHE_DIR / f"custom_{username}.jpg").write_bytes(resp.content)
-                if reseller and reseller.get("telegram_id"):
-                    (AVATAR_CACHE_DIR / f"custom_{reseller['telegram_id']}.jpg").write_bytes(resp.content)
-                db.update_reseller_profile(reseller_id, custom_avatar=f"custom_reseller_{reseller_id}.jpg")
-                flash("آواتار سه‌بعدی با موفقیت اعمال شد.", "success")
-                return redirect(url_for("reseller_profile"))
+        svg_code = avatar_generator.generate_procedural_avatar_svg(seed, preset_id=style)
+        AVATAR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        svg_bytes = svg_code.encode("utf-8")
+        custom_name = f"custom_reseller_{reseller_id}.svg"
+        (AVATAR_CACHE_DIR / custom_name).write_bytes(svg_bytes)
+        (AVATAR_CACHE_DIR / f"custom_{username}.svg").write_bytes(svg_bytes)
+        if reseller and reseller.get("telegram_id"):
+            (AVATAR_CACHE_DIR / f"custom_{reseller['telegram_id']}.svg").write_bytes(svg_bytes)
+
+        db.update_reseller_profile(reseller_id, custom_avatar=custom_name)
+        flash("آواتار سه‌بعدی با موفقیت اعمال شد.", "success")
+        return redirect(url_for("reseller_profile"))
     except Exception as e:
         logger.error(f"Error setting preset avatar for reseller: {e}")
-
-    flash("خطا در اعمال آواتار.", "danger")
-    return redirect(url_for("reseller_profile"))
+        flash(f"خطا در اعمال آواتار: {e}", "danger")
+        return redirect(url_for("reseller_profile"))
 
 
 @app.route("/reseller/avatar/delete", methods=["POST"])
@@ -3526,7 +3553,11 @@ def reseller_avatar_delete():
     username = reseller.get("username", "") if reseller else ""
 
     tg_id = reseller.get("telegram_id") if reseller else None
-    for fn in [f"custom_reseller_{reseller_id}.jpg", f"custom_reseller_{reseller_id}.png", f"custom_{username}.jpg", f"custom_{username}.png", f"custom_{tg_id}.jpg" if tg_id else None]:
+    for fn in [
+        f"custom_reseller_{reseller_id}.svg", f"custom_reseller_{reseller_id}.jpg", f"custom_reseller_{reseller_id}.png",
+        f"custom_{username}.svg", f"custom_{username}.jpg", f"custom_{username}.png",
+        f"custom_{tg_id}.svg" if tg_id else None, f"custom_{tg_id}.jpg" if tg_id else None
+    ]:
         if fn:
             p = AVATAR_CACHE_DIR / fn
             if p.exists():

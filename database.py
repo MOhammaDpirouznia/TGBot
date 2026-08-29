@@ -532,6 +532,16 @@ class Database:
             pass
 
         try:
+            cursor.execute("ALTER TABLE subscriptions ADD COLUMN custom_avatar TEXT")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN custom_avatar TEXT")
+        except Exception:
+            pass
+
+        try:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS wallet_transactions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4068,6 +4078,40 @@ class Database:
             return {"success": False, "error": "این نام کاربری قبلاً ثبت شده است."}
         except Exception as e:
             return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def update_subscription_avatar(self, sub_id: int, custom_avatar: str) -> bool:
+        """بروزرسانی آواتار اختصاصی اشتراک مشتری"""
+        conn = self.get_connection()
+        try:
+            conn.execute("UPDATE subscriptions SET custom_avatar=?, updated_at=? WHERE id=?", (custom_avatar, get_now_iso(), sub_id))
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error in update_subscription_avatar: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def find_subscription_avatar(self, identifier: str) -> Optional[str]:
+        """یافتن آواتار اختصاصی بر اساس شناسه اشتراک، نام اکانت یا شماره تلفن"""
+        if not identifier:
+            return None
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT custom_avatar FROM subscriptions 
+                WHERE (account_name=? OR phone_number=? OR hidify_uuid=?) AND custom_avatar IS NOT NULL AND custom_avatar != ''
+                ORDER BY id DESC LIMIT 1
+            """, (str(identifier), str(identifier), str(identifier)))
+            row = cursor.fetchone()
+            if row and row["custom_avatar"]:
+                return row["custom_avatar"]
+            return None
+        except Exception:
+            return None
         finally:
             conn.close()
 
