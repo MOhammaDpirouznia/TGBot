@@ -217,9 +217,16 @@ class ResellerBotInstance:
             vol = plan.get("traffic", plan.get("volume_gb", 0))
             days = plan.get("duration_days", plan.get("days", 30))
 
-            card_num = self.reseller_data.get("card_number") or ""
-            card_holder = self.reseller_data.get("card_holder") or ""
-            bank_name = self.reseller_data.get("bank_name") or ""
+            # دریافت کارت بانکی فعال نماینده
+            active_card = db.get_active_reseller_card(r_id)
+            if active_card:
+                card_num = active_card.get("card_number") or ""
+                card_holder = active_card.get("card_holder") or ""
+                bank_name = active_card.get("bank_name") or ""
+            else:
+                card_num = self.reseller_data.get("card_number") or ""
+                card_holder = self.reseller_data.get("card_holder") or ""
+                bank_name = self.reseller_data.get("bank_name") or ""
 
             context.user_data["buying_plan_id"] = plan_id
             context.user_data["buying_price"] = price
@@ -461,14 +468,17 @@ class ResellerBotInstance:
             """ارسال پیام پشتیبانی یا آیدی پشتیبان"""
             sup_user = self.reseller_data.get("support_username") or ""
             brand = self.reseller_data.get("brand_name") or "پشتیبانی"
+            buttons = []
             if sup_user:
                 sup_clean = sup_user.replace("@", "")
-                kb = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("💬 ارتباط مستقیم در تلگرام", url=f"https://t.me/{sup_clean}")]
-                ])
-                await update.message.reply_text(f"🎧 جهت ارتباط با واحد پشتیبانی **{brand}** روی دکمه زیر کلیک کنید:", reply_markup=kb)
-            else:
-                await update.message.reply_text("🎧 جهت ثبت پیام پشتیبانی، پیام خود را در همین بخش ارسال نمایید تا به همکاران ما ارجاع داده شود.")
+                buttons.append([InlineKeyboardButton("💬 ارتباط مستقیم در تلگرام", url=f"https://t.me/{sup_clean}")])
+
+            msg = f"🎧 **واحد پشتیبانی {brand}**\n\n"
+            msg += "جهت ارسال پیام برای تیم پشتیبانی، پیام خود را با فرمت زیر ارسال کنید:\n"
+            msg += "`تیکت: متن پیام شما`\n\n"
+            msg += "کارشناسان ما در اسرع وقت پاسخ شما را در همین ربات ارسال خواهند کرد."
+            kb = InlineKeyboardMarkup(buttons) if buttons else None
+            await update.message.reply_text(msg, reply_markup=kb, parse_mode="Markdown")
 
         async def guide_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """راهنمای اتصال"""
@@ -498,6 +508,20 @@ class ResellerBotInstance:
                 await support_handler(update, context)
             elif "راهنما" in text:
                 await guide_handler(update, context)
+            elif text.startswith("تیکت:") or text.startswith("تیکت ") or text.startswith("/ticket"):
+                user = update.effective_user
+                content = text.replace("تیکت:", "").replace("تیکت", "").replace("/ticket", "").strip()
+                if content:
+                    db.create_ticket(
+                        user_id=user.id,
+                        username=user.username or user.first_name,
+                        subject="پیام مشتری از ربات",
+                        message=content,
+                        reseller_id=r_id
+                    )
+                    await update.message.reply_text("✅ **پیام و تیکت پشتیبانی شما با موفقیت ثبت شد.**\nپاسخ کارشناسان در همین ربات برای شما ارسال خواهد شد.", parse_mode="Markdown")
+                else:
+                    await update.message.reply_text("⚠️ لطفاً متن پیام خود را بعد از عبارت `تیکت:` بنویسید.")
             else:
                 # پاسخ عمومی
                 await update.message.reply_text("لطفاً از دکمه‌های منو استفاده فرمایید.")

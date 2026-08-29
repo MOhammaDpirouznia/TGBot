@@ -553,12 +553,69 @@ class Database:
             except Exception:
                 pass
 
-        # اتصال موجودیت‌ها به نماینده جهت ایزولاسیون داده‌ها
-        for tbl in ["users", "transactions", "support_tickets"]:
+        # ستون‌های برندینگ و دامنه اختصاصی نماینده
+        for col_def in [
+            "custom_domain TEXT", "logo_url TEXT", "favicon_url TEXT",
+            "brand_title TEXT", "primary_color TEXT", "footer_text TEXT"
+        ]:
             try:
-                cursor.execute(f"ALTER TABLE {tbl} ADD COLUMN reseller_id INTEGER")
+                cursor.execute(f"ALTER TABLE resellers ADD COLUMN {col_def}")
             except Exception:
                 pass
+
+        try:
+            cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_resellers_custom_domain ON resellers(custom_domain)")
+        except Exception:
+            pass
+
+        # ستون‌های انتساب مدیر به نماینده جهت ساخت زیرمدیران (Sub-Admins)
+        try:
+            cursor.execute("ALTER TABLE admin_users ADD COLUMN reseller_id INTEGER")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE admin_users ADD COLUMN parent_admin_id INTEGER")
+        except Exception:
+            pass
+
+        # جدول کارت‌های بانکی اختصاصی نماینده
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS reseller_cards (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    reseller_id INTEGER NOT NULL,
+                    card_number TEXT NOT NULL,
+                    card_holder TEXT NOT NULL,
+                    bank_name TEXT NOT NULL,
+                    daily_limit INTEGER DEFAULT 50000000,
+                    is_active BOOLEAN DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (reseller_id) REFERENCES resellers(id)
+                )
+            """)
+        except Exception:
+            pass
+
+        # جدول کدهای تخفیف اختصاصی نماینده
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS reseller_discount_codes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    reseller_id INTEGER NOT NULL,
+                    code TEXT NOT NULL,
+                    discount_percent INTEGER DEFAULT 0,
+                    discount_amount INTEGER DEFAULT 0,
+                    max_uses INTEGER DEFAULT 0,
+                    used_count INTEGER DEFAULT 0,
+                    valid_until TEXT,
+                    is_active BOOLEAN DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (reseller_id) REFERENCES resellers(id)
+                )
+            """)
+        except Exception:
+            pass
 
         try:
             cursor.execute("""
@@ -3609,6 +3666,363 @@ class Database:
                 "discount_percent": 0,
                 "current_balance": 0,
             }
+        finally:
+            conn.close()
+
+    # ─── مدیریت دامنه و برندینگ نماینده (Custom Domain & Branding) ───
+
+    def get_reseller_by_domain(self, domain: str):
+        """یافتن نماینده بر اساس دامنه اختصاصی"""
+        if not domain:
+            return None
+        clean_domain = domain.split(":")[0].strip().lower()
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM resellers WHERE LOWER(custom_domain) = ? AND status = 'active'", (clean_domain,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error fetching reseller by domain: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def update_reseller_branding(self, reseller_id: int, **kwargs) -> dict:
+        """بروزرسانی مشخصات هویت بصری، لوگو، دامنه و عنوان فروشگاه نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        kwargs["updated_at"] = now
+        try:
+            allowed = ["custom_domain", "logo_url", "favicon_url", "brand_title", "primary_color", "footer_text", "updated_at"]
+            fields = []
+            params = []
+            for k, v in kwargs.items():
+                if k in allowed:
+                    fields.append(f"{k} = ?")
+                    params.append(v.strip() if isinstance(v, str) else v)
+            if not fields:
+                return {"success": True}
+            params.append(reseller_id)
+            cursor.execute(f"UPDATE resellers SET {', '.join(fields)} WHERE id = ?", params)
+            conn.commit()
+            return {"success": True}
+        except sqlite3.IntegrityError:
+            return {"success": False, "error": "این دامنه قبلاً توسط نماینده دیگری ثبت شده است."}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    # ─── مدیریت کارت‌های بانکی اختصاصی نماینده (Reseller Cards) ───
+
+    def get_reseller_cards(self, reseller_id: int) -> list:
+        """لیست تمام کارت‌های بانکی ثبت‌شده توسط نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM reseller_cards WHERE reseller_id = ? ORDER BY id DESC", (reseller_id,))
+            return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error getting reseller cards: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_active_reseller_card(self, reseller_id: int):
+        """دریافت کارت بانکی فعال نماینده جهت پرداخت"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM reseller_cards WHERE reseller_id = ? AND is_active = 1 ORDER BY id DESC LIMIT 1", (reseller_id,))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            # بازگشت به کارت ثبت‌شده در پروفایل اصلی
+            cursor.execute("SELECT card_number, card_holder, bank_name FROM resellers WHERE id = ?", (reseller_id,))
+            r_row = cursor.fetchone()
+            if r_row and r_row["card_number"]:
+                return {
+                    "card_number": r_row["card_number"],
+                    "card_holder": r_row.get("card_holder") or "",
+                    "bank_name": r_row.get("bank_name") or "بانک"
+                }
+            return None
+        except Exception as e:
+            logger.error(f"Error getting active reseller card: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def add_reseller_card(self, reseller_id: int, card_number: str, card_holder: str, bank_name: str, daily_limit: int = 50000000) -> dict:
+        """افزودن کارت بانکی جدید برای نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                INSERT INTO reseller_cards (reseller_id, card_number, card_holder, bank_name, daily_limit, is_active, created_at)
+                VALUES (?, ?, ?, ?, ?, 1, ?)
+            """, (reseller_id, card_number.strip(), card_holder.strip(), bank_name.strip(), daily_limit, now))
+            card_id = cursor.lastrowid
+            conn.commit()
+            return {"success": True, "card_id": card_id}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def delete_reseller_card(self, card_id: int, reseller_id: int) -> dict:
+        """حذف کارت بانکی نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM reseller_cards WHERE id = ? AND reseller_id = ?", (card_id, reseller_id))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def toggle_reseller_card(self, card_id: int, reseller_id: int) -> dict:
+        """فعال یا غیرفعال کردن کارت بانکی نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT is_active FROM reseller_cards WHERE id = ? AND reseller_id = ?", (card_id, reseller_id))
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "error": "کارت یافت نشد."}
+            new_st = 0 if row["is_active"] else 1
+            cursor.execute("UPDATE reseller_cards SET is_active = ? WHERE id = ? AND reseller_id = ?", (new_st, card_id, reseller_id))
+            conn.commit()
+            return {"success": True, "is_active": new_st}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    # ─── مدیریت کدهای تخفیف اختصاصی نماینده (Reseller Discount Codes) ───
+
+    def get_reseller_discount_codes(self, reseller_id: int) -> list:
+        """لیست کدهای تخفیف تعریف‌شده توسط نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM reseller_discount_codes WHERE reseller_id = ? ORDER BY id DESC", (reseller_id,))
+            return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error fetching reseller discount codes: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def create_reseller_discount_code(self, reseller_id: int, code: str, discount_percent: int = 0,
+                                      discount_amount: int = 0, max_uses: int = 0, valid_until: str = None) -> dict:
+        """ایجاد کد تخفیف جدید برای مشتریان نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            clean_code = code.strip().upper()
+            cursor.execute("SELECT id FROM reseller_discount_codes WHERE reseller_id = ? AND code = ?", (reseller_id, clean_code))
+            if cursor.fetchone():
+                return {"success": False, "error": "این کد تخفیف قبلاً برای شما ثبت شده است."}
+
+            cursor.execute("""
+                INSERT INTO reseller_discount_codes 
+                (reseller_id, code, discount_percent, discount_amount, max_uses, used_count, valid_until, is_active, created_at)
+                VALUES (?, ?, ?, ?, ?, 0, ?, 1, ?)
+            """, (reseller_id, clean_code, int(discount_percent or 0), int(discount_amount or 0), int(max_uses or 0), valid_until, now))
+            code_id = cursor.lastrowid
+            conn.commit()
+            return {"success": True, "code_id": code_id}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def validate_reseller_discount_code(self, reseller_id: int, code: str, order_amount: int = 0) -> dict:
+        """اعتبارسنجی و محاسبه تخفیف برای مشتری نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT * FROM reseller_discount_codes 
+                WHERE reseller_id = ? AND code = ? AND is_active = 1
+            """, (reseller_id, code.strip().upper()))
+            row = cursor.fetchone()
+            if not row:
+                return {"valid": False, "error": "کد تخفیف نامعتبر است."}
+
+            d = dict(row)
+            if d.get("max_uses", 0) > 0 and d.get("used_count", 0) >= d.get("max_uses"):
+                return {"valid": False, "error": "ظرفیت استفاده از این کد تخفیف به پایان رسیده است."}
+
+            if d.get("valid_until"):
+                try:
+                    exp = datetime.fromisoformat(d["valid_until"])
+                    if datetime.now() > exp:
+                        return {"valid": False, "error": "مهلت استفاده از این کد تخفیف منقضی شده است."}
+                except Exception:
+                    pass
+
+            pct = d.get("discount_percent", 0)
+            fix_amt = d.get("discount_amount", 0)
+            calculated_discount = 0
+            if pct > 0:
+                calculated_discount = int((order_amount * pct) / 100)
+            elif fix_amt > 0:
+                calculated_discount = min(order_amount, fix_amt)
+
+            return {
+                "valid": True,
+                "discount_code": d["code"],
+                "discount_amount": calculated_discount,
+                "final_amount": max(0, order_amount - calculated_discount)
+            }
+        except Exception as e:
+            return {"valid": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def delete_reseller_discount_code(self, code_id: int, reseller_id: int) -> dict:
+        """حذف کد تخفیف نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM reseller_discount_codes WHERE id = ? AND reseller_id = ?", (code_id, reseller_id))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def toggle_reseller_discount_code(self, code_id: int, reseller_id: int) -> dict:
+        """فعال یا غیرفعال کردن کد تخفیف نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT is_active FROM reseller_discount_codes WHERE id = ? AND reseller_id = ?", (code_id, reseller_id))
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "error": "کد تخفیف یافت نشد."}
+            new_st = 0 if row["is_active"] else 1
+            cursor.execute("UPDATE reseller_discount_codes SET is_active = ? WHERE id = ? AND reseller_id = ?", (new_st, code_id, reseller_id))
+            conn.commit()
+            return {"success": True, "is_active": new_st}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    # ─── مدیریت تیم و زیرمدیران نماینده (Reseller Team & Sub-Admins) ───
+
+    def get_reseller_team_members(self, reseller_id: int) -> list:
+        """لیست مدیران و کارمندان زیرمجموعه نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM admin_users WHERE reseller_id = ? ORDER BY id ASC", (reseller_id,))
+            return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error getting reseller team members: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def create_reseller_team_member(self, reseller_id: int, username: str, password: str,
+                                    display_name: str, role: str = "support", phone: str = None,
+                                    share_percent: int = 0) -> dict:
+        """ایجاد مدیر زیرمجموعه جدید برای نماینده با نقش‌های partner, finance, support"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        password_hash = self.hash_password(password)
+        try:
+            clean_username = username.strip().lower()
+            cursor.execute("SELECT id FROM admin_users WHERE username = ?", (clean_username,))
+            if cursor.fetchone():
+                return {"success": False, "error": "این نام کاربری قبلاً در سیستم ثبت شده است."}
+
+            permissions = "all"
+            if role == "support":
+                permissions = "tickets,users,subscriptions"
+            elif role == "finance":
+                permissions = "payments,transactions,reports"
+            elif role == "partner":
+                permissions = "all"
+
+            cursor.execute("""
+                INSERT INTO admin_users 
+                (username, password_hash, display_name, role, permissions, is_active, created_at, phone, share_percent, reseller_id)
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+            """, (clean_username, password_hash, display_name.strip(), role, permissions, now, phone.strip() if phone else None, int(share_percent or 0), reseller_id))
+            member_id = cursor.lastrowid
+            conn.commit()
+            return {"success": True, "member_id": member_id}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def update_reseller_team_member(self, member_id: int, reseller_id: int, **kwargs) -> dict:
+        """ویرایش مشخصات مدیر زیرمجموعه نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            allowed = ["display_name", "role", "phone", "share_percent", "is_active"]
+            fields = []
+            params = []
+            for k, v in kwargs.items():
+                if k == "password" and v:
+                    fields.append("password_hash = ?")
+                    params.append(self.hash_password(v))
+                elif k in allowed:
+                    fields.append(f"{k} = ?")
+                    params.append(v)
+            if not fields:
+                return {"success": True}
+            params.extend([member_id, reseller_id])
+            cursor.execute(f"UPDATE admin_users SET {', '.join(fields)} WHERE id = ? AND reseller_id = ?", params)
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def delete_reseller_team_member(self, member_id: int, reseller_id: int) -> dict:
+        """حذف مدیر زیرمجموعه نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM admin_users WHERE id = ? AND reseller_id = ?", (member_id, reseller_id))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def toggle_reseller_team_member(self, member_id: int, reseller_id: int) -> dict:
+        """تغییر وضعیت فعال/غیرفعال مدیر زیرمجموعه نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT is_active FROM admin_users WHERE id = ? AND reseller_id = ?", (member_id, reseller_id))
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "error": "مدیر یافت نشد."}
+            new_st = 0 if row["is_active"] else 1
+            cursor.execute("UPDATE admin_users SET is_active = ? WHERE id = ? AND reseller_id = ?", (new_st, member_id, reseller_id))
+            conn.commit()
+            return {"success": True, "is_active": new_st}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
         finally:
             conn.close()
 

@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from flask import (
     Flask, render_template, request, redirect, url_for, session,
-    jsonify, flash, Response, send_file
+    jsonify, flash, Response, send_file, g
 )
 
 from dotenv import load_dotenv
@@ -1000,10 +1000,59 @@ def captcha_image():
     return resp
 
 
+@app.before_request
+def check_custom_domain():
+    """تشخیص دامنه اختصاصی نماینده از روی هدر Host و بارگذاری هویت بصری اختصاصی"""
+    host = request.host
+    reseller = db.get_reseller_by_domain(host)
+    if reseller:
+        g.custom_reseller = reseller
+        g.brand_title = reseller.get("brand_title") or reseller.get("name") or "فروشگاه اشتراک"
+        g.logo_url = reseller.get("logo_url")
+        g.favicon_url = reseller.get("favicon_url")
+        g.primary_color = reseller.get("primary_color")
+        g.footer_text = reseller.get("footer_text")
+    else:
+        g.custom_reseller = None
+        g.brand_title = None
+        g.logo_url = None
+        g.favicon_url = None
+        g.primary_color = None
+        g.footer_text = None
+
+
 @app.context_processor
-def inject_permissions():
-    """تزریق تابع بررسی دسترسی‌ها به قالب‌های Jinja"""
-    return dict(has_permission=has_permission)
+def inject_global_branding():
+    """تزریق متغیرهای هویت بصری، برندینگ، دامنه اختصاصی و دسترسی‌ها به قالب‌های Jinja"""
+    active_reseller_id = session.get("reseller_id")
+    branding = {}
+    if active_reseller_id:
+        r_data = db.get_reseller(active_reseller_id)
+        if r_data:
+            branding = {
+                "brand_title": r_data.get("brand_title") or r_data.get("name") or "پنل نمایندگی",
+                "logo_url": r_data.get("logo_url"),
+                "favicon_url": r_data.get("favicon_url"),
+                "primary_color": r_data.get("primary_color"),
+                "footer_text": r_data.get("footer_text"),
+                "custom_domain": r_data.get("custom_domain")
+            }
+    elif getattr(g, "custom_reseller", None):
+        r_data = g.custom_reseller
+        branding = {
+            "brand_title": r_data.get("brand_title") or r_data.get("name"),
+            "logo_url": r_data.get("logo_url"),
+            "favicon_url": r_data.get("favicon_url"),
+            "primary_color": r_data.get("primary_color"),
+            "footer_text": r_data.get("footer_text"),
+            "custom_domain": r_data.get("custom_domain")
+        }
+
+    return dict(
+        has_permission=has_permission,
+        branding=branding,
+        sub_role=session.get("sub_role")
+    )
 
 
 # ─── مسیرهای احراز هویت (Authentication) ───
@@ -1052,10 +1101,42 @@ def login():
         # مصرف کد کپچا
         session.pop("captcha_code", None)
 
-        # ۱. بررسی جدول مدیران سیستم (RBAC)
+        # ۱. بررسی جدول مدیران سیستم (RBAC & Sub-Admins)
         admin_user = db.authenticate_admin(username, password)
         if admin_user:
             session_token = str(uuid.uuid4())
+            reseller_id = admin_user.get("reseller_id")
+
+            if reseller_id:
+                # ورود زیرمدیر یا شریک نماینده (Sub-Admin / Partner / Finance / Support)
+                reseller_info = db.get_reseller(reseller_id)
+                session["logged_in"] = True
+                session["role"] = "reseller"
+                session["reseller_id"] = reseller_id
+                session["sub_role"] = admin_user.get("role", "support")
+                session["admin_id"] = admin_user["id"]
+                session["username"] = admin_user["username"]
+                session["name"] = admin_user.get("display_name") or "همکار"
+                session["share_percent"] = admin_user.get("share_percent", 0)
+                session["balance"] = reseller_info.get("balance", 0) if reseller_info else 0
+                session["discount"] = reseller_info.get("discount_percent", 20) if reseller_info else 20
+                session["session_token"] = session_token
+
+                db.record_login_attempt(
+                    user_type="reseller_subadmin",
+                    user_id=admin_user["id"],
+                    username=username,
+                    status="success",
+                    ip_address=ip,
+                    user_agent=ua,
+                    browser=browser,
+                    device_os=device_os,
+                    session_token=session_token
+                )
+                flash(f"خوش آمدید {session['name']}! ورود به پورتال نمایندگی با موفقیت انجام شد.", "success")
+                return redirect(url_for("reseller_dashboard"))
+
+            # مدیر کل سیستم (Super Admin یا ادمین اصلی)
             session["logged_in"] = True
             session["role"] = "admin"
             session["admin_id"] = admin_user["id"]
@@ -3133,6 +3214,409 @@ def reseller_bot_toggle():
         flash("ربات اختصاصی شما با موفقیت متوقف شد.", "info")
 
     return redirect(url_for("reseller_bot_settings"))
+
+
+# ─── ۱. مدیریت و تایید فیش‌های پرداخت در پورتال نماینده (Reseller Payments) ───
+
+@app.route("/reseller/payments")
+@reseller_required
+def reseller_payments():
+    """لیست و تایید فیش‌های واریزی مشتریان ربات نماینده"""
+    reseller_id = session.get("reseller_id")
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM transactions 
+        WHERE reseller_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)
+        ORDER BY CASE WHEN status = 'pending' THEN 0 ELSE 1 END, id DESC
+    """, (reseller_id,))
+    transactions = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    
+    stats = db.get_reseller_stats(reseller_id)
+    return render_template("reseller_payments.html", transactions=transactions, stats=stats)
+
+
+@app.route("/reseller/payment/<int:payment_id>/approve", methods=["POST"])
+@reseller_required
+def reseller_payment_approve(payment_id):
+    """تایید فیش پرداخت مشتری توسط نماینده در وب، کسر از کیف پول و صدور اشتراک"""
+    reseller_id = session.get("reseller_id")
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM transactions WHERE id = ? AND reseller_id = ?", (payment_id, reseller_id))
+    tx_row = cursor.fetchone()
+    conn.close()
+
+    if not tx_row:
+        flash("تراکنش یافت نشد یا متعلق به شما نیست.", "danger")
+        return redirect(url_for("reseller_payments"))
+
+    tx = dict(tx_row)
+    if tx["status"] == "approved":
+        flash("این تراکنش قبلاً تایید شده است.", "warning")
+        return redirect(url_for("reseller_payments"))
+
+    user_id = tx["user_id"]
+    plan_name = tx["plan_name"]
+    plans = get_plans_dict()
+    selected_plan = next((p for p in plans.values() if p["name"] == plan_name), None)
+    if not selected_plan and plans:
+        selected_plan = list(plans.values())[0]
+
+    data_limit = selected_plan["data_limit"] if selected_plan else 30
+    duration = selected_plan["duration"] if selected_plan else 30
+    original_price = selected_plan["price"] if selected_plan else tx.get("amount", 0)
+
+    # محاسبه هزینه خرید عمده نماینده با تخفیف
+    stats = db.get_reseller_stats(reseller_id)
+    discount = stats["discount_percent"]
+    discount_amount = int((original_price * discount) / 100)
+    wholesale_price = original_price - discount_amount
+
+    if stats["balance"] < wholesale_price:
+        flash(f"موجودی کیف پول شما کافی نیست! موجودی: {stats['balance']:,} ت | مبلغ کسر: {wholesale_price:,} ت", "danger")
+        return redirect(url_for("reseller_payments"))
+
+    account_name = tx.get("account_name") or f"r_{reseller_id}_{user_id}_{int(time.time()) % 10000}"
+    user_comment = f"Reseller #{reseller_id} ({session.get('name')}) via Web"
+
+    # ساخت اکانت در هیدیفای
+    h_res = hidify_sync_create_user(
+        name=account_name,
+        usage_limit_gb=data_limit,
+        package_days=duration,
+        comment=user_comment
+    )
+
+    if not h_res.get("success"):
+        flash(f"خطا در ایجاد اشتراک در سرور: {h_res.get('error')}", "danger")
+        return redirect(url_for("reseller_payments"))
+
+    uuid_val = h_res.get("uuid", "")
+    sub_link = h_res.get("subscription_url", "")
+
+    # کسر از کیف پول نماینده
+    db.deduct_reseller_balance(reseller_id, wholesale_price, f"خرید اشتراک {plan_name} برای کاربر {user_id}", account_name=account_name, plan_name=plan_name)
+
+    # ثبت اشتراک برای کاربر
+    db.save_subscription(
+        user_id=user_id,
+        plan_name=plan_name,
+        data_limit=data_limit,
+        data_used=0.0,
+        expire_date=(datetime.now() + timedelta(days=duration)).strftime("%Y-%m-%d"),
+        hiddify_uuid=uuid_val,
+        status="active",
+        subscription_url=sub_link,
+        reseller_id=reseller_id
+    )
+
+    # بروزرسانی وضعیت تراکنش
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE transactions SET status = 'approved', updated_at = ? WHERE id = ?", (get_now_iso(), payment_id))
+    conn.commit()
+    conn.close()
+
+    # ارسال لینک برای کاربر در تلگرام
+    reseller_data = db.get_reseller(reseller_id)
+    bot_tok = reseller_data.get("bot_token") if reseller_data else None
+    
+    brand_title = reseller_data.get("brand_name") or "فروشگاه"
+    msg_to_user = f"🎉 **پرداخت شما تایید شد!**\n\n"
+    msg_to_user += f"📦 پلن: **{plan_name}** ({data_limit}GB - {duration} روزه)\n"
+    msg_to_user += f"🔗 لینک اشتراک شما:\n`{sub_link}`\n\n"
+    msg_to_user += f"از خرید شما در **{brand_title}** متشکریم!"
+
+    if bot_tok:
+        send_telegram_msg(user_id, msg_to_user, bot_token=bot_tok)
+    else:
+        send_telegram_msg(user_id, msg_to_user)
+
+    flash(f"پرداخت سفارش #{payment_id} با موفقیت تایید و کانفیگ برای مشتری ارسال شد.", "success")
+    return redirect(url_for("reseller_payments"))
+
+
+@app.route("/reseller/payment/<int:payment_id>/reject", methods=["POST"])
+@reseller_required
+def reseller_payment_reject(payment_id):
+    """رد فیش پرداخت مشتری توسط نماینده"""
+    reseller_id = session.get("reseller_id")
+    reason = request.form.get("reason", "عدم تطابق فیش واریزی یا اطلاعات نامعتبر").strip()
+
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM transactions WHERE id = ? AND reseller_id = ?", (payment_id, reseller_id))
+    tx_row = cursor.fetchone()
+    if not tx_row:
+        conn.close()
+        flash("تراکنش یافت نشد.", "danger")
+        return redirect(url_for("reseller_payments"))
+
+    tx = dict(tx_row)
+    cursor.execute("UPDATE transactions SET status = 'rejected', description = ?, updated_at = ? WHERE id = ?", (reason, get_now_iso(), payment_id))
+    conn.commit()
+    conn.close()
+
+    # اطلاع به کاربر
+    reseller_data = db.get_reseller(reseller_id)
+    bot_tok = reseller_data.get("bot_token") if reseller_data else None
+    msg_to_user = f"❌ **پرداخت سفارش شما تایید نشد.**\n\nعلت: {reason}\nدر صورت داشتن هرگونه سوال با پشتیبانی تماس بگیرید."
+    if bot_tok:
+        send_telegram_msg(tx["user_id"], msg_to_user, bot_token=bot_tok)
+    else:
+        send_telegram_msg(tx["user_id"], msg_to_user)
+
+    flash("فیش پرداخت با موفقیت رد شد و به مشتری اطلاع داده شد.", "info")
+    return redirect(url_for("reseller_payments"))
+
+
+# ─── ۲. مدیریت کارت‌های بانکی نماینده (Reseller Cards) ───
+
+@app.route("/reseller/cards", methods=["GET", "POST"])
+@reseller_required
+def reseller_cards():
+    """مدیریت کارت‌های بانکی مقصد نماینده جهت واریزی مشتریان"""
+    reseller_id = session.get("reseller_id")
+    if request.method == "POST":
+        card_number = request.form.get("card_number", "").strip()
+        card_holder = request.form.get("card_holder", "").strip()
+        bank_name = request.form.get("bank_name", "").strip()
+        daily_limit = int(request.form.get("daily_limit", 50000000))
+
+        if not card_number or not card_holder:
+            flash("شماره کارت و نام صاحب حساب الزامی است.", "warning")
+        else:
+            res = db.add_reseller_card(reseller_id, card_number, card_holder, bank_name, daily_limit)
+            if res.get("success"):
+                flash("کارت بانکی جدید با موفقیت اضافه شد.", "success")
+            else:
+                flash(f"خطا در ثبت کارت: {res.get('error')}", "danger")
+        return redirect(url_for("reseller_cards"))
+
+    cards = db.get_reseller_cards(reseller_id)
+    return render_template("reseller_cards.html", cards=cards)
+
+
+@app.route("/reseller/card/<int:card_id>/toggle", methods=["POST"])
+@reseller_required
+def reseller_card_toggle(card_id):
+    """فعال/غیرفعال‌سازی کارت بانکی"""
+    reseller_id = session.get("reseller_id")
+    db.toggle_reseller_card(card_id, reseller_id)
+    flash("وضعیت کارت بانکی با موفقیت بروزرسانی شد.", "info")
+    return redirect(url_for("reseller_cards"))
+
+
+@app.route("/reseller/card/<int:card_id>/delete", methods=["POST"])
+@reseller_required
+def reseller_card_delete(card_id):
+    """حذف کارت بانکی نماینده"""
+    reseller_id = session.get("reseller_id")
+    db.delete_reseller_card(card_id, reseller_id)
+    flash("کارت بانکی حذف شد.", "info")
+    return redirect(url_for("reseller_cards"))
+
+
+# ─── ۳. سیستم تیکتینگ اختصاصی نماینده (Reseller Tickets) ───
+
+@app.route("/reseller/tickets")
+@reseller_required
+def reseller_tickets():
+    """مشاهده و مدیریت تیکت‌های پشتیبانی مشتریان ربات نماینده"""
+    reseller_id = session.get("reseller_id")
+    tickets = db.get_all_tickets(reseller_id=reseller_id)
+    return render_template("reseller_tickets.html", tickets=tickets)
+
+
+@app.route("/reseller/ticket/<int:ticket_id>/reply", methods=["POST"])
+@reseller_required
+def reseller_ticket_reply(ticket_id):
+    """ارسال پاسخ به تیکت مشتری توسط نماینده و ارسال پیام در تلگرام"""
+    reseller_id = session.get("reseller_id")
+    reply_msg = request.form.get("reply_message", "").strip()
+    close_after = bool(request.form.get("close_ticket"))
+
+    if not reply_msg:
+        flash("متن پاسخ نمی‌تواند خالی باشد.", "warning")
+        return redirect(url_for("reseller_tickets"))
+
+    db.add_ticket_reply(ticket_id, sender_type="admin", sender_id=session.get("admin_id", 0), sender_name=session.get("name", "پشتیبانی"), message=reply_msg)
+    if close_after:
+        db.update_ticket_status(ticket_id, "closed")
+
+    # ارسال پاسخ در تلگرام برای مشتری
+    ticket_info = db.get_ticket(ticket_id)
+    if ticket_info and ticket_info.get("user_id"):
+        user_tg = ticket_info["user_id"]
+        reseller_data = db.get_reseller(reseller_id)
+        bot_tok = reseller_data.get("bot_token") if reseller_data else None
+        brand = reseller_data.get("brand_name") or "پشتیبانی"
+
+        notif = f"💬 **پاسخ پشتیبانی {brand} به تیکت #{ticket_id}:**\n\n"
+        notif += f"{reply_msg}\n\n"
+        notif += "جهت ارسال پاسخ مجدد، پیام خود را با `تیکت: متن پیام` ارسال کنید."
+
+        if bot_tok:
+            send_telegram_msg(user_tg, notif, bot_token=bot_tok)
+        else:
+            send_telegram_msg(user_tg, notif)
+
+    flash("پاسخ تیکت با موفقیت ثبت و برای مشتری ارسال شد.", "success")
+    return redirect(url_for("reseller_tickets"))
+
+
+@app.route("/reseller/ticket/<int:ticket_id>/close", methods=["POST"])
+@reseller_required
+def reseller_ticket_close(ticket_id):
+    """بستن تیکت پشتیبانی"""
+    db.update_ticket_status(ticket_id, "closed")
+    flash("تیکت بسته شد.", "info")
+    return redirect(url_for("reseller_tickets"))
+
+
+# ─── ۴. مدیریت کدهای تخفیف اختصاصی نماینده (Reseller Discount Codes) ───
+
+@app.route("/reseller/discounts", methods=["GET", "POST"])
+@reseller_required
+def reseller_discounts():
+    """تعریف و مدیریت کدهای تخفیف نماینده (کسر از سهم سود نماینده)"""
+    reseller_id = session.get("reseller_id")
+    if request.method == "POST":
+        code = request.form.get("code", "").strip()
+        discount_percent = int(request.form.get("discount_percent", 0))
+        discount_amount = int(request.form.get("discount_amount", 0))
+        max_uses = int(request.form.get("max_uses", 0))
+        valid_until = request.form.get("valid_until", "").strip() or None
+
+        if not code:
+            flash("کد تخفیف الزامی است.", "warning")
+        elif discount_percent <= 0 and discount_amount <= 0:
+            flash("درصد تخفیف یا مبلغ تخفیف باید تعیین شود.", "warning")
+        else:
+            res = db.create_reseller_discount_code(reseller_id, code, discount_percent, discount_amount, max_uses, valid_until)
+            if res.get("success"):
+                flash(f"کد تخفیف «{code.upper()}» با موفقیت ایجاد شد.", "success")
+            else:
+                flash(f"خطا: {res.get('error')}", "danger")
+        return redirect(url_for("reseller_discounts"))
+
+    discounts = db.get_reseller_discount_codes(reseller_id)
+    return render_template("reseller_discounts.html", discounts=discounts)
+
+
+@app.route("/reseller/discount/<int:discount_id>/toggle", methods=["POST"])
+@reseller_required
+def reseller_discount_toggle(discount_id):
+    """فعال/غیرفعال‌سازی کد تخفیف"""
+    reseller_id = session.get("reseller_id")
+    db.toggle_reseller_discount_code(discount_id, reseller_id)
+    flash("وضعیت کد تخفیف بروزرسانی شد.", "info")
+    return redirect(url_for("reseller_discounts"))
+
+
+@app.route("/reseller/discount/<int:discount_id>/delete", methods=["POST"])
+@reseller_required
+def reseller_discount_delete(discount_id):
+    """حذف کد تخفیف"""
+    reseller_id = session.get("reseller_id")
+    db.delete_reseller_discount_code(discount_id, reseller_id)
+    flash("کد تخفیف حذف شد.", "info")
+    return redirect(url_for("reseller_discounts"))
+
+
+# ─── ۵. مدیریت تیم و کارمندان نماینده (Reseller Team & Sub-Admins) ───
+
+@app.route("/reseller/team", methods=["GET", "POST"])
+@reseller_required
+def reseller_team():
+    """مدیریت تیم و کارمندان زیرمجموعه نماینده (شریک، مالی، پشتیبانی)"""
+    reseller_id = session.get("reseller_id")
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "").strip()
+        display_name = request.form.get("display_name", "").strip()
+        role = request.form.get("role", "support").strip()
+        phone = request.form.get("phone", "").strip()
+        share_percent = int(request.form.get("share_percent", 0))
+
+        if not username or not password or not display_name:
+            flash("نام کاربری، رمز عبور و نام نمایشی الزامی هستند.", "warning")
+        else:
+            res = db.create_reseller_team_member(reseller_id, username, password, display_name, role, phone, share_percent)
+            if res.get("success"):
+                flash(f"عضو جدید «{display_name}» با نقش {role} افزوده شد.", "success")
+            else:
+                flash(f"خطا: {res.get('error')}", "danger")
+        return redirect(url_for("reseller_team"))
+
+    team_members = db.get_reseller_team_members(reseller_id)
+    return render_template("reseller_team.html", team_members=team_members)
+
+
+@app.route("/reseller/team/<int:member_id>/toggle", methods=["POST"])
+@reseller_required
+def reseller_team_toggle(member_id):
+    """فعال/غیرفعال‌سازی کارمند نماینده"""
+    reseller_id = session.get("reseller_id")
+    db.toggle_reseller_team_member(member_id, reseller_id)
+    flash("وضعیت دسترسی کارمند تغییر یافت.", "info")
+    return redirect(url_for("reseller_team"))
+
+
+@app.route("/reseller/team/<int:member_id>/delete", methods=["POST"])
+@reseller_required
+def reseller_team_delete(member_id):
+    """حذف کارمند نماینده"""
+    reseller_id = session.get("reseller_id")
+    db.delete_reseller_team_member(member_id, reseller_id)
+    flash("کارمند از تیم شما حذف شد.", "info")
+    return redirect(url_for("reseller_team"))
+
+
+# ─── ۶. هویت بصری، لوگو و دامنه اختصاصی نماینده (Branding & Custom Domain) ───
+
+@app.route("/reseller/branding", methods=["GET", "POST"])
+@reseller_required
+def reseller_branding():
+    """تنظیمات هویت بصری، لوگو، رنگ‌بندی، عنوان و دامنه اختصاصی نماینده"""
+    reseller_id = session.get("reseller_id")
+    reseller = db.get_reseller(reseller_id)
+
+    if request.method == "POST":
+        custom_domain = request.form.get("custom_domain", "").strip().lower()
+        brand_title = request.form.get("brand_title", "").strip()
+        logo_url = request.form.get("logo_url", "").strip()
+        favicon_url = request.form.get("favicon_url", "").strip()
+        primary_color = request.form.get("primary_color", "").strip()
+        footer_text = request.form.get("footer_text", "").strip()
+
+        # بررسی آپلود مستقیم لوگو در صورت ارسال فایل
+        if "logo_file" in request.files:
+            file = request.files["logo_file"]
+            if file and file.filename:
+                fn = f"reseller_{reseller_id}_logo_{int(time.time())}.png"
+                fp = AVATAR_CACHE_DIR / fn
+                file.save(fp)
+                logo_url = url_for("avatar_serve", filename=fn)
+
+        res = db.update_reseller_branding(
+            reseller_id,
+            custom_domain=custom_domain,
+            brand_title=brand_title,
+            logo_url=logo_url,
+            favicon_url=favicon_url,
+            primary_color=primary_color,
+            footer_text=footer_text
+        )
+        if res.get("success"):
+            flash("تنظیمات هویت بصری و دامنه اختصاصی شما با موفقیت ذخیره شد.", "success")
+        else:
+            flash(f"خطا در ذخیره‌سازی: {res.get('error')}", "danger")
+        return redirect(url_for("reseller_branding"))
+
+    return render_template("reseller_branding.html", reseller=reseller)
 
 
 # ═══════════════════════════════════════════════════════════════════════
