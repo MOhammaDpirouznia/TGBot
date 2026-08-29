@@ -17,6 +17,8 @@ import functools
 import logging
 import httpx
 import uuid
+import threading
+import random
 from typing import Optional, Dict, List, Any, Tuple, Union
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -788,6 +790,32 @@ def hidify_sync_ping() -> dict:
         return {"online": False, "latency": latency, "error": str(e)}
 
 
+_last_online_sync_time = 0
+_online_sync_lock = threading.Lock()
+
+def sync_hiddify_online_users(force: bool = False):
+    """
+    همگام‌سازی بلادرنگ وضعیت آنلاین بودن کاربران از API هیدیفای
+    دارای محافظ نرخ درخواست و کش هوشمند (حداقل فاصله ۲۰ ثانیه)
+    """
+    global _last_online_sync_time
+    now = time.time()
+    if not force and (now - _last_online_sync_time < 20):
+        return
+
+    with _online_sync_lock:
+        if not force and (now - _last_online_sync_time < 20):
+            return
+        _last_online_sync_time = now
+
+    try:
+        users = hidify_sync_request("GET", "/admin/user/")
+        if isinstance(users, list) and users:
+            db.sync_from_hidify(users)
+    except Exception as e:
+        logger.error(f"Error in sync_hiddify_online_users: {e}")
+
+
 def get_plans_dict():
     """دریافت لیست پلن‌ها به صورت داینامیک"""
     try:
@@ -1232,14 +1260,18 @@ def dashboard():
 
     conn.close()
 
+    sync_hiddify_online_users()
     server_health = hidify_sync_ping()
     analytics = db.get_advanced_analytics()
+    online_stats = db.get_online_users_stats()
 
     return render_template(
         "dashboard.html",
         total_users=total_users,
         total_subscriptions=total_subscriptions,
         active_subscriptions=active_subscriptions,
+        online_users_count=online_stats["online_count"],
+        online_stats=online_stats,
         total_revenue=total_revenue,
         pending_payments=pending_payments,
         open_tickets=open_tickets,
@@ -1744,19 +1776,59 @@ def api_admin_notifications_check():
     })
 
 
+@app.route("/api/online_status")
+def api_online_status():
+    """دریافت بلادرنگ وضعیت آنلاین بودن کاربران برای ادمین و نماینده"""
+    if not session.get("logged_in"):
+        return jsonify({"error": "unauthorized"}), 401
+    
+    sync_hiddify_online_users()
+    
+    if session.get("role") == "reseller":
+        reseller_id = session.get("reseller_id")
+        stats = db.get_online_users_stats(reseller_id=reseller_id)
+        online_subs = db.get_online_subscriptions(reseller_id=reseller_id)
+    else:
+        stats = db.get_online_users_stats()
+        online_subs = db.get_online_subscriptions()
+
+    return jsonify({
+        "success": True,
+        "online_count": stats["online_count"],
+        "total_subs": stats["total_subs"],
+        "active_subs": stats["active_subs"],
+        "online_uuids": [s["hidify_uuid"] for s in online_subs if s.get("hidify_uuid")],
+        "online_sub_ids": [s["id"] for s in online_subs]
+    })
+
+
 @app.route("/subscriptions")
 @admin_required
 def subscriptions():
-    """لیست اشتراک‌های هیدیفای"""
+    """لیست اشتراک‌های هیدیفای همراه با وضعیت آنلاین بودن"""
+    sync_hiddify_online_users()
     conn = db.get_connection()
     status_filter = request.args.get("status", "all")
-    if status_filter == "all":
+    if status_filter == "online":
+        sub_list = conn.execute("SELECT * FROM subscriptions WHERE is_online=1 ORDER BY updated_at DESC LIMIT 150").fetchall()
+    elif status_filter == "all":
         sub_list = conn.execute("SELECT * FROM subscriptions ORDER BY created_at DESC LIMIT 150").fetchall()
     else:
         sub_list = conn.execute("SELECT * FROM subscriptions WHERE status=? ORDER BY created_at DESC LIMIT 150", (status_filter,)).fetchall()
     conn.close()
+    
+    online_stats = db.get_online_users_stats()
     single_link_template = get_single_link_template(db)
-    return render_template("subscriptions.html", subscriptions=sub_list, status_filter=status_filter, panel_url=get_hiddify_url(), user_proxy=get_user_proxy(), single_link_template=single_link_template)
+    return render_template(
+        "subscriptions.html",
+        subscriptions=sub_list,
+        status_filter=status_filter,
+        online_count=online_stats["online_count"],
+        online_stats=online_stats,
+        panel_url=get_hiddify_url(),
+        user_proxy=get_user_proxy(),
+        single_link_template=single_link_template
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -2525,6 +2597,7 @@ def upload_backup():
 @reseller_required
 def reseller_dashboard():
     """داشبورد اصلی نماینده فروش به همراه هوش مالی و خلاصه وضعیت"""
+    sync_hiddify_online_users()
     reseller_id = session.get("reseller_id")
     stats = db.get_reseller_stats(reseller_id)
     session["balance"] = stats["balance"]
@@ -2624,16 +2697,25 @@ def reseller_create_user():
 @app.route("/reseller/users")
 @reseller_required
 def reseller_users():
-    """لیست مشتریان نماینده به همراه آمار و دسترسی به ویرایش، تمدید و حذف"""
+    """لیست مشتریان نماینده به همراه آمار، وضعیت آنلاین و دسترسی به ویرایش، تمدید و حذف"""
+    sync_hiddify_online_users()
     reseller_id = session.get("reseller_id")
     stats = db.get_reseller_stats(reseller_id)
     discount = stats["discount_percent"]
     plans = get_plans_dict()
+    status_filter = request.args.get("status", "all")
     
     raw_subs = db.get_reseller_subscriptions(reseller_id)
     subs = []
     for s in raw_subs:
         item = dict(s)
+        if status_filter == "online" and not item.get("is_online"):
+            continue
+        elif status_filter == "active" and item.get("status") != "active":
+            continue
+        elif status_filter == "expired" and item.get("status") != "expired":
+            continue
+
         refund_calc = db.calculate_reseller_refund(reseller_id, item["id"])
         item["refund_info"] = refund_calc
         subs.append(item)
@@ -2642,8 +2724,10 @@ def reseller_users():
     return render_template(
         "reseller_users.html",
         subscriptions=subs,
+        status_filter=status_filter,
         plans=plans,
         discount=discount,
+        stats=stats,
         balance=stats["balance"],
         panel_url=get_hiddify_url(),
         user_proxy=get_user_proxy(),

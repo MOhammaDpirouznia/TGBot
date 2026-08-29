@@ -465,6 +465,26 @@ class Database:
         except Exception:
             pass
 
+        try:
+            cursor.execute("ALTER TABLE subscriptions ADD COLUMN is_online INTEGER DEFAULT 0")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE subscriptions ADD COLUMN last_online TEXT")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN is_online INTEGER DEFAULT 0")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN last_online TEXT")
+        except Exception:
+            pass
+
         # ستون‌های پروفایل و مشخصات فردی نمایندگان
         try:
             cursor.execute("ALTER TABLE resellers ADD COLUMN phone TEXT")
@@ -731,8 +751,38 @@ class Database:
             logger.error(f"Error in auto_restore: {e}")
             return {"restored": False, "error": str(e)}
 
+    def _parse_hiddify_user_online(self, u: dict) -> tuple[int, str]:
+        """
+        تشخیص آنلاین بودن و استخراج آخرین اتصال از آبجکت کاربر در هیدیفای:
+        خروجی: (is_online: 1|0, last_online_str)
+        """
+        if not u or not isinstance(u, dict):
+            return 0, None
+
+        is_online = 0
+        if u.get("is_online") is True or u.get("online") is True:
+            is_online = 1
+
+        last_online_raw = u.get("last_online") or u.get("last_online_time") or u.get("last_connected")
+        last_online_str = None
+
+        if last_online_raw:
+            try:
+                clean_str = str(last_online_raw).replace("T", " ").split(".")[0].split("+")[0].strip()
+                last_online_str = clean_str
+                # بررسی فاصله زمانی آخرین اتصال
+                dt = datetime.strptime(clean_str, "%Y-%m-%d %H:%M:%S")
+                diff = abs((datetime.utcnow() - dt).total_seconds())
+                # در صورتی که کاربر در ۵ دقیقه (۳۰۰ ثانیه) اخیر تبادل ترافیک داشته باشد
+                if diff <= 300:
+                    is_online = 1
+            except Exception:
+                last_online_str = str(last_online_raw)
+
+        return is_online, last_online_str
+
     def sync_from_hidify(self, hidify_users: list) -> dict:
-        """همگام‌سازی و بازیابی خودکار تمامی کاربران و اشتراک‌ها از پنل هیدیفای"""
+        """همگام‌سازی و بازیابی خودکار تمامی کاربران و اشتراک‌ها به همراه وضعیت آنلاین بودن از پنل هیدیفای"""
         if not hidify_users or not isinstance(hidify_users, list):
             return {"success": False, "count": 0, "error": "لیست کاربران هیدیفای خالی یا نامعتبر است"}
 
@@ -741,6 +791,7 @@ class Database:
         now = get_now_iso()
         restored_users = 0
         restored_subs = 0
+        total_online = 0
 
         try:
             for u in hidify_users:
@@ -761,6 +812,11 @@ class Database:
                 start_date = u.get("start_date") or now
                 status = "active" if (is_active and enable) else "expired"
 
+                # تشخیص وضعیت آنلاین بودن
+                is_online_val, last_online_val = self._parse_hiddify_user_online(u)
+                if is_online_val:
+                    total_online += 1
+
                 # استخراج telegram_id از کامنت یا نام کاربری
                 telegram_id = 0
                 if comment.isdigit() and len(comment) >= 5:
@@ -774,9 +830,9 @@ class Database:
                     existing_user = cursor.fetchone()
                     if not existing_user:
                         cursor.execute("""
-                            INSERT INTO users (telegram_id, username, hidify_uuid, plan_id, data_limit, created_at, updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """, (telegram_id, name, uuid, "custom", usage_limit, now, now))
+                            INSERT INTO users (telegram_id, username, hidify_uuid, plan_id, data_limit, is_online, last_online, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (telegram_id, name, uuid, "custom", usage_limit, is_online_val, last_online_val, now, now))
                         restored_users += 1
                     else:
                         cursor.execute("""
@@ -784,9 +840,11 @@ class Database:
                                 username = COALESCE(?, username),
                                 hidify_uuid = COALESCE(?, hidify_uuid),
                                 data_limit = ?,
+                                is_online = ?,
+                                last_online = COALESCE(?, last_online),
                                 updated_at = ?
                             WHERE telegram_id = ?
-                        """, (name, uuid, usage_limit, now, telegram_id))
+                        """, (name, uuid, usage_limit, is_online_val, last_online_val, now, telegram_id))
 
                     # ایجاد کیف پول در صورت عدم وجود
                     cursor.execute("SELECT id FROM wallet WHERE telegram_id = ?", (telegram_id,))
@@ -808,42 +866,93 @@ class Database:
                     plan_id = "custom"
 
                 if existing_sub:
-                    # بروزرسانی مصرف، حجم و وضعیت
+                    # بروزرسانی مصرف، حجم، وضعیت و وضعیت آنلاین
                     cursor.execute("""
                         UPDATE subscriptions SET
                             data_used = ?,
                             data_limit = ?,
                             status = ?,
                             account_name = COALESCE(?, account_name),
+                            is_online = ?,
+                            last_online = COALESCE(?, last_online),
                             updated_at = ?
                         WHERE hidify_uuid = ?
-                    """, (current_usage, usage_limit, status, name, now, uuid))
+                    """, (current_usage, usage_limit, status, name, is_online_val, last_online_val, now, uuid))
                 else:
                     # درج اشتراک جدید بازیابی شده
                     cursor.execute("""
                         INSERT INTO subscriptions (
                             telegram_id, hidify_uuid, plan_id, plan_name, account_name,
                             account_comment, data_limit, data_used, duration, start_date,
-                            status, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            status, is_online, last_online, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         telegram_id, uuid, plan_id, plan_name, name,
                         comment, usage_limit, current_usage, package_days, start_date,
-                        status, now, now
+                        status, is_online_val, last_online_val, now, now
                     ))
                     restored_subs += 1
 
             conn.commit()
-            logger.info(f"Hiddify sync complete: {restored_users} users, {restored_subs} subscriptions imported/updated.")
+            logger.info(f"Hiddify sync complete: {restored_users} users, {restored_subs} subscriptions, {total_online} online.")
             return {
                 "success": True,
                 "restored_users": restored_users,
                 "restored_subs": restored_subs,
+                "total_online": total_online,
                 "total_hiddify": len(hidify_users)
             }
         except Exception as e:
             logger.error(f"Error syncing from Hiddify: {e}")
             return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_online_users_stats(self, reseller_id: int = None) -> dict:
+        """آمار تعداد کل کاربران و مشتریان آنلاین برای ادمین یا نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if reseller_id:
+                cursor.execute("SELECT COUNT(*) FROM subscriptions WHERE reseller_id = ? AND is_online = 1", (reseller_id,))
+                online_count = cursor.fetchone()[0]
+                cursor.execute("SELECT COUNT(*) FROM subscriptions WHERE reseller_id = ?", (reseller_id,))
+                total_subs = cursor.fetchone()[0]
+                cursor.execute("SELECT COUNT(*) FROM subscriptions WHERE reseller_id = ? AND status = 'active'", (reseller_id,))
+                active_subs = cursor.fetchone()[0]
+            else:
+                cursor.execute("SELECT COUNT(*) FROM subscriptions WHERE is_online = 1")
+                online_count = cursor.fetchone()[0]
+                cursor.execute("SELECT COUNT(*) FROM subscriptions")
+                total_subs = cursor.fetchone()[0]
+                cursor.execute("SELECT COUNT(*) FROM subscriptions WHERE status = 'active'")
+                active_subs = cursor.fetchone()[0]
+            return {
+                "online_count": online_count,
+                "total_subs": total_subs,
+                "active_subs": active_subs,
+                "offline_count": max(0, active_subs - online_count)
+            }
+        except Exception as e:
+            logger.error(f"Error in get_online_users_stats: {e}")
+            return {"online_count": 0, "total_subs": 0, "active_subs": 0, "offline_count": 0}
+        finally:
+            conn.close()
+
+    def get_online_subscriptions(self, reseller_id: int = None) -> list:
+        """دریافت لیست اشتراک‌های آنلاین"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if reseller_id:
+                cursor.execute("SELECT * FROM subscriptions WHERE reseller_id = ? AND is_online = 1 ORDER BY updated_at DESC", (reseller_id,))
+            else:
+                cursor.execute("SELECT * FROM subscriptions WHERE is_online = 1 ORDER BY updated_at DESC")
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"Error in get_online_subscriptions: {e}")
+            return []
         finally:
             conn.close()
 
@@ -3062,6 +3171,9 @@ class Database:
         
         cursor.execute("SELECT COUNT(*) FROM subscriptions WHERE reseller_id=? AND status='active'", (reseller_id,))
         active_users = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM subscriptions WHERE reseller_id=? AND is_online=1", (reseller_id,))
+        online_users = cursor.fetchone()[0]
         
         # مجموع خریدهای واقعی (کسر مبالغ مرجوعی/خطا در صورت وجود)
         cursor.execute("""
@@ -3085,6 +3197,7 @@ class Database:
             "discount_percent": discount,
             "total_users": total_users,
             "active_users": active_users,
+            "online_users": online_users,
             "total_purchases": total_purchases,
             "total_used_gb": round(total_used_gb, 2),
             "total_limit_gb": round(total_limit_gb, 2),
