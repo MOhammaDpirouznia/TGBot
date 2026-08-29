@@ -4,47 +4,55 @@
 {% block content %}
 <div class="page-header">
     <div>
-        <h1 class="page-title"><i class="fas fa-user-shield text-primary"></i> مدیریت مدیران و سطوح دسترسی (RBAC)</h1>
-        <p class="text-muted mb-0">تعریف مدیران جدید، تعیین نقش‌ها و سطح دسترسی به بخش‌های مختلف پنل مدیریت</p>
+        <h1 class="page-title"><i class="fas fa-user-shield text-primary"></i> مدیریت مدیران، شرکا و سطوح دسترسی (RBAC)</h1>
+        <p class="text-muted mb-0">تعریف مدیران جدید، شرکای تجاری با محاسبه درصد سود، تعیین نقش‌ها و کنترل دسترسی‌های امنیتی</p>
     </div>
     <div>
         <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addManagerModal">
-            <i class="fas fa-user-plus me-1"></i> افزودن مدیر جدید
+            <i class="fas fa-user-plus me-1"></i> افزودن مدیر / شریک جدید
         </button>
     </div>
 </div>
 
-<!-- کارت معرفی سطوح دسترسی -->
+<!-- کارت‌های معرفی سطوح دسترسی -->
 <div class="row g-3 mb-4">
-    <div class="col-md-3 col-sm-6">
+    <div class="col-md-4 col-sm-6">
         <div class="card h-100 border-start border-primary border-4 shadow-sm">
-            <div class="card-body">
+            <div class="card-body p-3">
                 <div class="fw-bold text-primary mb-1"><i class="fas fa-crown me-1"></i> مدیر ارشد (Super Admin)</div>
                 <div class="small text-muted">دسترسی کامل و نامحدود به تمامی منوها، تنظیمات سرور، مالی و مدیران.</div>
             </div>
         </div>
     </div>
-    <div class="col-md-3 col-sm-6">
+    <div class="col-md-4 col-sm-6">
+        <div class="card h-100 border-start border-purple border-4 shadow-sm" style="border-left-color: #8b5cf6 !important;">
+            <div class="card-body p-3">
+                <div class="fw-bold text-purple mb-1" style="color: #7c3aed;"><i class="fas fa-handshake me-1"></i> شریک تجاری (Partner)</div>
+                <div class="small text-muted">دسترسی به کاربران، پلن‌ها، تیکت‌ها و فروش نقدی همراه با محاسبه درصد سهم شراکت و تراز بدهی.</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 col-sm-6">
         <div class="card h-100 border-start border-success border-4 shadow-sm">
-            <div class="card-body">
+            <div class="card-body p-3">
                 <div class="fw-bold text-success mb-1"><i class="fas fa-file-invoice-dollar me-1"></i> مدیر مالی (Finance)</div>
-                <div class="small text-muted">مدیریت پرداخت‌ها، تایید فیش‌ها، کارت‌های بانکی، حسابداری و گزارشات مالی.</div>
+                <div class="small text-muted">مدیریت پرداخت‌ها، تایید فیش‌ها، کارت‌های بانکی، حسابداری، تسویه بدهی و گزارشات مالی.</div>
             </div>
         </div>
     </div>
-    <div class="col-md-3 col-sm-6">
+    <div class="col-md-6 col-sm-6">
         <div class="card h-100 border-start border-info border-4 shadow-sm">
-            <div class="card-body">
+            <div class="card-body p-3">
                 <div class="fw-bold text-info mb-1"><i class="fas fa-headset me-1"></i> پشتیبان و اپراتور (Support)</div>
-                <div class="small text-muted">پاسخ به تیکت‌ها، مشاهده کاربران تلگرام، اشتراک‌های هیدیفای و ارسال پیام همگانی.</div>
+                <div class="small text-muted">پاسخ به تیکت‌ها، مشاهده کاربران تلگرام، اشتراک‌های هیدیفای و ساخت مشتری دستی.</div>
             </div>
         </div>
     </div>
-    <div class="col-md-3 col-sm-6">
+    <div class="col-md-6 col-sm-6">
         <div class="card h-100 border-start border-warning border-4 shadow-sm">
-            <div class="card-body">
+            <div class="card-body p-3">
                 <div class="fw-bold text-warning mb-1"><i class="fas fa-eye me-1"></i> ناظر سیستم (Viewer)</div>
-                <div class="small text-muted">مشاهده داشبورد، آمار کلی، کاربران و گزارش‌ها به صورت فقط‌خواندنی بدون امکان تغییر.</div>
+                <div class="small text-muted">مشاهده داشبورد، آمار کلی و گزارش‌ها به صورت فقط‌خواندنی بدون امکان تغییر یا حذف.</div>
             </div>
         </div>
     </div>
@@ -54,7 +62,7 @@
 <div class="card shadow-sm border-0">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="d-flex align-items-center gap-2">
-            <h5 class="mb-0 fw-bold"><i class="fas fa-users-gear text-primary me-2"></i>لیست مدیران ثبت‌شده</h5>
+            <h5 class="mb-0 fw-bold"><i class="fas fa-users-gear text-primary me-2"></i>لیست مدیران و شرکای تجاری</h5>
             <span class="badge bg-secondary" data-table-count="managersTable">{{ managers|length }} مورد</span>
         </div>
         <div class="table-search-wrapper">
@@ -71,9 +79,9 @@
                         <th class="ps-3" style="width: 70px;">شناسه</th>
                         <th>نام و عنوان</th>
                         <th>نام کاربری ورود</th>
-                        <th>سطح دسترسی (نقش)</th>
+                        <th>نقش و دسترسی</th>
+                        <th>تراز بدهی نقدی</th>
                         <th>وضعیت</th>
-                        <th>تاریخ ایجاد</th>
                         <th>آخرین ورود</th>
                         <th class="text-end pe-3" style="width: 140px;">عملیات</th>
                     </tr>
@@ -105,6 +113,8 @@
                         <td>
                             {% if m['role'] == 'super_admin' %}
                                 <span class="badge bg-primary-subtle text-primary border border-primary"><i class="fas fa-crown me-1"></i>مدیر ارشد</span>
+                            {% elif m['role'] == 'partner' %}
+                                <span class="badge bg-purple-subtle text-purple border border-purple" style="color: #7c3aed; background: #f3e8ff; border-color: #d8b4fe !important;"><i class="fas fa-handshake me-1"></i>شریک ({{ m['share_percent'] or 0 }}٪)</span>
                             {% elif m['role'] == 'finance' %}
                                 <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-coins me-1"></i>مدیر مالی</span>
                             {% elif m['role'] == 'support' %}
@@ -116,13 +126,19 @@
                             {% endif %}
                         </td>
                         <td>
+                            {% if m['debt_balance'] and m['debt_balance'] > 0 %}
+                                <span class="badge bg-danger-subtle text-danger border border-danger font-monospace">{{ "{:,}".format(m['debt_balance']) }} تومان بدهی</span>
+                            {% else %}
+                                <span class="badge bg-success-subtle text-success font-monospace">تراز صفر</span>
+                            {% endif %}
+                        </td>
+                        <td>
                             {% if m['is_active'] %}
                                 <span class="badge bg-success">فعال</span>
                             {% else %}
                                 <span class="badge bg-danger">معلق / غیرفعال</span>
                             {% endif %}
                         </td>
-                        <td><small class="text-muted">{{ m['created_at'][:10] if m['created_at'] else '-' }}</small></td>
                         <td><small class="text-muted">{{ m['last_login'][:19] if m['last_login'] else 'هنوز وارد نشده' }}</small></td>
                         <td class="text-end pe-3">
                             <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2" data-bs-toggle="modal" data-bs-target="#editManagerModal{{ m['id'] }}" title="ویرایش مدیر">
@@ -144,39 +160,48 @@
                         <div class="modal-dialog">
                             <div class="modal-content">
                                 <form method="POST" action="{{ url_for('admin_manager_edit', admin_id=m['id']) }}">
-                                    <div class="modal-header">
-                                        <h5 class="modal-title fw-bold"><i class="fas fa-user-pen text-primary me-2"></i>ویرایش مشخصات مدیر #{{ m['id'] }}</h5>
-                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    <div class="modal-header bg-primary text-white">
+                                        <h5 class="modal-title fw-bold"><i class="fas fa-user-pen me-2"></i>ویرایش مشخصات مدیر #{{ m['id'] }}</h5>
+                                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                                     </div>
                                     <div class="modal-body">
                                         <div class="mb-3">
-                                            <label class="form-label">نام و نام خانوادگی / عنوان:</label>
+                                            <label class="form-label fw-bold">نام و نام خانوادگی / عنوان:</label>
                                             <input type="text" name="display_name" class="form-control" value="{{ m['display_name'] }}" required>
                                         </div>
                                         <div class="mb-3">
-                                            <label class="form-label">نام کاربری ورود (انگلیسی):</label>
+                                            <label class="form-label fw-bold">نام کاربری ورود (انگلیسی):</label>
                                             <input type="text" name="username" class="form-control" value="{{ m['username'] }}" required pattern="^[a-zA-Z0-9_.-]+$">
                                         </div>
                                         <div class="mb-3">
-                                            <label class="form-label">آیدی عددی تلگرام (جهت دریافت عکس و هشدارها):</label>
+                                            <label class="form-label fw-bold">آیدی عددی تلگرام (اختیاری):</label>
                                             <input type="number" name="telegram_id" class="form-control font-monospace" placeholder="مثال: 12345678" value="{{ m['telegram_id'] or '' }}">
                                         </div>
                                         <div class="mb-3">
-                                            <label class="form-label">شماره همراه (جهت دریافت پیامک ورود/خروج):</label>
+                                            <label class="form-label fw-bold">شماره همراه (اختیاری):</label>
                                             <input type="text" name="phone" class="form-control font-monospace" placeholder="مثال: 09123456789" value="{{ m['phone'] or '' }}">
                                         </div>
                                         <div class="mb-3">
-                                            <label class="form-label">رمز عبور جدید (در صورت تمایل به تغییر وارد کنید):</label>
+                                            <label class="form-label fw-bold">رمز عبور جدید:</label>
                                             <input type="password" name="password" class="form-control" placeholder="برای عدم تغییر خالی بگذارید">
                                         </div>
                                         <div class="mb-3">
-                                            <label class="form-label">نقش و سطح دسترسی:</label>
-                                            <select name="role" class="form-select">
+                                            <label class="form-label fw-bold">نقش و سطح دسترسی:</label>
+                                            <select name="role" class="form-select" onchange="toggleEditShareField(this, 'editShareDiv{{ m['id'] }}')">
                                                 <option value="super_admin" {% if m['role'] == 'super_admin' %}selected{% endif %}>👑 مدیر ارشد (دسترسی نامحدود)</option>
+                                                <option value="partner" {% if m['role'] == 'partner' %}selected{% endif %}>🤝 شریک تجاری (مدیریت کاربران، فروش نقدی و کسر شراکت)</option>
                                                 <option value="finance" {% if m['role'] == 'finance' %}selected{% endif %}>💰 مدیر مالی و حسابدار</option>
                                                 <option value="support" {% if m['role'] == 'support' %}selected{% endif %}>🎧 پشتیبان و اپراتور</option>
                                                 <option value="viewer" {% if m['role'] == 'viewer' %}selected{% endif %}>👁️ ناظر (فقط مشاهده آمار)</option>
                                             </select>
+                                        </div>
+                                        <div class="mb-3" id="editShareDiv{{ m['id'] }}" style="{% if m['role'] != 'partner' %}display: none;{% endif %}">
+                                            <label class="form-label fw-bold text-primary">درصد سهم شراکت (%):</label>
+                                            <div class="input-group">
+                                                <input type="number" name="share_percent" class="form-control font-monospace" min="0" max="100" value="{{ m['share_percent'] or 30 }}">
+                                                <span class="input-group-text">%</span>
+                                            </div>
+                                            <div class="form-text small">درصدی از مبلغ اشتراک که به عنوان سود شریک کسر و مابقی به عنوان بدهی ثبت می‌شود.</div>
                                         </div>
                                     </div>
                                     <div class="modal-footer">
@@ -199,47 +224,78 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST" action="{{ url_for('admin_managers') }}">
-                <div class="modal-header">
-                    <h5 class="modal-title fw-bold"><i class="fas fa-user-plus text-primary me-2"></i>افزودن مدیر جدید به پنل</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-user-plus me-2"></i>افزودن مدیر یا شریک جدید</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label class="form-label">نام و عنوان نمایشی:</label>
-                        <input type="text" name="display_name" class="form-control" placeholder="مثال: مهندس حسینی / پشتیبان شیفت شب" required>
+                        <label class="form-label fw-bold">نام و عنوان نمایشی: <span class="text-danger">*</span></label>
+                        <input type="text" name="display_name" class="form-control" placeholder="مثال: مهندس حسینی / شریک تجاری شرق" required>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">نام کاربری ورود (انگلیسی):</label>
-                        <input type="text" name="username" class="form-control" placeholder="مثال: admin_hosseini" required pattern="^[a-zA-Z0-9_.-]+$">
+                        <label class="form-label fw-bold">نام کاربری ورود (انگلیسی): <span class="text-danger">*</span></label>
+                        <input type="text" name="username" class="form-control" placeholder="مثال: partner_hosseini" required pattern="^[a-zA-Z0-9_.-]+$">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">آیدی عددی تلگرام (اختیاری - جهت نمایش عکس و دریافت هشدار):</label>
+                        <label class="form-label fw-bold">آیدی عددی تلگرام (اختیاری):</label>
                         <input type="number" name="telegram_id" class="form-control font-monospace" placeholder="مثال: 12345678">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">شماره همراه (اختیاری - جهت ارسال پیامک ورود):</label>
+                        <label class="form-label fw-bold">شماره همراه (اختیاری):</label>
                         <input type="text" name="phone" class="form-control font-monospace" placeholder="مثال: 09123456789">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">رمز عبور ورود:</label>
-                        <input type="password" name="password" class="form-control" placeholder="رمز عبور ایمن حداقل ۶ کاراکتر" required minlength="6">
+                        <label class="form-label fw-bold">رمز عبور ورود: <span class="text-danger">*</span></label>
+                        <input type="password" name="password" class="form-control" placeholder="حداقل ۶ کاراکتر" required minlength="6">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">نقش و سطح دسترسی:</label>
-                        <select name="role" class="form-select">
+                        <label class="form-label fw-bold">نقش و سطح دسترسی:</label>
+                        <select name="role" id="addManagerRoleSelect" class="form-select" onchange="toggleAddShareField(this)">
                             <option value="super_admin">👑 مدیر ارشد (دسترسی نامحدود به همه بخش‌ها)</option>
+                            <option value="partner" selected>🤝 شریک تجاری (مدیریت کاربران، فروش نقدی و کسر شراکت)</option>
                             <option value="finance">💰 مدیر مالی و حسابدار (تایید فیش‌ها، کارت‌ها و حسابداری)</option>
-                            <option value="support" selected>🎧 پشتیبان و اپراتور (تیکت‌ها، کاربران تلگرام و پیام همگانی)</option>
+                            <option value="support">🎧 پشتیبان و اپراتور (تیکت‌ها، کاربران و پیام همگانی)</option>
                             <option value="viewer">👁️ ناظر (فقط مشاهده آمار و گزارش‌ها)</option>
                         </select>
+                    </div>
+                    <div class="mb-3" id="addSharePercentDiv">
+                        <label class="form-label fw-bold text-primary">درصد سهم شراکت (%):</label>
+                        <div class="input-group">
+                            <input type="number" name="share_percent" class="form-control font-monospace" min="0" max="100" value="30">
+                            <span class="input-group-text">%</span>
+                        </div>
+                        <div class="form-text small">در هنگام فروش نقدی توسط شریک، این درصد کسر شده و باقیمانده به عنوان بدهی به مدیریت ثبت می‌گردد.</div>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
-                    <button type="submit" class="btn btn-primary">ثبت و ایجاد حساب مدیر</button>
+                    <button type="submit" class="btn btn-primary">ثبت و ایجاد حساب</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
+
+<script>
+function toggleAddShareField(selectEl) {
+    const div = document.getElementById('addSharePercentDiv');
+    if (selectEl.value === 'partner') {
+        div.style.display = 'block';
+    } else {
+        div.style.display = 'none';
+    }
+}
+
+function toggleEditShareField(selectEl, targetDivId) {
+    const div = document.getElementById(targetDivId);
+    if (div) {
+        if (selectEl.value === 'partner') {
+            div.style.display = 'block';
+        } else {
+            div.style.display = 'none';
+        }
+    }
+}
+</script>
 {% endblock %}

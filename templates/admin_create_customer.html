@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+{% block title %}ساخت مشتری و اشتراک جدید{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-user-plus text-primary"></i> ساخت و افزودن مشتری جدید</h1>
+        <p class="text-muted mb-0">ایجاد مستقیم اکانت در سرور هیدیفای، تعیین روش پرداخت و ثبت خودکار در تراز مالی</p>
+    </div>
+    <div>
+        <a href="{{ url_for('subscriptions') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-right me-1"></i> بازگشت به اشتراک‌ها
+        </a>
+    </div>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-lg-8 col-md-10">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-primary text-white py-3">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-id-card me-2"></i>مشخصات مشتری و اشتراک</h5>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" action="{{ url_for('admin_create_customer') }}" id="createCustomerForm">
+                    
+                    <!-- اطلاعات مشتری -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">نام و عنوان اکانت (هیدیفای): <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-user"></i></span>
+                                <input type="text" name="name" class="form-control" placeholder="مثال: ali_rezaei یا علی رضایی" required>
+                            </div>
+                            <div class="form-text small">نام اکانت در هیدیفای ثبت خواهد شد.</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">آیدی عددی تلگرام (اختیاری):</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fab fa-telegram"></i></span>
+                                <input type="number" name="telegram_id" id="telegramIdInput" class="form-control font-monospace" placeholder="مثال: 123456789">
+                            </div>
+                            <div class="form-text small">در صورت وارد کردن، لینک اتصال خودکار به تلگرام مشتری ارسال می‌شود.</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">شماره تماس مشتری (اختیاری):</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-phone"></i></span>
+                                <input type="text" name="phone" class="form-control font-monospace" placeholder="مثال: 09123456789">
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">توضیحات و یادداشت (اختیاری):</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-comment-dots"></i></span>
+                                <input type="text" name="comment" class="form-control" placeholder="مثال: مشتری ارجاعی از شرکت">
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <!-- انتخاب پلن و مشخصات سرویس -->
+                    <h5 class="fw-bold mb-3 text-secondary"><i class="fas fa-cubes me-2 text-primary"></i>انتخاب پلن و مشخصات سرویس</h5>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">پلن اشتراک:</label>
+                        <select name="plan_id" id="planSelect" class="form-select form-select-lg" onchange="handlePlanChange()">
+                            {% for pid, p in plans.items() %}
+                                {% if p.get('is_active', True) %}
+                                <option value="{{ pid }}" data-price="{{ p['price'] }}" data-data="{{ p['data_limit'] }}" data-days="{{ p['duration'] }}">
+                                    {{ p['name'] }} — {{ p['data_limit'] }} گیگابایت ({{ p['duration'] }} روزه) — {{ "{:,}".format(p['price']) }} تومان
+                                </option>
+                                {% endif %}
+                            {% endfor %}
+                            <option value="custom">⚡ پلن دلخواه و سفارشی (تعیین دستی حجم و روز)</option>
+                        </select>
+                    </div>
+
+                    <!-- بخش پلن سفارشی -->
+                    <div id="customPlanSection" class="p-3 bg-light rounded-3 border mb-3" style="display: none;">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">حجم (گیگابایت):</label>
+                                <input type="number" step="0.5" name="custom_data" id="customDataInput" class="form-control" value="30" oninput="calculateDebt()">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">مدت زمان (روز):</label>
+                                <input type="number" name="custom_duration" id="customDaysInput" class="form-control" value="30">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">قیمت پلن (تومان):</label>
+                                <input type="number" step="1000" name="custom_price" id="customPriceInput" class="form-control" value="100000" oninput="calculateDebt()">
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <!-- نحوه پرداخت و تسویه حساب -->
+                    <h5 class="fw-bold mb-3 text-secondary"><i class="fas fa-wallet me-2 text-primary"></i>روش پرداخت و تراز مالی</h5>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <label class="card h-100 p-3 border text-center cursor-pointer payment-method-card active-method" style="cursor: pointer;" onclick="selectPaymentMethod(this, 'cash')">
+                                <input type="radio" name="payment_method" value="cash" class="d-none" checked>
+                                <div class="fs-3 text-success mb-2"><i class="fas fa-money-bill-wave"></i></div>
+                                <div class="fw-bold">دریافت نقدی</div>
+                                <small class="text-muted" style="font-size: 11px;">مبلغ توسط شما دریافت شد</small>
+                            </label>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="card h-100 p-3 border text-center cursor-pointer payment-method-card" style="cursor: pointer;" onclick="selectPaymentMethod(this, 'wallet')">
+                                <input type="radio" name="payment_method" value="wallet" class="d-none">
+                                <div class="fs-3 text-primary mb-2"><i class="fas fa-wallet"></i></div>
+                                <div class="fw-bold">کیف پول کاربر</div>
+                                <small class="text-muted" style="font-size: 11px;">کسر از موجودی تلگرام</small>
+                            </label>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="card h-100 p-3 border text-center cursor-pointer payment-method-card" style="cursor: pointer;" onclick="selectPaymentMethod(this, 'free')">
+                                <input type="radio" name="payment_method" value="free" class="d-none">
+                                <div class="fs-3 text-warning mb-2"><i class="fas fa-gift"></i></div>
+                                <div class="fw-bold">رایگان / هدیه</div>
+                                <small class="text-muted" style="font-size: 11px;">بدون ثبت هزینه مالی</small>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- جعبه اطلاعات مالی و تراز بدهی -->
+                    <div id="financialBreakdownCard" class="card bg-info-subtle border border-info shadow-sm mb-4">
+                        <div class="card-body">
+                            <h6 class="fw-bold text-info-emphasis mb-3"><i class="fas fa-calculator me-2"></i>محاسبه و تراز حسابداری:</h6>
+                            <div class="row g-2 text-center">
+                                <div class="col-4">
+                                    <div class="small text-muted">مبلغ کل پلن:</div>
+                                    <div class="fs-5 fw-bold text-dark" id="displayTotalPrice">۰ تومان</div>
+                                </div>
+                                {% if admin_role == 'partner' %}
+                                <div class="col-4">
+                                    <div class="small text-muted">سهم شراکت شما ({{ share_percent }}٪):</div>
+                                    <div class="fs-5 fw-bold text-success" id="displayPartnerShare">۰ تومان</div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="small text-muted">بدهی ثبت‌شده به مدیریت:</div>
+                                    <div class="fs-5 fw-bold text-danger" id="displayAdminDebt">۰ تومان</div>
+                                </div>
+                                {% elif admin_role == 'super_admin' %}
+                                <div class="col-8">
+                                    <div class="small text-muted">وضعیت تراز:</div>
+                                    <div class="fs-6 fw-bold text-success">درآمد مستقیم صندوق کل (بدون ثبت بدهی)</div>
+                                </div>
+                                {% else %}
+                                <div class="col-8">
+                                    <div class="small text-muted">بدهی ثبت‌شده به مدیریت بابت وجه نقد:</div>
+                                    <div class="fs-5 fw-bold text-danger" id="displayAdminDebt">۰ تومان</div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-grid mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg fw-bold py-3 shadow">
+                            <i class="fas fa-check-circle me-2"></i>ایجاد و صدور اکانت مشتری
+                        </button>
+                    </div>
+
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.payment-method-card {
+    transition: all 0.2s ease-in-out;
+    border-radius: 12px !important;
+}
+.payment-method-card:hover {
+    border-color: #0d6efd !important;
+    transform: translateY(-2px);
+}
+.payment-method-card.active-method {
+    border-color: #0d6efd !important;
+    background-color: rgba(13, 110, 253, 0.08) !important;
+    box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.35) !important;
+}
+</style>
+
+<script>
+const adminRole = "{{ admin_role }}";
+const partnerSharePercent = {{ share_percent or 0 }};
+
+function handlePlanChange() {
+    const sel = document.getElementById('planSelect');
+    const customSec = document.getElementById('customPlanSection');
+    if (sel.value === 'custom') {
+        customSec.style.display = 'block';
+    } else {
+        customSec.style.display = 'none';
+    }
+    calculateDebt();
+}
+
+function selectPaymentMethod(cardEl, method) {
+    document.querySelectorAll('.payment-method-card').forEach(c => {
+        c.classList.remove('active-method');
+        const radio = c.querySelector('input[type="radio"]');
+        if (radio) radio.checked = false;
+    });
+    cardEl.classList.add('active-method');
+    const myRadio = cardEl.querySelector('input[type="radio"]');
+    if (myRadio) myRadio.checked = true;
+
+    const finCard = document.getElementById('financialBreakdownCard');
+    if (method === 'free') {
+        finCard.style.display = 'none';
+    } else {
+        finCard.style.display = 'block';
+    }
+    calculateDebt();
+}
+
+function calculateDebt() {
+    const sel = document.getElementById('planSelect');
+    let price = 0;
+    if (sel.value === 'custom') {
+        price = parseInt(document.getElementById('customPriceInput').value || 0);
+    } else {
+        const opt = sel.options[sel.selectedIndex];
+        if (opt) {
+            price = parseInt(opt.getAttribute('data-price') || 0);
+        }
+    }
+
+    const priceEl = document.getElementById('displayTotalPrice');
+    if (priceEl) priceEl.innerText = price.toLocaleString('fa-IR') + ' تومان';
+
+    if (adminRole === 'partner') {
+        const shareAmount = Math.floor(price * (partnerSharePercent / 100));
+        const debtAmount = price - shareAmount;
+        const shareEl = document.getElementById('displayPartnerShare');
+        const debtEl = document.getElementById('displayAdminDebt');
+        if (shareEl) shareEl.innerText = shareAmount.toLocaleString('fa-IR') + ' تومان';
+        if (debtEl) debtEl.innerText = debtAmount.toLocaleString('fa-IR') + ' تومان';
+    } else if (adminRole !== 'super_admin') {
+        const debtEl = document.getElementById('displayAdminDebt');
+        if (debtEl) debtEl.innerText = price.toLocaleString('fa-IR') + ' تومان';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    calculateDebt();
+});
+</script>
+{% endblock %}

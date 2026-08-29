@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}اشتراک با موفقیت صادر شد{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-7 col-md-9">
+        <div class="card shadow-lg border-0 text-center">
+            <div class="card-header bg-success text-white py-3">
+                <h4 class="mb-0 fw-bold"><i class="fas fa-check-circle me-2"></i>اشتراک مشتری با موفقیت صادر گردید!</h4>
+            </div>
+            <div class="card-body p-4">
+                
+                <div class="avatar-container mb-3">
+                    <img src="{{ avatar_url(account_name) }}" class="rounded-circle border shadow" style="width: 85px; height: 85px; object-fit: cover;">
+                </div>
+
+                <h4 class="fw-bold text-dark mb-1">{{ account_name }}</h4>
+                <div class="text-muted small mb-3">شناسه اکانت: <code class="text-primary font-monospace">{{ user_uuid }}</code></div>
+
+                {% if debt_info %}
+                <div class="alert alert-info py-2 px-3 mb-4 rounded-3 d-inline-block">
+                    <i class="fas fa-info-circle me-1"></i> {{ debt_info }}
+                </div>
+                {% endif %}
+
+                <!-- کارت جزییات پلن -->
+                <div class="row g-2 mb-4 text-start">
+                    <div class="col-6">
+                        <div class="p-3 bg-light rounded-3 border">
+                            <div class="small text-muted">پلن انتخابی:</div>
+                            <div class="fw-bold text-dark">{{ plan_name }}</div>
+                        </div>
+                    </div>
+                    <div class="col-3">
+                        <div class="p-3 bg-light rounded-3 border text-center">
+                            <div class="small text-muted">حجم:</div>
+                            <div class="fw-bold text-primary">{{ data_limit }} GB</div>
+                        </div>
+                    </div>
+                    <div class="col-3">
+                        <div class="p-3 bg-light rounded-3 border text-center">
+                            <div class="small text-muted">مدت:</div>
+                            <div class="fw-bold text-primary">{{ duration }} روز</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- بارکد و لینک اتصال -->
+                {% if sub_url %}
+                <div class="p-3 bg-light rounded-4 border mb-4">
+                    <h6 class="fw-bold text-secondary mb-3"><i class="fas fa-qrcode me-2 text-primary"></i>لینک و بارکد اتصال Hiddify</h6>
+                    <div id="subCreatedQrCode" class="d-flex justify-content-center mb-3"></div>
+                    <div class="input-group">
+                        <input type="text" id="subCreatedLinkInput" class="form-control text-center font-monospace small" readonly value="{{ sub_url }}" style="direction: ltr;">
+                        <button class="btn btn-primary" onclick="copyCreatedSubLink()"><i class="fas fa-copy me-1"></i> کپی لینک</button>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 justify-content-center mt-3">
+                        <a href="hiddify://install-sub?url={{ sub_url|urlencode }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-rocket me-1"></i> اتصال Hiddify</a>
+                        <a href="streisand://import/{{ sub_url|urlencode }}" class="btn btn-sm btn-outline-info"><i class="fas fa-bolt me-1"></i> اتصال Streisand</a>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="d-flex gap-2 justify-content-center">
+                    <a href="{{ url_for('admin_create_customer') }}" class="btn btn-outline-primary px-4">
+                        <i class="fas fa-user-plus me-1"></i> ساخت مشتری جدید دیگر
+                    </a>
+                    <a href="{{ url_for('subscriptions') }}" class="btn btn-secondary px-4">
+                        <i class="fas fa-list me-1"></i> لیست اشتراک‌ها
+                    </a>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function copyCreatedSubLink() {
+    const input = document.getElementById('subCreatedLinkInput');
+    if (input) {
+        input.select();
+        navigator.clipboard.writeText(input.value);
+        alert('لینک اشتراک در حافظه موقت کپی شد.');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const container = document.getElementById('subCreatedQrCode');
+    const url = "{{ sub_url }}";
+    if (container && url) {
+        new QRCode(container, {
+            text: url,
+            width: 170,
+            height: 170,
+            colorDark: "#0f172a",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.M
+        });
+    }
+});
+</script>
+{% endblock %}

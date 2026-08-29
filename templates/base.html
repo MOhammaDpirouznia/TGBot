@@ -551,7 +551,17 @@
                     {% if session.get('role') == 'reseller' %}
                         نماینده: {{ session.get('name', 'همکار') }}
                     {% else %}
-                        مدیریت اصلی (Super Admin)
+                        {% if session.get('admin_role') == 'partner' %}
+                            🤝 شریک: {{ session.get('name', 'شریک تجاری') }}
+                        {% elif session.get('admin_role') == 'finance' %}
+                            💰 مالی: {{ session.get('name', 'حسابدار') }}
+                        {% elif session.get('admin_role') == 'support' %}
+                            🎧 پشتیبان: {{ session.get('name', 'پشتیبان') }}
+                        {% elif session.get('admin_role') == 'viewer' %}
+                            👁️ ناظر سیستم (فقط‌خواندنی)
+                        {% else %}
+                            👑 مدیریت اصلی (Super Admin)
+                        {% endif %}
                     {% endif %}
                 </div>
             </div>
@@ -580,62 +590,114 @@
                     <i class="fas fa-user-gear"></i> حساب کاربری و مشخصات
                 </a>
             {% else %}
-                <!-- منوی مدیریت کل -->
+                <!-- منوی مدیریت کل بر اساس سطح دسترسی (RBAC) -->
                 <div class="nav-category">اصلی و عملیات</div>
+                {% if has_permission('dashboard') %}
                 <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
                     <i class="fas fa-gauge-high"></i> داشبورد اصلی
                 </a>
+                {% endif %}
+
+                {% if has_permission('create_customer') %}
+                <a class="nav-link {% if request.endpoint == 'admin_create_customer' %}active{% endif %}" href="{{ url_for('admin_create_customer') }}">
+                    <i class="fas fa-user-plus text-success"></i> ساخت اشتراک مشتری
+                </a>
+                {% endif %}
+
+                {% if has_permission('payments_view') %}
                 <a class="nav-link {% if request.endpoint == 'payments' %}active{% endif %}" href="{{ url_for('payments') }}">
                     <i class="fas fa-receipt"></i> پرداخت‌ها و تایید فیش
                     <span id="sidebarPendingBadge" class="badge bg-danger ms-auto rounded-pill" style="display: none; font-size: 0.75rem;">0</span>
                 </a>
+                {% endif %}
+
+                {% if has_permission('users_view') %}
                 <a class="nav-link {% if request.endpoint == 'users' %}active{% endif %}" href="{{ url_for('users') }}">
                     <i class="fas fa-users"></i> کاربران تلگرام
                 </a>
+                {% endif %}
+
+                {% if has_permission('subscriptions_view') %}
                 <a class="nav-link {% if request.endpoint == 'subscriptions' %}active{% endif %}" href="{{ url_for('subscriptions') }}">
                     <i class="fas fa-key"></i> اشتراک‌های هیدیفای
                 </a>
+                {% endif %}
+
+                {% if has_permission('plans') %}
                 <a class="nav-link {% if request.endpoint == 'admin_plans_page' %}active{% endif %}" href="{{ url_for('admin_plans_page') }}">
                     <i class="fas fa-box-open"></i> پلن‌های فروش
                 </a>
+                {% endif %}
 
-                <div class="nav-category">همکاران و بازاریابی</div>
+                {% if has_permission('manage_resellers') or has_permission('broadcast') or has_permission('discounts') or has_permission('tickets') %}
+                <div class="nav-category">ارتباطات و همکاران</div>
+                {% endif %}
+
+                {% if has_permission('manage_resellers') %}
                 <a class="nav-link {% if request.endpoint == 'admin_resellers' %}active{% endif %}" href="{{ url_for('admin_resellers') }}">
                     <i class="fas fa-handshake"></i> نمایندگان فروش (Resellers)
                 </a>
+                {% endif %}
+
+                {% if has_permission('broadcast') %}
                 <a class="nav-link {% if request.endpoint == 'broadcast' %}active{% endif %}" href="{{ url_for('broadcast') }}">
                     <i class="fas fa-bullhorn"></i> پیام همگانی (Broadcast)
                 </a>
+                {% endif %}
+
+                {% if has_permission('discounts') %}
                 <a class="nav-link {% if request.endpoint == 'admin_discounts_page' %}active{% endif %}" href="{{ url_for('admin_discounts_page') }}">
                     <i class="fas fa-tags"></i> کدهای تخفیف
                 </a>
+                {% endif %}
+
+                {% if has_permission('tickets') %}
                 <a class="nav-link {% if request.endpoint == 'tickets' %}active{% endif %}" href="{{ url_for('tickets') }}">
                     <i class="fas fa-headset"></i> تیکت‌های پشتیبانی
                     <span id="sidebarTicketsBadge" class="badge bg-warning text-dark ms-auto rounded-pill" style="display: none; font-size: 0.75rem;">0</span>
                 </a>
+                {% endif %}
 
-                <div class="nav-category">سیستم و گزارشات</div>
+                <div class="nav-category">سیستم و حسابداری</div>
+                {% if has_permission('cards') %}
                 <a class="nav-link {% if request.endpoint == 'cards' %}active{% endif %}" href="{{ url_for('cards') }}">
                     <i class="fas fa-credit-card"></i> کارت‌های بانکی
                 </a>
+                {% endif %}
+
+                {% if has_permission('reports') %}
                 <a class="nav-link {% if request.endpoint == 'reports' %}active{% endif %}" href="{{ url_for('reports') }}">
                     <i class="fas fa-chart-line"></i> گزارشات و هوش مالی
                 </a>
+                {% endif %}
+
+                {% if has_permission('accounting') %}
                 <a class="nav-link {% if request.endpoint == 'accounting' %}active{% endif %}" href="{{ url_for('accounting') }}">
-                    <i class="fas fa-file-invoice-dollar"></i> حسابداری و سود/زیان
+                    <i class="fas fa-file-invoice-dollar"></i> حسابداری و تراز سود
                 </a>
+                {% endif %}
+
+                {% if session.get('admin_role') == 'super_admin' %}
                 <a class="nav-link {% if request.endpoint == 'admin_managers' %}active{% endif %}" href="{{ url_for('admin_managers') }}">
                     <i class="fas fa-user-shield"></i> مدیران و دسترسی‌ها
                 </a>
+                {% endif %}
+
                 <a class="nav-link {% if request.endpoint == 'admin_profile' %}active{% endif %}" href="{{ url_for('admin_profile') }}">
                     <i class="fas fa-user-gear"></i> حساب کاربری من
                 </a>
+
+                {% if has_permission('servers_view') %}
                 <a class="nav-link {% if request.endpoint == 'admin_logs' %}active{% endif %}" href="{{ url_for('admin_logs') }}">
                     <i class="fas fa-terminal"></i> وضعیت سرور و لاگ‌ها
                 </a>
+                {% endif %}
+
+                {% if session.get('admin_role') == 'super_admin' %}
                 <a class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">
                     <i class="fas fa-sliders"></i> تنظیمات
                 </a>
+                {% endif %}
             {% endif %}
         </nav>
 

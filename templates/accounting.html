@@ -4,8 +4,8 @@
 {% block content %}
 <div class="page-header">
     <div>
-        <h1 class="page-title"><i class="fas fa-file-invoice-dollar text-success"></i> سیستم حسابداری و مدیریت سود و زیان</h1>
-        <p class="text-muted mb-0">محاسبه درآمدهای خودکار، ثبت مخارج و هزینه‌های سرور، سود خالص و دفتر کل مالی</p>
+        <h1 class="page-title"><i class="fas fa-file-invoice-dollar text-success"></i> سیستم حسابداری، تراز سود و بدهی مدیران</h1>
+        <p class="text-muted mb-0">محاسبه درآمدهای خودکار، ثبت مخارج، سود خالص، درصد شراکت همکاران و تراز بدهی نقدی مدیران</p>
     </div>
     <div class="d-flex gap-2">
         <a href="{{ url_for('export_accounting') }}" class="btn btn-outline-success">
@@ -79,157 +79,370 @@
     </div>
 </div>
 
-<!-- بخش تفکیک دسته‌بندی مخارج -->
-{% if summary.expense_categories %}
-<div class="card mb-4">
-    <div class="card-header bg-white">
-        <h5 class="mb-0 fw-bold"><i class="fas fa-chart-pie text-danger me-2"></i>تفکیک و سهم مخارج بر اساس دسته‌بندی</h5>
-    </div>
-    <div class="card-body">
-        <div class="row g-3">
-            {% for cat in summary.expense_categories %}
-            {% set percent = (cat['total'] / summary.total_expense * 100)|round(1) if summary.total_expense > 0 else 0 %}
-            <div class="col-md-4 col-sm-6">
-                <div class="p-3 border rounded bg-light-subtle">
-                    <div class="d-flex justify-content-between mb-1">
-                        <span class="fw-bold">{{ cat['category'] }}</span>
-                        <span class="text-danger fw-bold">{{ "{:,}".format(cat['total']) }} تومان</span>
+<!-- تب‌های ناوبری بخش حسابداری -->
+<ul class="nav nav-tabs mb-4 fw-bold" id="accountingTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="general-ledger-tab" data-bs-toggle="tab" data-bs-target="#generalLedgerPane" type="button" role="tab">
+            <i class="fas fa-book me-1"></i> دفتر کل اسناد مالی
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="partner-debts-tab" data-bs-toggle="tab" data-bs-target="#partnerDebtsPane" type="button" role="tab">
+            <i class="fas fa-handshake text-purple me-1" style="color: #7c3aed;"></i> تراز بدهی و سهم شراکت مدیران
+            {% set total_open_debt = admin_debts_summary|sum(attribute='debt_balance') if admin_debts_summary else 0 %}
+            {% if total_open_debt > 0 %}
+                <span class="badge bg-danger ms-1">{{ "{:,}".format(total_open_debt) }} ت</span>
+            {% endif %}
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content" id="accountingTabContent">
+    <!-- تب ۱: دفتر کل اسناد مالی -->
+    <div class="tab-pane fade show active" id="generalLedgerPane" role="tabpanel">
+        
+        <!-- بخش تفکیک دسته‌بندی مخارج -->
+        {% if summary.expense_categories %}
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-chart-pie text-danger me-2"></i>تفکیک و سهم مخارج بر اساس دسته‌بندی</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    {% for cat in summary.expense_categories %}
+                    {% set percent = (cat['total'] / summary.total_expense * 100)|round(1) if summary.total_expense > 0 else 0 %}
+                    <div class="col-md-4 col-sm-6">
+                        <div class="p-3 border rounded bg-light-subtle">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span class="fw-bold">{{ cat['category'] }}</span>
+                                <span class="text-danger fw-bold">{{ "{:,}".format(cat['total']) }} تومان</span>
+                            </div>
+                            <div class="progress" style="height: 6px;">
+                                <div class="progress-bar bg-danger" role="progressbar" style="width: {{ percent }}%;"></div>
+                            </div>
+                            <div class="d-flex justify-content-between mt-1 text-muted small">
+                                <span>{{ cat['count'] }} سند ثبت شده</span>
+                                <span>{{ percent }}% از کل مخارج</span>
+                            </div>
+                        </div>
                     </div>
-                    <div class="progress" style="height: 6px;">
-                        <div class="progress-bar bg-danger" role="progressbar" style="width: {{ percent }}%;"></div>
-                    </div>
-                    <div class="d-flex justify-content-between mt-1 text-muted small">
-                        <span>{{ cat['count'] }} سند ثبت شده</span>
-                        <span>{{ percent }}% از کل مخارج</span>
-                    </div>
+                    {% endfor %}
                 </div>
             </div>
-            {% endfor %}
         </div>
-    </div>
-</div>
-{% endif %}
+        {% endif %}
 
-<!-- فیلتر و جستجو در اسناد مالی -->
-<div class="card mb-4">
-    <div class="card-body">
-        <form method="GET" action="{{ url_for('accounting') }}" class="row g-2 align-items-center">
-            <div class="col-md-3">
-                <label class="form-label small text-muted mb-1">نوع سند:</label>
-                <select name="type" class="form-select form-select-sm" onchange="this.form.submit()">
-                    <option value="all" {% if current_type == 'all' %}selected{% endif %}>همه (درآمدها و هزینه‌ها)</option>
-                    <option value="income" {% if current_type == 'income' %}selected{% endif %}>فقط درآمدها</option>
-                    <option value="expense" {% if current_type == 'expense' %}selected{% endif %}>فقط هزینه‌ها / مخارج</option>
-                </select>
+        <!-- فیلتر و جستجو در اسناد مالی -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <form method="GET" action="{{ url_for('accounting') }}" class="row g-2 align-items-center">
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted mb-1">نوع سند:</label>
+                        <select name="type" class="form-select form-select-sm" onchange="this.form.submit()">
+                            <option value="all" {% if current_type == 'all' %}selected{% endif %}>همه (درآمدها و هزینه‌ها)</option>
+                            <option value="income" {% if current_type == 'income' %}selected{% endif %}>فقط درآمدها</option>
+                            <option value="expense" {% if current_type == 'expense' %}selected{% endif %}>فقط هزینه‌ها / مخارج</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted mb-1">دسته‌بندی:</label>
+                        <select name="category" class="form-select form-select-sm" onchange="this.form.submit()">
+                            <option value="all" {% if current_category == 'all' %}selected{% endif %}>همه دسته‌بندی‌ها</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat }}" {% if current_category == cat %}selected{% endif %}>{{ cat }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small text-muted mb-1">بازه زمانی:</label>
+                        <select name="period" class="form-select form-select-sm" onchange="this.form.submit()">
+                            <option value="all" {% if current_period == 'all' %}selected{% endif %}>کل زمان‌ها</option>
+                            <option value="today" {% if current_period == 'today' %}selected{% endif %}>امروز</option>
+                            <option value="week" {% if current_period == 'week' %}selected{% endif %}>۷ روز اخیر</option>
+                            <option value="month" {% if current_period == 'month' %}selected{% endif %}>ماه جاری</option>
+                            <option value="year" {% if current_period == 'year' %}selected{% endif %}>سال جاری</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted mb-1">جستجو:</label>
+                        <input type="text" name="search" class="form-control form-select-sm" placeholder="عنوان یا توضیحات..." value="{{ search }}">
+                    </div>
+                    <div class="col-md-1 d-flex align-items-end pt-4">
+                        <button type="submit" class="btn btn-sm btn-primary w-100"><i class="fas fa-filter"></i></button>
+                    </div>
+                </form>
             </div>
-            <div class="col-md-3">
-                <label class="form-label small text-muted mb-1">دسته‌بندی:</label>
-                <select name="category" class="form-select form-select-sm" onchange="this.form.submit()">
-                    <option value="all" {% if current_category == 'all' %}selected{% endif %}>همه دسته‌بندی‌ها</option>
-                    {% for cat in categories %}
-                    <option value="{{ cat }}" {% if current_category == cat %}selected{% endif %}>{{ cat }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label small text-muted mb-1">بازه زمانی:</label>
-                <select name="period" class="form-select form-select-sm" onchange="this.form.submit()">
-                    <option value="all" {% if current_period == 'all' %}selected{% endif %}>کل زمان‌ها</option>
-                    <option value="today" {% if current_period == 'today' %}selected{% endif %}>امروز</option>
-                    <option value="week" {% if current_period == 'week' %}selected{% endif %}>۷ روز اخیر</option>
-                    <option value="month" {% if current_period == 'month' %}selected{% endif %}>ماه جاری</option>
-                    <option value="year" {% if current_period == 'year' %}selected{% endif %}>سال جاری</option>
-                </select>
-            </div>
-            <div class="col-md-3">
-                <label class="form-label small text-muted mb-1">جستجو:</label>
-                <input type="text" name="search" class="form-control form-select-sm" placeholder="عنوان یا توضیحات..." value="{{ search }}">
-            </div>
-            <div class="col-md-1 d-flex align-items-end pt-4">
-                <button type="submit" class="btn btn-sm btn-primary w-100"><i class="fas fa-filter"></i></button>
-            </div>
-        </form>
-    </div>
-</div>
+        </div>
 
-<!-- جدول اسناد حسابداری (دفتر کل) -->
-<div class="card shadow-sm border-0">
-    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div class="d-flex align-items-center gap-2">
-            <h5 class="mb-0 fw-bold"><i class="fas fa-book text-primary me-2"></i>دفتر کل اسناد مالی</h5>
-            <span class="badge bg-secondary" data-table-count="accountingTable">{{ records|length }} مورد</span>
-        </div>
-        <div class="table-search-wrapper">
-            <i class="fas fa-search table-search-icon"></i>
-            <input type="text" class="form-control table-search-input" data-table="accountingTable" placeholder="جستجو زنده در اسناد مالی...">
-            <button type="button" class="table-search-clear" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
+        <!-- جدول اسناد حسابداری (دفتر کل) -->
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-2">
+                    <h5 class="mb-0 fw-bold"><i class="fas fa-book text-primary me-2"></i>دفتر کل اسناد مالی</h5>
+                    <span class="badge bg-secondary" data-table-count="accountingTable">{{ records|length }} مورد</span>
+                </div>
+                <div class="table-search-wrapper">
+                    <i class="fas fa-search table-search-icon"></i>
+                    <input type="text" class="form-control table-search-input" data-table="accountingTable" placeholder="جستجو زنده در اسناد مالی...">
+                    <button type="button" class="table-search-clear" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0" id="accountingTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 70px;">شناسه</th>
+                                <th>نوع</th>
+                                <th>دسته‌بندی</th>
+                                <th>عنوان سند</th>
+                                <th>مبلغ</th>
+                                <th>منبع</th>
+                                <th>تاریخ سند</th>
+                                <th>توضیحات</th>
+                                <th style="width: 80px;">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in records %}
+                            <tr>
+                                <td><code>#{{ r['id'] }}</code></td>
+                                <td>
+                                    {% if r['type'] == 'income' %}
+                                        <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-arrow-down me-1"></i>درآمد</span>
+                                    {% else %}
+                                        <span class="badge bg-danger-subtle text-danger border border-danger"><i class="fas fa-arrow-up me-1"></i>هزینه</span>
+                                    {% endif %}
+                                </td>
+                                <td><span class="badge bg-secondary-subtle text-dark border">{{ r['category'] }}</span></td>
+                                <td><strong>{{ r['title'] }}</strong></td>
+                                <td>
+                                    <strong class="{% if r['type'] == 'income' %}text-success{% else %}text-danger{% endif %}">
+                                        {% if r['type'] == 'income' %}+{% else %}-{% endif %}{{ "{:,}".format(r['amount'] or 0) }} تومان
+                                    </strong>
+                                </td>
+                                <td>
+                                    {% if r['source'] == 'auto' %}
+                                        <span class="badge bg-info-subtle text-info"><i class="fas fa-robot me-1"></i>خودکار</span>
+                                    {% else %}
+                                        <span class="badge bg-light text-dark border"><i class="fas fa-user-pen me-1"></i>دستی</span>
+                                    {% endif %}
+                                </td>
+                                <td><small>{{ r['date'] }}</small></td>
+                                <td><small class="text-muted">{{ r['description'] or '-' }}</small></td>
+                                <td>
+                                    {% if r['source'] != 'auto' %}
+                                    <a href="{{ url_for('accounting_delete_record', record_id=r['id']) }}" class="btn btn-sm btn-outline-danger py-0 px-2" title="حذف سند" onclick="return confirm('آیا از حذف این سند حسابداری اطمینان دارید؟')">
+                                        <i class="fas fa-trash-can"></i>
+                                    </a>
+                                    {% else %}
+                                    <span class="text-muted small">-</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            {% if not records %}
+                            <tr>
+                                <td colspan="9" class="text-center py-5 text-muted">
+                                    <i class="fas fa-receipt fa-2x mb-2 text-secondary d-block"></i>
+                                    هنوز هیچ سند مالی دستی یا فیلترشده‌ای در این بخش یافت نشد.
+                                </td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0" id="accountingTable">
-                <thead>
-                    <tr>
-                        <th style="width: 70px;">شناسه</th>
-                        <th>نوع</th>
-                        <th>دسته‌بندی</th>
-                        <th>عنوان سند</th>
-                        <th>مبلغ</th>
-                        <th>منبع</th>
-                        <th>تاریخ سند</th>
-                        <th>توضیحات</th>
-                        <th style="width: 80px;">عملیات</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for r in records %}
-                    <tr>
-                        <td><code>#{{ r['id'] }}</code></td>
-                        <td>
-                            {% if r['type'] == 'income' %}
-                                <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-arrow-down me-1"></i>درآمد</span>
-                            {% else %}
-                                <span class="badge bg-danger-subtle text-danger border border-danger"><i class="fas fa-arrow-up me-1"></i>هزینه</span>
-                            {% endif %}
-                        </td>
-                        <td><span class="badge bg-secondary-subtle text-dark border">{{ r['category'] }}</span></td>
-                        <td><strong>{{ r['title'] }}</strong></td>
-                        <td>
-                            <strong class="{% if r['type'] == 'income' %}text-success{% else %}text-danger{% endif %}">
-                                {% if r['type'] == 'income' %}+{% else %}-{% endif %}{{ "{:,}".format(r['amount'] or 0) }} تومان
-                            </strong>
-                        </td>
-                        <td>
-                            {% if r['source'] == 'auto' %}
-                                <span class="badge bg-info-subtle text-info"><i class="fas fa-robot me-1"></i>خودکار</span>
-                            {% else %}
-                                <span class="badge bg-light text-dark border"><i class="fas fa-user-pen me-1"></i>دستی</span>
-                            {% endif %}
-                        </td>
-                        <td><small>{{ r['date'] }}</small></td>
-                        <td><small class="text-muted">{{ r['description'] or '-' }}</small></td>
-                        <td>
-                            {% if r['source'] != 'auto' %}
-                            <a href="{{ url_for('accounting_delete_record', record_id=r['id']) }}" class="btn btn-sm btn-outline-danger py-0 px-2" title="حذف سند" onclick="return confirm('آیا از حذف این سند حسابداری اطمینان دارید؟')">
-                                <i class="fas fa-trash-can"></i>
-                            </a>
-                            {% else %}
-                            <span class="text-muted small">-</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                    {% if not records %}
-                    <tr>
-                        <td colspan="9" class="text-center py-5 text-muted">
-                            <i class="fas fa-receipt fa-2x mb-2 text-secondary d-block"></i>
-                            هنوز هیچ سند مالی دستی یا فیلترشده‌ای در این بخش یافت نشد.
-                        </td>
-                    </tr>
-                    {% endif %}
-                </tbody>
-            </table>
+
+    <!-- تب ۲: تراز بدهی و سهم شراکت مدیران و شرکا -->
+    <div class="tab-pane fade" id="partnerDebtsPane" role="tabpanel">
+        
+        <!-- جدول خلاصه وضعیت بدهی و فروش مدیران -->
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-users text-primary me-2"></i>تراز مالی و بدهی مدیران / شرکا به مدیریت ارشد</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th class="ps-3">مدیر / شریک</th>
+                                <th>نقش</th>
+                                <th>درصد شراکت</th>
+                                <th>تعداد فروش</th>
+                                <th>کل وجه دریافتی</th>
+                                <th>سهم شراکت کسرشده</th>
+                                <th>کل تسویه‌شده</th>
+                                <th>مانده بدهی به مدیریت</th>
+                                {% if has_permission('settle_debts') %}
+                                <th class="text-end pe-3">تسویه حساب</th>
+                                {% endif %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for adm in admin_debts_summary %}
+                            <tr>
+                                <td class="ps-3">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <img src="{{ avatar_url(adm['telegram_id'] or adm['username'] or 'Manager') }}" class="rounded-circle border shadow-sm" style="width: 35px; height: 35px; object-fit: cover;">
+                                        <div>
+                                            <div class="fw-bold">{{ adm['display_name'] }}</div>
+                                            <small class="text-muted">@{{ adm['username'] }}</small>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if adm['role'] == 'super_admin' %}
+                                        <span class="badge bg-primary-subtle text-primary border border-primary">مدیر ارشد</span>
+                                    {% elif adm['role'] == 'partner' %}
+                                        <span class="badge bg-purple-subtle text-purple border border-purple" style="color: #7c3aed; background: #f3e8ff; border-color: #d8b4fe !important;">شریک تجاری</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary-subtle text-dark border">{{ adm['role'] }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if adm['role'] == 'partner' %}
+                                        <strong class="text-primary font-monospace">{{ adm['share_percent'] or 0 }}%</strong>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td><span class="badge bg-light text-dark border font-monospace">{{ adm['total_sales_count'] }}</span></td>
+                                <td><span class="font-monospace fw-bold">{{ "{:,}".format(adm['total_cash_collected']) }} ت</span></td>
+                                <td><span class="font-monospace text-success fw-bold">{{ "{:,}".format(adm['total_share_earned']) }} ت</span></td>
+                                <td><span class="font-monospace text-info fw-bold">{{ "{:,}".format(adm['total_settled_amount']) }} ت</span></td>
+                                <td>
+                                    {% if adm['debt_balance'] and adm['debt_balance'] > 0 %}
+                                        <span class="badge bg-danger-subtle text-danger border border-danger fs-6 font-monospace">{{ "{:,}".format(adm['debt_balance']) }} تومان</span>
+                                    {% else %}
+                                        <span class="badge bg-success-subtle text-success fs-6 font-monospace">تسویه / صفر</span>
+                                    {% endif %}
+                                </td>
+                                {% if has_permission('settle_debts') %}
+                                <td class="text-end pe-3">
+                                    {% if adm['debt_balance'] and adm['debt_balance'] > 0 %}
+                                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#settleDebtModal{{ adm['id'] }}">
+                                        <i class="fas fa-hand-holding-dollar me-1"></i> ثبت تسویه
+                                    </button>
+
+                                    <!-- Modal ثبت تسویه حساب -->
+                                    <div class="modal fade" id="settleDebtModal{{ adm['id'] }}" tabindex="-1">
+                                        <div class="modal-dialog">
+                                            <div class="modal-content text-start">
+                                                <form method="POST" action="{{ url_for('admin_accounting_settle') }}">
+                                                    <div class="modal-header bg-success text-white">
+                                                        <h5 class="modal-title fw-bold"><i class="fas fa-hand-holding-dollar me-2"></i>ثبت تسویه بدهی برای «{{ adm['display_name'] }}»</h5>
+                                                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                                    </div>
+                                                    <div class="modal-body">
+                                                        <input type="hidden" name="admin_id" value="{{ adm['id'] }}">
+                                                        <div class="alert alert-info py-2 small mb-3">
+                                                            مانده بدهی فعلی این مدیر: <strong>{{ "{:,}".format(adm['debt_balance']) }} تومان</strong>
+                                                        </div>
+                                                        <div class="mb-3">
+                                                            <label class="form-label fw-bold">مبلغ واریزی / تسویه‌شده (تومان):</label>
+                                                            <input type="number" name="amount" class="form-control font-monospace" max="{{ adm['debt_balance'] }}" value="{{ adm['debt_balance'] }}" required min="1000">
+                                                        </div>
+                                                        <div class="mb-3">
+                                                            <label class="form-label fw-bold">توضیحات و شماره فیش واریزی:</label>
+                                                            <input type="text" name="description" class="form-control" placeholder="مثال: کارت به کارت به شماره فیش 123456" required>
+                                                        </div>
+                                                    </div>
+                                                    <div class="modal-footer">
+                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                                                        <button type="submit" class="btn btn-success">ثبت و کاهش بدهی</button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% else %}
+                                    <span class="text-muted small">-</span>
+                                    {% endif %}
+                                </td>
+                                {% endif %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
+
+        <!-- سوابق ریز تراکنش‌های نقدی، شراکت و تسویه‌حساب‌ها -->
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-clock-rotate-left text-primary me-2"></i>ریز سوابق فروش نقدی و تسویه‌حساب‌های ثبت‌شده</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th class="ps-3" style="width: 70px;">شناسه</th>
+                                <th>مدیر / شریک</th>
+                                <th>نوع عملیات</th>
+                                <th>نام مشتری / پلن</th>
+                                <th>مبلغ کل</th>
+                                <th>سهم شراکت</th>
+                                <th>تغییر بدهی</th>
+                                <th>تاریخ و زمان</th>
+                                <th>توضیحات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for d in admin_debts_logs %}
+                            <tr>
+                                <td class="ps-3"><code>#{{ d['id'] }}</code></td>
+                                <td><strong>{{ d['admin_name'] or d['admin_username'] }}</strong></td>
+                                <td>
+                                    {% if d['type'] == 'cash_sale' %}
+                                        <span class="badge bg-primary-subtle text-primary border border-primary"><i class="fas fa-cart-shopping me-1"></i>فروش نقدی</span>
+                                    {% elif d['type'] == 'settlement' %}
+                                        <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-check-double me-1"></i>تسویه حساب</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary-subtle text-dark border">{{ d['type'] }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div><strong>{{ d['customer_name'] or '-' }}</strong></div>
+                                    <small class="text-muted">{{ d['plan_name'] or '' }}</small>
+                                </td>
+                                <td><span class="font-monospace fw-bold">{{ "{:,}".format(d['total_amount']) }} ت</span></td>
+                                <td>
+                                    {% if d['share_amount'] > 0 %}
+                                        <span class="font-monospace text-success fw-bold">+{{ "{:,}".format(d['share_amount']) }} ت ({{ d['share_percent'] }}%)</span>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if d['debt_amount'] > 0 %}
+                                        <span class="font-monospace text-danger fw-bold">+{{ "{:,}".format(d['debt_amount']) }} ت بدهکار</span>
+                                    {% else %}
+                                        <span class="font-monospace text-success fw-bold">{{ "{:,}".format(d['debt_amount']) }} ت تسویه</span>
+                                    {% endif %}
+                                </td>
+                                <td><small class="text-muted">{{ d['created_at'][:19] if d['created_at'] else '-' }}</small></td>
+                                <td><small class="text-muted">{{ d['description'] or '-' }}</small></td>
+                            </tr>
+                            {% endfor %}
+                            {% if not admin_debts_logs %}
+                            <tr>
+                                <td colspan="9" class="text-center py-4 text-muted">
+                                    هنوز هیچ تراکنش فروش نقدی یا تسویه‌حساب مدیریتی ثبت نشده است.
+                                </td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>
 
@@ -238,21 +451,21 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST" action="{{ url_for('accounting_add_record') }}">
-                <div class="modal-header">
-                    <h5 class="modal-title fw-bold"><i class="fas fa-file-invoice-dollar text-primary me-2"></i>ثبت سند جدید در حسابداری</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-file-invoice-dollar me-2"></i>ثبت سند جدید در حسابداری</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <div class="row g-2 mb-3">
                         <div class="col-md-6">
-                            <label class="form-label">نوع سند:</label>
+                            <label class="form-label fw-bold">نوع سند:</label>
                             <select name="type" class="form-select" required>
                                 <option value="expense" selected>هزینه / مخارج (کاهنده سود)</option>
                                 <option value="income">درآمد متفرقه (افزاینده سود)</option>
                             </select>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">دسته‌بندی:</label>
+                            <label class="form-label fw-bold">دسته‌بندی:</label>
                             <select name="category" class="form-select" required>
                                 {% for cat in categories %}
                                 <option value="{{ cat }}">{{ cat }}</option>
@@ -261,21 +474,21 @@
                         </div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">عنوان سند / شرح مختصر:</label>
+                        <label class="form-label fw-bold">عنوان سند / شرح مختصر:</label>
                         <input type="text" name="title" class="form-control" placeholder="مثال: تمدید سرور هتزنر آلمان / هزینه ترافیک" required>
                     </div>
                     <div class="row g-2 mb-3">
                         <div class="col-md-6">
-                            <label class="form-label">مبلغ (تومان):</label>
-                            <input type="number" name="amount" class="form-control" placeholder="مثال: 850000" min="1000" required>
+                            <label class="form-label fw-bold">مبلغ (تومان):</label>
+                            <input type="number" name="amount" class="form-control font-monospace" placeholder="مثال: 850000" min="1000" required>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">تاریخ سند:</label>
+                            <label class="form-label fw-bold">تاریخ سند:</label>
                             <input type="date" name="date" class="form-control">
                         </div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">توضیحات و جزئیات تکمیلی (اختیاری):</label>
+                        <label class="form-label fw-bold">توضیحات و جزئیات تکمیلی (اختیاری):</label>
                         <textarea name="description" class="form-control" rows="2" placeholder="جزئیات فاکتور، شماره رهگیری، یا یادداشت حسابداری"></textarea>
                     </div>
                 </div>
