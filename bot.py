@@ -17,7 +17,7 @@ load_dotenv()
 from hidify import HidifyClient
 import threading
 from dashboard import run_dashboard, start_dashboard_thread
-from payment import PaymentManager
+from payment import PaymentManager, CryptoPaymentGateway
 from utils import (
     gregorian_to_shamsi, gregorian_to_shamsi_full, 
     get_now_shamsi, days_remaining_shamsi, is_expired,
@@ -40,6 +40,7 @@ from telegram import (
     InlineKeyboardMarkup,
     ReplyKeyboardMarkup,
     KeyboardButton,
+    WebAppInfo,
 )
 from telegram.ext import (
     Application,
@@ -1092,31 +1093,52 @@ async def select_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
         return CHOOSING
 
     plan = plans[plan_id]
-    price_formatted = f"{plan['price']:,}".replace(",", "،")
+    price = plan.get("price", 0)
+    price_formatted = f"{price:,}".replace(",", "،")
+    user_id = query.from_user.id
+    user_wallet = db.get_user_wallet_balance(user_id)
+    usdt_price = CryptoPaymentGateway.toman_to_usdt(price, db)
+    crypto_cfg = CryptoPaymentGateway.get_crypto_config(db)
 
     text = f"""
-💳 **انتخاب روش پرداخت**
+💳 <b>انتخاب روش پرداخت</b>
 
-📋 پلن: {plan['name']}
-💰 مبلغ: {price_formatted} تومان
+📋 پلن انتخابی: <b>{plan['name']}</b>
+💰 مبلغ قابل پرداخت: <b>{price_formatted} تومان</b> (~ {usdt_price} USDT)
+💳 موجودی کیف پول شما: <b>{user_wallet:,} تومان</b>
 
-لطفاً روش پرداخت را انتخاب کنید:
+لطفاً نحوه پرداخت را انتخاب کنید:
 """
 
-    keyboard = [
-        [InlineKeyboardButton("💳 درگاه آنلاین (بزودی)", callback_data="coming_soon")],
-        [InlineKeyboardButton("💵 کارت به کارت", callback_data="pay_card")],
-        [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_confirm_purchase"), InlineKeyboardButton("❌ انصراف", callback_data="cancel")],
-    ]
+    keyboard = []
+    # ۱. پرداخت آنی با کیف پول
+    if user_wallet >= price:
+        keyboard.append([InlineKeyboardButton(f"⚡ پرداخت آنی از کیف پول ({user_wallet:,} ت)", callback_data="pay_wallet")])
+    else:
+        keyboard.append([InlineKeyboardButton(f"💰 پرداخت از کیف پول (کسری: {price - user_wallet:,} ت)", callback_data="pay_wallet_insufficient")])
+
+    # ۲. پرداخت کارت به کارت
+    keyboard.append([InlineKeyboardButton("💵 کارت به کارت (بانکی)", callback_data="pay_card")])
+
+    # ۳. پرداخت کریپتو
+    if crypto_cfg.get("enabled"):
+        keyboard.append([InlineKeyboardButton(f"💎 پرداخت با تتر / کریپتو ({usdt_price} USDT)", callback_data="pay_crypto")])
+
+    keyboard.append([
+        InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_confirm_purchase"),
+        InlineKeyboardButton("❌ انصراف", callback_data="cancel")
+    ])
+
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
     return SELECTING_PAYMENT
 
 
 async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """پردازش انتخاب روش پرداخت"""
+    """پردازش انتخاب روش پرداخت (کیف پول، کارت بانکی، کریپتو)"""
     query = update.callback_query
     await query.answer()
+    user = update.effective_user
 
     if query.data == "back_to_confirm_purchase":
         return await back_to_confirm_purchase(update, context)
@@ -1128,52 +1150,157 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
     plan_id = context.user_data.get("selected_plan")
     plans = get_plans()
     plan = plans.get(plan_id, {})
-    price_formatted = f"{plan.get('price', 0):,}".replace(",", "،")
+    price = plan.get("price", 0)
+    price_formatted = f"{price:,}".replace(",", "،")
 
-    if query.data == "coming_soon":
-        # درگاه آنلاین بزودی
-        await query.answer("⏳ این قابلیت بزودی اضافه خواهد شد!", show_alert=True)
+    if query.data == "pay_wallet_insufficient":
+        user_wallet = db.get_user_wallet_balance(user.id)
+        await query.answer(f"❌ موجودی کیف پول شما ({user_wallet:,} ت) برای این پلن کافی نیست. ابتدا کیف پول را شارژ کنید یا کارت به کارت نمایید.", show_alert=True)
         return SELECTING_PAYMENT
 
-    elif query.data == "pay_online":
-        # پرداخت آنلاین
-        return await confirm_purchase(update, context)
+    elif query.data == "pay_wallet":
+        # پرداخت ۱۰۰٪ آنی و خودکار از موجودی کیف پول!
+        user_wallet = db.get_user_wallet_balance(user.id)
+        if user_wallet < price:
+            await query.answer("❌ موجودی کیف پول کافی نیست!", show_alert=True)
+            return SELECTING_PAYMENT
+
+        # کسر از موجودی کیف پول
+        deduct_res = db.deduct_wallet_balance(user.id, price, f"خرید آنی اشتراک {plan.get('name')}")
+        if not deduct_res.get("success"):
+            await query.answer("❌ خطا در کسر موجودی: " + str(deduct_res.get("error")), show_alert=True)
+            return SELECTING_PAYMENT
+
+        await query.edit_message_text("⏳ در حال ساخت و فعال‌سازی آنی اشتراک شما در هیدیفای...")
+
+        # ساخت اکانت در هیدیفای
+        username = f"tg_{user.id}"
+        try:
+            result = await hidify.create_user(
+                name=username,
+                usage_limit_gb=plan.get("data_limit") if plan.get("data_limit", 0) > 0 else None,
+                package_days=plan.get("duration", 30),
+                enable=True,
+                comment=str(user.id)
+            )
+            user_uuid = result.get("uuid", "")
+            if not user_uuid:
+                raise Exception("UUID received empty from Hiddify")
+
+            db.save_subscription(
+                telegram_id=user.id,
+                hidify_uuid=user_uuid,
+                plan_id=plan_id,
+                plan_name=plan.get("name", "نامشخص"),
+                data_limit=plan.get("data_limit", 0),
+                duration=plan.get("duration", 30),
+                status="active",
+                account_name=username,
+                account_comment=str(user.id),
+            )
+
+            # اطلاع به ادمین
+            try:
+                await context.bot.send_message(
+                    chat_id=ADMIN_ID,
+                    text=f"⚡ <b>خرید آنی از کیف پول</b>\n\n👤 کاربر: <code>{user.id}</code> (@{user.username})\n📋 پلن: <b>{plan.get('name')}</b>\n💵 مبلغ: <b>{price_formatted} تومان</b>\n💳 موجودی پس از کسر: <b>{deduct_res.get('new_balance'):,} تومان</b>",
+                    parse_mode="HTML"
+                )
+            except Exception:
+                pass
+
+            # ارسال لینک به کاربر
+            base_url = (HIDIFY_PANEL_URL or "").rstrip("/")
+            proxy_path = (USER_PROXY_PATH or HIDIFY_PROXY_PATH or "").strip("/")
+            subscription_url = f"{base_url}/{proxy_path}/{user_uuid}/"
+
+            details = (
+                f"✅ مبلغ <b>{price_formatted} تومان</b> از کیف پول شما کسر و اشتراک فوراً فعال شد!\n\n"
+                f"📋 پلن: <b>{plan.get('name')}</b>\n"
+                f"📊 حجم: <b>{plan.get('data_limit', 'نامحدود')} گیگابایت</b>\n"
+                f"⏰ مدت اعتبار: <b>{plan.get('duration', 30)} روز</b>\n"
+                f"💳 مانده موجودی کیف پول: <b>{deduct_res.get('new_balance'):,} تومان</b>"
+            )
+            await send_subscription_card(
+                context.bot,
+                chat_id=user.id,
+                sub_url=subscription_url,
+                title="🎉 <b>اشتراک شما با موفقیت فعال شد!</b>",
+                details=details
+            )
+            return CHOOSING
+
+        except Exception as e:
+            logger.error(f"Error activating sub from wallet: {e}")
+            # بازگشت وجه در صورت خطا
+            db.add_wallet_balance(user.id, price, "بازگشت وجه به دلیل خطای سرور هیدیفای", tx_type="refund")
+            await query.edit_message_text(f"❌ خطایی در فعال‌سازی اشتراک رخ داد و مبلغ به کیف پول شما برگشت داده شد:\n{str(e)[:150]}")
+            return CHOOSING
+
+    elif query.data == "pay_crypto":
+        # پرداخت با ارز دیجیتال / تتر
+        crypto_res = CryptoPaymentGateway.create_payment(price, user.id, plan.get('name', 'نامشخص'), db_instance=db)
+        usdt_amt = crypto_res.get("usdt_amount", 0)
+        wallet_addr = crypto_res.get("wallet_address", "")
+        pay_url = crypto_res.get("payment_url", "")
+
+        keyboard = []
+        if pay_url:
+            keyboard.append([InlineKeyboardButton("🌐 ورود به درگاه آنلاین کریپتو", url=pay_url)])
+            text = f"""
+💎 <b>پرداخت ارزی با کریپتو (تتر / رمزارز)</b>
+
+📋 پلن: <b>{plan.get('name')}</b>
+💰 معادل تتر: <b>{usdt_amt} USDT</b>
+
+لطفاً روی دکمه زیر کلیک کرده و پرداخت خود را انجام دهید. اشتراک شما پس از واریز به صورت خودکار فعال خواهد شد.
+"""
+        else:
+            text = f"""
+💎 <b>پرداخت مستقیم با تتر (USDT TRC20 / TON)</b>
+
+📋 پلن: <b>{plan.get('name')}</b>
+💰 مبلغ قابل انتقال: <b><code>{usdt_amt}</code> USDT</b>
+
+📌 <b>آدرس ولت دریافت:</b>
+<code>{wallet_addr}</code>
+
+⚠️ لطفاً پس از انتقال، کد رهگیری هش (TXID) یا تصویر رسید را به عنوان پیام ارسال فرمایید.
+"""
+            keyboard.append([InlineKeyboardButton("📝 ارسال کد هش یا رسید", callback_data="pay_card")])
+
+        keyboard.append([InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_select_payment")])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
+        return ENTERING_TRACKING_CODE
 
     elif query.data == "pay_card":
         # کارت به کارت
-        # دریافت کارت فعال
         active_card = get_active_card()
         card_number = active_card.get("card_number", CARD_NUMBER)
         card_holder = active_card.get("card_holder", CARD_HOLDER)
         bank_name = active_card.get("bank_name", BANK_NAME)
 
         text = f"""
-💵 **پرداخت کارت به کارت**
+💵 <b>پرداخت کارت به کارت</b>
 
-📋 پلن: {plan.get('name', 'نامشخص')}
-💰 مبلغ: {price_formatted} تومان
+📋 پلن: <b>{plan.get('name', 'نامشخص')}</b>
+💰 مبلغ: <b>{price_formatted} تومان</b>
 
-📌 **اطلاعات کارت:**
-```
-{card_number}
-```
-👤 **نام صاحب کارت:** {card_holder}
-🏦 **بانک:** {bank_name}
+📌 <b>اطلاعات حساب کارت:</b>
+<code>{card_number}</code>
+👤 <b>نام صاحب کارت:</b> {card_holder}
+🏦 <b>بانک:</b> {bank_name}
 
-⚠️ **نکات مهم:**
-• دقیقاً مبلغ بالا را واریز کنید
-• بعد از واریز، رسید پرداخت را ارسال کنید
-• رسید پرداخت برای ادمین ارسال میشود
-
-لطفاً بعد از واریز:
-• 📝 **شماره پیگیری** را وارد کنید
-• یا 📷 **اسکرین‌شات رسید** را ارسال کنید:
+⚠️ <b>نکات مهم:</b>
+• لطفاً دقیقاً مبلغ بالا را واریز کنید.
+• پس از واریز، شماره پیگیری یا اسکرین‌شات رسید را ارسال نمایید.
 """
         keyboard = [
             [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_select_payment"), InlineKeyboardButton("❌ انصراف", callback_data="cancel")],
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
         return ENTERING_TRACKING_CODE
 
     return SELECTING_PAYMENT
@@ -2444,22 +2571,51 @@ async def handle_test_subscription(update: Update, context: ContextTypes.DEFAULT
 # ═══════════════════════════════════════════════════════════════════════
 
 async def show_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش کیف پول"""
+    """نمایش داشبورد کیف پول هوشمند کاربر و تراکنش‌ها"""
     user = update.effective_user
-    wallet = db.get_wallet(user.id)
-    balance = wallet.get("balance", 0)
+    balance = db.get_user_wallet_balance(user.id)
+    usdt_equiv = CryptoPaymentGateway.toman_to_usdt(balance, db)
+    txs = db.get_wallet_transactions(user.id, limit=5)
     
+    tx_lines = ""
+    if txs:
+        for t_item in txs:
+            amt = t_item.get("amount", 0)
+            sign = "+" if amt > 0 else ""
+            desc = t_item.get("description", "تراکنش")
+            date_str = str(t_item.get("created_at", ""))[:10]
+            tx_lines += f"• {date_str}: <b>{desc}</b> ({sign}{amt:,} تومان)\n"
+    else:
+        tx_lines = "<i>هنوز تراکنشی ثبت نشده است.</i>\n"
+
+    webapp_url = db.get_setting("webapp_url", "") or os.getenv("DASHBOARD_URL", "")
+    if not webapp_url and os.getenv("RAILWAY_PUBLIC_DOMAIN"):
+        webapp_url = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}"
+
     text = f"""
-💰 <b>کیف پول شما</b>
+💰 <b>کیف پول و حساب کاربری شما</b>
 
-موجودی: {balance:,} تومان
+💳 موجودی ریالی: <b>{balance:,} تومان</b>
+💎 معادل تتر (USDT): <b>{usdt_equiv} دلار</b>
 
-💡 برای شارژ کیف پول، با پشتیبانی تماس بگیرید.
+📜 <b>آخرین تراکنش‌های شما:</b>
+{tx_lines}
+💡 <i>با داشتن موجودی در کیف پول، می‌توانید تمام پلن‌ها را در ۱ ثانیه و به صورت آنی فعال کنید.</i>
 """
     
-    keyboard = [
-        [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_menu")],
-    ]
+    keyboard = []
+    if webapp_url:
+        full_app_url = f"{webapp_url.rstrip('/')}/webapp/user/{user.id}"
+        keyboard.append([InlineKeyboardButton("📱 باز کردن پنل هوشمند (Mini App)", web_app=WebAppInfo(url=full_app_url))])
+
+    crypto_cfg = CryptoPaymentGateway.get_crypto_config(db)
+    charge_row = [InlineKeyboardButton("💳 افزایش موجودی (کارت بانکی)", callback_data="charge_wallet_card")]
+    if crypto_cfg.get("enabled"):
+        charge_row.append(InlineKeyboardButton("💎 شارژ با تتر/کریپتو", callback_data="charge_wallet_crypto"))
+    keyboard.append(charge_row)
+    keyboard.append([InlineKeyboardButton("🛒 خرید پلن جدید", callback_data="buy_plan_from_wallet")])
+    keyboard.append([InlineKeyboardButton("◀️ بازگشت به منوی اصلی", callback_data="back_to_menu")])
+
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     try:
@@ -2469,6 +2625,99 @@ async def show_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="HTML")
     except Exception as e:
         logger.error(f"Error showing wallet: {e}")
+    return CHOOSING
+
+
+async def show_webapp_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ارسال دکمه و لینک ورود به مینی‌اپ اختصاصی کاربر"""
+    user = update.effective_user
+    webapp_url = db.get_setting("webapp_url", "") or os.getenv("DASHBOARD_URL", "")
+    if not webapp_url and os.getenv("RAILWAY_PUBLIC_DOMAIN"):
+        webapp_url = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}"
+
+    keyboard = []
+    if webapp_url:
+        full_app_url = f"{webapp_url.rstrip('/')}/webapp/user/{user.id}"
+        keyboard.append([InlineKeyboardButton("📱 ورود به پنل هوشمند (Mini App)", web_app=WebAppInfo(url=full_app_url))])
+        keyboard.append([InlineKeyboardButton("🌐 باز کردن در مرورگر", url=full_app_url)])
+        text = (
+            "📱 <b>پنل کاربری هوشمند (Telegram Mini App)</b>\n\n"
+            "با ورود به پنل هوشمند، می‌توانید به امکانات زیر دسترسی داشته باشید:\n\n"
+            "• 📊 <b>نمودار زنده مصرف حجم</b> به صورت گیگابایت دقیق\n"
+            "• ⏳ <b>روزشمار انقضای اشتراک</b> و وضعیت اتصال\n"
+            "• 🚀 <b>دکمه‌های اتصال ۱-کلیکه مستقیم</b> به V2RayNG، Streisand، V2Box و Hiddify\n"
+            "• 💰 <b>موجودی کیف پول</b> و تمدید سریع اشتراک"
+        )
+    else:
+        text = "📱 برای استفاده از مینی‌اپ، آدرس دامنه سرور را در پنل وب ثبت نمایید."
+
+    keyboard.append([InlineKeyboardButton("◀️ بازگشت به منوی اصلی", callback_data="back_to_menu")])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    try:
+        if update.callback_query:
+            await update.callback_query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
+        else:
+            await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Error showing webapp message: {e}")
+    return CHOOSING
+
+
+async def charge_wallet_card_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """راهنمای افزایش موجودی با کارت بانکی"""
+    query = update.callback_query
+    await query.answer()
+    active_card = get_active_card()
+    card_number = active_card.get("card_number", CARD_NUMBER)
+    card_holder = active_card.get("card_holder", CARD_HOLDER)
+    bank_name = active_card.get("bank_name", BANK_NAME)
+
+    text = f"""
+💳 <b>افزایش موجودی کیف پول با کارت بانکی</b>
+
+برای شارژ حساب، مبلغ دلخواه خود را به شماره کارت زیر واریز فرمایید:
+
+📌 <b>شماره کارت:</b>
+<code>{card_number}</code>
+👤 <b>صاحب کارت:</b> {card_holder}
+🏦 <b>بانک:</b> {bank_name}
+
+⚠️ <i>پس از واریز، شماره پیگیری یا تصویر رسید را به همراه شناسه کاربری (<code>{query.from_user.id}</code>) به پشتیبانی ارسال فرمایید تا شارژ اعمال شود.</i>
+"""
+    keyboard = [
+        [InlineKeyboardButton("✍️ ارسال فیش به پشتیبانی", callback_data="ticket_new")],
+        [InlineKeyboardButton("◀️ بازگشت به کیف پول", callback_data="back_to_wallet")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
+    return CHOOSING
+
+
+async def charge_wallet_crypto_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """راهنمای افزایش موجودی با کریپتو / تتر"""
+    query = update.callback_query
+    await query.answer()
+    crypto_cfg = CryptoPaymentGateway.get_crypto_config(db)
+    wallet_addr = crypto_cfg.get("wallet_address") or "آدرس ولت تنظیم نشده است"
+    usdt_rate = crypto_cfg.get("usdt_rate", 90000)
+
+    text = f"""
+💎 <b>افزایش موجودی با ارز دیجیتال (USDT TRC20 / TON)</b>
+
+💵 <b>نرخ محاسبه:</b> هر ۱ تتر = <b>{usdt_rate:,} تومان</b>
+
+📌 <b>آدرس کیف پول تتر TRC20 / TON:</b>
+<code>{wallet_addr}</code>
+
+⚠️ <i>پس از واریز، شناسه هش تراکنش (TXID) را به همراه شناسه کاربری (<code>{query.from_user.id}</code>) به پشتیبانی ارسال فرمایید.</i>
+"""
+    keyboard = [
+        [InlineKeyboardButton("✍️ ثبت هش در پشتیبانی", callback_data="ticket_new")],
+        [InlineKeyboardButton("◀️ بازگشت به کیف پول", callback_data="back_to_wallet")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
     return CHOOSING
 
 
@@ -3067,19 +3316,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return CHOOSING
 
     # اولویت به دکمه‌های منوی اصلی
-    if text == "🛒 خرید اشتراک":
+    if text == "🛒 خرید اشتراک" or "خرید" in text:
         return await show_plans(update, context)
-    elif text == "🔄 تمدید اشتراک":
+    elif text == "🔄 تمدید اشتراک" or "تمدید" in text:
         return await renew_subscription(update, context)
-    elif text == "📊 وضعیت اشتراک":
+    elif text == "📊 وضعیت اشتراک" or "وضعیت" in text:
         return await show_status(update, context)
-    elif text == "🔗 لینک اتصال":
+    elif text == "🔗 لینک اتصال" or "لینک" in text:
         return await get_link(update, context)
-    elif text == "💰 کیف پول":
+    elif "کیف پول" in text or text == "💰 کیف پول و موجودی":
         return await show_wallet(update, context)
-    elif text == "👥 زیرمجموعه‌گیری":
+    elif "پنل هوشمند" in text or "Mini App" in text:
+        return await show_webapp_message(update, context)
+    elif text == "👥 زیرمجموعه‌گیری" or "زیرمجموعه" in text:
         return await referral_menu(update, context)
-    elif text == "💬 پشتیبانی":
+    elif text == "💬 پشتیبانی" or "پشتیبانی" in text:
         return await support_menu(update, context)
     elif text == "❓ راهنمای ربات":
         return await help_command(update, context)
@@ -4758,7 +5009,7 @@ def main():
                 CallbackQueryHandler(cancel, pattern="^cancel$"),
             ] + main_menu_handlers,
             SELECTING_PAYMENT: [
-                CallbackQueryHandler(handle_payment_method, pattern="^(pay_card|pay_online|coming_soon|back_to_confirm_purchase|cancel)$"),
+                CallbackQueryHandler(handle_payment_method, pattern="^(pay_card|pay_wallet|pay_wallet_insufficient|pay_crypto|pay_online|coming_soon|back_to_confirm_purchase|cancel)$"),
                 CallbackQueryHandler(back_to_confirm_purchase, pattern="^back_to_confirm_purchase$"),
                 CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"),
                 CallbackQueryHandler(cancel, pattern="^cancel$"),
@@ -4914,6 +5165,13 @@ def main():
     application.add_handler(CallbackQueryHandler(select_language_callback, pattern="^lang_"))
     application.add_handler(CallbackQueryHandler(single_link_callback, pattern="^single_link_"))
     application.add_handler(CallbackQueryHandler(copy_link_callback, pattern="^copy_link$"))
+
+    # دکمه‌های کیف پول و مینی‌اپ
+    application.add_handler(CallbackQueryHandler(show_wallet, pattern="^back_to_wallet$"))
+    application.add_handler(CallbackQueryHandler(charge_wallet_card_callback, pattern="^charge_wallet_card$"))
+    application.add_handler(CallbackQueryHandler(charge_wallet_crypto_callback, pattern="^charge_wallet_crypto$"))
+    application.add_handler(CallbackQueryHandler(show_plans, pattern="^buy_plan_from_wallet$"))
+    application.add_handler(CallbackQueryHandler(show_webapp_message, pattern="^open_sub_"))
 
     # دکمه‌های اینلاین پشتیبانی
     application.add_handler(CallbackQueryHandler(ticket_new_prompt, pattern="^ticket_new$"))

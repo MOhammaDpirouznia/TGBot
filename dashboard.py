@@ -29,9 +29,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from database import db
-from utils import generate_qr_code_bytes, get_now_iso, get_now_naive, get_single_link_template, format_single_link, TEHRAN_TZ
+from utils import generate_qr_code_bytes, get_now_iso, get_now_naive, get_single_link_template, format_single_link, gregorian_to_shamsi_full, TEHRAN_TZ
 from admin_manager import get_all_plans, add_plan, update_plan, delete_plan, move_plan_up, move_plan_down
 from sms_service import send_auth_sms_notification, send_sms, get_sms_config, format_iranian_phone
+from payment import CryptoPaymentGateway
 
 logger = logging.getLogger(__name__)
 
@@ -232,6 +233,81 @@ def avatar_url_helper(identifier=None):
     if not identifier:
         identifier = "User"
     return url_for("telegram_avatar", identifier=str(identifier))
+
+
+# ─── مسیرهای مینی‌اپ تلگرام (Telegram WebApp / Mini App Routes) ───
+
+@app.route("/webapp")
+@app.route("/webapp/user/<int:telegram_id>")
+@app.route("/webapp/sub/<sub_uuid>")
+def telegram_webapp(telegram_id=None, sub_uuid=None):
+    """رابط کاربری مدرن مینی‌اپ تلگرام جهت استعلام آنی حجم، زمان و اتصال سریع با Deep Link"""
+    tg_id_arg = request.args.get("tg_id") or request.args.get("id")
+    if tg_id_arg and str(tg_id_arg).isdigit():
+        telegram_id = int(tg_id_arg)
+
+    if sub_uuid:
+        sub = db.get_subscription_by_uuid(sub_uuid)
+        if sub and sub.get("telegram_id"):
+            telegram_id = sub["telegram_id"]
+
+    user = None
+    subscriptions = []
+    wallet_balance = 0
+    expire_shamsi = None
+
+    if telegram_id:
+        user = db.get_user(telegram_id)
+        subscriptions = db.get_user_subscriptions(telegram_id, status="active")
+        if not subscriptions:
+            subscriptions = db.get_user_subscriptions(telegram_id)
+        wallet_balance = db.get_user_wallet_balance(telegram_id)
+
+    if not user:
+        all_users = db.get_all_users()
+        user = all_users[0] if all_users else {"telegram_id": 123456789, "username": "Guest_User"}
+        subscriptions = db.get_user_subscriptions(user["telegram_id"])
+        wallet_balance = db.get_user_wallet_balance(user["telegram_id"])
+
+    if subscriptions:
+        first_sub = subscriptions[0]
+        exp_date = first_sub.get("expire_date")
+        if exp_date:
+            try:
+                expire_shamsi = gregorian_to_shamsi_full(exp_date)
+            except Exception:
+                pass
+
+    bot_username = os.getenv("BOT_USERNAME", "hiddify_shop_bot").lstrip("@")
+
+    return render_template(
+        "webapp.html",
+        user=user,
+        subscriptions=subscriptions,
+        wallet_balance=wallet_balance,
+        expire_shamsi=expire_shamsi,
+        bot_username=bot_username
+    )
+
+
+@app.route("/api/webapp/user_data")
+def api_webapp_user_data():
+    """وب‌سرویس JSON برای دریافت اطلاعات مصرف زنده کاربر درون مینی‌اپ"""
+    tg_id = request.args.get("tg_id")
+    if not tg_id or not tg_id.isdigit():
+        return jsonify({"success": False, "error": "شناسه کاربر نامعتبر است."})
+    
+    telegram_id = int(tg_id)
+    user = db.get_user(telegram_id)
+    subscriptions = db.get_user_subscriptions(telegram_id)
+    wallet_balance = db.get_user_wallet_balance(telegram_id)
+    
+    return jsonify({
+        "success": True,
+        "user": user,
+        "subscriptions": subscriptions,
+        "wallet_balance": wallet_balance
+    })
 
 
 # ─── هلپرهای ارتباط همگام با تلگرام و هیدیفای (Sync Helpers) ───
@@ -2225,13 +2301,30 @@ def settings():
 
             flash("تنظیمات درگاه پیامک با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
+        elif action == "save_crypto_settings":
+            crypto_enabled = "true" if request.form.get("crypto_enabled") == "on" else "false"
+            crypto_provider = request.form.get("crypto_provider", "oxapay").strip().lower()
+            crypto_api_key = request.form.get("crypto_api_key", "").strip()
+            crypto_wallet_address = request.form.get("crypto_wallet_address", "").strip()
+            crypto_usdt_rate = request.form.get("crypto_usdt_rate", "90000").strip()
+
+            db.save_setting("crypto_enabled", crypto_enabled)
+            db.save_setting("crypto_provider", crypto_provider)
+            if crypto_api_key:
+                db.save_setting("crypto_api_key", crypto_api_key)
+            db.save_setting("crypto_wallet_address", crypto_wallet_address)
+            db.save_setting("crypto_usdt_rate", crypto_usdt_rate)
+
+            flash("تنظیمات درگاه پرداخت ارزی و کریپتو با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("settings"))
 
     conn = db.get_connection()
     settings_list = conn.execute("SELECT * FROM settings").fetchall()
     conn.close()
     single_link_template = get_single_link_template(db)
     sms_config = get_sms_config(db)
-    return render_template("settings.html", settings=settings_list, single_link_template=single_link_template, sms_config=sms_config)
+    crypto_config = CryptoPaymentGateway.get_crypto_config(db)
+    return render_template("settings.html", settings=settings_list, single_link_template=single_link_template, sms_config=sms_config, crypto_config=crypto_config)
 
 
 @app.route("/admin/sms/test", methods=["POST"])

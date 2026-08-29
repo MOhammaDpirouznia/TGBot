@@ -8,7 +8,7 @@
 - 🇨🇳 中文 (zh)
 """
 
-from telegram import KeyboardButton, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import KeyboardButton, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 SUPPORTED_LANGUAGES = {
     "fa": {"name": "فارسی", "flag": "🇮🇷", "title": "🇮🇷 فارسی"},
@@ -18,6 +18,19 @@ SUPPORTED_LANGUAGES = {
 }
 
 STRINGS = {
+    # ─── مینی‌اپ و کیف پول ───
+    "btn_webapp": {
+        "fa": "📱 پنل هوشمند من (Mini App)",
+        "en": "📱 Smart Panel (Mini App)",
+        "ru": "📱 Смарт-панель (Mini App)",
+        "zh": "📱 智能面板 (Mini App)",
+    },
+    "btn_wallet": {
+        "fa": "💰 کیف پول و موجودی",
+        "en": "💰 Wallet & Balance",
+        "ru": "💰 Кошелек и баланс",
+        "zh": "💰 钱包与余额",
+    },
     # ─── انتخاب زبان ───
     "lang_select_prompt": {
         "fa": "🌐 لطفاً زبان مورد نظر خود را انتخاب کنید:\n\n🇬🇧 Please select your preferred language:\n🇷🇺 Пожалуйста, выберите язык:\n🇨🇳 请选择您的语言：",
@@ -545,10 +558,21 @@ def get_contact_keyboard(lang: str = "fa") -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
 
 
-def get_main_keyboard(user_id: int, admin_id: int, lang: str = "fa") -> ReplyKeyboardMarkup:
-    """تولید منوی اصلی متناسب با زبان انتخاب‌شده کاربر"""
+def get_main_keyboard(user_id: int, admin_id: int, lang: str = "fa", webapp_url: str = None) -> ReplyKeyboardMarkup:
+    """تولید منوی اصلی متناسب با زبان انتخاب‌شده کاربر همراه با مینی‌اپ و کیف پول"""
     lang = lang if lang in SUPPORTED_LANGUAGES else "fa"
+    
+    top_row = []
+    if webapp_url:
+        full_app_url = f"{webapp_url.rstrip('/')}/webapp/user/{user_id}"
+        top_row.append(KeyboardButton(t("btn_webapp", lang), web_app=WebAppInfo(url=full_app_url)))
+    else:
+        top_row.append(KeyboardButton(t("btn_webapp", lang)))
+
+    top_row.append(KeyboardButton(t("btn_wallet", lang)))
+
     keyboard = [
+        top_row,
         [KeyboardButton(t("btn_buy", lang)), KeyboardButton(t("btn_test", lang))],
         [KeyboardButton(t("btn_renew", lang)), KeyboardButton(t("btn_status", lang))],
         [KeyboardButton(t("btn_link", lang)), KeyboardButton(t("btn_payments", lang))],

@@ -11,6 +11,8 @@ import logging
 from datetime import datetime, timedelta
 from database import db
 from utils import get_now_naive, get_now_iso, gregorian_to_shamsi_full
+from sms_service import send_sms
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 
 logger = logging.getLogger(__name__)
 
@@ -147,26 +149,42 @@ class NotificationScheduler:
                     expire_shamsi = gregorian_to_shamsi_full(expire_dt.isoformat())
                     
                     text = f"""
-⚠️ <b>اشتراک شما در حال منقضی شدن است!</b>
+⚠️ <b>هشدار انقضای اشتراک ({days_left} روز باقیمانده)</b>
 
-📋 پلن: <b>{plan_name}</b>
+📋 نام پلن: <b>{plan_name}</b>
 📅 تاریخ انقضا: <b>{expire_shamsi}</b>
-⏰ زمان باقیمانده: <b>{days_left} روز</b>
+⏰ مهلت باقیمانده: <b>{days_left} روز</b>
 
-💡 برای جلوگیری از قطع اتصال اینترنت، اشتراک خود را تمدید فرمایید.
-
-🔄 برای تمدید، روی دکمه «🔄 تمدید اشتراک» در منوی ربات کلیک کنید.
+💡 <i>جهت جلوگیری از قطع اتصال اینترنت، لطفاً پیش از موعد نسبت به تمدید اقدام فرمایید.</i>
 """
+                    reply_markup = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔄 تمدید سریع اشتراک", callback_data=f"renew_{sub_id}")],
+                        [InlineKeyboardButton("📱 باز کردن پنل هوشمند (Mini App)", callback_data=f"open_sub_{sub_id}")],
+                    ])
                     try:
                         await self.bot.send_message(
                             chat_id=telegram_id,
                             text=text,
-                            parse_mode="HTML"
+                            parse_mode="HTML",
+                            reply_markup=reply_markup
                         )
                         db.save_notification(telegram_id, notif_type, sub_id)
-                        logger.info(f"Expiration notification ({days_left}d) sent to {telegram_id}")
+                        logger.info(f"Expiration notification ({days_left}d) sent to Telegram {telegram_id}")
                     except Exception as e:
                         logger.error(f"Error sending expiration notification: {e}")
+
+                    # ارسال پیامک هشدار به شماره کاربر (در صورت وجود)
+                    user_phone = subscription.get("phone_number")
+                    if not user_phone:
+                        user_obj = db.get_user(telegram_id)
+                        if user_obj:
+                            user_phone = user_obj.get("phone_number")
+                    if user_phone:
+                        try:
+                            sms_text = f"سلام، اشتراک شما ({plan_name}) {days_left} روز دیگر منقضی می‌شود. جهت تمدید به ربات مراجعه نمایید."
+                            send_sms(user_phone, sms_text, db_instance=db)
+                        except Exception as e:
+                            logger.error(f"Error sending expiration SMS: {e}")
             
             # اعلان روز منقضی شدن
             elif days_left == 0:
@@ -179,31 +197,46 @@ class NotificationScheduler:
                     text = f"""
 🔴 <b>اشتراک شما منقضی شد!</b>
 
-📋 پلن: {plan_name}
-📅 تاریخ انقضا: امروز
+📋 پلن: <b>{plan_name}</b>
+📅 تاریخ انقضا: <b>امروز</b>
 
-⚠️ سرویس VPN شما قطع شده است.
-
-🔄 برای فعال‌سازی مجدد، اشتراک جدید خریداری کنید.
+⚠️ سرویس اتصال شما موقتاً قطع شده است.
+🔄 با تمدید یا خرید اشتراک جدید، اتصال شما بلافاصله برقرار خواهد شد.
 """
+                    reply_markup = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔄 تمدید آنی اشتراک", callback_data=f"renew_{sub_id}")],
+                    ])
                     try:
                         await self.bot.send_message(
                             chat_id=telegram_id,
                             text=text,
-                            parse_mode="HTML"
+                            parse_mode="HTML",
+                            reply_markup=reply_markup
                         )
                         db.save_notification(telegram_id, notif_type, sub_id)
-                        # تغییر وضعیت اشتراک به منقضی شده
                         db.update_subscription(sub_id, status="expired")
                         logger.info(f"Expired notification sent to {telegram_id}")
                     except Exception as e:
                         logger.error(f"Error sending expired notification: {e}")
+
+                    # ارسال پیامک انقضا
+                    user_phone = subscription.get("phone_number")
+                    if not user_phone:
+                        user_obj = db.get_user(telegram_id)
+                        if user_obj:
+                            user_phone = user_obj.get("phone_number")
+                    if user_phone:
+                        try:
+                            sms_text = f"اشتراک شما ({plan_name}) منقضی شد. جهت تمدید و اتصال مجدد به ربات مراجعه کنید."
+                            send_sms(user_phone, sms_text, db_instance=db)
+                        except Exception as e:
+                            logger.error(f"Error sending expired SMS: {e}")
         
         except Exception as e:
             logger.error(f"Error in _check_expiration: {e}")
     
     async def _check_usage(self, telegram_id, subscription):
-        """بررسی مصرف حجم"""
+        """بررسی مصرف حجم (۸۰٪ و ۹۵٪ اضطراری)"""
         try:
             data_limit = subscription.get("data_limit", 0)
             data_used = subscription.get("data_used", 0)
@@ -212,70 +245,77 @@ class NotificationScheduler:
                 return  # حجم نامحدود
             
             usage_percent = (data_used / data_limit) * 100
-            
-            # اعلان ۸۰٪ مصرف
-            if usage_percent >= 80:
-                sub_id = subscription.get("id")
-                notif_type = f"usage_80_{sub_id}"
-                
-                if not db.was_notification_sent(telegram_id, notif_type, sub_id):
-                    plan_name = subscription.get("plan_name", "نامشخص")
-                    remaining = data_limit - data_used
-                    
-                    text = f"""
-📊 <b>هشدار مصرف حجم!</b>
+            sub_id = subscription.get("id")
+            plan_name = subscription.get("plan_name", "نامشخص")
+            remaining = data_limit - data_used
 
-📋 پلن: {plan_name}
-📊 مصرف: {data_used:.1f} از {data_limit:.1f} گیگابایت
-📈 درصد مصرف: {usage_percent:.1f}%
-💾 باقیمانده: {remaining:.1f} گیگابایت
-
-⚠️ بیش از ۸۰٪ حجم شما مصرف شده است!
-
-💡 برای استفاده بیشتر، اشتراک خود را تمدید کنید.
-"""
-                    try:
-                        await self.bot.send_message(
-                            chat_id=telegram_id,
-                            text=text,
-                            parse_mode="HTML"
-                        )
-                        db.save_notification(telegram_id, notif_type, sub_id)
-                        logger.info(f"Usage notification sent to {telegram_id}")
-                    except Exception as e:
-                        logger.error(f"Error sending usage notification: {e}")
-            
-            # اعلان ۹۵٪ مصرف (هشدار جدی)
+            # اعلان ۹۵٪ مصرف (هشدار اضطراری)
             if usage_percent >= 95:
-                sub_id = subscription.get("id")
                 notif_type = f"usage_95_{sub_id}"
-                
                 if not db.was_notification_sent(telegram_id, notif_type, sub_id):
-                    plan_name = subscription.get("plan_name", "نامشخص")
-                    remaining = data_limit - data_used
-                    
                     text = f"""
-🚨 <b>هشدار جدی: حجم تقریباً تمام شده!</b>
+🚨 <b>هشدار اضطراری: حجم اشتراک رو به اتمام است!</b>
 
-📋 پلن: {plan_name}
-📊 مصرف: {data_used:.1f} از {data_limit:.1f} گیگابایت
-📈 درصد مصرف: {usage_percent:.1f}%
-💾 باقیمانده: {remaining:.1f} گیگابایت
+📋 پلن: <b>{plan_name}</b>
+📊 مصرف: <b>{data_used:.1f} از {data_limit:.1f} گیگابایت</b> ({usage_percent:.1f}%)
+💾 ترافیک باقیمانده: <b>{remaining:.1f} گیگابایت</b>
 
-⛔ سرویس شما به زودی قطع خواهد شد!
-
-🔄 همین الان اشتراک خود را تمدید کنید!
+⛔ <i>تنها ۵٪ از ترافیک اشتراک شما باقی مانده است. جهت تداوم اتصال تمدید فرمایید.</i>
 """
+                    reply_markup = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("⚡ تمدید فوری اشتراک", callback_data=f"renew_{sub_id}")],
+                    ])
                     try:
                         await self.bot.send_message(
                             chat_id=telegram_id,
                             text=text,
-                            parse_mode="HTML"
+                            parse_mode="HTML",
+                            reply_markup=reply_markup
                         )
                         db.save_notification(telegram_id, notif_type, sub_id)
-                        logger.info(f"Critical usage notification sent to {telegram_id}")
+                        logger.info(f"Critical 95% usage notification sent to {telegram_id}")
                     except Exception as e:
                         logger.error(f"Error sending critical usage notification: {e}")
+
+                    user_phone = subscription.get("phone_number")
+                    if not user_phone:
+                        user_obj = db.get_user(telegram_id)
+                        if user_obj:
+                            user_phone = user_obj.get("phone_number")
+                    if user_phone:
+                        try:
+                            sms_text = f"هشدار! بیش از ۹۵٪ از حجم اشتراک شما مصرف شده و رو به اتمام است. جهت تمدید به ربات مراجعه کنید."
+                            send_sms(user_phone, sms_text, db_instance=db)
+                        except Exception as e:
+                            logger.error(f"Error sending 95% usage SMS: {e}")
+
+            # اعلان ۸۰٪ مصرف
+            elif usage_percent >= 80:
+                notif_type = f"usage_80_{sub_id}"
+                if not db.was_notification_sent(telegram_id, notif_type, sub_id):
+                    text = f"""
+📊 <b>هشدار مصرف حجم (۸۰٪ مصرف شده)</b>
+
+📋 پلن: <b>{plan_name}</b>
+📊 مصرف: <b>{data_used:.1f} از {data_limit:.1f} گیگابایت</b> ({usage_percent:.1f}%)
+💾 حجم باقیمانده: <b>{remaining:.1f} گیگابایت</b>
+
+💡 <i>بیش از ۸۰٪ حجم اشتراک شما مصرف شده است.</i>
+"""
+                    reply_markup = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔄 تمدید اشتراک", callback_data=f"renew_{sub_id}")],
+                    ])
+                    try:
+                        await self.bot.send_message(
+                            chat_id=telegram_id,
+                            text=text,
+                            parse_mode="HTML",
+                            reply_markup=reply_markup
+                        )
+                        db.save_notification(telegram_id, notif_type, sub_id)
+                        logger.info(f"Usage 80% notification sent to {telegram_id}")
+                    except Exception as e:
+                        logger.error(f"Error sending usage notification: {e}")
         
         except Exception as e:
             logger.error(f"Error in _check_usage: {e}")

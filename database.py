@@ -486,6 +486,27 @@ class Database:
         except Exception:
             pass
 
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN wallet_balance INTEGER DEFAULT 0")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS wallet_transactions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    telegram_id INTEGER NOT NULL,
+                    amount INTEGER NOT NULL,
+                    type TEXT NOT NULL,
+                    balance_after INTEGER NOT NULL,
+                    description TEXT,
+                    ref_id TEXT,
+                    created_at TEXT NOT NULL
+                )
+            """)
+        except Exception:
+            pass
+
         conn.commit()
         conn.close()
         logger.info("Database initialized successfully")
@@ -881,6 +902,103 @@ class Database:
             return False
         phone = user.get("phone_number")
         return bool(phone and str(phone).strip())
+
+    # ═══════════════════════════════════════════════════════════════
+    # مدیریت کیف پول کاربر (User In-App Wallet)
+    # ═══════════════════════════════════════════════════════════════
+
+    def get_user_wallet_balance(self, telegram_id: int) -> int:
+        """دریافت موجودی کیف پول کاربر (به تومان)"""
+        user = self.get_user(telegram_id)
+        if not user:
+            return 0
+        return int(user.get("wallet_balance") or 0)
+
+    def add_wallet_balance(self, telegram_id: int, amount: int, description: str, ref_id: str = None, tx_type: str = "deposit") -> dict:
+        """افزایش موجودی کیف پول کاربر و ثبت تراکنش"""
+        if amount <= 0:
+            return {"success": False, "error": "مبلغ باید بیشتر از صفر باشد."}
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT id, wallet_balance FROM users WHERE telegram_id = ?", (telegram_id,))
+            row = cursor.fetchone()
+            if not row:
+                cursor.execute("""
+                    INSERT INTO users (telegram_id, username, wallet_balance, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (telegram_id, f"user_{telegram_id}", amount, now, now))
+                new_balance = amount
+            else:
+                current_bal = int(row["wallet_balance"] or 0)
+                new_balance = current_bal + amount
+                cursor.execute("UPDATE users SET wallet_balance = ?, updated_at = ? WHERE telegram_id = ?", (new_balance, now, telegram_id))
+
+            cursor.execute("""
+                INSERT INTO wallet_transactions (telegram_id, amount, type, balance_after, description, ref_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (telegram_id, amount, tx_type, new_balance, description, ref_id, now))
+
+            conn.commit()
+            return {"success": True, "new_balance": new_balance}
+        except Exception as e:
+            logger.error(f"Error adding wallet balance for {telegram_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def deduct_wallet_balance(self, telegram_id: int, amount: int, description: str, ref_id: str = None) -> dict:
+        """کسر از موجودی کیف پول کاربر جهت خرید یا تمدید پلن"""
+        if amount <= 0:
+            return {"success": False, "error": "مبلغ نامعتبر است."}
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT id, wallet_balance FROM users WHERE telegram_id = ?", (telegram_id,))
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "error": "کاربر یافت نشد."}
+
+            current_bal = int(row["wallet_balance"] or 0)
+            if current_bal < amount:
+                return {"success": False, "error": "موجودی کیف پول شما کافی نیست.", "balance": current_bal, "required": amount}
+
+            new_balance = current_bal - amount
+            cursor.execute("UPDATE users SET wallet_balance = ?, updated_at = ? WHERE telegram_id = ?", (new_balance, now, telegram_id))
+
+            cursor.execute("""
+                INSERT INTO wallet_transactions (telegram_id, amount, type, balance_after, description, ref_id, created_at)
+                VALUES (?, ?, 'purchase', ?, ?, ?, ?)
+            """, (telegram_id, -amount, new_balance, description, ref_id, now))
+
+            conn.commit()
+            return {"success": True, "new_balance": new_balance}
+        except Exception as e:
+            logger.error(f"Error deducting wallet balance for {telegram_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_wallet_transactions(self, telegram_id: int, limit: int = 20) -> list:
+        """دریافت لیست تاریخچه تراکنش‌های کیف پول کاربر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT * FROM wallet_transactions 
+                WHERE telegram_id = ? 
+                ORDER BY created_at DESC 
+                LIMIT ?
+            """, (telegram_id, limit))
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"Error getting wallet transactions for {telegram_id}: {e}")
+            return []
+        finally:
+            conn.close()
 
     def find_telegram_id_by_phone(self, phone_number: str) -> Optional[int]:
         """یافتن آیدی تلگرام کاربر از روی شماره تلفن ثبت‌شده در جدول کاربران"""
