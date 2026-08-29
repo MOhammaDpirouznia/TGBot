@@ -24,7 +24,7 @@
 <!-- کارت‌های آماری نماینده -->
 <div class="row g-3 mb-4">
     <div class="col-xl-3 col-md-6">
-        <div class="card stat-card border-primary">
+        <div class="card stat-card border-primary h-100">
             <div>
                 <span class="text-muted small fw-bold">موجودی کیف پول شما</span>
                 <h3 class="fw-bold my-1 text-primary">{{ "{:,}".format(stats['balance'] or 0) }} <span style="font-size: 1rem;">تومان</span></h3>
@@ -36,19 +36,23 @@
         </div>
     </div>
     <div class="col-xl-3 col-md-6">
-        <div class="card stat-card">
-            <div>
-                <span class="text-muted small fw-bold">مشتریان فعال</span>
-                <h3 class="fw-bold my-1 text-success">{{ stats['active_users'] }} <span style="font-size: 1rem; color:#64748b;">از {{ stats['total_users'] }}</span></h3>
-                <span class="text-success small"><i class="fas fa-circle-check me-1"></i> متصل و فعال</span>
+        <a href="{{ url_for('reseller_users', status='online') }}" class="text-decoration-none">
+            <div class="card stat-card border-start border-success border-4 h-100 shadow-sm" style="transition: transform 0.2s;">
+                <div>
+                    <span class="text-muted small fw-bold d-flex align-items-center gap-1">
+                        <span class="pulse-indicator"></span> مشتریان آنلاین شما
+                    </span>
+                    <h3 class="fw-bold my-1 text-success">{{ stats.get('online_users', 0) }} <span style="font-size: 1rem; color:#64748b;">از {{ stats['total_users'] }}</span></h3>
+                    <span class="text-success small"><i class="fas fa-signal me-1"></i> مشاهده متصلین زنده</span>
+                </div>
+                <div class="stat-icon bg-success bg-opacity-10 text-success">
+                    <i class="fas fa-wifi"></i>
+                </div>
             </div>
-            <div class="stat-icon bg-success bg-opacity-10 text-success">
-                <i class="fas fa-users-gear"></i>
-            </div>
-        </div>
+        </a>
     </div>
     <div class="col-xl-3 col-md-6">
-        <div class="card stat-card">
+        <div class="card stat-card h-100">
             <div>
                 <span class="text-muted small fw-bold">مجموع حجم مصرفی</span>
                 <h3 class="fw-bold my-1 text-info">{{ stats['total_used_gb'] }} <span style="font-size: 1rem;">GB</span></h3>
@@ -60,7 +64,7 @@
         </div>
     </div>
     <div class="col-xl-3 col-md-6">
-        <div class="card stat-card">
+        <div class="card stat-card h-100">
             <div>
                 <span class="text-muted small fw-bold">مجموع خریدها</span>
                 <h3 class="fw-bold my-1 text-warning">{{ "{:,}".format(stats['total_purchases'] or 0) }} <span style="font-size: 1rem;">تومان</span></h3>
@@ -72,6 +76,23 @@
         </div>
     </div>
 </div>
+
+<style>
+.pulse-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background-color: #22c55e;
+    border-radius: 50%;
+    box-shadow: 0 0 0 rgba(34, 197, 94, 0.6);
+    animation: pulseDot 1.8s infinite;
+}
+@keyframes pulseDot {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+    70% { transform: scale(1.15); box-shadow: 0 0 0 7px rgba(34, 197, 94, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+</style>
 
 <!-- ردیف هوش مالی سریع داشبورد نماینده: برترین مشتریان ماه و سوابق تمدید -->
 <div class="row g-4 mb-4">

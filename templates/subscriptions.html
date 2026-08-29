@@ -6,11 +6,14 @@
 <div class="page-header">
     <div>
         <h1 class="page-title"><i class="fas fa-key text-primary"></i> مدیریت اشتراک‌ها و کانفیگ‌ها</h1>
-        <p class="text-muted mb-0">مشاهده تمام اشتراک‌های صادر شده توسط ربات و نمایندگان فروش</p>
+        <p class="text-muted mb-0">مشاهده تمام اشتراک‌های صادر شده، وضعیت اتصال و آنلاین بودن در لحظه</p>
     </div>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 flex-wrap">
         <a href="{{ url_for('subscriptions', status='all') }}" class="btn btn-sm {{ 'btn-primary' if status_filter == 'all' else 'btn-outline-secondary' }}">همه اشتراک‌ها</a>
-        <a href="{{ url_for('subscriptions', status='active') }}" class="btn btn-sm {{ 'btn-success' if status_filter == 'active' else 'btn-outline-success' }}">فقط فعال‌ها</a>
+        <a href="{{ url_for('subscriptions', status='online') }}" class="btn btn-sm {{ 'btn-success' if status_filter == 'online' else 'btn-outline-success' }}">
+            <span class="pulse-indicator me-1"></span> کاربران آنلاین ({{ online_count or 0 }})
+        </a>
+        <a href="{{ url_for('subscriptions', status='active') }}" class="btn btn-sm {{ 'btn-info text-white' if status_filter == 'active' else 'btn-outline-info' }}">فقط فعال‌ها</a>
         <a href="{{ url_for('subscriptions', status='expired') }}" class="btn btn-sm {{ 'btn-danger' if status_filter == 'expired' else 'btn-outline-danger' }}">منقضی شده‌ها</a>
     </div>
 </div>
@@ -20,6 +23,9 @@
         <div class="d-flex align-items-center gap-2">
             <h5 class="mb-0 fw-bold"><i class="fas fa-key text-primary me-2"></i>لیست اشتراک‌ها</h5>
             <span class="badge bg-secondary" data-table-count="subscriptionsTable">{{ subscriptions|length }} مورد</span>
+            {% if status_filter == 'online' %}
+                <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-wifi me-1"></i>فیلتر: فقط کاربران آنلاین</span>
+            {% endif %}
         </div>
         <div class="table-search-wrapper">
             <i class="fas fa-search table-search-icon"></i>
@@ -38,7 +44,7 @@
                         <th>مصرف / سقف</th>
                         <th>مدت اعتبار</th>
                         <th>انقضا</th>
-                        <th>وضعیت</th>
+                        <th>وضعیت اتصال</th>
                         <th>صادرکننده</th>
                         <th>لینک اتصال</th>
                     </tr>
@@ -51,22 +57,32 @@
                         <td>
                             {% if sub['telegram_id'] and sub['telegram_id'] != 0 %}
                                 <div class="d-flex align-items-center gap-2">
-                                    <img src="{{ avatar_url(sub['telegram_id']) }}" 
-                                         alt="{{ sub['telegram_id'] }}" 
-                                         class="rounded-circle border shadow-sm flex-shrink-0" 
-                                         style="width: 34px; height: 34px; object-fit: cover;" 
-                                         loading="lazy">
+                                    <div class="position-relative">
+                                        <img src="{{ avatar_url(sub['telegram_id']) }}" 
+                                             alt="{{ sub['telegram_id'] }}" 
+                                             class="rounded-circle border shadow-sm flex-shrink-0" 
+                                             style="width: 36px; height: 36px; object-fit: cover;" 
+                                             loading="lazy">
+                                        {% if sub['is_online'] %}
+                                            <span class="position-absolute bottom-0 end-0 p-1 bg-success border border-white rounded-circle" title="آنلاین"></span>
+                                        {% endif %}
+                                    </div>
                                     <a href="{{ url_for('user_detail', telegram_id=sub['telegram_id']) }}" class="text-decoration-none fw-bold">
                                         <code>{{ sub['telegram_id'] }}</code>
                                     </a>
                                 </div>
                             {% else %}
                                 <div class="d-flex align-items-center gap-2">
-                                    <img src="{{ avatar_url(sub['account_name'] or 'Customer') }}" 
-                                         alt="مشتری همکار" 
-                                         class="rounded-circle border shadow-sm flex-shrink-0" 
-                                         style="width: 34px; height: 34px; object-fit: cover;" 
-                                         loading="lazy">
+                                    <div class="position-relative">
+                                        <img src="{{ avatar_url(sub['account_name'] or 'Customer') }}" 
+                                             alt="مشتری همکار" 
+                                             class="rounded-circle border shadow-sm flex-shrink-0" 
+                                             style="width: 36px; height: 36px; object-fit: cover;" 
+                                             loading="lazy">
+                                        {% if sub['is_online'] %}
+                                            <span class="position-absolute bottom-0 end-0 p-1 bg-success border border-white rounded-circle" title="آنلاین"></span>
+                                        {% endif %}
+                                    </div>
                                     <span class="text-muted">مشتری همکار</span>
                                 </div>
                             {% endif %}
@@ -79,10 +95,21 @@
                         <td>{{ sub['duration'] or '-' }} روز</td>
                         <td><small class="text-muted">{{ sub['expire_date'][:10] if sub['expire_date'] else '-' }}</small></td>
                         <td>
-                            {% if sub['status'] == 'active' %}
-                                <span class="badge badge-approved">فعال</span>
+                            {% if sub['is_online'] %}
+                                <span class="badge bg-success-subtle text-success border border-success d-inline-flex align-items-center gap-1 font-monospace">
+                                    <span class="pulse-indicator"></span> آنلاین
+                                </span>
                             {% else %}
-                                <span class="badge badge-expired">منقضی</span>
+                                {% if sub['status'] == 'active' %}
+                                    <span class="badge bg-light text-secondary border font-monospace">آفلاین</span>
+                                {% else %}
+                                    <span class="badge bg-danger-subtle text-danger border border-danger font-monospace">منقضی</span>
+                                {% endif %}
+                                {% if sub['last_online'] %}
+                                    <div class="text-muted small" style="font-size: 11px;" title="آخرین اتصال: {{ sub['last_online'] }}">
+                                        {{ sub['last_online'][11:16] }}
+                                    </div>
+                                {% endif %}
                             {% endif %}
                         </td>
                         <td>
@@ -106,32 +133,31 @@
                                 </a>
                             </div>
                             {% else %}
-                                <span class="text-muted">-</span>
+                            <span class="text-muted small">-</span>
                             {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
-                    {% if not subscriptions %}
-                    <tr>
-                        <td colspan="9" class="text-center py-4 text-muted">اشتراکی یافت نشد.</td>
-                    </tr>
-                    {% endif %}
                 </tbody>
             </table>
         </div>
     </div>
 </div>
-{% endblock %}
 
-{% block scripts %}
-<script>
-    function copyLink(url, label) {
-        if (!url) return;
-        navigator.clipboard.writeText(url).then(() => {
-            alert((label || 'لینک') + ' با موفقیت در کلیپ‌بورد کپی شد! ✅');
-        }).catch(() => {
-            prompt('لینک را کپی کنید:', url);
-        });
-    }
-</script>
+<style>
+.pulse-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background-color: #22c55e;
+    border-radius: 50%;
+    box-shadow: 0 0 0 rgba(34, 197, 94, 0.6);
+    animation: pulseDot 1.8s infinite;
+}
+@keyframes pulseDot {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+    70% { transform: scale(1.15); box-shadow: 0 0 0 7px rgba(34, 197, 94, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+</style>
 {% endblock %}

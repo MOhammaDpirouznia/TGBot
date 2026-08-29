@@ -5,9 +5,9 @@
 <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2">
     <div>
         <h1 class="page-title"><i class="fas fa-users text-primary"></i> مدیریت و لیست مشتریان شما</h1>
-        <p class="text-muted mb-0">مشاهده، تمدید، ویرایش، تغییر وضعیت و حذف هوشمند مشتریان</p>
+        <p class="text-muted mb-0">مشاهده، تمدید، وضعیت اتصال آنلاین و مدیریت هوشمند مشتریان</p>
     </div>
-    <div class="d-flex align-items-center gap-2">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
         <span class="badge bg-primary fs-6 py-2 px-3">
             موجودی: {{ "{:,}".format(balance) }} ت | تخفیف: {{ discount }}%
         </span>
@@ -17,11 +17,30 @@
     </div>
 </div>
 
+<!-- دکمه‌های فیلتر وضعیت و آنلاین بودن -->
+<div class="d-flex gap-2 mb-3 flex-wrap">
+    <a href="{{ url_for('reseller_users', status='all') }}" class="btn btn-sm {{ 'btn-primary' if status_filter == 'all' or not status_filter else 'btn-outline-secondary' }}">
+        همه مشتریان ({{ stats.get('total_users', 0) }})
+    </a>
+    <a href="{{ url_for('reseller_users', status='online') }}" class="btn btn-sm {{ 'btn-success' if status_filter == 'online' else 'btn-outline-success' }}">
+        <span class="pulse-indicator me-1"></span> مشتریان آنلاین ({{ stats.get('online_users', 0) }})
+    </a>
+    <a href="{{ url_for('reseller_users', status='active') }}" class="btn btn-sm {{ 'btn-info text-white' if status_filter == 'active' else 'btn-outline-info' }}">
+        فقط فعال‌ها ({{ stats.get('active_users', 0) }})
+    </a>
+    <a href="{{ url_for('reseller_users', status='expired') }}" class="btn btn-sm {{ 'btn-danger' if status_filter == 'expired' else 'btn-outline-danger' }}">
+        غیرفعال / منقضی
+    </a>
+</div>
+
 <div class="card shadow-sm border-0">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="d-flex align-items-center gap-2">
             <h5 class="mb-0 fw-bold"><i class="fas fa-list-ul text-primary me-2"></i>لیست اشتراک‌ها</h5>
             <span class="badge bg-secondary" data-table-count="resellerUsersTable">{{ subscriptions|length }} مورد</span>
+            {% if status_filter == 'online' %}
+                <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-wifi me-1"></i>فیلتر: فقط متصلین آنلاین</span>
+            {% endif %}
         </div>
         <div class="table-search-wrapper">
             <i class="fas fa-search table-search-icon"></i>
@@ -39,7 +58,7 @@
                         <th>پلن</th>
                         <th>مصرف / سقف حجم</th>
                         <th>مدت اعتبار</th>
-                        <th>وضعیت</th>
+                        <th>وضعیت اتصال</th>
                         <th>تاریخ صدور</th>
                         <th class="text-end pe-3">عملیات و مدیریت</th>
                     </tr>
@@ -52,11 +71,16 @@
                     <tr>
                         <td>
                             <div class="d-flex align-items-center gap-2">
-                                <img src="{{ avatar_url(sub['phone_number'] or sub['account_name'] or 'Customer') }}" 
-                                     alt="{{ sub['account_name'] }}" 
-                                     class="rounded-circle border shadow-sm flex-shrink-0" 
-                                     style="width: 36px; height: 36px; object-fit: cover;" 
-                                     loading="lazy">
+                                <div class="position-relative">
+                                    <img src="{{ avatar_url(sub['phone_number'] or sub['account_name'] or 'Customer') }}" 
+                                         alt="{{ sub['account_name'] }}" 
+                                         class="rounded-circle border shadow-sm flex-shrink-0" 
+                                         style="width: 36px; height: 36px; object-fit: cover;" 
+                                         loading="lazy">
+                                    {% if sub.get('is_online') %}
+                                        <span class="position-absolute bottom-0 end-0 p-1 bg-success border border-white rounded-circle" title="آنلاین"></span>
+                                    {% endif %}
+                                </div>
                                 <div>
                                     <div class="fw-bold">{{ sub['account_name'] or 'بدون نام' }}</div>
                                     {% if sub['account_comment'] %}
@@ -84,10 +108,21 @@
                         </td>
                         <td>{{ sub['duration'] or 30 }} روز</td>
                         <td>
-                            {% if sub['status'] == 'active' %}
-                                <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i>فعال</span>
+                            {% if sub.get('is_online') %}
+                                <span class="badge bg-success-subtle text-success border border-success d-inline-flex align-items-center gap-1 font-monospace">
+                                    <span class="pulse-indicator"></span> آنلاین
+                                </span>
                             {% else %}
-                                <span class="badge bg-danger"><i class="fas fa-ban me-1"></i>غیرفعال</span>
+                                {% if sub['status'] == 'active' %}
+                                    <span class="badge bg-light text-secondary border font-monospace">آفلاین</span>
+                                {% else %}
+                                    <span class="badge bg-danger-subtle text-danger border border-danger font-monospace">غیرفعال</span>
+                                {% endif %}
+                                {% if sub.get('last_online') %}
+                                    <div class="text-muted small" style="font-size: 11px;" title="آخرین اتصال: {{ sub['last_online'] }}">
+                                        {{ sub['last_online'][11:16] }}
+                                    </div>
+                                {% endif %}
                             {% endif %}
                         </td>
                         <td><small class="text-muted">{{ sub['created_at'][:10] if sub['created_at'] else '-' }}</small></td>
