@@ -183,6 +183,51 @@
     </div>
 </div>
 
+<!-- استایل‌های اختصاصی انتخاب کارت آواتار -->
+<style>
+.avatar-preset-card {
+    transition: all 0.2s ease-in-out;
+    border: 2px solid rgba(0,0,0,0.08) !important;
+    border-radius: 14px !important;
+    position: relative;
+    background: #fff;
+    user-select: none;
+}
+[data-bs-theme="dark"] .avatar-preset-card {
+    background: #1e293b;
+    border-color: rgba(255,255,255,0.1) !important;
+}
+.avatar-preset-card:hover {
+    transform: translateY(-2px);
+    border-color: #0d6efd !important;
+}
+.avatar-preset-card.active-preset {
+    border-color: #0d6efd !important;
+    background: rgba(13, 110, 253, 0.08) !important;
+    box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.3) !important;
+    transform: scale(1.03);
+}
+.avatar-preset-card .check-indicator {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #0d6efd;
+    color: #fff;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+    z-index: 10;
+}
+.avatar-preset-card.active-preset .check-indicator {
+    display: flex !important;
+}
+</style>
+
 <!-- مودال هوشمند تغییر تصویر پروفایل مدیر -->
 <div class="modal fade" id="changeAvatarModal" tabindex="-1" aria-labelledby="changeAvatarModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -233,22 +278,41 @@
                     <!-- تب ۲: انتخاب آواتار سه‌بعدی -->
                     <div class="tab-pane fade" id="presetsPane" role="tabpanel">
                         <form action="{{ url_for('admin_avatar_preset') }}" method="POST">
-                            <p class="text-muted small text-center mb-3">یکی از کاراکترهای سه‌بعدی زیر را به عنوان آواتار حساب خود انتخاب نمایید:</p>
-                            <div class="row g-3 text-center mb-3">
+                            <!-- پیش‌نمایش بزرگ آواتار انتخابی -->
+                            <div class="text-center mb-3 p-3 bg-light rounded-4">
+                                <div class="position-relative d-inline-block">
+                                    <img id="adminPresetBigPreview" 
+                                         src="https://api.dicebear.com/9.x/bottts-neutral/svg?seed={{ admin['username'] }}_1&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc" 
+                                         class="rounded-circle border shadow" 
+                                         style="width: 90px; height: 90px; object-fit: cover;">
+                                    <span class="badge bg-primary position-absolute bottom-0 start-50 translate-middle-x rounded-pill px-2" style="font-size: 10px;">
+                                        طرح انتخابی
+                                    </span>
+                                </div>
+                                <div class="small text-muted mt-2">روی یکی از کاراکترهای زیر کلیک کنید:</div>
+                            </div>
+
+                            <div class="row g-3 text-center mb-3" id="adminPresetList">
                                 {% for style_id, style_name in [('bottts-neutral', 'ربات مدرن'), ('avataaars', 'کاراکتر کلاسیک'), ('adventurer', 'ماجراجو'), ('personas', 'مینیمال'), ('fun-emoji', 'ایموجی سه‌بعدی'), ('thumbs', 'طرح مدرن')] %}
+                                {% set card_img = "https://api.dicebear.com/9.x/" ~ style_id ~ "/svg?seed=" ~ admin['username'] ~ "_" ~ loop.index ~ "&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc" %}
                                 <div class="col-4">
-                                    <label class="card h-100 border p-2 text-center cursor-pointer avatar-preset-card" style="cursor: pointer;">
+                                    <div class="avatar-preset-card h-100 p-2 text-center cursor-pointer {% if loop.first %}active-preset{% endif %}" 
+                                         style="cursor: pointer;"
+                                         onclick="selectAdminPresetCard(this, '{{ style_id }}', '{{ card_img }}')">
+                                        <div class="check-indicator"><i class="fas fa-check"></i></div>
                                         <input type="radio" name="style" value="{{ style_id }}" class="d-none preset-radio" {% if loop.first %}checked{% endif %}>
-                                        <img src="https://api.dicebear.com/9.x/{{ style_id }}/svg?seed={{ admin['username'] }}_{{ loop.index }}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc" 
-                                             class="rounded-circle mx-auto mb-1 border" style="width: 50px; height: 50px;">
-                                        <span class="small" style="font-size: 11px;">{{ style_name }}</span>
-                                    </label>
+                                        <img src="{{ card_img }}" 
+                                             class="rounded-circle mx-auto mb-1 border" style="width: 52px; height: 52px;">
+                                        <div class="fw-bold" style="font-size: 12px;">{{ style_name }}</div>
+                                    </div>
                                 </div>
                                 {% endfor %}
                             </div>
-                            <input type="hidden" name="seed" value="{{ admin['username'] }}_{{ admin['id'] }}">
+
+                            <input type="hidden" name="seed" id="adminPresetSeed" value="{{ admin['username'] }}_{{ admin['id'] }}">
+                            
                             <div class="d-grid mt-3">
-                                <button type="submit" class="btn btn-success py-2 fw-bold">
+                                <button type="submit" class="btn btn-success py-2 fw-bold shadow-sm">
                                     <i class="fas fa-check-circle me-1"></i> انتخاب و تنظیم این آواتار
                                 </button>
                             </div>
@@ -269,6 +333,26 @@ function previewAdminAvatar(event) {
             document.getElementById('adminUploadPreview').src = e.target.result;
         };
         reader.readAsDataURL(input.files[0]);
+    }
+}
+
+function selectAdminPresetCard(cardEl, styleId, imgUrl) {
+    // حذف حالت فعال از بقیه کارت‌ها
+    document.querySelectorAll('#adminPresetList .avatar-preset-card').forEach(c => {
+        c.classList.remove('active-preset');
+        const radio = c.querySelector('input[type="radio"]');
+        if (radio) radio.checked = false;
+    });
+
+    // فعال‌سازی کارت کلیک شده
+    cardEl.classList.add('active-preset');
+    const myRadio = cardEl.querySelector('input[type="radio"]');
+    if (myRadio) myRadio.checked = true;
+
+    // آپدیت تصویر پیش‌نمایش بزرگ بالا
+    const bigPreview = document.getElementById('adminPresetBigPreview');
+    if (bigPreview && imgUrl) {
+        bigPreview.src = imgUrl;
     }
 }
 </script>
