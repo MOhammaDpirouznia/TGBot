@@ -541,6 +541,25 @@ class Database:
         except Exception:
             pass
 
+        # ستون‌های ربات اختصاصی (White-label Multi-Bot) و تنظیمات نمایندگان
+        for col_def in [
+            "bot_token TEXT", "bot_username TEXT", "channel_id TEXT", "brand_name TEXT",
+            "start_message TEXT", "support_username TEXT", "card_number TEXT", "card_holder TEXT",
+            "bank_name TEXT", "is_bot_active INTEGER DEFAULT 0", "tier_level TEXT DEFAULT 'silver'",
+            "auto_approval INTEGER DEFAULT 0"
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE resellers ADD COLUMN {col_def}")
+            except Exception:
+                pass
+
+        # اتصال موجودیت‌ها به نماینده جهت ایزولاسیون داده‌ها
+        for tbl in ["users", "transactions", "support_tickets"]:
+            try:
+                cursor.execute(f"ALTER TABLE {tbl} ADD COLUMN reseller_id INTEGER")
+            except Exception:
+                pass
+
         try:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS wallet_transactions (
@@ -970,7 +989,7 @@ class Database:
     # مدیریت مشتریان
     # ═══════════════════════════════════════════════════════════════
 
-    def save_user(self, telegram_id, username=None, hidify_uuid=None, plan_id=None, data_limit=None, expire_at=None):
+    def save_user(self, telegram_id, username=None, hidify_uuid=None, plan_id=None, data_limit=None, expire_at=None, reseller_id=None):
         """ذخیره یا بروزرسانی اطلاعات کاربر"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -978,7 +997,7 @@ class Database:
 
         try:
             # بررسی وجود کاربر
-            cursor.execute("SELECT id FROM users WHERE telegram_id = ?", (telegram_id,))
+            cursor.execute("SELECT id, reseller_id FROM users WHERE telegram_id = ?", (telegram_id,))
             existing = cursor.fetchone()
 
             if existing:
@@ -990,18 +1009,19 @@ class Database:
                         plan_id = COALESCE(?, plan_id),
                         data_limit = COALESCE(?, data_limit),
                         expire_at = COALESCE(?, expire_at),
+                        reseller_id = COALESCE(?, reseller_id),
                         updated_at = ?
                     WHERE telegram_id = ?
-                """, (username, hidify_uuid, plan_id, data_limit, expire_at, now, telegram_id))
+                """, (username, hidify_uuid, plan_id, data_limit, expire_at, reseller_id, now, telegram_id))
             else:
                 # درج جدید
                 cursor.execute("""
-                    INSERT INTO users (telegram_id, username, hidify_uuid, plan_id, data_limit, expire_at, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (telegram_id, username or f"user_{telegram_id}", hidify_uuid, plan_id, data_limit or 0, expire_at, now, now))
+                    INSERT INTO users (telegram_id, username, hidify_uuid, plan_id, data_limit, expire_at, reseller_id, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (telegram_id, username or f"user_{telegram_id}", hidify_uuid, plan_id, data_limit or 0, expire_at, reseller_id, now, now))
 
             conn.commit()
-            logger.info(f"User {telegram_id} saved successfully")
+            logger.info(f"User {telegram_id} saved successfully (reseller_id={reseller_id})")
             return {"success": True}
         except Exception as e:
             logger.error(f"Error saving user {telegram_id}: {e}")
@@ -1222,7 +1242,7 @@ class Database:
     # مدیریت اشتراک‌ها
     # ═══════════════════════════════════════════════════════════════
 
-    def save_subscription(self, telegram_id, hidify_uuid, plan_id, plan_name, data_limit, duration, data_used=0, status="active", account_name=None, account_comment=None):
+    def save_subscription(self, telegram_id, hidify_uuid, plan_id, plan_name, data_limit, duration, data_used=0, status="active", account_name=None, account_comment=None, reseller_id=None):
         """ذخیره اشتراک جدید"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -1232,12 +1252,12 @@ class Database:
         try:
             cursor.execute("""
                 INSERT INTO subscriptions
-                (telegram_id, hidify_uuid, plan_id, plan_name, account_name, account_comment, data_limit, data_used, duration, start_date, expire_date, status, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (telegram_id, hidify_uuid, plan_id, plan_name, account_name, account_comment, data_limit, data_used, duration, now, expire_date, status, now, now))
+                (telegram_id, hidify_uuid, plan_id, plan_name, account_name, account_comment, data_limit, data_used, duration, start_date, expire_date, status, reseller_id, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (telegram_id, hidify_uuid, plan_id, plan_name, account_name, account_comment, data_limit, data_used, duration, now, expire_date, status, reseller_id, now, now))
             conn.commit()
             subscription_id = cursor.lastrowid
-            logger.info(f"Subscription {subscription_id} saved for user {telegram_id}")
+            logger.info(f"Subscription {subscription_id} saved for user {telegram_id} (reseller_id={reseller_id})")
             return {"success": True, "subscription_id": subscription_id}
         except Exception as e:
             logger.error(f"Error saving subscription: {e}")
@@ -1352,7 +1372,7 @@ class Database:
     # مدیریت تراکنش‌ها
     # ═══════════════════════════════════════════════════════════════
 
-    def save_transaction(self, order_id, user_id, username, plan_name, amount, gateway, tracking_code, status="pending", account_name=None, account_comment=None, is_renewal=0, renew_sub_id=None, discount_code=None, receipt_image=None, receipt_file_type=None):
+    def save_transaction(self, order_id, user_id, username, plan_name, amount, gateway, tracking_code, status="pending", account_name=None, account_comment=None, is_renewal=0, renew_sub_id=None, discount_code=None, receipt_image=None, receipt_file_type=None, reseller_id=None):
         """ذخیره تراکنش"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -1361,11 +1381,11 @@ class Database:
         try:
             cursor.execute("""
                 INSERT OR REPLACE INTO transactions
-                (order_id, user_id, username, plan_name, amount, gateway, tracking_code, account_name, account_comment, status, is_renewal, renew_sub_id, discount_code, receipt_image, receipt_photo_id, receipt_file_type, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (order_id, user_id, username, plan_name, amount, gateway, tracking_code, account_name, account_comment, status, 1 if is_renewal else 0, renew_sub_id, discount_code, receipt_image, receipt_image, receipt_file_type, now, now))
+                (order_id, user_id, username, plan_name, amount, gateway, tracking_code, account_name, account_comment, status, is_renewal, renew_sub_id, discount_code, receipt_image, receipt_photo_id, receipt_file_type, reseller_id, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (order_id, user_id, username, plan_name, amount, gateway, tracking_code, account_name, account_comment, status, 1 if is_renewal else 0, renew_sub_id, discount_code, receipt_image, receipt_image, receipt_file_type, reseller_id, now, now))
             conn.commit()
-            logger.info(f"Transaction {order_id} saved (is_renewal={is_renewal})")
+            logger.info(f"Transaction {order_id} saved (is_renewal={is_renewal}, reseller_id={reseller_id})")
             
             # ذخیره بک‌آپ فوری
             try:
@@ -2148,16 +2168,16 @@ class Database:
     # مدیریت تیکت‌های پشتیبانی
     # ═══════════════════════════════════════════════════════════════
 
-    def create_ticket(self, telegram_id, subject, message):
-        """ایجاد تیکت پشتیبانی جدید"""
+    def create_ticket(self, telegram_id, subject, message, reseller_id=None):
+        """ایجاد تیکت پشتیبانی جدید با قابلیت انتساب به نماینده"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
             cursor.execute("""
-                INSERT INTO support_tickets (telegram_id, subject, message, status, created_at, updated_at)
-                VALUES (?, ?, ?, 'open', ?, ?)
-            """, (telegram_id, subject, message, now, now))
+                INSERT INTO support_tickets (telegram_id, subject, message, status, reseller_id, created_at, updated_at)
+                VALUES (?, ?, ?, 'open', ?, ?, ?)
+            """, (telegram_id, subject, message, reseller_id, now, now))
             conn.commit()
             return {"success": True, "ticket_id": cursor.lastrowid}
         except Exception as e:
@@ -2167,7 +2187,7 @@ class Database:
             conn.close()
 
     def reply_ticket(self, ticket_id, admin_reply):
-        """پاسخ ادمین به تیکت"""
+        """پاسخ ادمین یا نماینده به تیکت"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -2211,6 +2231,28 @@ class Database:
             return [dict(row) for row in cursor.fetchall()]
         except Exception as e:
             logger.error(f"Error getting tickets: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_all_tickets(self, status=None, reseller_id=None):
+        """دریافت تمام تیکت‌ها با فیلتر وضعیت و نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            query = "SELECT * FROM support_tickets WHERE 1=1"
+            params = []
+            if status:
+                query += " AND status = ?"
+                params.append(status)
+            if reseller_id is not None:
+                query += " AND reseller_id = ?"
+                params.append(reseller_id)
+            query += " ORDER BY created_at DESC"
+            cursor.execute(query, params)
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error getting all tickets: {e}")
             return []
         finally:
             conn.close()
@@ -3408,6 +3450,165 @@ class Database:
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    # ─── متدهای تکمیلی ربات اختصاصی و هوش مالی نماینده (White-Label & Multi-Bot) ───
+
+    def get_active_reseller_bots(self) -> list:
+        """لیست تمام نمایندگان دارای ربات فعال و توکن معتبر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT * FROM resellers 
+                WHERE bot_token IS NOT NULL AND TRIM(bot_token) != '' 
+                  AND is_bot_active = 1 AND status = 'active'
+                ORDER BY id ASC
+            """)
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"Error fetching active reseller bots: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_reseller_by_bot_token(self, bot_token: str):
+        """جستجوی نماینده بر اساس توکن ربات"""
+        if not bot_token:
+            return None
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM resellers WHERE bot_token = ?", (bot_token.strip(),))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error finding reseller by bot token: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def get_reseller_by_telegram_id(self, telegram_id: int):
+        """جستجوی نماینده بر اساس تلگرام آیدی"""
+        if not telegram_id:
+            return None
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM resellers WHERE telegram_id = ?", (int(telegram_id),))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error finding reseller by telegram id: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def update_reseller_bot_settings(self, reseller_id: int, **kwargs) -> dict:
+        """بروزرسانی مشخصات و تنظیمات ربات اختصاصی نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        kwargs["updated_at"] = now
+        try:
+            allowed_fields = [
+                "bot_token", "bot_username", "channel_id", "brand_name",
+                "start_message", "support_username", "card_number", "card_holder",
+                "bank_name", "is_bot_active", "tier_level", "auto_approval", "updated_at"
+            ]
+            fields = []
+            params = []
+            for k, v in kwargs.items():
+                if k in allowed_fields:
+                    fields.append(f"{k} = ?")
+                    params.append(v)
+            if not fields:
+                return {"success": True}
+            params.append(reseller_id)
+            cursor.execute(f"UPDATE resellers SET {', '.join(fields)} WHERE id = ?", params)
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error updating reseller bot settings: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_reseller_users(self, reseller_id: int) -> list:
+        """دریافت لیست کاربران اختصاصی ثبت‌نام شده از ربات یا کانال نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT u.*, 
+                       (SELECT COUNT(*) FROM subscriptions WHERE telegram_id = u.telegram_id AND reseller_id = ?) as sub_count
+                FROM users u
+                WHERE u.reseller_id = ?
+                ORDER BY u.created_at DESC
+            """, (reseller_id, reseller_id))
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"Error getting reseller users: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_reseller_financial_summary(self, reseller_id: int) -> dict:
+        """محاسبه دقیق سود و تراز مالی نماینده (سود حاصل از تخفیف همکاری نسبت به فروش خرد)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            # ۱. مجموع خریدهای عمده نماینده
+            cursor.execute("""
+                SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions 
+                WHERE reseller_id = ? AND type = 'purchase'
+            """, (reseller_id,))
+            total_wholesale_cost = cursor.fetchone()[0] or 0
+
+            # ۲. مجموع واریزی‌ها / شارژ کیف‌پول
+            cursor.execute("""
+                SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions 
+                WHERE reseller_id = ? AND type = 'deposit'
+            """, (reseller_id,))
+            total_deposited = cursor.fetchone()[0] or 0
+
+            # ۳. تخفیف و موجودی نماینده
+            cursor.execute("SELECT discount_percent, balance, name FROM resellers WHERE id = ?", (reseller_id,))
+            r_info = cursor.fetchone()
+            discount_pct = r_info["discount_percent"] if r_info else 20
+            current_balance = r_info["balance"] if r_info else 0
+            reseller_name = r_info["name"] if r_info else "همکار"
+
+            # ۴. تخمین ارزش ریالی قیمت خرده‌فروشی
+            if discount_pct < 100 and discount_pct > 0:
+                estimated_retail_value = int(total_wholesale_cost / (1.0 - (discount_pct / 100.0)))
+            else:
+                estimated_retail_value = total_wholesale_cost
+            estimated_profit = max(0, estimated_retail_value - total_wholesale_cost)
+
+            return {
+                "reseller_name": reseller_name,
+                "total_wholesale_cost": total_wholesale_cost,
+                "total_deposited": total_deposited,
+                "estimated_retail_value": estimated_retail_value,
+                "estimated_profit": estimated_profit,
+                "discount_percent": discount_pct,
+                "current_balance": current_balance,
+            }
+        except Exception as e:
+            logger.error(f"Error calculating reseller financial summary: {e}")
+            return {
+                "reseller_name": "",
+                "total_wholesale_cost": 0,
+                "total_deposited": 0,
+                "estimated_retail_value": 0,
+                "estimated_profit": 0,
+                "discount_percent": 0,
+                "current_balance": 0,
+            }
         finally:
             conn.close()
 

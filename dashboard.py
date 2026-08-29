@@ -36,6 +36,7 @@ from admin_manager import get_all_plans, add_plan, update_plan, delete_plan, mov
 from sms_service import send_auth_sms_notification, send_sms, get_sms_config, format_iranian_phone
 from payment import CryptoPaymentGateway
 import avatar_generator
+from multibot_manager import multibot_manager, ResellerBotInstance
 
 logger = logging.getLogger(__name__)
 
@@ -1856,6 +1857,7 @@ def admin_resellers():
         r_dict = dict(r)
         r_dict["is_online"] = db.is_reseller_online(r["id"])
         r_dict["security_logs"] = db.get_reseller_security_logs(r["id"], r["username"])
+        r_dict["bot_status"] = multibot_manager.get_bot_status(r["id"])
         reseller_list.append(r_dict)
 
     all_failed_logins = db.get_all_failed_login_logs(limit=50)
@@ -1905,6 +1907,23 @@ def admin_reseller_edit(reseller_id):
         flash(f"اطلاعات نماینده «{updates['name']}» با موفقیت ویرایش شد.", "success")
     else:
         flash(f"خطا در ویرایش نماینده: {res.get('error')}", "danger")
+    return redirect(url_for("admin_resellers"))
+
+
+@app.route("/admin/reseller/<int:reseller_id>/bot-toggle", methods=["POST"])
+@admin_required
+def admin_reseller_bot_toggle(reseller_id):
+    """تغییر وضعیت ربات اختصاصی نماینده توسط مدیریت کل"""
+    bot_info = multibot_manager.get_bot_status(reseller_id)
+    if bot_info.get("is_running"):
+        multibot_manager.stop_reseller_bot(reseller_id)
+        flash(f"ربات نماینده #{reseller_id} با موفقیت متوقف شد.", "info")
+    else:
+        res = multibot_manager.start_reseller_bot(reseller_id)
+        if res.get("success"):
+            flash(f"ربات نماینده #{reseller_id} (@{res.get('bot_username')}) با موفقیت راه‌اندازی شد.", "success")
+        else:
+            flash(f"خطا در راه‌اندازی ربات: {res.get('error')}", "danger")
     return redirect(url_for("admin_resellers"))
 
 
@@ -2599,11 +2618,15 @@ def reseller_dashboard():
     session["balance"] = stats["balance"]
     recent_transactions = db.get_reseller_transactions(reseller_id, limit=6)
     analytics = db.get_advanced_analytics(reseller_id=reseller_id)
+    bot_status = multibot_manager.get_bot_status(reseller_id)
+    fin_summary = db.get_reseller_financial_summary(reseller_id)
     return render_template(
         "reseller_dashboard.html",
         stats=stats,
         recent_transactions=recent_transactions,
-        analytics=analytics
+        analytics=analytics,
+        bot_status=bot_status,
+        fin_summary=fin_summary
     )
 
 
@@ -2936,9 +2959,11 @@ def reseller_reports():
     stats = db.get_reseller_stats(reseller_id)
     analytics = db.get_advanced_analytics(reseller_id=reseller_id)
     
+    fin_summary = db.get_reseller_financial_summary(reseller_id)
     return render_template(
         "reseller_reports.html",
         stats=stats,
+        fin_summary=fin_summary,
         popular_plans=analytics.get("popular_plans", []),
         top_users_month=analytics.get("top_users_month", []),
         top_users_year=analytics.get("top_users_year", []),
@@ -2976,6 +3001,138 @@ def reseller_export_transactions():
         mimetype="text/csv; charset=utf-8",
         headers={"Content-Disposition": "attachment;filename=reseller_transactions_export.csv"}
     )
+
+
+@app.route("/reseller/export/users")
+@reseller_required
+def reseller_export_users():
+    """خروجی اکسل/CSV کاربران ثبت‌شده در ربات نماینده با پشتیبانی از فونت فارسی (UTF-8 BOM)"""
+    reseller_id = session.get("reseller_id")
+    users_list = db.get_reseller_users(reseller_id)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["شناسه عددی تلگرام", "نام کاربری / نام", "تعداد اشتراک‌ها", "تاریخ عضویت"])
+    for u in users_list:
+        writer.writerow([
+            u.get("telegram_id"),
+            u.get("username") or "",
+            u.get("sub_count") or 0,
+            u.get("created_at") or ""
+        ])
+
+    csv_data = "\ufeff" + output.getvalue()
+    return Response(
+        csv_data.encode("utf-8-sig"),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment;filename=reseller_users_export.csv"}
+    )
+
+
+@app.route("/reseller/export/analytics")
+@reseller_required
+def reseller_export_analytics():
+    """خروجی اکسل تراز مالی و سود نماینده"""
+    reseller_id = session.get("reseller_id")
+    fin_summary = db.get_reseller_financial_summary(reseller_id)
+    stats = db.get_reseller_stats(reseller_id)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["شاخص مالی", "مقدار"])
+    writer.writerow(["نام نماینده", fin_summary.get("reseller_name")])
+    writer.writerow(["موجودی کیف پول فعلی (تومان)", f"{fin_summary.get('current_balance', 0):,}"])
+    writer.writerow(["درصد تخفیف همکاری", f"{fin_summary.get('discount_percent', 0)}%"])
+    writer.writerow(["مجموع خریدهای عمده از سیستم (تومان)", f"{fin_summary.get('total_wholesale_cost', 0):,}"])
+    writer.writerow(["ارزش تخمینی فروش به مشتریان (تومان)", f"{fin_summary.get('estimated_retail_value', 0):,}"])
+    writer.writerow(["سود خالص تخمینی نماینده (تومان)", f"{fin_summary.get('estimated_profit', 0):,}"])
+    writer.writerow(["تعداد کل کاربران", stats.get("total_users", 0)])
+    writer.writerow(["تعداد اشتراک‌های فعال", stats.get("active_users", 0)])
+
+    csv_data = "\ufeff" + output.getvalue()
+    return Response(
+        csv_data.encode("utf-8-sig"),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment;filename=reseller_financial_report.csv"}
+    )
+
+
+@app.route("/reseller/bot-settings", methods=["GET", "POST"])
+@reseller_required
+def reseller_bot_settings():
+    """تنظیمات و مدیریت ربات تلگرام اختصاصی نماینده (White-Label Multi-Bot)"""
+    reseller_id = session.get("reseller_id")
+    reseller = db.get_reseller(reseller_id)
+    if not reseller:
+        flash("اطلاعات نماینده یافت نشد.", "danger")
+        return redirect(url_for("reseller_dashboard"))
+
+    if request.method == "POST":
+        bot_token = request.form.get("bot_token", "").strip()
+        channel_id = request.form.get("channel_id", "").strip()
+        brand_name = request.form.get("brand_name", "").strip()
+        start_message = request.form.get("start_message", "").strip()
+        support_username = request.form.get("support_username", "").strip()
+        card_number = request.form.get("card_number", "").strip()
+        card_holder = request.form.get("card_holder", "").strip()
+        bank_name = request.form.get("bank_name", "").strip()
+
+        # اگر توکن تغییر کرده، اعتبار سنجی می‌شود
+        bot_username = reseller.get("bot_username", "")
+        if bot_token:
+            t_test = ResellerBotInstance.test_token(bot_token)
+            if t_test.get("valid"):
+                bot_username = t_test.get("username", "")
+            else:
+                flash(f"هشدار در مورد توکن: {t_test.get('error')}", "warning")
+
+        db.update_reseller_bot_settings(
+            reseller_id,
+            bot_token=bot_token,
+            bot_username=bot_username,
+            channel_id=channel_id,
+            brand_name=brand_name,
+            start_message=start_message,
+            support_username=support_username,
+            card_number=card_number,
+            card_holder=card_holder,
+            bank_name=bank_name
+        )
+        flash("تنظیمات ربات اختصاصی شما با موفقیت ذخیره شد.", "success")
+        return redirect(url_for("reseller_bot_settings"))
+
+    bot_status = multibot_manager.get_bot_status(reseller_id)
+    return render_template("reseller_bot_settings.html", reseller=reseller, bot_status=bot_status)
+
+
+@app.route("/reseller/bot/test-token", methods=["POST"])
+@reseller_required
+def reseller_bot_test_token():
+    """بررسی و اعتبارسنجی آنلاین توکن ربات نماینده"""
+    token = request.form.get("bot_token", "").strip()
+    res = ResellerBotInstance.test_token(token)
+    return jsonify(res)
+
+
+@app.route("/reseller/bot/toggle", methods=["POST"])
+@reseller_required
+def reseller_bot_toggle():
+    """روشن یا خاموش کردن ربات توسط نماینده"""
+    reseller_id = session.get("reseller_id")
+    action = request.form.get("action", "toggle")
+    status_info = multibot_manager.get_bot_status(reseller_id)
+
+    if action == "start" or (action == "toggle" and not status_info.get("is_running")):
+        res = multibot_manager.start_reseller_bot(reseller_id)
+        if res.get("success"):
+            flash(f"ربات اختصاصی شما (@{res.get('bot_username')}) با موفقیت فعال و روشن شد!", "success")
+        else:
+            flash(f"خطا در راه‌اندازی ربات: {res.get('error')}", "danger")
+    else:
+        res = multibot_manager.stop_reseller_bot(reseller_id)
+        flash("ربات اختصاصی شما با موفقیت متوقف شد.", "info")
+
+    return redirect(url_for("reseller_bot_settings"))
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -3579,6 +3736,13 @@ def run_dashboard(host="0.0.0.0", port=None, debug=False):
     if port is None:
         port = int(os.getenv("PORT", 5000))
     print(f"🌐 Modern Web Dashboard running at http://{host}:{port}")
+
+    # راه‌اندازی خودکار کلیه ربات‌های فعال نمایندگان در پس‌زمینه
+    try:
+        threading.Thread(target=multibot_manager.start_all_active_bots, daemon=True, name="MultiBotAutoStart").start()
+    except Exception as e:
+        logger.error(f"Error launching active reseller bots: {e}")
+
     app.run(host=host, port=port, debug=debug, use_reloader=False)
 
 
