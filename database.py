@@ -839,14 +839,14 @@ class Database:
 
     def _parse_hiddify_user_online(self, u: dict) -> tuple[int, str]:
         """
-        تشخیص آنلاین بودن و استخراج آخرین اتصال از آبجکت کاربر در هیدیفای:
+        تشخیص آنلاین بودن و استخراج آخرین اتصال از آبجکت کاربر در هیدیفای (روش فوق‌بهینه بر پایه Timestamp)
         خروجی: (is_online: 1|0, last_online_str)
         """
         if not u or not isinstance(u, dict):
             return 0, None
 
         is_online = 0
-        if u.get("is_online") is True or u.get("online") is True:
+        if u.get("is_online") in (True, 1, "true", "True") or u.get("online") in (True, 1, "true", "True"):
             is_online = 1
 
         last_online_raw = u.get("last_online") or u.get("last_online_time") or u.get("last_connected")
@@ -858,9 +858,14 @@ class Database:
                 last_online_str = clean_str
                 # بررسی فاصله زمانی آخرین اتصال
                 dt = datetime.strptime(clean_str, "%Y-%m-%d %H:%M:%S")
-                diff = abs((datetime.utcnow() - dt).total_seconds())
-                # در صورتی که کاربر در ۵ دقیقه (۳۰۰ ثانیه) اخیر تبادل ترافیک داشته باشد
-                if diff <= 300:
+                # مقایسه همزمان با ساعت تهران و UTC جهت رفع کامل خطای اختلاف منطقه زمانی سرور
+                now_tehran = get_now_naive()
+                now_utc = datetime.utcnow()
+                diff_tehran = abs((now_tehran - dt).total_seconds())
+                diff_utc = abs((now_utc - dt).total_seconds())
+                min_diff = min(diff_tehran, diff_utc)
+                # استاندارد پنل هیدیفای: اتصال در ۱۵ دقیقه (۹۰۰ ثانیه) اخیر = آنلاین
+                if min_diff <= 900:
                     is_online = 1
             except Exception:
                 last_online_str = str(last_online_raw)
