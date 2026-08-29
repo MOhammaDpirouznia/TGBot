@@ -390,6 +390,61 @@ function sendTestSms() {
     </div>
 </div>
 
+<!-- کارت تنظیمات درگاه پرداخت کریپتو (Crypto Gateway) -->
+<div class="card shadow-sm mt-4 border-0">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h5 class="mb-0 text-warning fw-bold">
+            <i class="fas fa-coins text-warning me-2"></i> درگاه پرداخت ارزی و کریپتو (USDT TRC20 / TON / Crypto)
+        </h5>
+        {% if crypto_config and crypto_config.get('enabled') %}
+            <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-circle-check me-1"></i>پرداخت ارزی فعال است</span>
+        {% else %}
+            <span class="badge bg-secondary-subtle text-muted border"><i class="fas fa-circle-pause me-1"></i>غیرفعال</span>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <p class="text-muted small">
+            با فعال‌سازی درگاه کریپتو، کاربران و مشتریان می‌توانند اشتراک‌ها و شارژ کیف پول خود را به صورت ۱۰۰٪ خودکار با تتر (USDT)، ترون (TRX) یا تون (TON) پرداخت کنند.
+        </p>
+
+        <form action="{{ url_for('settings') }}" method="POST">
+            <input type="hidden" name="action" value="save_crypto_settings">
+
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" name="crypto_enabled" id="cryptoEnabledSwitch" {% if crypto_config and crypto_config.get('enabled') %}checked{% endif %}>
+                <label class="form-check-label fw-bold" for="cryptoEnabledSwitch">فعال‌سازی درگاه پرداخت ارزی کریپتو در ربات</label>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">ارائه‌دهنده درگاه کریپتو (Provider):</label>
+                    <select name="crypto_provider" class="form-select">
+                        <option value="oxapay" {% if crypto_config and crypto_config.get('provider') == 'oxapay' %}selected{% endif %}>اکساپی (OxaPay - خودکار با تسویه آنی)</option>
+                        <option value="nowpayments" {% if crypto_config and crypto_config.get('provider') == 'nowpayments' %}selected{% endif %}>NOWPayments (پشتیبانی بیش از ۱۰۰ رمزارز)</option>
+                        <option value="manual_trc20" {% if crypto_config and crypto_config.get('provider') == 'manual_trc20' %}selected{% endif %}>ولت مستقیم دستی (نمایش آدرس کیف پول)</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">نرخ محاسبه هر تتر (تومان):</label>
+                    <input type="number" name="crypto_usdt_rate" class="form-control font-monospace" placeholder="مثال: 90000" value="{{ crypto_config.get('usdt_rate', 90000) if crypto_config else 90000 }}" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">کلید مرچنت / توکن API درگاه کریپتو:</label>
+                    <input type="password" name="crypto_api_key" class="form-control font-monospace" placeholder="Merchant API Key" value="{{ crypto_config.get('api_key', '') if crypto_config else '' }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">آدرس کیف پول تتر TRC20 / TON مدیر:</label>
+                    <input type="text" name="crypto_wallet_address" class="form-control font-monospace" placeholder="مثال: TLa9k4... یا UQDz..." value="{{ crypto_config.get('wallet_address', '') if crypto_config else '' }}">
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-warning px-4 text-dark fw-bold">
+                <i class="fas fa-save me-1"></i> ذخیره تنظیمات درگاه کریپتو
+            </button>
+        </form>
+    </div>
+</div>
+
 <div class="card shadow-sm mt-4">
     <div class="card-header bg-white py-3">
         <h5 class="mb-0"><i class="fas fa-sliders me-2"></i> تنظیمات ثبت‌شده در دیتابیس</h5>

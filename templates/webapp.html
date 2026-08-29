@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>پنل کاربری هوشمند | هیدی‌شاپ</title>
+    <!-- Telegram WebApp SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- FontAwesome & Fonts -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+    <style>
+        :root {
+            --bg-color: var(--tg-theme-bg-color, #0f172a);
+            --secondary-bg: var(--tg-theme-secondary-bg-color, #1e293b);
+            --text-color: var(--tg-theme-text-color, #f8fafc);
+            --hint-color: var(--tg-theme-hint-color, #94a3b8);
+            --link-color: var(--tg-theme-link-color, #38bdf8);
+            --button-color: var(--tg-theme-button-color, #4f46e5);
+            --button-text-color: var(--tg-theme-button-text-color, #ffffff);
+            --card-bg: rgba(30, 41, 59, 0.85);
+            --accent-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --danger-color: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            padding: 16px;
+            padding-bottom: 40px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            overflow-x: hidden;
+        }
+
+        /* Top User Profile Header */
+        .profile-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .avatar-img {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #818cf8;
+            box-shadow: 0 0 12px rgba(129, 140, 248, 0.4);
+        }
+
+        .user-name {
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .user-id {
+            font-size: 12px;
+            color: var(--hint-color);
+        }
+
+        .wallet-pill {
+            background: rgba(99, 102, 241, 0.15);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 14px;
+            padding: 8px 12px;
+            text-align: left;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+        }
+
+        .wallet-label {
+            font-size: 10px;
+            color: #a5b4fc;
+        }
+
+        .wallet-amount {
+            font-size: 13px;
+            font-weight: 800;
+            color: #38bdf8;
+        }
+
+        /* Subscription Card */
+        .sub-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 24px;
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.4);
+        }
+
+        .sub-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            left: 0;
+            height: 4px;
+            background: var(--accent-gradient);
+        }
+
+        .sub-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .plan-title {
+            font-size: 17px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .badge-status {
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-weight: 600;
+        }
+        .badge-active { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+        .badge-warning { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+        .badge-expired { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
+
+        /* Usage Progress Bar */
+        .usage-container {
+            margin: 16px 0;
+        }
+
+        .usage-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: var(--hint-color);
+            margin-bottom: 8px;
+        }
+
+        .usage-numbers {
+            font-weight: 700;
+            color: var(--text-color);
+        }
+
+        .progress-bar-bg {
+            background: rgba(255, 255, 255, 0.1);
+            height: 12px;
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: var(--accent-gradient);
+            border-radius: 6px;
+            transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .stat-box {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 12px;
+            text-align: center;
+        }
+
+        .stat-box-label {
+            font-size: 11px;
+            color: var(--hint-color);
+            margin-bottom: 4px;
+        }
+
+        .stat-box-val {
+            font-size: 14px;
+            font-weight: 800;
+            color: #38bdf8;
+        }
+
+        /* Deep Links Client Section */
+        .section-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #cbd5e1;
+            margin-top: 8px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .app-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .app-btn {
+            background: var(--card-bg);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-color);
+            text-decoration: none;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+        }
+
+        .app-btn:active {
+            transform: scale(0.96);
+            background: rgba(99, 102, 241, 0.2);
+        }
+
+        .app-icon {
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+
+        .icon-v2ray { background: linear-gradient(135deg, #e11d48, #be123c); color: white; }
+        .icon-streisand { background: linear-gradient(135deg, #0284c7, #0369a1); color: white; }
+        .icon-v2box { background: linear-gradient(135deg, #7c3aed, #6d28d9); color: white; }
+        .icon-hiddify { background: linear-gradient(135deg, #059669, #047857); color: white; }
+        .icon-clash { background: linear-gradient(135deg, #d97706, #b45309); color: white; }
+
+        .app-info {
+            text-align: right;
+            overflow: hidden;
+        }
+
+        .app-name {
+            font-size: 13px;
+            font-weight: 700;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .app-os {
+            font-size: 10px;
+            color: var(--hint-color);
+        }
+
+        /* Action Buttons */
+        .btn-copy {
+            background: var(--button-color);
+            color: var(--button-text-color);
+            border: none;
+            border-radius: 16px;
+            padding: 14px;
+            font-size: 14px;
+            font-weight: 700;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 18px rgba(79, 70, 229, 0.4);
+            transition: transform 0.15s;
+        }
+
+        .btn-copy:active {
+            transform: scale(0.98);
+        }
+
+        .action-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .btn-secondary-action {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-color);
+            border-radius: 14px;
+            padding: 11px;
+            font-size: 12px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+
+        .btn-secondary-action:active {
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        /* Toast Alert */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: rgba(16, 185, 129, 0.95);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-size: 13px;
+            font-weight: 700;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+            transition: transform 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* QR Code Modal */
+        .qr-modal {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(8px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            padding: 20px;
+        }
+
+        .qr-content {
+            background: var(--card-bg);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 24px;
+            text-align: center;
+            max-width: 320px;
+            width: 100%;
+        }
+
+        .qr-img {
+            width: 200px;
+            height: 200px;
+            background: white;
+            padding: 10px;
+            border-radius: 16px;
+            margin: 16px auto;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Top User Profile -->
+    <div class="profile-card">
+        <div class="user-info">
+            <img src="{{ avatar_url(user['telegram_id'] or user['username'] or 'User') }}" class="avatar-img" alt="Avatar">
+            <div>
+                <div class="user-name" id="profileName">{{ user['username'] or ('کاربر ' ~ (user['telegram_id'] or '')) }}</div>
+                <div class="user-id"><code>ID: {{ user['telegram_id'] }}</code></div>
+            </div>
+        </div>
+        <div class="wallet-pill">
+            <span class="wallet-label"><i class="fas fa-wallet me-1"></i>کیف پول</span>
+            <span class="wallet-amount" id="walletBal">{{ "{:,}".format(wallet_balance or 0) }} ت</span>
+        </div>
+    </div>
+
+    {% if subscriptions and subscriptions|length > 0 %}
+        {% set sub = subscriptions[0] %}
+        {% set limit = sub['data_limit'] or 0 %}
+        {% set used = sub['data_used'] or 0 %}
+        {% set percent = (used / limit * 100)|round(1) if limit > 0 else 0 %}
+        {% set remaining = (limit - used)|round(1) if limit > used else 0 %}
+        {% set sub_url = sub['sub_url'] or '' %}
+
+        <!-- Active Subscription Card -->
+        <div class="sub-card">
+            <div class="sub-header">
+                <div class="plan-title">
+                    <i class="fas fa-shield-halved text-indigo-400"></i>
+                    <span>{{ sub['plan_name'] or 'اشتراک ویژه' }}</span>
+                </div>
+                {% if percent >= 95 or sub['status'] == 'expired' %}
+                    <span class="badge-status badge-expired">⚠️ منقضی / پایان حجم</span>
+                {% elif percent >= 80 %}
+                    <span class="badge-status badge-warning">⚡ رو به اتمام ({{ percent }}%)</span>
+                {% else %}
+                    <span class="badge-status badge-active">🟢 اتصال فعال</span>
+                {% endif %}
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="usage-container">
+                <div class="usage-labels">
+                    <span>مصرف کل ترافیک</span>
+                    <span class="usage-numbers">{{ used|round(1) }} / {{ limit|round(1) }} GB ({{ percent }}%)</span>
+                </div>
+                <div class="progress-bar-bg">
+                    <div class="progress-bar-fill" style="width: {{ percent if percent <= 100 else 100 }}%;"></div>
+                </div>
+            </div>
+
+            <!-- Stats Boxes -->
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div class="stat-box-label"><i class="fas fa-database me-1"></i>حجم باقیمانده</div>
+                    <div class="stat-box-val">{{ remaining }} گیگابایت</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-box-label"><i class="fas fa-calendar-check me-1"></i>تاریخ انقضا</div>
+                    <div class="stat-box-val">{{ expire_shamsi or '۳۰ روزه' }}</div>
+                </div>
+            </div>
+
+            <!-- Action Copy & QR -->
+            <div style="margin-top: 18px;">
+                <button class="btn-copy" onclick="copySubUrl('{{ sub_url }}')">
+                    <i class="fas fa-copy"></i> کپی لینک اشتراک هوشمند
+                </button>
+                <div class="action-row">
+                    <button class="btn-secondary-action" onclick="openQrModal('{{ sub_url }}')">
+                        <i class="fas fa-qrcode"></i> بارکد QR
+                    </button>
+                    <a href="https://t.me/{{ bot_username or 'hiddify_shop_bot' }}?start=renew_{{ sub['id'] }}" class="btn-secondary-action">
+                        <i class="fas fa-rotate text-emerald-400"></i> تمدید اشتراک
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- ⚡ Direct 1-Click App Launchers -->
+        <div class="section-title">
+            <i class="fas fa-bolt text-amber-400"></i>
+            <span>اتصال مستقیم ۱-کلیکه به اپلیکیشن‌ها:</span>
+        </div>
+
+        <div class="app-grid">
+            <!-- V2RayNG (Android) -->
+            <a href="v2rayng://install-config?url={{ sub_url|urlencode }}" class="app-btn" onclick="haptic()">
+                <div class="app-icon icon-v2ray"><i class="fab fa-android"></i></div>
+                <div class="app-info">
+                    <div class="app-name">V2RayNG</div>
+                    <div class="app-os">اتصال خودکار اندروید</div>
+                </div>
+            </a>
+
+            <!-- Streisand (iOS) -->
+            <a href="streisand://import/{{ sub_url }}" class="app-btn" onclick="haptic()">
+                <div class="app-icon icon-streisand"><i class="fab fa-apple"></i></div>
+                <div class="app-info">
+                    <div class="app-name">Streisand</div>
+                    <div class="app-os">اتصال خودکار آیفون</div>
+                </div>
+            </a>
+
+            <!-- V2Box (iOS / Android) -->
+            <a href="v2box://install-sub?url={{ sub_url|urlencode }}&name=HiddiShop" class="app-btn" onclick="haptic()">
+                <div class="app-icon icon-v2box"><i class="fas fa-cube"></i></div>
+                <div class="app-info">
+                    <div class="app-name">V2Box</div>
+                    <div class="app-os">آیفون و اندروید</div>
+                </div>
+            </a>
+
+            <!-- Hiddify Next (All Platforms) -->
+            <a href="hiddify://install-sub?url={{ sub_url|urlencode }}" class="app-btn" onclick="haptic()">
+                <div class="app-icon icon-hiddify"><i class="fas fa-rocket"></i></div>
+                <div class="app-info">
+                    <div class="app-name">Hiddify App</div>
+                    <div class="app-os">ویندوز، مک و گوشی</div>
+                </div>
+            </a>
+        </div>
+
+    {% else %}
+        <!-- Empty State -->
+        <div class="sub-card" style="text-align: center; padding: 40px 20px;">
+            <i class="fas fa-ghost text-muted fa-3x" style="margin-bottom: 16px; opacity: 0.5;"></i>
+            <h4 style="font-weight: 700; margin-bottom: 8px;">هنوز اشتراک فعالی ندارید!</h4>
+            <p style="font-size: 13px; color: var(--hint-color); margin-bottom: 20px;">
+                می‌توانید همین الان از منوی ربات یا دکمه زیر اشتراک پرسرعت خود را تهیه کنید.
+            </p>
+            <a href="https://t.me/{{ bot_username or 'hiddify_shop_bot' }}?start=plans" class="btn-copy" style="text-decoration: none;">
+                <i class="fas fa-cart-shopping"></i> خرید اولین اشتراک
+            </a>
+        </div>
+    {% endif %}
+
+    <!-- Toast Notification -->
+    <div id="toastAlert" class="toast">
+        <i class="fas fa-check-circle"></i>
+        <span id="toastText">لینک سابسکریپشن کپی شد!</span>
+    </div>
+
+    <!-- QR Code Modal -->
+    <div id="qrModal" class="qr-modal" onclick="closeQrModal(event)">
+        <div class="qr-content" onclick="event.stopPropagation()">
+            <h4 style="font-size: 16px; font-weight: 700;">اسکن بارکد QR</h4>
+            <p style="font-size: 12px; color: var(--hint-color); margin-top: 4px;">با دوربین نرم‌افزار VPN اسکن نمایید</p>
+            <img id="qrImgSrc" src="" class="qr-img" alt="QR Code">
+            <button class="btn-secondary-action" style="width: 100%; margin-top: 10px;" onclick="closeQrModal()">بستن</button>
+        </div>
+    </div>
+
+    <script>
+        // Init Telegram WebApp
+        const tg = window.Telegram?.WebApp;
+        if (tg) {
+            tg.expand();
+            tg.ready();
+            if (tg.setHeaderColor) tg.setHeaderColor('#0f172a');
+            if (tg.setBackgroundColor) tg.setBackgroundColor('#0f172a');
+        }
+
+        function haptic() {
+            if (tg && tg.HapticFeedback) {
+                tg.HapticFeedback.impactOccurred('medium');
+            }
+        }
+
+        function copySubUrl(url) {
+            if (!url) return;
+            navigator.clipboard.writeText(url).then(() => {
+                showToast('لینک اشتراک با موفقیت کپی شد! 📋');
+                haptic();
+            }).catch(() => {
+                showToast('خطا در کپی، لینک را دستی کپی کنید.');
+            });
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toastAlert');
+            document.getElementById('toastText').innerText = msg;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2500);
+        }
+
+        function openQrModal(url) {
+            haptic();
+            if (!url) return;
+            const qrApi = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=' + encodeURIComponent(url);
+            document.getElementById('qrImgSrc').src = qrApi;
+            document.getElementById('qrModal').style.display = 'flex';
+        }
+
+        function closeQrModal() {
+            document.getElementById('qrModal').style.display = 'none';
+        }
+    </script>
+</body>
+</html>
