@@ -74,7 +74,7 @@
                         <td><code>{{ sub['account_name'] or '-' }}</code></td>
                         <td>{{ sub['plan_name'] or '-' }}</td>
                         <td>
-                            <div>{{ "%.2f"|format(sub['data_used']|float) if sub['data_used'] else '0' }} / {{ "%.1f"|format(sub['data_limit']|float) if sub['data_limit'] else '0' }} GB</div>
+                            <div dir="ltr" class="font-monospace text-nowrap">{{ "%.2f"|format(sub['data_used']|float or 0) }} / {{ "%.1f"|format(sub['data_limit']|float or 0) }} GB</div>
                         </td>
                         <td>{{ sub['duration'] or '-' }} روز</td>
                         <td><small class="text-muted">{{ sub['expire_date'][:10] if sub['expire_date'] else '-' }}</small></td>

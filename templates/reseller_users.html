@@ -76,7 +76,7 @@
                         </td>
                         <td><span class="badge bg-primary bg-opacity-10 text-primary">{{ sub['plan_name'] or '-' }}</span></td>
                         <td>
-                            <div class="small fw-bold">{{ "%.2f"|format(sub['data_used']|float) if sub['data_used'] else '0' }} / {{ "%.1f"|format(sub['data_limit']|float) if sub['data_limit'] else '0' }} GB</div>
+                            <div class="small fw-bold font-monospace text-nowrap" dir="ltr">{{ "%.2f"|format(sub['data_used']|float or 0) }} / {{ "%.1f"|format(sub['data_limit']|float or 0) }} GB</div>
                             <div class="progress mt-1" style="height: 5px; width: 90px;">
                                 {% set pct = (((sub['data_used']|float or 0) / (sub['data_limit']|float or 1)) * 100)|int %}
                                 <div class="progress-bar {{ 'bg-danger' if pct > 90 else ('bg-warning' if pct > 70 else 'bg-success') }}" style="width: {{ pct if pct <= 100 else 100 }}%"></div>

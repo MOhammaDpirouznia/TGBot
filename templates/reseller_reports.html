@@ -191,10 +191,13 @@
                                         <strong><code>{{ a['account_name'] }}</code></strong>
                                     </div>
                                 </td>
-                                <td><small>{{ a['plan_name'] }}</small></td>
+                                <td><span class="badge bg-primary bg-opacity-10 text-primary">{{ a['plan_name'] }}</span></td>
                                 <td>
-                                    <strong class="text-danger">{{ "%.2f"|format(a['data_used'] or 0) }} GB</strong>
-                                    <small class="text-muted">/ {{ a['data_limit'] }} GB</small>
+                                    <div dir="ltr" class="d-inline-flex align-items-center gap-1 font-monospace text-nowrap">
+                                        <strong class="text-danger">{{ "%.2f"|format(a['data_used']|float or 0) }}</strong>
+                                        <span class="text-muted">/</span>
+                                        <span class="text-secondary">{{ "%.1f"|format(a['data_limit']|float or 0) }} GB</span>
+                                    </div>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -232,10 +235,10 @@
                             {% for h in usage_history %}
                             <tr>
                                 <td><strong><code>{{ h['account_name'] }}</code></strong></td>
-                                <td>{{ h['plan_name'] }}</td>
+                                <td><span class="badge bg-light text-dark border">{{ h['plan_name'] }}</span></td>
                                 <td>
-                                    <span class="badge bg-secondary">
-                                        {{ "%.2f"|format(h['previous_usage_gb'] or 0) }} GB از {{ h['previous_limit_gb'] }} GB
+                                    <span class="badge bg-secondary font-monospace" dir="ltr">
+                                        {{ "%.2f"|format(h['previous_usage_gb']|float or 0) }} / {{ "%.1f"|format(h['previous_limit_gb']|float or 0) }} GB
                                     </span>
                                 </td>
                                 <td>
