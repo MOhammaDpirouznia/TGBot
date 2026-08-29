@@ -330,20 +330,13 @@ def hidify_sync_request(method: str, endpoint: str, data: dict = None):
 
 
 def hidify_sync_create_user(name: str, usage_limit_gb: float = None, package_days: int = None, comment: str = None) -> dict:
-    """ساخت کاربر در هیدیفای با پاکسازی نام و سازگاری کامل با API v2"""
-    import re
+    """ساخت کاربر در هیدیفای با پشتیبانی کامل از نام‌های فارسی، انگلیسی و یونیکد"""
     raw_name = str(name or "").strip()
-    clean_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', raw_name).strip("_")
-    if not clean_name:
-        clean_name = f"user_{int(time.time())}"
-
-    # اگر نام اصلی شامل حروف فارسی بود، آن را در کامنت حفظ می‌کنیم
-    full_comment = comment or ""
-    if raw_name != clean_name and raw_name not in full_comment:
-        full_comment = f"{raw_name} | {full_comment}".strip(" |")
+    if not raw_name:
+        raw_name = f"user_{int(time.time())}"
 
     payload = {
-        "name": clean_name,
+        "name": raw_name,
         "enable": True,
         "is_active": True,
     }
@@ -363,8 +356,8 @@ def hidify_sync_create_user(name: str, usage_limit_gb: float = None, package_day
         except Exception:
             pass
 
-    if full_comment:
-        payload["comment"] = str(full_comment)[:200]
+    if comment:
+        payload["comment"] = str(comment)[:200]
 
     # ارسال درخواست ساخت به هیدیفای
     res = hidify_sync_request("POST", "/admin/user/", payload)
@@ -373,13 +366,15 @@ def hidify_sync_create_user(name: str, usage_limit_gb: float = None, package_day
     if "error" in res and ("400" in str(res.get("error")) or "invalid" in str(res.get("error")).lower()):
         logger.warning(f"Standard create_user failed ({res.get('error')}), trying fallback minimal payload...")
         minimal_payload = {
-            "name": clean_name,
+            "name": raw_name,
             "enable": True
         }
         if "usage_limit_GB" in payload:
             minimal_payload["usage_limit_GB"] = payload["usage_limit_GB"]
         if "package_days" in payload:
             minimal_payload["package_days"] = payload["package_days"]
+        if "comment" in payload:
+            minimal_payload["comment"] = payload["comment"]
         res = hidify_sync_request("POST", "/admin/user/", minimal_payload)
 
     return res
