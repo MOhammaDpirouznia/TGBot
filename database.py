@@ -325,7 +325,49 @@ class Database:
             )
         """)
 
+        # جدول لاگ حسابرسی و ردپای تغییرات تراکنش‌ها (Audit Logs)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS transaction_audit_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                transaction_id INTEGER NOT NULL,
+                admin_id INTEGER,
+                admin_name TEXT,
+                action TEXT NOT NULL,
+                field_name TEXT,
+                old_value TEXT,
+                new_value TEXT,
+                reason TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (transaction_id) REFERENCES transactions(id)
+            )
+        """)
+
         # مایگریشن خودکار ستون‌های جدید
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN is_deleted INTEGER DEFAULT 0")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN revoked_at TEXT")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN revoked_by TEXT")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN revoke_reason TEXT")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN card_number TEXT")
+        except Exception:
+            pass
+
         try:
             cursor.execute("ALTER TABLE admin_users ADD COLUMN telegram_id INTEGER")
         except Exception:
@@ -1083,6 +1125,159 @@ class Database:
             return []
         finally:
             conn.close()
+
+    def revoke_transaction(self, tx_id: int, admin_name: str, admin_id: int = None, reason: str = "", rollback_sub_action: str = "keep") -> dict:
+        """
+        ابطال تراکنش توسط مدیر ارشد با ثبت تاریخچه و امکان رول‌بک اشتراک
+        rollback_sub_action: 'keep', 'disable', 'delete'
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            tx = cursor.execute("SELECT * FROM transactions WHERE id=?", (tx_id,)).fetchone()
+            if not tx:
+                return {"success": False, "error": "تراکنش یافت نشد."}
+
+            if tx["status"] == "revoked":
+                return {"success": False, "error": "این تراکنش قبلاً باطل شده است."}
+
+            old_status = tx["status"]
+            now_iso = get_now_iso()
+
+            # ۱. تغییر وضعیت تراکنش به revoked
+            cursor.execute("""
+                UPDATE transactions
+                SET status='revoked', revoked_at=?, revoked_by=?, revoke_reason=?, updated_at=?
+                WHERE id=?
+            """, (now_iso, admin_name, reason, now_iso, tx_id))
+
+            # ۲. ثبت لاگ حسابرسی
+            cursor.execute("""
+                INSERT INTO transaction_audit_logs 
+                (transaction_id, admin_id, admin_name, action, field_name, old_value, new_value, reason, created_at)
+                VALUES (?, ?, ?, 'revoke', 'status', ?, 'revoked', ?, ?)
+            """, (tx_id, admin_id, admin_name, old_status, reason, now_iso))
+
+            # ۳. یافتن اشتراک مرتبط
+            sub_id = tx["subscription_id"]
+            associated_sub = None
+            if sub_id:
+                associated_sub = cursor.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,)).fetchone()
+            elif tx["user_id"] and tx["account_name"]:
+                # جستجوی اشتراک بر اساس user_id و account_name
+                associated_sub = cursor.execute(
+                    "SELECT * FROM subscriptions WHERE telegram_id=? AND account_name=? ORDER BY id DESC LIMIT 1",
+                    (tx["user_id"], tx["account_name"])
+                ).fetchone()
+
+            conn.commit()
+
+            return {
+                "success": True,
+                "tx": dict(tx),
+                "sub": dict(associated_sub) if associated_sub else None,
+                "rollback_sub_action": rollback_sub_action
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def update_transaction_details(self, tx_id: int, admin_id: int, admin_name: str, amount: int = None, tracking_code: str = None, card_number: str = None, notes: str = None, reason: str = "") -> dict:
+        """ویرایش مشخصات فیش با ثبت دقیق لاگ حسابرسی برای هر فیلد تغییر یافته"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            tx = cursor.execute("SELECT * FROM transactions WHERE id=?", (tx_id,)).fetchone()
+            if not tx:
+                return {"success": False, "error": "تراکنش یافت نشد."}
+
+            now_iso = get_now_iso()
+            changes = []
+
+            fields_to_update = {}
+            if amount is not None:
+                try:
+                    int_amt = int(amount)
+                    if int_amt != tx["amount"]:
+                        fields_to_update["amount"] = int_amt
+                        changes.append(("amount", str(tx["amount"]), str(int_amt)))
+                except Exception:
+                    pass
+
+            if tracking_code is not None and tracking_code.strip() != (tx["tracking_code"] or ""):
+                fields_to_update["tracking_code"] = tracking_code.strip()
+                changes.append(("tracking_code", tx["tracking_code"] or "", tracking_code.strip()))
+
+            if card_number is not None and card_number.strip() != (tx["card_number"] or ""):
+                fields_to_update["card_number"] = card_number.strip()
+                changes.append(("card_number", tx["card_number"] or "", card_number.strip()))
+
+            if notes is not None and notes.strip() != (tx["account_comment"] or ""):
+                fields_to_update["account_comment"] = notes.strip()
+                changes.append(("account_comment", tx["account_comment"] or "", notes.strip()))
+
+            if not fields_to_update:
+                return {"success": True, "message": "هیچ تغییری اعمال نشد."}
+
+            fields_to_update["updated_at"] = now_iso
+            set_clause = ", ".join([f"{k}=?" for k in fields_to_update.keys()])
+            values = list(fields_to_update.values()) + [tx_id]
+
+            cursor.execute(f"UPDATE transactions SET {set_clause} WHERE id=?", values)
+
+            # ثبت لاگ حسابرسی برای هر تغییر
+            for field, old_val, new_val in changes:
+                cursor.execute("""
+                    INSERT INTO transaction_audit_logs 
+                    (transaction_id, admin_id, admin_name, action, field_name, old_value, new_value, reason, created_at)
+                    VALUES (?, ?, ?, 'edit', ?, ?, ?, ?, ?)
+                """, (tx_id, admin_id, admin_name, field, old_val, new_val, reason, now_iso))
+
+            conn.commit()
+            return {"success": True, "changes_count": len(changes)}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def soft_delete_transaction(self, tx_id: int, admin_id: int, admin_name: str, reason: str = "") -> dict:
+        """حذف نرم تراکنش (آرشیو) با ثبت لاگ"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            tx = cursor.execute("SELECT * FROM transactions WHERE id=?", (tx_id,)).fetchone()
+            if not tx:
+                return {"success": False, "error": "تراکنش یافت نشد."}
+
+            now_iso = get_now_iso()
+            cursor.execute("UPDATE transactions SET is_deleted=1, updated_at=? WHERE id=?", (now_iso, tx_id))
+
+            cursor.execute("""
+                INSERT INTO transaction_audit_logs 
+                (transaction_id, admin_id, admin_name, action, field_name, old_value, new_value, reason, created_at)
+                VALUES (?, ?, ?, 'soft_delete', 'is_deleted', '0', '1', ?, ?)
+            """, (tx_id, admin_id, admin_name, reason, now_iso))
+
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_transaction_audit_logs(self, tx_id: int) -> list:
+        """دریافت لیست لاگ‌های حسابرسی یک تراکنش"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM transaction_audit_logs
+            WHERE transaction_id=?
+            ORDER BY id DESC
+        """, (tx_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
 
     # ═══════════════════════════════════════════════════════════════
     # مدیریت تنظیمات
@@ -2737,6 +2932,15 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM bank_cards ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+
+    def get_active_bank_cards(self):
+        """لیست کارت‌های بانکی فعال"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM bank_cards WHERE is_active=1 ORDER BY created_at DESC")
         rows = cursor.fetchall()
         conn.close()
         return [dict(r) for r in rows]

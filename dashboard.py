@@ -509,8 +509,21 @@ def admin_required(f):
     @functools.wraps(f)
     def decorated_function(*args, **kwargs):
         if not session.get("logged_in") or session.get("role") != "admin":
-            flash("دسترسی به این صفحه فقط برای مدیر کل مجاز است.", "danger")
+            flash("دسترسی به این صفحه فقط برای مدیران مجاز است.", "danger")
             return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def super_admin_required(f):
+    @functools.wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get("logged_in") or session.get("role") != "admin":
+            flash("دسترسی به این صفحه فقط برای مدیران مجاز است.", "danger")
+            return redirect(url_for("login"))
+        if session.get("admin_role") != "super_admin":
+            flash("دسترسی به این عملیات حساس فقط برای مدیر ارشد (Super Admin) مجاز است.", "danger")
+            return redirect(url_for("payments"))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -803,19 +816,53 @@ def payments():
     query = "SELECT * FROM transactions WHERE 1=1"
     params = []
 
-    if status_filter != "all":
-        query += " AND status=?"
-        params.append(status_filter)
+    if status_filter == "deleted":
+        query += " AND is_deleted=1"
+    else:
+        query += " AND (is_deleted=0 OR is_deleted IS NULL)"
+        if status_filter != "all":
+            query += " AND status=?"
+            params.append(status_filter)
 
     if search:
-        query += " AND (tracking_code LIKE ? OR username LIKE ? OR user_id LIKE ? OR order_id LIKE ?)"
-        params.extend([f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"])
+        query += " AND (tracking_code LIKE ? OR username LIKE ? OR user_id LIKE ? OR order_id LIKE ? OR account_name LIKE ?)"
+        params.extend([f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"])
 
-    query += " ORDER BY created_at DESC LIMIT 150"
-    payment_list = conn.execute(query, params).fetchall()
+    query += " ORDER BY created_at DESC LIMIT 200"
+    raw_payment_list = conn.execute(query, params).fetchall()
+
+    # شمارنده‌های آماری برای تب‌ها
+    pending_count = conn.execute("SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='pending'").fetchone()[0]
+    approved_count = conn.execute("SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status IN ('approved', 'completed')").fetchone()[0]
+    rejected_count = conn.execute("SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='rejected'").fetchone()[0]
+    revoked_count = conn.execute("SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='revoked'").fetchone()[0]
+    deleted_count = conn.execute("SELECT COUNT(*) FROM transactions WHERE is_deleted=1").fetchone()[0]
+
+    # اضافه کردن لاگ‌های حسابرسی برای هر تراکنش
+    payment_list = []
+    for p in raw_payment_list:
+        p_dict = dict(p)
+        p_dict["audit_logs"] = db.get_transaction_audit_logs(p["id"])
+        payment_list.append(p_dict)
+
     conn.close()
 
-    return render_template("payments.html", payments=payment_list, status_filter=status_filter, search=search)
+    cards = db.get_active_bank_cards()
+    return render_template(
+        "payments.html",
+        payments=payment_list,
+        status_filter=status_filter,
+        search=search,
+        cards=cards,
+        counts={
+            "pending": pending_count,
+            "approved": approved_count,
+            "rejected": rejected_count,
+            "revoked": revoked_count,
+            "deleted": deleted_count,
+            "total": pending_count + approved_count + rejected_count + revoked_count
+        }
+    )
 
 
 @app.route("/payment/approve/<int:payment_id>")
@@ -951,6 +998,106 @@ def reject_payment(payment_id):
     conn.close()
     flash(f"پرداخت #{payment_id} رد شد و به کاربر اطلاع داده شد.", "warning")
     return redirect(url_for("payments"))
+
+
+@app.route("/payment/<int:payment_id>/revoke", methods=["POST"])
+@super_admin_required
+def revoke_payment(payment_id):
+    """ابطال تراکنش تاییدشده توسط مدیر ارشد به همراه مدیریت وضعیت اشتراک هیدیفای"""
+    reason = request.form.get("reason", "").strip() or "ابطال توسط مدیر ارشد"
+    rollback_sub_action = request.form.get("rollback_sub_action", "keep")  # keep, disable, delete
+    admin_name = session.get("name") or session.get("username") or "مدیر ارشد"
+    admin_id = session.get("admin_id")
+
+    res = db.revoke_transaction(
+        tx_id=payment_id,
+        admin_name=admin_name,
+        admin_id=admin_id,
+        reason=reason,
+        rollback_sub_action=rollback_sub_action
+    )
+
+    if not res.get("success"):
+        flash(f"خطا در ابطال تراکنش: {res.get('error')}", "danger")
+        return redirect(url_for("payments"))
+
+    sub = res.get("sub")
+    if sub and sub.get("hidify_uuid"):
+        uuid = sub["hidify_uuid"]
+        sub_id = sub["id"]
+        if rollback_sub_action == "disable":
+            # غیرفعال‌سازی در هیدیفای و دیتابیس
+            hidify_sync_update_user(uuid, enable=False)
+            db.update_subscription(sub_id, status="disabled")
+            flash(f"تراکنش #{payment_id} با موفقیت باطل شد و اکانت هیدیفای «{sub.get('account_name')}» غیرفعال گردید.", "warning")
+        elif rollback_sub_action == "delete":
+            # حذف کامل از هیدیفای و دیتابیس
+            hidify_sync_delete_user(uuid)
+            db.delete_subscription(sub_id)
+            flash(f"تراکنش #{payment_id} با موفقیت باطل شد و اکانت هیدیفای «{sub.get('account_name')}» به طور کامل حذف گردید.", "warning")
+        else:
+            flash(f"تراکنش #{payment_id} با موفقیت باطل شد (اشتراک بدون تغییر باقی ماند).", "success")
+    else:
+        flash(f"تراکنش #{payment_id} با موفقیت باطل شد.", "success")
+
+    return redirect(url_for("payments"))
+
+
+@app.route("/payment/<int:payment_id>/edit", methods=["POST"])
+@super_admin_required
+def edit_payment(payment_id):
+    """ویرایش مشخصات فیش واریزی توسط مدیر ارشد با ثبت لاگ حسابرسی"""
+    amount = request.form.get("amount", "").strip()
+    tracking_code = request.form.get("tracking_code", "").strip()
+    card_number = request.form.get("card_number", "").strip()
+    notes = request.form.get("notes", "").strip()
+    reason = request.form.get("reason", "").strip() or "ویرایش توسط مدیر ارشد"
+
+    admin_name = session.get("name") or session.get("username") or "مدیر ارشد"
+    admin_id = session.get("admin_id")
+
+    res = db.update_transaction_details(
+        tx_id=payment_id,
+        admin_id=admin_id,
+        admin_name=admin_name,
+        amount=int(amount) if amount.isdigit() else None,
+        tracking_code=tracking_code,
+        card_number=card_number,
+        notes=notes,
+        reason=reason
+    )
+
+    if res.get("success"):
+        flash(f"اطلاعات فیش #{payment_id} با موفقیت ویرایش و لاگ حسابرسی ثبت شد.", "success")
+    else:
+        flash(f"خطا در ویرایش فیش: {res.get('error')}", "danger")
+
+    return redirect(url_for("payments"))
+
+
+@app.route("/payment/<int:payment_id>/delete", methods=["POST"])
+@super_admin_required
+def delete_payment(payment_id):
+    """حذف نرم (آرشیو) فیش با ثبت لاگ"""
+    reason = request.form.get("reason", "").strip() or "حذف نرم توسط مدیر ارشد"
+    admin_name = session.get("name") or session.get("username") or "مدیر ارشد"
+    admin_id = session.get("admin_id")
+
+    res = db.soft_delete_transaction(payment_id, admin_id, admin_name, reason)
+    if res.get("success"):
+        flash(f"فیش #{payment_id} با موفقیت به سطل زباله / آرشیو منتقل شد.", "info")
+    else:
+        flash(f"خطا در حذف فیش: {res.get('error')}", "danger")
+
+    return redirect(url_for("payments"))
+
+
+@app.route("/payment/<int:payment_id>/audit-logs")
+@admin_required
+def get_payment_audit_logs(payment_id):
+    """دریافت لیست لاگ‌های حسابرسی یک فیش به صورت JSON"""
+    logs = db.get_transaction_audit_logs(payment_id)
+    return jsonify({"success": True, "logs": logs})
 
 
 RECEIPTS_DIR = Path("data/receipts")
