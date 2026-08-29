@@ -119,5 +119,68 @@
             </div>
         </div>
     </div>
+
+    <!-- بخش نشست‌های فعال و سوابق ورود اخیر نماینده -->
+    <div class="col-12 mt-4">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h5 class="mb-0 fw-bold">
+                    <i class="fas fa-shield-halved text-success me-2"></i> نشست‌های فعال و سوابق ورود اخیر
+                </h5>
+                <span class="badge bg-light text-dark border">امنیت حساب نمایندگی</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>دستگاه و سیستم‌عامل</th>
+                                <th>مرورگر</th>
+                                <th>آدرس آی‌پی (IP)</th>
+                                <th>زمان ورود</th>
+                                <th>آخرین فعالیت / خروج</th>
+                                <th>وضعیت نشست</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in login_history %}
+                            <tr>
+                                <td><strong>{{ log['device_os'] or '💻 نامشخص' }}</strong></td>
+                                <td>{{ log['browser'] or '🌐 نامشخص' }}</td>
+                                <td><code class="font-monospace fw-bold">{{ log['ip_address'] }}</code></td>
+                                <td><small class="text-muted">{{ log['login_at'][:16].replace('T', ' ') if log['login_at'] else '-' }}</small></td>
+                                <td>
+                                    {% if log['logout_at'] %}
+                                        <small class="text-muted"><i class="fas fa-right-from-bracket me-1 text-danger"></i>{{ log['logout_at'][:16].replace('T', ' ') }}</small>
+                                    {% elif log['last_active_at'] %}
+                                        <small class="text-muted"><i class="fas fa-bolt me-1 text-warning"></i>{{ log['last_active_at'][:16].replace('T', ' ') }}</small>
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if log['status'] == 'failed' %}
+                                        <span class="badge bg-danger"><i class="fas fa-circle-xmark me-1"></i>ورود ناموفق</span>
+                                    {% elif current_token and log['session_token'] == current_token %}
+                                        <span class="badge bg-success"><i class="fas fa-circle-dot me-1"></i>نشست فعلی (آنلاین)</span>
+                                    {% elif log['is_active'] %}
+                                        <span class="badge bg-info text-dark"><i class="fas fa-signal me-1"></i>فعال</span>
+                                    {% else %}
+                                        <span class="badge bg-light text-dark border">پایان یافته</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            {% if not login_history %}
+                            <tr>
+                                <td colspan="6" class="text-center py-4 text-muted">سابقه ورودی برای این حساب یافت نشد.</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
