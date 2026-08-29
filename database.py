@@ -6,6 +6,7 @@
 import sqlite3
 import json
 import os
+import re
 import logging
 from datetime import datetime, timedelta
 from utils import get_now_naive, get_now_iso, TEHRAN_TZ
@@ -879,6 +880,32 @@ class Database:
             return False
         phone = user.get("phone_number")
         return bool(phone and str(phone).strip())
+
+    def find_telegram_id_by_phone(self, phone_number: str) -> Optional[int]:
+        """یافتن آیدی تلگرام کاربر از روی شماره تلفن ثبت‌شده در جدول کاربران"""
+        if not phone_number:
+            return None
+        clean = re.sub(r"[^\d+]", "", str(phone_number).strip())
+        if not clean:
+            return None
+        last_9 = clean[-9:] if len(clean) >= 9 else clean
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT telegram_id FROM users 
+                WHERE phone_number = ? OR phone_number LIKE ?
+                LIMIT 1
+            """, (phone_number, f"%{last_9}%"))
+            row = cursor.fetchone()
+            if row and row["telegram_id"]:
+                return int(row["telegram_id"])
+            return None
+        except Exception as e:
+            logger.error(f"Error finding telegram_id by phone: {e}")
+            return None
+        finally:
+            conn.close()
 
     def get_all_users(self):
         """دریافت تمام کاربران"""

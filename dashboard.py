@@ -8,6 +8,8 @@ import csv
 import io
 import json
 import time
+import hashlib
+import re
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -77,15 +79,17 @@ def jinja_format_single_link(sub, template=None):
     return format_single_link(template, uuid=uuid, name=name)
 
 
-# ─── سرویس دریافت و کش آواتار پروفایل تلگرام (Telegram Profile Avatar Service) ───
+# ─── سرویس هوشمند آواتار سه‌بعدی و پروفایل تلگرام (Smart 3D & Telegram Avatar Service) ───
 
 AVATAR_CACHE_DIR = Path("data/avatars")
 AVATAR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
+
 def generate_fallback_avatar_svg(identifier: str) -> str:
-    """تولید آواتار وکتور SVG زیبا با رنگ‌های گرادیان متناسب با شناسه یا نام کاربر"""
+    """تولید آواتار وکتور گرادیان مدرن محلی در صورت عدم دسترسی به اینترنت"""
     name_clean = str(identifier).lstrip("@").strip()
-    initial = (name_clean[0].upper() if name_clean else "U")
+    # اگر شماره تلفن بود، از آخرین رقم‌ها یا شناسه برای گرادیان استفاده شود
+    initial = name_clean[0].upper() if name_clean else "U"
     colors = [
         ("#4f46e5", "#7c3aed"),
         ("#0284c7", "#0ea5e9"),
@@ -93,11 +97,12 @@ def generate_fallback_avatar_svg(identifier: str) -> str:
         ("#d97706", "#f59e0b"),
         ("#e11d48", "#f43f5e"),
         ("#7c2d12", "#c2410c"),
-        ("#475569", "#64748b"),
+        ("#0891b2", "#06b6d4"),
+        ("#9333ea", "#c084fc"),
     ]
     idx = sum(ord(c) for c in name_clean) % len(colors)
     c1, c2 = colors[idx]
-    
+
     return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
         <defs>
             <linearGradient id="grad_{idx}" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -106,85 +111,116 @@ def generate_fallback_avatar_svg(identifier: str) -> str:
             </linearGradient>
         </defs>
         <circle cx="50" cy="50" r="50" fill="url(#grad_{idx})" />
-        <text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle" fill="#ffffff" font-size="44" font-family="Segoe UI, Tahoma, sans-serif" font-weight="bold">{initial}</text>
+        <text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle" fill="#ffffff" font-size="42" font-family="Segoe UI, Vazirmatn, Tahoma, sans-serif" font-weight="bold">{initial}</text>
     </svg>"""
 
 
-def fetch_telegram_avatar_bytes(telegram_id=None, username=None) -> tuple[bytes, str]:
-    """دریافت تصویر پروفایل تلگرام با استفاده از Bot API یا کش محلی"""
-    bot_token = get_bot_token()
-    
-    # ۱. اگر telegram_id ارسال شده باشد
-    if telegram_id:
+def fetch_smart_avatar_bytes(identifier: str) -> tuple[bytes, str]:
+    """
+    دریافت هوشمند تصویر پروفایل:
+    ۱. بررسی آیا شماره تلفن به کاربری در تلگرام متصل است؟ (استخراج خودکار telegram_id)
+    ۲. تلاش برای دریافت عکس واقعی پروفایل تلگرام از Bot API یا t.me
+    ۳. در صورت عدم وجود، تولید آواتار سه‌بعدی و کارتونی یونیک بر اساس شماره/شناسه با DiceBear
+    ۴. کش محلی خودکار جهت افزایش سرعت لود و کارکرد بدون وقفه
+    """
+    if not identifier:
+        identifier = "Customer"
+
+    raw_ident = str(identifier).strip()
+    clean_ident = raw_ident.lstrip("@").strip()
+
+    # ۱. بررسی شماره همراه و جستجوی telegram_id مرتبط در دیتابیس
+    matched_tg_id = None
+    is_phone = bool(re.match(r"^(\+98|0098|98|0)?9\d{9}$", clean_ident))
+    if is_phone:
         try:
-            tg_id = int(str(telegram_id).strip())
-            if tg_id > 0:
-                cache_file = AVATAR_CACHE_DIR / f"{tg_id}.jpg"
-                if cache_file.exists() and (time.time() - cache_file.stat().st_mtime < 86400):
-                    return cache_file.read_bytes(), "image/jpeg"
+            matched_tg_id = db.find_telegram_id_by_phone(clean_ident)
+        except Exception:
+            pass
 
-                if bot_token:
-                    url = f"https://api.telegram.org/bot{bot_token}/getUserProfilePhotos?user_id={tg_id}&limit=1"
-                    with httpx.Client(timeout=4.0) as client:
-                        resp = client.get(url)
-                        if resp.status_code == 200:
-                            data = resp.json()
-                            photos = data.get("result", {}).get("photos", [])
-                            if photos and len(photos) > 0 and len(photos[0]) > 0:
-                                file_id = photos[0][-1].get("file_id") or photos[0][0].get("file_id")
-                                file_info_resp = client.get(f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}")
-                                if file_info_resp.status_code == 200:
-                                    file_path = file_info_resp.json().get("result", {}).get("file_path")
-                                    if file_path:
-                                        img_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
-                                        img_resp = client.get(img_url)
-                                        if img_resp.status_code == 200 and len(img_resp.content) > 100:
-                                            cache_file.write_bytes(img_resp.content)
-                                            return img_resp.content, "image/jpeg"
-        except Exception as e:
-            logger.debug(f"Error fetching telegram avatar for id {telegram_id}: {e}")
+    # ۲. تلاش برای دریافت عکس واقعی تلگرام (در صورت داشتن telegram_id)
+    target_tg_id = matched_tg_id
+    if not target_tg_id and clean_ident.isdigit() and not is_phone:
+        target_tg_id = int(clean_ident)
 
-    # ۲. بررسی نام کاربری در صورت وجود
-    if username:
-        clean_user = str(username).lstrip("@").strip()
-        if clean_user:
-            cache_file_u = AVATAR_CACHE_DIR / f"user_{clean_user}.jpg"
-            if cache_file_u.exists() and (time.time() - cache_file_u.stat().st_mtime < 86400):
-                return cache_file_u.read_bytes(), "image/jpeg"
+    if target_tg_id and target_tg_id > 0:
+        cache_file_tg = AVATAR_CACHE_DIR / f"tg_{target_tg_id}.jpg"
+        if cache_file_tg.exists() and (time.time() - cache_file_tg.stat().st_mtime < 86400 * 3):
+            return cache_file_tg.read_bytes(), "image/jpeg"
+
+        bot_token = get_bot_token()
+        if bot_token:
             try:
-                with httpx.Client(timeout=3.0, follow_redirects=True) as client:
-                    resp = client.get(f"https://t.me/i/userpic/320/{clean_user}.jpg")
-                    if resp.status_code == 200 and len(resp.content) > 500:
-                        cache_file_u.write_bytes(resp.content)
-                        return resp.content, "image/jpeg"
-            except Exception:
-                pass
+                url = f"https://api.telegram.org/bot{bot_token}/getUserProfilePhotos?user_id={target_tg_id}&limit=1"
+                with httpx.Client(timeout=3.0) as client:
+                    resp = client.get(url)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        photos = data.get("result", {}).get("photos", [])
+                        if photos and len(photos) > 0 and len(photos[0]) > 0:
+                            file_id = photos[0][-1].get("file_id") or photos[0][0].get("file_id")
+                            file_info_resp = client.get(f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}")
+                            if file_info_resp.status_code == 200:
+                                file_path = file_info_resp.json().get("result", {}).get("file_path")
+                                if file_path:
+                                    img_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+                                    img_resp = client.get(img_url)
+                                    if img_resp.status_code == 200 and len(img_resp.content) > 100:
+                                        cache_file_tg.write_bytes(img_resp.content)
+                                        return img_resp.content, "image/jpeg"
+            except Exception as e:
+                logger.debug(f"Error fetching telegram photo for {target_tg_id}: {e}")
 
-    # ۳. فال‌بک به آواتار SVG زیبا
-    ident = str(telegram_id or username or "User")
-    svg_code = generate_fallback_avatar_svg(ident)
+    # ۳. بررسی یوزرنیم تلگرام (اگر با @ شروع شده یا کاراکترهای حروفی داشت)
+    if raw_ident.startswith("@") or (not clean_ident.isdigit() and len(clean_ident) > 3 and not is_phone):
+        cache_file_u = AVATAR_CACHE_DIR / f"user_{clean_ident}.jpg"
+        if cache_file_u.exists() and (time.time() - cache_file_u.stat().st_mtime < 86400 * 3):
+            return cache_file_u.read_bytes(), "image/jpeg"
+        try:
+            with httpx.Client(timeout=2.5, follow_redirects=True) as client:
+                resp = client.get(f"https://t.me/i/userpic/320/{clean_ident}.jpg")
+                if resp.status_code == 200 and len(resp.content) > 500:
+                    cache_file_u.write_bytes(resp.content)
+                    return resp.content, "image/jpeg"
+        except Exception:
+            pass
+
+    # ۴. تولید آواتار سه‌بعدی و یونیک با DiceBear بر اساس شماره همراه یا شناسه کاربر
+    safe_seed = urllib.parse.quote(clean_ident)
+    hash_key = hashlib.md5(clean_ident.encode("utf-8")).hexdigest()[:12]
+    cache_file_3d = AVATAR_CACHE_DIR / f"smart3d_{hash_key}.svg"
+
+    if cache_file_3d.exists() and (time.time() - cache_file_3d.stat().st_mtime < 86400 * 15):
+        return cache_file_3d.read_bytes(), "image/svg+xml"
+
+    # استایل مدرن ربات‌ها و کاراکترهای سه‌بعدی DiceBear با پالت‌های رنگی جذاب
+    dicebear_url = (
+        f"https://api.dicebear.com/9.x/bottts-neutral/svg?seed={safe_seed}"
+        f"&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf,c1f4c5,ffecb3,e1bee7"
+    )
+    try:
+        with httpx.Client(timeout=3.0) as client:
+            resp = client.get(dicebear_url, headers={"User-Agent": "Mozilla/5.0 HiddiBot/1.0"})
+            if resp.status_code == 200 and len(resp.content) > 100:
+                cache_file_3d.write_bytes(resp.content)
+                return resp.content, "image/svg+xml"
+    except Exception as e:
+        logger.debug(f"DiceBear avatar fetch fallback: {e}")
+
+    # ۵. در صورت آفلاین بودن سرور یا عدم پاسخ‌دهی، استفاده از وکتور گرادیان آفلاین
+    svg_code = generate_fallback_avatar_svg(clean_ident)
     return svg_code.encode("utf-8"), "image/svg+xml"
 
 
 @app.route("/avatar/", defaults={"identifier": "User"})
 @app.route("/avatar/<identifier>")
 def telegram_avatar(identifier="User"):
-    """ارائه تصویر آواتار تلگرام با هدر کش ۲۴ ساعته"""
+    """ارائه تصویر آواتار هوشمند با هدر کش ۳ روزه"""
     if not identifier:
         identifier = "User"
-    telegram_id = None
-    username = None
-    
-    clean_id = str(identifier).strip()
-    if clean_id.isdigit():
-        telegram_id = int(clean_id)
-    else:
-        username = clean_id
-        
-    img_bytes, mime_type = fetch_telegram_avatar_bytes(telegram_id=telegram_id, username=username)
-    
+    img_bytes, mime_type = fetch_smart_avatar_bytes(str(identifier))
     resp = Response(img_bytes, mimetype=mime_type)
-    resp.headers["Cache-Control"] = "public, max-age=86400"
+    resp.headers["Cache-Control"] = "public, max-age=259200"
     return resp
 
 
