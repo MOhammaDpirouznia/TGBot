@@ -8,6 +8,9 @@
         <p class="text-muted mb-0">مشاهده، تمدید، وضعیت اتصال آنلاین و مدیریت هوشمند مشتریان</p>
     </div>
     <div class="d-flex align-items-center gap-2 flex-wrap">
+        <a href="{{ url_for('reseller_export_users') }}" class="btn btn-outline-success btn-sm">
+            <i class="fas fa-file-excel me-1"></i> خروجی اکسل (CSV)
+        </a>
         <span class="badge bg-primary fs-6 py-2 px-3">
             موجودی: {{ "{:,}".format(balance) }} ت | تخفیف: {{ discount }}%
         </span>

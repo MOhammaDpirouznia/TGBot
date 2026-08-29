@@ -77,6 +77,48 @@
     </div>
 </div>
 
+<!-- بنر وضعیت ربات اختصاصی نماینده -->
+<div class="card shadow-sm border-0 mb-4 bg-gradient" style="background: linear-gradient(135deg, #1e293b, #0f172a); color: white; border-radius: 12px;">
+    <div class="card-body p-3 p-md-4 d-flex justify-content-between align-items-center flex-wrap gap-3">
+        <div class="d-flex align-items-center gap-3">
+            <div class="rounded-circle p-3 d-flex align-items-center justify-content-center {% if bot_status.get('is_running') %}bg-success text-white{% elif bot_status.get('has_token') %}bg-warning text-dark{% else %}bg-secondary text-white{% endif %}" style="width: 50px; height: 50px; font-size: 1.4rem;">
+                <i class="fas fa-robot"></i>
+            </div>
+            <div>
+                <div class="d-flex align-items-center gap-2">
+                    <h5 class="fw-bold mb-0 text-white">ربات تلگرام اختصاصی شما (White-Label)</h5>
+                    {% if bot_status.get('is_running') %}
+                        <span class="badge bg-success d-flex align-items-center gap-1"><span class="pulse-indicator"></span> فعال و آنلاین</span>
+                    {% elif bot_status.get('has_token') %}
+                        <span class="badge bg-warning text-dark">متوقف</span>
+                    {% else %}
+                        <span class="badge bg-secondary">پیکربندی نشده</span>
+                    {% endif %}
+                </div>
+                <p class="mb-0 small mt-1" style="color: #cbd5e1;">
+                    {% if bot_status.get('is_running') %}
+                        ربات شما با یوزرنیم <strong>@{{ bot_status.get('bot_username') }}</strong> و برند <strong>{{ bot_status.get('brand_name') }}</strong> به صورت ۲۴ ساعته فعال است.
+                    {% elif bot_status.get('has_token') %}
+                        توکن ربات شما ثبت شده است اما در وضعیت متوقف قرار دارد.
+                    {% else %}
+                        شما می‌توانید با ثبت توکن از BotFather، ربات فروش با برند، کانال و کارت بانکی اختصاصی خودتان را راه‌اندازی کنید.
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <a href="{{ url_for('reseller_bot_settings') }}" class="btn btn-primary btn-sm px-3 py-2 fw-bold">
+                <i class="fas fa-gear me-1"></i> تنظیمات ربات اختصاصی
+            </a>
+            {% if bot_status.get('is_running') and bot_status.get('bot_username') %}
+                <a href="https://t.me/{{ bot_status.get('bot_username') }}" target="_blank" class="btn btn-outline-light btn-sm px-3 py-2">
+                    <i class="fab fa-telegram me-1"></i> باز کردن در تلگرام
+                </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
 <style>
 .pulse-indicator {
     display: inline-block;

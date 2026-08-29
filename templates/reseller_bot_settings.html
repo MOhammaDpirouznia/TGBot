@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+{% block title %}تنظیمات ربات تلگرام اختصاصی من{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+    <div>
+        <h1 class="page-title mb-0"><i class="fas fa-robot text-primary me-2"></i> ربات تلگرام اختصاصی (White-Label Bot)</h1>
+        <p class="text-muted mb-0">راه‌اندازی ربات فروش اختصاصی با برند، لوگو، کانال جوین اجباری و کارت بانکی مستقل خودتان</p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        {% if bot_status.get('is_running') %}
+            <form action="{{ url_for('reseller_bot_toggle') }}" method="POST" class="d-inline">
+                <input type="hidden" name="action" value="stop">
+                <button type="submit" class="btn btn-outline-danger">
+                    <i class="fas fa-power-off me-1"></i> خاموش کردن ربات
+                </button>
+            </form>
+            <a href="https://t.me/{{ bot_status.get('bot_username') or reseller.get('bot_username') or '' }}" target="_blank" class="btn btn-primary">
+                <i class="fab fa-telegram me-1"></i> مشاهده در تلگرام
+            </a>
+        {% elif bot_status.get('has_token') %}
+            <form action="{{ url_for('reseller_bot_toggle') }}" method="POST" class="d-inline">
+                <input type="hidden" name="action" value="start">
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-play me-1"></i> روشن کردن و استارت ربات
+                </button>
+            </form>
+        {% endif %}
+    </div>
+</div>
+
+<!-- کارت وضعیت زنده ربات -->
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="card shadow-sm border-0 {% if bot_status.get('is_running') %}border-start border-success border-4{% elif bot_status.get('has_token') %}border-start border-warning border-4{% else %}border-start border-secondary border-4{% endif %}">
+            <div class="card-body p-4 d-flex justify-content-between align-items-center flex-wrap gap-3">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="stat-icon {% if bot_status.get('is_running') %}bg-success text-success{% elif bot_status.get('has_token') %}bg-warning text-warning{% else %}bg-secondary text-secondary{% endif %} bg-opacity-10 rounded-circle p-3" style="width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; font-size: 1.8rem;">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <div>
+                        <div class="d-flex align-items-center gap-2">
+                            <h4 class="fw-bold mb-0">
+                                {% if bot_status.get('is_running') %}
+                                    ربات شما فعال و در حال خدمت‌رسانی است
+                                {% elif bot_status.get('has_token') %}
+                                    ربات متوقف است (آماده راه‌اندازی)
+                                {% else %}
+                                    هنوز توکن ربات ثبت نشده است
+                                {% endif %}
+                            </h4>
+                            {% if bot_status.get('is_running') %}
+                                <span class="badge bg-success bg-opacity-10 text-success border border-success d-flex align-items-center gap-1">
+                                    <span class="pulse-indicator"></span> آنلاین
+                                </span>
+                            {% elif bot_status.get('has_token') %}
+                                <span class="badge bg-warning bg-opacity-10 text-warning border border-warning">آفلاین</span>
+                            {% else %}
+                                <span class="badge bg-secondary bg-opacity-10 text-secondary">پیکربندی نشده</span>
+                            {% endif %}
+                        </div>
+                        <p class="text-muted mb-0 mt-1">
+                            {% if bot_status.get('is_running') %}
+                                یوزرنیم فعال: <strong>@{{ bot_status.get('bot_username') or reseller.get('bot_username') }}</strong> | مشتریان این ربات به صورت مستقیم به کیف پول و حسابداری شما متصل هستند.
+                            {% elif bot_status.get('has_token') %}
+                                توکن ذخیره شده است. برای شروع دریافت سفارشات روی دکمه «روشن کردن ربات» کلیک کنید.
+                            {% else %}
+                                برای داشتن یک ربات با نام و کانال اختصاصی خودتان، مراحل زیر را تکمیل نمایید.
+                            {% endif %}
+                        </p>
+                        {% if bot_status.get('error') %}
+                            <div class="text-danger small mt-2"><i class="fas fa-triangle-exclamation me-1"></i> آخرین خطای گزارش‌شده: {{ bot_status.get('error') }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.pulse-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background-color: #22c55e;
+    border-radius: 50%;
+    box-shadow: 0 0 0 rgba(34, 197, 94, 0.6);
+    animation: pulseDot 1.8s infinite;
+}
+@keyframes pulseDot {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+    70% { transform: scale(1.15); box-shadow: 0 0 0 7px rgba(34, 197, 94, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+</style>
+
+<div class="row g-4">
+    <!-- فرم تنظیمات ربات اختصاصی -->
+    <div class="col-lg-8">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-sliders text-primary me-2"></i> پیکربندی و اطلاعات اتصال ربات</h5>
+            </div>
+            <div class="card-body p-4">
+                <form action="{{ url_for('reseller_bot_settings') }}" method="POST" id="botConfigForm">
+                    
+                    <!-- توکن ربات -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">توکن ربات تلگرام (Bot Token) <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light"><i class="fas fa-key text-muted"></i></span>
+                            <input type="text" class="form-control font-monospace" name="bot_token" id="botTokenInput" 
+                                   value="{{ reseller.get('bot_token') or '' }}" 
+                                   placeholder="مثال: 1234567890:ABCdefGhIJKlmNoPQRsTUVwxyZ" dir="ltr" required>
+                            <button type="button" class="btn btn-outline-primary" id="btnTestToken" onclick="testBotToken()">
+                                <i class="fas fa-vial me-1"></i> تست اتصال توکن
+                            </button>
+                        </div>
+                        <div class="form-text text-muted">توکن دریافتی از ربات رسمی @BotFather تلگرام را در این کادر قرار دهید.</div>
+                        <div id="tokenTestResult" class="mt-2" style="display: none;"></div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <!-- نام برند -->
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">نام و عنوان برند شما</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light"><i class="fas fa-tag text-muted"></i></span>
+                                <input type="text" class="form-control" name="brand_name" 
+                                       value="{{ reseller.get('brand_name') or reseller.get('name') or '' }}" 
+                                       placeholder="مثال: توربو وی‌پی‌ان (Turbo VPN)">
+                            </div>
+                            <div class="form-text text-muted">این نام در بالای منوها و پیام‌های ربات نمایش داده می‌شود.</div>
+                        </div>
+
+                        <!-- کانال جوین اجباری -->
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">کانال جوین اجباری (اختیاری)</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light"><i class="fab fa-telegram text-muted"></i></span>
+                                <input type="text" class="form-control" name="channel_id" 
+                                       value="{{ reseller.get('channel_id') or '' }}" 
+                                       placeholder="@MyChannel یا آیدی عددی" dir="ltr">
+                            </div>
+                            <div class="form-text text-muted">ربات باید در این کانال ادمین باشد تا بتواند عضویت کاربر را چک کند.</div>
+                        </div>
+                    </div>
+
+                    <!-- آیدی تلگرام پشتیبان -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">آیدی تلگرام پشتیبان (جهت دکمه پشتیبانی)</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light"><i class="fas fa-headset text-muted"></i></span>
+                            <input type="text" class="form-control" name="support_username" 
+                                   value="{{ reseller.get('support_username') or '' }}" 
+                                   placeholder="@MySupportUsername" dir="ltr">
+                        </div>
+                    </div>
+
+                    <!-- پیام خوش‌آمدگویی سفارشی -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">متن پیام خوش‌آمدگویی سفارشی (Start Message)</label>
+                        <textarea class="form-control" name="start_message" rows="3" 
+                                  placeholder="متنی که هنگام زدن /start برای مشتری نمایش داده می‌شود...">{{ reseller.get('start_message') or '' }}</textarea>
+                    </div>
+
+                    <hr class="my-4">
+                    <h5 class="fw-bold mb-3"><i class="fas fa-credit-card text-success me-2"></i> اطلاعات کارت بانکی جهت دریافت واریزی مشتریان</h5>
+                    <p class="text-muted small mb-3">هنگامی که مشتری در ربات شما درخواست خرید ثبت می‌کند، این اطلاعات برای واریز به او نمایش داده می‌شود و عکس فیش مستقیماً به تلگرام شما ارسال می‌گردد.</p>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-5">
+                            <label class="form-label fw-bold">شماره کارت ۱۶ رقمی</label>
+                            <input type="text" class="form-control font-monospace" name="card_number" 
+                                   value="{{ reseller.get('card_number') or '' }}" 
+                                   placeholder="6037-xxxx-xxxx-xxxx" dir="ltr" maxlength="19">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">نام صاحب حساب</label>
+                            <input type="text" class="form-control" name="card_holder" 
+                                   value="{{ reseller.get('card_holder') or '' }}" 
+                                   placeholder="مثال: علی رضایی">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">نام بانک</label>
+                            <input type="text" class="form-control" name="bank_name" 
+                                   value="{{ reseller.get('bank_name') or '' }}" 
+                                   placeholder="مثال: ملی / ملت">
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-end gap-2">
+                        <button type="submit" class="btn btn-primary px-4 py-2 fw-bold">
+                            <i class="fas fa-floppy-disk me-1"></i> ذخیره کلیه تنظیمات
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- راهنمای گام به گام ساخت ربات -->
+    <div class="col-lg-4">
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-lightbulb text-warning me-2"></i> راهنمای دریافت توکن از تلگرام</h6>
+            </div>
+            <div class="card-body">
+                <ol class="small text-muted ps-3 mb-0" style="line-height: 1.9;">
+                    <li>وارد تلگرام شده و به ربات رسمی <strong><a href="https://t.me/BotFather" target="_blank" class="text-decoration-none">@BotFather</a></strong> پیام دهید.</li>
+                    <li>دستور <code>/newbot</code> را ارسال کنید.</li>
+                    <li>یک <strong>نام دلخواه</strong> برای برند خود انتخاب کنید (مثلاً: <code>Turbo VPN Store</code>).</li>
+                    <li>یک <strong>یوزرنیم یکتا</strong> که به <code>bot</code> ختم شود انتخاب کنید (مثلاً: <code>TurboVpnFast_bot</code>).</li>
+                    <li>تلگرام یک <strong>API Token</strong> طولانی به شما می‌دهد؛ آن را کپی کرده و در فیلد روبرو قرار دهید.</li>
+                    <li>روی دکمه «تست اتصال» و سپس «ذخیره و روشن کردن» کلیک کنید!</li>
+                </ol>
+            </div>
+        </div>
+
+        <div class="card shadow-sm border-0 bg-primary bg-opacity-10 border-primary">
+            <div class="card-body p-3">
+                <h6 class="fw-bold text-primary mb-2"><i class="fas fa-shield-halved me-1"></i> مزایای ربات اختصاصی:</h6>
+                <ul class="small text-muted ps-3 mb-0" style="line-height: 1.8;">
+                    <li>مشتریان شما هرگز نام و نشان سرور اصلی را نمی‌بینند.</li>
+                    <li>فیش‌های واریزی مستقیماً در پیوی تلگرام شما با دکمه تایید ارسال می‌شوند.</li>
+                    <li>با تایید شما، اشتراک در لحظه ساخته شده و هزینه عمده با تخفیف از کیف پول شما کسر می‌شود.</li>
+                    <li>سود حاصل از مابه‌التفاوت فروش و خرید عمده ۱۰۰٪ برای شماست.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function testBotToken() {
+    const token = document.getElementById('botTokenInput').value.trim();
+    const resultDiv = document.getElementById('tokenTestResult');
+    const btn = document.getElementById('btnTestToken');
+
+    if (!token) {
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = '<div class="alert alert-warning py-2 small mb-0"><i class="fas fa-exclamation-triangle me-1"></i> لطفاً ابتدا توکن را وارد کنید.</div>';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> در حال بررسی...';
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = '<div class="alert alert-info py-2 small mb-0"><i class="fas fa-circle-notch fa-spin me-1"></i> در حال اعتبارسنجی با سرورهای تلگرام...</div>';
+
+    const formData = new FormData();
+    formData.append('bot_token', token);
+
+    fetch("{{ url_for('reseller_bot_test_token') }}", {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-vial me-1"></i> تست اتصال توکن';
+        if (data.valid) {
+            resultDiv.innerHTML = `
+                <div class="alert alert-success py-2 small mb-0">
+                    <i class="fas fa-check-circle me-1"></i> <strong>توکن کاملاً معتبر است!</strong><br>
+                    ربات: <strong>${data.first_name}</strong> (@${data.username}) | شناسه: <code>${data.id}</code>
+                </div>
+            `;
+        } else {
+            resultDiv.innerHTML = `
+                <div class="alert alert-danger py-2 small mb-0">
+                    <i class="fas fa-circle-xmark me-1"></i> <strong>خطا:</strong> ${data.error || 'توکن نامعتبر است.'}
+                </div>
+            `;
+        }
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-vial me-1"></i> تست اتصال توکن';
+        resultDiv.innerHTML = `<div class="alert alert-danger py-2 small mb-0"><i class="fas fa-times-circle me-1"></i> خطا در برقراری ارتباط: ${err}</div>`;
+    });
+}
+</script>
+{% endblock %}

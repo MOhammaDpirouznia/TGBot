@@ -44,6 +44,7 @@
                         <th>نام کاربری ورود</th>
                         <th>درصد تخفیف</th>
                         <th>موجودی کیف پول</th>
+                        <th>ربات اختصاصی</th>
                         <th>تعداد مشتریان</th>
                         <th>اشتراک‌های فعال</th>
                         <th>مجموع خرید</th>
@@ -83,6 +84,28 @@
                         <td><code>{{ r['username'] }}</code></td>
                         <td><span class="badge bg-primary fs-6">{{ r['discount_percent'] }}%</span></td>
                         <td><strong class="text-success">{{ "{:,}".format(r['balance'] or 0) }} تومان</strong></td>
+                        <td>
+                            {% set bstat = r.get('bot_status', {}) %}
+                            {% if bstat.get('is_running') %}
+                                <div class="d-flex flex-column gap-1">
+                                    <span class="badge bg-success bg-opacity-10 text-success border border-success d-inline-flex align-items-center gap-1" style="width: fit-content;">
+                                        <span class="pulse-indicator"></span> آنلاین
+                                    </span>
+                                    {% if bstat.get('bot_username') %}
+                                        <a href="https://t.me/{{ bstat.get('bot_username') }}" target="_blank" class="small text-decoration-none font-monospace">@{{ bstat.get('bot_username') }}</a>
+                                    {% endif %}
+                                </div>
+                            {% elif bstat.get('has_token') %}
+                                <div class="d-flex flex-column gap-1">
+                                    <span class="badge bg-warning bg-opacity-10 text-warning border border-warning" style="width: fit-content;">متوقف</span>
+                                    {% if r.get('bot_username') %}
+                                        <span class="small text-muted font-monospace">@{{ r.get('bot_username') }}</span>
+                                    {% endif %}
+                                </div>
+                            {% else %}
+                                <span class="badge bg-light text-muted border">بدون ربات</span>
+                            {% endif %}
+                        </td>
                         <td><span class="badge bg-secondary">{{ r['total_users'] }} مشتری</span></td>
                         <td><span class="badge bg-success">{{ r['active_users'] }} فعال</span></td>
                         <td>{{ "{:,}".format(r['total_spent'] or 0) }} تومان</td>
@@ -98,6 +121,13 @@
                                 <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#topupModal{{ r['id'] }}" title="شارژ کیف پول">
                                     <i class="fas fa-wallet me-1"></i> شارژ
                                 </button>
+                                {% if r.get('bot_token') %}
+                                <form action="{{ url_for('admin_reseller_bot_toggle', reseller_id=r['id']) }}" method="POST" class="d-inline">
+                                    <button type="submit" class="btn {{ 'btn-outline-danger' if r.get('bot_status', {}).get('is_running') else 'btn-outline-success' }}" title="{{ 'توقف ربات اختصاصی' if r.get('bot_status', {}).get('is_running') else 'روشن کردن ربات اختصاصی' }}">
+                                        <i class="fas fa-robot"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
                                 <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#securityModal{{ r['id'] }}" title="مشاهده نشست‌ها و امنیت نماینده">
                                     <i class="fas fa-shield-halved"></i>
                                 </button>

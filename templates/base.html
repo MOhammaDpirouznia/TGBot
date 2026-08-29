@@ -580,6 +580,9 @@
                 <a class="nav-link {% if request.endpoint == 'reseller_users' %}active{% endif %}" href="{{ url_for('reseller_users') }}">
                     <i class="fas fa-users"></i> مشتریان من
                 </a>
+                <a class="nav-link {% if request.endpoint == 'reseller_bot_settings' %}active{% endif %}" href="{{ url_for('reseller_bot_settings') }}">
+                    <i class="fas fa-robot text-info"></i> ربات اختصاصی من
+                </a>
                 <a class="nav-link {% if request.endpoint == 'reseller_transactions' %}active{% endif %}" href="{{ url_for('reseller_transactions') }}">
                     <i class="fas fa-wallet"></i> تراکنش‌ها و شارژ
                 </a>
