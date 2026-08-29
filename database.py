@@ -395,6 +395,10 @@ class Database:
         except Exception:
             pass
         try:
+            cursor.execute("ALTER TABLE admin_users ADD COLUMN phone TEXT")
+        except Exception:
+            pass
+        try:
             cursor.execute("ALTER TABLE users ADD COLUMN referred_by INTEGER")
         except Exception:
             pass
@@ -3450,17 +3454,17 @@ class Database:
 
     def create_admin_user(self, username: str, password: str, display_name: str,
                           role: str = "super_admin", permissions: str = "*", is_active: bool = True,
-                          telegram_id: int = None) -> dict:
-        """افزودن مدیر جدید با نقش و دسترسی‌های مشخص و آیدی تلگرام"""
+                          telegram_id: int = None, phone: str = None) -> dict:
+        """افزودن مدیر جدید با نقش و دسترسی‌های مشخص، آیدی تلگرام و شماره تماس"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         password_hash = self.hash_password(password)
         try:
             cursor.execute("""
-                INSERT INTO admin_users (username, password_hash, display_name, role, permissions, is_active, created_at, telegram_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (username.strip(), password_hash, display_name.strip(), role, permissions, 1 if is_active else 0, now, telegram_id))
+                INSERT INTO admin_users (username, password_hash, display_name, role, permissions, is_active, created_at, telegram_id, phone)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (username.strip(), password_hash, display_name.strip(), role, permissions, 1 if is_active else 0, now, telegram_id, phone.strip() if phone else None))
             admin_id = cursor.lastrowid
             conn.commit()
             return {"success": True, "admin_id": admin_id}
@@ -3482,7 +3486,7 @@ class Database:
                 if key == "password" and val:
                     fields.append("password_hash=?")
                     params.append(self.hash_password(val))
-                elif key in ["username", "display_name", "role", "permissions", "is_active", "telegram_id"]:
+                elif key in ["username", "display_name", "role", "permissions", "is_active", "telegram_id", "phone"]:
                     fields.append(f"{key}=?")
                     params.append(val)
 
@@ -3532,16 +3536,63 @@ class Database:
         finally:
             conn.close()
 
-    def update_admin_profile(self, admin_id: int, username: str, password: str = None, display_name: str = None, telegram_id: int = None) -> dict:
-        """تغییر مشخصات فردی، یوزرنیم، آیدی تلگرام و پسورد مدیر فعال"""
+    def update_admin_profile(self, admin_id: int, username: str, password: str = None, display_name: str = None, telegram_id: int = None, phone: str = None) -> dict:
+        """تغییر مشخصات فردی، یوزرنیم، آیدی تلگرام، شماره تماس و پسورد مدیر فعال"""
         kwargs = {"username": username}
         if display_name:
             kwargs["display_name"] = display_name
         if telegram_id is not None:
             kwargs["telegram_id"] = telegram_id
+        if phone is not None:
+            kwargs["phone"] = phone
         if password and len(password.strip()) > 0:
             kwargs["password"] = password.strip()
         return self.update_admin_user(admin_id, **kwargs)
+
+    def find_user_contact_info(self, username: str) -> dict:
+        """یافتن مشخصات و اطلاعات تماس مدیر یا نماینده بر اساس نام کاربری"""
+        if not username:
+            return None
+        clean_user = username.strip().lower()
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            # ۱. جستجو در جدول مدیران (Admin Users)
+            cursor.execute("SELECT id, username, display_name, telegram_id, phone, role FROM admin_users WHERE LOWER(username)=?", (clean_user,))
+            row = cursor.fetchone()
+            if row:
+                admin_row = dict(row)
+                return {
+                    "user_type": "admin",
+                    "user_id": admin_row["id"],
+                    "username": admin_row["username"],
+                    "name": admin_row.get("display_name") or "مدیر سیستم",
+                    "telegram_id": admin_row.get("telegram_id"),
+                    "phone": admin_row.get("phone"),
+                    "role": admin_row.get("role", "super_admin")
+                }
+
+            # ۲. جستجو در جدول نمایندگان (Resellers)
+            cursor.execute("SELECT id, username, name, telegram_id, phone, status FROM resellers WHERE LOWER(username)=?", (clean_user,))
+            row = cursor.fetchone()
+            if row:
+                res_row = dict(row)
+                return {
+                    "user_type": "reseller",
+                    "user_id": res_row["id"],
+                    "username": res_row["username"],
+                    "name": res_row.get("name") or "نماینده فروش",
+                    "telegram_id": res_row.get("telegram_id"),
+                    "phone": res_row.get("phone"),
+                    "status": res_row.get("status", "active")
+                }
+
+            return None
+        except Exception as e:
+            logger.error(f"Error finding user contact info: {e}")
+            return None
+        finally:
+            conn.close()
 
     # ═══════════════════════════════════════════════════════════════════════
     # پروفایل و مشخصات کاربری نماینده (Reseller Profile)

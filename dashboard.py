@@ -28,6 +28,7 @@ load_dotenv()
 from database import db
 from utils import generate_qr_code_bytes, get_now_iso, get_now_naive, get_single_link_template, format_single_link, TEHRAN_TZ
 from admin_manager import get_all_plans, add_plan, update_plan, delete_plan, move_plan_up, move_plan_down
+from sms_service import send_auth_sms_notification, send_sms, get_sms_config, format_iranian_phone
 
 logger = logging.getLogger(__name__)
 
@@ -314,6 +315,79 @@ def send_failed_login_telegram_alert(username: str, password: str, ip: str, brow
         send_telegram_msg(admin_id, alert_text)
     except Exception as e:
         logger.error(f"Error sending failed login telegram alert: {e}")
+
+
+def notify_auth_event(event_type: str, username: str, contact_info: dict, ip: str, device_os: str, browser: str, attempted_password: str = None, failure_reason: str = None):
+    """ارسال اطلاع‌رسانی ورود، خروج و ورود ناموفق به تلگرام و پیامک صاحب حساب کاربری"""
+    if not contact_info:
+        return
+
+    now_str = datetime.now(TEHRAN_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    name = contact_info.get("name") or username
+    telegram_id = contact_info.get("telegram_id")
+    phone = contact_info.get("phone")
+
+    # ۱. ارسال پیام تلگرام به صاحب حساب (در صورت ثبت بودن آیدی تلگرام)
+    if telegram_id:
+        tg_text = ""
+        if event_type == "login":
+            tg_text = (
+                f"🔔 <b>اطلاعیه امنیتی: ورود به حساب کاربری</b>\n\n"
+                f"سلام <b>{name}</b> عزیز،\n"
+                f"لحظاتی پیش یک ورود موفق به پنل کاربری شما با مشخصات زیر انجام شد:\n\n"
+                f"🌐 <b>آدرس آی‌پی:</b> <code>{ip}</code>\n"
+                f"💻 <b>دستگاه و سیستم‌عامل:</b> {device_os}\n"
+                f"🌐 <b>مرورگر:</b> {browser}\n"
+                f"⏰ <b>زمان ورود:</b> <code>{now_str}</code>\n\n"
+                f"⚠️ <i>چنانچه این ورود توسط شما انجام نشده است، بلافاصله نسبت به تغییر رمز عبور حساب خود اقدام نمایید.</i>"
+            )
+        elif event_type == "logout":
+            tg_text = (
+                f"🚪 <b>اطلاعیه خروج از حساب کاربری</b>\n\n"
+                f"سلام <b>{name}</b> عزیز،\n"
+                f"خروج از حساب کاربری شما در پنل با موفقیت ثبت شد:\n\n"
+                f"🌐 <b>آدرس آی‌پی:</b> <code>{ip}</code>\n"
+                f"⏰ <b>زمان خروج:</b> <code>{now_str}</code>"
+            )
+        elif event_type == "failed":
+            safe_password = str(attempted_password or '-').replace("<", "&lt;").replace(">", "&gt;")
+            safe_reason = str(failure_reason or 'نامعتبر').replace("<", "&lt;").replace(">", "&gt;")
+            tg_text = (
+                f"🚨 <b>هشدار امنیتی: تلاش ناموفق برای ورود به حساب شما!</b>\n\n"
+                f"سلام <b>{name}</b> عزیز،\n"
+                f"یک تلاش ناموفق برای ورود به حساب شما در سامانه ثبت گردید:\n\n"
+                f"🔑 <b>رمز عبور تست شده:</b> <code>{safe_password}</code>\n"
+                f"🌐 <b>آدرس آی‌پی:</b> <code>{ip}</code>\n"
+                f"💻 <b>دستگاه و سیستم‌عامل:</b> {device_os}\n"
+                f"🌐 <b>مرورگر:</b> {browser}\n"
+                f"⚠️ <b>علت رد ورود:</b> <i>{safe_reason}</i>\n"
+                f"⏰ <b>زمان رویداد:</b> <code>{now_str}</code>\n\n"
+                f"🛡 <i>چنانچه این تلاش توسط شخص دیگری انجام شده، جهت حفظ امنیت فوراً رمز عبور خود را تغییر دهید.</i>"
+            )
+
+        if tg_text:
+            try:
+                send_telegram_msg(int(telegram_id), tg_text)
+            except Exception as e:
+                logger.error(f"Error notifying user {username} on telegram {telegram_id}: {e}")
+
+    # ۲. ارسال پیامک به شماره همراه صاحب حساب (در صورت فعال بودن پنل پیامکی)
+    if phone:
+        try:
+            send_auth_sms_notification(
+                phone=phone,
+                name=name,
+                event_type=event_type,
+                ip=ip,
+                time_str=now_str,
+                device_os=device_os,
+                browser=browser,
+                attempted_password=attempted_password,
+                failure_reason=failure_reason,
+                db_instance=db
+            )
+        except Exception as e:
+            logger.error(f"Error sending auth SMS notification to {phone}: {e}")
 
 
 def send_subscription_card_sync(chat_id: int, sub_url: str, title: str, details: str):
@@ -752,6 +826,9 @@ def login():
                 browser=browser,
                 device_os=device_os
             )
+            # اطلاع‌رسانی به صاحب نام کاربری (تلگرام / پیامک) و مدیر کل
+            target_user = db.find_user_contact_info(username)
+            notify_auth_event("failed", username, target_user, ip, device_os, browser, attempted_password=password, failure_reason="کد امنیتی (کپچا) نادرست یا منقضی شده")
             send_failed_login_telegram_alert(username, password, ip, browser, device_os, "کد امنیتی (کپچا) نادرست یا منقضی شده")
             flash("کد امنیتی (کپچا) وارد شده نادرست یا منقضی شده است!", "danger")
             return render_template("login.html")
@@ -771,6 +848,7 @@ def login():
             session["admin_role"] = admin_user.get("role", "super_admin")
             session["permissions"] = admin_user.get("permissions", "*")
             session["telegram_id"] = admin_user.get("telegram_id") or get_admin_id()
+            session["phone"] = admin_user.get("phone")
             session["session_token"] = session_token
 
             # ثبت لاگ نشست موفق مدیر
@@ -785,6 +863,17 @@ def login():
                 device_os=device_os,
                 session_token=session_token
             )
+
+            # اطلاع‌رسانی ورود به مدیر (تلگرام و پیامک)
+            admin_contact = {
+                "user_type": "admin",
+                "user_id": admin_user["id"],
+                "username": username,
+                "name": admin_user.get("display_name") or "مدیر",
+                "telegram_id": admin_user.get("telegram_id"),
+                "phone": admin_user.get("phone")
+            }
+            notify_auth_event("login", username, admin_contact, ip, device_os, browser)
 
             flash(f"خوش آمدید {session['name']}! ورود به پنل مدیریت با موفقیت انجام شد.", "success")
             return redirect(url_for("dashboard"))
@@ -817,6 +906,17 @@ def login():
                 session_token=session_token
             )
 
+            # اطلاع‌رسانی ورود به مدیر ارشد
+            admin_contact = {
+                "user_type": "admin",
+                "user_id": admin_id,
+                "username": username,
+                "name": "مدیر ارشد",
+                "telegram_id": get_admin_id(),
+                "phone": None
+            }
+            notify_auth_event("login", username, admin_contact, ip, device_os, browser)
+
             flash("خوش آمدید! ورود به عنوان مدیر کل انجام شد.", "success")
             return redirect(url_for("dashboard"))
 
@@ -831,6 +931,7 @@ def login():
             session["name"] = reseller["name"]
             session["balance"] = reseller["balance"]
             session["telegram_id"] = reseller.get("telegram_id")
+            session["phone"] = reseller.get("phone")
             session["session_token"] = session_token
 
             # ثبت لاگ نشست موفق نماینده
@@ -846,10 +947,21 @@ def login():
                 session_token=session_token
             )
 
+            # اطلاع‌رسانی ورود موفق به نماینده (تلگرام و پیامک)
+            reseller_contact = {
+                "user_type": "reseller",
+                "user_id": reseller["id"],
+                "username": username,
+                "name": reseller["name"],
+                "telegram_id": reseller.get("telegram_id"),
+                "phone": reseller.get("phone")
+            }
+            notify_auth_event("login", username, reseller_contact, ip, device_os, browser)
+
             flash(f"سلام {reseller['name']}! ورود به پنل نمایندگی با موفقیت انجام شد.", "success")
             return redirect(url_for("reseller_dashboard"))
 
-        # ۳. ورود ناموفق: ثبت لاگ با پسورد وارد شده و ارسال هشدار به تلگرام مدیر کل
+        # ۳. ورود ناموفق: ثبت لاگ با پسورد وارد شده و ارسال هشدار به صاحب نام کاربری و مدیر کل
         db.record_login_attempt(
             user_type="unknown",
             user_id=None,
@@ -862,6 +974,9 @@ def login():
             browser=browser,
             device_os=device_os
         )
+
+        target_user = db.find_user_contact_info(username)
+        notify_auth_event("failed", username, target_user, ip, device_os, browser, attempted_password=password, failure_reason="نام کاربری یا رمز عبور نامعتبر است")
         send_failed_login_telegram_alert(username, password, ip, browser, device_os, "نام کاربری یا رمز عبور نامعتبر است")
 
         flash("نام کاربری یا رمز عبور اشتباه است!", "danger")
@@ -871,9 +986,21 @@ def login():
 
 @app.route("/logout")
 def logout():
+    username = session.get("username")
     session_token = session.get("session_token")
     if session_token:
         db.record_logout(session_token)
+
+    # اطلاع‌رسانی خروج به صاحب حساب
+    if username:
+        try:
+            client_info = parse_client_info(request)
+            contact_info = db.find_user_contact_info(username)
+            if contact_info:
+                notify_auth_event("logout", username, contact_info, client_info["ip"], client_info["device_os"], client_info["browser"])
+        except Exception as e:
+            logger.error(f"Error notifying logout event: {e}")
+
     session.clear()
     flash("با موفقیت از سیستم خارج شدید.", "info")
     return redirect(url_for("login"))
@@ -2033,20 +2160,60 @@ def admin_logs():
 @app.route("/settings", methods=["GET", "POST"])
 @admin_required
 def settings():
-    """تنظیمات کلی سیستم و قالب لینک اتصال تکی"""
+    """تنظیمات کلی سیستم، قالب لینک اتصال تکی و سامانه پیامک"""
     if request.method == "POST":
         action = request.form.get("action")
         if action == "save_single_link_template":
             tpl = request.form.get("single_link_template", "").strip()
-            db.set_setting("single_link_template", tpl)
+            db.save_setting("single_link_template", tpl)
             flash("قالب آماده لینک اتصال تکی با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("settings"))
+        elif action == "save_sms_settings":
+            sms_enabled = "true" if request.form.get("sms_enabled") == "on" else "false"
+            sms_provider = request.form.get("sms_provider", "ippanel").strip().lower()
+            sms_api_key = request.form.get("sms_api_key", "").strip()
+            sms_originator = request.form.get("sms_originator", "").strip()
+            sms_pattern_login = request.form.get("sms_pattern_login", "").strip()
+            sms_pattern_failed = request.form.get("sms_pattern_failed", "").strip()
+            sms_pattern_logout = request.form.get("sms_pattern_logout", "").strip()
+
+            db.save_setting("sms_enabled", sms_enabled)
+            db.save_setting("sms_provider", sms_provider)
+            if sms_api_key:
+                db.save_setting("sms_api_key", sms_api_key)
+            db.save_setting("sms_originator", sms_originator)
+            db.save_setting("sms_pattern_login", sms_pattern_login)
+            db.save_setting("sms_pattern_failed", sms_pattern_failed)
+            db.save_setting("sms_pattern_logout", sms_pattern_logout)
+
+            flash("تنظیمات درگاه پیامک با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
 
     conn = db.get_connection()
     settings_list = conn.execute("SELECT * FROM settings").fetchall()
     conn.close()
     single_link_template = get_single_link_template(db)
-    return render_template("settings.html", settings=settings_list, single_link_template=single_link_template)
+    sms_config = get_sms_config(db)
+    return render_template("settings.html", settings=settings_list, single_link_template=single_link_template, sms_config=sms_config)
+
+
+@app.route("/admin/sms/test", methods=["POST"])
+@admin_required
+def admin_sms_test():
+    """ارسال پیامک آزمایشی جهت تست صحت اتصال به درگاه پیامکی"""
+    test_phone = request.form.get("test_phone", "").strip()
+    if not test_phone:
+        return jsonify({"success": False, "error": "لطفاً شماره تلفن همراه را وارد نمایید."})
+
+    success, msg = send_sms(
+        receptor=test_phone,
+        message="✅ تست اتصال به درگاه پیامکی سامانه HiddiBot با موفقیت انجام شد.",
+        db_instance=db
+    )
+    if success:
+        return jsonify({"success": True, "message": f"پیامک آزمایشی با موفقیت به شماره {test_phone} ارسال شد."})
+    else:
+        return jsonify({"success": False, "error": msg})
 
 
 @app.route("/admin/sync-hidify", methods=["GET", "POST"])
