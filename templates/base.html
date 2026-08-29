@@ -184,6 +184,10 @@
 
         .sidebar .nav {
             padding: 8px 10px;
+            display: flex !important;
+            flex-direction: column !important;
+            flex-wrap: nowrap !important;
+            width: 100% !important;
             flex: 1 1 0px !important;
             min-height: 0 !important;
             max-height: 100% !important;
@@ -212,6 +216,8 @@
         }
 
         .sidebar .nav-category {
+            width: 100% !important;
+            flex-shrink: 0 !important;
             font-size: 0.7rem;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -221,6 +227,8 @@
         }
 
         .sidebar .nav-link {
+            width: 100% !important;
+            flex-shrink: 0 !important;
             color: var(--sidebar-text);
             padding: 8px 12px;
             border-radius: 8px;
@@ -252,6 +260,63 @@
             color: #ffffff !important;
             background: var(--primary) !important;
             box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
+        }
+
+        /* ─── کارت‌های آماری شاخص‌ها (Stat Cards) ─── */
+        .stat-card {
+            padding: 20px 22px !important;
+            display: flex !important;
+            flex-direction: row !important;
+            justify-content: space-between !important;
+            align-items: center !important;
+            border-radius: 12px;
+            border: 1px solid var(--card-border);
+            background: var(--card-bg);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+            min-height: 110px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+        }
+
+        .stat-card > div:first-child {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: flex-start;
+            text-align: right;
+            gap: 4px;
+            min-width: 0;
+            flex: 1 1 auto;
+        }
+
+        .stat-card .stat-icon {
+            width: 52px;
+            height: 52px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.55rem;
+            flex-shrink: 0;
+            margin-right: 14px;
+        }
+
+        .stat-card h3 {
+            margin: 2px 0 3px 0 !important;
+            font-size: 1.65rem !important;
+            font-weight: 800 !important;
+            line-height: 1.25 !important;
+        }
+
+        .stat-card h4 {
+            margin: 2px 0 3px 0 !important;
+            font-size: 1.3rem !important;
+            font-weight: 800 !important;
+            line-height: 1.25 !important;
         }
 
         .sidebar-footer {
@@ -425,7 +490,17 @@
                 font-size: 1.2rem;
             }
             .stat-card {
-                padding: 14px;
+                padding: 14px 16px !important;
+                min-height: 90px;
+            }
+            .stat-card .stat-icon {
+                width: 44px;
+                height: 44px;
+                font-size: 1.3rem;
+                margin-right: 10px;
+            }
+            .stat-card h3 {
+                font-size: 1.35rem !important;
             }
             .card-header {
                 flex-direction: column;
@@ -482,7 +557,7 @@
             </div>
         </a>
 
-        <nav class="nav flex-column">
+        <nav class="nav flex-column flex-nowrap w-100">
             {% if session.get('role') == 'reseller' %}
                 <!-- منوی پنل نمایندگی -->
                 <div class="nav-category">پنل همکاران</div>
