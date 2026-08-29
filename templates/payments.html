@@ -65,17 +65,24 @@
                     <tr>
                         <td><small class="text-muted"><code>{{ tx['order_id'] }}</code></small></td>
                         <td>
-                            <div class="d-flex align-items-center justify-content-between">
-                                <div>
-                                    <strong>{{ tx['username'] or 'کاربر تلگرام' }}</strong>
-                                    <br><small class="text-muted"><code>{{ tx['user_id'] }}</code></small>
+                            <div class="d-flex align-items-center justify-content-between gap-2">
+                                <div class="d-flex align-items-center gap-2">
+                                    <img src="{{ url_for('telegram_avatar', identifier=(tx['user_id'] or tx['username'])) }}" 
+                                         alt="{{ tx['username'] or tx['user_id'] }}" 
+                                         class="rounded-circle border shadow-sm flex-shrink-0" 
+                                         style="width: 38px; height: 38px; object-fit: cover;" 
+                                         loading="lazy">
+                                    <div>
+                                        <strong>{{ tx['username'] or 'کاربر تلگرام' }}</strong>
+                                        <div class="text-muted small"><code>{{ tx['user_id'] }}</code></div>
+                                    </div>
                                 </div>
                                 {% if tx['username'] and not tx['username'].startswith('tg_') and tx['username'] != 'کاربر' %}
-                                    <a href="https://t.me/{{ tx['username'].replace('@', '') }}" target="_blank" class="btn btn-sm btn-outline-primary py-0 px-2 ms-2" title="چت در تلگرام با @{{ tx['username'].replace('@', '') }}">
+                                    <a href="https://t.me/{{ tx['username'].replace('@', '') }}" target="_blank" class="btn btn-sm btn-outline-primary py-0 px-2" title="چت در تلگرام با @{{ tx['username'].replace('@', '') }}">
                                         <i class="fab fa-telegram"></i>
                                     </a>
                                 {% else %}
-                                    <a href="tg://user?id={{ tx['user_id'] }}" class="btn btn-sm btn-outline-info py-0 px-2 ms-2" title="چت مستقیم با آیدی عددی {{ tx['user_id'] }}">
+                                    <a href="tg://user?id={{ tx['user_id'] }}" class="btn btn-sm btn-outline-info py-0 px-2" title="چت مستقیم با آیدی عددی {{ tx['user_id'] }}">
                                         <i class="fab fa-telegram-plane"></i>
                                     </a>
                                 {% endif %}

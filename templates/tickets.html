@@ -29,8 +29,17 @@
                     <tr>
                         <td><code>#{{ t['id'] }}</code></td>
                         <td>
-                            <strong>{{ t['first_name'] or t['username'] or 'کاربر تلگرام' }}</strong>
-                            <div class="text-muted small"><code>{{ t['telegram_id'] }}</code></div>
+                            <div class="d-flex align-items-center gap-2">
+                                <img src="{{ url_for('telegram_avatar', identifier=(t['telegram_id'] or t['username'])) }}" 
+                                     alt="{{ t['username'] or t['telegram_id'] }}" 
+                                     class="rounded-circle border shadow-sm flex-shrink-0" 
+                                     style="width: 38px; height: 38px; object-fit: cover;" 
+                                     loading="lazy">
+                                <div>
+                                    <strong>{{ t['first_name'] or t['username'] or 'کاربر تلگرام' }}</strong>
+                                    <div class="text-muted small"><code>{{ t['telegram_id'] }}</code></div>
+                                </div>
+                            </div>
                         </td>
                         <td style="max-width: 250px;">
                             <div class="text-truncate" title="{{ t['message'] }}">{{ t['message'] }}</div>
@@ -61,6 +70,17 @@
                                                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                             </div>
                                             <div class="modal-body">
+                                                <div class="d-flex align-items-center gap-2 mb-3 p-2 bg-light rounded border">
+                                                    <img src="{{ url_for('telegram_avatar', identifier=(t['telegram_id'] or t['username'])) }}" 
+                                                         alt="{{ t['username'] or t['telegram_id'] }}" 
+                                                         class="rounded-circle border shadow-sm flex-shrink-0" 
+                                                         style="width: 42px; height: 42px; object-fit: cover;" 
+                                                         loading="lazy">
+                                                    <div>
+                                                        <strong>{{ t['first_name'] or t['username'] or 'کاربر تلگرام' }}</strong>
+                                                        <div class="text-muted small"><code>آیدی: {{ t['telegram_id'] }}</code></div>
+                                                    </div>
+                                                </div>
                                                 <div class="p-3 bg-light rounded-3 mb-3">
                                                     <strong>متن پیام کاربر:</strong>
                                                     <p class="mb-0 mt-1">{{ t['message'] }}</p>

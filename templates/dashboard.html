@@ -150,8 +150,17 @@
                                     {% else %}#{{ loop.index }}{% endif %}
                                 </td>
                                 <td>
-                                    <strong>{{ u['username'] or 'کاربر' }}</strong>
-                                    <br><small class="text-muted"><code>{{ u['telegram_id'] }}</code></small>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <img src="{{ url_for('telegram_avatar', identifier=(u['telegram_id'] or u['username'])) }}" 
+                                             alt="{{ u['username'] or u['telegram_id'] }}" 
+                                             class="rounded-circle border shadow-sm flex-shrink-0" 
+                                             style="width: 36px; height: 36px; object-fit: cover;" 
+                                             loading="lazy">
+                                        <div>
+                                            <strong>{{ u['username'] or 'کاربر' }}</strong>
+                                            <div class="text-muted small"><code>{{ u['telegram_id'] }}</code></div>
+                                        </div>
+                                    </div>
                                 </td>
                                 <td>{{ u['tx_count'] }} خرید</td>
                                 <td><strong class="text-success">{{ "{:,}".format(u['total_spent'] or 0) }} ت</strong></td>
@@ -236,8 +245,17 @@
                     {% for tx in recent_transactions %}
                     <tr>
                         <td>
-                            <strong>{{ tx['username'] or 'کاربر تلگرام' }}</strong>
-                            <div class="text-muted small"><code>{{ tx['user_id'] }}</code></div>
+                            <div class="d-flex align-items-center gap-2">
+                                <img src="{{ url_for('telegram_avatar', identifier=(tx['user_id'] or tx['username'])) }}" 
+                                     alt="{{ tx['username'] or tx['user_id'] }}" 
+                                     class="rounded-circle border shadow-sm flex-shrink-0" 
+                                     style="width: 36px; height: 36px; object-fit: cover;" 
+                                     loading="lazy">
+                                <div>
+                                    <strong>{{ tx['username'] or 'کاربر تلگرام' }}</strong>
+                                    <div class="text-muted small"><code>{{ tx['user_id'] }}</code></div>
+                                </div>
+                            </div>
                         </td>
                         <td>{{ tx['plan_name'] or '-' }}</td>
                         <td><strong class="text-primary">{{ "{:,}".format(tx['amount'] or 0) }} تومان</strong></td>

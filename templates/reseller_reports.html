@@ -133,7 +133,16 @@
                                     {% elif loop.index == 3 %}🥉
                                     {% else %}#{{ loop.index }}{% endif %}
                                 </td>
-                                <td><strong><code>{{ u['username'] }}</code></strong></td>
+                                <td>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <img src="{{ url_for('telegram_avatar', identifier=u['username']) }}" 
+                                             alt="{{ u['username'] }}" 
+                                             class="rounded-circle border shadow-sm flex-shrink-0" 
+                                             style="width: 32px; height: 32px; object-fit: cover;" 
+                                             loading="lazy">
+                                        <strong><code>{{ u['username'] }}</code></strong>
+                                    </div>
+                                </td>
                                 <td>{{ u['tx_count'] }} بار</td>
                                 <td><strong class="text-success">{{ "{:,}".format(u['total_spent'] or 0) }} تومان</strong></td>
                             </tr>
@@ -172,7 +181,16 @@
                         <tbody>
                             {% for a in most_active_users %}
                             <tr>
-                                <td><strong><code>{{ a['account_name'] }}</code></strong></td>
+                                <td>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <img src="{{ url_for('telegram_avatar', identifier=a['account_name']) }}" 
+                                             alt="{{ a['account_name'] }}" 
+                                             class="rounded-circle border shadow-sm flex-shrink-0" 
+                                             style="width: 32px; height: 32px; object-fit: cover;" 
+                                             loading="lazy">
+                                        <strong><code>{{ a['account_name'] }}</code></strong>
+                                    </div>
+                                </td>
                                 <td><small>{{ a['plan_name'] }}</small></td>
                                 <td>
                                     <strong class="text-danger">{{ "%.2f"|format(a['data_used'] or 0) }} GB</strong>
@@ -265,7 +283,16 @@
                 <tbody>
                     {% for s in timeline_subscriptions %}
                     <tr>
-                        <td><strong><code>{{ s['account_name'] }}</code></strong></td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <img src="{{ url_for('telegram_avatar', identifier=s['account_name']) }}" 
+                                     alt="{{ s['account_name'] }}" 
+                                     class="rounded-circle border shadow-sm flex-shrink-0" 
+                                     style="width: 32px; height: 32px; object-fit: cover;" 
+                                     loading="lazy">
+                                <strong><code>{{ s['account_name'] }}</code></strong>
+                            </div>
+                        </td>
                         <td><span class="badge bg-primary bg-opacity-10 text-primary">{{ s['plan_name'] }}</span></td>
                         <td>{{ s['data_limit'] }} گیگابایت ({{ s['duration'] }} روز)</td>
                         <td>

@@ -39,17 +39,31 @@
                     <tr>
                         <td>
                             {% if sub['telegram_id'] and sub['telegram_id'] != 0 %}
-                                <a href="{{ url_for('user_detail', telegram_id=sub['telegram_id']) }}" class="text-decoration-none fw-bold">
-                                    <code>{{ sub['telegram_id'] }}</code>
-                                </a>
+                                <div class="d-flex align-items-center gap-2">
+                                    <img src="{{ url_for('telegram_avatar', identifier=sub['telegram_id']) }}" 
+                                         alt="{{ sub['telegram_id'] }}" 
+                                         class="rounded-circle border shadow-sm flex-shrink-0" 
+                                         style="width: 34px; height: 34px; object-fit: cover;" 
+                                         loading="lazy">
+                                    <a href="{{ url_for('user_detail', telegram_id=sub['telegram_id']) }}" class="text-decoration-none fw-bold">
+                                        <code>{{ sub['telegram_id'] }}</code>
+                                    </a>
+                                </div>
                             {% else %}
-                                <span class="text-muted">مشتری همکار</span>
+                                <div class="d-flex align-items-center gap-2">
+                                    <img src="{{ url_for('telegram_avatar', identifier=(sub['account_name'] or 'Customer')) }}" 
+                                         alt="مشتری همکار" 
+                                         class="rounded-circle border shadow-sm flex-shrink-0" 
+                                         style="width: 34px; height: 34px; object-fit: cover;" 
+                                         loading="lazy">
+                                    <span class="text-muted">مشتری همکار</span>
+                                </div>
                             {% endif %}
                         </td>
                         <td><code>{{ sub['account_name'] or '-' }}</code></td>
                         <td>{{ sub['plan_name'] or '-' }}</td>
                         <td>
-                            <div>{{ sub['data_used'] or 0 }} / {{ sub['data_limit'] or 0 }} GB</div>
+                            <div>{{ "%.2f"|format(sub['data_used']|float) if sub['data_used'] else '0' }} / {{ "%.1f"|format(sub['data_limit']|float) if sub['data_limit'] else '0' }} GB</div>
                         </td>
                         <td>{{ sub['duration'] or '-' }} روز</td>
                         <td><small class="text-muted">{{ sub['expire_date'][:10] if sub['expire_date'] else '-' }}</small></td>
