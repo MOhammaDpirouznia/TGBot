@@ -554,9 +554,9 @@ class Database:
             except Exception:
                 pass
 
-        # ستون‌های برندینگ و دامنه اختصاصی نماینده
+        # ستون‌های برندینگ، دامنه و آموزش‌های اختصاصی نماینده
         for col_def in [
-            "custom_domain TEXT", "logo_url TEXT", "favicon_url TEXT",
+            "custom_domain TEXT", "tutorial_domain TEXT", "logo_url TEXT", "favicon_url TEXT",
             "brand_title TEXT", "primary_color TEXT", "footer_text TEXT"
         ]:
             try:
@@ -566,6 +566,11 @@ class Database:
 
         try:
             cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_resellers_custom_domain ON resellers(custom_domain)")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_resellers_tutorial_domain ON resellers(tutorial_domain)")
         except Exception:
             pass
 
@@ -3709,14 +3714,17 @@ class Database:
     # ─── مدیریت دامنه و برندینگ نماینده (Custom Domain & Branding) ───
 
     def get_reseller_by_domain(self, domain: str):
-        """یافتن نماینده بر اساس دامنه اختصاصی"""
+        """یافتن نماینده بر اساس دامنه اختصاصی پنل یا دامنه اختصاصی آموزش‌ها"""
         if not domain:
             return None
         clean_domain = domain.split(":")[0].strip().lower()
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("SELECT * FROM resellers WHERE LOWER(custom_domain) = ? AND status = 'active'", (clean_domain,))
+            cursor.execute("""
+                SELECT * FROM resellers 
+                WHERE (LOWER(custom_domain) = ? OR LOWER(tutorial_domain) = ?) AND status = 'active'
+            """, (clean_domain, clean_domain))
             row = cursor.fetchone()
             return dict(row) if row else None
         except Exception as e:
@@ -3732,7 +3740,7 @@ class Database:
         now = get_now_iso()
         kwargs["updated_at"] = now
         try:
-            allowed = ["custom_domain", "logo_url", "favicon_url", "brand_title", "primary_color", "footer_text", "updated_at"]
+            allowed = ["custom_domain", "tutorial_domain", "logo_url", "favicon_url", "brand_title", "primary_color", "footer_text", "updated_at"]
             fields = []
             params = []
             for k, v in kwargs.items():

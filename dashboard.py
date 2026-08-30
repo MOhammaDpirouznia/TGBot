@@ -37,6 +37,7 @@ from sms_service import send_auth_sms_notification, send_sms, get_sms_config, fo
 from payment import CryptoPaymentGateway
 import avatar_generator
 from multibot_manager import multibot_manager, ResellerBotInstance
+from tutorials_data import PLATFORMS, TUTORIALS, TROUBLESHOOTING_GUIDES
 
 logger = logging.getLogger(__name__)
 
@@ -1002,7 +1003,7 @@ def captcha_image():
 
 @app.before_request
 def check_custom_domain():
-    """تشخیص دامنه اختصاصی نماینده از روی هدر Host و بارگذاری هویت بصری اختصاصی"""
+    """تشخیص دامنه اختصاصی پنل یا آموزش‌های نماینده از روی هدر Host و بارگذاری هویت بصری اختصاصی"""
     host = request.host
     reseller = db.get_reseller_by_domain(host)
     if reseller:
@@ -1012,6 +1013,8 @@ def check_custom_domain():
         g.favicon_url = reseller.get("favicon_url")
         g.primary_color = reseller.get("primary_color")
         g.footer_text = reseller.get("footer_text")
+        g.support_username = reseller.get("support_username")
+        g.bot_username = reseller.get("bot_username")
     else:
         g.custom_reseller = None
         g.brand_title = None
@@ -1019,6 +1022,8 @@ def check_custom_domain():
         g.favicon_url = None
         g.primary_color = None
         g.footer_text = None
+        g.support_username = None
+        g.bot_username = None
 
 
 @app.context_processor
@@ -1035,7 +1040,10 @@ def inject_global_branding():
                 "favicon_url": r_data.get("favicon_url"),
                 "primary_color": r_data.get("primary_color"),
                 "footer_text": r_data.get("footer_text"),
-                "custom_domain": r_data.get("custom_domain")
+                "custom_domain": r_data.get("custom_domain"),
+                "tutorial_domain": r_data.get("tutorial_domain"),
+                "support_username": r_data.get("support_username"),
+                "bot_username": r_data.get("bot_username")
             }
     elif getattr(g, "custom_reseller", None):
         r_data = g.custom_reseller
@@ -1045,7 +1053,18 @@ def inject_global_branding():
             "favicon_url": r_data.get("favicon_url"),
             "primary_color": r_data.get("primary_color"),
             "footer_text": r_data.get("footer_text"),
-            "custom_domain": r_data.get("custom_domain")
+            "custom_domain": r_data.get("custom_domain"),
+            "tutorial_domain": r_data.get("tutorial_domain"),
+            "support_username": r_data.get("support_username"),
+            "bot_username": r_data.get("bot_username")
+        }
+    else:
+        # تنظیمات برند پیش‌فرض سیستم برای ادمین
+        admin_tutorial_title = db.get_setting("tutorial_title", "راهنما و آموزش اتصال")
+        admin_tutorial_domain = db.get_setting("tutorial_domain", "")
+        branding = {
+            "brand_title": admin_tutorial_title,
+            "tutorial_domain": admin_tutorial_domain
         }
 
     return dict(
@@ -1303,6 +1322,118 @@ def logout():
     session.clear()
     flash("با موفقیت از سیستم خارج شدید.", "info")
     return redirect(url_for("login"))
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# پورتال جامع آموزش‌های چندسکویی و عیب‌یابی هوشمند (Tutorials & Troubleshooting)
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/help")
+@app.route("/tutorials")
+def tutorials_portal():
+    """صفحه اصلی پورتال آموزش‌های چندسکویی با انتخاب گرافیکی سیستم‌عامل و جستجو"""
+    active_platform = request.args.get("platform", "android").lower()
+    if active_platform not in PLATFORMS:
+        active_platform = "android"
+
+    # تعیین هویت نماینده در صورت فراخوانی با پارامتر r
+    reseller_param = request.args.get("r")
+    if reseller_param and not getattr(g, "custom_reseller", None):
+        try:
+            r_info = db.get_reseller(int(reseller_param))
+            if r_info:
+                g.custom_reseller = r_info
+        except Exception:
+            pass
+
+    return render_template(
+        "tutorials_portal.html",
+        platforms=PLATFORMS,
+        tutorials=TUTORIALS,
+        troubleshooting=TROUBLESHOOTING_GUIDES,
+        active_platform=active_platform
+    )
+
+
+@app.route("/help/<platform>")
+@app.route("/tutorials/<platform>")
+def tutorials_platform(platform):
+    """مشاهده لیست نرم‌افزارها و آموزش‌های یک سیستم‌عامل خاص"""
+    platform_key = platform.lower()
+    if platform_key not in PLATFORMS:
+        flash("سیستم‌عامل انتخاب شده معتبر نمی‌باشد.", "warning")
+        return redirect(url_for("tutorials_portal"))
+
+    reseller_param = request.args.get("r")
+    if reseller_param and not getattr(g, "custom_reseller", None):
+        try:
+            r_info = db.get_reseller(int(reseller_param))
+            if r_info:
+                g.custom_reseller = r_info
+        except Exception:
+            pass
+
+    return render_template(
+        "tutorials_portal.html",
+        platforms=PLATFORMS,
+        tutorials=TUTORIALS,
+        troubleshooting=TROUBLESHOOTING_GUIDES,
+        active_platform=platform_key
+    )
+
+
+@app.route("/help/<platform>/<app_slug>")
+@app.route("/tutorials/<platform>/<app_slug>")
+def tutorial_view(platform, app_slug):
+    """صفحه آموزش اختصاصی گام‌به‌گام و تصویری یک نرم‌افزار با دکمه‌های دانلود"""
+    app_key = app_slug.lower()
+    tutorial = TUTORIALS.get(app_key)
+    if not tutorial:
+        flash("آموزش نرم‌افزار مورد نظر یافت نشد.", "warning")
+        return redirect(url_for("tutorials_portal", platform=platform))
+
+    reseller_param = request.args.get("r")
+    if reseller_param and not getattr(g, "custom_reseller", None):
+        try:
+            r_info = db.get_reseller(int(reseller_param))
+            if r_info:
+                g.custom_reseller = r_info
+        except Exception:
+            pass
+
+    platform_info = PLATFORMS.get(tutorial["platform"], {})
+    return render_template(
+        "tutorial_view.html",
+        tutorial=tutorial,
+        platform_info=platform_info,
+        platforms=PLATFORMS,
+        tutorials=TUTORIALS
+    )
+
+
+@app.route("/help/troubleshoot")
+@app.route("/tutorials/troubleshoot")
+def troubleshoot_wizard():
+    """سامانه ویزارد عیب‌یابی هوشمند و راهنمای حل مشکلات اتصال"""
+    active_slug = request.args.get("issue")
+    active_issue = None
+    if active_slug:
+        active_issue = next((g for g in TROUBLESHOOTING_GUIDES if g["slug"] == active_slug), None)
+
+    reseller_param = request.args.get("r")
+    if reseller_param and not getattr(g, "custom_reseller", None):
+        try:
+            r_info = db.get_reseller(int(reseller_param))
+            if r_info:
+                g.custom_reseller = r_info
+        except Exception:
+            pass
+
+    return render_template(
+        "troubleshoot_wizard.html",
+        guides=TROUBLESHOOTING_GUIDES,
+        active_issue=active_issue
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -2614,6 +2745,13 @@ def settings():
 
             flash("تنظیمات درگاه پرداخت ارزی و کریپتو با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
+        elif action == "save_tutorial_settings":
+            tutorial_domain = request.form.get("tutorial_domain", "").strip().lower()
+            tutorial_title = request.form.get("tutorial_title", "").strip()
+            db.save_setting("tutorial_domain", tutorial_domain)
+            db.save_setting("tutorial_title", tutorial_title)
+            flash("تنظیمات دامنه و عنوان پورتال آموزش‌ها با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("settings"))
 
     conn = db.get_connection()
     settings_list = conn.execute("SELECT * FROM settings").fetchall()
@@ -2621,7 +2759,17 @@ def settings():
     single_link_template = get_single_link_template(db)
     sms_config = get_sms_config(db)
     crypto_config = CryptoPaymentGateway.get_crypto_config(db)
-    return render_template("settings.html", settings=settings_list, single_link_template=single_link_template, sms_config=sms_config, crypto_config=crypto_config)
+    tutorial_domain = db.get_setting("tutorial_domain", "")
+    tutorial_title = db.get_setting("tutorial_title", "راهنما و آموزش اتصال")
+    return render_template(
+        "settings.html",
+        settings=settings_list,
+        single_link_template=single_link_template,
+        sms_config=sms_config,
+        crypto_config=crypto_config,
+        tutorial_domain=tutorial_domain,
+        tutorial_title=tutorial_title
+    )
 
 
 @app.route("/admin/sms/test", methods=["POST"])
@@ -3605,6 +3753,7 @@ def reseller_branding():
 
     if request.method == "POST":
         custom_domain = request.form.get("custom_domain", "").strip().lower()
+        tutorial_domain = request.form.get("tutorial_domain", "").strip().lower()
         brand_title = request.form.get("brand_title", "").strip()
         logo_url = request.form.get("logo_url", "").strip()
         favicon_url = request.form.get("favicon_url", "").strip()
@@ -3623,6 +3772,7 @@ def reseller_branding():
         res = db.update_reseller_branding(
             reseller_id,
             custom_domain=custom_domain,
+            tutorial_domain=tutorial_domain,
             brand_title=brand_title,
             logo_url=logo_url,
             favicon_url=favicon_url,
@@ -3630,7 +3780,7 @@ def reseller_branding():
             footer_text=footer_text
         )
         if res.get("success"):
-            flash("تنظیمات هویت بصری و دامنه اختصاصی شما با موفقیت ذخیره شد.", "success")
+            flash("تنظیمات هویت بصری، دامنه‌ها و آموزش‌های اختصاصی شما با موفقیت ذخیره شد.", "success")
         else:
             flash(f"خطا در ذخیره‌سازی: {res.get('error')}", "danger")
         return redirect(url_for("reseller_branding"))

@@ -481,17 +481,33 @@ class ResellerBotInstance:
             await update.message.reply_text(msg, reply_markup=kb, parse_mode="Markdown")
 
         async def guide_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            """راهنمای اتصال"""
+            """راهنمای اتصال و لینک آموزش‌های تصویری اختصاصی نماینده"""
+            r_info = db.get_reseller(r_id) or {}
+            brand_name = r_info.get("brand_title") or r_info.get("brand_name") or r_info.get("name") or "فروشگاه"
+            
+            # آدرس پورتال آموزش‌ها برای نماینده
+            if r_info.get("tutorial_domain"):
+                tutorial_url = f"https://{r_info['tutorial_domain']}/help"
+            elif r_info.get("custom_domain"):
+                tutorial_url = f"https://{r_info['custom_domain']}/help"
+            else:
+                dashboard_url = os.getenv("DASHBOARD_URL", "").rstrip("/")
+                tutorial_url = f"{dashboard_url}/help?r={r_id}" if dashboard_url else f"http://127.0.0.1:5000/help?r={r_id}"
+
+            troubleshoot_url = f"{tutorial_url.split('?')[0].rstrip('/')}/troubleshoot"
+            if "?r=" in tutorial_url:
+                troubleshoot_url += f"?r={r_id}"
+
             guide_text = (
-                "📖 **راهنمای استفاده و اتصال:**\n\n"
-                "۱. نرم‌افزار متناسب با سیستم‌عامل خود را نصب کنید:\n"
-                "• اندروید: v2rayNG / Hiddify Next / Happ\n"
-                "• آیفون (iOS): Streisand / FoXray / V2Box / Shadowrocket\n"
-                "• ویندوز: Hiddify Next / v2rayN / Nekoray\n\n"
-                "۲. لینک دریافتی را کپی کرده و در برنامه Import / Add Config from Clipboard را بزنید.\n"
-                "۳. دکمه اتصال (Connect) را روشن نمایید."
+                f"📖 **مرکز آموزش تصویری و راهنمای اتصال {brand_name}**\n\n"
+                "برای مشاهده آموزش‌های مرحله‌به‌مرحله تصویری برای تمام دستگاه‌ها (اندروید، آیفون، ویندوز، مک، تلویزیون هوشمند و مودم) و رفع سریع هرگونه مشکل در اتصال، روی دکمه‌های زیر کلیک نمایید:"
             )
-            await update.message.reply_text(guide_text, parse_mode="Markdown")
+            buttons = [
+                [InlineKeyboardButton("🌐 مشاهده آموزش‌های تصویری تمام دستگاه‌ها", url=tutorial_url)],
+                [InlineKeyboardButton("🛠️ عیب‌یابی و حل مشکلات اتصال", url=troubleshoot_url)]
+            ]
+            kb = InlineKeyboardMarkup(buttons)
+            await update.message.reply_text(guide_text, reply_markup=kb, parse_mode="Markdown")
 
         async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """مسیریابی دکمه‌های ریپلای کیبورد"""
@@ -506,7 +522,7 @@ class ResellerBotInstance:
                 await update.message.reply_text(f"💳 موجودی کیف پول شما: **{bal:,} تومان**", parse_mode="Markdown")
             elif "پشتیبانی" in text:
                 await support_handler(update, context)
-            elif "راهنما" in text:
+            elif "راهنما" in text or "آموزش" in text:
                 await guide_handler(update, context)
             elif text.startswith("تیکت:") or text.startswith("تیکت ") or text.startswith("/ticket"):
                 user = update.effective_user

@@ -802,27 +802,39 @@ async def back_to_enter_tracking(update: Update, context: ContextTypes.DEFAULT_T
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """دستور /help - راهنما"""
+    """دستور /help - راهنما و آموزش‌های تصویری اتصال"""
+    custom_tutorial = db.get_setting("tutorial_domain")
+    dashboard_url = os.getenv("DASHBOARD_URL", "").rstrip("/")
+    if custom_tutorial:
+        base_url = f"https://{custom_tutorial}" if not custom_tutorial.startswith("http") else custom_tutorial
+    elif dashboard_url:
+        base_url = f"{dashboard_url}/help"
+    else:
+        base_url = "http://127.0.0.1:5000/help"
+
+    troubleshoot_url = f"{base_url.rstrip('/')}/troubleshoot"
+
     help_text = """
-📖 **راهنمای ربات VPN**
+📖 **مرکز آموزش تصویری و راهنمای اتصال**
 
-**🛒 خرید اشتراک:**
-یکی از پلن‌های موجود را انتخاب کنید و پس از پرداخت، اشتراک شما فعال می‌شود.
+برای مشاهده آموزش مرحله‌به‌مرحله، دانلود آسان نرم‌افزارها و رفع سریع هرگونه مشکل در اتصال، روی دکمه‌های زیر کلیک نمایید:
 
-**🔄 تمدید اشتراک:**
-اشتراک فعلی خود را برای یک دوره دیگر تمدید کنید.
-
-**📊 وضعیت اشتراک:**
-اطلاعات کامل اشتراک شامل حجم مصرفی، تاریخ انقضا و ...
-
-**🔗 لینک اتصال:**
-لینک اشتراک خود را برای اتصال دریافت کنید.
-
-⚠️ **نکات مهم:**
-• لینک اشتراک را با کسی به اشتراک نگذارید
-• در صورت بروز مشکل با پشتیبانی تماس بگیرید
+📱 **اندروید:** v2rayNG, Hiddify, Happ, NekoBox
+🍏 **آیفون و آیپد:** Streisand, FoXray, V2Box, Shadowrocket
+💻 **ویندوز و مک:** Hiddify Next, v2rayN, Nekoray
+📺 **تلویزیون هوشمند:** Android TV, Spark
+🌐 **مودم و روتر:** OpenWrt, MikroTik
 """
-    await update.message.reply_text(help_text, parse_mode="Markdown")
+    keyboard = [
+        [InlineKeyboardButton("🌐 مشاهده آموزش‌های تصویری تمام دستگاه‌ها", url=base_url)],
+        [InlineKeyboardButton("🛠️ سامانه عیب‌یابی و حل مشکلات اتصال", url=troubleshoot_url)]
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    if update.message:
+        await update.message.reply_text(help_text, reply_markup=reply_markup, parse_mode="Markdown")
+    elif update.callback_query:
+        await update.callback_query.message.reply_text(help_text, reply_markup=reply_markup, parse_mode="Markdown")
 
 
 # ─── پنل مدیریت وب ───
@@ -3332,13 +3344,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await referral_menu(update, context)
     elif text == "💬 پشتیبانی" or "پشتیبانی" in text:
         return await support_menu(update, context)
-    elif text == "❓ راهنمای ربات":
+    elif text == "❓ راهنمای ربات" or text == "📚 آموزش‌ها (بزودی)" or "آموزش" in text or "راهنما" in text:
         return await help_command(update, context)
     elif text == "🧪 اشتراک تست":
         return await handle_test_subscription(update, context)
-    elif text == "📚 آموزش‌ها (بزودی)":
-        await update.message.reply_text("⏳ این بخش بزودی اضافه خواهد شد!")
-        return CHOOSING
     elif text == "🔧 پنل مدیریت" and update.effective_user.id == ADMIN_ID:
         return await admin_panel(update, context)
     
