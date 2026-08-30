@@ -3345,6 +3345,58 @@ class Database:
         conn.close()
         return [dict(r) for r in rows]
 
+    def get_reseller_full_payment_history(self, reseller_id: int) -> dict:
+        """دریافت سابقه کامل پرداختی‌ها، شارژها، بسته‌های اعتباری و ریز تراکنش‌های نماینده"""
+        reseller = self.get_reseller(reseller_id)
+        if not reseller:
+            return {}
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        # ۱. تراکنش‌های کیف پول نماینده (شارژها، خریدها، تمدیدها، استردادها)
+        cursor.execute("""
+            SELECT * FROM reseller_transactions 
+            WHERE reseller_id = ? 
+            ORDER BY created_at DESC
+        """, (reseller_id,))
+        wallet_txs = [dict(r) for r in cursor.fetchall()]
+
+        # ۲. رسیدها، فیش‌های بانکی و تراکنش‌های ثبت‌شده در جدول اصلی
+        cursor.execute("""
+            SELECT * FROM transactions 
+            WHERE reseller_id = ? 
+            ORDER BY created_at DESC
+        """, (reseller_id,))
+        receipt_txs = [dict(r) for r in cursor.fetchall()]
+
+        # ۳. محاسبات مالی دقیق
+        cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions WHERE reseller_id=? AND type='deposit'", (reseller_id,))
+        total_deposited = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions WHERE reseller_id=? AND type IN ('purchase', 'renewal')", (reseller_id,))
+        total_spent = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions WHERE reseller_id=? AND type='refund'", (reseller_id,))
+        total_refunded = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM transactions WHERE reseller_id=? AND (gateway='bundle_reseller' OR order_id LIKE 'R_BUNDLE%')", (reseller_id,))
+        total_bundle_orders = cursor.fetchone()[0]
+
+        conn.close()
+
+        return {
+            "reseller": reseller,
+            "wallet_transactions": wallet_txs,
+            "receipt_transactions": receipt_txs,
+            "total_deposited": total_deposited,
+            "total_spent": total_spent,
+            "total_refunded": total_refunded,
+            "total_bundle_orders": total_bundle_orders,
+            "balance": reseller.get("balance", 0),
+            "discount_percent": reseller.get("discount_percent", 20)
+        }
+
     def get_reseller_subscriptions(self, reseller_id: int):
         """لیست کاربران و اشتراک‌های یک نماینده"""
         conn = self.get_connection()

@@ -2398,10 +2398,85 @@ def admin_resellers():
         r_dict["is_online"] = db.is_reseller_online(r["id"])
         r_dict["security_logs"] = db.get_reseller_security_logs(r["id"], r["username"])
         r_dict["bot_status"] = multibot_manager.get_bot_status(r["id"])
+        r_dict["payment_history"] = db.get_reseller_full_payment_history(r["id"])
         reseller_list.append(r_dict)
 
     all_failed_logins = db.get_all_failed_login_logs(limit=50)
     return render_template("resellers.html", resellers=reseller_list, all_failed_logins=all_failed_logins)
+
+
+@app.route("/admin/reseller/<int:reseller_id>/payments")
+@admin_required
+def admin_reseller_payments(reseller_id):
+    """مشاهده سوابق مالی و جزئیات پرداخت‌های یک نماینده خاص"""
+    reseller = db.get_reseller(reseller_id)
+    if not reseller:
+        flash("نماینده مورد نظر یافت نشد.", "danger")
+        return redirect(url_for("admin_resellers"))
+
+    history = db.get_reseller_full_payment_history(reseller_id)
+    return render_template(
+        "admin_reseller_payments.html",
+        reseller=reseller,
+        history=history
+    )
+
+
+@app.route("/admin/reseller/<int:reseller_id>/export-payments")
+@admin_required
+def admin_reseller_export_payments(reseller_id):
+    """خروجی فایل اکسل/CSV از سوابق پرداختی نماینده با فرمت UTF-8 BOM"""
+    reseller = db.get_reseller(reseller_id)
+    if not reseller:
+        flash("نماینده مورد نظر یافت نشد.", "danger")
+        return redirect(url_for("admin_resellers"))
+
+    history = db.get_reseller_full_payment_history(reseller_id)
+    wallet_txs = history.get("wallet_transactions", [])
+    receipt_txs = history.get("receipt_transactions", [])
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["گزارش سوابق پرداخت‌ها و تراکنش‌های نماینده:", reseller.get("name"), f"(@{reseller.get('username')})"])
+    writer.writerow(["موجودی کیف پول فعلی (تومان):", f"{reseller.get('balance', 0):,}"])
+    writer.writerow(["مجموع شارژها (تومان):", f"{history.get('total_deposited', 0):,}"])
+    writer.writerow(["مجموع مصرفی خریدها (تومان):", f"{history.get('total_spent', 0):,}"])
+    writer.writerow([])
+    writer.writerow(["--- تراکنش‌های کیف پول ---"])
+    writer.writerow(["شناسه", "نوع تراکنش", "مبلغ (تومان)", "پلن / نام کاربری", "توضیحات", "تاریخ ثبت"])
+    for t in wallet_txs:
+        ttype = "شارژ کیف پول" if t.get("type") == "deposit" else ("استرداد وجه" if t.get("type") == "refund" else ("تمدید اشتراک" if t.get("type") == "renewal" else "خرید اشتراک"))
+        writer.writerow([
+            t.get("id"),
+            ttype,
+            t.get("amount") or 0,
+            t.get("plan_name") or t.get("account_name") or "",
+            t.get("description") or "",
+            t.get("created_at") or ""
+        ])
+
+    writer.writerow([])
+    writer.writerow(["--- بسته‌ها و فیش‌های ثبت‌شده ---"])
+    writer.writerow(["کد سفارش", "عنوان بسته / پلن", "مبلغ (تومان)", "روش پرداخت", "کد پیگیری", "وضعیت", "تاریخ ثبت"])
+    for r in receipt_txs:
+        status_text = "تایید شده" if r.get("status") in ["approved", "completed"] else ("در انتظار" if r.get("status") == "pending" else "رد شده")
+        writer.writerow([
+            r.get("order_id"),
+            r.get("plan_name") or "",
+            r.get("amount") or 0,
+            r.get("gateway") or "",
+            r.get("tracking_code") or "",
+            status_text,
+            r.get("created_at") or ""
+        ])
+
+    csv_data = "\ufeff" + output.getvalue()
+    filename = f"reseller_{reseller_id}_{reseller.get('username')}_payments.csv"
+    return Response(
+        csv_data.encode("utf-8-sig"),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment;filename={filename}"}
+    )
 
 
 @app.route("/admin/reseller/<int:reseller_id>/add-balance", methods=["POST"])
