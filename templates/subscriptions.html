@@ -90,9 +90,27 @@
                         <td><code>{{ sub['account_name'] or '-' }}</code></td>
                         <td>{{ sub['plan_name'] or '-' }}</td>
                         <td>
-                            <div dir="ltr" class="font-monospace text-nowrap">{{ "%.2f"|format(sub['data_used']|float or 0) }} / {{ "%.1f"|format(sub['data_limit']|float or 0) }} GB</div>
+                            <div dir="ltr" class="font-monospace text-nowrap fw-bold">{{ "%.2f"|format(sub['data_used']|float or 0) }} / {{ "%.1f"|format(sub['data_limit']|float or 0) }} GB</div>
+                            <div class="progress mt-1" style="height: 5px; width: 90px;">
+                                {% set pct = (((sub['data_used']|float or 0) / (sub['data_limit']|float or 1)) * 100)|int %}
+                                <div class="progress-bar {{ 'bg-danger' if pct > 90 else ('bg-warning' if pct > 70 else 'bg-success') }}" style="width: {{ pct if pct <= 100 else 100 }}%"></div>
+                            </div>
                         </td>
-                        <td>{{ sub['duration'] or '-' }} روز</td>
+                        <td>
+                            {% if sub.get('is_started') %}
+                                <div>
+                                    <span class="badge {% if sub.get('remaining_days', 30) <= 3 %}bg-danger-subtle text-danger border border-danger{% else %}bg-success-subtle text-success border border-success{% endif %} font-monospace fs-6">
+                                        {{ sub.get('remaining_days', sub['duration']) }} روز دیگر
+                                    </span>
+                                    <div class="text-muted small" style="font-size: 10px;">کل دوره: {{ sub['duration'] }} روز</div>
+                                </div>
+                            {% else %}
+                                <div>
+                                    <span class="badge bg-secondary-subtle text-secondary border font-monospace">{{ sub['duration'] or 30 }} روز</span>
+                                    <div class="text-muted small" style="font-size: 10px;">شروع پس از اتصال</div>
+                                </div>
+                            {% endif %}
+                        </td>
                         <td><small class="text-muted">{{ sub['expire_date'][:10] if sub['expire_date'] else '-' }}</small></td>
                         <td>
                             {% if sub['is_online'] %}
@@ -177,17 +195,23 @@
                                                         <input type="number" step="0.1" class="form-control font-monospace" name="data_limit" value="{{ sub['data_limit'] or 30 }}" required>
                                                     </div>
                                                     <div class="col-md-6">
-                                                        <label class="form-label fw-bold">وضعیت اشتراک</label>
-                                                        <select class="form-select" name="status">
-                                                            <option value="active" {% if sub['status'] == 'active' %}selected{% endif %}>فعال (Active)</option>
-                                                            <option value="disabled" {% if sub['status'] == 'disabled' %}selected{% endif %}>غیرفعال (Disabled)</option>
-                                                            <option value="expired" {% if sub['status'] == 'expired' %}selected{% endif %}>منقضی (Expired)</option>
-                                                        </select>
+                                                        <label class="form-label fw-bold">مدت زمان اعتبار (روز) <span class="text-danger">*</span></label>
+                                                        <div class="input-group">
+                                                            <input type="number" min="1" max="3650" class="form-control font-monospace" name="duration" value="{{ sub['duration'] or 30 }}" required>
+                                                            <span class="input-group-text bg-light">روز</span>
+                                                        </div>
                                                     </div>
                                                 </div>
                                                 <div class="mb-3">
-                                                    <label class="form-label fw-bold">تاریخ انقضا</label>
-                                                    <input type="date" class="form-control font-monospace" name="expire_date" value="{{ sub['expire_date'][:10] if sub['expire_date'] else '' }}">
+                                                    <label class="form-label fw-bold">وضعیت اشتراک</label>
+                                                    <select class="form-select" name="status">
+                                                        <option value="active" {% if sub['status'] == 'active' %}selected{% endif %}>فعال (Active)</option>
+                                                        <option value="disabled" {% if sub['status'] == 'disabled' %}selected{% endif %}>غیرفعال (Disabled)</option>
+                                                        <option value="expired" {% if sub['status'] == 'expired' %}selected{% endif %}>منقضی (Expired)</option>
+                                                    </select>
+                                                    <div class="form-text text-muted small mt-1">
+                                                        <i class="fas fa-info-circle me-1"></i> نکته: زمان تمامی اشتراک‌ها در هیدیفای پس از اولین اتصال کاربر محاسبه و آغاز می‌شود.
+                                                    </div>
                                                 </div>
                                             </div>
                                             <div class="modal-footer">

@@ -109,7 +109,21 @@
                                 <div class="progress-bar {{ 'bg-danger' if pct > 90 else ('bg-warning' if pct > 70 else 'bg-success') }}" style="width: {{ pct if pct <= 100 else 100 }}%"></div>
                             </div>
                         </td>
-                        <td>{{ sub['duration'] or 30 }} روز</td>
+                        <td>
+                            {% if sub.get('is_started') %}
+                                <div>
+                                    <span class="badge {% if sub.get('remaining_days', 30) <= 3 %}bg-danger-subtle text-danger border border-danger{% else %}bg-success-subtle text-success border border-success{% endif %} font-monospace fs-6">
+                                        {{ sub.get('remaining_days', sub['duration']) }} روز دیگر
+                                    </span>
+                                    <div class="text-muted small" style="font-size: 10px;">کل دوره: {{ sub['duration'] }} روز</div>
+                                </div>
+                            {% else %}
+                                <div>
+                                    <span class="badge bg-secondary-subtle text-secondary border font-monospace">{{ sub['duration'] or 30 }} روز</span>
+                                    <div class="text-muted small" style="font-size: 10px;">شروع پس از اتصال</div>
+                                </div>
+                            {% endif %}
+                        </td>
                         <td>
                             {% if sub.get('is_online') %}
                                 <span class="badge bg-success-subtle text-success border border-success d-inline-flex align-items-center gap-1 font-monospace">
