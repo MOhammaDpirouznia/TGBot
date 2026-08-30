@@ -656,7 +656,7 @@
                     <i class="fas fa-robot text-primary"></i> ربات اختصاصی من
                 </a>
                 <a class="nav-link {% if request.endpoint == 'reseller_cards' %}active{% endif %}" href="{{ url_for('reseller_cards') }}">
-                    <i class="fas fa-credit-card text-success"></i> کارت‌های بانکی مقصد
+                    <i class="fas fa-credit-card text-success"></i> روش‌ها و تنظیمات پرداخت
                 </a>
                 <a class="nav-link {% if request.endpoint == 'reseller_discounts' %}active{% endif %}" href="{{ url_for('reseller_discounts') }}">
                     <i class="fas fa-ticket text-danger"></i> کدهای تخفیف
@@ -753,7 +753,7 @@
                 <div class="nav-category">سیستم و حسابداری</div>
                 {% if has_permission('cards') %}
                 <a class="nav-link {% if request.endpoint == 'cards' %}active{% endif %}" href="{{ url_for('cards') }}">
-                    <i class="fas fa-credit-card"></i> کارت‌های بانکی
+                    <i class="fas fa-credit-card text-primary"></i> روش‌ها و تنظیمات پرداخت
                 </a>
                 {% endif %}
 

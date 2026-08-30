@@ -1,22 +1,103 @@
 {% extends "base.html" %}
-{% block title %}مدیریت کارت‌های بانکی مقصد{% endblock %}
+{% block title %}روش‌ها و تنظیمات پرداخت{% endblock %}
 
 {% block content %}
-<div class="page-header">
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
     <div>
-        <h1 class="page-title"><i class="fas fa-credit-card text-primary"></i> روتاتور کارت‌های بانکی مقصد</h1>
-        <p class="text-muted mb-0">تعریف شماره کارت‌های مختلف جهت دریافت واریزی کاربران و کنترل سقف روزانه</p>
+        <h1 class="page-title"><i class="fas fa-credit-card text-primary me-2"></i> روش‌ها و تنظیمات پرداخت</h1>
+        <p class="text-muted mb-0">مدیریت چیدمان و اولویت روش‌های پرداخت در ربات تلگرام، روتاتور کارت‌های بانکی و درگاه‌های پرداخت آنلاین و کریپتو</p>
     </div>
-    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCardModal">
-        <i class="fas fa-plus me-1"></i> افزودن کارت جدید
-    </button>
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-primary fw-bold" data-bs-toggle="modal" data-bs-target="#addCardModal">
+            <i class="fas fa-plus me-1"></i> افزودن کارت بانکی جدید
+        </button>
+    </div>
 </div>
 
-<div class="card shadow-sm border-0">
+<!-- ردیف ۱: چیدمان و اولویت روش‌های پرداخت در ربات تلگرام -->
+<div class="card shadow-sm border-0 mb-4">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="d-flex align-items-center gap-2">
-            <h5 class="mb-0 fw-bold"><i class="fas fa-credit-card text-primary me-2"></i>لیست کارت‌های بانکی</h5>
-            <span class="badge bg-secondary" data-table-count="cardsTable">{{ cards|length }} مورد</span>
+            <h5 class="mb-0 fw-bold"><i class="fas fa-arrow-down-up-across-line text-primary me-2"></i>چیدمان و اولویت نمایش روش‌های پرداخت در ربات تلگرام</h5>
+            <span class="badge bg-info-subtle text-info border border-info">پویا و لحظه‌ای</span>
+        </div>
+        <small class="text-muted">با دکمه‌های بالا و پایین می‌توانید ترتیب نمایش دکمه‌ها در ربات تلگرام را تنظیم کنید</small>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 70px;" class="text-center">اولویت</th>
+                        <th style="width: 90px;" class="text-center">جابجایی</th>
+                        <th>روش پرداخت</th>
+                        <th>توضیحات و عملکرد</th>
+                        <th class="text-center">وضعیت در ربات</th>
+                        <th class="text-end pe-3">عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in payment_methods %}
+                    <tr class="{% if not m.get('enabled', True) %}opacity-75 bg-light{% endif %}">
+                        <td class="text-center">
+                            <span class="badge bg-secondary rounded-pill font-monospace fs-6">{{ loop.index }}</span>
+                        </td>
+                        <td class="text-center">
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('admin_payment_method_move', method_id=m['id'], direction='up') }}" 
+                                   class="btn btn-outline-secondary py-1 px-2 {% if loop.first %}disabled{% endif %}" 
+                                   title="انتقال به بالا (اولویت بالاتر)">
+                                    <i class="fas fa-chevron-up"></i>
+                                </a>
+                                <a href="{{ url_for('admin_payment_method_move', method_id=m['id'], direction='down') }}" 
+                                   class="btn btn-outline-secondary py-1 px-2 {% if loop.last %}disabled{% endif %}" 
+                                   title="انتقال به پایین (اولویت پایین‌تر)">
+                                    <i class="fas fa-chevron-down"></i>
+                                </a>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="avatar-sm rounded-circle bg-{{ m.get('color', 'primary') }}-subtle text-{{ m.get('color', 'primary') }} d-flex align-items-center justify-content-center" style="width: 38px; height: 38px;">
+                                    <i class="fas {{ m.get('icon', 'fa-credit-card') }} fs-6"></i>
+                                </div>
+                                <div>
+                                    <strong class="text-dark">{{ m['name'] }}</strong>
+                                    <div class="text-muted small font-monospace"><code>{{ m['id'] }}</code></div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <small class="text-muted">{{ m.get('desc', '-') }}</small>
+                        </td>
+                        <td class="text-center">
+                            {% if m.get('enabled', True) %}
+                                <span class="badge bg-success-subtle text-success border border-success px-3 py-1">🟢 فعال در ربات</span>
+                            {% else %}
+                                <span class="badge bg-secondary-subtle text-secondary border px-3 py-1">⚪ غیرفعال</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end pe-3">
+                            <a href="{{ url_for('admin_payment_method_toggle', method_id=m['id']) }}" 
+                               class="btn btn-sm {% if m.get('enabled', True) %}btn-outline-warning{% else %}btn-outline-success{% endif %}">
+                                <i class="fas fa-power-off me-1"></i>
+                                {{ 'غیرفعال‌سازی' if m.get('enabled', True) else 'فعال‌سازی' }}
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ردیف ۲: کارت‌های بانکی مقصد -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0 fw-bold"><i class="fas fa-credit-card text-primary me-2"></i>کارت‌های بانکی مقصد (روتاتور کارت‌ها)</h5>
+            <span class="badge bg-secondary" data-table-count="cardsTable">{{ cards|length }} کارت</span>
         </div>
         <div class="table-search-wrapper">
             <i class="fas fa-search table-search-icon"></i>
@@ -27,37 +108,40 @@
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0" id="cardsTable">
-                <thead>
+                <thead class="table-light">
                     <tr>
-                        <th>شماره کارت</th>
-                        <th>صاحب حساب</th>
+                        <th class="ps-3">شماره کارت ۱۶ رقمی</th>
+                        <th>نام صاحب حساب</th>
                         <th>نام بانک</th>
-                        <th>سقف روزانه</th>
-                        <th>وضعیت</th>
-                        <th>عملیات</th>
+                        <th>سقف مجاز روزانه</th>
+                        <th class="text-center">وضعیت</th>
+                        <th class="text-end pe-3">عملیات</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for c in cards %}
                     <tr>
-                        <td><strong class="fs-6" style="letter-spacing: 2px;">{{ c['card_number'] }}</strong></td>
-                        <td>{{ c['card_holder'] }}</td>
-                        <td>{{ c['bank_name'] }}</td>
-                        <td>{{ "{:,}".format(c['daily_limit'] or 0) }} تومان</td>
-                        <td>
+                        <td class="ps-3">
+                            <strong class="fs-6 font-monospace text-primary" dir="ltr" style="letter-spacing: 2px;">{{ c['card_number'] }}</strong>
+                        </td>
+                        <td><strong>{{ c['card_holder'] }}</strong></td>
+                        <td><span class="badge bg-light text-dark border"><i class="fas fa-building-columns me-1"></i>{{ c['bank_name'] }}</span></td>
+                        <td><span class="font-monospace">{{ "{:,}".format(c['daily_limit'] or 0) }} تومان</span></td>
+                        <td class="text-center">
                             {% if c['is_active'] %}
-                                <span class="badge badge-approved">فعال</span>
+                                <span class="badge bg-success-subtle text-success border border-success px-3 py-1">🟢 فعال</span>
                             {% else %}
-                                <span class="badge badge-rejected">غیرفعال</span>
+                                <span class="badge bg-secondary-subtle text-secondary border px-3 py-1">⚪ غیرفعال</span>
                             {% endif %}
                         </td>
-                        <td>
+                        <td class="text-end pe-3">
                             <div class="btn-group btn-group-sm">
-                                <a href="{{ url_for('card_toggle', card_id=c['id']) }}" class="btn btn-outline-warning">
+                                <a href="{{ url_for('card_toggle', card_id=c['id']) }}" class="btn {% if c['is_active'] %}btn-outline-warning{% else %}btn-outline-success{% endif %}">
+                                    <i class="fas fa-power-off me-1"></i>
                                     {{ 'غیرفعال‌سازی' if c['is_active'] else 'فعال‌سازی' }}
                                 </a>
                                 <a href="{{ url_for('card_delete', card_id=c['id']) }}" class="btn btn-outline-danger" onclick="return confirm('آیا از حذف این کارت مطمئن هستید؟')">
-                                    <i class="fas fa-trash"></i>
+                                    <i class="fas fa-trash-can"></i>
                                 </a>
                             </div>
                         </td>
@@ -65,7 +149,7 @@
                     {% endfor %}
                     {% if not cards %}
                     <tr>
-                        <td colspan="6" class="text-center py-4 text-muted">هنوز کارتی تعریف نشده است.</td>
+                        <td colspan="6" class="text-center py-4 text-muted">هنوز هیچ کارت بانکی تعریف نشده است. جهت دریافت مبالغ کارت به کارت، یک کارت اضافه نمایید.</td>
                     </tr>
                     {% endif %}
                 </tbody>
@@ -74,41 +158,135 @@
     </div>
 </div>
 
-<!-- Modal افزودن کارت -->
+<!-- ردیف ۳: تنظیمات درگاه پرداخت آنلاین شاپرک و درگاه کریپتو -->
+<div class="row g-4 mb-4">
+    <!-- کارت درگاه پرداخت آنلاین -->
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-globe text-info me-2"></i>درگاه پرداخت آنلاین شاپرک</h5>
+                <span class="badge {% if admin_gateway.get('enabled') %}bg-success-subtle text-success border border-success{% else %}bg-secondary-subtle text-secondary border{% endif %}">
+                    {{ '🟢 فعال' if admin_gateway.get('enabled') else '⚪ غیرفعال' }}
+                </span>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" action="{{ url_for('cards') }}">
+                    <input type="hidden" name="action" value="save_online_gateway">
+                    
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" name="online_gateway_enabled" id="admGwEnabled" {% if admin_gateway.get('enabled') %}checked{% endif %}>
+                        <label class="form-check-label fw-bold" for="admGwEnabled">فعال‌سازی درگاه پرداخت آنلاین شاپرک</label>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">ارائه‌دهنده درگاه (Gateway Provider):</label>
+                        <select class="form-select" name="online_gateway_type">
+                            <option value="zarinpal" {% if admin_gateway.get('type') == 'zarinpal' %}selected{% endif %}>زرین‌پال (ZarinPal)</option>
+                            <option value="idpay" {% if admin_gateway.get('type') == 'idpay' %}selected{% endif %}>آیدی‌پی (IDPay)</option>
+                            <option value="nextpay" {% if admin_gateway.get('type') == 'nextpay' %}selected{% endif %}>نکست‌پی (NextPay)</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">مرچنت کد / کلید وب‌سرویس (API Key):</label>
+                        <input type="text" class="form-control font-monospace" name="online_gateway_key" 
+                               value="{{ admin_gateway.get('key') or '' }}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" dir="ltr">
+                        <div class="text-muted small mt-1">کد مرچنت دریافت شده از پنل پذیرندگی زرین‌پال یا آیدی‌پی</div>
+                    </div>
+
+                    <div class="form-check mb-4">
+                        <input class="form-check-input" type="checkbox" name="online_gateway_sandbox" id="admGwSandbox" {% if admin_gateway.get('sandbox') %}checked{% endif %}>
+                        <label class="form-check-label small text-muted" for="admGwSandbox">حالت آزمایشی (Sandbox / Test Mode)</label>
+                    </div>
+
+                    <button type="submit" class="btn btn-info text-white w-100 fw-bold">
+                        <i class="fas fa-save me-1"></i> ذخیره تنظیمات درگاه آنلاین
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- کارت درگاه پرداخت ارزی و کریپتو -->
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-gem text-warning me-2"></i>درگاه پرداخت ارز دیجیتال (تتر / کریپتو)</h5>
+                <span class="badge {% if crypto_config.get('enabled') %}bg-success-subtle text-success border border-success{% else %}bg-secondary-subtle text-secondary border{% endif %}">
+                    {{ '🟢 فعال' if crypto_config.get('enabled') else '⚪ غیرفعال' }}
+                </span>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" action="{{ url_for('cards') }}">
+                    <input type="hidden" name="action" value="save_crypto_gateway">
+
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" name="crypto_gateway_enabled" id="admCryptoEnabled" {% if crypto_config.get('enabled') %}checked{% endif %}>
+                        <label class="form-check-label fw-bold" for="admCryptoEnabled">فعال‌سازی پرداخت با کریپتو / تتر</label>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">آدرس کیف پول تتر (USDT Wallet Address):</label>
+                        <input type="text" class="form-control font-monospace" name="crypto_wallet_address" 
+                               value="{{ crypto_config.get('wallet_address') or '' }}" placeholder="آدرس والت تتر بر بستر TRC20 یا TON" dir="ltr">
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">نرخ هر تتر (تومان):</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control font-monospace" name="crypto_usdt_rate" 
+                                   value="{{ crypto_config.get('usdt_rate', 90000) }}" min="1000">
+                            <span class="input-group-text">تومان</span>
+                        </div>
+                        <div class="text-muted small mt-1">مبالغ پلن‌ها به صورت خودکار با این نرخ به تتر تبدیل می‌شوند</div>
+                    </div>
+
+                    <button type="submit" class="btn btn-warning text-dark w-100 fw-bold">
+                        <i class="fas fa-save me-1"></i> ذخیره تنظیمات درگاه کریپتو
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal افزودن کارت بانکی -->
 <div class="modal fade" id="addCardModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form method="POST">
-                <div class="modal-header">
-                    <h5 class="modal-title fw-bold">افزودن کارت بانکی جدید</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            <form method="POST" action="{{ url_for('cards') }}">
+                <input type="hidden" name="action" value="add_card">
+                <div class="modal-header bg-primary text-white py-3">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-plus me-2"></i>افزودن کارت بانکی مقصد</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body">
+                <div class="modal-body p-4">
                     <div class="mb-3">
-                        <label class="form-label">شماره ۱۶ رقمی کارت:</label>
-                        <input type="text" name="card_number" class="form-control text-center" placeholder="603799..." maxlength="19" required>
+                        <label class="form-label fw-semibold">شماره ۱۶ رقمی کارت:</label>
+                        <input type="text" name="card_number" class="form-control text-center font-monospace fs-5" placeholder="603799..." maxlength="19" required dir="ltr">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">نام صاحب حساب:</label>
+                        <label class="form-label fw-semibold">نام و نام خانوادگی صاحب حساب:</label>
                         <input type="text" name="card_holder" class="form-control" placeholder="مثال: علی محمدی" required>
                     </div>
-                    <div class="row g-2">
+                    <div class="row g-3">
                         <div class="col-md-6">
-                            <label class="form-label">نام بانک:</label>
-                            <input type="text" name="bank_name" class="form-control" placeholder="مثال: ملی / ملت" required>
+                            <label class="form-label fw-semibold">نام بانک:</label>
+                            <input type="text" name="bank_name" class="form-control" placeholder="مثال: بانک ملی / بانک ملت" required>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">سقف مجاز روزانه (تومان):</label>
-                            <input type="number" name="daily_limit" class="form-control" value="50000000">
+                            <label class="form-label fw-semibold">سقف مجاز روزانه (تومان):</label>
+                            <input type="number" name="daily_limit" class="form-control font-monospace" value="50000000" step="1000000">
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
-                    <button type="submit" class="btn btn-primary">ثبت کارت</button>
+                    <button type="submit" class="btn btn-primary fw-bold"><i class="fas fa-check me-1"></i>ثبت و ذخیره کارت</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 {% endblock %}
+

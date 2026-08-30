@@ -97,20 +97,21 @@
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0" id="resellerTxTable">
-                <thead>
+                <thead class="table-light">
                     <tr>
-                        <th>شناسه</th>
+                        <th class="ps-3">شناسه</th>
                         <th>نوع تراکنش</th>
                         <th>مبلغ</th>
                         <th>پلن / نام کاربری مشتری</th>
                         <th>توضیحات</th>
                         <th>تاریخ و زمان</th>
+                        <th class="text-end pe-3">جزئیات</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for tx in transactions %}
                     <tr>
-                        <td><code>#{{ tx['id'] }}</code></td>
+                        <td class="ps-3"><code class="fs-6 font-monospace">#{{ tx['id'] }}</code></td>
                         <td>
                             {% if tx['type'] == 'deposit' %}
                                 <span class="badge bg-success"><i class="fas fa-arrow-down me-1"></i> شارژ کیف پول</span>
@@ -129,12 +130,78 @@
                         </td>
                         <td>{{ tx['plan_name'] or '-' }} {% if tx['account_name'] %}<code class="ms-1">{{ tx['account_name'] }}</code>{% endif %}</td>
                         <td><small class="text-muted">{{ tx['description'] or '-' }}</small></td>
-                        <td><small class="text-muted">{{ tx['created_at'][:16] if tx['created_at'] else '-' }}</small></td>
+                        <td><small class="text-muted">{{ tx['created_at'][:16].replace('T', ' ') if tx['created_at'] else '-' }}</small></td>
+                        <td class="text-end pe-3">
+                            <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#resellerTxDetail{{ tx['id'] }}" title="مشاهده جزئیات کامل">
+                                <i class="fas fa-eye me-1"></i> مشاهده
+                            </button>
+
+                            <!-- Modal جزئیات تراکنش نماینده -->
+                            <div class="modal fade" id="resellerTxDetail{{ tx['id'] }}" tabindex="-1" aria-hidden="true">
+                                <div class="modal-dialog modal-dialog-centered">
+                                    <div class="modal-content text-start">
+                                        <div class="modal-header bg-primary text-white py-3">
+                                            <h5 class="modal-title fw-bold"><i class="fas fa-receipt me-2"></i>جزئیات کامل تراکنش #{{ tx['id'] }}</h5>
+                                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                        </div>
+                                        <div class="modal-body p-4">
+                                            <div class="list-group list-group-flush border rounded">
+                                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                                    <span class="text-muted">شناسه تراکنش:</span>
+                                                    <code class="fw-bold">#{{ tx['id'] }}</code>
+                                                </div>
+                                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                                    <span class="text-muted">نوع تراکنش:</span>
+                                                    <div>
+                                                        {% if tx['type'] == 'deposit' %}
+                                                            <span class="badge bg-success">شارژ کیف پول</span>
+                                                        {% elif tx['type'] == 'refund' %}
+                                                            <span class="badge bg-info text-dark">استرداد وجه</span>
+                                                        {% elif tx['type'] == 'renewal' %}
+                                                            <span class="badge bg-warning text-dark">تمدید اشتراک</span>
+                                                        {% else %}
+                                                            <span class="badge bg-danger">خرید اشتراک</span>
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+                                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                                    <span class="text-muted">مبلغ تراکنش:</span>
+                                                    <strong class="{{ 'text-success' if (tx['type'] in ['deposit', 'refund']) else 'text-danger' }}">
+                                                        {{ '+' if (tx['type'] in ['deposit', 'refund']) else '-' }}{{ "{:,}".format(tx['amount'] or 0) }} تومان
+                                                    </strong>
+                                                </div>
+                                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                                    <span class="text-muted">پلن / اکانت هیدیفای:</span>
+                                                    <span>{{ tx['plan_name'] or '-' }} {% if tx['account_name'] %}<code>{{ tx['account_name'] }}</code>{% endif %}</span>
+                                                </div>
+                                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                                    <span class="text-muted">روش پرداخت / درگاه:</span>
+                                                    <span class="badge bg-info-subtle text-info border border-info">{{ tx['gateway']|gateway_name }}</span>
+                                                </div>
+                                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                                    <span class="text-muted">تاریخ و زمان:</span>
+                                                    <small class="text-muted">{{ tx['created_at'] or '-' }}</small>
+                                                </div>
+                                                {% if tx['description'] %}
+                                                <div class="list-group-item">
+                                                    <div class="text-muted small mb-1">توضیحات و شرح تراکنش:</div>
+                                                    <div class="bg-light p-2 rounded small">{{ tx['description'] }}</div>
+                                                </div>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">بستن</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
                     </tr>
                     {% endfor %}
                     {% if not transactions %}
                     <tr>
-                        <td colspan="6" class="text-center py-4 text-muted">تراکنشی ثبت نشده است.</td>
+                        <td colspan="7" class="text-center py-4 text-muted">تراکنشی ثبت نشده است.</td>
                     </tr>
                     {% endif %}
                 </tbody>

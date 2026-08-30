@@ -1,18 +1,101 @@
 {% extends "base.html" %}
-{% block title %}مدیریت کارت‌های بانکی مقصد{% endblock %}
+{% block title %}روش‌ها و تنظیمات پرداخت - پنل نمایندگی{% endblock %}
 
 {% block content %}
-<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="page-title mb-0"><i class="fas fa-credit-card text-primary me-2"></i> کارت‌های بانکی مقصد</h1>
-        <p class="text-muted mb-0">مدیریت شماره کارت‌های واریزی جهت دریافت مستقیم مبالغ مشتریان در ربات تلگرام اختصاصی</p>
+        <h1 class="page-title mb-0"><i class="fas fa-credit-card text-primary me-2"></i> روش‌ها و تنظیمات پرداخت</h1>
+        <p class="text-muted mb-0">مدیریت چیدمان و اولویت روش‌های پرداخت در ربات تلگرام اختصاصی، کارت‌های بانکی مقصد و درگاه آنلاین</p>
     </div>
     <button type="button" class="btn btn-primary fw-bold" data-bs-toggle="modal" data-bs-target="#addCardModal">
         <i class="fas fa-plus me-1"></i> افزودن کارت بانکی جدید
     </button>
 </div>
 
-<!-- لیست کارت‌های ثبت شده -->
+<!-- ردیف ۱: چیدمان و اولویت روش‌های پرداخت در ربات اختصاصی نماینده -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0 fw-bold"><i class="fas fa-arrow-down-up-across-line text-primary me-2"></i>چیدمان و اولویت نمایش روش‌های پرداخت در ربات اختصاصی شما</h5>
+            <span class="badge bg-info-subtle text-info border border-info">اختصاصی ربات نماینده</span>
+        </div>
+        <small class="text-muted">ترتیب نمایش گزینه‌های خرید در ربات تلگرام مشتریان شما بر اساس این اولویت خواهد بود</small>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 70px;" class="text-center">اولویت</th>
+                        <th style="width: 90px;" class="text-center">جابجایی</th>
+                        <th>روش پرداخت</th>
+                        <th>توضیحات و عملکرد</th>
+                        <th class="text-center">وضعیت در ربات شما</th>
+                        <th class="text-end pe-3">عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in payment_methods %}
+                    <tr class="{% if not m.get('enabled', True) %}opacity-75 bg-light{% endif %}">
+                        <td class="text-center">
+                            <span class="badge bg-secondary rounded-pill font-monospace fs-6">{{ loop.index }}</span>
+                        </td>
+                        <td class="text-center">
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('reseller_payment_method_move', method_id=m['id'], direction='up') }}" 
+                                   class="btn btn-outline-secondary py-1 px-2 {% if loop.first %}disabled{% endif %}" 
+                                   title="انتقال به بالا (اولویت بالاتر)">
+                                    <i class="fas fa-chevron-up"></i>
+                                </a>
+                                <a href="{{ url_for('reseller_payment_method_move', method_id=m['id'], direction='down') }}" 
+                                   class="btn btn-outline-secondary py-1 px-2 {% if loop.last %}disabled{% endif %}" 
+                                   title="انتقال به پایین (اولویت پایین‌تر)">
+                                    <i class="fas fa-chevron-down"></i>
+                                </a>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="avatar-sm rounded-circle bg-{{ m.get('color', 'primary') }}-subtle text-{{ m.get('color', 'primary') }} d-flex align-items-center justify-content-center" style="width: 38px; height: 38px;">
+                                    <i class="fas {{ m.get('icon', 'fa-credit-card') }} fs-6"></i>
+                                </div>
+                                <div>
+                                    <strong class="text-dark">{{ m['name'] }}</strong>
+                                    <div class="text-muted small font-monospace"><code>{{ m['id'] }}</code></div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <small class="text-muted">{{ m.get('desc', '-') }}</small>
+                        </td>
+                        <td class="text-center">
+                            {% if m.get('enabled', True) %}
+                                <span class="badge bg-success-subtle text-success border border-success px-3 py-1">🟢 فعال در ربات</span>
+                            {% else %}
+                                <span class="badge bg-secondary-subtle text-secondary border px-3 py-1">⚪ غیرفعال</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end pe-3">
+                            <a href="{{ url_for('reseller_payment_method_toggle', method_id=m['id']) }}" 
+                               class="btn btn-sm {% if m.get('enabled', True) %}btn-outline-warning{% else %}btn-outline-success{% endif %}">
+                                <i class="fas fa-power-off me-1"></i>
+                                {{ 'غیرفعال‌سازی' if m.get('enabled', True) else 'فعال‌سازی' }}
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ردیف ۲: کارت‌های بانکی مقصد نماینده -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="fw-bold mb-0 text-dark"><i class="fas fa-credit-card text-primary me-2"></i>کارت‌های بانکی مقصد واریزی مشتریان</h5>
+    <span class="badge bg-secondary">{{ cards|length }} کارت ثبت شده</span>
+</div>
+
 <div class="row g-4 mb-4">
     {% for card in cards %}
     <div class="col-md-6 col-lg-4">
@@ -61,10 +144,55 @@
         <div class="card border-0 shadow-sm text-center py-5">
             <i class="fas fa-credit-card fs-1 text-secondary opacity-50 mb-3"></i>
             <h5 class="fw-bold text-muted">هنوز هیچ کارت بانکی ثبت نکرده‌اید!</h5>
-            <p class="text-muted small">برای اینکه مشتریان در ربات تلگرام شماره کارت شما را ببینند، روی دکمه «افزودن کارت بانکی جدید» کلیک کنید.</p>
+            <p class="text-muted small">برای اینکه مشتریان در ربات اختصاصی شما شماره کارت شما را ببینند، روی دکمه «افزودن کارت بانکی جدید» کلیک کنید.</p>
         </div>
     </div>
     {% endif %}
+</div>
+
+<!-- ردیف ۳: درگاه پرداخت آنلاین اختصاصی نماینده -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 fw-bold"><i class="fas fa-globe text-info me-2"></i>درگاه پرداخت آنلاین اختصاصی ربات نماینده</h5>
+        <span class="badge {% if reseller_gateway.get('enabled') %}bg-success-subtle text-success border border-success{% else %}bg-secondary-subtle text-secondary border{% endif %}">
+            {{ '🟢 درگاه اختصاصی فعال' if reseller_gateway.get('enabled') else '⚪ غیرفعال' }}
+        </span>
+    </div>
+    <div class="card-body p-4">
+        <form method="POST" action="{{ url_for('reseller_cards') }}">
+            <input type="hidden" name="action" value="save_reseller_gateway">
+            
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" name="gateway_enabled" id="rGwEnabled" {% if reseller_gateway.get('enabled') %}checked{% endif %}>
+                <label class="form-check-label fw-bold" for="rGwEnabled">فعال‌سازی درگاه پرداخت آنلاین شاپرک در ربات اختصاصی من</label>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">ارائه‌دهنده درگاه (Gateway Provider):</label>
+                    <select class="form-select" name="gateway_type">
+                        <option value="zarinpal" {% if reseller_gateway.get('type') == 'zarinpal' %}selected{% endif %}>زرین‌پال (ZarinPal)</option>
+                        <option value="idpay" {% if reseller_gateway.get('type') == 'idpay' %}selected{% endif %}>آیدی‌پی (IDPay)</option>
+                        <option value="nextpay" {% if reseller_gateway.get('type') == 'nextpay' %}selected{% endif %}>نکست‌پی (NextPay)</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">مرچنت کد / کلید وب‌سرویس (API Key):</label>
+                    <input type="text" class="form-control font-monospace" name="gateway_key" 
+                           value="{{ reseller_gateway.get('key') or '' }}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" dir="ltr">
+                </div>
+            </div>
+
+            <div class="form-check mb-4">
+                <input class="form-check-input" type="checkbox" name="gateway_sandbox" id="rGwSandbox" {% if reseller_gateway.get('sandbox') %}checked{% endif %}>
+                <label class="form-check-label small text-muted" for="rGwSandbox">حالت تستی / آزمایشی (Sandbox)</label>
+            </div>
+
+            <button type="submit" class="btn btn-primary fw-bold px-4">
+                <i class="fas fa-save me-1"></i> ذخیره تنظیمات درگاه اختصاصی
+            </button>
+        </form>
+    </div>
 </div>
 
 <!-- مدال افزودن کارت بانکی -->
@@ -72,6 +200,7 @@
     <div class="modal-dialog">
         <div class="modal-content text-start">
             <form action="{{ url_for('reseller_cards') }}" method="POST">
+                <input type="hidden" name="action" value="add_card">
                 <div class="modal-header bg-primary text-white py-3">
                     <h5 class="modal-title fw-bold"><i class="fas fa-credit-card me-2"></i>افزودن کارت بانکی مقصد</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
@@ -105,3 +234,4 @@
     </div>
 </div>
 {% endblock %}
+

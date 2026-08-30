@@ -145,7 +145,7 @@
                         </td>
                         <td>{{ tx['plan_name'] or '-' }}</td>
                         <td><strong>{{ "{:,}".format(tx['amount'] or 0) }} تومان</strong></td>
-                        <td>{{ tx['gateway'] or '-' }}</td>
+                        <td><span class="badge bg-light text-dark border">{{ tx['gateway']|gateway_name }}</span></td>
                         <td>
                             {% if tx['status'] == 'pending' %}
                                 <span class="badge badge-pending">در انتظار</span>
@@ -202,7 +202,7 @@
                                                 </div>
                                                 <div class="list-group-item d-flex justify-content-between">
                                                     <span class="text-muted">روش پرداخت / درگاه:</span>
-                                                    <span>{{ tx['gateway'] or 'کارت به کارت' }}</span>
+                                                    <span class="badge bg-info-subtle text-info border border-info">{{ tx['gateway']|gateway_name }}</span>
                                                 </div>
                                                 <div class="list-group-item d-flex justify-content-between">
                                                     <span class="text-muted">کد پیگیری / شماره فیش:</span>
