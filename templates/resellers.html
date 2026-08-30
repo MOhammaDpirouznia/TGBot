@@ -57,7 +57,7 @@
                     <tr>
                         <td>
                             <div class="d-flex align-items-center gap-2">
-                                <div class="position-relative">
+                                <div class="position-relative" style="cursor: pointer;" data-bs-toggle="modal" data-bs-target="#resellerPaymentModal{{ r['id'] }}" title="مشاهده سوابق و جزئیات پرداخت‌های {{ r['name'] }}">
                                     <img src="{{ avatar_url(r['telegram_id'] or r['username'] or 'Reseller') }}" 
                                          alt="{{ r['name'] }}" 
                                          class="rounded-circle border shadow-sm flex-shrink-0" 
@@ -68,7 +68,9 @@
                                 </div>
                                 <div>
                                     <div class="d-flex align-items-center gap-1">
-                                        <strong>{{ r['name'] }}</strong>
+                                        <a href="javascript:void(0)" class="fw-bold text-dark text-decoration-none hover-primary" data-bs-toggle="modal" data-bs-target="#resellerPaymentModal{{ r['id'] }}" title="مشاهده سوابق و جزئیات پرداخت‌ها">
+                                            {{ r['name'] }} <i class="fas fa-file-invoice-dollar text-primary ms-1" style="font-size: 0.8rem;"></i>
+                                        </a>
                                         {% if r.get('is_online') %}
                                             <span class="badge bg-success-subtle text-success border border-success px-1 py-0" style="font-size: 0.65rem;"><i class="fas fa-circle me-1" style="font-size: 0.5rem;"></i>آنلاین</span>
                                         {% else %}
@@ -118,6 +120,9 @@
                         </td>
                         <td>
                             <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#resellerPaymentModal{{ r['id'] }}" title="مشاهده سوابق مالی و پرداخت‌ها">
+                                    <i class="fas fa-file-invoice-dollar me-1"></i> سابقه پرداخت‌ها
+                                </button>
                                 <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#topupModal{{ r['id'] }}" title="شارژ کیف پول">
                                     <i class="fas fa-wallet me-1"></i> شارژ
                                 </button>
@@ -131,7 +136,7 @@
                                 <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#securityModal{{ r['id'] }}" title="مشاهده نشست‌ها و امنیت نماینده">
                                     <i class="fas fa-shield-halved"></i>
                                 </button>
-                                <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editResellerModal{{ r['id'] }}" title="ویرایش اطلاعات">
+                                <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editResellerModal{{ r['id'] }}" title="ویرایش اطلاعات">
                                     <i class="fas fa-pen"></i>
                                 </button>
                                 <a href="{{ url_for('admin_reseller_toggle', reseller_id=r['id']) }}" class="btn btn-outline-warning" title="تغییر وضعیت فعال/غیرفعال" onclick="return confirm('آیا از تغییر وضعیت این نماینده مطمئن هستید؟')">
@@ -140,6 +145,198 @@
                                 <a href="{{ url_for('admin_reseller_delete', reseller_id=r['id']) }}" class="btn btn-outline-danger" title="حذف نماینده" onclick="return confirm('آیا از حذف کامل این نماینده و سوابق آن اطمینان دارید؟ این عمل غیرقابل بازگشت است.')">
                                     <i class="fas fa-trash-can"></i>
                                 </a>
+                            </div>
+
+                            <!-- Modal مشاهده سوابق و جزئیات پرداخت‌های نماینده -->
+                            <div class="modal fade" id="resellerPaymentModal{{ r['id'] }}" tabindex="-1" aria-hidden="true">
+                                <div class="modal-dialog modal-xl modal-dialog-scrollable">
+                                    <div class="modal-content text-start">
+                                        <div class="modal-header bg-primary text-white py-3">
+                                            <div class="d-flex align-items-center gap-2">
+                                                <i class="fas fa-file-invoice-dollar fs-4"></i>
+                                                <div>
+                                                    <h5 class="modal-title fw-bold mb-0">سوابق مالی و جزئیات پرداخت‌های «{{ r['name'] }}»</h5>
+                                                    <small class="opacity-75">نام کاربری: @{{ r['username'] }} {% if r['telegram_id'] %}| آیدی تلگرام: {{ r['telegram_id'] }}{% endif %}</small>
+                                                </div>
+                                            </div>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <a href="{{ url_for('admin_reseller_export_payments', reseller_id=r['id']) }}" class="btn btn-sm btn-light fw-bold">
+                                                    <i class="fas fa-file-excel text-success me-1"></i> خروجی اکسل
+                                                </a>
+                                                <a href="{{ url_for('admin_reseller_payments', reseller_id=r['id']) }}" class="btn btn-sm btn-outline-light">
+                                                    <i class="fas fa-arrow-up-right-from-square me-1"></i> صفحه اختصاصی
+                                                </a>
+                                                <button type="button" class="btn-close btn-close-white ms-2" data-bs-dismiss="modal"></button>
+                                            </div>
+                                        </div>
+                                        <div class="modal-body p-4">
+                                            {% set p_hist = r.get('payment_history', {}) %}
+                                            <!-- ۴ کارت آماری وضعیت مالی نماینده -->
+                                            <div class="row g-3 mb-4">
+                                                <div class="col-md-3 col-sm-6">
+                                                    <div class="card border-0 shadow-sm p-3 bg-success bg-opacity-10 border-start border-success border-4">
+                                                        <span class="text-muted small">موجودی کیف پول فعلی</span>
+                                                        <h5 class="fw-bold text-success font-monospace mb-0 mt-1">{{ "{:,}".format(r['balance'] or 0) }} تومان</h5>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-3 col-sm-6">
+                                                    <div class="card border-0 shadow-sm p-3 bg-primary bg-opacity-10 border-start border-primary border-4">
+                                                        <span class="text-muted small">مجموع کل شارژها و واریزی‌ها</span>
+                                                        <h5 class="fw-bold text-primary font-monospace mb-0 mt-1">{{ "{:,}".format(p_hist.get('total_deposited', 0)) }} تومان</h5>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-3 col-sm-6">
+                                                    <div class="card border-0 shadow-sm p-3 bg-danger bg-opacity-10 border-start border-danger border-4">
+                                                        <span class="text-muted small">مجموع خریدها و تمدیدها</span>
+                                                        <h5 class="fw-bold text-danger font-monospace mb-0 mt-1">{{ "{:,}".format(p_hist.get('total_spent', 0)) }} تومان</h5>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-3 col-sm-6">
+                                                    <div class="card border-0 shadow-sm p-3 bg-info bg-opacity-10 border-start border-info border-4">
+                                                        <span class="text-muted small">تخفیف همکاری و بونوس‌ها</span>
+                                                        <h5 class="fw-bold text-info font-monospace mb-0 mt-1">{{ r['discount_percent'] }}٪ تخفیف</h5>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- تب‌های تراکنش‌های کیف پول و فیش‌های بانکی -->
+                                            <ul class="nav nav-pills mb-3" id="modalPaymentTab{{ r['id'] }}" role="tablist">
+                                                <li class="nav-item" role="presentation">
+                                                    <button class="nav-link active fw-bold btn-sm py-2 px-3" id="modal-wallet-tab{{ r['id'] }}" data-bs-toggle="pill" data-bs-target="#modal-wallet-content{{ r['id'] }}" type="button" role="tab">
+                                                        <i class="fas fa-wallet me-1 text-primary"></i> تراکنش‌های کیف پول ({{ p_hist.get('wallet_transactions', [])|length }})
+                                                    </button>
+                                                </li>
+                                                <li class="nav-item" role="presentation">
+                                                    <button class="nav-link fw-bold btn-sm py-2 px-3" id="modal-receipt-tab{{ r['id'] }}" data-bs-toggle="pill" data-bs-target="#modal-receipt-content{{ r['id'] }}" type="button" role="tab">
+                                                        <i class="fas fa-receipt me-1 text-warning"></i> بسته‌ها و فیش‌های ثبت‌شده ({{ p_hist.get('receipt_transactions', [])|length }})
+                                                    </button>
+                                                </li>
+                                            </ul>
+
+                                            <div class="tab-content" id="modalPaymentTabContent{{ r['id'] }}">
+                                                <!-- تب ۱: تراکنش‌های کیف پول -->
+                                                <div class="tab-pane fade show active" id="modal-wallet-content{{ r['id'] }}" role="tabpanel">
+                                                    <div class="table-responsive border rounded">
+                                                        <table class="table table-sm table-hover align-middle mb-0">
+                                                            <thead class="table-light">
+                                                                <tr>
+                                                                    <th class="ps-3">شناسه</th>
+                                                                    <th>نوع تراکنش</th>
+                                                                    <th>مبلغ</th>
+                                                                    <th>پلن / اکانت هیدیفای</th>
+                                                                    <th>توضیحات</th>
+                                                                    <th>تاریخ و زمان</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {% for tx in p_hist.get('wallet_transactions', []) %}
+                                                                <tr>
+                                                                    <td class="ps-3"><code class="font-monospace">#{{ tx['id'] }}</code></td>
+                                                                    <td>
+                                                                        {% if tx['type'] == 'deposit' %}
+                                                                            <span class="badge bg-success"><i class="fas fa-arrow-down me-1"></i> شارژ کیف پول</span>
+                                                                        {% elif tx['type'] == 'refund' %}
+                                                                            <span class="badge bg-info text-dark"><i class="fas fa-rotate-left me-1"></i> استرداد وجه</span>
+                                                                        {% elif tx['type'] == 'renewal' %}
+                                                                            <span class="badge bg-warning text-dark"><i class="fas fa-arrows-rotate me-1"></i> تمدید اشتراک</span>
+                                                                        {% else %}
+                                                                            <span class="badge bg-danger"><i class="fas fa-arrow-up me-1"></i> خرید اشتراک</span>
+                                                                        {% endif %}
+                                                                    </td>
+                                                                    <td>
+                                                                        <strong class="{{ 'text-success' if (tx['type'] in ['deposit', 'refund']) else 'text-danger' }} font-monospace">
+                                                                            {{ '+' if (tx['type'] in ['deposit', 'refund']) else '-' }}{{ "{:,}".format(tx['amount'] or 0) }} تومان
+                                                                        </strong>
+                                                                    </td>
+                                                                    <td>
+                                                                        {{ tx['plan_name'] or '-' }}
+                                                                        {% if tx['account_name'] and tx['account_name'] != '-' %}
+                                                                            <code class="ms-1">{{ tx['account_name'] }}</code>
+                                                                        {% endif %}
+                                                                    </td>
+                                                                    <td><small class="text-muted">{{ tx['description'] or '-' }}</small></td>
+                                                                    <td><small class="text-muted">{{ tx['created_at'][:16].replace('T', ' ') if tx['created_at'] else '-' }}</small></td>
+                                                                </tr>
+                                                                {% endfor %}
+                                                                {% if not p_hist.get('wallet_transactions') %}
+                                                                <tr>
+                                                                    <td colspan="6" class="text-center py-4 text-muted">تراکنشی در کیف پول این نماینده ثبت نشده است.</td>
+                                                                </tr>
+                                                                {% endif %}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+
+                                                <!-- تب ۲: فیش‌ها و بسته‌های ثبت‌شده -->
+                                                <div class="tab-pane fade" id="modal-receipt-content{{ r['id'] }}" role="tabpanel">
+                                                    <div class="table-responsive border rounded">
+                                                        <table class="table table-sm table-hover align-middle mb-0">
+                                                            <thead class="table-light">
+                                                                <tr>
+                                                                    <th class="ps-3">کد سفارش</th>
+                                                                    <th>بسته / پلن</th>
+                                                                    <th>مبلغ</th>
+                                                                    <th>روش پرداخت</th>
+                                                                    <th>کد پیگیری</th>
+                                                                    <th>وضعیت</th>
+                                                                    <th>تاریخ ثبت</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {% for rc in p_hist.get('receipt_transactions', []) %}
+                                                                <tr>
+                                                                    <td class="ps-3"><code class="font-monospace">{{ rc['order_id'] }}</code></td>
+                                                                    <td>
+                                                                        {% if rc.get('gateway') == 'bundle_reseller' or (rc.get('order_id') and rc['order_id'].startswith('R_BUNDLE')) %}
+                                                                            <span class="badge mb-1 d-inline-block" style="background: linear-gradient(135deg, #7c3aed, #db2777); color: #fff; font-size: 0.7rem;">
+                                                                                <i class="fas fa-crown me-1 text-warning"></i> بسته اعتباری
+                                                                            </span>
+                                                                        {% endif %}
+                                                                        <div class="fw-bold">{{ rc['plan_name'] or '-' }}</div>
+                                                                    </td>
+                                                                    <td><strong class="text-primary font-monospace">{{ "{:,}".format(rc['amount'] or 0) }} تومان</strong></td>
+                                                                    <td><span class="badge bg-light text-dark border">{{ rc['gateway']|gateway_name }}</span></td>
+                                                                    <td>
+                                                                        {% if rc['tracking_code'] %}
+                                                                            <code class="text-secondary">{{ rc['tracking_code'] }}</code>
+                                                                        {% else %}
+                                                                            <span class="text-muted">-</span>
+                                                                        {% endif %}
+                                                                    </td>
+                                                                    <td>
+                                                                        {% if rc['status'] in ['approved', 'completed'] %}
+                                                                            <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i> تایید شده</span>
+                                                                        {% elif rc['status'] == 'pending' %}
+                                                                            <span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i> در انتظار بررسی</span>
+                                                                        {% elif rc['status'] == 'revoked' %}
+                                                                            <span class="badge bg-secondary"><i class="fas fa-ban me-1"></i> ابطال‌شده</span>
+                                                                        {% else %}
+                                                                            <span class="badge bg-danger"><i class="fas fa-times-circle me-1"></i> رد شده</span>
+                                                                        {% endif %}
+                                                                    </td>
+                                                                    <td><small class="text-muted">{{ rc['created_at'][:16].replace('T', ' ') if rc['created_at'] else '-' }}</small></td>
+                                                                </tr>
+                                                                {% endfor %}
+                                                                {% if not p_hist.get('receipt_transactions') %}
+                                                                <tr>
+                                                                    <td colspan="7" class="text-center py-4 text-muted">فیش یا سفارشی برای این نماینده ثبت نشده است.</td>
+                                                                </tr>
+                                                                {% endif %}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="modal-footer d-flex justify-content-between bg-light py-2">
+                                            <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#topupModal{{ r['id'] }}">
+                                                <i class="fas fa-plus me-1"></i> شارژ دستی کیف پول این نماینده
+                                            </button>
+                                            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">بستن</button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- Modal مشاهده نشست‌ها و امنیت نماینده -->

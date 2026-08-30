@@ -126,16 +126,16 @@
                         <td data-value="{{ tx['plan_name'] or '' }}">
                             {% if tx.get('gateway') == 'bundle_reseller' or (tx.get('order_id') and tx['order_id'].startswith('R_BUNDLE')) %}
                                 <div>
-                                    <span class="badge mb-1" style="background: linear-gradient(135deg, #7c3aed, #db2777); color: #fff; font-size: 0.75rem;">
-                                        <i class="fas fa-crown me-1 text-warning"></i> شارژ بسته اعتباری نماینده #{{ tx.get('reseller_id') or 'مستقل' }}
-                                    </span>
+                                    <a href="{{ url_for('admin_reseller_payments', reseller_id=tx.get('reseller_id')) if tx.get('reseller_id') else '#' }}" class="badge mb-1 text-decoration-none shadow-sm" style="background: linear-gradient(135deg, #7c3aed, #db2777); color: #fff; font-size: 0.75rem;" title="مشاهده سوابق و جزئیات پرداخت‌های این نماینده">
+                                        <i class="fas fa-crown me-1 text-warning"></i> شارژ بسته اعتباری نماینده #{{ tx.get('reseller_id') or 'مستقل' }} <i class="fas fa-arrow-up-right-from-square ms-1" style="font-size: 0.6rem;"></i>
+                                    </a>
                                 </div>
                                 <div class="fw-bold text-dark">{{ tx['plan_name'] or 'بسته اعتباری' }}</div>
                             {% elif tx.get('reseller_id') %}
                                 <div>
-                                    <span class="badge mb-1" style="background: #f5f3ff; color: #7c3aed; border: 1px solid #ddd6fe; font-size: 0.72rem;">
-                                        <i class="fas fa-robot me-1"></i> ربات نماینده #{{ tx['reseller_id'] }}
-                                    </span>
+                                    <a href="{{ url_for('admin_reseller_payments', reseller_id=tx.get('reseller_id')) }}" class="badge mb-1 text-decoration-none" style="background: #f5f3ff; color: #7c3aed; border: 1px solid #ddd6fe; font-size: 0.72rem;" title="مشاهده سوابق و جزئیات پرداخت‌های این نماینده">
+                                        <i class="fas fa-robot me-1"></i> ربات نماینده #{{ tx['reseller_id'] }} <i class="fas fa-arrow-up-right-from-square ms-1" style="font-size: 0.6rem;"></i>
+                                    </a>
                                 </div>
                                 <div class="fw-bold">{{ tx['plan_name'] or '-' }}</div>
                             {% else %}
