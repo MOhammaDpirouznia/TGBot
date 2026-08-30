@@ -276,7 +276,7 @@ def avatar_url_helper(identifier=None):
 @app.route("/webapp/user/<int:telegram_id>")
 @app.route("/webapp/sub/<sub_uuid>")
 def telegram_webapp(telegram_id=None, sub_uuid=None):
-    """رابط کاربری مدرن مینی‌اپ تلگرام جهت استعلام آنی حجم، زمان و اتصال سریع با Deep Link"""
+    """رابط کاربری مدرن و واکنش‌گرای مینی‌اپ تلگرام جهت استعلام آنی حجم، زمان و اتصال سریع با Deep Link"""
     tg_id_arg = request.args.get("tg_id") or request.args.get("id")
     if tg_id_arg and str(tg_id_arg).isdigit():
         telegram_id = int(tg_id_arg)
@@ -287,22 +287,35 @@ def telegram_webapp(telegram_id=None, sub_uuid=None):
             telegram_id = sub["telegram_id"]
 
     user = None
-    subscriptions = []
+    raw_subscriptions = []
     wallet_balance = 0
     expire_shamsi = None
 
     if telegram_id:
         user = db.get_user(telegram_id)
-        subscriptions = db.get_user_subscriptions(telegram_id, status="active")
-        if not subscriptions:
-            subscriptions = db.get_user_subscriptions(telegram_id)
+        raw_subscriptions = db.get_user_subscriptions(telegram_id, status="active")
+        if not raw_subscriptions:
+            raw_subscriptions = db.get_user_subscriptions(telegram_id)
         wallet_balance = db.get_user_wallet_balance(telegram_id)
 
     if not user:
         all_users = db.get_all_users()
-        user = all_users[0] if all_users else {"telegram_id": 123456789, "username": "Guest_User"}
-        subscriptions = db.get_user_subscriptions(user["telegram_id"])
+        user = all_users[0] if all_users else {"telegram_id": 123456789, "username": "کاربر مهمان"}
+        raw_subscriptions = db.get_user_subscriptions(user["telegram_id"])
         wallet_balance = db.get_user_wallet_balance(user["telegram_id"])
+
+    panel_url = get_hiddify_url()
+    user_proxy = get_user_proxy()
+    single_link_template = get_single_link_template(db)
+
+    subscriptions = []
+    for s in raw_subscriptions:
+        item = enrich_subscription_details(s)
+        uuid_val = item.get("hidify_uuid") or ""
+        acc_name = item.get("account_name") or "Account"
+        item["sub_url"] = f"{panel_url}/{user_proxy}/{uuid_val}/" if uuid_val else ""
+        item["single_url"] = format_single_link(single_link_template, uuid_val, acc_name) if (single_link_template and uuid_val) else ""
+        subscriptions.append(item)
 
     if subscriptions:
         first_sub = subscriptions[0]
@@ -314,6 +327,16 @@ def telegram_webapp(telegram_id=None, sub_uuid=None):
                 pass
 
     bot_username = os.getenv("BOT_USERNAME", "hiddify_shop_bot").lstrip("@")
+    
+    # دریافت دامنه آموزش
+    tutorial_domain = db.get_setting("tutorial_domain", "").strip()
+    if tutorial_domain:
+        if not tutorial_domain.startswith("http://") and not tutorial_domain.startswith("https://"):
+            tutorial_url = f"https://{tutorial_domain}"
+        else:
+            tutorial_url = tutorial_domain
+    else:
+        tutorial_url = url_for("tutorials_portal")
 
     return render_template(
         "webapp.html",
@@ -321,7 +344,8 @@ def telegram_webapp(telegram_id=None, sub_uuid=None):
         subscriptions=subscriptions,
         wallet_balance=wallet_balance,
         expire_shamsi=expire_shamsi,
-        bot_username=bot_username
+        bot_username=bot_username,
+        tutorial_url=tutorial_url
     )
 
 
