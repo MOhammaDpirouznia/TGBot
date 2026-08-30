@@ -124,22 +124,143 @@
                                 <span class="badge bg-secondary" style="font-size: 0.75rem;">ربات تلگرام</span>
                             {% endif %}
                         </td>
-                        <td>
-                            {% if sub_url %}
+                        <td class="text-end pe-3">
                             <div class="btn-group btn-group-sm">
+                                {% if sub_url %}
                                 <button type="button" class="btn btn-outline-primary py-1 px-2" onclick="showQrModal('{{ sub_url }}', 'لینک و QR سابسکریپشن: {{ sub['account_name'] }}')" title="مشاهده QR کد و لینک ساب">
-                                    <i class="fas fa-qrcode me-1"></i> ساب
+                                    <i class="fas fa-qrcode"></i>
                                 </button>
                                 <button type="button" class="btn btn-outline-warning py-1 px-2" onclick="showQrModal('{{ single_url }}', 'لینک و QR اتصال تکی (VMess): {{ sub['account_name'] }}')" title="مشاهده QR کد و لینک تکی VMess">
-                                    <i class="fas fa-bolt text-warning me-1"></i> <span class="text-single-yellow">تکی</span>
+                                    <i class="fas fa-bolt text-warning"></i>
                                 </button>
                                 <a href="{{ sub_url }}" target="_blank" class="btn btn-outline-secondary py-1 px-2" title="باز کردن پنل کاربری در مرورگر">
                                     <i class="fas fa-external-link-alt"></i>
                                 </a>
+                                {% endif %}
+
+                                {% if has_permission('sub_manage') %}
+                                <!-- دکمه فعال/غیرفعال‌سازی -->
+                                <form action="{{ url_for('admin_subscription_toggle', sub_id=sub['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از تغییر وضعیت این اشتراک مطمئن هستید؟');">
+                                    <button type="submit" class="btn {{ 'btn-outline-danger' if sub['status'] == 'active' else 'btn-outline-success' }} py-1 px-2" title="{{ 'غیرفعال‌سازی اشتراک' if sub['status'] == 'active' else 'فعال‌سازی اشتراک' }}">
+                                        <i class="fas {{ 'fa-pause' if sub['status'] == 'active' else 'fa-play' }}"></i>
+                                    </button>
+                                </form>
+
+                                <!-- دکمه ویرایش اشتراک -->
+                                <button type="button" class="btn btn-outline-primary py-1 px-2" data-bs-toggle="modal" data-bs-target="#editSubModal{{ sub['id'] }}" title="ویرایش اشتراک">
+                                    <i class="fas fa-pen-to-square"></i>
+                                </button>
+                                {% endif %}
+
+                                {% if has_permission('sub_delete') %}
+                                <!-- دکمه حذف اشتراک با استرداد وجه -->
+                                <button type="button" class="btn btn-outline-danger py-1 px-2" data-bs-toggle="modal" data-bs-target="#deleteSubModal{{ sub['id'] }}" title="حذف اشتراک و استرداد وجه">
+                                    <i class="fas fa-trash-can"></i>
+                                </button>
+                                {% endif %}
                             </div>
-                            {% else %}
-                            <span class="text-muted small">-</span>
-                            {% endif %}
+
+                            {% set ref = sub.get('refund_info') or {} %}
+
+                            <!-- مدال ویرایش اشتراک -->
+                            <div class="modal fade text-start" id="editSubModal{{ sub['id'] }}" tabindex="-1" aria-hidden="true">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <form action="{{ url_for('admin_subscription_edit', sub_id=sub['id']) }}" method="POST">
+                                            <div class="modal-header bg-primary text-white py-3">
+                                                <h5 class="modal-title fw-bold"><i class="fas fa-pen-to-square me-2"></i>ویرایش اشتراک «{{ sub['account_name'] }}»</h5>
+                                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body p-4">
+                                                <div class="mb-3">
+                                                    <label class="form-label fw-bold">نام اکانت هیدیفای <span class="text-danger">*</span></label>
+                                                    <input type="text" class="form-control font-monospace" name="account_name" value="{{ sub['account_name'] }}" required dir="ltr">
+                                                </div>
+                                                <div class="row g-3 mb-3">
+                                                    <div class="col-md-6">
+                                                        <label class="form-label fw-bold">حجم مجاز (GB)</label>
+                                                        <input type="number" step="0.1" class="form-control font-monospace" name="data_limit" value="{{ sub['data_limit'] or 30 }}" required>
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <label class="form-label fw-bold">وضعیت اشتراک</label>
+                                                        <select class="form-select" name="status">
+                                                            <option value="active" {% if sub['status'] == 'active' %}selected{% endif %}>فعال (Active)</option>
+                                                            <option value="disabled" {% if sub['status'] == 'disabled' %}selected{% endif %}>غیرفعال (Disabled)</option>
+                                                            <option value="expired" {% if sub['status'] == 'expired' %}selected{% endif %}>منقضی (Expired)</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label class="form-label fw-bold">تاریخ انقضا</label>
+                                                    <input type="date" class="form-control font-monospace" name="expire_date" value="{{ sub['expire_date'][:10] if sub['expire_date'] else '' }}">
+                                                </div>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-light" data-bs-dismiss="modal">انصراف</button>
+                                                <button type="submit" class="btn btn-primary px-4 fw-bold">ذخیره تغییرات در هیدیفای</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- مدال حذف هوشمند اشتراک با استرداد وجه -->
+                            <div class="modal fade text-start" id="deleteSubModal{{ sub['id'] }}" tabindex="-1" aria-hidden="true">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <form action="{{ url_for('admin_subscription_delete', sub_id=sub['id']) }}" method="POST">
+                                            <div class="modal-header bg-danger text-white py-3">
+                                                <h5 class="modal-title fw-bold"><i class="fas fa-trash-can me-2"></i>حذف اشتراک «{{ sub['account_name'] }}»</h5>
+                                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body p-4">
+                                                <p class="text-muted mb-3">آیا از حذف این اشتراک از سرور هیدیفای و پایگاه‌داده اطمینان دارید؟</p>
+
+                                                <!-- کارت محاسبه استرداد وجه -->
+                                                <div class="p-3 bg-light rounded-3 border mb-3">
+                                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                                        <span class="text-muted small">مدت زمان گذشته:</span>
+                                                        <span class="fw-bold">{{ ref.get('time_passed_text', 'نامشخص') }}</span>
+                                                    </div>
+                                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                                        <span class="text-muted small">درصد استرداد مجاز:</span>
+                                                        <span class="badge {% if ref.get('refund_percent', 0) == 100 %}bg-success{% elif ref.get('refund_percent', 0) == 90 %}bg-warning text-dark{% else %}bg-secondary{% endif %} fs-6">
+                                                            {{ ref.get('refund_percent', 0) }}%
+                                                        </span>
+                                                    </div>
+                                                    <div class="d-flex justify-content-between align-items-center border-top pt-2">
+                                                        <span class="fw-bold text-dark">مبلغ قابل استرداد به مشتری:</span>
+                                                        <strong class="text-success fs-5">{{ "{:,}".format(ref.get('refund_amount', 0)) }} تومان</strong>
+                                                    </div>
+                                                </div>
+
+                                                <!-- سوئیچ استرداد وجه منحصراً برای مدیر ارشد -->
+                                                {% if session.get('admin_role') == 'super_admin' %}
+                                                <div class="p-3 bg-white rounded-3 border border-primary border-opacity-25 mb-3">
+                                                    <div class="form-check form-switch d-flex align-items-center justify-content-between p-0 m-0">
+                                                        <label class="form-check-label fw-bold text-dark" for="refundSwitch{{ sub['id'] }}">
+                                                            <i class="fas fa-coins text-warning me-1"></i> مبلغ به مشتری استرداد داده شود
+                                                        </label>
+                                                        <input class="form-check-input ms-0" type="checkbox" name="refund_to_customer" id="refundSwitch{{ sub['id'] }}" value="1" {% if ref.get('refund_amount', 0) > 0 %}checked{% endif %}>
+                                                    </div>
+                                                    <div class="form-text text-muted mt-1 small">
+                                                        این گزینه منحصراً در اختیار مدیریت ارشد است؛ در صورت فعال بودن، مبلغ به صورت خودکار به کیف پول تلگرام مشتری شارژ می‌شود.
+                                                    </div>
+                                                </div>
+                                                {% else %}
+                                                <div class="alert alert-info py-2 small mb-3">
+                                                    <i class="fas fa-info-circle me-1"></i> استرداد وجه بر اساس قوانین مصوب سیستم مستقیماً به کیف پول مشتری اعمال خواهد شد.
+                                                </div>
+                                                {% endif %}
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-light" data-bs-dismiss="modal">انصراف</button>
+                                                <button type="submit" class="btn btn-danger px-4 fw-bold">حذف اشتراک</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
