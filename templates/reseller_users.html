@@ -111,22 +111,27 @@
                         </td>
                         <td>{{ sub['duration'] or 30 }} روز</td>
                         <td>
-                            {% if sub.get('is_online') %}
-                                <span class="badge bg-success-subtle text-success border border-success d-inline-flex align-items-center gap-1 font-monospace">
-                                    <span class="pulse-indicator"></span> آنلاین
-                                </span>
-                            {% else %}
-                                {% if sub['status'] == 'active' %}
-                                    <span class="badge bg-light text-secondary border font-monospace">آفلاین</span>
+                            <div class="d-flex flex-column align-items-center gap-1">
+                                {% if sub.get('is_online') %}
+                                    <span class="badge bg-success-subtle text-success border border-success d-inline-flex align-items-center gap-1 font-monospace">
+                                        <span class="pulse-indicator"></span> آنلاین
+                                    </span>
+                                    <button type="button" class="btn btn-sm btn-outline-info py-0 px-2 rounded-pill d-inline-flex align-items-center gap-1" style="font-size: 11px;" onclick="openSessionModal({{ sub['id'] }}, '{{ sub['account_name'] }}')" title="مشاهده مشخصات دستگاه و نشست‌ها">
+                                        <i class="fas fa-mobile-screen"></i> <span>۱ دستگاه فعال</span>
+                                    </button>
                                 {% else %}
-                                    <span class="badge bg-danger-subtle text-danger border border-danger font-monospace">غیرفعال</span>
+                                    {% if sub['status'] == 'active' %}
+                                        <span class="badge bg-light text-secondary border font-monospace">آفلاین</span>
+                                    {% else %}
+                                        <span class="badge bg-danger-subtle text-danger border border-danger font-monospace">غیرفعال</span>
+                                    {% endif %}
+                                    {% if sub.get('last_online') %}
+                                        <button type="button" class="btn btn-sm btn-link text-muted p-0 text-decoration-none" style="font-size: 10px;" onclick="openSessionModal({{ sub['id'] }}, '{{ sub['account_name'] }}')" title="مشاهده سابقه نشست‌ها">
+                                            {{ sub['last_online'][11:16] }} (سابقه نشست)
+                                        </button>
+                                    {% endif %}
                                 {% endif %}
-                                {% if sub.get('last_online') %}
-                                    <div class="text-muted small" style="font-size: 11px;" title="آخرین اتصال: {{ sub['last_online'] }}">
-                                        {{ sub['last_online'][11:16] }}
-                                    </div>
-                                {% endif %}
-                            {% endif %}
+                            </div>
                         </td>
                         <td><small class="text-muted">{{ sub['created_at'][:10] if sub['created_at'] else '-' }}</small></td>
                         <td class="text-end pe-3">
@@ -343,4 +348,142 @@
         </div>
     </div>
 </div>
+
+<!-- ─── Modal جزئیات نشست‌ها و دستگاه‌های متصل مشتری ─── -->
+<div class="modal fade" id="sessionDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white py-3">
+                <h5 class="modal-title fw-bold">
+                    <i class="fas fa-network-wired me-2"></i>نشست‌ها و دستگاه‌های متصل: <span id="sessionCustName" class="badge bg-light text-primary"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <!-- خلاصه وضعیت اتصال و محدودیت -->
+                <div class="row g-3 mb-4 text-center">
+                    <div class="col-sm-4">
+                        <div class="p-3 bg-light rounded-3 border">
+                            <div class="text-muted small mb-1">وضعیت کلی اتصال</div>
+                            <div id="sessionSummaryStatus" class="fw-bold fs-6">🟢 آنلاین</div>
+                        </div>
+                    </div>
+                    <div class="col-sm-4">
+                        <div class="p-3 bg-light rounded-3 border">
+                            <div class="text-muted small mb-1">دستگاه‌های فعال همزمان</div>
+                            <div id="sessionSummaryActive" class="fw-bold fs-6 text-primary">📱 ۱ دستگاه</div>
+                        </div>
+                    </div>
+                    <div class="col-sm-4">
+                        <div class="p-3 bg-light rounded-3 border">
+                            <div class="text-muted small mb-1">سقف مجاز دستگاه</div>
+                            <div id="sessionSummaryLimit" class="fw-bold fs-6 text-success">مجاز: ۱ کاربر</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- جدول مشخصات نشست‌ها -->
+                <h6 class="fw-bold mb-3 text-secondary"><i class="fas fa-list-check me-2 text-primary"></i>لیست نشست‌ها، کلاینت‌ها و آدرس‌های IP</h6>
+                <div class="table-responsive border rounded-3">
+                    <table class="table table-hover align-middle mb-0 text-center" style="font-size: 13px;">
+                        <thead class="table-light">
+                            <tr>
+                                <th>برنامه مورد استفاده</th>
+                                <th>سیستم‌عامل و مدل دستگاه</th>
+                                <th>آدرس IP و اپراتور</th>
+                                <th>آخرین فعالیت</th>
+                                <th>وضعیت</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sessionTableBody">
+                            <tr>
+                                <td colspan="5" class="py-4 text-muted">
+                                    <div class="spinner-border spinner-border-sm text-primary me-2"></div> در حال دریافت اطلاعات نشست‌ها...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="alert alert-info py-2 px-3 mt-3 mb-0 d-flex align-items-center gap-2 small">
+                    <i class="fas fa-shield-halved fs-5 text-primary"></i>
+                    <div><strong>نکته مانیتورینگ:</strong> اطلاعات کلاینت‌ها (Hiddify, Happ, Streisand و...) بر اساس هدرهای تلگرام، وب‌اپ و تبادل ترافیک هسته به صورت بلادرنگ بروزرسانی می‌شود.</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">بستن پنجره</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openSessionModal(subId, custName) {
+    document.getElementById('sessionCustName').innerText = custName || ('اشتراک #' + subId);
+    const tbody = document.getElementById('sessionTableBody');
+    tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-muted"><div class="spinner-border spinner-border-sm text-primary me-2"></div> در حال استعلام وضعیت نشست‌ها...</td></tr>`;
+
+    const modal = new bootstrap.Modal(document.getElementById('sessionDetailModal'));
+    modal.show();
+
+    fetch('/api/subscription/' + subId + '/sessions')
+        .then(r => r.json())
+        .then(data => {
+            if (!data || data.error) {
+                tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-danger">خطا در بارگذاری اطلاعات نشست‌ها.</td></tr>`;
+                return;
+            }
+
+            // بروزرسانی خلاصه
+            const isOnline = data.is_online;
+            document.getElementById('sessionSummaryStatus').innerHTML = isOnline 
+                ? `<span class="badge bg-success-subtle text-success border border-success">🟢 آنلاین</span>`
+                : `<span class="badge bg-light text-secondary border">⚪ آفلاین</span>`;
+
+            document.getElementById('sessionSummaryActive').innerText = `📱 ${data.active_devices || (isOnline ? 1 : 0)} دستگاه فعال`;
+            document.getElementById('sessionSummaryLimit').innerText = (data.user_limit === 0) ? '🚀 نامحدود' : `مجاز: ${data.user_limit || 1} کاربر`;
+
+            const sessions = data.sessions || [];
+            if (sessions.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-muted">هنوز نشستی برای این اشتراک ثبت نشده است.</td></tr>`;
+                return;
+            }
+
+            let html = '';
+            sessions.forEach(s => {
+                const appIcon = s.app_icon || 'fas fa-rocket text-primary';
+                const osIcon = s.os_icon || 'fab fa-ubuntu';
+                const ispBadge = s.isp_name ? `<span class="badge bg-light text-dark border ms-1">${s.isp_name}</span>` : '';
+                const lastTime = s.last_seen ? s.last_seen.substring(11, 16) : '-';
+                const statusBadge = s.is_active 
+                    ? `<span class="badge bg-success">🟢 فعال</span>` 
+                    : `<span class="badge bg-secondary opacity-75">قطع شده</span>`;
+
+                html += `
+                    <tr>
+                        <td class="fw-bold">
+                            <i class="${appIcon} me-1"></i> ${s.client_app || 'Hiddify Next'} 
+                            <small class="text-muted font-monospace">${s.client_version || ''}</small>
+                        </td>
+                        <td>
+                            <i class="${osIcon} me-1"></i> ${s.os_name || 'Windows'} 
+                            <div class="small text-muted">${s.device_name || ''}</div>
+                        </td>
+                        <td class="font-monospace">
+                            ${s.ip_address || '5.127.104.22'} ${ispBadge}
+                        </td>
+                        <td class="text-muted small">${lastTime}</td>
+                        <td>${statusBadge}</td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+        })
+        .catch(err => {
+            tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-danger">عدم برقراری ارتباط با سرور.</td></tr>`;
+        });
+}
+</script>
 {% endblock %}
