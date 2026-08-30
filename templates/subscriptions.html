@@ -151,7 +151,16 @@
                                 </a>
                                 {% endif %}
 
+                                <a href="{{ url_for('view_invoice', sub_id=sub['id']) }}" class="btn btn-outline-info py-1 px-2" title="مشاهده و چاپ فاکتور رسمی" target="_blank">
+                                    <i class="fas fa-file-invoice"></i>
+                                </a>
+
                                 {% if has_permission('sub_manage') %}
+                                <!-- دکمه شارژ حجم اضافه -->
+                                <button type="button" class="btn btn-outline-success py-1 px-2" data-bs-toggle="modal" data-bs-target="#topupModal{{ sub['id'] }}" title="افزودن حجم ترافیک اضافه (Top-up)">
+                                    <i class="fas fa-plus-circle"></i>
+                                </button>
+
                                 <!-- دکمه فعال/غیرفعال‌سازی -->
                                 <form action="{{ url_for('admin_subscription_toggle', sub_id=sub['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از تغییر وضعیت این اشتراک مطمئن هستید؟');">
                                     <button type="submit" class="btn {{ 'btn-outline-danger' if sub['status'] == 'active' else 'btn-outline-success' }} py-1 px-2" title="{{ 'غیرفعال‌سازی اشتراک' if sub['status'] == 'active' else 'فعال‌سازی اشتراک' }}">
@@ -171,6 +180,39 @@
                                     <i class="fas fa-trash-can"></i>
                                 </button>
                                 {% endif %}
+                            </div>
+
+                            <!-- مدال شارژ حجم اضافه (Top-up) -->
+                            <div class="modal fade text-start" id="topupModal{{ sub['id'] }}" tabindex="-1" aria-hidden="true">
+                                <div class="modal-dialog modal-dialog-centered">
+                                    <div class="modal-content">
+                                        <form action="{{ url_for('admin_sub_add_traffic', sub_id=sub['id']) }}" method="POST">
+                                            <div class="modal-header bg-success text-white py-3">
+                                                <h5 class="modal-title fw-bold"><i class="fas fa-plus-circle me-2"></i>افزایش ترافیک اشتراک: {{ sub['account_name'] }}</h5>
+                                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body p-4">
+                                                <div class="alert alert-info py-2 small mb-3">
+                                                    <i class="fas fa-info-circle me-1"></i> سقف فعلی: <strong>{{ sub['traffic_limit'] or 0 }} گیگابایت</strong> | مصرف شده: <strong>{{ "%.2f"|format(sub['current_usage'] or 0) }} گیگابایت</strong>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label class="form-label fw-bold">مقدار ترافیک افزایشی (گیگابایت) <span class="text-danger">*</span></label>
+                                                    <div class="input-group">
+                                                        <input type="number" step="1" min="1" max="1000" class="form-control font-monospace" name="extra_gb" value="10" required>
+                                                        <span class="input-group-text bg-light">GB</span>
+                                                    </div>
+                                                    <div class="form-text text-muted small mt-1">
+                                                        حجم افزوده شده بدون تغییر در لینک، کانفیگ یا مدت زمان به سقف اشتراک در هیدیفای اضافه می‌گردد.
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-light" data-bs-dismiss="modal">انصراف</button>
+                                                <button type="submit" class="btn btn-success px-4 fw-bold">افزودن و اعمال آنی</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
                             </div>
 
                             {% set ref = sub.get('refund_info') or {} %}

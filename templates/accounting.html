@@ -324,9 +324,16 @@
                                 {% if has_permission('settle_debts') %}
                                 <td class="text-end pe-3">
                                     {% if adm['debt_balance'] and adm['debt_balance'] > 0 %}
-                                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#settleDebtModal{{ adm['id'] }}">
-                                        <i class="fas fa-hand-holding-dollar me-1"></i> ثبت تسویه
-                                    </button>
+                                    <div class="d-inline-flex gap-1">
+                                        <form method="POST" action="{{ url_for('admin_debt_reminder', admin_id=adm['id']) }}" class="d-inline" onsubmit="return confirm('آیا مایل به ارسال پیام یادآوری بدهی به تلگرام این مدیر هستید؟');">
+                                            <button type="submit" class="btn btn-sm btn-outline-warning" title="ارسال پیام یادآوری بدهی به تلگرام">
+                                                <i class="fab fa-telegram"></i> یادآوری
+                                            </button>
+                                        </form>
+                                        <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#settleDebtModal{{ adm['id'] }}" title="ثبت تسویه اقساطی یا کامل">
+                                            <i class="fas fa-hand-holding-dollar me-1"></i> ثبت تسویه
+                                        </button>
+                                    </div>
 
                                     <!-- Modal ثبت تسویه حساب -->
                                     <div class="modal fade" id="settleDebtModal{{ adm['id'] }}" tabindex="-1">

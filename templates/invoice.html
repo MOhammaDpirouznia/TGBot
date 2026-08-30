@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>فاکتور رسمی اشتراک #{{ sub.id }} - {{ branding.brand_title or 'پنل مدیریت VPN' }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <style>
+        body {
+            font-family: 'Vazirmatn', sans-serif;
+            background-color: #f1f5f9;
+            color: #1e293b;
+            padding: 30px 15px;
+        }
+        .invoice-card {
+            max-width: 780px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e2e8f0;
+            overflow: hidden;
+        }
+        .invoice-header {
+            background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+            color: #ffffff;
+            padding: 30px;
+        }
+        .invoice-body {
+            padding: 30px;
+        }
+        .stamp-badge {
+            display: inline-block;
+            padding: 6px 16px;
+            border: 2px dashed #10b981;
+            color: #10b981;
+            font-weight: 800;
+            border-radius: 8px;
+            transform: rotate(-4deg);
+            font-size: 0.95rem;
+        }
+        .qr-box {
+            background: #f8fafc;
+            border: 1px dashed #cbd5e1;
+            border-radius: 12px;
+            padding: 15px;
+            text-align: center;
+        }
+        @media print {
+            body {
+                background: #ffffff;
+                padding: 0;
+            }
+            .invoice-card {
+                box-shadow: none;
+                border: none;
+                max-width: 100%;
+            }
+            .no-print {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="invoice-card">
+    <!-- Header -->
+    <div class="invoice-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+        <div class="d-flex align-items-center gap-3">
+            {% if branding.logo_url %}
+                <img src="{{ branding.logo_url }}" alt="لوگو" style="max-height: 48px; border-radius: 8px;" class="bg-white p-1">
+            {% else %}
+                <div class="bg-white text-primary rounded-3 p-2 fs-3 d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                    <i class="fas fa-shield-halved"></i>
+                </div>
+            {% endif %}
+            <div>
+                <h4 class="mb-1 fw-bold">{{ branding.brand_title or 'سامانه هوشمند اشتراک VPN' }}</h4>
+                <div class="small opacity-75">فاکتور دیجیتال رسمی تحویل سرویس و اشتراک</div>
+            </div>
+        </div>
+        <div class="text-end">
+            <div class="badge bg-white text-primary fs-6 font-monospace px-3 py-2 rounded-pill">
+                فاکتور #INV-{{ "%06d"|format(sub.id) }}
+            </div>
+            <div class="small opacity-75 mt-1">تاریخ صدور: {{ sub.created_at[:10] if sub.created_at else '-' }}</div>
+        </div>
+    </div>
+
+    <!-- Body -->
+    <div class="invoice-body">
+        
+        <!-- مشخصات مشتری و فاکتور -->
+        <div class="row g-3 mb-4 pb-3 border-bottom">
+            <div class="col-sm-6">
+                <div class="text-muted small mb-1">مشخصات خریدار / مشترک:</div>
+                <div class="fw-bold fs-5 text-dark">{{ sub.account_name }}</div>
+                {% if sub.phone_number %}
+                    <div class="small text-muted font-monospace"><i class="fas fa-phone me-1"></i> {{ sub.phone_number }}</div>
+                {% endif %}
+                {% if sub.telegram_id %}
+                    <div class="small text-muted font-monospace"><i class="fab fa-telegram me-1"></i> شناسه کاربری: {{ sub.telegram_id }}</div>
+                {% endif %}
+            </div>
+            <div class="col-sm-6 text-sm-end">
+                <div class="text-muted small mb-1">وضعیت پرداخت و سرویس:</div>
+                <div class="stamp-badge mb-2">
+                    <i class="fas fa-circle-check me-1"></i> پرداخت شده و فعال
+                </div>
+                <div class="small text-muted">نوع تسویه: <strong>{{ 'نقدی / آنلاین' if not sub.reseller_id else 'پنل نمایندگی' }}</strong></div>
+            </div>
+        </div>
+
+        <!-- جدول اقلام فاکتور -->
+        <div class="table-responsive mb-4">
+            <table class="table table-bordered align-middle text-center mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>شرح سرویس / پلن</th>
+                        <th>ترافیک مجاز</th>
+                        <th>مدت اعتبار</th>
+                        <th>تعداد کاربر</th>
+                        <th>مبلغ کل</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="fw-bold text-start ps-3">
+                            <i class="fas fa-bolt text-warning me-2"></i> {{ sub.plan_name or 'اشتراک اختصاصی پرسرعت' }}
+                            <div class="small text-muted mt-1 font-monospace">UUID: {{ (sub.hidify_uuid[:12] + '...') if sub.hidify_uuid else 'اختصاصی' }}</div>
+                        </td>
+                        <td><span class="badge bg-primary fs-6">{{ sub.traffic_limit or 0 }} گیگابایت</span></td>
+                        <td>{{ sub.duration or 30 }} روز</td>
+                        <td>{{ sub.user_limit or 1 }} دستگاه</td>
+                        <td class="fw-bold fs-5 text-success font-monospace">{{ "{:,}".format(sub.cost_paid or 0) }} تومان</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- باکس اتصال و QR کد -->
+        <div class="row g-3 align-items-center bg-light p-3 rounded-3 border mb-4">
+            <div class="col-sm-8">
+                <h6 class="fw-bold mb-2 text-primary"><i class="fas fa-qrcode me-2"></i>لینک و QR کد اتصال به اشتراک</h6>
+                <p class="small text-muted mb-2">جهت فعال‌سازی، نرم‌افزار مورد نظر (Hiddify, V2rayNG, Streisand) را باز کرده و کد مقابل را اسکن فرمایید یا لینک را کپی کنید.</p>
+                {% if sub_url %}
+                <div class="input-group input-group-sm">
+                    <input type="text" id="subUrlInput" class="form-control font-monospace" value="{{ sub_url }}" readonly>
+                    <button class="btn btn-outline-primary" type="button" onclick="navigator.clipboard.writeText('{{ sub_url }}'); alert('لینک کپی شد!');">
+                        <i class="fas fa-copy me-1"></i> کپی
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+            <div class="col-sm-4 text-center">
+                <div class="qr-box d-inline-block">
+                    <div id="invoiceQrcode"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- شرایط و پشتیبانی -->
+        <div class="small text-muted mb-4">
+            <i class="fas fa-info-circle text-primary me-1"></i>
+            {{ branding.footer_text or 'کلیه حقوق محفوظ است. پشتیبانی ۲۴/۷ از طریق ربات و پرتال تلگرام انجام می‌پذیرد.' }}
+        </div>
+
+        <!-- دکمه‌های عملیاتی -->
+        <div class="d-flex justify-content-between align-items-center no-print pt-3 border-top">
+            <button type="button" class="btn btn-outline-secondary" onclick="window.history.back();">
+                <i class="fas fa-arrow-right me-1"></i> بازگشت
+            </button>
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-primary px-4 fw-bold" onclick="window.print();">
+                    <i class="fas fa-print me-1"></i> چاپ یا ذخیره فاکتور (PDF)
+                </button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+window.addEventListener('DOMContentLoaded', () => {
+    const subUrl = "{{ sub_url or '' }}";
+    if (subUrl) {
+        new QRCode(document.getElementById("invoiceQrcode"), {
+            text: subUrl,
+            width: 100,
+            height: 100,
+            colorDark: "#1e293b",
+            colorLight: "#f8fafc",
+            correctLevel: QRCode.CorrectLevel.M
+        });
+    }
+});
+</script>
+
+</body>
+</html>

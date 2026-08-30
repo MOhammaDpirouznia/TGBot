@@ -12,6 +12,76 @@
     </div>
 </div>
 
+<!-- ردیف بسته‌های شارژ عمده با اعتبار هدیه -->
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="card shadow-sm border-0 bg-primary bg-opacity-10 border-start border-primary border-4 p-3">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <h5 class="fw-bold text-primary mb-1"><i class="fas fa-gift me-2"></i>بسته‌های پیش‌خرید اعتباری با شارژ هدیه و بونوس ویژه</h5>
+                    <p class="text-muted small mb-0">با شارژ موجودی کیف پول در مبالغ بالاتر، تا ۱۵٪ اعتبار رایگان و تشویقی دریافت کنید.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- پکیج ۱ -->
+    <div class="col-md-3 col-sm-6">
+        <div class="card border-0 shadow-sm text-center p-3 h-100">
+            <span class="badge bg-info-subtle text-info border border-info align-self-center mb-2 px-3 py-1">۵٪ شارژ هدیه</span>
+            <h6 class="fw-bold mb-1">بسته استارتر</h6>
+            <div class="fs-5 fw-bold text-dark font-monospace mb-1">۱,۰۵۰,۰۰۰ ت</div>
+            <div class="small text-muted mb-3">پرداخت: ۱,۰۰۰,۰۰۰ تومان</div>
+            <form method="POST" action="{{ url_for('reseller_bundles_buy') }}" onsubmit="return confirm('آیا از خرید بسته استارتر مطمئن هستید؟');">
+                <input type="hidden" name="bundle_id" value="bundle_1m">
+                <button type="submit" class="btn btn-sm btn-outline-info w-100 fw-bold">خرید و شارژ آنی</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- پکیج ۲ -->
+    <div class="col-md-3 col-sm-6">
+        <div class="card border-0 shadow-sm text-center p-3 h-100">
+            <span class="badge bg-primary-subtle text-primary border border-primary align-self-center mb-2 px-3 py-1">۷٪ شارژ هدیه</span>
+            <h6 class="fw-bold mb-1">بسته نقره‌ای</h6>
+            <div class="fs-5 fw-bold text-primary font-monospace mb-1">۳,۲۱۰,۰۰۰ ت</div>
+            <div class="small text-muted mb-3">پرداخت: ۳,۰۰۰,۰۰۰ تومان</div>
+            <form method="POST" action="{{ url_for('reseller_bundles_buy') }}" onsubmit="return confirm('آیا از خرید بسته نقره‌ای مطمئن هستید؟');">
+                <input type="hidden" name="bundle_id" value="bundle_3m">
+                <button type="submit" class="btn btn-sm btn-outline-primary w-100 fw-bold">خرید و شارژ آنی</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- پکیج ۳ -->
+    <div class="col-md-3 col-sm-6">
+        <div class="card border-0 shadow-sm text-center p-3 h-100">
+            <span class="badge bg-success-subtle text-success border border-success align-self-center mb-2 px-3 py-1">۱۰٪ شارژ هدیه</span>
+            <h6 class="fw-bold mb-1">بسته طلایی</h6>
+            <div class="fs-5 fw-bold text-success font-monospace mb-1">۵,۵۰۰,۰۰۰ ت</div>
+            <div class="small text-muted mb-3">پرداخت: ۵,۰۰۰,۰۰۰ تومان</div>
+            <form method="POST" action="{{ url_for('reseller_bundles_buy') }}" onsubmit="return confirm('آیا از خرید بسته طلایی مطمئن هستید؟');">
+                <input type="hidden" name="bundle_id" value="bundle_5m">
+                <button type="submit" class="btn btn-sm btn-outline-success w-100 fw-bold">خرید و شارژ آنی</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- پکیج ۴ VIP -->
+    <div class="col-md-3 col-sm-6">
+        <div class="card border-0 shadow-sm text-center p-3 h-100 border-warning border">
+            <span class="badge bg-warning text-dark align-self-center mb-2 px-3 py-1">👑 ۱۵٪ شارژ هدیه VIP</span>
+            <h6 class="fw-bold mb-1">بسته الماس VIP</h6>
+            <div class="fs-5 fw-bold text-dark font-monospace mb-1">۱۱,۵۰۰,۰۰۰ ت</div>
+            <div class="small text-muted mb-3">پرداخت: ۱۰,۰۰۰,۰۰۰ تومان</div>
+            <form method="POST" action="{{ url_for('reseller_bundles_buy') }}" onsubmit="return confirm('آیا از خرید بسته الماس VIP مطمئن هستید؟');">
+                <input type="hidden" name="bundle_id" value="bundle_10m">
+                <button type="submit" class="btn btn-sm btn-warning w-100 fw-bold">خرید و شارژ آنی</button>
+            </form>
+        </div>
+    </div>
+</div>
+
 <div class="card shadow-sm border-0">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="d-flex align-items-center gap-2">
