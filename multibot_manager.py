@@ -171,30 +171,31 @@ class ResellerBotInstance:
             main_kb = ReplyKeyboardMarkup([
                 [KeyboardButton("🛍️ خرید اشتراک"), KeyboardButton("👤 اشتراک‌های من")],
                 [KeyboardButton("💳 کیف پول"), KeyboardButton("🎧 پشتیبانی و تیکت")],
-                [KeyboardButton("📖 راهنمای اتصال")]
+                [KeyboardButton("📖 راهنمای اتصال"), KeyboardButton("🛠️ حل مشکلات اتصال")]
             ], resize_keyboard=True)
 
             await update.message.reply_text(welcome, reply_markup=main_kb, parse_mode="Markdown")
 
         async def plans_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            """نمایش پلن‌های فروش برای مشتری نماینده"""
-            plans = get_all_plans()
+            """نمایش پلن‌های فروش برای مشتری نماینده (با اعمال نام و قیمت سفارشی نماینده)"""
+            plans = db.get_reseller_active_plans(r_id)
             if not plans:
-                await update.message.reply_text("❌ در حال حاضر پلن فعالی تعریف نشده است.")
+                await update.message.reply_text("❌ در حال حاضر پلن فعالی در فروشگاه تعریف نشده است.")
                 return
 
             brand = self.reseller_data.get("brand_name") or "ما"
-            text = f"📦 **تعرفه‌های اشتراک {brand}:**\n\nلطفاً پلن مورد نظر خود را انتخاب کنید:\n"
+            text = f"📦 **تعرفه‌های اشتراک {brand}:**\n\nلطفاً پلن مورد نظر خود را انتخاب فرمایید:\n"
 
             buttons = []
             for p in plans:
-                pid = p.get("id") or p.get("plan_id")
-                pname = p.get("name", "پلن")
-                price = p.get("price", 0)
-                vol = p.get("traffic", p.get("volume_gb", 0))
-                days = p.get("duration_days", p.get("days", 30))
+                pid = p["plan_id"]
+                pname = p.get("display_name") or p.get("master_name", "پلن")
+                price = p.get("display_price", 0)
+                vol = p.get("data_limit", 0)
+                days = p.get("duration", 30)
+                vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
 
-                btn_text = f"⚡ {pname} | {vol}GB - {days} روز ({price:,} تومان)"
+                btn_text = f"⚡ {pname} | {vol_str} - {days} روز ({price:,} تومان)"
                 buttons.append([InlineKeyboardButton(btn_text, callback_data=f"r_buy_{pid}")])
 
             kb = InlineKeyboardMarkup(buttons)
@@ -206,16 +207,16 @@ class ResellerBotInstance:
             await query.answer()
 
             plan_id = query.data.replace("r_buy_", "")
-            plans = load_plans()
-            plan = plans.get(plan_id)
+            plan = db.get_reseller_plan(r_id, plan_id)
             if not plan:
                 await query.edit_message_text("❌ پلن مورد نظر یافت نشد.")
                 return
 
-            price = plan.get("price", 0)
-            pname = plan.get("name", "پلن")
-            vol = plan.get("traffic", plan.get("volume_gb", 0))
-            days = plan.get("duration_days", plan.get("days", 30))
+            price = plan.get("display_price", 0)
+            pname = plan.get("display_name") or plan.get("master_name", "پلن")
+            vol = plan.get("data_limit", 0)
+            days = plan.get("duration", 30)
+            vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
 
             user = update.effective_user
             user_wallet = db.get_user_wallet_balance(user.id)
@@ -226,7 +227,7 @@ class ResellerBotInstance:
 
             msg = f"🛒 **پیش‌فاکتور خرید اشتراک**\n\n"
             msg += f"📦 پلن: **{pname}**\n"
-            msg += f"📊 حجم: **{vol} گیگابایت** | ⏳ مدت: **{days} روز**\n"
+            msg += f"📊 حجم: **{vol_str}** | ⏳ مدت: **{days} روز**\n"
             msg += f"💰 مبلغ قابل پرداخت: **{price:,} تومان**\n"
             msg += f"💳 موجودی کیف پول شما: **{user_wallet:,} تومان**\n\n"
             msg += "لطفاً نحوه پرداخت را انتخاب فرمایید:"
@@ -263,16 +264,16 @@ class ResellerBotInstance:
             await query.answer()
 
             plan_id = query.data.replace("r_pcard_", "")
-            plans = load_plans()
-            plan = plans.get(plan_id)
+            plan = db.get_reseller_plan(r_id, plan_id)
             if not plan:
                 await query.edit_message_text("❌ پلن یافت نشد.")
                 return
 
-            price = plan.get("price", 0)
-            pname = plan.get("name", "پلن")
-            vol = plan.get("traffic", plan.get("volume_gb", 0))
-            days = plan.get("duration_days", plan.get("days", 30))
+            price = plan.get("display_price", 0)
+            pname = plan.get("display_name") or plan.get("master_name", "پلن")
+            vol = plan.get("data_limit", 0)
+            days = plan.get("duration", 30)
+            vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
 
             # دریافت کارت بانکی فعال نماینده
             active_card = db.get_active_reseller_card(r_id)
@@ -290,7 +291,7 @@ class ResellerBotInstance:
 
             msg = f"💵 **پرداخت کارت به کارت**\n\n"
             msg += f"📦 پلن: **{pname}**\n"
-            msg += f"📊 حجم: **{vol} گیگابایت** | ⏳ مدت: **{days} روز**\n"
+            msg += f"📊 حجم: **{vol_str}** | ⏳ مدت: **{days} روز**\n"
             msg += f"💰 مبلغ: **`{price:,}` تومان**\n\n"
 
             if card_num:
@@ -347,13 +348,13 @@ class ResellerBotInstance:
             await query.answer()
 
             plan_id = query.data.replace("r_pwal_", "")
-            plans = load_plans()
-            plan = plans.get(plan_id)
+            plan = db.get_reseller_plan(r_id, plan_id)
             if not plan:
                 await query.edit_message_text("❌ پلن یافت نشد.")
                 return
 
-            price = plan.get("price", 0)
+            price = plan.get("display_price", 0)
+            wholesale_cost = plan.get("wholesale_price", price)
             user = update.effective_user
             user_wallet = db.get_user_wallet_balance(user.id)
 
@@ -361,18 +362,28 @@ class ResellerBotInstance:
                 await query.answer("❌ موجودی کیف پول کافی نیست!", show_alert=True)
                 return
 
+            # بررسی موجودی عمده نماینده
+            r_info = db.get_reseller(r_id) or {}
+            r_balance = r_info.get("balance", 0)
+            if r_balance < wholesale_cost:
+                await query.answer("⚠️ اعتبار فروشگاه موقتاً نیازمند شارژ است. لطفاً به پشتیبانی اطلاع دهید.", show_alert=True)
+                return
+
             # کسر از موجودی کیف پول مشتری
-            deduct_res = db.deduct_wallet_balance(user.id, price, f"خرید آنی اشتراک {plan.get('name')}")
+            deduct_res = db.deduct_wallet_balance(user.id, price, f"خرید آنی اشتراک {plan.get('display_name')}")
             if not deduct_res.get("success"):
                 await query.answer("❌ خطا در کسر موجودی: " + str(deduct_res.get("error")), show_alert=True)
                 return
 
-            await query.edit_message_text("⏳ در حال ساخت و فعال‌سازی آنی اشتراک شما...")
+            pname = plan.get("display_name") or plan.get("master_name", "اشتراک")
+            vol = plan.get("data_limit", 30)
+            days = plan.get("duration", 30)
+            account_name = f"r{r_id}_u{user.id}_{int(datetime.now().timestamp()) % 10000}"
 
-            pname = plan.get("name", "اشتراک")
-            vol = plan.get("traffic", plan.get("volume_gb", 30))
-            days = plan.get("duration_days", plan.get("days", 30))
-            account_name = f"r{r_id}_{user.id}_{int(datetime.now().timestamp()) % 10000}"
+            # کسر هزینه عمده از حساب نماینده
+            db.deduct_reseller_balance(r_id, wholesale_cost, pname, account_name)
+
+            await query.edit_message_text("⏳ در حال ساخت و فعال‌سازی آنی اشتراک شما...")
 
             # ساخت اشتراک در هیدیفای
             created = await hidify_client.create_user(
@@ -403,8 +414,8 @@ class ResellerBotInstance:
             brand = self.reseller_data.get("brand_name") or "ما"
             cust_msg = f"🎉 **اشتراک {brand} با موفقیت فعال شد:**\n\n"
             cust_msg += f"📦 پلن: **{pname}**\n"
-            cust_msg += f"📊 حجم: **{vol} گیگابایت** | ⏳ مدت: **{days} روز**\n"
-            cust_msg += f"💰 مبلغ کسر شده: **{price:,} تومان**\n\n"
+            cust_msg += f"📊 حجم: **{vol if vol > 0 else 'نامحدود'} گیگابایت** | ⏳ مدت: **{days} روز**\n"
+            cust_msg += f"💰 مبلغ پرداختی: **{price:,} تومان**\n\n"
             cust_msg += f"🔗 **لینک اتصال اختصاصی شما:**\n`{sub_url}`\n\n"
             cust_msg += "💡 لینک بالا را در اپلیکیشن v2rayNG / Hiddify / Streisand وارد فرمایید."
 
@@ -416,13 +427,13 @@ class ResellerBotInstance:
             await query.answer()
 
             plan_id = query.data.replace("r_ponl_", "")
-            plans = load_plans()
-            plan = plans.get(plan_id)
+            plan = db.get_reseller_plan(r_id, plan_id)
             if not plan:
                 await query.edit_message_text("❌ پلن یافت نشد.")
                 return
 
-            price = plan.get("price", 0)
+            price = plan.get("display_price", 0)
+            pname = plan.get("display_name") or plan.get("master_name", "پلن")
             user = update.effective_user
             gw_cfg = db.get_reseller_gateway(r_id)
             gw_type = gw_cfg.get("type", "zarinpal")
@@ -440,13 +451,13 @@ class ResellerBotInstance:
             if gw_type == "zarinpal":
                 from payment import ZarinPal
                 zp = ZarinPal(merchant_id=gw_key, sandbox=sandbox)
-                res = zp.create_payment(amount=price, description=f"خرید {plan.get('name')}", callback_url=callback_url)
+                res = zp.create_payment(amount=price, description=f"خرید {pname}", callback_url=callback_url)
                 if res.get("success"):
                     pay_url = res.get("payment_url")
             elif gw_type == "idpay":
                 from payment import IDPay
                 idp = IDPay(api_key=gw_key, sandbox=sandbox)
-                res = idp.create_payment(amount=price, name=user.full_name or "کاربر", description=f"خرید {plan.get('name')}", callback_url=callback_url, order_id=order_id)
+                res = idp.create_payment(amount=price, name=user.full_name or "کاربر", description=f"خرید {pname}", callback_url=callback_url, order_id=order_id)
                 if res.get("success"):
                     pay_url = res.get("payment_url")
 
@@ -455,7 +466,7 @@ class ResellerBotInstance:
                     order_id=order_id,
                     user_id=user.id,
                     username=user.username or user.first_name,
-                    plan_name=plan.get("name"),
+                    plan_name=pname,
                     amount=price,
                     gateway=f"{gw_type}_reseller_{r_id}",
                     tracking_code=order_id,
@@ -463,7 +474,7 @@ class ResellerBotInstance:
                     reseller_id=r_id
                 )
                 msg = f"💳 **درگاه پرداخت آنلاین شاپرک**\n\n"
-                msg += f"📦 پلن: **{plan.get('name')}**\n"
+                msg += f"📦 پلن: **{pname}**\n"
                 msg += f"💰 مبلغ: **`{price:,}` تومان**\n"
                 msg += f"🔢 شناسه سفارش: `{order_id}`\n\n"
                 msg += "جهت پرداخت روی دکمه زیر کلیک کنید. پس از پرداخت آنلاین، اشتراک شما به صورت خودکار فعال می‌گردد:"
@@ -563,16 +574,12 @@ class ResellerBotInstance:
                 target_uid = int(parts[2])
                 plan_id = parts[3]
 
-                plans = load_plans()
-                plan = plans.get(plan_id, {})
-                pname = plan.get("name", "اشتراک")
-                vol = plan.get("traffic", plan.get("volume_gb", 30))
-                days = plan.get("duration_days", plan.get("days", 30))
-                price = plan.get("price", 0)
-
-                # محاسبه کسر موجودی عمده از کیف پول نماینده
-                discount_pct = self.reseller_data.get("discount_percent", 20)
-                wholesale_cost = price - int((price * discount_pct) / 100)
+                plan = db.get_reseller_plan(r_id, plan_id) or {}
+                pname = plan.get("display_name") or plan.get("master_name", "اشتراک")
+                vol = plan.get("data_limit", 30)
+                days = plan.get("duration", 30)
+                price = plan.get("display_price", 0)
+                wholesale_cost = plan.get("wholesale_price", price)
 
                 # کسر موجودی از کیف پول نماینده
                 account_name = f"r{r_id}_u{target_uid}_{int(datetime.now().timestamp()) % 10000}"
@@ -581,8 +588,8 @@ class ResellerBotInstance:
                 if not deduct_res.get("success"):
                     await query.edit_message_caption(
                         caption=f"❌ **خطا در تایید:** موجودی کیف پول نماینده کافی نیست!\n"
-                                f"مبلغ مورد نیاز با احتساب تخفیف: {wholesale_cost:,} تومان\n"
-                                f"لطفاً ابتدا کیف پول خود را در پنل وب شارژ کنید.",
+                                f"مبلغ عمده مورد نیاز: {wholesale_cost:,} تومان\n"
+                                f"لطفاً ابتدا کیف پول خود را در پنل وب شارژ فرمایید.",
                         parse_mode="Markdown"
                     )
                     return
@@ -593,7 +600,7 @@ class ResellerBotInstance:
                     h_res = await hidify_client.create_user(
                         name=account_name,
                         package_days=int(days),
-                        usage_limit_GB=float(vol),
+                        usage_limit_gb=float(vol) if vol > 0 else None,
                         comment=f"Reseller #{r_id} Bot | TG: {target_uid}"
                     )
                 except Exception as e:
@@ -736,17 +743,17 @@ class ResellerBotInstance:
         async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """مسیریابی دکمه‌های ریپلای کیبورد"""
             text = update.message.text or ""
-            if "خرید اشتراک" in text:
+            if "خرید اشتراک" in text or "خرید" in text:
                 await plans_handler(update, context)
-            elif "اشتراک‌های من" in text:
+            elif "اشتراک‌های من" in text or "سرویس‌های من" in text or "اشتراک" in text:
                 await my_subs_handler(update, context)
-            elif "کیف پول" in text:
+            elif "کیف پول" in text or "شارژ" in text:
                 user = update.effective_user
                 bal = db.get_user_wallet_balance(user.id)
                 await update.message.reply_text(f"💳 موجودی کیف پول شما: **{bal:,} تومان**", parse_mode="Markdown")
             elif "پشتیبانی" in text:
                 await support_handler(update, context)
-            elif "راهنما" in text or "آموزش" in text:
+            elif "راهنما" in text or "آموزش" in text or "حل مشکل" in text or "عیب‌یابی" in text:
                 await guide_handler(update, context)
             elif text.startswith("تیکت:") or text.startswith("تیکت ") or text.startswith("/ticket"):
                 user = update.effective_user

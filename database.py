@@ -264,6 +264,21 @@ class Database:
             )
         """)
 
+        # جدول پلن‌های سفارشی نماینده (نام نمایشی، قیمت سفارشی، فعال/غیرفعال)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS reseller_plans (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reseller_id INTEGER NOT NULL,
+                plan_id TEXT NOT NULL,
+                custom_name TEXT,
+                custom_price INTEGER,
+                is_active INTEGER DEFAULT 1,
+                created_at TEXT,
+                updated_at TEXT,
+                UNIQUE(reseller_id, plan_id)
+            )
+        """)
+
         # جدول کارت‌های بانکی مقصد
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS bank_cards (
@@ -5377,6 +5392,166 @@ class Database:
                 break
         self.save_payment_methods(methods, reseller_id)
         return methods
+
+
+    # ─── مدیریت پلن‌های اختصاصی نمایندگان (Reseller Custom Plans) ───
+
+    def get_reseller_plans(self, reseller_id: int) -> List[dict]:
+        """دریافت لیست تمام پلن‌های مادر با اعمال شخصی‌سازی‌ها و قیمت‌های سفارشی نماینده"""
+        from admin_manager import load_plans
+        master_plans = load_plans()
+        reseller = self.get_reseller(reseller_id) or {}
+        discount_pct = reseller.get("discount_percent", 20)
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        overrides = {}
+        try:
+            cursor.execute("SELECT plan_id, custom_name, custom_price, is_active FROM reseller_plans WHERE reseller_id = ?", (reseller_id,))
+            for row in cursor.fetchall():
+                overrides[row["plan_id"]] = {
+                    "custom_name": row["custom_name"],
+                    "custom_price": row["custom_price"],
+                    "is_active": bool(row["is_active"])
+                }
+        except Exception as e:
+            logger.error(f"Error fetching reseller plan overrides: {e}")
+        finally:
+            conn.close()
+
+        result = []
+        for pid, p in master_plans.items():
+            ov = overrides.get(pid, {})
+            custom_name = ov.get("custom_name") or ""
+            custom_price = ov.get("custom_price")
+            is_active_override = ov.get("is_active")
+
+            master_price = p.get("price", 0)
+            display_price = custom_price if (custom_price is not None and custom_price > 0) else master_price
+            display_name = custom_name if custom_name else p.get("name", "پلن")
+            is_active = is_active_override if is_active_override is not None else p.get("is_active", True)
+            
+            # قیمت تمام‌شده عمده برای نماینده
+            wholesale_price = int(master_price * (100 - discount_pct) / 100)
+
+            result.append({
+                "plan_id": pid,
+                "master_name": p.get("name", "پلن"),
+                "display_name": display_name,
+                "custom_name": custom_name,
+                "master_price": master_price,
+                "display_price": display_price,
+                "custom_price": custom_price,
+                "wholesale_price": wholesale_price,
+                "data_limit": p.get("data_limit", 0),
+                "duration": p.get("duration", 30),
+                "description": p.get("description", ""),
+                "is_active": is_active,
+                "master_is_active": p.get("is_active", True)
+            })
+
+        return result
+
+    def get_reseller_active_plans(self, reseller_id: int) -> List[dict]:
+        """دریافت فقط پلن‌های فعال برای نمایش به مشتریان ربات تلگرام نماینده"""
+        all_plans = self.get_reseller_plans(reseller_id)
+        return [p for p in all_plans if p.get("is_active") and p.get("master_is_active")]
+
+    def get_reseller_plan(self, reseller_id: int, plan_id: str) -> Optional[dict]:
+        """دریافت مشخصات کامل یک پلن خاص برای نماینده"""
+        plans = self.get_reseller_plans(reseller_id)
+        for p in plans:
+            if p["plan_id"] == plan_id:
+                return p
+        return None
+
+    def update_reseller_plan_override(self, reseller_id: int, plan_id: str, custom_name: str = None, custom_price: int = None, is_active: bool = True) -> dict:
+        """بروزرسانی یا ثبت تنظیمات اختصاصی نماینده برای یک پلن"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                INSERT INTO reseller_plans (reseller_id, plan_id, custom_name, custom_price, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(reseller_id, plan_id) DO UPDATE SET
+                    custom_name = excluded.custom_name,
+                    custom_price = excluded.custom_price,
+                    is_active = excluded.is_active,
+                    updated_at = excluded.updated_at
+            """, (
+                reseller_id, 
+                plan_id, 
+                custom_name.strip() if custom_name else None, 
+                custom_price if (custom_price and custom_price > 0) else None, 
+                1 if is_active else 0, 
+                now, 
+                now
+            ))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error updating reseller plan override: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def reset_reseller_plan_override(self, reseller_id: int, plan_id: str) -> dict:
+        """حذف سفارشی‌سازی نماینده و بازگشت به پلن اصلی"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM reseller_plans WHERE reseller_id = ? AND plan_id = ?", (reseller_id, plan_id))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error resetting reseller plan override: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def apply_reseller_bundle_credit(self, reseller_id: int, amount: int, bundle_title: str, tx_id: int = None) -> dict:
+        """واریز شارژ بسته اعتباری و بونوس مربوطه به کیف پول نماینده پس از تایید رسید"""
+        # یافتن مشخصات بسته بر اساس عنوان یا مبلغ
+        bundles = {b["price"]: b for b in self.get_reseller_credit_bundles()}
+        bundle = bundles.get(amount)
+        if not bundle:
+            for b in self.get_reseller_credit_bundles():
+                if b["title"] in str(bundle_title):
+                    bundle = b
+                    break
+        
+        credit_to_add = bundle["credit"] if bundle else amount
+        bonus_pct = bundle.get("bonus_percent", 0) if bundle else 0
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT balance, name FROM resellers WHERE id=?", (reseller_id,))
+            res_row = cursor.fetchone()
+            if not res_row:
+                return {"success": False, "error": "نماینده یافت نشد."}
+
+            res_dict = dict(res_row)
+            old_balance = res_dict.get("balance") or 0
+            new_balance = old_balance + credit_to_add
+
+            cursor.execute("UPDATE resellers SET balance=?, updated_at=? WHERE id=?", (new_balance, now, reseller_id))
+
+            desc = f"شارژ تاییدشده {bundle_title} (مبلغ شارژ: {credit_to_add:,} تومان | بونوس: {bonus_pct}٪)"
+            cursor.execute("""
+                INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
+                VALUES (?, 'deposit', ?, ?, '-', ?, ?)
+            """, (reseller_id, credit_to_add, bundle_title, desc, now))
+
+            conn.commit()
+            return {"success": True, "old_balance": old_balance, "new_balance": new_balance, "credit_added": credit_to_add}
+        except Exception as e:
+            logger.error(f"Error applying reseller bundle credit: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
 
 
 # نمونه singleton

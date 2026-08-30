@@ -1776,6 +1776,29 @@ def approve_payment(payment_id):
         flash("این تراکنش قبلاً تایید شده است.", "warning")
         return redirect(url_for("payments"))
 
+    if tx.get("gateway") == "bundle_reseller" or str(tx.get("order_id", "")).startswith("R_BUNDLE"):
+        # تایید خرید بسته پیش‌خرید اعتباری نماینده
+        r_id = tx.get("reseller_id")
+        amount = tx.get("amount", 0)
+        pname = tx.get("plan_name", "بسته اعتباری")
+        res = db.apply_reseller_bundle_credit(r_id, amount, pname, tx.get("id"))
+        db.update_transaction(tx["order_id"], status="approved")
+        
+        # لاگ حسابرسی
+        admin_id = session.get("admin_id")
+        admin_name = session.get("username")
+        db.add_transaction_audit_log(
+            tx["id"], admin_id, admin_name,
+            action="approve_reseller_bundle",
+            field_name="status",
+            old_value="pending",
+            new_value="approved",
+            reason=f"تایید شارژ بسته اعتباری نماینده (مبلغ: {amount:,} تومان)"
+        )
+        
+        flash(f"✅ بسته اعتباری نماینده با موفقیت تایید شد و مبلغ {res.get('credit_added', amount):,} تومان به کیف پول نماینده افزوده شد.", "success")
+        return redirect(url_for("payments"))
+
     user_id = tx["user_id"]
     is_renewal = bool(tx["is_renewal"])
     renew_sub_id = tx["renew_sub_id"]
@@ -3543,7 +3566,174 @@ def reseller_transactions():
     reseller_id = session.get("reseller_id")
     tx_list = db.get_reseller_transactions(reseller_id)
     stats = db.get_reseller_stats(reseller_id)
-    return render_template("reseller_transactions.html", transactions=tx_list, stats=stats)
+    bundles = db.get_reseller_credit_bundles()
+    admin_cards = db.get_active_bank_cards()
+    admin_gateway = db.get_admin_gateway()
+    return render_template(
+        "reseller_transactions.html",
+        transactions=tx_list,
+        stats=stats,
+        bundles=bundles,
+        admin_cards=admin_cards,
+        admin_gateway=admin_gateway
+    )
+
+
+@app.route("/reseller/plans", methods=["GET", "POST"])
+@reseller_required
+def reseller_plans():
+    """مدیریت پلن‌های اختصاصی، نام نمایشی و قیمت‌گذاری برای مشتریان ربات نماینده"""
+    reseller_id = session.get("reseller_id")
+    reseller = db.get_reseller(reseller_id)
+    if not reseller:
+        flash("اطلاعات نماینده یافت نشد.", "danger")
+        return redirect(url_for("reseller_dashboard"))
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        plan_id = request.form.get("plan_id")
+        if action == "update_override" and plan_id:
+            custom_name = request.form.get("custom_name", "").strip()
+            custom_price_str = request.form.get("custom_price", "").strip()
+            is_active = request.form.get("is_active") in ("on", "1", "true")
+
+            try:
+                custom_price = int(custom_price_str) if custom_price_str else None
+            except ValueError:
+                custom_price = None
+
+            res = db.update_reseller_plan_override(
+                reseller_id=reseller_id,
+                plan_id=plan_id,
+                custom_name=custom_name,
+                custom_price=custom_price,
+                is_active=is_active
+            )
+            if res.get("success"):
+                flash("تنظیمات پلن با موفقیت ذخیره شد.", "success")
+            else:
+                flash(f"خطا در ذخیره پلن: {res.get('error')}", "danger")
+            return redirect(url_for("reseller_plans"))
+
+        elif action == "reset_override" and plan_id:
+            db.reset_reseller_plan_override(reseller_id, plan_id)
+            flash("پلن به حالت پیش‌فرض پنل مدیریت بازگردانی شد.", "info")
+            return redirect(url_for("reseller_plans"))
+
+    plans = db.get_reseller_plans(reseller_id)
+    return render_template("reseller_plans.html", reseller=reseller, plans=plans)
+
+
+@app.route("/reseller/bundles/submit_receipt", methods=["POST"])
+@reseller_required
+def reseller_bundles_submit_receipt():
+    """ثبت فیش واریز کارت به کارت برای خرید بسته پیش‌خرید اعتباری"""
+    reseller_id = session.get("reseller_id")
+    bundle_id = request.form.get("bundle_id")
+    tracking_code = request.form.get("tracking_code", "").strip()
+    notes = request.form.get("notes", "").strip()
+
+    bundles = {b["id"]: b for b in db.get_reseller_credit_bundles()}
+    bundle = bundles.get(bundle_id)
+    if not bundle:
+        flash("بسته اعتباری مورد نظر یافت نشد.", "danger")
+        return redirect(url_for("reseller_transactions"))
+
+    order_id = f"R_BUNDLE_CARD_{reseller_id}_{int(datetime.now().timestamp())}"
+    reseller = db.get_reseller(reseller_id) or {}
+    username = reseller.get("username", f"reseller_{reseller_id}")
+
+    receipt_file_path = None
+    receipt_file = request.files.get("receipt_image")
+    if receipt_file and receipt_file.filename:
+        from werkzeug.utils import secure_filename
+        sec_fn = secure_filename(receipt_file.filename)
+        ext = os.path.splitext(sec_fn)[1] or ".jpg"
+        fn = f"receipt_{order_id}{ext}"
+        RECEIPTS_DIR.mkdir(parents=True, exist_ok=True)
+        save_path = RECEIPTS_DIR / fn
+        receipt_file.save(save_path)
+        receipt_file_path = fn
+
+    db.save_transaction(
+        order_id=order_id,
+        user_id=reseller.get("telegram_id") or reseller_id,
+        username=username,
+        plan_name=f"بسته {bundle['title']}",
+        amount=bundle["price"],
+        gateway="bundle_reseller",
+        tracking_code=tracking_code or order_id,
+        status="pending",
+        receipt_image=receipt_file_path or tracking_code,
+        receipt_file_type="web_upload" if receipt_file_path else "tracking_code",
+        notes=notes,
+        reseller_id=reseller_id
+    )
+
+    flash(f"✅ رسید پرداخت برای «{bundle['title']}» با موفقیت ثبت شد. پس از بررسی و تایید مدیریت، مبلغ {bundle['credit']:,} تومان (با {bundle['badge']}) به کیف پول شما اضافه خواهد شد.", "success")
+    return redirect(url_for("reseller_transactions"))
+
+
+@app.route("/reseller/bundles/online_pay/<bundle_id>")
+@reseller_required
+def reseller_bundles_online_pay(bundle_id: str):
+    """پرداخت آنلاین بسته پیش‌خرید اعتباری نماینده از طریق درگاه مدیریت کل"""
+    reseller_id = session.get("reseller_id")
+    bundles = {b["id"]: b for b in db.get_reseller_credit_bundles()}
+    bundle = bundles.get(bundle_id)
+    if not bundle:
+        flash("بسته اعتباری مورد نظر یافت نشد.", "danger")
+        return redirect(url_for("reseller_transactions"))
+
+    gw_cfg = db.get_admin_gateway()
+    if not gw_cfg.get("enabled") or not gw_cfg.get("key"):
+        flash("درگاه پرداخت آنلاین مدیریت در حال حاضر غیرفعال است. لطفاً از گزینه کارت به کارت استفاده فرمایید.", "warning")
+        return redirect(url_for("reseller_transactions"))
+
+    gw_type = gw_cfg.get("type", "zarinpal")
+    gw_key = gw_cfg.get("key", "")
+    sandbox = gw_cfg.get("sandbox", False)
+    price = bundle["price"]
+
+    order_id = f"R_BUNDLE_ONL_{reseller_id}_{int(datetime.now().timestamp())}"
+    domain = db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "http://localhost:5000")
+    if not str(domain).startswith("http"):
+        domain = f"https://{domain}"
+    callback_url = f"{str(domain).rstrip('/')}/payment/callback/{order_id}"
+
+    reseller = db.get_reseller(reseller_id) or {}
+    username = reseller.get("username", f"reseller_{reseller_id}")
+
+    pay_url = None
+    if gw_type == "zarinpal":
+        from payment import ZarinPal
+        zp = ZarinPal(merchant_id=gw_key, sandbox=sandbox)
+        res = zp.create_payment(amount=price, description=f"خرید بسته اعتباری {bundle['title']}", callback_url=callback_url)
+        if res.get("success"):
+            pay_url = res.get("payment_url")
+    elif gw_type == "idpay":
+        from payment import IDPay
+        idp = IDPay(api_key=gw_key, sandbox=sandbox)
+        res = idp.create_payment(amount=price, name=reseller.get("name") or username, description=f"خرید بسته {bundle['title']}", callback_url=callback_url, order_id=order_id)
+        if res.get("success"):
+            pay_url = res.get("payment_url")
+
+    if pay_url:
+        db.save_transaction(
+            order_id=order_id,
+            user_id=reseller.get("telegram_id") or reseller_id,
+            username=username,
+            plan_name=f"بسته {bundle['title']}",
+            amount=price,
+            gateway=f"{gw_type}_admin",
+            tracking_code=order_id,
+            status="pending",
+            reseller_id=reseller_id
+        )
+        return redirect(pay_url)
+    else:
+        flash("خطا در اتصال به درگاه بانکی. لطفاً از پرداخت کارت به کارت استفاده نمایید.", "danger")
+        return redirect(url_for("reseller_transactions"))
 
 
 @app.route("/reseller/reports")
