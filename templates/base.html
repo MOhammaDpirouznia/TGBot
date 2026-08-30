@@ -652,6 +652,9 @@
                 {% endif %}
 
                 {% if not sub_role or sub_role == 'partner' %}
+                <a class="nav-link {% if request.endpoint == 'reseller_plans' %}active{% endif %}" href="{{ url_for('reseller_plans') }}">
+                    <i class="fas fa-layer-group text-info"></i> مدیریت پلن‌ها و قیمت‌ها
+                </a>
                 <a class="nav-link {% if request.endpoint == 'reseller_bot_settings' %}active{% endif %}" href="{{ url_for('reseller_bot_settings') }}">
                     <i class="fas fa-robot text-primary"></i> ربات اختصاصی من
                 </a>

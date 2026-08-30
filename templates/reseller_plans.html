@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}مدیریت پلن‌ها و قیمت‌گذاری - پنل نمایندگی{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+    <div>
+        <h1 class="page-title"><i class="fas fa-layer-group text-primary me-2"></i>مدیریت پلن‌ها و قیمت‌گذاری فروش</h1>
+        <p class="text-muted mb-0">تعیین نام‌های نمایشی اختصاصی و قیمت دلخواه فروش برای مشتریان ربات تلگرام شما</p>
+    </div>
+    <div class="badge bg-primary fs-6 py-2 px-3">
+        <i class="fas fa-percent me-1"></i> درصد تخفیف نمایندگی شما: {{ reseller.get('discount_percent', 20) }}٪
+    </div>
+</div>
+
+<div class="alert alert-info border-0 shadow-sm d-flex align-items-center mb-4">
+    <i class="fas fa-info-circle fs-3 me-3 text-info"></i>
+    <div>
+        <h6 class="fw-bold mb-1">راهنمای هوشمند سیستم پلن‌های نمایندگی:</h6>
+        <p class="mb-0 small text-muted">
+            مشخصات فنی پلن‌ها (حجم و مدت زمان اعتبار) از سمت مدیریت کل همگام‌سازی می‌شود و غیرقابل تغییر است. 
+            شما می‌توانید برای هر پلن، <b>نام نمایشی جذاب</b> و <b>قیمت فروش دلخواه</b> برای مشتریان ربات خود تعیین کنید. 
+            هزینه کسر شده از کیف پول عمده شما هنگام خرید اشتراک مشتری، بر اساس قیمت پایه با احتساب تخفیف نمایندگی شما محاسبه خواهد شد.
+        </p>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h5 class="mb-0 fw-bold"><i class="fas fa-list-check text-primary me-2"></i>لیست پلن‌های قابل فروش</h5>
+        <span class="badge bg-secondary">{{ plans|length }} پلن موجود</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">پلن اصلی سیستم</th>
+                        <th>مشخصات فنی</th>
+                        <th>قیمت پایه مدیر</th>
+                        <th>قیمت خرید عمده شما</th>
+                        <th>نام نمایشی در ربات شما</th>
+                        <th>قیمت فروش به مشتری (تومان)</th>
+                        <th>حاشیه سود شما</th>
+                        <th>وضعیت در ربات</th>
+                        <th class="text-end pe-3">عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in plans %}
+                    <tr>
+                        <td class="ps-3">
+                            <div class="fw-bold text-dark">{{ p['master_name'] }}</div>
+                            <code class="small text-muted">#{{ p['plan_id'] }}</code>
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary-subtle text-secondary border">
+                                <i class="fas fa-database me-1"></i>{{ p['data_limit'] if p['data_limit'] > 0 else 'نامحدود' }} GB
+                            </span>
+                            <span class="badge bg-secondary-subtle text-secondary border ms-1">
+                                <i class="fas fa-clock me-1"></i>{{ p['duration'] }} روز
+                            </span>
+                        </td>
+                        <td>
+                            <span class="text-muted font-monospace">{{ "{:,}".format(p['master_price']) }} تومان</span>
+                        </td>
+                        <td>
+                            <span class="text-success font-monospace fw-bold">{{ "{:,}".format(p['wholesale_price']) }} تومان</span>
+                        </td>
+                        <form method="POST" action="{{ url_for('reseller_plans') }}">
+                            <input type="hidden" name="action" value="update_override">
+                            <input type="hidden" name="plan_id" value="{{ p['plan_id'] }}">
+                            <td>
+                                <input type="text" class="form-control form-control-sm" name="custom_name" 
+                                       value="{{ p['custom_name'] }}" placeholder="{{ p['master_name'] }}">
+                            </td>
+                            <td>
+                                <input type="number" class="form-control form-control-sm font-monospace" name="custom_price" 
+                                       value="{{ p['custom_price'] or '' }}" placeholder="{{ p['master_price'] }}" step="1000" min="0">
+                            </td>
+                            <td>
+                                {% set profit = p['display_price'] - p['wholesale_price'] %}
+                                <span class="badge {% if profit > 0 %}bg-success-subtle text-success border border-success{% else %}bg-secondary-subtle text-secondary{% endif %} font-monospace">
+                                    +{{ "{:,}".format(profit) }} ت
+                                </span>
+                            </td>
+                            <td>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="is_active" {% if p['is_active'] %}checked{% endif %}>
+                                </div>
+                            </td>
+                            <td class="text-end pe-3">
+                                <div class="btn-group btn-group-sm">
+                                    <button type="submit" class="btn btn-primary" title="ذخیره تغییرات">
+                                        <i class="fas fa-save me-1"></i> ذخیره
+                                    </button>
+                        </form>
+                                    {% if p['custom_name'] or p['custom_price'] or not p['is_active'] %}
+                                    <form method="POST" action="{{ url_for('reseller_plans') }}" onsubmit="return confirm('آیا از بازنشانی این پلن به حالت پیش‌فرض مطمئن هستید؟');" class="d-inline">
+                                        <input type="hidden" name="action" value="reset_override">
+                                        <input type="hidden" name="plan_id" value="{{ p['plan_id'] }}">
+                                        <button type="submit" class="btn btn-outline-secondary" title="بازنشانی به پیش‌فرض">
+                                            <i class="fas fa-rotate-left"></i>
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </div>
+                            </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

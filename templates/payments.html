@@ -9,6 +9,9 @@
         <p class="text-muted mb-0">بررسی، تایید، رد، ویرایش و ابطال فیش‌های واریزی و تراکنش‌های کاربران</p>
     </div>
     <div class="d-flex gap-2">
+        <button type="button" class="btn btn-outline-primary" id="btnTestSound" onclick="playResellerReceiptChime(true)" title="تست صدای اعلان صوتی رسیدهای نمایندگان">
+            <i class="fas fa-bell me-1"></i> تست صدای اعلان رسید نماینده
+        </button>
         <a href="{{ url_for('export_transactions') }}" class="btn btn-outline-success">
             <i class="fas fa-file-excel me-1"></i> خروجی اکسل (CSV)
         </a>
@@ -69,26 +72,40 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0" id="paymentsTable">
+            <table class="table table-hover align-middle mb-0 sortable-table" id="paymentsTable">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-3" style="width: 90px;">سفارش</th>
-                        <th>کاربر تلگرام</th>
-                        <th>پلن / نوع</th>
-                        <th>مبلغ پرداختی</th>
-                        <th>روش پرداخت</th>
-                        <th>وضعیت</th>
-                        <th>تاریخ ثبت</th>
+                        <th class="ps-3 sortable-th" data-column="0" style="width: 100px; cursor: pointer;">
+                            سفارش <i class="fas fa-sort text-muted ms-1"></i>
+                        </th>
+                        <th class="sortable-th" data-column="1" style="cursor: pointer;">
+                            کاربر تلگرام <i class="fas fa-sort text-muted ms-1"></i>
+                        </th>
+                        <th class="sortable-th" data-column="2" style="cursor: pointer;">
+                            پلن / نوع <i class="fas fa-sort text-muted ms-1"></i>
+                        </th>
+                        <th class="sortable-th" data-column="3" style="cursor: pointer;">
+                            مبلغ پرداختی <i class="fas fa-sort text-muted ms-1"></i>
+                        </th>
+                        <th class="sortable-th" data-column="4" style="cursor: pointer;">
+                            روش پرداخت <i class="fas fa-sort text-muted ms-1"></i>
+                        </th>
+                        <th class="sortable-th" data-column="5" style="cursor: pointer;">
+                            وضعیت <i class="fas fa-sort text-muted ms-1"></i>
+                        </th>
+                        <th class="sortable-th" data-column="6" style="cursor: pointer;">
+                            تاریخ ثبت <i class="fas fa-sort text-muted ms-1"></i>
+                        </th>
                         <th class="text-end pe-3" style="min-width: 170px;">عملیات و جزئیات</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for tx in payments %}
-                    <tr>
-                        <td class="ps-3">
+                    <tr class="{% if tx.get('gateway') == 'bundle_reseller' or (tx.get('order_id') and tx['order_id'].startswith('R_BUNDLE')) %}table-purple-subtle border-start border-4 border-purple{% endif %}">
+                        <td class="ps-3" data-value="{{ tx['id'] }}">
                             <span class="badge bg-light text-dark border font-monospace fs-6">#{{ tx['id'] }}</span>
                         </td>
-                        <td>
+                        <td data-value="{{ tx['username'] or tx['user_id'] or '' }}">
                             <div class="d-flex align-items-center gap-2">
                                 <img src="{{ avatar_url(tx['user_id'] or tx['username'] or 'User') }}" 
                                      alt="{{ tx['username'] or tx['user_id'] }}" 
@@ -106,26 +123,49 @@
                                 {% endif %}
                             </div>
                         </td>
-                        <td>
-                            <div class="fw-bold">{{ tx['plan_name'] or '-' }}</div>
+                        <td data-value="{{ tx['plan_name'] or '' }}">
+                            {% if tx.get('gateway') == 'bundle_reseller' or (tx.get('order_id') and tx['order_id'].startswith('R_BUNDLE')) %}
+                                <div>
+                                    <span class="badge mb-1" style="background: linear-gradient(135deg, #7c3aed, #db2777); color: #fff; font-size: 0.75rem;">
+                                        <i class="fas fa-crown me-1 text-warning"></i> شارژ بسته اعتباری نماینده #{{ tx.get('reseller_id') or 'مستقل' }}
+                                    </span>
+                                </div>
+                                <div class="fw-bold text-dark">{{ tx['plan_name'] or 'بسته اعتباری' }}</div>
+                            {% elif tx.get('reseller_id') %}
+                                <div>
+                                    <span class="badge mb-1" style="background: #f5f3ff; color: #7c3aed; border: 1px solid #ddd6fe; font-size: 0.72rem;">
+                                        <i class="fas fa-robot me-1"></i> ربات نماینده #{{ tx['reseller_id'] }}
+                                    </span>
+                                </div>
+                                <div class="fw-bold">{{ tx['plan_name'] or '-' }}</div>
+                            {% else %}
+                                <div class="fw-bold">{{ tx['plan_name'] or '-' }}</div>
+                            {% endif %}
+
                             {% if tx['is_renewal'] %}
                                 <span class="badge bg-info-subtle text-info border border-info" style="font-size: 0.7rem;">تمدید اشتراک</span>
-                            {% else %}
+                            {% elif not (tx.get('gateway') == 'bundle_reseller' or (tx.get('order_id') and tx['order_id'].startswith('R_BUNDLE'))) %}
                                 <span class="badge bg-secondary-subtle text-secondary border" style="font-size: 0.7rem;">خرید جدید</span>
                             {% endif %}
                             {% if tx['discount_code'] %}
                                 <span class="badge bg-warning text-dark" style="font-size: 0.7rem;">کد: {{ tx['discount_code'] }}</span>
                             {% endif %}
                         </td>
-                        <td>
+                        <td data-value="{{ tx['amount'] or 0 }}">
                             <strong class="text-primary fs-6">{{ "{:,}".format(tx['amount'] or 0) }} تومان</strong>
                         </td>
-                        <td>
-                            <span class="badge bg-light text-dark border">
-                                <i class="fas fa-credit-card me-1 text-secondary"></i>{{ tx['gateway']|gateway_name }}
-                            </span>
+                        <td data-value="{{ tx['gateway'] or '' }}">
+                            {% if tx.get('gateway') == 'bundle_reseller' %}
+                                <span class="badge bg-purple-subtle text-purple border" style="background: #ede9fe; color: #6d28d9;">
+                                    <i class="fas fa-credit-card me-1"></i>کارت به کارت نماینده
+                                </span>
+                            {% else %}
+                                <span class="badge bg-light text-dark border">
+                                    <i class="fas fa-credit-card me-1 text-secondary"></i>{{ tx['gateway']|gateway_name }}
+                                </span>
+                            {% endif %}
                         </td>
-                        <td>
+                        <td data-value="{{ tx['status'] }}">
                             {% if tx['is_deleted'] %}
                                 <span class="badge bg-dark"><i class="fas fa-trash-can me-1"></i> سطل زباله</span>
                             {% elif tx['status'] == 'pending' %}
@@ -140,7 +180,7 @@
                                 <span class="badge bg-danger"><i class="fas fa-times-circle me-1"></i> رد شده</span>
                             {% endif %}
                         </td>
-                        <td><small class="text-muted">{{ tx['created_at'][:16].replace('T', ' ') if tx['created_at'] else '-' }}</small></td>
+                        <td data-value="{{ tx['created_at'] or '' }}"><small class="text-muted">{{ tx['created_at'][:16].replace('T', ' ') if tx['created_at'] else '-' }}</small></td>
                         <td class="text-end pe-3">
                             <div class="btn-group btn-group-sm">
                                 <!-- دکمه برجسته مشاهده جزئیات کامل -->
@@ -575,6 +615,110 @@ function openReceiptPreview(imgUrl, username, orderId, userId) {
     const modal = new bootstrap.Modal(document.getElementById('receiptPreviewModal'));
     modal.show();
 }
+
+// سنتز صوتی صدای زنگ/اعلان اختصاصی رسید نمایندگان با Web Audio API
+function playResellerReceiptChime(manual = false) {
+    try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const now = ctx.currentTime;
+        
+        // نت اول (High E / 659.25 Hz)
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(659.25, now);
+        gain1.gain.setValueAtTime(0, now);
+        gain1.gain.linearRampToValueAtTime(0.3, now + 0.05);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+        osc1.start(now);
+        osc1.stop(now + 0.4);
+
+        // نت دوم (High A / 880.00 Hz)
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'triangle';
+        osc2.frequency.setValueAtTime(880.00, now + 0.15);
+        gain2.gain.setValueAtTime(0, now + 0.15);
+        gain2.gain.linearRampToValueAtTime(0.35, now + 0.20);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.start(now + 0.15);
+        osc2.stop(now + 0.65);
+
+        // نت سوم هارمونیک ویژه (C#6 / 1108.73 Hz)
+        const osc3 = ctx.createOscillator();
+        const gain3 = ctx.createGain();
+        osc3.type = 'sine';
+        osc3.frequency.setValueAtTime(1108.73, now + 0.3);
+        gain3.gain.setValueAtTime(0, now + 0.3);
+        gain3.gain.linearRampToValueAtTime(0.25, now + 0.35);
+        gain3.gain.exponentialRampToValueAtTime(0.0001, now + 0.9);
+        osc3.connect(gain3);
+        gain3.connect(ctx.destination);
+        osc3.start(now + 0.3);
+        osc3.stop(now + 0.9);
+
+        if (manual) {
+            const btn = document.getElementById('btnTestSound');
+            if (btn) {
+                const origHtml = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-check text-success me-1"></i> صدای زنگ پخش شد!';
+                setTimeout(() => { btn.innerHTML = origHtml; }, 2000);
+            }
+        }
+    } catch (e) {
+        console.warn('Web Audio error:', e);
+    }
+}
+
+// اسکریپت مرتب‌سازی هوشمند ستون‌های جدول پرداخت‌ها
+document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll(".sortable-th").forEach(header => {
+        header.addEventListener("click", function () {
+            const table = header.closest("table");
+            const tbody = table.querySelector("tbody");
+            const colIndex = parseInt(header.getAttribute("data-column"));
+            const currentDir = header.getAttribute("data-dir") === "asc" ? "desc" : "asc";
+            
+            table.querySelectorAll(".sortable-th").forEach(th => {
+                th.removeAttribute("data-dir");
+                const icon = th.querySelector("i");
+                if (icon) icon.className = "fas fa-sort text-muted ms-1";
+            });
+
+            header.setAttribute("data-dir", currentDir);
+            const icon = header.querySelector("i");
+            if (icon) {
+                icon.className = currentDir === "asc" ? "fas fa-sort-up text-primary ms-1" : "fas fa-sort-down text-primary ms-1";
+            }
+
+            const rows = Array.from(tbody.querySelectorAll("tr"));
+            rows.sort((a, b) => {
+                const cellA = a.children[colIndex];
+                const cellB = b.children[colIndex];
+                if (!cellA || !cellB) return 0;
+                
+                let valA = cellA.getAttribute("data-value") !== null ? cellA.getAttribute("data-value") : cellA.innerText.trim();
+                let valB = cellB.getAttribute("data-value") !== null ? cellB.getAttribute("data-value") : cellB.innerText.trim();
+
+                const numA = parseFloat(valA);
+                const numB = parseFloat(valB);
+
+                if (!isNaN(numA) && !isNaN(numB)) {
+                    return currentDir === "asc" ? numA - numB : numB - numA;
+                }
+                return currentDir === "asc" ? valA.localeCompare(valB, "fa") : valB.localeCompare(valA, "fa");
+            });
+
+            rows.forEach(r => tbody.appendChild(r));
+        });
+    });
+});
 </script>
 {% endblock %}
 

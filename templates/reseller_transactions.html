@@ -2,13 +2,13 @@
 {% block title %}گزارش تراکنش‌ها و شارژ کیف پول - پنل نمایندگی{% endblock %}
 
 {% block content %}
-<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
     <div>
-        <h1 class="page-title"><i class="fas fa-wallet text-primary"></i> تاریخچه مالی و تراکنش‌های کیف پول</h1>
-        <p class="text-muted mb-0">گزارش تمام واریزی‌ها، تمدیدها، خریدهای اشتراک و استرداد وجه</p>
+        <h1 class="page-title"><i class="fas fa-wallet text-primary me-2"></i>تاریخچه مالی و شارژ اعتبار کیف پول</h1>
+        <p class="text-muted mb-0">گزارش تمام واریزی‌ها، تمدیدها، خریدهای اشتراک و پیش‌خرید بسته‌های اعتباری با بونوس</p>
     </div>
     <div class="badge bg-success fs-6 py-2 px-3">
-        موجودی فعلی: {{ "{:,}".format(stats['balance'] or 0) }} تومان
+        <i class="fas fa-coins me-1"></i> موجودی فعلی: {{ "{:,}".format(stats['balance'] or 0) }} تومان
     </div>
 </div>
 
@@ -25,61 +25,113 @@
         </div>
     </div>
 
-    <!-- پکیج ۱ -->
+    {% for b in bundles %}
     <div class="col-md-3 col-sm-6">
-        <div class="card border-0 shadow-sm text-center p-3 h-100">
-            <span class="badge bg-info-subtle text-info border border-info align-self-center mb-2 px-3 py-1">۵٪ شارژ هدیه</span>
-            <h6 class="fw-bold mb-1">بسته استارتر</h6>
-            <div class="fs-5 fw-bold text-dark font-monospace mb-1">۱,۰۵۰,۰۰۰ ت</div>
-            <div class="small text-muted mb-3">پرداخت: ۱,۰۰۰,۰۰۰ تومان</div>
-            <form method="POST" action="{{ url_for('reseller_bundles_buy') }}" onsubmit="return confirm('آیا از خرید بسته استارتر مطمئن هستید؟');">
-                <input type="hidden" name="bundle_id" value="bundle_1m">
-                <button type="submit" class="btn btn-sm btn-outline-info w-100 fw-bold">خرید و شارژ آنی</button>
-            </form>
+        <div class="card border-0 shadow-sm text-center p-3 h-100 {% if b['id'] == 'bundle_10m' %}border-warning border{% endif %}">
+            <span class="badge {% if b['id'] == 'bundle_10m' %}bg-warning text-dark{% elif b['id'] == 'bundle_5m' %}bg-success-subtle text-success border border-success{% elif b['id'] == 'bundle_3m' %}bg-primary-subtle text-primary border border-primary{% else %}bg-info-subtle text-info border border-info{% endif %} align-self-center mb-2 px-3 py-1">
+                {{ b['badge'] }}
+            </span>
+            <h6 class="fw-bold mb-1">{{ b['title'] }}</h6>
+            <div class="fs-5 fw-bold text-dark font-monospace mb-1">{{ "{:,}".format(b['credit']) }} ت</div>
+            <div class="small text-muted mb-3">مبلغ پرداختی: {{ "{:,}".format(b['price']) }} تومان</div>
+            <button type="button" class="btn btn-sm {% if b['id'] == 'bundle_10m' %}btn-warning{% elif b['id'] == 'bundle_5m' %}btn-outline-success{% elif b['id'] == 'bundle_3m' %}btn-outline-primary{% else %}btn-outline-info{% endif %} w-100 fw-bold" 
+                    data-bs-toggle="modal" data-bs-target="#buyBundleModal{{ b['id'] }}">
+                <i class="fas fa-cart-shopping me-1"></i> خرید و شارژ بسته
+            </button>
         </div>
-    </div>
 
-    <!-- پکیج ۲ -->
-    <div class="col-md-3 col-sm-6">
-        <div class="card border-0 shadow-sm text-center p-3 h-100">
-            <span class="badge bg-primary-subtle text-primary border border-primary align-self-center mb-2 px-3 py-1">۷٪ شارژ هدیه</span>
-            <h6 class="fw-bold mb-1">بسته نقره‌ای</h6>
-            <div class="fs-5 fw-bold text-primary font-monospace mb-1">۳,۲۱۰,۰۰۰ ت</div>
-            <div class="small text-muted mb-3">پرداخت: ۳,۰۰۰,۰۰۰ تومان</div>
-            <form method="POST" action="{{ url_for('reseller_bundles_buy') }}" onsubmit="return confirm('آیا از خرید بسته نقره‌ای مطمئن هستید؟');">
-                <input type="hidden" name="bundle_id" value="bundle_3m">
-                <button type="submit" class="btn btn-sm btn-outline-primary w-100 fw-bold">خرید و شارژ آنی</button>
-            </form>
-        </div>
-    </div>
+        <!-- Modal انتخاب روش پرداخت بسته -->
+        <div class="modal fade" id="buyBundleModal{{ b['id'] }}" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-lg">
+                <div class="modal-content text-start">
+                    <div class="modal-header bg-primary text-white py-3">
+                        <h5 class="modal-title fw-bold"><i class="fas fa-shield-halved me-2"></i>خرید و شارژ {{ b['title'] }}</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body p-4">
+                        <div class="bg-light p-3 rounded mb-4 text-center">
+                            <div class="text-muted small">مبلغ قابل پرداخت:</div>
+                            <div class="fs-4 fw-bold text-primary font-monospace my-1">{{ "{:,}".format(b['price']) }} تومان</div>
+                            <div class="badge bg-success-subtle text-success border border-success">
+                                <i class="fas fa-gift me-1"></i> اعتبار واریزی به حساب شما: {{ "{:,}".format(b['credit']) }} تومان ({{ b['badge'] }})
+                            </div>
+                        </div>
 
-    <!-- پکیج ۳ -->
-    <div class="col-md-3 col-sm-6">
-        <div class="card border-0 shadow-sm text-center p-3 h-100">
-            <span class="badge bg-success-subtle text-success border border-success align-self-center mb-2 px-3 py-1">۱۰٪ شارژ هدیه</span>
-            <h6 class="fw-bold mb-1">بسته طلایی</h6>
-            <div class="fs-5 fw-bold text-success font-monospace mb-1">۵,۵۰۰,۰۰۰ ت</div>
-            <div class="small text-muted mb-3">پرداخت: ۵,۰۰۰,۰۰۰ تومان</div>
-            <form method="POST" action="{{ url_for('reseller_bundles_buy') }}" onsubmit="return confirm('آیا از خرید بسته طلایی مطمئن هستید؟');">
-                <input type="hidden" name="bundle_id" value="bundle_5m">
-                <button type="submit" class="btn btn-sm btn-outline-success w-100 fw-bold">خرید و شارژ آنی</button>
-            </form>
-        </div>
-    </div>
+                        <ul class="nav nav-pills nav-fill mb-3" id="pills-tab-{{ b['id'] }}" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active fw-bold" id="pills-card-tab-{{ b['id'] }}" data-bs-toggle="pill" data-bs-target="#pills-card-{{ b['id'] }}" type="button" role="tab">
+                                    <i class="fas fa-credit-card me-1"></i> کارت به کارت (بانکی)
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link fw-bold" id="pills-online-tab-{{ b['id'] }}" data-bs-toggle="pill" data-bs-target="#pills-online-{{ b['id'] }}" type="button" role="tab">
+                                    <i class="fas fa-globe me-1"></i> درگاه آنلاین شاپرک
+                                </button>
+                            </li>
+                        </ul>
 
-    <!-- پکیج ۴ VIP -->
-    <div class="col-md-3 col-sm-6">
-        <div class="card border-0 shadow-sm text-center p-3 h-100 border-warning border">
-            <span class="badge bg-warning text-dark align-self-center mb-2 px-3 py-1">👑 ۱۵٪ شارژ هدیه VIP</span>
-            <h6 class="fw-bold mb-1">بسته الماس VIP</h6>
-            <div class="fs-5 fw-bold text-dark font-monospace mb-1">۱۱,۵۰۰,۰۰۰ ت</div>
-            <div class="small text-muted mb-3">پرداخت: ۱۰,۰۰۰,۰۰۰ تومان</div>
-            <form method="POST" action="{{ url_for('reseller_bundles_buy') }}" onsubmit="return confirm('آیا از خرید بسته الماس VIP مطمئن هستید؟');">
-                <input type="hidden" name="bundle_id" value="bundle_10m">
-                <button type="submit" class="btn btn-sm btn-warning w-100 fw-bold">خرید و شارژ آنی</button>
-            </form>
+                        <div class="tab-content" id="pills-tabContent-{{ b['id'] }}">
+                            <!-- تب کارت به کارت -->
+                            <div class="tab-pane fade show active" id="pills-card-{{ b['id'] }}" role="tabpanel">
+                                {% if admin_cards and admin_cards|length > 0 %}
+                                    {% set primary_card = admin_cards[0] %}
+                                    <div class="card bg-secondary bg-opacity-10 border p-3 mb-3">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <span class="text-muted small">شماره کارت مقصد مدیریت:</span>
+                                            <span class="badge bg-primary">{{ primary_card.get('bank_name') or 'بانک' }}</span>
+                                        </div>
+                                        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                            <code class="fs-5 fw-bold text-dark font-monospace" id="cardNum{{ b['id'] }}">{{ primary_card.get('card_number') }}</code>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="navigator.clipboard.writeText('{{ primary_card.get('card_number') }}'); alert('شماره کارت کپی شد: {{ primary_card.get('card_number') }}');">
+                                                <i class="fas fa-copy me-1"></i> کپی کارت
+                                            </button>
+                                        </div>
+                                        {% if primary_card.get('card_holder') %}
+                                        <div class="small text-muted mt-2">به نام: <b>{{ primary_card.get('card_holder') }}</b></div>
+                                        {% endif %}
+                                    </div>
+                                {% else %}
+                                    <div class="alert alert-warning py-2 small">شماره کارت مدیریت در سیستم تعریف نشده است. لطفاً به پشتیبانی پیام دهید.</div>
+                                {% endif %}
+
+                                <form method="POST" action="{{ url_for('reseller_bundles_submit_receipt') }}" enctype="multipart/form-data">
+                                    <input type="hidden" name="bundle_id" value="{{ b['id'] }}">
+                                    <div class="mb-3">
+                                        <label class="form-label small fw-bold">کد پیگیری / شماره ارجاع واریز:</label>
+                                        <input type="text" class="form-control" name="tracking_code" placeholder="مثال: 123456789" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label small fw-bold">تصویر فیش واریزی (اختیاری):</label>
+                                        <input type="file" class="form-control" name="receipt_image" accept="image/*">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label small fw-bold">توضیحات و یادداشت (اختیاری):</label>
+                                        <textarea class="form-control" name="notes" rows="2" placeholder="توضیحات تکمیلی..."></textarea>
+                                    </div>
+                                    <button type="submit" class="btn btn-success w-100 fw-bold py-2">
+                                        <i class="fas fa-check-circle me-1"></i> ثبت و ارسال فیش واریزی جهت تایید مدیریت
+                                    </button>
+                                </form>
+                            </div>
+
+                            <!-- تب درگاه آنلاین -->
+                            <div class="tab-pane fade text-center py-3" id="pills-online-{{ b['id'] }}" role="tabpanel">
+                                <div class="mb-3">
+                                    <i class="fas fa-shield-halved text-success fs-1 mb-2"></i>
+                                    <h6>پرداخت آنی و خودکار از طریق کلیه کارت‌های عضو شتاب</h6>
+                                    <p class="text-muted small">پس از پرداخت موفق در درگاه بانکی، موجودی کیف پول و بونوس هدیه فوراً و بدون نیاز به تایید دستی به حسابتان افزوده خواهد شد.</p>
+                                </div>
+                                <a href="{{ url_for('reseller_bundles_online_pay', bundle_id=b['id']) }}" class="btn btn-primary btn-lg px-4 fw-bold">
+                                    <i class="fas fa-arrow-up-right-from-square me-2"></i> انتقال به درگاه پرداخت آنلاین
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
+    {% endfor %}
 </div>
 
 <div class="card shadow-sm border-0">
@@ -96,23 +148,33 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0" id="resellerTxTable">
+            <table class="table table-hover align-middle mb-0 sortable-table" id="resellerTxTable">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-3">شناسه</th>
-                        <th>نوع تراکنش</th>
-                        <th>مبلغ</th>
-                        <th>پلن / نام کاربری مشتری</th>
+                        <th class="ps-3 sortable-th" data-column="0" style="cursor: pointer;">
+                            شناسه <i class="fas fa-sort text-muted ms-1"></i>
+                        </th>
+                        <th class="sortable-th" data-column="1" style="cursor: pointer;">
+                            نوع تراکنش <i class="fas fa-sort text-muted ms-1"></i>
+                        </th>
+                        <th class="sortable-th" data-column="2" style="cursor: pointer;">
+                            مبلغ <i class="fas fa-sort text-muted ms-1"></i>
+                        </th>
+                        <th class="sortable-th" data-column="3" style="cursor: pointer;">
+                            پلن / نام کاربری مشتری <i class="fas fa-sort text-muted ms-1"></i>
+                        </th>
                         <th>توضیحات</th>
-                        <th>تاریخ و زمان</th>
+                        <th class="sortable-th" data-column="5" style="cursor: pointer;">
+                            تاریخ و زمان <i class="fas fa-sort text-muted ms-1"></i>
+                        </th>
                         <th class="text-end pe-3">جزئیات</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for tx in transactions %}
                     <tr>
-                        <td class="ps-3"><code class="fs-6 font-monospace">#{{ tx['id'] }}</code></td>
-                        <td>
+                        <td class="ps-3" data-value="{{ tx['id'] }}"><code class="fs-6 font-monospace">#{{ tx['id'] }}</code></td>
+                        <td data-value="{{ tx['type'] }}">
                             {% if tx['type'] == 'deposit' %}
                                 <span class="badge bg-success"><i class="fas fa-arrow-down me-1"></i> شارژ کیف پول</span>
                             {% elif tx['type'] == 'refund' %}
@@ -123,14 +185,14 @@
                                 <span class="badge bg-danger"><i class="fas fa-arrow-up me-1"></i> خرید اشتراک</span>
                             {% endif %}
                         </td>
-                        <td>
+                        <td data-value="{{ tx['amount'] or 0 }}">
                             <strong class="{{ 'text-success' if (tx['type'] in ['deposit', 'refund']) else 'text-danger' }}">
                                 {{ '+' if (tx['type'] in ['deposit', 'refund']) else '-' }}{{ "{:,}".format(tx['amount'] or 0) }} تومان
                             </strong>
                         </td>
-                        <td>{{ tx['plan_name'] or '-' }} {% if tx['account_name'] %}<code class="ms-1">{{ tx['account_name'] }}</code>{% endif %}</td>
+                        <td data-value="{{ tx['plan_name'] or '' }}">{{ tx['plan_name'] or '-' }} {% if tx['account_name'] %}<code class="ms-1">{{ tx['account_name'] }}</code>{% endif %}</td>
                         <td><small class="text-muted">{{ tx['description'] or '-' }}</small></td>
-                        <td><small class="text-muted">{{ tx['created_at'][:16].replace('T', ' ') if tx['created_at'] else '-' }}</small></td>
+                        <td data-value="{{ tx['created_at'] or '' }}"><small class="text-muted">{{ tx['created_at'][:16].replace('T', ' ') if tx['created_at'] else '-' }}</small></td>
                         <td class="text-end pe-3">
                             <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#resellerTxDetail{{ tx['id'] }}" title="مشاهده جزئیات کامل">
                                 <i class="fas fa-eye me-1"></i> مشاهده
@@ -175,10 +237,6 @@
                                                     <span>{{ tx['plan_name'] or '-' }} {% if tx['account_name'] %}<code>{{ tx['account_name'] }}</code>{% endif %}</span>
                                                 </div>
                                                 <div class="list-group-item d-flex justify-content-between align-items-center">
-                                                    <span class="text-muted">روش پرداخت / درگاه:</span>
-                                                    <span class="badge bg-info-subtle text-info border border-info">{{ tx['gateway']|gateway_name }}</span>
-                                                </div>
-                                                <div class="list-group-item d-flex justify-content-between align-items-center">
                                                     <span class="text-muted">تاریخ و زمان:</span>
                                                     <small class="text-muted">{{ tx['created_at'] or '-' }}</small>
                                                 </div>
@@ -209,4 +267,51 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    // قابلیت مرتب‌سازی ستون‌های جدول
+    document.querySelectorAll(".sortable-th").forEach(header => {
+        header.addEventListener("click", function () {
+            const table = header.closest("table");
+            const tbody = table.querySelector("tbody");
+            const colIndex = parseInt(header.getAttribute("data-column"));
+            const currentDir = header.getAttribute("data-dir") === "asc" ? "desc" : "asc";
+            
+            // ریست آیکون‌های دیگر
+            table.querySelectorAll(".sortable-th").forEach(th => {
+                th.removeAttribute("data-dir");
+                const icon = th.querySelector("i");
+                if (icon) icon.className = "fas fa-sort text-muted ms-1";
+            });
+
+            header.setAttribute("data-dir", currentDir);
+            const icon = header.querySelector("i");
+            if (icon) {
+                icon.className = currentDir === "asc" ? "fas fa-sort-up text-primary ms-1" : "fas fa-sort-down text-primary ms-1";
+            }
+
+            const rows = Array.from(tbody.querySelectorAll("tr"));
+            rows.sort((a, b) => {
+                const cellA = a.children[colIndex];
+                const cellB = b.children[colIndex];
+                if (!cellA || !cellB) return 0;
+                
+                let valA = cellA.getAttribute("data-value") !== null ? cellA.getAttribute("data-value") : cellA.innerText.trim();
+                let valB = cellB.getAttribute("data-value") !== null ? cellB.getAttribute("data-value") : cellB.innerText.trim();
+
+                const numA = parseFloat(valA);
+                const numB = parseFloat(valB);
+
+                if (!isNaN(numA) && !isNaN(numB)) {
+                    return currentDir === "asc" ? numA - numB : numB - numA;
+                }
+                return currentDir === "asc" ? valA.localeCompare(valB, "fa") : valB.localeCompare(valA, "fa");
+            });
+
+            rows.forEach(r => tbody.appendChild(r));
+        });
+    });
+});
+</script>
 {% endblock %}
