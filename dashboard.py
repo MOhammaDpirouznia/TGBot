@@ -112,6 +112,13 @@ def fetch_smart_avatar_bytes(identifier: str) -> tuple[bytes, str]:
     raw_ident = str(identifier).strip()
     clean_ident = raw_ident.lstrip("@").strip()
 
+    # ۰۰. بررسی مستقیم نام فایل در پوشه کش آواتارها و لوگوهای آپلود شده
+    direct_file = AVATAR_CACHE_DIR / clean_ident
+    if direct_file.exists() and direct_file.is_file() and direct_file.stat().st_size > 0:
+        ext = direct_file.suffix.lower()
+        mime = "image/svg+xml" if ext == ".svg" else ("image/png" if ext == ".png" else ("image/webp" if ext == ".webp" else "image/jpeg"))
+        return direct_file.read_bytes(), mime
+
     # ۰. بررسی اولویت اول: تصویر اختصاصی آپلود شده یا تنظیم شده
     custom_candidates = [
         AVATAR_CACHE_DIR / f"custom_{clean_ident}.svg",
@@ -3994,10 +4001,14 @@ def reseller_branding():
         if "logo_file" in request.files:
             file = request.files["logo_file"]
             if file and file.filename:
-                fn = f"reseller_{reseller_id}_logo_{int(time.time())}.png"
+                ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "png"
+                fn = f"reseller_{reseller_id}_logo_{int(time.time())}.{ext}"
                 fp = AVATAR_CACHE_DIR / fn
                 file.save(fp)
-                logo_url = url_for("avatar_serve", filename=fn)
+                logo_url = url_for("telegram_avatar", identifier=fn)
+
+        if not logo_url and reseller and reseller.get("logo_url"):
+            logo_url = reseller["logo_url"]
 
         res = db.update_reseller_branding(
             reseller_id,
