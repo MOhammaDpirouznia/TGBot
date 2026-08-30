@@ -640,7 +640,7 @@ async def change_language_prompt(update: Update, context: ContextTypes.DEFAULT_T
 
 
 def get_payment_selection_payload(user_id: int, plan: dict, reseller_id: Optional[int] = None) -> Tuple[str, InlineKeyboardMarkup]:
-    """تولید پیام و کیبورد استاندارد و ۳گانه انتخاب روش پرداخت (کیف پول، درگاه آنلاین، کارت به کارت)"""
+    """تولید پیام و کیبورد استاندارد انتخاب روش پرداخت با چیدمان و اولویت داینامیک"""
     price = plan.get("price", 0)
     price_formatted = f"{price:,}".replace(",", "،")
     user_wallet = db.get_user_wallet_balance(user_id)
@@ -662,27 +662,36 @@ def get_payment_selection_payload(user_id: int, plan: dict, reseller_id: Optiona
 لطفاً نحوه پرداخت را انتخاب کنید:
 """
     keyboard = []
-    # ۱. پرداخت از کیف پول
-    if user_wallet >= price:
-        keyboard.append([InlineKeyboardButton(f"⚡ پرداخت آنی از کیف پول ({user_wallet:,} ت)", callback_data="pay_wallet")])
-    else:
-        keyboard.append([InlineKeyboardButton(f"💰 پرداخت از کیف پول (کسری: {price - user_wallet:,} ت)", callback_data="pay_wallet_insufficient")])
+    
+    # دریافت ترتیب و وضعیت فعال بودن روش‌های پرداخت به صورت پویا از دیتابیس
+    ordered_methods = db.get_payment_methods(reseller_id=reseller_id)
+    
+    for m in ordered_methods:
+        m_id = m.get("id")
+        if not m.get("enabled", True):
+            continue
+            
+        if m_id == "card_to_card":
+            keyboard.append([InlineKeyboardButton("💵 کارت به کارت (بانکی)", callback_data="pay_card")])
+            
+        elif m_id == "wallet":
+            if user_wallet >= price:
+                keyboard.append([InlineKeyboardButton(f"⚡ پرداخت آنی از کیف پول ({user_wallet:,} ت)", callback_data="pay_wallet")])
+            else:
+                keyboard.append([InlineKeyboardButton(f"💰 پرداخت از کیف پول (کسری: {price - user_wallet:,} ت)", callback_data="pay_wallet_insufficient")])
+                
+        elif m_id == "online_gateway":
+            if gw_cfg.get("enabled") and gw_cfg.get("key"):
+                gw_label = "زرین‌پال" if gw_cfg.get("type") == "zarinpal" else ("آیدی‌پی" if gw_cfg.get("type") == "idpay" else "آنلاین")
+                keyboard.append([InlineKeyboardButton(f"💳 درگاه پرداخت آنلاین ({gw_label})", callback_data="pay_online_gateway")])
+            else:
+                keyboard.append([InlineKeyboardButton("💳 درگاه آنلاین (بزودی)", callback_data="coming_soon_gateway")])
+                
+        elif m_id == "crypto":
+            if crypto_cfg.get("enabled"):
+                keyboard.append([InlineKeyboardButton(f"💎 پرداخت با تتر / کریپتو ({usdt_price} USDT)", callback_data="pay_crypto")])
 
-    # ۲. درگاه پرداخت آنلاین
-    if gw_cfg.get("enabled") and gw_cfg.get("key"):
-        gw_label = "زرین‌پال" if gw_cfg.get("type") == "zarinpal" else ("آیدی‌پی" if gw_cfg.get("type") == "idpay" else "آنلاین")
-        keyboard.append([InlineKeyboardButton(f"💳 درگاه پرداخت آنلاین ({gw_label})", callback_data="pay_online_gateway")])
-    else:
-        keyboard.append([InlineKeyboardButton("💳 درگاه آنلاین (بزودی)", callback_data="coming_soon_gateway")])
-
-    # ۳. کارت به کارت (بانکی)
-    keyboard.append([InlineKeyboardButton("💵 کارت به کارت (بانکی)", callback_data="pay_card")])
-
-    # ۴. کریپتو (تتر)
-    if crypto_cfg.get("enabled"):
-        keyboard.append([InlineKeyboardButton(f"💎 پرداخت با تتر / کریپتو ({usdt_price} USDT)", callback_data="pay_crypto")])
-
-    # ۵. دکمه‌های بازگشت و انصراف
+    # دکمه‌های بازگشت و انصراف
     keyboard.append([
         InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_confirm_purchase"),
         InlineKeyboardButton("❌ انصراف", callback_data="cancel")
@@ -842,31 +851,29 @@ async def back_to_enter_tracking(update: Update, context: ContextTypes.DEFAULT_T
     bank_name = active_card.get("bank_name", BANK_NAME)
 
     text = f"""
-💵 **پرداخت کارت به کارت**
+💵 <b>پرداخت کارت به کارت</b>
 
-📋 پلن: {plan.get('name', 'نامشخص')}
-💰 مبلغ: {price_formatted} تومان
+📋 پلن: <b>{plan.get('name', 'نامشخص')}</b>
+💰 مبلغ: <b><code>{price_formatted}</code> تومان</b>
 
-📌 **اطلاعات کارت:**
-```
-{card_number}
-```
-👤 **نام صاحب کارت:** {card_holder}
-🏦 **بانک:** {bank_name}
+📌 <b>اطلاعات کارت جهت واریز:</b>
+💳 شماره کارت:
+<code>{card_number}</code>
 
-⚠️ **نکات مهم:**
-• دقیقاً مبلغ بالا را واریز کنید
-• بعد از واریز، رسید پرداخت را ارسال کنید
-• رسید پرداخت برای ادمین ارسال میشود
+👤 <b>نام صاحب حساب:</b> {card_holder}
+🏦 <b>بانک:</b> {bank_name}
 
-لطفاً بعد از واریز:
-• متن 📝 رسید یا اسکرین‌شات 📷 رسید را ارسال کنید
+⚠️ <b>نکات مهم:</b>
+• برای کپی شماره کارت یا مبلغ روی دکمه‌های زیر یا روی متن بزنید.
+• پس از واریز، شماره پیگیری یا اسکرین‌شات رسید را ارسال نمایید.
 """
     keyboard = [
+        [InlineKeyboardButton("📋 کپی شماره کارت", callback_data=f"copy_card_{card_number}")],
+        [InlineKeyboardButton(f"💰 کپی مبلغ ({price_formatted} ت)", callback_data=f"copy_amount_{plan.get('price', 0)}")],
         [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_select_payment"), InlineKeyboardButton("❌ انصراف", callback_data="cancel")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
     return ENTERING_TRACKING_CODE
 
 
@@ -2832,6 +2839,7 @@ async def charge_wallet_card_callback(update: Update, context: ContextTypes.DEFA
 ⚠️ <i>پس از واریز، شماره پیگیری یا تصویر رسید را به همراه شناسه کاربری (<code>{query.from_user.id}</code>) به پشتیبانی ارسال فرمایید تا شارژ اعمال شود.</i>
 """
     keyboard = [
+        [InlineKeyboardButton("📋 کپی شماره کارت", callback_data=f"copy_card_{card_number}")],
         [InlineKeyboardButton("✍️ ارسال فیش به پشتیبانی", callback_data="ticket_new")],
         [InlineKeyboardButton("◀️ بازگشت به کیف پول", callback_data="back_to_wallet")],
     ]

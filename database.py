@@ -5304,6 +5304,80 @@ class Database:
             logger.error(f"Error updating admin gateway: {e}")
             return {"success": False, "error": str(e)}
 
+    # ═══════════════════════════════════════════════════════════════
+    # مدیریت اولویت و چیدمان روش‌های پرداخت (Payment Methods Ordering)
+    # ═══════════════════════════════════════════════════════════════
+
+    DEFAULT_PAYMENT_METHODS = [
+        {"id": "card_to_card", "name": "کارت به کارت (بانکی)", "icon": "fa-credit-card", "color": "primary", "enabled": True, "desc": "واریز به شماره کارت‌های فعال با بررسی و تایید فیش"},
+        {"id": "wallet", "name": "پرداخت از کیف پول", "icon": "fa-wallet", "color": "success", "enabled": True, "desc": "کسر آنی مبلغ از موجودی کیف پول و فعال‌سازی لحظه‌ای اشتراک"},
+        {"id": "online_gateway", "name": "درگاه پرداخت آنلاین شاپرک", "icon": "fa-globe", "color": "info", "enabled": True, "desc": "اتصال مستقیم به درگاه‌های زرین‌پال، آیدی‌پی یا نکست‌پی"},
+        {"id": "crypto", "name": "ارز دیجیتال (تتر / کریپتو)", "icon": "fa-gem", "color": "warning", "enabled": True, "desc": "پرداخت با تتر (USDT TRC20 / TON) با محاسبه خودکار نرخ روز"},
+    ]
+
+    def get_payment_methods(self, reseller_id: Optional[int] = None) -> List[dict]:
+        """دریافت لیست و ترتیب اولویت روش‌های پرداخت برای بات و پنل"""
+        setting_key = f"payment_methods_order_r_{reseller_id}" if reseller_id else "payment_methods_order"
+        raw = self.get_setting(setting_key)
+        if raw:
+            try:
+                saved_list = json.loads(raw) if isinstance(raw, str) else raw
+                if isinstance(saved_list, list) and len(saved_list) > 0:
+                    default_map = {m["id"]: m for m in self.DEFAULT_PAYMENT_METHODS}
+                    result = []
+                    seen = set()
+                    for item in saved_list:
+                        m_id = item.get("id") if isinstance(item, dict) else str(item)
+                        if m_id in default_map and m_id not in seen:
+                            base = dict(default_map[m_id])
+                            if isinstance(item, dict) and "enabled" in item:
+                                base["enabled"] = bool(item["enabled"])
+                            result.append(base)
+                            seen.add(m_id)
+                    for m_id, base in default_map.items():
+                        if m_id not in seen:
+                            result.append(dict(base))
+                    return result
+            except Exception as e:
+                logger.error(f"Error parsing payment_methods_order: {e}")
+        return [dict(m) for m in self.DEFAULT_PAYMENT_METHODS]
+
+    def save_payment_methods(self, methods: List[dict], reseller_id: Optional[int] = None) -> bool:
+        """ذخیره چیدمان و وضعیت فعال بودن روش‌های پرداخت"""
+        try:
+            setting_key = f"payment_methods_order_r_{reseller_id}" if reseller_id else "payment_methods_order"
+            self.set_setting(setting_key, json.dumps(methods, ensure_ascii=False))
+            return True
+        except Exception as e:
+            logger.error(f"Error saving payment methods: {e}")
+            return False
+
+    def move_payment_method(self, method_id: str, direction: str, reseller_id: Optional[int] = None) -> List[dict]:
+        """جابجایی عمودی یک روش پرداخت به بالا یا پایین"""
+        methods = self.get_payment_methods(reseller_id)
+        idx = -1
+        for i, m in enumerate(methods):
+            if m["id"] == method_id:
+                idx = i
+                break
+        if idx != -1:
+            if direction == "up" and idx > 0:
+                methods[idx], methods[idx - 1] = methods[idx - 1], methods[idx]
+            elif direction == "down" and idx < len(methods) - 1:
+                methods[idx], methods[idx + 1] = methods[idx + 1], methods[idx]
+            self.save_payment_methods(methods, reseller_id)
+        return methods
+
+    def toggle_payment_method(self, method_id: str, reseller_id: Optional[int] = None) -> List[dict]:
+        """تغییر وضعیت فعال/غیرفعال بودن یک روش پرداخت"""
+        methods = self.get_payment_methods(reseller_id)
+        for m in methods:
+            if m["id"] == method_id:
+                m["enabled"] = not m.get("enabled", True)
+                break
+        self.save_payment_methods(methods, reseller_id)
+        return methods
+
 
 # نمونه singleton
 db = Database()

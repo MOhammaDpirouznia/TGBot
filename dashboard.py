@@ -270,6 +270,32 @@ def avatar_url_helper(identifier=None):
     return url_for("telegram_avatar", identifier=str(identifier))
 
 
+@app.template_filter("gateway_name")
+@app.template_global("format_gateway_name")
+def filter_gateway_name(gateway):
+    """تبدیل شناسه انگلیسی درگاه به نام فارسی روان و استاندارد"""
+    if not gateway or str(gateway).strip() in ["", "None", "null"]:
+        return "کارت به کارت"
+    g = str(gateway).strip().lower()
+    if g in ("card_to_card", "card", "kart", "c2c"):
+        return "کارت به کارت"
+    elif g in ("wallet", "wal"):
+        return "کیف پول"
+    elif g in ("zarinpal", "zarin_pal"):
+        return "درگاه بانکی (زرین‌پال)"
+    elif g in ("idpay", "id_pay"):
+        return "درگاه بانکی (آیدی‌پی)"
+    elif g in ("nextpay", "next_pay"):
+        return "درگاه بانکی (نکست‌پی)"
+    elif g in ("gateway", "online", "online_gateway", "shaparak"):
+        return "درگاه پرداخت بانکی"
+    elif g in ("crypto", "nowpayments", "usdt", "oxapay"):
+        return "ارز دیجیتال (تتر / کریپتو)"
+    elif g in ("perfect_money", "perfectmoney", "pm"):
+        return "پرفکت مانی"
+    return gateway
+
+
 # ─── مسیرهای مینی‌اپ تلگرام (Telegram WebApp / Mini App Routes) ───
 
 @app.route("/webapp")
@@ -2688,18 +2714,67 @@ def ticket_reply(ticket_id):
 @app.route("/cards", methods=["GET", "POST"])
 @permission_required("cards")
 def cards():
-    """مدیریت کارت‌های بانکی و سقف تراکنش"""
+    """مدیریت جامع روش‌ها، درگاه‌ها و کارت‌های بانکی مقصد"""
     if request.method == "POST":
-        card_num = request.form.get("card_number")
-        holder = request.form.get("card_holder")
-        bank = request.form.get("bank_name")
-        limit = int(request.form.get("daily_limit", 50000000))
-        db.add_bank_card(card_num, holder, bank, limit)
-        flash("کارت بانکی جدید افزوده شد.", "success")
+        action = request.form.get("action", "add_card")
+        if action == "add_card":
+            card_num = request.form.get("card_number")
+            holder = request.form.get("card_holder")
+            bank = request.form.get("bank_name")
+            limit = int(request.form.get("daily_limit", 50000000))
+            db.add_bank_card(card_num, holder, bank, limit)
+            flash("کارت بانکی جدید با موفقیت افزوده شد.", "success")
+        elif action == "save_online_gateway":
+            enabled = bool(request.form.get("online_gateway_enabled"))
+            gw_type = request.form.get("online_gateway_type", "zarinpal")
+            gw_key = request.form.get("online_gateway_key", "").strip()
+            sandbox = bool(request.form.get("online_gateway_sandbox"))
+            db.update_admin_gateway(enabled, gw_type, gw_key, sandbox)
+            flash("تنظیمات درگاه پرداخت آنلاین با موفقیت ذخیره شد.", "success")
+        elif action == "save_crypto_gateway":
+            enabled = bool(request.form.get("crypto_gateway_enabled"))
+            wallet_address = request.form.get("crypto_wallet_address", "").strip()
+            usdt_rate = int(request.form.get("crypto_usdt_rate", 90000))
+            CryptoPaymentGateway.save_crypto_config(
+                enabled=enabled,
+                wallet_address=wallet_address,
+                usdt_rate=usdt_rate,
+                db_instance=db
+            )
+            flash("تنظیمات درگاه کریپتو / تتر با موفقیت بروزرسانی شد.", "success")
+
         return redirect(url_for("cards"))
 
     cards_list = db.get_all_bank_cards()
-    return render_template("cards.html", cards=cards_list)
+    payment_methods = db.get_payment_methods()
+    admin_gateway = db.get_admin_gateway()
+    crypto_config = CryptoPaymentGateway.get_crypto_config(db)
+
+    return render_template(
+        "cards.html",
+        cards=cards_list,
+        payment_methods=payment_methods,
+        admin_gateway=admin_gateway,
+        crypto_config=crypto_config
+    )
+
+
+@app.route("/admin/payment_methods/move/<method_id>/<direction>", methods=["GET", "POST"])
+@permission_required("cards")
+def admin_payment_method_move(method_id, direction):
+    """جابجایی عمودی اولویت روش پرداخت برای مدیریت اصلی"""
+    db.move_payment_method(method_id, direction)
+    flash("اولویت نمایش روش پرداخت در ربات تلگرام با موفقیت تغییر کرد.", "success")
+    return redirect(url_for("cards"))
+
+
+@app.route("/admin/payment_methods/toggle/<method_id>", methods=["GET", "POST"])
+@permission_required("cards")
+def admin_payment_method_toggle(method_id):
+    """فعال یا غیرفعال‌سازی روش پرداخت برای مدیریت اصلی"""
+    db.toggle_payment_method(method_id)
+    flash("وضعیت فعال بودن روش پرداخت در ربات تلگرام تغییر کرد.", "info")
+    return redirect(url_for("cards"))
 
 
 @app.route("/card/toggle/<int:card_id>")
@@ -3825,26 +3900,64 @@ def reseller_payment_reject(payment_id):
 @app.route("/reseller/cards", methods=["GET", "POST"])
 @reseller_required
 def reseller_cards():
-    """مدیریت کارت‌های بانکی مقصد نماینده جهت واریزی مشتریان"""
+    """مدیریت جامع روش‌ها، درگاه‌ها و کارت‌های بانکی مقصد نماینده"""
     reseller_id = session.get("reseller_id")
     if request.method == "POST":
-        card_number = request.form.get("card_number", "").strip()
-        card_holder = request.form.get("card_holder", "").strip()
-        bank_name = request.form.get("bank_name", "").strip()
-        daily_limit = int(request.form.get("daily_limit", 50000000))
+        action = request.form.get("action", "add_card")
+        if action == "add_card":
+            card_number = request.form.get("card_number", "").strip()
+            card_holder = request.form.get("card_holder", "").strip()
+            bank_name = request.form.get("bank_name", "").strip()
+            daily_limit = int(request.form.get("daily_limit", 50000000))
 
-        if not card_number or not card_holder:
-            flash("شماره کارت و نام صاحب حساب الزامی است.", "warning")
-        else:
-            res = db.add_reseller_card(reseller_id, card_number, card_holder, bank_name, daily_limit)
-            if res.get("success"):
-                flash("کارت بانکی جدید با موفقیت اضافه شد.", "success")
+            if not card_number or not card_holder:
+                flash("شماره کارت و نام صاحب حساب الزامی است.", "warning")
             else:
-                flash(f"خطا در ثبت کارت: {res.get('error')}", "danger")
+                res = db.add_reseller_card(reseller_id, card_number, card_holder, bank_name, daily_limit)
+                if res.get("success"):
+                    flash("کارت بانکی جدید با موفقیت اضافه شد.", "success")
+                else:
+                    flash(f"خطا در ثبت کارت: {res.get('error')}", "danger")
+        elif action == "save_reseller_gateway":
+            enabled = bool(request.form.get("gateway_enabled"))
+            gw_type = request.form.get("gateway_type", "zarinpal")
+            gw_key = request.form.get("gateway_key", "").strip()
+            sandbox = bool(request.form.get("gateway_sandbox"))
+            db.update_reseller_gateway(reseller_id, enabled, gw_type, gw_key, sandbox)
+            flash("تنظیمات درگاه آنلاین اختصاصی نماینده با موفقیت ذخیره شد.", "success")
+
         return redirect(url_for("reseller_cards"))
 
     cards = db.get_reseller_cards(reseller_id)
-    return render_template("reseller_cards.html", cards=cards)
+    payment_methods = db.get_payment_methods(reseller_id=reseller_id)
+    reseller_gateway = db.get_reseller_gateway(reseller_id)
+
+    return render_template(
+        "reseller_cards.html",
+        cards=cards,
+        payment_methods=payment_methods,
+        reseller_gateway=reseller_gateway
+    )
+
+
+@app.route("/reseller/payment_methods/move/<method_id>/<direction>", methods=["GET", "POST"])
+@reseller_required
+def reseller_payment_method_move(method_id, direction):
+    """جابجایی عمودی اولویت روش پرداخت برای ربات اختصاصی نماینده"""
+    reseller_id = session.get("reseller_id")
+    db.move_payment_method(method_id, direction, reseller_id=reseller_id)
+    flash("اولویت نمایش روش پرداخت در ربات اختصاصی شما با موفقیت تغییر کرد.", "success")
+    return redirect(url_for("reseller_cards"))
+
+
+@app.route("/reseller/payment_methods/toggle/<method_id>", methods=["GET", "POST"])
+@reseller_required
+def reseller_payment_method_toggle(method_id):
+    """فعال یا غیرفعال‌سازی روش پرداخت در ربات اختصاصی نماینده"""
+    reseller_id = session.get("reseller_id")
+    db.toggle_payment_method(method_id, reseller_id=reseller_id)
+    flash("وضعیت فعال بودن روش پرداخت در ربات اختصاصی شما تغییر کرد.", "info")
+    return redirect(url_for("reseller_cards"))
 
 
 @app.route("/reseller/card/<int:card_id>/toggle", methods=["POST"])

@@ -231,24 +231,27 @@ class ResellerBotInstance:
             msg += f"💳 موجودی کیف پول شما: **{user_wallet:,} تومان**\n\n"
             msg += "لطفاً نحوه پرداخت را انتخاب فرمایید:"
 
+            ordered_methods = db.get_payment_methods(reseller_id=r_id)
             buttons = []
-            # ۱. کیف پول
-            if user_wallet >= price:
-                buttons.append([InlineKeyboardButton(f"⚡ پرداخت آنی از کیف پول ({user_wallet:,} ت)", callback_data=f"r_pwal_{plan_id}")])
-            else:
-                buttons.append([InlineKeyboardButton(f"💰 پرداخت از کیف پول (کسری: {price - user_wallet:,} ت)", callback_data="r_pwal_insuf")])
+            for m in ordered_methods:
+                m_id = m.get("id")
+                if not m.get("enabled", True):
+                    continue
+                if m_id == "wallet":
+                    if user_wallet >= price:
+                        buttons.append([InlineKeyboardButton(f"⚡ پرداخت آنی از کیف پول ({user_wallet:,} ت)", callback_data=f"r_pwal_{plan_id}")])
+                    else:
+                        buttons.append([InlineKeyboardButton(f"💰 پرداخت از کیف پول (کسری: {price - user_wallet:,} ت)", callback_data="r_pwal_insuf")])
+                elif m_id == "online_gateway":
+                    if gw_cfg.get("enabled") and gw_cfg.get("key"):
+                        gw_label = "زرین‌پال" if gw_cfg.get("type") == "zarinpal" else ("آیدی‌پی" if gw_cfg.get("type") == "idpay" else "آنلاین")
+                        buttons.append([InlineKeyboardButton(f"💳 درگاه پرداخت آنلاین ({gw_label})", callback_data=f"r_ponl_{plan_id}")])
+                    else:
+                        buttons.append([InlineKeyboardButton("💳 درگاه آنلاین (بزودی)", callback_data="r_ponl_soon")])
+                elif m_id == "card_to_card":
+                    buttons.append([InlineKeyboardButton("💵 کارت به کارت (بانکی)", callback_data=f"r_pcard_{plan_id}")])
 
-            # ۲. درگاه آنلاین
-            if gw_cfg.get("enabled") and gw_cfg.get("key"):
-                gw_label = "زرین‌پال" if gw_cfg.get("type") == "zarinpal" else ("آیدی‌پی" if gw_cfg.get("type") == "idpay" else "آنلاین")
-                buttons.append([InlineKeyboardButton(f"💳 درگاه پرداخت آنلاین ({gw_label})", callback_data=f"r_ponl_{plan_id}")])
-            else:
-                buttons.append([InlineKeyboardButton("💳 درگاه آنلاین (بزودی)", callback_data="r_ponl_soon")])
-
-            # ۳. کارت به کارت
-            buttons.append([InlineKeyboardButton("💵 کارت به کارت (بانکی)", callback_data=f"r_pcard_{plan_id}")])
-
-            # ۴. انصراف
+            # انصراف
             buttons.append([InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy")])
 
             kb = InlineKeyboardMarkup(buttons)
