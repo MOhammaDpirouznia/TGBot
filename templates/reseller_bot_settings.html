@@ -190,6 +190,43 @@
                         </div>
                     </div>
 
+                    <hr class="my-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold mb-0"><i class="fas fa-money-bill-wave text-primary me-2"></i> درگاه پرداخت آنلاین اختصاصی نماینده (ZarinPal / IDPay)</h5>
+                        <span class="badge {% if reseller_gateway.get('enabled') %}bg-success bg-opacity-10 text-success border border-success{% else %}bg-secondary bg-opacity-10 text-secondary border{% endif %}">
+                            {{ '🟢 درگاه آنلاین فعال' if reseller_gateway.get('enabled') else '⚪ درگاه غیرفعال (بزودی)' }}
+                        </span>
+                    </div>
+                    <p class="text-muted small mb-3">با فعال‌سازی درگاه آنلاین شخصی خود، مشتریان می‌توانند مستقیماً از طریق درگاه شاپرک پرداخت کرده و اشتراک خود را به صورت آنی تحویل بگیرند.</p>
+
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" name="is_gateway_active" id="resellerGwSwitch" {% if reseller_gateway.get('enabled') %}checked{% endif %}>
+                        <label class="form-check-label fw-bold" for="resellerGwSwitch">فعال‌سازی پرداخت آنلاین برای مشتریان ربات من</label>
+                    </div>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">نوع درگاه بانکی</label>
+                            <select class="form-select" name="gateway_type">
+                                <option value="zarinpal" {% if reseller_gateway.get('type') == 'zarinpal' %}selected{% endif %}>زرین‌پال (ZarinPal)</option>
+                                <option value="idpay" {% if reseller_gateway.get('type') == 'idpay' %}selected{% endif %}>آیدی‌پی (IDPay)</option>
+                                <option value="nextpay" {% if reseller_gateway.get('type') == 'nextpay' %}selected{% endif %}>نکست‌پی (NextPay)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label fw-bold">مرچنت کد / API Key اختصاصی <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control font-monospace" name="gateway_key" 
+                                   value="{{ reseller_gateway.get('key') or '' }}" 
+                                   placeholder="کد درگاه اختصاصی شما" dir="ltr">
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" name="gateway_sandbox" id="resellerGwSandbox" {% if reseller_gateway.get('sandbox') %}checked{% endif %}>
+                                <label class="form-check-label small text-muted" for="resellerGwSandbox">حالت تستی Sandbox</label>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="d-flex justify-content-end gap-2">
                         <button type="submit" class="btn btn-primary px-4 py-2 fw-bold">
                             <i class="fas fa-floppy-disk me-1"></i> ذخیره کلیه تنظیمات

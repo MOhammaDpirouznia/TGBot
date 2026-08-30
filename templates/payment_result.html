@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نتیجه پرداخت | درگاه آنلاین شاپرک</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Vazirmatn', sans-serif;
+            background: linear-gradient(135deg, #0f172a, #1e1b4b);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+        }
+        .result-card {
+            background: #ffffff;
+            border-radius: 1.5rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            max-width: 480px;
+            width: 100%;
+            overflow: hidden;
+        }
+        .status-header {
+            padding: 2.5rem 1.5rem 1.5rem;
+            text-align: center;
+        }
+        .status-icon {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        .status-icon.success {
+            background: rgba(34, 197, 94, 0.15);
+            color: #16a34a;
+        }
+        .status-icon.failed {
+            background: rgba(239, 68, 68, 0.15);
+            color: #dc2626;
+        }
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px dashed #e2e8f0;
+            font-size: 0.95rem;
+        }
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="result-card">
+    {% if success %}
+    <div class="status-header">
+        <div class="status-icon success">
+            <i class="fas fa-check-circle"></i>
+        </div>
+        <h4 class="fw-bold text-success mb-1">پرداخت با موفقیت انجام شد</h4>
+        <p class="text-muted small mb-0">سفارش و اشتراک شما فعال گردید</p>
+    </div>
+    {% else %}
+    <div class="status-header">
+        <div class="status-icon failed">
+            <i class="fas fa-times-circle"></i>
+        </div>
+        <h4 class="fw-bold text-danger mb-1">تراکنش ناموفق</h4>
+        <p class="text-muted small mb-0">{{ message or 'پرداخت توسط درگاه یا کاربر لغو گردید.' }}</p>
+    </div>
+    {% endif %}
+
+    <div class="px-4 pb-4">
+        <div class="bg-light p-3 rounded-4 mb-4">
+            <div class="detail-row">
+                <span class="text-muted">شماره سفارش:</span>
+                <span class="font-monospace fw-bold">{{ order_id or '-' }}</span>
+            </div>
+            {% if amount %}
+            <div class="detail-row">
+                <span class="text-muted">مبلغ پرداختی:</span>
+                <span class="font-monospace fw-bold text-primary">{{ "{:,}".format(amount) }} تومان</span>
+            </div>
+            {% endif %}
+            {% if plan_name %}
+            <div class="detail-row">
+                <span class="text-muted">پلن خریداری شده:</span>
+                <span class="fw-bold">{{ plan_name }}</span>
+            </div>
+            {% endif %}
+            {% if ref_id %}
+            <div class="detail-row">
+                <span class="text-muted">کد پیگیری شاپرک:</span>
+                <span class="font-monospace fw-bold text-success">{{ ref_id }}</span>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="d-grid gap-2">
+            <a href="https://t.me" class="btn btn-primary btn-lg rounded-pill fw-bold">
+                <i class="fab fa-telegram me-1"></i> بازگشت به ربات تلگرام
+            </a>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
