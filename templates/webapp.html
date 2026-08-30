@@ -2,27 +2,34 @@
 <html lang="fa" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>پنل کاربری هوشمند | هیدی‌شاپ</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#090d16">
+    <title>پنل کاربری هوشمند | هیدی‌پلاس</title>
+    
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <!-- FontAwesome & Fonts -->
+    
+    <!-- FontAwesome & Vazirmatn -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+
     <style>
         :root {
-            --bg-color: var(--tg-theme-bg-color, #0f172a);
-            --secondary-bg: var(--tg-theme-secondary-bg-color, #1e293b);
-            --text-color: var(--tg-theme-text-color, #f8fafc);
-            --hint-color: var(--tg-theme-hint-color, #94a3b8);
-            --link-color: var(--tg-theme-link-color, #38bdf8);
-            --button-color: var(--tg-theme-button-color, #4f46e5);
-            --button-text-color: var(--tg-theme-button-text-color, #ffffff);
-            --card-bg: rgba(30, 41, 59, 0.85);
-            --accent-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
-            --success-color: #10b981;
-            --warning-color: #f59e0b;
-            --danger-color: #ef4444;
+            --bg-base: #090d16;
+            --card-bg: rgba(22, 30, 49, 0.82);
+            --card-hover: rgba(30, 41, 67, 0.95);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --card-border-focus: rgba(99, 102, 241, 0.4);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-gradient: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #db2777 100%);
+            --accent-blue: #38bdf8;
+            --accent-emerald: #10b981;
+            --accent-purple: #a855f7;
+            --accent-amber: #f59e0b;
+            --accent-rose: #f43f5e;
         }
 
         * {
@@ -33,65 +40,94 @@
             -webkit-tap-highlight-color: transparent;
         }
 
-        body {
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            padding: 16px;
-            padding-bottom: 40px;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            overflow-x: hidden;
+        html {
+            background-color: #090d16;
+            color-scheme: dark;
         }
 
-        /* Top User Profile Header */
+        body {
+            background: #090d16;
+            background: radial-gradient(120% 120% at 50% 0%, #17153a 0%, #0d1322 40%, #060911 100%);
+            background-attachment: fixed;
+            color: var(--text-primary);
+            min-height: 100vh;
+            width: 100%;
+            overflow-x: hidden;
+            display: flex;
+            justify-content: center;
+        }
+
+        .app-container {
+            width: 100%;
+            max-width: 480px;
+            padding: 14px 14px calc(50px + env(safe-area-inset-bottom, 24px)) 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        /* ─── Profile Header ─── */
         .profile-card {
             background: var(--card-bg);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--card-border);
             border-radius: 20px;
-            padding: 16px;
+            padding: 12px 14px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
         }
 
         .user-info {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
+            min-width: 0;
         }
 
         .avatar-img {
-            width: 48px;
-            height: 48px;
+            width: 44px;
+            height: 44px;
             border-radius: 50%;
             object-fit: cover;
-            border: 2px solid #818cf8;
-            box-shadow: 0 0 12px rgba(129, 140, 248, 0.4);
+            border: 2px solid #6366f1;
+            box-shadow: 0 0 14px rgba(99, 102, 241, 0.4);
+            flex-shrink: 0;
+        }
+
+        .user-text {
+            min-width: 0;
+            overflow: hidden;
         }
 
         .user-name {
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 700;
+            color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .user-id {
-            font-size: 12px;
-            color: var(--hint-color);
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: monospace;
+            direction: ltr;
+            text-align: right;
         }
 
         .wallet-pill {
             background: rgba(99, 102, 241, 0.15);
-            border: 1px solid rgba(99, 102, 241, 0.3);
+            border: 1px solid rgba(99, 102, 241, 0.35);
             border-radius: 14px;
-            padding: 8px 12px;
-            text-align: left;
+            padding: 6px 10px;
             display: flex;
             flex-direction: column;
             align-items: flex-end;
+            flex-shrink: 0;
         }
 
         .wallet-label {
@@ -100,21 +136,23 @@
         }
 
         .wallet-amount {
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 800;
             color: #38bdf8;
+            font-monospace: true;
         }
 
-        /* Subscription Card */
+        /* ─── Subscription Card ─── */
         .sub-card {
             background: var(--card-bg);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 24px;
-            padding: 20px;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--card-border);
+            border-radius: 22px;
+            padding: 16px;
             position: relative;
             overflow: hidden;
-            box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.4);
+            box-shadow: 0 14px 35px -10px rgba(0, 0, 0, 0.5);
         }
 
         .sub-card::before {
@@ -123,7 +161,7 @@
             top: 0;
             right: 0;
             left: 0;
-            height: 4px;
+            height: 3px;
             background: var(--accent-gradient);
         }
 
@@ -131,48 +169,58 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 16px;
+            margin-bottom: 14px;
+            gap: 8px;
         }
 
         .plan-title {
-            font-size: 17px;
+            font-size: 15px;
             font-weight: 800;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
+            color: #fff;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .badge-status {
             font-size: 11px;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-weight: 700;
+            flex-shrink: 0;
+            white-space: nowrap;
         }
-        .badge-active { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
-        .badge-warning { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
-        .badge-expired { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
+        .badge-active { background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); }
+        .badge-warning { background: rgba(245, 158, 11, 0.18); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.35); }
+        .badge-expired { background: rgba(239, 68, 68, 0.18); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.35); }
 
-        /* Usage Progress Bar */
+        /* Usage Bar */
         .usage-container {
-            margin: 16px 0;
+            margin: 12px 0 14px 0;
         }
 
         .usage-labels {
             display: flex;
             justify-content: space-between;
-            font-size: 12px;
-            color: var(--hint-color);
-            margin-bottom: 8px;
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
         }
 
         .usage-numbers {
             font-weight: 700;
-            color: var(--text-color);
+            color: #f1f5f9;
+            font-family: monospace;
+            direction: ltr;
         }
 
         .progress-bar-bg {
-            background: rgba(255, 255, 255, 0.1);
-            height: 12px;
+            background: rgba(255, 255, 255, 0.08);
+            height: 10px;
             border-radius: 6px;
             overflow: hidden;
             position: relative;
@@ -185,409 +233,613 @@
             transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
+        /* Stats Grid */
         .stats-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin-top: 16px;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 14px;
         }
 
         .stat-box {
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 16px;
-            padding: 12px;
+            border-radius: 14px;
+            padding: 8px 6px;
             text-align: center;
         }
 
         .stat-box-label {
-            font-size: 11px;
-            color: var(--hint-color);
-            margin-bottom: 4px;
+            font-size: 10px;
+            color: var(--text-secondary);
+            margin-bottom: 3px;
         }
 
         .stat-box-val {
-            font-size: 14px;
+            font-size: 12px;
             font-weight: 800;
             color: #38bdf8;
-        }
-
-        /* Deep Links Client Section */
-        .section-title {
-            font-size: 14px;
-            font-weight: 700;
-            color: #cbd5e1;
-            margin-top: 8px;
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .app-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 10px;
-        }
-
-        .app-btn {
-            background: var(--card-bg);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 16px;
-            padding: 12px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: var(--text-color);
-            text-decoration: none;
-            transition: all 0.2s ease;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
-        }
-
-        .app-btn:active {
-            transform: scale(0.96);
-            background: rgba(99, 102, 241, 0.2);
-        }
-
-        .app-icon {
-            width: 34px;
-            height: 34px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 16px;
-            flex-shrink: 0;
-        }
-
-        .icon-v2ray { background: linear-gradient(135deg, #e11d48, #be123c); color: white; }
-        .icon-streisand { background: linear-gradient(135deg, #0284c7, #0369a1); color: white; }
-        .icon-v2box { background: linear-gradient(135deg, #7c3aed, #6d28d9); color: white; }
-        .icon-hiddify { background: linear-gradient(135deg, #059669, #047857); color: white; }
-        .icon-clash { background: linear-gradient(135deg, #d97706, #b45309); color: white; }
-
-        .app-info {
-            text-align: right;
-            overflow: hidden;
-        }
-
-        .app-name {
-            font-size: 13px;
-            font-weight: 700;
             white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
         }
 
-        .app-os {
-            font-size: 10px;
-            color: var(--hint-color);
-        }
-
-        /* Action Buttons */
+        /* ─── Copy & Action Buttons ─── */
         .btn-copy {
-            background: var(--button-color);
-            color: var(--button-text-color);
-            border: none;
+            background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+            color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.15);
             border-radius: 16px;
-            padding: 14px;
-            font-size: 14px;
-            font-weight: 700;
+            padding: 13px 16px;
+            font-size: 13px;
+            font-weight: 800;
             width: 100%;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
             cursor: pointer;
-            box-shadow: 0 4px 18px rgba(79, 70, 229, 0.4);
-            transition: transform 0.15s;
+            box-shadow: 0 4px 20px rgba(79, 70, 229, 0.4);
+            transition: all 0.15s ease;
         }
 
         .btn-copy:active {
             transform: scale(0.98);
+            box-shadow: 0 2px 10px rgba(79, 70, 229, 0.3);
         }
 
         .action-row {
-            display: flex;
-            gap: 10px;
-            margin-top: 10px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 8px;
         }
 
         .btn-secondary-action {
-            flex: 1;
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: var(--text-color);
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: var(--text-primary);
             border-radius: 14px;
-            padding: 11px;
+            padding: 10px;
             font-size: 12px;
-            font-weight: 600;
+            font-weight: 700;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 6px;
             cursor: pointer;
             text-decoration: none;
+            transition: background 0.15s;
         }
 
         .btn-secondary-action:active {
             background: rgba(255, 255, 255, 0.12);
+            transform: scale(0.98);
         }
 
-        /* Toast Alert */
+        /* ─── Direct 1-Click App Section ─── */
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 4px;
+            margin-bottom: 2px;
+        }
+
+        .section-title {
+            font-size: 13px;
+            font-weight: 800;
+            color: #cbd5e1;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .app-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .app-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 9px 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            color: var(--text-primary);
+            text-decoration: none;
+            transition: all 0.15s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            min-width: 0;
+        }
+
+        .app-card:active {
+            transform: scale(0.97);
+            background: var(--card-hover);
+            border-color: var(--card-border-focus);
+        }
+
+        .app-main {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        .app-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            flex-shrink: 0;
+            color: #ffffff;
+        }
+
+        .icon-v2ray { background: linear-gradient(135deg, #e11d48, #be123c); }
+        .icon-streisand { background: linear-gradient(135deg, #0284c7, #0369a1); }
+        .icon-hiddify { background: linear-gradient(135deg, #059669, #047857); }
+        .icon-v2box { background: linear-gradient(135deg, #7c3aed, #6d28d9); }
+        .icon-foxray { background: linear-gradient(135deg, #ea580c, #c2410c); }
+        .icon-nekobox { background: linear-gradient(135deg, #0891b2, #0e7490); }
+
+        .app-meta {
+            min-width: 0;
+            overflow: hidden;
+            text-align: right;
+        }
+
+        .app-name {
+            font-size: 12px;
+            font-weight: 800;
+            color: #ffffff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.3;
+        }
+
+        .app-os {
+            font-size: 9.5px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.2;
+        }
+
+        .connect-pill {
+            font-size: 10px;
+            color: #818cf8;
+            background: rgba(99, 102, 241, 0.12);
+            padding: 3px 6px;
+            border-radius: 8px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            gap: 2px;
+        }
+
+        /* ─── Footer Action Links ─── */
+        .footer-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        .footer-btn {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px dashed rgba(255, 255, 255, 0.12);
+            border-radius: 14px;
+            padding: 10px 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 11px;
+            font-weight: 700;
+            text-align: center;
+            transition: all 0.15s ease;
+        }
+
+        .footer-btn i {
+            font-size: 16px;
+            color: #38bdf8;
+        }
+
+        .footer-btn:active {
+            background: rgba(255, 255, 255, 0.08);
+            border-style: solid;
+            color: #ffffff;
+        }
+
+        /* ─── Toast Notification ─── */
         .toast {
             position: fixed;
-            bottom: 24px;
+            bottom: calc(24px + env(safe-area-inset-bottom, 12px));
             left: 50%;
-            transform: translateX(-50%) translateY(100px);
-            background: rgba(16, 185, 129, 0.95);
-            color: white;
-            padding: 10px 20px;
+            transform: translateX(-50%) translateY(120px);
+            background: rgba(15, 23, 42, 0.95);
+            border: 1px solid rgba(16, 185, 129, 0.5);
+            color: #34d399;
+            padding: 9px 18px;
             border-radius: 30px;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 700;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.6);
             transition: transform 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
             z-index: 9999;
             display: flex;
             align-items: center;
             gap: 8px;
+            white-space: nowrap;
         }
 
         .toast.show {
             transform: translateX(-50%) translateY(0);
         }
 
-        /* QR Code Modal */
+        /* ─── QR Code Modal ─── */
         .qr-modal {
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
             background: rgba(0, 0, 0, 0.85);
-            backdrop-filter: blur(8px);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
             display: none;
             align-items: center;
             justify-content: center;
             z-index: 10000;
-            padding: 20px;
+            padding: 16px;
         }
 
         .qr-content {
-            background: var(--card-bg);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: #131b2e;
+            border: 1px solid rgba(255, 255, 255, 0.12);
             border-radius: 24px;
-            padding: 24px;
+            padding: 20px;
             text-align: center;
-            max-width: 320px;
+            max-width: 310px;
             width: 100%;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.7);
         }
 
         .qr-img {
-            width: 200px;
-            height: 200px;
+            width: 190px;
+            height: 190px;
             background: white;
-            padding: 10px;
+            padding: 8px;
             border-radius: 16px;
-            margin: 16px auto;
+            margin: 14px auto;
+            display: block;
         }
     </style>
 </head>
 <body>
 
-    <!-- Top User Profile -->
-    <div class="profile-card">
-        <div class="user-info">
-            <img src="{{ avatar_url(user['telegram_id'] or user['username'] or 'User') }}" class="avatar-img" alt="Avatar">
-            <div>
-                <div class="user-name" id="profileName">{{ user['username'] or ('کاربر ' ~ (user['telegram_id'] or '')) }}</div>
-                <div class="user-id"><code>ID: {{ user['telegram_id'] }}</code></div>
+    <div class="app-container">
+
+        <!-- ۱. پروفایل کاربر و کیف پول -->
+        <div class="profile-card">
+            <div class="user-info">
+                <img src="{{ avatar_url(user['telegram_id'] or user['username'] or 'User') }}" class="avatar-img" alt="Avatar">
+                <div class="user-text">
+                    <div class="user-name" id="profileName">{{ user['username'] or ('کاربر ' ~ (user['telegram_id'] or '')) }}</div>
+                    <div class="user-id"><code>ID: {{ user['telegram_id'] }}</code></div>
+                </div>
+            </div>
+            <div class="wallet-pill">
+                <span class="wallet-label"><i class="fas fa-wallet me-1"></i>کیف پول</span>
+                <span class="wallet-amount" id="walletBal">{{ "{:,}".format(wallet_balance or 0) }} ت</span>
             </div>
         </div>
-        <div class="wallet-pill">
-            <span class="wallet-label"><i class="fas fa-wallet me-1"></i>کیف پول</span>
-            <span class="wallet-amount" id="walletBal">{{ "{:,}".format(wallet_balance or 0) }} ت</span>
-        </div>
-    </div>
 
-    {% if subscriptions and subscriptions|length > 0 %}
-        {% set sub = subscriptions[0] %}
-        {% set limit = sub['data_limit'] or 0 %}
-        {% set used = sub['data_used'] or 0 %}
-        {% set percent = (used / limit * 100)|round(1) if limit > 0 else 0 %}
-        {% set remaining = (limit - used)|round(1) if limit > used else 0 %}
-        {% set sub_url = sub['sub_url'] or '' %}
+        {% if subscriptions and subscriptions|length > 0 %}
+            {% set sub = subscriptions[0] %}
+            {% set limit = sub['data_limit']|float or 0 %}
+            {% set used = sub['data_used']|float or 0 %}
+            {% set percent = sub.get('usage_pct', (used / limit * 100)|round(1) if limit > 0 else 0) %}
+            {% set remaining = sub.get('remaining_gb', (limit - used)|round(1) if limit > used else 0) %}
+            {% set sub_url = sub.get('sub_url', '') %}
+            {% set single_url = sub.get('single_url', '') %}
 
-        <!-- Active Subscription Card -->
-        <div class="sub-card">
-            <div class="sub-header">
-                <div class="plan-title">
-                    <i class="fas fa-shield-halved text-indigo-400"></i>
-                    <span>{{ sub['plan_name'] or 'اشتراک ویژه' }}</span>
+            <!-- ۲. کارت وضعیت اشتراک فعال -->
+            <div class="sub-card">
+                <div class="sub-header">
+                    <div class="plan-title">
+                        <i class="fas fa-shield-halved text-indigo-400"></i>
+                        <span>{{ sub['plan_name'] or 'اشتراک ویژه هوشمند' }}</span>
+                    </div>
+                    {% if percent >= 95 or sub['status'] == 'expired' %}
+                        <span class="badge-status badge-expired">⚠️ منقضی / پایان حجم</span>
+                    {% elif percent >= 80 %}
+                        <span class="badge-status badge-warning">⚡ رو به اتمام ({{ percent }}%)</span>
+                    {% else %}
+                        <span class="badge-status badge-active">🟢 اتصال فعال</span>
+                    {% endif %}
                 </div>
-                {% if percent >= 95 or sub['status'] == 'expired' %}
-                    <span class="badge-status badge-expired">⚠️ منقضی / پایان حجم</span>
-                {% elif percent >= 80 %}
-                    <span class="badge-status badge-warning">⚡ رو به اتمام ({{ percent }}%)</span>
-                {% else %}
-                    <span class="badge-status badge-active">🟢 اتصال فعال</span>
-                {% endif %}
-            </div>
 
-            <!-- Progress Bar -->
-            <div class="usage-container">
-                <div class="usage-labels">
-                    <span>مصرف کل ترافیک</span>
-                    <span class="usage-numbers">{{ used|round(1) }} / {{ limit|round(1) }} GB ({{ percent }}%)</span>
+                <!-- نوار پیشرفت مصرف -->
+                <div class="usage-container">
+                    <div class="usage-labels">
+                        <span>مصرف کل ترافیک</span>
+                        <span class="usage-numbers">{{ "%.2f"|format(used) }} / {{ "%.1f"|format(limit) }} GB ({{ percent }}%)</span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" style="width: {{ percent if percent <= 100 else 100 }}%;"></div>
+                    </div>
                 </div>
-                <div class="progress-bar-bg">
-                    <div class="progress-bar-fill" style="width: {{ percent if percent <= 100 else 100 }}%;"></div>
-                </div>
-            </div>
 
-            <!-- Stats Boxes -->
-            <div class="stats-grid">
-                <div class="stat-box">
-                    <div class="stat-box-label"><i class="fas fa-database me-1"></i>حجم باقیمانده</div>
-                    <div class="stat-box-val">{{ remaining }} گیگابایت</div>
+                <!-- شبکه آمار ۳ بخشی -->
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-box-label"><i class="fas fa-database me-1"></i>حجم باقیمانده</div>
+                        <div class="stat-box-val">{{ "%.2f"|format(remaining) }} GB</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-box-label"><i class="fas fa-hourglass-half me-1"></i>مدت اعتبار</div>
+                        <div class="stat-box-val">
+                            {% if sub.get('is_started') %}
+                                {{ sub.get('remaining_days', sub['duration']) }} روز دیگر
+                            {% else %}
+                                {{ sub['duration'] or 30 }} روز
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-box-label"><i class="fas fa-calendar-check me-1"></i>تاریخ انقضا</div>
+                        <div class="stat-box-val">
+                            {% if sub.get('is_started') and expire_shamsi %}
+                                {{ expire_shamsi }}
+                            {% else %}
+                                پس از اولین اتصال
+                            {% endif %}
+                        </div>
+                    </div>
                 </div>
-                <div class="stat-box">
-                    <div class="stat-box-label"><i class="fas fa-calendar-check me-1"></i>تاریخ انقضا</div>
-                    <div class="stat-box-val">{{ expire_shamsi or '۳۰ روزه' }}</div>
-                </div>
-            </div>
 
-            <!-- Action Copy & QR -->
-            <div style="margin-top: 18px;">
-                <button class="btn-copy" onclick="copySubUrl('{{ sub_url }}')">
-                    <i class="fas fa-copy"></i> کپی لینک اشتراک هوشمند
-                </button>
-                <div class="action-row">
-                    <button class="btn-secondary-action" onclick="openQrModal('{{ sub_url }}')">
-                        <i class="fas fa-qrcode"></i> بارکد QR
+                <!-- دکمه کپی لینک سابسکریپشن -->
+                <div>
+                    <button class="btn-copy" onclick="copySubUrl('{{ sub_url }}')">
+                        <i class="fas fa-copy"></i> کپی لینک اشتراک هوشمند
                     </button>
-                    <a href="https://t.me/{{ bot_username or 'hiddify_shop_bot' }}?start=renew_{{ sub['id'] }}" class="btn-secondary-action">
-                        <i class="fas fa-rotate text-emerald-400"></i> تمدید اشتراک
-                    </a>
+                    
+                    <div class="action-row">
+                        <button class="btn-secondary-action" onclick="openQrModal('{{ sub_url }}')">
+                            <i class="fas fa-qrcode text-amber-400"></i> بارکد QR
+                        </button>
+                        <a href="https://t.me/{{ bot_username or 'hiddify_shop_bot' }}?start=renew_{{ sub['id'] }}" class="btn-secondary-action" onclick="haptic()">
+                            <i class="fas fa-rotate text-emerald-400"></i> تمدید اشتراک
+                        </a>
+                    </div>
+
+                    {% if single_url %}
+                    <button class="btn-secondary-action" style="width: 100%; margin-top: 8px;" onclick="copySubUrl('{{ single_url }}', 'لینک اتصال تکی کپی شد! ⚡')">
+                        <i class="fas fa-bolt text-warning"></i> کپی لینک اتصال تکی (VMess)
+                    </button>
+                    {% endif %}
                 </div>
             </div>
-        </div>
 
-        <!-- ⚡ Direct 1-Click App Launchers -->
-        <div class="section-title">
-            <i class="fas fa-bolt text-amber-400"></i>
-            <span>اتصال مستقیم ۱-کلیکه به اپلیکیشن‌ها:</span>
-        </div>
-
-        <div class="app-grid">
-            <!-- V2RayNG (Android) -->
-            <a href="v2rayng://install-config?url={{ sub_url|urlencode }}" class="app-btn" onclick="haptic()">
-                <div class="app-icon icon-v2ray"><i class="fab fa-android"></i></div>
-                <div class="app-info">
-                    <div class="app-name">V2RayNG</div>
-                    <div class="app-os">اتصال خودکار اندروید</div>
+            <!-- ۳. اتصال مستقیم ۱-کلیکه به اپلیکیشن‌ها -->
+            <div class="section-header">
+                <div class="section-title">
+                    <i class="fas fa-bolt text-amber-400"></i>
+                    <span>اتصال مستقیم ۱-کلیکه به اپلیکیشن‌ها:</span>
                 </div>
-            </a>
+            </div>
 
-            <!-- Streisand (iOS) -->
-            <a href="streisand://import/{{ sub_url }}" class="app-btn" onclick="haptic()">
-                <div class="app-icon icon-streisand"><i class="fab fa-apple"></i></div>
-                <div class="app-info">
-                    <div class="app-name">Streisand</div>
-                    <div class="app-os">اتصال خودکار آیفون</div>
-                </div>
-            </a>
+            <div class="app-grid">
+                <!-- ۱. V2RayNG (Android) -->
+                <a href="v2rayng://install-config?url={{ sub_url|urlencode }}" class="app-card" onclick="haptic()">
+                    <div class="app-main">
+                        <div class="app-icon icon-v2ray"><i class="fab fa-android"></i></div>
+                        <div class="app-meta">
+                            <div class="app-name">v2rayNG</div>
+                            <div class="app-os">اندروید</div>
+                        </div>
+                    </div>
+                    <span class="connect-pill"><i class="fas fa-arrow-left"></i></span>
+                </a>
 
-            <!-- V2Box (iOS / Android) -->
-            <a href="v2box://install-sub?url={{ sub_url|urlencode }}&name=HiddiShop" class="app-btn" onclick="haptic()">
-                <div class="app-icon icon-v2box"><i class="fas fa-cube"></i></div>
-                <div class="app-info">
-                    <div class="app-name">V2Box</div>
-                    <div class="app-os">آیفون و اندروید</div>
-                </div>
-            </a>
+                <!-- ۲. Streisand (iOS) -->
+                <a href="streisand://import/{{ sub_url }}" class="app-card" onclick="haptic()">
+                    <div class="app-main">
+                        <div class="app-icon icon-streisand"><i class="fab fa-apple"></i></div>
+                        <div class="app-meta">
+                            <div class="app-name">Streisand</div>
+                            <div class="app-os">آیفون و آیپد</div>
+                        </div>
+                    </div>
+                    <span class="connect-pill"><i class="fas fa-arrow-left"></i></span>
+                </a>
 
-            <!-- Hiddify Next (All Platforms) -->
-            <a href="hiddify://install-sub?url={{ sub_url|urlencode }}" class="app-btn" onclick="haptic()">
-                <div class="app-icon icon-hiddify"><i class="fas fa-rocket"></i></div>
-                <div class="app-info">
-                    <div class="app-name">Hiddify App</div>
-                    <div class="app-os">ویندوز، مک و گوشی</div>
-                </div>
-            </a>
-        </div>
+                <!-- ۳. Hiddify App (Multiplatform) -->
+                <a href="hiddify://install-sub?url={{ sub_url|urlencode }}" class="app-card" onclick="haptic()">
+                    <div class="app-main">
+                        <div class="app-icon icon-hiddify"><i class="fas fa-rocket"></i></div>
+                        <div class="app-meta">
+                            <div class="app-name">Hiddify App</div>
+                            <div class="app-os">ویندوز و گوشی</div>
+                        </div>
+                    </div>
+                    <span class="connect-pill"><i class="fas fa-arrow-left"></i></span>
+                </a>
 
-    {% else %}
-        <!-- Empty State -->
-        <div class="sub-card" style="text-align: center; padding: 40px 20px;">
-            <i class="fas fa-ghost text-muted fa-3x" style="margin-bottom: 16px; opacity: 0.5;"></i>
-            <h4 style="font-weight: 700; margin-bottom: 8px;">هنوز اشتراک فعالی ندارید!</h4>
-            <p style="font-size: 13px; color: var(--hint-color); margin-bottom: 20px;">
-                می‌توانید همین الان از منوی ربات یا دکمه زیر اشتراک پرسرعت خود را تهیه کنید.
-            </p>
-            <a href="https://t.me/{{ bot_username or 'hiddify_shop_bot' }}?start=plans" class="btn-copy" style="text-decoration: none;">
-                <i class="fas fa-cart-shopping"></i> خرید اولین اشتراک
-            </a>
-        </div>
-    {% endif %}
+                <!-- ۴. V2Box (iOS / Android) -->
+                <a href="v2box://install-sub?url={{ sub_url|urlencode }}&name=HiddiPlus" class="app-card" onclick="haptic()">
+                    <div class="app-main">
+                        <div class="app-icon icon-v2box"><i class="fas fa-cube"></i></div>
+                        <div class="app-meta">
+                            <div class="app-name">V2Box</div>
+                            <div class="app-os">آیفون و اندروید</div>
+                        </div>
+                    </div>
+                    <span class="connect-pill"><i class="fas fa-arrow-left"></i></span>
+                </a>
 
-    <!-- Toast Notification -->
-    <div id="toastAlert" class="toast">
-        <i class="fas fa-check-circle"></i>
-        <span id="toastText">لینک سابسکریپشن کپی شد!</span>
+                <!-- ۵. FoXray (iOS / Mac) -->
+                <a href="foxray://install-config?url={{ sub_url|urlencode }}" class="app-card" onclick="haptic()">
+                    <div class="app-main">
+                        <div class="app-icon icon-foxray"><i class="fas fa-shield-cat"></i></div>
+                        <div class="app-meta">
+                            <div class="app-name">FoXray</div>
+                            <div class="app-os">iOS و Mac</div>
+                        </div>
+                    </div>
+                    <span class="connect-pill"><i class="fas fa-arrow-left"></i></span>
+                </a>
+
+                <!-- ۶. NekoBox (Android) -->
+                <a href="nekobox://install-sub?url={{ sub_url|urlencode }}" class="app-card" onclick="haptic()">
+                    <div class="app-main">
+                        <div class="app-icon icon-nekobox"><i class="fas fa-cat"></i></div>
+                        <div class="app-meta">
+                            <div class="app-name">NekoBox</div>
+                            <div class="app-os">اندروید</div>
+                        </div>
+                    </div>
+                    <span class="connect-pill"><i class="fas fa-arrow-left"></i></span>
+                </a>
+            </div>
+
+            <!-- ۴. فوتر راهنما و پشتیبانی هوشمند -->
+            <div class="footer-grid">
+                <a href="{{ tutorial_url }}" target="_blank" class="footer-btn" onclick="haptic()">
+                    <i class="fas fa-book-open"></i>
+                    <span>آموزش‌های تصویری اتصال</span>
+                </a>
+                <a href="https://t.me/{{ bot_username or 'hiddify_shop_bot' }}?start=support" class="footer-btn" onclick="haptic()">
+                    <i class="fas fa-headset text-emerald-400"></i>
+                    <span>پشتیبانی و تیکت ربات</span>
+                </a>
+            </div>
+
+        {% else %}
+            <!-- حالت عدم وجود اشتراک فعال (Empty State) -->
+            <div class="sub-card" style="text-align: center; padding: 40px 20px;">
+                <i class="fas fa-ghost text-muted fa-3x" style="margin-bottom: 16px; opacity: 0.4;"></i>
+                <h4 style="font-weight: 800; margin-bottom: 8px; color: #fff;">هنوز اشتراک فعالی ندارید!</h4>
+                <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.6;">
+                    می‌توانید همین حالا از منوی خرید ربات، بسته پرسرعت و پایدار خود را سفارش دهید.
+                </p>
+                <a href="https://t.me/{{ bot_username or 'hiddify_shop_bot' }}?start=plans" class="btn-copy" style="text-decoration: none;" onclick="haptic()">
+                    <i class="fas fa-cart-shopping"></i> خرید اولین اشتراک
+                </a>
+            </div>
+        {% endif %}
+
     </div>
 
-    <!-- QR Code Modal -->
+    <!-- اعلان Toast -->
+    <div id="toastAlert" class="toast">
+        <i class="fas fa-check-circle text-emerald-400"></i>
+        <span id="toastText">لینک سابسکریپشن کپی شد! 📋</span>
+    </div>
+
+    <!-- مودال بارکد QR -->
     <div id="qrModal" class="qr-modal" onclick="closeQrModal(event)">
         <div class="qr-content" onclick="event.stopPropagation()">
-            <h4 style="font-size: 16px; font-weight: 700;">اسکن بارکد QR</h4>
-            <p style="font-size: 12px; color: var(--hint-color); margin-top: 4px;">با دوربین نرم‌افزار VPN اسکن نمایید</p>
+            <h4 style="font-size: 15px; font-weight: 800; color: #fff;">اسکن بارکد QR سابسکریپشن</h4>
+            <p style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">با دوربین داخل اپلیکیشن VPN اسکن نمایید</p>
             <img id="qrImgSrc" src="" class="qr-img" alt="QR Code">
-            <button class="btn-secondary-action" style="width: 100%; margin-top: 10px;" onclick="closeQrModal()">بستن</button>
+            <div class="action-row">
+                <button class="btn-copy" style="padding: 10px; font-size: 12px;" onclick="copyCurrentQrUrl()">کپی لینک</button>
+                <button class="btn-secondary-action" onclick="closeQrModal()">بستن</button>
+            </div>
         </div>
     </div>
 
     <script>
-        // Init Telegram WebApp
+        // مقداردهی اولیه Telegram WebApp
         const tg = window.Telegram?.WebApp;
         if (tg) {
-            tg.expand();
-            tg.ready();
-            if (tg.setHeaderColor) tg.setHeaderColor('#0f172a');
-            if (tg.setBackgroundColor) tg.setBackgroundColor('#0f172a');
-        }
-
-        function haptic() {
-            if (tg && tg.HapticFeedback) {
-                tg.HapticFeedback.impactOccurred('medium');
+            try {
+                tg.expand();
+                tg.ready();
+                if (tg.setHeaderColor) tg.setHeaderColor('#090d16');
+                if (tg.setBackgroundColor) tg.setBackgroundColor('#090d16');
+            } catch (e) {
+                console.log('WebApp init error:', e);
             }
         }
 
-        function copySubUrl(url) {
+        let currentQrUrl = '';
+
+        function haptic() {
+            if (tg && tg.HapticFeedback) {
+                try {
+                    tg.HapticFeedback.impactOccurred('medium');
+                } catch(e) {}
+            }
+        }
+
+        function copySubUrl(url, customMsg) {
             if (!url) return;
-            navigator.clipboard.writeText(url).then(() => {
-                showToast('لینک اشتراک با موفقیت کپی شد! 📋');
-                haptic();
-            }).catch(() => {
-                showToast('خطا در کپی، لینک را دستی کپی کنید.');
-            });
+            haptic();
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(url).then(() => {
+                    showToast(customMsg || 'لینک اشتراک با موفقیت کپی شد! 📋');
+                }).catch(() => {
+                    fallbackCopy(url, customMsg);
+                });
+            } else {
+                fallbackCopy(url, customMsg);
+            }
+        }
+
+        function fallbackCopy(text, customMsg) {
+            try {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.focus();
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                showToast(customMsg || 'لینک اشتراک کپی شد! 📋');
+            } catch(err) {
+                showToast('خطا در کپی خودکار، لینک را دستی کپی نمایید.');
+            }
         }
 
         function showToast(msg) {
             const toast = document.getElementById('toastAlert');
             document.getElementById('toastText').innerText = msg;
             toast.classList.add('show');
-            setTimeout(() => toast.classList.remove('show'), 2500);
+            setTimeout(() => toast.classList.remove('show'), 2400);
         }
 
         function openQrModal(url) {
             haptic();
             if (!url) return;
+            currentQrUrl = url;
             const qrApi = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=' + encodeURIComponent(url);
             document.getElementById('qrImgSrc').src = qrApi;
             document.getElementById('qrModal').style.display = 'flex';
         }
 
-        function closeQrModal() {
+        function closeQrModal(event) {
+            if (event) event.stopPropagation();
             document.getElementById('qrModal').style.display = 'none';
+        }
+
+        function copyCurrentQrUrl() {
+            if (currentQrUrl) {
+                copySubUrl(currentQrUrl, 'لینک با موفقیت کپی شد! 📋');
+                closeQrModal();
+            }
         }
     </script>
 </body>
