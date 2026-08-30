@@ -3013,6 +3013,15 @@ def settings():
             db.save_setting("tutorial_title", tutorial_title)
             flash("تنظیمات دامنه و عنوان پورتال آموزش‌ها با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
+        elif action == "save_online_gateway_settings":
+            gw_enabled = request.form.get("online_gateway_enabled") == "on"
+            gw_type = request.form.get("online_gateway_type", "zarinpal").strip().lower()
+            gw_key = request.form.get("online_gateway_key", "").strip()
+            gw_sandbox = request.form.get("online_gateway_sandbox") == "on"
+
+            db.update_admin_gateway(gw_enabled, gw_type, gw_key, gw_sandbox)
+            flash("تنظیمات درگاه پرداخت آنلاین شاپرک با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("settings"))
 
     conn = db.get_connection()
     settings_list = conn.execute("SELECT * FROM settings").fetchall()
@@ -3020,6 +3029,7 @@ def settings():
     single_link_template = get_single_link_template(db)
     sms_config = get_sms_config(db)
     crypto_config = CryptoPaymentGateway.get_crypto_config(db)
+    admin_gateway = db.get_admin_gateway()
     tutorial_domain = db.get_setting("tutorial_domain", "")
     tutorial_title = db.get_setting("tutorial_title", "راهنما و آموزش اتصال")
     return render_template(
@@ -3028,6 +3038,7 @@ def settings():
         single_link_template=single_link_template,
         sms_config=sms_config,
         crypto_config=crypto_config,
+        admin_gateway=admin_gateway,
         tutorial_domain=tutorial_domain,
         tutorial_title=tutorial_title
     )
@@ -3607,11 +3618,20 @@ def reseller_bot_settings():
             card_holder=card_holder,
             bank_name=bank_name
         )
-        flash("تنظیمات ربات اختصاصی شما با موفقیت ذخیره شد.", "success")
+
+        # تنظیمات درگاه پرداخت آنلاین اختصاصی نماینده
+        is_gw_active = request.form.get("is_gateway_active") in ("on", "1")
+        gw_type = request.form.get("gateway_type", "zarinpal").strip().lower()
+        gw_key = request.form.get("gateway_key", "").strip()
+        gw_sandbox = request.form.get("gateway_sandbox") in ("on", "1")
+        db.update_reseller_gateway(reseller_id, is_gw_active, gw_type, gw_key, gw_sandbox)
+
+        flash("تنظیمات ربات اختصاصی و درگاه پرداخت آنلاین با موفقیت ذخیره شد.", "success")
         return redirect(url_for("reseller_bot_settings"))
 
     bot_status = multibot_manager.get_bot_status(reseller_id)
-    return render_template("reseller_bot_settings.html", reseller=reseller, bot_status=bot_status)
+    reseller_gateway = db.get_reseller_gateway(reseller_id)
+    return render_template("reseller_bot_settings.html", reseller=reseller, bot_status=bot_status, reseller_gateway=reseller_gateway)
 
 
 @app.route("/reseller/bot/test-token", methods=["POST"])
@@ -4797,6 +4817,58 @@ def reseller_bundles_buy():
     else:
         flash(f"خطا در خرید بسته: {res.get('error')}", "danger")
     return redirect(url_for("reseller_transactions"))
+
+
+@app.route("/payment/callback/<order_id>", methods=["GET", "POST"])
+def payment_callback(order_id: str):
+    """پردازش بازگشت از درگاه پرداخت آنلاین شاپرک (زرین‌پال / آیدی‌پی)"""
+    authority = request.args.get("Authority") or request.form.get("Authority")
+    status = request.args.get("Status") or request.form.get("Status")
+    idpay_id = request.args.get("id") or request.form.get("id")
+    idpay_status = request.args.get("status") or request.form.get("status")
+
+    trans = db.get_transaction_by_order_id(order_id)
+    if not trans:
+        return render_template("payment_result.html", success=False, message="تراکنش یافت نشد.")
+
+    amount = trans.get("amount", 0)
+    user_id = trans.get("user_id")
+    plan_name = trans.get("plan_name", "")
+    reseller_id = trans.get("reseller_id")
+
+    if reseller_id:
+        gw_cfg = db.get_reseller_gateway(reseller_id)
+    else:
+        gw_cfg = db.get_admin_gateway()
+
+    gw_type = gw_cfg.get("type", "zarinpal")
+    gw_key = gw_cfg.get("key", "")
+    sandbox = gw_cfg.get("sandbox", False)
+
+    verified = False
+    ref_id = None
+
+    if authority and status == "OK":
+        from payment import ZarinPal
+        zp = ZarinPal(merchant_id=gw_key, sandbox=sandbox)
+        res = zp.verify_payment(authority=authority, amount=amount)
+        if res.get("success"):
+            verified = True
+            ref_id = res.get("ref_id")
+    elif idpay_id and str(idpay_status) in ("100", "10", "101"):
+        from payment import IDPay
+        idp = IDPay(api_key=gw_key, sandbox=sandbox)
+        res = idp.verify_payment(payment_id=idpay_id, order_id=order_id)
+        if res.get("success"):
+            verified = True
+            ref_id = res.get("ref_id")
+
+    if verified:
+        db.update_transaction(order_id, status="approved", ref_id=str(ref_id or authority or idpay_id))
+        return render_template("payment_result.html", success=True, order_id=order_id, amount=amount, ref_id=ref_id, plan_name=plan_name)
+    else:
+        db.update_transaction(order_id, status="failed")
+        return render_template("payment_result.html", success=False, order_id=order_id, amount=amount, message="پرداخت ناموفق بود یا توسط کاربر لغو گردید.")
 
 
 # ─── راه‌اندازی سرور وب ───

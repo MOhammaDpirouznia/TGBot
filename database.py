@@ -564,6 +564,18 @@ class Database:
             except Exception:
                 pass
 
+        # ستون‌های درگاه پرداخت آنلاین نماینده
+        for col_def in [
+            "is_gateway_active INTEGER DEFAULT 0",
+            "gateway_type TEXT DEFAULT 'zarinpal'",
+            "gateway_key TEXT",
+            "gateway_sandbox INTEGER DEFAULT 0"
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE resellers ADD COLUMN {col_def}")
+            except Exception:
+                pass
+
         try:
             cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_resellers_custom_domain ON resellers(custom_domain)")
         except Exception:
@@ -5221,6 +5233,76 @@ class Database:
             return {"rewarded": False, "error": str(e)}
         finally:
             conn.close()
+
+    # ─── تنظیمات درگاه پرداخت آنلاین (مدیریت و نمایندگان) ───
+
+    def get_reseller_gateway(self, reseller_id: int) -> dict:
+        """دریافت تنظیمات درگاه آنلاین اختصاصی نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT is_gateway_active, gateway_type, gateway_key, gateway_sandbox FROM resellers WHERE id=?", (reseller_id,))
+            row = cursor.fetchone()
+            if not row:
+                return {"enabled": False, "type": "zarinpal", "key": "", "sandbox": False}
+            row_dict = dict(row)
+            is_active = bool(row_dict.get("is_gateway_active"))
+            gw_key = str(row_dict.get("gateway_key") or "").strip()
+            return {
+                "enabled": bool(is_active and gw_key),
+                "type": row_dict.get("gateway_type") or "zarinpal",
+                "key": gw_key,
+                "sandbox": bool(row_dict.get("gateway_sandbox"))
+            }
+        except Exception as e:
+            logger.error(f"Error getting reseller gateway: {e}")
+            return {"enabled": False, "type": "zarinpal", "key": "", "sandbox": False}
+        finally:
+            conn.close()
+
+    def get_admin_gateway(self) -> dict:
+        """دریافت تنظیمات درگاه آنلاین مدیریت اصلی"""
+        enabled = str(self.get_setting("online_gateway_enabled") or "").lower() in ("1", "true")
+        gw_type = str(self.get_setting("online_gateway_type") or "zarinpal")
+        gw_key = str(self.get_setting("online_gateway_key") or "").strip()
+        sandbox = str(self.get_setting("online_gateway_sandbox") or "").lower() in ("1", "true")
+        return {
+            "enabled": bool(enabled and gw_key),
+            "type": gw_type,
+            "key": gw_key,
+            "sandbox": sandbox
+        }
+
+    def update_reseller_gateway(self, reseller_id: int, is_active: bool, gateway_type: str, gateway_key: str, sandbox: bool = False) -> dict:
+        """بروزرسانی درگاه پرداخت آنلاین نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                UPDATE resellers 
+                SET is_gateway_active = ?, gateway_type = ?, gateway_key = ?, gateway_sandbox = ?, updated_at = ?
+                WHERE id = ?
+            """, (1 if is_active else 0, gateway_type, str(gateway_key or "").strip(), 1 if sandbox else 0, now, reseller_id))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error updating reseller gateway: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def update_admin_gateway(self, enabled: bool, gateway_type: str, gateway_key: str, sandbox: bool = False) -> dict:
+        """بروزرسانی درگاه پرداخت آنلاین مدیریت اصلی"""
+        try:
+            self.set_setting("online_gateway_enabled", "1" if enabled else "0")
+            self.set_setting("online_gateway_type", gateway_type or "zarinpal")
+            self.set_setting("online_gateway_key", str(gateway_key or "").strip())
+            self.set_setting("online_gateway_sandbox", "1" if sandbox else "0")
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error updating admin gateway: {e}")
+            return {"success": False, "error": str(e)}
 
 
 # نمونه singleton

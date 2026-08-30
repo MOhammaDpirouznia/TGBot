@@ -201,7 +201,7 @@ class ResellerBotInstance:
             await update.message.reply_text(text, reply_markup=kb, parse_mode="Markdown")
 
         async def buy_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            """پردازش انتخاب پلن و ارائه اطلاعات پرداخت"""
+            """انتخاب پلن و نمایش صفحه جامع انتخاب روش پرداخت (کیف پول، درگاه آنلاین، کارت به کارت)"""
             query = update.callback_query
             await query.answer()
 
@@ -210,6 +210,60 @@ class ResellerBotInstance:
             plan = plans.get(plan_id)
             if not plan:
                 await query.edit_message_text("❌ پلن مورد نظر یافت نشد.")
+                return
+
+            price = plan.get("price", 0)
+            pname = plan.get("name", "پلن")
+            vol = plan.get("traffic", plan.get("volume_gb", 0))
+            days = plan.get("duration_days", plan.get("days", 30))
+
+            user = update.effective_user
+            user_wallet = db.get_user_wallet_balance(user.id)
+            gw_cfg = db.get_reseller_gateway(r_id)
+
+            context.user_data["buying_plan_id"] = plan_id
+            context.user_data["buying_price"] = price
+
+            msg = f"🛒 **پیش‌فاکتور خرید اشتراک**\n\n"
+            msg += f"📦 پلن: **{pname}**\n"
+            msg += f"📊 حجم: **{vol} گیگابایت** | ⏳ مدت: **{days} روز**\n"
+            msg += f"💰 مبلغ قابل پرداخت: **{price:,} تومان**\n"
+            msg += f"💳 موجودی کیف پول شما: **{user_wallet:,} تومان**\n\n"
+            msg += "لطفاً نحوه پرداخت را انتخاب فرمایید:"
+
+            buttons = []
+            # ۱. کیف پول
+            if user_wallet >= price:
+                buttons.append([InlineKeyboardButton(f"⚡ پرداخت آنی از کیف پول ({user_wallet:,} ت)", callback_data=f"r_pwal_{plan_id}")])
+            else:
+                buttons.append([InlineKeyboardButton(f"💰 پرداخت از کیف پول (کسری: {price - user_wallet:,} ت)", callback_data="r_pwal_insuf")])
+
+            # ۲. درگاه آنلاین
+            if gw_cfg.get("enabled") and gw_cfg.get("key"):
+                gw_label = "زرین‌پال" if gw_cfg.get("type") == "zarinpal" else ("آیدی‌پی" if gw_cfg.get("type") == "idpay" else "آنلاین")
+                buttons.append([InlineKeyboardButton(f"💳 درگاه پرداخت آنلاین ({gw_label})", callback_data=f"r_ponl_{plan_id}")])
+            else:
+                buttons.append([InlineKeyboardButton("💳 درگاه آنلاین (بزودی)", callback_data="r_ponl_soon")])
+
+            # ۳. کارت به کارت
+            buttons.append([InlineKeyboardButton("💵 کارت به کارت (بانکی)", callback_data=f"r_pcard_{plan_id}")])
+
+            # ۴. انصراف
+            buttons.append([InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy")])
+
+            kb = InlineKeyboardMarkup(buttons)
+            await query.edit_message_text(msg, reply_markup=kb, parse_mode="Markdown")
+
+        async def pay_card_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """نمایش اطلاعات کارت بانکی فعال نماینده با دکمه‌های کپی هوشمند شماره کارت و مبلغ"""
+            query = update.callback_query
+            await query.answer()
+
+            plan_id = query.data.replace("r_pcard_", "")
+            plans = load_plans()
+            plan = plans.get(plan_id)
+            if not plan:
+                await query.edit_message_text("❌ پلن یافت نشد.")
                 return
 
             price = plan.get("price", 0)
@@ -231,26 +285,193 @@ class ResellerBotInstance:
             context.user_data["buying_plan_id"] = plan_id
             context.user_data["buying_price"] = price
 
-            msg = f"🛒 **پیش‌فاکتور خرید اشتراک**\n\n"
+            msg = f"💵 **پرداخت کارت به کارت**\n\n"
             msg += f"📦 پلن: **{pname}**\n"
             msg += f"📊 حجم: **{vol} گیگابایت** | ⏳ مدت: **{days} روز**\n"
-            msg += f"💰 مبلغ قابل پرداخت: **{price:,} تومان**\n\n"
+            msg += f"💰 مبلغ: **`{price:,}` تومان**\n\n"
 
             if card_num:
                 msg += "💳 **اطلاعات کارت جهت واریز:**\n"
-                msg += f"شماره کارت: `{card_num}`\n"
+                msg += f"شماره کارت:\n`{card_num}`\n"
                 if card_holder:
                     msg += f"به نام: **{card_holder}**\n"
                 if bank_name:
                     msg += f"بانک: {bank_name}\n"
-                msg += "\n📸 لطفاً پس از واریز، **عکس فیش واریزی** خود را در همین گفتگو ارسال نمایید."
+                msg += "\n⚠️ **نکات مهم:**\n"
+                msg += "• برای کپی شماره کارت یا مبلغ روی دکمه‌های زیر یا روی متن بزنید.\n"
+                msg += "• پس از واریز، **عکس فیش واریزی** خود را در همین گفتگو ارسال فرمایید."
+
+                buttons = [
+                    [InlineKeyboardButton("📋 کپی شماره کارت", callback_data=f"r_copy_card_{card_num}")],
+                    [InlineKeyboardButton(f"💰 کپی مبلغ ({price:,} ت)", callback_data=f"r_copy_amt_{price}")],
+                    [InlineKeyboardButton("◀️ بازگشت", callback_data=f"r_buy_{plan_id}"), InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy")]
+                ]
             else:
                 msg += "💳 جهت پرداخت و دریافت شماره کارت، با پشتیبانی تماس حاصل فرمایید."
+                buttons = [
+                    [InlineKeyboardButton("◀️ بازگشت", callback_data=f"r_buy_{plan_id}"), InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy")]
+                ]
 
-            kb = InlineKeyboardMarkup([
-                [InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy")]
-            ])
+            kb = InlineKeyboardMarkup(buttons)
             await query.edit_message_text(msg, reply_markup=kb, parse_mode="Markdown")
+
+        async def copy_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """پاسخ به دکمه‌های کپی شماره کارت و مبلغ در ربات نماینده"""
+            query = update.callback_query
+            data = query.data
+            if data.startswith("r_copy_card_"):
+                c_num = data.replace("r_copy_card_", "").strip()
+                await query.answer(f"📋 شماره کارت:\n{c_num}\n(کپی شد)", show_alert=True)
+            elif data.startswith("r_copy_amt_"):
+                amt_str = data.replace("r_copy_amt_", "").strip()
+                try:
+                    amt_fmt = f"{int(amt_str):,}"
+                except Exception:
+                    amt_fmt = amt_str
+                await query.answer(f"💰 مبلغ واریز:\n{amt_fmt} تومان\n(کپی شد)", show_alert=True)
+            elif data == "r_pwal_insuf":
+                user = update.effective_user
+                user_wallet = db.get_user_wallet_balance(user.id)
+                await query.answer(f"❌ موجودی کیف پول شما ({user_wallet:,} ت) برای این پلن کافی نیست. لطفاً از کارت به کارت استفاده کنید.", show_alert=True)
+            elif data == "r_ponl_soon":
+                await query.answer("💳 درگاه پرداخت آنلاین به زودی فعال خواهد شد. لطفاً از روش کارت به کارت استفاده فرمایید.", show_alert=True)
+            elif data == "r_cancel_buy":
+                await query.edit_message_text("❌ عملیات خرید لغو شد.")
+
+        async def pay_wallet_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """پرداخت و ساخت آنی اشتراک از کیف پول مشتری در ربات نماینده"""
+            query = update.callback_query
+            await query.answer()
+
+            plan_id = query.data.replace("r_pwal_", "")
+            plans = load_plans()
+            plan = plans.get(plan_id)
+            if not plan:
+                await query.edit_message_text("❌ پلن یافت نشد.")
+                return
+
+            price = plan.get("price", 0)
+            user = update.effective_user
+            user_wallet = db.get_user_wallet_balance(user.id)
+
+            if user_wallet < price:
+                await query.answer("❌ موجودی کیف پول کافی نیست!", show_alert=True)
+                return
+
+            # کسر از موجودی کیف پول مشتری
+            deduct_res = db.deduct_wallet_balance(user.id, price, f"خرید آنی اشتراک {plan.get('name')}")
+            if not deduct_res.get("success"):
+                await query.answer("❌ خطا در کسر موجودی: " + str(deduct_res.get("error")), show_alert=True)
+                return
+
+            await query.edit_message_text("⏳ در حال ساخت و فعال‌سازی آنی اشتراک شما...")
+
+            pname = plan.get("name", "اشتراک")
+            vol = plan.get("traffic", plan.get("volume_gb", 30))
+            days = plan.get("duration_days", plan.get("days", 30))
+            account_name = f"r{r_id}_{user.id}_{int(datetime.now().timestamp()) % 10000}"
+
+            # ساخت اشتراک در هیدیفای
+            created = await hidify_client.create_user(
+                name=account_name,
+                usage_limit_gb=vol if vol > 0 else None,
+                package_days=days,
+                enable=True,
+                comment=f"Reseller #{r_id} | User {user.id}"
+            )
+
+            uuid_val = created.get("uuid") if created else None
+            sub_url = f"{HIDIFY_PANEL_URL}/{HIDIFY_PROXY_PATH}/{uuid_val}/" if uuid_val else ""
+
+            # ذخیره در دیتابیس
+            db.save_subscription(
+                telegram_id=user.id,
+                hidify_uuid=uuid_val,
+                plan_id=plan_id,
+                plan_name=pname,
+                data_limit=vol,
+                duration=days,
+                status="active",
+                account_name=account_name,
+                account_comment=f"Wallet Purchase | Reseller #{r_id}",
+                reseller_id=r_id
+            )
+
+            brand = self.reseller_data.get("brand_name") or "ما"
+            cust_msg = f"🎉 **اشتراک {brand} با موفقیت فعال شد:**\n\n"
+            cust_msg += f"📦 پلن: **{pname}**\n"
+            cust_msg += f"📊 حجم: **{vol} گیگابایت** | ⏳ مدت: **{days} روز**\n"
+            cust_msg += f"💰 مبلغ کسر شده: **{price:,} تومان**\n\n"
+            cust_msg += f"🔗 **لینک اتصال اختصاصی شما:**\n`{sub_url}`\n\n"
+            cust_msg += "💡 لینک بالا را در اپلیکیشن v2rayNG / Hiddify / Streisand وارد فرمایید."
+
+            await query.edit_message_text(cust_msg, parse_mode="Markdown")
+
+        async def pay_online_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """هدایت به درگاه پرداخت آنلاین اختصاصی نماینده"""
+            query = update.callback_query
+            await query.answer()
+
+            plan_id = query.data.replace("r_ponl_", "")
+            plans = load_plans()
+            plan = plans.get(plan_id)
+            if not plan:
+                await query.edit_message_text("❌ پلن یافت نشد.")
+                return
+
+            price = plan.get("price", 0)
+            user = update.effective_user
+            gw_cfg = db.get_reseller_gateway(r_id)
+            gw_type = gw_cfg.get("type", "zarinpal")
+            gw_key = gw_cfg.get("key", "")
+            sandbox = gw_cfg.get("sandbox", False)
+
+            order_id = f"R{r_id}_ONL_{int(datetime.now().timestamp())}_{user.id % 1000}"
+            r_info = db.get_reseller(r_id) or {}
+            domain = r_info.get("custom_domain") or os.getenv("PANEL_DOMAIN", "http://localhost:5000")
+            if not str(domain).startswith("http"):
+                domain = f"https://{domain}"
+            callback_url = f"{str(domain).rstrip('/')}/payment/callback/{order_id}"
+
+            pay_url = None
+            if gw_type == "zarinpal":
+                from payment import ZarinPal
+                zp = ZarinPal(merchant_id=gw_key, sandbox=sandbox)
+                res = zp.create_payment(amount=price, description=f"خرید {plan.get('name')}", callback_url=callback_url)
+                if res.get("success"):
+                    pay_url = res.get("payment_url")
+            elif gw_type == "idpay":
+                from payment import IDPay
+                idp = IDPay(api_key=gw_key, sandbox=sandbox)
+                res = idp.create_payment(amount=price, name=user.full_name or "کاربر", description=f"خرید {plan.get('name')}", callback_url=callback_url, order_id=order_id)
+                if res.get("success"):
+                    pay_url = res.get("payment_url")
+
+            if pay_url:
+                db.save_transaction(
+                    order_id=order_id,
+                    user_id=user.id,
+                    username=user.username or user.first_name,
+                    plan_name=plan.get("name"),
+                    amount=price,
+                    gateway=f"{gw_type}_reseller_{r_id}",
+                    tracking_code=order_id,
+                    status="pending",
+                    reseller_id=r_id
+                )
+                msg = f"💳 **درگاه پرداخت آنلاین شاپرک**\n\n"
+                msg += f"📦 پلن: **{plan.get('name')}**\n"
+                msg += f"💰 مبلغ: **`{price:,}` تومان**\n"
+                msg += f"🔢 شناسه سفارش: `{order_id}`\n\n"
+                msg += "جهت پرداخت روی دکمه زیر کلیک کنید. پس از پرداخت آنلاین، اشتراک شما به صورت خودکار فعال می‌گردد:"
+
+                kb = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🌐 ورود به درگاه پرداخت شاپرک", url=pay_url)],
+                    [InlineKeyboardButton("◀️ بازگشت", callback_data=f"r_buy_{plan_id}")]
+                ])
+                await query.edit_message_text(msg, reply_markup=kb, parse_mode="Markdown")
+            else:
+                await query.answer("❌ خطا در اتصال به درگاه بانکی. لطفاً از کارت به کارت استفاده فرمایید.", show_alert=True)
 
         async def receipt_photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """دریافت تصویر فیش از مشتری و ارسال به تلگرام خود نماینده جهت تایید"""
@@ -547,6 +768,10 @@ class ResellerBotInstance:
         app.add_handler(CommandHandler("plans", plans_handler))
         app.add_handler(CommandHandler("help", guide_handler))
         app.add_handler(CallbackQueryHandler(buy_plan_callback, pattern="^r_buy_"))
+        app.add_handler(CallbackQueryHandler(pay_card_callback, pattern="^r_pcard_"))
+        app.add_handler(CallbackQueryHandler(pay_wallet_callback, pattern="^r_pwal_"))
+        app.add_handler(CallbackQueryHandler(pay_online_callback, pattern="^r_ponl_"))
+        app.add_handler(CallbackQueryHandler(copy_action_callback, pattern="^(r_copy_card_|r_copy_amt_|r_pwal_insuf|r_ponl_soon|r_cancel_buy)"))
         app.add_handler(CallbackQueryHandler(start_handler, pattern="^r_check_sub$"))
         app.add_handler(CallbackQueryHandler(reseller_approve_callback, pattern="^rapprove_|^rreject_"))
         app.add_handler(MessageHandler(filters.PHOTO, receipt_photo_handler))
