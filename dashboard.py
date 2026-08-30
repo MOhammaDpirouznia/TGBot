@@ -942,20 +942,18 @@ ROLE_PERMISSIONS = {
     "super_admin": {"*"},
     "partner": {
         "dashboard", "users", "users_view", "user_manage", "subscriptions", "subscriptions_view", 
-        "sub_manage", "sub_delete", "user_delete", "create_customer", "plans", "plans_manage", 
-        "tickets", "payments", "payments_view", "reports", "servers_view", "accounting", 
-        "accounting_view_self", "profile", "broadcast"
+        "sub_manage", "create_customer", "plans", "tickets", "payments_view", "reports", 
+        "servers_view", "accounting", "accounting_view_self", "profile"
     },
     "finance": {
         "dashboard", "payments", "payments_view", "verify_payments", "discounts", "cards", 
-        "accounting", "settle_debts", "reports", "users_view", "create_customer", "profile"
+        "accounting", "settle_debts", "reports", "users_view", "profile"
     },
     "support": {
-        "dashboard", "tickets", "users", "users_view", "subscriptions", "subscriptions_view", 
-        "sub_manage", "sub_delete", "create_customer", "servers_view", "broadcast", "profile"
+        "dashboard", "tickets", "users_view", "subscriptions_view", "servers_view", "broadcast", "profile"
     },
     "viewer": {
-        "dashboard", "users_view", "subscriptions_view", "reports", "servers_view", "profile", "payments_view"
+        "dashboard", "reports", "users_view", "subscriptions_view", "servers_view", "payments_view", "profile"
     }
 }
 
