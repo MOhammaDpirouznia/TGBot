@@ -4626,6 +4626,155 @@ def reseller_avatar_delete():
     return redirect(url_for("reseller_profile"))
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# فاکتور دیجیتال، بسته‌های اعتباری، پیش‌بینی مصرف و یادآوری هوشمند
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/invoice/<int:sub_id>")
+def view_invoice(sub_id: int):
+    """نمایش فاکتور رسمی دیجیتال با امکان چاپ، بارکد QR و اطلاعات تکمیلی اشتراک"""
+    sub = db.get_subscription(sub_id)
+    if not sub:
+        flash("اشتراک مورد نظر یافت نشد.", "danger")
+        return redirect(url_for("dashboard"))
+
+    # دریافت برندینگ بر اساس اینکه اشتراک متعلق به نماینده است یا مدیریت اصلی
+    branding = {}
+    if sub.get("reseller_id"):
+        reseller = db.get_reseller(sub["reseller_id"])
+        if reseller:
+            branding = {
+                "brand_title": reseller.get("brand_title") or reseller.get("name"),
+                "logo_url": reseller.get("logo_url"),
+                "footer_text": reseller.get("footer_text"),
+                "primary_color": reseller.get("primary_color") or "#4f46e5"
+            }
+    if not branding:
+        branding = {
+            "brand_title": db.get_setting("brand_title") or "سامانه هوشمند VPN",
+            "logo_url": db.get_setting("logo_url") or "",
+            "footer_text": "کلیه حقوق برای سامانه محفوظ است.",
+            "primary_color": "#4f46e5"
+        }
+
+    single_link_template = get_single_link_template(db)
+    sub_url = format_single_link(single_link_template, uuid=sub.get("hidify_uuid") or "", name=sub.get("account_name") or "")
+
+    return render_template("invoice.html", sub=sub, branding=branding, sub_url=sub_url)
+
+
+@app.route("/api/sub/<int:sub_id>/prediction")
+def api_sub_prediction(sub_id: int):
+    """محاسبه نرخ مصرف روزانه و پیش‌بینی هوشمند تاریخ اتمام حجم"""
+    if not session.get("logged_in"):
+        return jsonify({"error": "unauthorized"}), 401
+    sub = db.get_subscription(sub_id)
+    if not sub:
+        return jsonify({"error": "اشتراک یافت نشد"}), 404
+    pred = db.calculate_subscription_burn_rate(sub)
+    return jsonify({"success": True, "prediction": pred})
+
+
+@app.route("/admin/sub/<int:sub_id>/add_traffic", methods=["POST"])
+@admin_required
+def admin_sub_add_traffic(sub_id: int):
+    """افزودن ترافیک اضافه (Top-up) به اشتراک کاربر بدون تغییر لینک"""
+    extra_gb = request.form.get("extra_gb", 0)
+    try:
+        extra_gb = float(extra_gb)
+    except Exception:
+        extra_gb = 0.0
+
+    if extra_gb <= 0:
+        flash("مقدار حجم افزایشی نامعتبر است.", "warning")
+        return redirect(request.referrer or url_for("subscriptions"))
+
+    res = db.add_traffic_to_subscription(sub_id, extra_gb)
+    if res.get("success"):
+        flash(f"✅ مقدار {extra_gb} گیگابایت به سقف مصرف اشتراک افزوده شد (سقف جدید: {res['new_limit']} GB).", "success")
+    else:
+        flash(f"خطا در افزودن حجم: {res.get('error')}", "danger")
+
+    return redirect(request.referrer or url_for("subscriptions"))
+
+
+@app.route("/admin/debt/settle_partial", methods=["POST"])
+@admin_required
+def admin_debt_settle_partial():
+    """ثبت پرداخت و تسویه اقساطی/پاره‌وقت بدهی مدیر یا شریک"""
+    admin_id = request.form.get("admin_id", type=int)
+    amount = request.form.get("amount", type=int)
+    note = request.form.get("note", "").strip() or "تسویه حساب اقساطی"
+    settled_by = session.get("admin_id") or 1
+
+    if not admin_id or not amount or amount <= 0:
+        flash("مبلغ یا شناسه مدیر نامعتبر است.", "warning")
+        return redirect(url_for("accounting"))
+
+    res = db.settle_admin_debt(admin_id, amount, note, settled_by)
+    if res.get("success"):
+        flash(f"✅ مبلغ {amount:,} تومان از بدهی تسویه شد. (مانده بدهی: {res.get('remaining_debt', 0):,} تومان)", "success")
+    else:
+        flash(f"خطا در تسویه بدهی: {res.get('error')}", "danger")
+
+    return redirect(url_for("accounting"))
+
+
+@app.route("/admin/debt/<int:admin_id>/reminder", methods=["POST"])
+@admin_required
+def admin_debt_reminder(admin_id: int):
+    """ارسال پیام یادآوری بدهی به تلگرام مدیر یا شریک تجاری"""
+    admin_user = db.get_admin_user(admin_id)
+    if not admin_user:
+        flash("مدیر یافت نشد.", "danger")
+        return redirect(url_for("accounting"))
+
+    debt = admin_user.get("debt_balance") or 0
+    if debt <= 0:
+        flash("این مدیر بدهی تسویه‌نشده‌ای ندارد.", "info")
+        return redirect(url_for("accounting"))
+
+    tg_id = admin_user.get("telegram_id")
+    msg_text = (
+        f"🔔 *یادآوری تسویه حساب مالی*\n\n"
+        f"همکار گرامی جناب {admin_user.get('display_name') or admin_user.get('username')}،\n"
+        f"مبلغ بدهی جاری شما بابت فروش‌های نقدی: *{debt:,} تومان* می‌باشد.\n\n"
+        f"لطفاً جهت تسویه حساب به بخش امور مالی مراجعه فرمایید. با تشکر."
+    )
+
+    sent = False
+    if tg_id and tg_id > 0:
+        try:
+            from bot import bot
+            import asyncio
+            asyncio.run(bot.send_message(chat_id=tg_id, text=msg_text, parse_mode="Markdown"))
+            sent = True
+        except Exception as e:
+            logger.warning(f"Could not send telegram reminder to {tg_id}: {e}")
+
+    if sent:
+        flash(f"✅ پیام یادآوری بدهی ({debt:,} تومان) با موفقیت به تلگرام ارسال شد.", "success")
+    else:
+        flash(f"پیام یادآوری ثبت شد (شناسه تلگرام {tg_id or 'نامشخص'} بود).", "info")
+
+    return redirect(url_for("accounting"))
+
+
+@app.route("/reseller/bundles/buy", methods=["POST"])
+@reseller_required
+def reseller_bundles_buy():
+    """خرید و فعال‌سازی آنی بسته شارژ عمده با اعتبار هدیه"""
+    reseller_id = session.get("reseller_id")
+    bundle_id = request.form.get("bundle_id")
+    res = db.apply_reseller_bundle_purchase(reseller_id, bundle_id)
+    if res.get("success"):
+        b = res.get("bundle", {})
+        flash(f"🎉 تبریک! {b.get('title')} با موفقیت فعال شد و مبلغ {b.get('credit'):,} تومان به موجودی شما افزوده شد.", "success")
+    else:
+        flash(f"خطا در خرید بسته: {res.get('error')}", "danger")
+    return redirect(url_for("reseller_transactions"))
+
+
 # ─── راه‌اندازی سرور وب ───
 
 def run_dashboard(host="0.0.0.0", port=None, debug=False):

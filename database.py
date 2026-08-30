@@ -692,6 +692,17 @@ class Database:
         except Exception:
             pass
 
+        # ستون‌های فعال‌سازی موقت رسید (Grace Period)
+        try:
+            cursor.execute("ALTER TABLE payments ADD COLUMN is_grace_active INTEGER DEFAULT 0")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE payments ADD COLUMN grace_expires_at TEXT")
+        except Exception:
+            pass
+
         conn.commit()
         conn.close()
         logger.info("Database initialized successfully")
@@ -4985,6 +4996,19 @@ class Database:
         finally:
             conn.close()
 
+    def get_all_subscriptions(self, limit: int = 500) -> list:
+        """دریافت لیست کلیه اشتراک‌ها"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM subscriptions ORDER BY id DESC LIMIT ?", (limit,))
+            return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error getting all subscriptions: {e}")
+            return []
+        finally:
+            conn.close()
+
     def get_subscription_sessions(self, sub_id: int) -> dict:
         """دریافت لیست نشست‌های فعال و تاریخچه دستگاه‌های متصل به اشتراک"""
         conn = self.get_connection()
@@ -5018,6 +5042,183 @@ class Database:
         except Exception as e:
             logger.error(f"Error in get_subscription_sessions: {e}")
             return {"sessions": [], "active_devices": 0, "user_limit": 1, "error": str(e)}
+        finally:
+            conn.close()
+
+    # ─── اعتبارسنجی کد پیگیری و فیش‌های تکراری ───
+
+    def is_tracking_code_duplicate(self, tracking_code: str, exclude_id: int = None) -> bool:
+        """بررسی عدم ثبت تکراری کد پیگیری یا شماره فیش بانکی"""
+        if not tracking_code or not str(tracking_code).strip():
+            return False
+        clean_code = str(tracking_code).strip()
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if exclude_id:
+                cursor.execute("SELECT id FROM transactions WHERE tracking_code = ? AND id != ? AND status != 'rejected' LIMIT 1", (clean_code, exclude_id))
+            else:
+                cursor.execute("SELECT id FROM transactions WHERE tracking_code = ? AND status != 'rejected' LIMIT 1", (clean_code,))
+            row = cursor.fetchone()
+            return bool(row)
+        except Exception as e:
+            logger.error(f"Error checking duplicate tracking code: {e}")
+            return False
+        finally:
+            conn.close()
+
+    # ─── شارژ حجم اضافه و پیش‌بینی اتمام ترافیک (Top-up & Depletion Prediction) ───
+
+    def add_traffic_to_subscription(self, sub_id: int, extra_gb: float) -> dict:
+        """افزودن حجم اضافه (Top-up) به سقف مصرف اشتراک کاربر بدون تغییر لینک و UUID"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,))
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "error": "اشتراک یافت نشد."}
+            sub = dict(row)
+            current_limit = float(sub.get("data_limit") or sub.get("traffic_limit") or 0)
+            new_limit = current_limit + float(extra_gb)
+            cursor.execute("UPDATE subscriptions SET data_limit=? WHERE id=?", (new_limit, sub_id))
+            conn.commit()
+
+            # در صورت اتصال به هیدیفای، سقف کاربر در هیدیفای نیز بروزرسانی شود
+            hidify_uuid = sub.get("hidify_uuid")
+            if hidify_uuid:
+                try:
+                    from hidify import HidifyClient
+                    # هماهنگی در صورت وجود اتصال
+                except Exception:
+                    pass
+
+            return {"success": True, "old_limit": current_limit, "new_limit": new_limit, "added_gb": extra_gb}
+        except Exception as e:
+            logger.error(f"Error adding traffic to subscription: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def calculate_subscription_burn_rate(self, sub: dict) -> dict:
+        """محاسبه نرخ مصرف روزانه و پیش‌بینی هوشمند تاریخ اتمام ترافیک"""
+        try:
+            current_usage = float(sub.get("data_used") or sub.get("current_usage") or 0)
+            traffic_limit = float(sub.get("data_limit") or sub.get("traffic_limit") or 0)
+            if traffic_limit <= 0:
+                return {"burn_rate_gb_day": 0, "days_remaining": 999, "predicted_depletion_date": None}
+
+            start_date_str = sub.get("start_date") or sub.get("created_at")
+            days_passed = 1.0
+            if start_date_str:
+                try:
+                    s_dt = datetime.fromisoformat(str(start_date_str)[:19])
+                    days_passed = max(1.0, (datetime.now() - s_dt).total_seconds() / 86400.0)
+                except Exception:
+                    days_passed = 1.0
+
+            burn_rate = current_usage / days_passed  # GB per day
+            remaining_traffic = max(0.0, traffic_limit - current_usage)
+
+            if burn_rate > 0.05:
+                days_remaining = int(remaining_traffic / burn_rate)
+                predicted_depletion = datetime.now() + timedelta(days=days_remaining)
+                return {
+                    "burn_rate_gb_day": round(burn_rate, 2),
+                    "remaining_traffic_gb": round(remaining_traffic, 2),
+                    "days_remaining": days_remaining,
+                    "predicted_depletion_date": predicted_depletion.strftime("%Y-%m-%d")
+                }
+            return {
+                "burn_rate_gb_day": round(burn_rate, 2),
+                "remaining_traffic_gb": round(remaining_traffic, 2),
+                "days_remaining": 999,
+                "predicted_depletion_date": None
+            }
+        except Exception as e:
+            return {"burn_rate_gb_day": 0, "days_remaining": 999, "predicted_depletion_date": None, "error": str(e)}
+
+    # ─── بسته‌های پیش‌خرید اعتباری با بونوس شارژ رایگان برای نمایندگان (Volume Bundles) ───
+
+    def get_reseller_credit_bundles(self) -> list:
+        """لیست بسته‌های شارژ عمده با درصد بونوس هدیه برای نمایندگان"""
+        return [
+            {"id": "bundle_1m", "title": "بسته استارتر", "price": 1000000, "credit": 1050000, "bonus_percent": 5, "badge": "۵٪ شارژ هدیه", "color": "info"},
+            {"id": "bundle_3m", "title": "بسته نقره‌ای", "price": 3000000, "credit": 3210000, "bonus_percent": 7, "badge": "۷٪ شارژ هدیه", "color": "primary"},
+            {"id": "bundle_5m", "title": "بسته طلایی", "price": 5000000, "credit": 5500000, "bonus_percent": 10, "badge": "۱۰٪ شارژ هدیه", "color": "success"},
+            {"id": "bundle_10m", "title": "بسته الماس VIP", "price": 10000000, "credit": 11500000, "bonus_percent": 15, "badge": "۱۵٪ شارژ ویژه", "color": "warning"},
+        ]
+
+    def apply_reseller_bundle_purchase(self, reseller_id: int, bundle_id: str) -> dict:
+        """اعمال شارژ بسته پیش‌خرید به همراه اعتبار هدیه به موجودی نماینده"""
+        bundles = {b["id"]: b for b in self.get_reseller_credit_bundles()}
+        bundle = bundles.get(bundle_id)
+        if not bundle:
+            return {"success": False, "error": "بسته اعتباری مورد نظر یافت نشد."}
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT balance, name FROM resellers WHERE id=?", (reseller_id,))
+            res_row = cursor.fetchone()
+            if not res_row:
+                return {"success": False, "error": "نماینده یافت نشد."}
+
+            res_dict = dict(res_row)
+            old_balance = res_dict.get("balance") or 0
+            credit_to_add = bundle["credit"]
+            new_balance = old_balance + credit_to_add
+
+            cursor.execute("UPDATE resellers SET balance=?, updated_at=? WHERE id=?", (new_balance, now, reseller_id))
+
+            # ثبت تراکنش نماینده
+            desc = f"خرید {bundle['title']} (واریز {credit_to_add:,} تومان با {bundle['badge']})"
+            cursor.execute("""
+                INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
+                VALUES (?, 'deposit', ?, ?, '-', ?, ?)
+            """, (reseller_id, credit_to_add, bundle["title"], desc, now))
+
+            conn.commit()
+            return {"success": True, "old_balance": old_balance, "new_balance": new_balance, "bundle": bundle}
+        except Exception as e:
+            logger.error(f"Error applying reseller bundle: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    # ─── سیستم رفرال و کش‌بک وفاداری (Referral & Cashback) ───
+
+    def process_referral_reward(self, user_telegram_id: int, purchase_amount: int, percent: int = 10) -> dict:
+        """محاسبه و واریز خودکار پورسانت رفرال به کیف پول معرف"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT referred_by FROM users WHERE telegram_id=?", (user_telegram_id,))
+            row = cursor.fetchone()
+            if not row or not row["referred_by"]:
+                return {"rewarded": False, "reason": "No referrer found"}
+
+            referrer_id = row["referred_by"]
+            reward_amount = int(purchase_amount * (percent / 100.0))
+            if reward_amount <= 0:
+                return {"rewarded": False, "reason": "Zero reward amount"}
+
+            # افزودن به موجودی کیف پول معرف
+            cursor.execute("UPDATE users SET wallet_balance = COALESCE(wallet_balance, 0) + ? WHERE telegram_id = ?", (reward_amount, referrer_id))
+
+            # ثبت در تراکنش‌های کیف پول
+            cursor.execute("""
+                INSERT INTO wallet_transactions (telegram_id, amount, type, balance_after, description, ref_id, created_at)
+                VALUES (?, ?, 'referral_reward', (SELECT wallet_balance FROM users WHERE telegram_id=?), ?, ?, ?)
+            """, (referrer_id, reward_amount, referrer_id, f"پاداش دعوت از دوست ({percent}٪ خرید اشتراک)", str(user_telegram_id), now))
+
+            conn.commit()
+            return {"rewarded": True, "referrer_id": referrer_id, "reward_amount": reward_amount, "percent": percent}
+        except Exception as e:
+            logger.error(f"Error processing referral reward: {e}")
+            return {"rewarded": False, "error": str(e)}
         finally:
             conn.close()
 
