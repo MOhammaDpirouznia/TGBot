@@ -1880,6 +1880,24 @@ def api_online_status():
     })
 
 
+@app.route("/api/subscription/<int:sub_id>/sessions")
+def api_subscription_sessions(sub_id: int):
+    """دریافت لیست نشست‌ها، آی‌پی‌ها، سیستم‌عامل و برنامه‌های کلاینت متصل به یک اشتراک"""
+    if not session.get("logged_in"):
+        return jsonify({"error": "unauthorized"}), 401
+
+    is_admin = (session.get("role") == "admin")
+    reseller_id = session.get("reseller_id") if session.get("role") == "reseller" else None
+
+    if reseller_id:
+        sub = db.get_reseller_subscription(reseller_id, sub_id)
+        if not sub:
+            return jsonify({"error": "Subscription not found"}), 404
+
+    sessions_data = db.get_subscription_sessions(sub_id)
+    return jsonify(sessions_data)
+
+
 @app.route("/subscriptions")
 @admin_required
 def subscriptions():
@@ -2724,6 +2742,7 @@ def reseller_create_user():
         plan_key = request.form.get("plan_id")
         account_name = request.form.get("account_name", "").strip()
         phone_number = request.form.get("phone_number", "").strip()
+        user_limit = int(request.form.get("user_limit", 1))
 
         if plan_key not in plans:
             flash("پلن انتخابی نامعتبر است.", "danger")
@@ -2764,15 +2783,15 @@ def reseller_create_user():
         if not deduct_res.get("success"):
             logger.error(f"Failed to deduct balance after user creation: {deduct_res.get('error')}")
 
-        # ۳. ثبت اشتراک با شناسه نماینده، شماره تلفن و هزینه پرداخت‌شده در دیتابیس
+        # ۳. ثبت اشتراک با شناسه نماینده، شماره تلفن، تعداد مجاز کاربر و هزینه پرداخت‌شده در دیتابیس
         conn = db.get_connection()
         conn.execute("""
             INSERT INTO subscriptions 
-            (telegram_id, hidify_uuid, plan_id, plan_name, account_name, phone_number, data_limit, duration, status, reseller_id, cost_paid, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)
+            (telegram_id, hidify_uuid, plan_id, plan_name, account_name, phone_number, data_limit, duration, status, reseller_id, user_limit, cost_paid, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
         """, (
             0, user_uuid, plan_key, plan["name"], account_name, phone_number or None,
-            plan["data_limit"], plan["duration"], reseller_id, final_price, get_now_iso(), get_now_iso()
+            plan["data_limit"], plan["duration"], reseller_id, user_limit, final_price, get_now_iso(), get_now_iso()
         ))
         conn.commit()
         conn.close()
@@ -3640,6 +3659,7 @@ def admin_create_customer():
         plan_id = request.form.get("plan_id", "").strip()
         payment_method = request.form.get("payment_method", "cash").strip() # 'cash', 'free', 'wallet'
         comment = request.form.get("comment", "").strip()
+        user_limit = int(request.form.get("user_limit", 1))
 
         if not account_name:
             flash("لطفاً نام یا شناسه مشتری را وارد نمایید.", "warning")
@@ -3689,7 +3709,8 @@ def admin_create_customer():
             data_limit=data_limit,
             duration=duration,
             status="active",
-            account_name=account_name
+            account_name=account_name,
+            user_limit=user_limit
         )
 
         # ثبت کاربر در جدول users

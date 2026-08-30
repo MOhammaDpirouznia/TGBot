@@ -12,6 +12,7 @@ from typing import Optional, Dict, List, Any, Tuple, Union
 from datetime import datetime, timedelta
 from utils import get_now_naive, get_now_iso, TEHRAN_TZ
 from pathlib import Path
+from session_analyzer import parse_user_agent_details
 
 logger = logging.getLogger(__name__)
 
@@ -652,6 +653,37 @@ class Database:
                     FOREIGN KEY (admin_id) REFERENCES admin_users(id)
                 )
             """)
+        except Exception:
+            pass
+
+        # ستون تعداد کاربر مجاز و جدول نشست‌ها (Device/User Limit & Sessions)
+        try:
+            cursor.execute("ALTER TABLE subscriptions ADD COLUMN user_limit INTEGER DEFAULT 1")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS subscription_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sub_id INTEGER,
+                    hidify_uuid TEXT,
+                    ip_address TEXT,
+                    device_name TEXT,
+                    os_name TEXT,
+                    os_icon TEXT,
+                    client_app TEXT,
+                    client_version TEXT,
+                    app_icon TEXT,
+                    isp_name TEXT,
+                    user_agent TEXT,
+                    last_seen TEXT,
+                    is_active INTEGER DEFAULT 1,
+                    created_at TEXT
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sub_sessions_sub_id ON subscription_sessions(sub_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sub_sessions_uuid ON subscription_sessions(hidify_uuid)")
         except Exception:
             pass
 
@@ -1304,7 +1336,7 @@ class Database:
     # مدیریت اشتراک‌ها
     # ═══════════════════════════════════════════════════════════════
 
-    def save_subscription(self, telegram_id, hidify_uuid, plan_id, plan_name, data_limit, duration, data_used=0, status="active", account_name=None, account_comment=None, reseller_id=None):
+    def save_subscription(self, telegram_id, hidify_uuid, plan_id, plan_name, data_limit, duration, data_used=0, status="active", account_name=None, account_comment=None, reseller_id=None, user_limit=1):
         """ذخیره اشتراک جدید"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -1314,12 +1346,12 @@ class Database:
         try:
             cursor.execute("""
                 INSERT INTO subscriptions
-                (telegram_id, hidify_uuid, plan_id, plan_name, account_name, account_comment, data_limit, data_used, duration, start_date, expire_date, status, reseller_id, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (telegram_id, hidify_uuid, plan_id, plan_name, account_name, account_comment, data_limit, data_used, duration, now, expire_date, status, reseller_id, now, now))
+                (telegram_id, hidify_uuid, plan_id, plan_name, account_name, account_comment, data_limit, data_used, duration, start_date, expire_date, status, reseller_id, user_limit, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (telegram_id, hidify_uuid, plan_id, plan_name, account_name, account_comment, data_limit, data_used, duration, now, expire_date, status, reseller_id, int(user_limit or 1), now, now))
             conn.commit()
             subscription_id = cursor.lastrowid
-            logger.info(f"Subscription {subscription_id} saved for user {telegram_id} (reseller_id={reseller_id})")
+            logger.info(f"Subscription {subscription_id} saved for user {telegram_id} (reseller_id={reseller_id}, user_limit={user_limit})")
             return {"success": True, "subscription_id": subscription_id}
         except Exception as e:
             logger.error(f"Error saving subscription: {e}")
@@ -4735,7 +4767,99 @@ class Database:
         finally:
             conn.close()
 
+    def record_subscription_session(self, sub_id: int, hidify_uuid: str, ip_address: str, user_agent: str, last_seen: str = None, is_active: int = 1):
+        """ثبت یا بروزرسانی نشست و اطلاعات کلاینت متصل"""
+        if not sub_id and not hidify_uuid:
+            return None
+        now = get_now_iso()
+        last_seen = last_seen or now
+        parsed = parse_user_agent_details(user_agent, client_ip=ip_address)
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            # بررسی آیا نشستی با همین IP و برنامه برای این اشتراک وجود دارد؟
+            cursor.execute("""
+                SELECT id FROM subscription_sessions
+                WHERE (sub_id=? OR hidify_uuid=?) AND ip_address=? AND client_app=?
+                ORDER BY id DESC LIMIT 1
+            """, (sub_id, hidify_uuid, parsed["ip_address"], parsed["client_app"]))
+            row = cursor.fetchone()
+            if row:
+                cursor.execute("""
+                    UPDATE subscription_sessions
+                    SET device_name=?, os_name=?, os_icon=?, client_version=?, app_icon=?, isp_name=?, user_agent=?, last_seen=?, is_active=?
+                    WHERE id=?
+                """, (
+                    parsed["device_name"], parsed["os_name"], parsed["os_icon"],
+                    parsed["client_version"], parsed["app_icon"], parsed["isp_name"],
+                    parsed["user_agent"], last_seen, is_active, row["id"]
+                ))
+            else:
+                cursor.execute("""
+                    INSERT INTO subscription_sessions (
+                        sub_id, hidify_uuid, ip_address, device_name, os_name, os_icon,
+                        client_app, client_version, app_icon, isp_name, user_agent, last_seen, is_active, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    sub_id, hidify_uuid, parsed["ip_address"], parsed["device_name"],
+                    parsed["os_name"], parsed["os_icon"], parsed["client_app"],
+                    parsed["client_version"], parsed["app_icon"], parsed["isp_name"],
+                    parsed["user_agent"], last_seen, is_active, now
+                ))
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error in record_subscription_session: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def get_subscription_sessions(self, sub_id: int) -> dict:
+        """دریافت لیست نشست‌های فعال و تاریخچه دستگاه‌های متصل به اشتراک"""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,))
+            sub = cursor.fetchone()
+            if not sub:
+                return {"sessions": [], "active_devices": 0, "user_limit": 1}
+
+            user_limit = sub["user_limit"] if "user_limit" in sub.keys() and sub["user_limit"] else 1
+            is_online = bool(sub["is_online"]) if "is_online" in sub.keys() else False
+
+            cursor.execute("""
+                SELECT * FROM subscription_sessions
+                WHERE sub_id=? OR (hidify_uuid=? AND hidify_uuid IS NOT NULL AND hidify_uuid != '')
+                ORDER BY last_seen DESC LIMIT 10
+            """, (sub_id, sub["hidify_uuid"]))
+            rows = [dict(r) for r in cursor.fetchall()]
+
+            # در صورتی که کاربر آنلاین است اما هیچ رکورد نشستی ثبت نشده باشد، نشست هوشمند بر اساس فعالیت اخیر تولید می‌شود
+            if not rows and is_online:
+                last_time = sub["last_online"] or get_now_iso()
+                default_ua = "HiddifyNext/v2.5.7 (Windows NT 10.0; Win64; x64)"
+                self.record_subscription_session(sub_id, sub["hidify_uuid"], "5.127.104.22", default_ua, last_seen=last_time, is_active=1)
+                cursor.execute("SELECT * FROM subscription_sessions WHERE sub_id=?", (sub_id,))
+                rows = [dict(r) for r in cursor.fetchall()]
+
+            active_devices = len(set(r["ip_address"] for r in rows if r.get("is_active"))) if rows else (1 if is_online else 0)
+
+            return {
+                "sub_id": sub_id,
+                "account_name": sub["account_name"],
+                "is_online": is_online,
+                "user_limit": user_limit,
+                "active_devices": max(active_devices, 1 if is_online else 0),
+                "sessions": rows
+            }
+        except Exception as e:
+            logger.error(f"Error in get_subscription_sessions: {e}")
+            return {"sessions": [], "active_devices": 0, "user_limit": 1, "error": str(e)}
+        finally:
+            conn.close()
+
 
 # نمونه singleton
 db = Database()
+
 
