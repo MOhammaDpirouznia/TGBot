@@ -937,8 +937,14 @@ class Database:
                 package_days = int(u.get("package_days") or 30)
                 is_active = u.get("is_active", True)
                 enable = u.get("enable", True)
-                start_date = u.get("start_date") or now
-                status = "active" if (is_active and enable) else "expired"
+                
+                raw_start = u.get("start_date")
+                start_date = str(raw_start).strip() if (raw_start and str(raw_start).strip() not in ["None", "null", ""]) else None
+                
+                raw_expiry = u.get("expiry_time") or u.get("expire_date") or u.get("expire")
+                expiry_time = str(raw_expiry).strip() if (raw_expiry and str(raw_expiry).strip() not in ["None", "null", ""]) else None
+                
+                status = "active" if (is_active and enable) else ("disabled" if not enable else "expired")
 
                 # تشخیص وضعیت آنلاین بودن
                 is_online_val, last_online_val = self._parse_hiddify_user_online(u)
@@ -994,30 +1000,33 @@ class Database:
                     plan_id = "custom"
 
                 if existing_sub:
-                    # بروزرسانی مصرف، حجم، وضعیت و وضعیت آنلاین
+                    # بروزرسانی مصرف، سقف حجم، تعداد روزها (duration / package_days)، تاریخ‌ها و وضعیت
                     cursor.execute("""
                         UPDATE subscriptions SET
                             data_used = ?,
                             data_limit = ?,
+                            duration = ?,
+                            start_date = ?,
+                            expire_date = ?,
                             status = ?,
                             account_name = COALESCE(?, account_name),
                             is_online = ?,
                             last_online = COALESCE(?, last_online),
                             updated_at = ?
                         WHERE hidify_uuid = ?
-                    """, (current_usage, usage_limit, status, name, is_online_val, last_online_val, now, uuid))
+                    """, (current_usage, usage_limit, package_days, start_date, expiry_time, status, name, is_online_val, last_online_val, now, uuid))
                 else:
                     # درج اشتراک جدید بازیابی شده
                     cursor.execute("""
                         INSERT INTO subscriptions (
                             telegram_id, hidify_uuid, plan_id, plan_name, account_name,
                             account_comment, data_limit, data_used, duration, start_date,
-                            status, is_online, last_online, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            expire_date, status, is_online, last_online, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         telegram_id, uuid, plan_id, plan_name, name,
                         comment, usage_limit, current_usage, package_days, start_date,
-                        status, is_online_val, last_online_val, now, now
+                        expiry_time, status, is_online_val, last_online_val, now, now
                     ))
                     restored_subs += 1
 

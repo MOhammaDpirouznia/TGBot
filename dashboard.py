@@ -21,6 +21,7 @@ import threading
 import random
 from typing import Optional, Dict, List, Any, Tuple, Union
 from datetime import datetime, timedelta
+import math
 from pathlib import Path
 from flask import (
     Flask, render_template, request, redirect, url_for, session,
@@ -827,16 +828,16 @@ _online_sync_lock = threading.Lock()
 
 def sync_hiddify_online_users(force: bool = False):
     """
-    همگام‌سازی بلادرنگ وضعیت آنلاین بودن کاربران از API هیدیفای
-    دارای محافظ نرخ درخواست و کش هوشمند (حداقل فاصله ۲۰ ثانیه)
+    همگام‌سازی بلادرنگ وضعیت آنلاین بودن و اطلاعات اشتراک‌ها از API هیدیفای
+    دارای محافظ نرخ درخواست و کش هوشمند (حداقل فاصله ۵ ثانیه)
     """
     global _last_online_sync_time
     now = time.time()
-    if not force and (now - _last_online_sync_time < 20):
+    if not force and (now - _last_online_sync_time < 5):
         return
 
     with _online_sync_lock:
-        if not force and (now - _last_online_sync_time < 20):
+        if not force and (now - _last_online_sync_time < 5):
             return
         _last_online_sync_time = now
 
@@ -846,6 +847,59 @@ def sync_hiddify_online_users(force: bool = False):
             db.sync_from_hidify(users)
     except Exception as e:
         logger.error(f"Error in sync_hiddify_online_users: {e}")
+
+
+def enrich_subscription_details(sub: dict) -> dict:
+    """
+    محاسبه شاخص‌های زنده اشتراک: روزهای مانده، وضعیت شروع، درصد مصرف
+    نکته مهم: در هیدیفای زمان تمامی اشتراک‌ها پس از اولین اتصال کاربر محاسبه و آغاز می‌شود.
+    """
+    item = dict(sub)
+    duration = int(item.get("duration") or 30)
+    data_limit = float(item.get("data_limit") or 0)
+    data_used = float(item.get("data_used") or 0)
+
+    start_date_str = item.get("start_date")
+    expire_date_str = item.get("expire_date")
+
+    now_dt = get_now_naive()
+    is_started = False
+    remaining_days = duration
+
+    if expire_date_str and str(expire_date_str).strip() not in ["None", "null", ""]:
+        try:
+            clean_exp = str(expire_date_str).strip().replace("Z", "")
+            exp_dt = datetime.fromisoformat(clean_exp)
+            if exp_dt.tzinfo is not None:
+                exp_dt = exp_dt.astimezone(TEHRAN_TZ).replace(tzinfo=None)
+            diff_seconds = (exp_dt - now_dt).total_seconds()
+            remaining_days = max(0, int(math.ceil(diff_seconds / 86400.0)))
+            is_started = True
+        except Exception:
+            pass
+    elif start_date_str and str(start_date_str).strip() not in ["None", "null", ""]:
+        try:
+            clean_start = str(start_date_str).strip().replace("Z", "")
+            start_dt = datetime.fromisoformat(clean_start)
+            if start_dt.tzinfo is not None:
+                start_dt = start_dt.astimezone(TEHRAN_TZ).replace(tzinfo=None)
+            exp_dt = start_dt + timedelta(days=duration)
+            diff_seconds = (exp_dt - now_dt).total_seconds()
+            remaining_days = max(0, int(math.ceil(diff_seconds / 86400.0)))
+            is_started = True
+        except Exception:
+            pass
+
+    usage_pct = int((data_used / data_limit * 100)) if data_limit > 0 else 0
+    remaining_gb = max(0.0, data_limit - data_used) if data_limit > 0 else 0.0
+
+    item["duration"] = duration
+    item["is_started"] = is_started
+    item["remaining_days"] = remaining_days
+    item["remaining_gb"] = round(remaining_gb, 2)
+    item["usage_pct"] = min(100, usage_pct)
+
+    return item
 
 
 def get_plans_dict():
@@ -2080,7 +2134,7 @@ def subscriptions():
 
     subscriptions_with_refund = []
     for s in sub_list:
-        s_dict = dict(s)
+        s_dict = enrich_subscription_details(s)
         s_dict["refund_info"] = db.calculate_customer_refund(s["id"])
         subscriptions_with_refund.append(s_dict)
     
@@ -2101,7 +2155,7 @@ def subscriptions():
 @app.route("/admin/subscription/<int:sub_id>/edit", methods=["POST"])
 @permission_required("sub_manage")
 def admin_subscription_edit(sub_id):
-    """ویرایش مشخصات اشتراک هیدیفای توسط مدیر ارشد و مدیر پشتیبانی"""
+    """ویرایش مشخصات اشتراک هیدیفای توسط مدیر ارشد و مدیر پشتیبانی با فیلد روزهای اعتبار"""
     conn = db.get_connection()
     sub_row = conn.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,)).fetchone()
     conn.close()
@@ -2112,27 +2166,16 @@ def admin_subscription_edit(sub_id):
     sub = dict(sub_row)
     account_name = request.form.get("account_name", "").strip() or sub["account_name"]
     data_limit = float(request.form.get("data_limit", sub.get("data_limit") or 30))
-    expire_date = request.form.get("expire_date", "").strip() or sub.get("expire_date")
+    duration = int(request.form.get("duration", sub.get("duration") or 30))
     status = request.form.get("status", sub.get("status") or "active")
-
-    package_days = None
-    if expire_date:
-        try:
-            exp_dt = datetime.strptime(expire_date[:10], "%Y-%m-%d")
-            now_dt = get_now_naive()
-            diff_days = max(1, (exp_dt - now_dt).days)
-            package_days = diff_days
-        except Exception:
-            pass
 
     # بروزرسانی در سرور هیدیفای
     if sub.get("hidify_uuid"):
         h_update = {
             "name": account_name,
             "usage_limit_GB": data_limit,
+            "package_days": duration
         }
-        if package_days is not None:
-            h_update["package_days"] = package_days
         if status == "disabled":
             h_update["enable"] = False
             h_update["is_active"] = False
@@ -2147,13 +2190,16 @@ def admin_subscription_edit(sub_id):
     cursor = conn.cursor()
     cursor.execute("""
         UPDATE subscriptions 
-        SET account_name = ?, data_limit = ?, expire_date = ?, status = ?, updated_at = ?
+        SET account_name = ?, data_limit = ?, duration = ?, status = ?, updated_at = ?
         WHERE id = ?
-    """, (account_name, data_limit, expire_date, status, get_now_iso(), sub_id))
+    """, (account_name, data_limit, duration, status, get_now_iso(), sub_id))
     conn.commit()
     conn.close()
 
-    flash(f"مشخصات اشتراک «{account_name}» با موفقیت ویرایش و در سرور هیدیفای اعمال شد.", "success")
+    # همگام‌سازی فوری
+    sync_hiddify_online_users(force=True)
+
+    flash(f"مشخصات اشتراک «{account_name}» (حجم: {data_limit} گیگابایت | مدت: {duration} روز) با موفقیت ویرایش و در هیدیفای اعمال شد.", "success")
     return redirect(url_for("subscriptions"))
 
 
@@ -3161,7 +3207,7 @@ def reseller_users():
     raw_subs = db.get_reseller_subscriptions(reseller_id)
     subs = []
     for s in raw_subs:
-        item = dict(s)
+        item = enrich_subscription_details(s)
         if status_filter == "online" and not item.get("is_online"):
             continue
         elif status_filter == "active" and item.get("status") != "active":
