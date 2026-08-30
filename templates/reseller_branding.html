@@ -19,16 +19,28 @@
             <div class="card-body p-4">
                 <form action="{{ url_for('reseller_branding') }}" method="POST" enctype="multipart/form-data">
                     
-                    <!-- دامنه اختصاصی -->
-                    <div class="mb-4">
-                        <label class="form-label fw-bold">دامنه اختصاصی پورتال شما (Custom Domain)</label>
-                        <div class="input-group">
-                            <span class="input-group-text bg-light"><i class="fas fa-globe text-muted"></i></span>
-                            <input type="text" class="form-control font-monospace" name="custom_domain" 
-                                   value="{{ reseller.get('custom_domain') or '' }}" 
-                                   placeholder="مثال: panel.myvpnbrand.com" dir="ltr">
+                    <!-- دامنه‌های اختصاصی پنل و آموزش‌ها -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">دامنه اختصاصی پنل مدیریت شما</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light"><i class="fas fa-globe text-muted"></i></span>
+                                <input type="text" class="form-control font-monospace" name="custom_domain" 
+                                       value="{{ reseller.get('custom_domain') or '' }}" 
+                                       placeholder="مثال: panel.mybrand.com" dir="ltr">
+                            </div>
+                            <div class="form-text text-muted">جهت ورود مستقیم خود و همکارانتان به پنل.</div>
                         </div>
-                        <div class="form-text text-muted">هنگامی که این دامنه در مرورگر باز شود، پنل با لوگو و عنوان برند شما بارگذاری خواهد شد.</div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">دامنه/ساب‌دامنه اختصاصی آموزش‌ها (Tutorials)</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light"><i class="fas fa-graduation-cap text-muted"></i></span>
+                                <input type="text" class="form-control font-monospace" name="tutorial_domain" 
+                                       value="{{ reseller.get('tutorial_domain') or '' }}" 
+                                       placeholder="مثال: help.mybrand.com" dir="ltr">
+                            </div>
+                            <div class="form-text text-muted">جهت نمایش پورتال آموزش‌ها با برند و لوگوی شما.</div>
+                        </div>
                     </div>
 
                     <!-- عنوان فروشگاه و تب مرورگر -->

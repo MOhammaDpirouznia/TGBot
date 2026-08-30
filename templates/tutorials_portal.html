@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}{{ branding.get('brand_title') or 'پورتال آموزش‌ها' }} - راهنمای اتصال و دانلود نرم‌افزارها{% endblock %}
+
+{% block extra_head %}
+<style>
+    .tutorial-hero {
+        background: linear-gradient(135deg, rgba(79, 70, 229, 0.1) 0%, rgba(14, 165, 233, 0.1) 100%);
+        border-radius: 20px;
+        padding: 35px 25px;
+        border: 1px solid rgba(79, 70, 229, 0.15);
+        margin-bottom: 30px;
+        position: relative;
+        overflow: hidden;
+    }
+    .platform-pill {
+        border-radius: 16px;
+        padding: 14px 20px;
+        font-weight: 700;
+        font-size: 1rem;
+        transition: all 0.25s ease;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        text-decoration: none;
+        border: 2px solid transparent;
+        background: var(--card-bg, #ffffff);
+        color: var(--text-main, #1e293b);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    }
+    .platform-pill:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        border-color: rgba(79, 70, 229, 0.4);
+    }
+    .platform-pill.active {
+        background: linear-gradient(135deg, #4f46e5 0%, #0ea5e9 100%);
+        color: #ffffff !important;
+        box-shadow: 0 10px 20px -5px rgba(79, 70, 229, 0.4);
+        border-color: transparent;
+    }
+    .platform-pill.active i {
+        color: #ffffff !important;
+    }
+    .app-card {
+        border-radius: 20px;
+        border: 1px solid var(--card-border, rgba(0,0,0,0.08));
+        background: var(--card-bg, #ffffff);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        height: 100%;
+        display: flex;
+        flex-column: column;
+        justify-content: space-between;
+    }
+    .app-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 30px -5px rgba(0, 0, 0, 0.12);
+        border-color: rgba(79, 70, 229, 0.3);
+    }
+    .troubleshoot-banner {
+        background: linear-gradient(135deg, #f59e0b 0%, #ea580c 100%);
+        border-radius: 18px;
+        color: white;
+        padding: 24px;
+        box-shadow: 0 10px 25px -5px rgba(245, 158, 11, 0.4);
+    }
+</style>
+{% endblock %}
+
+{% macro render_tutorials_body() %}
+<div class="container-fluid px-0">
+    <!-- هدر بالای صفحه و معرفی برند -->
+    <div class="tutorial-hero text-center text-md-start d-flex flex-column flex-md-row align-items-center justify-content-between gap-4">
+        <div class="z-1">
+            <div class="d-flex align-items-center justify-content-center justify-content-md-start gap-3 mb-2">
+                {% if branding.get('logo_url') %}
+                    <img src="{{ branding.get('logo_url') }}" alt="Logo" style="height: 48px; border-radius: 10px;">
+                {% else %}
+                    <div class="bg-primary text-white rounded-circle p-2 d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                        <i class="fas fa-shield-halved fa-lg"></i>
+                    </div>
+                {% endif %}
+                <h1 class="h3 fw-bold mb-0 text-dark">{{ branding.get('brand_title') or 'مرکز آموزش و راهنمای اتصال' }}</h1>
+            </div>
+            <p class="text-muted mb-0 fs-6">
+                راهنمای تصویری و گام‌به‌گام اتصال به VPN اختصاصی پرسرعت برای تمامی گوشی‌ها، کامپیوترها، تلویزیون‌ها و مودم‌ها
+            </p>
+        </div>
+        <div class="d-flex flex-wrap gap-2 z-1 justify-content-center">
+            <a href="{{ url_for('troubleshoot_wizard') }}" class="btn btn-warning fw-bold px-4 py-2 shadow-sm">
+                <i class="fas fa-wrench me-1"></i> مشکل در اتصال؟ (عیب‌یابی)
+            </a>
+            {% if branding.get('support_username') %}
+            <a href="https://t.me/{{ branding.get('support_username').lstrip('@') }}" target="_blank" class="btn btn-outline-primary fw-bold px-3 py-2">
+                <i class="fab fa-telegram me-1"></i> پشتیبانی تلگرام
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- بنر راهنمای سریع عیب‌یابی -->
+    <div class="troubleshoot-banner mb-4 d-flex flex-column flex-md-row align-items-center justify-content-between gap-3">
+        <div class="d-flex align-items-center gap-3">
+            <i class="fas fa-lightbulb fa-2x"></i>
+            <div>
+                <h5 class="fw-bold mb-1">قطع و وصل می‌شوید یا خطای ساعت دارید؟</h5>
+                <p class="mb-0 small opacity-90">با ویزارد هوشمند عیب‌یابی، خطاهای ساعت (Time Desync)، تنظیم Fragment همراه اول/ایرانسل و DNS را در کمتر از ۱ دقیقه رفع کنید.</p>
+            </div>
+        </div>
+        <a href="{{ url_for('troubleshoot_wizard') }}" class="btn btn-light text-dark fw-bold px-4 py-2 flex-shrink-0 shadow-sm">
+            شروع عیب‌یابی هوشمند <i class="fas fa-arrow-left ms-1"></i>
+        </a>
+    </div>
+
+    <!-- نوار انتخاب سیستم‌عامل (Platform Selector) -->
+    <div class="mb-4">
+        <label class="form-label fw-bold text-muted small mb-2"><i class="fas fa-laptop-mobile me-1"></i> ۱. سیستم‌عامل یا دستگاه خود را انتخاب کنید:</label>
+        <div class="d-flex flex-wrap gap-2">
+            {% for p_key, p in platforms.items() %}
+            <a href="{{ url_for('tutorials_platform', platform=p_key) }}" 
+               class="platform-pill {% if active_platform == p_key %}active{% endif %}">
+                <i class="{{ p.icon }} fs-5" style="color: {{ p.color }};"></i>
+                <span>{{ p.title }}</span>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- کارت‌های نرم‌افزارهای سیستم‌عامل انتخاب‌شده -->
+    <div class="mb-5">
+        {% set current_platform = platforms.get(active_platform) %}
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <h4 class="fw-bold mb-0">
+                <i class="{{ current_platform.icon }} me-2" style="color: {{ current_platform.color }};"></i>
+                نرم‌افزارهای پیشنهادی برای {{ current_platform.title }}
+            </h4>
+            <span class="badge bg-secondary fs-6">{{ current_platform.apps|length }} نرم‌افزار سازگار</span>
+        </div>
+        <p class="text-muted small mb-4">{{ current_platform.description }}</p>
+
+        <div class="row g-4">
+            {% for app_slug in current_platform.apps %}
+                {% set app = tutorials.get(app_slug) %}
+                {% if app %}
+                <div class="col-md-6 col-lg-4">
+                    <div class="app-card shadow-sm p-4">
+                        <div>
+                            <div class="d-flex justify-content-between align-items-start mb-3">
+                                <div class="d-flex align-items-center gap-3">
+                                    <div class="stat-icon bg-primary bg-opacity-10 text-primary rounded-3 p-3 d-flex align-items-center justify-content-center" style="width: 52px; height: 52px;">
+                                        <i class="{{ app.icon }} fa-xl"></i>
+                                    </div>
+                                    <div>
+                                        <h5 class="fw-bold mb-0 text-dark">{{ app.name }}</h5>
+                                        <div class="text-warning small mt-1">
+                                            <i class="fas fa-star"></i> {{ app.rating }}
+                                        </div>
+                                    </div>
+                                </div>
+                                <span class="badge bg-{{ app.badge_color }} bg-opacity-10 text-{{ app.badge_color }} border border-{{ app.badge_color }} small">
+                                    {{ app.badge }}
+                                </span>
+                            </div>
+
+                            <p class="text-muted small mb-4" style="line-height: 1.7; min-height: 48px;">
+                                {{ app.subtitle }}
+                            </p>
+
+                            <!-- خلاصه مراحل گام‌به‌گام -->
+                            <div class="bg-light p-3 rounded-3 mb-4 border">
+                                <div class="small fw-bold text-secondary mb-2"><i class="fas fa-list-ol me-1"></i> مراحل راه‌اندازی سریع:</div>
+                                <ol class="ps-3 mb-0 small text-muted">
+                                    {% for step in app.steps[:3] %}
+                                        <li class="mb-1">{{ step.title }}</li>
+                                    {% endfor %}
+                                </ol>
+                            </div>
+                        </div>
+
+                        <div class="d-flex gap-2 pt-2 border-top">
+                            <a href="{{ url_for('tutorial_view', platform=active_platform, app_slug=app_slug) }}" class="btn btn-primary w-100 fw-bold py-2">
+                                <i class="fas fa-book-open-reader me-1"></i> مشاهده آموزش کامل تصویری
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
+{% block content %}
+    {{ render_tutorials_body() }}
+{% endblock %}
+
+{% block login_content %}
+<div class="container py-4">
+    {{ render_tutorials_body() }}
+</div>
+{% endblock %}

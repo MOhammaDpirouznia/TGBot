@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block title %}آموزش تصویری {{ tutorial.name }} - {{ branding.get('brand_title') or 'راهنمای اتصال' }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    .step-number {
+        width: 44px;
+        height: 44px;
+        background: linear-gradient(135deg, #4f46e5 0%, #0ea5e9 100%);
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 1.2rem;
+        box-shadow: 0 4px 10px rgba(79, 70, 229, 0.3);
+        flex-shrink: 0;
+    }
+    .step-card {
+        border-radius: 20px;
+        border: 1px solid var(--card-border, rgba(0,0,0,0.08));
+        background: var(--card-bg, #ffffff);
+        transition: all 0.25s ease;
+    }
+    .step-card:hover {
+        border-color: rgba(79, 70, 229, 0.3);
+        box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.06);
+    }
+    .download-card {
+        background: linear-gradient(135deg, rgba(79, 70, 229, 0.05) 0%, rgba(14, 165, 233, 0.05) 100%);
+        border: 1px dashed rgba(79, 70, 229, 0.3);
+        border-radius: 20px;
+    }
+</style>
+{% endblock %}
+
+{% macro render_tutorial_detail() %}
+<div class="container-fluid px-0">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mb-4">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('tutorials_portal') }}"><i class="fas fa-home me-1"></i> پورتال آموزش‌ها</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('tutorials_platform', platform=tutorial.platform) }}">{{ platform_info.title }}</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{{ tutorial.name }}</li>
+        </ol>
+    </nav>
+
+    <!-- Header Box -->
+    <div class="card shadow-sm border-0 rounded-4 mb-4">
+        <div class="card-body p-4 d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
+            <div class="d-flex align-items-center gap-3">
+                <div class="stat-icon bg-primary bg-opacity-10 text-primary rounded-4 p-3 d-flex align-items-center justify-content-center" style="width: 64px; height: 64px;">
+                    <i class="{{ tutorial.icon }} fa-2x"></i>
+                </div>
+                <div>
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <h2 class="h4 fw-bold mb-0 text-dark">آموزش اتصال با {{ tutorial.name }}</h2>
+                        <span class="badge bg-{{ tutorial.badge_color }} bg-opacity-10 text-{{ tutorial.badge_color }} border border-{{ tutorial.badge_color }}">
+                            {{ tutorial.badge }}
+                        </span>
+                    </div>
+                    <p class="text-muted mb-0 small">{{ tutorial.subtitle }}</p>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 flex-wrap">
+                <a href="{{ url_for('troubleshoot_wizard') }}" class="btn btn-outline-warning btn-sm fw-bold">
+                    <i class="fas fa-wrench me-1"></i> حل مشکلات اتصال
+                </a>
+                <a href="{{ url_for('tutorials_platform', platform=tutorial.platform) }}" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-arrow-right me-1"></i> سایر نرم‌افزارها
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- ستون اصلی: مراحل آموزش تصویری گام به گام -->
+        <div class="col-lg-8">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="fw-bold mb-0 text-primary"><i class="fas fa-list-check me-2"></i> مراحل گام‌به‌گام راه‌اندازی:</h5>
+                <span class="badge bg-secondary">{{ tutorial.steps|length }} مرحله</span>
+            </div>
+
+            {% for s in tutorial.steps %}
+            <div class="step-card p-4 mb-4 shadow-sm">
+                <div class="d-flex align-items-start gap-3 mb-3">
+                    <div class="step-number">{{ s.step }}</div>
+                    <div class="flex-grow-1">
+                        <h5 class="fw-bold text-dark mb-1">{{ s.title }}</h5>
+                        <p class="text-muted mb-0 fs-6" style="line-height: 1.8;">{{ s.desc }}</p>
+                    </div>
+                </div>
+
+                {% if s.get('tip') %}
+                <div class="alert alert-info py-2 px-3 small mb-0 rounded-3 border-0 bg-info bg-opacity-10 text-info">
+                    <i class="fas fa-lightbulb me-1"></i> <strong>نکته کاربردی:</strong> {{ s.tip }}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+
+            {% if tutorial.troubleshoot %}
+            <div class="card border-warning border-opacity-50 shadow-sm rounded-4 mb-4 bg-warning bg-opacity-10">
+                <div class="card-header bg-transparent border-0 pt-4 pb-1">
+                    <h6 class="fw-bold text-warning-emphasis mb-0"><i class="fas fa-triangle-exclamation me-2"></i> نکات رفع عیب اختصاصی برای {{ tutorial.name }}:</h6>
+                </div>
+                <div class="card-body pt-2">
+                    <ul class="mb-0 text-dark small ps-3" style="line-height: 1.9;">
+                        {% for t in tutorial.troubleshoot %}
+                        <li>{{ t }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- ستون کناری: لینک‌های دانلود و راهنمایی -->
+        <div class="col-lg-4">
+            <!-- باکس دانلود نرم‌افزار -->
+            <div class="download-card p-4 mb-4 shadow-sm text-center">
+                <i class="fas fa-cloud-arrow-down fa-3x text-primary mb-3"></i>
+                <h5 class="fw-bold mb-1">دانلود نرم‌افزار {{ tutorial.name }}</h5>
+                <p class="text-muted small mb-4">برای شروع، نرم‌افزار را از یکی از منابع معتبر زیر دانلود نمایید:</p>
+
+                <div class="d-grid gap-2">
+                    {% for dl in tutorial.downloads %}
+                    <a href="{{ dl.url }}" target="_blank" class="btn {{ dl.btn_class }} fw-bold py-2 shadow-sm">
+                        <i class="{{ dl.icon }} me-1"></i> {{ dl.title }}
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- باکس نیاز به راهنمایی بیشتر -->
+            <div class="card shadow-sm border-0 rounded-4 bg-light">
+                <div class="card-body p-4 text-center">
+                    <i class="fas fa-headset fa-2x text-primary mb-2"></i>
+                    <h6 class="fw-bold mb-1">نیاز به راهنمایی بیشتر دارید؟</h6>
+                    <p class="text-muted small mb-3">در صورت بروز هرگونه سوال، با تیم پشتیبانی ما در ارتباط باشید.</p>
+                    {% if branding.get('support_username') %}
+                    <a href="https://t.me/{{ branding.get('support_username').lstrip('@') }}" target="_blank" class="btn btn-outline-primary btn-sm w-100 fw-bold">
+                        <i class="fab fa-telegram me-1"></i> ارتباط با پشتیبانی تلگرام
+                    </a>
+                    {% else %}
+                    <a href="{{ url_for('troubleshoot_wizard') }}" class="btn btn-outline-primary btn-sm w-100 fw-bold">
+                        <i class="fas fa-wrench me-1"></i> ورود به بخش عیب‌یابی
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
+{% block content %}
+    {{ render_tutorial_detail() }}
+{% endblock %}
+
+{% block login_content %}
+<div class="container py-4">
+    {{ render_tutorial_detail() }}
+</div>
+{% endblock %}

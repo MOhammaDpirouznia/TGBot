@@ -445,6 +445,49 @@ function sendTestSms() {
     </div>
 </div>
 
+<!-- کارت تنظیمات پورتال اختصاصی آموزش‌ها و ساب‌دامنه -->
+<div class="card shadow-sm mt-4 border-0">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h5 class="mb-0 text-primary fw-bold">
+            <i class="fas fa-graduation-cap text-primary me-2"></i> تنظیمات پورتال اختصاصی آموزش‌ها و ساب‌دامنه
+        </h5>
+        <a href="{{ url_for('tutorials_portal') }}" target="_blank" class="btn btn-sm btn-outline-primary fw-bold">
+            <i class="fas fa-arrow-up-right-from-square me-1"></i> مشاهده آنلاین پورتال آموزش‌ها
+        </a>
+    </div>
+    <div class="card-body p-4">
+        <p class="text-muted">
+            پورتال آموزش‌های چندسکویی و عیب‌یابی هوشمند به صورت پیش‌فرض در آدرس <code>/help</code> در دسترس است. شما می‌توانید یک ساب‌دامنه اختصاصی (مانند <code>help.yourdomain.com</code>) برای آن تنظیم نمایید تا کاربران و مشتریان مستقیماً بدون نیاز به لاگین آموزش‌ها را مشاهده کنند.
+        </p>
+
+        <form action="{{ url_for('settings') }}" method="POST">
+            <input type="hidden" name="action" value="save_tutorial_settings">
+            
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">دامنه یا ساب‌دامنه اختصاصی آموزش‌ها (Custom Domain / Subdomain)</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light"><i class="fas fa-globe text-muted"></i></span>
+                        <input type="text" class="form-control font-monospace" name="tutorial_domain" 
+                               value="{{ tutorial_domain }}" placeholder="مثال: help.mydomain.com" dir="ltr">
+                    </div>
+                    <div class="form-text text-muted">رکورد A یا CNAME این ساب‌دامنه را به سمت سرور تنظیم نمایید.</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">عنوان اصلی پورتال آموزش‌ها</label>
+                    <input type="text" class="form-control" name="tutorial_title" 
+                           value="{{ tutorial_title }}" placeholder="مثال: مرکز آموزش و راهنمای اتصال VPN">
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary px-4 fw-bold">
+                <i class="fas fa-save me-1"></i> ذخیره تنظیمات پورتال آموزش‌ها
+            </button>
+        </form>
+    </div>
+</div>
+
 <div class="card shadow-sm mt-4">
     <div class="card-header bg-white py-3">
         <h5 class="mb-0"><i class="fas fa-sliders me-2"></i> تنظیمات ثبت‌شده در دیتابیس</h5>

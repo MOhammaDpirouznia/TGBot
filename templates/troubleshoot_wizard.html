@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}عیب‌یابی هوشمند و حل مشکلات اتصال - {{ branding.get('brand_title') or 'راهنمای VPN' }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    .troubleshoot-card {
+        border-radius: 20px;
+        border: 1px solid var(--card-border, rgba(0,0,0,0.08));
+        background: var(--card-bg, #ffffff);
+        transition: all 0.3s ease;
+    }
+    .troubleshoot-card:hover {
+        border-color: rgba(79, 70, 229, 0.4);
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08);
+    }
+    .solution-step {
+        background: rgba(16, 185, 129, 0.06);
+        border-right: 4px solid #10b981;
+        border-radius: 10px;
+        padding: 12px 16px;
+        margin-bottom: 10px;
+        font-size: 0.95rem;
+        line-height: 1.8;
+    }
+</style>
+{% endblock %}
+
+{% macro render_troubleshoot_body() %}
+<div class="container-fluid px-0">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mb-4">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('tutorials_portal') }}"><i class="fas fa-home me-1"></i> پورتال آموزش‌ها</a></li>
+            <li class="breadcrumb-item active" aria-current="page">عیب‌یابی هوشمند و حل مشکلات اتصال</li>
+        </ol>
+    </nav>
+
+    <!-- Header Hero -->
+    <div class="card shadow-sm border-0 rounded-4 mb-4" style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(234, 88, 12, 0.1) 100%); border: 1px solid rgba(245, 158, 11, 0.2) !important;">
+        <div class="card-body p-4 d-flex flex-column flex-md-row align-items-center justify-content-between gap-3">
+            <div class="d-flex align-items-center gap-3">
+                <div class="stat-icon bg-warning bg-opacity-20 text-warning-emphasis rounded-4 p-3 d-flex align-items-center justify-content-center" style="width: 64px; height: 64px;">
+                    <i class="fas fa-screwdriver-wrench fa-2x"></i>
+                </div>
+                <div>
+                    <h2 class="h4 fw-bold mb-1 text-dark">سامانه هوشمند عیب‌یابی و حل خطاهای اتصال</h2>
+                    <p class="text-muted mb-0 small">راهنمای تصویری و مرحله‌به‌مرحله رفع رایج‌ترین خطاهای قطع و وصلی، تنظیم ساعت و اختلالات اپراتورها</p>
+                </div>
+            </div>
+            <a href="{{ url_for('tutorials_portal') }}" class="btn btn-outline-dark btn-sm fw-bold">
+                <i class="fas fa-book-open me-1"></i> مشاهده تمام آموزش‌ها
+            </a>
+        </div>
+    </div>
+
+    <!-- لیست خطاهای رایج و راهکارهای فوری -->
+    <div class="row g-4 mb-5">
+        {% for g in guides %}
+        <div class="col-12" id="{{ g.slug }}">
+            <div class="troubleshoot-card shadow-sm p-4">
+                <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="stat-icon bg-{{ g.color }} bg-opacity-10 text-{{ g.color }} rounded-3 p-3 d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                            <i class="{{ g.icon }} fa-xl"></i>
+                        </div>
+                        <div>
+                            <h5 class="fw-bold mb-1 text-dark">{{ g.title }}</h5>
+                            <p class="text-muted small mb-0">{{ g.subtitle }}</p>
+                        </div>
+                    </div>
+                    <span class="badge bg-{{ g.color }} bg-opacity-10 text-{{ g.color }} border border-{{ g.color }}">
+                        راهکار تایید شده
+                    </span>
+                </div>
+
+                <!-- شرح مشکل و علت -->
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <div class="p-3 bg-danger bg-opacity-10 rounded-3 border border-danger border-opacity-25 h-100">
+                            <div class="small fw-bold text-danger mb-1"><i class="fas fa-circle-exclamation me-1"></i> نشانه مشکل:</div>
+                            <p class="small text-dark mb-0">{{ g.problem }}</p>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="p-3 bg-light rounded-3 border h-100">
+                            <div class="small fw-bold text-secondary mb-1"><i class="fas fa-magnifying-glass me-1"></i> علت فنی:</div>
+                            <p class="small text-muted mb-0">{{ g.cause }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- مراحل حل مشکل -->
+                <div>
+                    <h6 class="fw-bold text-success mb-2"><i class="fas fa-check-circle me-1"></i> دستورالعمل گام‌به‌گام رفع مشکل:</h6>
+                    {% for step in g.solution_steps %}
+                    <div class="solution-step">
+                        {{ step | safe }}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endmacro %}
+
+{% block content %}
+    {{ render_troubleshoot_body() }}
+{% endblock %}
+
+{% block login_content %}
+<div class="container py-4">
+    {{ render_troubleshoot_body() }}
+</div>
+{% endblock %}
