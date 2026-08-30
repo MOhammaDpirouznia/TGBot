@@ -143,25 +143,55 @@ def parse_user_agent_details(user_agent: str, client_ip: str = "") -> Dict[str, 
         os_icon = "fab fa-linux text-warning"
         device_name = "لینوکس"
 
-    # ۳. تشخیص اپراتور بر اساس محدوده آی‌پی‌های رایج ایران
+    # ۳. تشخیص دقیق اپراتور بر اساس محدوده آی‌پی‌های ایران
     isp_name = "اینترنت ایران"
     isp_badge = "bg-secondary"
     if ip:
-        if ip.startswith("5.127.") or ip.startswith("5.120.") or ip.startswith("2.188."):
-            isp_name = "ایرانسل (MTN)"
-            isp_badge = "bg-warning text-dark"
-        elif ip.startswith("2.144.") or ip.startswith("91.99.") or ip.startswith("91.98."):
+        ip_clean = ip.strip()
+        # همراه اول (MCI)
+        if any(ip_clean.startswith(p) for p in [
+            "2.144.", "2.145.", "2.146.", "2.147.", "2.176.", "2.177.", "2.178.", "2.179.",
+            "91.98.", "91.99.", "94.182.", "94.183.", "94.184.", "188.253.", "5.218.", "37.255."
+        ]):
             isp_name = "همراه اول (MCI)"
             isp_badge = "bg-info text-dark"
-        elif ip.startswith("5.106.") or ip.startswith("2.187."):
+        # ایرانسل (MTN)
+        elif any(ip_clean.startswith(p) for p in [
+            "5.120.", "5.121.", "5.122.", "5.123.", "5.124.", "5.125.", "5.126.", "5.127.",
+            "37.156.", "188.158.", "188.159.", "151.246.", "151.247."
+        ]):
+            isp_name = "ایرانسل (MTN)"
+            isp_badge = "bg-warning text-dark"
+        # مخابرات ایران (TCI / DCI)
+        elif any(ip_clean.startswith(p) for p in [
+            "2.180.", "2.181.", "2.182.", "2.183.", "2.184.", "2.185.", "2.186.", "2.188.",
+            "5.200.", "5.201.", "5.202.", "5.208.", "5.209.", "78.38.", "78.39.", "80.191.", "85.185."
+        ]):
+            isp_name = "مخابرات ایران (TCI)"
+            isp_badge = "bg-primary"
+        # رایتل (RighTel)
+        elif any(ip_clean.startswith(p) for p in [
+            "5.106.", "2.187.", "2.189.", "37.152.", "188.211."
+        ]):
             isp_name = "رایتل (RighTel)"
             isp_badge = "bg-danger"
-        elif ip.startswith("5.238.") or ip.startswith("185.105."):
+        # شاتل (Shatel)
+        elif any(ip_clean.startswith(p) for p in [
+            "5.238.", "5.239.", "85.15.", "94.101.", "185.105.", "185.106.", "185.107."
+        ]):
             isp_name = "شاتل (Shatel)"
             isp_badge = "bg-success"
-        elif ip.startswith("2.186.") or ip.startswith("2.181."):
-            isp_name = "مخابرات ایران"
+        # آسیاتک (Asiatech)
+        elif any(ip_clean.startswith(p) for p in ["79.127.", "178.131.", "185.143."]):
+            isp_name = "آسیاتک (Asiatech)"
+            isp_badge = "bg-warning text-dark"
+        # های‌وب / پارس آنلاین / مبین‌نت
+        elif any(ip_clean.startswith(p) for p in ["5.213.", "46.224.", "46.225."]):
+            isp_name = "های‌وب (HiWeb)"
             isp_badge = "bg-primary"
+        elif any(ip_clean.startswith(p) for p in ["5.160.", "5.161.", "37.153."]):
+            isp_name = "مبین‌نت (MobinNet)"
+            isp_badge = "bg-info text-dark"
 
     return {
         "client_app": client_app,

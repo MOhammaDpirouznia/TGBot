@@ -337,6 +337,40 @@ def api_webapp_user_data():
     })
 
 
+@app.route("/sub/<sub_uuid>", defaults={"sub_path": ""}, strict_slashes=False, methods=["GET"])
+@app.route("/sub/<sub_uuid>/<path:sub_path>", strict_slashes=False, methods=["GET"])
+def smart_subscription_proxy(sub_uuid: str, sub_path: str = ""):
+    """
+    دریافت هوشمند اشتراک توسط کلاینت‌ها (Hiddify, Happ, Streisand, v2rayNG, Sing-box و...)
+    ثبت بلادرنگ مشخصات واقعی دستگاه، سیستم‌عامل، برنامه کلاینت و IP اینترنت کاربر
+    """
+    ua = request.headers.get("User-Agent", "")
+    client_ip = request.headers.get("CF-Connecting-IP") or request.headers.get("X-Real-IP") or request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+    
+    # ثبت مشخصات نشست در دیتابیس
+    sub = db.get_subscription_by_uuid(sub_uuid)
+    if sub:
+        db.record_subscription_session(sub["id"], sub_uuid, client_ip, ua, is_active=1)
+
+    # واکشی مستقیم محتوای کانفیگ از سرور هیدیفای
+    hiddify_url = get_hiddify_url()
+    proxy_path = get_user_proxy()
+    target_url = f"{hiddify_url}/{proxy_path}/{sub_uuid}/"
+    if sub_path:
+        target_url = f"{hiddify_url}/{proxy_path}/{sub_uuid}/{sub_path}"
+
+    try:
+        req_headers = {k: v for k, v in request.headers if k.lower() not in ["host", "content-length"]}
+        with httpx.Client(verify=False, follow_redirects=True, timeout=10.0) as client:
+            resp = client.get(target_url, headers=req_headers)
+            excluded_headers = ["content-encoding", "content-length", "transfer-encoding", "connection"]
+            resp_headers = [(k, v) for k, v in resp.headers.items() if k.lower() not in excluded_headers]
+            return Response(resp.content, status=resp.status_code, headers=resp_headers)
+    except Exception as e:
+        logger.error(f"Error proxying subscription for {sub_uuid}: {e}")
+        return Response("Error fetching subscription configs from server", status=502, mimetype="text/plain")
+
+
 # ─── هلپرهای ارتباط همگام با تلگرام و هیدیفای (Sync Helpers) ───
 
 def send_telegram_msg(chat_id: int, text: str, reply_markup=None, parse_mode: str = "HTML") -> bool:

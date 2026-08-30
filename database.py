@@ -4822,6 +4822,38 @@ class Database:
         finally:
             conn.close()
 
+    def get_subscription_by_uuid(self, uuid: str) -> Optional[dict]:
+        """یافتن اشتراک بر اساس UUID هیدیفای"""
+        if not uuid:
+            return None
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? ORDER BY id DESC LIMIT 1", (str(uuid),))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error in get_subscription_by_uuid: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def get_subscription(self, sub_id: int) -> Optional[dict]:
+        """یافتن اشتراک بر اساس شناسه id"""
+        if not sub_id:
+            return None
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error in get_subscription: {e}")
+            return None
+        finally:
+            conn.close()
+
     def get_subscription_sessions(self, sub_id: int) -> dict:
         """دریافت لیست نشست‌های فعال و تاریخچه دستگاه‌های متصل به اشتراک"""
         conn = self.get_connection()
@@ -4841,14 +4873,6 @@ class Database:
                 ORDER BY last_seen DESC LIMIT 10
             """, (sub_id, sub["hidify_uuid"]))
             rows = [dict(r) for r in cursor.fetchall()]
-
-            # در صورتی که کاربر آنلاین است اما هیچ رکورد نشستی ثبت نشده باشد، نشست هوشمند بر اساس فعالیت اخیر تولید می‌شود
-            if not rows and is_online:
-                last_time = sub["last_online"] or get_now_iso()
-                default_ua = "HiddifyNext/v2.5.7 (Windows NT 10.0; Win64; x64)"
-                self.record_subscription_session(sub_id, sub["hidify_uuid"], "5.127.104.22", default_ua, last_seen=last_time, is_active=1)
-                cursor.execute("SELECT * FROM subscription_sessions WHERE sub_id=?", (sub_id,))
-                rows = [dict(r) for r in cursor.fetchall()]
 
             active_devices = len(set(r["ip_address"] for r in rows if r.get("is_active"))) if rows else (1 if is_online else 0)
 
