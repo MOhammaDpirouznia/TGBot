@@ -1518,11 +1518,14 @@ class Database:
     # مدیریت تراکنش‌ها
     # ═══════════════════════════════════════════════════════════════
 
-    def save_transaction(self, order_id, user_id, username, plan_name, amount, gateway, tracking_code, status="pending", account_name=None, account_comment=None, is_renewal=0, renew_sub_id=None, discount_code=None, receipt_image=None, receipt_file_type=None, reseller_id=None):
+    def save_transaction(self, order_id, user_id, username, plan_name, amount, gateway, tracking_code, status="pending", account_name=None, account_comment=None, is_renewal=0, renew_sub_id=None, discount_code=None, receipt_image=None, receipt_file_type=None, reseller_id=None, notes=None, **kwargs):
         """ذخیره تراکنش"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
+
+        if notes and not account_comment:
+            account_comment = notes
 
         try:
             cursor.execute("""

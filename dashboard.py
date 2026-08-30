@@ -3714,7 +3714,8 @@ def reseller_bundles_submit_receipt():
         flash("بسته اعتباری مورد نظر یافت نشد.", "danger")
         return redirect(url_for("reseller_transactions"))
 
-    order_id = f"R_BUNDLE_CARD_{reseller_id}_{int(datetime.now().timestamp())}"
+    import random
+    order_id = f"R_BUNDLE_CARD_{reseller_id}_{int(datetime.now().timestamp() * 1000)}_{random.randint(100, 999)}"
     reseller = db.get_reseller(reseller_id) or {}
     username = reseller.get("username", f"reseller_{reseller_id}")
 
@@ -3741,6 +3742,7 @@ def reseller_bundles_submit_receipt():
         status="pending",
         receipt_image=receipt_file_path or tracking_code,
         receipt_file_type="web_upload" if receipt_file_path else "tracking_code",
+        account_comment=notes,
         notes=notes,
         reseller_id=reseller_id
     )
