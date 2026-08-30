@@ -447,7 +447,11 @@ function openSessionModal(subId, custName) {
 
             const sessions = data.sessions || [];
             if (sessions.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-muted">هنوز نشستی برای این اشتراک ثبت نشده است.</td></tr>`;
+                if (isOnline) {
+                    tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-success"><i class="fas fa-circle-check fs-5 me-1 text-success"></i> <strong>کاربر در سرور هیدیفای آنلاین و متصل است.</strong><div class="small text-muted mt-1">جزئیات تکمیلی مدل دستگاه، برنامه کلاینت و IP پس از دریافت درخواست بازخوانی کانفیگ در این جدول ثبت می‌گردد.</div></td></tr>`;
+                } else {
+                    tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-muted"><i class="fas fa-info-circle me-1"></i> هنوز نشستی برای این اشتراک ثبت نشده است.</td></tr>`;
+                }
                 return;
             }
 
