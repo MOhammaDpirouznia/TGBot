@@ -3552,6 +3552,128 @@ class Database:
         finally:
             conn.close()
 
+    # ─── استرداد وجه و حذف هوشمند اشتراک مشتریان برای مدیران (Customer Refund & Delete) ───
+
+    def calculate_customer_refund(self, sub_id: int):
+        """
+        محاسبه شرایط و درصد استرداد وجه حذف اشتراک مشتری توسط مدیران:
+        - تا ۱۲ ساعت پس از ساخت: ۱۰۰٪ مبلغ
+        - بین ۱۲ تا ۲۴ ساعت پس از ساخت: ۹۰٪ مبلغ
+        - بیش از ۲۴ ساعت پس از ساخت: ۰٪ مبلغ
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,))
+        sub = cursor.fetchone()
+        if not sub:
+            conn.close()
+            return None
+
+        created_str = sub["created_at"] or get_now_iso()
+        try:
+            clean = str(created_str).strip().replace("Z", "")
+            created_dt = datetime.fromisoformat(clean)
+            if created_dt.tzinfo is not None:
+                created_dt = created_dt.astimezone(TEHRAN_TZ).replace(tzinfo=None)
+        except Exception:
+            created_dt = get_now_naive()
+
+        now_dt = get_now_naive()
+        elapsed_seconds = max(0.0, (now_dt - created_dt).total_seconds())
+        elapsed_hours = elapsed_seconds / 3600.0
+
+        if elapsed_hours <= 12.0:
+            refund_percent = 100
+        elif elapsed_hours <= 24.0:
+            refund_percent = 90
+        else:
+            refund_percent = 0
+
+        cost_paid = sub["cost_paid"] or 0
+        user_id = sub["telegram_id"] if ("telegram_id" in sub.keys() and sub["telegram_id"]) else None
+        account_name = sub["account_name"] or "بدون نام"
+
+        if cost_paid <= 0:
+            # بررسی مبلغ از آخرین تراکنش موفق کاربر
+            tx = cursor.execute("""
+                SELECT amount FROM transactions 
+                WHERE (account_name=? OR user_id=?) AND status IN ('approved', 'completed') 
+                ORDER BY id DESC LIMIT 1
+            """, (account_name, user_id)).fetchone()
+            if tx and tx["amount"]:
+                cost_paid = tx["amount"]
+
+        conn.close()
+
+        refund_amount = int((cost_paid * refund_percent) / 100)
+
+        hours_int = int(elapsed_hours)
+        minutes_int = int((elapsed_hours - hours_int) * 60)
+        time_passed_text = f"{hours_int} ساعت و {minutes_int} دقیقه پیش" if hours_int > 0 else f"{minutes_int} دقیقه پیش"
+
+        return {
+            "sub_id": sub_id,
+            "account_name": account_name,
+            "user_id": user_id,
+            "created_at": created_str,
+            "elapsed_hours": round(elapsed_hours, 1),
+            "time_passed_text": time_passed_text,
+            "refund_percent": refund_percent,
+            "cost_paid": cost_paid,
+            "refund_amount": refund_amount,
+            "hidify_uuid": sub["hidify_uuid"]
+        }
+
+    def delete_customer_subscription(self, sub_id: int, refund_to_customer: bool = True, admin_name: str = "مدیر"):
+        """حذف مشتری توسط مدیر با قابلیت استرداد مستقیم وجه به کیف پول کاربر تلگرام"""
+        refund_info = self.calculate_customer_refund(sub_id)
+        if not refund_info:
+            return {"success": False, "error": "اشتراک مورد نظر یافت نشد."}
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            refund_amount = refund_info["refund_amount"]
+            refund_percent = refund_info["refund_percent"]
+            account_name = refund_info["account_name"]
+            user_id = refund_info["user_id"]
+            hidify_uuid = refund_info["hidify_uuid"]
+
+            # ۱. در صورت تایید استرداد و وجود مبلغ، کیف پول کاربر شارژ می‌شود
+            refund_done = False
+            if refund_to_customer and refund_amount > 0 and user_id:
+                try:
+                    self.add_wallet_balance(
+                        user_id,
+                        refund_amount,
+                        f"استرداد وجه {refund_percent}٪ بابت حذف اشتراک «{account_name}» ({refund_info['time_passed_text']}) توسط {admin_name}",
+                        tx_type="refund"
+                    )
+                    refund_done = True
+                except Exception as ex:
+                    logger.error(f"Error adding refund to wallet for user {user_id}: {ex}")
+
+            # ۲. حذف فیزیکی اشتراک از دیتابیس
+            cursor.execute("DELETE FROM subscriptions WHERE id=?", (sub_id,))
+            conn.commit()
+
+            return {
+                "success": True,
+                "refund_done": refund_done,
+                "refund_amount": refund_amount if refund_done else 0,
+                "refund_percent": refund_percent,
+                "time_passed_text": refund_info["time_passed_text"],
+                "account_name": account_name,
+                "hidify_uuid": hidify_uuid,
+                "user_id": user_id
+            }
+        except Exception as e:
+            logger.error(f"Error deleting customer subscription {sub_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
     # ─── متدهای تکمیلی ربات اختصاصی و هوش مالی نماینده (White-Label & Multi-Bot) ───
 
     def get_active_reseller_bots(self) -> list:

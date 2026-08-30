@@ -898,7 +898,7 @@ ROLE_PERMISSIONS = {
     },
     "support": {
         "dashboard", "tickets", "users", "users_view", "subscriptions", "subscriptions_view", 
-        "sub_manage", "create_customer", "servers_view", "broadcast", "profile"
+        "sub_manage", "sub_delete", "create_customer", "servers_view", "broadcast", "profile"
     },
     "viewer": {
         "dashboard", "users_view", "subscriptions_view", "reports", "servers_view", "profile", "payments_view"
@@ -2064,9 +2064,9 @@ def api_subscription_sessions(sub_id: int):
 
 
 @app.route("/subscriptions")
-@admin_required
+@permission_required("subscriptions_view")
 def subscriptions():
-    """لیست اشتراک‌های هیدیفای همراه با وضعیت آنلاین بودن"""
+    """لیست اشتراک‌های هیدیفای همراه با وضعیت آنلاین بودن و اطلاعات استرداد وجه"""
     sync_hiddify_online_users()
     conn = db.get_connection()
     status_filter = request.args.get("status", "all")
@@ -2077,12 +2077,18 @@ def subscriptions():
     else:
         sub_list = conn.execute("SELECT * FROM subscriptions WHERE status=? ORDER BY created_at DESC LIMIT 150", (status_filter,)).fetchall()
     conn.close()
+
+    subscriptions_with_refund = []
+    for s in sub_list:
+        s_dict = dict(s)
+        s_dict["refund_info"] = db.calculate_customer_refund(s["id"])
+        subscriptions_with_refund.append(s_dict)
     
     online_stats = db.get_online_users_stats()
     single_link_template = get_single_link_template(db)
     return render_template(
         "subscriptions.html",
-        subscriptions=sub_list,
+        subscriptions=subscriptions_with_refund,
         status_filter=status_filter,
         online_count=online_stats["online_count"],
         online_stats=online_stats,
@@ -2090,6 +2096,152 @@ def subscriptions():
         user_proxy=get_user_proxy(),
         single_link_template=single_link_template
     )
+
+
+@app.route("/admin/subscription/<int:sub_id>/edit", methods=["POST"])
+@permission_required("sub_manage")
+def admin_subscription_edit(sub_id):
+    """ویرایش مشخصات اشتراک هیدیفای توسط مدیر ارشد و مدیر پشتیبانی"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,)).fetchone()
+    conn.close()
+    if not sub_row:
+        flash("اشتراک یافت نشد.", "danger")
+        return redirect(url_for("subscriptions"))
+
+    sub = dict(sub_row)
+    account_name = request.form.get("account_name", "").strip() or sub["account_name"]
+    data_limit = float(request.form.get("data_limit", sub.get("data_limit") or 30))
+    expire_date = request.form.get("expire_date", "").strip() or sub.get("expire_date")
+    status = request.form.get("status", sub.get("status") or "active")
+
+    package_days = None
+    if expire_date:
+        try:
+            exp_dt = datetime.strptime(expire_date[:10], "%Y-%m-%d")
+            now_dt = get_now_naive()
+            diff_days = max(1, (exp_dt - now_dt).days)
+            package_days = diff_days
+        except Exception:
+            pass
+
+    # بروزرسانی در سرور هیدیفای
+    if sub.get("hidify_uuid"):
+        h_update = {
+            "name": account_name,
+            "usage_limit_GB": data_limit,
+        }
+        if package_days is not None:
+            h_update["package_days"] = package_days
+        if status == "disabled":
+            h_update["enable"] = False
+            h_update["is_active"] = False
+        elif status == "active":
+            h_update["enable"] = True
+            h_update["is_active"] = True
+
+        hidify_sync_update_user(sub["hidify_uuid"], **h_update)
+
+    # بروزرسانی در پایگاه‌داده
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE subscriptions 
+        SET account_name = ?, data_limit = ?, expire_date = ?, status = ?, updated_at = ?
+        WHERE id = ?
+    """, (account_name, data_limit, expire_date, status, get_now_iso(), sub_id))
+    conn.commit()
+    conn.close()
+
+    flash(f"مشخصات اشتراک «{account_name}» با موفقیت ویرایش و در سرور هیدیفای اعمال شد.", "success")
+    return redirect(url_for("subscriptions"))
+
+
+@app.route("/admin/subscription/<int:sub_id>/toggle", methods=["POST"])
+@permission_required("sub_manage")
+def admin_subscription_toggle(sub_id):
+    """فعال یا غیرفعال‌سازی آنی اشتراک هیدیفای توسط مدیر ارشد و پشتیبانی"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,)).fetchone()
+    conn.close()
+    if not sub_row:
+        flash("اشتراک یافت نشد.", "danger")
+        return redirect(url_for("subscriptions"))
+
+    sub = dict(sub_row)
+    current_status = sub.get("status", "active")
+    new_status = "disabled" if current_status == "active" else "active"
+    is_enable = (new_status == "active")
+
+    if sub.get("hidify_uuid"):
+        hidify_sync_update_user(sub["hidify_uuid"], enable=is_enable, is_active=is_enable)
+
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE subscriptions SET status = ?, updated_at = ? WHERE id = ?", (new_status, get_now_iso(), sub_id))
+    conn.commit()
+    conn.close()
+
+    action_fa = "فعال" if is_enable else "غیرفعال"
+    flash(f"اشتراک «{sub.get('account_name')}» با موفقیت {action_fa} شد.", "info")
+    return redirect(url_for("subscriptions"))
+
+
+@app.route("/admin/subscription/<int:sub_id>/delete", methods=["POST"])
+@permission_required("sub_delete")
+def admin_subscription_delete(sub_id):
+    """حذف اشتراک مشتری با محاسبه زمان‌دار و استرداد مستقیم وجه به کیف پول مشتری"""
+    admin_role = session.get("admin_role", "support")
+    admin_name = session.get("name") or session.get("username") or "مدیر"
+    
+    # دکمه تعیین استرداد وجه فقط برای مدیر ارشد قابل تغییر است
+    if admin_role == "super_admin":
+        refund_to_customer = (request.form.get("refund_to_customer") == "on" or request.form.get("refund_to_customer") == "1")
+    else:
+        # برای مدیر پشتیبانی، استرداد طبق روال پیش‌فرض سیستمی انجام می‌شود
+        refund_to_customer = True
+
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,)).fetchone()
+    conn.close()
+    if not sub_row:
+        flash("اشتراک یافت نشد.", "danger")
+        return redirect(url_for("subscriptions"))
+
+    sub = dict(sub_row)
+    uuid_val = sub.get("hidify_uuid")
+
+    # حذف از سرور هیدیفای
+    if uuid_val:
+        try:
+            hidify_sync_delete_user(uuid_val)
+        except Exception as ex:
+            logger.error(f"Error deleting user {uuid_val} from Hiddify: {ex}")
+
+    # حذف و استرداد مستقیم وجه به مشتری در دیتابیس
+    del_res = db.delete_customer_subscription(sub_id, refund_to_customer=refund_to_customer, admin_name=admin_name)
+    if del_res.get("success"):
+        if del_res.get("refund_done") and del_res.get("refund_amount", 0) > 0:
+            # ارسال پیامک یا نوتیف تلگرام به کاربر
+            u_id = del_res.get("user_id")
+            if u_id:
+                try:
+                    refund_msg = (
+                        f"💰 **استرداد وجه به کیف پول شما**\n\n"
+                        f"اشتراک «{del_res['account_name']}» حذف گردید و مبلغ **{del_res['refund_amount']:,} تومان** "
+                        f"({del_res['refund_percent']}٪ استرداد - زمان گذشته: {del_res['time_passed_text']}) "
+                        f"به موجودی کیف پول شما در ربات افزوده شد."
+                    )
+                    send_telegram_msg(u_id, refund_msg)
+                except Exception:
+                    pass
+            flash(f"اشتراک «{del_res['account_name']}» حذف شد و مبلغ {del_res['refund_amount']:,} تومان ({del_res['refund_percent']}٪ استرداد) مستقیماً به کیف پول مشتری بازگردانده شد.", "success")
+        else:
+            flash(f"اشتراک «{del_res['account_name']}» با موفقیت حذف گردید (بدون استرداد وجه خودکار).", "info")
+    else:
+        flash(f"خطا در حذف اشتراک: {del_res.get('error')}", "danger")
+
+    return redirect(url_for("subscriptions"))
 
 
 # ═══════════════════════════════════════════════════════════════════════
