@@ -1732,6 +1732,18 @@ async def confirm_card_payment(update: Update, context: ContextTypes.DEFAULT_TYP
         receipt_is_doc = context.user_data.get("receipt_is_document", False)
         receipt_type = "document" if receipt_is_doc else ("photo" if receipt_photo else None)
 
+        saved_receipt_filename = None
+        if receipt_photo:
+            try:
+                receipts_dir = Path("data/receipts")
+                receipts_dir.mkdir(parents=True, exist_ok=True)
+                ext = ".pdf" if receipt_is_doc else ".jpg"
+                tg_file = await context.bot.get_file(receipt_photo)
+                saved_receipt_filename = f"receipt_{order_id}{ext}"
+                await tg_file.download_to_drive(receipts_dir / saved_receipt_filename)
+            except Exception as dl_err:
+                logger.warning(f"Could not download telegram receipt to disk: {dl_err}")
+
         db.save_transaction(
             order_id=order_id,
             user_id=user.id,
@@ -1746,8 +1758,8 @@ async def confirm_card_payment(update: Update, context: ContextTypes.DEFAULT_TYP
             is_renewal=is_renewal,
             renew_sub_id=renew_sub_id,
             discount_code=discount_code,
-            receipt_image=receipt_photo,
-            receipt_file_type=receipt_type
+            receipt_image=saved_receipt_filename or receipt_photo,
+            receipt_file_type="web_upload" if saved_receipt_filename else receipt_type
         )
 
         logger.info(f"Transaction saved for user {user.id} (renewal={is_renewal})")

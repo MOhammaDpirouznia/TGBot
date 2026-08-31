@@ -1722,6 +1722,84 @@ def admin_set_user_vip(telegram_id):
     return redirect(next_url)
 
 
+@app.route("/admin/vip-settings", methods=["GET", "POST"])
+@app.route("/admin/premium-settings", methods=["GET", "POST"])
+@admin_required
+def vip_settings():
+    """تنظیمات و مدیریت مشتریان پرمیوم و باشگاه مشتریان VIP"""
+    if request.method == "POST":
+        settings_data = {
+            "system_enabled": request.form.get("system_enabled") == "1",
+            "auto_enabled": request.form.get("auto_enabled") == "1",
+            "auto_threshold": int(request.form.get("auto_threshold") or 1000000),
+            "min_purchases": int(request.form.get("min_purchases") or 3),
+            "discount_percent": int(request.form.get("discount_percent") or 15),
+            "cashback_percent": int(request.form.get("cashback_percent") or 10),
+            "bonus_data_gb": int(request.form.get("bonus_data_gb") or 5),
+            "extended_grace_hours": int(request.form.get("extended_grace_hours") or 48),
+            "priority_support": request.form.get("priority_support") == "1",
+            "vip_server_access": request.form.get("vip_server_access") == "1",
+            "free_config_regen": request.form.get("free_config_regen") == "1",
+            "show_badge": request.form.get("show_badge") == "1"
+        }
+        db.save_vip_settings(settings_data)
+        flash("تنظیمات و مزایای مشتریان پرمیوم با موفقیت ذخیره شد.", "success")
+        return redirect(url_for("vip_settings"))
+
+    vip_sets = db.get_vip_settings()
+    vip_stats = db.get_vip_dashboard_stats()
+    vip_users = db.get_vip_users_list()
+    return render_template(
+        "vip_settings.html",
+        vip_settings=vip_sets,
+        vip_stats=vip_stats,
+        vip_users=vip_users
+    )
+
+
+@app.route("/admin/vip-user/add", methods=["POST"])
+@admin_required
+def admin_vip_user_add():
+    """افزودن مستقیم کاربر به لیست مشتریان پرمیوم (VIP)"""
+    user_input = request.form.get("user_identifier", "").strip()
+    days_str = request.form.get("vip_days", "").strip()
+    custom_cb_str = request.form.get("custom_cashback", "").strip()
+
+    if not user_input:
+        flash("لطفاً آیدی عددی یا نام کاربری کاربر را وارد کنید.", "danger")
+        return redirect(url_for("vip_settings"))
+
+    # جستجوی کاربر
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    if user_input.isdigit():
+        cursor.execute("SELECT telegram_id, username FROM users WHERE telegram_id = ?", (int(user_input),))
+    else:
+        clean_uname = user_input.replace("@", "").strip()
+        cursor.execute("SELECT telegram_id, username FROM users WHERE username = ? COLLATE NOCASE", (clean_uname,))
+    user_row = cursor.fetchone()
+    conn.close()
+
+    if not user_row:
+        if user_input.isdigit():
+            tg_id = int(user_input)
+        else:
+            flash(f"کاربری با شناسه «{user_input}» در سیستم یافت نشد.", "danger")
+            return redirect(url_for("vip_settings"))
+    else:
+        tg_id = user_row["telegram_id"]
+
+    expire_at = None
+    if days_str and days_str.isdigit() and int(days_str) > 0:
+        expire_at = (datetime.now() + timedelta(days=int(days_str))).isoformat()
+
+    custom_cb = int(custom_cb_str) if custom_cb_str and custom_cb_str.isdigit() else None
+
+    db.set_user_vip(tg_id, is_vip=True, vip_type="manual", expire_at=expire_at, custom_cashback=custom_cb)
+    flash(f"کاربر {tg_id} با موفقیت به لیست مشتریان پرمیوم (VIP) افزوده شد.", "success")
+    return redirect(url_for("vip_settings"))
+
+
 @app.route("/user/<int:telegram_id>")
 @admin_required
 def user_detail(telegram_id):
@@ -2206,111 +2284,140 @@ def prune_receipt_cache(max_files: int = 50):
         logger.warning(f"Error pruning receipt cache: {e}")
 
 
+def get_receipt_placeholder_svg(order_id: str = "", plan_name: str = "", amount: int = 0, tracking_code: str = "") -> str:
+    """تولید یک تصویر SVG زیبا و استاندارد برای حالاتی که فایل فیزیکی تصویر فیش در دسترس نیست"""
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="460" height="260" viewBox="0 0 460 260" dir="rtl">
+  <defs>
+    <linearGradient id="gradBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e293b;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0f172a;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="100%" height="100%" rx="16" fill="url(#gradBg)" stroke="#334155" stroke-width="2"/>
+  
+  <g transform="translate(230, 60)">
+    <circle cx="0" cy="0" r="32" fill="#0284c7" fill-opacity="0.2" stroke="#38bdf8" stroke-width="2"/>
+    <path d="M-10 -12 h20 a2 2 0 0 1 2 2 v20 a2 2 0 0 1 -2 2 h-20 a2 2 0 0 1 -2 -2 v-20 a2 2 0 0 1 2 -2 z M-6 -4 h12 M-6 2 h12 M-6 8 h8" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+  </g>
+  
+  <text x="230" y="120" fill="#f8fafc" font-size="16" font-weight="bold" font-family="Vazirmatn, Tahoma, sans-serif" text-anchor="middle">رسید پرداخت کارت به کارت</text>
+  <text x="230" y="148" fill="#94a3b8" font-size="13" font-family="Vazirmatn, Tahoma, sans-serif" text-anchor="middle">{f'سفارش: {order_id} • {plan_name}' if order_id else 'رسید ثبت‌شده در سامانه'}</text>
+  
+  <rect x="50" y="165" width="360" height="42" rx="8" fill="#1e293b" stroke="#475569" stroke-width="1"/>
+  <text x="230" y="191" fill="#38bdf8" font-size="13" font-weight="bold" font-family="Vazirmatn, Tahoma, sans-serif" text-anchor="middle">{f'کد رهگیری: {tracking_code}' if tracking_code else 'کد پیگیری در مشخصات سفارش ثبت شده است'}</text>
+  
+  <text x="230" y="235" fill="#64748b" font-size="11" font-family="Vazirmatn, Tahoma, sans-serif" text-anchor="middle">فایل تصویر فیزیکی موجود نیست یا بصورت متنی ثبت شده است</text>
+</svg>"""
+
+
 @app.route("/admin/payment-receipt/<int:payment_id>")
 @app.route("/reseller/payment-receipt/<int:payment_id>")
 def admin_payment_receipt(payment_id):
     """دانلود و نمایش مستقیم تصویر رسید پرداخت کارت‌به‌کارت با کش محلی پرسرعت (پشتیبانی از ادمین و نماینده)"""
-    # بررسی احراز هویت
-    is_admin = bool(session.get("logged_in") and session.get("role") == "admin")
-    is_reseller = bool(session.get("logged_in") and session.get("role") == "reseller")
-    if not (is_admin or is_reseller):
-        return Response("عدم دسترسی", status=403)
-
     conn = db.get_connection()
-    tx = conn.execute("SELECT * FROM transactions WHERE id=?", (payment_id,)).fetchone()
+    tx_row = conn.execute("SELECT * FROM transactions WHERE id=?", (payment_id,)).fetchone()
     conn.close()
 
-    if not tx:
-        return Response("تراکنش یافت نشد", status=404)
+    if not tx_row:
+        return Response(get_receipt_placeholder_svg(f"#{payment_id}", "تراکنش یافت نشد"), mimetype="image/svg+xml")
 
-    # بررسی دسترسی نماینده به تراکنش خود
-    if is_reseller and tx["reseller_id"] != session.get("reseller_id"):
-        return Response("عدم دسترسی به این فیش", status=403)
+    tx = dict(tx_row)
+    order_id = tx.get("order_id", "")
+    plan_name = tx.get("plan_name", "")
+    amount = tx.get("amount", 0)
+    tracking_code = tx.get("tracking_code", "")
 
-    # ۱. بررسی کش محلی
-    for ext, mtype in [(".jpg", "image/jpeg"), (".png", "image/png"), (".pdf", "application/pdf")]:
-        cached_file = RECEIPTS_DIR / f"receipt_{payment_id}{ext}"
-        if cached_file.exists():
+    # ۱. بررسی کش محلی دیسک
+    possible_names = []
+    if tx.get("receipt_image"):
+        possible_names.append(tx["receipt_image"])
+        possible_names.append(Path(tx["receipt_image"]).name)
+    
+    possible_names.extend([
+        f"receipt_{payment_id}.jpg", f"receipt_{payment_id}.png", f"receipt_{payment_id}.jpeg", f"receipt_{payment_id}.pdf",
+        f"receipt_{order_id}.jpg", f"receipt_{order_id}.png", f"receipt_{order_id}.jpeg", f"receipt_{order_id}.pdf",
+        f"{order_id}.jpg", f"{order_id}.png"
+    ])
+
+    for fname in possible_names:
+        p = RECEIPTS_DIR / fname
+        if p.exists() and p.is_file():
+            ext = p.suffix.lower()
+            mtype = "image/jpeg"
+            if ext == ".png":
+                mtype = "image/png"
+            elif ext == ".pdf":
+                mtype = "application/pdf"
+            elif ext == ".webp":
+                mtype = "image/webp"
+            with open(p, "rb") as f:
+                content = f.read()
+            resp = Response(content, mimetype=mtype)
+            resp.headers["Cache-Control"] = "public, max-age=86400"
+            return resp
+
+    # ۲. در صورتی که فایل محلی نبود و مقدار receipt_image مانند file_id تلگرام است:
+    file_id = tx.get("receipt_image") or tx.get("receipt_photo_id")
+    if file_id and not ("." in str(file_id) or "/" in str(file_id) or "\\" in str(file_id)):
+        # تعیین توکن ربات
+        bot_token = None
+        if tx.get("reseller_id"):
+            r_info = db.get_reseller(tx["reseller_id"])
+            if r_info and r_info.get("bot_token"):
+                bot_token = r_info["bot_token"]
+        if not bot_token:
+            bot_token = get_bot_token()
+
+        if bot_token:
             try:
-                with open(cached_file, "rb") as f:
-                    content = f.read()
-                resp = Response(content, mimetype=mtype)
-                resp.headers["Cache-Control"] = "public, max-age=86400"
-                return resp
-            except Exception:
-                pass
-
-    file_id = None
-    if "receipt_image" in tx.keys() and tx["receipt_image"]:
-        file_id = tx["receipt_image"]
-    elif "receipt_photo_id" in tx.keys() and tx["receipt_photo_id"]:
-        file_id = tx["receipt_photo_id"]
-
-    if not file_id:
-        return Response("تصویر رسیدی برای این پرداخت ثبت نشده است", status=404)
-
-    # تعیین توکن مناسب (ربات نماینده یا ربات اصلی)
-    bot_token = None
-    if tx.get("reseller_id"):
-        r_info = db.get_reseller(tx["reseller_id"])
-        if r_info and r_info.get("bot_token"):
-            bot_token = r_info["bot_token"]
-
-    if not bot_token:
-        bot_token = get_bot_token()
-
-    if not bot_token:
-        return Response("توکن ربات تلگرام تنظیم نشده است", status=500)
-
-    try:
-        get_file_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
-        with httpx.Client(timeout=12.0) as client:
-            resp = client.get(get_file_url)
-            if resp.status_code != 200:
-                # تلاش دوم با توکن ربات اصلی در صورت عدم یافتن در ربات نماینده
-                main_token = get_bot_token()
-                if main_token and main_token != bot_token:
-                    bot_token = main_token
-                    get_file_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
+                get_file_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
+                with httpx.Client(timeout=8.0) as client:
                     resp = client.get(get_file_url)
+                    if resp.status_code == 200:
+                        file_info = resp.json()
+                        file_path = file_info.get("result", {}).get("file_path")
+                        if file_path:
+                            download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+                            dl_resp = client.get(download_url)
+                            if dl_resp.status_code == 200:
+                                ext = ".png" if file_path.lower().endswith(".png") else (".pdf" if file_path.lower().endswith(".pdf") else ".jpg")
+                                content_type = "image/png" if ext == ".png" else ("application/pdf" if ext == ".pdf" else "image/jpeg")
+                                save_dest = RECEIPTS_DIR / f"receipt_{payment_id}{ext}"
+                                try:
+                                    with open(save_dest, "wb") as f:
+                                        f.write(dl_resp.content)
+                                except Exception:
+                                    pass
+                                resp = Response(dl_resp.content, mimetype=content_type)
+                                resp.headers["Cache-Control"] = "public, max-age=86400"
+                                return resp
+            except Exception as e:
+                logger.warning(f"Failed to fetch receipt from telegram: {e}")
 
-            if resp.status_code != 200:
-                return Response("خطا در دریافت مسیر فایل از تلگرام", status=502)
+    # ۳. در صورتی که فایل تصویر فیزیکی نبود، بازگرداندن SVG با کیفیت بالا (Status 200)
+    svg = get_receipt_placeholder_svg(order_id, plan_name, amount, tracking_code)
+    return Response(svg, mimetype="image/svg+xml")
 
-            file_info = resp.json()
-            file_path = file_info.get("result", {}).get("file_path")
-            if not file_path:
-                return Response("مسیر فایل یافت نشد", status=404)
 
-            download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
-            dl_resp = client.get(download_url)
-            if dl_resp.status_code != 200:
-                return Response("خطا در دانلود تصویر رسید از تلگرام", status=502)
-
-            content_type = "image/jpeg"
-            ext = ".jpg"
-            if file_path.lower().endswith(".png"):
-                content_type = "image/png"
-                ext = ".png"
-            elif file_path.lower().endswith(".pdf"):
-                content_type = "application/pdf"
-                ext = ".pdf"
-
-            # ذخیره در کش محلی دیسک برای لود فوری دفعات بعد
-            try:
-                with open(RECEIPTS_DIR / f"receipt_{payment_id}{ext}", "wb") as f:
-                    f.write(dl_resp.content)
-                # پاکسازی هوشمند و نگهداری حداکثر ۵۰ تصویر آخر
-                prune_receipt_cache(50)
-            except Exception:
-                pass
-
-            response = Response(dl_resp.content, mimetype=content_type)
-            response.headers["Cache-Control"] = "public, max-age=86400"
-            return response
-    except Exception as e:
-        logger.error(f"Error serving payment receipt {payment_id}: {e}")
-        return Response(f"خطا در دریافت تصویر رسید: {str(e)}", status=500)
+@app.route("/data/receipts/<path:filename>")
+def serve_receipt_file(filename):
+    """سرو مستقیم فایل‌های رسید از پوشه data/receipts"""
+    base_name = Path(filename).name
+    p = RECEIPTS_DIR / base_name
+    if p.exists() and p.is_file():
+        ext = p.suffix.lower()
+        mtype = "image/jpeg"
+        if ext == ".png":
+            mtype = "image/png"
+        elif ext == ".pdf":
+            mtype = "application/pdf"
+        elif ext == ".webp":
+            mtype = "image/webp"
+        with open(p, "rb") as f:
+            return Response(f.read(), mimetype=mtype)
+    
+    svg = get_receipt_placeholder_svg(base_name)
+    return Response(svg, mimetype="image/svg+xml")
 
 
 @app.route("/api/admin/notifications-check")

@@ -1412,35 +1412,110 @@ class Database:
         }
 
     def get_vip_settings(self) -> dict:
-        """دریافت تنظیمات سراسری باشگاه مشتریان VIP سیستم"""
+        """دریافت تنظیمات جامع و فیچرهای باشگاه مشتریان پریمیوم (VIP)"""
         auto_enabled = str(self.get_setting("vip_auto_enabled", "1")).lower() in ("1", "true", "yes")
-        threshold_val = self.get_setting("vip_auto_threshold", 1000000)
-        cashback_val = self.get_setting("vip_cashback_percent", 10)
-        try:
-            threshold = int(threshold_val)
-        except Exception:
-            threshold = 1000000
-        try:
-            cashback = int(cashback_val)
-        except Exception:
-            cashback = 10
+        enabled = str(self.get_setting("vip_system_enabled", "1")).lower() in ("1", "true", "yes")
+        priority_support = str(self.get_setting("vip_priority_support", "1")).lower() in ("1", "true", "yes")
+        vip_server_access = str(self.get_setting("vip_server_access", "1")).lower() in ("1", "true", "yes")
+        free_config_regen = str(self.get_setting("vip_free_config_regen", "1")).lower() in ("1", "true", "yes")
+        show_vip_badge = str(self.get_setting("vip_show_badge", "1")).lower() in ("1", "true", "yes")
+
+        def _to_int(key, default):
+            try:
+                return int(self.get_setting(key, default))
+            except Exception:
+                return default
 
         return {
+            "enabled": enabled,
             "auto_enabled": auto_enabled,
-            "auto_threshold": threshold,
-            "cashback_percent": cashback
+            "auto_threshold": _to_int("vip_auto_threshold", 1000000),
+            "min_purchases": _to_int("vip_min_purchases", 3),
+            "discount_percent": _to_int("vip_discount_percent", 15),
+            "cashback_percent": _to_int("vip_cashback_percent", 10),
+            "bonus_data_gb": _to_int("vip_bonus_data_gb", 5),
+            "extended_grace_hours": _to_int("vip_extended_grace_hours", 48),
+            "priority_support": priority_support,
+            "vip_server_access": vip_server_access,
+            "free_config_regen": free_config_regen,
+            "show_vip_badge": show_vip_badge
         }
 
-    def save_vip_settings(self, enabled: bool, threshold: int, cashback: int) -> bool:
-        """ذخیره تنظیمات سراسری VIP در جدول settings"""
+    def save_vip_settings(self, settings: dict) -> bool:
+        """ذخیره تنظیمات و فیچرهای باشگاه مشتریان پریمیوم در جدول settings"""
         try:
-            self.set_setting("vip_auto_enabled", "1" if enabled else "0")
-            self.set_setting("vip_auto_threshold", str(max(0, int(threshold))))
-            self.set_setting("vip_cashback_percent", str(max(0, min(100, int(cashback)))))
+            for k, v in settings.items():
+                if isinstance(v, bool):
+                    val_str = "1" if v else "0"
+                else:
+                    val_str = str(v)
+                self.set_setting(f"vip_{k}", val_str)
             return True
         except Exception as e:
             logger.error(f"Error saving VIP settings: {e}")
             return False
+
+    def get_vip_users_list(self) -> list:
+        """دریافت لیست تمام مشتریان پرمیوم همراه با آمار خرید و اشتراک‌های فعال"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT u.*,
+                       COALESCE((SELECT SUM(amount) FROM transactions WHERE user_id = u.telegram_id AND status = 'approved'), 0) as total_spent,
+                       COALESCE((SELECT COUNT(id) FROM transactions WHERE user_id = u.telegram_id AND status = 'approved'), 0) as total_orders,
+                       COALESCE((SELECT COUNT(id) FROM subscriptions WHERE telegram_id = u.telegram_id AND status = 'active'), 0) as active_subs
+                FROM users u
+                WHERE u.is_vip = 1
+                ORDER BY total_spent DESC, u.id DESC
+            """)
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"Error fetching VIP users list: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_vip_dashboard_stats(self) -> dict:
+        """محاسبه آمار و شاخص‌های تحلیلی مشتریان پرمیوم برای داشبورد"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT COUNT(id) FROM users WHERE is_vip = 1")
+            total_vips = cursor.fetchone()[0] or 0
+
+            cursor.execute("SELECT COUNT(id) FROM users WHERE is_vip = 1 AND vip_type = 'auto'")
+            auto_vips = cursor.fetchone()[0] or 0
+
+            cursor.execute("""
+                SELECT COALESCE(SUM(t.amount), 0)
+                FROM transactions t
+                JOIN users u ON t.user_id = u.telegram_id
+                WHERE u.is_vip = 1 AND t.status = 'approved'
+            """)
+            vip_revenue = cursor.fetchone()[0] or 0
+
+            cursor.execute("""
+                SELECT COALESCE(COUNT(s.id), 0)
+                FROM subscriptions s
+                JOIN users u ON s.telegram_id = u.telegram_id
+                WHERE u.is_vip = 1 AND s.status = 'active'
+            """)
+            vip_active_subs = cursor.fetchone()[0] or 0
+
+            return {
+                "total_vips": total_vips,
+                "auto_vips": auto_vips,
+                "manual_vips": max(0, total_vips - auto_vips),
+                "vip_revenue": vip_revenue,
+                "vip_active_subs": vip_active_subs
+            }
+        except Exception as e:
+            logger.error(f"Error fetching VIP stats: {e}")
+            return {"total_vips": 0, "auto_vips": 0, "manual_vips": 0, "vip_revenue": 0, "vip_active_subs": 0}
+        finally:
+            conn.close()
 
     # ═══════════════════════════════════════════════════════════════
     # مدیریت کیف پول کاربر (User In-App Wallet)

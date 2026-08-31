@@ -546,6 +546,17 @@ class ResellerBotInstance:
             photo_file_id = photo.file_id
             order_id = f"R{r_id}_{int(datetime.now().timestamp())}_{user.id % 1000}"
 
+            # دانلود و ذخیره مستقیم تصویر فیش روی دیسک
+            saved_receipt_filename = None
+            try:
+                receipts_dir = Path("data/receipts")
+                receipts_dir.mkdir(parents=True, exist_ok=True)
+                tg_file = await photo.get_file()
+                saved_receipt_filename = f"receipt_{order_id}.jpg"
+                await tg_file.download_to_drive(receipts_dir / saved_receipt_filename)
+            except Exception as e:
+                logger.warning(f"Could not download receipt photo for order {order_id}: {e}")
+
             plans = load_plans()
             plan = plans.get(plan_id, {})
             pname = plan.get("name", "پلن انتخابی")
@@ -560,8 +571,8 @@ class ResellerBotInstance:
                 gateway="card_reseller",
                 tracking_code=f"Receipt_{order_id}",
                 status="pending",
-                receipt_image=photo_file_id,
-                receipt_file_type="photo",
+                receipt_image=saved_receipt_filename or photo_file_id,
+                receipt_file_type="web_upload" if saved_receipt_filename else "photo",
                 reseller_id=r_id
             )
 
