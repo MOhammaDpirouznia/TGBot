@@ -324,16 +324,36 @@
                                                 <!-- باکس محاسبه شرایط استرداد -->
                                                 <div class="p-3 bg-light rounded-3 border mb-3">
                                                     <div class="d-flex justify-content-between mb-2">
-                                                        <span class="text-muted">زمان سپری‌شده از ساخت:</span>
+                                                        <span class="text-muted">آخرین زمان اقدام:</span>
                                                         <strong>{{ ref.get('time_passed_text', '-') }}</strong>
                                                     </div>
                                                     <div class="d-flex justify-content-between mb-2">
-                                                        <span class="text-muted">مبلغ پرداخت‌شده اولیه:</span>
+                                                        <span class="text-muted">مجموع پرداختی‌های ثبت‌شده:</span>
                                                         <span>{{ "{:,}".format(ref.get('cost_paid', 0)) }} تومان</span>
                                                     </div>
+                                                    {% if ref.get('items') and ref.get('items')|length > 1 %}
+                                                    <div class="mb-2 p-2 bg-white rounded border small">
+                                                        <div class="text-muted fw-bold mb-1 border-bottom pb-1">ریز محاسبات خرید و تمدیدها:</div>
+                                                        {% for itm in ref.get('items') %}
+                                                        <div class="d-flex justify-content-between align-items-center py-1 {% if not loop.last %}border-bottom{% endif %}">
+                                                            <div>
+                                                                <span class="badge bg-light text-dark border">{{ itm['type_title'] }}</span>
+                                                                <span class="text-muted ms-1">({{ itm['time_passed_text'] }})</span>
+                                                            </div>
+                                                            <div>
+                                                                <span>{{ "{:,}".format(itm['amount']) }} ت</span>
+                                                                <span class="badge {% if itm['refund_percent'] == 100 %}bg-success{% elif itm['refund_percent'] == 80 %}bg-warning text-dark{% else %}bg-secondary{% endif %} ms-1">
+                                                                    {{ itm['refund_percent'] }}%
+                                                                </span>
+                                                                <strong class="text-success ms-1">+{{ "{:,}".format(itm['refund_amount']) }}</strong>
+                                                            </div>
+                                                        </div>
+                                                        {% endfor %}
+                                                    </div>
+                                                    {% endif %}
                                                     <div class="d-flex justify-content-between mb-2">
-                                                        <span class="text-muted">درصد بازگشت وجه:</span>
-                                                        <span class="badge {% if ref.get('refund_percent', 0) == 100 %}bg-success{% elif ref.get('refund_percent', 0) == 90 %}bg-warning text-dark{% else %}bg-secondary{% endif %} fs-6">
+                                                        <span class="text-muted">درصد کل استرداد:</span>
+                                                        <span class="badge {% if ref.get('refund_percent', 0) == 100 %}bg-success{% elif ref.get('refund_percent', 0) >= 80 %}bg-warning text-dark{% else %}bg-secondary{% endif %} fs-6">
                                                             {{ ref.get('refund_percent', 0) }}%
                                                         </span>
                                                     </div>
@@ -346,11 +366,11 @@
 
                                                 <!-- راهنمای قوانین استرداد -->
                                                 <div class="alert alert-warning py-2 small mb-0">
-                                                    <div class="fw-bold mb-1"><i class="fas fa-info-circle me-1"></i>قوانین استرداد هزینه حذف مشتری:</div>
+                                                    <div class="fw-bold mb-1"><i class="fas fa-info-circle me-1"></i>قوانین استرداد هزینه خرید و تمدیدها:</div>
                                                     <ul class="mb-0 ps-3">
-                                                        <li><strong>تا ۱۲ ساعت پس از ساخت:</strong> بازگشت <strong>۱۰۰٪</strong> کل مبلغ به کیف پول.</li>
-                                                        <li><strong>بین ۱۲ تا ۲۴ ساعت پس از ساخت:</strong> بازگشت <strong>۹۰٪</strong> مبلغ به کیف پول (۱۰٪ کسر).</li>
-                                                        <li><strong>بیش از ۲۴ ساعت پس از ساخت:</strong> <strong>۰٪</strong> (بدون استرداد وجه).</li>
+                                                        <li><strong>تا ۱۲ ساعت پس از خرید یا تمدید:</strong> بازگشت <strong>۱۰۰٪</strong> مبلغ به کیف پول.</li>
+                                                        <li><strong>بین ۱۲ تا ۲۴ ساعت پس از خرید یا تمدید:</strong> بازگشت <strong>۸۰٪</strong> مبلغ به کیف پول (۲۰٪ کسر).</li>
+                                                        <li><strong>بیش از ۲۴ ساعت پس از هر اقدام:</strong> <strong>۰٪</strong> (عدم استرداد به آن اقدام).</li>
                                                     </ul>
                                                 </div>
                                             </div>

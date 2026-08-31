@@ -280,17 +280,37 @@
                                                 <!-- کارت محاسبه استرداد وجه -->
                                                 <div class="p-3 bg-light rounded-3 border mb-3">
                                                     <div class="d-flex justify-content-between align-items-center mb-2">
-                                                        <span class="text-muted small">مدت زمان گذشته:</span>
+                                                        <span class="text-muted small">آخرین زمان اقدام:</span>
                                                         <span class="fw-bold">{{ ref.get('time_passed_text', 'نامشخص') }}</span>
                                                     </div>
+                                                    {% if ref.get('items') and ref.get('items')|length > 1 %}
+                                                    <div class="mb-2 p-2 bg-white rounded border small">
+                                                        <div class="text-muted fw-bold mb-1 border-bottom pb-1">ریز محاسبات خرید و تمدیدها:</div>
+                                                        {% for itm in ref.get('items') %}
+                                                        <div class="d-flex justify-content-between align-items-center py-1 {% if not loop.last %}border-bottom{% endif %}">
+                                                            <div>
+                                                                <span class="badge bg-light text-dark border">{{ itm['type_title'] }}</span>
+                                                                <span class="text-muted ms-1">({{ itm['time_passed_text'] }})</span>
+                                                            </div>
+                                                            <div>
+                                                                <span>{{ "{:,}".format(itm['amount']) }} ت</span>
+                                                                <span class="badge {% if itm['refund_percent'] == 100 %}bg-success{% elif itm['refund_percent'] == 80 %}bg-warning text-dark{% else %}bg-secondary{% endif %} ms-1">
+                                                                    {{ itm['refund_percent'] }}%
+                                                                </span>
+                                                                <strong class="text-success ms-1">+{{ "{:,}".format(itm['refund_amount']) }}</strong>
+                                                            </div>
+                                                        </div>
+                                                        {% endfor %}
+                                                    </div>
+                                                    {% endif %}
                                                     <div class="d-flex justify-content-between align-items-center mb-2">
                                                         <span class="text-muted small">درصد استرداد مجاز:</span>
-                                                        <span class="badge {% if ref.get('refund_percent', 0) == 100 %}bg-success{% elif ref.get('refund_percent', 0) == 90 %}bg-warning text-dark{% else %}bg-secondary{% endif %} fs-6">
+                                                        <span class="badge {% if ref.get('refund_percent', 0) == 100 %}bg-success{% elif ref.get('refund_percent', 0) >= 80 %}bg-warning text-dark{% else %}bg-secondary{% endif %} fs-6">
                                                             {{ ref.get('refund_percent', 0) }}%
                                                         </span>
                                                     </div>
                                                     <div class="d-flex justify-content-between align-items-center border-top pt-2">
-                                                        <span class="fw-bold text-dark">مبلغ قابل استرداد به مشتری:</span>
+                                                        <span class="fw-bold text-dark">مبلغ کل قابل استرداد به مشتری:</span>
                                                         <strong class="text-success fs-5">{{ "{:,}".format(ref.get('refund_amount', 0)) }} تومان</strong>
                                                     </div>
                                                 </div>

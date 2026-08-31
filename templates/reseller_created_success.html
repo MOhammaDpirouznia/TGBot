@@ -3,54 +3,99 @@
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-lg-7">
+    <div class="col-lg-9 col-md-11">
         <div class="card border-success shadow-sm text-center">
             <div class="card-header bg-success text-white py-3">
                 <h4 class="mb-0 fw-bold"><i class="fas fa-circle-check me-2"></i> اشتراک مشتری با موفقیت ساخته شد</h4>
             </div>
             <div class="card-body p-4">
-                <div class="alert alert-success py-2 mb-4">
+                <div class="alert alert-success py-2 mb-4 d-inline-block px-4 rounded-3">
                     مبلغ <strong>{{ "{:,}".format(final_price) }} تومان</strong> از کیف پول شما کسر گردید.
                 </div>
 
                 <div class="row text-start g-2 mb-4 p-3 bg-light rounded-3">
-                    <div class="col-6"><strong>نام اکانت:</strong> <code>{{ account_name }}</code></div>
-                    <div class="col-6"><strong>پلن انتخابی:</strong> {{ plan['name'] }}</div>
-                    <div class="col-6"><strong>حجم مجاز:</strong> {{ plan['data_limit'] }} گیگابایت</div>
-                    <div class="col-6"><strong>مدت زمان:</strong> {{ plan['duration'] }} روز</div>
+                    <div class="col-6 col-md-3"><strong>نام اکانت:</strong> <code>{{ account_name }}</code></div>
+                    <div class="col-6 col-md-3"><strong>پلن انتخابی:</strong> {{ plan['name'] }}</div>
+                    <div class="col-6 col-md-3"><strong>حجم مجاز:</strong> {{ plan['data_limit'] }} گیگابایت</div>
+                    <div class="col-6 col-md-3"><strong>مدت زمان:</strong> {{ plan['duration'] }} روز</div>
                 </div>
 
-                <h6 class="fw-bold mb-2">لینک سابسکریپشن اتصال مشتری:</h6>
-                <div class="input-group mb-3">
-                    <input type="text" id="subUrlInput" class="form-control text-center font-monospace small" value="{{ sub_url }}" readonly style="direction: ltr;">
-                    <button class="btn btn-primary" onclick="copyText('subUrlInput', 'لینک سابسکریپشن')"><i class="fas fa-copy me-1"></i> کپی ساب</button>
+                <!-- بخش QR کدهای دوتایی (لینک ساب و لینک تکی) -->
+                <div class="row g-3 mb-4 text-start">
+                    <!-- ۱. باکس لینک سابسکریپشن -->
+                    {% if sub_url %}
+                    <div class="{% if single_url %}col-md-6{% else %}col-12{% endif %}">
+                        <div class="card h-100 border shadow-sm rounded-4 text-center">
+                            <div class="card-header bg-primary bg-opacity-10 py-2 border-bottom">
+                                <h6 class="mb-0 fw-bold text-primary"><i class="fas fa-qrcode me-2"></i>QR کد لینک سابسکریپشن (هوشمند)</h6>
+                            </div>
+                            <div class="card-body p-3 d-flex flex-column align-items-center justify-content-between">
+                                <div class="p-2 bg-white rounded-3 border shadow-sm mb-3 position-relative">
+                                    <div id="subCreatedQrCode" class="d-flex justify-content-center"></div>
+                                </div>
+                                <div class="w-100">
+                                    <div class="d-flex justify-content-center gap-2 mb-3">
+                                        <button type="button" class="btn btn-sm btn-outline-success" onclick="downloadQrImage('subCreatedQrCode', 'sub_qrcode_{{ account_name }}.png')">
+                                            <i class="fas fa-download me-1"></i> ذخیره در گالری
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-info" onclick="shareQrCode('{{ sub_url }}', 'لینک سابسکریپشن {{ account_name }}', 'subCreatedQrCode')">
+                                            <i class="fas fa-share-nodes me-1"></i> اشتراک‌گذاری
+                                        </button>
+                                    </div>
+                                    <div class="input-group mb-2">
+                                        <input type="text" id="subUrlInput" class="form-control text-center font-monospace small" readonly value="{{ sub_url }}" style="direction: ltr;">
+                                        <button class="btn btn-primary btn-sm" onclick="copyActionText('subUrlInput', 'لینک سابسکریپشن')"><i class="fas fa-copy me-1"></i> کپی</button>
+                                    </div>
+                                    <div class="d-flex flex-wrap gap-1 justify-content-center mt-2">
+                                        <a href="hiddify://install-sub?url={{ sub_url|urlencode }}" class="btn btn-xs btn-outline-primary py-1 px-2"><i class="fas fa-rocket me-1"></i> Hiddify</a>
+                                        <a href="streisand://import/{{ sub_url|urlencode }}" class="btn btn-xs btn-outline-info py-1 px-2"><i class="fas fa-bolt me-1"></i> Streisand</a>
+                                        <a href="{{ sub_url }}" target="_blank" class="btn btn-xs btn-outline-secondary py-1 px-2"><i class="fas fa-external-link-alt me-1"></i> وب‌پیج</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- ۲. باکس لینک مستقیم تکی -->
+                    {% if single_url %}
+                    <div class="{% if sub_url %}col-md-6{% else %}col-12{% endif %}">
+                        <div class="card h-100 border border-warning shadow-sm rounded-4 text-center">
+                            <div class="card-header bg-warning bg-opacity-10 py-2 border-bottom border-warning">
+                                <h6 class="mb-0 fw-bold text-dark"><i class="fas fa-bolt me-2 text-warning"></i>QR کد لینک مستقیم تکی (کانفیگ)</h6>
+                            </div>
+                            <div class="card-body p-3 d-flex flex-column align-items-center justify-content-between">
+                                <div class="p-2 bg-white rounded-3 border shadow-sm mb-3 position-relative">
+                                    <div id="singleCreatedQrCode" class="d-flex justify-content-center"></div>
+                                </div>
+                                <div class="w-100">
+                                    <div class="d-flex justify-content-center gap-2 mb-3">
+                                        <button type="button" class="btn btn-sm btn-outline-success" onclick="downloadQrImage('singleCreatedQrCode', 'single_qrcode_{{ account_name }}.png')">
+                                            <i class="fas fa-download me-1"></i> ذخیره در گالری
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-info" onclick="shareQrCode('{{ single_url }}', 'کانفیگ تکی {{ account_name }}', 'singleCreatedQrCode')">
+                                            <i class="fas fa-share-nodes me-1"></i> اشتراک‌گذاری
+                                        </button>
+                                    </div>
+                                    <div class="input-group mb-2">
+                                        <input type="text" id="singleUrlInput" class="form-control text-center font-monospace small" readonly value="{{ single_url }}" style="direction: ltr;">
+                                        <button class="btn btn-warning btn-sm text-dark fw-bold" onclick="copyActionText('singleUrlInput', 'لینک مستقیم تکی')"><i class="fas fa-copy me-1"></i> کپی</button>
+                                    </div>
+                                    <div class="small text-muted mt-2">
+                                        <i class="fas fa-info-circle me-1 text-warning"></i> مناسب برای ایمپورت مستقیم در انواع کلاینت‌های V2ray, Streisand, Sing-box
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
 
-                {% if single_url %}
-                <h6 class="fw-bold mb-2 text-warning"><i class="fas fa-bolt me-1"></i> لینک مستقیم تکی (VMess Config):</h6>
-                <div class="input-group mb-4">
-                    <input type="text" id="singleUrlInput" class="form-control text-center font-monospace small" value="{{ single_url }}" readonly style="direction: ltr;">
-                    <button class="btn btn-warning" onclick="copyText('singleUrlInput', 'لینک تکی')"><i class="fas fa-copy me-1"></i> کپی تکی</button>
-                </div>
-                {% endif %}
-
-                <div class="d-flex flex-wrap gap-2 justify-content-center mb-3">
-                    <a href="hiddify://install-sub?url={{ sub_url }}" class="btn btn-outline-primary">
-                        <i class="fas fa-rocket me-1"></i> اتصال مستقیم Hiddify
-                    </a>
-                    <a href="streisand://import/{{ sub_url }}" class="btn btn-outline-info">
-                        <i class="fas fa-bolt me-1"></i> اتصال مستقیم Streisand
-                    </a>
-                    <a href="{{ sub_url }}" target="_blank" class="btn btn-outline-secondary">
-                        <i class="fas fa-external-link-alt me-1"></i> باز کردن وب‌پیج هیدیفای
-                    </a>
-                </div>
-
-                <div class="d-flex justify-content-center gap-2 mt-4 pt-3 border-top">
-                    <a href="{{ url_for('reseller_create_user') }}" class="btn btn-success">
+                <div class="d-flex justify-content-center gap-2 mt-4 pt-3 border-top flex-wrap">
+                    <a href="{{ url_for('reseller_create_user') }}" class="btn btn-success px-4">
                         <i class="fas fa-plus me-1"></i> ساخت اشتراک دیگر
                     </a>
-                    <a href="{{ url_for('reseller_users') }}" class="btn btn-outline-dark">
+                    <a href="{{ url_for('reseller_users') }}" class="btn btn-outline-dark px-4">
                         <i class="fas fa-users me-1"></i> لیست مشتریان من
                     </a>
                 </div>
@@ -62,15 +107,53 @@
 
 {% block scripts %}
 <script>
-    function copyText(elemId, label) {
-        const input = document.getElementById(elemId);
-        if (!input) return;
-        input.select();
-        navigator.clipboard.writeText(input.value).then(() => {
-            alert((label || 'لینک') + ' با موفقیت کپی شد! ✅');
-        }).catch(() => {
-            alert((label || 'لینک') + ' کپی شد!');
-        });
+function copyActionText(elemId, label) {
+    const input = document.getElementById(elemId);
+    if (!input) return;
+    input.select();
+    navigator.clipboard.writeText(input.value).then(() => {
+        alert((label || 'لینک') + ' با موفقیت کپی شد! ✅');
+    }).catch(() => {
+        prompt('لینک را کپی کنید:', input.value);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    // ۱. رندر QR کد سابسکریپشن
+    const subContainer = document.getElementById('subCreatedQrCode');
+    const subUrl = "{{ sub_url }}";
+    if (subContainer && subUrl) {
+        try {
+            new QRCode(subContainer, {
+                text: subUrl,
+                width: 170,
+                height: 170,
+                colorDark: "#0f172a",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.M
+            });
+        } catch (e) {
+            subContainer.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=170x170&data=${encodeURIComponent(subUrl)}" alt="QR Code" class="img-fluid rounded">`;
+        }
     }
+
+    // ۲. رندر QR کد لینک مستقیم تکی
+    const singleContainer = document.getElementById('singleCreatedQrCode');
+    const singleUrl = "{{ single_url }}";
+    if (singleContainer && singleUrl) {
+        try {
+            new QRCode(singleContainer, {
+                text: singleUrl,
+                width: 170,
+                height: 170,
+                colorDark: "#0f172a",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.M
+            });
+        } catch (e) {
+            singleContainer.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=170x170&data=${encodeURIComponent(singleUrl)}" alt="QR Code" class="img-fluid rounded">`;
+        }
+    }
+});
 </script>
 {% endblock %}

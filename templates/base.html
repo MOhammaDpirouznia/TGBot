@@ -974,9 +974,20 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body text-center p-4">
-                    <div class="p-3 bg-light rounded-3 d-inline-block shadow-sm mb-3 border">
+                    <div class="p-3 bg-light rounded-3 d-inline-block shadow-sm mb-3 border position-relative">
                         <div id="qrCodeContainer" class="d-flex justify-content-center"></div>
                     </div>
+
+                    <!-- دکمه‌های عملیات مستقیم روی تصویر بارکد -->
+                    <div class="d-flex justify-content-center gap-2 mb-3">
+                        <button type="button" class="btn btn-sm btn-outline-success" onclick="downloadQrImage('qrCodeContainer', 'vpn_qrcode.png')">
+                            <i class="fas fa-download me-1"></i> ذخیره در گالری
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-info" onclick="shareQrModalCurrent()">
+                            <i class="fas fa-share-nodes me-1"></i> اشتراک‌گذاری QR
+                        </button>
+                    </div>
+
                     <div class="mb-3 text-start">
                         <label class="form-label small text-muted fw-bold">لینک اتصال مستقیم:</label>
                         <div class="input-group">
@@ -1018,17 +1029,114 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
     <script>
+        // ─── توابع عمومی ذخیره در گالری و اشتراک‌گذاری QR Code ───
+        function downloadQrImage(containerId, filename) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            const canvas = container.querySelector('canvas');
+            const img = container.querySelector('img');
+            
+            let dataUrl = '';
+            if (canvas) {
+                const pad = 24;
+                const paddedCanvas = document.createElement('canvas');
+                paddedCanvas.width = canvas.width + pad * 2;
+                paddedCanvas.height = canvas.height + pad * 2;
+                const ctx = paddedCanvas.getContext('2d');
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, paddedCanvas.width, paddedCanvas.height);
+                ctx.drawImage(canvas, pad, pad);
+                dataUrl = paddedCanvas.toDataURL('image/png');
+            } else if (img && img.src) {
+                dataUrl = img.src;
+            }
+
+            if (dataUrl) {
+                const a = document.createElement('a');
+                a.href = dataUrl;
+                a.download = filename || ('vpn_qrcode_' + Date.now() + '.png');
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                alert('تصویر QR کد با موفقیت برای گالری دانلود شد! 📥');
+            } else {
+                alert('تصویر QR کد هنوز بارگذاری نشده است.');
+            }
+        }
+
+        async function shareQrCode(url, title, containerId) {
+            if (!url) return;
+            const shareTitle = title || 'لینک و QR اتصال VPN';
+            const shareText = `${shareTitle}:\n${url}`;
+
+            let fileShared = false;
+            if (containerId && navigator.canShare) {
+                try {
+                    const container = document.getElementById(containerId);
+                    const canvas = container ? container.querySelector('canvas') : null;
+                    if (canvas) {
+                        const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+                        if (blob) {
+                            const file = new File([blob], 'vpn_qrcode.png', { type: 'image/png' });
+                            if (navigator.canShare({ files: [file] })) {
+                                await navigator.share({
+                                    title: shareTitle,
+                                    text: shareText,
+                                    files: [file]
+                                });
+                                fileShared = true;
+                            }
+                        }
+                    }
+                } catch (e) {
+                    if (e.name === 'AbortError') return;
+                }
+            }
+
+            if (!fileShared) {
+                if (navigator.share) {
+                    navigator.share({
+                        title: shareTitle,
+                        text: shareText,
+                        url: url
+                    }).catch(err => {
+                        if (err.name !== 'AbortError') {
+                            const tgUrl = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(shareTitle)}`;
+                            window.open(tgUrl, '_blank');
+                        }
+                    });
+                } else {
+                    const tgUrl = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(shareTitle)}`;
+                    window.open(tgUrl, '_blank');
+                }
+            }
+        }
+
+        function shareQrModalCurrent() {
+            const input = document.getElementById('qrModalLinkInput');
+            const titleElem = document.getElementById('qrModalTitle');
+            const url = input ? input.value : '';
+            const title = titleElem ? titleElem.innerText.trim() : 'لینک اتصال';
+            shareQrCode(url, title, 'qrCodeContainer');
+        }
+
         // ─── تابع عمومی نمایش بارکد QR و لینک ───
         let currentQrCodeInstance = null;
+        let currentQrUrl = '';
+        let currentQrTitle = '';
+
         function showQrModal(url, title, type) {
             if (!url) return;
+            currentQrUrl = url;
+            currentQrTitle = title || 'بارکد و لینک اتصال';
+
             const container = document.getElementById('qrCodeContainer');
             if (!container) return;
             container.innerHTML = '';
 
             const modalTitle = document.getElementById('qrModalTitle');
             if (modalTitle) {
-                modalTitle.innerHTML = `<i class="fas fa-qrcode me-2"></i> ${title || 'بارکد و لینک اتصال'}`;
+                modalTitle.innerHTML = `<i class="fas fa-qrcode me-2"></i> ${currentQrTitle}`;
             }
 
             const input = document.getElementById('qrModalLinkInput');
