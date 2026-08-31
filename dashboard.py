@@ -32,7 +32,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from database import db
-from utils import generate_qr_code_bytes, get_now_iso, get_now_naive, get_single_link_template, format_single_link, gregorian_to_shamsi_full, TEHRAN_TZ
+from utils import (
+    generate_qr_code_bytes, get_now_iso, get_now_naive, get_single_link_template, 
+    format_single_link, gregorian_to_shamsi, gregorian_to_shamsi_full, get_now_shamsi, TEHRAN_TZ
+)
 from admin_manager import get_all_plans, add_plan, update_plan, delete_plan, move_plan_up, move_plan_down
 from sms_service import send_auth_sms_notification, send_sms, get_sms_config, format_iranian_phone
 from payment import CryptoPaymentGateway
@@ -277,23 +280,101 @@ def filter_gateway_name(gateway):
     if not gateway or str(gateway).strip() in ["", "None", "null"]:
         return "کارت به کارت"
     g = str(gateway).strip().lower()
-    if g in ("card_to_card", "card", "kart", "c2c"):
+    
+    if g in ("cash_admin", "card_admin", "manual_cash", "cash", "c2c_admin") or g.startswith("cash_"):
+        return "کارت به کارت (مدیریت)"
+    elif g in ("card_reseller", "c2c_reseller") or g.startswith("card_reseller_") or g.startswith("cash_reseller_"):
+        return "کارت به کارت (نماینده)"
+    elif g == "bundle_reseller" or g.startswith("r_bundle"):
+        return "شارژ بسته اعتباری نماینده"
+    elif g in ("card_to_card", "card", "kart", "c2c"):
         return "کارت به کارت"
-    elif g in ("wallet", "wal"):
-        return "کیف پول"
-    elif g in ("zarinpal", "zarin_pal"):
-        return "درگاه بانکی (زرین‌پال)"
-    elif g in ("idpay", "id_pay"):
-        return "درگاه بانکی (آیدی‌پی)"
-    elif g in ("nextpay", "next_pay"):
-        return "درگاه بانکی (نکست‌پی)"
-    elif g in ("gateway", "online", "online_gateway", "shaparak"):
-        return "درگاه پرداخت بانکی"
+    elif g in ("wallet", "wal", "pwal", "wallet_balance"):
+        return "کیف پول هوشمند"
+    elif g in ("zarinpal", "zarin_pal") or g.startswith("zarinpal_"):
+        return "درگاه آنلاین شاپرک (زرین‌پال)"
+    elif g in ("idpay", "id_pay") or g.startswith("idpay_"):
+        return "درگاه آنلاین شاپرک (آیدی‌پی)"
+    elif g in ("nextpay", "next_pay") or g.startswith("nextpay_"):
+        return "درگاه آنلاین شاپرک (نکست‌پی)"
+    elif g in ("gateway", "online", "online_gateway", "shaparak") or g.startswith("online_"):
+        return "درگاه پرداخت آنلاین شاپرک"
     elif g in ("crypto", "nowpayments", "usdt", "oxapay"):
         return "ارز دیجیتال (تتر / کریپتو)"
     elif g in ("perfect_money", "perfectmoney", "pm"):
         return "پرفکت مانی"
+    elif g in ("admin_manual", "manual"):
+        return "ثبت دستی مدیریت"
+    elif g in ("cashback", "vip_cashback"):
+        return "پاداش کش‌بک VIP"
+    elif g in ("free", "gift", "trial"):
+        return "تست رایگان / هدیه"
     return gateway
+
+
+@app.template_filter("shamsi_date")
+@app.template_global("format_shamsi_date")
+def filter_shamsi_date(date_str, fmt="%Y/%m/%d %H:%M"):
+    """تبدیل ایمن رشته تاریخ میلادی/ایزو به شمسی زیبا"""
+    if not date_str or str(date_str).strip() in ["", "None", "null", "-"]:
+        return "-"
+    try:
+        return gregorian_to_shamsi(str(date_str), fmt=fmt)
+    except Exception:
+        return str(date_str)[:16].replace("T", " ")
+
+
+@app.template_filter("gregorian_clean")
+@app.template_global("format_gregorian_clean")
+def filter_gregorian_clean(date_str, with_seconds=False):
+    """پاکسازی و فرمت‌بندی خوانا برای تاریخ میلادی (حذف T و میکروثانیه)"""
+    if not date_str or str(date_str).strip() in ["", "None", "null", "-"]:
+        return "-"
+    try:
+        clean = str(date_str).strip().replace("Z", "")
+        if "T" in clean:
+            clean = clean.split("+")[0]  # حذف آفست تایم‌زون
+            dt = datetime.fromisoformat(clean)
+            if with_seconds:
+                return dt.strftime("%Y-%m-%d %H:%M:%S")
+            return dt.strftime("%Y-%m-%d %H:%M")
+        return str(date_str)[:19].replace("T", " ")
+    except Exception:
+        return str(date_str)[:19].replace("T", " ")
+
+
+@app.template_filter("diff_time")
+@app.template_global("format_diff_time")
+def filter_diff_time(start_str, end_str):
+    """محاسبه و نمایش فاصله زمانی پردازش به فارسی"""
+    if not start_str or not end_str:
+        return ""
+    try:
+        clean_start = str(start_str).strip().replace("Z", "").split("+")[0]
+        clean_end = str(end_str).strip().replace("Z", "").split("+")[0]
+        dt_start = datetime.fromisoformat(clean_start)
+        dt_end = datetime.fromisoformat(clean_end)
+        diff_sec = max(0, int((dt_end - dt_start).total_seconds()))
+        
+        if diff_sec < 60:
+            return f"{diff_sec} ثانیه"
+        elif diff_sec < 3600:
+            mins = diff_sec // 60
+            return f"{mins} دقیقه"
+        elif diff_sec < 86400:
+            hrs = diff_sec // 3600
+            mins = (diff_sec % 3600) // 60
+            if mins > 0:
+                return f"{hrs} ساعت و {mins} دقیقه"
+            return f"{hrs} ساعت"
+        else:
+            days = diff_sec // 86400
+            hrs = (diff_sec % 86400) // 3600
+            if hrs > 0:
+                return f"{days} روز و {hrs} ساعت"
+            return f"{days} روز"
+    except Exception:
+        return ""
 
 
 # ─── مسیرهای مینی‌اپ تلگرام (Telegram WebApp / Mini App Routes) ───
@@ -2037,10 +2118,29 @@ def approve_payment(payment_id):
             )
 
     # بروزرسانی وضعیت تراکنش در دیتابیس
+    admin_name = session.get("name") or session.get("username") or "مدیر ارشد"
+    admin_id = session.get("admin_id")
+    now_iso = get_now_iso()
+
     conn = db.get_connection()
-    conn.execute("UPDATE transactions SET status='approved', updated_at=? WHERE id=?", (get_now_iso(), payment_id))
+    conn.execute(
+        "UPDATE transactions SET status='approved', processed_by=?, processed_at=?, updated_at=? WHERE id=?", 
+        (admin_name, now_iso, now_iso, payment_id)
+    )
     conn.commit()
     conn.close()
+
+    # ثبت لاگ حسابرسی
+    db.add_transaction_audit_log(
+        transaction_id=payment_id,
+        admin_id=admin_id,
+        admin_name=admin_name,
+        action="approve_payment",
+        field_name="status",
+        old_value=tx.get("status", "pending"),
+        new_value="approved",
+        reason=f"تایید فیش پرداخت و صدور اشتراک {plan_name}"
+    )
 
     # پاداش رفرال
     db.complete_referral(user_id)
@@ -2118,8 +2218,27 @@ def reject_payment(payment_id):
 
     if tx_row:
         tx = dict(tx_row)
-        conn.execute("UPDATE transactions SET status='rejected', rejection_reason=?, updated_at=? WHERE id=?", (reason, get_now_iso(), payment_id))
+        admin_name = session.get("name") or session.get("username") or "مدیر ارشد"
+        admin_id = session.get("admin_id")
+        now_iso = get_now_iso()
+
+        conn.execute(
+            "UPDATE transactions SET status='rejected', rejection_reason=?, processed_by=?, processed_at=?, updated_at=? WHERE id=?", 
+            (reason, admin_name, now_iso, now_iso, payment_id)
+        )
         conn.commit()
+
+        # ثبت لاگ حسابرسی
+        db.add_transaction_audit_log(
+            transaction_id=payment_id,
+            admin_id=admin_id,
+            admin_name=admin_name,
+            action="reject_payment",
+            field_name="status",
+            old_value=tx.get("status", "pending"),
+            new_value="rejected",
+            reason=reason
+        )
 
         # اگر تراکنش مربوط به نماینده است:
         r_id = tx.get("reseller_id")
@@ -3437,8 +3556,11 @@ def export_transactions():
                    WHEN status IN ('approved', 'completed') THEN 'تایید شده'
                    WHEN status = 'pending' THEN 'در انتظار بررسی'
                    WHEN status = 'rejected' THEN 'رد شده'
+                   WHEN status = 'revoked' THEN 'ابطال‌شده'
                    ELSE status 
                END as status_fa,
+               processed_by,
+               processed_at,
                created_at 
         FROM transactions 
         ORDER BY created_at DESC
@@ -3447,8 +3569,19 @@ def export_transactions():
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["شناسه", "شماره سفارش", "آیدی عددی تلگرام", "نام کاربری", "نام پلن", "مبلغ (تومان)", "درگاه پرداخت", "کد پیگیری / فیش", "وضعیت", "تاریخ ثبت"])
+    writer.writerow([
+        "شناسه", "شماره سفارش", "آیدی عددی تلگرام", "نام کاربری", "نام پلن", 
+        "مبلغ (تومان)", "روش پرداخت / درگاه", "کد پیگیری / فیش", "وضعیت", 
+        "تایید/بررسی‌کننده", "تاریخ ثبت (شمسی)", "تاریخ ثبت (میلادی)", "تاریخ پردازش (شمسی)"
+    ])
     for r in rows:
+        c_at = r["created_at"] or ""
+        p_at = r["processed_at"] or ""
+        shamsi_created = filter_shamsi_date(c_at) if c_at else ""
+        greg_created = filter_gregorian_clean(c_at) if c_at else ""
+        shamsi_proc = filter_shamsi_date(p_at) if p_at else ""
+        gw_persian = filter_gateway_name(r["gateway"])
+
         writer.writerow([
             r["id"],
             r["order_id"] or "",
@@ -3456,10 +3589,13 @@ def export_transactions():
             r["username"] or "",
             r["plan_name"] or "",
             r["amount"] or 0,
-            r["gateway"] or "",
+            gw_persian,
             r["tracking_code"] or "",
             r["status_fa"] or "",
-            r["created_at"] or ""
+            r["processed_by"] or "",
+            shamsi_created,
+            greg_created,
+            shamsi_proc
         ])
 
     csv_data = "\ufeff" + output.getvalue()
@@ -4637,9 +4773,14 @@ def reseller_payment_approve(payment_id):
     )
 
     # بروزرسانی وضعیت تراکنش
+    reseller_name = session.get("name") or session.get("username") or f"نماینده #{reseller_id}"
+    now_iso = get_now_iso()
     conn = db.get_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE transactions SET status = 'approved', updated_at = ? WHERE id = ?", (get_now_iso(), payment_id))
+    cursor.execute(
+        "UPDATE transactions SET status = 'approved', processed_by = ?, processed_at = ?, updated_at = ? WHERE id = ?", 
+        (f"{reseller_name} (نماینده #{reseller_id})", now_iso, now_iso, payment_id)
+    )
     conn.commit()
     conn.close()
 
@@ -4711,7 +4852,12 @@ def reseller_payment_reject(payment_id):
         return redirect(url_for("reseller_customer_payments"))
 
     tx = dict(tx_row)
-    cursor.execute("UPDATE transactions SET status = 'rejected', description = ?, updated_at = ? WHERE id = ?", (reason, get_now_iso(), payment_id))
+    reseller_name = session.get("name") or session.get("username") or f"نماینده #{reseller_id}"
+    now_iso = get_now_iso()
+    cursor.execute(
+        "UPDATE transactions SET status = 'rejected', rejection_reason = ?, description = ?, processed_by = ?, processed_at = ?, updated_at = ? WHERE id = ?", 
+        (reason, reason, f"{reseller_name} (نماینده #{reseller_id})", now_iso, now_iso, payment_id)
+    )
     conn.commit()
     conn.close()
 

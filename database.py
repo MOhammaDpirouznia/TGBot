@@ -499,6 +499,16 @@ class Database:
             pass
 
         try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN processed_by TEXT")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN processed_at TEXT")
+        except Exception:
+            pass
+
+        try:
             cursor.execute("ALTER TABLE subscriptions ADD COLUMN reseller_id INTEGER")
         except Exception:
             pass
