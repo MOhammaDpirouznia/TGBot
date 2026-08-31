@@ -53,7 +53,12 @@
                 <tbody>
                     {% for tx in transactions %}
                     <tr>
-                        <td class="ps-3"><code class="badge bg-light text-dark border font-monospace fs-6">#{{ tx['id'] }}</code></td>
+                        <td class="ps-3">
+                            <code class="badge bg-light text-dark border font-monospace fs-6">#{{ tx['id'] }}</code>
+                            {% if tx.get('order_id') %}
+                                <div class="text-muted small font-monospace" style="font-size: 0.72rem;">{{ tx['order_id'] }}</div>
+                            {% endif %}
+                        </td>
                         <td>
                             <div class="d-flex align-items-center gap-2">
                                 <img src="{{ avatar_url(tx['user_id'] or tx['username'] or 'User') }}" 

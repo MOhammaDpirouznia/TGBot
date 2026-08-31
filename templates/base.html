@@ -742,8 +742,9 @@
                 </a>
 
                 {% if not sub_role or sub_role in ['partner', 'finance'] %}
-                <a class="nav-link {% if request.endpoint == 'reseller_customer_payments' %}active{% endif %}" href="{{ url_for('reseller_customer_payments') }}">
-                    <i class="fas fa-receipt text-warning"></i> فیش‌ها و پرداخت‌های مشتریان
+                <a class="nav-link {% if request.endpoint == 'reseller_customer_payments' %}active{% endif %} d-flex justify-content-between align-items-center" href="{{ url_for('reseller_customer_payments') }}">
+                    <span><i class="fas fa-receipt text-warning"></i> فیش‌ها و پرداخت‌های مشتریان</span>
+                    <span id="sidebarResellerCustomerReceiptsBadge" class="badge bg-warning text-dark font-monospace" style="display: none; font-size: 0.75rem;">0</span>
                 </a>
                 <a class="nav-link {% if request.endpoint == 'reseller_payments' %}active{% endif %}" href="{{ url_for('reseller_payments') }}">
                     <i class="fas fa-file-invoice-dollar text-primary"></i> شارژ حساب و سوابق مالی
@@ -757,8 +758,9 @@
                 <a class="nav-link {% if request.endpoint == 'reseller_users' %}active{% endif %}" href="{{ url_for('reseller_users') }}">
                     <i class="fas fa-users"></i> مشتریان من
                 </a>
-                <a class="nav-link {% if request.endpoint == 'reseller_tickets' %}active{% endif %}" href="{{ url_for('reseller_tickets') }}">
-                    <i class="fas fa-headset text-info"></i> تیکت‌ها و پشتیبانی
+                <a class="nav-link {% if request.endpoint == 'reseller_tickets' %}active{% endif %} d-flex justify-content-between align-items-center" href="{{ url_for('reseller_tickets') }}">
+                    <span><i class="fas fa-headset text-info"></i> تیکت‌ها و پشتیبانی</span>
+                    <span id="sidebarResellerTicketsBadge" class="badge bg-danger font-monospace" style="display: none; font-size: 0.75rem;">0</span>
                 </a>
                 {% endif %}
 
@@ -1227,10 +1229,85 @@
         const savedTheme = localStorage.getItem('app_theme') || 'light';
         applyTheme(savedTheme);
 
-        // اجرای پایش هر ۱۲ ثانیه برای مدیر
+        let lastResellerReceiptsCount = -1;
+        let lastResellerTicketsCount = -1;
+
+        async function pollResellerNotifications() {
+            try {
+                const res = await fetch('/api/reseller/notifications/poll');
+                if (!res.ok) return;
+                const data = await res.json();
+
+                const receiptsBadge = document.getElementById('sidebarResellerCustomerReceiptsBadge');
+                if (receiptsBadge) {
+                    if (data.pending_customer_receipts_count > 0) {
+                        receiptsBadge.textContent = data.pending_customer_receipts_count;
+                        receiptsBadge.style.display = 'inline-block';
+                    } else {
+                        receiptsBadge.style.display = 'none';
+                    }
+                }
+
+                const ticketsBadge = document.getElementById('sidebarResellerTicketsBadge');
+                if (ticketsBadge) {
+                    if (data.open_tickets_count > 0) {
+                        ticketsBadge.textContent = data.open_tickets_count;
+                        ticketsBadge.style.display = 'inline-block';
+                    } else {
+                        ticketsBadge.style.display = 'none';
+                    }
+                }
+
+                // پخش صدا و نمایش اعلان در صورت دریافت فیش جدید از مشتری
+                if (lastResellerReceiptsCount !== -1 && data.pending_customer_receipts_count > lastResellerReceiptsCount) {
+                    playChimeAlert();
+                    const toastEl = document.getElementById('liveAlertToast');
+                    if (toastEl) {
+                        document.getElementById('liveAlertToastTitle').textContent = '💳 فیش واریزی جدید مشتری!';
+                        document.getElementById('liveAlertToastMsg').textContent = `یک فیش جدید از مشتریان ربات شما نیازمند تایید است. (کل: ${data.pending_customer_receipts_count})`;
+                        const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
+                        toast.show();
+                    }
+                    if ("Notification" in window && Notification.permission === "granted") {
+                        new Notification("💳 فیش واریزی جدید مشتری", {
+                            body: "یک پرداخت جدید در ربات شما برای بررسی و تایید ثبت شده است.",
+                            icon: "https://cdn-icons-png.flaticon.com/512/3135/3135706.png"
+                        });
+                    }
+                }
+
+                // پخش صدا و اعلان در صورت تیکت جدید از مشتری
+                if (lastResellerTicketsCount !== -1 && data.open_tickets_count > lastResellerTicketsCount) {
+                    playChimeAlert();
+                    const toastEl = document.getElementById('liveAlertToast');
+                    if (toastEl) {
+                        document.getElementById('liveAlertToastTitle').textContent = '💬 تیکت پشتیبانی مشتری!';
+                        document.getElementById('liveAlertToastMsg').textContent = 'یک پیام تیکت جدید از مشتریان ربات شما دریافت شد.';
+                        const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
+                        toast.show();
+                    }
+                    if ("Notification" in window && Notification.permission === "granted") {
+                        new Notification("💬 تیکت پشتیبانی جدید", {
+                            body: "یک پیام پشتیبانی جدید از مشتریان دریافت شد.",
+                            icon: "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
+                        });
+                    }
+                }
+
+                lastResellerReceiptsCount = data.pending_customer_receipts_count;
+                lastResellerTicketsCount = data.open_tickets_count;
+            } catch (e) {
+                // Ignore network errors in background polling
+            }
+        }
+
+        // اجرای پایش هر ۱۲ ثانیه برای مدیر و نماینده
         {% if session.get('role') == 'admin' %}
         setInterval(pollAdminNotifications, 12000);
         setTimeout(pollAdminNotifications, 1500);
+        {% elif session.get('role') == 'reseller' %}
+        setInterval(pollResellerNotifications, 12000);
+        setTimeout(pollResellerNotifications, 1500);
         {% endif %}
 
         // ─── موتور جستجوی زنده سراسری جداول (Universal Instant Table Search) ───
