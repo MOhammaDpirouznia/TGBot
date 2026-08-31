@@ -7,7 +7,10 @@
         <h1 class="page-title"><i class="fas fa-handshake text-primary"></i> شبکه نمایندگان و همکاران فروش</h1>
         <p class="text-muted mb-0">تعریف نمایندگان جدید، تعیین نرخ تخفیف عمده‌فروشی، شارژ اعتبار و مشاهده عملکرد</p>
     </div>
-    <div class="d-flex align-items-center gap-2">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#bulkRestoreModal" title="بازیابی و تفکیک کلیه مشتریان از سرور هیدیفای">
+            <i class="fas fa-arrows-rotate me-1"></i> بازیابی سراسری از هیدیفای
+        </button>
         {% if all_failed_logins and all_failed_logins|length > 0 %}
         <button type="button" class="btn btn-outline-danger position-relative" data-bs-toggle="modal" data-bs-target="#failedLoginsModal">
             <i class="fas fa-shield-halved me-1"></i> سیاهه ورودهای ناموفق
@@ -42,6 +45,7 @@
                     <tr>
                         <th>نام و عنوان نماینده</th>
                         <th>نام کاربری ورود</th>
+                        <th>ادمین هیدیفای</th>
                         <th>درصد تخفیف</th>
                         <th>موجودی کیف پول</th>
                         <th>ربات اختصاصی</th>
@@ -84,6 +88,30 @@
                             </div>
                         </td>
                         <td><code>{{ r['username'] }}</code></td>
+                        <td>
+                            {% if r.get('active_hiddify_key') %}
+                                <div class="d-flex flex-column gap-1">
+                                    <span class="badge bg-success-subtle text-success border border-success d-inline-flex align-items-center gap-1" style="width: fit-content;" title="Admin Key: {{ r.get('active_hiddify_key') }}">
+                                        <i class="fas fa-server"></i> متصل به هیدیفای
+                                    </span>
+                                    <code class="small text-muted font-monospace" style="font-size: 0.7rem;">{{ r.get('active_hiddify_key')[:8] }}...</code>
+                                    <form action="{{ url_for('admin_reseller_sync_hiddify', reseller_id=r['id']) }}" method="POST" class="d-inline mt-1">
+                                        <button type="submit" class="btn btn-xs btn-outline-primary py-0 px-1" style="font-size: 0.65rem;" title="فراخوانی و بازیابی مشترکین این نماینده از هیدیفای">
+                                            <i class="fas fa-arrows-rotate me-1"></i> بازیابی مشترکین
+                                        </button>
+                                    </form>
+                                </div>
+                            {% else %}
+                                <div class="d-flex flex-column gap-1">
+                                    <span class="badge bg-light text-muted border" style="width: fit-content;">ادمین عمومی</span>
+                                    <form action="{{ url_for('admin_reseller_create_hiddify_admin', reseller_id=r['id']) }}" method="POST" class="d-inline mt-1">
+                                        <button type="submit" class="btn btn-xs btn-outline-success py-0 px-1" style="font-size: 0.65rem;" title="ساخت آنی ادمین اختصاصی در هیدیفای">
+                                            <i class="fas fa-bolt me-1"></i> ساخت ادمین
+                                        </button>
+                                    </form>
+                                </div>
+                            {% endif %}
+                        </td>
                         <td><span class="badge bg-primary fs-6">{{ r['discount_percent'] }}%</span></td>
                         <td><strong class="text-success">{{ "{:,}".format(r['balance'] or 0) }} تومان</strong></td>
                         <td>
@@ -545,6 +573,19 @@
                                                     <label class="form-label">آیدی عددی تلگرام:</label>
                                                     <input type="number" name="telegram_id" class="form-control" value="{{ r['telegram_id'] or '' }}" placeholder="مثال: 123456789">
                                                 </div>
+                                                <div class="mb-3 border p-2 rounded bg-light">
+                                                    <label class="form-label fw-bold small text-primary"><i class="fas fa-server me-1"></i> تنظیمات ادمین اختصاصی در هیدیفای:</label>
+                                                    <div class="input-group input-group-sm mb-2">
+                                                        <span class="input-group-text font-monospace" style="font-size: 0.75rem;">Admin UUID</span>
+                                                        <input type="text" name="hiddify_admin_uuid" class="form-control font-monospace" value="{{ r.get('hiddify_admin_uuid') or '' }}" placeholder="شناسه Admin UUID در هیدیفای">
+                                                    </div>
+                                                    <div class="form-check form-switch small">
+                                                        <input class="form-check-input" type="checkbox" name="auto_create_hiddify_admin" id="autoHiddifyEdit{{ r['id'] }}">
+                                                        <label class="form-check-label text-muted" for="autoHiddifyEdit{{ r['id'] }}">
+                                                            در صورت خالی بودن شناسه، به صورت خودکار یک ادمین در هیدیفای بساز
+                                                        </label>
+                                                    </div>
+                                                </div>
                                             </div>
                                             <div class="modal-footer">
                                                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
@@ -559,7 +600,7 @@
                     {% endfor %}
                     {% if not resellers %}
                     <tr>
-                        <td colspan="9" class="text-center py-4 text-muted">هنوز هیچ نماینده‌ای ثبت نشده است.</td>
+                        <td colspan="11" class="text-center py-4 text-muted">هنوز هیچ نماینده‌ای ثبت نشده است.</td>
                     </tr>
                     {% endif %}
                 </tbody>
@@ -606,10 +647,52 @@
                         <label class="form-label">آیدی عددی تلگرام (اختیاری برای نوتیفیکیشن):</label>
                         <input type="number" name="telegram_id" class="form-control" placeholder="مثال: 123456789">
                     </div>
+                    <div class="mb-3 border p-2 rounded bg-light">
+                        <label class="form-label fw-bold small text-primary"><i class="fas fa-server me-1"></i> اتصال به ادمین پنل هیدیفای:</label>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" name="auto_create_hiddify_admin" id="autoHiddifyAdd" checked>
+                            <label class="form-check-label fw-bold small text-success" for="autoHiddifyAdd">
+                                ⚡️ ایجاد خودکار ادمین اختصاصی (Agent) در پنل هیدیفای
+                            </label>
+                        </div>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text font-monospace" style="font-size: 0.75rem;">Admin UUID</span>
+                            <input type="text" name="hiddify_admin_uuid" class="form-control font-monospace" placeholder="اختیاری: در صورت داشتن ادمین از قبل، شناسه را وارد کنید">
+                        </div>
+                        <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">
+                            با فعال بودن این گزینه، کلیه مشتریان این نماینده در هیدیفای زیرمجموعه ادمین خودش ذخیره شده و در زمان بروز مشکل به سادگی قابل تفکیک و بازیابی هستند.
+                        </small>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
                     <button type="submit" class="btn btn-primary">ثبت و صدور پنل نماینده</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal بازیابی سراسری نمایندگان از هیدیفای -->
+<div class="modal fade" id="bulkRestoreModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('admin_hiddify_bulk_restore_resellers') }}">
+                <div class="modal-header bg-info bg-opacity-10">
+                    <h5 class="modal-title fw-bold text-info"><i class="fas fa-arrows-rotate me-2"></i> بازیابی و تفکیک سراسری مشتریان از هیدیفای</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted">
+                        این عملیات کلیه کاربران موجود در پنل سرور هیدیفای را فراخوانی کرده و بر اساس <strong>شناسه ادمین هر نماینده</strong> و یا <strong>تگ‌های اختصاصی</strong>، اشتراک‌ها را به صورت خودکار تفکیک کرده و در دیتابیس ربات بازیابی و همگام‌سازی می‌نماید.
+                    </p>
+                    <div class="alert alert-warning py-2 mb-0 small">
+                        <i class="fas fa-triangle-exclamation me-1"></i> این فرآیند هیچ کاربری را از هیدیفای حذف نمی‌کند، بلکه اطلاعات دیتابیس محلی را با هیدیفای منطبق می‌سازد.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-info text-white fw-bold">شروع فرآیند بازیابی</button>
                 </div>
             </form>
         </div>

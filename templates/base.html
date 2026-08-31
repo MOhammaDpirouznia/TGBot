@@ -902,6 +902,12 @@
                 </a>
                 {% endif %}
 
+                {% if session.get('admin_role') == 'super_admin' or has_permission('settings_manage') %}
+                <a class="nav-link {% if request.endpoint in ['bot_menu_settings', 'admin_bot_settings'] %}active{% endif %}" href="{{ url_for('bot_menu_settings') }}">
+                    <i class="fas fa-th-large text-primary"></i> چیدمان دکمه‌های ربات
+                </a>
+                {% endif %}
+
                 {% if session.get('admin_role') == 'super_admin' %}
                 <a class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">
                     <i class="fas fa-sliders"></i> تنظیمات
