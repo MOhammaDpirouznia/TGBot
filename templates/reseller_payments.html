@@ -1,132 +1,474 @@
 {% extends "base.html" %}
-{% block title %}فیش‌ها و پرداخت‌های مشتریان{% endblock %}
+{% block title %}سابقه پرداخت‌ها و تراکنش‌ها - پنل نماینده{% endblock %}
 
 {% block content %}
-<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
     <div>
-        <h1 class="page-title mb-0"><i class="fas fa-receipt text-primary me-2"></i> فیش‌ها و پرداخت‌های دریافتی</h1>
-        <p class="text-muted mb-0">بررسی، تایید آنی یا رد فیش‌های واریزی مشتریان ربات تلگرام اختصاصی شما</p>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a href="{{ url_for('reseller_dashboard') }}">پنل نماینده</a></li>
+                <li class="breadcrumb-item active" aria-current="page">سابقه پرداخت‌ها</li>
+            </ol>
+        </nav>
+        <h1 class="page-title d-flex align-items-center gap-2">
+            <i class="fas fa-file-invoice-dollar text-primary"></i>
+            سابقه پرداخت‌ها، فیش‌ها و تراکنش‌های کیف پول
+        </h1>
+        <p class="text-muted mb-0">مشاهده لحظه‌ای وضعیت تایید یا رد فیش‌های واریزی، پیش‌خرید بسته‌های اعتباری و گردش حساب</p>
     </div>
-    <div class="badge bg-success fs-6 py-2 px-3">
-        موجودی کیف پول شما: {{ "{:,}".format(stats['balance'] or 0) }} تومان
+    <div class="d-flex align-items-center flex-wrap gap-2">
+        <button type="button" class="btn btn-outline-info dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="fas fa-volume-high me-1"></i> تست صدای نوتیفیکیشن
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+            <li><a class="dropdown-item" href="javascript:void(0)" onclick="playResellerSuccessChime()"><i class="fas fa-check-circle text-success me-2"></i> صدای تایید فیش توسط مدیریت</a></li>
+            <li><a class="dropdown-item" href="javascript:void(0)" onclick="playResellerRejectChime()"><i class="fas fa-times-circle text-danger me-2"></i> صدای رد فیش توسط مدیریت</a></li>
+        </ul>
+        <a href="{{ url_for('reseller_payments_export') }}" class="btn btn-outline-success">
+            <i class="fas fa-file-excel me-1"></i> دریافت خروجی اکسل
+        </a>
+        <a href="{{ url_for('reseller_transactions') }}" class="btn btn-primary">
+            <i class="fas fa-plus-circle me-1"></i> خرید بسته اعتباری جدید
+        </a>
     </div>
 </div>
 
-<div class="card shadow-sm border-0">
-    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div class="d-flex align-items-center gap-2">
-            <h5 class="mb-0 fw-bold"><i class="fas fa-list-check text-primary me-2"></i>لیست فیش‌های واریزی مشتریان</h5>
-            <span class="badge bg-secondary">{{ transactions|length }} مورد</span>
+<!-- ۴ کارت شاخص‌های مالی نماینده -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-3 col-sm-6">
+        <div class="card border-0 shadow-sm p-3 h-100 bg-success bg-opacity-10 border-start border-success border-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-muted small d-block mb-1">موجودی کیف پول فعلی</span>
+                    <h4 class="fw-bold text-success font-monospace mb-0" id="resellerCurrentBalanceDisplay">{{ "{:,}".format(history.get('balance', 0)) }} تومان</h4>
+                </div>
+                <div class="bg-success text-white rounded-circle p-3 d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                    <i class="fas fa-coins fs-5"></i>
+                </div>
+            </div>
         </div>
+    </div>
+
+    <div class="col-lg-3 col-sm-6">
+        <div class="card border-0 shadow-sm p-3 h-100 bg-primary bg-opacity-10 border-start border-primary border-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-muted small d-block mb-1">مجموع کل شارژها و واریزی‌ها</span>
+                    <h4 class="fw-bold text-primary font-monospace mb-0">{{ "{:,}".format(history.get('total_deposited', 0)) }} تومان</h4>
+                </div>
+                <div class="bg-primary text-white rounded-circle p-3 d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                    <i class="fas fa-arrow-down fs-5"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-3 col-sm-6">
+        <div class="card border-0 shadow-sm p-3 h-100 bg-danger bg-opacity-10 border-start border-danger border-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-muted small d-block mb-1">مجموع خریدها و تمدیدها</span>
+                    <h4 class="fw-bold text-danger font-monospace mb-0">{{ "{:,}".format(history.get('total_spent', 0)) }} تومان</h4>
+                </div>
+                <div class="bg-danger text-white rounded-circle p-3 d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                    <i class="fas fa-cart-shopping fs-5"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-3 col-sm-6">
+        <div class="card border-0 shadow-sm p-3 h-100 bg-info bg-opacity-10 border-start border-info border-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-muted small d-block mb-1">درصد تخفیف همکاری</span>
+                    <h4 class="fw-bold text-info font-monospace mb-0">{{ history.get('discount_percent', 20) }}٪ تخفیف</h4>
+                </div>
+                <div class="bg-info text-white rounded-circle p-3 d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                    <i class="fas fa-percent fs-5"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- بخش اعلانات و هشدارهای اخیر مدیریت -->
+<div id="liveNotificationContainer">
+    {% for notif in notifications %}
+        {% if not notif['is_read'] %}
+        <div class="alert alert-{{ notif['type'] }} alert-dismissible fade show shadow-sm border-0 d-flex align-items-center gap-3 mb-3" role="alert">
+            <i class="fas fa-{{ 'check-circle' if notif['type'] == 'success' else ('times-circle' if notif['type'] == 'danger' else 'bell') }} fs-4"></i>
+            <div class="flex-grow-1">
+                <strong>{{ notif['title'] }}</strong>
+                <p class="mb-0 small mt-1">{{ notif['message'] }}</p>
+                <small class="text-muted opacity-75">{{ notif['created_at'][:16].replace('T', ' ') if notif['created_at'] else '' }}</small>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" onclick="markNotificationRead({{ notif['id'] }})" aria-label="Close"></button>
+        </div>
+        {% endif %}
+    {% endfor %}
+</div>
+
+<!-- تب‌های سوابق پرداخت‌ها و تراکنش‌های کیف پول -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <ul class="nav nav-pills card-header-pills" id="resellerPaymentsTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active fw-bold" id="receipt-txs-tab" data-bs-toggle="pill" data-bs-target="#receipt-txs-content" type="button" role="tab">
+                    <i class="fas fa-receipt me-1 text-warning"></i> فیش‌ها و سفارش‌های ثبت‌شده ({{ history.get('receipt_transactions', [])|length }})
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link fw-bold" id="wallet-txs-tab" data-bs-toggle="pill" data-bs-target="#wallet-txs-content" type="button" role="tab">
+                    <i class="fas fa-wallet me-1 text-primary"></i> تراکنش‌های کیف پول ({{ history.get('wallet_transactions', [])|length }})
+                </button>
+            </li>
+        </ul>
         <div class="table-search-wrapper">
             <i class="fas fa-search table-search-icon"></i>
-            <input type="text" class="form-control table-search-input" data-table="resellerPaymentsTable" placeholder="جستجو در فیش‌ها، مبالغ، یوزرنیم...">
-            <button type="button" class="table-search-clear" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
+            <input type="text" class="form-control table-search-input" id="tableFilterInput" placeholder="جستجو در فیش‌ها، مبالغ، وضعیت، کد رهگیری...">
         </div>
     </div>
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0" id="resellerPaymentsTable">
-                <thead>
-                    <tr>
-                        <th>کد سفارش</th>
-                        <th>مشتری</th>
-                        <th>پلن درخواستی</th>
-                        <th>مبلغ فیش</th>
-                        <th>تصویر فیش</th>
-                        <th>وضعیت</th>
-                        <th>تاریخ ثبت</th>
-                        <th>عملیات</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for tx in transactions %}
-                    <tr class="{% if tx.get('status') == 'pending' %}table-warning bg-opacity-10{% endif %}">
-                        <td><code>#{{ tx['id'] }}</code></td>
-                        <td>
-                            <div class="d-flex align-items-center gap-2">
-                                <i class="fab fa-telegram text-primary fs-5"></i>
-                                <div>
-                                    <strong>{{ tx['username'] or 'کاربر تلگرام' }}</strong>
-                                    <div class="text-muted small"><code>ID: {{ tx['user_id'] }}</code></div>
-                                </div>
-                            </div>
-                        </td>
-                        <td><span class="badge bg-primary fs-6">{{ tx['plan_name'] or 'پلن' }}</span></td>
-                        <td><strong class="text-success">{{ "{:,}".format(tx['amount'] or 0) }} تومان</strong></td>
-                        <td>
-                            {% if tx.get('receipt_image') %}
-                                <a href="https://api.telegram.org/file/bot{{ session.get('bot_token', '') }}/{{ tx['receipt_image'] }}" target="_blank" class="btn btn-outline-info btn-sm" title="مشاهده فیش">
-                                    <i class="fas fa-image me-1"></i> مشاهده عکس
-                                </a>
-                            {% else %}
-                                <span class="text-muted small">بدون تصویر</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if tx.get('status') == 'approved' %}
-                                <span class="badge bg-success bg-opacity-10 text-success border border-success">تایید شده</span>
-                            {% elif tx.get('status') == 'rejected' %}
-                                <span class="badge bg-danger bg-opacity-10 text-danger border border-danger">رد شده</span>
-                            {% else %}
-                                <span class="badge bg-warning bg-opacity-10 text-warning border border-warning d-flex align-items-center gap-1" style="width: fit-content;">
-                                    <span class="pulse-indicator" style="background-color: #f59e0b;"></span> در انتظار تایید
-                                </span>
-                            {% endif %}
-                        </td>
-                        <td><small class="text-muted">{{ tx['created_at'][:16] if tx['created_at'] else '-' }}</small></td>
-                        <td>
-                            {% if tx.get('status') == 'pending' %}
-                                <div class="btn-group btn-group-sm">
-                                    <form action="{{ url_for('reseller_payment_approve', payment_id=tx['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از تایید این فیش و صدور آنی اکانت برای خریدار اطمینان دارید؟');">
-                                        <button type="submit" class="btn btn-success" title="تایید پرداخت و صدور کانفیگ">
-                                            <i class="fas fa-check me-1"></i> تایید و صدور
-                                        </button>
-                                    </form>
-                                    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#rejectModal{{ tx['id'] }}" title="رد فیش">
-                                        <i class="fas fa-times me-1"></i> رد
-                                    </button>
-                                </div>
 
-                                <!-- مدال رد فیش -->
-                                <div class="modal fade" id="rejectModal{{ tx['id'] }}" tabindex="-1" aria-hidden="true">
-                                    <div class="modal-dialog">
-                                        <div class="modal-content text-start">
-                                            <form action="{{ url_for('reseller_payment_reject', payment_id=tx['id']) }}" method="POST">
-                                                <div class="modal-header bg-danger bg-opacity-10 py-3">
-                                                    <h5 class="modal-title fw-bold text-danger"><i class="fas fa-triangle-exclamation me-2"></i>رد فیش سفارش #{{ tx['id'] }}</h5>
-                                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                                </div>
-                                                <div class="modal-body p-4">
-                                                    <p class="text-muted small mb-3">لطفاً دلیل رد فیش را مشخص نمایید. این پیام به تلگرام خریدار ارسال خواهد شد.</p>
-                                                    <label class="form-label fw-bold">علت رد پرداخت:</label>
-                                                    <input type="text" class="form-control" name="reason" value="مبلغ واریزی ناخوانا یا اشتباه است" required>
-                                                </div>
-                                                <div class="modal-footer">
-                                                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">انصراف</button>
-                                                    <button type="submit" class="btn btn-danger">رد پرداخت و اطلاع به کاربر</button>
-                                                </div>
-                                            </form>
+    <div class="card-body p-0">
+        <div class="tab-content" id="resellerPaymentsTabContent">
+            <!-- تب ۱: فیش‌ها و سفارش‌های ثبت‌شده -->
+            <div class="tab-pane fade show active" id="receipt-txs-content" role="tabpanel">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0 sortable-table" id="resellerReceiptTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-3 sortable-th" data-column="0" style="cursor: pointer;">کد سفارش <i class="fas fa-sort text-muted ms-1"></i></th>
+                                <th class="sortable-th" data-column="1" style="cursor: pointer;">بسته / پلن <i class="fas fa-sort text-muted ms-1"></i></th>
+                                <th class="sortable-th" data-column="2" style="cursor: pointer;">مبلغ پرداختی <i class="fas fa-sort text-muted ms-1"></i></th>
+                                <th class="sortable-th" data-column="3" style="cursor: pointer;">روش پرداخت <i class="fas fa-sort text-muted ms-1"></i></th>
+                                <th>کد پیگیری / ارجاع</th>
+                                <th class="sortable-th" data-column="5" style="cursor: pointer;">وضعیت سفارش <i class="fas fa-sort text-muted ms-1"></i></th>
+                                <th>تصویر فیش</th>
+                                <th class="sortable-th" data-column="7" style="cursor: pointer;">تاریخ ثبت <i class="fas fa-sort text-muted ms-1"></i></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in history.get('receipt_transactions', []) %}
+                            <tr>
+                                <td class="ps-3" data-value="{{ r['id'] }}"><code class="font-monospace">{{ r['order_id'] }}</code></td>
+                                <td data-value="{{ r['plan_name'] or '' }}">
+                                    {% if r.get('gateway') == 'bundle_reseller' or (r.get('order_id') and r['order_id'].startswith('R_BUNDLE')) %}
+                                        <span class="badge mb-1 d-inline-block" style="background: linear-gradient(135deg, #7c3aed, #db2777); color: #fff; font-size: 0.72rem;">
+                                            <i class="fas fa-crown me-1 text-warning"></i> بسته اعتباری
+                                        </span>
+                                    {% endif %}
+                                    <div class="fw-bold text-dark">{{ r['plan_name'] or '-' }}</div>
+                                </td>
+                                <td data-value="{{ r['amount'] or 0 }}">
+                                    <strong class="text-primary font-monospace">{{ "{:,}".format(r['amount'] or 0) }} تومان</strong>
+                                </td>
+                                <td data-value="{{ r['gateway'] or '' }}">
+                                    <span class="badge bg-light text-dark border">{{ r['gateway']|gateway_name }}</span>
+                                </td>
+                                <td>
+                                    {% if r['tracking_code'] %}
+                                        <code class="text-secondary font-monospace">{{ r['tracking_code'] }}</code>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td data-value="{{ r['status'] }}">
+                                    {% if r['status'] in ['approved', 'completed'] %}
+                                        <span class="badge bg-success py-1 px-2"><i class="fas fa-check-circle me-1"></i> تایید شده</span>
+                                    {% elif r['status'] == 'pending' %}
+                                        <span class="badge bg-warning text-dark py-1 px-2"><i class="fas fa-clock me-1"></i> در انتظار تایید مدیریت</span>
+                                    {% elif r['status'] == 'revoked' %}
+                                        <span class="badge bg-secondary py-1 px-2"><i class="fas fa-ban me-1"></i> ابطال‌شده</span>
+                                    {% else %}
+                                        <div class="d-inline-flex flex-column gap-1">
+                                            <span class="badge bg-danger py-1 px-2"><i class="fas fa-times-circle me-1"></i> رد شده</span>
+                                            {% if r.get('rejection_reason') %}
+                                                <small class="text-danger fw-bold" style="font-size: 0.75rem;">علت: {{ r['rejection_reason'] }}</small>
+                                            {% endif %}
                                         </div>
-                                    </div>
-                                </div>
-                            {% else %}
-                                <span class="text-muted small">پردازش شده</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if r['receipt_image'] and r['receipt_file_type'] == 'web_upload' %}
+                                        <a href="/data/receipts/{{ r['receipt_image'] }}" target="_blank" class="btn btn-sm btn-outline-secondary py-0 px-2" title="مشاهده تصویر فیش">
+                                            <i class="fas fa-image me-1"></i> مشاهده فیش
+                                        </a>
+                                    {% else %}
+                                        <span class="text-muted small">-</span>
+                                    {% endif %}
+                                </td>
+                                <td data-value="{{ r['created_at'] or '' }}"><small class="text-muted">{{ r['created_at'][:16].replace('T', ' ') if r['created_at'] else '-' }}</small></td>
+                            </tr>
+                            {% endfor %}
+                            {% if not history.get('receipt_transactions') %}
+                            <tr>
+                                <td colspan="8" class="text-center py-4 text-muted">هیچ فیش یا سفارشی تاکنون ثبت نشده است.</td>
+                            </tr>
                             {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                    {% if not transactions %}
-                    <tr>
-                        <td colspan="8" class="text-center py-5 text-muted">
-                            <i class="fas fa-inbox fs-1 d-block mb-2 text-secondary opacity-50"></i>
-                            هنوز هیچ فیش پرداختی از سمت مشتریان ربات شما ثبت نشده است.
-                        </td>
-                    </tr>
-                    {% endif %}
-                </tbody>
-            </table>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- تب ۲: تراکنش‌های کیف پول -->
+            <div class="tab-pane fade" id="wallet-txs-content" role="tabpanel">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0 sortable-table" id="resellerWalletTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-3 sortable-th" data-column="0" style="cursor: pointer;">شناسه <i class="fas fa-sort text-muted ms-1"></i></th>
+                                <th class="sortable-th" data-column="1" style="cursor: pointer;">نوع تراکنش <i class="fas fa-sort text-muted ms-1"></i></th>
+                                <th class="sortable-th" data-column="2" style="cursor: pointer;">مبلغ <i class="fas fa-sort text-muted ms-1"></i></th>
+                                <th class="sortable-th" data-column="3" style="cursor: pointer;">پلن / اکانت هیدیفای <i class="fas fa-sort text-muted ms-1"></i></th>
+                                <th>توضیحات</th>
+                                <th class="sortable-th" data-column="5" style="cursor: pointer;">تاریخ و زمان <i class="fas fa-sort text-muted ms-1"></i></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for tx in history.get('wallet_transactions', []) %}
+                            <tr>
+                                <td class="ps-3" data-value="{{ tx['id'] }}"><code class="font-monospace">#{{ tx['id'] }}</code></td>
+                                <td data-value="{{ tx['type'] }}">
+                                    {% if tx['type'] == 'deposit' %}
+                                        <span class="badge bg-success"><i class="fas fa-arrow-down me-1"></i> شارژ کیف پول</span>
+                                    {% elif tx['type'] == 'refund' %}
+                                        <span class="badge bg-info text-dark"><i class="fas fa-rotate-left me-1"></i> استرداد وجه</span>
+                                    {% elif tx['type'] == 'renewal' %}
+                                        <span class="badge bg-warning text-dark"><i class="fas fa-arrows-rotate me-1"></i> تمدید اشتراک</span>
+                                    {% else %}
+                                        <span class="badge bg-danger"><i class="fas fa-arrow-up me-1"></i> خرید اشتراک</span>
+                                    {% endif %}
+                                </td>
+                                <td data-value="{{ tx['amount'] or 0 }}">
+                                    <strong class="{{ 'text-success' if (tx['type'] in ['deposit', 'refund']) else 'text-danger' }} font-monospace">
+                                        {{ '+' if (tx['type'] in ['deposit', 'refund']) else '-' }}{{ "{:,}".format(tx['amount'] or 0) }} تومان
+                                    </strong>
+                                </td>
+                                <td data-value="{{ tx['plan_name'] or '' }}">
+                                    {{ tx['plan_name'] or '-' }}
+                                    {% if tx['account_name'] and tx['account_name'] != '-' %}
+                                        <code class="ms-1">{{ tx['account_name'] }}</code>
+                                    {% endif %}
+                                </td>
+                                <td><small class="text-muted">{{ tx['description'] or '-' }}</small></td>
+                                <td data-value="{{ tx['created_at'] or '' }}"><small class="text-muted">{{ tx['created_at'][:16].replace('T', ' ') if tx['created_at'] else '-' }}</small></td>
+                            </tr>
+                            {% endfor %}
+                            {% if not history.get('wallet_transactions') %}
+                            <tr>
+                                <td colspan="6" class="text-center py-4 text-muted">تراکنشی در کیف پول ثبت نشده است.</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 </div>
+
+<script>
+// ─── سیستم سنتز صدای نوتیفیکیشن با Web Audio API ───
+let audioCtx = null;
+function getAudioContext() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+    return audioCtx;
+}
+
+// صدای تایید فیش (ملودی صعودی دلنشین و شاد)
+function playResellerSuccessChime() {
+    try {
+        const ctx = getAudioContext();
+        const now = ctx.currentTime;
+        const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+        
+        notes.forEach((freq, index) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = "sine";
+            osc.frequency.setValueAtTime(freq, now + (index * 0.1));
+            
+            gain.gain.setValueAtTime(0, now + (index * 0.1));
+            gain.gain.linearRampToValueAtTime(0.2, now + (index * 0.1) + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + (index * 0.1) + 0.35);
+            
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            
+            osc.start(now + (index * 0.1));
+            osc.stop(now + (index * 0.1) + 0.4);
+        });
+    } catch(e) {
+        console.warn("Audio synthesis error:", e);
+    }
+}
+
+// صدای رد فیش (چایم هشداری ملایم)
+function playResellerRejectChime() {
+    try {
+        const ctx = getAudioContext();
+        const now = ctx.currentTime;
+        const notes = [392.00, 329.63, 261.63]; // G4, E4, C4
+        
+        notes.forEach((freq, index) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = "triangle";
+            osc.frequency.setValueAtTime(freq, now + (index * 0.14));
+            
+            gain.gain.setValueAtTime(0, now + (index * 0.14));
+            gain.gain.linearRampToValueAtTime(0.25, now + (index * 0.14) + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + (index * 0.14) + 0.38);
+            
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            
+            osc.start(now + (index * 0.14));
+            osc.stop(now + (index * 0.14) + 0.4);
+        });
+    } catch(e) {
+        console.warn("Audio synthesis error:", e);
+    }
+}
+
+// علامت‌گذاری اعلان به عنوان خوانده‌شده
+function markNotificationRead(notifId) {
+    fetch("{{ url_for('api_reseller_notifications_mark_read') }}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notification_id: notifId })
+    });
+}
+
+// ─── پایش بلادرنگ وضعیت فیش‌ها (Polling هر ۱۵ ثانیه) ───
+let knownTxStatuses = {};
+document.addEventListener("DOMContentLoaded", function () {
+    // ذخیره وضعیت‌های اولیه
+    document.querySelectorAll("#resellerReceiptTable tbody tr").forEach(tr => {
+        const orderIdEl = tr.querySelector("td:first-child code");
+        const statusEl = tr.querySelector("td[data-value]");
+        if (orderIdEl) {
+            const oid = orderIdEl.innerText.trim();
+            const st = tr.children[5] ? tr.children[5].getAttribute("data-value") : "";
+            knownTxStatuses[oid] = st;
+        }
+    });
+
+    setInterval(function() {
+        fetch("{{ url_for('api_reseller_notifications_poll') }}")
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) return;
+                
+                // به‌روزرسانی موجودی کیف پول در صفحه
+                const balEl = document.getElementById("resellerCurrentBalanceDisplay");
+                if (balEl && data.current_balance !== undefined) {
+                    balEl.innerText = Number(data.current_balance).toLocaleString("fa-IR") + " تومان";
+                }
+
+                // بررسی تغییر وضعیت فیش‌ها
+                if (data.recent_txs && data.recent_txs.length > 0) {
+                    let hasUpdate = false;
+                    data.recent_txs.forEach(tx => {
+                        const prevSt = knownTxStatuses[tx.order_id];
+                        if (prevSt && prevSt === "pending" && (tx.status === "approved" || tx.status === "rejected")) {
+                            hasUpdate = true;
+                            knownTxStatuses[tx.order_id] = tx.status;
+
+                            if (tx.status === "approved") {
+                                playResellerSuccessChime();
+                                showToastAlert("✅ فیش شما تایید شد!", `سفارش «${tx.plan_name}» به مبلغ ${Number(tx.amount).toLocaleString("fa-IR")} تومان تایید و کیف پول شارژ شد.`, "success");
+                            } else if (tx.status === "rejected") {
+                                playResellerRejectChime();
+                                showToastAlert("❌ فیش شما رد شد", `سفارش «${tx.plan_name}» توسط مدیریت تایید نشد. ${tx.rejection_reason ? 'علت: ' + tx.rejection_reason : ''}`, "danger");
+                            }
+                        } else if (!prevSt) {
+                            knownTxStatuses[tx.order_id] = tx.status;
+                        }
+                    });
+                }
+            })
+            .catch(err => console.debug("Poll error:", err));
+    }, 15000);
+});
+
+function showToastAlert(title, message, type) {
+    const cont = document.getElementById("liveNotificationContainer");
+    if (!cont) return;
+    const alertDiv = document.createElement("div");
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show shadow-sm border-0 d-flex align-items-center gap-3 mb-3 animate__animated animate__fadeInDown`;
+    alertDiv.innerHTML = `
+        <i class="fas fa-${type === 'success' ? 'check-circle' : 'times-circle'} fs-4"></i>
+        <div class="flex-grow-1">
+            <strong>${title}</strong>
+            <p class="mb-0 small mt-1">${message}</p>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+    cont.prepend(alertDiv);
+}
+
+// ─── سورت هوشمند ستون‌ها و فیلتر جستجو ───
+document.addEventListener("DOMContentLoaded", function () {
+    const searchInput = document.getElementById("tableFilterInput");
+    if (searchInput) {
+        searchInput.addEventListener("keyup", function () {
+            const query = this.value.toLowerCase().trim();
+            const activeTab = document.querySelector(".tab-pane.active");
+            if (!activeTab) return;
+            activeTab.querySelectorAll("tbody tr").forEach(row => {
+                const text = row.innerText.toLowerCase();
+                row.style.display = text.includes(query) ? "" : "none";
+            });
+        });
+    }
+
+    document.querySelectorAll(".sortable-th").forEach(header => {
+        header.addEventListener("click", function () {
+            const table = header.closest("table");
+            const tbody = table.querySelector("tbody");
+            const colIndex = parseInt(header.getAttribute("data-column"));
+            const currentDir = header.getAttribute("data-dir") === "asc" ? "desc" : "asc";
+            
+            table.querySelectorAll(".sortable-th").forEach(th => {
+                th.removeAttribute("data-dir");
+                const icon = th.querySelector("i");
+                if (icon) icon.className = "fas fa-sort text-muted ms-1";
+            });
+
+            header.setAttribute("data-dir", currentDir);
+            const icon = header.querySelector("i");
+            if (icon) {
+                icon.className = currentDir === "asc" ? "fas fa-sort-up text-primary ms-1" : "fas fa-sort-down text-primary ms-1";
+            }
+
+            const rows = Array.from(tbody.querySelectorAll("tr"));
+            rows.sort((a, b) => {
+                const cellA = a.children[colIndex];
+                const cellB = b.children[colIndex];
+                if (!cellA || !cellB) return 0;
+                
+                let valA = cellA.getAttribute("data-value") !== null ? cellA.getAttribute("data-value") : cellA.innerText.trim();
+                let valB = cellB.getAttribute("data-value") !== null ? cellB.getAttribute("data-value") : cellB.innerText.trim();
+
+                const numA = parseFloat(valA);
+                const numB = parseFloat(valB);
+
+                if (!isNaN(numA) && !isNaN(numB)) {
+                    return currentDir === "asc" ? numA - numB : numB - numA;
+                }
+                return currentDir === "asc" ? valA.localeCompare(valB, "fa") : valB.localeCompare(valA, "fa");
+            });
+
+            rows.forEach(r => tbody.appendChild(r));
+        });
+    });
+});
+</script>
 {% endblock %}

@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}مدیریت فیش‌های پرداخت مشتریان - پنل نماینده{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a href="{{ url_for('reseller_dashboard') }}">پنل نماینده</a></li>
+                <li class="breadcrumb-item active" aria-current="page">فیش‌های مشتریان</li>
+            </ol>
+        </nav>
+        <h1 class="page-title d-flex align-items-center gap-2">
+            <i class="fas fa-receipt text-warning"></i>
+            مدیریت و تایید فیش‌های واریزی مشتریان
+        </h1>
+        <p class="text-muted mb-0">بررسی و صدور خودکار اشتراک‌های VPN پس از تایید فیش واریز کارت به کارت مشتریان ربات</p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <a href="{{ url_for('reseller_payments') }}" class="btn btn-outline-primary">
+            <i class="fas fa-file-invoice-dollar me-1"></i> سابقه پرداخت‌ها و شارژهای من
+        </a>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h5 class="mb-0 fw-bold"><i class="fas fa-list-check text-primary me-2"></i>لیست فیش‌های مشتریان</h5>
+        <div class="table-search-wrapper">
+            <i class="fas fa-search table-search-icon"></i>
+            <input type="text" class="form-control table-search-input" id="tableFilterInput" placeholder="جستجو در فیش‌ها...">
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" id="customerPaymentsTable">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">سفارش</th>
+                        <th>کاربر تلگرام</th>
+                        <th>پلن درخواستی</th>
+                        <th>مبلغ</th>
+                        <th>روش پرداخت</th>
+                        <th>کد پیگیری</th>
+                        <th>وضعیت</th>
+                        <th>تصویر فیش</th>
+                        <th>تاریخ ثبت</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tx in transactions %}
+                    <tr>
+                        <td class="ps-3"><code class="font-monospace">#{{ tx['id'] }}</code></td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <img src="{{ avatar_url(tx['user_id'] or tx['username'] or 'User') }}" 
+                                     alt="User" class="rounded-circle border" style="width: 32px; height: 32px; object-fit: cover;">
+                                <div>
+                                    <div class="fw-bold">{{ tx['username'] or 'کاربر' }}</div>
+                                    <small class="text-muted font-monospace">{{ tx['user_id'] }}</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td><span class="badge bg-primary-subtle text-primary border border-primary px-2 py-1">{{ tx['plan_name'] }}</span></td>
+                        <td><strong class="text-success font-monospace">{{ "{:,}".format(tx['amount'] or 0) }} تومان</strong></td>
+                        <td><span class="badge bg-light text-dark border">{{ tx['gateway']|gateway_name }}</span></td>
+                        <td>
+                            {% if tx['tracking_code'] %}
+                                <code class="text-secondary">{{ tx['tracking_code'] }}</code>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if tx['status'] == 'approved' %}
+                                <span class="badge bg-success"><i class="fas fa-check me-1"></i> تایید شده</span>
+                            {% elif tx['status'] == 'pending' %}
+                                <span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i> در انتظار تایید</span>
+                            {% else %}
+                                <span class="badge bg-danger"><i class="fas fa-times me-1"></i> رد شده</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if tx['receipt_image'] %}
+                                <a href="/data/receipts/{{ tx['receipt_image'] }}" target="_blank" class="btn btn-sm btn-outline-secondary py-0 px-2">
+                                    <i class="fas fa-image me-1"></i> مشاهده
+                                </a>
+                            {% else %}
+                                <span class="text-muted small">-</span>
+                            {% endif %}
+                        </td>
+                        <td><small class="text-muted">{{ tx['created_at'][:16].replace('T', ' ') if tx['created_at'] else '-' }}</small></td>
+                        <td>
+                            {% if tx['status'] == 'pending' %}
+                                <div class="btn-group btn-group-sm">
+                                    <form action="{{ url_for('reseller_payment_approve', payment_id=tx['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از تایید این فیش و صدور اشتراک برای مشتری اطمینان دارید؟');">
+                                        <button type="submit" class="btn btn-success btn-sm" title="تایید و صدور اشتراک">
+                                            <i class="fas fa-check"></i> تایید
+                                        </button>
+                                    </form>
+                                    <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#rejectModal{{ tx['id'] }}" title="رد فیش">
+                                        <i class="fas fa-times"></i> رد
+                                    </button>
+                                </div>
+
+                                <!-- Modal رد فیش مشتری -->
+                                <div class="modal fade" id="rejectModal{{ tx['id'] }}" tabindex="-1" aria-hidden="true">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content text-start">
+                                            <form action="{{ url_for('reseller_payment_reject', payment_id=tx['id']) }}" method="POST">
+                                                <div class="modal-header bg-danger text-white py-2">
+                                                    <h6 class="modal-title fw-bold">رد فیش سفارش #{{ tx['id'] }}</h6>
+                                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                                </div>
+                                                <div class="modal-body p-3">
+                                                    <label class="form-label small fw-bold">علت رد فیش (برای مشتری ارسال می‌شود):</label>
+                                                    <textarea class="form-control" name="reason" rows="3" required placeholder="مثال: فیش ناخوانا است یا مبلغ واریزی مغایرت دارد..."></textarea>
+                                                </div>
+                                                <div class="modal-footer py-2">
+                                                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">انصراف</button>
+                                                    <button type="submit" class="btn btn-danger btn-sm">رد قطعی فیش</button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% else %}
+                                <span class="text-muted small">-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not transactions %}
+                    <tr>
+                        <td colspan="10" class="text-center py-4 text-muted">فیش پرداختی از سمت مشتریان ثبت نشده است.</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

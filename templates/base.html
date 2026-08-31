@@ -635,7 +635,7 @@
 
                 {% if not sub_role or sub_role in ['partner', 'finance'] %}
                 <a class="nav-link {% if request.endpoint == 'reseller_payments' %}active{% endif %}" href="{{ url_for('reseller_payments') }}">
-                    <i class="fas fa-receipt text-warning"></i> فیش‌ها و تایید پرداخت
+                    <i class="fas fa-file-invoice-dollar text-warning"></i> سابقه پرداخت‌ها و فیش‌ها
                 </a>
                 {% endif %}
 
@@ -674,7 +674,7 @@
 
                 {% if not sub_role or sub_role in ['partner', 'finance'] %}
                 <a class="nav-link {% if request.endpoint == 'reseller_transactions' %}active{% endif %}" href="{{ url_for('reseller_transactions') }}">
-                    <i class="fas fa-wallet"></i> تراکنش‌ها و شارژ
+                    <i class="fas fa-wallet text-success"></i> بسته‌ها و شارژ اعتبار
                 </a>
                 <a class="nav-link {% if request.endpoint == 'reseller_reports' %}active{% endif %}" href="{{ url_for('reseller_reports') }}">
                     <i class="fas fa-chart-line"></i> گزارشات و هوش مالی
