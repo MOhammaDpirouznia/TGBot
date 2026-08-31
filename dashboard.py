@@ -431,12 +431,12 @@ def smart_subscription_proxy(sub_uuid: str, sub_path: str = ""):
 
 # ─── هلپرهای ارتباط همگام با تلگرام و هیدیفای (Sync Helpers) ───
 
-def send_telegram_msg(chat_id: int, text: str, reply_markup=None, parse_mode: str = "HTML") -> bool:
-    """ارسال پیام تلگرام به صورت همگام از پنل وب"""
-    bot_token = get_bot_token()
-    if not bot_token or not chat_id:
+def send_telegram_msg(chat_id: int, text: str, reply_markup=None, parse_mode: str = "HTML", bot_token: str = None) -> bool:
+    """ارسال پیام تلگرام به صورت همگام از پنل وب با پشتیبانی از ربات اصلی یا ربات اختصاصی نماینده"""
+    active_token = bot_token or get_bot_token()
+    if not active_token or not chat_id:
         return False
-    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    url = f"https://api.telegram.org/bot{active_token}/sendMessage"
     payload = {
         "chat_id": chat_id,
         "text": text,
