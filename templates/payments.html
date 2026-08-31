@@ -160,8 +160,8 @@
                                     <i class="fas fa-credit-card me-1"></i>کارت به کارت نماینده
                                 </span>
                             {% else %}
-                                <span class="badge bg-light text-dark border">
-                                    <i class="fas fa-credit-card me-1 text-secondary"></i>{{ tx['gateway']|gateway_name }}
+                                <span class="badge bg-light text-dark border shadow-sm">
+                                    <i class="fas fa-credit-card me-1 text-primary"></i>{{ tx['gateway']|gateway_name }}
                                 </span>
                             {% endif %}
                         </td>
@@ -172,15 +172,27 @@
                                 <span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i> در انتظار بررسی</span>
                             {% elif tx['status'] == 'approved' or tx['status'] == 'completed' %}
                                 <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i> تایید شده</span>
+                                {% if tx.get('processed_by') %}
+                                    <div class="text-muted small mt-1" style="font-size: 11px;" title="تایید شده توسط"><i class="fas fa-user-check text-success me-1"></i>{{ tx['processed_by'] }}</div>
+                                {% endif %}
                             {% elif tx['status'] == 'revoked' %}
                                 <span class="badge bg-secondary" title="{{ tx['revoke_reason'] or 'باطل شده توسط مدیر ارشد' }}">
                                     <i class="fas fa-ban me-1"></i> ابطال‌شده
                                 </span>
+                                {% if tx.get('revoked_by') or tx.get('processed_by') %}
+                                    <div class="text-muted small mt-1" style="font-size: 11px;"><i class="fas fa-user-slash text-danger me-1"></i>{{ tx['revoked_by'] or tx['processed_by'] }}</div>
+                                {% endif %}
                             {% else %}
-                                <span class="badge bg-danger"><i class="fas fa-times-circle me-1"></i> رد شده</span>
+                                <span class="badge bg-danger" title="{{ tx['rejection_reason'] or '' }}"><i class="fas fa-times-circle me-1"></i> رد شده</span>
+                                {% if tx.get('processed_by') %}
+                                    <div class="text-muted small mt-1" style="font-size: 11px;"><i class="fas fa-user-xmark text-danger me-1"></i>{{ tx['processed_by'] }}</div>
+                                {% endif %}
                             {% endif %}
                         </td>
-                        <td data-value="{{ tx['created_at'] or '' }}"><small class="text-muted">{{ tx['created_at'][:16].replace('T', ' ') if tx['created_at'] else '-' }}</small></td>
+                        <td data-value="{{ tx['created_at'] or '' }}">
+                            <div class="fw-bold font-monospace small" style="direction: ltr; text-align: right;">{{ tx['created_at']|shamsi_date }}</div>
+                            <small class="text-muted font-monospace d-block" style="font-size: 11px; direction: ltr; text-align: right;">{{ tx['created_at']|gregorian_clean }}</small>
+                        </td>
                         <td class="text-end pe-3">
                             <div class="btn-group btn-group-sm">
                                 <!-- دکمه برجسته مشاهده جزئیات کامل -->
@@ -257,9 +269,13 @@
                             </div>
                             <div class="list-group-item d-flex justify-content-between align-items-center">
                                 <span class="text-muted">روش پرداخت / درگاه:</span>
-                                <span class="badge bg-info-subtle text-info border border-info fs-6">
+                                <span class="badge bg-primary-subtle text-primary border border-primary fs-6">
                                     <i class="fas fa-credit-card me-1"></i>{{ tx['gateway']|gateway_name }}
                                 </span>
+                            </div>
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="text-muted">نوع خرید:</span>
+                                <span>{{ '🔄 تمدید اشتراک' if tx['is_renewal'] else '🛒 خرید جدید' }}</span>
                             </div>
                         </div>
                     </div>
@@ -281,8 +297,24 @@
                                 </div>
                             </div>
                             <div class="list-group-item d-flex justify-content-between align-items-center">
-                                <span class="text-muted">نوع خرید:</span>
-                                <span>{{ '🔄 تمدید اشتراک' if tx['is_renewal'] else '🛒 خرید جدید' }}</span>
+                                <span class="text-muted">مدیر بررسی‌کننده:</span>
+                                <div>
+                                    {% if tx['status'] in ['approved', 'completed'] %}
+                                        <span class="badge bg-success-subtle text-success border border-success">
+                                            <i class="fas fa-user-check me-1"></i>{{ tx['processed_by'] or 'مدیر ارشد' }}
+                                        </span>
+                                    {% elif tx['status'] == 'rejected' %}
+                                        <span class="badge bg-danger-subtle text-danger border border-danger">
+                                            <i class="fas fa-user-xmark me-1"></i>{{ tx['processed_by'] or 'مدیر ارشد' }}
+                                        </span>
+                                    {% elif tx['status'] == 'revoked' %}
+                                        <span class="badge bg-secondary-subtle text-secondary border border-secondary">
+                                            <i class="fas fa-user-slash me-1"></i>{{ tx['revoked_by'] or tx['processed_by'] or 'مدیر ارشد' }}
+                                        </span>
+                                    {% else %}
+                                        <span class="text-muted small">هنوز بررسی نشده</span>
+                                    {% endif %}
+                                </div>
                             </div>
                             <div class="list-group-item d-flex justify-content-between align-items-center">
                                 <span class="text-muted">نام اکانت متصل:</span>
@@ -294,13 +326,59 @@
                                 <code dir="ltr">{{ tx['card_number'] }}</code>
                             </div>
                             {% endif %}
-                            <div class="list-group-item d-flex justify-content-between align-items-center">
-                                <span class="text-muted">تاریخ و زمان ثبت:</span>
-                                <small class="text-muted">{{ tx['created_at'] or '-' }}</small>
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <span class="text-muted"><i class="fas fa-calendar-plus me-1 text-primary"></i>زمان ثبت رسید:</span>
+                                    <strong class="text-dark font-monospace small">{{ tx['created_at']|shamsi_date("%Y/%m/%d - %H:%M:%S") }}</strong>
+                                </div>
+                                <div class="text-end">
+                                    <small class="text-muted font-monospace" dir="ltr" style="font-size: 11px;">میلادی: {{ tx['created_at']|gregorian_clean(True) }}</small>
+                                </div>
                             </div>
+                            {% if tx['status'] != 'pending' and (tx['processed_at'] or tx['updated_at']) %}
+                            <div class="list-group-item bg-light bg-opacity-50">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <span class="text-muted"><i class="fas fa-calendar-check me-1 text-success"></i>زمان بررسی / اقدام:</span>
+                                    <strong class="text-success font-monospace small">{{ (tx['processed_at'] or tx['updated_at'])|shamsi_date("%Y/%m/%d - %H:%M:%S") }}</strong>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    {% set d_time = format_diff_time(tx['created_at'], tx['processed_at'] or tx['updated_at']) %}
+                                    {% if d_time %}
+                                        <span class="badge bg-info-subtle text-info border border-info" style="font-size: 10px;">
+                                            <i class="fas fa-stopwatch me-1"></i>فاصله ثبت تا بررسی: {{ d_time }}
+                                        </span>
+                                    {% else %}
+                                        <span></span>
+                                    {% endif %}
+                                    <small class="text-muted font-monospace" dir="ltr" style="font-size: 11px;">میلادی: {{ (tx['processed_at'] or tx['updated_at'])|gregorian_clean(True) }}</small>
+                                </div>
+                            </div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
+
+                {% if tx['status'] == 'rejected' and tx['rejection_reason'] %}
+                <!-- کادر اختصاصی نمایش دلیل رد پرداخت -->
+                <div class="alert alert-danger d-flex align-items-center gap-3 p-3 mb-3 border-danger shadow-sm">
+                    <i class="fas fa-circle-exclamation fs-3 text-danger flex-shrink-0"></i>
+                    <div>
+                        <strong class="d-block mb-1">علت رد این پرداخت توسط {{ tx['processed_by'] or 'مدیریت' }}:</strong>
+                        <div class="mb-0">{{ tx['rejection_reason'] }}</div>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if tx['status'] == 'revoked' and tx['revoke_reason'] %}
+                <!-- کادر اختصاصی نمایش دلیل ابطال پرداخت -->
+                <div class="alert alert-warning d-flex align-items-center gap-3 p-3 mb-3 border-warning shadow-sm">
+                    <i class="fas fa-triangle-exclamation fs-3 text-warning flex-shrink-0"></i>
+                    <div>
+                        <strong class="d-block mb-1">علت ابطال سند توسط {{ tx['revoked_by'] or tx['processed_by'] or 'مدیر ارشد' }}:</strong>
+                        <div class="mb-0">{{ tx['revoke_reason'] }}</div>
+                    </div>
+                </div>
+                {% endif %}
 
                 <!-- مشخصات کد پیگیری و فیش واریزی -->
                 <div class="card bg-light border-0 p-3 mb-3">

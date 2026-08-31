@@ -75,13 +75,22 @@
                         <td>
                             {% if tx['status'] == 'approved' or tx['status'] == 'completed' %}
                                 <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i> تایید شده</span>
+                                {% if tx.get('processed_by') %}
+                                    <div class="text-muted small mt-1" style="font-size: 11px;"><i class="fas fa-user-check text-success me-1"></i>{{ tx['processed_by'] }}</div>
+                                {% endif %}
                             {% elif tx['status'] == 'pending' %}
                                 <span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i> در انتظار تایید</span>
                             {% else %}
                                 <span class="badge bg-danger"><i class="fas fa-times-circle me-1"></i> رد شده</span>
+                                {% if tx.get('processed_by') %}
+                                    <div class="text-muted small mt-1" style="font-size: 11px;"><i class="fas fa-user-xmark text-danger me-1"></i>{{ tx['processed_by'] }}</div>
+                                {% endif %}
                             {% endif %}
                         </td>
-                        <td><small class="text-muted">{{ tx['created_at'][:16].replace('T', ' ') if tx['created_at'] else '-' }}</small></td>
+                        <td>
+                            <div class="fw-bold font-monospace small" style="direction: ltr; text-align: right;">{{ tx['created_at']|shamsi_date }}</div>
+                            <small class="text-muted font-monospace d-block" style="font-size: 11px; direction: ltr; text-align: right;">{{ tx['created_at']|gregorian_clean }}</small>
+                        </td>
                         <td class="text-end pe-3">
                             <div class="btn-group btn-group-sm">
                                 <button type="button" class="btn btn-outline-primary fw-bold" data-bs-toggle="modal" data-bs-target="#detailModal{{ tx['id'] }}" title="مشاهده مشخصات و فیش">
@@ -140,7 +149,7 @@
                                             <div class="list-group list-group-flush border rounded">
                                                 <div class="list-group-item d-flex justify-content-between align-items-center">
                                                     <span class="text-muted">روش پرداخت:</span>
-                                                    <span class="badge bg-info-subtle text-info border border-info">{{ tx['gateway']|gateway_name }}</span>
+                                                    <span class="badge bg-primary-subtle text-primary border border-primary">{{ tx['gateway']|gateway_name }}</span>
                                                 </div>
                                                 <div class="list-group-item d-flex justify-content-between align-items-center">
                                                     <span class="text-muted">وضعیت:</span>
@@ -155,16 +164,56 @@
                                                     </div>
                                                 </div>
                                                 <div class="list-group-item d-flex justify-content-between align-items-center">
-                                                    <span class="text-muted">کد پیگیری:</span>
-                                                    <code>{{ tx['tracking_code'] or '-' }}</code>
+                                                    <span class="text-muted">بررسی‌کننده:</span>
+                                                    <div>
+                                                        {% if tx.get('processed_by') %}
+                                                            <span class="badge bg-info-subtle text-info border border-info">{{ tx['processed_by'] }}</span>
+                                                        {% else %}
+                                                            <span class="text-muted small">-</span>
+                                                        {% endif %}
+                                                    </div>
                                                 </div>
-                                                <div class="list-group-item d-flex justify-content-between align-items-center">
-                                                    <span class="text-muted">تاریخ ثبت:</span>
-                                                    <small class="text-muted">{{ tx['created_at'] or '-' }}</small>
+                                                <div class="list-group-item">
+                                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                                        <span class="text-muted"><i class="fas fa-calendar-plus me-1 text-primary"></i>زمان ثبت رسید:</span>
+                                                        <strong class="text-dark font-monospace small">{{ tx['created_at']|shamsi_date("%Y/%m/%d - %H:%M:%S") }}</strong>
+                                                    </div>
+                                                    <div class="text-end">
+                                                        <small class="text-muted font-monospace" dir="ltr" style="font-size: 11px;">میلادی: {{ tx['created_at']|gregorian_clean(True) }}</small>
+                                                    </div>
                                                 </div>
+                                                {% if tx['status'] != 'pending' and (tx['processed_at'] or tx['updated_at']) %}
+                                                <div class="list-group-item bg-light bg-opacity-50">
+                                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                                        <span class="text-muted"><i class="fas fa-calendar-check me-1 text-success"></i>زمان بررسی:</span>
+                                                        <strong class="text-success font-monospace small">{{ (tx['processed_at'] or tx['updated_at'])|shamsi_date("%Y/%m/%d - %H:%M:%S") }}</strong>
+                                                    </div>
+                                                    <div class="d-flex justify-content-between align-items-center">
+                                                        {% set d_time = format_diff_time(tx['created_at'], tx['processed_at'] or tx['updated_at']) %}
+                                                        {% if d_time %}
+                                                            <span class="badge bg-info-subtle text-info border border-info" style="font-size: 10px;">
+                                                                <i class="fas fa-stopwatch me-1"></i>فاصله بررسی: {{ d_time }}
+                                                            </span>
+                                                        {% else %}
+                                                            <span></span>
+                                                        {% endif %}
+                                                        <small class="text-muted font-monospace" dir="ltr" style="font-size: 11px;">میلادی: {{ (tx['processed_at'] or tx['updated_at'])|gregorian_clean(True) }}</small>
+                                                    </div>
+                                                </div>
+                                                {% endif %}
                                             </div>
                                         </div>
                                     </div>
+                                    
+                                    {% if tx['status'] == 'rejected' and (tx.get('rejection_reason') or tx.get('description')) %}
+                                    <div class="alert alert-danger d-flex align-items-center gap-3 p-3 mb-3 border-danger shadow-sm">
+                                        <i class="fas fa-circle-exclamation fs-3 text-danger flex-shrink-0"></i>
+                                        <div>
+                                            <strong class="d-block mb-1">علت رد فیش:</strong>
+                                            <div class="mb-0">{{ tx.get('rejection_reason') or tx.get('description') }}</div>
+                                        </div>
+                                    </div>
+                                    {% endif %}
 
                                     <!-- تصویر فیش واریزی -->
                                     {% if tx['receipt_image'] or tx['receipt_photo_id'] %}
