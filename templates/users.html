@@ -3,9 +3,15 @@
 {% block title %}کاربران - پنل مدیریت VPN{% endblock %}
 
 {% block content %}
-<div class="content-header d-flex justify-content-between align-items-center">
-    <h4><i class="fas fa-users"></i> کاربران ({{ users|length }})</h4>
+<div class="content-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+        <h4 class="mb-0"><i class="fas fa-users text-primary me-2"></i> کاربران ({{ users|length }})</h4>
+        <p class="text-muted small mb-0">کل: {{ total_count }} کاربر | ویژه VIP: {{ vip_count }} کاربر</p>
+    </div>
     <form class="d-flex" method="GET">
+        {% if filter_vip %}
+            <input type="hidden" name="vip" value="{{ filter_vip }}">
+        {% endif %}
         <input type="text" class="form-control me-2" name="search" placeholder="جستجو..." value="{{ search }}">
         <button type="submit" class="btn btn-primary">
             <i class="fas fa-search"></i>
@@ -13,11 +19,27 @@
     </form>
 </div>
 
+<!-- دکمه‌های فیلتر VIP -->
+<div class="d-flex gap-2 mb-3 flex-wrap">
+    <a href="{{ url_for('users', search=search) }}" class="btn btn-sm {{ 'btn-primary' if not filter_vip else 'btn-outline-secondary' }}">
+        همه کاربران ({{ total_count }})
+    </a>
+    <a href="{{ url_for('users', vip='1', search=search) }}" class="btn btn-sm {{ 'btn-warning text-dark fw-bold' if filter_vip == '1' else 'btn-outline-warning' }}">
+        <i class="fas fa-crown me-1"></i> کاربران پریمیوم ⭐️ ({{ vip_count }})
+    </a>
+    <a href="{{ url_for('users', vip='0', search=search) }}" class="btn btn-sm {{ 'btn-secondary' if filter_vip == '0' else 'btn-outline-secondary' }}">
+        کاربران عادی
+    </a>
+</div>
+
 <div class="card shadow-sm border-0">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="d-flex align-items-center gap-2">
             <h5 class="mb-0 fw-bold"><i class="fas fa-users text-primary me-2"></i>لیست کاربران</h5>
             <span class="badge bg-secondary" data-table-count="usersTable">{{ users|length }} مورد</span>
+            {% if filter_vip == '1' %}
+                <span class="badge bg-warning text-dark"><i class="fas fa-star me-1"></i>فیلتر: فقط VIP</span>
+            {% endif %}
         </div>
         <div class="table-search-wrapper">
             <i class="fas fa-search table-search-icon"></i>
@@ -31,6 +53,7 @@
                 <thead>
                     <tr>
                         <th>کاربر تلگرام</th>
+                        <th>وضعیت VIP</th>
                         <th>شماره تلفن تلگرام</th>
                         <th>UUID</th>
                         <th>پلن</th>
@@ -43,7 +66,7 @@
                     {% for user in users %}
                     {% set sub_url = (panel_url + '/' + user_proxy + '/' + user['hidify_uuid'] + '/') if user['hidify_uuid'] else '' %}
                     {% set single_url = user|format_single_link(single_link_template) if user['hidify_uuid'] else '' %}
-                    <tr>
+                    <tr class="{% if user['is_vip'] %}table-warning bg-opacity-10{% endif %}">
                         <td>
                             <div class="d-flex align-items-center gap-2">
                                 <img src="{{ avatar_url(user['telegram_id'] or user['username'] or 'User') }}" 
@@ -52,10 +75,32 @@
                                      style="width: 38px; height: 38px; object-fit: cover;" 
                                      loading="lazy">
                                 <div>
-                                    <div class="fw-bold"><code>{{ user['telegram_id'] }}</code></div>
+                                    <div class="fw-bold d-flex align-items-center gap-1">
+                                        <code>{{ user['telegram_id'] }}</code>
+                                        {% if user['is_vip'] %}
+                                            <span class="badge bg-warning text-dark py-0 px-1" title="کاربر ویژه (VIP)"><i class="fas fa-crown"></i> VIP</span>
+                                        {% endif %}
+                                    </div>
                                     <small class="text-muted">{{ ('@' + user['username']) if user['username'] else 'بدون یوزرنیم' }}</small>
                                 </div>
                             </div>
+                        </td>
+                        <td>
+                            {% if user['is_vip'] %}
+                                <form action="{{ url_for('admin_set_user_vip', telegram_id=user['telegram_id']) }}" method="POST" class="d-inline">
+                                    <input type="hidden" name="action" value="toggle">
+                                    <button type="submit" class="btn btn-xs btn-outline-danger py-0 px-2 small" title="لغو وضعیت VIP">
+                                        <i class="fas fa-star text-warning me-1"></i> ویژه (لغو)
+                                    </button>
+                                </form>
+                            {% else %}
+                                <form action="{{ url_for('admin_set_user_vip', telegram_id=user['telegram_id']) }}" method="POST" class="d-inline">
+                                    <input type="hidden" name="action" value="toggle">
+                                    <button type="submit" class="btn btn-xs btn-outline-secondary py-0 px-2 small" title="ارتقا به کاربر VIP">
+                                        <i class="far fa-star me-1"></i> عادی (تبدیل به VIP)
+                                    </button>
+                                </form>
+                            {% endif %}
                         </td>
                         <td>
                             {% if user['phone_number'] %}

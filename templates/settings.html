@@ -542,6 +542,58 @@ function sendTestSms() {
     </div>
 </div>
 
+<!-- کارت تنظیمات باشگاه مشتریان پریمیوم (VIP) و کش‌بک -->
+<div class="card shadow-sm mt-4 border-0">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h5 class="mb-0 text-warning fw-bold">
+            <i class="fas fa-crown text-warning me-2"></i> تنظیمات باشگاه مشتریان ویژه (⭐️ VIP Club) و سیستم کش‌بک
+        </h5>
+        <span class="badge bg-warning text-dark"><i class="fas fa-coins me-1"></i>سیستم وفاداری و پاداش نقدی</span>
+    </div>
+    <div class="card-body p-4">
+        <p class="text-muted">
+            با فعال بودن این قابلیت، سیستم به صورت خودکار کاربرانی که مجموع خریدهای موفق آن‌ها به سقف تعیین‌شده برسد را به عنوان <strong>کاربر ویژه (VIP)</strong> ارتقا داده و در خریدهای بعدی درصد مشخصی از مبلغ خرید را به صورت <strong>کش‌بک (Cashback)</strong> آنی به کیف پول آن‌ها واریز می‌کند.
+        </p>
+
+        <form action="{{ url_for('settings') }}" method="POST">
+            <input type="hidden" name="action" value="save_vip_settings">
+            
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <div class="form-check form-switch pt-4">
+                        <input class="form-check-input" type="checkbox" name="vip_auto_enabled" id="vip_auto_enabled" {% if vip_settings.get('auto_enabled') %}checked{% endif %}>
+                        <label class="form-check-label fw-bold" for="vip_auto_enabled">ارتقای خودکار کاربران به VIP فعال باشد</label>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">حداقل مجموع خریدهای کاربر جهت ارتقای خودکار (تومان):</label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" name="vip_auto_threshold" 
+                               value="{{ vip_settings.get('auto_threshold', 1000000) }}" placeholder="1000000" min="0" step="50000">
+                        <span class="input-group-text">تومان</span>
+                    </div>
+                    <div class="form-text text-muted">پیش‌فرض: ۱,۰۰۰,۰۰۰ تومان</div>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">درصد بازگشت وجه کش‌بک پیش‌فرض (Cashback %):</label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" name="vip_cashback_percent" 
+                               value="{{ vip_settings.get('cashback_percent', 10) }}" placeholder="10" min="0" max="100">
+                        <span class="input-group-text">درصد ٪</span>
+                    </div>
+                    <div class="form-text text-muted">درصد واریز خودکار به کیف پول در هر خرید تایید شده</div>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-warning fw-bold px-4">
+                <i class="fas fa-save me-1"></i> ذخیره تنظیمات باشگاه مشتریان VIP
+            </button>
+        </form>
+    </div>
+</div>
+
 <div class="card shadow-sm mt-4">
     <div class="card-header bg-white py-3">
         <h5 class="mb-0"><i class="fas fa-sliders me-2"></i> تنظیمات ثبت‌شده در دیتابیس</h5>

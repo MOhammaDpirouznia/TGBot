@@ -13,44 +13,113 @@
 <!-- اطلاعات کاربر -->
 <div class="row mb-4">
     <div class="col-md-4">
-        <div class="card shadow-sm border-0">
+        <div class="card shadow-sm border-0 h-100">
             <div class="card-body text-center p-4">
-                <img src="{{ avatar_url((user['telegram_id'] if user else telegram_id) or (user['username'] if (user and user['username']) else '') or 'User') }}" 
-                     alt="{{ (user['username'] if user else '') or telegram_id }}" 
-                     class="rounded-circle border shadow-sm mx-auto mb-3" 
-                     style="width: 96px; height: 96px; object-fit: cover;" 
-                     loading="lazy">
+                <div class="position-relative d-inline-block">
+                    <img src="{{ avatar_url((user['telegram_id'] if user else telegram_id) or (user['username'] if (user and user['username']) else '') or 'User') }}" 
+                         alt="{{ (user['username'] if user else '') or telegram_id }}" 
+                         class="rounded-circle border shadow-sm mx-auto mb-3" 
+                         style="width: 96px; height: 96px; object-fit: cover;" 
+                         loading="lazy">
+                    {% if vip_info.get('is_vip') %}
+                        <span class="position-absolute bottom-0 end-0 bg-warning text-dark p-2 rounded-circle border border-2 border-white shadow-sm" title="کاربر طلایی (VIP)">
+                            <i class="fas fa-crown"></i>
+                        </span>
+                    {% endif %}
+                </div>
                 <h4 class="fw-bold mb-1">{{ (user['username'] if user else None) or 'کاربر هیدیفای' }}</h4>
-                <p class="text-muted mb-0"><code>{{ (user['telegram_id'] if user else telegram_id) }}</code></p>
+                <p class="text-muted mb-2"><code>{{ (user['telegram_id'] if user else telegram_id) }}</code></p>
+                
+                {% if vip_info.get('is_vip') %}
+                    <div class="badge bg-warning text-dark fs-6 py-2 px-3 mb-3 d-inline-flex align-items-center gap-1 shadow-sm">
+                        <i class="fas fa-crown"></i> مشتری پریمیوم (VIP)
+                    </div>
+                {% else %}
+                    <div class="badge bg-secondary fs-6 py-2 px-3 mb-3">
+                        مشتری عادی
+                    </div>
+                {% endif %}
+
+                <!-- دکمه مدیریت وضعیت VIP -->
+                <div class="mt-2">
+                    <button type="button" class="btn btn-sm btn-outline-warning w-100 fw-bold" data-bs-toggle="modal" data-bs-target="#vipModal">
+                        <i class="fas fa-star me-1"></i> تنظیمات دسترسی VIP
+                    </button>
+                </div>
             </div>
         </div>
     </div>
     <div class="col-md-8">
-        <div class="card">
-            <div class="card-header bg-white">
-                <h5 class="mb-0">اطلاعات حساب</h5>
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-id-card text-primary me-2"></i>اطلاعات حساب و وضعیت VIP</h5>
             </div>
             <div class="card-body">
-                <div class="row">
+                <div class="row g-3">
                     <div class="col-md-6">
-                        <p><strong>آیدی تلگرام:</strong> <code>{{ (user['telegram_id'] if user else telegram_id) }}</code></p>
-                        <p><strong>یوزرنیم:</strong> {{ ('@' + user['username']) if (user and user['username']) else 'ندارد' }}</p>
-                        <p><strong>شماره تلفن تلگرام:</strong>
+                        <p class="mb-2"><strong>آیدی تلگرام:</strong> <code>{{ (user['telegram_id'] if user else telegram_id) }}</code></p>
+                        <p class="mb-2"><strong>یوزرنیم:</strong> {{ ('@' + user['username']) if (user and user['username']) else 'ندارد' }}</p>
+                        <p class="mb-2"><strong>شماره تلفن:</strong>
                             {% if user and user['phone_number'] %}
-                                <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-phone me-1"></i><code>{{ user['phone_number'] }}</code> (احراز هویت شده)</span>
+                                <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-phone me-1"></i><code>{{ user['phone_number'] }}</code></span>
                             {% else %}
                                 <span class="badge bg-warning-subtle text-warning border border-warning"><i class="fas fa-triangle-exclamation me-1"></i>تایید نشده</span>
                             {% endif %}
                         </p>
-                        <p><strong>UUID:</strong> <code>{{ (user['hidify_uuid'] if user else (subscriptions[0]['hidify_uuid'] if subscriptions else '-')) or '-' }}</code></p>
+                        <p class="mb-2"><strong>UUID:</strong> <code>{{ (user['hidify_uuid'] if user else (subscriptions[0]['hidify_uuid'] if subscriptions else '-')) or '-' }}</code></p>
                     </div>
                     <div class="col-md-6">
-                        <p><strong>پلن فعلی:</strong> {{ (user['plan_id'] if user else (subscriptions[0]['plan_name'] if subscriptions else '-')) or '-' }}</p>
-                        <p><strong>تاریخ عضویت:</strong> {{ user['created_at'][:10] if (user and user['created_at']) else '-' }}</p>
-                        <p><strong>آخرین بروزرسانی:</strong> {{ user['updated_at'][:10] if (user and user['updated_at']) else '-' }}</p>
+                        <p class="mb-2"><strong>وضعیت VIP:</strong>
+                            {% if vip_info.get('is_vip') %}
+                                <span class="badge bg-warning text-dark"><i class="fas fa-crown me-1"></i>فعال ({{ 'خودکار' if vip_info.get('vip_type') == 'auto' else 'دستی' }})</span>
+                            {% else %}
+                                <span class="badge bg-secondary">غیرفعال</span>
+                            {% endif %}
+                        </p>
+                        <p class="mb-2"><strong>درصد کش‌بک فعال:</strong> <span class="fw-bold text-success">{{ vip_info.get('cashback_percent', 0) }}٪</span></p>
+                        <p class="mb-2"><strong>انقضای VIP:</strong> {{ vip_info.get('vip_expire_at')[:10] if vip_info.get('vip_expire_at') else 'مادام‌العمر / نامحدود' }}</p>
+                        <p class="mb-2"><strong>تاریخ عضویت:</strong> {{ user['created_at'][:10] if (user and user['created_at']) else '-' }}</p>
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal مدیریت VIP -->
+<div class="modal fade" id="vipModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="{{ url_for('admin_set_user_vip', telegram_id=(user['telegram_id'] if user else telegram_id)) }}" method="POST">
+                <input type="hidden" name="action" value="update">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-crown text-warning me-2"></i>مدیریت وضعیت پریمیوم (VIP)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">وضعیت VIP:</label>
+                        <select name="is_vip" class="form-select">
+                            <option value="1" {{ 'selected' if vip_info.get('is_vip') else '' }}>⭐️ کاربر ویژه (VIP) - فعال</option>
+                            <option value="0" {{ 'selected' if not vip_info.get('is_vip') else '' }}>کاربر عادی - غیرفعال</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">مدت اعتبار (تعداد روز):</label>
+                        <input type="number" name="vip_days" class="form-control" placeholder="خالی بگذارید برای دائمی">
+                        <small class="text-muted">در صورت خالی گذاشتن، اشتراک VIP بدون محدودیت زمانی خواهد بود.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">درصد کش‌بک اختصاصی (اختیاری):</label>
+                        <input type="number" name="custom_cashback" class="form-control" value="{{ vip_info.get('custom_cashback') or '' }}" placeholder="پیش‌فرض سیستم">
+                        <small class="text-muted">در صورت خالی بودن، درصد کش‌بک پیش‌فرض سیستم برای کاربر اعمال می‌شود.</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-warning fw-bold"><i class="fas fa-save me-1"></i> ذخیره تغییرات VIP</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>

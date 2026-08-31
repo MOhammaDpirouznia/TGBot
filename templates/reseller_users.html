@@ -25,6 +25,9 @@
     <a href="{{ url_for('reseller_users', status='all') }}" class="btn btn-sm {{ 'btn-primary' if status_filter == 'all' or not status_filter else 'btn-outline-secondary' }}">
         همه مشتریان ({{ stats.get('total_users', 0) }})
     </a>
+    <a href="{{ url_for('reseller_users', status='vip') }}" class="btn btn-sm {{ 'btn-warning text-dark fw-bold' if status_filter == 'vip' else 'btn-outline-warning' }}">
+        <i class="fas fa-crown me-1"></i> مشتریان پریمیوم ⭐️ ({{ stats.get('vip_users', 0) }})
+    </a>
     <a href="{{ url_for('reseller_users', status='online') }}" class="btn btn-sm {{ 'btn-success' if status_filter == 'online' else 'btn-outline-success' }}">
         <span class="pulse-indicator me-1"></span> مشتریان آنلاین ({{ stats.get('online_users', 0) }})
     </a>
@@ -41,7 +44,9 @@
         <div class="d-flex align-items-center gap-2">
             <h5 class="mb-0 fw-bold"><i class="fas fa-list-ul text-primary me-2"></i>لیست اشتراک‌ها</h5>
             <span class="badge bg-secondary" data-table-count="resellerUsersTable">{{ subscriptions|length }} مورد</span>
-            {% if status_filter == 'online' %}
+            {% if status_filter == 'vip' %}
+                <span class="badge bg-warning text-dark"><i class="fas fa-crown me-1"></i>فیلتر: مشتریان ویژه VIP</span>
+            {% elif status_filter == 'online' %}
                 <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-wifi me-1"></i>فیلتر: فقط متصلین آنلاین</span>
             {% endif %}
         </div>
@@ -71,7 +76,7 @@
                     {% set sub_url = panel_url + '/' + user_proxy + '/' + sub['hidify_uuid'] + '/' if sub['hidify_uuid'] else '' %}
                     {% set single_url = sub|format_single_link(single_link_template) if sub['hidify_uuid'] else '' %}
                     {% set ref = sub.get('refund_info') or {} %}
-                    <tr>
+                    <tr class="{% if sub.get('is_vip') %}table-warning bg-opacity-10{% endif %}">
                         <td>
                             <div class="d-flex align-items-center gap-2">
                                 <div class="position-relative">
@@ -85,7 +90,12 @@
                                     {% endif %}
                                 </div>
                                 <div>
-                                    <div class="fw-bold">{{ sub['account_name'] or 'بدون نام' }}</div>
+                                    <div class="fw-bold d-flex align-items-center gap-1">
+                                        <span>{{ sub['account_name'] or 'بدون نام' }}</span>
+                                        {% if sub.get('is_vip') %}
+                                            <span class="badge bg-warning text-dark py-0 px-1" title="مشتری طلایی (VIP)"><i class="fas fa-crown"></i> VIP</span>
+                                        {% endif %}
+                                    </div>
                                     {% if sub['account_comment'] %}
                                         <small class="text-muted text-truncate d-block" style="max-width: 140px;" title="{{ sub['account_comment'] }}">{{ sub['account_comment'] }}</small>
                                     {% endif %}
@@ -171,6 +181,16 @@
                                 <button type="button" class="btn btn-outline-warning" onclick="copyLink('{{ single_url }}', 'لینک تکی')" title="کپی لینک مستقیم تکی">
                                     <i class="fas fa-bolt"></i>
                                 </button>
+
+                                <!-- دکمه وضعیت VIP -->
+                                {% if sub.get('telegram_id') %}
+                                <form method="POST" action="{{ url_for('reseller_set_user_vip', telegram_id=sub['telegram_id']) }}" class="d-inline">
+                                    <input type="hidden" name="action" value="toggle">
+                                    <button type="submit" class="btn {% if sub.get('is_vip') %}btn-warning text-dark{% else %}btn-outline-secondary{% endif %}" title="{% if sub.get('is_vip') %}مشتری ویژه VIP (کلیک جهت لغو وضعیت){% else %}مشتری عادی (کلیک جهت تبدیل به VIP){% endif %}">
+                                        <i class="fas fa-crown"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
 
                                 <!-- دکمه حذف هوشمند -->
                                 <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{ sub['id'] }}" title="حذف مشتری و استرداد وجه طبق قوانین">

@@ -533,7 +533,12 @@
             <div class="user-info">
                 <img src="{{ avatar_url(user['telegram_id'] or user['username'] or 'User') }}" class="avatar-img" alt="Avatar">
                 <div class="user-text">
-                    <div class="user-name" id="profileName">{{ user['username'] or ('کاربر ' ~ (user['telegram_id'] or '')) }}</div>
+                    <div class="user-name" id="profileName" style="display: flex; align-items: center; gap: 6px;">
+                        <span>{{ user['username'] or ('کاربر ' ~ (user['telegram_id'] or '')) }}</span>
+                        {% if user and user.get('is_vip') %}
+                            <span class="vip-badge" style="background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #1e1b4b; font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 10px; display: inline-flex; align-items: center; gap: 3px; box-shadow: 0 0 10px rgba(245, 158, 11, 0.4);"><i class="fas fa-crown"></i> VIP</span>
+                        {% endif %}
+                    </div>
                     <div class="user-id"><code>ID: {{ user['telegram_id'] }}</code></div>
                 </div>
             </div>

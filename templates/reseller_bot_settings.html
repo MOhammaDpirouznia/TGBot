@@ -227,6 +227,38 @@
                         </div>
                     </div>
 
+                    <!-- بخش تنظیمات باشگاه مشتریان VIP و کش‌بک نماینده -->
+                    <hr class="my-4">
+                    <h5 class="fw-bold text-warning mb-3">
+                        <i class="fas fa-crown text-warning me-2"></i> باشگاه مشتریان پریمیوم (⭐️ VIP) و سیستم کش‌بک
+                    </h5>
+                    <p class="text-muted small mb-3">با فعال‌سازی این سیستم، مشتریان شما با رسیدن مجموع خریدهایشان به سقف تعیین‌شده، به طور خودکار به مشتری VIP ارتقا یافته و در خریدهای بعدی کش‌بک نقدی به کیف پول دریافت می‌کنند.</p>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <div class="form-check form-switch pt-2">
+                                <input class="form-check-input" type="checkbox" name="vip_auto_enabled" id="resellerVipAutoSwitch" {% if reseller.get('vip_auto_enabled', 1) %}checked{% endif %}>
+                                <label class="form-check-label fw-bold" for="resellerVipAutoSwitch">ارتقای خودکار مشتریان به VIP</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">سقف مجموع خرید جهت ارتقای خودکار (تومان):</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" name="vip_auto_threshold" 
+                                       value="{{ reseller.get('vip_auto_threshold', 1000000) or 1000000 }}" placeholder="1000000" min="0" step="50000">
+                                <span class="input-group-text">تومان</span>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">درصد کش‌بک مشتریان VIP (٪):</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" name="vip_cashback_percent" 
+                                       value="{{ reseller.get('vip_cashback_percent', 10) if reseller.get('vip_cashback_percent') is not none else 10 }}" placeholder="10" min="0" max="100">
+                                <span class="input-group-text">٪</span>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="d-flex justify-content-end gap-2">
                         <button type="submit" class="btn btn-primary px-4 py-2 fw-bold">
                             <i class="fas fa-floppy-disk me-1"></i> ذخیره کلیه تنظیمات
