@@ -5,6 +5,7 @@
 
 import os
 import json
+import html
 import logging
 import uuid
 import asyncio
@@ -1255,7 +1256,7 @@ async def copy_amount_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """پردازش انتخاب روش پرداخت (کیف پول، درگاه آنلاین، کارت بانکی، کریپتو)"""
+    """پردازش انتخاب روش پرداخت (کیف پول، درگاه آنلاین، کارت بانکی، کریپتو) با پایداری کامل"""
     query = update.callback_query
     user = update.effective_user
 
@@ -1267,44 +1268,86 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
     if query.data.startswith("copy_amount_"):
         return await copy_amount_callback(update, context)
 
-    await query.answer()
-
     if query.data == "back_to_confirm_purchase":
+        try:
+            await query.answer()
+        except Exception:
+            pass
         return await back_to_confirm_purchase(update, context)
 
     if query.data == "cancel":
-        await query.edit_message_text("❌ عملیات لغو شد.")
+        try:
+            await query.answer()
+            await query.edit_message_text("❌ عملیات لغو شد.")
+        except Exception:
+            pass
         return CHOOSING
 
     if query.data in ("coming_soon_gateway", "coming_soon"):
-        await query.answer("💳 درگاه پرداخت آنلاین شاپرک به زودی فعال خواهد شد. لطفاً از کارت به کارت یا کیف پول استفاده فرمایید.", show_alert=True)
+        try:
+            await query.answer("💳 درگاه پرداخت آنلاین شاپرک به زودی فعال خواهد شد. لطفاً از کارت به کارت یا کیف پول استفاده فرمایید.", show_alert=True)
+        except Exception:
+            pass
         return SELECTING_PAYMENT
 
     plan_id = context.user_data.get("selected_plan")
     plans = get_plans()
-    plan = plans.get(plan_id, {})
+    plan = plans.get(str(plan_id), {}) if plans else {}
+    if not plan and plans:
+        # جستجو بر اساس کلید عددی یا رشته‌ای
+        for k, v in plans.items():
+            if str(k) == str(plan_id):
+                plan = v
+                break
+
     price = plan.get("price", 0)
     price_formatted = f"{price:,}".replace(",", "،")
 
+    if query.data == "back_to_select_payment":
+        try:
+            await query.answer()
+            text, reply_markup = get_payment_selection_payload(user.id, plan)
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
+        except Exception as e:
+            logger.warning(f"Error returning to payment selection: {e}")
+        return SELECTING_PAYMENT
+
     if query.data == "pay_wallet_insufficient":
-        user_wallet = db.get_user_wallet_balance(user.id)
-        await query.answer(f"❌ موجودی کیف پول شما ({user_wallet:,} ت) برای این پلن کافی نیست. ابتدا کیف پول را شارژ کنید یا کارت به کارت نمایید.", show_alert=True)
+        try:
+            user_wallet = db.get_user_wallet_balance(user.id)
+            await query.answer(f"❌ موجودی کیف پول شما ({user_wallet:,} ت) برای این پلن کافی نیست. ابتدا کیف پول را شارژ کنید یا کارت به کارت نمایید.", show_alert=True)
+        except Exception:
+            pass
         return SELECTING_PAYMENT
 
     elif query.data == "pay_wallet":
+        try:
+            await query.answer()
+        except Exception:
+            pass
+
         # پرداخت ۱۰۰٪ آنی و خودکار از موجودی کیف پول!
         user_wallet = db.get_user_wallet_balance(user.id)
         if user_wallet < price:
-            await query.answer("❌ موجودی کیف پول کافی نیست!", show_alert=True)
+            try:
+                await query.answer("❌ موجودی کیف پول کافی نیست!", show_alert=True)
+            except Exception:
+                pass
             return SELECTING_PAYMENT
 
         # کسر از موجودی کیف پول
         deduct_res = db.deduct_wallet_balance(user.id, price, f"خرید آنی اشتراک {plan.get('name')}")
         if not deduct_res.get("success"):
-            await query.answer("❌ خطا در کسر موجودی: " + str(deduct_res.get("error")), show_alert=True)
+            try:
+                await query.answer("❌ خطا در کسر موجودی: " + str(deduct_res.get("error")), show_alert=True)
+            except Exception:
+                pass
             return SELECTING_PAYMENT
 
-        await query.edit_message_text("⏳ در حال ساخت و فعال‌سازی آنی اشتراک شما در هیدیفای...")
+        try:
+            await query.edit_message_text("⏳ در حال ساخت و فعال‌سازی آنی اشتراک شما در هیدیفای...")
+        except Exception:
+            pass
 
         # ساخت اکانت در هیدیفای
         username = f"tg_{user.id}"
@@ -1367,10 +1410,18 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
             logger.error(f"Error activating sub from wallet: {e}")
             # بازگشت وجه در صورت خطا
             db.add_wallet_balance(user.id, price, "بازگشت وجه به دلیل خطای سرور هیدیفای", tx_type="refund")
-            await query.edit_message_text(f"❌ خطایی در فعال‌سازی اشتراک رخ داد و مبلغ به کیف پول شما برگشت داده شد:\n{str(e)[:150]}")
+            try:
+                await query.edit_message_text(f"❌ خطایی در فعال‌سازی اشتراک رخ داد و مبلغ به کیف پول شما برگشت داده شد:\n{str(e)[:150]}")
+            except Exception:
+                pass
             return CHOOSING
 
     elif query.data == "pay_online_gateway":
+        try:
+            await query.answer()
+        except Exception:
+            pass
+
         # پرداخت مستقیم از طریق درگاه پرداخت آنلاین شاپرک
         gw_cfg = db.get_admin_gateway()
         gw_type = gw_cfg.get("type", "zarinpal")
@@ -1384,44 +1435,47 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
         callback_url = f"{str(domain).rstrip('/')}/payment/callback/{order_id}"
 
         pay_url = None
-        if gw_type == "zarinpal":
-            from payment import ZarinPal
-            zp = ZarinPal(merchant_id=gw_key, sandbox=sandbox)
-            res = zp.create_payment(amount=price, description=f"خرید اشتراک {plan.get('name')}", callback_url=callback_url)
-            if res.get("success"):
-                pay_url = res.get("payment_url")
-                db.save_transaction(
-                    order_id=order_id,
-                    user_id=user.id,
-                    username=user.username or user.first_name,
-                    plan_name=plan.get("name"),
-                    amount=price,
-                    gateway="zarinpal",
-                    tracking_code=res.get("authority", ""),
-                    status="pending"
-                )
-        elif gw_type == "idpay":
-            from payment import IDPay
-            idp = IDPay(api_key=gw_key, sandbox=sandbox)
-            res = idp.create_payment(amount=price, name=user.full_name or "کاربر", description=f"خرید اشتراک {plan.get('name')}", callback_url=callback_url, order_id=order_id)
-            if res.get("success"):
-                pay_url = res.get("payment_url")
-                db.save_transaction(
-                    order_id=order_id,
-                    user_id=user.id,
-                    username=user.username or user.first_name,
-                    plan_name=plan.get("name"),
-                    amount=price,
-                    gateway="idpay",
-                    tracking_code=res.get("payment_id", ""),
-                    status="pending"
-                )
+        try:
+            if gw_type == "zarinpal":
+                from payment import ZarinPal
+                zp = ZarinPal(merchant_id=gw_key, sandbox=sandbox)
+                res = zp.create_payment(amount=price, description=f"خرید اشتراک {plan.get('name')}", callback_url=callback_url)
+                if res.get("success"):
+                    pay_url = res.get("payment_url")
+                    db.save_transaction(
+                        order_id=order_id,
+                        user_id=user.id,
+                        username=user.username or user.first_name,
+                        plan_name=plan.get("name"),
+                        amount=price,
+                        gateway="zarinpal",
+                        tracking_code=res.get("authority", ""),
+                        status="pending"
+                    )
+            elif gw_type == "idpay":
+                from payment import IDPay
+                idp = IDPay(api_key=gw_key, sandbox=sandbox)
+                res = idp.create_payment(amount=price, name=user.full_name or "کاربر", description=f"خرید اشتراک {plan.get('name')}", callback_url=callback_url, order_id=order_id)
+                if res.get("success"):
+                    pay_url = res.get("payment_url")
+                    db.save_transaction(
+                        order_id=order_id,
+                        user_id=user.id,
+                        username=user.username or user.first_name,
+                        plan_name=plan.get("name"),
+                        amount=price,
+                        gateway="idpay",
+                        tracking_code=res.get("payment_id", ""),
+                        status="pending"
+                    )
+        except Exception as e:
+            logger.error(f"Error creating online gateway payment: {e}")
 
         if pay_url:
             text = f"""
 💳 <b>درگاه پرداخت آنلاین شاپرک</b>
 
-📋 پلن: <b>{plan.get('name')}</b>
+📋 پلن: <b>{html.escape(str(plan.get('name', '')))}</b>
 💰 مبلغ: <b><code>{price_formatted}</code> تومان</b>
 🔢 شناسه سفارش: <code>{order_id}</code>
 
@@ -1434,32 +1488,41 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
             return SELECTING_PAYMENT
         else:
-            await query.answer("❌ خطا در اتصال به درگاه بانکی. لطفاً از کارت به کارت استفاده فرمایید.", show_alert=True)
+            try:
+                await query.answer("❌ خطا در اتصال به درگاه بانکی. لطفاً از کارت به کارت استفاده فرمایید.", show_alert=True)
+            except Exception:
+                pass
             return SELECTING_PAYMENT
 
     elif query.data == "pay_crypto":
-        # پرداخت با ارز دیجیتال / تتر
-        crypto_res = CryptoPaymentGateway.create_payment(price, user.id, plan.get('name', 'نامشخص'), db_instance=db)
-        usdt_amt = crypto_res.get("usdt_amount", 0)
-        wallet_addr = crypto_res.get("wallet_address", "")
-        pay_url = crypto_res.get("payment_url", "")
+        try:
+            await query.answer()
+        except Exception:
+            pass
 
-        keyboard = []
-        if pay_url:
-            keyboard.append([InlineKeyboardButton("🌐 ورود به درگاه آنلاین کریپتو", url=pay_url)])
-            text = f"""
+        # پرداخت با ارز دیجیتال / تتر
+        try:
+            crypto_res = CryptoPaymentGateway.create_payment(price, user.id, plan.get('name', 'نامشخص'), db_instance=db)
+            usdt_amt = crypto_res.get("usdt_amount", 0)
+            wallet_addr = crypto_res.get("wallet_address", "")
+            pay_url = crypto_res.get("payment_url", "")
+
+            keyboard = []
+            if pay_url:
+                keyboard.append([InlineKeyboardButton("🌐 ورود به درگاه آنلاین کریپتو", url=pay_url)])
+                text = f"""
 💎 <b>پرداخت ارزی با کریپتو (تتر / رمزارز)</b>
 
-📋 پلن: <b>{plan.get('name')}</b>
+📋 پلن: <b>{html.escape(str(plan.get('name', '')))}</b>
 💰 معادل تتر: <b>{usdt_amt} USDT</b>
 
 لطفاً روی دکمه زیر کلیک کرده و پرداخت خود را انجام دهید. اشتراک شما پس از واریز به صورت خودکار فعال خواهد شد.
 """
-        else:
-            text = f"""
+            else:
+                text = f"""
 💎 <b>پرداخت مستقیم با تتر (USDT TRC20 / TON)</b>
 
-📋 پلن: <b>{plan.get('name')}</b>
+📋 پلن: <b>{html.escape(str(plan.get('name', '')))}</b>
 💰 مبلغ قابل انتقال: <b><code>{usdt_amt}</code> USDT</b>
 
 📌 <b>آدرس ولت دریافت:</b>
@@ -1467,27 +1530,42 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
 
 ⚠️ لطفاً پس از انتقال، کد رهگیری هش (TXID) یا تصویر رسید را به عنوان پیام ارسال فرمایید.
 """
-            keyboard.append([InlineKeyboardButton("📝 ارسال کد هش یا رسید", callback_data="pay_card")])
+                keyboard.append([InlineKeyboardButton("📝 ارسال کد هش یا رسید", callback_data="pay_card")])
 
-        keyboard.append([InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_select_payment")])
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
-        return ENTERING_TRACKING_CODE
+            keyboard.append([InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_select_payment")])
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
+            return ENTERING_TRACKING_CODE
+        except Exception as e:
+            logger.error(f"Error in pay_crypto: {e}")
+            try:
+                await query.answer("❌ خطا در بارگذاری اطلاعات پرداخت ارزی.", show_alert=True)
+            except Exception:
+                pass
+            return SELECTING_PAYMENT
 
     elif query.data == "pay_card":
-        # دریافت هوشمند کارت فعال از دیتابیس
-        active_card = get_active_card()
-        raw_card = active_card.get("card_number", CARD_NUMBER)
-        card_number = re.sub(r"\D", "", str(raw_card))
-        card_holder = active_card.get("card_holder", CARD_HOLDER)
-        bank_name = active_card.get("bank_name", BANK_NAME)
-        rial_amount = price * 10
-        rial_fmt = f"{rial_amount:,}"
+        try:
+            await query.answer()
+        except Exception:
+            pass
 
-        text = f"""
+        try:
+            # دریافت هوشمند کارت فعال از دیتابیس با فال‌بک کامل
+            active_card = get_active_card() or {}
+            raw_card = active_card.get("card_number") or CARD_NUMBER or ""
+            card_holder = html.escape(str(active_card.get("card_holder") or CARD_HOLDER or ""))
+            bank_name = html.escape(str(active_card.get("bank_name") or BANK_NAME or ""))
+            card_number = re.sub(r"\D", "", str(raw_card))
+            
+            pname = html.escape(str(plan.get('name', 'نامشخص')))
+            rial_amount = price * 10
+            rial_fmt = f"{rial_amount:,}"
+
+            text = f"""
 💵 <b>پرداخت کارت به کارت</b>
 
-📋 پلن: <b>{plan.get('name', 'نامشخص')}</b>
+📋 پلن: <b>{pname}</b>
 
 💰 <b>مبلغ قابل واریز:</b>
 • به ریال (جهت همراه بانک / عابربانک):
@@ -1498,23 +1576,34 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
 📌 <b>اطلاعات کارت بانکی مقصد:</b>
 💳 شماره کارت:
 <code>{card_number}</code>
+"""
+            if card_holder:
+                text += f"\n👤 <b>نام صاحب حساب:</b> {card_holder}"
+            if bank_name:
+                text += f"\n🏦 <b>بانک:</b> {bank_name}"
 
-👤 <b>نام صاحب حساب:</b> {card_holder}
-🏦 <b>بانک:</b> {bank_name}
+            text += f"""
 
 ⚠️ <b>نکات مهم:</b>
 • برای کپی با یک لمس، روی <b>شماره کارت</b> یا <b>مبلغ به ریال</b> بالا یا دکمه‌های زیر بزنید.
 • پس از واریز، شماره پیگیری یا اسکرین‌شات رسید را ارسال نمایید.
 """
-        keyboard = [
-            [InlineKeyboardButton("📋 کپی شماره کارت", callback_data=f"copy_card_{card_number}")],
-            [InlineKeyboardButton(f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)", callback_data=f"copy_rial_{rial_amount}")],
-            [InlineKeyboardButton(f"💵 کپی مبلغ به تومان ({price_formatted} ت)", callback_data=f"copy_amount_{price}")],
-            [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_select_payment"), InlineKeyboardButton("❌ انصراف", callback_data="cancel")],
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
-        return ENTERING_TRACKING_CODE
+            keyboard = [
+                [InlineKeyboardButton("📋 کپی شماره کارت", callback_data=f"copy_card_{card_number}")],
+                [InlineKeyboardButton(f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)", callback_data=f"copy_rial_{rial_amount}")],
+                [InlineKeyboardButton(f"💵 کپی مبلغ به تومان ({price_formatted} ت)", callback_data=f"copy_amount_{price}")],
+                [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_select_payment"), InlineKeyboardButton("❌ انصراف", callback_data="cancel")],
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
+            return ENTERING_TRACKING_CODE
+        except Exception as e:
+            logger.error(f"Error in pay_card in bot.py: {e}")
+            try:
+                await query.edit_message_text(f"❌ خطا در بارگذاری اطلاعات کارت: {e}")
+            except Exception:
+                pass
+            return SELECTING_PAYMENT
 
     return SELECTING_PAYMENT
 
@@ -5146,6 +5235,71 @@ def check_env_variables():
     return True
 
 
+async def dynamic_main_menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """مسیریابی هوشمند و داینامیک تمام کلیدهای منوی اصلی بر اساس تنظیمات پنل مدیریت"""
+    if not update.message or not update.message.text:
+        return CHOOSING
+    text = update.message.text.strip()
+    user = update.effective_user
+
+    # بررسی پنل ادمین
+    if user.id == ADMIN_ID and ("مدیریت" in text or "admin" in text.lower() or "پنل" in text):
+        return await admin_panel(update, context)
+
+    btn = db.match_bot_menu_button(text)
+    if btn:
+        b_id = btn.get("id")
+        is_enabled = btn.get("is_enabled", True)
+        if not is_enabled:
+            dis_msg = btn.get("disabled_message") or "⚠️ این بخش موقتاً غیرفعال می‌باشد."
+            await update.message.reply_text(dis_msg)
+            return CHOOSING
+
+        if b_id == "buy":
+            return await show_plans(update, context)
+        elif b_id == "my_subs":
+            return await show_status(update, context)
+        elif b_id == "test_sub":
+            return await handle_test_subscription(update, context)
+        elif b_id == "renew":
+            return await renew_subscription(update, context)
+        elif b_id == "wallet":
+            bal = db.get_user_wallet_balance(user.id)
+            vip_info = db.get_user_vip_info(user.id)
+            vip_txt = ""
+            if vip_info.get("is_vip"):
+                cb = vip_info.get("cashback_percent", 10)
+                vip_txt = f"\n👑 <b>سطح حساب:</b> مشتری طلایی (⭐️ VIP)\n🎁 <b>پاداش کش‌بک:</b> {cb}٪ بازگشت وجه در هر خرید\n"
+            await update.message.reply_text(f"💳 <b>موجودی کیف پول شما:</b> <code>{bal:,}</code> تومان{vip_txt}", parse_mode="HTML")
+            return CHOOSING
+        elif b_id == "support":
+            return await support_menu(update, context)
+        elif b_id in ("tutorials", "troubleshoot"):
+            base_url = (HIDIFY_PANEL_URL or "").rstrip("/")
+            if not base_url.startswith("http"):
+                base_url = f"https://{base_url}"
+            tutorial_url = f"{base_url}/help"
+            troubleshoot_url = f"{base_url}/help/troubleshoot"
+            guide_text = (
+                "📖 <b>مرکز آموزش تصویری و راهنمای اتصال</b>\n\n"
+                "برای مشاهده آموزش‌های مرحله‌به‌مرحله تصویری برای تمام سیستم‌عامل‌ها (اندروید، آیفون، ویندوز، مک و تلویزیون هوشمند) و رفع مشکلات اتصال، روی دکمه‌های زیر کلیک فرمایید:"
+            )
+            buttons = [
+                [InlineKeyboardButton("🌐 مشاهده آموزش‌های تصویری تمام دستگاه‌ها", url=tutorial_url)],
+                [InlineKeyboardButton("🛠️ سامانه عیب‌یابی و حل مشکلات اتصال", url=troubleshoot_url)]
+            ]
+            await update.message.reply_text(guide_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+            return CHOOSING
+        elif b_id == "referral":
+            return await referral_menu(update, context)
+        elif b_id == "payments":
+            return await show_payments_history(update, context)
+        elif b_id == "language":
+            return await change_language_prompt(update, context)
+
+    return CHOOSING
+
+
 def main():
     """راه‌اندازی ربات"""
     # بررسی متغیرهای محیطی
@@ -5183,6 +5337,7 @@ def main():
         MessageHandler(filters.Regex(get_all_lang_regex("btn_support")), support_menu),
         MessageHandler(filters.Regex(get_all_lang_regex("btn_language")), change_language_prompt),
         MessageHandler(filters.Regex(get_all_lang_regex("btn_admin")), admin_panel),
+        MessageHandler(filters.TEXT & ~filters.COMMAND, dynamic_main_menu_router),
     ]
 
     # Conversation Handler برای فرآیند خرید، تمدید، پشتیبانی و پنل ادمین
@@ -5248,7 +5403,7 @@ def main():
                 CallbackQueryHandler(cancel, pattern="^cancel$"),
             ] + main_menu_handlers,
             SELECTING_PAYMENT: [
-                CallbackQueryHandler(handle_payment_method, pattern="^(pay_card|pay_wallet|pay_wallet_insufficient|pay_crypto|pay_online|pay_online_gateway|coming_soon|coming_soon_gateway|copy_card_.*|copy_rial_.*|copy_amount_.*|back_to_confirm_purchase|cancel)$"),
+                CallbackQueryHandler(handle_payment_method, pattern="^(pay_card|pay_wallet|pay_wallet_insufficient|pay_crypto|pay_online|pay_online_gateway|coming_soon|coming_soon_gateway|copy_card_.*|copy_rial_.*|copy_amount_.*|back_to_confirm_purchase|back_to_select_payment|cancel)$"),
                 CallbackQueryHandler(back_to_confirm_purchase, pattern="^back_to_confirm_purchase$"),
                 CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"),
                 CallbackQueryHandler(cancel, pattern="^cancel$"),

@@ -559,27 +559,38 @@ def get_contact_keyboard(lang: str = "fa") -> ReplyKeyboardMarkup:
 
 
 def get_main_keyboard(user_id: int, admin_id: int, lang: str = "fa", webapp_url: str = None) -> ReplyKeyboardMarkup:
-    """تولید منوی اصلی متناسب با زبان انتخاب‌شده کاربر همراه با مینی‌اپ و کیف پول"""
+    """تولید منوی اصلی متناسب با زبان انتخاب‌شده کاربر و چیدمان داینامیک دکمه‌ها از پنل مدیریت"""
     lang = lang if lang in SUPPORTED_LANGUAGES else "fa"
-    
-    top_row = []
-    if webapp_url:
-        full_app_url = f"{webapp_url.rstrip('/')}/webapp/user/{user_id}"
-        top_row.append(KeyboardButton(t("btn_webapp", lang), web_app=WebAppInfo(url=full_app_url)))
-    else:
-        top_row.append(KeyboardButton(t("btn_webapp", lang)))
+    keyboard = []
 
-    top_row.append(KeyboardButton(t("btn_wallet", lang)))
+    try:
+        from database import db
+        menu_rows = db.get_bot_menu_keyboard_rows(is_admin=(user_id == admin_id), is_reseller=False)
+        if menu_rows:
+            for row in menu_rows:
+                kb_row = []
+                for btn in row:
+                    b_id = btn.get("id")
+                    b_title = btn.get("title") or t(f"btn_{b_id}", lang)
+                    kb_row.append(KeyboardButton(b_title))
+                if kb_row:
+                    keyboard.append(kb_row)
+    except Exception as e:
+        logger.warning(f"Failed to load dynamic bot menu rows: {e}")
 
-    keyboard = [
-        top_row,
-        [KeyboardButton(t("btn_buy", lang)), KeyboardButton(t("btn_test", lang))],
-        [KeyboardButton(t("btn_renew", lang)), KeyboardButton(t("btn_status", lang))],
-        [KeyboardButton(t("btn_link", lang)), KeyboardButton(t("btn_payments", lang))],
-        [KeyboardButton(t("btn_referral", lang)), KeyboardButton(t("btn_support", lang))],
-        [KeyboardButton(t("btn_language", lang))],
-    ]
-    if user_id == admin_id:
+    if not keyboard:
+        # ساختار پیش‌فرض فال‌بک
+        top_row = [KeyboardButton(t("btn_wallet", lang))]
+        keyboard = [
+            top_row,
+            [KeyboardButton(t("btn_buy", lang)), KeyboardButton(t("btn_test", lang))],
+            [KeyboardButton(t("btn_renew", lang)), KeyboardButton(t("btn_status", lang))],
+            [KeyboardButton(t("btn_link", lang)), KeyboardButton(t("btn_payments", lang))],
+            [KeyboardButton(t("btn_referral", lang)), KeyboardButton(t("btn_support", lang))],
+            [KeyboardButton(t("btn_language", lang))],
+        ]
+
+    if user_id == admin_id and not any(any(t("btn_admin", lang) in (getattr(b, "text", "") or "") for b in row) for row in keyboard):
         keyboard.append([KeyboardButton(t("btn_admin", lang))])
 
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)

@@ -8,14 +8,15 @@
 import os
 import sys
 import json
+import html
+import re
 import logging
 import asyncio
 import threading
-import json
 import urllib.request
 import urllib.error
 from datetime import datetime, timedelta
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -53,6 +54,14 @@ HIDIFY_PANEL_URL = os.getenv("HIDIFY_PANEL_URL", "")
 HIDIFY_API_KEY = os.getenv("HIDIFY_API_KEY", "")
 HIDIFY_PROXY_PATH = os.getenv("HIDIFY_PROXY_PATH", "")
 hidify_client = HidifyClient(HIDIFY_PANEL_URL, HIDIFY_API_KEY, HIDIFY_PROXY_PATH)
+
+
+def get_reseller_hidify_client(reseller_id: int) -> HidifyClient:
+    """دریافت کلاینت هیدیفای متصل به ادمین اختصاصی نماینده یا کلاینت عمومی"""
+    reseller_key = db.get_reseller_hiddify_key(reseller_id)
+    if reseller_key and reseller_key != HIDIFY_API_KEY:
+        return HidifyClient(HIDIFY_PANEL_URL, reseller_key, HIDIFY_PROXY_PATH)
+    return hidify_client
 
 
 class ResellerBotInstance:
@@ -160,229 +169,275 @@ class ResellerBotInstance:
             brand = self.reseller_data.get("brand_name") or self.reseller_data.get("name") or "سرویس VPN"
             custom_msg = self.reseller_data.get("start_message") or ""
             
-            welcome = f"🌟 به ربات اختصاصی **{brand}** خوش آمدید!\n\n"
+            welcome = f"🌟 به ربات اختصاصی <b>{html.escape(str(brand))}</b> خوش آمدید!\n\n"
             if custom_msg:
-                welcome += f"{custom_msg}\n\n"
+                welcome += f"{html.escape(str(custom_msg))}\n\n"
             else:
                 welcome += "🚀 اتصال پرسرعت، امن و بدون قطعی با سرورهای قدرتمند\n\n"
             
             welcome += "جهت شروع یکی از گزینه‌های زیر را انتخاب نمایید:"
 
-            main_kb = ReplyKeyboardMarkup([
-                [KeyboardButton("🛍️ خرید اشتراک"), KeyboardButton("👤 اشتراک‌های من")],
-                [KeyboardButton("💳 کیف پول"), KeyboardButton("🎧 پشتیبانی و تیکت")],
-                [KeyboardButton("📖 راهنمای اتصال"), KeyboardButton("🛠️ حل مشکلات اتصال")]
-            ], resize_keyboard=True)
+            # ساخت منوی اصلی منطبق بر تنظیمات پنل مدیریت
+            menu_rows = db.get_bot_menu_keyboard_rows(is_reseller=True)
+            kb_list = []
+            for r in menu_rows:
+                row_btns = []
+                for b in r:
+                    row_btns.append(KeyboardButton(b.get("title", "")))
+                if row_btns:
+                    kb_list.append(row_btns)
+            if not kb_list:
+                kb_list = [
+                    [KeyboardButton("🛍️ خرید اشتراک"), KeyboardButton("👤 اشتراک‌های من")],
+                    [KeyboardButton("💳 کیف پول و شارژ"), KeyboardButton("🎧 پشتیبانی و تیکت")],
+                    [KeyboardButton("📖 راهنمای اتصال"), KeyboardButton("🛠️ حل مشکلات اتصال")]
+                ]
+            main_kb = ReplyKeyboardMarkup(kb_list, resize_keyboard=True)
 
-            await update.message.reply_text(welcome, reply_markup=main_kb, parse_mode="Markdown")
+            await update.message.reply_text(welcome, reply_markup=main_kb, parse_mode="HTML")
 
         async def plans_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """نمایش پلن‌های فروش برای مشتری نماینده (با اعمال نام و قیمت سفارشی نماینده)"""
-            plans = db.get_reseller_active_plans(r_id)
-            if not plans:
-                await update.message.reply_text("❌ در حال حاضر پلن فعالی در فروشگاه تعریف نشده است.")
-                return
+            try:
+                plans = db.get_reseller_active_plans(r_id)
+                if not plans:
+                    msg = "❌ در حال حاضر پلن فعالی در فروشگاه تعریف نشده است."
+                    if update.callback_query:
+                        await update.callback_query.answer()
+                        await update.callback_query.edit_message_text(msg)
+                    else:
+                        await update.message.reply_text(msg)
+                    return
 
-            brand = self.reseller_data.get("brand_name") or "ما"
-            text = f"📦 **تعرفه‌های اشتراک {brand}:**\n\nلطفاً پلن مورد نظر خود را انتخاب فرمایید:\n"
+                brand = html.escape(str(self.reseller_data.get("brand_name") or "ما"))
+                text = f"📦 <b>تعرفه‌های اشتراک {brand}:</b>\n\nلطفاً پلن مورد نظر خود را انتخاب فرمایید:\n"
 
-            buttons = []
-            for p in plans:
-                pid = p["plan_id"]
-                pname = p.get("display_name") or p.get("master_name", "پلن")
-                price = p.get("display_price", 0)
-                vol = p.get("data_limit", 0)
-                days = p.get("duration", 30)
-                vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
+                buttons = []
+                for p in plans:
+                    pid = p["plan_id"]
+                    pname = html.escape(str(p.get("display_name") or p.get("master_name", "پلن")))
+                    price = p.get("display_price", 0)
+                    vol = p.get("data_limit", 0)
+                    days = p.get("duration", 30)
+                    vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
 
-                btn_text = f"⚡ {pname} | {vol_str} - {days} روز ({price:,} تومان)"
-                buttons.append([InlineKeyboardButton(btn_text, callback_data=f"r_buy_{pid}")])
+                    btn_text = f"⚡ {pname} | {vol_str} - {days} روز ({price:,} تومان)"
+                    buttons.append([InlineKeyboardButton(btn_text, callback_data=f"r_buy_{pid}")])
 
-            kb = InlineKeyboardMarkup(buttons)
-            await update.message.reply_text(text, reply_markup=kb, parse_mode="Markdown")
+                kb = InlineKeyboardMarkup(buttons)
+                if update.callback_query:
+                    await update.callback_query.answer()
+                    await update.callback_query.edit_message_text(text, reply_markup=kb, parse_mode="HTML")
+                else:
+                    await update.message.reply_text(text, reply_markup=kb, parse_mode="HTML")
+            except Exception as e:
+                logger.error(f"Error in plans_handler reseller {r_id}: {e}")
 
         async def buy_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """انتخاب پلن و نمایش صفحه جامع انتخاب روش پرداخت (کیف پول، درگاه آنلاین، کارت به کارت)"""
             query = update.callback_query
-            await query.answer()
+            try:
+                await query.answer()
+            except Exception:
+                pass
 
-            plan_id = query.data.replace("r_buy_", "")
-            plan = db.get_reseller_plan(r_id, plan_id)
-            if not plan:
-                await query.edit_message_text("❌ پلن مورد نظر یافت نشد.")
-                return
+            try:
+                plan_id = query.data.replace("r_buy_", "")
+                plan = db.get_reseller_plan(r_id, plan_id)
+                if not plan:
+                    await query.edit_message_text("❌ پلن مورد نظر یافت نشد.")
+                    return
 
-            price = plan.get("display_price", 0)
-            pname = plan.get("display_name") or plan.get("master_name", "پلن")
-            vol = plan.get("data_limit", 0)
-            days = plan.get("duration", 30)
-            vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
+                price = plan.get("display_price", 0)
+                pname = html.escape(str(plan.get("display_name") or plan.get("master_name", "پلن")))
+                vol = plan.get("data_limit", 0)
+                days = plan.get("duration", 30)
+                vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
 
-            user = update.effective_user
-            user_wallet = db.get_user_wallet_balance(user.id)
-            gw_cfg = db.get_reseller_gateway(r_id)
+                user = update.effective_user
+                user_wallet = db.get_user_wallet_balance(user.id)
+                gw_cfg = db.get_reseller_gateway(r_id)
 
-            context.user_data["buying_plan_id"] = plan_id
-            context.user_data["buying_price"] = price
+                context.user_data["buying_plan_id"] = plan_id
+                context.user_data["buying_price"] = price
 
-            msg = f"🛒 **پیش‌فاکتور خرید اشتراک**\n\n"
-            msg += f"📦 پلن: **{pname}**\n"
-            msg += f"📊 حجم: **{vol_str}** | ⏳ مدت: **{days} روز**\n"
-            msg += f"💰 مبلغ قابل پرداخت: **{price:,} تومان**\n"
-            msg += f"💳 موجودی کیف پول شما: **{user_wallet:,} تومان**\n\n"
-            msg += "لطفاً نحوه پرداخت را انتخاب فرمایید:"
+                msg = f"🛒 <b>پیش‌فاکتور خرید اشتراک</b>\n\n"
+                msg += f"📦 پلن: <b>{pname}</b>\n"
+                msg += f"📊 حجم: <b>{vol_str}</b> | ⏳ مدت: <b>{days} روز</b>\n"
+                msg += f"💰 مبلغ قابل پرداخت: <b>{price:,} تومان</b>\n"
+                msg += f"💳 موجودی کیف پول شما: <b>{user_wallet:,} تومان</b>\n\n"
+                msg += "لطفاً نحوه پرداخت را انتخاب فرمایید:"
 
-            ordered_methods = db.get_payment_methods(reseller_id=r_id)
-            buttons = []
-            for m in ordered_methods:
-                m_id = m.get("id")
-                if not m.get("enabled", True):
-                    continue
-                if m_id == "wallet":
-                    if user_wallet >= price:
-                        buttons.append([InlineKeyboardButton(f"⚡ پرداخت آنی از کیف پول ({user_wallet:,} ت)", callback_data=f"r_pwal_{plan_id}")])
-                    else:
-                        buttons.append([InlineKeyboardButton(f"💰 پرداخت از کیف پول (کسری: {price - user_wallet:,} ت)", callback_data="r_pwal_insuf")])
-                elif m_id == "online_gateway":
-                    if gw_cfg.get("enabled") and gw_cfg.get("key"):
-                        gw_label = "زرین‌پال" if gw_cfg.get("type") == "zarinpal" else ("آیدی‌پی" if gw_cfg.get("type") == "idpay" else "آنلاین")
-                        buttons.append([InlineKeyboardButton(f"💳 درگاه پرداخت آنلاین ({gw_label})", callback_data=f"r_ponl_{plan_id}")])
-                    else:
-                        buttons.append([InlineKeyboardButton("💳 درگاه آنلاین (بزودی)", callback_data="r_ponl_soon")])
-                elif m_id == "card_to_card":
-                    buttons.append([InlineKeyboardButton("💵 کارت به کارت (بانکی)", callback_data=f"r_pcard_{plan_id}")])
+                ordered_methods = db.get_payment_methods(reseller_id=r_id)
+                buttons = []
+                for m in ordered_methods:
+                    m_id = m.get("id")
+                    if not m.get("enabled", True):
+                        continue
+                    if m_id == "wallet":
+                        if user_wallet >= price:
+                            buttons.append([InlineKeyboardButton(f"⚡ پرداخت آنی از کیف پول ({user_wallet:,} ت)", callback_data=f"r_pwal_{plan_id}")])
+                        else:
+                            buttons.append([InlineKeyboardButton(f"💰 پرداخت از کیف پول (کسری: {price - user_wallet:,} ت)", callback_data="r_pwal_insuf")])
+                    elif m_id == "online_gateway":
+                        if gw_cfg.get("enabled") and gw_cfg.get("key"):
+                            gw_label = "زرین‌پال" if gw_cfg.get("type") == "zarinpal" else ("آیدی‌پی" if gw_cfg.get("type") == "idpay" else "آنلاین")
+                            buttons.append([InlineKeyboardButton(f"💳 درگاه پرداخت آنلاین ({gw_label})", callback_data=f"r_ponl_{plan_id}")])
+                        else:
+                            buttons.append([InlineKeyboardButton("💳 درگاه آنلاین (بزودی)", callback_data="r_ponl_soon")])
+                    elif m_id == "card_to_card":
+                        buttons.append([InlineKeyboardButton("💵 کارت به کارت (بانکی)", callback_data=f"r_pcard_{plan_id}")])
 
-            # انصراف
-            buttons.append([InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy")])
+                # انصراف
+                buttons.append([InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy")])
 
-            kb = InlineKeyboardMarkup(buttons)
-            await query.edit_message_text(msg, reply_markup=kb, parse_mode="Markdown")
+                kb = InlineKeyboardMarkup(buttons)
+                await query.edit_message_text(msg, reply_markup=kb, parse_mode="HTML")
+            except Exception as e:
+                logger.error(f"Error in buy_plan_callback reseller {r_id}: {e}")
+                try:
+                    await query.edit_message_text(f"❌ خطا در بارگذاری روش‌های پرداخت: {e}")
+                except Exception:
+                    pass
 
         async def pay_card_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """نمایش اطلاعات کارت بانکی فعال نماینده با دکمه‌های کپی هوشمند شماره کارت و مبلغ"""
             query = update.callback_query
-            await query.answer()
+            try:
+                await query.answer()
+            except Exception:
+                pass
 
-            plan_id = query.data.replace("r_pcard_", "")
-            plan = db.get_reseller_plan(r_id, plan_id)
-            if not plan:
-                await query.edit_message_text("❌ پلن یافت نشد.")
-                return
+            try:
+                plan_id = query.data.replace("r_pcard_", "")
+                plan = db.get_reseller_plan(r_id, plan_id)
+                if not plan:
+                    await query.edit_message_text("❌ پلن یافت نشد.")
+                    return
 
-            price = plan.get("display_price", 0)
-            pname = plan.get("display_name") or plan.get("master_name", "پلن")
-            vol = plan.get("data_limit", 0)
-            days = plan.get("duration", 30)
-            vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
+                price = plan.get("display_price", 0)
+                pname = html.escape(str(plan.get("display_name") or plan.get("master_name", "پلن")))
+                vol = plan.get("data_limit", 0)
+                days = plan.get("duration", 30)
+                vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
 
-            # دریافت کارت بانکی فعال نماینده
-            active_card = db.get_active_reseller_card(r_id)
-            if active_card:
-                raw_card = active_card.get("card_number") or ""
-                card_holder = active_card.get("card_holder") or ""
-                bank_name = active_card.get("bank_name") or ""
-            else:
-                raw_card = self.reseller_data.get("card_number") or ""
-                card_holder = self.reseller_data.get("card_holder") or ""
-                bank_name = self.reseller_data.get("bank_name") or ""
+                # دریافت کارت بانکی فعال نماینده
+                active_card = db.get_active_reseller_card(r_id)
+                if active_card:
+                    raw_card = active_card.get("card_number") or ""
+                    card_holder = html.escape(str(active_card.get("card_holder") or ""))
+                    bank_name = html.escape(str(active_card.get("bank_name") or ""))
+                else:
+                    raw_card = self.reseller_data.get("card_number") or ""
+                    card_holder = html.escape(str(self.reseller_data.get("card_holder") or ""))
+                    bank_name = html.escape(str(self.reseller_data.get("bank_name") or ""))
 
-            card_num = re.sub(r"\D", "", str(raw_card))
-            rial_price = price * 10
-            rial_fmt = f"{rial_price:,}"
-            toman_fmt = f"{price:,}"
+                card_num = re.sub(r"\D", "", str(raw_card))
+                rial_price = price * 10
+                rial_fmt = f"{rial_price:,}"
+                toman_fmt = f"{price:,}"
 
-            context.user_data["buying_plan_id"] = plan_id
-            context.user_data["buying_price"] = price
+                context.user_data["buying_plan_id"] = plan_id
+                context.user_data["buying_price"] = price
 
-            msg = f"💵 **پرداخت کارت به کارت**\n\n"
-            msg += f"📦 پلن: **{pname}**\n"
-            msg += f"📊 حجم: **{vol_str}** | ⏳ مدت: **{days} روز**\n\n"
-            msg += f"💰 **مبلغ قابل واریز:**\n"
-            msg += f"• به ریال (جهت همراه بانک / عابربانک):\n`{rial_price}` ریال (**{rial_fmt} ریال**)\n"
-            msg += f"• به تومان:\n`{price}` تومان (**{toman_fmt} تومان**)\n\n"
+                msg = f"💵 <b>پرداخت کارت به کارت</b>\n\n"
+                msg += f"📦 پلن: <b>{pname}</b>\n"
+                msg += f"📊 حجم: <b>{vol_str}</b> | ⏳ مدت: <b>{days} روز</b>\n\n"
+                msg += f"💰 <b>مبلغ قابل واریز:</b>\n"
+                msg += f"• به ریال (جهت همراه بانک / عابربانک):\n<code>{rial_price}</code> ریال (<b>{rial_fmt} ریال</b>)\n"
+                msg += f"• به تومان:\n<code>{price}</code> تومان (<b>{toman_fmt} تومان</b>)\n\n"
 
-            if card_num:
-                msg += "💳 **اطلاعات کارت جهت واریز:**\n"
-                msg += f"شماره کارت:\n`{card_num}`\n"
-                if card_holder:
-                    msg += f"به نام: **{card_holder}**\n"
-                if bank_name:
-                    msg += f"بانک: **{bank_name}**\n"
-                msg += "\n⚠️ **نکات مهم:**\n"
-                msg += "• برای کپی با یک لمس، روی **شماره کارت** یا **مبلغ به ریال** بالا یا دکمه‌های زیر بزنید.\n"
-                msg += "• پس از واریز، **عکس فیش واریزی** خود را در همین گفتگو ارسال فرمایید."
+                if card_num:
+                    msg += "💳 <b>اطلاعات کارت جهت واریز:</b>\n"
+                    msg += f"شماره کارت:\n<code>{card_num}</code>\n"
+                    if card_holder:
+                        msg += f"به نام: <b>{card_holder}</b>\n"
+                    if bank_name:
+                        msg += f"بانک: <b>{bank_name}</b>\n"
+                    msg += "\n⚠️ <b>نکات مهم:</b>\n"
+                    msg += "• برای کپی با یک لمس، روی <b>شماره کارت</b> یا <b>مبلغ به ریال</b> بالا یا دکمه‌های زیر بزنید.\n"
+                    msg += "• پس از واریز، <b>عکس فیش واریزی</b> خود را در همین گفتگو ارسال فرمایید."
 
-                buttons = [
-                    [InlineKeyboardButton("📋 کپی شماره کارت", callback_data=f"r_copy_card_{card_num}")],
-                    [InlineKeyboardButton(f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)", callback_data=f"r_copy_rial_{rial_price}")],
-                    [InlineKeyboardButton(f"💵 کپی مبلغ به تومان ({toman_fmt} ت)", callback_data=f"r_copy_amt_{price}")],
-                    [InlineKeyboardButton("◀️ بازگشت", callback_data=f"r_buy_{plan_id}"), InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy")]
-                ]
-            else:
-                msg += "💳 جهت پرداخت و دریافت شماره کارت، با پشتیبانی تماس حاصل فرمایید."
-                buttons = [
-                    [InlineKeyboardButton("◀️ بازگشت", callback_data=f"r_buy_{plan_id}"), InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy")]
-                ]
+                    buttons = [
+                        [InlineKeyboardButton("📋 کپی شماره کارت", callback_data=f"r_copy_card_{card_num}")],
+                        [InlineKeyboardButton(f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)", callback_data=f"r_copy_rial_{rial_price}")],
+                        [InlineKeyboardButton(f"💵 کپی مبلغ به تومان ({toman_fmt} ت)", callback_data=f"r_copy_amt_{price}")],
+                        [InlineKeyboardButton("◀️ بازگشت", callback_data=f"r_buy_{plan_id}"), InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy")]
+                    ]
+                else:
+                    msg += "💳 جهت پرداخت و دریافت شماره کارت، با پشتیبانی تماس حاصل فرمایید."
+                    buttons = [
+                        [InlineKeyboardButton("◀️ بازگشت", callback_data=f"r_buy_{plan_id}"), InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy")]
+                    ]
 
-            kb = InlineKeyboardMarkup(buttons)
-            await query.edit_message_text(msg, reply_markup=kb, parse_mode="Markdown")
+                kb = InlineKeyboardMarkup(buttons)
+                await query.edit_message_text(msg, reply_markup=kb, parse_mode="HTML")
+            except Exception as e:
+                logger.error(f"Error in pay_card_callback reseller {r_id}: {e}")
+                try:
+                    await query.edit_message_text(f"❌ خطا در بارگذاری اطلاعات کارت: {e}")
+                except Exception:
+                    pass
 
         async def copy_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """پاسخ به دکمه‌های کپی شماره کارت و مبلغ در ربات نماینده با ارسال پیام کپی ۱ لمسی"""
             query = update.callback_query
             data = query.data
-            if data.startswith("r_copy_card_"):
-                raw_c = data.replace("r_copy_card_", "").strip()
-                c_num = re.sub(r"\D", "", raw_c)
-                await query.answer(f"📋 شماره کارت:\n{c_num}\n(کپی شد)", show_alert=False)
-                try:
-                    await context.bot.send_message(
-                        chat_id=update.effective_chat.id,
-                        text=f"📋 <b>شماره کارت مقصد (جهت واریز):</b>\n<code>{c_num}</code>\n\n<i>👆 روی شماره کارت بالا بزنید تا با یک لمس کپی شود.</i>",
-                        parse_mode="HTML"
-                    )
-                except Exception as e:
-                    logger.warning(f"Error sending copy card msg in reseller bot: {e}")
-            elif data.startswith("r_copy_rial_"):
-                raw_amt = data.replace("r_copy_rial_", "").strip()
-                clean_amt = re.sub(r"\D", "", raw_amt)
-                try:
-                    rial_f = f"{int(clean_amt):,}"
-                except Exception:
-                    rial_f = clean_amt
-                await query.answer(f"💰 مبلغ به ریال:\n{rial_f} ریال\n(کپی شد)", show_alert=False)
-                try:
-                    await context.bot.send_message(
-                        chat_id=update.effective_chat.id,
-                        text=f"💰 <b>مبلغ به ریال (جهت همراه بانک / عابربانک):</b>\n<code>{clean_amt}</code>\n\n<i>👆 روی عدد بالا بزنید تا با یک لمس کپی شود ({rial_f} ریال).</i>",
-                        parse_mode="HTML"
-                    )
-                except Exception as e:
-                    logger.warning(f"Error sending copy rial msg in reseller bot: {e}")
-            elif data.startswith("r_copy_amt_"):
-                raw_amt = data.replace("r_copy_amt_", "").strip()
-                clean_amt = re.sub(r"\D", "", raw_amt)
-                try:
-                    amt_fmt = f"{int(clean_amt):,}"
-                except Exception:
-                    amt_fmt = clean_amt
-                await query.answer(f"💵 مبلغ به تومان:\n{amt_fmt} تومان\n(کپی شد)", show_alert=False)
-                try:
-                    await context.bot.send_message(
-                        chat_id=update.effective_chat.id,
-                        text=f"💵 <b>مبلغ به تومان:</b>\n<code>{clean_amt}</code>\n\n<i>👆 روی عدد بالا بزنید تا با یک لمس کپی شود ({amt_fmt} تومان).</i>",
-                        parse_mode="HTML"
-                    )
-                except Exception as e:
-                    logger.warning(f"Error sending copy amount msg in reseller bot: {e}")
-            elif data == "r_pwal_insuf":
-                user = update.effective_user
-                user_wallet = db.get_user_wallet_balance(user.id)
-                await query.answer(f"❌ موجودی کیف پول شما ({user_wallet:,} ت) برای این پلن کافی نیست. لطفاً از کارت به کارت استفاده کنید.", show_alert=True)
-            elif data == "r_ponl_soon":
-                await query.answer("💳 درگاه پرداخت آنلاین به زودی فعال خواهد شد. لطفاً از روش کارت به کارت استفاده فرمایید.", show_alert=True)
-            elif data == "r_cancel_buy":
-                await query.edit_message_text("❌ عملیات خرید لغو شد.")
+            try:
+                if data.startswith("r_copy_card_"):
+                    raw_c = data.replace("r_copy_card_", "").strip()
+                    c_num = re.sub(r"\D", "", raw_c)
+                    await query.answer(f"📋 شماره کارت:\n{c_num}\n(کپی شد)", show_alert=False)
+                    try:
+                        await context.bot.send_message(
+                            chat_id=update.effective_chat.id,
+                            text=f"📋 <b>شماره کارت مقصد (جهت واریز):</b>\n<code>{c_num}</code>\n\n<i>👆 روی شماره کارت بالا بزنید تا با یک لمس کپی شود.</i>",
+                            parse_mode="HTML"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Error sending copy card msg in reseller bot: {e}")
+                elif data.startswith("r_copy_rial_"):
+                    raw_amt = data.replace("r_copy_rial_", "").strip()
+                    clean_amt = re.sub(r"\D", "", raw_amt)
+                    try:
+                        rial_f = f"{int(clean_amt):,}"
+                    except Exception:
+                        rial_f = clean_amt
+                    await query.answer(f"💰 مبلغ به ریال:\n{rial_f} ریال\n(کپی شد)", show_alert=False)
+                    try:
+                        await context.bot.send_message(
+                            chat_id=update.effective_chat.id,
+                            text=f"💰 <b>مبلغ به ریال (جهت همراه بانک / عابربانک):</b>\n<code>{clean_amt}</code>\n\n<i>👆 روی عدد بالا بزنید تا با یک لمس کپی شود ({rial_f} ریال).</i>",
+                            parse_mode="HTML"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Error sending copy rial msg in reseller bot: {e}")
+                elif data.startswith("r_copy_amt_"):
+                    raw_amt = data.replace("r_copy_amt_", "").strip()
+                    clean_amt = re.sub(r"\D", "", raw_amt)
+                    try:
+                        amt_fmt = f"{int(clean_amt):,}"
+                    except Exception:
+                        amt_fmt = clean_amt
+                    await query.answer(f"💵 مبلغ به تومان:\n{amt_fmt} تومان\n(کپی شد)", show_alert=False)
+                    try:
+                        await context.bot.send_message(
+                            chat_id=update.effective_chat.id,
+                            text=f"💵 <b>مبلغ به تومان:</b>\n<code>{clean_amt}</code>\n\n<i>👆 روی عدد بالا بزنید تا با یک لمس کپی شود ({amt_fmt} تومان).</i>",
+                            parse_mode="HTML"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Error sending copy amt msg in reseller bot: {e}")
+                elif data == "r_pwal_insuf":
+                    user = update.effective_user
+                    user_wallet = db.get_user_wallet_balance(user.id)
+                    await query.answer(f"❌ موجودی کیف پول شما ({user_wallet:,} ت) برای این پلن کافی نیست. لطفاً از کارت به کارت استفاده کنید.", show_alert=True)
+                elif data == "r_ponl_soon":
+                    await query.answer("💳 درگاه پرداخت آنلاین به زودی فعال خواهد شد. لطفاً از روش کارت به کارت استفاده فرمایید.", show_alert=True)
+                elif data == "r_cancel_buy":
+                    await query.answer()
+            except Exception as e:
+                logger.error(f"Error in copy_action_callback in reseller bot: {e}")
 
         async def pay_wallet_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """پرداخت و ساخت آنی اشتراک از کیف پول مشتری در ربات نماینده"""
@@ -427,13 +482,14 @@ class ResellerBotInstance:
 
             await query.edit_message_text("⏳ در حال ساخت و فعال‌سازی آنی اشتراک شما...")
 
-            # ساخت اشتراک در هیدیفای
-            created = await hidify_client.create_user(
+            # ساخت اشتراک در هیدیفای با کلاینت ادمین اختصاصی نماینده
+            r_client = get_reseller_hidify_client(r_id)
+            created = await r_client.create_user(
                 name=account_name,
                 usage_limit_gb=vol if vol > 0 else None,
                 package_days=days,
                 enable=True,
-                comment=f"Reseller #{r_id} | User {user.id}"
+                comment=f"[RESELLER_ID: #{r_id}] User {user.id} | {account_name}"
             )
 
             uuid_val = created.get("uuid") if created else None
@@ -647,14 +703,15 @@ class ResellerBotInstance:
                     )
                     return
 
-                # ساخت در هیدیفای
+                # ساخت در هیدیفای با ادمین اختصاصی نماینده
                 h_res = None
                 try:
-                    h_res = await hidify_client.create_user(
+                    r_client = get_reseller_hidify_client(r_id)
+                    h_res = await r_client.create_user(
                         name=account_name,
                         package_days=int(days),
                         usage_limit_gb=float(vol) if vol > 0 else None,
-                        comment=f"Reseller #{r_id} Bot | TG: {target_uid}"
+                        comment=f"[RESELLER_ID: #{r_id}] TG: {target_uid} | {account_name}"
                     )
                 except Exception as e:
                     logger.error(f"Hiddify creation error: {e}")
@@ -829,26 +886,66 @@ class ResellerBotInstance:
             await update.message.reply_text(guide_text, reply_markup=kb, parse_mode="Markdown")
 
         async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            """مسیریابی دکمه‌های ریپلای کیبورد"""
-            text = update.message.text or ""
-            if "خرید اشتراک" in text or "خرید" in text:
-                await plans_handler(update, context)
-            elif "اشتراک‌های من" in text or "سرویس‌های من" in text or "اشتراک" in text:
-                await my_subs_handler(update, context)
-            elif "کیف پول" in text or "شارژ" in text:
-                user = update.effective_user
-                bal = db.get_user_wallet_balance(user.id)
-                vip_info = db.get_user_vip_info(user.id)
-                vip_txt = ""
-                if vip_info.get("is_vip"):
-                    cb = vip_info.get("cashback_percent", 10)
-                    vip_txt = f"\n👑 **سطح حساب:** مشتری طلایی (⭐️ VIP)\n🎁 **پاداش کش‌بک:** {cb}٪ بازگشت وجه در هر خرید\n"
-                await update.message.reply_text(f"💳 **موجودی کیف پول شما:** `{bal:,}` تومان{vip_txt}", parse_mode="Markdown")
-            elif "پشتیبانی" in text:
-                await support_handler(update, context)
-            elif "راهنما" in text or "آموزش" in text or "حل مشکل" in text or "عیب‌یابی" in text:
-                await guide_handler(update, context)
-            elif text.startswith("تیکت:") or text.startswith("تیکت ") or text.startswith("/ticket"):
+            """مسیریابی هوشمند و داینامیک تمام کلیدهای منوی اصلی بر اساس تنظیمات سراسری پنل مدیریت"""
+            text = (update.message.text or "").strip()
+            if not text:
+                return
+
+            btn = db.match_bot_menu_button(text)
+            if btn:
+                b_id = btn.get("id")
+                is_enabled = btn.get("is_enabled", True)
+                if not is_enabled:
+                    dis_msg = btn.get("disabled_message") or "⚠️ این بخش موقتاً غیرفعال می‌باشد."
+                    await update.message.reply_text(dis_msg)
+                    return
+
+                if b_id == "buy":
+                    return await plans_handler(update, context)
+                elif b_id in ("my_subs", "renew"):
+                    return await my_subs_handler(update, context)
+                elif b_id == "wallet":
+                    user = update.effective_user
+                    bal = db.get_user_wallet_balance(user.id)
+                    vip_info = db.get_user_vip_info(user.id)
+                    vip_txt = ""
+                    if vip_info.get("is_vip"):
+                        cb = vip_info.get("cashback_percent", 10)
+                        vip_txt = f"\n👑 <b>سطح حساب:</b> مشتری طلایی (⭐️ VIP)\n🎁 <b>پاداش کش‌بک:</b> {cb}٪ بازگشت وجه در هر خرید\n"
+                    await update.message.reply_text(f"💳 <b>موجودی کیف پول شما:</b> <code>{bal:,}</code> تومان{vip_txt}", parse_mode="HTML")
+                    return
+                elif b_id == "support":
+                    return await support_handler(update, context)
+                elif b_id in ("tutorials", "troubleshoot"):
+                    return await guide_handler(update, context)
+                elif b_id == "payments":
+                    # نمایش سابقه پرداخت‌های کاربر در ربات نماینده
+                    user = update.effective_user
+                    conn = db.get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT id, amount, gateway, status, created_at, plan_name 
+                        FROM transactions 
+                        WHERE user_id = ? AND (reseller_id = ? OR reseller_id IS NULL)
+                        ORDER BY id DESC LIMIT 5
+                    """, (user.id, r_id))
+                    txs = cursor.fetchall()
+                    conn.close()
+                    if not txs:
+                        await update.message.reply_text("🧾 شما تاکنون پرداختی در این ربات ثبت نکرده‌اید.")
+                        return
+                    p_text = "🧾 <b>آخرین سوابق پرداخت شما:</b>\n\n"
+                    for tx in txs:
+                        st = "✅ تایید شده" if tx["status"] in ("approved", "completed") else ("⏳ در حال بررسی" if tx["status"] == "pending" else "❌ رد شده")
+                        p_text += f"• سفارش #{tx['id']} | {html.escape(str(tx['plan_name'] or 'پلن'))}\n  💰 {tx['amount']:,} ت ({st})\n  📅 {tx['created_at'][:16].replace('T', ' ')}\n\n"
+                    await update.message.reply_text(p_text, parse_mode="HTML")
+                    return
+                elif b_id == "test_sub":
+                    await update.message.reply_text("⚡ جهت دریافت اکانت تست رایگان، لطفاً با پشتیبانی در ارتباط باشید.")
+                    return
+
+            # پردازش تیکت مستقیم متنی
+            if text.startswith("تیکت:") or text.startswith("تیکت ") or text.startswith("/ticket"):
                 user = update.effective_user
                 content = text.replace("تیکت:", "").replace("تیکت", "").replace("/ticket", "").strip()
                 if content:
@@ -862,25 +959,25 @@ class ResellerBotInstance:
                         reseller_id=r_id
                     )
                     t_id = t_res.get("ticket_id", 0)
-                    await update.message.reply_text(f"✅ **پیام و تیکت پشتیبانی شما با شماره #{t_id} ثبت شد.**\nپاسخ کارشناسان در همین ربات برای شما ارسال خواهد شد.", parse_mode="Markdown")
+                    await update.message.reply_text(f"✅ <b>پیام و تیکت پشتیبانی شما با شماره #{t_id} ثبت شد.</b>\nپاسخ کارشناسان در همین ربات برای شما ارسال خواهد شد.", parse_mode="HTML")
 
                     # ارسال نوتیفیکیشن فوری به تلگرام نماینده
                     reseller_tg = self.reseller_data.get("telegram_id")
                     if reseller_tg:
                         try:
-                            vip_alert = "🚨 ⭐️ **[تیکت فوری - مشتری ویژه VIP]**" if is_vip else "📨 **تیکت پشتیبانی جدید**"
+                            vip_alert = "🚨 ⭐️ <b>[تیکت فوری - مشتری ویژه VIP]</b>" if is_vip else "📨 <b>تیکت پشتیبانی جدید</b>"
                             notif_msg = (
                                 f"{vip_alert}\n\n"
-                                f"👤 مشتری: {user.first_name} (ID: `{user.id}`)\n"
+                                f"👤 مشتری: {html.escape(str(user.first_name))} (ID: <code>{user.id}</code>)\n"
                                 f"💬 یوزرنیم: @{user.username or 'ندارد'}\n"
-                                f"📝 متن پیام:\n{content}\n\n"
+                                f"📝 متن پیام:\n{html.escape(content)}\n\n"
                                 f"🔖 شماره تیکت: #{t_id}"
                             )
-                            await context.bot.send_message(chat_id=reseller_tg, text=notif_msg, parse_mode="Markdown")
+                            await context.bot.send_message(chat_id=reseller_tg, text=notif_msg, parse_mode="HTML")
                         except Exception as e_notif:
                             logger.error(f"Error notifying reseller of ticket: {e_notif}")
                 else:
-                    await update.message.reply_text("⚠️ لطفاً متن پیام خود را بعد از عبارت `تیکت:` بنویسید.")
+                    await update.message.reply_text("⚠️ لطفاً متن پیام خود را بعد از عبارت <code>تیکت:</code> بنویسید.", parse_mode="HTML")
             else:
                 # پاسخ عمومی
                 await update.message.reply_text("لطفاً از دکمه‌های منو استفاده فرمایید.")

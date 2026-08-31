@@ -188,11 +188,42 @@ class HidifyClient:
         """حذف کاربر"""
         return await self._request("DELETE", f"/admin/user/{uuid}/")
 
-    # ─── Admin Management ───
+    # ─── Admin / Reseller Sub-Account Management ───
 
     async def get_admins(self) -> list:
-        """دریافت لیست ادمین‌ها"""
+        """دریافت لیست ادمین‌ها و نمایندگان در هیدیفای"""
         return await self._request("GET", "/admin/admin_user/")
+
+    async def get_admin(self, uuid: str) -> dict:
+        """دریافت اطلاعات یک ادمین در هیدیفای"""
+        return await self._request("GET", f"/admin/admin_user/{uuid}/")
+
+    async def create_admin(self, name: str, mode: str = "agent", comment: str = None,
+                           can_add_users: bool = True, max_users: int = None,
+                           max_usage_limit_gb: float = None) -> dict:
+        """ایجاد ادمین / نماینده جدید در هیدیفای"""
+        payload = {
+            "name": name,
+            "mode": mode,
+            "can_add_users": can_add_users,
+            "is_active": True
+        }
+        if comment:
+            payload["comment"] = str(comment)[:200]
+        if max_users is not None and max_users > 0:
+            payload["max_users"] = int(max_users)
+        if max_usage_limit_gb is not None and max_usage_limit_gb > 0:
+            payload["max_usage_limit_GB"] = float(max_usage_limit_gb)
+
+        return await self._request("POST", "/admin/admin_user/", payload)
+
+    async def update_admin(self, uuid: str, **kwargs) -> dict:
+        """بروزرسانی ادمین در هیدیفای"""
+        return await self._request("PATCH", f"/admin/admin_user/{uuid}/", kwargs)
+
+    async def delete_admin(self, uuid: str) -> dict:
+        """حذف ادمین از هیدیفای"""
+        return await self._request("DELETE", f"/admin/admin_user/{uuid}/")
 
     # ─── Panel Info ───
 

@@ -7,6 +7,7 @@ import sqlite3
 import json
 import os
 import re
+import copy
 import logging
 from typing import Optional, Dict, List, Any, Tuple, Union
 from datetime import datetime, timedelta
@@ -639,7 +640,8 @@ class Database:
             "is_gateway_active INTEGER DEFAULT 0",
             "gateway_type TEXT DEFAULT 'zarinpal'",
             "gateway_key TEXT",
-            "gateway_sandbox INTEGER DEFAULT 0"
+            "gateway_sandbox INTEGER DEFAULT 0",
+            "hiddify_admin_uuid TEXT"
         ]:
             try:
                 cursor.execute(f"ALTER TABLE resellers ADD COLUMN {col_def}")
@@ -2379,6 +2381,241 @@ class Database:
             conn.close()
 
     # ═══════════════════════════════════════════════════════════════
+    # مدیریت و چیدمان سفارشی دکمه‌ها و منوی ربات (Bot Menu Customizer)
+    # ═══════════════════════════════════════════════════════════════
+
+    DEFAULT_BOT_MENU_BUTTONS = [
+        {
+            "id": "buy",
+            "title": "🛍️ خرید اشتراک",
+            "description": "نمایش تعرفه‌ها و خرید اشتراک VPN",
+            "row": 0,
+            "col": 0,
+            "is_enabled": True,
+            "disabled_behavior": "show_disabled",
+            "disabled_message": "⚠️ بخش خرید اشتراک موقتاً غیرفعال می‌باشد. لطفاً دقایقی دیگر مراجعه فرمایید.",
+        },
+        {
+            "id": "my_subs",
+            "title": "👤 اشتراک‌های من",
+            "description": "مشاهده وضعیت ترافیک، زمان و لینک‌های اتصال کاربر",
+            "row": 0,
+            "col": 1,
+            "is_enabled": True,
+            "disabled_behavior": "show_disabled",
+            "disabled_message": "⚠️ بخش اشتراک‌های من موقتاً در حال بروزرسانی است.",
+        },
+        {
+            "id": "test_sub",
+            "title": "⚡ تست رایگان",
+            "description": "دریافت کانفیگ تست رایگان برای کاربران جدید",
+            "row": 1,
+            "col": 0,
+            "is_enabled": True,
+            "disabled_behavior": "hide",
+            "disabled_message": "⚠️ اشتراک تست موقتاً غیرفعال است.",
+        },
+        {
+            "id": "renew",
+            "title": "🔄 تمدید سرویس",
+            "description": "تمدید سریع اکانت‌های موجود بدون تغییر لینک",
+            "row": 1,
+            "col": 1,
+            "is_enabled": True,
+            "disabled_behavior": "show_disabled",
+            "disabled_message": "⚠️ بخش تمدید سرویس موقتاً غیرفعال است.",
+        },
+        {
+            "id": "wallet",
+            "title": "💳 کیف پول و شارژ",
+            "description": "مشاهده موجودی کیف پول و شارژ اعتبار",
+            "row": 2,
+            "col": 0,
+            "is_enabled": True,
+            "disabled_behavior": "show_disabled",
+            "disabled_message": "⚠️ بخش کیف پول موقتاً در دسترس نیست.",
+        },
+        {
+            "id": "support",
+            "title": "🎧 پشتیبانی و تیکت",
+            "description": "ارسال تیکت و پیام به اپراتورها",
+            "row": 2,
+            "col": 1,
+            "is_enabled": True,
+            "disabled_behavior": "show_disabled",
+            "disabled_message": "⚠️ پشتیبانی موقتاً غیرفعال است.",
+        },
+        {
+            "id": "tutorials",
+            "title": "📖 راهنمای اتصال",
+            "description": "آموزش‌های تصویری اتصال برای اندروید، آیفون، ویندوز و...",
+            "row": 3,
+            "col": 0,
+            "is_enabled": True,
+            "disabled_behavior": "show_disabled",
+            "disabled_message": "⚠️ بخش راهنمای اتصال در حال بروزرسانی است.",
+        },
+        {
+            "id": "troubleshoot",
+            "title": "🛠️ حل مشکلات اتصال",
+            "description": "ویزارد عیب‌یابی و رفع قطعی اینترنت",
+            "row": 3,
+            "col": 1,
+            "is_enabled": True,
+            "disabled_behavior": "show_disabled",
+            "disabled_message": "⚠️ سامانه حل مشکلات اتصال موقتاً در دسترس نیست.",
+        },
+        {
+            "id": "referral",
+            "title": "👥 کسب درآمد و دعوت",
+            "description": "دریافت لینک زیرمجموعه‌گیری و پورسانت",
+            "row": 4,
+            "col": 0,
+            "is_enabled": True,
+            "disabled_behavior": "hide",
+            "disabled_message": "⚠️ سیستم زیرمجموعه‌گیری موقتاً غیرفعال است.",
+        },
+        {
+            "id": "payments",
+            "title": "🧾 سابقه پرداخت‌ها",
+            "description": "مشاهده تراکنش‌ها و فیش‌های ارسالی کاربر",
+            "row": 4,
+            "col": 1,
+            "is_enabled": True,
+            "disabled_behavior": "hide",
+            "disabled_message": "⚠️ بخش سابقه پرداخت‌ها موقتاً غیرفعال است.",
+        },
+        {
+            "id": "language",
+            "title": "🌐 تغییر زبان",
+            "description": "تغییر زبان ربات به زبان‌های دیگر",
+            "row": 5,
+            "col": 0,
+            "is_enabled": True,
+            "disabled_behavior": "hide",
+            "disabled_message": "⚠️ قابلیت تغییر زبان موقتاً غیرفعال است.",
+        },
+    ]
+
+    def get_bot_menu_buttons(self) -> List[dict]:
+        """دریافت لیست و تنظیمات چیدمان دکمه‌های منوی ربات"""
+        saved = self.get_setting("bot_menu_buttons_config")
+        if not saved or not isinstance(saved, list):
+            return copy.deepcopy(self.DEFAULT_BOT_MENU_BUTTONS)
+
+        # ادغام با دکمه‌های پیش‌فرض برای اطمینان از وجود تمام کلیدها
+        saved_dict = {b["id"]: b for b in saved if isinstance(b, dict) and "id" in b}
+        merged = []
+        for def_btn in self.DEFAULT_BOT_MENU_BUTTONS:
+            b_id = def_btn["id"]
+            if b_id in saved_dict:
+                merged_btn = copy.deepcopy(def_btn)
+                merged_btn.update(saved_dict[b_id])
+                merged.append(merged_btn)
+            else:
+                merged.append(copy.deepcopy(def_btn))
+
+        # مرتب‌سازی بر اساس سطر و ستون
+        merged.sort(key=lambda x: (int(x.get("row", 0)), int(x.get("col", 0))))
+        return merged
+
+    def save_bot_menu_buttons(self, buttons: List[dict]) -> bool:
+        """ذخیره تنظیمات و چیدمان دکمه‌های منوی اصلی ربات"""
+        try:
+            clean_buttons = []
+            for b in buttons:
+                if not isinstance(b, dict) or "id" not in b:
+                    continue
+                clean_buttons.append({
+                    "id": str(b.get("id")),
+                    "title": str(b.get("title", "")).strip(),
+                    "row": int(b.get("row", 0)),
+                    "col": int(b.get("col", 0)),
+                    "is_enabled": bool(b.get("is_enabled", True)),
+                    "disabled_behavior": str(b.get("disabled_behavior", "show_disabled")),
+                    "disabled_message": str(b.get("disabled_message", "⚠️ این بخش موقتاً غیرفعال است.")).strip(),
+                    "description": str(b.get("description", "")),
+                })
+            self.set_setting("bot_menu_buttons_config", clean_buttons)
+            return True
+        except Exception as e:
+            logger.error(f"Error saving bot menu buttons: {e}")
+            return False
+
+    def reset_bot_menu_buttons(self) -> List[dict]:
+        """بازنشانی تنظیمات دکمه‌های ربات به حالت پیش‌فرض اولیه"""
+        defaults = copy.deepcopy(self.DEFAULT_BOT_MENU_BUTTONS)
+        self.set_setting("bot_menu_buttons_config", defaults)
+        return defaults
+
+    def get_bot_menu_keyboard_rows(self, is_admin: bool = False, is_reseller: bool = False) -> List[List[dict]]:
+        """ساخت سطرهای چیدمان دکمه‌های منو بر اساس سطر و ستون و وضعیت فعال بودن"""
+        buttons = self.get_bot_menu_buttons()
+        visible_buttons = []
+        for b in buttons:
+            b_id = b.get("id")
+            # برخی دکمه‌ها در حالت نماینده نیاز نیستند (مثل رفرال اصلی یا تغییر زبان در صورت تک‌زبانه بودن)
+            if is_reseller and b_id in ("language", "admin"):
+                continue
+
+            if b.get("is_enabled", True):
+                visible_buttons.append(copy.deepcopy(b))
+            elif b.get("disabled_behavior") == "show_disabled":
+                b_copy = copy.deepcopy(b)
+                # در حالت نمایش دکمه غیرفعال، می‌توان آیکون قفل را به عنوان اضافه کرد یا همان عنوان را نمایش داد
+                visible_buttons.append(b_copy)
+
+        # مرتب‌سازی بر اساس سطر و ستون
+        visible_buttons.sort(key=lambda x: (int(x.get("row", 0)), int(x.get("col", 0))))
+
+        rows_dict = {}
+        for b in visible_buttons:
+            r = int(b.get("row", 0))
+            if r not in rows_dict:
+                rows_dict[r] = []
+            rows_dict[r].append(b)
+
+        sorted_rows = [rows_dict[r] for r in sorted(rows_dict.keys())]
+        return sorted_rows
+
+    def match_bot_menu_button(self, text: str) -> Optional[dict]:
+        """تطبیق هوشمند متن ارسالی کاربر با اکشن‌های تعریف شده دکمه‌های منو"""
+        if not text:
+            return None
+        text_clean = text.strip()
+        buttons = self.get_bot_menu_buttons()
+
+        # ۱. تطبیق مستقیم با عنوان تنظیم‌شده دکمه
+        for b in buttons:
+            b_title = b.get("title", "").strip()
+            if b_title and (text_clean == b_title or text_clean in b_title or b_title in text_clean):
+                return b
+
+        # ۲. تطبیق کلمات کلیدی استاندارد هر دکمه
+        keywords_map = {
+            "buy": ["خرید اشتراک", "خرید", "buy", "اشتراک جدید", "خرید سرویس"],
+            "my_subs": ["اشتراک‌های من", "سرویس‌های من", "وضعیت سرویس", "کانفیگ‌های من", "my subscriptions", "status", "link", "لینک"],
+            "test_sub": ["تست رایگان", "اکانت تست", "تست", "اشتراک تست", "free test", "test"],
+            "renew": ["تمدید سرویس", "تمدید اشتراک", "تمدید", "renew"],
+            "wallet": ["کیف پول", "کیف پول و شارژ", "شارژ حساب", "شارژ", "wallet", "balance"],
+            "support": ["پشتیبانی و تیکت", "پشتیبانی", "ارسال تیکت", "تیکت", "support", "ticket"],
+            "tutorials": ["راهنمای اتصال", "آموزش اتصال", "آموزش", "راهنما", "help", "guide", "tutorial"],
+            "troubleshoot": ["حل مشکلات اتصال", "حل مشکل", "عیب‌یابی", "مشکل اتصال", "troubleshoot"],
+            "referral": ["کسب درآمد و دعوت", "زیرمجموعه‌گیری", "دعوت دوستان", "کسب درآمد", "referral", "invite"],
+            "payments": ["سابقه پرداخت‌ها", "سابقه پرداخت", "تراکنش‌ها", "فیش‌ها", "payments", "history"],
+            "language": ["تغییر زبان", "زبان", "language", "lang"],
+        }
+
+        for b in buttons:
+            b_id = b.get("id")
+            kws = keywords_map.get(b_id, [])
+            for kw in kws:
+                if kw in text_clean.lower():
+                    return b
+
+        return None
+
+    # ═══════════════════════════════════════════════════════════════
     # مدیریت پشتیبان‌ها
     # ═══════════════════════════════════════════════════════════════
 
@@ -3695,17 +3932,18 @@ class Database:
         return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
     def create_reseller(self, username: str, password: str, name: str,
-                        telegram_id: int = None, discount_percent: int = 20, initial_balance: int = 0) -> dict:
-        """ایجاد نماینده جدید"""
+                        telegram_id: int = None, discount_percent: int = 20, initial_balance: int = 0,
+                        hiddify_admin_uuid: str = None) -> dict:
+        """ایجاد نماینده جدید با پشتیبانی از ادمین اختصاصی هیدیفای"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         password_hash = self.hash_password(password)
         try:
             cursor.execute("""
-                INSERT INTO resellers (username, password_hash, name, telegram_id, balance, discount_percent, status, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
-            """, (username.strip().lower(), password_hash, name.strip(), telegram_id, initial_balance, discount_percent, now, now))
+                INSERT INTO resellers (username, password_hash, name, telegram_id, balance, discount_percent, status, hiddify_admin_uuid, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
+            """, (username.strip().lower(), password_hash, name.strip(), telegram_id, initial_balance, discount_percent, (hiddify_admin_uuid.strip() if hiddify_admin_uuid else None), now, now))
             reseller_id = cursor.lastrowid
             
             if initial_balance > 0:
@@ -3720,6 +3958,129 @@ class Database:
             return {"success": False, "error": "این نام کاربری قبلاً ثبت شده است."}
         except Exception as e:
             return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_reseller_hiddify_key(self, reseller_id: int) -> Optional[str]:
+        """
+        دریافت کلید API یا Admin UUID اختصاصی نماینده در هیدیفای
+        اولویت‌ها:
+        ۱. متغیر محیطی Railway بر اساس ID یا Username (مانند RESELLER_1_HIDDIFY_KEY یا RESELLER_ALI_HIDDIFY_KEY)
+        ۲. فیلد hiddify_admin_uuid در دیتابیس
+        ۳. در صورت عدم تنظیم -> None (استفاده از کلید اصلی ادمین کل)
+        """
+        if not reseller_id:
+            return None
+
+        # ۱. بررسی متغیرهای محیطی Railway
+        env_key_by_id = os.environ.get(f"RESELLER_{reseller_id}_HIDDIFY_KEY")
+        if env_key_by_id and env_key_by_id.strip():
+            return env_key_by_id.strip()
+
+        reseller = self.get_reseller(reseller_id)
+        if not reseller:
+            return None
+
+        username = (reseller.get("username") or "").strip().upper()
+        if username:
+            env_key_by_user = os.environ.get(f"RESELLER_{username}_HIDDIFY_KEY")
+            if env_key_by_user and env_key_by_user.strip():
+                return env_key_by_user.strip()
+
+        # ۲. بررسی فیلد ذخیره شده در دیتابیس
+        db_uuid = reseller.get("hiddify_admin_uuid")
+        if db_uuid and str(db_uuid).strip():
+            return str(db_uuid).strip()
+
+        return None
+
+    def get_reseller_by_hiddify_admin(self, hiddify_admin_uuid: str) -> Optional[dict]:
+        """پیدا کردن نماینده بر اساس Admin UUID هیدیفای"""
+        if not hiddify_admin_uuid:
+            return None
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM resellers WHERE hiddify_admin_uuid=?", (str(hiddify_admin_uuid).strip(),))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def restore_subscriptions_from_hiddify(self, users_list: list, default_reseller_id: int = None) -> dict:
+        """
+        بازیابی و همگام‌سازی هوشمند اشتراک‌ها از لیست کاربران هیدیفای
+        تطبیق خودکار کاربر با نماینده بر اساس added_by یا تگ کامنت یا default_reseller_id
+        """
+        if not users_list or not isinstance(users_list, list):
+            return {"success": False, "synced_count": 0, "error": "لیست کاربران هیدیفای خالی است."}
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        synced_count = 0
+
+        try:
+            # ایجاد مپینگ Admin UUID به Reseller ID
+            cursor.execute("SELECT id, hiddify_admin_uuid FROM resellers WHERE hiddify_admin_uuid IS NOT NULL")
+            admin_to_reseller = {r["hiddify_admin_uuid"].strip(): r["id"] for r in cursor.fetchall() if r["hiddify_admin_uuid"]}
+
+            for u in users_list:
+                if not isinstance(u, dict):
+                    continue
+                uuid_val = u.get("uuid")
+                if not uuid_val:
+                    continue
+
+                name = u.get("name") or f"user_{uuid_val[:8]}"
+                usage_limit = float(u.get("usage_limit_GB") or 0)
+                current_usage = float(u.get("current_usage_GB") or 0)
+                package_days = int(u.get("package_days") or 30)
+                is_active = bool(u.get("is_active", True) and u.get("enable", True))
+                status = "active" if is_active else "expired"
+                comment = str(u.get("comment") or "")
+                added_by = str(u.get("added_by") or "").strip()
+
+                # تشخیص شناسه نماینده
+                assigned_reseller_id = default_reseller_id
+                if added_by and added_by in admin_to_reseller:
+                    assigned_reseller_id = admin_to_reseller[added_by]
+                elif "[RESELLER_ID:" in comment:
+                    try:
+                        import re
+                        m = re.search(r"\[RESELLER_ID:\s*#?(\d+)\]", comment)
+                        if m:
+                            assigned_reseller_id = int(m.group(1))
+                    except Exception:
+                        pass
+
+                # بررسی یا ایجاد در جدول subscriptions
+                cursor.execute("SELECT id, telegram_id FROM subscriptions WHERE hidify_uuid=?", (uuid_val,))
+                existing_sub = cursor.fetchone()
+
+                if existing_sub:
+                    cursor.execute("""
+                        UPDATE subscriptions
+                        SET data_limit=?, data_used=?, duration=?, status=?,
+                            reseller_id=COALESCE(?, reseller_id), updated_at=?
+                        WHERE hidify_uuid=?
+                    """, (usage_limit, current_usage, package_days, status, assigned_reseller_id, now, uuid_val))
+                else:
+                    # ایجاد اشتراک جدید بازسازی شده
+                    simulated_tg = 900000000 + abs(hash(uuid_val)) % 99999999
+                    cursor.execute("""
+                        INSERT INTO subscriptions (
+                            telegram_id, hidify_uuid, plan_id, plan_name, account_name,
+                            data_limit, data_used, duration, status, reseller_id, created_at, updated_at
+                        ) VALUES (?, ?, 'restored', 'اشتراک بازیابی‌شده هیدیفای', ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (simulated_tg, uuid_val, name, usage_limit, current_usage, package_days, status, assigned_reseller_id, now, now))
+
+                synced_count += 1
+
+            conn.commit()
+            return {"success": True, "synced_count": synced_count}
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Error restoring subscriptions from Hiddify: {e}")
+            return {"success": False, "synced_count": synced_count, "error": str(e)}
         finally:
             conn.close()
 

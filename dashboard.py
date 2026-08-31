@@ -759,19 +759,19 @@ def send_subscription_card_sync(chat_id: int, sub_url: str, title: str, details:
     return send_telegram_msg(chat_id, caption, reply_markup=inline_keyboard)
 
 
-def hidify_sync_request(method: str, endpoint: str, data: dict = None):
-    """درخواست همگام به API پنل هیدیفای با استفاده از httpx"""
+def hidify_sync_request(method: str, endpoint: str, data: dict = None, api_key: str = None):
+    """درخواست همگام به API پنل هیدیفای با استفاده از httpx با پشتیبانی از کلید ادمین اختصاصی نماینده"""
     panel_url = get_hiddify_url()
-    api_key = get_hiddify_key()
+    active_key = (api_key.strip() if api_key else None) or get_hiddify_key()
     proxy_path = get_hiddify_proxy()
 
-    if not panel_url or not api_key:
+    if not panel_url or not active_key:
         return {"error": "اطلاعات پنل هیدیفای (HIDIFY_PANEL_URL / HIDIFY_API_KEY) تنظیم نشده است"}
 
     base_api = f"{panel_url}/{proxy_path}/api/v2"
     url = f"{base_api}{endpoint}"
     headers = {
-        "Hiddify-API-Key": api_key,
+        "Hiddify-API-Key": active_key,
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
@@ -792,7 +792,7 @@ def hidify_sync_request(method: str, endpoint: str, data: dict = None):
             else:
                 return {"error": "Invalid HTTP method"}
 
-            logger.info(f"Hidify sync API: {method} {url} -> {resp.status_code}")
+            logger.info(f"Hidify sync API: {method} {url} (Key: {active_key[:8]}...) -> {resp.status_code}")
             if resp.status_code in (200, 201):
                 return resp.json()
             elif resp.status_code == 204:
@@ -812,11 +812,19 @@ def hidify_sync_request(method: str, endpoint: str, data: dict = None):
         return {"error": str(e)}
 
 
-def hidify_sync_create_user(name: str, usage_limit_gb: float = None, package_days: int = None, comment: str = None) -> dict:
-    """ساخت کاربر در هیدیفای با پشتیبانی کامل از نام‌های فارسی، انگلیسی و یونیکد"""
+def hidify_sync_create_user(name: str, usage_limit_gb: float = None, package_days: int = None,
+                           comment: str = None, api_key: str = None, reseller_id: int = None) -> dict:
+    """ساخت کاربر در هیدیفای با پشتیبانی از ادمین اختصاصی نماینده، تگ‌گذاری هوشمند و بازیابی"""
+    active_api_key = api_key
+    if not active_api_key and reseller_id:
+        active_api_key = db.get_reseller_hiddify_key(reseller_id)
+
     raw_name = str(name or "").strip()
     if not raw_name:
         raw_name = f"user_{int(time.time())}"
+
+    reseller_tag = f"[RESELLER_ID: #{reseller_id}] " if reseller_id else ""
+    full_comment = f"{reseller_tag}{comment or ''}".strip()
 
     payload = {
         "name": raw_name,
@@ -839,11 +847,11 @@ def hidify_sync_create_user(name: str, usage_limit_gb: float = None, package_day
         except Exception:
             pass
 
-    if comment:
-        payload["comment"] = str(comment)[:200]
+    if full_comment:
+        payload["comment"] = str(full_comment)[:200]
 
-    # ارسال درخواست ساخت به هیدیفای
-    res = hidify_sync_request("POST", "/admin/user/", payload)
+    # ارسال درخواست ساخت به هیدیفای با کلید اختصاصی ادمین نماینده یا کلید اصلی
+    res = hidify_sync_request("POST", "/admin/user/", payload, api_key=active_api_key)
 
     # در صورت بروز خطای 400، با حداقل فیلدهای استاندارد مجدداً تلاش می‌کنیم
     if "error" in res and ("400" in str(res.get("error")) or "invalid" in str(res.get("error")).lower()):
@@ -858,9 +866,44 @@ def hidify_sync_create_user(name: str, usage_limit_gb: float = None, package_day
             minimal_payload["package_days"] = payload["package_days"]
         if "comment" in payload:
             minimal_payload["comment"] = payload["comment"]
-        res = hidify_sync_request("POST", "/admin/user/", minimal_payload)
+        res = hidify_sync_request("POST", "/admin/user/", minimal_payload, api_key=active_api_key)
 
     return res
+
+
+def hidify_sync_create_admin(name: str, mode: str = "agent", comment: str = None,
+                            max_users: int = None, max_usage_limit_gb: float = None) -> dict:
+    """ساخت ادمین / نماینده مستقل در هیدیفای"""
+    payload = {
+        "name": name,
+        "mode": mode,
+        "can_add_users": True,
+        "is_active": True
+    }
+    if comment:
+        payload["comment"] = str(comment)[:200]
+    if max_users is not None and max_users > 0:
+        payload["max_users"] = int(max_users)
+    if max_usage_limit_gb is not None and max_usage_limit_gb > 0:
+        payload["max_usage_limit_GB"] = float(max_usage_limit_gb)
+
+    return hidify_sync_request("POST", "/admin/admin_user/", payload)
+
+
+def hidify_sync_get_admins() -> list:
+    """دریافت لیست تمام ادمین‌ها و نمایندگان در هیدیفای"""
+    res = hidify_sync_request("GET", "/admin/admin_user/")
+    return res if isinstance(res, list) else []
+
+
+def hidify_sync_get_admin(uuid: str) -> dict:
+    """دریافت اطلاعات یک ادمین در هیدیفای"""
+    return hidify_sync_request("GET", f"/admin/admin_user/{uuid}/")
+
+
+def hidify_sync_delete_admin(uuid: str) -> dict:
+    """حذف یک ادمین از هیدیفای"""
+    return hidify_sync_request("DELETE", f"/admin/admin_user/{uuid}/")
 
 
 def hidify_sync_update_user(uuid: str, **kwargs) -> dict:
@@ -1881,6 +1924,67 @@ def admin_vip_user_add():
     return redirect(url_for("vip_settings"))
 
 
+@app.route("/admin/bot-menu", methods=["GET", "POST"])
+@app.route("/admin/bot-settings", methods=["GET", "POST"])
+@admin_required
+def bot_menu_settings():
+    """مدیریت و سفارشی‌سازی عناوین، فعال/غیرفعال بودن و چیدمان افقی و عمودی دکمه‌های منوی ربات"""
+    if request.method == "POST":
+        buttons_raw = request.form.get("buttons_json")
+        if buttons_raw:
+            try:
+                buttons_list = json.loads(buttons_raw)
+                if isinstance(buttons_list, list):
+                    db.save_bot_menu_buttons(buttons_list)
+                    flash("تنظیمات و چیدمان دکمه‌های منوی ربات با موفقیت ذخیره شد.", "success")
+                    return redirect(url_for("bot_menu_settings"))
+            except Exception as e:
+                logger.error(f"Error parsing bot menu buttons json: {e}")
+                flash(f"خطا در پردازش اطلاعات ارسالی: {e}", "danger")
+        else:
+            # ذخیره از طریق فرم مستقیم
+            all_buttons = db.get_bot_menu_buttons()
+            updated_list = []
+            for btn in all_buttons:
+                b_id = btn["id"]
+                title = request.form.get(f"title_{b_id}", btn.get("title", ""))
+                row = int(request.form.get(f"row_{b_id}", btn.get("row", 0)))
+                col = int(request.form.get(f"col_{b_id}", btn.get("col", 0)))
+                is_enabled = request.form.get(f"enabled_{b_id}") == "1"
+                disabled_behavior = request.form.get(f"behavior_{b_id}", btn.get("disabled_behavior", "show_disabled"))
+                disabled_msg = request.form.get(f"dis_msg_{b_id}", btn.get("disabled_message", ""))
+                updated_list.append({
+                    "id": b_id,
+                    "title": title.strip(),
+                    "row": row,
+                    "col": col,
+                    "is_enabled": is_enabled,
+                    "disabled_behavior": disabled_behavior,
+                    "disabled_message": disabled_msg.strip(),
+                    "description": btn.get("description", ""),
+                })
+            db.save_bot_menu_buttons(updated_list)
+            flash("تنظیمات و چیدمان دکمه‌های منوی ربات با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("bot_menu_settings"))
+
+    buttons = db.get_bot_menu_buttons()
+    menu_rows = db.get_bot_menu_keyboard_rows(is_admin=True)
+    return render_template(
+        "bot_menu_settings.html",
+        buttons=buttons,
+        menu_rows=menu_rows
+    )
+
+
+@app.route("/admin/bot-menu/reset", methods=["POST"])
+@admin_required
+def admin_bot_menu_reset():
+    """بازنشانی دکمه‌های منوی ربات به چیدمان و نام‌های پیش‌فرض"""
+    db.reset_bot_menu_buttons()
+    flash("چیدمان و دکمه‌های منوی ربات با موفقیت به حالت پیش‌فرض بازنشانی شد.", "info")
+    return redirect(url_for("bot_menu_settings"))
+
+
 @app.route("/user/<int:telegram_id>")
 @admin_required
 def user_detail(telegram_id):
@@ -2795,7 +2899,7 @@ def admin_subscription_delete(sub_id):
 @app.route("/admin/resellers", methods=["GET", "POST"])
 @admin_required
 def admin_resellers():
-    """صفحه مدیریت همکاران و نمایندگان فروش"""
+    """صفحه مدیریت همکاران و نمایندگان فروش با پشتیبانی از ادمین اختصاصی هیدیفای"""
     if request.method == "POST":
         username = request.form.get("username")
         password = request.form.get("password")
@@ -2803,8 +2907,24 @@ def admin_resellers():
         telegram_id = int(request.form.get("telegram_id")) if request.form.get("telegram_id") else None
         discount_percent = int(request.form.get("discount_percent", 20))
         initial_balance = int(request.form.get("initial_balance", 0))
+        auto_hiddify = bool(request.form.get("auto_create_hiddify_admin"))
+        hiddify_admin_uuid = request.form.get("hiddify_admin_uuid", "").strip()
 
-        res = db.create_reseller(username, password, name, telegram_id, discount_percent, initial_balance)
+        if auto_hiddify and not hiddify_admin_uuid:
+            # ایجاد خودکار ادمین در هیدیفای
+            h_admin = hidify_sync_create_admin(
+                name=f"Reseller: {name}",
+                mode="agent",
+                comment=f"Reseller #{username} - {name}"
+            )
+            if isinstance(h_admin, dict) and h_admin.get("uuid"):
+                hiddify_admin_uuid = h_admin["uuid"]
+                flash(f"ادمین اختصاصی هیدیفای با شناسه {hiddify_admin_uuid[:8]}... برای نماینده ساخته شد.", "info")
+            elif isinstance(h_admin, dict) and h_admin.get("error"):
+                logger.warning(f"Failed to auto-create Hiddify admin: {h_admin.get('error')}")
+                flash(f"هشدار: ادمین هیدیفای خودکار ساخته نشد ({h_admin.get('error')})، اما حساب نماینده ایجاد گردید.", "warning")
+
+        res = db.create_reseller(username, password, name, telegram_id, discount_percent, initial_balance, hiddify_admin_uuid=hiddify_admin_uuid)
         if res.get("success"):
             flash(f"نماینده جدید «{name}» با موفقیت افزوده شد!", "success")
         else:
@@ -2819,6 +2939,7 @@ def admin_resellers():
         r_dict["security_logs"] = db.get_reseller_security_logs(r["id"], r["username"])
         r_dict["bot_status"] = multibot_manager.get_bot_status(r["id"])
         r_dict["payment_history"] = db.get_reseller_full_payment_history(r["id"])
+        r_dict["active_hiddify_key"] = db.get_reseller_hiddify_key(r["id"])
         reseller_list.append(r_dict)
 
     all_failed_logins = db.get_all_failed_login_logs(limit=50)
@@ -2926,6 +3047,18 @@ def admin_reseller_edit(reseller_id):
     discount_percent = int(request.form.get("discount_percent", 20))
     status = request.form.get("status", "active")
     new_password = request.form.get("new_password", "").strip()
+    hiddify_admin_uuid = request.form.get("hiddify_admin_uuid", "").strip()
+    auto_hiddify = bool(request.form.get("auto_create_hiddify_admin"))
+
+    if auto_hiddify and not hiddify_admin_uuid:
+        h_admin = hidify_sync_create_admin(
+            name=f"Reseller: {name or r['name']}",
+            mode="agent",
+            comment=f"Reseller #{username or r['username']}"
+        )
+        if isinstance(h_admin, dict) and h_admin.get("uuid"):
+            hiddify_admin_uuid = h_admin["uuid"]
+            flash(f"ادمین اختصاصی هیدیفای با شناسه {hiddify_admin_uuid[:8]}... برای نماینده ساخته شد.", "info")
 
     updates = {
         "name": name or r["name"],
@@ -2933,6 +3066,7 @@ def admin_reseller_edit(reseller_id):
         "telegram_id": telegram_id,
         "discount_percent": discount_percent,
         "status": status,
+        "hiddify_admin_uuid": hiddify_admin_uuid or None
     }
     if new_password:
         updates["password"] = new_password
@@ -2942,6 +3076,69 @@ def admin_reseller_edit(reseller_id):
         flash(f"اطلاعات نماینده «{updates['name']}» با موفقیت ویرایش شد.", "success")
     else:
         flash(f"خطا در ویرایش نماینده: {res.get('error')}", "danger")
+    return redirect(url_for("admin_resellers"))
+
+
+@app.route("/admin/reseller/<int:reseller_id>/create-hiddify-admin", methods=["POST"])
+@admin_required
+def admin_reseller_create_hiddify_admin(reseller_id):
+    """ساخت آنی ادمین اختصاصی هیدیفای برای نماینده و اتصال به دیتابیس"""
+    r = db.get_reseller(reseller_id)
+    if not r:
+        flash("نماینده یافت نشد.", "danger")
+        return redirect(url_for("admin_resellers"))
+
+    h_admin = hidify_sync_create_admin(
+        name=f"Reseller: {r['name']}",
+        mode="agent",
+        comment=f"Reseller #{r['id']} ({r['username']})"
+    )
+    if isinstance(h_admin, dict) and h_admin.get("uuid"):
+        uuid_val = h_admin["uuid"]
+        db.update_reseller(reseller_id, hiddify_admin_uuid=uuid_val)
+        flash(f"ادمین اختصاصی هیدیفای با شناسه «{uuid_val}» با موفقیت ساخته و به نماینده «{r['name']}» متصل گردید.", "success")
+    else:
+        err = h_admin.get("error") if isinstance(h_admin, dict) else "پاسخ نامعتبر از سرور هیدیفای"
+        flash(f"خطا در ایجاد ادمین در هیدیفای: {err}", "danger")
+
+    return redirect(url_for("admin_resellers"))
+
+
+@app.route("/admin/reseller/<int:reseller_id>/sync-hiddify", methods=["POST"])
+@admin_required
+def admin_reseller_sync_hiddify(reseller_id):
+    """فراخوانی، همگام‌سازی و بازیابی اشتراک‌های این نماینده از هیدیفای"""
+    r = db.get_reseller(reseller_id)
+    if not r:
+        flash("نماینده یافت نشد.", "danger")
+        return redirect(url_for("admin_resellers"))
+
+    reseller_key = db.get_reseller_hiddify_key(reseller_id)
+    users_resp = hidify_sync_request("GET", "/admin/user/", api_key=reseller_key)
+    if isinstance(users_resp, list):
+        restore_res = db.restore_subscriptions_from_hiddify(users_resp, default_reseller_id=reseller_id)
+        count = restore_res.get("synced_count", 0)
+        flash(f"تعداد {count} اشتراک متعلق به نماینده «{r['name']}» با موفقیت از هیدیفای فراخوانی و بازیابی شدند.", "success")
+    else:
+        err = users_resp.get("error") if isinstance(users_resp, dict) else "خطا در دریافت لیست کاربران"
+        flash(f"خطا در ارتباط با هیدیفای: {err}", "danger")
+
+    return redirect(url_for("admin_resellers"))
+
+
+@app.route("/admin/hiddify/bulk-restore-resellers", methods=["POST"])
+@admin_required
+def admin_hiddify_bulk_restore_resellers():
+    """بازیابی سراسری و تفکیک خودکار تمام اشتراک‌های نمایندگان از سرور هیدیفای"""
+    users_resp = hidify_sync_request("GET", "/admin/user/")
+    if isinstance(users_resp, list):
+        restore_res = db.restore_subscriptions_from_hiddify(users_resp)
+        count = restore_res.get("synced_count", 0)
+        flash(f"عملیات بازیابی سراسری انجام شد: {count} اشتراک در دیتابیس همگام‌سازی و بر اساس ادمین هر نماینده تفکیک شدند.", "success")
+    else:
+        err = users_resp.get("error") if isinstance(users_resp, dict) else "خطا در دریافت لیست کاربران"
+        flash(f"خطا در ارتباط با هیدیفای: {err}", "danger")
+
     return redirect(url_for("admin_resellers"))
 
 
@@ -3854,7 +4051,8 @@ def reseller_create_user():
             name=account_name,
             usage_limit_gb=plan["data_limit"],
             package_days=plan["duration"],
-            comment=user_comment
+            comment=user_comment,
+            reseller_id=reseller_id
         )
 
         user_uuid = h_res.get("uuid", "")
