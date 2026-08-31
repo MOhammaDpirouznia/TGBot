@@ -1874,7 +1874,12 @@ async def show_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     status_msg = await update.message.reply_text("⏳ در حال استعلام لحظه‌ای حجم و روزهای مانده از سرور...")
 
-    text = "📊 **وضعیت لحظه‌ای اشتراک‌های شما:**\n\n"
+    vip_info = db.get_user_vip_info(user.id)
+    if vip_info.get("is_vip"):
+        cb_val = vip_info.get("cashback_percent", 10)
+        text = f"👑 <b>سطح حساب شما: کاربر طلایی (⭐️ VIP)</b>\n🎁 <b>پاداش فعال:</b> {cb_val}٪ کش‌بک در هر خرید\n\n📊 <b>وضعیت لحظه‌ای اشتراک‌های شما:</b>\n\n"
+    else:
+        text = "📊 <b>وضعیت لحظه‌ای اشتراک‌های شما:</b>\n\n"
 
     for i, sub in enumerate(subscriptions, 1):
         uuid = sub.get("hidify_uuid")
@@ -2746,10 +2751,16 @@ async def show_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not webapp_url and os.getenv("RAILWAY_PUBLIC_DOMAIN"):
         webapp_url = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}"
 
+    vip_info = db.get_user_vip_info(user.id)
+    vip_line = ""
+    if vip_info.get("is_vip"):
+        cb_val = vip_info.get("cashback_percent", 10)
+        vip_line = f"👑 سطح عضویت: <b>کاربر طلایی (⭐️ VIP)</b>\n🎁 پاداش کش‌بک: <b>{cb_val}٪</b> بازگشت خودکار در هر خرید\n\n"
+
     text = f"""
 💰 <b>کیف پول و حساب کاربری شما</b>
 
-💳 موجودی ریالی: <b>{balance:,} تومان</b>
+{vip_line}💳 موجودی ریالی: <b>{balance:,} تومان</b>
 💎 معادل تتر (USDT): <b>{usdt_equiv} دلار</b>
 
 📜 <b>آخرین تراکنش‌های شما:</b>
@@ -2990,8 +3001,13 @@ async def enter_ticket_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # ارسال به ادمین با دکمه پاسخ
     if ADMIN_ID and ADMIN_ID != 0:
+        is_vip = db.is_user_vip(user.id)
+        header_title = f"🚨 ⭐️ <b>تیکت فوری - کاربر ویژه VIP (#{ticket_id})</b>" if is_vip else f"📨 <b>تیکت پشتیبانی جدید (#{ticket_id})</b>"
+        vip_line = "👑 <b>سطح کاربر:</b> ⭐️ کاربر طلایی (VIP) - اولویت پاسخگویی ویژه\n" if is_vip else ""
+
         admin_text = (
-            f"📨 <b>تیکت پشتیبانی جدید (#{ticket_id})</b>\n\n"
+            f"{header_title}\n\n"
+            f"{vip_line}"
             f"👤 کاربر: {user.first_name}\n"
             f"🆔 آیدی عددی: <code>{user.id}</code>\n"
             f"💬 یوزرنیم: @{user.username or 'ندارد'}\n\n"

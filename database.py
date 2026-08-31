@@ -84,6 +84,10 @@ class Database:
                 data_limit REAL DEFAULT 0,
                 expire_at INTEGER,
                 language TEXT DEFAULT 'fa',
+                is_vip BOOLEAN DEFAULT 0,
+                vip_type TEXT DEFAULT 'manual',
+                vip_expire_at TEXT,
+                vip_custom_cashback INTEGER,
                 created_at TEXT,
                 updated_at TEXT
             )
@@ -571,12 +575,25 @@ class Database:
         except Exception:
             pass
 
+        # ستون‌های کاربران پریمیوم و وفاداری (VIP)
+        for col_def in [
+            "is_vip INTEGER DEFAULT 0",
+            "vip_type TEXT DEFAULT 'manual'",
+            "vip_expire_at TEXT",
+            "vip_custom_cashback INTEGER"
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE users ADD COLUMN {col_def}")
+            except Exception:
+                pass
+
         # ستون‌های ربات اختصاصی (White-label Multi-Bot) و تنظیمات نمایندگان
         for col_def in [
             "bot_token TEXT", "bot_username TEXT", "channel_id TEXT", "brand_name TEXT",
             "start_message TEXT", "support_username TEXT", "card_number TEXT", "card_holder TEXT",
             "bank_name TEXT", "is_bot_active INTEGER DEFAULT 0", "tier_level TEXT DEFAULT 'silver'",
-            "auto_approval INTEGER DEFAULT 0"
+            "auto_approval INTEGER DEFAULT 0", "vip_auto_enabled INTEGER DEFAULT 1",
+            "vip_auto_threshold INTEGER DEFAULT 1000000", "vip_cashback_percent INTEGER DEFAULT 10"
         ]:
             try:
                 cursor.execute(f"ALTER TABLE resellers ADD COLUMN {col_def}")
@@ -1243,6 +1260,187 @@ class Database:
             return False
         phone = user.get("phone_number")
         return bool(phone and str(phone).strip())
+
+    # ═══════════════════════════════════════════════════════════════
+    # مدیریت مشتریان پریمیوم و وفاداری (VIP & Loyalty Club)
+    # ═══════════════════════════════════════════════════════════════
+
+    def is_user_vip(self, telegram_id: int) -> bool:
+        """بررسی وضعیت پریمیوم / VIP بودن کاربر با رعایت تاریخ انقضا"""
+        user = self.get_user(telegram_id)
+        if not user or not user.get("is_vip"):
+            return False
+
+        # بررسی تاریخ انقضا در صورت وجود
+        vip_expire = user.get("vip_expire_at")
+        if vip_expire:
+            try:
+                exp_dt = datetime.fromisoformat(vip_expire)
+                if datetime.now() > exp_dt:
+                    # انقضای مدت VIP - ریست کردن وضعیت به عادی
+                    self.set_user_vip(telegram_id, is_vip=False, vip_type="expired")
+                    return False
+            except Exception:
+                pass
+        return True
+
+    def get_user_vip_info(self, telegram_id: int) -> dict:
+        """دریافت اطلاعات و مزایای VIP کاربر شامل درصد کش‌بک فعال"""
+        user = self.get_user(telegram_id)
+        is_vip = self.is_user_vip(telegram_id)
+        if not user:
+            return {
+                "is_vip": False,
+                "vip_type": "none",
+                "vip_expire_at": None,
+                "cashback_percent": 0,
+                "custom_cashback": None
+            }
+
+        custom_cb = user.get("vip_custom_cashback")
+        reseller_id = user.get("reseller_id")
+
+        if is_vip:
+            if custom_cb is not None and str(custom_cb).strip() != "":
+                try:
+                    cb_rate = int(custom_cb)
+                except Exception:
+                    cb_rate = 10
+            elif reseller_id:
+                reseller = self.get_reseller(reseller_id)
+                cb_rate = int((reseller.get("vip_cashback_percent") if reseller else 10) or 10)
+            else:
+                vip_sets = self.get_vip_settings()
+                cb_rate = int(vip_sets.get("cashback_percent", 10))
+        else:
+            cb_rate = 0
+
+        return {
+            "is_vip": is_vip,
+            "vip_type": user.get("vip_type") or "manual",
+            "vip_expire_at": user.get("vip_expire_at"),
+            "cashback_percent": cb_rate,
+            "custom_cashback": custom_cb
+        }
+
+    def set_user_vip(self, telegram_id: int, is_vip: bool, vip_type: str = "manual",
+                     expire_at: Optional[str] = None, custom_cashback: Optional[int] = None) -> dict:
+        """تغییر و تنظیم وضعیت VIP کاربر (دستی یا خودکار)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT id FROM users WHERE telegram_id = ?", (telegram_id,))
+            row = cursor.fetchone()
+            val_is_vip = 1 if is_vip else 0
+            if not row:
+                cursor.execute("""
+                    INSERT INTO users (telegram_id, username, is_vip, vip_type, vip_expire_at, vip_custom_cashback, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (telegram_id, f"user_{telegram_id}", val_is_vip, vip_type, expire_at, custom_cashback, now, now))
+            else:
+                cursor.execute("""
+                    UPDATE users
+                    SET is_vip = ?, vip_type = ?, vip_expire_at = ?, vip_custom_cashback = ?, updated_at = ?
+                    WHERE telegram_id = ?
+                """, (val_is_vip, vip_type, expire_at, custom_cashback, now, telegram_id))
+            conn.commit()
+            logger.info(f"User {telegram_id} VIP status updated to {val_is_vip} ({vip_type})")
+            return {"success": True, "is_vip": bool(val_is_vip)}
+        except Exception as e:
+            logger.error(f"Error setting VIP for {telegram_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def check_and_upgrade_user_vip(self, telegram_id: int, reseller_id: Optional[int] = None) -> dict:
+        """بررسی خودکار مجموع خریدهای کاربر و ارتقا به VIP در صورت رسیدن به حد نصاب"""
+        user = self.get_user(telegram_id)
+        if not user:
+            return {"upgraded": False, "is_vip": False}
+
+        if user.get("is_vip"):
+            return {"upgraded": False, "is_vip": True, "already_vip": True}
+
+        r_id = reseller_id if reseller_id is not None else user.get("reseller_id")
+
+        # محاسبه مجموع خریدهای تایید شده کاربر
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT COALESCE(SUM(amount), 0) as total_spent
+                FROM transactions
+                WHERE user_id = ? AND status = 'approved'
+            """, (telegram_id,))
+            spent_row = cursor.fetchone()
+            total_spent = int(spent_row["total_spent"] or 0) if spent_row else 0
+        except Exception as e:
+            logger.error(f"Error calculating total spent for {telegram_id}: {e}")
+            total_spent = 0
+        finally:
+            conn.close()
+
+        if r_id:
+            reseller = self.get_reseller(r_id)
+            auto_enabled = bool(reseller.get("vip_auto_enabled", 1)) if reseller else True
+            threshold = int((reseller.get("vip_auto_threshold") if reseller else 1000000) or 1000000)
+            cashback = int((reseller.get("vip_cashback_percent") if reseller else 10) or 10)
+        else:
+            vip_sets = self.get_vip_settings()
+            auto_enabled = vip_sets.get("auto_enabled", True)
+            threshold = vip_sets.get("auto_threshold", 1000000)
+            cashback = vip_sets.get("cashback_percent", 10)
+
+        if auto_enabled and total_spent >= threshold:
+            self.set_user_vip(telegram_id, is_vip=True, vip_type="auto")
+            logger.info(f"User {telegram_id} auto-upgraded to VIP (total spent: {total_spent:,} >= threshold: {threshold:,})")
+            return {
+                "upgraded": True,
+                "is_vip": True,
+                "total_spent": total_spent,
+                "threshold": threshold,
+                "cashback_percent": cashback,
+                "reseller_id": r_id
+            }
+
+        return {
+            "upgraded": False,
+            "is_vip": False,
+            "total_spent": total_spent,
+            "threshold": threshold
+        }
+
+    def get_vip_settings(self) -> dict:
+        """دریافت تنظیمات سراسری باشگاه مشتریان VIP سیستم"""
+        auto_enabled = str(self.get_setting("vip_auto_enabled", "1")).lower() in ("1", "true", "yes")
+        threshold_val = self.get_setting("vip_auto_threshold", 1000000)
+        cashback_val = self.get_setting("vip_cashback_percent", 10)
+        try:
+            threshold = int(threshold_val)
+        except Exception:
+            threshold = 1000000
+        try:
+            cashback = int(cashback_val)
+        except Exception:
+            cashback = 10
+
+        return {
+            "auto_enabled": auto_enabled,
+            "auto_threshold": threshold,
+            "cashback_percent": cashback
+        }
+
+    def save_vip_settings(self, enabled: bool, threshold: int, cashback: int) -> bool:
+        """ذخیره تنظیمات سراسری VIP در جدول settings"""
+        try:
+            self.set_setting("vip_auto_enabled", "1" if enabled else "0")
+            self.set_setting("vip_auto_threshold", str(max(0, int(threshold))))
+            self.set_setting("vip_cashback_percent", str(max(0, min(100, int(cashback)))))
+            return True
+        except Exception as e:
+            logger.error(f"Error saving VIP settings: {e}")
+            return False
 
     # ═══════════════════════════════════════════════════════════════
     # مدیریت کیف پول کاربر (User In-App Wallet)
@@ -2350,16 +2548,19 @@ class Database:
     # مدیریت تیکت‌های پشتیبانی
     # ═══════════════════════════════════════════════════════════════
 
-    def create_ticket(self, telegram_id, subject, message, reseller_id=None):
-        """ایجاد تیکت پشتیبانی جدید با قابلیت انتساب به نماینده"""
+    def create_ticket(self, telegram_id=None, subject="پیام کاربر", message="", reseller_id=None, user_id=None, **kwargs):
+        """ایجاد تیکت پشتیبانی جدید با قابلیت انتساب به نماینده و پشتیبانی از آرگومان‌های گوناگون"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
+        tg_id = telegram_id or user_id
+        if not tg_id:
+            return {"success": False, "error": "شناسه کاربر الزامی است."}
         try:
             cursor.execute("""
                 INSERT INTO support_tickets (telegram_id, subject, message, status, reseller_id, created_at, updated_at)
                 VALUES (?, ?, ?, 'open', ?, ?, ?)
-            """, (telegram_id, subject, message, reseller_id, now, now))
+            """, (tg_id, subject, message, reseller_id, now, now))
             conn.commit()
             return {"success": True, "ticket_id": cursor.lastrowid}
         except Exception as e:
@@ -2418,19 +2619,24 @@ class Database:
             conn.close()
 
     def get_all_tickets(self, status=None, reseller_id=None):
-        """دریافت تمام تیکت‌ها با فیلتر وضعیت و نماینده"""
+        """دریافت تمام تیکت‌ها با فیلتر وضعیت و نماینده همراه با اولویت تیکت‌های VIP در صدر لیست"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            query = "SELECT * FROM support_tickets WHERE 1=1"
+            query = """
+                SELECT t.*, u.username, COALESCE(u.is_vip, 0) as is_vip, u.phone_number
+                FROM support_tickets t
+                LEFT JOIN users u ON t.telegram_id = u.telegram_id
+                WHERE 1=1
+            """
             params = []
             if status:
-                query += " AND status = ?"
+                query += " AND t.status = ?"
                 params.append(status)
             if reseller_id is not None:
-                query += " AND reseller_id = ?"
+                query += " AND t.reseller_id = ?"
                 params.append(reseller_id)
-            query += " ORDER BY created_at DESC"
+            query += " ORDER BY COALESCE(u.is_vip, 0) DESC, t.created_at DESC"
             cursor.execute(query, params)
             return [dict(row) for row in cursor.fetchall()]
         except Exception as e:
@@ -3477,6 +3683,14 @@ class Database:
         total_used_gb = traffic_row[0] or 0
         total_limit_gb = traffic_row[1] or 0
 
+        cursor.execute("""
+            SELECT COUNT(DISTINCT u.telegram_id)
+            FROM users u
+            LEFT JOIN subscriptions s ON u.telegram_id = s.telegram_id
+            WHERE (s.reseller_id = ? OR u.reseller_id = ?) AND u.is_vip = 1
+        """, (reseller_id, reseller_id))
+        vip_users = cursor.fetchone()[0] or 0
+
         conn.close()
         return {
             "balance": balance,
@@ -3484,6 +3698,7 @@ class Database:
             "total_users": total_users,
             "active_users": active_users,
             "online_users": online_users,
+            "vip_users": vip_users,
             "total_purchases": total_purchases,
             "total_used_gb": round(total_used_gb, 2),
             "total_limit_gb": round(total_limit_gb, 2),
@@ -3872,7 +4087,8 @@ class Database:
             allowed_fields = [
                 "bot_token", "bot_username", "channel_id", "brand_name",
                 "start_message", "support_username", "card_number", "card_holder",
-                "bank_name", "is_bot_active", "tier_level", "auto_approval", "updated_at"
+                "bank_name", "is_bot_active", "tier_level", "auto_approval",
+                "vip_auto_enabled", "vip_auto_threshold", "vip_cashback_percent", "updated_at"
             ]
             fields = []
             params = []

@@ -950,6 +950,15 @@ def enrich_subscription_details(sub: dict) -> dict:
     usage_pct = int((data_used / data_limit * 100)) if data_limit > 0 else 0
     remaining_gb = max(0.0, data_limit - data_used) if data_limit > 0 else 0.0
 
+    tg_id = item.get("telegram_id")
+    if tg_id:
+        try:
+            item["is_vip"] = db.is_user_vip(int(tg_id))
+        except Exception:
+            item["is_vip"] = False
+    else:
+        item["is_vip"] = False
+
     item["duration"] = duration
     item["is_started"] = is_started
     item["remaining_days"] = remaining_days
@@ -1638,36 +1647,79 @@ def dashboard():
 @app.route("/users")
 @admin_required
 def users():
-    """مدیریت کاربران تلگرام"""
+    """مدیریت کاربران تلگرام با فیلتر VIP"""
     conn = db.get_connection()
     search = request.args.get("search", "").strip()
+    filter_vip = request.args.get("vip", "").strip()
 
+    query = """
+        SELECT u.*, 
+               (SELECT COUNT(*) FROM subscriptions WHERE telegram_id=u.telegram_id) as subs_count
+        FROM users u
+        WHERE 1=1
+    """
+    params = []
     if search:
-        user_list = conn.execute("""
-            SELECT u.*, 
-                   (SELECT COUNT(*) FROM subscriptions WHERE telegram_id=u.telegram_id) as subs_count
-            FROM users u
-            WHERE u.username LIKE ? OR u.telegram_id LIKE ? OR u.phone_number LIKE ?
-            ORDER BY u.created_at DESC
-        """, (f"%{search}%", f"%{search}%", f"%{search}%")).fetchall()
-    else:
-        user_list = conn.execute("""
-            SELECT u.*, 
-                   (SELECT COUNT(*) FROM subscriptions WHERE telegram_id=u.telegram_id) as subs_count
-            FROM users u
-            ORDER BY u.created_at DESC LIMIT 100
-        """).fetchall()
+        query += " AND (u.username LIKE ? OR u.telegram_id LIKE ? OR u.phone_number LIKE ?)"
+        params.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
+    if filter_vip == "1":
+        query += " AND u.is_vip = 1"
+    elif filter_vip == "0":
+        query += " AND (u.is_vip = 0 OR u.is_vip IS NULL)"
 
+    query += " ORDER BY COALESCE(u.is_vip, 0) DESC, u.created_at DESC"
+    if not search and not filter_vip:
+        query += " LIMIT 150"
+
+    user_list = conn.execute(query, params).fetchall()
+    
+    # آمار سریع کاربران
+    total_users_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    vip_users_count = conn.execute("SELECT COUNT(*) FROM users WHERE is_vip=1").fetchone()[0]
     conn.close()
+
     single_link_template = get_single_link_template(db)
     return render_template(
         "users.html",
         users=user_list,
         search=search,
+        filter_vip=filter_vip,
+        total_count=total_users_count,
+        vip_count=vip_users_count,
         panel_url=get_hiddify_url(),
         user_proxy=get_user_proxy(),
         single_link_template=single_link_template
     )
+
+
+@app.route("/admin/user/<int:telegram_id>/set-vip", methods=["POST"])
+@admin_required
+def admin_set_user_vip(telegram_id):
+    """تنظیم وضعیت پریمیوم / VIP کاربر توسط ادمین کل"""
+    action = request.form.get("action", "toggle")
+    
+    if action == "toggle":
+        curr_vip = db.is_user_vip(telegram_id)
+        new_vip = not curr_vip
+        db.set_user_vip(telegram_id, is_vip=new_vip, vip_type="manual")
+        msg = "کاربر با موفقیت به سطح ویژه (⭐️ VIP) ارتقا یافت." if new_vip else "وضعیت ویژه (VIP) کاربر لغو گردید."
+        flash(msg, "success")
+    elif action == "update":
+        is_vip = request.form.get("is_vip") == "1"
+        days_str = request.form.get("vip_days", "").strip()
+        custom_cb_str = request.form.get("custom_cashback", "").strip()
+        
+        expire_at = None
+        if is_vip and days_str and days_str.isdigit() and int(days_str) > 0:
+            expire_at = (datetime.now() + timedelta(days=int(days_str))).isoformat()
+            
+        custom_cb = int(custom_cb_str) if custom_cb_str and custom_cb_str.isdigit() else None
+        
+        db.set_user_vip(telegram_id, is_vip=is_vip, vip_type="manual", expire_at=expire_at, custom_cashback=custom_cb)
+        flash("تنظیمات کاربری VIP با موفقیت ذخیره شد.", "success")
+
+    next_url = request.form.get("next") or request.referrer or url_for("user_detail", telegram_id=telegram_id)
+    return redirect(next_url)
 
 
 @app.route("/user/<int:telegram_id>")
@@ -1685,12 +1737,14 @@ def user_detail(telegram_id):
     subscriptions = [dict(r) for r in subs_rows]
     transactions = [dict(r) for r in tx_rows]
     tickets = [dict(r) for r in ticket_rows]
+    vip_info = db.get_user_vip_info(telegram_id)
 
     single_link_template = get_single_link_template(db)
     return render_template(
         "user_detail.html",
         telegram_id=telegram_id,
         user=user,
+        vip_info=vip_info,
         subscriptions=subscriptions,
         transactions=transactions,
         tickets=tickets,
@@ -1912,6 +1966,56 @@ def approve_payment(payment_id):
 
     # پاداش رفرال
     db.complete_referral(user_id)
+
+    # پردازش و واریز کش‌بک کاربران VIP
+    try:
+        vip_info = db.get_user_vip_info(user_id)
+        if vip_info.get("is_vip") and vip_info.get("cashback_percent", 0) > 0:
+            paid_amount = int(tx.get("amount") or 0)
+            cb_rate = vip_info.get("cashback_percent", 10)
+            cashback_val = int((paid_amount * cb_rate) / 100)
+            if cashback_val > 0:
+                cb_res = db.add_wallet_balance(
+                    user_id,
+                    cashback_val,
+                    f"هدیه کش‌بک خرید ویژه VIP ({cb_rate}%)",
+                    ref_id=str(tx.get("order_id") or payment_id),
+                    tx_type="cashback"
+                )
+                new_w_bal = cb_res.get("new_balance", 0)
+                cb_msg = (
+                    f"🎁 <b>هدیه کش‌بک VIP واریز شد!</b>\n\n"
+                    f"💎 به عنوان کاربر ویژه، <b>{cb_rate}٪</b> از مبلغ خرید شما معادل <b>{cashback_val:,} تومان</b> به کیف پول شما بازگشت داده شد.\n"
+                    f"💰 <b>موجودی جدید کیف پول:</b> {new_w_bal:,} تومان"
+                )
+                try:
+                    send_telegram_msg(user_id, cb_msg)
+                except Exception as e_tg:
+                    logger.error(f"Error sending cashback msg to {user_id}: {e_tg}")
+    except Exception as e_cb:
+        logger.error(f"Error processing VIP cashback for {user_id}: {e_cb}")
+
+    # بررسی ارتقای خودکار کاربر به VIP بر اساس مجموع خریدهای تایید شده
+    try:
+        upgrade_res = db.check_and_upgrade_user_vip(user_id)
+        if upgrade_res.get("upgraded"):
+            t_spent = upgrade_res.get("total_spent", 0)
+            cb_percent = upgrade_res.get("cashback_percent", 10)
+            upgrade_msg = (
+                f"🎉 <b>تبریک! شما به کاربر طلایی (⭐️ VIP) ارتقا یافتید!</b>\n\n"
+                f"✨ با رسیدن مجموع خریدهای شما به <b>{t_spent:,} تومان</b>، سطح حساب شما ارتقا یافت.\n\n"
+                f"👑 <b>مزایای اختصاصی شما:</b>\n"
+                f"• 💰 <b>{cb_percent}٪ کش‌بک نقدی</b> در تمام خریدهای بعدی\n"
+                f"• 🎧 <b>اولویت اول</b> در صف پاسخگویی تیکت‌های پشتیبانی\n"
+                f"• 💎 <b>نشان طلایی VIP</b> در پروفایل ربات\n\n"
+                f"از همراهی و اعتماد شما بی‌نهایت سپاسگزاریم! 🌹"
+            )
+            try:
+                send_telegram_msg(user_id, upgrade_msg)
+            except Exception as e_ug:
+                logger.error(f"Error sending VIP upgrade msg to {user_id}: {e_ug}")
+    except Exception as e_up:
+        logger.error(f"Error checking VIP auto-upgrade for {user_id}: {e_up}")
 
     # ارسال کارت و بارکد به تلگرام مشتری
     h_url = get_hiddify_url()
@@ -3258,6 +3362,13 @@ def settings():
             db.update_admin_gateway(gw_enabled, gw_type, gw_key, gw_sandbox)
             flash("تنظیمات درگاه پرداخت آنلاین شاپرک با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
+        elif action == "save_vip_settings":
+            vip_enabled = request.form.get("vip_auto_enabled") == "on"
+            vip_threshold = int(request.form.get("vip_auto_threshold", 1000000) or 1000000)
+            vip_cashback = int(request.form.get("vip_cashback_percent", 10) or 10)
+            db.save_vip_settings(vip_enabled, vip_threshold, vip_cashback)
+            flash("تنظیمات باشگاه مشتریان پریمیوم (VIP) و کش‌بک با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("settings"))
 
     conn = db.get_connection()
     settings_list = conn.execute("SELECT * FROM settings").fetchall()
@@ -3268,6 +3379,7 @@ def settings():
     admin_gateway = db.get_admin_gateway()
     tutorial_domain = db.get_setting("tutorial_domain", "")
     tutorial_title = db.get_setting("tutorial_title", "راهنما و آموزش اتصال")
+    vip_settings = db.get_vip_settings()
     return render_template(
         "settings.html",
         settings=settings_list,
@@ -3276,7 +3388,8 @@ def settings():
         crypto_config=crypto_config,
         admin_gateway=admin_gateway,
         tutorial_domain=tutorial_domain,
-        tutorial_title=tutorial_title
+        tutorial_title=tutorial_title,
+        vip_settings=vip_settings
     )
 
 
@@ -3472,7 +3585,7 @@ def reseller_create_user():
 @app.route("/reseller/users")
 @reseller_required
 def reseller_users():
-    """لیست مشتریان نماینده به همراه آمار، وضعیت آنلاین و دسترسی به ویرایش، تمدید و حذف"""
+    """لیست مشتریان نماینده به همراه آمار، وضعیت آنلاین، فیلتر VIP و دسترسی به ویرایش، تمدید و حذف"""
     sync_hiddify_online_users()
     reseller_id = session.get("reseller_id")
     stats = db.get_reseller_stats(reseller_id)
@@ -3489,6 +3602,8 @@ def reseller_users():
         elif status_filter == "active" and item.get("status") != "active":
             continue
         elif status_filter == "expired" and item.get("status") != "expired":
+            continue
+        elif status_filter == "vip" and not item.get("is_vip"):
             continue
 
         refund_calc = db.calculate_reseller_refund(reseller_id, item["id"])
@@ -3508,6 +3623,46 @@ def reseller_users():
         user_proxy=get_user_proxy(),
         single_link_template=single_link_template
     )
+
+
+@app.route("/reseller/user/<int:telegram_id>/set-vip", methods=["POST"])
+@reseller_required
+def reseller_set_user_vip(telegram_id):
+    """تنظیم وضعیت پریمیوم / VIP مشتری توسط نماینده"""
+    reseller_id = session.get("reseller_id")
+    user = db.get_user(telegram_id)
+    
+    # اگر کاربر مستقیم ثبت نشده باشد، بررسی مالکیت اشتراک
+    if not user:
+        subs = db.get_user_subscriptions(telegram_id)
+        if subs and subs[0].get("reseller_id") == reseller_id:
+            db.save_user(telegram_id=telegram_id, reseller_id=reseller_id)
+            user = db.get_user(telegram_id)
+    
+    if not user or (user.get("reseller_id") and user.get("reseller_id") != reseller_id):
+        flash("کاربر یافت نشد یا متعلق به پنل شما نیست.", "danger")
+        return redirect(url_for("reseller_users"))
+
+    action = request.form.get("action", "toggle")
+    if action == "toggle":
+        curr_vip = db.is_user_vip(telegram_id)
+        new_vip = not curr_vip
+        db.set_user_vip(telegram_id, is_vip=new_vip, vip_type="manual")
+        msg = f"مشتری {telegram_id} با موفقیت به عنوان مشتری ویژه (⭐️ VIP) علامت‌گذاری شد." if new_vip else f"وضعیت VIP مشتری {telegram_id} لغو شد."
+        flash(msg, "success")
+    elif action == "update":
+        is_vip = request.form.get("is_vip") == "1"
+        days_str = request.form.get("vip_days", "").strip()
+        custom_cb_str = request.form.get("custom_cashback", "").strip()
+        expire_at = None
+        if is_vip and days_str and days_str.isdigit() and int(days_str) > 0:
+            expire_at = (datetime.now() + timedelta(days=int(days_str))).isoformat()
+        custom_cb = int(custom_cb_str) if custom_cb_str and custom_cb_str.isdigit() else None
+        db.set_user_vip(telegram_id, is_vip=is_vip, vip_type="manual", expire_at=expire_at, custom_cashback=custom_cb)
+        flash("تنظیمات VIP مشتری با موفقیت ذخیره گردید.", "success")
+
+    next_url = request.form.get("next") or request.referrer or url_for("reseller_users")
+    return redirect(next_url)
 
 
 @app.route("/reseller/subscription/<int:sub_id>/edit", methods=["POST"])
@@ -4133,6 +4288,17 @@ def reseller_bot_settings():
             else:
                 flash(f"هشدار در مورد توکن: {t_test.get('error')}", "warning")
 
+        # تنظیمات باشگاه مشتریان VIP نماینده
+        vip_auto_enabled = 1 if request.form.get("vip_auto_enabled") in ("on", "1") else 0
+        try:
+            vip_auto_threshold = int(request.form.get("vip_auto_threshold", 1000000) or 1000000)
+        except Exception:
+            vip_auto_threshold = 1000000
+        try:
+            vip_cashback_percent = int(request.form.get("vip_cashback_percent", 10) or 10)
+        except Exception:
+            vip_cashback_percent = 10
+
         db.update_reseller_bot_settings(
             reseller_id,
             bot_token=bot_token,
@@ -4143,7 +4309,10 @@ def reseller_bot_settings():
             support_username=support_username,
             card_number=card_number,
             card_holder=card_holder,
-            bank_name=bank_name
+            bank_name=bank_name,
+            vip_auto_enabled=vip_auto_enabled,
+            vip_auto_threshold=vip_auto_threshold,
+            vip_cashback_percent=vip_cashback_percent
         )
 
         # تنظیمات درگاه پرداخت آنلاین اختصاصی نماینده
@@ -4153,7 +4322,7 @@ def reseller_bot_settings():
         gw_sandbox = request.form.get("gateway_sandbox") in ("on", "1")
         db.update_reseller_gateway(reseller_id, is_gw_active, gw_type, gw_key, gw_sandbox)
 
-        flash("تنظیمات ربات اختصاصی و درگاه پرداخت آنلاین با موفقیت ذخیره شد.", "success")
+        flash("تنظیمات ربات اختصاصی، باشگاه VIP و درگاه پرداخت با موفقیت ذخیره شد.", "success")
         return redirect(url_for("reseller_bot_settings"))
 
     bot_status = multibot_manager.get_bot_status(reseller_id)
@@ -4294,14 +4463,46 @@ def reseller_payment_approve(payment_id):
     conn.commit()
     conn.close()
 
-    # ارسال لینک برای کاربر در تلگرام
     reseller_data = db.get_reseller(reseller_id)
     bot_tok = reseller_data.get("bot_token") if reseller_data else None
-    
     brand_title = reseller_data.get("brand_name") or "فروشگاه"
+    cashback_note = ""
+
+    # پردازش کش‌بک مشتریان VIP نماینده
+    try:
+        vip_info = db.get_user_vip_info(user_id)
+        if vip_info.get("is_vip") and vip_info.get("cashback_percent", 0) > 0:
+            paid_amount = int(tx.get("amount") or 0)
+            cb_rate = vip_info.get("cashback_percent", 10)
+            cashback_val = int((paid_amount * cb_rate) / 100)
+            if cashback_val > 0:
+                cb_res = db.add_wallet_balance(
+                    user_id,
+                    cashback_val,
+                    f"هدیه کش‌بک خرید VIP ({cb_rate}%) از {brand_title}",
+                    ref_id=str(tx.get("order_id") or payment_id),
+                    tx_type="cashback"
+                )
+                new_w_bal = cb_res.get("new_balance", 0)
+                cashback_note += f"\n\n🎁 **هدیه کش‌بک VIP:** مبلغ {cashback_val:,} تومان ({cb_rate}٪) به کیف پول شما واریز گردید.\n💰 موجودی کیف پول: {new_w_bal:,} تومان"
+    except Exception as e_cb:
+        logger.error(f"Error processing reseller VIP cashback for {user_id}: {e_cb}")
+
+    # بررسی ارتقای خودکار به VIP برای مشتری نماینده
+    try:
+        upgrade_res = db.check_and_upgrade_user_vip(user_id, reseller_id=reseller_id)
+        if upgrade_res.get("upgraded"):
+            cb_rate = upgrade_res.get("cashback_percent", 10)
+            t_spent = upgrade_res.get("total_spent", 0)
+            upgrade_extra = f"\n\n🎉 **تبریک! شما به عنوان مشتری ویژه (⭐️ VIP) فروشگاه {brand_title} ارتقا یافتید!**\nبا رسیدن مجموع خریدهای شما به {t_spent:,} تومان، از این پس از {cb_rate}٪ کش‌بک در هر خرید و پشتیبانی در اولویت بهره‌مند خواهید بود. 🌹"
+            cashback_note += upgrade_extra
+    except Exception as e_ug:
+        logger.error(f"Error checking reseller VIP auto upgrade for {user_id}: {e_ug}")
+
+    # ارسال لینک برای کاربر در تلگرام
     msg_to_user = f"🎉 **پرداخت شما تایید شد!**\n\n"
     msg_to_user += f"📦 پلن: **{plan_name}** ({data_limit}GB - {duration} روزه)\n"
-    msg_to_user += f"🔗 لینک اشتراک شما:\n`{sub_link}`\n\n"
+    msg_to_user += f"🔗 لینک اشتراک شما:\n`{sub_link}`{cashback_note}\n\n"
     msg_to_user += f"از خرید شما در **{brand_title}** متشکریم!"
 
     if bot_tok:

@@ -630,6 +630,36 @@ class ResellerBotInstance:
                 # بروزرسانی تراکنش
                 db.update_transaction(order_id, status="approved")
 
+                # محاسبه کش‌بک و ارتقای VIP مشتری نماینده
+                brand = self.reseller_data.get("brand_name") or "ما"
+                cashback_note = ""
+                try:
+                    vip_info = db.get_user_vip_info(target_uid)
+                    if vip_info.get("is_vip") and vip_info.get("cashback_percent", 0) > 0:
+                        cb_pct = vip_info.get("cashback_percent", 10)
+                        cb_amount = int((price * cb_pct) / 100)
+                        if cb_amount > 0:
+                            cb_res = db.add_wallet_balance(
+                                target_uid,
+                                cb_amount,
+                                f"هدیه کش‌بک خرید VIP ({cb_pct}%) از {brand}",
+                                ref_id=str(order_id),
+                                tx_type="cashback"
+                            )
+                            new_b = cb_res.get("new_balance", 0)
+                            cashback_note += f"\n\n🎁 **هدیه کش‌بک VIP:** مبلغ {cb_amount:,} تومان ({cb_pct}٪) به کیف پول شما واریز شد.\n💰 موجودی کیف پول: {new_b:,} تومان"
+                except Exception as e_cb:
+                    logger.error(f"Error in reseller bot VIP cashback: {e_cb}")
+
+                try:
+                    ug_res = db.check_and_upgrade_user_vip(target_uid, reseller_id=r_id)
+                    if ug_res.get("upgraded"):
+                        cb_rate = ug_res.get("cashback_percent", 10)
+                        t_sp = ug_res.get("total_spent", 0)
+                        cashback_note += f"\n\n🎉 **تبریک! شما به عنوان مشتری طلایی (⭐️ VIP) فروشگاه {brand} ارتقا یافتید!**\nبا رسیدن مجموع خرید شما به {t_sp:,} تومان، از این پس از {cb_rate}٪ کش‌بک در هر خرید و اولویت در پشتیبانی برخوردار خواهید بود. 🌹"
+                except Exception as e_ug:
+                    logger.error(f"Error checking reseller bot VIP auto upgrade: {e_ug}")
+
                 # ویرایش پیام نماینده
                 await query.edit_message_caption(
                     caption=f"✅ **پرداخت تایید شد و اشتراک با موفقیت تحویل مشتری گردید.**\n"
@@ -640,11 +670,10 @@ class ResellerBotInstance:
 
                 # ارسال لینک اشتراک برای مشتری در ربات
                 try:
-                    brand = self.reseller_data.get("brand_name") or "ما"
                     cust_msg = f"🎉 **پرداخت شما تایید شد! اشتراک {brand} آماده است:**\n\n"
                     cust_msg += f"📦 پلن: **{pname}**\n"
                     cust_msg += f"📊 حجم: **{vol} گیگابایت** | ⏳ مدت: **{days} روز**\n\n"
-                    cust_msg += f"🔗 **لینک اتصال اختصاصی شما:**\n`{sub_url}`\n\n"
+                    cust_msg += f"🔗 **لینک اتصال اختصاصی شما:**\n`{sub_url}`{cashback_note}\n\n"
                     cust_msg += "💡 جهت اتصال، لینک بالا را کپی کرده و در نرم‌افزار v2rayNG / Streisand / Hiddify وارد نمایید."
 
                     await context.bot.send_message(
@@ -679,7 +708,13 @@ class ResellerBotInstance:
                 await update.message.reply_text("ℹ️ شما در حال حاضر هیچ اشتراک فعالی ندارید.")
                 return
 
-            text = "📋 **لیست اشتراک‌های شما:**\n\n"
+            vip_info = db.get_user_vip_info(user.id)
+            vip_header = ""
+            if vip_info.get("is_vip"):
+                cb = vip_info.get("cashback_percent", 10)
+                vip_header = f"👑 **سطح عضویت: مشتری ویژه (⭐️ VIP)**\n🎁 **پاداش فعال:** {cb}٪ کش‌بک در هر خرید\n\n"
+
+            text = f"{vip_header}📋 **لیست اشتراک‌های شما:**\n\n"
             for s in subs:
                 name = s.get("account_name", "اشتراک")
                 status = "🟢 فعال" if s.get("status") == "active" else "🔴 غیرفعال"
@@ -750,7 +785,12 @@ class ResellerBotInstance:
             elif "کیف پول" in text or "شارژ" in text:
                 user = update.effective_user
                 bal = db.get_user_wallet_balance(user.id)
-                await update.message.reply_text(f"💳 موجودی کیف پول شما: **{bal:,} تومان**", parse_mode="Markdown")
+                vip_info = db.get_user_vip_info(user.id)
+                vip_txt = ""
+                if vip_info.get("is_vip"):
+                    cb = vip_info.get("cashback_percent", 10)
+                    vip_txt = f"\n👑 **سطح حساب:** مشتری طلایی (⭐️ VIP)\n🎁 **پاداش کش‌بک:** {cb}٪ بازگشت وجه در هر خرید\n"
+                await update.message.reply_text(f"💳 **موجودی کیف پول شما:** `{bal:,}` تومان{vip_txt}", parse_mode="Markdown")
             elif "پشتیبانی" in text:
                 await support_handler(update, context)
             elif "راهنما" in text or "آموزش" in text or "حل مشکل" in text or "عیب‌یابی" in text:
@@ -759,14 +799,33 @@ class ResellerBotInstance:
                 user = update.effective_user
                 content = text.replace("تیکت:", "").replace("تیکت", "").replace("/ticket", "").strip()
                 if content:
-                    db.create_ticket(
+                    is_vip = db.is_user_vip(user.id)
+                    subj = "⭐️ تیکت مشتری VIP" if is_vip else "پیام مشتری از ربات"
+                    t_res = db.create_ticket(
                         user_id=user.id,
                         username=user.username or user.first_name,
-                        subject="پیام مشتری از ربات",
+                        subject=subj,
                         message=content,
                         reseller_id=r_id
                     )
-                    await update.message.reply_text("✅ **پیام و تیکت پشتیبانی شما با موفقیت ثبت شد.**\nپاسخ کارشناسان در همین ربات برای شما ارسال خواهد شد.", parse_mode="Markdown")
+                    t_id = t_res.get("ticket_id", 0)
+                    await update.message.reply_text(f"✅ **پیام و تیکت پشتیبانی شما با شماره #{t_id} ثبت شد.**\nپاسخ کارشناسان در همین ربات برای شما ارسال خواهد شد.", parse_mode="Markdown")
+
+                    # ارسال نوتیفیکیشن فوری به تلگرام نماینده
+                    reseller_tg = self.reseller_data.get("telegram_id")
+                    if reseller_tg:
+                        try:
+                            vip_alert = "🚨 ⭐️ **[تیکت فوری - مشتری ویژه VIP]**" if is_vip else "📨 **تیکت پشتیبانی جدید**"
+                            notif_msg = (
+                                f"{vip_alert}\n\n"
+                                f"👤 مشتری: {user.first_name} (ID: `{user.id}`)\n"
+                                f"💬 یوزرنیم: @{user.username or 'ندارد'}\n"
+                                f"📝 متن پیام:\n{content}\n\n"
+                                f"🔖 شماره تیکت: #{t_id}"
+                            )
+                            await context.bot.send_message(chat_id=reseller_tg, text=notif_msg, parse_mode="Markdown")
+                        except Exception as e_notif:
+                            logger.error(f"Error notifying reseller of ticket: {e_notif}")
                 else:
                     await update.message.reply_text("⚠️ لطفاً متن پیام خود را بعد از عبارت `تیکت:` بنویسید.")
             else:
