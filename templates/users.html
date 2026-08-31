@@ -20,15 +20,20 @@
 </div>
 
 <!-- دکمه‌های فیلتر VIP -->
-<div class="d-flex gap-2 mb-3 flex-wrap">
-    <a href="{{ url_for('users', search=search) }}" class="btn btn-sm {{ 'btn-primary' if not filter_vip else 'btn-outline-secondary' }}">
-        همه کاربران ({{ total_count }})
-    </a>
-    <a href="{{ url_for('users', vip='1', search=search) }}" class="btn btn-sm {{ 'btn-warning text-dark fw-bold' if filter_vip == '1' else 'btn-outline-warning' }}">
-        <i class="fas fa-crown me-1"></i> کاربران پریمیوم ⭐️ ({{ vip_count }})
-    </a>
-    <a href="{{ url_for('users', vip='0', search=search) }}" class="btn btn-sm {{ 'btn-secondary' if filter_vip == '0' else 'btn-outline-secondary' }}">
-        کاربران عادی
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{{ url_for('users', search=search) }}" class="btn btn-sm {{ 'btn-primary' if not filter_vip else 'btn-outline-secondary' }}">
+            همه کاربران ({{ total_count }})
+        </a>
+        <a href="{{ url_for('users', vip='1', search=search) }}" class="btn btn-sm {{ 'btn-warning text-dark fw-bold' if filter_vip == '1' else 'btn-outline-warning' }}">
+            <i class="fas fa-crown me-1"></i> کاربران پریمیوم ⭐️ ({{ vip_count }})
+        </a>
+        <a href="{{ url_for('users', vip='0', search=search) }}" class="btn btn-sm {{ 'btn-secondary' if filter_vip == '0' else 'btn-outline-secondary' }}">
+            کاربران عادی
+        </a>
+    </div>
+    <a href="{{ url_for('vip_settings') }}" class="btn btn-sm btn-outline-warning text-dark fw-bold">
+        <i class="fas fa-sliders me-1"></i> تنظیمات و مزایای پرمیوم (VIP)
     </a>
 </div>
 
@@ -86,21 +91,23 @@
                             </div>
                         </td>
                         <td>
-                            {% if user['is_vip'] %}
-                                <form action="{{ url_for('admin_set_user_vip', telegram_id=user['telegram_id']) }}" method="POST" class="d-inline">
-                                    <input type="hidden" name="action" value="toggle">
-                                    <button type="submit" class="btn btn-xs btn-outline-danger py-0 px-2 small" title="لغو وضعیت VIP">
-                                        <i class="fas fa-star text-warning me-1"></i> ویژه (لغو)
+                            <div class="d-flex align-items-center gap-1">
+                                {% if user['is_vip'] %}
+                                    <button type="button" class="btn btn-xs btn-warning text-dark py-0 px-2 fw-bold" data-bs-toggle="modal" data-bs-target="#editUserVipModal{{ user['telegram_id'] }}" title="ویرایش تنظیمات VIP">
+                                        <i class="fas fa-crown text-dark me-1"></i> ویژه
                                     </button>
-                                </form>
-                            {% else %}
-                                <form action="{{ url_for('admin_set_user_vip', telegram_id=user['telegram_id']) }}" method="POST" class="d-inline">
-                                    <input type="hidden" name="action" value="toggle">
-                                    <button type="submit" class="btn btn-xs btn-outline-secondary py-0 px-2 small" title="ارتقا به کاربر VIP">
-                                        <i class="far fa-star me-1"></i> عادی (تبدیل به VIP)
+                                    <form action="{{ url_for('admin_set_user_vip', telegram_id=user['telegram_id']) }}" method="POST" class="d-inline">
+                                        <input type="hidden" name="action" value="toggle">
+                                        <button type="submit" class="btn btn-xs btn-outline-danger py-0 px-1" title="لغو وضعیت VIP">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </form>
+                                {% else %}
+                                    <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" data-bs-toggle="modal" data-bs-target="#editUserVipModal{{ user['telegram_id'] }}" title="ارتقا به کاربر VIP">
+                                        <i class="far fa-star me-1"></i> ارتقا به VIP
                                     </button>
-                                </form>
-                            {% endif %}
+                                {% endif %}
+                            </div>
                         </td>
                         <td>
                             {% if user['phone_number'] %}
@@ -138,4 +145,54 @@
         </div>
     </div>
 </div>
+
+<!-- مودال‌های ویرایش پرمیوم کاربران (خارج از ساختار جدول) -->
+{% for user in users %}
+<div class="modal fade" id="editUserVipModal{{ user['telegram_id'] }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('admin_set_user_vip', telegram_id=user['telegram_id']) }}">
+                <input type="hidden" name="action" value="update">
+                <div class="modal-header bg-warning text-dark py-3">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-crown me-2"></i>مدیریت وضعیت پرمیوم (VIP)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="d-flex align-items-center gap-3 p-3 bg-light rounded mb-3">
+                        <img src="{{ avatar_url(user['telegram_id'] or user['username'] or 'User') }}" 
+                             alt="{{ user['username'] }}" class="rounded-circle border" style="width: 48px; height: 48px; object-fit: cover;">
+                        <div>
+                            <div class="fw-bold">{{ user['username'] or 'کاربر تلگرام' }}</div>
+                            <small class="text-muted font-monospace"><code>{{ user['telegram_id'] }}</code></small>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">وضعیت VIP:</label>
+                        <select name="is_vip" class="form-select">
+                            <option value="1" {% if user['is_vip'] %}selected{% endif %}>⭐️ کاربر ویژه (VIP) فعال</option>
+                            <option value="0" {% if not user['is_vip'] %}selected{% endif %}>کاربر عادی (غیر VIP)</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">مدت زمان اعتبار VIP (تعداد روز):</label>
+                        <input type="number" name="vip_days" class="form-control" placeholder="برای وضعیت نامحدود خالی بگذارید" min="1" max="3650">
+                        <small class="text-muted">انقضای فعلی: {{ user.get('vip_expire_at')[:10] if user.get('vip_expire_at') else 'مادام‌العمر' }}</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">درصد کش‌بک سفارشی این کاربر (٪):</label>
+                        <input type="number" name="custom_cashback" class="form-control" value="{{ user.get('vip_custom_cashback') if user.get('vip_custom_cashback') is not none else '' }}" placeholder="پیش‌فرض سیستم" min="0" max="100">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-warning text-dark fw-bold">ذخیره تنظیمات VIP</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
 {% endblock %}

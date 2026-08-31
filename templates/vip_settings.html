@@ -1,0 +1,398 @@
+{% extends "base.html" %}
+{% block title %}تنظیمات و مدیریت مشتریان پرمیوم (VIP) - پنل مدیریت VPN{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">داشبورد</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('users') }}">کاربران</a></li>
+                <li class="breadcrumb-item active" aria-current="page">مشتریان پرمیوم (VIP)</li>
+            </ol>
+        </nav>
+        <h1 class="page-title d-flex align-items-center gap-2">
+            <i class="fas fa-crown text-warning"></i>
+            تنظیمات و مدیریت مشتریان پرمیوم (VIP)
+        </h1>
+        <p class="text-muted mb-0">پیکربندی مزایا، درصد تخفیف، کش‌بک، قوانین ارتقای خودکار و مدیریت اعضای سطح ویژه</p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <button type="button" class="btn btn-warning text-dark fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#addVipModal">
+            <i class="fas fa-user-plus me-1"></i> ارتقای کاربر جدید به VIP
+        </button>
+    </div>
+</div>
+
+<!-- ۴ کارت آماری شاخص‌های مشتریان پرمیوم -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-3 col-sm-6">
+        <div class="card border-0 shadow-sm p-3 h-100 bg-warning bg-opacity-10 border-start border-warning border-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-muted small d-block mb-1">کل مشتریان پرمیوم (VIP)</span>
+                    <h3 class="fw-bold text-dark font-monospace mb-0">{{ vip_stats.get('total_vips', 0) }} نفر</h3>
+                </div>
+                <div class="bg-warning text-dark rounded-circle p-3 d-flex align-items-center justify-content-center shadow-sm" style="width: 48px; height: 48px;">
+                    <i class="fas fa-crown fs-5"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-3 col-sm-6">
+        <div class="card border-0 shadow-sm p-3 h-100 bg-primary bg-opacity-10 border-start border-primary border-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-muted small d-block mb-1">ارتقای خودکار بر اساس خرید</span>
+                    <h3 class="fw-bold text-primary font-monospace mb-0">{{ vip_stats.get('auto_vips', 0) }} نفر</h3>
+                </div>
+                <div class="bg-primary text-white rounded-circle p-3 d-flex align-items-center justify-content-center shadow-sm" style="width: 48px; height: 48px;">
+                    <i class="fas fa-robot fs-5"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-3 col-sm-6">
+        <div class="card border-0 shadow-sm p-3 h-100 bg-success bg-opacity-10 border-start border-success border-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-muted small d-block mb-1">مجموع درآمد از مشتریان VIP</span>
+                    <h3 class="fw-bold text-success font-monospace mb-0">{{ "{:,}".format(vip_stats.get('vip_revenue', 0)) }} تومان</h3>
+                </div>
+                <div class="bg-success text-white rounded-circle p-3 d-flex align-items-center justify-content-center shadow-sm" style="width: 48px; height: 48px;">
+                    <i class="fas fa-coins fs-5"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-3 col-sm-6">
+        <div class="card border-0 shadow-sm p-3 h-100 bg-info bg-opacity-10 border-start border-info border-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-muted small d-block mb-1">اشتراک‌های فعال پرمیوم</span>
+                    <h3 class="fw-bold text-info font-monospace mb-0">{{ vip_stats.get('vip_active_subs', 0) }} کانفیگ</h3>
+                </div>
+                <div class="bg-info text-white rounded-circle p-3 d-flex align-items-center justify-content-center shadow-sm" style="width: 48px; height: 48px;">
+                    <i class="fas fa-shield-halved fs-5"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- ستون تنظیمات و ویژگی‌های پرمیوم -->
+    <div class="col-lg-5">
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-sliders text-warning me-2"></i>ویژگی‌ها و مزایای پرمیوم (VIP)</h5>
+                <span class="badge bg-warning text-dark"><i class="fas fa-star me-1"></i>تنظیمات هوشمند</span>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" action="{{ url_for('vip_settings') }}">
+                    <!-- سوئیچ‌های فیچر فلگ -->
+                    <div class="mb-4">
+                        <h6 class="fw-bold text-dark mb-3 border-bottom pb-2">قابلیت‌های فعال برای اعضای پرمیوم:</h6>
+                        
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" name="system_enabled" value="1" id="vipSysEnabled" {% if vip_settings.get('enabled') %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="vipSysEnabled">
+                                فعال بودن سیستم باشگاه مشتریان پرمیوم (VIP)
+                            </label>
+                            <div class="text-muted small">فعال یا غیرفعال‌سازی سراسری مزایای پرمیوم در ربات و پنل</div>
+                        </div>
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" name="auto_enabled" value="1" id="vipAutoEnabled" {% if vip_settings.get('auto_enabled') %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="vipAutoEnabled">
+                                ارتقای خودکار کاربران به VIP بر اساس خرید
+                            </label>
+                            <div class="text-muted small">ارتقای هوشمند پس از رسیدن مجموع خرید کاربر به حد نصاب</div>
+                        </div>
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" name="priority_support" value="1" id="vipPrioritySupport" {% if vip_settings.get('priority_support') %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="vipPrioritySupport">
+                                <i class="fas fa-headset text-info me-1"></i> اولویت ویژه در تیکت‌های پشتیبانی
+                            </label>
+                            <div class="text-muted small">قرارگیری تیکت‌های اعضای پرمیوم در صدر صف پاسخگویی اپراتورها</div>
+                        </div>
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" name="vip_server_access" value="1" id="vipServerAccess" {% if vip_settings.get('vip_server_access') %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="vipServerAccess">
+                                <i class="fas fa-server text-primary me-1"></i> دسترسی به سرورها و پروتکل‌های اختصاصی VIP
+                            </label>
+                            <div class="text-muted small">اتصال به نودهای پرسرعت با پینگ فوق‌العاده پایین مخصوص پرمیوم</div>
+                        </div>
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" name="free_config_regen" value="1" id="vipFreeConfig" {% if vip_settings.get('free_config_regen') %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="vipFreeConfig">
+                                <i class="fas fa-rotate text-success me-1"></i> بازتولید و نوسازی لینک کانفیگ بدون محدودیت
+                            </label>
+                            <div class="text-muted small">امکان تعویض لینک اشتراک در صورت فیلتر شدن به صورت نامحدود</div>
+                        </div>
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" name="show_badge" value="1" id="vipShowBadge" {% if vip_settings.get('show_vip_badge') %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="vipShowBadge">
+                                <i class="fas fa-crown text-warning me-1"></i> نمایش نشان طلایی و تاج VIP در بات و پنل
+                            </label>
+                            <div class="text-muted small">نمایش نشان VIP طلایی در پیام‌ها و پروفایل کاربری</div>
+                        </div>
+                    </div>
+
+                    <!-- مقادیر عددی و تخفیف‌ها -->
+                    <div class="mb-4">
+                        <h6 class="fw-bold text-dark mb-3 border-bottom pb-2">مقادیر عددی و تخفیف‌های پرمیوم:</h6>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold">🎁 درصد تخفیف خرید اشتراک (٪):</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="number" class="form-control" name="discount_percent" min="0" max="100" value="{{ vip_settings.get('discount_percent', 15) }}" required>
+                                    <span class="input-group-text">٪</span>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold">💰 درصد بازگشت وجه (Cashback):</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="number" class="form-control" name="cashback_percent" min="0" max="100" value="{{ vip_settings.get('cashback_percent', 10) }}" required>
+                                    <span class="input-group-text">٪</span>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold">🚀 حجم ترافیک هدیه (GB):</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="number" class="form-control" name="bonus_data_gb" min="0" max="500" value="{{ vip_settings.get('bonus_data_gb', 5) }}" required>
+                                    <span class="input-group-text">گیگابایت</span>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold">⏱️ افزایش مهلت تمدید و تست:</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="number" class="form-control" name="extended_grace_hours" min="0" max="720" value="{{ vip_settings.get('extended_grace_hours', 48) }}" required>
+                                    <span class="input-group-text">ساعت</span>
+                                </div>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label small fw-bold">🎯 حداقل مجموع خرید جهت ارتقای خودکار (تومان):</label>
+                                <input type="number" class="form-control" name="auto_threshold" step="50000" min="0" value="{{ vip_settings.get('auto_threshold', 1000000) }}" required>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label small fw-bold">🔢 حداقل تعداد سفارش موفق جهت ارتقای خودکار:</label>
+                                <input type="number" class="form-control" name="min_purchases" min="1" max="100" value="{{ vip_settings.get('min_purchases', 3) }}" required>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100 fw-bold py-2 shadow-sm">
+                        <i class="fas fa-floppy-disk me-1"></i> ذخیره کلیه تنظیمات پرمیوم
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ستون لیست مشتریان پرمیوم -->
+    <div class="col-lg-7">
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-users-gear text-primary me-2"></i>لیست مشتریان پرمیوم فعال ({{ vip_users|length }})</h5>
+                <div class="table-search-wrapper">
+                    <i class="fas fa-search table-search-icon"></i>
+                    <input type="text" class="form-control table-search-input" id="vipUsersSearchInput" placeholder="جستجو در نام، آیدی...">
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0" id="vipUsersTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-3">کاربر</th>
+                                <th>نوع ارتقا</th>
+                                <th>مجموع خریدها</th>
+                                <th>سفارشات</th>
+                                <th>کش‌بک</th>
+                                <th>انقضای VIP</th>
+                                <th class="text-end pe-3">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for u in vip_users %}
+                            <tr>
+                                <td class="ps-3">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <img src="{{ avatar_url(u['telegram_id'] or u['username'] or 'User') }}" 
+                                             alt="{{ u['username'] or u['telegram_id'] }}" 
+                                             class="rounded-circle border shadow-sm" 
+                                             style="width: 36px; height: 36px; object-fit: cover;">
+                                        <div>
+                                            <div class="fw-bold d-flex align-items-center gap-1">
+                                                <code>{{ u['telegram_id'] }}</code>
+                                                <span class="badge bg-warning text-dark py-0 px-1"><i class="fas fa-crown"></i> VIP</span>
+                                            </div>
+                                            <small class="text-muted">{{ ('@' + u['username']) if u['username'] else 'بدون یوزرنیم' }}</small>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if u.get('vip_type') == 'auto' %}
+                                        <span class="badge bg-primary-subtle text-primary border border-primary"><i class="fas fa-robot me-1"></i>خودکار</span>
+                                    {% else %}
+                                        <span class="badge bg-info-subtle text-info border border-info"><i class="fas fa-user-check me-1"></i>دستی</span>
+                                    {% endif %}
+                                </td>
+                                <td><strong class="text-success font-monospace">{{ "{:,}".format(u.get('total_spent', 0)) }} ت</strong></td>
+                                <td><span class="badge bg-light text-dark border font-monospace">{{ u.get('total_orders', 0) }} خرید</span></td>
+                                <td>
+                                    {% if u.get('vip_custom_cashback') is not none %}
+                                        <span class="badge bg-success font-monospace">{{ u['vip_custom_cashback'] }}٪ اختصاصی</span>
+                                    {% else %}
+                                        <span class="text-muted small">پیش‌فرض ({{ vip_settings.get('cashback_percent', 10) }}٪)</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if u.get('vip_expire_at') %}
+                                        <small class="text-muted font-monospace">{{ u['vip_expire_at'][:10] }}</small>
+                                    {% else %}
+                                        <span class="badge bg-success-subtle text-success border border-success">مادام‌العمر</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end pe-3">
+                                    <div class="btn-group btn-group-sm">
+                                        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editVipUserModal{{ u['telegram_id'] }}" title="ویرایش تنظیمات VIP">
+                                            <i class="fas fa-pen-to-square"></i>
+                                        </button>
+                                        <a href="{{ url_for('user_detail', telegram_id=u['telegram_id']) }}" class="btn btn-outline-secondary" title="مشاهده پروفایل کامل">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                        <form action="{{ url_for('admin_set_user_vip', telegram_id=u['telegram_id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از لغو وضعیت VIP این کاربر مطمئن هستید؟');">
+                                            <input type="hidden" name="action" value="toggle">
+                                            <button type="submit" class="btn btn-outline-danger" title="لغو عضویت VIP">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            {% if not vip_users %}
+                            <tr>
+                                <td colspan="7" class="text-center py-5 text-muted">
+                                    <i class="fas fa-crown fs-1 text-warning opacity-50 mb-3 d-block"></i>
+                                    <h6 class="fw-bold">هیچ کاربری در حال حاضر در سطح ویژه VIP قرار ندارد.</h6>
+                                    <p class="small mb-0">کاربران می‌توانند به صورت خودکار یا دستی توسط شما به این سطح اضافه شوند.</p>
+                                </td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal افزودن کاربر جدید به VIP -->
+<div class="modal fade" id="addVipModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('admin_vip_user_add') }}">
+                <div class="modal-header bg-warning text-dark py-3">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-crown me-2"></i>ارتقای کاربر جدید به سطح ویژه (VIP)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">آیدی عددی تلگرام یا نام کاربری (@یوزرنیم):</label>
+                        <input type="text" name="user_identifier" class="form-control font-monospace" placeholder="مثال: 123456789 یا @username" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">مدت زمان عضویت VIP (به روز):</label>
+                        <input type="number" name="vip_days" class="form-control" placeholder="خالی بگذارید تا مادام‌العمر باشد" min="1" max="3650">
+                        <small class="text-muted">در صورت خالی گذاشتن، وضعیت VIP به صورت نامحدود و دائمی ثبت می‌شود.</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">درصد کش‌بک سفارشی (اختیاری):</label>
+                        <input type="number" name="custom_cashback" class="form-control" placeholder="پیش‌فرض سیستم: {{ vip_settings.get('cashback_percent', 10) }}٪" min="0" max="100">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-warning text-dark fw-bold">تایید و ارتقای کاربر به VIP</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- مودال‌های ویرایش هر کاربر پرمیوم -->
+{% for u in vip_users %}
+<div class="modal fade" id="editVipUserModal{{ u['telegram_id'] }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('admin_set_user_vip', telegram_id=u['telegram_id']) }}">
+                <input type="hidden" name="action" value="update">
+                <input type="hidden" name="is_vip" value="1">
+                <div class="modal-header bg-primary text-white py-3">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-user-pen me-2"></i>ویرایش مشخصات VIP کاربر {{ u['telegram_id'] }}</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="d-flex align-items-center gap-3 p-3 bg-light rounded mb-3">
+                        <img src="{{ avatar_url(u['telegram_id'] or u['username'] or 'User') }}" 
+                             alt="{{ u['username'] }}" class="rounded-circle border" style="width: 48px; height: 48px; object-fit: cover;">
+                        <div>
+                            <div class="fw-bold">{{ u['username'] or 'کاربر' }}</div>
+                            <small class="text-muted font-monospace"><code>{{ u['telegram_id'] }}</code></small>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">تمدید مدت زمان VIP (تعداد روز اضافه):</label>
+                        <input type="number" name="vip_days" class="form-control" placeholder="برای وضعیت نامحدود خالی بگذارید" min="1" max="3650">
+                        <small class="text-muted">انقضای فعلی: {{ u['vip_expire_at'][:10] if u['vip_expire_at'] else 'مادام‌العمر' }}</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">درصد کش‌بک سفارشی این کاربر (٪):</label>
+                        <input type="number" name="custom_cashback" class="form-control" value="{{ u['vip_custom_cashback'] if u['vip_custom_cashback'] is not none else '' }}" placeholder="پیش‌فرض: {{ vip_settings.get('cashback_percent', 10) }}٪" min="0" max="100">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary fw-bold">ذخیره تغییرات کاربر</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const searchInput = document.getElementById("vipUsersSearchInput");
+    if (searchInput) {
+        searchInput.addEventListener("keyup", function () {
+            const q = this.value.toLowerCase().trim();
+            document.querySelectorAll("#vipUsersTable tbody tr").forEach(row => {
+                const text = row.innerText.toLowerCase();
+                row.style.display = text.includes(q) ? "" : "none";
+            });
+        });
+    }
+});
+</script>
+{% endblock %}

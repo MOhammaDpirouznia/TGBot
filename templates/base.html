@@ -713,6 +713,9 @@
                 <a class="nav-link {% if request.endpoint == 'users' %}active{% endif %}" href="{{ url_for('users') }}">
                     <i class="fas fa-users"></i> کاربران تلگرام
                 </a>
+                <a class="nav-link {% if request.endpoint == 'vip_settings' %}active{% endif %}" href="{{ url_for('vip_settings') }}">
+                    <i class="fas fa-crown text-warning"></i> مشتریان پرمیوم (VIP)
+                </a>
                 {% endif %}
 
                 {% if has_permission('subscriptions_view') %}
