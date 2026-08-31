@@ -89,6 +89,7 @@ class Database:
                 vip_type TEXT DEFAULT 'manual',
                 vip_expire_at TEXT,
                 vip_custom_cashback INTEGER,
+                reseller_id INTEGER DEFAULT 0,
                 created_at TEXT,
                 updated_at TEXT
             )
@@ -647,6 +648,11 @@ class Database:
                 cursor.execute(f"ALTER TABLE resellers ADD COLUMN {col_def}")
             except Exception:
                 pass
+
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN reseller_id INTEGER DEFAULT 0")
+        except Exception:
+            pass
 
         try:
             cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_resellers_custom_domain ON resellers(custom_domain)")
@@ -1701,7 +1707,7 @@ class Database:
     # مدیریت اشتراک‌ها
     # ═══════════════════════════════════════════════════════════════
 
-    def save_subscription(self, telegram_id, hidify_uuid, plan_id, plan_name, data_limit, duration, data_used=0, status="active", account_name=None, account_comment=None, reseller_id=None, user_limit=1):
+    def save_subscription(self, telegram_id, hidify_uuid, plan_id, plan_name, data_limit, duration, data_used=0, status="active", account_name=None, account_comment=None, reseller_id=None, user_limit=1, cost_paid=0, **kwargs):
         """ذخیره اشتراک جدید"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -1711,9 +1717,9 @@ class Database:
         try:
             cursor.execute("""
                 INSERT INTO subscriptions
-                (telegram_id, hidify_uuid, plan_id, plan_name, account_name, account_comment, data_limit, data_used, duration, start_date, expire_date, status, reseller_id, user_limit, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (telegram_id, hidify_uuid, plan_id, plan_name, account_name, account_comment, data_limit, data_used, duration, now, expire_date, status, reseller_id, int(user_limit or 1), now, now))
+                (telegram_id, hidify_uuid, plan_id, plan_name, account_name, account_comment, data_limit, data_used, duration, start_date, expire_date, status, reseller_id, user_limit, cost_paid, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (telegram_id, hidify_uuid, plan_id, plan_name, account_name, account_comment, data_limit, data_used, duration, now, expire_date, status, reseller_id, int(user_limit or 1), int(cost_paid or 0), now, now))
             conn.commit()
             subscription_id = cursor.lastrowid
             logger.info(f"Subscription {subscription_id} saved for user {telegram_id} (reseller_id={reseller_id}, user_limit={user_limit})")
@@ -4451,74 +4457,145 @@ class Database:
 
     def calculate_reseller_refund(self, reseller_id: int, sub_id: int):
         """
-        محاسبه شرایط و درصد استرداد وجه حذف مشتری بر اساس قوانین:
-        - تا ۱۲ ساعت پس از ساخت: ۱۰۰٪ مبلغ
-        - بین ۱۲ تا ۲۴ ساعت پس از ساخت: ۹۰٪ مبلغ
-        - بیش از ۲۴ ساعت پس از ساخت: ۰٪ مبلغ
+        محاسبه هوشمند و تجمیعی استرداد وجه حذف مشتری نماینده شامل خرید اولیه و کلیه تمدیدها:
+        - هر اقدام کمتر از ۱۲ ساعت پیش: ۱۰۰٪ مبلغ
+        - هر اقدام بین ۱۲ تا ۲۴ ساعت پیش: ۸۰٪ مبلغ
+        - هر اقدام بیش از ۲۴ ساعت پیش: ۰٪ مبلغ
         """
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM subscriptions WHERE id=? AND reseller_id=?", (sub_id, reseller_id))
         sub = cursor.fetchone()
-        conn.close()
-
         if not sub:
+            conn.close()
             return None
 
-        created_str = sub["created_at"] or get_now_iso()
-        try:
-            clean = str(created_str).strip().replace("Z", "")
-            created_dt = datetime.fromisoformat(clean)
-            if created_dt.tzinfo is not None:
-                created_dt = created_dt.astimezone(TEHRAN_TZ).replace(tzinfo=None)
-        except Exception:
-            created_dt = get_now_naive()
-
+        account_name = sub["account_name"] or "بدون نام"
         now_dt = get_now_naive()
-        elapsed_seconds = max(0.0, (now_dt - created_dt).total_seconds())
-        elapsed_hours = elapsed_seconds / 3600.0
 
-        if elapsed_hours <= 12.0:
-            refund_percent = 100
-        elif elapsed_hours <= 24.0:
-            refund_percent = 90
-        else:
-            refund_percent = 0
+        # جستجوی تمام اقدامات مالی کسر شده از نماینده برای این اکانت (خرید اولیه + تمدیدها)
+        cursor.execute("""
+            SELECT * FROM reseller_transactions
+            WHERE reseller_id = ? AND (account_name = ? OR description LIKE ?) AND type IN ('purchase', 'renewal')
+            ORDER BY created_at ASC
+        """, (reseller_id, account_name, f"%{account_name}%"))
+        tx_rows = cursor.fetchall()
+        conn.close()
 
-        cost_paid = sub["cost_paid"] or 0
-        if cost_paid <= 0:
-            # در صورتی که فیلد هزینه در نسخه‌های قدیمی ثبت نشده بود، از پلن اولیه بازیابی شود
+        items = []
+        total_paid = 0
+        total_refund = 0
+        latest_elapsed_hours = 999999.0
+        latest_time_passed_text = "بیش از ۲۴ ساعت پیش"
+
+        def _calc_elapsed(dt_str):
             try:
-                plan_price = 0
-                if sub["plan_id"]:
-                    p_id = sub["plan_id"]
-                    # تلاش برای پیدا کردن قیمت
-                    res_row = cursor.execute("SELECT discount_percent FROM resellers WHERE id=?", (reseller_id,)).fetchone()
-                    disc = res_row["discount_percent"] if res_row else 20
-                    # تخمین هزینه پرداختی
-                    cost_paid = 0
+                clean = str(dt_str).strip().replace("Z", "")
+                dt = datetime.fromisoformat(clean)
+                if dt.tzinfo is not None:
+                    dt = dt.astimezone(TEHRAN_TZ).replace(tzinfo=None)
             except Exception:
-                pass
+                dt = get_now_naive()
+            return max(0.0, (now_dt - dt).total_seconds() / 3600.0)
 
-        refund_amount = int((cost_paid * refund_percent) / 100)
+        def _format_time_passed(hours_val):
+            h = int(hours_val)
+            m = int((hours_val - h) * 60)
+            return f"{h} ساعت و {m} دقیقه پیش" if h > 0 else f"{m} دقیقه پیش"
 
-        hours_int = int(elapsed_hours)
-        minutes_int = int((elapsed_hours - hours_int) * 60)
-        time_passed_text = f"{hours_int} ساعت و {minutes_int} دقیقه پیش" if hours_int > 0 else f"{minutes_int} دقیقه پیش"
+        if tx_rows:
+            for tx in tx_rows:
+                amount = int(tx["amount"] or 0)
+                if amount <= 0:
+                    continue
+                created_str = tx["created_at"] or get_now_iso()
+                elapsed_hours = _calc_elapsed(created_str)
+                time_passed_str = _format_time_passed(elapsed_hours)
+
+                if elapsed_hours < latest_elapsed_hours:
+                    latest_elapsed_hours = elapsed_hours
+                    latest_time_passed_text = time_passed_str
+
+                if elapsed_hours <= 12.0:
+                    rate = 1.0
+                    percent = 100
+                elif elapsed_hours <= 24.0:
+                    rate = 0.8
+                    percent = 80
+                else:
+                    rate = 0.0
+                    percent = 0
+
+                ref_amount = int(amount * rate)
+                total_paid += amount
+                total_refund += ref_amount
+
+                items.append({
+                    "tx_id": tx["id"],
+                    "type": tx["type"],
+                    "type_title": "خرید اولیه" if tx["type"] == "purchase" else "تمدید اشتراک",
+                    "plan_name": tx["plan_name"] or sub["plan_name"] or "پلن",
+                    "amount": amount,
+                    "elapsed_hours": round(elapsed_hours, 1),
+                    "time_passed_text": time_passed_str,
+                    "refund_percent": percent,
+                    "refund_amount": ref_amount,
+                    "created_at": created_str
+                })
+
+        # در صورتی که لاگ تراکنش یافت نشد (اکانت‌های دستی یا قدیمی)
+        if not items:
+            created_str = sub["created_at"] or get_now_iso()
+            elapsed_hours = _calc_elapsed(created_str)
+            time_passed_str = _format_time_passed(elapsed_hours)
+            latest_elapsed_hours = elapsed_hours
+            latest_time_passed_text = time_passed_str
+
+            if elapsed_hours <= 12.0:
+                percent = 100
+                rate = 1.0
+            elif elapsed_hours <= 24.0:
+                percent = 80
+                rate = 0.8
+            else:
+                percent = 0
+                rate = 0.0
+
+            cost_paid = int(sub["cost_paid"] or 0)
+            ref_amount = int(cost_paid * rate)
+            total_paid = cost_paid
+            total_refund = ref_amount
+
+            items.append({
+                "tx_id": 0,
+                "type": "purchase",
+                "type_title": "خرید اولیه (ثبت سیستمی)",
+                "plan_name": sub["plan_name"] or "پلن",
+                "amount": cost_paid,
+                "elapsed_hours": round(elapsed_hours, 1),
+                "time_passed_text": time_passed_str,
+                "refund_percent": percent,
+                "refund_amount": ref_amount,
+                "created_at": created_str
+            })
+
+        effective_percent = int(round((total_refund / total_paid) * 100)) if total_paid > 0 else (100 if latest_elapsed_hours <= 12.0 else (80 if latest_elapsed_hours <= 24.0 else 0))
 
         return {
             "sub_id": sub_id,
-            "account_name": sub["account_name"] or "بدون نام",
-            "created_at": created_str,
-            "elapsed_hours": round(elapsed_hours, 1),
-            "time_passed_text": time_passed_text,
-            "refund_percent": refund_percent,
-            "cost_paid": cost_paid,
-            "refund_amount": refund_amount,
+            "account_name": account_name,
+            "created_at": sub["created_at"],
+            "elapsed_hours": round(latest_elapsed_hours, 1) if latest_elapsed_hours < 999999 else 0.0,
+            "time_passed_text": latest_time_passed_text,
+            "refund_percent": effective_percent,
+            "cost_paid": total_paid,
+            "refund_amount": total_refund,
+            "items": items,
+            "actions_count": len(items)
         }
 
     def delete_reseller_subscription(self, reseller_id: int, sub_id: int):
-        """حذف مشتری نماینده با استرداد هوشمند وجه طبق قوانین ۱۲ و ۲۴ ساعته"""
+        """حذف مشتری نماینده با استرداد هوشمند و تجمیعی وجه طبق قوانین ۱۲ و ۲۴ ساعته"""
         refund_info = self.calculate_reseller_refund(reseller_id, sub_id)
         if not refund_info:
             return {"success": False, "error": "اشتراک مورد نظر یافت نشد."}
@@ -4530,14 +4607,16 @@ class Database:
             refund_amount = refund_info["refund_amount"]
             refund_percent = refund_info["refund_percent"]
             account_name = refund_info["account_name"]
+            actions_count = refund_info.get("actions_count", 1)
 
             # ۱. در صورت تعلق استرداد وجه، موجودی نماینده افزایش یافته و تراکنش ثبت می‌شود
             if refund_amount > 0:
                 cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at=? WHERE id=?", (refund_amount, now, reseller_id))
+                desc_text = f"استرداد وجه {refund_percent}٪ بابت حذف اشتراک «{account_name}» ({actions_count} مرحله تراکنش/تمدید - آخرین اقدام: {refund_info['time_passed_text']})"
                 cursor.execute("""
                     INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
                     VALUES (?, 'refund', ?, 'استرداد وجه', ?, ?, ?)
-                """, (reseller_id, refund_amount, account_name, f"استرداد وجه {refund_percent}٪ بابت حذف اشتراک «{account_name}» ({refund_info['time_passed_text']})", now))
+                """, (reseller_id, refund_amount, account_name, desc_text, now))
 
             # ۲. حذف فیزیکی اشتراک از جدول محلی
             cursor.execute("DELETE FROM subscriptions WHERE id=? AND reseller_id=?", (sub_id, reseller_id))
@@ -4547,7 +4626,9 @@ class Database:
                 "success": True,
                 "refund_amount": refund_amount,
                 "refund_percent": refund_percent,
-                "time_passed_text": refund_info["time_passed_text"]
+                "time_passed_text": refund_info["time_passed_text"],
+                "actions_count": actions_count,
+                "items": refund_info.get("items", [])
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -4558,10 +4639,10 @@ class Database:
 
     def calculate_customer_refund(self, sub_id: int):
         """
-        محاسبه شرایط و درصد استرداد وجه حذف اشتراک مشتری توسط مدیران:
-        - تا ۱۲ ساعت پس از ساخت: ۱۰۰٪ مبلغ
-        - بین ۱۲ تا ۲۴ ساعت پس از ساخت: ۹۰٪ مبلغ
-        - بیش از ۲۴ ساعت پس از ساخت: ۰٪ مبلغ
+        محاسبه شرایط و درصد استرداد وجه حذف اشتراک مشتری توسط مدیران (شامل خرید و کلیه تمدیدها):
+        - هر اقدام کمتر از ۱۲ ساعت پیش: ۱۰۰٪ مبلغ
+        - هر اقدام بین ۱۲ تا ۲۴ ساعت پیش: ۸۰٪ مبلغ
+        - هر اقدام بیش از ۲۴ ساعت پیش: ۰٪ مبلغ
         """
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -4571,58 +4652,142 @@ class Database:
             conn.close()
             return None
 
-        created_str = sub["created_at"] or get_now_iso()
-        try:
-            clean = str(created_str).strip().replace("Z", "")
-            created_dt = datetime.fromisoformat(clean)
-            if created_dt.tzinfo is not None:
-                created_dt = created_dt.astimezone(TEHRAN_TZ).replace(tzinfo=None)
-        except Exception:
-            created_dt = get_now_naive()
-
-        now_dt = get_now_naive()
-        elapsed_seconds = max(0.0, (now_dt - created_dt).total_seconds())
-        elapsed_hours = elapsed_seconds / 3600.0
-
-        if elapsed_hours <= 12.0:
-            refund_percent = 100
-        elif elapsed_hours <= 24.0:
-            refund_percent = 90
-        else:
-            refund_percent = 0
-
-        cost_paid = sub["cost_paid"] or 0
-        user_id = sub["telegram_id"] if ("telegram_id" in sub.keys() and sub["telegram_id"]) else None
         account_name = sub["account_name"] or "بدون نام"
+        user_id = sub["telegram_id"] if ("telegram_id" in sub.keys() and sub["telegram_id"]) else None
+        now_dt = get_now_naive()
 
-        if cost_paid <= 0:
-            # بررسی مبلغ از آخرین تراکنش موفق کاربر
-            tx = cursor.execute("""
-                SELECT amount FROM transactions 
-                WHERE (account_name=? OR user_id=?) AND status IN ('approved', 'completed') 
-                ORDER BY id DESC LIMIT 1
-            """, (account_name, user_id)).fetchone()
-            if tx and tx["amount"]:
-                cost_paid = tx["amount"]
-
+        if account_name and account_name != "بدون نام":
+            cursor.execute("""
+                SELECT * FROM transactions 
+                WHERE (account_name = ? OR renew_sub_id = ?)
+                  AND status IN ('approved', 'completed')
+                  AND (is_deleted = 0 OR is_deleted IS NULL)
+                  AND (gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
+                ORDER BY created_at ASC
+            """, (account_name, sub_id))
+        else:
+            cursor.execute("""
+                SELECT * FROM transactions 
+                WHERE (user_id = ? OR renew_sub_id = ?)
+                  AND status IN ('approved', 'completed')
+                  AND (is_deleted = 0 OR is_deleted IS NULL)
+                  AND (gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
+                ORDER BY created_at ASC
+            """, (user_id or 0, sub_id))
+        tx_rows = cursor.fetchall()
         conn.close()
 
-        refund_amount = int((cost_paid * refund_percent) / 100)
+        items = []
+        total_paid = 0
+        total_refund = 0
+        latest_elapsed_hours = 999999.0
+        latest_time_passed_text = "بیش از ۲۴ ساعت پیش"
 
-        hours_int = int(elapsed_hours)
-        minutes_int = int((elapsed_hours - hours_int) * 60)
-        time_passed_text = f"{hours_int} ساعت و {minutes_int} دقیقه پیش" if hours_int > 0 else f"{minutes_int} دقیقه پیش"
+        def _calc_elapsed(dt_str):
+            try:
+                clean = str(dt_str).strip().replace("Z", "")
+                dt = datetime.fromisoformat(clean)
+                if dt.tzinfo is not None:
+                    dt = dt.astimezone(TEHRAN_TZ).replace(tzinfo=None)
+            except Exception:
+                dt = get_now_naive()
+            return max(0.0, (now_dt - dt).total_seconds() / 3600.0)
+
+        def _format_time_passed(hours_val):
+            h = int(hours_val)
+            m = int((hours_val - h) * 60)
+            return f"{h} ساعت و {m} دقیقه پیش" if h > 0 else f"{m} دقیقه پیش"
+
+        if tx_rows:
+            for tx in tx_rows:
+                amount = int(tx["amount"] or 0)
+                if amount <= 0:
+                    continue
+                created_str = tx["created_at"] or get_now_iso()
+                elapsed_hours = _calc_elapsed(created_str)
+                time_passed_str = _format_time_passed(elapsed_hours)
+
+                if elapsed_hours < latest_elapsed_hours:
+                    latest_elapsed_hours = elapsed_hours
+                    latest_time_passed_text = time_passed_str
+
+                if elapsed_hours <= 12.0:
+                    rate = 1.0
+                    percent = 100
+                elif elapsed_hours <= 24.0:
+                    rate = 0.8
+                    percent = 80
+                else:
+                    rate = 0.0
+                    percent = 0
+
+                ref_amount = int(amount * rate)
+                total_paid += amount
+                total_refund += ref_amount
+                tx_d = dict(tx)
+                is_renewal = bool(tx_d.get("is_renewal") or (tx_d.get("renew_sub_id") == sub_id))
+                items.append({
+                    "tx_id": tx_d["id"],
+                    "order_id": tx_d["order_id"],
+                    "type_title": "تمدید اشتراک" if is_renewal else "خرید اولیه",
+                    "plan_name": tx_d.get("plan_name") or sub["plan_name"] or "پلن",
+                    "amount": amount,
+                    "elapsed_hours": round(elapsed_hours, 1),
+                    "time_passed_text": time_passed_str,
+                    "refund_percent": percent,
+                    "refund_amount": ref_amount,
+                    "created_at": created_str
+                })
+
+        if not items:
+            created_str = sub["created_at"] or get_now_iso()
+            elapsed_hours = _calc_elapsed(created_str)
+            time_passed_str = _format_time_passed(elapsed_hours)
+            latest_elapsed_hours = elapsed_hours
+            latest_time_passed_text = time_passed_str
+
+            if elapsed_hours <= 12.0:
+                percent = 100
+                rate = 1.0
+            elif elapsed_hours <= 24.0:
+                percent = 80
+                rate = 0.8
+            else:
+                percent = 0
+                rate = 0.0
+
+            cost_paid = int(sub["cost_paid"] or 0)
+            ref_amount = int(cost_paid * rate)
+            total_paid = cost_paid
+            total_refund = ref_amount
+
+            items.append({
+                "tx_id": 0,
+                "order_id": "-",
+                "type_title": "خرید اولیه (ثبت سیستمی)",
+                "plan_name": sub["plan_name"] or "پلن",
+                "amount": cost_paid,
+                "elapsed_hours": round(elapsed_hours, 1),
+                "time_passed_text": time_passed_str,
+                "refund_percent": percent,
+                "refund_amount": ref_amount,
+                "created_at": created_str
+            })
+
+        effective_percent = int(round((total_refund / total_paid) * 100)) if total_paid > 0 else (100 if latest_elapsed_hours <= 12.0 else (80 if latest_elapsed_hours <= 24.0 else 0))
 
         return {
             "sub_id": sub_id,
             "account_name": account_name,
             "user_id": user_id,
-            "created_at": created_str,
-            "elapsed_hours": round(elapsed_hours, 1),
-            "time_passed_text": time_passed_text,
-            "refund_percent": refund_percent,
-            "cost_paid": cost_paid,
-            "refund_amount": refund_amount,
+            "created_at": sub["created_at"],
+            "elapsed_hours": round(latest_elapsed_hours, 1) if latest_elapsed_hours < 999999 else 0.0,
+            "time_passed_text": latest_time_passed_text,
+            "refund_percent": effective_percent,
+            "cost_paid": total_paid,
+            "refund_amount": total_refund,
+            "items": items,
+            "actions_count": len(items),
             "hidify_uuid": sub["hidify_uuid"]
         }
 
@@ -4641,15 +4806,17 @@ class Database:
             account_name = refund_info["account_name"]
             user_id = refund_info["user_id"]
             hidify_uuid = refund_info["hidify_uuid"]
+            actions_count = refund_info.get("actions_count", 1)
 
             # ۱. در صورت تایید استرداد و وجود مبلغ، کیف پول کاربر شارژ می‌شود
             refund_done = False
             if refund_to_customer and refund_amount > 0 and user_id:
                 try:
+                    desc_text = f"استرداد وجه {refund_percent}٪ بابت حذف اشتراک «{account_name}» ({actions_count} مرحله تراکنش/تمدید - آخرین اقدام: {refund_info['time_passed_text']}) توسط {admin_name}"
                     self.add_wallet_balance(
                         user_id,
                         refund_amount,
-                        f"استرداد وجه {refund_percent}٪ بابت حذف اشتراک «{account_name}» ({refund_info['time_passed_text']}) توسط {admin_name}",
+                        desc_text,
                         tx_type="refund"
                     )
                     refund_done = True
@@ -4668,7 +4835,9 @@ class Database:
                 "time_passed_text": refund_info["time_passed_text"],
                 "account_name": account_name,
                 "hidify_uuid": hidify_uuid,
-                "user_id": user_id
+                "user_id": user_id,
+                "actions_count": actions_count,
+                "items": refund_info.get("items", [])
             }
         except Exception as e:
             logger.error(f"Error deleting customer subscription {sub_id}: {e}")

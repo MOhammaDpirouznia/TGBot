@@ -1799,7 +1799,7 @@ def users():
     if not search and not filter_vip:
         query += " LIMIT 150"
 
-    user_list = conn.execute(query, params).fetchall()
+    user_list = [dict(u) for u in conn.execute(query, params).fetchall()]
     
     # آمار سریع کاربران
     total_users_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
@@ -5559,6 +5559,9 @@ def admin_create_customer():
         h_url = get_hiddify_url()
         u_proxy = get_user_proxy()
         sub_url = f"{h_url}/{u_proxy}/{user_uuid}/" if user_uuid and h_url else ""
+        single_link_template = get_single_link_template(db)
+        single_url = format_single_link(single_link_template, uuid=user_uuid, name=account_name) if user_uuid else ""
+
         if telegram_id and sub_url:
             send_subscription_card_sync(
                 telegram_id,
@@ -5568,7 +5571,17 @@ def admin_create_customer():
             )
 
         flash(f"✅ اشتراک «{account_name}» با موفقیت ایجاد شد!{debt_info_text}", "success")
-        return render_template("admin_customer_created.html", sub_url=sub_url, account_name=account_name, plan_name=plan_name, data_limit=data_limit, duration=duration, user_uuid=user_uuid, debt_info=debt_info_text)
+        return render_template(
+            "admin_customer_created.html",
+            sub_url=sub_url,
+            single_url=single_url,
+            account_name=account_name,
+            plan_name=plan_name,
+            data_limit=data_limit,
+            duration=duration,
+            user_uuid=user_uuid,
+            debt_info=debt_info_text
+        )
 
     return render_template("admin_create_customer.html", plans=plans, admin_role=admin_role, share_percent=share_percent)
 
