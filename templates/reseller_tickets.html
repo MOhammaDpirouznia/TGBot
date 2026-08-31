@@ -111,7 +111,7 @@
                         style="cursor: pointer;"
                         onclick="if(!event.target.closest('button') && !event.target.closest('a') && !event.target.closest('form')) { new bootstrap.Modal(document.getElementById('ticketChatModal{{ ticket['id'] }}')).show(); }">
                         <td class="ps-3">
-                            <code class="badge bg-light text-dark border font-monospace fs-6">#{{ ticket['id'] }}</code>
+                            <code class="badge ticket-badge-pill font-monospace fs-6">#{{ ticket['id'] }}</code>
                             {% if ticket.get('is_vip') %}
                                 <span class="badge bg-warning text-dark d-block mt-1"><i class="fas fa-crown"></i> VIP</span>
                             {% endif %}
@@ -125,7 +125,7 @@
                                      loading="lazy">
                                 <div>
                                     <div class="d-flex align-items-center gap-1">
-                                        <strong class="text-dark">{{ ticket.get('username') or ticket.get('first_name') or 'مشتری' }}</strong>
+                                        <strong class="ticket-user-title">{{ ticket.get('username') or ticket.get('first_name') or 'مشتری' }}</strong>
                                         {% if ticket.get('is_vip') %}
                                             <i class="fas fa-star text-warning" title="مشتری ویژه (VIP)"></i>
                                         {% endif %}
@@ -136,7 +136,7 @@
                         </td>
                         <td style="max-width: 280px;">
                             <div class="d-flex align-items-center gap-1 mb-1">
-                                <span class="badge bg-light text-dark border">{{ ticket.get('subject') or 'پشتیبانی' }}</span>
+                                <span class="badge ticket-badge-pill">{{ ticket.get('subject') or 'پشتیبانی' }}</span>
                             </div>
                             <div class="text-truncate text-secondary small" title="{{ ticket.get('message') }}">
                                 {{ ticket.get('message') }}
@@ -204,12 +204,12 @@
 
                                 <div class="modal-body p-0">
                                     <!-- کارت اطلاعات ۳۶۰ درجه مشتری نماینده -->
-                                    <div class="bg-light p-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                    <div class="ticket-user-summary-card p-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
                                         <div class="d-flex align-items-center gap-3">
                                             <img src="{{ avatar_url(ticket.get('user_id') or ticket.get('telegram_id') or ticket.get('username') or 'User') }}" 
                                                  alt="Avatar" class="rounded-circle border shadow-sm" style="width: 44px; height: 44px; object-fit: cover;">
                                             <div>
-                                                <div class="fw-bold text-dark fs-6">{{ ticket.get('username') or ticket.get('first_name') or 'مشتری' }}</div>
+                                                <div class="fw-bold ticket-user-title fs-6">{{ ticket.get('username') or ticket.get('first_name') or 'مشتری' }}</div>
                                                 <div class="text-muted small">
                                                     <span class="me-2">🆔 <code>{{ ticket.get('user_id') or ticket.get('telegram_id') }}</code></span>
                                                     {% if ticket.get('username') and not ticket.get('username').startswith('tg_') and ticket.get('username') != 'مشتری' %}
@@ -222,10 +222,10 @@
                                             </div>
                                         </div>
                                         <div class="d-flex align-items-center gap-2">
-                                            <span class="badge bg-white text-dark border py-2 px-3">
+                                            <span class="badge ticket-info-pill py-2 px-3">
                                                 <i class="fas fa-shield-halved text-success me-1"></i> {{ ticket.get('active_subs_count', 0) }} اشتراک فعال
                                             </span>
-                                            <span class="badge bg-white text-dark border py-2 px-3">
+                                            <span class="badge ticket-info-pill py-2 px-3">
                                                 <i class="fas fa-wallet text-primary me-1"></i> {{ "{:,}".format(ticket.get('wallet_balance', 0)) }} ت
                                             </span>
                                             {% if ticket.get('username') and not ticket.get('username').startswith('tg_') and ticket.get('username') != 'مشتری' %}
@@ -237,7 +237,7 @@
                                     </div>
 
                                     <!-- جریان زنجیره گفتگو (Chat Stream) -->
-                                    <div class="p-3 chat-messages-container" style="background-color: #f8fafc; min-height: 280px; max-height: 420px; overflow-y: auto;">
+                                    <div class="p-3 chat-messages-container ticket-chat-box m-3" style="min-height: 280px; max-height: 420px; overflow-y: auto;">
                                         {% if ticket.messages %}
                                             {% for msg in ticket.messages %}
                                                 {% if msg['sender_type'] == 'user' %}
@@ -247,7 +247,7 @@
                                                             <span class="badge bg-secondary-subtle text-secondary border">{{ msg.get('sender_name') or 'مشتری' }}</span>
                                                             <small class="text-muted" style="font-size: 0.75rem;">{{ msg['created_at'][:16].replace('T', ' ') if msg['created_at'] else '' }}</small>
                                                         </div>
-                                                        <div class="p-3 rounded-3 shadow-sm bg-white border text-dark" style="max-width: 80%; border-radius: 12px 12px 12px 0 !important;">
+                                                        <div class="p-3 shadow-sm ticket-msg-user" style="max-width: 85%;">
                                                             <p class="mb-0" style="white-space: pre-line; word-break: break-word;">{{ msg['message'] }}</p>
                                                         </div>
                                                     </div>
@@ -258,7 +258,7 @@
                                                             <small class="text-muted" style="font-size: 0.75rem;">{{ msg['created_at'][:16].replace('T', ' ') if msg['created_at'] else '' }}</small>
                                                             <span class="badge bg-primary text-white"><i class="fas fa-headset me-1"></i> {{ msg.get('sender_name') or 'پشتیبانی' }}</span>
                                                         </div>
-                                                        <div class="p-3 rounded-3 shadow-sm bg-primary text-white" style="max-width: 80%; border-radius: 12px 12px 0 12px !important;">
+                                                        <div class="p-3 shadow-sm ticket-msg-support" style="max-width: 85%;">
                                                             <p class="mb-0" style="white-space: pre-line; word-break: break-word;">{{ msg['message'] }}</p>
                                                         </div>
                                                     </div>
@@ -270,7 +270,7 @@
                                                     <span class="badge bg-secondary-subtle text-secondary border">مشتری</span>
                                                     <small class="text-muted" style="font-size: 0.75rem;">{{ ticket.get('created_at')[:16] if ticket.get('created_at') else '' }}</small>
                                                 </div>
-                                                <div class="p-3 rounded-3 shadow-sm bg-white border text-dark" style="max-width: 80%;">
+                                                <div class="p-3 shadow-sm ticket-msg-user" style="max-width: 85%;">
                                                     <p class="mb-0">{{ ticket.get('message') }}</p>
                                                 </div>
                                             </div>
@@ -279,7 +279,7 @@
                                                 <div class="d-flex align-items-center gap-2 mb-1">
                                                     <span class="badge bg-primary text-white"><i class="fas fa-headset me-1"></i> پشتیبانی</span>
                                                 </div>
-                                                <div class="p-3 rounded-3 shadow-sm bg-primary text-white" style="max-width: 80%;">
+                                                <div class="p-3 shadow-sm ticket-msg-support" style="max-width: 85%;">
                                                     <p class="mb-0">{{ ticket.get('admin_reply') }}</p>
                                                 </div>
                                             </div>
@@ -288,26 +288,26 @@
                                     </div>
 
                                     <!-- پاسخ‌های آماده و سریع (Quick Canned Replies) -->
-                                    <div class="px-3 py-2 bg-white border-top border-bottom">
+                                    <div class="px-3 py-2 ticket-quick-replies-bar border-top border-bottom">
                                         <div class="d-flex align-items-center gap-2 overflow-auto py-1" style="scrollbar-width: none;">
                                             <span class="text-muted small fw-bold flex-shrink-0"><i class="fas fa-bolt text-warning me-1"></i>پاسخ سریع:</span>
-                                            <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 flex-shrink-0" 
+                                            <button type="button" class="btn ticket-quick-chip py-0 px-2 flex-shrink-0 rounded-pill" 
                                                     onclick="insertCannedReply('resellerReplyArea{{ ticket['id'] }}', 'سلام و درود، پیام شما دریافت شد و توسط کارشناسان در حال بررسی است.')">
                                                 ⏳ در حال پیگیری
                                             </button>
-                                            <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 flex-shrink-0" 
+                                            <button type="button" class="btn ticket-quick-chip py-0 px-2 flex-shrink-0 rounded-pill" 
                                                     onclick="insertCannedReply('resellerReplyArea{{ ticket['id'] }}', 'مشکل سرور برطرف گردید. لطفاً مجدداً تست فرمایید.')">
                                                 🔧 مشکل سرور برطرف شد
                                             </button>
-                                            <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 flex-shrink-0" 
+                                            <button type="button" class="btn ticket-quick-chip py-0 px-2 flex-shrink-0 rounded-pill" 
                                                     onclick="insertCannedReply('resellerReplyArea{{ ticket['id'] }}', 'لطفاً لینک اتصال را در اپلیکیشن خود بروزرسانی (Update) فرمایید.')">
                                                 🔄 آپدیت لینک اتصال
                                             </button>
-                                            <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 flex-shrink-0" 
+                                            <button type="button" class="btn ticket-quick-chip py-0 px-2 flex-shrink-0 rounded-pill" 
                                                     onclick="insertCannedReply('resellerReplyArea{{ ticket['id'] }}', 'لطفاً نرم‌افزار اتصال (v2rayNG / Hiddify) را به آخرین نسخه بروزرسانی فرمایید.')">
                                                 📱 بروزرسانی نرم‌افزار
                                             </button>
-                                            <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 flex-shrink-0" 
+                                            <button type="button" class="btn ticket-quick-chip py-0 px-2 flex-shrink-0 rounded-pill" 
                                                     onclick="insertCannedReply('resellerReplyArea{{ ticket['id'] }}', 'پرداخت شما تایید شد و اشتراک با موفقیت فعال گردید.')">
                                                 💳 تایید پرداخت
                                             </button>
@@ -315,7 +315,7 @@
                                     </div>
 
                                     <!-- فرم ارسال پاسخ -->
-                                    <div class="p-3 bg-white">
+                                    <div class="p-3 ticket-reply-box">
                                         <form action="{{ url_for('reseller_ticket_reply', ticket_id=ticket['id']) }}" method="POST">
                                             <div class="mb-2">
                                                 <textarea id="resellerReplyArea{{ ticket['id'] }}" 
@@ -343,7 +343,7 @@
                                 </div>
 
                                 <!-- فوتر مودال با گزینه‌های تغییر وضعیت -->
-                                <div class="modal-footer bg-light py-2 d-flex justify-content-between align-items-center">
+                                <div class="modal-footer py-2 d-flex justify-content-between align-items-center">
                                     <div class="d-flex align-items-center gap-2">
                                         <span class="text-muted small">تغییر وضعیت دستی:</span>
                                         <form action="{{ url_for('reseller_ticket_status', ticket_id=ticket['id']) }}" method="POST" class="d-inline">
