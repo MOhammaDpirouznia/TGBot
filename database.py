@@ -4329,6 +4329,18 @@ class Database:
         """, (reseller_id, reseller_id))
         vip_users = cursor.fetchone()[0] or 0
 
+        cursor.execute("""
+            SELECT COUNT(*) FROM transactions 
+            WHERE reseller_id = ? 
+              AND (gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
+              AND (is_deleted = 0 OR is_deleted IS NULL)
+              AND status = 'pending'
+        """, (reseller_id,))
+        pending_customer_receipts_count = cursor.fetchone()[0] or 0
+
+        cursor.execute("SELECT COUNT(*) FROM support_tickets WHERE reseller_id = ? AND status = 'open'", (reseller_id,))
+        open_tickets_count = cursor.fetchone()[0] or 0
+
         conn.close()
         return {
             "balance": balance,
@@ -4340,6 +4352,8 @@ class Database:
             "total_purchases": total_purchases,
             "total_used_gb": round(total_used_gb, 2),
             "total_limit_gb": round(total_limit_gb, 2),
+            "pending_customer_receipts_count": pending_customer_receipts_count,
+            "open_tickets_count": open_tickets_count,
         }
 
     def get_reseller_subscription(self, reseller_id: int, sub_id: int):

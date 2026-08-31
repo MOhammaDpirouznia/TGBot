@@ -633,20 +633,20 @@ class ResellerBotInstance:
             )
 
             await update.message.reply_text(
-                "✅ **فیش واریزی شما با موفقیت دریافت شد.**\n\n"
-                "درخواست شما به مدیریت ارسال شد و پس از بررسی و تایید، کانفیگ به صورت خودکار برای شما ارسال خواهد شد. سپاس از شکیبایی شما.",
-                parse_mode="Markdown"
+                "✅ <b>فیش واریزی شما با موفقیت دریافت شد.</b>\n\n"
+                "فیش واریزی جهت بررسی و تایید برای پشتیبانی ارسال گردید و پس از تایید، اشتراک به صورت خودکار برای شما فعال و ارسال خواهد شد. سپاس از صبوری شما.",
+                parse_mode="HTML"
             )
 
-            # ارسال نوتیفیکیشن برای خود نماینده در تلگرام
+            # ارسال نوتیفیکیشن اختصاصی برای خود نماینده در تلگرام
             reseller_tg = self.reseller_data.get("telegram_id")
             if reseller_tg:
                 try:
-                    notif_text = f"🔔 **فیش واریزی جدید در ربات شما!**\n\n"
-                    notif_text += f"👤 مشتری: [{user.first_name}](tg://user?id={user.id}) (ID: `{user.id}`)\n"
-                    notif_text += f"📦 پلن: **{pname}**\n"
-                    notif_text += f"💰 مبلغ: **{price:,} تومان**\n"
-                    notif_text += f"🔖 کد سفارش: `{order_id}`\n\n"
+                    notif_text = f"🔔 <b>فیش واریزی جدید در ربات شما!</b>\n\n"
+                    notif_text += f"👤 مشتری: {html.escape(str(user.first_name))} (ID: <code>{user.id}</code>)\n"
+                    notif_text += f"📦 پلن: <b>{html.escape(str(pname))}</b>\n"
+                    notif_text += f"💰 مبلغ: <b>{price:,} تومان</b>\n"
+                    notif_text += f"🔖 کد سفارش: <code>{order_id}</code>\n\n"
                     notif_text += "جهت تایید یا رد پرداخت از دکمه‌های زیر استفاده کنید:"
 
                     app_kb = InlineKeyboardMarkup([
@@ -660,7 +660,7 @@ class ResellerBotInstance:
                         photo=photo_file_id,
                         caption=notif_text,
                         reply_markup=app_kb,
-                        parse_mode="Markdown"
+                        parse_mode="HTML"
                     )
                 except Exception as e:
                     logger.error(f"Failed to notify reseller {r_id} telegram: {e}")

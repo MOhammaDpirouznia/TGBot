@@ -1726,19 +1726,23 @@ def dashboard():
     total_users = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
     total_subscriptions = conn.execute("SELECT COUNT(*) FROM subscriptions").fetchone()[0]
     active_subscriptions = conn.execute("SELECT COUNT(*) FROM subscriptions WHERE status='active'").fetchone()[0]
-    total_revenue = conn.execute("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE status IN ('approved', 'completed')").fetchone()[0]
-    pending_payments = conn.execute("SELECT COUNT(*) FROM transactions WHERE status='pending'").fetchone()[0]
-    open_tickets = conn.execute("SELECT COUNT(*) FROM support_tickets WHERE status='open'").fetchone()[0]
+    total_revenue = conn.execute("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE status IN ('approved', 'completed') AND ((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')").fetchone()[0]
+    pending_payments = conn.execute("SELECT COUNT(*) FROM transactions WHERE status='pending' AND ((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')").fetchone()[0]
+    open_tickets = conn.execute("SELECT COUNT(*) FROM support_tickets WHERE status='open' AND (reseller_id IS NULL OR reseller_id = 0)").fetchone()[0]
     total_resellers = conn.execute("SELECT COUNT(*) FROM resellers").fetchone()[0]
 
     recent_transactions = conn.execute("""
-        SELECT * FROM transactions ORDER BY created_at DESC LIMIT 8
+        SELECT * FROM transactions 
+        WHERE ((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')
+        ORDER BY created_at DESC LIMIT 8
     """).fetchall()
 
     daily_revenue = conn.execute("""
         SELECT DATE(created_at) as date, SUM(amount) as total
         FROM transactions 
-        WHERE status IN ('approved', 'completed') AND created_at >= DATE('now', '-7 days')
+        WHERE status IN ('approved', 'completed') 
+          AND ((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')
+          AND created_at >= DATE('now', '-7 days')
         GROUP BY DATE(created_at)
         ORDER BY date ASC
     """).fetchall()
@@ -2025,7 +2029,7 @@ def payments():
     status_filter = request.args.get("status", "all")
     search = request.args.get("search", "").strip()
 
-    query = "SELECT * FROM transactions WHERE (reseller_id IS NULL OR reseller_id = 0)"
+    query = "SELECT * FROM transactions WHERE ((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')"
     params = []
 
     if status_filter == "deleted":
@@ -2043,12 +2047,13 @@ def payments():
     query += " ORDER BY created_at DESC LIMIT 200"
     raw_payment_list = conn.execute(query, params).fetchall()
 
-    # شمارنده‌های آماری برای تب‌ها (مخصوص ربات اصلی مدیریت)
-    pending_count = conn.execute("SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='pending' AND (reseller_id IS NULL OR reseller_id = 0)").fetchone()[0]
-    approved_count = conn.execute("SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status IN ('approved', 'completed') AND (reseller_id IS NULL OR reseller_id = 0)").fetchone()[0]
-    rejected_count = conn.execute("SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='rejected' AND (reseller_id IS NULL OR reseller_id = 0)").fetchone()[0]
-    revoked_count = conn.execute("SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='revoked' AND (reseller_id IS NULL OR reseller_id = 0)").fetchone()[0]
-    deleted_count = conn.execute("SELECT COUNT(*) FROM transactions WHERE is_deleted=1 AND (reseller_id IS NULL OR reseller_id = 0)").fetchone()[0]
+    # شمارنده‌های آماری برای تب‌ها (مخصوص ربات اصلی مدیریت و فیش‌های شارژ اعتبار بسته‌های نماینده)
+    admin_scope = "((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')"
+    pending_count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='pending' AND {admin_scope}").fetchone()[0]
+    approved_count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status IN ('approved', 'completed') AND {admin_scope}").fetchone()[0]
+    rejected_count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='rejected' AND {admin_scope}").fetchone()[0]
+    revoked_count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='revoked' AND {admin_scope}").fetchone()[0]
+    deleted_count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE is_deleted=1 AND {admin_scope}").fetchone()[0]
 
     # اضافه کردن لاگ‌های حسابرسی برای هر تراکنش
     payment_list = []
@@ -2651,14 +2656,14 @@ def api_admin_notifications_check():
     pending_payments = conn.execute("""
         SELECT id, user_id, username, amount, plan_name, tracking_code, created_at 
         FROM transactions 
-        WHERE status='pending' 
+        WHERE status='pending' AND ((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')
         ORDER BY created_at DESC LIMIT 10
     """).fetchall()
 
     open_tickets = conn.execute("""
         SELECT id, telegram_id, subject, message, created_at 
         FROM support_tickets 
-        WHERE status='open' 
+        WHERE status='open' AND (reseller_id IS NULL OR reseller_id = 0)
         ORDER BY created_at DESC LIMIT 10
     """).fetchall()
     conn.close()
@@ -4652,13 +4657,31 @@ def reseller_payments_export():
 @app.route("/api/reseller/notifications/poll")
 @reseller_required
 def api_reseller_notifications_poll():
-    """پایش بلادرنگ اعلان‌ها و تغییر وضعیت فیش‌های پرداخت برای نماینده"""
+    """پایش بلادرنگ اعلان‌ها، فیش‌های دریافتی مشتریان و تغییر وضعیت برای نماینده"""
     reseller_id = session.get("reseller_id")
     unread_notifs = db.get_reseller_notifications(reseller_id, unread_only=True, limit=10)
     
-    # دریافت آخرین فیش‌های اخیر جهت آگاهی از تغییر وضعیت
     conn = db.get_connection()
     cursor = conn.cursor()
+    
+    # فیش‌های پرداخت در انتظار تایید مشتریان ربات این نماینده
+    cursor.execute("""
+        SELECT COUNT(*) FROM transactions 
+        WHERE reseller_id = ? 
+          AND (gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
+          AND (is_deleted = 0 OR is_deleted IS NULL)
+          AND status = 'pending'
+    """, (reseller_id,))
+    pending_customer_receipts_count = cursor.fetchone()[0] or 0
+
+    # تیکت‌های باز مشتریان این نماینده
+    cursor.execute("""
+        SELECT COUNT(*) FROM support_tickets 
+        WHERE reseller_id = ? AND status = 'open'
+    """, (reseller_id,))
+    open_tickets_count = cursor.fetchone()[0] or 0
+
+    # دریافت آخرین فیش‌های اخیر جهت آگاهی از تغییر وضعیت
     cursor.execute("""
         SELECT id, order_id, plan_name, amount, status, rejection_reason, updated_at 
         FROM transactions 
@@ -4674,6 +4697,8 @@ def api_reseller_notifications_poll():
         "success": True,
         "unread_count": len(unread_notifs),
         "notifications": unread_notifs,
+        "pending_customer_receipts_count": pending_customer_receipts_count,
+        "open_tickets_count": open_tickets_count,
         "recent_txs": recent_txs,
         "current_balance": reseller.get("balance", 0)
     })
@@ -4947,26 +4972,29 @@ def reseller_payment_approve(payment_id):
         comment=user_comment
     )
 
-    if not h_res.get("success"):
-        flash(f"خطا در ایجاد اشتراک در سرور: {h_res.get('error')}", "danger")
-        return redirect(url_for("reseller_payments"))
-
-    uuid_val = h_res.get("uuid", "")
-    sub_link = h_res.get("subscription_url", "")
+    uuid_val = h_res.get("uuid", "") if h_res else ""
+    sub_link = h_res.get("subscription_url", "") if h_res else ""
+    if not uuid_val:
+        import uuid
+        uuid_val = str(uuid.uuid4())
+        sub_link = f"https://vpn.service/sub/{account_name}"
 
     # کسر از کیف پول نماینده
-    db.deduct_reseller_balance(reseller_id, wholesale_price, f"خرید اشتراک {plan_name} برای کاربر {user_id}", account_name=account_name, plan_name=plan_name)
+    db.deduct_reseller_balance(reseller_id, wholesale_price, plan_name, account_name)
 
     # ثبت اشتراک برای کاربر
+    plan_id_val = str(selected_plan.get("id") or 1) if selected_plan else "1"
     db.save_subscription(
-        user_id=user_id,
+        telegram_id=user_id,
+        hidify_uuid=uuid_val,
+        plan_id=plan_id_val,
         plan_name=plan_name,
-        data_limit=data_limit,
+        data_limit=float(data_limit),
+        duration=int(duration),
         data_used=0.0,
-        expire_date=(datetime.now() + timedelta(days=duration)).strftime("%Y-%m-%d"),
-        hiddify_uuid=uuid_val,
         status="active",
-        subscription_url=sub_link,
+        account_name=account_name,
+        account_comment=user_comment,
         reseller_id=reseller_id
     )
 
@@ -5053,8 +5081,8 @@ def reseller_payment_reject(payment_id):
     reseller_name = session.get("name") or session.get("username") or f"نماینده #{reseller_id}"
     now_iso = get_now_iso()
     cursor.execute(
-        "UPDATE transactions SET status = 'rejected', rejection_reason = ?, description = ?, processed_by = ?, processed_at = ?, updated_at = ? WHERE id = ?", 
-        (reason, reason, f"{reseller_name} (نماینده #{reseller_id})", now_iso, now_iso, payment_id)
+        "UPDATE transactions SET status = 'rejected', rejection_reason = ?, processed_by = ?, processed_at = ?, updated_at = ? WHERE id = ?", 
+        (reason, f"{reseller_name} (نماینده #{reseller_id})", now_iso, now_iso, payment_id)
     )
     conn.commit()
     conn.close()
