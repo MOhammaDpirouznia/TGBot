@@ -279,6 +279,20 @@ class Database:
             )
         """)
 
+        # جدول اعلان‌ها و پیام‌های سیستمی نماینده (تایید/رد فیش، تغییرات حساب)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS reseller_notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reseller_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                message TEXT NOT NULL,
+                type TEXT DEFAULT 'info',
+                is_read INTEGER DEFAULT 0,
+                created_at TEXT,
+                FOREIGN KEY (reseller_id) REFERENCES resellers(id)
+            )
+        """)
+
         # جدول کارت‌های بانکی مقصد
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS bank_cards (
@@ -1764,6 +1778,25 @@ class Database:
             conn.commit()
             return {"success": True}
         except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def add_transaction_audit_log(self, transaction_id: int, admin_id: int, admin_name: str, action: str, field_name: str = None, old_value: str = None, new_value: str = None, reason: str = None) -> dict:
+        """ثبت لاگ حسابرسی تغییرات و عملیات روی تراکنش"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now_iso = get_now_iso()
+        try:
+            cursor.execute("""
+                INSERT INTO transaction_audit_logs 
+                (transaction_id, admin_id, admin_name, action, field_name, old_value, new_value, reason, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (transaction_id, admin_id, admin_name, action, field_name, str(old_value) if old_value is not None else None, str(new_value) if new_value is not None else None, reason, now_iso))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error adding transaction audit log: {e}")
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
@@ -5265,6 +5298,79 @@ class Database:
             return {"success": True, "old_balance": old_balance, "new_balance": new_balance, "bundle": bundle}
         except Exception as e:
             logger.error(f"Error applying reseller bundle: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    # ─── اعلان‌ها و پیام‌های پنل نماینده (Reseller Notifications) ───
+
+    def add_reseller_notification(self, reseller_id: int, title: str, message: str, type: str = "info") -> dict:
+        """افزودن اعلان به پنل نماینده (تایید/رد فیش، واریز، هشدارهای سیستمی)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                INSERT INTO reseller_notifications (reseller_id, title, message, type, is_read, created_at)
+                VALUES (?, ?, ?, ?, 0, ?)
+            """, (reseller_id, title, message, type, now))
+            conn.commit()
+            notif_id = cursor.lastrowid
+            return {"success": True, "id": notif_id}
+        except Exception as e:
+            logger.error(f"Error adding reseller notification: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_reseller_notifications(self, reseller_id: int, unread_only: bool = False, limit: int = 50) -> list:
+        """دریافت لیست اعلان‌های نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if unread_only:
+                cursor.execute("""
+                    SELECT * FROM reseller_notifications 
+                    WHERE reseller_id = ? AND is_read = 0 
+                    ORDER BY id DESC LIMIT ?
+                """, (reseller_id, limit))
+            else:
+                cursor.execute("""
+                    SELECT * FROM reseller_notifications 
+                    WHERE reseller_id = ? 
+                    ORDER BY id DESC LIMIT ?
+                """, (reseller_id, limit))
+            return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error getting reseller notifications: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_reseller_unread_notifications_count(self, reseller_id: int) -> int:
+        """تعداد اعلان‌های خوانده‌نشده نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT COUNT(*) FROM reseller_notifications WHERE reseller_id = ? AND is_read = 0", (reseller_id,))
+            return cursor.fetchone()[0]
+        except Exception:
+            return 0
+        finally:
+            conn.close()
+
+    def mark_reseller_notifications_read(self, reseller_id: int, notification_id: int = None):
+        """علامت‌گذاری اعلان‌ها به عنوان خوانده‌شده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if notification_id:
+                cursor.execute("UPDATE reseller_notifications SET is_read = 1 WHERE id = ? AND reseller_id = ?", (notification_id, reseller_id))
+            else:
+                cursor.execute("UPDATE reseller_notifications SET is_read = 1 WHERE reseller_id = ?", (reseller_id,))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
             return {"success": False, "error": str(e)}
         finally:
             conn.close()

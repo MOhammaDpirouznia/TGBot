@@ -1765,14 +1765,16 @@ def payments():
 def approve_payment(payment_id):
     """تایید پرداخت در وب و صدور خودکار اکانت در هیدیفای + ارسال به تلگرام"""
     conn = db.get_connection()
-    tx = conn.execute("SELECT * FROM transactions WHERE id=?", (payment_id,)).fetchone()
+    tx_row = conn.execute("SELECT * FROM transactions WHERE id=?", (payment_id,)).fetchone()
     conn.close()
 
-    if not tx:
+    if not tx_row:
         flash("تراکنش یافت نشد.", "danger")
         return redirect(url_for("payments"))
 
-    if tx["status"] == "approved":
+    tx = dict(tx_row)
+
+    if tx.get("status") == "approved":
         flash("این تراکنش قبلاً تایید شده است.", "warning")
         return redirect(url_for("payments"))
 
@@ -1784,7 +1786,35 @@ def approve_payment(payment_id):
         res = db.apply_reseller_bundle_credit(r_id, amount, pname, tx.get("id"))
         db.update_transaction(tx["order_id"], status="approved")
         
-        # لاگ حسابرسی
+        credit_added = res.get("credit_added", amount) if isinstance(res, dict) else amount
+        new_balance = res.get("new_balance", 0) if isinstance(res, dict) else 0
+
+        # ۱. ثبت اعلان در پنل نماینده
+        if r_id:
+            db.add_reseller_notification(
+                reseller_id=r_id,
+                title="تایید رسید خرید بسته اعتباری",
+                message=f"رسید پرداخت شما برای «{pname}» به مبلغ {amount:,} تومان تایید شد و مبلغ {credit_added:,} تومان به کیف پول شما واریز گردید.",
+                type="success"
+            )
+
+        # ۲. ارسال پیام تلگرام به نماینده
+        reseller = db.get_reseller(r_id) if r_id else None
+        if reseller and reseller.get("telegram_id"):
+            tg_msg = (
+                f"✅ <b>فیش واریزی شما تایید شد!</b>\n\n"
+                f"📦 <b>عنوان بسته:</b> {pname}\n"
+                f"💳 <b>مبلغ پرداختی:</b> {amount:,} تومان\n"
+                f"🎁 <b>مبلغ شارژ شده با بونوس:</b> {credit_added:,} تومان\n"
+                f"💰 <b>موجودی جدید کیف پول:</b> {new_balance:,} تومان\n"
+                f"🆔 <b>کد سفارش:</b> <code>{tx.get('order_id')}</code>"
+            )
+            try:
+                send_telegram_msg(reseller["telegram_id"], tg_msg)
+            except Exception as e:
+                logger.error(f"Error sending telegram msg to reseller {r_id}: {e}")
+
+        # ۳. لاگ حسابرسی
         admin_id = session.get("admin_id")
         admin_name = session.get("username")
         db.add_transaction_audit_log(
@@ -1796,7 +1826,7 @@ def approve_payment(payment_id):
             reason=f"تایید شارژ بسته اعتباری نماینده (مبلغ: {amount:,} تومان)"
         )
         
-        flash(f"✅ بسته اعتباری نماینده با موفقیت تایید شد و مبلغ {res.get('credit_added', amount):,} تومان به کیف پول نماینده افزوده شد.", "success")
+        flash(f"✅ بسته اعتباری نماینده با موفقیت تایید شد و مبلغ {credit_added:,} تومان به کیف پول نماینده افزوده شد.", "success")
         return redirect(url_for("payments"))
 
     user_id = tx["user_id"]
@@ -1899,22 +1929,55 @@ def approve_payment(payment_id):
 @app.route("/payment/reject/<int:payment_id>", methods=["GET", "POST"])
 @admin_required
 def reject_payment(payment_id):
-    """رد فیش پرداخت با ثبت دلیل و ارسال پیام به کاربر"""
+    """رد فیش پرداخت با ثبت دلیل و ارسال پیام به کاربر/نماینده"""
     reason = request.form.get("reason") or request.args.get("reason") or "عدم تطابق فیش واریزی یا نامعتبر بودن رسید"
     conn = db.get_connection()
-    tx = conn.execute("SELECT * FROM transactions WHERE id=?", (payment_id,)).fetchone()
+    tx_row = conn.execute("SELECT * FROM transactions WHERE id=?", (payment_id,)).fetchone()
 
-    if tx:
+    if tx_row:
+        tx = dict(tx_row)
         conn.execute("UPDATE transactions SET status='rejected', rejection_reason=?, updated_at=? WHERE id=?", (reason, get_now_iso(), payment_id))
         conn.commit()
 
-        # ارسال پیام رد به تلگرام
-        user_id = tx["user_id"]
-        msg = f"❌ <b>پرداخت شما تایید نشد.</b>\n\n📝 <b>علت رد:</b> {reason}\n\nدر صورت وجود سوال، با بخش «💬 پشتیبانی» تماس بگیرید."
-        send_telegram_msg(user_id, msg)
+        # اگر تراکنش مربوط به نماینده است:
+        r_id = tx.get("reseller_id")
+        if r_id or tx.get("gateway") == "bundle_reseller":
+            # ۱. ثبت اعلان در پنل نماینده
+            if r_id:
+                db.add_reseller_notification(
+                    reseller_id=r_id,
+                    title="رد فیش واریزی توسط مدیریت",
+                    message=f"فیش واریزی شما برای «{tx.get('plan_name', 'بسته اعتباری')}» به مبلغ {tx.get('amount', 0):,} تومان تایید نشد. علت رد: {reason}",
+                    type="danger"
+                )
+
+            # ۲. ارسال پیام تلگرام به نماینده
+            reseller = db.get_reseller(r_id) if r_id else None
+            if reseller and reseller.get("telegram_id"):
+                tg_msg = (
+                    f"❌ <b>رسید پرداخت شما تایید نشد.</b>\n\n"
+                    f"📦 <b>سفارش:</b> {tx.get('plan_name', 'بسته اعتباری')}\n"
+                    f"💳 <b>مبلغ:</b> {tx.get('amount', 0):,} تومان\n"
+                    f"📝 <b>علت رد:</b> {reason}\n"
+                    f"🆔 <b>کد سفارش:</b> <code>{tx.get('order_id')}</code>\n\n"
+                    f"در صورت نیاز به راهنمایی با مدیریت در ارتباط باشید."
+                )
+                try:
+                    send_telegram_msg(reseller["telegram_id"], tg_msg)
+                except Exception as e:
+                    logger.error(f"Error sending telegram reject msg to reseller {r_id}: {e}")
+        else:
+            # ارسال پیام رد به کاربر عادی
+            user_id = tx.get("user_id")
+            if user_id:
+                msg = f"❌ <b>پرداخت شما تایید نشد.</b>\n\n📝 <b>علت رد:</b> {reason}\n\nدر صورت وجود سوال، با بخش «💬 پشتیبانی» تماس بگیرید."
+                try:
+                    send_telegram_msg(user_id, msg)
+                except Exception as e:
+                    logger.error(f"Error sending telegram reject msg to user {user_id}: {e}")
 
     conn.close()
-    flash(f"پرداخت #{payment_id} رد شد و به کاربر اطلاع داده شد.", "warning")
+    flash(f"پرداخت #{payment_id} رد شد و به کاربر/نماینده اطلاع داده شد.", "warning")
     return redirect(url_for("payments"))
 
 
@@ -3835,6 +3898,128 @@ def reseller_reports():
     )
 
 
+@app.route("/reseller/payments")
+@reseller_required
+def reseller_payments():
+    """صفحه اختصاصی سوابق پرداخت‌ها، فیش‌های ارسالی و تراکنش‌های نماینده"""
+    reseller_id = session.get("reseller_id")
+    reseller = db.get_reseller(reseller_id)
+    if not reseller:
+        flash("اطلاعات نماینده یافت نشد.", "danger")
+        return redirect(url_for("reseller_dashboard"))
+
+    history = db.get_reseller_full_payment_history(reseller_id)
+    notifications = db.get_reseller_notifications(reseller_id, limit=20)
+    unread_count = db.get_reseller_unread_notifications_count(reseller_id)
+    
+    return render_template(
+        "reseller_payments.html",
+        reseller=reseller,
+        history=history,
+        notifications=notifications,
+        unread_count=unread_count
+    )
+
+
+@app.route("/reseller/payments/export")
+@reseller_required
+def reseller_payments_export():
+    """خروجی اکسل/CSV کامل پرداخت‌ها و تراکنش‌های نماینده با فرمت UTF-8 BOM"""
+    reseller_id = session.get("reseller_id")
+    reseller = db.get_reseller(reseller_id)
+    if not reseller:
+        flash("اطلاعات نماینده یافت نشد.", "danger")
+        return redirect(url_for("reseller_payments"))
+
+    history = db.get_reseller_full_payment_history(reseller_id)
+    wallet_txs = history.get("wallet_transactions", [])
+    receipt_txs = history.get("receipt_transactions", [])
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["گزارش جامع سوابق مالی و پرداخت‌های نماینده:", reseller.get("name"), f"(@{reseller.get('username')})"])
+    writer.writerow(["موجودی کیف پول فعلی (تومان):", f"{reseller.get('balance', 0):,}"])
+    writer.writerow(["مجموع شارژها و واریزی‌ها (تومان):", f"{history.get('total_deposited', 0):,}"])
+    writer.writerow(["مجموع خریدهای اشتراک (تومان):", f"{history.get('total_spent', 0):,}"])
+    writer.writerow([])
+    writer.writerow(["--- فیش‌ها و بسته‌های ثبت‌شده جهت تایید مدیریت ---"])
+    writer.writerow(["کد سفارش", "عنوان بسته / پلن", "مبلغ (تومان)", "روش پرداخت", "کد پیگیری", "وضعیت", "علت رد (در صورت عدم تایید)", "تاریخ ثبت"])
+    for r in receipt_txs:
+        status_text = "تایید شده" if r.get("status") in ["approved", "completed"] else ("در انتظار بررسی" if r.get("status") == "pending" else "رد شده")
+        writer.writerow([
+            r.get("order_id"),
+            r.get("plan_name") or "",
+            r.get("amount") or 0,
+            r.get("gateway") or "",
+            r.get("tracking_code") or "",
+            status_text,
+            r.get("rejection_reason") or "",
+            r.get("created_at") or ""
+        ])
+
+    writer.writerow([])
+    writer.writerow(["--- کلیه تراکنش‌های کیف پول ---"])
+    writer.writerow(["شناسه", "نوع تراکنش", "مبلغ (تومان)", "پلن / کاربر", "توضیحات", "تاریخ ثبت"])
+    for t in wallet_txs:
+        ttype = "شارژ کیف پول" if t.get("type") == "deposit" else ("استرداد وجه" if t.get("type") == "refund" else ("تمدید اشتراک" if t.get("type") == "renewal" else "خرید اشتراک"))
+        writer.writerow([
+            t.get("id"),
+            ttype,
+            t.get("amount") or 0,
+            t.get("plan_name") or t.get("account_name") or "",
+            t.get("description") or "",
+            t.get("created_at") or ""
+        ])
+
+    csv_data = "\ufeff" + output.getvalue()
+    filename = f"my_payments_{reseller.get('username')}_{datetime.now().strftime('%Y%m%d')}.csv"
+    return Response(
+        csv_data.encode("utf-8-sig"),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment;filename={filename}"}
+    )
+
+
+@app.route("/api/reseller/notifications/poll")
+@reseller_required
+def api_reseller_notifications_poll():
+    """پایش بلادرنگ اعلان‌ها و تغییر وضعیت فیش‌های پرداخت برای نماینده"""
+    reseller_id = session.get("reseller_id")
+    unread_notifs = db.get_reseller_notifications(reseller_id, unread_only=True, limit=10)
+    
+    # دریافت آخرین فیش‌های اخیر جهت آگاهی از تغییر وضعیت
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id, order_id, plan_name, amount, status, rejection_reason, updated_at 
+        FROM transactions 
+        WHERE reseller_id = ? 
+        ORDER BY updated_at DESC LIMIT 5
+    """, (reseller_id,))
+    recent_txs = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+
+    reseller = db.get_reseller(reseller_id) or {}
+
+    return jsonify({
+        "success": True,
+        "unread_count": len(unread_notifs),
+        "notifications": unread_notifs,
+        "recent_txs": recent_txs,
+        "current_balance": reseller.get("balance", 0)
+    })
+
+
+@app.route("/api/reseller/notifications/mark-read", methods=["POST"])
+@reseller_required
+def api_reseller_notifications_mark_read():
+    """علامت‌گذاری اعلان‌ها به عنوان خوانده‌شده"""
+    reseller_id = session.get("reseller_id")
+    notif_id = request.json.get("notification_id") if request.is_json else request.form.get("notification_id")
+    db.mark_reseller_notifications_read(reseller_id, int(notif_id) if notif_id else None)
+    return jsonify({"success": True})
+
+
 @app.route("/reseller/export/transactions")
 @reseller_required
 def reseller_export_transactions():
@@ -4006,25 +4191,25 @@ def reseller_bot_toggle():
     return redirect(url_for("reseller_bot_settings"))
 
 
-# ─── ۱. مدیریت و تایید فیش‌های پرداخت در پورتال نماینده (Reseller Payments) ───
+# ─── ۱. مدیریت و تایید فیش‌های پرداخت مشتریان در پورتال نماینده (Customer Receipts) ───
 
-@app.route("/reseller/payments")
+@app.route("/reseller/customer-payments")
 @reseller_required
-def reseller_payments():
+def reseller_customer_payments():
     """لیست و تایید فیش‌های واریزی مشتریان ربات نماینده"""
     reseller_id = session.get("reseller_id")
     conn = db.get_connection()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT * FROM transactions 
-        WHERE reseller_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)
+        WHERE reseller_id = ? AND (gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%') AND (is_deleted = 0 OR is_deleted IS NULL)
         ORDER BY CASE WHEN status = 'pending' THEN 0 ELSE 1 END, id DESC
     """, (reseller_id,))
     transactions = [dict(r) for r in cursor.fetchall()]
     conn.close()
     
     stats = db.get_reseller_stats(reseller_id)
-    return render_template("reseller_payments.html", transactions=transactions, stats=stats)
+    return render_template("reseller_customer_payments.html", transactions=transactions, stats=stats)
 
 
 @app.route("/reseller/payment/<int:payment_id>/approve", methods=["POST"])
@@ -4040,12 +4225,12 @@ def reseller_payment_approve(payment_id):
 
     if not tx_row:
         flash("تراکنش یافت نشد یا متعلق به شما نیست.", "danger")
-        return redirect(url_for("reseller_payments"))
+        return redirect(url_for("reseller_customer_payments"))
 
     tx = dict(tx_row)
     if tx["status"] == "approved":
         flash("این تراکنش قبلاً تایید شده است.", "warning")
-        return redirect(url_for("reseller_payments"))
+        return redirect(url_for("reseller_customer_payments"))
 
     user_id = tx["user_id"]
     plan_name = tx["plan_name"]
@@ -4125,7 +4310,7 @@ def reseller_payment_approve(payment_id):
         send_telegram_msg(user_id, msg_to_user)
 
     flash(f"پرداخت سفارش #{payment_id} با موفقیت تایید و کانفیگ برای مشتری ارسال شد.", "success")
-    return redirect(url_for("reseller_payments"))
+    return redirect(url_for("reseller_customer_payments"))
 
 
 @app.route("/reseller/payment/<int:payment_id>/reject", methods=["POST"])
@@ -4142,7 +4327,7 @@ def reseller_payment_reject(payment_id):
     if not tx_row:
         conn.close()
         flash("تراکنش یافت نشد.", "danger")
-        return redirect(url_for("reseller_payments"))
+        return redirect(url_for("reseller_customer_payments"))
 
     tx = dict(tx_row)
     cursor.execute("UPDATE transactions SET status = 'rejected', description = ?, updated_at = ? WHERE id = ?", (reason, get_now_iso(), payment_id))
@@ -4159,7 +4344,7 @@ def reseller_payment_reject(payment_id):
         send_telegram_msg(tx["user_id"], msg_to_user)
 
     flash("فیش پرداخت با موفقیت رد شد و به مشتری اطلاع داده شد.", "info")
-    return redirect(url_for("reseller_payments"))
+    return redirect(url_for("reseller_customer_payments"))
 
 
 # ─── ۲. مدیریت کارت‌های بانکی نماینده (Reseller Cards) ───
