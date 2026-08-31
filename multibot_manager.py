@@ -278,21 +278,28 @@ class ResellerBotInstance:
             # دریافت کارت بانکی فعال نماینده
             active_card = db.get_active_reseller_card(r_id)
             if active_card:
-                card_num = active_card.get("card_number") or ""
+                raw_card = active_card.get("card_number") or ""
                 card_holder = active_card.get("card_holder") or ""
                 bank_name = active_card.get("bank_name") or ""
             else:
-                card_num = self.reseller_data.get("card_number") or ""
+                raw_card = self.reseller_data.get("card_number") or ""
                 card_holder = self.reseller_data.get("card_holder") or ""
                 bank_name = self.reseller_data.get("bank_name") or ""
+
+            card_num = re.sub(r"\D", "", str(raw_card))
+            rial_price = price * 10
+            rial_fmt = f"{rial_price:,}"
+            toman_fmt = f"{price:,}"
 
             context.user_data["buying_plan_id"] = plan_id
             context.user_data["buying_price"] = price
 
             msg = f"💵 **پرداخت کارت به کارت**\n\n"
             msg += f"📦 پلن: **{pname}**\n"
-            msg += f"📊 حجم: **{vol_str}** | ⏳ مدت: **{days} روز**\n"
-            msg += f"💰 مبلغ: **`{price:,}` تومان**\n\n"
+            msg += f"📊 حجم: **{vol_str}** | ⏳ مدت: **{days} روز**\n\n"
+            msg += f"💰 **مبلغ قابل واریز:**\n"
+            msg += f"• به ریال (جهت همراه بانک / عابربانک):\n`{rial_price}` ریال (**{rial_fmt} ریال**)\n"
+            msg += f"• به تومان:\n`{price}` تومان (**{toman_fmt} تومان**)\n\n"
 
             if card_num:
                 msg += "💳 **اطلاعات کارت جهت واریز:**\n"
@@ -300,14 +307,15 @@ class ResellerBotInstance:
                 if card_holder:
                     msg += f"به نام: **{card_holder}**\n"
                 if bank_name:
-                    msg += f"بانک: {bank_name}\n"
+                    msg += f"بانک: **{bank_name}**\n"
                 msg += "\n⚠️ **نکات مهم:**\n"
-                msg += "• برای کپی شماره کارت یا مبلغ روی دکمه‌های زیر یا روی متن بزنید.\n"
+                msg += "• برای کپی با یک لمس، روی **شماره کارت** یا **مبلغ به ریال** بالا یا دکمه‌های زیر بزنید.\n"
                 msg += "• پس از واریز، **عکس فیش واریزی** خود را در همین گفتگو ارسال فرمایید."
 
                 buttons = [
                     [InlineKeyboardButton("📋 کپی شماره کارت", callback_data=f"r_copy_card_{card_num}")],
-                    [InlineKeyboardButton(f"💰 کپی مبلغ ({price:,} ت)", callback_data=f"r_copy_amt_{price}")],
+                    [InlineKeyboardButton(f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)", callback_data=f"r_copy_rial_{rial_price}")],
+                    [InlineKeyboardButton(f"💵 کپی مبلغ به تومان ({toman_fmt} ت)", callback_data=f"r_copy_amt_{price}")],
                     [InlineKeyboardButton("◀️ بازگشت", callback_data=f"r_buy_{plan_id}"), InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy")]
                 ]
             else:
@@ -320,19 +328,53 @@ class ResellerBotInstance:
             await query.edit_message_text(msg, reply_markup=kb, parse_mode="Markdown")
 
         async def copy_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            """پاسخ به دکمه‌های کپی شماره کارت و مبلغ در ربات نماینده"""
+            """پاسخ به دکمه‌های کپی شماره کارت و مبلغ در ربات نماینده با ارسال پیام کپی ۱ لمسی"""
             query = update.callback_query
             data = query.data
             if data.startswith("r_copy_card_"):
-                c_num = data.replace("r_copy_card_", "").strip()
-                await query.answer(f"📋 شماره کارت:\n{c_num}\n(کپی شد)", show_alert=True)
-            elif data.startswith("r_copy_amt_"):
-                amt_str = data.replace("r_copy_amt_", "").strip()
+                raw_c = data.replace("r_copy_card_", "").strip()
+                c_num = re.sub(r"\D", "", raw_c)
+                await query.answer(f"📋 شماره کارت:\n{c_num}\n(کپی شد)", show_alert=False)
                 try:
-                    amt_fmt = f"{int(amt_str):,}"
+                    await context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text=f"📋 <b>شماره کارت مقصد (جهت واریز):</b>\n<code>{c_num}</code>\n\n<i>👆 روی شماره کارت بالا بزنید تا با یک لمس کپی شود.</i>",
+                        parse_mode="HTML"
+                    )
+                except Exception as e:
+                    logger.warning(f"Error sending copy card msg in reseller bot: {e}")
+            elif data.startswith("r_copy_rial_"):
+                raw_amt = data.replace("r_copy_rial_", "").strip()
+                clean_amt = re.sub(r"\D", "", raw_amt)
+                try:
+                    rial_f = f"{int(clean_amt):,}"
                 except Exception:
-                    amt_fmt = amt_str
-                await query.answer(f"💰 مبلغ واریز:\n{amt_fmt} تومان\n(کپی شد)", show_alert=True)
+                    rial_f = clean_amt
+                await query.answer(f"💰 مبلغ به ریال:\n{rial_f} ریال\n(کپی شد)", show_alert=False)
+                try:
+                    await context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text=f"💰 <b>مبلغ به ریال (جهت همراه بانک / عابربانک):</b>\n<code>{clean_amt}</code>\n\n<i>👆 روی عدد بالا بزنید تا با یک لمس کپی شود ({rial_f} ریال).</i>",
+                        parse_mode="HTML"
+                    )
+                except Exception as e:
+                    logger.warning(f"Error sending copy rial msg in reseller bot: {e}")
+            elif data.startswith("r_copy_amt_"):
+                raw_amt = data.replace("r_copy_amt_", "").strip()
+                clean_amt = re.sub(r"\D", "", raw_amt)
+                try:
+                    amt_fmt = f"{int(clean_amt):,}"
+                except Exception:
+                    amt_fmt = clean_amt
+                await query.answer(f"💵 مبلغ به تومان:\n{amt_fmt} تومان\n(کپی شد)", show_alert=False)
+                try:
+                    await context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text=f"💵 <b>مبلغ به تومان:</b>\n<code>{clean_amt}</code>\n\n<i>👆 روی عدد بالا بزنید تا با یک لمس کپی شود ({amt_fmt} تومان).</i>",
+                        parse_mode="HTML"
+                    )
+                except Exception as e:
+                    logger.warning(f"Error sending copy amount msg in reseller bot: {e}")
             elif data == "r_pwal_insuf":
                 user = update.effective_user
                 user_wallet = db.get_user_wallet_balance(user.id)
@@ -840,7 +882,7 @@ class ResellerBotInstance:
         app.add_handler(CallbackQueryHandler(pay_card_callback, pattern="^r_pcard_"))
         app.add_handler(CallbackQueryHandler(pay_wallet_callback, pattern="^r_pwal_"))
         app.add_handler(CallbackQueryHandler(pay_online_callback, pattern="^r_ponl_"))
-        app.add_handler(CallbackQueryHandler(copy_action_callback, pattern="^(r_copy_card_|r_copy_amt_|r_pwal_insuf|r_ponl_soon|r_cancel_buy)"))
+        app.add_handler(CallbackQueryHandler(copy_action_callback, pattern="^(r_copy_card_|r_copy_rial_|r_copy_amt_|r_pwal_insuf|r_ponl_soon|r_cancel_buy)"))
         app.add_handler(CallbackQueryHandler(start_handler, pattern="^r_check_sub$"))
         app.add_handler(CallbackQueryHandler(reseller_approve_callback, pattern="^rapprove_|^rreject_"))
         app.add_handler(MessageHandler(filters.PHOTO, receipt_photo_handler))

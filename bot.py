@@ -851,26 +851,36 @@ async def back_to_enter_tracking(update: Update, context: ContextTypes.DEFAULT_T
     card_holder = active_card.get("card_holder", CARD_HOLDER)
     bank_name = active_card.get("bank_name", BANK_NAME)
 
+    rial_amount = plan.get('price', 0) * 10
+    rial_fmt = f"{rial_amount:,}"
+    card_number_clean = re.sub(r"\D", "", str(card_number))
+
     text = f"""
 💵 <b>پرداخت کارت به کارت</b>
 
 📋 پلن: <b>{plan.get('name', 'نامشخص')}</b>
-💰 مبلغ: <b><code>{price_formatted}</code> تومان</b>
+
+💰 <b>مبلغ قابل واریز:</b>
+• به ریال (جهت همراه بانک / عابربانک):
+<code>{rial_amount}</code> ریال (<b>{rial_fmt} ریال</b>)
+• به تومان:
+<code>{plan.get('price', 0)}</code> تومان (<b>{price_formatted} تومان</b>)
 
 📌 <b>اطلاعات کارت جهت واریز:</b>
 💳 شماره کارت:
-<code>{card_number}</code>
+<code>{card_number_clean}</code>
 
 👤 <b>نام صاحب حساب:</b> {card_holder}
 🏦 <b>بانک:</b> {bank_name}
 
 ⚠️ <b>نکات مهم:</b>
-• برای کپی شماره کارت یا مبلغ روی دکمه‌های زیر یا روی متن بزنید.
+• برای کپی با یک لمس، روی <b>شماره کارت</b> یا <b>مبلغ به ریال</b> بالا یا دکمه‌های زیر بزنید.
 • پس از واریز، شماره پیگیری یا اسکرین‌شات رسید را ارسال نمایید.
 """
     keyboard = [
-        [InlineKeyboardButton("📋 کپی شماره کارت", callback_data=f"copy_card_{card_number}")],
-        [InlineKeyboardButton(f"💰 کپی مبلغ ({price_formatted} ت)", callback_data=f"copy_amount_{plan.get('price', 0)}")],
+        [InlineKeyboardButton("📋 کپی شماره کارت", callback_data=f"copy_card_{card_number_clean}")],
+        [InlineKeyboardButton(f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)", callback_data=f"copy_rial_{rial_amount}")],
+        [InlineKeyboardButton(f"💵 کپی مبلغ به تومان ({price_formatted} ت)", callback_data=f"copy_amount_{plan.get('price', 0)}")],
         [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_select_payment"), InlineKeyboardButton("❌ انصراف", callback_data="cancel")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1191,19 +1201,57 @@ async def select_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
 async def copy_card_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """پاسخ به کلیک روی دکمه کپی شماره کارت"""
     query = update.callback_query
-    c_num = query.data.replace("copy_card_", "").strip()
-    await query.answer(f"📋 شماره کارت:\n{c_num}\n(در کلیپ‌بورد کپی شد)", show_alert=True)
+    raw_num = query.data.replace("copy_card_", "").strip()
+    c_num = re.sub(r"\D", "", raw_num)
+    await query.answer(f"📋 شماره کارت:\n{c_num}\n(در کلیپ‌بورد کپی شد)", show_alert=False)
+    try:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=f"📋 <b>شماره کارت مقصد (جهت واریز):</b>\n<code>{c_num}</code>\n\n<i>👆 روی شماره کارت بالا بزنید تا با یک لمس کپی شود.</i>",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logger.warning(f"Failed to send copy card msg: {e}")
+
+
+async def copy_rial_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """پاسخ به کلیک روی دکمه کپی مبلغ به ریال (جهت همراه بانک)"""
+    query = update.callback_query
+    raw_amt = query.data.replace("copy_rial_", "").strip()
+    clean_amt = re.sub(r"\D", "", raw_amt)
+    try:
+        rial_fmt = f"{int(clean_amt):,}"
+    except Exception:
+        rial_fmt = clean_amt
+    await query.answer(f"💰 مبلغ به ریال:\n{rial_fmt} ریال\n(در کلیپ‌بورد کپی شد)", show_alert=False)
+    try:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=f"💰 <b>مبلغ به ریال (جهت همراه بانک / عابربانک):</b>\n<code>{clean_amt}</code>\n\n<i>👆 روی عدد بالا بزنید تا با یک لمس کپی شود ({rial_fmt} ریال).</i>",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logger.warning(f"Failed to send copy rial msg: {e}")
 
 
 async def copy_amount_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """پاسخ به کلیک روی دکمه کپی مبلغ"""
+    """پاسخ به کلیک روی دکمه کپی مبلغ به تومان"""
     query = update.callback_query
-    amt_str = query.data.replace("copy_amount_", "").strip()
+    raw_amt = query.data.replace("copy_amount_", "").strip()
+    clean_amt = re.sub(r"\D", "", raw_amt)
     try:
-        amt_fmt = f"{int(amt_str):,}"
+        toman_fmt = f"{int(clean_amt):,}"
     except Exception:
-        amt_fmt = amt_str
-    await query.answer(f"💰 مبلغ واریز:\n{amt_fmt} تومان\n(کپی شد)", show_alert=True)
+        toman_fmt = clean_amt
+    await query.answer(f"💵 مبلغ به تومان:\n{toman_fmt} تومان\n(در کلیپ‌بورد کپی شد)", show_alert=False)
+    try:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=f"💵 <b>مبلغ به تومان:</b>\n<code>{clean_amt}</code>\n\n<i>👆 روی عدد بالا بزنید تا با یک لمس کپی شود ({toman_fmt} تومان).</i>",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logger.warning(f"Failed to send copy amount msg: {e}")
 
 
 async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1214,6 +1262,8 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
     # مدیریت دکمه‌های کپی
     if query.data.startswith("copy_card_"):
         return await copy_card_callback(update, context)
+    if query.data.startswith("copy_rial_"):
+        return await copy_rial_callback(update, context)
     if query.data.startswith("copy_amount_"):
         return await copy_amount_callback(update, context)
 
@@ -1427,17 +1477,25 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
     elif query.data == "pay_card":
         # دریافت هوشمند کارت فعال از دیتابیس
         active_card = get_active_card()
-        card_number = active_card.get("card_number", CARD_NUMBER)
+        raw_card = active_card.get("card_number", CARD_NUMBER)
+        card_number = re.sub(r"\D", "", str(raw_card))
         card_holder = active_card.get("card_holder", CARD_HOLDER)
         bank_name = active_card.get("bank_name", BANK_NAME)
+        rial_amount = price * 10
+        rial_fmt = f"{rial_amount:,}"
 
         text = f"""
 💵 <b>پرداخت کارت به کارت</b>
 
 📋 پلن: <b>{plan.get('name', 'نامشخص')}</b>
-💰 مبلغ: <b><code>{price_formatted}</code> تومان</b>
 
-📌 <b>اطلاعات حساب کارت جهت واریز:</b>
+💰 <b>مبلغ قابل واریز:</b>
+• به ریال (جهت همراه بانک / عابربانک):
+<code>{rial_amount}</code> ریال (<b>{rial_fmt} ریال</b>)
+• به تومان:
+<code>{price}</code> تومان (<b>{price_formatted} تومان</b>)
+
+📌 <b>اطلاعات کارت بانکی مقصد:</b>
 💳 شماره کارت:
 <code>{card_number}</code>
 
@@ -1445,12 +1503,13 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
 🏦 <b>بانک:</b> {bank_name}
 
 ⚠️ <b>نکات مهم:</b>
-• برای کپی شماره کارت یا مبلغ روی دکمه‌های زیر یا روی متن کلیک کنید.
+• برای کپی با یک لمس، روی <b>شماره کارت</b> یا <b>مبلغ به ریال</b> بالا یا دکمه‌های زیر بزنید.
 • پس از واریز، شماره پیگیری یا اسکرین‌شات رسید را ارسال نمایید.
 """
         keyboard = [
             [InlineKeyboardButton("📋 کپی شماره کارت", callback_data=f"copy_card_{card_number}")],
-            [InlineKeyboardButton(f"💰 کپی مبلغ ({price_formatted} ت)", callback_data=f"copy_amount_{price}")],
+            [InlineKeyboardButton(f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)", callback_data=f"copy_rial_{rial_amount}")],
+            [InlineKeyboardButton(f"💵 کپی مبلغ به تومان ({price_formatted} ت)", callback_data=f"copy_amount_{price}")],
             [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_select_payment"), InlineKeyboardButton("❌ انصراف", callback_data="cancel")],
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -5177,7 +5236,7 @@ def main():
                 CallbackQueryHandler(cancel, pattern="^cancel$"),
             ] + main_menu_handlers,
             SELECTING_PAYMENT: [
-                CallbackQueryHandler(handle_payment_method, pattern="^(pay_card|pay_wallet|pay_wallet_insufficient|pay_crypto|pay_online|pay_online_gateway|coming_soon|coming_soon_gateway|copy_card_.*|copy_amount_.*|back_to_confirm_purchase|cancel)$"),
+                CallbackQueryHandler(handle_payment_method, pattern="^(pay_card|pay_wallet|pay_wallet_insufficient|pay_crypto|pay_online|pay_online_gateway|coming_soon|coming_soon_gateway|copy_card_.*|copy_rial_.*|copy_amount_.*|back_to_confirm_purchase|cancel)$"),
                 CallbackQueryHandler(back_to_confirm_purchase, pattern="^back_to_confirm_purchase$"),
                 CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"),
                 CallbackQueryHandler(cancel, pattern="^cancel$"),
@@ -5187,6 +5246,7 @@ def main():
                 MessageHandler(filters.PHOTO, enter_tracking_photo),
                 MessageHandler(filters.Document.ALL, enter_tracking_document),
                 CallbackQueryHandler(copy_card_callback, pattern="^copy_card_"),
+                CallbackQueryHandler(copy_rial_callback, pattern="^copy_rial_"),
                 CallbackQueryHandler(copy_amount_callback, pattern="^copy_amount_"),
                 CallbackQueryHandler(confirm_card_payment, pattern="^(confirm_card_payment|cancel)$"),
                 CallbackQueryHandler(back_to_select_payment, pattern="^back_to_select_payment$"),

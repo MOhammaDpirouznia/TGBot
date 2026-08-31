@@ -1656,7 +1656,7 @@ def users():
         SELECT u.*, 
                (SELECT COUNT(*) FROM subscriptions WHERE telegram_id=u.telegram_id) as subs_count
         FROM users u
-        WHERE 1=1
+        WHERE (u.reseller_id IS NULL OR u.reseller_id = 0)
     """
     params = []
     if search:
@@ -1762,7 +1762,7 @@ def payments():
     status_filter = request.args.get("status", "all")
     search = request.args.get("search", "").strip()
 
-    query = "SELECT * FROM transactions WHERE 1=1"
+    query = "SELECT * FROM transactions WHERE (reseller_id IS NULL OR reseller_id = 0)"
     params = []
 
     if status_filter == "deleted":
@@ -1780,12 +1780,12 @@ def payments():
     query += " ORDER BY created_at DESC LIMIT 200"
     raw_payment_list = conn.execute(query, params).fetchall()
 
-    # شمارنده‌های آماری برای تب‌ها
-    pending_count = conn.execute("SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='pending'").fetchone()[0]
-    approved_count = conn.execute("SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status IN ('approved', 'completed')").fetchone()[0]
-    rejected_count = conn.execute("SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='rejected'").fetchone()[0]
-    revoked_count = conn.execute("SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='revoked'").fetchone()[0]
-    deleted_count = conn.execute("SELECT COUNT(*) FROM transactions WHERE is_deleted=1").fetchone()[0]
+    # شمارنده‌های آماری برای تب‌ها (مخصوص ربات اصلی مدیریت)
+    pending_count = conn.execute("SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='pending' AND (reseller_id IS NULL OR reseller_id = 0)").fetchone()[0]
+    approved_count = conn.execute("SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status IN ('approved', 'completed') AND (reseller_id IS NULL OR reseller_id = 0)").fetchone()[0]
+    rejected_count = conn.execute("SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='rejected' AND (reseller_id IS NULL OR reseller_id = 0)").fetchone()[0]
+    revoked_count = conn.execute("SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='revoked' AND (reseller_id IS NULL OR reseller_id = 0)").fetchone()[0]
+    deleted_count = conn.execute("SELECT COUNT(*) FROM transactions WHERE is_deleted=1 AND (reseller_id IS NULL OR reseller_id = 0)").fetchone()[0]
 
     # اضافه کردن لاگ‌های حسابرسی برای هر تراکنش
     payment_list = []
@@ -2207,9 +2207,26 @@ def prune_receipt_cache(max_files: int = 50):
 
 
 @app.route("/admin/payment-receipt/<int:payment_id>")
-@admin_required
+@app.route("/reseller/payment-receipt/<int:payment_id>")
 def admin_payment_receipt(payment_id):
-    """دانلود و نمایش مستقیم تصویر رسید پرداخت کارت‌به‌کارت با کش محلی پرسرعت (حداکثر ۵۰ فایل آخر)"""
+    """دانلود و نمایش مستقیم تصویر رسید پرداخت کارت‌به‌کارت با کش محلی پرسرعت (پشتیبانی از ادمین و نماینده)"""
+    # بررسی احراز هویت
+    is_admin = bool(session.get("logged_in") and session.get("role") == "admin")
+    is_reseller = bool(session.get("logged_in") and session.get("role") == "reseller")
+    if not (is_admin or is_reseller):
+        return Response("عدم دسترسی", status=403)
+
+    conn = db.get_connection()
+    tx = conn.execute("SELECT * FROM transactions WHERE id=?", (payment_id,)).fetchone()
+    conn.close()
+
+    if not tx:
+        return Response("تراکنش یافت نشد", status=404)
+
+    # بررسی دسترسی نماینده به تراکنش خود
+    if is_reseller and tx["reseller_id"] != session.get("reseller_id"):
+        return Response("عدم دسترسی به این فیش", status=403)
+
     # ۱. بررسی کش محلی
     for ext, mtype in [(".jpg", "image/jpeg"), (".png", "image/png"), (".pdf", "application/pdf")]:
         cached_file = RECEIPTS_DIR / f"receipt_{payment_id}{ext}"
@@ -2223,13 +2240,6 @@ def admin_payment_receipt(payment_id):
             except Exception:
                 pass
 
-    conn = db.get_connection()
-    tx = conn.execute("SELECT * FROM transactions WHERE id=?", (payment_id,)).fetchone()
-    conn.close()
-
-    if not tx:
-        return Response("تراکنش یافت نشد", status=404)
-
     file_id = None
     if "receipt_image" in tx.keys() and tx["receipt_image"]:
         file_id = tx["receipt_image"]
@@ -2239,7 +2249,16 @@ def admin_payment_receipt(payment_id):
     if not file_id:
         return Response("تصویر رسیدی برای این پرداخت ثبت نشده است", status=404)
 
-    bot_token = get_bot_token()
+    # تعیین توکن مناسب (ربات نماینده یا ربات اصلی)
+    bot_token = None
+    if tx.get("reseller_id"):
+        r_info = db.get_reseller(tx["reseller_id"])
+        if r_info and r_info.get("bot_token"):
+            bot_token = r_info["bot_token"]
+
+    if not bot_token:
+        bot_token = get_bot_token()
+
     if not bot_token:
         return Response("توکن ربات تلگرام تنظیم نشده است", status=500)
 
@@ -2247,6 +2266,14 @@ def admin_payment_receipt(payment_id):
         get_file_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
         with httpx.Client(timeout=12.0) as client:
             resp = client.get(get_file_url)
+            if resp.status_code != 200:
+                # تلاش دوم با توکن ربات اصلی در صورت عدم یافتن در ربات نماینده
+                main_token = get_bot_token()
+                if main_token and main_token != bot_token:
+                    bot_token = main_token
+                    get_file_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
+                    resp = client.get(get_file_url)
+
             if resp.status_code != 200:
                 return Response("خطا در دریافت مسیر فایل از تلگرام", status=502)
 
@@ -2942,12 +2969,14 @@ def broadcast():
 def tickets():
     """لیست تیکت‌های پشتیبانی"""
     conn = db.get_connection()
-    ticket_list = conn.execute("""
-        SELECT t.*, u.username
+    ticket_rows = conn.execute("""
+        SELECT t.*, u.username, COALESCE(u.is_vip, 0) as is_vip
         FROM support_tickets t
         LEFT JOIN users u ON t.telegram_id = u.telegram_id
-        ORDER BY t.created_at DESC
+        WHERE (t.reseller_id IS NULL OR t.reseller_id = 0)
+        ORDER BY COALESCE(u.is_vip, 0) DESC, t.created_at DESC
     """).fetchall()
+    ticket_list = [dict(r) for r in ticket_rows]
     conn.close()
     return render_template("tickets.html", tickets=ticket_list)
 
@@ -4662,8 +4691,8 @@ def reseller_ticket_reply(ticket_id):
 
     # ارسال پاسخ در تلگرام برای مشتری
     ticket_info = db.get_ticket(ticket_id)
-    if ticket_info and ticket_info.get("user_id"):
-        user_tg = ticket_info["user_id"]
+    user_tg = ticket_info.get("telegram_id") or ticket_info.get("user_id") if ticket_info else None
+    if ticket_info and user_tg:
         reseller_data = db.get_reseller(reseller_id)
         bot_tok = reseller_data.get("bot_token") if reseller_data else None
         brand = reseller_data.get("brand_name") or "پشتیبانی"
