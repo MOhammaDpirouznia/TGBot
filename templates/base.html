@@ -634,8 +634,11 @@
                 </a>
 
                 {% if not sub_role or sub_role in ['partner', 'finance'] %}
+                <a class="nav-link {% if request.endpoint == 'reseller_customer_payments' %}active{% endif %}" href="{{ url_for('reseller_customer_payments') }}">
+                    <i class="fas fa-receipt text-warning"></i> فیش‌ها و پرداخت‌های مشتریان
+                </a>
                 <a class="nav-link {% if request.endpoint == 'reseller_payments' %}active{% endif %}" href="{{ url_for('reseller_payments') }}">
-                    <i class="fas fa-file-invoice-dollar text-warning"></i> سابقه پرداخت‌ها و فیش‌ها
+                    <i class="fas fa-file-invoice-dollar text-primary"></i> شارژ حساب و سوابق مالی
                 </a>
                 {% endif %}
 
