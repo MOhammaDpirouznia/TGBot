@@ -3074,37 +3074,81 @@ def broadcast():
 @app.route("/tickets")
 @permission_required("tickets")
 def tickets():
-    """لیست تیکت‌های پشتیبانی"""
-    conn = db.get_connection()
-    ticket_rows = conn.execute("""
-        SELECT t.*, u.username, COALESCE(u.is_vip, 0) as is_vip
-        FROM support_tickets t
-        LEFT JOIN users u ON t.telegram_id = u.telegram_id
-        WHERE (t.reseller_id IS NULL OR t.reseller_id = 0)
-        ORDER BY COALESCE(u.is_vip, 0) DESC, t.created_at DESC
-    """).fetchall()
-    ticket_list = [dict(r) for r in ticket_rows]
-    conn.close()
-    return render_template("tickets.html", tickets=ticket_list)
+    """لیست و میز کار تیکت‌های پشتیبانی با تب‌های وضعیت، گفتگوها و آمار"""
+    status_filter = request.args.get("status", "all")
+    search = request.args.get("search", "").strip()
+
+    ticket_list = db.get_all_tickets(status=status_filter, reseller_id=None, search=search)
+    stats = db.get_tickets_stats(reseller_id=None)
+
+    return render_template(
+        "tickets.html",
+        tickets=ticket_list,
+        status_filter=status_filter,
+        search=search,
+        stats=stats
+    )
 
 
 @app.route("/ticket/reply/<int:ticket_id>", methods=["POST"])
 @permission_required("tickets")
 def ticket_reply(ticket_id):
-    """ارسال پاسخ به تیکت از پنل وب مستقیم به تلگرام کاربر"""
+    """ارسال پاسخ به تیکت از پنل وب مستقیم به تلگرام کاربر و درج در زنجیره گفتگو"""
     reply_text = request.form.get("reply", "").strip()
+    close_ticket = bool(request.form.get("close_ticket"))
+    new_status = "closed" if close_ticket else request.form.get("status", "replied")
+
     if not reply_text:
         flash("متن پاسخ نمی‌تواند خالی باشد.", "danger")
         return redirect(url_for("tickets"))
 
     ticket = db.get_ticket(ticket_id)
     if ticket:
-        db.reply_ticket(ticket_id, reply_text)
-        user_id = ticket["telegram_id"]
+        sender_name = session.get("username") or session.get("name") or "پشتیبانی"
+        db.add_ticket_message(
+            ticket_id=ticket_id,
+            sender_type="admin",
+            message=reply_text,
+            sender_id=session.get("admin_id", 0),
+            sender_name=sender_name,
+            new_status=new_status
+        )
+        user_id = ticket.get("telegram_id") or ticket.get("user_id")
         msg = f"🔔 <b>پاسخ پشتیبانی به تیکت #{ticket_id}:</b>\n\n{reply_text}\n\n──────────────\nدر صورت نیاز به پیام مجدد از دکمه «💬 پشتیبانی» استفاده فرمایید."
         send_telegram_msg(user_id, msg)
-        flash(f"پاسخ به تیکت #{ticket_id} با موفقیت به تلگرام کاربر ارسال شد!", "success")
+        status_msg = " و تیکت بسته شد" if new_status == "closed" else ""
+        flash(f"پاسخ به تیکت #{ticket_id} با موفقیت به تلگرام کاربر ارسال شد{status_msg}!", "success")
 
+    return redirect(url_for("tickets"))
+
+
+@app.route("/ticket/status/<int:ticket_id>", methods=["POST"])
+@permission_required("tickets")
+def ticket_status(ticket_id):
+    """تغییر سریع وضعیت تیکت (open, in_progress, replied, closed)"""
+    new_status = request.form.get("status", "open")
+    valid_statuses = {"open": "باز", "in_progress": "در حال بررسی", "replied": "پاسخ‌داده‌شده", "closed": "بسته"}
+    if new_status in valid_statuses:
+        db.update_ticket_status(ticket_id, new_status)
+        flash(f"وضعیت تیکت #{ticket_id} به «{valid_statuses[new_status]}» تغییر یافت.", "info")
+    return redirect(url_for("tickets"))
+
+
+@app.route("/ticket/close/<int:ticket_id>", methods=["POST"])
+@permission_required("tickets")
+def ticket_close(ticket_id):
+    """بستن سریع تیکت توسط ادمین"""
+    db.close_ticket(ticket_id)
+    flash(f"تیکت #{ticket_id} با موفقیت بسته شد.", "info")
+    return redirect(url_for("tickets"))
+
+
+@app.route("/ticket/reopen/<int:ticket_id>", methods=["POST"])
+@permission_required("tickets")
+def ticket_reopen(ticket_id):
+    """بازگشایی مجدد تیکت توسط ادمین"""
+    db.reopen_ticket(ticket_id)
+    flash(f"تیکت #{ticket_id} مجدداً بازگشایی شد.", "success")
     return redirect(url_for("tickets"))
 
 
@@ -4774,55 +4818,104 @@ def reseller_card_delete(card_id):
 @app.route("/reseller/tickets")
 @reseller_required
 def reseller_tickets():
-    """مشاهده و مدیریت تیکت‌های پشتیبانی مشتریان ربات نماینده"""
+    """مشاهده و مدیریت تیکت‌های پشتیبانی مشتریان ربات نماینده با تب‌های وضعیت، گفتگوها و آمار"""
     reseller_id = session.get("reseller_id")
-    tickets = db.get_all_tickets(reseller_id=reseller_id)
-    return render_template("reseller_tickets.html", tickets=tickets)
+    status_filter = request.args.get("status", "all")
+    search = request.args.get("search", "").strip()
+
+    ticket_list = db.get_all_tickets(status=status_filter, reseller_id=reseller_id, search=search)
+    stats = db.get_tickets_stats(reseller_id=reseller_id)
+
+    return render_template(
+        "reseller_tickets.html",
+        tickets=ticket_list,
+        status_filter=status_filter,
+        search=search,
+        stats=stats
+    )
 
 
 @app.route("/reseller/ticket/<int:ticket_id>/reply", methods=["POST"])
 @reseller_required
 def reseller_ticket_reply(ticket_id):
-    """ارسال پاسخ به تیکت مشتری توسط نماینده و ارسال پیام در تلگرام"""
+    """ارسال پاسخ به تیکت مشتری توسط نماینده، درج در زنجیره گفتگو و ارسال در تلگرام"""
     reseller_id = session.get("reseller_id")
     reply_msg = request.form.get("reply_message", "").strip()
     close_after = bool(request.form.get("close_ticket"))
+    new_status = "closed" if close_after else request.form.get("status", "replied")
 
     if not reply_msg:
         flash("متن پاسخ نمی‌تواند خالی باشد.", "warning")
         return redirect(url_for("reseller_tickets"))
 
-    db.add_ticket_reply(ticket_id, sender_type="admin", sender_id=session.get("admin_id", 0), sender_name=session.get("name", "پشتیبانی"), message=reply_msg)
-    if close_after:
-        db.update_ticket_status(ticket_id, "closed")
+    sender_name = session.get("username") or session.get("name") or "پشتیبانی نماینده"
+    db.add_ticket_message(
+        ticket_id=ticket_id,
+        sender_type="reseller",
+        message=reply_msg,
+        sender_id=reseller_id,
+        sender_name=sender_name,
+        new_status=new_status
+    )
 
-    # ارسال پاسخ در تلگرام برای مشتری
+    # ارسال پاسخ در تلگرام برای مشتری با توکن ربات اختصاصی نماینده
     ticket_info = db.get_ticket(ticket_id)
     user_tg = ticket_info.get("telegram_id") or ticket_info.get("user_id") if ticket_info else None
     if ticket_info and user_tg:
         reseller_data = db.get_reseller(reseller_id)
         bot_tok = reseller_data.get("bot_token") if reseller_data else None
-        brand = reseller_data.get("brand_name") or "پشتیبانی"
+        brand = (reseller_data.get("brand_name") if reseller_data else None) or "پشتیبانی"
 
         notif = f"💬 **پاسخ پشتیبانی {brand} به تیکت #{ticket_id}:**\n\n"
         notif += f"{reply_msg}\n\n"
-        notif += "جهت ارسال پاسخ مجدد، پیام خود را با `تیکت: متن پیام` ارسال کنید."
+        notif += "──────────────\nجهت ارسال پاسخ مجدد، پیام خود را با `تیکت: متن پیام` ارسال کنید."
 
         if bot_tok:
             send_telegram_msg(user_tg, notif, bot_token=bot_tok)
         else:
             send_telegram_msg(user_tg, notif)
 
-    flash("پاسخ تیکت با موفقیت ثبت و برای مشتری ارسال شد.", "success")
+    status_msg = " و تیکت بسته شد" if new_status == "closed" else ""
+    flash(f"پاسخ تیکت با موفقیت ثبت و برای مشتری در تلگرام ارسال شد{status_msg}.", "success")
+    return redirect(url_for("reseller_tickets"))
+
+
+@app.route("/reseller/ticket/<int:ticket_id>/status", methods=["POST"])
+@reseller_required
+def reseller_ticket_status(ticket_id):
+    """تغییر وضعیت تیکت توسط نماینده"""
+    reseller_id = session.get("reseller_id")
+    ticket = db.get_ticket(ticket_id)
+    if ticket and ticket.get("reseller_id") == reseller_id:
+        new_status = request.form.get("status", "open")
+        valid_statuses = {"open": "باز", "in_progress": "در حال بررسی", "replied": "پاسخ‌داده‌شده", "closed": "بسته"}
+        if new_status in valid_statuses:
+            db.update_ticket_status(ticket_id, new_status)
+            flash(f"وضعیت تیکت #{ticket_id} به «{valid_statuses[new_status]}» تغییر یافت.", "info")
     return redirect(url_for("reseller_tickets"))
 
 
 @app.route("/reseller/ticket/<int:ticket_id>/close", methods=["POST"])
 @reseller_required
 def reseller_ticket_close(ticket_id):
-    """بستن تیکت پشتیبانی"""
-    db.update_ticket_status(ticket_id, "closed")
-    flash("تیکت بسته شد.", "info")
+    """بستن سریع تیکت پشتیبانی توسط نماینده"""
+    reseller_id = session.get("reseller_id")
+    ticket = db.get_ticket(ticket_id)
+    if ticket and ticket.get("reseller_id") == reseller_id:
+        db.close_ticket(ticket_id)
+        flash("تیکت بسته شد.", "info")
+    return redirect(url_for("reseller_tickets"))
+
+
+@app.route("/reseller/ticket/<int:ticket_id>/reopen", methods=["POST"])
+@reseller_required
+def reseller_ticket_reopen(ticket_id):
+    """بازگشایی مجدد تیکت توسط نماینده"""
+    reseller_id = session.get("reseller_id")
+    ticket = db.get_ticket(ticket_id)
+    if ticket and ticket.get("reseller_id") == reseller_id:
+        db.reopen_ticket(ticket_id)
+        flash("تیکت مجدداً بازگشایی شد.", "success")
     return redirect(url_for("reseller_tickets"))
 
 

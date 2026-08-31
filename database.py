@@ -212,6 +212,20 @@ class Database:
             )
         """)
 
+        # جدول پیام‌های زنجیره گفتگوی تیکت‌ها (Ticket Messages / Thread)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ticket_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticket_id INTEGER NOT NULL,
+                sender_type TEXT NOT NULL, -- 'user', 'admin', 'reseller'
+                sender_id INTEGER,
+                sender_name TEXT,
+                message TEXT NOT NULL,
+                created_at TEXT,
+                FOREIGN KEY (ticket_id) REFERENCES support_tickets(id) ON DELETE CASCADE
+            )
+        """)
+
         # جدول اعلان‌های ارسال شده
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS sent_notifications (
@@ -2620,11 +2634,11 @@ class Database:
             conn.close()
 
     # ═══════════════════════════════════════════════════════════════
-    # مدیریت تیکت‌های پشتیبانی
+    # مدیریت تیکت‌های پشتیبانی و پیام‌های گفتگو
     # ═══════════════════════════════════════════════════════════════
 
     def create_ticket(self, telegram_id=None, subject="پیام کاربر", message="", reseller_id=None, user_id=None, **kwargs):
-        """ایجاد تیکت پشتیبانی جدید با قابلیت انتساب به نماینده و پشتیبانی از آرگومان‌های گوناگون"""
+        """ایجاد تیکت پشتیبانی جدید با قابلیت انتساب به نماینده و درج اولین پیام گفتگو"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -2636,44 +2650,132 @@ class Database:
                 INSERT INTO support_tickets (telegram_id, subject, message, status, reseller_id, created_at, updated_at)
                 VALUES (?, ?, ?, 'open', ?, ?, ?)
             """, (tg_id, subject, message, reseller_id, now, now))
+            ticket_id = cursor.lastrowid
+
+            if message:
+                sender_name = kwargs.get("username") or kwargs.get("first_name") or "کاربر"
+                cursor.execute("""
+                    INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, sender_name, message, created_at)
+                    VALUES (?, 'user', ?, ?, ?, ?)
+                """, (ticket_id, tg_id, sender_name, message, now))
+
             conn.commit()
-            return {"success": True, "ticket_id": cursor.lastrowid}
+            return {"success": True, "ticket_id": ticket_id}
         except Exception as e:
             logger.error(f"Error creating ticket: {e}")
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
 
-    def reply_ticket(self, ticket_id, admin_reply):
-        """پاسخ ادمین یا نماینده به تیکت"""
+    def add_ticket_message(self, ticket_id, sender_type, message, sender_id=None, sender_name=None, new_status=None):
+        """افزودن پیام به زنجیره گفتگوی تیکت و بروزرسانی وضعیت تیکت"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
             cursor.execute("""
-                UPDATE support_tickets SET admin_reply = ?, status = 'replied', updated_at = ?
-                WHERE id = ?
-            """, (admin_reply, now, ticket_id))
+                INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, sender_name, message, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (ticket_id, sender_type, sender_id, sender_name, message, now))
+
+            if new_status:
+                status_val = new_status
+            elif sender_type in ("admin", "reseller"):
+                status_val = "replied"
+            else:
+                status_val = "open"
+
+            if sender_type in ("admin", "reseller"):
+                cursor.execute("""
+                    UPDATE support_tickets 
+                    SET admin_reply = ?, status = ?, updated_at = ?
+                    WHERE id = ?
+                """, (message, status_val, now, ticket_id))
+            else:
+                cursor.execute("""
+                    UPDATE support_tickets 
+                    SET status = ?, updated_at = ?
+                    WHERE id = ?
+                """, (status_val, now, ticket_id))
+
             conn.commit()
-            return {"success": True}
+            return {"success": True, "message_id": cursor.lastrowid}
         except Exception as e:
-            logger.error(f"Error replying to ticket: {e}")
+            logger.error(f"Error adding ticket message: {e}")
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
 
-    def close_ticket(self, ticket_id):
-        """بستن تیکت"""
+    def add_ticket_reply(self, ticket_id, sender_type="admin", sender_id=None, sender_name=None, message=""):
+        """ثبت پاسخ ادمین یا نماینده به تیکت"""
+        return self.add_ticket_message(ticket_id, sender_type=sender_type, message=message, sender_id=sender_id, sender_name=sender_name)
+
+    def reply_ticket(self, ticket_id, admin_reply, sender_name="پشتیبانی"):
+        """پاسخ ادمین یا نماینده به تیکت"""
+        return self.add_ticket_message(ticket_id, sender_type="admin", message=admin_reply, sender_name=sender_name, new_status="replied")
+
+    def update_ticket_status(self, ticket_id, status):
+        """بروزرسانی وضعیت تیکت (open, in_progress, replied, closed)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
-            cursor.execute("UPDATE support_tickets SET status = 'closed', updated_at = ? WHERE id = ?", (now, ticket_id))
+            cursor.execute("UPDATE support_tickets SET status = ?, updated_at = ? WHERE id = ?", (status, now, ticket_id))
             conn.commit()
             return {"success": True}
         except Exception as e:
-            logger.error(f"Error closing ticket: {e}")
+            logger.error(f"Error updating ticket status: {e}")
             return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def reopen_ticket(self, ticket_id):
+        """بازگشایی مجدد تیکت"""
+        return self.update_ticket_status(ticket_id, "open")
+
+    def close_ticket(self, ticket_id):
+        """بستن تیکت"""
+        return self.update_ticket_status(ticket_id, "closed")
+
+    def get_ticket_messages(self, ticket_id):
+        """دریافت تمام پیام‌های زنجیره گفتگوی یک تیکت با سازگاری به عقب"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT * FROM ticket_messages 
+                WHERE ticket_id = ? 
+                ORDER BY created_at ASC, id ASC
+            """, (ticket_id,))
+            rows = [dict(r) for r in cursor.fetchall()]
+            if not rows:
+                cursor.execute("SELECT * FROM support_tickets WHERE id = ?", (ticket_id,))
+                t = cursor.fetchone()
+                if t:
+                    if t["message"]:
+                        rows.append({
+                            "id": 1,
+                            "ticket_id": ticket_id,
+                            "sender_type": "user",
+                            "sender_id": t["telegram_id"],
+                            "sender_name": "کاربر",
+                            "message": t["message"],
+                            "created_at": t["created_at"]
+                        })
+                    if t["admin_reply"]:
+                        rows.append({
+                            "id": 2,
+                            "ticket_id": ticket_id,
+                            "sender_type": "admin",
+                            "sender_id": None,
+                            "sender_name": "پشتیبانی",
+                            "message": t["admin_reply"],
+                            "created_at": t["updated_at"] or t["created_at"]
+                        })
+            return rows
+        except Exception as e:
+            logger.error(f"Error getting ticket messages: {e}")
+            return []
         finally:
             conn.close()
 
@@ -2693,30 +2795,120 @@ class Database:
         finally:
             conn.close()
 
-    def get_all_tickets(self, status=None, reseller_id=None):
-        """دریافت تمام تیکت‌ها با فیلتر وضعیت و نماینده همراه با اولویت تیکت‌های VIP در صدر لیست"""
+    def get_all_tickets(self, status=None, reseller_id=None, search=None, vip_only=False):
+        """دریافت تمام تیکت‌ها با فیلتر وضعیت، جستجو و نماینده همراه با اولویت تیکت‌های VIP"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             query = """
-                SELECT t.*, u.username, COALESCE(u.is_vip, 0) as is_vip, u.phone_number
+                SELECT t.*, u.username, u.phone_number,
+                       COALESCE(u.is_vip, 0) as is_vip,
+                       COALESCE(u.wallet_balance, 0) as wallet_balance,
+                       (SELECT COUNT(*) FROM subscriptions WHERE telegram_id = t.telegram_id AND status = 'active') as active_subs_count,
+                       (SELECT COUNT(*) FROM ticket_messages WHERE ticket_id = t.id) as messages_count
                 FROM support_tickets t
                 LEFT JOIN users u ON t.telegram_id = u.telegram_id
                 WHERE 1=1
             """
             params = []
-            if status:
-                query += " AND t.status = ?"
-                params.append(status)
             if reseller_id is not None:
                 query += " AND t.reseller_id = ?"
                 params.append(reseller_id)
-            query += " ORDER BY COALESCE(u.is_vip, 0) DESC, t.created_at DESC"
+            else:
+                query += " AND (t.reseller_id IS NULL OR t.reseller_id = 0)"
+
+            if vip_only:
+                query += " AND u.is_vip = 1"
+
+            if status and status != "all":
+                if status == "open":
+                    query += " AND t.status = 'open'"
+                elif status == "in_progress":
+                    query += " AND t.status = 'in_progress'"
+                elif status == "replied":
+                    query += " AND t.status = 'replied'"
+                elif status == "closed":
+                    query += " AND t.status = 'closed'"
+                elif status == "vip":
+                    query += " AND u.is_vip = 1 AND t.status != 'closed'"
+
+            if search:
+                query += " AND (t.id LIKE ? OR t.message LIKE ? OR t.admin_reply LIKE ? OR u.username LIKE ? OR t.telegram_id LIKE ? OR u.phone_number LIKE ?)"
+                params.extend([f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"])
+
+            query += " ORDER BY COALESCE(u.is_vip, 0) DESC, CASE WHEN t.status = 'open' THEN 1 WHEN t.status = 'in_progress' THEN 2 WHEN t.status = 'replied' THEN 3 ELSE 4 END, t.created_at DESC"
             cursor.execute(query, params)
-            return [dict(row) for row in cursor.fetchall()]
+            ticket_rows = [dict(row) for row in cursor.fetchall()]
+            for t in ticket_rows:
+                t["messages"] = self.get_ticket_messages(t["id"])
+            return ticket_rows
         except Exception as e:
             logger.error(f"Error getting all tickets: {e}")
             return []
+        finally:
+            conn.close()
+
+    def get_ticket_details(self, ticket_id):
+        """دریافت اطلاعات جامع تیکت به همراه پروفایل کاربر و تاریخچه گفتگو"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT t.*, u.username, u.phone_number, 
+                       COALESCE(u.is_vip, 0) as is_vip,
+                       COALESCE(u.wallet_balance, 0) as wallet_balance,
+                       (SELECT COUNT(*) FROM subscriptions WHERE telegram_id = t.telegram_id AND status = 'active') as active_subs_count
+                FROM support_tickets t
+                LEFT JOIN users u ON t.telegram_id = u.telegram_id
+                WHERE t.id = ?
+            """, (ticket_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            details = dict(row)
+            details["messages"] = self.get_ticket_messages(ticket_id)
+            return details
+        except Exception as e:
+            logger.error(f"Error getting ticket details: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def get_tickets_stats(self, reseller_id=None):
+        """محاسبه آمار تفکیکی تیکت‌ها برای تب‌های فیلتر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            base_where = "WHERE (t.reseller_id IS NULL OR t.reseller_id = 0)" if reseller_id is None else "WHERE t.reseller_id = ?"
+            params = [] if reseller_id is None else [reseller_id]
+
+            query = f"""
+                SELECT 
+                    COUNT(*) as total_count,
+                    SUM(CASE WHEN t.status = 'open' THEN 1 ELSE 0 END) as open_count,
+                    SUM(CASE WHEN t.status = 'in_progress' THEN 1 ELSE 0 END) as in_progress_count,
+                    SUM(CASE WHEN t.status = 'replied' THEN 1 ELSE 0 END) as replied_count,
+                    SUM(CASE WHEN t.status = 'closed' THEN 1 ELSE 0 END) as closed_count,
+                    SUM(CASE WHEN COALESCE(u.is_vip, 0) = 1 AND t.status != 'closed' THEN 1 ELSE 0 END) as vip_count
+                FROM support_tickets t
+                LEFT JOIN users u ON t.telegram_id = u.telegram_id
+                {base_where}
+            """
+            cursor.execute(query, params)
+            row = cursor.fetchone()
+            if not row:
+                return {"all": 0, "open": 0, "in_progress": 0, "replied": 0, "closed": 0, "vip": 0}
+            return {
+                "all": row["total_count"] or 0,
+                "open": row["open_count"] or 0,
+                "in_progress": row["in_progress_count"] or 0,
+                "replied": row["replied_count"] or 0,
+                "closed": row["closed_count"] or 0,
+                "vip": row["vip_count"] or 0,
+            }
+        except Exception as e:
+            logger.error(f"Error getting ticket stats: {e}")
+            return {"all": 0, "open": 0, "in_progress": 0, "replied": 0, "closed": 0, "vip": 0}
         finally:
             conn.close()
 
