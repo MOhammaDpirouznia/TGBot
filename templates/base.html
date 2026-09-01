@@ -114,6 +114,87 @@
             color: #f8fafc !important;
         }
 
+        /* استایل اختصاصی و مستقل کیوآرکد (همواره سفید با حاشیه امن در تم روشن و تاریک) */
+        .qr-code-wrapper {
+            background-color: #ffffff !important;
+            color: #000000 !important;
+            padding: 14px !important;
+            border-radius: 14px !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
+            border: 2px solid #cbd5e1 !important;
+            margin-bottom: 12px !important;
+        }
+        [data-bs-theme="dark"] .qr-code-wrapper {
+            background-color: #ffffff !important;
+            border-color: #ffffff !important;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6) !important;
+        }
+        .qr-code-wrapper canvas,
+        .qr-code-wrapper img {
+            display: block !important;
+            margin: 0 auto !important;
+            border-radius: 4px !important;
+        }
+
+        /* بهینه‌سازی کنتراست دکمه‌های Outline در حالت تیره */
+        [data-bs-theme="dark"] .btn-outline-dark {
+            color: #f1f5f9 !important;
+            border-color: #475569 !important;
+            background-color: rgba(255, 255, 255, 0.05) !important;
+        }
+        [data-bs-theme="dark"] .btn-outline-dark:hover {
+            color: #ffffff !important;
+            border-color: #94a3b8 !important;
+            background-color: #334155 !important;
+        }
+        [data-bs-theme="dark"] .btn-outline-secondary {
+            color: #cbd5e1 !important;
+            border-color: #475569 !important;
+        }
+        [data-bs-theme="dark"] .btn-outline-secondary:hover {
+            color: #ffffff !important;
+            background-color: #334155 !important;
+        }
+
+        /* استایل‌های سایدبار و مشخصات نماینده/مدیر در حالت روشن و تاریک */
+        .sidebar-user-name {
+            font-weight: 700;
+            font-size: 0.92rem;
+            color: #0f172a;
+            line-height: 1.3;
+        }
+        [data-bs-theme="dark"] .sidebar-user-name {
+            color: #f8fafc !important;
+        }
+        .sidebar-user-balance {
+            font-size: 0.8rem;
+            color: #0284c7;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+        [data-bs-theme="dark"] .sidebar-user-balance {
+            color: #38bdf8 !important;
+        }
+        .sidebar-user-role {
+            font-size: 0.75rem;
+            color: #64748b;
+            font-weight: 500;
+        }
+        [data-bs-theme="dark"] .sidebar-user-role {
+            color: #94a3b8 !important;
+        }
+        .balance-updated-flash {
+            animation: balanceFlash 1.5s ease-in-out;
+        }
+        @keyframes balanceFlash {
+            0% { background-color: rgba(16, 185, 129, 0.4); transform: scale(1.08); }
+            50% { background-color: rgba(16, 185, 129, 0.2); }
+            100% { background-color: transparent; transform: scale(1); }
+        }
+
         [data-bs-theme="dark"] .text-dark {
             color: #f8fafc !important;
         }
@@ -922,19 +1003,21 @@
             <a href="{% if session.get('role') == 'reseller' %}{{ url_for('reseller_profile') }}{% else %}{{ url_for('admin_profile') }}{% endif %}" class="user-pill mb-2 text-decoration-none d-flex align-items-center gap-2" title="مشاهده و ویرایش حساب کاربری">
                 <img src="{{ avatar_url(session.get('telegram_id') or session.get('username') or 'Admin') }}" 
                      alt="{{ session.get('username') }}" 
-                     class="rounded-circle border border-light flex-shrink-0" 
+                     class="rounded-circle border border-secondary border-opacity-25 flex-shrink-0" 
                      style="width: 38px; height: 38px; object-fit: cover;" 
                      loading="lazy">
-                <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                    <div style="font-weight: 600; font-size: 0.9rem; color: #fff;">{{ session.get('username') }}</div>
+                <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">
+                    <div class="sidebar-user-name">{{ session.get('username') }}</div>
                     {% if session.get('role') == 'reseller' %}
-                        <div style="font-size: 0.75rem; color: #38bdf8;">اعتبار: {{ "{:,}".format(session.get('balance', 0)) }} ت</div>
+                        <div class="sidebar-user-balance">
+                            اعتبار: <span id="sidebarResellerBalance" data-raw-balance="{{ session.get('balance', 0) }}">{{ "{:,}".format(session.get('balance', 0)) }}</span> ت
+                        </div>
                     {% else %}
-                        <div style="font-size: 0.75rem; color: #a5b4fc;">{{ session.get('name', 'مدیر سیستم') }}</div>
+                        <div class="sidebar-user-role">{{ session.get('name', 'مدیر سیستم') }}</div>
                     {% endif %}
                 </div>
             </a>
-            <button type="button" class="btn btn-outline-light btn-sm w-100 mb-2 d-flex align-items-center justify-content-center gap-2" id="themeToggleBtn" onclick="toggleTheme()">
+            <button type="button" class="btn btn-outline-secondary btn-sm w-100 mb-2 d-flex align-items-center justify-content-center gap-2" id="themeToggleBtn" onclick="toggleTheme()">
                 <i id="themeIcon" class="fas fa-moon text-info"></i> <span id="themeLabel">حالت تیره</span>
             </button>
             <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-sm w-100">
@@ -974,7 +1057,7 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body text-center p-4">
-                    <div class="p-3 bg-light rounded-3 d-inline-block shadow-sm mb-3 border position-relative">
+                    <div class="qr-code-wrapper position-relative">
                         <div id="qrCodeContainer" class="d-flex justify-content-center"></div>
                     </div>
 
@@ -1153,7 +1236,7 @@
                     text: url,
                     width: 200,
                     height: 200,
-                    colorDark: "#0f172a",
+                    colorDark: "#000000",
                     colorLight: "#ffffff",
                     correctLevel: QRCode.CorrectLevel.M
                 });
@@ -1402,6 +1485,11 @@
                     }
                 }
 
+                // بروزرسانی هوشمند عدد موجودی کیف پول در سایدبار
+                if (typeof data.current_balance === 'number' && window.updateResellerSidebarBalance) {
+                    window.updateResellerSidebarBalance(data.current_balance);
+                }
+
                 lastResellerReceiptsCount = data.pending_customer_receipts_count;
                 lastResellerTicketsCount = data.open_tickets_count;
             } catch (e) {
@@ -1489,11 +1577,56 @@
                         performSearch();
                         input.focus();
                     });
+        // ─── سیستم بروزرسانی خودکار و زنده موجودی کیف پول نماینده ───
+        window.updateResellerSidebarBalance = function(newBalance) {
+            const el = document.getElementById('sidebarResellerBalance');
+            if (!el) return;
+            if (typeof newBalance === 'number') {
+                const formatted = Number(newBalance).toLocaleString('en-US');
+                el.innerText = formatted;
+                el.setAttribute('data-raw-balance', newBalance);
+                
+                // افکت فلش و انیمیشن زیبا روی بج موجودی
+                const parent = el.closest('.sidebar-user-balance') || el.parentElement;
+                if (parent) {
+                    parent.classList.remove('balance-updated-flash');
+                    void parent.offsetWidth; // trigger reflow
+                    parent.classList.add('balance-updated-flash');
                 }
-            });
+            }
+        };
+
+        function syncResellerBalance() {
+            {% if session.get('role') == 'reseller' %}
+            fetch("{{ url_for('api_reseller_balance') }}")
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data.success && typeof data.balance === 'number') {
+                        const el = document.getElementById('sidebarResellerBalance');
+                        if (el) {
+                            const oldVal = parseInt(el.getAttribute('data-raw-balance') || '0', 10);
+                            if (oldVal !== data.balance) {
+                                window.updateResellerSidebarBalance(data.balance);
+                            }
+                        }
+                    }
+                })
+                .catch(() => {});
+            {% endif %}
         }
 
-        document.addEventListener('DOMContentLoaded', initTableSearch);
+        document.addEventListener('DOMContentLoaded', () => {
+            initTableSearch();
+            {% if session.get('role') == 'reseller' %}
+            // استعلام هوشمند دوره‌ای هر 10 ثانیه
+            setInterval(syncResellerBalance, 10000);
+            // استعلام فوری هنگام فوکوس روی تب مرورگر
+            window.addEventListener('focus', syncResellerBalance);
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) syncResellerBalance();
+            });
+            {% endif %}
+        });
         initTableSearch();
     </script>
     {% block scripts %}{% endblock %}
