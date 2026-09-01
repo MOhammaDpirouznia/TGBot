@@ -1310,6 +1310,7 @@ def inject_global_branding():
     if active_reseller_id:
         r_data = db.get_reseller(active_reseller_id)
         if r_data:
+            session["balance"] = r_data.get("balance", 0)
             branding = {
                 "brand_title": r_data.get("brand_title") or r_data.get("name") or "پنل نمایندگی",
                 "logo_url": r_data.get("logo_url"),
@@ -4071,6 +4072,11 @@ def reseller_create_user():
         if not deduct_res.get("success"):
             logger.error(f"Failed to deduct balance after user creation: {deduct_res.get('error')}")
 
+        # دریافت موجودی به‌روز پس از کسر وجه و به‌روزرسانی نشست
+        r_after = db.get_reseller(reseller_id)
+        current_reseller_balance = r_after.get("balance", 0) if r_after else 0
+        session["balance"] = current_reseller_balance
+
         # ۳. ثبت اشتراک با شناسه نماینده، شماره تلفن، تعداد مجاز کاربر و هزینه پرداخت‌شده در دیتابیس
         conn = db.get_connection()
         conn.execute("""
@@ -4095,7 +4101,8 @@ def reseller_create_user():
             plan=plan,
             sub_url=subscription_url,
             single_url=single_url,
-            final_price=final_price
+            final_price=final_price,
+            current_reseller_balance=current_reseller_balance
         )
 
     return render_template("reseller_create_user.html", plans=plans, discount=discount, balance=stats["balance"])
@@ -4331,6 +4338,9 @@ def reseller_renew_user(sub_id: int):
             logger.warning(f"Failed to log subscription history on reseller renew: {e}")
 
         flash(f"اشتراک «{sub['account_name']}» با پلن «{plan['name']}» با موفقیت تمدید شد و مبلغ {final_price:,} تومان از کیف پول شما کسر گردید.", "success")
+        r_after = db.get_reseller(reseller_id)
+        if r_after:
+            session["balance"] = r_after.get("balance", 0)
     else:
         flash(f"خطا در تمدید اشتراک: {renew_db.get('error')}", "danger")
 
@@ -4365,6 +4375,10 @@ def reseller_delete_user(sub_id: int):
             flash(f"اشتراک «{sub['account_name']}» با موفقیت حذف گردید و مبلغ {refund_amount:,} تومان ({refund_percent}٪ استرداد - مدت زمان گذشته: {time_passed}) به کیف پول شما بازگردانده شد.", "success")
         else:
             flash(f"اشتراک «{sub['account_name']}» با موفقیت حذف گردید. (به دلیل سپری شدن بیش از ۲۴ ساعت از زمان ساخت، استرداد وجه تعلق نگرفت)", "warning")
+
+        r_after = db.get_reseller(reseller_id)
+        if r_after:
+            session["balance"] = r_after.get("balance", 0)
     else:
         flash(f"خطا در حذف اشتراک: {del_res.get('error')}", "danger")
 
@@ -4714,6 +4728,22 @@ def api_reseller_notifications_mark_read():
     return jsonify({"success": True})
 
 
+@app.route("/api/reseller/balance")
+@reseller_required
+def api_reseller_balance():
+    """دریافت زنده و لحظه‌ای موجودی کیف پول نماینده جهت بروزرسانی خودکار UI بدون نیاز به رفرش"""
+    reseller_id = session.get("reseller_id")
+    r_data = db.get_reseller(reseller_id)
+    balance = r_data.get("balance", 0) if r_data else 0
+    session["balance"] = balance
+    return jsonify({
+        "success": True,
+        "balance": balance,
+        "formatted": f"{balance:,}",
+        "formatted_full": f"{balance:,} ت"
+    })
+
+
 @app.route("/reseller/export/transactions")
 @reseller_required
 def reseller_export_transactions():
@@ -4981,6 +5011,9 @@ def reseller_payment_approve(payment_id):
 
     # کسر از کیف پول نماینده
     db.deduct_reseller_balance(reseller_id, wholesale_price, plan_name, account_name)
+    r_after = db.get_reseller(reseller_id)
+    if r_after:
+        session["balance"] = r_after.get("balance", 0)
 
     # ثبت اشتراک برای کاربر
     plan_id_val = str(selected_plan.get("id") or 1) if selected_plan else "1"
