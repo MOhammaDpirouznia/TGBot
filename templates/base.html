@@ -114,87 +114,6 @@
             color: #f8fafc !important;
         }
 
-        /* استایل اختصاصی و مستقل کیوآرکد (همواره سفید با حاشیه امن در تم روشن و تاریک) */
-        .qr-code-wrapper {
-            background-color: #ffffff !important;
-            color: #000000 !important;
-            padding: 14px !important;
-            border-radius: 14px !important;
-            display: inline-flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
-            border: 2px solid #cbd5e1 !important;
-            margin-bottom: 12px !important;
-        }
-        [data-bs-theme="dark"] .qr-code-wrapper {
-            background-color: #ffffff !important;
-            border-color: #ffffff !important;
-            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6) !important;
-        }
-        .qr-code-wrapper canvas,
-        .qr-code-wrapper img {
-            display: block !important;
-            margin: 0 auto !important;
-            border-radius: 4px !important;
-        }
-
-        /* بهینه‌سازی کنتراست دکمه‌های Outline در حالت تیره */
-        [data-bs-theme="dark"] .btn-outline-dark {
-            color: #f1f5f9 !important;
-            border-color: #475569 !important;
-            background-color: rgba(255, 255, 255, 0.05) !important;
-        }
-        [data-bs-theme="dark"] .btn-outline-dark:hover {
-            color: #ffffff !important;
-            border-color: #94a3b8 !important;
-            background-color: #334155 !important;
-        }
-        [data-bs-theme="dark"] .btn-outline-secondary {
-            color: #cbd5e1 !important;
-            border-color: #475569 !important;
-        }
-        [data-bs-theme="dark"] .btn-outline-secondary:hover {
-            color: #ffffff !important;
-            background-color: #334155 !important;
-        }
-
-        /* استایل‌های سایدبار و مشخصات نماینده/مدیر در حالت روشن و تاریک */
-        .sidebar-user-name {
-            font-weight: 700;
-            font-size: 0.92rem;
-            color: #0f172a;
-            line-height: 1.3;
-        }
-        [data-bs-theme="dark"] .sidebar-user-name {
-            color: #f8fafc !important;
-        }
-        .sidebar-user-balance {
-            font-size: 0.8rem;
-            color: #0284c7;
-            font-weight: 700;
-            line-height: 1.2;
-        }
-        [data-bs-theme="dark"] .sidebar-user-balance {
-            color: #38bdf8 !important;
-        }
-        .sidebar-user-role {
-            font-size: 0.75rem;
-            color: #64748b;
-            font-weight: 500;
-        }
-        [data-bs-theme="dark"] .sidebar-user-role {
-            color: #94a3b8 !important;
-        }
-        .balance-updated-flash {
-            animation: balanceFlash 1.5s ease-in-out;
-        }
-        @keyframes balanceFlash {
-            0% { background-color: rgba(16, 185, 129, 0.4); transform: scale(1.08); }
-            50% { background-color: rgba(16, 185, 129, 0.2); }
-            100% { background-color: transparent; transform: scale(1); }
-        }
-
         [data-bs-theme="dark"] .text-dark {
             color: #f8fafc !important;
         }
@@ -823,9 +742,8 @@
                 </a>
 
                 {% if not sub_role or sub_role in ['partner', 'finance'] %}
-                <a class="nav-link {% if request.endpoint == 'reseller_customer_payments' %}active{% endif %} d-flex justify-content-between align-items-center" href="{{ url_for('reseller_customer_payments') }}">
-                    <span><i class="fas fa-receipt text-warning"></i> فیش‌ها و پرداخت‌های مشتریان</span>
-                    <span id="sidebarResellerCustomerReceiptsBadge" class="badge bg-warning text-dark font-monospace" style="display: none; font-size: 0.75rem;">0</span>
+                <a class="nav-link {% if request.endpoint == 'reseller_customer_payments' %}active{% endif %}" href="{{ url_for('reseller_customer_payments') }}">
+                    <i class="fas fa-receipt text-warning"></i> فیش‌ها و پرداخت‌های مشتریان
                 </a>
                 <a class="nav-link {% if request.endpoint == 'reseller_payments' %}active{% endif %}" href="{{ url_for('reseller_payments') }}">
                     <i class="fas fa-file-invoice-dollar text-primary"></i> شارژ حساب و سوابق مالی
@@ -839,9 +757,8 @@
                 <a class="nav-link {% if request.endpoint == 'reseller_users' %}active{% endif %}" href="{{ url_for('reseller_users') }}">
                     <i class="fas fa-users"></i> مشتریان من
                 </a>
-                <a class="nav-link {% if request.endpoint == 'reseller_tickets' %}active{% endif %} d-flex justify-content-between align-items-center" href="{{ url_for('reseller_tickets') }}">
-                    <span><i class="fas fa-headset text-info"></i> تیکت‌ها و پشتیبانی</span>
-                    <span id="sidebarResellerTicketsBadge" class="badge bg-danger font-monospace" style="display: none; font-size: 0.75rem;">0</span>
+                <a class="nav-link {% if request.endpoint == 'reseller_tickets' %}active{% endif %}" href="{{ url_for('reseller_tickets') }}">
+                    <i class="fas fa-headset text-info"></i> تیکت‌ها و پشتیبانی
                 </a>
                 {% endif %}
 
@@ -1007,13 +924,11 @@
                      style="width: 38px; height: 38px; object-fit: cover;" 
                      loading="lazy">
                 <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">
-                    <div class="sidebar-user-name">{{ session.get('username') }}</div>
+                    <div style="font-weight: 700; font-size: 0.9rem; color: var(--sidebar-brand);">{{ session.get('username') }}</div>
                     {% if session.get('role') == 'reseller' %}
-                        <div class="sidebar-user-balance">
-                            اعتبار: <span id="sidebarResellerBalance" data-raw-balance="{{ session.get('balance', 0) }}">{{ "{:,}".format(session.get('balance', 0)) }}</span> ت
-                        </div>
+                        <div style="font-size: 0.78rem; color: #0284c7; font-weight: 600;">اعتبار: <span id="sidebarResellerBalance">{{ "{:,}".format(session.get('balance', 0)) }}</span> ت</div>
                     {% else %}
-                        <div class="sidebar-user-role">{{ session.get('name', 'مدیر سیستم') }}</div>
+                        <div style="font-size: 0.75rem; color: var(--sidebar-text-muted);">{{ session.get('name', 'مدیر سیستم') }}</div>
                     {% endif %}
                 </div>
             </a>
@@ -1057,20 +972,9 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body text-center p-4">
-                    <div class="qr-code-wrapper position-relative">
+                    <div class="p-3 rounded-3 d-inline-block shadow-sm mb-3" style="background-color: #ffffff !important; border: 1px solid #cbd5e1;">
                         <div id="qrCodeContainer" class="d-flex justify-content-center"></div>
                     </div>
-
-                    <!-- دکمه‌های عملیات مستقیم روی تصویر بارکد -->
-                    <div class="d-flex justify-content-center gap-2 mb-3">
-                        <button type="button" class="btn btn-sm btn-outline-success" onclick="downloadQrImage('qrCodeContainer', 'vpn_qrcode.png')">
-                            <i class="fas fa-download me-1"></i> ذخیره در گالری
-                        </button>
-                        <button type="button" class="btn btn-sm btn-outline-info" onclick="shareQrModalCurrent()">
-                            <i class="fas fa-share-nodes me-1"></i> اشتراک‌گذاری QR
-                        </button>
-                    </div>
-
                     <div class="mb-3 text-start">
                         <label class="form-label small text-muted fw-bold">لینک اتصال مستقیم:</label>
                         <div class="input-group">
@@ -1112,114 +1016,17 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
     <script>
-        // ─── توابع عمومی ذخیره در گالری و اشتراک‌گذاری QR Code ───
-        function downloadQrImage(containerId, filename) {
-            const container = document.getElementById(containerId);
-            if (!container) return;
-            const canvas = container.querySelector('canvas');
-            const img = container.querySelector('img');
-            
-            let dataUrl = '';
-            if (canvas) {
-                const pad = 24;
-                const paddedCanvas = document.createElement('canvas');
-                paddedCanvas.width = canvas.width + pad * 2;
-                paddedCanvas.height = canvas.height + pad * 2;
-                const ctx = paddedCanvas.getContext('2d');
-                ctx.fillStyle = '#ffffff';
-                ctx.fillRect(0, 0, paddedCanvas.width, paddedCanvas.height);
-                ctx.drawImage(canvas, pad, pad);
-                dataUrl = paddedCanvas.toDataURL('image/png');
-            } else if (img && img.src) {
-                dataUrl = img.src;
-            }
-
-            if (dataUrl) {
-                const a = document.createElement('a');
-                a.href = dataUrl;
-                a.download = filename || ('vpn_qrcode_' + Date.now() + '.png');
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                alert('تصویر QR کد با موفقیت برای گالری دانلود شد! 📥');
-            } else {
-                alert('تصویر QR کد هنوز بارگذاری نشده است.');
-            }
-        }
-
-        async function shareQrCode(url, title, containerId) {
-            if (!url) return;
-            const shareTitle = title || 'لینک و QR اتصال VPN';
-            const shareText = `${shareTitle}:\n${url}`;
-
-            let fileShared = false;
-            if (containerId && navigator.canShare) {
-                try {
-                    const container = document.getElementById(containerId);
-                    const canvas = container ? container.querySelector('canvas') : null;
-                    if (canvas) {
-                        const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
-                        if (blob) {
-                            const file = new File([blob], 'vpn_qrcode.png', { type: 'image/png' });
-                            if (navigator.canShare({ files: [file] })) {
-                                await navigator.share({
-                                    title: shareTitle,
-                                    text: shareText,
-                                    files: [file]
-                                });
-                                fileShared = true;
-                            }
-                        }
-                    }
-                } catch (e) {
-                    if (e.name === 'AbortError') return;
-                }
-            }
-
-            if (!fileShared) {
-                if (navigator.share) {
-                    navigator.share({
-                        title: shareTitle,
-                        text: shareText,
-                        url: url
-                    }).catch(err => {
-                        if (err.name !== 'AbortError') {
-                            const tgUrl = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(shareTitle)}`;
-                            window.open(tgUrl, '_blank');
-                        }
-                    });
-                } else {
-                    const tgUrl = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(shareTitle)}`;
-                    window.open(tgUrl, '_blank');
-                }
-            }
-        }
-
-        function shareQrModalCurrent() {
-            const input = document.getElementById('qrModalLinkInput');
-            const titleElem = document.getElementById('qrModalTitle');
-            const url = input ? input.value : '';
-            const title = titleElem ? titleElem.innerText.trim() : 'لینک اتصال';
-            shareQrCode(url, title, 'qrCodeContainer');
-        }
-
         // ─── تابع عمومی نمایش بارکد QR و لینک ───
         let currentQrCodeInstance = null;
-        let currentQrUrl = '';
-        let currentQrTitle = '';
-
         function showQrModal(url, title, type) {
             if (!url) return;
-            currentQrUrl = url;
-            currentQrTitle = title || 'بارکد و لینک اتصال';
-
             const container = document.getElementById('qrCodeContainer');
             if (!container) return;
             container.innerHTML = '';
 
             const modalTitle = document.getElementById('qrModalTitle');
             if (modalTitle) {
-                modalTitle.innerHTML = `<i class="fas fa-qrcode me-2"></i> ${currentQrTitle}`;
+                modalTitle.innerHTML = `<i class="fas fa-qrcode me-2"></i> ${title || 'بارکد و لینک اتصال'}`;
             }
 
             const input = document.getElementById('qrModalLinkInput');
@@ -1429,6 +1236,11 @@
                 if (!res.ok) return;
                 const data = await res.json();
 
+                // بروزرسانی هوشمند عدد موجودی کیف پول نماینده در سایدبار
+                if (typeof data.current_balance === 'number' && window.updateResellerSidebarBalance) {
+                    window.updateResellerSidebarBalance(data.current_balance);
+                }
+
                 const receiptsBadge = document.getElementById('sidebarResellerCustomerReceiptsBadge');
                 if (receiptsBadge) {
                     if (data.pending_customer_receipts_count > 0) {
@@ -1449,53 +1261,19 @@
                     }
                 }
 
-                // پخش صدا و نمایش اعلان در صورت دریافت فیش جدید از مشتری
-                if (lastResellerReceiptsCount !== -1 && data.pending_customer_receipts_count > lastResellerReceiptsCount) {
-                    playChimeAlert();
-                    const toastEl = document.getElementById('liveAlertToast');
-                    if (toastEl) {
-                        document.getElementById('liveAlertToastTitle').textContent = '💳 فیش واریزی جدید مشتری!';
-                        document.getElementById('liveAlertToastMsg').textContent = `یک فیش جدید از مشتریان ربات شما نیازمند تایید است. (کل: ${data.pending_customer_receipts_count})`;
-                        const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
-                        toast.show();
-                    }
-                    if ("Notification" in window && Notification.permission === "granted") {
-                        new Notification("💳 فیش واریزی جدید مشتری", {
-                            body: "یک پرداخت جدید در ربات شما برای بررسی و تایید ثبت شده است.",
-                            icon: "https://cdn-icons-png.flaticon.com/512/3135/3135706.png"
-                        });
-                    }
-                }
-
-                // پخش صدا و اعلان در صورت تیکت جدید از مشتری
-                if (lastResellerTicketsCount !== -1 && data.open_tickets_count > lastResellerTicketsCount) {
-                    playChimeAlert();
-                    const toastEl = document.getElementById('liveAlertToast');
-                    if (toastEl) {
-                        document.getElementById('liveAlertToastTitle').textContent = '💬 تیکت پشتیبانی مشتری!';
-                        document.getElementById('liveAlertToastMsg').textContent = 'یک پیام تیکت جدید از مشتریان ربات شما دریافت شد.';
-                        const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
-                        toast.show();
-                    }
-                    if ("Notification" in window && Notification.permission === "granted") {
-                        new Notification("💬 تیکت پشتیبانی جدید", {
-                            body: "یک پیام پشتیبانی جدید از مشتریان دریافت شد.",
-                            icon: "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
-                        });
-                    }
-                }
-
-                // بروزرسانی هوشمند عدد موجودی کیف پول در سایدبار
-                if (typeof data.current_balance === 'number' && window.updateResellerSidebarBalance) {
-                    window.updateResellerSidebarBalance(data.current_balance);
-                }
-
                 lastResellerReceiptsCount = data.pending_customer_receipts_count;
                 lastResellerTicketsCount = data.open_tickets_count;
             } catch (e) {
                 // Ignore network errors in background polling
             }
         }
+
+        window.updateResellerSidebarBalance = function(newBalance) {
+            const el = document.getElementById('sidebarResellerBalance');
+            if (el && typeof newBalance === 'number') {
+                el.textContent = Number(newBalance).toLocaleString('en-US');
+            }
+        };
 
         // اجرای پایش هر ۱۲ ثانیه برای مدیر و نماینده
         {% if session.get('role') == 'admin' %}
@@ -1577,56 +1355,11 @@
                         performSearch();
                         input.focus();
                     });
-        // ─── سیستم بروزرسانی خودکار و زنده موجودی کیف پول نماینده ───
-        window.updateResellerSidebarBalance = function(newBalance) {
-            const el = document.getElementById('sidebarResellerBalance');
-            if (!el) return;
-            if (typeof newBalance === 'number') {
-                const formatted = Number(newBalance).toLocaleString('en-US');
-                el.innerText = formatted;
-                el.setAttribute('data-raw-balance', newBalance);
-                
-                // افکت فلش و انیمیشن زیبا روی بج موجودی
-                const parent = el.closest('.sidebar-user-balance') || el.parentElement;
-                if (parent) {
-                    parent.classList.remove('balance-updated-flash');
-                    void parent.offsetWidth; // trigger reflow
-                    parent.classList.add('balance-updated-flash');
                 }
-            }
-        };
-
-        function syncResellerBalance() {
-            {% if session.get('role') == 'reseller' %}
-            fetch("{{ url_for('api_reseller_balance') }}")
-                .then(res => res.json())
-                .then(data => {
-                    if (data && data.success && typeof data.balance === 'number') {
-                        const el = document.getElementById('sidebarResellerBalance');
-                        if (el) {
-                            const oldVal = parseInt(el.getAttribute('data-raw-balance') || '0', 10);
-                            if (oldVal !== data.balance) {
-                                window.updateResellerSidebarBalance(data.balance);
-                            }
-                        }
-                    }
-                })
-                .catch(() => {});
-            {% endif %}
+            });
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            initTableSearch();
-            {% if session.get('role') == 'reseller' %}
-            // استعلام هوشمند دوره‌ای هر 10 ثانیه
-            setInterval(syncResellerBalance, 10000);
-            // استعلام فوری هنگام فوکوس روی تب مرورگر
-            window.addEventListener('focus', syncResellerBalance);
-            document.addEventListener('visibilitychange', () => {
-                if (!document.hidden) syncResellerBalance();
-            });
-            {% endif %}
-        });
+        document.addEventListener('DOMContentLoaded', initTableSearch);
         initTableSearch();
     </script>
     {% block scripts %}{% endblock %}

@@ -30,15 +30,15 @@
                                 <h6 class="mb-0 fw-bold text-primary"><i class="fas fa-qrcode me-2"></i>QR کد لینک سابسکریپشن (هوشمند)</h6>
                             </div>
                             <div class="card-body p-3 d-flex flex-column align-items-center justify-content-between">
-                                <div class="qr-code-wrapper position-relative">
+                                <div class="p-3 rounded-3 shadow-sm mb-3 d-inline-block" style="background-color: #ffffff !important; border: 1px solid #cbd5e1;">
                                     <div id="subCreatedQrCode" class="d-flex justify-content-center"></div>
                                 </div>
                                 <div class="w-100">
                                     <div class="d-flex justify-content-center gap-2 mb-3">
-                                        <button type="button" class="btn btn-sm btn-outline-success" onclick="downloadQrImage('subCreatedQrCode', 'sub_qrcode_{{ account_name }}.png')">
+                                        <button type="button" class="btn btn-sm btn-outline-success" onclick="downloadQrCode('subCreatedQrCode', 'sub_qrcode_{{ account_name }}.png')">
                                             <i class="fas fa-download me-1"></i> ذخیره در گالری
                                         </button>
-                                        <button type="button" class="btn btn-sm btn-outline-info" onclick="shareQrCode('{{ sub_url }}', 'لینک سابسکریپشن {{ account_name }}', 'subCreatedQrCode')">
+                                        <button type="button" class="btn btn-sm btn-outline-info" onclick="shareQrCode('{{ sub_url }}', 'لینک سابسکریپشن {{ account_name }}')">
                                             <i class="fas fa-share-nodes me-1"></i> اشتراک‌گذاری
                                         </button>
                                     </div>
@@ -65,15 +65,15 @@
                                 <h6 class="mb-0 fw-bold text-dark"><i class="fas fa-bolt me-2 text-warning"></i>QR کد لینک مستقیم تکی (کانفیگ)</h6>
                             </div>
                             <div class="card-body p-3 d-flex flex-column align-items-center justify-content-between">
-                                <div class="qr-code-wrapper position-relative">
+                                <div class="p-3 rounded-3 shadow-sm mb-3 d-inline-block" style="background-color: #ffffff !important; border: 1px solid #cbd5e1;">
                                     <div id="singleCreatedQrCode" class="d-flex justify-content-center"></div>
                                 </div>
                                 <div class="w-100">
                                     <div class="d-flex justify-content-center gap-2 mb-3">
-                                        <button type="button" class="btn btn-sm btn-outline-success" onclick="downloadQrImage('singleCreatedQrCode', 'single_qrcode_{{ account_name }}.png')">
+                                        <button type="button" class="btn btn-sm btn-outline-success" onclick="downloadQrCode('singleCreatedQrCode', 'single_qrcode_{{ account_name }}.png')">
                                             <i class="fas fa-download me-1"></i> ذخیره در گالری
                                         </button>
-                                        <button type="button" class="btn btn-sm btn-outline-info" onclick="shareQrCode('{{ single_url }}', 'کانفیگ تکی {{ account_name }}', 'singleCreatedQrCode')">
+                                        <button type="button" class="btn btn-sm btn-outline-info" onclick="shareQrCode('{{ single_url }}', 'کانفیگ تکی {{ account_name }}')">
                                             <i class="fas fa-share-nodes me-1"></i> اشتراک‌گذاری
                                         </button>
                                     </div>
@@ -118,8 +118,47 @@ function copyActionText(elemId, label) {
     });
 }
 
+function downloadQrCode(containerId, filename) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const canvas = container.querySelector('canvas');
+    const img = container.querySelector('img');
+    let dataUrl = '';
+    if (canvas) {
+        dataUrl = canvas.toDataURL('image/png');
+    } else if (img && img.src) {
+        dataUrl = img.src;
+    }
+    if (dataUrl) {
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = filename || ('qrcode_' + Date.now() + '.png');
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    } else {
+        alert('تصویر بارکد برای دانلود آماده نیست.');
+    }
+}
+
+async function shareQrCode(url, title) {
+    if (navigator.share) {
+        try {
+            await navigator.share({
+                title: title || 'لینک اشتراک',
+                text: (title || 'لینک اشتراک') + ':\n' + url,
+                url: url
+            });
+            return;
+        } catch (e) {
+            if (e.name === 'AbortError') return;
+        }
+    }
+    window.open('https://t.me/share/url?url=' + encodeURIComponent(url) + '&text=' + encodeURIComponent(title || ''));
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-    // ۱. رندر QR کد سابسکریپشن با کنتراست کامل
+    // ۱. رندر QR کد سابسکریپشن
     const subContainer = document.getElementById('subCreatedQrCode');
     const subUrl = "{{ sub_url }}";
     if (subContainer && subUrl) {
@@ -137,7 +176,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // ۲. رندر QR کد لینک مستقیم تکی با کنتراست کامل
+    // ۲. رندر QR کد لینک مستقیم تکی
     const singleContainer = document.getElementById('singleCreatedQrCode');
     const singleUrl = "{{ single_url }}";
     if (singleContainer && singleUrl) {
@@ -155,16 +194,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // ۳. بروزرسانی زنده و آنی عدد موجودی کیف پول نماینده در سایدبار
-    {% if current_reseller_balance is defined %}
-        if (window.updateResellerSidebarBalance) {
-            window.updateResellerSidebarBalance({{ current_reseller_balance }});
-        }
-    {% else %}
-        if (typeof syncResellerBalance === 'function') {
-            syncResellerBalance();
-        }
-    {% endif %}
+    // ۳. بروزرسانی زنده عدد موجودی در سایدبار
+    if (typeof window.updateResellerSidebarBalance === 'function') {
+        window.updateResellerSidebarBalance({{ current_reseller_balance | default(session.get('balance', 0)) }});
+    }
 });
 </script>
 {% endblock %}
