@@ -117,16 +117,16 @@ def is_expired(expire_date: str) -> bool:
 
 def generate_qr_code_bytes(data: str) -> Optional[bytes]:
     """
-    تولید تصویر QR Code به صورت بایت‌ها برای ارسال در تلگرام
+    تولید تصویر QR Code به صورت بایت‌ها با حاشیه سفید عریض (Quiet Zone) جهت اسکن بدون اختلال در تم‌های تیره
     """
     import io
     try:
         import qrcode
         qr = qrcode.QRCode(
             version=1,
-            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
             box_size=10,
-            border=2,
+            border=5,  # حاشیه سفید استاندارد و پهن دور QR برای تم‌های تاریک
         )
         qr.add_data(data)
         qr.make(fit=True)
@@ -136,12 +136,12 @@ def generate_qr_code_bytes(data: str) -> Optional[bytes]:
         bio.seek(0)
         return bio.getvalue()
     except Exception:
-        # Fallback به API آنلاین در صورت نبود پکیج qrcode
+        # Fallback به API آنلاین در صورت نبود پکیج qrcode با حاشیه سفید ۲۰ پیکسلی
         try:
             import urllib.parse
             import urllib.request
             encoded = urllib.parse.quote(data)
-            url = f"https://api.qrserver.com/v1/create-qr-code/?size=350x350&data={encoded}"
+            url = f"https://api.qrserver.com/v1/create-qr-code/?size=350x350&margin=25&data={encoded}"
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=5) as response:
                 return response.read()
