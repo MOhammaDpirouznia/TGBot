@@ -21,21 +21,52 @@
             <div class="card-body p-4">
                 <form method="POST" id="createSubForm">
                     <div class="row g-3 mb-3">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label fw-bold">نام یا شناسه مشتری (اختیاری):</label>
                             <div class="input-group">
                                 <span class="input-group-text"><i class="fas fa-user"></i></span>
                                 <input type="text" name="account_name" class="form-control" placeholder="مثال: omid_01 یا خالی بگذارید">
                             </div>
-                            <small class="text-muted">این نام در پنل هیدیفای نیز به عنوان نام اکانت ثبت می‌شود.</small>
+                            <small class="text-muted">این نام در پنل هیدیفای ثبت می‌شود.</small>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label fw-bold">شماره تلفن مشتری (اختیاری):</label>
                             <div class="input-group">
                                 <span class="input-group-text"><i class="fas fa-phone"></i></span>
                                 <input type="text" name="phone_number" class="form-control font-monospace" placeholder="مثال: 09121234567">
                             </div>
-                            <small class="text-muted">جهت ساخت خودکار تصویر پروفایل و ذخیره در مشخصات مشتری.</small>
+                            <small class="text-muted">جهت ساخت تصویر و تماس.</small>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">شناسه عددی تلگرام (اختیاری):</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fab fa-telegram"></i></span>
+                                <input type="number" name="telegram_id" class="form-control font-monospace" placeholder="مثال: 123456789">
+                            </div>
+                            <small class="text-muted">جهت یادآوری پیامکی و بدهی.</small>
+                        </div>
+                    </div>
+
+                    <!-- بخش وضعیت تسویه حساب و بدهی مشتری -->
+                    <div class="p-3 bg-light rounded-3 border mb-4">
+                        <h6 class="fw-bold text-dark mb-3"><i class="fas fa-hand-holding-dollar text-primary me-2"></i>وضعیت پرداخت هزینه توسط مشتری:</h6>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">وضعیت مالی مشتری:</label>
+                                <select name="payment_status" id="resellerPaymentStatus" class="form-select" onchange="toggleResellerDebtor(this)">
+                                    <option value="paid" selected>🟢 مشتری وجه را پرداخت / تسویه کرده است</option>
+                                    <option value="unpaid">🔴 مشتری هنوز پرداخت نکرده است (بدهکار)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6" id="resellerDebtAmountBox" style="display: none;">
+                                <label class="form-label fw-bold text-danger">مبلغ بدهی مشتری (تومان):</label>
+                                <input type="number" step="1000" name="debt_amount" id="resellerDebtAmountInput" class="form-control font-monospace border-danger" placeholder="مبلغ بدهی دلخواه...">
+                                <small class="text-muted">پیش‌فرض: قیمت نهایی پلن (قابل تغییر دستی)</small>
+                            </div>
+                            <div class="col-12" id="resellerDebtNoteBox" style="display: none;">
+                                <label class="form-label small text-muted">یادداشت موعد یا شرایط بدهی مشتری:</label>
+                                <input type="text" name="debt_notes" class="form-control form-control-sm" placeholder="مثلاً: قول داد تا آخر هفته تسویه کند">
+                            </div>
                         </div>
                     </div>
 
@@ -74,7 +105,7 @@
                         </div>
                         <hr class="my-2">
                         <div class="d-flex justify-content-between fs-5 fw-bold text-success">
-                            <span>مبلغ کسر از کیف پول:</span>
+                            <span>مبلغ کسر از کیف پول شما:</span>
                             <span id="finalPriceText">0 تومان</span>
                         </div>
                     </div>
@@ -92,12 +123,30 @@
 {% block scripts %}
 <script>
     const discountPercent = {{ discount }};
+    let currentFinalPrice = 0;
+
+    function toggleResellerDebtor(sel) {
+        const isDebtor = (sel.value === 'unpaid');
+        document.getElementById('resellerDebtAmountBox').style.display = isDebtor ? 'block' : 'none';
+        document.getElementById('resellerDebtNoteBox').style.display = isDebtor ? 'block' : 'none';
+        const debtInput = document.getElementById('resellerDebtAmountInput');
+        if (isDebtor && (!debtInput.value || debtInput.value === '0')) {
+            debtInput.value = currentFinalPrice;
+        }
+    }
+
     function calculatePrice(price) {
         const discountAmount = Math.floor((price * discountPercent) / 100);
         const finalPrice = price - discountAmount;
+        currentFinalPrice = finalPrice;
         document.getElementById('origPriceText').innerText = price.toLocaleString('fa-IR') + ' تومان';
         document.getElementById('discountAmountText').innerText = discountAmount.toLocaleString('fa-IR') + ' تومان';
         document.getElementById('finalPriceText').innerText = finalPrice.toLocaleString('fa-IR') + ' تومان';
+        
+        const debtInput = document.getElementById('resellerDebtAmountInput');
+        if (debtInput && (!debtInput.value || debtInput.value === '0')) {
+            debtInput.value = finalPrice;
+        }
     }
 
     // مقداردهی اولیه

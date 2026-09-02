@@ -135,8 +135,19 @@
                             </div>
                         </td>
                         <td style="max-width: 280px;">
-                            <div class="d-flex align-items-center gap-1 mb-1">
-                                <span class="badge ticket-badge-pill">{{ t['subject'] or 'پیام کاربر' }}</span>
+                            <div class="d-flex align-items-center gap-1 mb-1 flex-wrap">
+                                {% if t.get('ticket_type') == 'quota_change' %}
+                                    <span class="badge bg-warning text-dark"><i class="fas fa-sliders me-1"></i>درخواست تغییر مشخصات</span>
+                                    {% if t.get('request_status') == 'approved' %}
+                                        <span class="badge bg-success py-0">تایید شد</span>
+                                    {% elif t.get('request_status') == 'rejected' %}
+                                        <span class="badge bg-danger py-0">رد شد</span>
+                                    {% else %}
+                                        <span class="badge bg-primary py-0">در انتظار تایید</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="badge ticket-badge-pill">{{ t['subject'] or 'پیام کاربر' }}</span>
+                                {% endif %}
                             </div>
                             <div class="text-truncate text-secondary small" title="{{ t['message'] }}">
                                 {{ t['message'] }}
@@ -251,6 +262,70 @@
                         {% endif %}
                     </div>
                 </div>
+
+                {% if t.get('ticket_type') == 'quota_change' %}
+                {% set r_data = t.get('request_data')|from_json %}
+                <!-- کارت اختصاصی درخواست تغییر حجم/روز نماینده -->
+                <div class="alert alert-warning border-warning p-3 m-3 mb-0 rounded-3 shadow-sm">
+                    <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                        <h6 class="fw-bold text-dark mb-0"><i class="fas fa-sliders text-warning me-2"></i>درخواست تغییر مشخصات اشتراک مشتری</h6>
+                        <span class="badge {% if t.get('request_status') == 'approved' %}bg-success{% elif t.get('request_status') == 'rejected' %}bg-danger{% else %}bg-warning text-dark{% endif %} fs-6">
+                            {% if t.get('request_status') == 'approved' %}✅ تایید و اعمال شده{% elif t.get('request_status') == 'rejected' %}❌ رد شده{% else %}⏳ در انتظار تایید مدیریت{% endif %}
+                        </span>
+                    </div>
+                    <div class="row g-2 text-center my-3">
+                        <div class="col-md-3 col-6">
+                            <div class="p-2 bg-white rounded border">
+                                <small class="text-muted d-block">نماینده فروش:</small>
+                                <strong>{{ r_data.get('reseller_name') or 'نماینده #' ~ t.get('reseller_id') }}</strong>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <div class="p-2 bg-white rounded border">
+                                <small class="text-muted d-block">نام مشتری:</small>
+                                <strong class="font-monospace text-primary">{{ r_data.get('account_name') }}</strong>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <div class="p-2 bg-white rounded border">
+                                <small class="text-muted d-block">تغییر حجم:</small>
+                                <span class="text-muted font-monospace">{{ r_data.get('current_limit') }}GB</span> ➔ <strong class="text-success font-monospace fs-6">{{ r_data.get('requested_limit') }}GB</strong>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <div class="p-2 bg-white rounded border">
+                                <small class="text-muted d-block">تغییر مدت اعتبار:</small>
+                                <span class="text-muted font-monospace">{{ r_data.get('current_duration') }} روز</span> ➔ <strong class="text-success font-monospace fs-6">{{ r_data.get('requested_duration') }} روز</strong>
+                            </div>
+                        </div>
+                    </div>
+                    {% if r_data.get('reason') %}
+                    <div class="p-2 bg-white rounded border mb-3">
+                        <small class="text-muted fw-bold d-block mb-1">علت و توضیحات نماینده:</small>
+                        <p class="mb-0 small">{{ r_data.get('reason') }}</p>
+                    </div>
+                    {% endif %}
+
+                    {% if t.get('request_status') == 'pending' or not t.get('request_status') %}
+                    <div class="d-flex gap-2 justify-content-end flex-wrap align-items-center">
+                        <form action="{{ url_for('approve_quota_change', ticket_id=t['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از تایید و اعمال آنی حجم و مدت درخواستی در سرور هیدیفای اطمینان دارید؟');">
+                            <button type="submit" class="btn btn-success fw-bold px-4">
+                                <i class="fas fa-check-circle me-1"></i> تایید و اعمال آنی در هیدیفای
+                            </button>
+                        </form>
+                        <button type="button" class="btn btn-outline-danger fw-bold" onclick="const f=document.getElementById('rejectForm{{ t['id'] }}'); f.style.display=(f.style.display==='none'?'block':'none');">
+                            <i class="fas fa-times-circle me-1"></i> رد درخواست...
+                        </button>
+                    </div>
+                    <form id="rejectForm{{ t['id'] }}" action="{{ url_for('reject_quota_change', ticket_id=t['id']) }}" method="POST" class="mt-2" style="display: none;">
+                        <div class="input-group">
+                            <input type="text" name="reason" class="form-control form-control-sm" placeholder="علت رد درخواست (اختیاری)...">
+                            <button type="submit" class="btn btn-danger btn-sm fw-bold">ثبت رد درخواست</button>
+                        </div>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endif %}
 
                 <!-- جریان زنجیره گفتگو (Chat Stream) -->
                 <div class="p-3 chat-messages-container ticket-chat-box m-3" style="min-height: 280px; max-height: 420px; overflow-y: auto;">

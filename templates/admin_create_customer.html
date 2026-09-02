@@ -100,18 +100,26 @@
                     <hr class="my-4">
 
                     <!-- نحوه پرداخت و تسویه حساب -->
-                    <h5 class="fw-bold mb-3 text-secondary"><i class="fas fa-wallet me-2 text-primary"></i>روش پرداخت و تراز مالی</h5>
+                    <h5 class="fw-bold mb-3 text-secondary"><i class="fas fa-wallet me-2 text-primary"></i>روش پرداخت و وضعیت مالی مشتری</h5>
 
                     <div class="row g-3 mb-4">
-                        <div class="col-md-4">
+                        <div class="col-md-3 col-6">
                             <label class="card h-100 p-3 border text-center cursor-pointer payment-method-card active-method" style="cursor: pointer;" onclick="selectPaymentMethod(this, 'cash')">
                                 <input type="radio" name="payment_method" value="cash" class="d-none" checked>
                                 <div class="fs-3 text-success mb-2"><i class="fas fa-money-bill-wave"></i></div>
                                 <div class="fw-bold">دریافت نقدی</div>
-                                <small class="text-muted" style="font-size: 11px;">مبلغ توسط شما دریافت شد</small>
+                                <small class="text-muted" style="font-size: 11px;">مبلغ کامل دریافت شد</small>
                             </label>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3 col-6">
+                            <label class="card h-100 p-3 border text-center cursor-pointer payment-method-card" style="cursor: pointer;" onclick="selectPaymentMethod(this, 'debtor')">
+                                <input type="radio" name="payment_method" value="debtor" class="d-none">
+                                <div class="fs-3 text-danger mb-2"><i class="fas fa-hand-holding-dollar"></i></div>
+                                <div class="fw-bold text-danger">مشتری بدهکار</div>
+                                <small class="text-muted" style="font-size: 11px;">پرداخت در آینده</small>
+                            </label>
+                        </div>
+                        <div class="col-md-3 col-6">
                             <label class="card h-100 p-3 border text-center cursor-pointer payment-method-card" style="cursor: pointer;" onclick="selectPaymentMethod(this, 'wallet')">
                                 <input type="radio" name="payment_method" value="wallet" class="d-none">
                                 <div class="fs-3 text-primary mb-2"><i class="fas fa-wallet"></i></div>
@@ -119,13 +127,31 @@
                                 <small class="text-muted" style="font-size: 11px;">کسر از موجودی تلگرام</small>
                             </label>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3 col-6">
                             <label class="card h-100 p-3 border text-center cursor-pointer payment-method-card" style="cursor: pointer;" onclick="selectPaymentMethod(this, 'free')">
                                 <input type="radio" name="payment_method" value="free" class="d-none">
                                 <div class="fs-3 text-warning mb-2"><i class="fas fa-gift"></i></div>
                                 <div class="fw-bold">رایگان / هدیه</div>
                                 <small class="text-muted" style="font-size: 11px;">بدون ثبت هزینه مالی</small>
                             </label>
+                        </div>
+                    </div>
+
+                    <!-- فیلدهای اختصاصی بدهکاری مشتری -->
+                    <div id="debtorFieldsCard" class="card bg-danger-subtle border border-danger mb-4 shadow-sm" style="display: none;">
+                        <div class="card-body">
+                            <h6 class="fw-bold text-danger mb-3"><i class="fas fa-hand-holding-dollar me-2"></i>تنظیمات و مبلغ بدهی مشتری:</h6>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold text-danger">مبلغ دلخواه بدهی (تومان): <span class="text-danger">*</span></label>
+                                    <input type="number" step="1000" name="debt_amount" id="debtAmountInput" class="form-control font-monospace border-danger" placeholder="مبلغ بدهی...">
+                                    <small class="text-muted">می‌توانید کل قیمت یا بخشی از آن را به عنوان بدهی وارد کنید.</small>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold">یادداشت موعد یا شرایط بدهی:</label>
+                                    <input type="text" name="debt_notes" class="form-control" placeholder="مثلاً: قرار شد تا دوشنبه واریز کند">
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -215,11 +241,19 @@ function selectPaymentMethod(cardEl, method) {
     const myRadio = cardEl.querySelector('input[type="radio"]');
     if (myRadio) myRadio.checked = true;
 
+    const debtorCard = document.getElementById('debtorFieldsCard');
     const finCard = document.getElementById('financialBreakdownCard');
-    if (method === 'free') {
-        finCard.style.display = 'none';
-    } else {
+
+    if (method === 'debtor') {
+        debtorCard.style.display = 'block';
         finCard.style.display = 'block';
+    } else {
+        debtorCard.style.display = 'none';
+        if (method === 'free') {
+            finCard.style.display = 'none';
+        } else {
+            finCard.style.display = 'block';
+        }
     }
     calculateDebt();
 }
@@ -234,6 +268,11 @@ function calculateDebt() {
         if (opt) {
             price = parseInt(opt.getAttribute('data-price') || 0);
         }
+    }
+
+    const debtInput = document.getElementById('debtAmountInput');
+    if (debtInput && !debtInput.value) {
+        debtInput.value = price;
     }
 
     const priceEl = document.getElementById('displayTotalPrice');
