@@ -75,7 +75,7 @@
                         <div class="row g-3">
                             {% for p_key, p in plans.items() %}
                             {% set p_orig_price = p.get('master_price') or p.get('price') or p.get('display_price') or 0 %}
-                            {% set p_wholesale_price = p.get('wholesale_price') if p.get('wholesale_price') is not None else ((p_orig_price * (100 - discount) / 100)|int) %}
+                            {% set p_wholesale_price = p.get('wholesale_price') if p.get('wholesale_price') is not none else ((p_orig_price * (100 - discount) / 100)|int) %}
                             {% set p_name = p.get('display_name') or p.get('name') or p.get('master_name') or 'پلن' %}
                             <div class="col-md-6">
                                 <label class="card p-3 h-100 cursor-pointer border-2 plan-option" style="cursor: pointer;">
