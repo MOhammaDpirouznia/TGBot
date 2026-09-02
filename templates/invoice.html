@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>فاکتور رسمی سرویس اینترنت پرو #{{ sub.id }} - {{ branding.brand_title or 'سامانه اینترنت بین‌الملل پرو' }}</title>
+    <title>فاکتور رسمی سرویس اینترنت پرو #{{ sub.id }} - {{ branding.brand_title or 'سامانه اینترنت پرو' }}</title>
     <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
@@ -58,8 +58,8 @@
             background: #ffffff !important;
             border: 4px solid #ffffff;
             border-radius: 14px;
-            padding: 16px;
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+            padding: 14px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.10);
             display: inline-block;
         }
         @media print {
@@ -92,8 +92,8 @@
                 </div>
             {% endif %}
             <div>
-                <h4 class="mb-1 fw-bold">{{ branding.brand_title or 'سامانه هوشمند اینترنت بین‌الملل پرو' }}</h4>
-                <div class="small opacity-75">صورت‌حساب رسمی و گواهی تحویل سرویس اینترنت بین‌الملل</div>
+                <h4 class="mb-1 fw-bold">{{ branding.brand_title or 'سامانه هوشمند اینترنت پرو' }}</h4>
+                <div class="small opacity-75">صورت‌حساب رسمی و گواهی تحویل سرویس اینترنت پرو</div>
             </div>
         </div>
         <div class="text-end">
@@ -141,7 +141,7 @@
                 <thead class="table-light">
                     <tr>
                         <th>شرح سرویس ارتباطی</th>
-                        <th>سقف ترافیک بین‌الملل</th>
+                        <th>سقف اینترنت پرو</th>
                         <th>مدت دوره</th>
                         <th>تعداد کاربر همزمان</th>
                         <th>تاریخ شروع</th>
@@ -151,7 +151,7 @@
                 <tbody>
                     <tr>
                         <td class="fw-bold text-start ps-3">
-                            <i class="fas fa-bolt text-warning me-2"></i> {{ sub.plan_name or 'سرویس اختصاصی اینترنت بین‌الملل پرو' }}
+                            <i class="fas fa-bolt text-warning me-2"></i> {{ sub.plan_name or 'سرویس اختصاصی اینترنت پرو' }}
                             <div class="small text-muted mt-1 font-monospace">شناسه اتصال: {{ (sub.hidify_uuid[:12] + '...') if sub.hidify_uuid else 'اختصاصی' }}</div>
                         </td>
                         <td><span class="badge bg-primary fs-6 font-monospace">{{ sub.data_limit or sub.traffic_limit or 0 }} گیگابایت</span></td>
@@ -164,28 +164,34 @@
             </table>
         </div>
 
-        <!-- باکس فعال‌سازی و QR کد با حاشیه سفید عریض -->
-        <div class="row g-3 align-items-center bg-light p-3 rounded-3 border mb-4">
-            <div class="col-sm-8">
-                <h6 class="fw-bold mb-2 text-primary"><i class="fas fa-qrcode me-2"></i>کد دسترسی هوشمند و لینک پیکربندی</h6>
-                <p class="small text-muted mb-2">جهت اتصال، نرم‌افزار مدیریت کانکشن را باز نموده و بارکد مقابل را اسکن نمایید یا لینک پیکربندی را کپی کنید.</p>
+        <!-- بارکدهای دسترسی و اتصال هوشمند -->
+        <div class="bg-light p-4 rounded-3 border mb-4 text-center">
+            <h6 class="fw-bold mb-3 text-primary"><i class="fas fa-qrcode me-2"></i>کدهای دسترسی هوشمند اینترنت پرو</h6>
+            <p class="small text-muted mb-3">جهت اتصال سریع، نرم‌افزار مدیریت کانکشن را باز نموده و بارکد مربوطه را اسکن نمایید.</p>
+            
+            <div class="d-flex justify-content-center align-items-start gap-4 flex-wrap my-3">
                 {% if sub_url %}
-                <div class="input-group input-group-sm mb-2">
-                    <input type="text" id="subUrlInput" class="form-control font-monospace" value="{{ sub_url }}" readonly style="direction: ltr;">
-                    <button class="btn btn-primary" type="button" onclick="navigator.clipboard.writeText('{{ sub_url }}'); alert('لینک اتصال با موفقیت کپی شد.');">
-                        <i class="fas fa-copy me-1"></i> کپی لینک
-                    </button>
+                <div class="text-center">
+                    <div class="qr-box-white">
+                        <div id="subQrcode" class="d-flex justify-content-center"></div>
+                    </div>
+                    <div class="fw-bold text-dark fs-6 mt-2">لینک ساب</div>
                 </div>
                 {% endif %}
-                <div class="small text-muted">
-                    <i class="fas fa-shield-halved text-success me-1"></i>
-                    ترافیک اینترنت بین‌الملل با بالاترین کیفیت، پایداری و اولویت پهنای باند اختصاصی
+
+                {% if single_url %}
+                <div class="text-center">
+                    <div class="qr-box-white">
+                        <div id="singleQrcode" class="d-flex justify-content-center"></div>
+                    </div>
+                    <div class="fw-bold text-dark fs-6 mt-2">کانفیگ تکی</div>
                 </div>
+                {% endif %}
             </div>
-            <div class="col-sm-4 text-center">
-                <div class="qr-box-white">
-                    <div id="invoiceQrcode" class="d-flex justify-content-center"></div>
-                </div>
+
+            <div class="small text-muted mt-3">
+                <i class="fas fa-shield-halved text-success me-1"></i>
+                اینترنت پرو با بالاترین کیفیت، پایداری و اولویت پهنای باند اختصاصی
             </div>
         </div>
 
@@ -213,11 +219,24 @@
 <script>
 window.addEventListener('DOMContentLoaded', () => {
     const subUrl = "{{ sub_url or '' }}";
-    if (subUrl) {
-        new QRCode(document.getElementById("invoiceQrcode"), {
+    const singleUrl = "{{ single_url or '' }}";
+
+    if (subUrl && document.getElementById("subQrcode")) {
+        new QRCode(document.getElementById("subQrcode"), {
             text: subUrl,
-            width: 130,
-            height: 130,
+            width: 140,
+            height: 140,
+            colorDark: "#000000",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.M
+        });
+    }
+
+    if (singleUrl && document.getElementById("singleQrcode")) {
+        new QRCode(document.getElementById("singleQrcode"), {
+            text: singleUrl,
+            width: 140,
+            height: 140,
             colorDark: "#000000",
             colorLight: "#ffffff",
             correctLevel: QRCode.CorrectLevel.M
