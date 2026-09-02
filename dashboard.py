@@ -7641,14 +7641,19 @@ def view_invoice(sub_id: int):
             }
     if not branding:
         branding = {
-            "brand_title": db.get_setting("brand_title") or "سامانه هوشمند اینترنت بین‌الملل پرو",
+            "brand_title": db.get_setting("brand_title") or "سامانه هوشمند اینترنت پرو",
             "logo_url": db.get_setting("logo_url") or "",
-            "footer_text": "ارائه‌دهنده راهکارهای ارتباطی و شبکه پرسرعت بین‌الملل",
+            "footer_text": "ارائه‌دهنده راهکارهای ارتباطی و شبکه پرسرعت اینترنت پرو",
             "primary_color": "#4f46e5"
         }
 
+    h_url = get_hiddify_url()
+    u_proxy = get_user_proxy()
+    user_uuid = sub.get("hidify_uuid") or ""
+    sub_url = f"{h_url}/{u_proxy}/{user_uuid}/" if (user_uuid and h_url) else (sub.get("sub_url") or "")
+
     single_link_template = get_single_link_template(db)
-    sub_url = format_single_link(single_link_template, uuid=sub.get("hidify_uuid") or "", name=sub.get("account_name") or "")
+    single_url = format_single_link(single_link_template, uuid=user_uuid, name=sub.get("account_name") or "") if user_uuid else ""
 
     # فرمت تاریخ‌های شمسی
     shamsi_created = filter_shamsi_date(sub.get("created_at") or "")
@@ -7662,6 +7667,7 @@ def view_invoice(sub_id: int):
         sub=sub,
         branding=branding,
         sub_url=sub_url,
+        single_url=single_url,
         shamsi_created=shamsi_created,
         shamsi_start=shamsi_start,
         shamsi_expire=shamsi_expire,
