@@ -170,7 +170,8 @@
             <div class="row g-3 mb-3">
                 <div class="col-md-6">
                     <label class="form-label fw-semibold">ارائه‌دهنده درگاه (Gateway Provider):</label>
-                    <select class="form-select" name="gateway_type">
+                    <select class="form-select" name="gateway_type" id="rGwTypeSelect" onchange="handleResellerGatewayTypeChange(this)">
+                        <option value="blupal" {% if reseller_gateway.get('type') == 'blupal' %}selected{% endif %}>بلوپال - کارت به کارت هوشمند (BluPal)</option>
                         <option value="zarinpal" {% if reseller_gateway.get('type') == 'zarinpal' %}selected{% endif %}>زرین‌پال (ZarinPal)</option>
                         <option value="idpay" {% if reseller_gateway.get('type') == 'idpay' %}selected{% endif %}>آیدی‌پی (IDPay)</option>
                         <option value="nextpay" {% if reseller_gateway.get('type') == 'nextpay' %}selected{% endif %}>نکست‌پی (NextPay)</option>
@@ -179,7 +180,47 @@
                 <div class="col-md-6">
                     <label class="form-label fw-semibold">مرچنت کد / کلید وب‌سرویس (API Key):</label>
                     <input type="text" class="form-control font-monospace" name="gateway_key" 
-                           value="{{ reseller_gateway.get('key') or '' }}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" dir="ltr">
+                           value="{{ reseller_gateway.get('key') or '' }}" placeholder="blu_live_... یا xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" dir="ltr">
+                    <div class="text-muted small mt-1" id="rGwKeyHint">
+                        {% if reseller_gateway.get('type') == 'blupal' %}
+                            کلید API لایو (blu_live_...) یا سندباکس (blu_test_...) دریافتی از پنل بلوپال
+                        {% else %}
+                            کد مرچنت یا کلید وب‌سرویس دریافت شده از درگاه انتخابی
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- جعبه اختصاصی اطلاعات و آدرس‌های وب‌هوک و کال‌بک بلوپال نماینده -->
+            <div id="rBlupalInfoBox" class="p-3 bg-light rounded-3 border border-primary border-opacity-25 mb-3" style="{% if reseller_gateway.get('type') != 'blupal' %}display: none;{% endif %}">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="badge bg-primary">درگاه کارت به کارت هوشمند بلوپال</span>
+                    <span class="small fw-bold text-dark">آدرس‌های اتصال وب‌هوک و کال‌بک ربات شما</span>
+                </div>
+                <p class="small text-muted mb-3">جهت راه‌اندازی، این ۲ آدرس را در پنل کاربری بلوپال خود در بخش مدیریت API Key ثبت نمایید:</p>
+                
+                <div class="row g-2 mb-2">
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold text-secondary mb-1">🔗 آدرس وب‌هوک (Webhook URL):</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" id="rBlupalWebhookInput" class="form-control font-monospace text-primary fw-bold" readonly value="{{ blupal_webhook_url }}" dir="ltr">
+                            <button type="button" class="btn btn-primary" onclick="copyFieldValue('rBlupalWebhookInput', 'آدرس وب‌هوک')">
+                                <i class="fas fa-copy me-1"></i> کپی
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold text-secondary mb-1">🌐 آدرس صفحه بازگشت (Callback URL):</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" id="rBlupalCallbackInput" class="form-control font-monospace text-success fw-bold" readonly value="{{ blupal_callback_url }}" dir="ltr">
+                            <button type="button" class="btn btn-success" onclick="copyFieldValue('rBlupalCallbackInput', 'آدرس بازگشت')">
+                                <i class="fas fa-copy me-1"></i> کپی
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="small text-muted mt-2">
+                    <i class="fas fa-circle-check text-success me-1"></i> سازگار با تمام کلید‌های لایو و سندباکس بلوپال.
                 </div>
             </div>
 
@@ -233,5 +274,32 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyFieldValue(elemId, label) {
+    const input = document.getElementById(elemId);
+    if (!input) return;
+    input.select();
+    navigator.clipboard.writeText(input.value).then(() => {
+        alert((label || 'آدرس') + ' با موفقیت در کلیپ‌بورد کپی شد! ✅');
+    }).catch(() => {
+        prompt('آدرس را کپی کنید:', input.value);
+    });
+}
+
+function handleResellerGatewayTypeChange(selectEl) {
+    const box = document.getElementById('rBlupalInfoBox');
+    const hint = document.getElementById('rGwKeyHint');
+    if (selectEl.value === 'blupal') {
+        if (box) box.style.display = 'block';
+        if (hint) hint.innerText = 'کلید API لایو (blu_live_...) یا سندباکس (blu_test_...) دریافتی از پنل بلوپال';
+    } else {
+        if (box) box.style.display = 'none';
+        if (hint) hint.innerText = 'کد مرچنت یا کلید وب‌سرویس دریافت شده از درگاه انتخابی';
+    }
+}
+</script>
 {% endblock %}
 

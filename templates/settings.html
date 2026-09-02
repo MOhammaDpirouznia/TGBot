@@ -472,6 +472,7 @@ function sendTestSms() {
                 <div class="col-md-4">
                     <label class="form-label fw-bold">نوع ارائه‌دهنده درگاه (Gateway Provider)</label>
                     <select class="form-select" name="online_gateway_type">
+                        <option value="blupal" {% if admin_gateway.get('type') == 'blupal' %}selected{% endif %}>بلوپال - کارت به کارت هوشمند (BluPal)</option>
                         <option value="zarinpal" {% if admin_gateway.get('type') == 'zarinpal' %}selected{% endif %}>زرین‌پال (ZarinPal)</option>
                         <option value="idpay" {% if admin_gateway.get('type') == 'idpay' %}selected{% endif %}>آیدی‌پی (IDPay)</option>
                         <option value="nextpay" {% if admin_gateway.get('type') == 'nextpay' %}selected{% endif %}>نکست‌پی (NextPay)</option>
