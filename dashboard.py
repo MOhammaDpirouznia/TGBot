@@ -3749,7 +3749,7 @@ def broadcast():
 @permission_required("tickets")
 def tickets():
     """لیست و میز کار تیکت‌های پشتیبانی با تفکیک تب‌های مشتریان و نمایندگان، وضعیت‌ها و آمار"""
-    category_filter = request.args.get("category", "customers")
+    category_filter = request.args.get("category", "all")
     status_filter = request.args.get("status", "all")
     search = request.args.get("search", "").strip()
 
@@ -5918,7 +5918,7 @@ def reseller_card_delete(card_id):
 def reseller_tickets():
     """مشاهده و مدیریت تیکت‌های پشتیبانی مشتریان ربات نماینده و مکاتبات با مدیریت"""
     reseller_id = session.get("reseller_id")
-    category_filter = request.args.get("category", "customers")
+    category_filter = request.args.get("category", "all")
     status_filter = request.args.get("status", "all")
     search = request.args.get("search", "").strip()
 
