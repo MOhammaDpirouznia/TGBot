@@ -2083,6 +2083,215 @@ def payments():
     )
 
 
+def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: dict = None, processed_by: str = "درگاه آنلاین (خودکار)") -> dict:
+    """
+    تایید و تحویل خودکار تراکنش پرداخت آنلاین و وب‌هوک (Idempotent)
+    """
+    conn = db.get_connection()
+    tx_row = conn.execute("SELECT * FROM transactions WHERE order_id=?", (order_id,)).fetchone()
+    conn.close()
+
+    if not tx_row:
+        logger.warning(f"fulfill_approved_transaction: Transaction {order_id} not found.")
+        return {"success": False, "error": "تراکنش یافت نشد."}
+
+    tx = dict(tx_row)
+    payment_id = tx["id"]
+
+    # جلوگیری از تحویل تکراری (Idempotency)
+    if tx.get("status") == "approved":
+        return {"success": True, "already_approved": True, "tx": tx}
+
+    now_iso = get_now_iso()
+    amount = tx.get("amount", 0)
+    pname = tx.get("plan_name", "اشتراک")
+    r_id = tx.get("reseller_id")
+    user_id = tx.get("user_id")
+
+    # ۱. حالت خرید بسته پیش‌خرید اعتباری نماینده
+    if tx.get("gateway") == "bundle_reseller" or str(tx.get("order_id", "")).startswith("R_BUNDLE"):
+        res = db.apply_reseller_bundle_credit(r_id, amount, pname, payment_id)
+        credit_added = res.get("credit_added", amount) if isinstance(res, dict) else amount
+        new_balance = res.get("new_balance", 0) if isinstance(res, dict) else 0
+
+        conn = db.get_connection()
+        conn.execute(
+            "UPDATE transactions SET status='approved', ref_id=?, processed_by=?, processed_at=?, updated_at=? WHERE id=?",
+            (str(ref_id or order_id), processed_by, now_iso, now_iso, payment_id)
+        )
+        conn.commit()
+        conn.close()
+
+        if r_id:
+            db.add_reseller_notification(
+                reseller_id=r_id,
+                title="تایید خودکار خرید بسته اعتباری (درگاه)",
+                message=f"پرداخت آنلاین شما برای «{pname}» به مبلغ {amount:,} تومان با موفقیت تایید شد و مبلغ {credit_added:,} تومان به کیف پول شما واریز گردید.",
+                type="success"
+            )
+
+        reseller = db.get_reseller(r_id) if r_id else None
+        if reseller and reseller.get("telegram_id"):
+            tg_msg = (
+                f"✅ <b>پرداخت آنلاین شما با موفقیت تایید شد!</b>\n\n"
+                f"📦 <b>عنوان بسته:</b> {pname}\n"
+                f"💳 <b>مبلغ پرداختی:</b> {amount:,} تومان\n"
+                f"🎁 <b>مبلغ شارژ شده:</b> {credit_added:,} تومان\n"
+                f"💰 <b>موجودی جدید کیف پول:</b> {new_balance:,} تومان\n"
+                f"🆔 <b>کد پیگیری / ارجاع:</b> <code>{ref_id or order_id}</code>"
+            )
+            try:
+                send_telegram_msg(reseller["telegram_id"], tg_msg)
+            except Exception as e:
+                logger.error(f"Error sending telegram msg to reseller {r_id}: {e}")
+
+        return {"success": True, "type": "reseller_bundle"}
+
+    # ۲. حالت خرید یا تمدید اشتراک توسط کاربر
+    is_renewal = bool(tx.get("is_renewal"))
+    renew_sub_id = tx.get("renew_sub_id")
+    plans = get_plans_dict()
+    selected_plan = next((p for p in plans.values() if p["name"] == pname), None)
+    data_limit = selected_plan["data_limit"] if selected_plan else 30
+    duration = selected_plan["duration"] if selected_plan else 30
+    account_name = tx.get("account_name") or f"tg_{user_id}"
+    user_uuid = ""
+
+    if is_renewal and renew_sub_id:
+        user_subs = db.get_user_subscriptions(user_id)
+        target_sub = next((s for s in user_subs if s["id"] == renew_sub_id), None)
+        if target_sub:
+            user_uuid = target_sub.get("hidify_uuid", "")
+            old_limit = float(target_sub.get("data_limit") or 0)
+            old_used = float(target_sub.get("data_used") or 0)
+            old_plan_name = target_sub.get("plan_name") or ""
+
+            renew_res = hidify_sync_renew_user(user_uuid, float(data_limit), int(duration))
+            final_limit = renew_res.get("new_limit", data_limit)
+            final_days = renew_res.get("new_days", duration)
+            renewal_type = renew_res.get("renewal_type", "fallback")
+            final_plan_name = pname if renewal_type == "reset_and_replaced" else (old_plan_name if old_limit > float(data_limit) else pname)
+            final_used = 0 if renewal_type == "reset_and_replaced" else old_used
+
+            db.save_subscription_history(
+                subscription_id=renew_sub_id,
+                telegram_id=user_id,
+                hidify_uuid=user_uuid,
+                account_name=target_sub.get("account_name") or account_name,
+                plan_name=old_plan_name or pname,
+                previous_usage_gb=old_used,
+                previous_limit_gb=old_limit,
+                period_days=target_sub.get("duration") or duration,
+                renewal_type=renewal_type,
+                reseller_id=target_sub.get("reseller_id")
+            )
+
+            db.update_subscription(
+                renew_sub_id,
+                plan_name=final_plan_name,
+                data_limit=final_limit,
+                duration=final_days,
+                data_used=final_used,
+                status="active"
+            )
+    else:
+        # ساخت اشتراک جدید
+        res = hidify_sync_create_user(name=account_name, usage_limit_gb=data_limit, package_days=duration, comment=str(user_id))
+        user_uuid = res.get("uuid", "")
+        if user_uuid:
+            db.save_subscription(
+                telegram_id=user_id,
+                hidify_uuid=user_uuid,
+                plan_id="custom",
+                plan_name=pname,
+                data_limit=data_limit,
+                duration=duration,
+                status="active",
+                account_name=account_name
+            )
+
+    conn = db.get_connection()
+    conn.execute(
+        "UPDATE transactions SET status='approved', ref_id=?, processed_by=?, processed_at=?, updated_at=? WHERE id=?",
+        (str(ref_id or order_id), processed_by, now_iso, now_iso, payment_id)
+    )
+    conn.commit()
+    conn.close()
+
+    # پاداش رفرال
+    if user_id:
+        try:
+            db.complete_referral(user_id)
+        except Exception:
+            pass
+
+    # پردازش و واریز کش‌بک کاربران VIP
+    if user_id:
+        try:
+            vip_info = db.get_user_vip_info(user_id)
+            if vip_info.get("is_vip") and vip_info.get("cashback_percent", 0) > 0:
+                paid_amount = int(amount or 0)
+                cb_rate = vip_info.get("cashback_percent", 10)
+                cashback_val = int((paid_amount * cb_rate) / 100)
+                if cashback_val > 0:
+                    cb_res = db.add_wallet_balance(
+                        user_id,
+                        cashback_val,
+                        f"هدیه کش‌بک خرید ویژه VIP ({cb_rate}%)",
+                        ref_id=str(order_id or payment_id),
+                        tx_type="cashback"
+                    )
+                    new_w_bal = cb_res.get("new_balance", 0)
+                    cb_msg = (
+                        f"🎁 <b>هدیه کش‌بک VIP واریز شد!</b>\n\n"
+                        f"💎 به عنوان کاربر ویژه، <b>{cb_rate}٪</b> از مبلغ خرید شما معادل <b>{cashback_val:,} تومان</b> به کیف پول شما بازگشت داده شد.\n"
+                        f"💰 <b>موجودی جدید کیف پول:</b> {new_w_bal:,} تومان"
+                    )
+                    try:
+                        send_telegram_msg(user_id, cb_msg)
+                    except Exception:
+                        pass
+        except Exception as e_cb:
+            logger.error(f"Error processing VIP cashback: {e_cb}")
+
+    # بررسی ارتقای خودکار کاربر به VIP
+    if user_id:
+        try:
+            upgrade_res = db.check_and_upgrade_user_vip(user_id)
+            if upgrade_res.get("upgraded"):
+                t_spent = upgrade_res.get("total_spent", 0)
+                cb_percent = upgrade_res.get("cashback_percent", 10)
+                upgrade_msg = (
+                    f"🎉 <b>تبریک! شما به کاربر طلایی (⭐️ VIP) ارتقا یافتید!</b>\n\n"
+                    f"✨ با رسیدن مجموع خریدهای شما به <b>{t_spent:,} تومان</b>، سطح حساب شما ارتقا یافت.\n\n"
+                    f"👑 <b>مزایای اختصاصی شما:</b>\n"
+                    f"• 💰 <b>{cb_percent}٪ کش‌بک نقدی</b> در تمام خریدهای بعدی\n"
+                    f"• 🎧 <b>اولویت اول</b> در صف پاسخگویی تیکت‌های پشتیبانی\n"
+                    f"• 💎 <b>نشان طلایی VIP</b> در پروفایل ربات\n\n"
+                    f"از همراهی و اعتماد شما بی‌نهایت سپاسگزاریم! 🌹"
+                )
+                try:
+                    send_telegram_msg(user_id, upgrade_msg)
+                except Exception:
+                    pass
+        except Exception as e_up:
+            logger.error(f"Error checking VIP auto-upgrade: {e_up}")
+
+    # ارسال کارت و بارکد اتصال به تلگرام مشتری
+    h_url = get_hiddify_url()
+    u_proxy = get_user_proxy()
+    if user_uuid and h_url and user_id:
+        sub_url = f"{h_url}/{u_proxy}/{user_uuid}/"
+        card_title = "🎉 **پرداخت آنلاین تایید شد و اشتراک شما فعال گردید!**" if not is_renewal else "🔄 **اشتراک شما با موفقیت تمدید شد!**"
+        card_details = f"📋 پلن: **{pname}**\n📊 حجم: **{data_limit} گیگابایت**\n⏰ مدت: **{duration} روز**"
+        try:
+            send_subscription_card_sync(user_id, sub_url, card_title, card_details)
+        except Exception as e_card:
+            logger.error(f"Error sending subscription card: {e_card}")
+
+    return {"success": True, "type": "subscription", "uuid": user_uuid}
+
+
 @app.route("/payment/approve/<int:payment_id>")
 @admin_required
 def approve_payment(payment_id):
@@ -3517,12 +3726,20 @@ def cards():
     admin_gateway = db.get_admin_gateway()
     crypto_config = CryptoPaymentGateway.get_crypto_config(db)
 
+    domain = db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "http://localhost:5000")
+    if not str(domain).startswith("http"):
+        domain = f"https://{domain}"
+    blupal_webhook_url = f"{str(domain).rstrip('/')}/payment/blupal/webhook"
+    blupal_callback_url = f"{str(domain).rstrip('/')}/payment/blupal/callback"
+
     return render_template(
         "cards.html",
         cards=cards_list,
         payment_methods=payment_methods,
         admin_gateway=admin_gateway,
-        crypto_config=crypto_config
+        crypto_config=crypto_config,
+        blupal_webhook_url=blupal_webhook_url,
+        blupal_callback_url=blupal_callback_url
     )
 
 
@@ -4533,18 +4750,28 @@ def reseller_bundles_online_pay(bundle_id: str):
     username = reseller.get("username", f"reseller_{reseller_id}")
 
     pay_url = None
+    invoice_id = None
     if gw_type == "zarinpal":
         from payment import ZarinPal
         zp = ZarinPal(merchant_id=gw_key, sandbox=sandbox)
         res = zp.create_payment(amount=price, description=f"خرید بسته اعتباری {bundle['title']}", callback_url=callback_url)
         if res.get("success"):
             pay_url = res.get("payment_url")
+            invoice_id = res.get("authority")
     elif gw_type == "idpay":
         from payment import IDPay
         idp = IDPay(api_key=gw_key, sandbox=sandbox)
         res = idp.create_payment(amount=price, name=reseller.get("name") or username, description=f"خرید بسته {bundle['title']}", callback_url=callback_url, order_id=order_id)
         if res.get("success"):
             pay_url = res.get("payment_url")
+            invoice_id = res.get("payment_id")
+    elif gw_type == "blupal":
+        from payment import BluPal
+        bp = BluPal(api_key=gw_key, sandbox=sandbox)
+        res = bp.create_payment(amount=price, order_id=order_id, description=f"خرید بسته اعتباری {bundle['title']}")
+        if res.get("success"):
+            pay_url = res.get("payment_url") or res.get("payment_link")
+            invoice_id = res.get("invoice_id")
 
     if pay_url:
         db.save_transaction(
@@ -4554,7 +4781,7 @@ def reseller_bundles_online_pay(bundle_id: str):
             plan_name=f"بسته {bundle['title']}",
             amount=price,
             gateway=f"{gw_type}_admin",
-            tracking_code=order_id,
+            tracking_code=str(invoice_id or order_id),
             status="pending",
             reseller_id=reseller_id
         )
@@ -5170,11 +5397,20 @@ def reseller_cards():
     payment_methods = db.get_payment_methods(reseller_id=reseller_id)
     reseller_gateway = db.get_reseller_gateway(reseller_id)
 
+    r_info = db.get_reseller(reseller_id) or {}
+    domain = r_info.get("custom_domain") or db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "http://localhost:5000")
+    if not str(domain).startswith("http"):
+        domain = f"https://{domain}"
+    blupal_webhook_url = f"{str(domain).rstrip('/')}/payment/blupal/webhook"
+    blupal_callback_url = f"{str(domain).rstrip('/')}/payment/blupal/callback"
+
     return render_template(
         "reseller_cards.html",
         cards=cards,
         payment_methods=payment_methods,
-        reseller_gateway=reseller_gateway
+        reseller_gateway=reseller_gateway,
+        blupal_webhook_url=blupal_webhook_url,
+        blupal_callback_url=blupal_callback_url
     )
 
 
@@ -6234,7 +6470,7 @@ def reseller_bundles_buy():
 
 @app.route("/payment/callback/<order_id>", methods=["GET", "POST"])
 def payment_callback(order_id: str):
-    """پردازش بازگشت از درگاه پرداخت آنلاین شاپرک (زرین‌پال / آیدی‌پی)"""
+    """پردازش بازگشت از درگاه پرداخت آنلاین شاپرک (زرین‌پال / آیدی‌پی / بلوپال)"""
     authority = request.args.get("Authority") or request.form.get("Authority")
     status = request.args.get("Status") or request.form.get("Status")
     idpay_id = request.args.get("id") or request.form.get("id")
@@ -6243,6 +6479,10 @@ def payment_callback(order_id: str):
     trans = db.get_transaction_by_order_id(order_id)
     if not trans:
         return render_template("payment_result.html", success=False, message="تراکنش یافت نشد.")
+
+    # اگر از قبل تایید شده باشد
+    if trans.get("status") == "approved":
+        return render_template("payment_result.html", success=True, order_id=order_id, amount=trans.get("amount", 0), ref_id=trans.get("ref_id"), plan_name=trans.get("plan_name", ""))
 
     amount = trans.get("amount", 0)
     user_id = trans.get("user_id")
@@ -6275,13 +6515,165 @@ def payment_callback(order_id: str):
         if res.get("success"):
             verified = True
             ref_id = res.get("ref_id")
+    elif gw_type == "blupal" or str(trans.get("gateway", "")).startswith("blupal"):
+        # بررسی وضعیت فاکتور در بلوپال
+        invoice_id = trans.get("tracking_code")
+        if invoice_id and str(invoice_id).isdigit():
+            from payment import BluPal
+            bp = BluPal(api_key=gw_key, sandbox=sandbox)
+            res = bp.check_invoice(int(invoice_id))
+            if res.get("success") and res.get("is_paid"):
+                verified = True
+                ref_id = f"کارت: {res.get('payer_card', '')} | فاکتور: {invoice_id}"
 
     if verified:
-        db.update_transaction(order_id, status="approved", ref_id=str(ref_id or authority or idpay_id))
+        fulfill_approved_transaction(order_id, ref_id=str(ref_id or authority or idpay_id), processed_by=f"درگاه {gw_type}")
         return render_template("payment_result.html", success=True, order_id=order_id, amount=amount, ref_id=ref_id, plan_name=plan_name)
     else:
         db.update_transaction(order_id, status="failed")
         return render_template("payment_result.html", success=False, order_id=order_id, amount=amount, message="پرداخت ناموفق بود یا توسط کاربر لغو گردید.")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# مسیرهای اختصاصی وب‌هوک و کال‌بک درگاه کارت به کارت هوشمند بلوپال (BluPal)
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/payment/blupal/webhook", methods=["POST"])
+@app.route("/api/blupal/webhook", methods=["POST"])
+def blupal_webhook():
+    """
+    دریافت اعلان خودکار وب‌هوک پرداخت موفق از سرورهای بلوپال (BluPal Webhook)
+    مستندات: https://blupal.net/documentation
+    فرمت: { "success": true, "event": "payment.completed", "invoice_id": 123, "status": "PAID", ... }
+    """
+    payload = request.get_json(silent=True) or {}
+    logger.info(f"Received BluPal webhook notification: {payload}")
+
+    if not payload:
+        return jsonify({"error": "Empty payload"}), 400
+
+    event = payload.get("event")
+    status = payload.get("status")
+    invoice_id = payload.get("invoice_id")
+
+    if event != "payment.completed" or status != "PAID" or not invoice_id:
+        return jsonify({"error": "Invalid payload or unhandled event"}), 400
+
+    # یافتن تراکنش بر اساس شماره فاکتور بلوپال (tracking_code)
+    tx = db.get_transaction_by_tracking_code(str(invoice_id))
+    if not tx:
+        logger.warning(f"BluPal Webhook: No transaction found for invoice_id={invoice_id}")
+        # طبق مستندات سرور باید پاسخ HTTP 200 بدهد تا ارسال مکرر متوقف شود
+        return jsonify({"received": True, "warning": "Invoice not found"}), 200
+
+    order_id = tx.get("order_id")
+    payer_name = payload.get("payer_name") or ""
+    payer_card = payload.get("payer_card") or ""
+    payer_bank = payload.get("payer_bank_name") or ""
+    mode = payload.get("mode", "live")
+    ref_info = f"کارت: {payer_card} | نام: {payer_name} | بانک: {payer_bank} | فاکتور: {invoice_id} ({mode})"
+
+    # فعال‌سازی و تایید خودکار و امن سفارش
+    fulfill_res = fulfill_approved_transaction(
+        order_id=order_id,
+        ref_id=ref_info,
+        payer_info=payload,
+        processed_by="وب‌هوک بلوپال (BluPal)"
+    )
+
+    logger.info(f"BluPal Webhook processed for order {order_id}: {fulfill_res}")
+    return jsonify({"received": True}), 200
+
+
+@app.route("/payment/blupal/callback/<order_id>", methods=["GET", "POST"])
+@app.route("/payment/blupal/callback", methods=["GET", "POST"])
+def blupal_callback(order_id: str = None):
+    """
+    صفحه بازگشت کاربر پس از پرداخت در درگاه کارت به کارت هوشمند بلوپال
+    """
+    if not order_id:
+        order_id = request.args.get("order_id") or request.form.get("order_id")
+        inv_param = request.args.get("invoice_id") or request.args.get("id")
+        if not order_id and inv_param:
+            tx_by_inv = db.get_transaction_by_tracking_code(str(inv_param))
+            if tx_by_inv:
+                order_id = tx_by_inv.get("order_id")
+
+    if not order_id:
+        return render_template("payment_result.html", success=False, message="شناسه سفارش نامعتبر است.")
+
+    tx = db.get_transaction_by_order_id(order_id)
+    if not tx:
+        return render_template("payment_result.html", success=False, message="تراکنش یافت نشد.")
+
+    amount = tx.get("amount", 0)
+    plan_name = tx.get("plan_name", "")
+    invoice_id = tx.get("tracking_code")
+    reseller_id = tx.get("reseller_id")
+
+    # اگر قبلاً با وب‌هوک یا تایید قبلی انجام شده باشد
+    if tx.get("status") == "approved":
+        return render_template(
+            "payment_result.html",
+            success=True,
+            order_id=order_id,
+            amount=amount,
+            plan_name=plan_name,
+            ref_id=tx.get("ref_id")
+        )
+
+    # در غیر این صورت، استعلام زنده از API بلوپال جهت اطمینان
+    if reseller_id:
+        gw_cfg = db.get_reseller_gateway(reseller_id)
+    else:
+        gw_cfg = db.get_admin_gateway()
+
+    gw_key = gw_cfg.get("key", "")
+    sandbox = gw_cfg.get("sandbox", False)
+
+    if gw_key and invoice_id and str(invoice_id).isdigit():
+        from payment import BluPal
+        bp = BluPal(api_key=gw_key, sandbox=sandbox)
+        try:
+            check_res = bp.check_invoice(int(invoice_id))
+            if check_res.get("success") and check_res.get("is_paid"):
+                payer_card = check_res.get("payer_card") or ""
+                payer_name = check_res.get("payer_name") or ""
+                ref_info = f"کارت: {payer_card} | نام: {payer_name} | فاکتور: {invoice_id}"
+                fulfill_approved_transaction(
+                    order_id=order_id,
+                    ref_id=ref_info,
+                    payer_info=check_res,
+                    processed_by="استعلام بازگشت بلوپال"
+                )
+                return render_template(
+                    "payment_result.html",
+                    success=True,
+                    order_id=order_id,
+                    amount=amount,
+                    plan_name=plan_name,
+                    ref_id=ref_info
+                )
+            elif check_res.get("status") == "PENDING":
+                return render_template(
+                    "payment_result.html",
+                    success=False,
+                    order_id=order_id,
+                    amount=amount,
+                    plan_name=plan_name,
+                    message="فاکتور شما در وضعیت در انتظار واریز قرار دارد. به محض واریز کارت به کارت، اشتراک شما به صورت خودکار فعال خواهد شد."
+                )
+        except Exception as e:
+            logger.error(f"Error checking invoice in blupal_callback: {e}")
+
+    return render_template(
+        "payment_result.html",
+        success=False,
+        order_id=order_id,
+        amount=amount,
+        plan_name=plan_name,
+        message="پرداخت هنوز تایید نشده است یا مهلت فاکتور به پایان رسیده است."
+    )
 
 
 # ─── راه‌اندازی سرور وب ───

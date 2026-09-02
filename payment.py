@@ -273,6 +273,178 @@ class IDPay:
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# BluPal (درگاه پرداخت کارت به کارت هوشمند)
+# ═══════════════════════════════════════════════════════════════════════
+
+class BluPal:
+    """
+    کلاینت درگاه پرداخت کارت به کارت هوشمند بلوپال (BluPal)
+    مستندات: https://blupal.net/documentation
+    """
+
+    BASE_URL = "https://blupal.net/api"
+
+    def __init__(self, api_key: str, sandbox: bool = False):
+        self.api_key = str(api_key or "").strip()
+        # تشخیص خودکار محیط آزمایشی بر اساس پیشوند کلید یا پرچم sandbox
+        if self.api_key.startswith("blu_test_"):
+            self.sandbox = True
+        else:
+            self.sandbox = bool(sandbox)
+
+        self.create_invoice_url = f"{self.BASE_URL}/v1/invoices/create"
+        self.invoice_status_url = f"{self.BASE_URL}/v1/invoices"
+        self.simulate_url = f"{self.BASE_URL}/v1/sandbox/invoices"
+
+    def create_payment(self, amount: int, card_number: str = None, 
+                       order_id: str = None, description: str = None) -> dict:
+        """
+        ایجاد فاکتور پرداخت کارت به کارت هوشمند در بلوپال
+        
+        Args:
+            amount: مبلغ فاکتور به تومان (سیستم آن را به ریال تبدیل می‌کند)
+            card_number: شماره کارت مشخص مقصد (اختیاری)
+            order_id: شناسه یکتای سفارش سیستم ما (اختیاری)
+            description: توضیحات فاکتور (اختیاری)
+        
+        Returns:
+            dict: حاوی مشخصات فاکتور و لینک پرداخت اختصاصی
+        """
+        # تبدیل مبلغ از تومان به ریال برای بلوپال
+        amount_rial = int(amount) * 10
+
+        payload = {
+            "amount": amount_rial
+        }
+        if card_number:
+            clean_card = str(card_number).replace("-", "").replace(" ", "").strip()
+            if clean_card:
+                payload["card_number"] = clean_card
+
+        headers = {
+            "X-API-Key": self.api_key,
+            "Content-Type": "application/json",
+            "User-Agent": "HiddiBot-BluPal/1.0"
+        }
+
+        try:
+            with httpx.Client(timeout=15) as client:
+                response = client.post(
+                    self.create_invoice_url,
+                    json=payload,
+                    headers=headers
+                )
+                try:
+                    result = response.json()
+                except Exception:
+                    result = {"raw_text": response.text}
+
+                if response.status_code == 200 and result.get("success"):
+                    invoice_id = result.get("invoice_id")
+                    payment_link = result.get("payment_link")
+                    final_amount_rial = result.get("final_amount", amount_rial)
+                    final_amount_toman = int(final_amount_rial) // 10
+                    assigned_card = result.get("card_number")
+                    mode = result.get("mode", "sandbox" if self.sandbox else "live")
+
+                    return {
+                        "success": True,
+                        "invoice_id": invoice_id,
+                        "payment_url": payment_link,
+                        "payment_link": payment_link,
+                        "amount_rial": amount_rial,
+                        "amount_toman": amount,
+                        "final_amount_rial": final_amount_rial,
+                        "final_amount_toman": final_amount_toman,
+                        "card_number": assigned_card,
+                        "mode": mode,
+                        "expires_at": result.get("expires_at"),
+                        "raw": result
+                    }
+                else:
+                    error_msg = result.get("message") or result.get("error") or f"خطای درگاه با کد وضعیت {response.status_code}"
+                    logger.warning(f"BluPal Invoice creation failed: {error_msg} (HTTP {response.status_code})")
+                    return {
+                        "success": False,
+                        "error": error_msg,
+                        "raw": result
+                    }
+        except Exception as e:
+            logger.error(f"Network error in BluPal create_payment: {e}")
+            return {"success": False, "error": f"خطای ارتباط با درگاه بلوپال: {str(e)}"}
+
+    def check_invoice(self, invoice_id: int) -> dict:
+        """
+        بررسی و استعلام وضعیت فاکتور در بلوپال
+        GET https://blupal.net/api/v1/invoices/{invoice_id}
+        """
+        headers = {
+            "X-API-Key": self.api_key,
+            "User-Agent": "HiddiBot-BluPal/1.0"
+        }
+        url = f"{self.invoice_status_url}/{invoice_id}"
+
+        try:
+            with httpx.Client(timeout=15) as client:
+                response = client.get(url, headers=headers)
+                try:
+                    result = response.json()
+                except Exception:
+                    result = {"raw_text": response.text}
+
+                if response.status_code == 200 and result.get("success"):
+                    status = result.get("status")  # PENDING, PAID, EXPIRED, CANCELED
+                    amount_rial = result.get("amount", 0)
+                    final_amount_rial = result.get("final_amount", amount_rial)
+
+                    return {
+                        "success": True,
+                        "status": status,
+                        "is_paid": (status == "PAID"),
+                        "invoice_id": result.get("invoice_id"),
+                        "transaction_id": result.get("transaction_id"),
+                        "amount_rial": amount_rial,
+                        "amount_toman": int(amount_rial) // 10 if amount_rial else 0,
+                        "final_amount_rial": final_amount_rial,
+                        "final_amount_toman": int(final_amount_rial) // 10 if final_amount_rial else 0,
+                        "payer_name": result.get("payer_name"),
+                        "payer_card": result.get("payer_card"),
+                        "payer_bank_name": result.get("payer_bank_name"),
+                        "mode": result.get("mode"),
+                        "raw": result
+                    }
+                else:
+                    error_msg = result.get("message") or result.get("error") or f"HTTP {response.status_code}"
+                    return {
+                        "success": False,
+                        "error": error_msg,
+                        "raw": result
+                    }
+        except Exception as e:
+            logger.error(f"Network error in BluPal check_invoice {invoice_id}: {e}")
+            return {"success": False, "error": str(e)}
+
+    def simulate_payment(self, invoice_id: int, scenario: str = "success") -> dict:
+        """
+        شبیه‌سازی پرداخت در محیط Sandbox بلوپال
+        POST https://blupal.net/api/v1/sandbox/invoices/{invoice_id}/simulate
+        """
+        headers = {
+            "X-API-Key": self.api_key,
+            "Content-Type": "application/json",
+            "User-Agent": "HiddiBot-BluPal/1.0"
+        }
+        url = f"{self.simulate_url}/{invoice_id}/simulate"
+
+        try:
+            with httpx.Client(timeout=15) as client:
+                response = client.post(url, json={"scenario": scenario}, headers=headers)
+                return response.json()
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # Payment Manager
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -282,7 +454,7 @@ class PaymentManager:
     def __init__(self, gateway: str = "zarinpal"):
         """
         Args:
-            gateway: نوع درگاه (zarinpal یا idpay)
+            gateway: نوع درگاه (zarinpal, idpay, blupal)
         """
         self.gateway = gateway
 
@@ -294,6 +466,10 @@ class PaymentManager:
             api_key = os.getenv("IDPAY_API_KEY", "")
             sandbox = os.getenv("IDPAY_SANDBOX", "true").lower() == "true"
             self.client = IDPay(api_key, sandbox)
+        elif gateway == "blupal":
+            api_key = os.getenv("BLUPAL_API_KEY", "")
+            sandbox = os.getenv("BLUPAL_SANDBOX", "false").lower() == "true"
+            self.client = BluPal(api_key, sandbox)
         else:
             raise ValueError(f"Unknown gateway: {gateway}")
 
@@ -327,6 +503,14 @@ class PaymentManager:
                 callback_url=callback_url,
                 order_id=order_id,
             )
+        elif self.gateway == "blupal":
+            result = self.client.create_payment(
+                amount=amount,
+                order_id=order_id,
+                description=description,
+            )
+            if result.get("success"):
+                result["order_id"] = order_id
         
         # ذخیره تراکنش
         if result.get("success"):
@@ -338,7 +522,7 @@ class PaymentManager:
                 "gateway": self.gateway,
                 "status": "pending",
                 "created_at": get_now_iso(),
-                "authority": result.get("authority") or result.get("payment_id"),
+                "authority": result.get("authority") or result.get("payment_id") or result.get("invoice_id"),
             }
             save_transactions(transactions)
             result["order_id"] = order_id
@@ -357,6 +541,11 @@ class PaymentManager:
                 payment_id=kwargs.get("payment_id"),
                 order_id=kwargs.get("order_id"),
             )
+        elif self.gateway == "blupal":
+            invoice_id = kwargs.get("invoice_id") or kwargs.get("authority") or kwargs.get("payment_id")
+            if invoice_id:
+                return self.client.check_invoice(int(invoice_id))
+            return {"success": False, "error": "invoice_id is required"}
 
     def get_pay_url(self, result: dict) -> str:
         """دریافت آدرس پرداخت از نتیجه"""
@@ -364,6 +553,8 @@ class PaymentManager:
             return result.get("payment_url", "")
         elif self.gateway == "idpay":
             return result.get("link") or result.get("payment_url", "")
+        elif self.gateway == "blupal":
+            return result.get("payment_url") or result.get("payment_link", "")
         return ""
 
 

@@ -1929,6 +1929,27 @@ class Database:
         finally:
             conn.close()
 
+    def get_transaction_by_tracking_code(self, tracking_code):
+        """دریافت تراکنش بر اساس tracking_code (شناسه فاکتور / ارجاع درگاه)"""
+        if not tracking_code:
+            return None
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                SELECT * FROM transactions 
+                WHERE tracking_code = ? OR tracking_code LIKE ?
+                ORDER BY id DESC LIMIT 1
+            """, (str(tracking_code), f"%{tracking_code}%"))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error getting transaction by tracking_code {tracking_code}: {e}")
+            return None
+        finally:
+            conn.close()
+
     def get_pending_transactions(self):
         """دریافت تراکنش‌های در انتظار"""
         conn = self.get_connection()
@@ -6524,7 +6545,7 @@ class Database:
     DEFAULT_PAYMENT_METHODS = [
         {"id": "card_to_card", "name": "کارت به کارت (بانکی)", "icon": "fa-credit-card", "color": "primary", "enabled": True, "desc": "واریز به شماره کارت‌های فعال با بررسی و تایید فیش"},
         {"id": "wallet", "name": "پرداخت از کیف پول", "icon": "fa-wallet", "color": "success", "enabled": True, "desc": "کسر آنی مبلغ از موجودی کیف پول و فعال‌سازی لحظه‌ای اشتراک"},
-        {"id": "online_gateway", "name": "درگاه پرداخت آنلاین شاپرک", "icon": "fa-globe", "color": "info", "enabled": True, "desc": "اتصال مستقیم به درگاه‌های زرین‌پال، آیدی‌پی یا نکست‌پی"},
+        {"id": "online_gateway", "name": "درگاه پرداخت آنلاین (شاپرک / بلوپال)", "icon": "fa-globe", "color": "info", "enabled": True, "desc": "اتصال خودکار به درگاه‌های زرین‌پال، آیدی‌پی، نکست‌پی یا کارت‌به‌کارت هوشمند بلوپال"},
         {"id": "crypto", "name": "ارز دیجیتال (تتر / کریپتو)", "icon": "fa-gem", "color": "warning", "enabled": True, "desc": "پرداخت با تتر (USDT TRC20 / TON) با محاسبه خودکار نرخ روز"},
     ]
 

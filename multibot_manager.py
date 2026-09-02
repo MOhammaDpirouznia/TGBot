@@ -281,8 +281,12 @@ class ResellerBotInstance:
                             buttons.append([InlineKeyboardButton(f"💰 پرداخت از کیف پول (کسری: {price - user_wallet:,} ت)", callback_data="r_pwal_insuf")])
                     elif m_id == "online_gateway":
                         if gw_cfg.get("enabled") and gw_cfg.get("key"):
-                            gw_label = "زرین‌پال" if gw_cfg.get("type") == "zarinpal" else ("آیدی‌پی" if gw_cfg.get("type") == "idpay" else "آنلاین")
-                            buttons.append([InlineKeyboardButton(f"💳 درگاه پرداخت آنلاین ({gw_label})", callback_data=f"r_ponl_{plan_id}")])
+                            if gw_cfg.get("type") == "blupal":
+                                gw_btn_text = "💳 پرداخت کارت به کارت هوشمند (بلوپال)"
+                            else:
+                                gw_label = "زرین‌پال" if gw_cfg.get("type") == "zarinpal" else ("آیدی‌پی" if gw_cfg.get("type") == "idpay" else "آنلاین")
+                                gw_btn_text = f"💳 درگاه پرداخت آنلاین ({gw_label})"
+                            buttons.append([InlineKeyboardButton(gw_btn_text, callback_data=f"r_ponl_{plan_id}")])
                         else:
                             buttons.append([InlineKeyboardButton("💳 درگاه آنلاین (بزودی)", callback_data="r_ponl_soon")])
                     elif m_id == "card_to_card":
@@ -546,18 +550,28 @@ class ResellerBotInstance:
             callback_url = f"{str(domain).rstrip('/')}/payment/callback/{order_id}"
 
             pay_url = None
+            invoice_id = None
             if gw_type == "zarinpal":
                 from payment import ZarinPal
                 zp = ZarinPal(merchant_id=gw_key, sandbox=sandbox)
                 res = zp.create_payment(amount=price, description=f"خرید {pname}", callback_url=callback_url)
                 if res.get("success"):
                     pay_url = res.get("payment_url")
+                    invoice_id = res.get("authority")
             elif gw_type == "idpay":
                 from payment import IDPay
                 idp = IDPay(api_key=gw_key, sandbox=sandbox)
                 res = idp.create_payment(amount=price, name=user.full_name or "کاربر", description=f"خرید {pname}", callback_url=callback_url, order_id=order_id)
                 if res.get("success"):
                     pay_url = res.get("payment_url")
+                    invoice_id = res.get("payment_id")
+            elif gw_type == "blupal":
+                from payment import BluPal
+                bp = BluPal(api_key=gw_key, sandbox=sandbox)
+                res = bp.create_payment(amount=price, order_id=order_id, description=f"خرید {pname}")
+                if res.get("success"):
+                    pay_url = res.get("payment_url") or res.get("payment_link")
+                    invoice_id = res.get("invoice_id")
 
             if pay_url:
                 db.save_transaction(
@@ -567,18 +581,20 @@ class ResellerBotInstance:
                     plan_name=pname,
                     amount=price,
                     gateway=f"{gw_type}_reseller_{r_id}",
-                    tracking_code=order_id,
+                    tracking_code=str(invoice_id or order_id),
                     status="pending",
                     reseller_id=r_id
                 )
-                msg = f"💳 **درگاه پرداخت آنلاین شاپرک**\n\n"
+                gw_title = "کارت به کارت هوشمند بلوپال" if gw_type == "blupal" else "درگاه پرداخت آنلاین شاپرک"
+                btn_title = "🌐 ورود به درگاه پرداخت هوشمند بلوپال" if gw_type == "blupal" else "🌐 ورود به درگاه پرداخت شاپرک"
+                msg = f"💳 **{gw_title}**\n\n"
                 msg += f"📦 پلن: **{pname}**\n"
                 msg += f"💰 مبلغ: **`{price:,}` تومان**\n"
                 msg += f"🔢 شناسه سفارش: `{order_id}`\n\n"
                 msg += "جهت پرداخت روی دکمه زیر کلیک کنید. پس از پرداخت آنلاین، اشتراک شما به صورت خودکار فعال می‌گردد:"
 
                 kb = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🌐 ورود به درگاه پرداخت شاپرک", url=pay_url)],
+                    [InlineKeyboardButton(btn_title, url=pay_url)],
                     [InlineKeyboardButton("◀️ بازگشت", callback_data=f"r_buy_{plan_id}")]
                 ])
                 await query.edit_message_text(msg, reply_markup=kb, parse_mode="Markdown")

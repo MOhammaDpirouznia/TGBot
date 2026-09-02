@@ -684,8 +684,12 @@ def get_payment_selection_payload(user_id: int, plan: dict, reseller_id: Optiona
                 
         elif m_id == "online_gateway":
             if gw_cfg.get("enabled") and gw_cfg.get("key"):
-                gw_label = "زرین‌پال" if gw_cfg.get("type") == "zarinpal" else ("آیدی‌پی" if gw_cfg.get("type") == "idpay" else "آنلاین")
-                keyboard.append([InlineKeyboardButton(f"💳 درگاه پرداخت آنلاین ({gw_label})", callback_data="pay_online_gateway")])
+                if gw_cfg.get("type") == "blupal":
+                    gw_btn_text = "💳 پرداخت کارت به کارت هوشمند (بلوپال)"
+                else:
+                    gw_label = "زرین‌پال" if gw_cfg.get("type") == "zarinpal" else ("آیدی‌پی" if gw_cfg.get("type") == "idpay" else "آنلاین")
+                    gw_btn_text = f"💳 درگاه پرداخت آنلاین ({gw_label})"
+                keyboard.append([InlineKeyboardButton(gw_btn_text, callback_data="pay_online_gateway")])
             else:
                 keyboard.append([InlineKeyboardButton("💳 درگاه آنلاین (بزودی)", callback_data="coming_soon_gateway")])
                 
@@ -1468,12 +1472,31 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
                         tracking_code=res.get("payment_id", ""),
                         status="pending"
                     )
+            elif gw_type == "blupal":
+                from payment import BluPal
+                bp = BluPal(api_key=gw_key, sandbox=sandbox)
+                res = bp.create_payment(amount=price, order_id=order_id, description=f"خرید اشتراک {plan.get('name')}")
+                if res.get("success"):
+                    pay_url = res.get("payment_url") or res.get("payment_link")
+                    invoice_id = res.get("invoice_id")
+                    db.save_transaction(
+                        order_id=order_id,
+                        user_id=user.id,
+                        username=user.username or user.first_name,
+                        plan_name=plan.get("name"),
+                        amount=price,
+                        gateway="blupal",
+                        tracking_code=str(invoice_id or order_id),
+                        status="pending"
+                    )
         except Exception as e:
             logger.error(f"Error creating online gateway payment: {e}")
 
         if pay_url:
+            gw_title = "کارت به کارت هوشمند بلوپال" if gw_type == "blupal" else "درگاه پرداخت آنلاین شاپرک"
+            btn_title = "🌐 ورود به درگاه پرداخت هوشمند بلوپال" if gw_type == "blupal" else "🌐 ورود به درگاه پرداخت شاپرک"
             text = f"""
-💳 <b>درگاه پرداخت آنلاین شاپرک</b>
+💳 <b>{gw_title}</b>
 
 📋 پلن: <b>{html.escape(str(plan.get('name', '')))}</b>
 💰 مبلغ: <b><code>{price_formatted}</code> تومان</b>
@@ -1482,7 +1505,7 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
 برای پرداخت روی دکمه زیر کلیک کنید. پس از تکمیل تراکنش، اشتراک شما به صورت آنی و خودکار فعال می‌گردد:
 """
             keyboard = [
-                [InlineKeyboardButton("🌐 ورود به درگاه پرداخت شاپرک", url=pay_url)],
+                [InlineKeyboardButton(btn_title, url=pay_url)],
                 [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_select_payment")]
             ]
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
