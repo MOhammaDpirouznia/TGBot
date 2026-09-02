@@ -2727,6 +2727,122 @@ def revoke_payment(payment_id):
     return redirect(url_for("payments"))
 
 
+@app.route("/admin/payments/bulk", methods=["POST"])
+@admin_required
+def admin_payments_bulk():
+    """عملیات گروهی روی پرداخت‌ها و فیش‌های واریزی توسط مدیر (تایید، رد، حذف)"""
+    action = request.form.get("bulk_action")
+    raw_ids = request.form.getlist("selected_ids") or [x.strip() for x in request.form.get("selected_ids_str", "").split(",") if x.strip()]
+    payment_ids = []
+    for p_id in raw_ids:
+        try:
+            val = int(str(p_id).strip())
+            if val > 0:
+                payment_ids.append(val)
+        except (ValueError, TypeError):
+            continue
+
+    if not payment_ids:
+        flash("هیچ پرداختی برای انجام عملیات انتخاب نشده است.", "warning")
+        return redirect(url_for("payments"))
+
+    success_count = 0
+    admin_name = session.get("name") or session.get("username") or "مدیر ارشد"
+    admin_id = session.get("admin_id")
+
+    for pid in payment_ids:
+        if action == "approve":
+            try:
+                conn = db.get_connection()
+                tx_row = conn.execute("SELECT * FROM transactions WHERE id=?", (pid,)).fetchone()
+                conn.close()
+                if tx_row and tx_row["status"] == "pending":
+                    tx = dict(tx_row)
+                    user_id = tx["user_id"]
+                    plan_name = tx["plan_name"]
+                    is_renewal = bool(tx.get("is_renewal"))
+                    plans = get_plans_dict()
+                    selected_plan = next((p for p in plans.values() if p["name"] == plan_name), None)
+                    if not selected_plan and plans:
+                        selected_plan = list(plans.values())[0]
+
+                    data_limit = selected_plan["data_limit"] if selected_plan else 30
+                    duration = selected_plan["duration"] if selected_plan else 30
+
+                    user_uuid = None
+                    if is_renewal:
+                        conn = db.get_connection()
+                        sub_row = conn.execute("SELECT * FROM subscriptions WHERE user_id=? AND status='active' ORDER BY id DESC LIMIT 1", (user_id,)).fetchone()
+                        conn.close()
+                        if sub_row and sub_row["hidify_uuid"]:
+                            user_uuid = sub_row["hidify_uuid"]
+                            hidify_sync_renew_user(user_uuid, data_limit, duration)
+                    else:
+                        account_name = f"user_{user_id}_{int(time.time()) % 10000}"
+                        h_res = hidify_sync_create_user(name=account_name, usage_limit_gb=data_limit, package_days=duration, comment=f"TG: {user_id}")
+                        user_uuid = h_res.get("uuid") if h_res else None
+
+                    now_iso = get_now_iso()
+                    conn = db.get_connection()
+                    conn.execute("UPDATE transactions SET status='approved', processed_by=?, processed_at=?, updated_at=? WHERE id=?", (admin_name, now_iso, now_iso, pid))
+                    conn.commit()
+                    conn.close()
+
+                    if user_uuid:
+                        db.add_subscription(
+                            user_id=user_id,
+                            hidify_uuid=user_uuid,
+                            plan_name=plan_name,
+                            data_limit=data_limit,
+                            duration=duration,
+                            account_name=f"user_{user_id}",
+                            cost_paid=int(tx.get("amount") or 0)
+                        )
+                        h_url = get_hiddify_url()
+                        u_proxy = get_user_proxy()
+                        if h_url:
+                            sub_url = f"{h_url}/{u_proxy}/{user_uuid}/"
+                            card_title = "🎉 **اشتراک شما تایید و فعال شد!**"
+                            card_details = f"📋 پلن: **{plan_name}**\n📊 حجم: **{data_limit} گیگابایت**\n⏰ مدت: **{duration} روز**"
+                            try:
+                                send_subscription_card_sync(user_id, sub_url, card_title, card_details)
+                            except Exception:
+                                pass
+                    success_count += 1
+            except Exception as e:
+                logger.error(f"Error bulk approving payment {pid}: {e}")
+        elif action == "reject":
+            try:
+                conn = db.get_connection()
+                now_iso = get_now_iso()
+                conn.execute("UPDATE transactions SET status='rejected', rejection_reason='رد توسط مدیریت در عملیات گروهی', processed_by=?, processed_at=?, updated_at=? WHERE id=?", (admin_name, now_iso, now_iso, pid))
+                conn.commit()
+                conn.close()
+                success_count += 1
+            except Exception as e:
+                logger.error(f"Error bulk rejecting payment {pid}: {e}")
+        elif action == "delete":
+            try:
+                conn = db.get_connection()
+                conn.execute("DELETE FROM transactions WHERE id=?", (pid,))
+                conn.commit()
+                conn.close()
+                success_count += 1
+            except Exception as e:
+                logger.error(f"Error bulk deleting payment {pid}: {e}")
+
+    if action == "approve":
+        flash(f"✅ تعداد {success_count} پرداخت با موفقیت تایید و فعال‌سازی شدند.", "success")
+    elif action == "reject":
+        flash(f"✅ تعداد {success_count} فیش پرداخت رد شدند.", "info")
+    elif action == "delete":
+        flash(f"✅ تعداد {success_count} رکورد پرداخت با موفقیت حذف شدند.", "success")
+    else:
+        flash(f"عملیات برای {success_count} مورد انجام شد.", "info")
+
+    return redirect(url_for("payments"))
+
+
 @app.route("/payment/<int:payment_id>/edit", methods=["POST"])
 @super_admin_required
 def edit_payment(payment_id):
@@ -3828,6 +3944,89 @@ def ticket_reopen(ticket_id):
     return redirect(url_for("tickets"))
 
 
+@app.route("/admin/tickets/bulk", methods=["POST"])
+@permission_required("tickets")
+def admin_tickets_bulk():
+    """عملیات گروهی روی تیکت‌های پشتیبانی توسط ادمین (بستن، بازگشایی، حذف)"""
+    action = request.form.get("bulk_action")
+    raw_ids = request.form.getlist("selected_ids") or [x.strip() for x in request.form.get("selected_ids_str", "").split(",") if x.strip()]
+    ticket_ids = []
+    for t_id in raw_ids:
+        try:
+            val = int(str(t_id).strip())
+            if val > 0:
+                ticket_ids.append(val)
+        except (ValueError, TypeError):
+            continue
+
+    if not ticket_ids:
+        flash("هیچ تیکتی انتخاب نشده است.", "warning")
+        return redirect(url_for("tickets"))
+
+    success_count = 0
+    for t_id in ticket_ids:
+        if action == "close":
+            db.close_ticket(t_id)
+            success_count += 1
+        elif action == "reopen":
+            db.reopen_ticket(t_id)
+            success_count += 1
+        elif action == "delete":
+            db.delete_ticket(t_id)
+            success_count += 1
+
+    if action == "close":
+        flash(f"✅ تعداد {success_count} تیکت با موفقیت بسته شدند.", "info")
+    elif action == "reopen":
+        flash(f"✅ تعداد {success_count} تیکت با موفقیت بازگشایی شدند.", "success")
+    elif action == "delete":
+        flash(f"✅ تعداد {success_count} تیکت با موفقیت حذف شدند.", "success")
+    else:
+        flash(f"عملیات برای {success_count} تیکت انجام شد.", "info")
+
+    return redirect(url_for("tickets"))
+
+
+@app.route("/reseller/tickets/bulk", methods=["POST"])
+@reseller_required
+def reseller_tickets_bulk():
+    """عملیات گروهی روی تیکت‌های نماینده (بستن، حذف)"""
+    reseller_id = session.get("reseller_id")
+    action = request.form.get("bulk_action")
+    raw_ids = request.form.getlist("selected_ids") or [x.strip() for x in request.form.get("selected_ids_str", "").split(",") if x.strip()]
+    ticket_ids = []
+    for t_id in raw_ids:
+        try:
+            val = int(str(t_id).strip())
+            if val > 0:
+                ticket_ids.append(val)
+        except (ValueError, TypeError):
+            continue
+
+    if not ticket_ids:
+        flash("هیچ تیکتی انتخاب نشده است.", "warning")
+        return redirect(url_for("reseller_tickets"))
+
+    success_count = 0
+    for t_id in ticket_ids:
+        if action == "close":
+            db.close_ticket(t_id)
+            success_count += 1
+        elif action == "delete":
+            res = db.delete_ticket(t_id, reseller_id=reseller_id)
+            if res.get("success"):
+                success_count += 1
+
+    if action == "close":
+        flash(f"✅ تعداد {success_count} تیکت با موفقیت بسته شدند.", "info")
+    elif action == "delete":
+        flash(f"✅ تعداد {success_count} تیکت با موفقیت حذف شدند.", "success")
+    else:
+        flash(f"عملیات برای {success_count} تیکت انجام شد.", "info")
+
+    return redirect(url_for("reseller_tickets"))
+
+
 @app.route("/admin/ticket/<int:ticket_id>/approve-quota-change", methods=["POST"])
 @permission_required("tickets")
 def approve_quota_change(ticket_id):
@@ -3952,6 +4151,74 @@ def subscription_send_debt_reminder(sub_id):
         flash(f"خطا در ارسال پیام تلگرام: {e}", "danger")
 
     return redirect(request.referrer or url_for("subscriptions"))
+
+
+@app.route("/admin/subscriptions/bulk", methods=["POST"])
+@permission_required("sub_manage")
+def admin_subscriptions_bulk():
+    """عملیات گروهی روی تمام اشتراک‌ها توسط مدیر (غیرفعال، فعال، حذف، تسویه بدهی)"""
+    action = request.form.get("bulk_action")
+    raw_ids = request.form.getlist("selected_ids") or [x.strip() for x in request.form.get("selected_ids_str", "").split(",") if x.strip()]
+    sub_ids = []
+    for s_id in raw_ids:
+        try:
+            val = int(str(s_id).strip())
+            if val > 0:
+                sub_ids.append(val)
+        except (ValueError, TypeError):
+            continue
+
+    if not sub_ids:
+        flash("هیچ اشتراکی برای انجام عملیات گروهی انتخاب نشده است.", "warning")
+        return redirect(url_for("subscriptions"))
+
+    success_count = 0
+    admin_name = session.get("name") or session.get("username") or "مدیریت"
+
+    for sub_id in sub_ids:
+        conn = db.get_connection()
+        sub_row = conn.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,)).fetchone()
+        conn.close()
+        if not sub_row:
+            continue
+        sub = dict(sub_row)
+        uuid_val = sub.get("hidify_uuid")
+
+        if action == "disable":
+            if uuid_val:
+                hidify_sync_update_user(uuid_val, enable=False, is_active=False)
+            db.update_subscription(sub_id, status="disabled")
+            success_count += 1
+        elif action == "enable":
+            if uuid_val:
+                hidify_sync_update_user(uuid_val, enable=True, is_active=True)
+            db.update_subscription(sub_id, status="active")
+            success_count += 1
+        elif action == "delete":
+            if uuid_val:
+                try:
+                    hidify_sync_delete_user(uuid_val)
+                except Exception as ex:
+                    logger.error(f"Error deleting user {uuid_val} from Hiddify: {ex}")
+            del_res = db.delete_customer_subscription(sub_id, refund_to_customer=False, admin_name=admin_name)
+            if del_res.get("success"):
+                success_count += 1
+        elif action == "clear_debt":
+            db.clear_subscription_debt(sub_id)
+            success_count += 1
+
+    if action == "disable":
+        flash(f"✅ تعداد {success_count} اشتراک با موفقیت غیرفعال شدند.", "info")
+    elif action == "enable":
+        flash(f"✅ تعداد {success_count} اشتراک با موفقیت فعال‌سازی مجدد شدند.", "success")
+    elif action == "delete":
+        flash(f"✅ تعداد {success_count} اشتراک با موفقیت به طور کامل حذف شدند.", "success")
+    elif action == "clear_debt":
+        flash(f"✅ بدهی {success_count} اشتراک با موفقیت تسویه گردید.", "success")
+    else:
+        flash(f"عملیات برای {success_count} اشتراک انجام شد.", "info")
+
+    return redirect(url_for("subscriptions"))
 
 
 @app.route("/api/subscription/<int:sub_id>/history", methods=["GET"])
@@ -5031,6 +5298,105 @@ def reseller_delete_user(sub_id: int):
     return redirect(url_for("reseller_users"))
 
 
+@app.route("/reseller/subscriptions/bulk", methods=["POST"])
+@reseller_required
+def reseller_subscriptions_bulk():
+    """عملیات گروهی روی اشتراک‌های انتخابی نماینده (غیرفعال، فعال، حذف، تسویه بدهی، ارسال یادآوری)"""
+    reseller_id = session.get("reseller_id")
+    action = request.form.get("bulk_action")
+    raw_ids = request.form.getlist("selected_ids") or [x.strip() for x in request.form.get("selected_ids_str", "").split(",") if x.strip()]
+    sub_ids = []
+    for s_id in raw_ids:
+        try:
+            val = int(str(s_id).strip())
+            if val > 0:
+                sub_ids.append(val)
+        except (ValueError, TypeError):
+            continue
+
+    if not sub_ids:
+        flash("هیچ اشتراکی برای انجام عملیات گروهی انتخاب نشده است.", "warning")
+        return redirect(url_for("reseller_users"))
+
+    success_count = 0
+    total_refund = 0
+
+    for sub_id in sub_ids:
+        sub = db.get_reseller_subscription(reseller_id, sub_id)
+        if not sub:
+            continue
+
+        if action == "disable":
+            res = db.toggle_reseller_subscription(reseller_id, sub_id, enable=False)
+            if res.get("success"):
+                if sub.get("hidify_uuid"):
+                    hidify_sync_update_user(sub["hidify_uuid"], enable=False, is_active=False)
+                success_count += 1
+        elif action == "enable":
+            res = db.toggle_reseller_subscription(reseller_id, sub_id, enable=True)
+            if res.get("success"):
+                if sub.get("hidify_uuid"):
+                    hidify_sync_update_user(sub["hidify_uuid"], enable=True, is_active=True)
+                success_count += 1
+        elif action == "delete":
+            if sub.get("hidify_uuid"):
+                try:
+                    hidify_sync_delete_user(sub["hidify_uuid"])
+                except Exception as e:
+                    logger.warning(f"Error bulk deleting user {sub['hidify_uuid']} from Hiddify: {e}")
+            del_res = db.delete_reseller_subscription(reseller_id, sub_id)
+            if del_res.get("success"):
+                success_count += 1
+                total_refund += del_res.get("refund_amount", 0)
+        elif action == "clear_debt":
+            db.clear_subscription_debt(sub_id, reseller_id=reseller_id)
+            success_count += 1
+        elif action == "send_reminder":
+            tg_id = sub.get("telegram_id")
+            debt_amount = sub.get("debt_amount") or 0
+            if tg_id and int(tg_id) > 0 and debt_amount > 0:
+                try:
+                    r_info = db.get_reseller(reseller_id) or {}
+                    card_number = r_info.get("card_number") or get_setting("card_number") or ""
+                    card_holder = r_info.get("card_holder") or get_setting("card_holder") or ""
+                    bank_name = r_info.get("bank_name") or get_setting("bank_name") or ""
+                    msg = (
+                        f"🌸 <b>کاربر گرامی، با سلام و احترام</b>\n\n"
+                        f"📋 <b>یادآوری صورت‌حساب اشتراک:</b> «{sub.get('account_name')}»\n"
+                        f"💰 <b>مبلغ بدهی / مانده پرداخت:</b> <code>{debt_amount:,}</code> تومان\n"
+                    )
+                    if sub.get("debt_notes"):
+                        msg += f"📝 <b>توضیحات:</b> {sub.get('debt_notes')}\n"
+                    if card_number:
+                        msg += f"\n💳 <b>شماره کارت جهت واریز:</b>\n<code>{card_number}</code>\n👤 بنام: {card_holder} ({bank_name})\n"
+                    msg += "\n🙏 لطفاً پس از واریز، تصویر فیش پرداخت خود را در همین بات ارسال فرمایید."
+                    send_telegram_msg(tg_id, msg)
+                    success_count += 1
+                except Exception:
+                    pass
+
+    if action == "delete":
+        if total_refund > 0:
+            flash(f"✅ تعداد {success_count} اشتراک با موفقیت حذف شدند و مبلغ {total_refund:,} تومان به کیف پول شما استرداد یافت.", "success")
+        else:
+            flash(f"✅ تعداد {success_count} اشتراک با موفقیت حذف شدند.", "success")
+        r_after = db.get_reseller(reseller_id)
+        if r_after:
+            session["balance"] = r_after.get("balance", 0)
+    elif action == "disable":
+        flash(f"✅ تعداد {success_count} اشتراک با موفقیت غیرفعال شدند.", "info")
+    elif action == "enable":
+        flash(f"✅ تعداد {success_count} اشتراک با موفقیت فعال‌سازی مجدد شدند.", "success")
+    elif action == "clear_debt":
+        flash(f"✅ بدهی تعداد {success_count} اشتراک با موفقیت تسویه گردید.", "success")
+    elif action == "send_reminder":
+        flash(f"✅ پیام یادآوری بدهی برای {success_count} کاربر در تلگرام ارسال شد.", "success")
+    else:
+        flash(f"عملیات برای {success_count} اشتراک انجام شد.", "info")
+
+    return redirect(url_for("reseller_users"))
+
+
 @app.route("/reseller/transactions")
 @reseller_required
 def reseller_transactions():
@@ -5814,6 +6180,57 @@ def reseller_payment_reject(payment_id):
         send_telegram_msg(tx["user_id"], msg_to_user)
 
     flash("فیش پرداخت با موفقیت رد شد و به مشتری اطلاع داده شد.", "info")
+    return redirect(url_for("reseller_customer_payments"))
+
+
+@app.route("/reseller/customer-payments/bulk", methods=["POST"])
+@reseller_required
+def reseller_customer_payments_bulk():
+    """عملیات گروهی روی فیش‌های پرداخت مشتریان نماینده (رد، حذف)"""
+    reseller_id = session.get("reseller_id")
+    action = request.form.get("bulk_action")
+    raw_ids = request.form.getlist("selected_ids") or [x.strip() for x in request.form.get("selected_ids_str", "").split(",") if x.strip()]
+    payment_ids = []
+    for p_id in raw_ids:
+        try:
+            val = int(str(p_id).strip())
+            if val > 0:
+                payment_ids.append(val)
+        except (ValueError, TypeError):
+            continue
+
+    if not payment_ids:
+        flash("هیچ فیش پرداختی انتخاب نشده است.", "warning")
+        return redirect(url_for("reseller_customer_payments"))
+
+    success_count = 0
+    now_iso = get_now_iso()
+    reseller_name = session.get("name") or session.get("username") or f"نماینده #{reseller_id}"
+
+    for pid in payment_ids:
+        conn = db.get_connection()
+        tx_row = conn.execute("SELECT * FROM transactions WHERE id=? AND reseller_id=?", (pid, reseller_id)).fetchone()
+        if not tx_row:
+            conn.close()
+            continue
+
+        if action == "reject":
+            conn.execute("UPDATE transactions SET status='rejected', rejection_reason='رد توسط نماینده در عملیات گروهی', processed_by=?, processed_at=?, updated_at=? WHERE id=?", (f"{reseller_name} (نماینده #{reseller_id})", now_iso, now_iso, pid))
+            conn.commit()
+            success_count += 1
+        elif action == "delete":
+            conn.execute("DELETE FROM transactions WHERE id=? AND reseller_id=?", (pid, reseller_id))
+            conn.commit()
+            success_count += 1
+        conn.close()
+
+    if action == "reject":
+        flash(f"✅ تعداد {success_count} فیش پرداخت با موفقیت رد شدند.", "info")
+    elif action == "delete":
+        flash(f"✅ تعداد {success_count} فیش پرداخت حذف شدند.", "success")
+    else:
+        flash(f"عملیات برای {success_count} فیش انجام شد.", "info")
+
     return redirect(url_for("reseller_customer_payments"))
 
 

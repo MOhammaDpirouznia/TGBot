@@ -3088,6 +3088,24 @@ class Database:
         """بستن تیکت"""
         return self.update_ticket_status(ticket_id, "closed")
 
+    def delete_ticket(self, ticket_id, reseller_id=None):
+        """حذف کامل یک تیکت و پیام‌های آن"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if reseller_id:
+                cursor.execute("SELECT id FROM support_tickets WHERE id=? AND reseller_id=?", (ticket_id, reseller_id))
+                if not cursor.fetchone():
+                    return {"success": False, "error": "تیکت یافت نشد یا متعلق به شما نیست."}
+            cursor.execute("DELETE FROM ticket_messages WHERE ticket_id=?", (ticket_id,))
+            cursor.execute("DELETE FROM support_tickets WHERE id=?", (ticket_id,))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
     def get_ticket_messages(self, ticket_id):
         """دریافت تمام پیام‌های زنجیره گفتگوی یک تیکت با سازگاری به عقب"""
         conn = self.get_connection()
