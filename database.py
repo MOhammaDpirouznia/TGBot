@@ -793,6 +793,42 @@ class Database:
         except Exception:
             pass
 
+        # ستون‌های وضعیت پرداخت، مبلغ بدهی و یادداشت بدهی اشتراک‌ها
+        for col_def in [
+            "payment_status TEXT DEFAULT 'paid'",
+            "debt_amount INTEGER DEFAULT 0",
+            "debt_notes TEXT",
+            "debt_created_at TEXT"
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE subscriptions ADD COLUMN {col_def}")
+            except Exception:
+                pass
+
+        # ستون‌های قیمت پلن و جزئیات مالی در سابقه دوره‌ها
+        for col_def in [
+            "plan_price INTEGER DEFAULT 0",
+            "cost_paid INTEGER DEFAULT 0",
+            "start_date TEXT",
+            "expire_date TEXT"
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE subscription_history ADD COLUMN {col_def}")
+            except Exception:
+                pass
+
+        # ستون‌های تیکت‌های درخواست تغییر حجم و مدت نماینده
+        for col_def in [
+            "reseller_id INTEGER DEFAULT 0",
+            "ticket_type TEXT DEFAULT 'general'",
+            "request_data TEXT",
+            "request_status TEXT DEFAULT 'pending'"
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE support_tickets ADD COLUMN {col_def}")
+            except Exception:
+                pass
+
         conn.commit()
         conn.close()
         logger.info("Database initialized successfully")
@@ -3447,8 +3483,9 @@ class Database:
     def save_subscription_history(self, subscription_id: int, telegram_id: int, hidify_uuid: str,
                                 account_name: str, plan_name: str, previous_usage_gb: float,
                                 previous_limit_gb: float, period_days: int, renewal_type: str = "replace",
-                                reseller_id: int = None) -> bool:
-        """ثبت تاریخچه و میزان مصرف دوره قبلی هنگام تمدید اشتراک"""
+                                reseller_id: int = None, plan_price: int = 0, cost_paid: int = 0,
+                                start_date: str = None, expire_date: str = None) -> bool:
+        """ثبت تاریخچه و میزان مصرف دوره قبلی همراه با قیمت پلن هنگام تمدید یا تغییر دوره اشتراک"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -3456,12 +3493,13 @@ class Database:
                 INSERT INTO subscription_history (
                     subscription_id, telegram_id, hidify_uuid, account_name, plan_name,
                     previous_usage_gb, previous_limit_gb, period_days, renewal_type,
-                    renewed_at, reseller_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    renewed_at, reseller_id, plan_price, cost_paid, start_date, expire_date
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                subscription_id, telegram_id, hidify_uuid, account_name, plan_name,
+                subscription_id, telegram_id or 0, hidify_uuid, account_name, plan_name,
                 float(previous_usage_gb or 0), float(previous_limit_gb or 0),
-                int(period_days or 30), renewal_type, get_now_iso(), reseller_id
+                int(period_days or 30), renewal_type, get_now_iso(), reseller_id,
+                int(plan_price or 0), int(cost_paid or 0), start_date, expire_date
             ))
             conn.commit()
             return True
@@ -3471,9 +3509,13 @@ class Database:
         finally:
             conn.close()
 
+    def log_subscription_history(self, *args, **kwargs):
+        """نام مستعار برای save_subscription_history جهت سازگاری کامل"""
+        return self.save_subscription_history(*args, **kwargs)
+
     def get_subscription_history(self, subscription_id: int = None, telegram_id: int = None,
                                 reseller_id: int = None, limit: int = 50) -> list:
-        """دریافت سوابق مصرف دوره‌های قبلی اشتراک‌ها"""
+        """دریافت سوابق مصرف دوره‌های قبلی اشتراک‌ها با جزئیات قیمت و زمان"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -3496,6 +3538,275 @@ class Database:
         except Exception as e:
             logger.error(f"Error getting subscription history: {e}")
             return []
+        finally:
+            conn.close()
+
+    def get_subscription_full_details_and_history(self, sub_id: int, reseller_id: int = None) -> dict:
+        """دریافت اطلاعات جامع اشتراک به همراه آرشیو تمام دوره‌ها و مبالغ پرداختی گذشته"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if reseller_id:
+                cursor.execute("SELECT * FROM subscriptions WHERE id=? AND reseller_id=?", (sub_id, reseller_id))
+            else:
+                cursor.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,))
+            sub_row = cursor.fetchone()
+            if not sub_row:
+                return {"success": False, "error": "اشتراک یافت نشد"}
+
+            sub_dict = dict(sub_row)
+            cursor.execute("""
+                SELECT * FROM subscription_history 
+                WHERE subscription_id = ? OR (hidify_uuid = ? AND hidify_uuid IS NOT NULL AND hidify_uuid != '')
+                ORDER BY renewed_at DESC LIMIT 50
+            """, (sub_id, sub_dict.get("hidify_uuid") or ""))
+            history_rows = [dict(r) for r in cursor.fetchall()]
+
+            return {
+                "success": True,
+                "current": sub_dict,
+                "history": history_rows
+            }
+        except Exception as e:
+            logger.error(f"Error in get_subscription_full_details_and_history: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def set_subscription_debt(self, sub_id: int, payment_status: str, debt_amount: int, debt_notes: str = None, reseller_id: int = None):
+        """تنظیم یا بروزرسانی وضعیت بدهی مشتری"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            query = "UPDATE subscriptions SET payment_status = ?, debt_amount = ?, debt_notes = ?, debt_created_at = COALESCE(debt_created_at, ?), updated_at = ? WHERE id = ?"
+            params = [payment_status, int(debt_amount or 0), debt_notes, now if payment_status in ('unpaid', 'debtor') else None, now, sub_id]
+            if reseller_id:
+                query += " AND reseller_id = ?"
+                params.append(reseller_id)
+            cursor.execute(query, params)
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error setting subscription debt: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def clear_subscription_debt(self, sub_id: int, reseller_id: int = None):
+        """تسویه کامل بدهی مشتری و ثبت وضعیت پرداخت شده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            query = "UPDATE subscriptions SET payment_status = 'paid', debt_amount = 0, debt_notes = NULL, updated_at = ? WHERE id = ?"
+            params = [now, sub_id]
+            if reseller_id:
+                query += " AND reseller_id = ?"
+                params.append(reseller_id)
+            cursor.execute(query, params)
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error clearing subscription debt: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_debtor_subscriptions(self, reseller_id: int = None, limit: int = 200) -> list:
+        """لیست مشتریان بدهکار به همراه تاریخ، مبلغ و شماره تماس"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            query = """
+                SELECT * FROM subscriptions 
+                WHERE (payment_status IN ('unpaid', 'debtor') OR debt_amount > 0)
+            """
+            params = []
+            if reseller_id:
+                query += " AND reseller_id = ?"
+                params.append(reseller_id)
+            query += " ORDER BY COALESCE(debt_created_at, created_at) DESC LIMIT ?"
+            params.append(limit)
+
+            cursor.execute(query, params)
+            return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error getting debtor subscriptions: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_debtor_count(self, reseller_id: int = None) -> int:
+        """تعداد مشتریان بدهکار"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if reseller_id:
+                cursor.execute("""
+                    SELECT COUNT(*) FROM subscriptions 
+                    WHERE reseller_id = ? AND (payment_status IN ('unpaid', 'debtor') OR debt_amount > 0)
+                """, (reseller_id,))
+            else:
+                cursor.execute("""
+                    SELECT COUNT(*) FROM subscriptions 
+                    WHERE payment_status IN ('unpaid', 'debtor') OR debt_amount > 0
+                """)
+            row = cursor.fetchone()
+            return row[0] if row else 0
+        except Exception as e:
+            logger.error(f"Error getting debtor count: {e}")
+            return 0
+        finally:
+            conn.close()
+
+    def create_quota_change_request(self, sub_id: int, reseller_id: int,
+                                    requested_limit: float, requested_duration: int, reason: str = "") -> dict:
+        """ثبت درخواست رسمی تغییر حجم و مدت اشتراک نماینده و ارسال تیکت به مدیریت"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT * FROM subscriptions WHERE id=? AND reseller_id=?", (sub_id, reseller_id))
+            sub = cursor.fetchone()
+            if not sub:
+                return {"success": False, "error": "اشتراک مورد نظر یافت نشد"}
+
+            cursor.execute("SELECT * FROM resellers WHERE id=?", (reseller_id,))
+            reseller = cursor.fetchone()
+            r_name = reseller["name"] if reseller else f"نماینده #{reseller_id}"
+            r_tg = reseller["telegram_id"] if reseller else 0
+
+            cur_limit = float(sub["data_limit"] or 0)
+            cur_dur = int(sub["duration"] or 0)
+            acc_name = sub["account_name"] or f"user_{sub_id}"
+
+            req_payload = {
+                "sub_id": sub_id,
+                "account_name": acc_name,
+                "hidify_uuid": sub["hidify_uuid"],
+                "current_limit": cur_limit,
+                "requested_limit": float(requested_limit),
+                "current_duration": cur_dur,
+                "requested_duration": int(requested_duration),
+                "reason": reason.strip(),
+                "reseller_id": reseller_id,
+                "reseller_name": r_name
+            }
+            req_json = json.dumps(req_payload, ensure_ascii=False)
+
+            subject = f"درخواست تغییر حجم و مدت اشتراک «{acc_name}»"
+            msg = (
+                f"🔹 درخواست تغییر مشخصات سرویس توسط نماینده «{r_name}»:\n"
+                f"👤 نام اکانت: {acc_name}\n"
+                f"📦 حجم فعلی: {cur_limit} گیگابایت ➔ 🎯 حجم درخواستی: {requested_limit} گیگابایت\n"
+                f"⏳ مدت فعلی: {cur_dur} روز ➔ 🎯 مدت درخواستی: {requested_duration} روز\n"
+            )
+            if reason.strip():
+                msg += f"📝 علت/توضیحات: {reason.strip()}"
+
+            cursor.execute("""
+                INSERT INTO support_tickets (
+                    telegram_id, subject, message, status, reseller_id,
+                    ticket_type, request_data, request_status, created_at, updated_at
+                ) VALUES (?, ?, ?, 'open', ?, 'quota_change', ?, 'pending', ?, ?)
+            """, (r_tg or 0, subject, msg, reseller_id, req_json, now, now))
+            ticket_id = cursor.lastrowid
+
+            cursor.execute("""
+                INSERT INTO ticket_messages (
+                    ticket_id, sender_type, sender_id, sender_name, message, created_at
+                ) VALUES (?, 'reseller', ?, ?, ?, ?)
+            """, (ticket_id, reseller_id, r_name, msg, now))
+
+            conn.commit()
+            return {"success": True, "ticket_id": ticket_id}
+        except Exception as e:
+            logger.error(f"Error in create_quota_change_request: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def approve_quota_change_request(self, ticket_id: int, admin_name: str = "مدیریت") -> dict:
+        """تایید درخواست تغییر حجم/مدت توسط مدیر و بازگرداندن اطلاعات جهت اعمال در هیدیفای"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT * FROM support_tickets WHERE id=?", (ticket_id,))
+            ticket = cursor.fetchone()
+            if not ticket:
+                return {"success": False, "error": "تیکت یافت نشد"}
+
+            req_data = json.loads(ticket["request_data"]) if ticket["request_data"] else {}
+            sub_id = req_data.get("sub_id")
+            new_limit = req_data.get("requested_limit")
+            new_dur = req_data.get("requested_duration")
+
+            if not sub_id or new_limit is None or new_dur is None:
+                return {"success": False, "error": "داده‌های درخواست ناقص هستند"}
+
+            # ۱. بروزرسانی در دیتابیس محلی
+            cursor.execute("""
+                UPDATE subscriptions
+                SET data_limit = ?, duration = ?, updated_at = ?
+                WHERE id = ?
+            """, (float(new_limit), int(new_dur), now, sub_id))
+
+            # ۲. بروزرسانی وضعیت تیکت
+            reply_text = f"✅ درخواست تغییر حجم به {new_limit} گیگابایت و {new_dur} روز توسط {admin_name} تایید شد و روی سرویس اعمال گردید."
+            cursor.execute("""
+                UPDATE support_tickets
+                SET status = 'replied', request_status = 'approved', admin_reply = ?, updated_at = ?
+                WHERE id = ?
+            """, (reply_text, now, ticket_id))
+
+            cursor.execute("""
+                INSERT INTO ticket_messages (
+                    ticket_id, sender_type, sender_id, sender_name, message, created_at
+                ) VALUES (?, 'admin', 0, ?, ?, ?)
+            """, (ticket_id, admin_name, reply_text, now))
+
+            conn.commit()
+            return {"success": True, "data": req_data, "sub_id": sub_id}
+        except Exception as e:
+            logger.error(f"Error approving quota change request: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def reject_quota_change_request(self, ticket_id: int, reason: str = "", admin_name: str = "مدیریت") -> dict:
+        """رد درخواست تغییر حجم/مدت توسط مدیر با درج علت"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT * FROM support_tickets WHERE id=?", (ticket_id,))
+            ticket = cursor.fetchone()
+            if not ticket:
+                return {"success": False, "error": "تیکت یافت نشد"}
+
+            reply_text = f"❌ درخواست تغییر مشخصات اشتراک توسط {admin_name} رد شد."
+            if reason.strip():
+                reply_text += f"\nعلت رد: {reason.strip()}"
+
+            cursor.execute("""
+                UPDATE support_tickets
+                SET status = 'closed', request_status = 'rejected', admin_reply = ?, updated_at = ?
+                WHERE id = ?
+            """, (reply_text, now, ticket_id))
+
+            cursor.execute("""
+                INSERT INTO ticket_messages (
+                    ticket_id, sender_type, sender_id, sender_name, message, created_at
+                ) VALUES (?, 'admin', 0, ?, ?, ?)
+            """, (ticket_id, admin_name, reply_text, now))
+
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error rejecting quota change request: {e}")
+            return {"success": False, "error": str(e)}
         finally:
             conn.close()
 
@@ -4396,8 +4707,10 @@ class Database:
     def update_reseller_subscription(self, reseller_id: int, sub_id: int, account_name: str,
                                      phone_number: str = None, comment: str = None,
                                      data_limit: float = None, duration: int = None,
-                                     status: str = None):
-        """ویرایش جامع مشخصات مشتری نماینده و همگام‌سازی با کاربران و تراکنش‌ها"""
+                                     status: str = None, telegram_id: int = None,
+                                     payment_status: str = None, debt_amount: int = None,
+                                     debt_notes: str = None):
+        """ویرایش جامع مشخصات مشتری نماینده، وضعیت بدهی و همگام‌سازی با کاربران و تراکنش‌ها"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -4407,9 +4720,13 @@ class Database:
             if not sub_row:
                 return {"success": False, "error": "اشتراک مورد نظر یافت نشد"}
 
-            clean_name = account_name.strip() if account_name else (sub_row["account_name"] or f"user_{sub_id}")
+            sub_dict = dict(sub_row)
+            clean_name = account_name.strip() if account_name else (sub_dict.get("account_name") or f"user_{sub_id}")
             clean_phone = phone_number.strip() if phone_number and str(phone_number).strip() else None
             clean_comment = comment.strip() if comment and str(comment).strip() else None
+            effective_tg = int(telegram_id) if (telegram_id is not None and str(telegram_id).isdigit() and int(telegram_id) > 0) else sub_dict.get("telegram_id")
+
+            debt_created = now if (payment_status in ('unpaid', 'debtor') and not sub_dict.get("debt_created_at")) else sub_dict.get("debt_created_at")
 
             # ۱. بروزرسانی جدول subscriptions
             cursor.execute("""
@@ -4417,41 +4734,54 @@ class Database:
                 SET account_name = ?,
                     phone_number = ?,
                     account_comment = ?,
+                    telegram_id = COALESCE(?, telegram_id),
                     data_limit = COALESCE(?, data_limit),
                     duration = COALESCE(?, duration),
                     status = COALESCE(?, status),
+                    payment_status = COALESCE(?, payment_status),
+                    debt_amount = COALESCE(?, debt_amount),
+                    debt_notes = COALESCE(?, debt_notes),
+                    debt_created_at = ?,
                     updated_at = ?
                 WHERE id = ? AND reseller_id = ?
             """, (
                 clean_name,
                 clean_phone,
                 clean_comment,
+                effective_tg,
                 float(data_limit) if data_limit is not None else None,
                 int(duration) if duration is not None else None,
                 status.strip() if status else None,
+                payment_status.strip() if payment_status else None,
+                int(debt_amount) if debt_amount is not None else None,
+                debt_notes.strip() if debt_notes else None,
+                debt_created,
                 now,
                 sub_id,
                 reseller_id
             ))
 
             # ۲. اگر کاربر دارای شناسه تلگرام باشد، بروزرسانی در جدول users
-            tg_id = sub_row["telegram_id"]
-            if tg_id and int(tg_id) > 0:
-                if clean_phone:
+            if effective_tg and int(effective_tg) > 0:
+                cursor.execute("SELECT * FROM users WHERE telegram_id=?", (effective_tg,))
+                u_row = cursor.fetchone()
+                if u_row:
+                    if clean_phone:
+                        cursor.execute("UPDATE users SET phone_number = ?, updated_at = ? WHERE telegram_id = ?", (clean_phone, now, effective_tg))
+                    if clean_name:
+                        cursor.execute("UPDATE users SET username = COALESCE(?, username), updated_at = ? WHERE telegram_id = ?", (clean_name, now, effective_tg))
+                else:
                     cursor.execute("""
-                        UPDATE users SET phone_number = ?, updated_at = ? WHERE telegram_id = ?
-                    """, (clean_phone, now, tg_id))
-                if clean_name:
-                    cursor.execute("""
-                        UPDATE users SET username = COALESCE(?, username), updated_at = ? WHERE telegram_id = ?
-                    """, (clean_name, now, tg_id))
+                        INSERT INTO users (telegram_id, username, phone_number, is_verified, reseller_id, created_at, updated_at)
+                        VALUES (?, ?, ?, 1, ?, ?, ?)
+                    """, (effective_tg, clean_name, clean_phone, reseller_id, now, now))
 
             # ۳. بروزرسانی در تراکنش‌های مربوط به این اشتراک
             cursor.execute("""
                 UPDATE transactions
                 SET account_name = ?, account_comment = COALESCE(?, account_comment), updated_at = ?
                 WHERE subscription_id = ? OR (user_id = ? AND reseller_id = ?)
-            """, (clean_name, clean_comment, now, sub_id, tg_id if tg_id else 0, reseller_id))
+            """, (clean_name, clean_comment, now, sub_id, effective_tg if effective_tg else 0, reseller_id))
 
             conn.commit()
             return {"success": True}

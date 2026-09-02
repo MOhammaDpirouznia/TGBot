@@ -369,12 +369,22 @@ def filter_diff_time(start_str, end_str):
             return f"{hrs} ساعت"
         else:
             days = diff_sec // 86400
-            hrs = (diff_sec % 86400) // 3600
-            if hrs > 0:
-                return f"{days} روز و {hrs} ساعت"
             return f"{days} روز"
     except Exception:
         return ""
+
+
+@app.template_filter("from_json")
+def filter_from_json(val):
+    """تبدیل رشته JSON به دیکشنری در قالب‌های Jinja"""
+    if not val:
+        return {}
+    if isinstance(val, dict):
+        return val
+    try:
+        return json.loads(val)
+    except Exception:
+        return {}
 
 
 # ─── مسیرهای مینی‌اپ تلگرام (Telegram WebApp / Mini App Routes) ───
@@ -3010,12 +3020,18 @@ def api_subscription_sessions(sub_id: int):
 @app.route("/subscriptions")
 @permission_required("subscriptions_view")
 def subscriptions():
-    """لیست اشتراک‌های هیدیفای همراه با وضعیت آنلاین بودن و اطلاعات استرداد وجه"""
+    """لیست اشتراک‌های هیدیفای همراه با وضعیت آنلاین بودن، تب بدهکاران و اطلاعات استرداد وجه"""
     sync_hiddify_online_users()
     conn = db.get_connection()
     status_filter = request.args.get("status", "all")
     if status_filter == "online":
         sub_list = conn.execute("SELECT * FROM subscriptions WHERE is_online=1 ORDER BY updated_at DESC LIMIT 150").fetchall()
+    elif status_filter == "debtors":
+        sub_list = conn.execute("""
+            SELECT * FROM subscriptions 
+            WHERE payment_status IN ('unpaid', 'debtor') OR debt_amount > 0 
+            ORDER BY COALESCE(debt_created_at, created_at) DESC LIMIT 150
+        """).fetchall()
     elif status_filter == "all":
         sub_list = conn.execute("SELECT * FROM subscriptions ORDER BY created_at DESC LIMIT 150").fetchall()
     else:
@@ -3029,6 +3045,7 @@ def subscriptions():
         subscriptions_with_refund.append(s_dict)
     
     online_stats = db.get_online_users_stats()
+    debtor_count = db.get_debtor_count()
     single_link_template = get_single_link_template(db)
     return render_template(
         "subscriptions.html",
@@ -3036,6 +3053,7 @@ def subscriptions():
         status_filter=status_filter,
         online_count=online_stats["online_count"],
         online_stats=online_stats,
+        debtor_count=debtor_count,
         panel_url=get_hiddify_url(),
         user_proxy=get_user_proxy(),
         single_link_template=single_link_template
@@ -3045,7 +3063,7 @@ def subscriptions():
 @app.route("/admin/subscription/<int:sub_id>/edit", methods=["POST"])
 @permission_required("sub_manage")
 def admin_subscription_edit(sub_id):
-    """ویرایش مشخصات اشتراک هیدیفای توسط مدیر ارشد و مدیر پشتیبانی با فیلد روزهای اعتبار"""
+    """ویرایش جامع مشخصات، حجم، روزها، آیدی تلگرام و وضعیت بدهی اشتراک هیدیفای توسط مدیر"""
     conn = db.get_connection()
     sub_row = conn.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,)).fetchone()
     conn.close()
@@ -3055,9 +3073,22 @@ def admin_subscription_edit(sub_id):
 
     sub = dict(sub_row)
     account_name = request.form.get("account_name", "").strip() or sub["account_name"]
+    phone_number = request.form.get("phone_number", "").strip()
+    comment = request.form.get("comment", "").strip()
+    telegram_id_raw = request.form.get("telegram_id", "").strip()
+    telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else (sub.get("telegram_id") or 0)
+
     data_limit = float(request.form.get("data_limit", sub.get("data_limit") or 30))
     duration = int(request.form.get("duration", sub.get("duration") or 30))
     status = request.form.get("status", sub.get("status") or "active")
+
+    payment_status = request.form.get("payment_status", sub.get("payment_status") or "paid").strip()
+    debt_amount_raw = request.form.get("debt_amount", "").strip()
+    debt_notes = request.form.get("debt_notes", "").strip()
+    debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else 0
+
+    now = get_now_iso()
+    debt_created = now if (payment_status in ('unpaid', 'debtor') and not sub.get("debt_created_at")) else sub.get("debt_created_at")
 
     # بروزرسانی در سرور هیدیفای
     if sub.get("hidify_uuid"):
@@ -3080,16 +3111,41 @@ def admin_subscription_edit(sub_id):
     cursor = conn.cursor()
     cursor.execute("""
         UPDATE subscriptions 
-        SET account_name = ?, data_limit = ?, duration = ?, status = ?, updated_at = ?
+        SET account_name = ?,
+            data_limit = ?,
+            duration = ?,
+            status = ?,
+            telegram_id = ?,
+            phone_number = ?,
+            account_comment = ?,
+            payment_status = ?,
+            debt_amount = ?,
+            debt_notes = ?,
+            debt_created_at = ?,
+            updated_at = ?
         WHERE id = ?
-    """, (account_name, data_limit, duration, status, get_now_iso(), sub_id))
+    """, (
+        account_name, data_limit, duration, status,
+        telegram_id, phone_number or None, comment or None,
+        payment_status, debt_amount, debt_notes or None,
+        debt_created, now, sub_id
+    ))
+
+    # اگر کاربر در جدول users باشد، بروزرسانی نام و شماره تلفن
+    if telegram_id and telegram_id > 0:
+        cursor.execute("SELECT * FROM users WHERE telegram_id=?", (telegram_id,))
+        if cursor.fetchone():
+            cursor.execute("UPDATE users SET phone_number=COALESCE(?, phone_number), username=COALESCE(?, username), updated_at=? WHERE telegram_id=?", (phone_number or None, account_name, now, telegram_id))
+        else:
+            cursor.execute("INSERT INTO users (telegram_id, username, phone_number, is_verified, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)", (telegram_id, account_name, phone_number or None, now, now))
+
     conn.commit()
     conn.close()
 
     # همگام‌سازی فوری
     sync_hiddify_online_users(force=True)
 
-    flash(f"مشخصات اشتراک «{account_name}» (حجم: {data_limit} گیگابایت | مدت: {duration} روز) با موفقیت ویرایش و در هیدیفای اعمال شد.", "success")
+    flash(f"مشخصات اشتراک «{account_name}» با موفقیت ویرایش و در هیدیفای اعمال شد.", "success")
     return redirect(url_for("subscriptions"))
 
 
@@ -3756,6 +3812,143 @@ def ticket_reopen(ticket_id):
     return redirect(url_for("tickets"))
 
 
+@app.route("/admin/ticket/<int:ticket_id>/approve-quota-change", methods=["POST"])
+@permission_required("tickets")
+def approve_quota_change(ticket_id):
+    """تایید درخواست تغییر حجم و مدت اشتراک نماینده توسط مدیر و اعمال مستقیم در هیدیفای"""
+    admin_name = session.get("username") or "مدیریت"
+    res = db.approve_quota_change_request(ticket_id, admin_name=admin_name)
+    if not res.get("success"):
+        flash(f"خطا در تایید درخواست: {res.get('error')}", "danger")
+        return redirect(url_for("tickets"))
+
+    req_data = res.get("data", {})
+    sub_id = res.get("sub_id")
+    req_limit = req_data.get("requested_limit")
+    req_duration = req_data.get("requested_duration")
+    acc_name = req_data.get("account_name", f"اشتراک #{sub_id}")
+    h_uuid = req_data.get("hidify_uuid")
+
+    if h_uuid:
+        h_res = hidify_sync_update_user(
+            h_uuid,
+            usage_limit_GB=req_limit,
+            package_days=req_duration
+        )
+        if isinstance(h_res, dict) and "error" in h_res:
+            logger.warning(f"Failed to update Hiddify on quota change approval: {h_res.get('error')}")
+
+    try:
+        sync_hiddify_online_users(force=True)
+    except Exception as e_sync:
+        logger.error(f"Error in sync after quota change approval: {e_sync}")
+
+    flash(f"✅ درخواست تغییر مشخصات اشتراک «{acc_name}» به {req_limit} گیگابایت و {req_duration} روز با موفقیت تایید و روی سرور هیدیفای اعمال شد.", "success")
+    return redirect(url_for("tickets"))
+
+
+@app.route("/admin/ticket/<int:ticket_id>/reject-quota-change", methods=["POST"])
+@permission_required("tickets")
+def reject_quota_change(ticket_id):
+    """رد درخواست تغییر حجم و مدت اشتراک نماینده با درج علت"""
+    admin_name = session.get("username") or "مدیریت"
+    reason = request.form.get("reason", "").strip()
+    res = db.reject_quota_change_request(ticket_id, reason=reason, admin_name=admin_name)
+    if res.get("success"):
+        flash(f"درخواست تغییر مشخصات اشتراک رد شد.", "info")
+    else:
+        flash(f"خطا در رد درخواست: {res.get('error')}", "danger")
+    return redirect(url_for("tickets"))
+
+
+@app.route("/admin/subscription/<int:sub_id>/clear-debt", methods=["POST"])
+@permission_required("sub_manage")
+def admin_subscription_clear_debt(sub_id):
+    """تسویه سریع بدهی اشتراک توسط مدیر"""
+    db.clear_subscription_debt(sub_id)
+    flash("بدهی مشتری با موفقیت تسویه شد و اشتراک به عنوان پرداخت شده علامت‌گذاری گردید.", "success")
+    return redirect(request.form.get("next") or request.referrer or url_for("subscriptions"))
+
+
+@app.route("/reseller/subscription/<int:sub_id>/clear-debt", methods=["POST"])
+@reseller_required
+def reseller_subscription_clear_debt(sub_id):
+    """تسویه سریع بدهی مشتری توسط نماینده"""
+    reseller_id = session.get("reseller_id")
+    db.clear_subscription_debt(sub_id, reseller_id=reseller_id)
+    flash("بدهی مشتری با موفقیت تسویه شد و وضعیت اشتراک به پرداخت شده تغییر یافت.", "success")
+    return redirect(request.form.get("next") or request.referrer or url_for("reseller_users"))
+
+
+@app.route("/subscription/<int:sub_id>/send-debt-reminder", methods=["POST"])
+def subscription_send_debt_reminder(sub_id):
+    """ارسال پیام یادآوری بدهی به تلگرام مشتری"""
+    if not (session.get("logged_in") and (session.get("role") in ("admin", "super_admin", "partner") or session.get("reseller_id"))):
+        flash("دسترسی غیرمجاز است.", "danger")
+        return redirect(url_for("login"))
+
+    reseller_id = session.get("reseller_id")
+    conn = db.get_connection()
+    if reseller_id:
+        sub = conn.execute("SELECT * FROM subscriptions WHERE id=? AND reseller_id=?", (sub_id, reseller_id)).fetchone()
+    else:
+        sub = conn.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,)).fetchone()
+    conn.close()
+
+    if not sub:
+        flash("اشتراک مورد نظر یافت نشد.", "danger")
+        return redirect(request.referrer or url_for("subscriptions"))
+
+    sub = dict(sub)
+    tg_id = sub.get("telegram_id")
+    debt_amount = sub.get("debt_amount") or 0
+
+    if not tg_id or int(tg_id) <= 0:
+        flash("برای این مشتری شناسه کاربری تلگرام ثبت نشده است.", "warning")
+        return redirect(request.referrer or url_for("subscriptions"))
+
+    card_number = get_setting("card_number") or ""
+    card_holder = get_setting("card_holder") or ""
+    bank_name = get_setting("bank_name") or ""
+    if reseller_id:
+        r_info = db.get_reseller(reseller_id) or {}
+        if r_info.get("card_number"):
+            card_number = r_info["card_number"]
+            card_holder = r_info.get("card_holder", "")
+            bank_name = r_info.get("bank_name", "")
+
+    msg = (
+        f"🌸 <b>کاربر گرامی، با سلام و احترام</b>\n\n"
+        f"📋 <b>یادآوری صورت‌حساب اشتراک:</b> «{sub.get('account_name')}»\n"
+        f"💰 <b>مبلغ بدهی / مانده پرداخت:</b> <code>{debt_amount:,}</code> تومان\n"
+    )
+    if sub.get("debt_notes"):
+        msg += f"📝 <b>توضیحات:</b> {sub.get('debt_notes')}\n"
+    if card_number:
+        msg += f"\n💳 <b>شماره کارت جهت واریز:</b>\n<code>{card_number}</code>\n👤 بنام: {card_holder} ({bank_name})\n"
+    msg += "\n🙏 لطفاً پس از واریز، تصویر فیش پرداخت خود را در همین بات ارسال فرمایید."
+
+    try:
+        send_telegram_msg(tg_id, msg)
+        flash(f"✅ پیام یادآوری بدهی با موفقیت به تلگرام مشتری «{sub.get('account_name')}» ارسال شد.", "success")
+    except Exception as e:
+        logger.error(f"Error sending debt reminder to tg {tg_id}: {e}")
+        flash(f"خطا در ارسال پیام تلگرام: {e}", "danger")
+
+    return redirect(request.referrer or url_for("subscriptions"))
+
+
+@app.route("/api/subscription/<int:sub_id>/history", methods=["GET"])
+def api_subscription_history(sub_id):
+    """وب‌سرویس دریافت سوابق و تاریخچه دوره‌های قبلی و مصرف یک اشتراک"""
+    if not session.get("logged_in"):
+        return jsonify({"success": False, "error": "احراز هویت لازم است"}), 401
+
+    reseller_id = session.get("reseller_id") if session.get("role") == "reseller" else None
+    data = db.get_subscription_full_details_and_history(sub_id, reseller_id=reseller_id)
+    return jsonify(data)
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # مدیریت کارت‌های بانکی مقصد (Bank Card Rotator)
 # ═══════════════════════════════════════════════════════════════════════
@@ -4310,7 +4503,7 @@ def reseller_dashboard():
 @app.route("/reseller/create-user", methods=["GET", "POST"])
 @reseller_required
 def reseller_create_user():
-    """ساخت آنی اشتراک مشتری توسط نماینده با کسر اعتبار عمده‌فروشی"""
+    """ساخت آنی اشتراک مشتری توسط نماینده با کسر اعتبار عمده‌فروشی و ثبت وضعیت پرداخت/بدهی"""
     reseller_id = session.get("reseller_id")
     stats = db.get_reseller_stats(reseller_id)
     discount = stats["discount_percent"]
@@ -4320,7 +4513,12 @@ def reseller_create_user():
         plan_key = request.form.get("plan_id")
         account_name = request.form.get("account_name", "").strip()
         phone_number = request.form.get("phone_number", "").strip()
+        telegram_id_raw = request.form.get("telegram_id", "").strip()
         user_limit = int(request.form.get("user_limit", 1))
+
+        payment_status = request.form.get("payment_status", "paid").strip()
+        debt_amount_raw = request.form.get("debt_amount", "").strip()
+        debt_notes = request.form.get("debt_notes", "").strip()
 
         if plan_key not in plans:
             flash("پلن انتخابی نامعتبر است.", "danger")
@@ -4338,9 +4536,17 @@ def reseller_create_user():
         if not account_name:
             account_name = f"res_{reseller_id}_{int(time.time()) % 10000}"
 
+        telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else 0
+        if payment_status in ("unpaid", "debtor"):
+            debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else original_price
+        else:
+            debt_amount = 0
+
         user_comment = f"Reseller #{reseller_id} ({session.get('name')})"
         if phone_number:
             user_comment += f" | Phone: {phone_number}"
+        if telegram_id:
+            user_comment += f" | TG: {telegram_id}"
 
         # ۱. ابتدا ساخت کاربر در سرور هیدیفای انجام می‌شود
         h_res = hidify_sync_create_user(
@@ -4367,23 +4573,59 @@ def reseller_create_user():
         current_reseller_balance = r_after.get("balance", 0) if r_after else 0
         session["balance"] = current_reseller_balance
 
-        # ۳. ثبت اشتراک با شناسه نماینده، شماره تلفن، تعداد مجاز کاربر و هزینه پرداخت‌شده در دیتابیس
+        now = get_now_iso()
+        debt_created = now if debt_amount > 0 else None
+
+        # ۳. ثبت اشتراک با وضعیت بدهی، شناسه نماینده، شماره تلفن و هزینه در دیتابیس
         conn = db.get_connection()
-        conn.execute("""
+        cursor = conn.cursor()
+        cursor.execute("""
             INSERT INTO subscriptions 
-            (telegram_id, hidify_uuid, plan_id, plan_name, account_name, phone_number, data_limit, duration, status, reseller_id, user_limit, cost_paid, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
+            (telegram_id, hidify_uuid, plan_id, plan_name, account_name, phone_number,
+             data_limit, duration, status, reseller_id, user_limit, cost_paid,
+             payment_status, debt_amount, debt_notes, debt_created_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            0, user_uuid, plan_key, plan["name"], account_name, phone_number or None,
-            plan["data_limit"], plan["duration"], reseller_id, user_limit, final_price, get_now_iso(), get_now_iso()
+            telegram_id, user_uuid, plan_key, plan["name"], account_name, phone_number or None,
+            plan["data_limit"], plan["duration"], reseller_id, user_limit, final_price,
+            payment_status, debt_amount, debt_notes or None, debt_created, now, now
         ))
+        sub_id = cursor.lastrowid
+
+        if telegram_id and telegram_id > 0:
+            cursor.execute("SELECT * FROM users WHERE telegram_id=?", (telegram_id,))
+            if not cursor.fetchone():
+                cursor.execute("""
+                    INSERT INTO users (telegram_id, username, phone_number, is_verified, reseller_id, created_at, updated_at)
+                    VALUES (?, ?, ?, 1, ?, ?, ?)
+                """, (telegram_id, account_name, phone_number or None, reseller_id, now, now))
+
         conn.commit()
         conn.close()
+
+        # ثبت سابقه دوره اولیه در تاریخچه
+        db.save_subscription_history(
+            subscription_id=sub_id,
+            telegram_id=telegram_id,
+            hidify_uuid=user_uuid,
+            account_name=account_name,
+            plan_name=plan["name"],
+            previous_usage_gb=0,
+            previous_limit_gb=plan["data_limit"],
+            period_days=plan["duration"],
+            renewal_type="new_subscription",
+            reseller_id=reseller_id,
+            plan_price=original_price,
+            cost_paid=final_price,
+            start_date=now
+        )
 
         subscription_url = f"{get_hiddify_url()}/{get_user_proxy()}/{user_uuid}/"
         single_link_template = get_single_link_template(db)
         single_url = format_single_link(single_link_template, uuid=user_uuid, name=account_name)
-        flash(f"اشتراک «{account_name}» با موفقیت ساخته شد و مبلغ {final_price:,} تومان از کیف پول شما کسر گردید.", "success")
+        
+        debt_msg = f" (مشتری بدهکار ثبت شد: {debt_amount:,} تومان)" if debt_amount > 0 else ""
+        flash(f"اشتراک «{account_name}» با موفقیت ساخته شد و مبلغ {final_price:,} تومان از کیف پول شما کسر گردید.{debt_msg}", "success")
 
         return render_template(
             "reseller_created_success.html",
@@ -4401,13 +4643,14 @@ def reseller_create_user():
 @app.route("/reseller/users")
 @reseller_required
 def reseller_users():
-    """لیست مشتریان نماینده به همراه آمار، وضعیت آنلاین، فیلتر VIP و دسترسی به ویرایش، تمدید و حذف"""
+    """لیست مشتریان نماینده به همراه آمار، وضعیت آنلاین، تب بدهکاران و دسترسی به ویرایش، تمدید و حذف"""
     sync_hiddify_online_users()
     reseller_id = session.get("reseller_id")
     stats = db.get_reseller_stats(reseller_id)
     discount = stats["discount_percent"]
     plans = get_plans_dict()
     status_filter = request.args.get("status", "all")
+    debtor_count = db.get_debtor_count(reseller_id)
     
     raw_subs = db.get_reseller_subscriptions(reseller_id)
     subs = []
@@ -4420,6 +4663,8 @@ def reseller_users():
         elif status_filter == "expired" and item.get("status") != "expired":
             continue
         elif status_filter == "vip" and not item.get("is_vip"):
+            continue
+        elif status_filter == "debtors" and not (item.get("payment_status") in ("unpaid", "debtor") or (item.get("debt_amount") or 0) > 0):
             continue
 
         refund_calc = db.calculate_reseller_refund(reseller_id, item["id"])
@@ -4434,6 +4679,7 @@ def reseller_users():
         plans=plans,
         discount=discount,
         stats=stats,
+        debtor_count=debtor_count,
         balance=stats["balance"],
         panel_url=get_hiddify_url(),
         user_proxy=get_user_proxy(),
@@ -4484,7 +4730,7 @@ def reseller_set_user_vip(telegram_id):
 @app.route("/reseller/subscription/<int:sub_id>/edit", methods=["POST"])
 @reseller_required
 def reseller_edit_user(sub_id: int):
-    """ویرایش جامع مشخصات، حجم، روزها، وضعیت و آواتار مشتری نماینده"""
+    """ویرایش مشخصات، نام، تلفن، آیدی تلگرام، وضعیت بدهی و آواتار مشتری نماینده (بدون تغییر مستقیم حجم/روز)"""
     reseller_id = session.get("reseller_id")
     sub = db.get_reseller_subscription(reseller_id, sub_id)
     if not sub:
@@ -4493,27 +4739,31 @@ def reseller_edit_user(sub_id: int):
 
     account_name = request.form.get("account_name", "").strip() or sub.get("account_name") or f"user_{sub_id}"
     phone_number = request.form.get("phone_number", "").strip()
+    telegram_id_raw = request.form.get("telegram_id", "").strip()
+    telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else None
     comment = request.form.get("comment", "").strip()
     avatar_preset = request.form.get("avatar_preset", "").strip()
 
-    data_limit_str = request.form.get("data_limit", "").strip()
-    duration_str = request.form.get("duration", "").strip()
     status_val = request.form.get("status", "").strip()
-
-    data_limit = float(data_limit_str) if data_limit_str else None
-    duration = int(duration_str) if duration_str and duration_str.isdigit() else None
     status = status_val if status_val in ("active", "disabled") else None
 
-    # ۱. بروزرسانی در دیتابیس محلی
+    payment_status = request.form.get("payment_status", sub.get("payment_status") or "paid").strip()
+    debt_amount_raw = request.form.get("debt_amount", "").strip()
+    debt_notes = request.form.get("debt_notes", "").strip()
+    debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else 0
+
+    # ۱. بروزرسانی در دیتابیس محلی (حجم و مدت توسط نماینده مستقیماً تغییر داده نمی‌شود)
     db.update_reseller_subscription(
         reseller_id=reseller_id,
         sub_id=sub_id,
         account_name=account_name,
         phone_number=phone_number,
         comment=comment,
-        data_limit=data_limit,
-        duration=duration,
-        status=status
+        status=status,
+        telegram_id=telegram_id,
+        payment_status=payment_status,
+        debt_amount=debt_amount,
+        debt_notes=debt_notes
     )
 
     # ۲. بروزرسانی یا اعمال آواتار اختصاصی مشتری
@@ -4552,6 +4802,8 @@ def reseller_edit_user(sub_id: int):
         full_comment = f"Reseller #{reseller_id} ({r_name})"
         if phone_number:
             full_comment += f" | Phone: {phone_number}"
+        if telegram_id:
+            full_comment += f" | TG: {telegram_id}"
         if comment:
             full_comment += f" | {comment}"
 
@@ -4559,10 +4811,6 @@ def reseller_edit_user(sub_id: int):
             "name": account_name,
             "comment": full_comment[:200]
         }
-        if data_limit is not None:
-            h_payload["usage_limit_GB"] = data_limit
-        if duration is not None:
-            h_payload["package_days"] = duration
         if status == "disabled":
             h_payload["enable"] = False
             h_payload["is_active"] = False
@@ -4585,6 +4833,38 @@ def reseller_edit_user(sub_id: int):
         logger.error(f"Error in sync_hiddify_online_users after edit: {e_sync}")
 
     flash(f"مشخصات مشتری «{account_name}» با موفقیت ذخیره و در سرور هیدیفای اعمال شد.", "success")
+    return redirect(url_for("reseller_users"))
+
+
+@app.route("/reseller/subscription/<int:sub_id>/request-change", methods=["POST"])
+@reseller_required
+def reseller_request_quota_change(sub_id):
+    """ثبت و ارسال تیکت درخواست تغییر حجم و مدت اشتراک توسط نماینده به مدیریت"""
+    reseller_id = session.get("reseller_id")
+    requested_limit_raw = request.form.get("requested_limit", "").strip()
+    requested_duration_raw = request.form.get("requested_duration", "").strip()
+    reason = request.form.get("reason", "").strip()
+
+    try:
+        requested_limit = float(requested_limit_raw)
+        requested_duration = int(requested_duration_raw)
+    except Exception:
+        flash("مقادیر حجم یا مدت زمان درخواستی نامعتبر است.", "danger")
+        return redirect(url_for("reseller_users"))
+
+    res = db.create_quota_change_request(
+        sub_id=sub_id,
+        reseller_id=reseller_id,
+        requested_limit=requested_limit,
+        requested_duration=requested_duration,
+        reason=reason
+    )
+
+    if res.get("success"):
+        flash(f"✅ درخواست تغییر حجم به {requested_limit} گیگابایت و {requested_duration} روز با موفقیت برای مدیریت ارسال شد و در تیکت #{res.get('ticket_id')} ثبت گردید.", "success")
+    else:
+        flash(f"خطا در ثبت درخواست: {res.get('error')}", "danger")
+
     return redirect(url_for("reseller_users"))
 
 
@@ -5892,6 +6172,19 @@ def admin_create_customer():
             flash(f"خطا در ایجاد اکانت در سرور هیدیفای: {h_res.get('error')}", "danger")
             return redirect(url_for("admin_create_customer"))
 
+        # تعیین وضعیت بدهی
+        debt_amount_raw = request.form.get("debt_amount", "").strip()
+        debt_notes = request.form.get("debt_notes", "").strip()
+        if payment_method == "debtor":
+            payment_status = "unpaid"
+            debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else price
+        else:
+            payment_status = "paid"
+            debt_amount = 0
+
+        now = get_now_iso()
+        debt_created = now if debt_amount > 0 else None
+
         # ذخیره در دیتابیس
         sub_id = db.save_subscription(
             telegram_id=telegram_id or 0,
@@ -5905,6 +6198,32 @@ def admin_create_customer():
             user_limit=user_limit
         )
 
+        # بروزرسانی شماره تماس، وضعیت پرداخت و بدهی در جدول subscriptions
+        conn = db.get_connection()
+        conn.execute("""
+            UPDATE subscriptions 
+            SET phone_number = ?, account_comment = ?, payment_status = ?, debt_amount = ?, debt_notes = ?, debt_created_at = ?
+            WHERE id = ?
+        """, (phone_number or None, comment or None, payment_status, debt_amount, debt_notes or None, debt_created, sub_id))
+        conn.commit()
+        conn.close()
+
+        # ثبت سابقه دوره اولیه در تاریخچه
+        db.save_subscription_history(
+            subscription_id=sub_id,
+            telegram_id=telegram_id or 0,
+            hidify_uuid=user_uuid,
+            account_name=account_name,
+            plan_name=plan_name,
+            previous_usage_gb=0,
+            previous_limit_gb=data_limit,
+            period_days=duration,
+            renewal_type="new_subscription",
+            plan_price=price,
+            cost_paid=price if payment_method != "debtor" else 0,
+            start_date=now
+        )
+
         # ثبت کاربر در جدول users
         if telegram_id:
             db.save_user(telegram_id, account_name, None, None, 0, phone_number)
@@ -5913,7 +6232,9 @@ def admin_create_customer():
 
         # ثبت تراکنش و حسابداری بدهی نقدی مدیر
         debt_info_text = ""
-        if payment_method == "cash" and price > 0:
+        if payment_method == "debtor":
+            debt_info_text = f" (مشتری بدهکار ثبت گردید: {debt_amount:,} تومان)"
+        elif payment_method == "cash" and price > 0:
             order_id = f"ADM_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
             db.save_transaction(
                 order_id=order_id,
