@@ -906,16 +906,89 @@ def hidify_sync_delete_admin(uuid: str) -> dict:
     return hidify_sync_request("DELETE", f"/admin/admin_user/{uuid}/")
 
 
-def hidify_sync_update_user(uuid: str, **kwargs) -> dict:
-    """بروزرسانی کاربر در هیدیفای"""
-    res = hidify_sync_request("PATCH", f"/admin/user/{uuid}/", kwargs)
-    if "error" in res:
-        # Fallback به دریافت کاربر و ارسال کامل PUT
-        user_obj = hidify_sync_request("GET", f"/admin/user/{uuid}/")
-        if "error" not in user_obj:
-            user_obj.update(kwargs)
-            res = hidify_sync_request("PUT", f"/admin/user/{uuid}/", user_obj)
-    return res
+def hidify_sync_update_user(uuid: str, api_key: str = None, reseller_id: int = None, **kwargs) -> dict:
+    """
+    بروزرسانی دقیق مشخصات کاربر در هیدیفای (نام، کامنت، حجم، روز، وضعیت و...)
+    با پاکسازی هوشمند فیلدهای اضافی برای جلوگیری از خطای ۴۲۲ و پشتیبانی از کلیدهای اختصاصی و فال‌بک
+    """
+    if not uuid or not str(uuid).strip():
+        return {"error": "UUID کاربر نامعتبر است"}
+
+    clean_uuid = str(uuid).strip().strip("/")
+    active_key = api_key
+    if not active_key and reseller_id:
+        active_key = db.get_reseller_hiddify_key(reseller_id)
+    main_admin_key = get_hiddify_key()
+
+    # نرمال‌سازی نام کلیدهای ورودی
+    normalized_kwargs = {}
+    for k, v in kwargs.items():
+        if k in ("usage_limit_gb", "usage_limit_GB"):
+            try:
+                normalized_kwargs["usage_limit_GB"] = float(v)
+            except Exception:
+                pass
+        elif k in ("package_days", "duration"):
+            try:
+                normalized_kwargs["package_days"] = int(v)
+            except Exception:
+                pass
+        elif k == "name" and v is not None:
+            normalized_kwargs["name"] = str(v).strip()
+        elif k == "comment" and v is not None:
+            normalized_kwargs["comment"] = str(v).strip()[:500]
+        elif k in ("enable", "is_active"):
+            normalized_kwargs[k] = bool(v)
+        elif k in ("mode", "start_date", "expire_date", "expiry_time", "lang", "wg_pk", "wg_pub", "wg_psk", "telegram_id", "added_by"):
+            normalized_kwargs[k] = v
+
+    # کلیدهایی که برای تلاش استفاده خواهند شد
+    keys_to_try = []
+    if active_key:
+        keys_to_try.append(active_key)
+    if main_admin_key and main_admin_key not in keys_to_try:
+        keys_to_try.append(main_admin_key)
+
+    last_res = {"error": "هیچ کلید معتبری برای اتصال به هیدیفای یافت نشد"}
+
+    for k_val in keys_to_try:
+        # ۱. روش اول: PATCH به /admin/user/{uuid}/ و /admin/user/{uuid}
+        for ep in (f"/admin/user/{clean_uuid}/", f"/admin/user/{clean_uuid}"):
+            res = hidify_sync_request("PATCH", ep, normalized_kwargs, api_key=k_val)
+            if isinstance(res, dict) and "error" not in res:
+                logger.info(f"Successfully updated user {clean_uuid} via PATCH on {ep}")
+                return res
+            last_res = res
+
+        # ۲. روش دوم: GET اطلاعات فعلی کاربر و ارسال PUT پاکسازی‌شده
+        for ep_get in (f"/admin/user/{clean_uuid}/", f"/admin/user/{clean_uuid}"):
+            user_obj = hidify_sync_request("GET", ep_get, api_key=k_val)
+            if isinstance(user_obj, dict) and "error" not in user_obj:
+                # فیلدهای مجاز مدل Pydantic هیدیفای برای UserPutSchema / UserSchema
+                allowed_hiddify_fields = {
+                    "name", "usage_limit_GB", "package_days", "comment", "mode",
+                    "start_date", "expire_date", "enable", "is_active", "lang",
+                    "added_by", "wg_pk", "wg_pub", "wg_psk", "telegram_id"
+                }
+                clean_payload = {k: v for k, v in user_obj.items() if k in allowed_hiddify_fields}
+                clean_payload.update(normalized_kwargs)
+
+                # اطمینان از وجود فیلدهای اجباری در PUT
+                if "name" not in clean_payload:
+                    clean_payload["name"] = user_obj.get("name") or clean_uuid[:8]
+                if "usage_limit_GB" not in clean_payload:
+                    clean_payload["usage_limit_GB"] = float(user_obj.get("usage_limit_GB") or 0)
+                if "package_days" not in clean_payload:
+                    clean_payload["package_days"] = int(user_obj.get("package_days") or 30)
+
+                for ep_put in (f"/admin/user/{clean_uuid}/", f"/admin/user/{clean_uuid}"):
+                    res_put = hidify_sync_request("PUT", ep_put, clean_payload, api_key=k_val)
+                    if isinstance(res_put, dict) and "error" not in res_put:
+                        logger.info(f"Successfully updated user {clean_uuid} via PUT on {ep_put}")
+                        return res_put
+                    last_res = res_put
+
+    return last_res
 
 
 def hidify_sync_renew_user(uuid: str, new_limit_gb: float, new_duration_days: int) -> dict:
@@ -4411,20 +4484,37 @@ def reseller_set_user_vip(telegram_id):
 @app.route("/reseller/subscription/<int:sub_id>/edit", methods=["POST"])
 @reseller_required
 def reseller_edit_user(sub_id: int):
-    """ویرایش مشخصات و آواتار مشتری نماینده"""
+    """ویرایش جامع مشخصات، حجم، روزها، وضعیت و آواتار مشتری نماینده"""
     reseller_id = session.get("reseller_id")
     sub = db.get_reseller_subscription(reseller_id, sub_id)
     if not sub:
         flash("اشتراک مورد نظر یافت نشد.", "danger")
         return redirect(url_for("reseller_users"))
 
-    account_name = request.form.get("account_name", "").strip() or sub["account_name"]
+    account_name = request.form.get("account_name", "").strip() or sub.get("account_name") or f"user_{sub_id}"
     phone_number = request.form.get("phone_number", "").strip()
     comment = request.form.get("comment", "").strip()
     avatar_preset = request.form.get("avatar_preset", "").strip()
 
+    data_limit_str = request.form.get("data_limit", "").strip()
+    duration_str = request.form.get("duration", "").strip()
+    status_val = request.form.get("status", "").strip()
+
+    data_limit = float(data_limit_str) if data_limit_str else None
+    duration = int(duration_str) if duration_str and duration_str.isdigit() else None
+    status = status_val if status_val in ("active", "disabled") else None
+
     # ۱. بروزرسانی در دیتابیس محلی
-    db.update_reseller_subscription(reseller_id, sub_id, account_name, phone_number, comment)
+    db.update_reseller_subscription(
+        reseller_id=reseller_id,
+        sub_id=sub_id,
+        account_name=account_name,
+        phone_number=phone_number,
+        comment=comment,
+        data_limit=data_limit,
+        duration=duration,
+        status=status
+    )
 
     # ۲. بروزرسانی یا اعمال آواتار اختصاصی مشتری
     if avatar_preset:
@@ -4454,16 +4544,47 @@ def reseller_edit_user(sub_id: int):
                         (AVATAR_CACHE_DIR / f"custom_{phone_number}{ext}").write_bytes(file_bytes)
                     db.update_subscription_avatar(sub_id, custom_fn)
 
-    # ۳. بروزرسانی در هیدیفای
-    if sub.get("hidify_uuid"):
-        full_comment = f"Reseller #{reseller_id} ({session.get('name')})"
+    # ۳. بروزرسانی مستقیم و بلادرنگ در سرور هیدیفای
+    h_uuid = sub.get("hidify_uuid")
+    if h_uuid:
+        reseller_data = db.get_reseller(reseller_id) or {}
+        r_name = reseller_data.get("name") or session.get("name") or reseller_data.get("username") or f"Reseller #{reseller_id}"
+        full_comment = f"Reseller #{reseller_id} ({r_name})"
         if phone_number:
             full_comment += f" | Phone: {phone_number}"
         if comment:
             full_comment += f" | {comment}"
-        hidify_sync_update_user(sub["hidify_uuid"], name=account_name, comment=full_comment[:200])
 
-    flash(f"مشخصات و آواتار اشتراک «{account_name}» با موفقیت بروزرسانی شد.", "success")
+        h_payload = {
+            "name": account_name,
+            "comment": full_comment[:200]
+        }
+        if data_limit is not None:
+            h_payload["usage_limit_GB"] = data_limit
+        if duration is not None:
+            h_payload["package_days"] = duration
+        if status == "disabled":
+            h_payload["enable"] = False
+            h_payload["is_active"] = False
+        elif status == "active":
+            h_payload["enable"] = True
+            h_payload["is_active"] = True
+
+        h_res = hidify_sync_update_user(
+            h_uuid,
+            reseller_id=reseller_id,
+            **h_payload
+        )
+        if isinstance(h_res, dict) and "error" in h_res:
+            logger.warning(f"Warning: Failed to update user {h_uuid} in Hiddify: {h_res.get('error')}")
+
+    # ۴. همگام‌سازی فوری برای تثبیت داده‌ها
+    try:
+        sync_hiddify_online_users(force=True)
+    except Exception as e_sync:
+        logger.error(f"Error in sync_hiddify_online_users after edit: {e_sync}")
+
+    flash(f"مشخصات مشتری «{account_name}» با موفقیت ذخیره و در سرور هیدیفای اعمال شد.", "success")
     return redirect(url_for("reseller_users"))
 
 

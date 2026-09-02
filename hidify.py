@@ -106,25 +106,49 @@ class HidifyClient:
         return await self._request("POST", "/admin/user/", payload)
 
     async def update_user(self, uuid: str, **kwargs) -> dict:
-        """بروزرسانی اطلاعات کاربر با قابلیت بازیابی در صورت خطای اسکیما"""
-        res = await self._request("PATCH", f"/admin/user/{uuid}/", kwargs)
-        if "error" not in res:
-            return res
+        """بروزرسانی اطلاعات کاربر با قابلیت بازیابی در صورت خطای اسکیما و پاکسازی فیلدهای اضافه"""
+        if not uuid:
+            return {"error": "UUID نامعتبر است"}
 
-        logger.warning(f"PATCH user {uuid} failed ({res.get('error')}), trying fallback update...")
+        clean_uuid = str(uuid).strip().strip("/")
+        normalized_kwargs = {}
+        for k, v in kwargs.items():
+            if k in ("usage_limit_gb", "usage_limit_GB"):
+                try:
+                    normalized_kwargs["usage_limit_GB"] = float(v)
+                except Exception:
+                    pass
+            elif k in ("package_days", "duration"):
+                try:
+                    normalized_kwargs["package_days"] = int(v)
+                except Exception:
+                    pass
+            elif k in ("name", "comment", "mode", "start_date", "expire_date", "expiry_time", "enable", "is_active", "lang", "wg_pk", "wg_pub", "wg_psk", "telegram_id", "added_by"):
+                normalized_kwargs[k] = v
+
+        for ep in (f"/admin/user/{clean_uuid}/", f"/admin/user/{clean_uuid}"):
+            res = await self._request("PATCH", ep, normalized_kwargs)
+            if isinstance(res, dict) and "error" not in res:
+                return res
+
+        logger.warning(f"PATCH user {clean_uuid} failed, trying fallback PUT update...")
         try:
-            existing = await self.get_user(uuid)
-            if isinstance(existing, dict) and "error" not in existing and existing.get("name"):
-                payload = dict(existing)
-                payload.update(kwargs)
-                res_put = await self._request("PUT", f"/admin/user/{uuid}/", payload)
-                if "error" not in res_put:
-                    return res_put
-                res_patch = await self._request("PATCH", f"/admin/user/{uuid}/", payload)
-                if "error" not in res_patch:
-                    return res_patch
+            for ep_get in (f"/admin/user/{clean_uuid}/", f"/admin/user/{clean_uuid}"):
+                existing = await self.get_user(clean_uuid)
+                if isinstance(existing, dict) and "error" not in existing and existing.get("name"):
+                    allowed_fields = {
+                        "name", "usage_limit_GB", "package_days", "comment", "mode",
+                        "start_date", "expire_date", "enable", "is_active", "lang",
+                        "added_by", "wg_pk", "wg_pub", "wg_psk", "telegram_id"
+                    }
+                    payload = {k: v for k, v in existing.items() if k in allowed_fields}
+                    payload.update(normalized_kwargs)
+                    for ep_put in (f"/admin/user/{clean_uuid}/", f"/admin/user/{clean_uuid}"):
+                        res_put = await self._request("PUT", ep_put, payload)
+                        if isinstance(res_put, dict) and "error" not in res_put:
+                            return res_put
         except Exception as e:
-            logger.error(f"Fallback update error for {uuid}: {e}")
+            logger.error(f"Fallback update error for {clean_uuid}: {e}")
         return res
 
 

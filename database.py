@@ -1100,6 +1100,7 @@ class Database:
                 else:
                     plan_id = "custom"
 
+                name_clean = str(name).strip() if (name and str(name).strip()) else None
                 if existing_sub:
                     # بروزرسانی مصرف، سقف حجم، تعداد روزها (duration / package_days)، تاریخ‌ها و وضعیت
                     cursor.execute("""
@@ -1115,7 +1116,7 @@ class Database:
                             last_online = COALESCE(?, last_online),
                             updated_at = ?
                         WHERE hidify_uuid = ?
-                    """, (current_usage, usage_limit, package_days, start_date, expiry_time, status, name, is_online_val, last_online_val, now, uuid))
+                    """, (current_usage, usage_limit, package_days, start_date, expiry_time, status, name_clean, is_online_val, last_online_val, now, uuid))
                 else:
                     # درج اشتراک جدید بازیابی شده
                     cursor.execute("""
@@ -4392,20 +4393,70 @@ class Database:
         conn.close()
         return dict(row) if row else None
 
-    def update_reseller_subscription(self, reseller_id: int, sub_id: int, account_name: str, phone_number: str = None, comment: str = None):
-        """ویرایش مشخصات مشتری نماینده"""
+    def update_reseller_subscription(self, reseller_id: int, sub_id: int, account_name: str,
+                                     phone_number: str = None, comment: str = None,
+                                     data_limit: float = None, duration: int = None,
+                                     status: str = None):
+        """ویرایش جامع مشخصات مشتری نماینده و همگام‌سازی با کاربران و تراکنش‌ها"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
+            cursor.execute("SELECT * FROM subscriptions WHERE id=? AND reseller_id=?", (sub_id, reseller_id))
+            sub_row = cursor.fetchone()
+            if not sub_row:
+                return {"success": False, "error": "اشتراک مورد نظر یافت نشد"}
+
+            clean_name = account_name.strip() if account_name else (sub_row["account_name"] or f"user_{sub_id}")
+            clean_phone = phone_number.strip() if phone_number and str(phone_number).strip() else None
+            clean_comment = comment.strip() if comment and str(comment).strip() else None
+
+            # ۱. بروزرسانی جدول subscriptions
             cursor.execute("""
                 UPDATE subscriptions
-                SET account_name=?, phone_number=?, account_comment=?, updated_at=?
-                WHERE id=? AND reseller_id=?
-            """, (account_name.strip(), phone_number.strip() if phone_number else None, comment.strip() if comment else None, now, sub_id, reseller_id))
+                SET account_name = ?,
+                    phone_number = ?,
+                    account_comment = ?,
+                    data_limit = COALESCE(?, data_limit),
+                    duration = COALESCE(?, duration),
+                    status = COALESCE(?, status),
+                    updated_at = ?
+                WHERE id = ? AND reseller_id = ?
+            """, (
+                clean_name,
+                clean_phone,
+                clean_comment,
+                float(data_limit) if data_limit is not None else None,
+                int(duration) if duration is not None else None,
+                status.strip() if status else None,
+                now,
+                sub_id,
+                reseller_id
+            ))
+
+            # ۲. اگر کاربر دارای شناسه تلگرام باشد، بروزرسانی در جدول users
+            tg_id = sub_row["telegram_id"]
+            if tg_id and int(tg_id) > 0:
+                if clean_phone:
+                    cursor.execute("""
+                        UPDATE users SET phone_number = ?, updated_at = ? WHERE telegram_id = ?
+                    """, (clean_phone, now, tg_id))
+                if clean_name:
+                    cursor.execute("""
+                        UPDATE users SET username = COALESCE(?, username), updated_at = ? WHERE telegram_id = ?
+                    """, (clean_name, now, tg_id))
+
+            # ۳. بروزرسانی در تراکنش‌های مربوط به این اشتراک
+            cursor.execute("""
+                UPDATE transactions
+                SET account_name = ?, account_comment = COALESCE(?, account_comment), updated_at = ?
+                WHERE subscription_id = ? OR (user_id = ? AND reseller_id = ?)
+            """, (clean_name, clean_comment, now, sub_id, tg_id if tg_id else 0, reseller_id))
+
             conn.commit()
             return {"success": True}
         except Exception as e:
+            logger.error(f"Error in update_reseller_subscription: {e}")
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
