@@ -74,16 +74,19 @@
                         <label class="form-label fw-bold">انتخاب پلن مورد نظر:</label>
                         <div class="row g-3">
                             {% for p_key, p in plans.items() %}
+                            {% set p_orig_price = p.get('master_price') or p.get('price') or p.get('display_price') or 0 %}
+                            {% set p_wholesale_price = p.get('wholesale_price') if p.get('wholesale_price') is not None else ((p_orig_price * (100 - discount) / 100)|int) %}
+                            {% set p_name = p.get('display_name') or p.get('name') or p.get('master_name') or 'پلن' %}
                             <div class="col-md-6">
                                 <label class="card p-3 h-100 cursor-pointer border-2 plan-option" style="cursor: pointer;">
                                     <div class="d-flex align-items-start gap-2">
-                                        <input type="radio" name="plan_id" value="{{ p_key }}" class="form-check-input mt-1" required onchange="calculatePrice({{ p['price'] }})" {% if loop.first %}checked{% endif %}>
+                                        <input type="radio" name="plan_id" value="{{ p_key }}" class="form-check-input mt-1" required onchange="calculatePrice({{ p_orig_price }}, {{ p_wholesale_price }})" {% if loop.first %}checked{% endif %}>
                                         <div class="flex-grow-1">
-                                            <div class="fw-bold">{{ p['name'] }}</div>
-                                            <div class="text-muted small">حجم: {{ p['data_limit'] }} گیگ | مدت: {{ p['duration'] }} روز</div>
+                                            <div class="fw-bold">{{ p_name }}</div>
+                                            <div class="text-muted small">حجم: {{ p.get('data_limit', 0) }} گیگ | مدت: {{ p.get('duration', 30) }} روز</div>
                                             <div class="mt-2">
-                                                <span class="text-decoration-line-through text-muted small">{{ "{:,}".format(p['price']) }} ت</span>
-                                                <strong class="text-success ms-1">{{ "{:,}".format((p['price'] * (100 - discount) / 100)|int) }} تومان</strong>
+                                                <span class="text-decoration-line-through text-muted small">{{ "{:,}".format(p_orig_price) }} ت</span>
+                                                <strong class="text-success ms-1">{{ "{:,}".format(p_wholesale_price) }} تومان</strong>
                                             </div>
                                         </div>
                                     </div>
@@ -135,9 +138,9 @@
         }
     }
 
-    function calculatePrice(price) {
-        const discountAmount = Math.floor((price * discountPercent) / 100);
-        const finalPrice = price - discountAmount;
+    function calculatePrice(price, wholesalePrice) {
+        const finalPrice = (wholesalePrice !== undefined && wholesalePrice !== null) ? wholesalePrice : Math.floor((price * (100 - discountPercent)) / 100);
+        const discountAmount = Math.max(0, price - finalPrice);
         currentFinalPrice = finalPrice;
         document.getElementById('origPriceText').innerText = price.toLocaleString('fa-IR') + ' تومان';
         document.getElementById('discountAmountText').innerText = discountAmount.toLocaleString('fa-IR') + ' تومان';

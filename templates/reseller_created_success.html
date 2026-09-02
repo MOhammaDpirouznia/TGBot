@@ -15,9 +15,9 @@
 
                 <div class="row text-start g-2 mb-4 p-3 bg-light rounded-3">
                     <div class="col-6 col-md-3"><strong>نام اکانت:</strong> <code>{{ account_name }}</code></div>
-                    <div class="col-6 col-md-3"><strong>پلن انتخابی:</strong> {{ plan['name'] }}</div>
-                    <div class="col-6 col-md-3"><strong>حجم مجاز:</strong> {{ plan['data_limit'] }} گیگابایت</div>
-                    <div class="col-6 col-md-3"><strong>مدت زمان:</strong> {{ plan['duration'] }} روز</div>
+                    <div class="col-6 col-md-3"><strong>پلن انتخابی:</strong> {{ plan.get('name') or plan.get('display_name') or plan.get('master_name') or 'پلن' }}</div>
+                    <div class="col-6 col-md-3"><strong>حجم مجاز:</strong> {{ plan.get('data_limit', 0) }} گیگابایت</div>
+                    <div class="col-6 col-md-3"><strong>مدت زمان:</strong> {{ plan.get('duration', 30) }} روز</div>
                 </div>
 
                 <!-- بخش QR کدهای دوتایی (لینک ساب و لینک تکی) -->
