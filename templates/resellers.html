@@ -40,26 +40,26 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0" id="resellersTable">
-                <thead>
+            <table class="table table-hover align-middle mb-0 sortable-table" id="resellersTable">
+                <thead class="table-light">
                     <tr>
-                        <th>نام و عنوان نماینده</th>
-                        <th>نام کاربری ورود</th>
-                        <th>ادمین هیدیفای</th>
-                        <th>درصد تخفیف</th>
-                        <th>موجودی کیف پول</th>
-                        <th>ربات اختصاصی</th>
-                        <th>تعداد مشتریان</th>
-                        <th>اشتراک‌های فعال</th>
-                        <th>مجموع خرید</th>
-                        <th>وضعیت</th>
-                        <th>عملیات</th>
+                        <th class="ps-3 sortable-th" data-column="0">نام و عنوان نماینده</th>
+                        <th class="sortable-th" data-column="1">نام کاربری ورود</th>
+                        <th class="sortable-th" data-column="2">ادمین هیدیفای</th>
+                        <th class="sortable-th" data-column="3">درصد تخفیف</th>
+                        <th class="sortable-th" data-column="4">موجودی کیف پول</th>
+                        <th class="sortable-th" data-column="5">ربات اختصاصی</th>
+                        <th class="sortable-th" data-column="6">تعداد مشتریان</th>
+                        <th class="sortable-th" data-column="7">اشتراک‌های فعال</th>
+                        <th class="sortable-th" data-column="8">مجموع خرید</th>
+                        <th class="sortable-th" data-column="9">وضعیت</th>
+                        <th class="text-end pe-3">عملیات</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for r in resellers %}
                     <tr>
-                        <td>
+                        <td class="ps-3" data-value="{{ (r['name'] or '')|striptags }}">
                             <div class="d-flex align-items-center gap-2">
                                 <div class="position-relative" style="cursor: pointer;" data-bs-toggle="modal" data-bs-target="#resellerPaymentModal{{ r['id'] }}" title="مشاهده سوابق و جزئیات پرداخت‌های {{ r['name'] }}">
                                     <img src="{{ avatar_url(r['telegram_id'] or r['username'] or 'Reseller') }}" 
@@ -87,8 +87,8 @@
                                 </div>
                             </div>
                         </td>
-                        <td><code>{{ r['username'] }}</code></td>
-                        <td>
+                        <td data-value="{{ r['username'] or '' }}"><code>{{ r['username'] }}</code></td>
+                        <td data-value="{{ 1 if r.get('active_hiddify_key') else 0 }}">
                             {% if r.get('active_hiddify_key') %}
                                 <div class="d-flex flex-column gap-1">
                                     <span class="badge bg-success-subtle text-success border border-success d-inline-flex align-items-center gap-1" style="width: fit-content;" title="Admin Key: {{ r.get('active_hiddify_key') }}">
@@ -112,9 +112,9 @@
                                 </div>
                             {% endif %}
                         </td>
-                        <td><span class="badge bg-primary fs-6">{{ r['discount_percent'] }}%</span></td>
-                        <td><strong class="text-success">{{ "{:,}".format(r['balance'] or 0) }} تومان</strong></td>
-                        <td>
+                        <td data-value="{{ r['discount_percent'] or 0 }}"><span class="badge bg-primary fs-6">{{ r['discount_percent'] }}%</span></td>
+                        <td data-value="{{ r['balance'] or 0 }}"><strong class="text-success font-monospace">{{ "{:,}".format(r['balance'] or 0) }} تومان</strong></td>
+                        <td data-value="{{ 1 if (r.get('bot_status', {}).get('is_running')) else 0 }}">
                             {% set bstat = r.get('bot_status', {}) %}
                             {% if bstat.get('is_running') %}
                                 <div class="d-flex flex-column gap-1">
@@ -136,10 +136,10 @@
                                 <span class="badge bg-light text-muted border">بدون ربات</span>
                             {% endif %}
                         </td>
-                        <td><span class="badge bg-secondary">{{ r['total_users'] }} مشتری</span></td>
-                        <td><span class="badge bg-success">{{ r['active_users'] }} فعال</span></td>
-                        <td>{{ "{:,}".format(r['total_spent'] or 0) }} تومان</td>
-                        <td>
+                        <td data-value="{{ r['total_users'] or 0 }}"><span class="badge bg-secondary font-monospace">{{ r['total_users'] }} مشتری</span></td>
+                        <td data-value="{{ r['active_users'] or 0 }}"><span class="badge bg-success font-monospace">{{ r['active_users'] }} فعال</span></td>
+                        <td data-value="{{ r['total_spent'] or 0 }}"><span class="font-monospace">{{ "{:,}".format(r['total_spent'] or 0) }} تومان</span></td>
+                        <td data-value="{{ 1 if r['status'] == 'active' else 0 }}">
                             {% if r['status'] == 'active' %}
                                 <span class="badge badge-approved">فعال</span>
                             {% else %}

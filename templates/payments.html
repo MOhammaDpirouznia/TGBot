@@ -756,50 +756,6 @@ function playResellerReceiptChime(manual = false) {
         console.warn('Web Audio error:', e);
     }
 }
-
-// اسکریپت مرتب‌سازی هوشمند ستون‌های جدول پرداخت‌ها
-document.addEventListener("DOMContentLoaded", function () {
-    document.querySelectorAll(".sortable-th").forEach(header => {
-        header.addEventListener("click", function () {
-            const table = header.closest("table");
-            const tbody = table.querySelector("tbody");
-            const colIndex = parseInt(header.getAttribute("data-column"));
-            const currentDir = header.getAttribute("data-dir") === "asc" ? "desc" : "asc";
-            
-            table.querySelectorAll(".sortable-th").forEach(th => {
-                th.removeAttribute("data-dir");
-                const icon = th.querySelector("i");
-                if (icon) icon.className = "fas fa-sort text-muted ms-1";
-            });
-
-            header.setAttribute("data-dir", currentDir);
-            const icon = header.querySelector("i");
-            if (icon) {
-                icon.className = currentDir === "asc" ? "fas fa-sort-up text-primary ms-1" : "fas fa-sort-down text-primary ms-1";
-            }
-
-            const rows = Array.from(tbody.querySelectorAll(":scope > tr.payment-row"));
-            rows.sort((a, b) => {
-                const cellA = a.children[colIndex];
-                const cellB = b.children[colIndex];
-                if (!cellA || !cellB) return 0;
-                
-                let valA = cellA.getAttribute("data-value") !== null ? cellA.getAttribute("data-value") : cellA.innerText.trim();
-                let valB = cellB.getAttribute("data-value") !== null ? cellB.getAttribute("data-value") : cellB.innerText.trim();
-
-                const numA = parseFloat(valA);
-                const numB = parseFloat(valB);
-
-                if (!isNaN(numA) && !isNaN(numB)) {
-                    return currentDir === "asc" ? numA - numB : numB - numA;
-                }
-                return currentDir === "asc" ? valA.localeCompare(valB, "fa") : valB.localeCompare(valA, "fa");
-            });
-
-            rows.forEach(r => tbody.appendChild(r));
-        });
-    });
-});
 </script>
 {% endblock %}
 

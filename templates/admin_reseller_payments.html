@@ -110,19 +110,19 @@
                     <table class="table table-hover align-middle mb-0 sortable-table" id="resellerWalletTable">
                         <thead class="table-light">
                             <tr>
-                                <th class="ps-3 sortable-th" data-column="0" style="cursor: pointer;">شناسه <i class="fas fa-sort text-muted ms-1"></i></th>
-                                <th class="sortable-th" data-column="1" style="cursor: pointer;">نوع تراکنش <i class="fas fa-sort text-muted ms-1"></i></th>
-                                <th class="sortable-th" data-column="2" style="cursor: pointer;">مبلغ <i class="fas fa-sort text-muted ms-1"></i></th>
-                                <th class="sortable-th" data-column="3" style="cursor: pointer;">پلن / اکانت هیدیفای <i class="fas fa-sort text-muted ms-1"></i></th>
-                                <th>توضیحات</th>
-                                <th class="sortable-th" data-column="5" style="cursor: pointer;">تاریخ و زمان <i class="fas fa-sort text-muted ms-1"></i></th>
+                                <th class="ps-3 sortable-th" data-column="0">شناسه</th>
+                                <th class="sortable-th" data-column="1">نوع تراکنش</th>
+                                <th class="sortable-th" data-column="2">مبلغ</th>
+                                <th class="sortable-th" data-column="3">پلن / اکانت هیدیفای</th>
+                                <th class="sortable-th" data-column="4">توضیحات</th>
+                                <th class="sortable-th" data-column="5">تاریخ و زمان</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for tx in history.get('wallet_transactions', []) %}
                             <tr>
-                                <td class="ps-3" data-value="{{ tx['id'] }}"><code class="font-monospace">#{{ tx['id'] }}</code></td>
-                                <td data-value="{{ tx['type'] }}">
+                                <td class="ps-3"><code class="font-monospace">#{{ tx['id'] }}</code></td>
+                                <td>
                                     {% if tx['type'] == 'deposit' %}
                                         <span class="badge bg-success"><i class="fas fa-arrow-down me-1"></i> شارژ کیف پول</span>
                                     {% elif tx['type'] == 'refund' %}
@@ -133,18 +133,18 @@
                                         <span class="badge bg-danger"><i class="fas fa-arrow-up me-1"></i> خرید اشتراک</span>
                                     {% endif %}
                                 </td>
-                                <td data-value="{{ tx['amount'] or 0 }}">
+                                <td>
                                     <strong class="{{ 'text-success' if (tx['type'] in ['deposit', 'refund']) else 'text-danger' }} font-monospace">
                                         {{ '+' if (tx['type'] in ['deposit', 'refund']) else '-' }}{{ "{:,}".format(tx['amount'] or 0) }} تومان
                                     </strong>
                                 </td>
-                                <td data-value="{{ tx['plan_name'] or '' }}">
+                                <td>
                                     {{ tx['plan_name'] or '-' }}
                                     {% if tx['account_name'] and tx['account_name'] != '-' %}
                                         <code class="ms-1">{{ tx['account_name'] }}</code>
                                     {% endif %}
                                 </td>
-                                <td><small class="text-muted">{{ tx['description'] or '-' }}</small></td>
+                                <td data-value="{{ tx['description'] or '' }}"><small class="text-muted">{{ tx['description'] or '-' }}</small></td>
                                 <td data-value="{{ tx['created_at'] or '' }}"><small class="text-muted">{{ tx['created_at'][:16].replace('T', ' ') if tx['created_at'] else '-' }}</small></td>
                             </tr>
                             {% endfor %}
@@ -164,20 +164,20 @@
                     <table class="table table-hover align-middle mb-0 sortable-table" id="resellerReceiptTable">
                         <thead class="table-light">
                             <tr>
-                                <th class="ps-3 sortable-th" data-column="0" style="cursor: pointer;">کد سفارش <i class="fas fa-sort text-muted ms-1"></i></th>
-                                <th class="sortable-th" data-column="1" style="cursor: pointer;">بسته / پلن <i class="fas fa-sort text-muted ms-1"></i></th>
-                                <th class="sortable-th" data-column="2" style="cursor: pointer;">مبلغ <i class="fas fa-sort text-muted ms-1"></i></th>
-                                <th class="sortable-th" data-column="3" style="cursor: pointer;">روش پرداخت <i class="fas fa-sort text-muted ms-1"></i></th>
-                                <th>کد پیگیری</th>
-                                <th class="sortable-th" data-column="5" style="cursor: pointer;">وضعیت <i class="fas fa-sort text-muted ms-1"></i></th>
-                                <th class="sortable-th" data-column="6" style="cursor: pointer;">تاریخ ثبت <i class="fas fa-sort text-muted ms-1"></i></th>
+                                <th class="ps-3 sortable-th" data-column="0">کد سفارش</th>
+                                <th class="sortable-th" data-column="1">بسته / پلن</th>
+                                <th class="sortable-th" data-column="2">مبلغ</th>
+                                <th class="sortable-th" data-column="3">روش پرداخت</th>
+                                <th class="sortable-th" data-column="4">کد پیگیری</th>
+                                <th class="sortable-th" data-column="5">وضعیت</th>
+                                <th class="sortable-th" data-column="6">تاریخ ثبت</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for r in history.get('receipt_transactions', []) %}
                             <tr>
-                                <td class="ps-3" data-value="{{ r['id'] }}"><code class="font-monospace">{{ r['order_id'] }}</code></td>
-                                <td data-value="{{ r['plan_name'] or '' }}">
+                                <td class="ps-3"><code class="font-monospace">{{ r['order_id'] }}</code></td>
+                                <td>
                                     {% if r.get('gateway') == 'bundle_reseller' or (r.get('order_id') and r['order_id'].startswith('R_BUNDLE')) %}
                                         <span class="badge" style="background: linear-gradient(135deg, #7c3aed, #db2777); color: #fff; font-size: 0.72rem;">
                                             <i class="fas fa-crown me-1 text-warning"></i> بسته اعتباری
@@ -185,13 +185,13 @@
                                     {% endif %}
                                     <div class="fw-bold">{{ r['plan_name'] or '-' }}</div>
                                 </td>
-                                <td data-value="{{ r['amount'] or 0 }}">
+                                <td>
                                     <strong class="text-primary font-monospace">{{ "{:,}".format(r['amount'] or 0) }} تومان</strong>
                                 </td>
                                 <td data-value="{{ r['gateway'] or '' }}">
                                     <span class="badge bg-light text-dark border">{{ r['gateway']|gateway_name }}</span>
                                 </td>
-                                <td>
+                                <td data-value="{{ r['tracking_code'] or '' }}">
                                     {% if r['tracking_code'] %}
                                         <code class="text-secondary">{{ r['tracking_code'] }}</code>
                                     {% else %}
@@ -199,12 +199,10 @@
                                     {% endif %}
                                 </td>
                                 <td data-value="{{ r['status'] }}">
-                                    {% if r['status'] in ['approved', 'completed'] %}
+                                    {% if r['status'] == 'completed' or r['status'] == 'approved' %}
                                         <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i> تایید شده</span>
                                     {% elif r['status'] == 'pending' %}
-                                        <span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i> در انتظار بررسی</span>
-                                    {% elif r['status'] == 'revoked' %}
-                                        <span class="badge bg-secondary"><i class="fas fa-ban me-1"></i> ابطال‌شده</span>
+                                        <span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i> در انتظار</span>
                                     {% else %}
                                         <span class="badge bg-danger"><i class="fas fa-times-circle me-1"></i> رد شده</span>
                                     {% endif %}
@@ -224,49 +222,4 @@
         </div>
     </div>
 </div>
-
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-    document.querySelectorAll(".sortable-th").forEach(header => {
-        header.addEventListener("click", function () {
-            const table = header.closest("table");
-            const tbody = table.querySelector("tbody");
-            const colIndex = parseInt(header.getAttribute("data-column"));
-            const currentDir = header.getAttribute("data-dir") === "asc" ? "desc" : "asc";
-            
-            table.querySelectorAll(".sortable-th").forEach(th => {
-                th.removeAttribute("data-dir");
-                const icon = th.querySelector("i");
-                if (icon) icon.className = "fas fa-sort text-muted ms-1";
-            });
-
-            header.setAttribute("data-dir", currentDir);
-            const icon = header.querySelector("i");
-            if (icon) {
-                icon.className = currentDir === "asc" ? "fas fa-sort-up text-primary ms-1" : "fas fa-sort-down text-primary ms-1";
-            }
-
-            const rows = Array.from(tbody.querySelectorAll("tr"));
-            rows.sort((a, b) => {
-                const cellA = a.children[colIndex];
-                const cellB = b.children[colIndex];
-                if (!cellA || !cellB) return 0;
-                
-                let valA = cellA.getAttribute("data-value") !== null ? cellA.getAttribute("data-value") : cellA.innerText.trim();
-                let valB = cellB.getAttribute("data-value") !== null ? cellB.getAttribute("data-value") : cellB.innerText.trim();
-
-                const numA = parseFloat(valA);
-                const numB = parseFloat(valB);
-
-                if (!isNaN(numA) && !isNaN(numB)) {
-                    return currentDir === "asc" ? numA - numB : numB - numA;
-                }
-                return currentDir === "asc" ? valA.localeCompare(valB, "fa") : valB.localeCompare(valA, "fa");
-            });
-
-            rows.forEach(r => tbody.appendChild(r));
-        });
-    });
-});
-</script>
 {% endblock %}

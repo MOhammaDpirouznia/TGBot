@@ -151,22 +151,12 @@
             <table class="table table-hover align-middle mb-0 sortable-table" id="resellerTxTable">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-3 sortable-th" data-column="0" style="cursor: pointer;">
-                            شناسه <i class="fas fa-sort text-muted ms-1"></i>
-                        </th>
-                        <th class="sortable-th" data-column="1" style="cursor: pointer;">
-                            نوع تراکنش <i class="fas fa-sort text-muted ms-1"></i>
-                        </th>
-                        <th class="sortable-th" data-column="2" style="cursor: pointer;">
-                            مبلغ <i class="fas fa-sort text-muted ms-1"></i>
-                        </th>
-                        <th class="sortable-th" data-column="3" style="cursor: pointer;">
-                            پلن / نام کاربری مشتری <i class="fas fa-sort text-muted ms-1"></i>
-                        </th>
-                        <th>توضیحات</th>
-                        <th class="sortable-th" data-column="5" style="cursor: pointer;">
-                            تاریخ و زمان <i class="fas fa-sort text-muted ms-1"></i>
-                        </th>
+                        <th class="ps-3 sortable-th" data-column="0">شناسه</th>
+                        <th class="sortable-th" data-column="1">نوع تراکنش</th>
+                        <th class="sortable-th" data-column="2">مبلغ</th>
+                        <th class="sortable-th" data-column="3">پلن / نام کاربری مشتری</th>
+                        <th class="sortable-th" data-column="4">توضیحات</th>
+                        <th class="sortable-th" data-column="5">تاریخ و زمان</th>
                         <th class="text-end pe-3">جزئیات</th>
                     </tr>
                 </thead>
@@ -191,7 +181,7 @@
                             </strong>
                         </td>
                         <td data-value="{{ tx['plan_name'] or '' }}">{{ tx['plan_name'] or '-' }} {% if tx['account_name'] %}<code class="ms-1">{{ tx['account_name'] }}</code>{% endif %}</td>
-                        <td><small class="text-muted">{{ tx['description'] or '-' }}</small></td>
+                        <td data-value="{{ tx['description'] or '' }}"><small class="text-muted">{{ tx['description'] or '-' }}</small></td>
                         <td data-value="{{ tx['created_at'] or '' }}"><small class="text-muted">{{ tx['created_at'][:16].replace('T', ' ') if tx['created_at'] else '-' }}</small></td>
                         <td class="text-end pe-3">
                             <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#resellerTxDetail{{ tx['id'] }}" title="مشاهده جزئیات کامل">
@@ -269,51 +259,4 @@
     </div>
 </div>
 {% endfor %}
-
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-    // قابلیت مرتب‌سازی ستون‌های جدول
-    document.querySelectorAll(".sortable-th").forEach(header => {
-        header.addEventListener("click", function () {
-            const table = header.closest("table");
-            const tbody = table.querySelector("tbody");
-            const colIndex = parseInt(header.getAttribute("data-column"));
-            const currentDir = header.getAttribute("data-dir") === "asc" ? "desc" : "asc";
-            
-            // ریست آیکون‌های دیگر
-            table.querySelectorAll(".sortable-th").forEach(th => {
-                th.removeAttribute("data-dir");
-                const icon = th.querySelector("i");
-                if (icon) icon.className = "fas fa-sort text-muted ms-1";
-            });
-
-            header.setAttribute("data-dir", currentDir);
-            const icon = header.querySelector("i");
-            if (icon) {
-                icon.className = currentDir === "asc" ? "fas fa-sort-up text-primary ms-1" : "fas fa-sort-down text-primary ms-1";
-            }
-
-            const rows = Array.from(tbody.querySelectorAll("tr"));
-            rows.sort((a, b) => {
-                const cellA = a.children[colIndex];
-                const cellB = b.children[colIndex];
-                if (!cellA || !cellB) return 0;
-                
-                let valA = cellA.getAttribute("data-value") !== null ? cellA.getAttribute("data-value") : cellA.innerText.trim();
-                let valB = cellB.getAttribute("data-value") !== null ? cellB.getAttribute("data-value") : cellB.innerText.trim();
-
-                const numA = parseFloat(valA);
-                const numB = parseFloat(valB);
-
-                if (!isNaN(numA) && !isNaN(numB)) {
-                    return currentDir === "asc" ? numA - numB : numB - numA;
-                }
-                return currentDir === "asc" ? valA.localeCompare(valB, "fa") : valB.localeCompare(valA, "fa");
-            });
-
-            rows.forEach(r => tbody.appendChild(r));
-        });
-    });
-});
-</script>
 {% endblock %}

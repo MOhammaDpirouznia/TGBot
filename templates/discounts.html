@@ -26,31 +26,31 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0" id="discountsTable">
+            <table class="table table-hover align-middle mb-0 sortable-table" id="discountsTable">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-3">کد تخفیف</th>
-                        <th>میزان تخفیف</th>
-                        <th>تعداد استفاده شده / سقف</th>
-                        <th>تاریخ انقضا</th>
-                        <th>وضعیت</th>
+                        <th class="ps-3 sortable-th" data-column="0">کد تخفیف</th>
+                        <th class="sortable-th" data-column="1">میزان تخفیف</th>
+                        <th class="sortable-th" data-column="2">تعداد استفاده شده / سقف</th>
+                        <th class="sortable-th" data-column="3">تاریخ انقضا</th>
+                        <th class="sortable-th" data-column="4">وضعیت</th>
                         <th class="text-end pe-3">عملیات</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for d in discounts %}
                     <tr>
-                        <td class="ps-3"><span class="badge bg-primary-subtle text-primary fs-6 font-monospace">{{ d.code }}</span></td>
-                        <td>
+                        <td class="ps-3" data-value="{{ d.code }}"><span class="badge bg-primary-subtle text-primary fs-6 font-monospace">{{ d.code }}</span></td>
+                        <td data-value="{{ d.discount_percent or d.discount_amount or 0 }}">
                             {% if d.discount_percent and d.discount_percent > 0 %}
                                 <span class="badge bg-success-subtle text-success fs-6">{{ d.discount_percent }}% تخفیف</span>
                             {% elif d.discount_amount and d.discount_amount > 0 %}
-                                <span class="badge bg-success-subtle text-success fs-6">{{ "{:,}".format(d.discount_amount) }} تومان</span>
+                                <span class="badge bg-success-subtle text-success fs-6 font-monospace">{{ "{:,}".format(d.discount_amount) }} تومان</span>
                             {% else %}
                                 <span class="text-muted">نامشخص</span>
                             {% endif %}
                         </td>
-                        <td>
+                        <td data-value="{{ d.used_count or 0 }}">
                             {{ d.used_count or 0 }} / 
                             {% if d.max_uses and d.max_uses > 0 %}
                                 {{ d.max_uses }}
@@ -58,14 +58,14 @@
                                 <span class="text-muted">نامحدود</span>
                             {% endif %}
                         </td>
-                        <td>
+                        <td data-value="{{ d.valid_until or '' }}">
                             {% if d.valid_until %}
-                                {{ d.valid_until[:10] }}
+                                <span class="font-monospace">{{ d.valid_until[:10] }}</span>
                             {% else %}
                                 <span class="text-muted">بدون انقضا</span>
                             {% endif %}
                         </td>
-                        <td>
+                        <td data-value="{{ 1 if d.is_active else 0 }}">
                             {% if d.is_active %}
                                 <span class="badge bg-success">فعال</span>
                             {% else %}

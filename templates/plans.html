@@ -26,33 +26,33 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0" id="plansTable">
+            <table class="table table-hover align-middle mb-0 sortable-table" id="plansTable">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-3">شناسه پلن</th>
-                        <th>نام پلن</th>
-                        <th>قیمت (تومان)</th>
-                        <th>حجم (GB)</th>
-                        <th>مدت (روز)</th>
-                        <th>وضعیت</th>
+                        <th class="ps-3 sortable-th" data-column="0">شناسه پلن</th>
+                        <th class="sortable-th" data-column="1">نام پلن</th>
+                        <th class="sortable-th" data-column="2">قیمت (تومان)</th>
+                        <th class="sortable-th" data-column="3">حجم (GB)</th>
+                        <th class="sortable-th" data-column="4">مدت (روز)</th>
+                        <th class="sortable-th" data-column="5">وضعیت</th>
                         <th class="text-end pe-3">عملیات</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for pid, p in plans.items() %}
                     <tr>
-                        <td class="ps-3"><code class="text-primary">{{ pid }}</code></td>
-                        <td class="fw-bold">{{ p.name }}</td>
-                        <td><span class="badge bg-success-subtle text-success fs-6">{{ "{:,}".format(p.price) }} تومان</span></td>
-                        <td>
+                        <td class="ps-3" data-value="{{ pid }}"><code class="text-primary font-monospace">{{ pid }}</code></td>
+                        <td data-value="{{ p.name }}" class="fw-bold">{{ p.name }}</td>
+                        <td data-value="{{ p.price or 0 }}"><span class="badge bg-success-subtle text-success fs-6 font-monospace">{{ "{:,}".format(p.price) }} تومان</span></td>
+                        <td data-value="{{ p.data_limit or 0 }}">
                             {% if p.data_limit and p.data_limit > 0 %}
-                                <span class="badge bg-info-subtle text-info fs-6">{{ p.data_limit }} گیگابایت</span>
+                                <span class="badge bg-info-subtle text-info fs-6 font-monospace">{{ p.data_limit }} گیگابایت</span>
                             {% else %}
                                 <span class="badge bg-secondary-subtle text-secondary fs-6">نامحدود</span>
                             {% endif %}
                         </td>
-                        <td>{{ p.duration }} روز</td>
-                        <td>
+                        <td data-value="{{ p.duration or 0 }}"><span class="font-monospace">{{ p.duration }} روز</span></td>
+                        <td data-value="{{ 1 if p.is_active else 0 }}">
                             {% if p.is_active %}
                                 <span class="badge bg-success">فعال</span>
                             {% else %}

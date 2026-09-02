@@ -592,6 +592,108 @@
             color: var(--danger);
         }
 
+        /* ─── استایل‌های ستون‌های قابل مرتب‌سازی جداول (Sortable Table Headers) ─── */
+        .sortable-th {
+            cursor: pointer !important;
+            user-select: none;
+            white-space: nowrap;
+            transition: background-color 0.2s ease, color 0.2s ease;
+            position: relative;
+        }
+        .sortable-th:hover {
+            background-color: rgba(79, 70, 229, 0.08) !important;
+            color: var(--primary) !important;
+        }
+        .sortable-th i.fas {
+            transition: transform 0.2s ease, color 0.2s ease;
+        }
+        [data-bs-theme="dark"] .sortable-th:hover {
+            background-color: rgba(255, 255, 255, 0.06) !important;
+            color: #818cf8 !important;
+        }
+
+        /* ─── استایل‌های تفکیک رنگی تیکت‌ها بر اساس وضعیت (Ticket Status Highlights) ─── */
+        .ticket-row-open {
+            background-color: rgba(245, 158, 11, 0.09) !important;
+            border-right: 4px solid #f59e0b !important;
+        }
+        .ticket-row-open:hover {
+            background-color: rgba(245, 158, 11, 0.16) !important;
+        }
+        .ticket-row-inprogress {
+            background-color: rgba(6, 182, 212, 0.06) !important;
+            border-right: 4px solid #06b6d4 !important;
+        }
+        .ticket-row-inprogress:hover {
+            background-color: rgba(6, 182, 212, 0.12) !important;
+        }
+        .ticket-row-replied {
+            background-color: rgba(16, 185, 129, 0.05) !important;
+            border-right: 4px solid #10b981 !important;
+        }
+        .ticket-row-replied:hover {
+            background-color: rgba(16, 185, 129, 0.11) !important;
+        }
+        .ticket-row-closed {
+            background-color: rgba(100, 116, 139, 0.03) !important;
+            border-right: 4px solid #94a3b8 !important;
+            opacity: 0.85;
+        }
+        .ticket-row-closed:hover {
+            background-color: rgba(100, 116, 139, 0.08) !important;
+            opacity: 1;
+        }
+
+        /* تم تاریک برای سطرهای تیکت */
+        [data-bs-theme="dark"] .ticket-row-open {
+            background-color: rgba(245, 158, 11, 0.14) !important;
+            border-right-color: #fbbf24 !important;
+        }
+        [data-bs-theme="dark"] .ticket-row-open:hover {
+            background-color: rgba(245, 158, 11, 0.22) !important;
+        }
+        [data-bs-theme="dark"] .ticket-row-inprogress {
+            background-color: rgba(6, 182, 212, 0.12) !important;
+            border-right-color: #22d3ee !important;
+        }
+        [data-bs-theme="dark"] .ticket-row-inprogress:hover {
+            background-color: rgba(6, 182, 212, 0.18) !important;
+        }
+        [data-bs-theme="dark"] .ticket-row-replied {
+            background-color: rgba(16, 185, 129, 0.10) !important;
+            border-right-color: #34d399 !important;
+        }
+        [data-bs-theme="dark"] .ticket-row-replied:hover {
+            background-color: rgba(16, 185, 129, 0.16) !important;
+        }
+        [data-bs-theme="dark"] .ticket-row-closed {
+            background-color: rgba(15, 23, 42, 0.5) !important;
+            border-right-color: #475569 !important;
+            opacity: 0.75;
+        }
+        [data-bs-theme="dark"] .ticket-row-closed:hover {
+            background-color: rgba(30, 41, 59, 0.7) !important;
+            opacity: 1;
+        }
+
+        /* افکت ضربان بج تیکت جدید */
+        @keyframes pulseAlert {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 7px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        @keyframes pulseWarning {
+            0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+            70% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+        }
+        .pulse-indicator {
+            animation: pulseWarning 2s infinite;
+        }
+        .pulse-indicator-badge {
+            animation: pulseAlert 2s infinite;
+        }
+
         .table-responsive {
             -webkit-overflow-scrolling: touch;
             border-radius: 10px;
@@ -1450,8 +1552,128 @@
             });
         }
 
-        document.addEventListener('DOMContentLoaded', initTableSearch);
+        // ─── موتور مرتب‌سازی هوشمند سراسری جداول (Universal Smart Table Sorter) ───
+        function parseSortValue(raw) {
+            if (raw === null || raw === undefined) return { type: 'string', val: '' };
+            let str = String(raw).trim();
+            if (!str) return { type: 'string', val: '' };
+
+            // ۱. بررسی عدد مستقیم، اعشاری یا منفی
+            if (/^-?\d+(\.\d+)?$/.test(str)) {
+                return { type: 'number', val: parseFloat(str) };
+            }
+
+            // ۲. بررسی تاریخ و ساعت استاندارد میلادی (ISO / YYYY-MM-DD HH:MM:SS)
+            if (/^\d{4}[-/]\d{2}[-/]\d{2}/.test(str)) {
+                const parsedDate = Date.parse(str.replace(' ', 'T'));
+                if (!isNaN(parsedDate)) {
+                    return { type: 'date', val: parsedDate };
+                }
+                return { type: 'string', val: str };
+            }
+
+            // ۳. بررسی تاریخ شمسی با فرمت YYYY/MM/DD
+            if (/^1[34]\d{2}\/\d{1,2}\/\d{1,2}/.test(str)) {
+                const parts = str.split(' ')[0].split('/');
+                const y = parts[0];
+                const m = (parts[1] || '1').padStart(2, '0');
+                const d = (parts[2] || '1').padStart(2, '0');
+                const time = str.split(' ')[1] || '00:00:00';
+                return { type: 'string', val: `${y}/${m}/${d} ${time}` };
+            }
+
+            // ۴. بررسی مبالغ مالی دارای ویرگول و کلمات (مانند "1,500,000 تومان" یا "250,000")
+            const fa2en = str.replace(/[\u0660-\u0669\u06F0-\u06F9]/g, d => d.charCodeAt(0) % 16);
+            const cleanNum = fa2en.replace(/,/g, '').replace(/[^\d.-]/g, '');
+            if (cleanNum && /^-?\d+(\.\d+)?$/.test(cleanNum) && !str.includes('/') && !str.includes(':')) {
+                return { type: 'number', val: parseFloat(cleanNum) };
+            }
+
+            return { type: 'string', val: str.toLowerCase() };
+        }
+
+        function initUniversalTableSorting() {
+            document.querySelectorAll('table.sortable-table, table').forEach(table => {
+                const headers = table.querySelectorAll('thead th.sortable-th');
+                if (!headers.length) return;
+
+                headers.forEach((header) => {
+                    // اطمینان از وجود آیکون سورت
+                    if (!header.querySelector('i.fa-sort, i.fa-sort-up, i.fa-sort-down')) {
+                        const icon = document.createElement('i');
+                        icon.className = 'fas fa-sort text-muted ms-1';
+                        header.appendChild(icon);
+                    }
+
+                    // حذف لیسنر تکراری در صورت مقداردهی دوباره
+                    if (header.dataset.sortBound) return;
+                    header.dataset.sortBound = 'true';
+
+                    header.addEventListener('click', function (e) {
+                        if (e.target.closest('button, input, select, a, form')) return;
+
+                        const tbody = table.querySelector('tbody');
+                        if (!tbody) return;
+
+                        const colAttr = header.getAttribute('data-column');
+                        const colIndex = colAttr !== null ? parseInt(colAttr, 10) : header.cellIndex;
+                        const currentDir = header.getAttribute('data-dir') === 'asc' ? 'desc' : 'asc';
+
+                        // ریست وضعیت سایر هدرهای جدول
+                        headers.forEach(th => {
+                            th.removeAttribute('data-dir');
+                            const icon = th.querySelector('i.fas');
+                            if (icon) icon.className = 'fas fa-sort text-muted ms-1';
+                        });
+
+                        // اعمال وضعیت هدر انتخابی
+                        header.setAttribute('data-dir', currentDir);
+                        const activeIcon = header.querySelector('i.fas');
+                        if (activeIcon) {
+                            activeIcon.className = currentDir === 'asc' 
+                                ? 'fas fa-sort-up text-primary ms-1' 
+                                : 'fas fa-sort-down text-primary ms-1';
+                        }
+
+                        // مرتب‌سازی ردیف‌ها
+                        const rows = Array.from(tbody.querySelectorAll(':scope > tr:not(.no-search-results):not(.static-row)'));
+                        if (rows.length <= 1) return;
+
+                        rows.sort((rowA, rowB) => {
+                            const cellA = rowA.children[colIndex];
+                            const cellB = rowB.children[colIndex];
+                            if (!cellA || !cellB) return 0;
+
+                            const rawA = cellA.getAttribute('data-sort') ?? cellA.getAttribute('data-value') ?? cellA.getAttribute('data-timestamp') ?? cellA.innerText.trim();
+                            const rawB = cellB.getAttribute('data-sort') ?? cellB.getAttribute('data-value') ?? cellB.getAttribute('data-timestamp') ?? cellB.innerText.trim();
+
+                            const pA = parseSortValue(rawA);
+                            const pB = parseSortValue(rawB);
+
+                            let diff = 0;
+                            if (pA.type === 'number' && pB.type === 'number') {
+                                diff = pA.val - pB.val;
+                            } else if (pA.type === 'date' && pB.type === 'date') {
+                                diff = pA.val - pB.val;
+                            } else {
+                                diff = String(pA.val).localeCompare(String(pB.val), 'fa', { numeric: true, sensitivity: 'base' });
+                            }
+
+                            return currentDir === 'asc' ? diff : -diff;
+                        });
+
+                        rows.forEach(r => tbody.appendChild(r));
+                    });
+                });
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initTableSearch();
+            initUniversalTableSorting();
+        });
         initTableSearch();
+        initUniversalTableSorting();
     </script>
     {% block scripts %}{% endblock %}
 </body>

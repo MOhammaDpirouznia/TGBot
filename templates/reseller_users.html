@@ -63,16 +63,16 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0" id="resellerUsersTable">
-                <thead>
+            <table class="table table-hover align-middle mb-0 sortable-table" id="resellerUsersTable">
+                <thead class="table-light">
                     <tr>
-                        <th>مشتری / اکانت</th>
-                        <th>شماره و تلگرام</th>
-                        <th>وضعیت مالی</th>
-                        <th>پلن و حجم</th>
-                        <th>مدت اعتبار</th>
-                        <th>وضعیت اتصال</th>
-                        <th>تاریخ صدور</th>
+                        <th class="ps-3 sortable-th" data-column="0">مشتری / اکانت</th>
+                        <th class="sortable-th" data-column="1">شماره و تلگرام</th>
+                        <th class="sortable-th" data-column="2">وضعیت مالی</th>
+                        <th class="sortable-th" data-column="3">پلن و حجم</th>
+                        <th class="sortable-th" data-column="4">مدت اعتبار</th>
+                        <th class="sortable-th" data-column="5">وضعیت اتصال</th>
+                        <th class="sortable-th" data-column="6">تاریخ صدور</th>
                         <th class="text-end pe-3">عملیات و مدیریت</th>
                     </tr>
                 </thead>
@@ -83,7 +83,7 @@
                     {% set ref = sub.get('refund_info') or {} %}
                     {% set is_debtor = (sub.get('payment_status') in ('unpaid', 'debtor') or (sub.get('debt_amount')|int or 0) > 0) %}
                     <tr class="{% if is_debtor %}table-danger bg-opacity-10 border-start border-danger border-3{% elif sub.get('is_vip') %}table-warning bg-opacity-10{% endif %}">
-                        <td>
+                        <td class="ps-3" data-value="{{ (sub['account_name'] or '')|striptags }}">
                             <div class="d-flex align-items-center gap-2">
                                 <div class="position-relative">
                                     <img src="{{ avatar_url(sub['phone_number'] or sub['account_name'] or 'Customer') }}" 
@@ -108,7 +108,7 @@
                                 </div>
                             </div>
                         </td>
-                        <td>
+                        <td data-value="{{ sub['phone_number'] or sub.get('telegram_id') or '' }}">
                             <div>
                                 {% if sub['phone_number'] %}
                                     <a href="tel:{{ sub['phone_number'] }}" class="text-decoration-none font-monospace small d-block">
@@ -124,7 +124,7 @@
                                 {% endif %}
                             </div>
                         </td>
-                        <td>
+                        <td data-value="{{ sub.get('debt_amount')|int if is_debtor else 0 }}">
                             {% if is_debtor %}
                                 <div>
                                     <span class="badge bg-danger text-white px-2 py-1 shadow-sm d-inline-flex align-items-center gap-1">
@@ -140,7 +140,7 @@
                                 </span>
                             {% endif %}
                         </td>
-                        <td>
+                        <td data-value="{{ sub['data_limit']|float or 0 }}">
                             <div>
                                 <span class="badge bg-primary bg-opacity-10 text-primary mb-1">{{ sub['plan_name'] or '-' }}</span>
                                 <div class="small fw-bold font-monospace text-nowrap" dir="ltr">{{ "%.2f"|format(sub['data_used']|float or 0) }} / {{ "%.1f"|format(sub['data_limit']|float or 0) }} GB</div>
@@ -150,7 +150,7 @@
                                 </div>
                             </div>
                         </td>
-                        <td>
+                        <td data-value="{{ sub.get('remaining_days', sub['duration'] or 0) }}">
                             {% if sub.get('is_started') %}
                                 <div>
                                     <span class="badge {% if sub.get('remaining_days', 30) <= 3 %}bg-danger-subtle text-danger border border-danger{% else %}bg-success-subtle text-success border border-success{% endif %} font-monospace fs-6">
@@ -165,7 +165,7 @@
                                 </div>
                             {% endif %}
                         </td>
-                        <td>
+                        <td data-value="{{ 1 if sub.get('is_online') else (2 if sub['status'] == 'active' else 3) }}">
                             {% if sub.get('is_online') %}
                                 <span class="badge bg-success-subtle text-success border border-success d-inline-flex align-items-center gap-1 font-monospace">
                                     <span class="pulse-indicator"></span> آنلاین
@@ -183,7 +183,7 @@
                                 {% endif %}
                             {% endif %}
                         </td>
-                        <td><small class="text-muted">{{ sub['created_at'][:10] if sub['created_at'] else '-' }}</small></td>
+                        <td data-value="{{ sub['created_at'] or '' }}"><small class="text-muted font-monospace">{{ sub['created_at'][:10] if sub['created_at'] else '-' }}</small></td>
                         <td class="text-end pe-3">
                             <div class="btn-group btn-group-sm">
                                 <!-- دکمه تسویه سریع بدهی در صورت بدهکار بودن -->

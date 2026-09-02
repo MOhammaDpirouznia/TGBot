@@ -189,47 +189,47 @@
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0" id="accountingTable">
-                        <thead>
+                    <table class="table table-hover align-middle mb-0 sortable-table" id="accountingTable">
+                        <thead class="table-light">
                             <tr>
-                                <th style="width: 70px;">شناسه</th>
-                                <th>نوع</th>
-                                <th>دسته‌بندی</th>
-                                <th>عنوان سند</th>
-                                <th>مبلغ</th>
-                                <th>منبع</th>
-                                <th>تاریخ سند</th>
-                                <th>توضیحات</th>
-                                <th style="width: 80px;">عملیات</th>
+                                <th class="ps-3 sortable-th" data-column="0" style="width: 70px;">شناسه</th>
+                                <th class="sortable-th" data-column="1">نوع</th>
+                                <th class="sortable-th" data-column="2">دسته‌بندی</th>
+                                <th class="sortable-th" data-column="3">عنوان سند</th>
+                                <th class="sortable-th" data-column="4">مبلغ</th>
+                                <th class="sortable-th" data-column="5">منبع</th>
+                                <th class="sortable-th" data-column="6">تاریخ سند</th>
+                                <th class="sortable-th" data-column="7">توضیحات</th>
+                                <th style="width: 80px;" class="text-end pe-3">عملیات</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for r in records %}
                             <tr>
-                                <td><code>#{{ r['id'] }}</code></td>
-                                <td>
+                                <td class="ps-3" data-value="{{ r['id'] }}"><code class="font-monospace">#{{ r['id'] }}</code></td>
+                                <td data-value="{{ r['type'] }}">
                                     {% if r['type'] == 'income' %}
                                         <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-arrow-down me-1"></i>درآمد</span>
                                     {% else %}
                                         <span class="badge bg-danger-subtle text-danger border border-danger"><i class="fas fa-arrow-up me-1"></i>هزینه</span>
                                     {% endif %}
                                 </td>
-                                <td><span class="badge bg-secondary-subtle text-dark border">{{ r['category'] }}</span></td>
-                                <td><strong>{{ r['title'] }}</strong></td>
-                                <td>
-                                    <strong class="{% if r['type'] == 'income' %}text-success{% else %}text-danger{% endif %}">
+                                <td data-value="{{ r['category'] or '' }}"><span class="badge bg-secondary-subtle text-dark border">{{ r['category'] }}</span></td>
+                                <td data-value="{{ r['title'] or '' }}"><strong>{{ r['title'] }}</strong></td>
+                                <td data-value="{{ r['amount'] or 0 }}">
+                                    <strong class="{% if r['type'] == 'income' %}text-success{% else %}text-danger{% endif %} font-monospace">
                                         {% if r['type'] == 'income' %}+{% else %}-{% endif %}{{ "{:,}".format(r['amount'] or 0) }} تومان
                                     </strong>
                                 </td>
-                                <td>
+                                <td data-value="{{ r['source'] or '' }}">
                                     {% if r['source'] == 'auto' %}
                                         <span class="badge bg-info-subtle text-info"><i class="fas fa-robot me-1"></i>خودکار</span>
                                     {% else %}
                                         <span class="badge bg-light text-dark border"><i class="fas fa-user-pen me-1"></i>دستی</span>
                                     {% endif %}
                                 </td>
-                                <td><small>{{ r['date'] }}</small></td>
-                                <td><small class="text-muted">{{ r['description'] or '-' }}</small></td>
+                                <td data-value="{{ r['date'] or '' }}"><small class="font-monospace">{{ r['date'] }}</small></td>
+                                <td data-value="{{ r['description'] or '' }}"><small class="text-muted">{{ r['description'] or '-' }}</small></td>
                                 <td>
                                     {% if r['source'] != 'auto' %}
                                     <a href="{{ url_for('accounting_delete_record', record_id=r['id']) }}" class="btn btn-sm btn-outline-danger py-0 px-2" title="حذف سند" onclick="return confirm('آیا از حذف این سند حسابداری اطمینان دارید؟')">
@@ -333,38 +333,6 @@
                                         <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#settleDebtModal{{ adm['id'] }}" title="ثبت تسویه اقساطی یا کامل">
                                             <i class="fas fa-hand-holding-dollar me-1"></i> ثبت تسویه
                                         </button>
-                                    </div>
-
-                                    <!-- Modal ثبت تسویه حساب -->
-                                    <div class="modal fade" id="settleDebtModal{{ adm['id'] }}" tabindex="-1">
-                                        <div class="modal-dialog">
-                                            <div class="modal-content text-start">
-                                                <form method="POST" action="{{ url_for('admin_accounting_settle') }}">
-                                                    <div class="modal-header bg-success text-white">
-                                                        <h5 class="modal-title fw-bold"><i class="fas fa-hand-holding-dollar me-2"></i>ثبت تسویه بدهی برای «{{ adm['display_name'] }}»</h5>
-                                                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                                                    </div>
-                                                    <div class="modal-body">
-                                                        <input type="hidden" name="admin_id" value="{{ adm['id'] }}">
-                                                        <div class="alert alert-info py-2 small mb-3">
-                                                            مانده بدهی فعلی این مدیر: <strong>{{ "{:,}".format(adm['debt_balance']) }} تومان</strong>
-                                                        </div>
-                                                        <div class="mb-3">
-                                                            <label class="form-label fw-bold">مبلغ واریزی / تسویه‌شده (تومان):</label>
-                                                            <input type="number" name="amount" class="form-control font-monospace" max="{{ adm['debt_balance'] }}" value="{{ adm['debt_balance'] }}" required min="1000">
-                                                        </div>
-                                                        <div class="mb-3">
-                                                            <label class="form-label fw-bold">توضیحات و شماره فیش واریزی:</label>
-                                                            <input type="text" name="description" class="form-control" placeholder="مثال: کارت به کارت به شماره فیش 123456" required>
-                                                        </div>
-                                                    </div>
-                                                    <div class="modal-footer">
-                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
-                                                        <button type="submit" class="btn btn-success">ثبت و کاهش بدهی</button>
-                                                    </div>
-                                                </form>
-                                            </div>
-                                        </div>
                                     </div>
                                     {% else %}
                                     <span class="text-muted small">-</span>
@@ -507,4 +475,42 @@
         </div>
     </div>
 </div>
+
+<!-- مودال‌های ثبت تسویه حساب بدهی مدیران (خارج از ساختار جدول) -->
+{% for adm in admins %}
+{% if adm.get('debt_balance', 0) > 0 %}
+<div class="modal fade text-start" id="settleDebtModal{{ adm['id'] }}" tabindex="-1" aria-labelledby="settleDebtModalLabel{{ adm['id'] }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <form method="POST" action="{{ url_for('admin_accounting_settle') }}">
+                <div class="modal-header bg-success text-white py-3">
+                    <h5 class="modal-title fw-bold" id="settleDebtModalLabel{{ adm['id'] }}">
+                        <i class="fas fa-hand-holding-dollar me-2"></i>ثبت تسویه بدهی برای «{{ adm['display_name'] }}»
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <input type="hidden" name="admin_id" value="{{ adm['id'] }}">
+                    <div class="alert alert-info py-2 small mb-3">
+                        مانده بدهی فعلی این مدیر: <strong>{{ "{:,}".format(adm['debt_balance']) }} تومان</strong>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">مبلغ واریزی / تسویه‌شده (تومان):</label>
+                        <input type="number" name="amount" class="form-control font-monospace" max="{{ adm['debt_balance'] }}" value="{{ adm['debt_balance'] }}" required min="1000">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">توضیحات و شماره فیش واریزی:</label>
+                        <input type="text" name="description" class="form-control" placeholder="مثال: کارت به کارت به شماره فیش 123456" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-success fw-bold px-4">ثبت و کاهش بدهی</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
 {% endblock %}

@@ -40,18 +40,18 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0" id="subscriptionsTable">
-                <thead>
+            <table class="table table-hover align-middle mb-0 sortable-table" id="subscriptionsTable">
+                <thead class="table-light">
                     <tr>
-                        <th>مالک / کاربر</th>
-                        <th>نام اکانت هیدیفای</th>
-                        <th>وضعیت مالی</th>
-                        <th>پلن انتخابی</th>
-                        <th>مصرف / سقف</th>
-                        <th>مدت اعتبار</th>
-                        <th>انقضا</th>
-                        <th>وضعیت اتصال</th>
-                        <th>صادرکننده</th>
+                        <th class="ps-3 sortable-th" data-column="0">مالک / کاربر</th>
+                        <th class="sortable-th" data-column="1">نام اکانت هیدیفای</th>
+                        <th class="sortable-th" data-column="2">وضعیت مالی</th>
+                        <th class="sortable-th" data-column="3">پلن انتخابی</th>
+                        <th class="sortable-th" data-column="4">مصرف / سقف</th>
+                        <th class="sortable-th" data-column="5">مدت اعتبار</th>
+                        <th class="sortable-th" data-column="6">انقضا</th>
+                        <th class="sortable-th" data-column="7">وضعیت اتصال</th>
+                        <th class="sortable-th" data-column="8">صادرکننده</th>
                         <th class="text-end pe-3">عملیات و مدیریت</th>
                     </tr>
                 </thead>
@@ -61,7 +61,7 @@
                     {% set single_url = sub|format_single_link(single_link_template) if sub['hidify_uuid'] else '' %}
                     {% set is_debtor = (sub.get('payment_status') in ('unpaid', 'debtor') or (sub.get('debt_amount')|int or 0) > 0) %}
                     <tr class="{% if is_debtor %}table-danger bg-opacity-10 border-start border-danger border-3{% endif %}">
-                        <td>
+                        <td class="ps-3" data-value="{{ sub['telegram_id'] or sub['account_name'] or '' }}">
                             {% if sub['telegram_id'] and sub['telegram_id'] != 0 %}
                                 <div class="d-flex align-items-center gap-2">
                                     <div class="position-relative">
@@ -104,8 +104,8 @@
                                 </div>
                             {% endif %}
                         </td>
-                        <td><code>{{ sub['account_name'] or '-' }}</code></td>
-                        <td>
+                        <td data-value="{{ sub['account_name'] or '' }}"><code>{{ sub['account_name'] or '-' }}</code></td>
+                        <td data-value="{{ sub.get('debt_amount')|int if is_debtor else 0 }}">
                             {% if is_debtor %}
                                 <div>
                                     <span class="badge bg-danger text-white shadow-sm d-inline-flex align-items-center gap-1">
@@ -121,15 +121,15 @@
                                 </span>
                             {% endif %}
                         </td>
-                        <td>{{ sub['plan_name'] or '-' }}</td>
-                        <td>
+                        <td data-value="{{ sub['plan_name'] or '' }}">{{ sub['plan_name'] or '-' }}</td>
+                        <td data-value="{{ sub['data_limit']|float or 0 }}">
                             <div dir="ltr" class="font-monospace text-nowrap fw-bold">{{ "%.2f"|format(sub['data_used']|float or 0) }} / {{ "%.1f"|format(sub['data_limit']|float or 0) }} GB</div>
                             <div class="progress mt-1" style="height: 5px; width: 90px;">
                                 {% set pct = (((sub['data_used']|float or 0) / (sub['data_limit']|float or 1)) * 100)|int %}
                                 <div class="progress-bar {{ 'bg-danger' if pct > 90 else ('bg-warning' if pct > 70 else 'bg-success') }}" style="width: {{ pct if pct <= 100 else 100 }}%"></div>
                             </div>
                         </td>
-                        <td>
+                        <td data-value="{{ sub.get('remaining_days', sub['duration'] or 0) }}">
                             {% if sub.get('is_started') %}
                                 <div>
                                     <span class="badge {% if sub.get('remaining_days', 30) <= 3 %}bg-danger-subtle text-danger border border-danger{% else %}bg-success-subtle text-success border border-success{% endif %} font-monospace fs-6">
@@ -144,8 +144,8 @@
                                 </div>
                             {% endif %}
                         </td>
-                        <td><small class="text-muted">{{ sub['expire_date'][:10] if sub['expire_date'] else '-' }}</small></td>
-                        <td>
+                        <td data-value="{{ sub['expire_date'] or '' }}"><small class="text-muted font-monospace">{{ sub['expire_date'][:10] if sub['expire_date'] else '-' }}</small></td>
+                        <td data-value="{{ 1 if sub['is_online'] else (2 if sub['status'] == 'active' else 3) }}">
                             {% if sub['is_online'] %}
                                 <span class="badge bg-success-subtle text-success border border-success d-inline-flex align-items-center gap-1 font-monospace">
                                     <span class="pulse-indicator"></span> آنلاین
@@ -163,7 +163,7 @@
                                 {% endif %}
                             {% endif %}
                         </td>
-                        <td>
+                        <td data-value="{{ sub['reseller_id'] or 0 }}">
                             {% if sub['reseller_id'] %}
                                 <span class="badge bg-info text-dark" style="font-size: 0.75rem;">نماینده #{{ sub['reseller_id'] }}</span>
                             {% else %}

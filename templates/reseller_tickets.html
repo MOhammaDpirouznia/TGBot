@@ -34,12 +34,29 @@
     </div>
 </div>
 
-<!-- تب‌های اصلی دسته‌بندی تیکت‌ها (مشتریان من vs مکاتبات با مدیریت) -->
+<!-- تب‌های اصلی دسته‌بندی تیکت‌ها (همه تیکت‌ها vs مشتریان من vs مکاتبات با مدیریت) -->
 <div class="card shadow-sm border-0 mb-3">
     <div class="card-body p-2 bg-light rounded-3">
         <ul class="nav nav-pills nav-fill flex-column flex-md-row gap-2">
             <li class="nav-item">
-                <a class="nav-link py-2 px-3 d-flex justify-content-between align-items-center gap-2 {% if category_filter == 'customers' or not category_filter %}active fw-bold shadow-sm{% endif %}" 
+                <a class="nav-link py-2 px-3 d-flex justify-content-between align-items-center gap-2 {% if category_filter == 'all' or not category_filter %}active fw-bold shadow-sm bg-dark text-white{% endif %}" 
+                   href="{{ url_for('reseller_tickets', category='all', status='all') }}">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="fas fa-layer-group fs-5"></i>
+                        <span>🗂️ همه تیکت‌های سامانه</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-1">
+                        {% if stats.open > 0 %}
+                            <span class="badge bg-warning text-dark">{{ stats.open }} باز</span>
+                        {% endif %}
+                        <span class="badge {% if category_filter == 'all' or not category_filter %}bg-white text-dark{% else %}bg-secondary{% endif %} rounded-pill">
+                            {{ stats.all }}
+                        </span>
+                    </div>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link py-2 px-3 d-flex justify-content-between align-items-center gap-2 {% if category_filter == 'customers' %}active fw-bold shadow-sm{% endif %}" 
                    href="{{ url_for('reseller_tickets', category='customers', status='all') }}">
                     <div class="d-flex align-items-center gap-2">
                         <i class="fas fa-users fs-5"></i>
@@ -49,7 +66,7 @@
                         {% if stats.customers.open > 0 %}
                             <span class="badge bg-warning text-dark">{{ stats.customers.open }} باز</span>
                         {% endif %}
-                        <span class="badge {% if category_filter == 'customers' or not category_filter %}bg-white text-primary{% else %}bg-secondary{% endif %} rounded-pill">
+                        <span class="badge {% if category_filter == 'customers' %}bg-white text-primary{% else %}bg-secondary{% endif %} rounded-pill">
                             {{ stats.customers.all }}
                         </span>
                     </div>
@@ -79,7 +96,7 @@
 </div>
 
 <!-- متغیر آمار مربوط به تب انتخابی -->
-{% set current_stats = stats.admin if category_filter == 'admin' else stats.customers %}
+{% set current_stats = stats.admin if category_filter == 'admin' else (stats.customers if category_filter == 'customers' else stats) %}
 
 <!-- تب‌های فیلتر وضعیت و آمار تیکت‌ها برای نماینده -->
 <div class="card shadow-sm border-0 mb-4">
@@ -159,25 +176,25 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0" id="resellerTicketsTable">
+            <table class="table table-hover align-middle mb-0 sortable-table" id="resellerTicketsTable">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-3" style="width: 80px;">شماره</th>
-                        <th>{% if category_filter == 'admin' %}مخاطب{% else %}مشتری تلگرام{% endif %}</th>
-                        <th>موضوع و پیام</th>
-                        <th>گفتگو</th>
-                        <th>وضعیت</th>
-                        <th>تاریخ ثبت</th>
+                        <th class="ps-3 sortable-th" data-column="0" style="width: 80px;">شماره</th>
+                        <th class="sortable-th" data-column="1">{% if category_filter == 'admin' %}مخاطب{% else %}مشتری / طرف گفتگو{% endif %}</th>
+                        <th class="sortable-th" data-column="2">موضوع و پیام</th>
+                        <th class="sortable-th" data-column="3">گفتگو</th>
+                        <th class="sortable-th" data-column="4">وضعیت</th>
+                        <th class="sortable-th" data-column="5">تاریخ ثبت</th>
                         <th class="text-end pe-3" style="min-width: 160px;">عملیات و گفتگو</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for ticket in tickets %}
-                    {% set is_admin_ticket = (ticket.get('ticket_type') in ('reseller_to_admin', 'quota_change', 'reseller_application') or category_filter == 'admin') %}
-                    <tr class="{% if is_admin_ticket %}table-warning bg-opacity-25 border-start border-warning border-3{% elif ticket.get('is_vip') %}table-warning bg-opacity-10 border-start border-warning border-2{% elif ticket.get('status') == 'open' %}table-light{% endif %}"
+                    {% set is_admin_ticket = (ticket.get('ticket_type') in ('reseller_to_admin', 'quota_change', 'reseller_application') or (ticket.get('target_role') == 'admin')) %}
+                    <tr class="{% if ticket.get('status') == 'open' %}ticket-row-open{% elif ticket.get('status') == 'in_progress' %}ticket-row-inprogress{% elif ticket.get('status') == 'replied' %}ticket-row-replied{% else %}ticket-row-closed{% endif %}"
                         style="cursor: pointer;"
                         onclick="if(!event.target.closest('button') && !event.target.closest('a') && !event.target.closest('form')) { new bootstrap.Modal(document.getElementById('ticketChatModal{{ ticket['id'] }}')).show(); }">
-                        <td class="ps-3">
+                        <td class="ps-3" data-value="{{ ticket['id'] }}">
                             <code class="badge ticket-badge-pill font-monospace fs-6">#{{ ticket['id'] }}</code>
                             {% if is_admin_ticket %}
                                 <span class="badge bg-dark text-warning d-block mt-1"><i class="fas fa-building"></i> مدیریت</span>
@@ -185,10 +202,10 @@
                                 <span class="badge bg-warning text-dark d-block mt-1"><i class="fas fa-crown"></i> VIP</span>
                             {% endif %}
                         </td>
-                        <td>
+                        <td data-value="{{ ('مدیریت سامانه' if is_admin_ticket else (ticket.get('username') or ticket.get('first_name') or ticket.get('user_id') or ticket.get('telegram_id') or ''))|striptags }}">
                             {% if is_admin_ticket %}
                                 <div class="d-flex align-items-center gap-2">
-                                    <div class="rounded-circle bg-warning bg-opacity-25 border border-warning d-flex align-items-center justify-content-center text-warning" style="width: 38px; height: 38px;">
+                                    <div class="rounded-circle bg-warning bg-opacity-25 border border-warning d-flex align-items-center justify-content-center text-warning flex-shrink-0" style="width: 38px; height: 38px;">
                                         <i class="fas fa-shield-halved fs-5"></i>
                                     </div>
                                     <div>
@@ -215,7 +232,7 @@
                                 </div>
                             {% endif %}
                         </td>
-                        <td style="max-width: 280px;">
+                        <td style="max-width: 280px;" data-value="{{ (ticket.get('subject') or ticket.get('ticket_type') or ticket.get('message') or '')|striptags }}">
                             <div class="d-flex align-items-center gap-1 mb-1 flex-wrap">
                                 {% if ticket.get('ticket_type') == 'quota_change' %}
                                     <span class="badge bg-warning text-dark"><i class="fas fa-sliders me-1"></i>درخواست تغییر مشخصات</span>
@@ -237,23 +254,23 @@
                                 {{ ticket.get('message') }}
                             </div>
                         </td>
-                        <td>
+                        <td data-value="{{ ticket.messages|length if ticket.messages else 1 }}">
                             <span class="badge bg-primary-subtle text-primary border border-primary">
                                 <i class="fas fa-comments me-1"></i> {{ (ticket.messages|length) if ticket.messages else 1 }} پیام
                             </span>
                         </td>
-                        <td>
+                        <td data-value="{{ 1 if ticket.get('status') == 'open' else (2 if ticket.get('status') == 'in_progress' else (3 if ticket.get('status') == 'replied' else 4)) }}">
                             {% if ticket.get('status') == 'open' %}
-                                <span class="badge bg-warning text-dark"><i class="fas fa-envelope-open me-1"></i> باز / در انتظار</span>
+                                <span class="badge bg-warning text-dark fw-bold px-2 py-1 pulse-indicator"><i class="fas fa-envelope-open-text me-1"></i> باز / جدید</span>
                             {% elif ticket.get('status') == 'in_progress' %}
-                                <span class="badge bg-info-subtle text-info border border-info"><i class="fas fa-spinner fa-spin me-1"></i> در حال بررسی</span>
+                                <span class="badge bg-info text-white fw-bold px-2 py-1"><i class="fas fa-spinner fa-spin me-1"></i> در حال بررسی</span>
                             {% elif ticket.get('status') == 'replied' %}
-                                <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-reply me-1"></i> پاسخ داده شده</span>
+                                <span class="badge bg-success-subtle text-success border border-success fw-bold px-2 py-1"><i class="fas fa-reply me-1"></i> پاسخ داده شده</span>
                             {% else %}
-                                <span class="badge bg-secondary"><i class="fas fa-check-double me-1"></i> بسته شده</span>
+                                <span class="badge bg-secondary text-white px-2 py-1"><i class="fas fa-check-double me-1"></i> بسته شده</span>
                             {% endif %}
                         </td>
-                        <td><small class="text-muted">{{ ticket.get('created_at')[:16].replace('T', ' ') if ticket.get('created_at') else '-' }}</small></td>
+                        <td data-value="{{ ticket.get('created_at') or '' }}"><small class="text-muted font-monospace">{{ ticket.get('created_at')[:16].replace('T', ' ') if ticket.get('created_at') else '-' }}</small></td>
                         <td class="text-end pe-3">
                             <div class="btn-group btn-group-sm">
                                 <button type="button" class="btn btn-primary fw-bold" data-bs-toggle="modal" data-bs-target="#ticketChatModal{{ ticket['id'] }}" title="مشاهده گفتگو و پاسخ">

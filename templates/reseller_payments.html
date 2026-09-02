@@ -138,14 +138,14 @@
                     <table class="table table-hover align-middle mb-0 sortable-table" id="resellerReceiptTable">
                         <thead class="table-light">
                             <tr>
-                                <th class="ps-3 sortable-th" data-column="0" style="cursor: pointer;">کد سفارش <i class="fas fa-sort text-muted ms-1"></i></th>
-                                <th class="sortable-th" data-column="1" style="cursor: pointer;">بسته / پلن <i class="fas fa-sort text-muted ms-1"></i></th>
-                                <th class="sortable-th" data-column="2" style="cursor: pointer;">مبلغ پرداختی <i class="fas fa-sort text-muted ms-1"></i></th>
-                                <th class="sortable-th" data-column="3" style="cursor: pointer;">روش پرداخت <i class="fas fa-sort text-muted ms-1"></i></th>
-                                <th>کد پیگیری / ارجاع</th>
-                                <th class="sortable-th" data-column="5" style="cursor: pointer;">وضعیت سفارش <i class="fas fa-sort text-muted ms-1"></i></th>
+                                <th class="ps-3 sortable-th" data-column="0">کد سفارش</th>
+                                <th class="sortable-th" data-column="1">بسته / پلن</th>
+                                <th class="sortable-th" data-column="2">مبلغ پرداختی</th>
+                                <th class="sortable-th" data-column="3">روش پرداخت</th>
+                                <th class="sortable-th" data-column="4">کد پیگیری / ارجاع</th>
+                                <th class="sortable-th" data-column="5">وضعیت سفارش</th>
                                 <th>تصویر فیش</th>
-                                <th class="sortable-th" data-column="7" style="cursor: pointer;">تاریخ ثبت <i class="fas fa-sort text-muted ms-1"></i></th>
+                                <th class="sortable-th" data-column="7">تاریخ ثبت</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -166,7 +166,7 @@
                                 <td data-value="{{ r['gateway'] or '' }}">
                                     <span class="badge bg-light text-dark border">{{ r['gateway']|gateway_name }}</span>
                                 </td>
-                                <td>
+                                <td data-value="{{ r['tracking_code'] or '' }}">
                                     {% if r['tracking_code'] %}
                                         <code class="text-secondary font-monospace">{{ r['tracking_code'] }}</code>
                                     {% else %}
@@ -217,12 +217,12 @@
                     <table class="table table-hover align-middle mb-0 sortable-table" id="resellerWalletTable">
                         <thead class="table-light">
                             <tr>
-                                <th class="ps-3 sortable-th" data-column="0" style="cursor: pointer;">شناسه <i class="fas fa-sort text-muted ms-1"></i></th>
-                                <th class="sortable-th" data-column="1" style="cursor: pointer;">نوع تراکنش <i class="fas fa-sort text-muted ms-1"></i></th>
-                                <th class="sortable-th" data-column="2" style="cursor: pointer;">مبلغ <i class="fas fa-sort text-muted ms-1"></i></th>
-                                <th class="sortable-th" data-column="3" style="cursor: pointer;">پلن / اکانت هیدیفای <i class="fas fa-sort text-muted ms-1"></i></th>
-                                <th>توضیحات</th>
-                                <th class="sortable-th" data-column="5" style="cursor: pointer;">تاریخ و زمان <i class="fas fa-sort text-muted ms-1"></i></th>
+                                <th class="ps-3 sortable-th" data-column="0">شناسه</th>
+                                <th class="sortable-th" data-column="1">نوع تراکنش</th>
+                                <th class="sortable-th" data-column="2">مبلغ</th>
+                                <th class="sortable-th" data-column="3">پلن / اکانت هیدیفای</th>
+                                <th class="sortable-th" data-column="4">توضیحات</th>
+                                <th class="sortable-th" data-column="5">تاریخ و زمان</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -428,47 +428,6 @@ document.addEventListener("DOMContentLoaded", function () {
             });
         });
     }
-
-    document.querySelectorAll(".sortable-th").forEach(header => {
-        header.addEventListener("click", function () {
-            const table = header.closest("table");
-            const tbody = table.querySelector("tbody");
-            const colIndex = parseInt(header.getAttribute("data-column"));
-            const currentDir = header.getAttribute("data-dir") === "asc" ? "desc" : "asc";
-            
-            table.querySelectorAll(".sortable-th").forEach(th => {
-                th.removeAttribute("data-dir");
-                const icon = th.querySelector("i");
-                if (icon) icon.className = "fas fa-sort text-muted ms-1";
-            });
-
-            header.setAttribute("data-dir", currentDir);
-            const icon = header.querySelector("i");
-            if (icon) {
-                icon.className = currentDir === "asc" ? "fas fa-sort-up text-primary ms-1" : "fas fa-sort-down text-primary ms-1";
-            }
-
-            const rows = Array.from(tbody.querySelectorAll("tr"));
-            rows.sort((a, b) => {
-                const cellA = a.children[colIndex];
-                const cellB = b.children[colIndex];
-                if (!cellA || !cellB) return 0;
-                
-                let valA = cellA.getAttribute("data-value") !== null ? cellA.getAttribute("data-value") : cellA.innerText.trim();
-                let valB = cellB.getAttribute("data-value") !== null ? cellB.getAttribute("data-value") : cellB.innerText.trim();
-
-                const numA = parseFloat(valA);
-                const numB = parseFloat(valB);
-
-                if (!isNaN(numA) && !isNaN(numB)) {
-                    return currentDir === "asc" ? numA - numB : numB - numA;
-                }
-                return currentDir === "asc" ? valA.localeCompare(valB, "fa") : valB.localeCompare(valA, "fa");
-            });
-
-            rows.forEach(r => tbody.appendChild(r));
-        });
-    });
 });
 </script>
 {% endblock %}

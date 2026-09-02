@@ -31,28 +31,28 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
+            <table class="table table-hover align-middle mb-0 sortable-table" id="resellerPlansTable">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-3">پلن اصلی سیستم</th>
-                        <th>مشخصات فنی</th>
-                        <th>قیمت پایه مدیر</th>
-                        <th>قیمت خرید عمده شما</th>
-                        <th>نام نمایشی در ربات شما</th>
-                        <th>قیمت فروش به مشتری (تومان)</th>
-                        <th>حاشیه سود شما</th>
-                        <th>وضعیت در ربات</th>
+                        <th class="ps-3 sortable-th" data-column="0">پلن اصلی سیستم</th>
+                        <th class="sortable-th" data-column="1">مشخصات فنی</th>
+                        <th class="sortable-th" data-column="2">قیمت پایه مدیر</th>
+                        <th class="sortable-th" data-column="3">قیمت خرید عمده شما</th>
+                        <th class="sortable-th" data-column="4">نام نمایشی در ربات شما</th>
+                        <th class="sortable-th" data-column="5">قیمت فروش به مشتری</th>
+                        <th class="sortable-th" data-column="6">حاشیه سود شما</th>
+                        <th class="sortable-th" data-column="7">وضعیت در ربات</th>
                         <th class="text-end pe-3">عملیات</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for p in plans %}
                     <tr>
-                        <td class="ps-3">
+                        <td class="ps-3" data-value="{{ p['master_name'] }}">
                             <div class="fw-bold text-dark">{{ p['master_name'] }}</div>
-                            <code class="small text-muted">#{{ p['plan_id'] }}</code>
+                            <code class="small text-muted font-monospace">#{{ p['plan_id'] }}</code>
                         </td>
-                        <td>
+                        <td data-value="{{ p['data_limit'] if p['data_limit'] > 0 else 9999 }}">
                             <span class="badge bg-secondary-subtle text-secondary border">
                                 <i class="fas fa-database me-1"></i>{{ p['data_limit'] if p['data_limit'] > 0 else 'نامحدود' }} GB
                             </span>
@@ -60,30 +60,30 @@
                                 <i class="fas fa-clock me-1"></i>{{ p['duration'] }} روز
                             </span>
                         </td>
-                        <td>
+                        <td data-value="{{ p['master_price'] or 0 }}">
                             <span class="text-muted font-monospace">{{ "{:,}".format(p['master_price']) }} تومان</span>
                         </td>
-                        <td>
+                        <td data-value="{{ p['wholesale_price'] or 0 }}">
                             <span class="text-success font-monospace fw-bold">{{ "{:,}".format(p['wholesale_price']) }} تومان</span>
                         </td>
                         <form method="POST" action="{{ url_for('reseller_plans') }}">
                             <input type="hidden" name="action" value="update_override">
                             <input type="hidden" name="plan_id" value="{{ p['plan_id'] }}">
-                            <td>
+                            <td data-value="{{ p['custom_name'] or p['master_name'] }}">
                                 <input type="text" class="form-control form-control-sm" name="custom_name" 
                                        value="{{ p['custom_name'] }}" placeholder="{{ p['master_name'] }}">
                             </td>
-                            <td>
+                            <td data-value="{{ p['custom_price'] or p['master_price'] or 0 }}">
                                 <input type="number" class="form-control form-control-sm font-monospace" name="custom_price" 
                                        value="{{ p['custom_price'] or '' }}" placeholder="{{ p['master_price'] }}" step="1000" min="0">
                             </td>
-                            <td>
-                                {% set profit = p['display_price'] - p['wholesale_price'] %}
+                            {% set profit = p['display_price'] - p['wholesale_price'] %}
+                            <td data-value="{{ profit }}">
                                 <span class="badge {% if profit > 0 %}bg-success-subtle text-success border border-success{% else %}bg-secondary-subtle text-secondary{% endif %} font-monospace">
                                     +{{ "{:,}".format(profit) }} ت
                                 </span>
                             </td>
-                            <td>
+                            <td data-value="{{ 1 if p['is_active'] else 0 }}">
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" name="is_active" {% if p['is_active'] %}checked{% endif %}>
                                 </div>
