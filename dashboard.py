@@ -5761,14 +5761,20 @@ def reseller_bundles_submit_receipt():
         flash("بسته اعتباری مورد نظر یافت نشد.", "danger")
         return redirect(url_for("reseller_transactions"))
 
+    receipt_file = request.files.get("receipt_image")
+    has_image = bool(receipt_file and receipt_file.filename)
+
+    if not tracking_code and not has_image:
+        flash("لطفاً متن رسید پرداخت یا فایل تصویر فیش واریزی را ارسال فرمایید.", "danger")
+        return redirect(url_for("reseller_transactions"))
+
     import random
     order_id = f"R_BUNDLE_CARD_{reseller_id}_{int(datetime.now().timestamp() * 1000)}_{random.randint(100, 999)}"
     reseller = db.get_reseller(reseller_id) or {}
     username = reseller.get("username", f"reseller_{reseller_id}")
 
     receipt_file_path = None
-    receipt_file = request.files.get("receipt_image")
-    if receipt_file and receipt_file.filename:
+    if has_image:
         from werkzeug.utils import secure_filename
         sec_fn = secure_filename(receipt_file.filename)
         ext = os.path.splitext(sec_fn)[1] or ".jpg"
@@ -5785,7 +5791,7 @@ def reseller_bundles_submit_receipt():
         plan_name=f"بسته {bundle['title']}",
         amount=bundle["price"],
         gateway="bundle_reseller",
-        tracking_code=tracking_code or order_id,
+        tracking_code=tracking_code or (f"تصویر فیش ({receipt_file_path})" if receipt_file_path else order_id),
         status="pending",
         receipt_image=receipt_file_path or tracking_code,
         receipt_file_type="web_upload" if receipt_file_path else "tracking_code",
