@@ -197,193 +197,6 @@
                                     <i class="fas fa-trash-can"></i>
                                 </button>
                             </div>
-
-                            <!-- ─── Modal تمدید اشتراک ─── -->
-                            <div class="modal fade text-start" id="renewModal{{ sub['id'] }}" tabindex="-1">
-                                <div class="modal-dialog">
-                                    <div class="modal-content">
-                                        <form method="POST" action="{{ url_for('reseller_renew_user', sub_id=sub['id']) }}">
-                                            <div class="modal-header">
-                                                <h5 class="modal-title fw-bold"><i class="fas fa-arrows-rotate text-success me-2"></i>تمدید اشتراک «{{ sub['account_name'] }}»</h5>
-                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                            </div>
-                                            <div class="modal-body">
-                                                <div class="alert alert-info py-2 small mb-3">
-                                                    <i class="fas fa-wallet me-1"></i> موجودی فعلی شما: <strong>{{ "{:,}".format(balance) }} تومان</strong> | تخفیف شما: <strong>{{ discount }}%</strong>
-                                                </div>
-
-                                                <label class="form-label fw-bold">انتخاب پلن تمدید:</label>
-                                                <div class="d-flex flex-column gap-2 mb-3">
-                                                    {% for p_key, p in plans.items() %}
-                                                    {% set p_final = (p['price'] * (100 - discount) / 100)|int %}
-                                                    <label class="p-3 border rounded-3 cursor-pointer d-flex justify-content-between align-items-center">
-                                                        <div class="d-flex align-items-center gap-2">
-                                                            <input type="radio" name="plan_id" value="{{ p_key }}" class="form-check-input mt-0" required {% if p_key == sub['plan_id'] or loop.first %}checked{% endif %}>
-                                                            <div>
-                                                                <div class="fw-bold">{{ p['name'] }}</div>
-                                                                <small class="text-muted">{{ p['data_limit'] }} گیگ | {{ p['duration'] }} روز</small>
-                                                            </div>
-                                                        </div>
-                                                        <div class="text-end">
-                                                            <strong class="text-success">{{ "{:,}".format(p_final) }} ت</strong>
-                                                            <div class="text-muted small text-decoration-line-through">{{ "{:,}".format(p['price']) }} ت</div>
-                                                        </div>
-                                                    </label>
-                                                    {% endfor %}
-                                                </div>
-                                            </div>
-                                            <div class="modal-footer">
-                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
-                                                <button type="submit" class="btn btn-success fw-bold">
-                                                    <i class="fas fa-check me-1"></i> تایید تمدید و کسر هزینه
-                                                </button>
-                                            </div>
-                                        </form>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- ─── Modal ویرایش اطلاعات مشتری ─── -->
-                            <div class="modal fade text-start" id="editModal{{ sub['id'] }}" tabindex="-1">
-                                <div class="modal-dialog modal-dialog-centered">
-                                    <div class="modal-content">
-                                        <form method="POST" action="{{ url_for('reseller_edit_user', sub_id=sub['id']) }}" enctype="multipart/form-data">
-                                            <div class="modal-header">
-                                                <h5 class="modal-title fw-bold"><i class="fas fa-pen-to-square text-primary me-2"></i>ویرایش مشخصات و آواتار مشتری</h5>
-                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                            </div>
-                                            <div class="modal-body">
-                                                <div class="text-center mb-3 p-2 bg-light rounded-3">
-                                                    <img src="{{ avatar_url(sub['phone_number'] or sub['account_name'] or 'Customer') }}" 
-                                                         class="rounded-circle border shadow-sm mb-2" 
-                                                         style="width: 60px; height: 60px; object-fit: cover;">
-                                                    <div class="small fw-bold">{{ sub['account_name'] }}</div>
-                                                </div>
-
-                                                <div class="mb-3">
-                                                    <label class="form-label fw-bold">نام یا شناسه مشتری:</label>
-                                                    <input type="text" name="account_name" class="form-control" value="{{ sub['account_name'] }}" required>
-                                                    <small class="text-muted">این نام در پنل هیدیفای نیز بروزرسانی خواهد شد.</small>
-                                                </div>
-                                                <div class="mb-3">
-                                                    <label class="form-label fw-bold">شماره تلفن همراه (اختیاری):</label>
-                                                    <input type="text" name="phone_number" class="form-control font-monospace" placeholder="09121234567" value="{{ sub['phone_number'] or '' }}">
-                                                </div>
-
-                                                <!-- بخش انتخاب یا تغییر آواتار مشتری -->
-                                                <div class="mb-3">
-                                                    <label class="form-label fw-bold"><i class="fas fa-icons text-primary me-1"></i>انتخاب طرح آواتار سه‌بعدی مشتری:</label>
-                                                    <select name="avatar_preset" class="form-select form-select-sm">
-                                                        <option value="">-- حفظ آواتار فعلی / تولید هوشمند خودکار --</option>
-                                                        <option value="cyber_bot">🤖 ربات سایبرپانک</option>
-                                                        <option value="robot_neon">⚡ ربات نئونی هوشمند</option>
-                                                        <option value="adventurer_boy">👦 ماجراجوی جوان</option>
-                                                        <option value="adventurer_girl">👧 ماجراجوی مدرن</option>
-                                                        <option value="cyber_ninja">🥷 نینجای تکنولوژی</option>
-                                                        <option value="astronaut">👨‍🚀 فضانورد کیهانی</option>
-                                                        <option value="agent_pro">🕶️ ایجنت حرفه‌ای</option>
-                                                        <option value="wizard_mystic">🔮 حکیم کوانتومی</option>
-                                                        <option value="cyber_cat">🐱 گربه رباتیک</option>
-                                                        <option value="cyber_fox">🦊 روباه هوشمند</option>
-                                                        <option value="emoji_cool">😎 کاراکتر عینک‌دودی</option>
-                                                        <option value="emoji_happy">😃 کاراکتر شاد سه‌بعدی</option>
-                                                    </select>
-                                                </div>
-
-                                                <div class="mb-3">
-                                                    <label class="form-label small text-muted">یا بارگذاری تصویر اختصاصی برای مشتری (اختیاری):</label>
-                                                    <input type="file" name="avatar_file" class="form-control form-control-sm" accept="image/jpeg,image/png,image/webp,image/svg+xml">
-                                                </div>
-
-                                                <div class="mb-3">
-                                                    <label class="form-label">توضیحات و یادداشت (اختیاری):</label>
-                                                    <textarea name="comment" class="form-control" rows="2" placeholder="یادداشت خصوصی برای این مشتری...">{{ sub['account_comment'] or '' }}</textarea>
-                                                </div>
-                                            </div>
-                                            <div class="modal-footer">
-                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
-                                                <button type="submit" class="btn btn-primary fw-bold">
-                                                    <i class="fas fa-save me-1"></i> ذخیره تغییرات
-                                                </button>
-                                            </div>
-                                        </form>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- ─── Modal حذف و قوانین استرداد وجه ─── -->
-                            <div class="modal fade text-start" id="deleteModal{{ sub['id'] }}" tabindex="-1">
-                                <div class="modal-dialog">
-                                    <div class="modal-content">
-                                        <form method="POST" action="{{ url_for('reseller_delete_user', sub_id=sub['id']) }}">
-                                            <div class="modal-header bg-danger bg-opacity-10 border-danger">
-                                                <h5 class="modal-title fw-bold text-danger"><i class="fas fa-triangle-exclamation me-2"></i>حذف مشتری «{{ sub['account_name'] }}»</h5>
-                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                            </div>
-                                            <div class="modal-body">
-                                                <!-- باکس محاسبه شرایط استرداد -->
-                                                <div class="p-3 bg-light rounded-3 border mb-3">
-                                                    <div class="d-flex justify-content-between mb-2">
-                                                        <span class="text-muted">آخرین زمان اقدام:</span>
-                                                        <strong>{{ ref.get('time_passed_text', '-') }}</strong>
-                                                    </div>
-                                                    <div class="d-flex justify-content-between mb-2">
-                                                        <span class="text-muted">مجموع پرداختی‌های ثبت‌شده:</span>
-                                                        <span>{{ "{:,}".format(ref.get('cost_paid', 0)) }} تومان</span>
-                                                    </div>
-                                                    {% if ref.get('items') and ref.get('items')|length > 1 %}
-                                                    <div class="mb-2 p-2 bg-white rounded border small">
-                                                        <div class="text-muted fw-bold mb-1 border-bottom pb-1">ریز محاسبات خرید و تمدیدها:</div>
-                                                        {% for itm in ref.get('items') %}
-                                                        <div class="d-flex justify-content-between align-items-center py-1 {% if not loop.last %}border-bottom{% endif %}">
-                                                            <div>
-                                                                <span class="badge bg-light text-dark border">{{ itm['type_title'] }}</span>
-                                                                <span class="text-muted ms-1">({{ itm['time_passed_text'] }})</span>
-                                                            </div>
-                                                            <div>
-                                                                <span>{{ "{:,}".format(itm['amount']) }} ت</span>
-                                                                <span class="badge {% if itm['refund_percent'] == 100 %}bg-success{% elif itm['refund_percent'] == 80 %}bg-warning text-dark{% else %}bg-secondary{% endif %} ms-1">
-                                                                    {{ itm['refund_percent'] }}%
-                                                                </span>
-                                                                <strong class="text-success ms-1">+{{ "{:,}".format(itm['refund_amount']) }}</strong>
-                                                            </div>
-                                                        </div>
-                                                        {% endfor %}
-                                                    </div>
-                                                    {% endif %}
-                                                    <div class="d-flex justify-content-between mb-2">
-                                                        <span class="text-muted">درصد کل استرداد:</span>
-                                                        <span class="badge {% if ref.get('refund_percent', 0) == 100 %}bg-success{% elif ref.get('refund_percent', 0) >= 80 %}bg-warning text-dark{% else %}bg-secondary{% endif %} fs-6">
-                                                            {{ ref.get('refund_percent', 0) }}%
-                                                        </span>
-                                                    </div>
-                                                    <hr class="my-2">
-                                                    <div class="d-flex justify-content-between fs-5 fw-bold {% if ref.get('refund_amount', 0) > 0 %}text-success{% else %}text-danger{% endif %}">
-                                                        <span>مبلغ برگشتی به کیف پول:</span>
-                                                        <span>{{ "{:,}".format(ref.get('refund_amount', 0)) }} تومان</span>
-                                                    </div>
-                                                </div>
-
-                                                <!-- راهنمای قوانین استرداد -->
-                                                <div class="alert alert-warning py-2 small mb-0">
-                                                    <div class="fw-bold mb-1"><i class="fas fa-info-circle me-1"></i>قوانین استرداد هزینه خرید و تمدیدها:</div>
-                                                    <ul class="mb-0 ps-3">
-                                                        <li><strong>تا ۱۲ ساعت پس از خرید یا تمدید:</strong> بازگشت <strong>۱۰۰٪</strong> مبلغ به کیف پول.</li>
-                                                        <li><strong>بین ۱۲ تا ۲۴ ساعت پس از خرید یا تمدید:</strong> بازگشت <strong>۸۰٪</strong> مبلغ به کیف پول (۲۰٪ کسر).</li>
-                                                        <li><strong>بیش از ۲۴ ساعت پس از هر اقدام:</strong> <strong>۰٪</strong> (عدم استرداد به آن اقدام).</li>
-                                                    </ul>
-                                                </div>
-                                            </div>
-                                            <div class="modal-footer">
-                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
-                                                <button type="submit" class="btn btn-danger fw-bold">
-                                                    <i class="fas fa-trash-can me-1"></i> تایید و حذف نهایی اکانت
-                                                </button>
-                                            </div>
-                                        </form>
-                                    </div>
-                                </div>
-                            </div>
                         </td>
                     </tr>
                     {% endfor %}
@@ -397,6 +210,232 @@
         </div>
     </div>
 </div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- ─── مودال‌های مدیریت مشتریان (کاملاً مستقل و خارج از جدول) ─── -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+{% for sub in subscriptions %}
+{% set ref = sub.get('refund_info') or {} %}
+
+<!-- ─── ۱. Modal تمدید اشتراک ─── -->
+<div class="modal fade text-start" id="renewModal{{ sub['id'] }}" tabindex="-1" aria-labelledby="renewModalLabel{{ sub['id'] }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <form method="POST" action="{{ url_for('reseller_renew_user', sub_id=sub['id']) }}">
+                <div class="modal-header bg-success text-white py-3">
+                    <h5 class="modal-title fw-bold" id="renewModalLabel{{ sub['id'] }}">
+                        <i class="fas fa-arrows-rotate me-2"></i>تمدید اشتراک «{{ sub['account_name'] }}»
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-info py-2 small mb-3">
+                        <i class="fas fa-wallet me-1"></i> موجودی فعلی شما: <strong>{{ "{:,}".format(balance) }} تومان</strong> | تخفیف شما: <strong>{{ discount }}%</strong>
+                    </div>
+
+                    <label class="form-label fw-bold">انتخاب پلن تمدید:</label>
+                    <div class="d-flex flex-column gap-2 mb-3">
+                        {% for p_key, p in plans.items() %}
+                        {% set p_final = (p['price'] * (100 - discount) / 100)|int %}
+                        <label class="p-3 border rounded-3 cursor-pointer d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="radio" name="plan_id" value="{{ p_key }}" class="form-check-input mt-0" required {% if p_key == sub['plan_id'] or loop.first %}checked{% endif %}>
+                                <div>
+                                    <div class="fw-bold">{{ p['name'] }}</div>
+                                    <small class="text-muted">{{ p['data_limit'] }} گیگ | {{ p['duration'] }} روز</small>
+                                </div>
+                            </div>
+                            <div class="text-end">
+                                <strong class="text-success">{{ "{:,}".format(p_final) }} ت</strong>
+                                <div class="text-muted small text-decoration-line-through">{{ "{:,}".format(p['price']) }} ت</div>
+                            </div>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-success fw-bold px-4">
+                        <i class="fas fa-check me-1"></i> تایید تمدید و کسر هزینه
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ─── ۲. Modal ویرایش اطلاعات مشتری ─── -->
+<div class="modal fade text-start" id="editModal{{ sub['id'] }}" tabindex="-1" aria-labelledby="editModalLabel{{ sub['id'] }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content shadow-lg border-0">
+            <form method="POST" action="{{ url_for('reseller_edit_user', sub_id=sub['id']) }}" enctype="multipart/form-data">
+                <div class="modal-header bg-primary text-white py-3">
+                    <h5 class="modal-title fw-bold" id="editModalLabel{{ sub['id'] }}">
+                        <i class="fas fa-pen-to-square me-2"></i>ویرایش مشخصات مشتری «{{ sub['account_name'] }}»
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="text-center mb-3 p-3 bg-light rounded-3 border">
+                        <img src="{{ avatar_url(sub['phone_number'] or sub['account_name'] or 'Customer') }}" 
+                             class="rounded-circle border shadow-sm mb-2" 
+                             style="width: 70px; height: 70px; object-fit: cover;">
+                        <div class="fw-bold fs-6">{{ sub['account_name'] }}</div>
+                        {% if sub.get('hidify_uuid') %}
+                            <small class="text-muted font-monospace d-block" style="font-size: 0.75rem;">UUID: {{ sub['hidify_uuid'] }}</small>
+                        {% endif %}
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">نام یا شناسه مشتری: <span class="text-danger">*</span></label>
+                            <input type="text" name="account_name" class="form-control font-monospace" value="{{ sub['account_name'] }}" required dir="ltr">
+                            <small class="text-muted" style="font-size: 0.75rem;">این نام مستقیماً در پنل هیدیفای نیز تغییر می‌کند.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">شماره تلفن همراه (اختیاری):</label>
+                            <input type="text" name="phone_number" class="form-control font-monospace" placeholder="09121234567" value="{{ sub['phone_number'] or '' }}" dir="ltr">
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">حجم مجاز (GB):</label>
+                            <input type="number" step="0.1" min="0" max="5000" class="form-control font-monospace" name="data_limit" value="{{ sub['data_limit'] or 30 }}" dir="ltr">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">مدت زمان اعتبار (روز):</label>
+                            <div class="input-group">
+                                <input type="number" min="1" max="3650" class="form-control font-monospace" name="duration" value="{{ sub['duration'] or 30 }}" dir="ltr">
+                                <span class="input-group-text bg-light">روز</span>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">وضعیت اتصال:</label>
+                            <select name="status" class="form-select">
+                                <option value="active" {% if sub['status'] == 'active' %}selected{% endif %}>🟢 فعال</option>
+                                <option value="disabled" {% if sub['status'] == 'disabled' or sub['status'] == 'expired' %}selected{% endif %}>🔴 غیرفعال / مسدود</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- بخش انتخاب یا تغییر آواتار مشتری -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold"><i class="fas fa-icons text-primary me-1"></i>طرح آواتار سه‌بعدی مشتری:</label>
+                        <select name="avatar_preset" class="form-select">
+                            <option value="">-- حفظ آواتار فعلی / تولید هوشمند خودکار --</option>
+                            <option value="cyber_bot">🤖 ربات سایبرپانک</option>
+                            <option value="robot_neon">⚡ ربات نئونی هوشمند</option>
+                            <option value="adventurer_boy">👦 ماجراجوی جوان</option>
+                            <option value="adventurer_girl">👧 ماجراجوی مدرن</option>
+                            <option value="cyber_ninja">🥷 نینجای تکنولوژی</option>
+                            <option value="astronaut">👨‍🚀 فضانورد کیهانی</option>
+                            <option value="agent_pro">🕶️ ایجنت حرفه‌ای</option>
+                            <option value="wizard_mystic">🔮 حکیم کوانتومی</option>
+                            <option value="cyber_cat">🐱 گربه رباتیک</option>
+                            <option value="cyber_fox">🦊 روباه هوشمند</option>
+                            <option value="emoji_cool">😎 کاراکتر عینک‌دودی</option>
+                            <option value="emoji_happy">😃 کاراکتر شاد سه‌بعدی</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">یا بارگذاری تصویر اختصاصی برای مشتری (اختیاری):</label>
+                        <input type="file" name="avatar_file" class="form-control form-control-sm" accept="image/jpeg,image/png,image/webp,image/svg+xml">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">توضیحات و یادداشت خصوصی:</label>
+                        <textarea name="comment" class="form-control" rows="2" placeholder="یادداشت خصوصی برای این مشتری...">{{ sub['account_comment'] or '' }}</textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary fw-bold px-4">
+                        <i class="fas fa-save me-1"></i> ذخیره تغییرات و اعمال در هیدیفای
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ─── ۳. Modal حذف و قوانین استرداد وجه ─── -->
+<div class="modal fade text-start" id="deleteModal{{ sub['id'] }}" tabindex="-1" aria-labelledby="deleteModalLabel{{ sub['id'] }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <form method="POST" action="{{ url_for('reseller_delete_user', sub_id=sub['id']) }}">
+                <div class="modal-header bg-danger bg-opacity-10 border-danger py-3">
+                    <h5 class="modal-title fw-bold text-danger" id="deleteModalLabel{{ sub['id'] }}">
+                        <i class="fas fa-triangle-exclamation me-2"></i>حذف مشتری «{{ sub['account_name'] }}»
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <!-- باکس محاسبه شرایط استرداد -->
+                    <div class="p-3 bg-light rounded-3 border mb-3">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted">آخرین زمان اقدام:</span>
+                            <strong>{{ ref.get('time_passed_text', '-') }}</strong>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted">مجموع پرداختی‌های ثبت‌شده:</span>
+                            <span>{{ "{:,}".format(ref.get('cost_paid', 0)) }} تومان</span>
+                        </div>
+                        {% if ref.get('items') and ref.get('items')|length > 1 %}
+                        <div class="mb-2 p-2 bg-white rounded border small">
+                            <div class="text-muted fw-bold mb-1 border-bottom pb-1">ریز محاسبات خرید و تمدیدها:</div>
+                            {% for itm in ref.get('items') %}
+                            <div class="d-flex justify-content-between align-items-center py-1 {% if not loop.last %}border-bottom{% endif %}">
+                                <div>
+                                    <span class="badge bg-light text-dark border">{{ itm['type_title'] }}</span>
+                                    <span class="text-muted ms-1">({{ itm['time_passed_text'] }})</span>
+                                </div>
+                                <div>
+                                    <span>{{ "{:,}".format(itm['amount']) }} ت</span>
+                                    <span class="badge {% if itm['refund_percent'] == 100 %}bg-success{% elif itm['refund_percent'] == 80 %}bg-warning text-dark{% else %}bg-secondary{% endif %} ms-1">
+                                        {{ itm['refund_percent'] }}%
+                                    </span>
+                                    <strong class="text-success ms-1">+{{ "{:,}".format(itm['refund_amount']) }}</strong>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted">درصد کل استرداد:</span>
+                            <span class="badge {% if ref.get('refund_percent', 0) == 100 %}bg-success{% elif ref.get('refund_percent', 0) >= 80 %}bg-warning text-dark{% else %}bg-secondary{% endif %} fs-6">
+                                {{ ref.get('refund_percent', 0) }}%
+                            </span>
+                        </div>
+                        <hr class="my-2">
+                        <div class="d-flex justify-content-between fs-5 fw-bold {% if ref.get('refund_amount', 0) > 0 %}text-success{% else %}text-danger{% endif %}">
+                            <span>مبلغ برگشتی به کیف پول:</span>
+                            <span>{{ "{:,}".format(ref.get('refund_amount', 0)) }} تومان</span>
+                        </div>
+                    </div>
+
+                    <!-- راهنمای قوانین استرداد -->
+                    <div class="alert alert-warning py-2 small mb-0">
+                        <div class="fw-bold mb-1"><i class="fas fa-info-circle me-1"></i>قوانین استرداد هزینه خرید و تمدیدها:</div>
+                        <ul class="mb-0 ps-3">
+                            <li><strong>تا ۱۲ ساعت پس از خرید یا تمدید:</strong> بازگشت <strong>۱۰۰٪</strong> مبلغ به کیف پول.</li>
+                            <li><strong>بین ۱۲ تا ۲۴ ساعت پس از خرید یا تمدید:</strong> بازگشت <strong>۸۰٪</strong> مبلغ به کیف پول (۲۰٪ کسر).</li>
+                            <li><strong>بیش از ۲۴ ساعت پس از هر اقدام:</strong> <strong>۰٪</strong> (عدم استرداد به آن اقدام).</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-danger fw-bold px-4">
+                        <i class="fas fa-trash-can me-1"></i> تایید و حذف نهایی اکانت
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
 
 <style>
 .pulse-indicator {
