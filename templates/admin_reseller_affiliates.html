@@ -1,0 +1,544 @@
+{% extends "base.html" %}
+
+{% block title %}مدیریت زیرمجموعه‌گیری همکاران | پنل مدیریت{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0 px-md-3">
+    <!-- Header -->
+    <div class="page-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+        <div>
+            <h1 class="page-title d-flex align-items-center gap-2 mb-1">
+                <i class="fas fa-network-wired text-warning"></i>
+                مدیریت زیرمجموعه‌گیری و پورسانت همکاران
+            </h1>
+            <p class="text-muted small mb-0">نظارت بر شبکه چندسطحی نمایندگان، مدیریت درصدها، تایید درخواست‌های جدید و پیگیری پورسانت‌ها</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <a href="{{ url_for('admin_resellers') }}" class="btn btn-outline-secondary btn-sm px-3 rounded-pill">
+                <i class="fas fa-arrow-right me-1"></i> بازگشت به نمایندگان
+            </a>
+        </div>
+    </div>
+
+    <!-- Stat Cards -->
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="stat-card border-0 shadow-sm rounded-4 p-3 bg-card h-100 d-flex align-items-center">
+                <div class="stat-icon bg-warning bg-opacity-10 text-warning rounded-4 p-3 me-3">
+                    <i class="fas fa-sitemap fs-3"></i>
+                </div>
+                <div>
+                    <span class="text-muted small d-block mb-1">زیرمجموعه‌های شبکه</span>
+                    <h3 class="fw-bold mb-0 text-foreground">{{ overview.total_network_subs }} <span class="fs-6 text-muted fw-normal">نماینده</span></h3>
+                    <small class="text-muted">دارای معرف بالادستی</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="stat-card border-0 shadow-sm rounded-4 p-3 bg-card h-100 d-flex align-items-center">
+                <div class="stat-icon bg-success bg-opacity-10 text-success rounded-4 p-3 me-3">
+                    <i class="fas fa-coins fs-3"></i>
+                </div>
+                <div>
+                    <span class="text-muted small d-block mb-1">کل پورسانت‌های واریزی</span>
+                    <h3 class="fw-bold mb-0 text-success">{{ "{:,}".format(overview.total_commissions_paid) }} <span class="fs-6 text-muted fw-normal">تومان</span></h3>
+                    <small class="text-muted">در کل سامانه</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="stat-card border-0 shadow-sm rounded-4 p-3 bg-card h-100 d-flex align-items-center">
+                <div class="stat-icon bg-primary bg-opacity-10 text-primary rounded-4 p-3 me-3">
+                    <i class="fas fa-percent fs-3"></i>
+                </div>
+                <div>
+                    <span class="text-muted small d-block mb-1">درصد پیش‌فرض پورسانت</span>
+                    <h3 class="fw-bold mb-0 text-primary">{{ overview.settings.default_percent }}٪</h3>
+                    <small class="text-muted">{% if overview.settings.enabled %}<span class="text-success">سیستم فعال</span>{% else %}<span class="text-danger">سیستم غیرفعال</span>{% endif %}</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="stat-card border-0 shadow-sm rounded-4 p-3 bg-card h-100 d-flex align-items-center">
+                <div class="stat-icon bg-info bg-opacity-10 text-info rounded-4 p-3 me-3">
+                    <i class="fas fa-user-clock fs-3"></i>
+                </div>
+                <div>
+                    <span class="text-muted small d-block mb-1">درخواست‌های اخذ نمایندگی</span>
+                    <h3 class="fw-bold mb-0 text-info">{{ overview.pending_applications_count }} <span class="fs-6 text-muted fw-normal">مورد</span></h3>
+                    <small class="text-warning">در انتظار بررسی</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4">
+        <div class="card-header bg-card border-0 p-3 px-4">
+            <ul class="nav nav-pills card-header-pills gap-2" id="affiliateTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active rounded-pill px-3 py-2 fw-bold" id="network-tab" data-bs-toggle="tab" data-bs-target="#network" type="button" role="tab">
+                        <i class="fas fa-users-gear me-1 text-warning"></i> شبکه نمایندگان و زیرمجموعه‌ها
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link rounded-pill px-3 py-2 fw-bold" id="commissions-tab" data-bs-toggle="tab" data-bs-target="#commissions" type="button" role="tab">
+                        <i class="fas fa-receipt me-1 text-success"></i> ریز تراکنش‌های پورسانت
+                        <span class="badge bg-success ms-1 rounded-pill">{{ commissions|length }}</span>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link rounded-pill px-3 py-2 fw-bold" id="applications-tab" data-bs-toggle="tab" data-bs-target="#applications" type="button" role="tab">
+                        <i class="fas fa-id-card-clip me-1 text-info"></i> درخواست‌های جدید نمایندگی
+                        {% if overview.pending_applications_count > 0 %}
+                            <span class="badge bg-danger ms-1 rounded-pill">{{ overview.pending_applications_count }}</span>
+                        {% endif %}
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link rounded-pill px-3 py-2 fw-bold" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings" type="button" role="tab">
+                        <i class="fas fa-sliders me-1 text-primary"></i> تنظیمات زیرمجموعه‌گیری
+                    </button>
+                </li>
+            </ul>
+        </div>
+
+        <div class="card-body p-0">
+            <div class="tab-content" id="affiliateTabContent">
+                <!-- TAB 1: Network & Sub-resellers -->
+                <div class="tab-pane fade show active" id="network" role="tabpanel">
+                    <div class="p-3 border-bottom d-flex justify-content-between align-items-center bg-light bg-opacity-25">
+                        <div class="small text-muted">
+                            <i class="fas fa-circle-info me-1"></i>
+                            در این بخش می‌توانید ساختار درختی نمایندگان را مشاهده نموده، معرف هر نماینده را تغییر داده یا درصد پورسانت اختصاصی تنظیم کنید.
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="ps-4">نماینده</th>
+                                    <th>معرف بالادستی</th>
+                                    <th class="text-center">زیرمجموعه‌ها</th>
+                                    <th class="text-center">درصد پورسانت</th>
+                                    <th class="text-center">سود دریافتی</th>
+                                    <th class="text-center">سود تولیدی</th>
+                                    <th class="text-center pe-4">عملیات</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if overview.resellers %}
+                                    {% for r in overview.resellers %}
+                                    <tr>
+                                        <td class="ps-4">
+                                            <div class="d-flex align-items-center gap-2">
+                                                <div class="avatar-circle bg-primary bg-opacity-10 text-primary fw-bold rounded-circle d-flex align-items-center justify-content-center" style="width: 36px; height: 36px;">
+                                                    {{ r.name[:2] }}
+                                                </div>
+                                                <div>
+                                                    <div class="fw-bold text-foreground">{{ r.name }}</div>
+                                                    <small class="text-muted dir-ltr d-block">@{{ r.username }} (کد: {{ r.referral_code or '-' }})</small>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            {% if r.parent_name %}
+                                                <span class="badge bg-info bg-opacity-10 text-info px-2 py-1 rounded-pill">
+                                                    <i class="fas fa-link me-1"></i> {{ r.parent_name }} (@{{ r.parent_username }})
+                                                </span>
+                                            {% else %}
+                                                <span class="badge bg-secondary bg-opacity-10 text-muted px-2 py-1 rounded-pill">مستقیم (مدیریت)</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="badge bg-warning bg-opacity-10 text-warning px-3 py-1 rounded-pill fw-bold">
+                                                {{ r.sub_resellers_count }} نماینده
+                                            </span>
+                                        </td>
+                                        <td class="text-center">
+                                            {% if r.affiliate_commission_percent %}
+                                                <span class="badge bg-success px-2 py-1 rounded-pill">{{ r.affiliate_commission_percent }}٪ (سفارشی)</span>
+                                            {% else %}
+                                                <span class="badge bg-light text-dark border px-2 py-1 rounded-pill">{{ overview.settings.default_percent }}٪ (پیش‌فرض)</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="fw-bold text-success">{{ "{:,}".format(r.total_commissions_earned or 0) }}</span>
+                                            <small class="text-muted d-block" style="font-size: 0.72rem;">تومان</small>
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="text-muted">{{ "{:,}".format(r.total_commissions_generated or 0) }}</span>
+                                            <small class="text-muted d-block" style="font-size: 0.72rem;">تومان</small>
+                                        </td>
+                                        <td class="text-center pe-4">
+                                            <div class="btn-group btn-group-sm">
+                                                <button class="btn btn-outline-primary" title="تغییر معرف بالادستی" onclick="openSetParentModal({{ r.id }}, '{{ r.name }}', {{ r.parent_reseller_id or 'null' }})">
+                                                    <i class="fas fa-sitemap"></i>
+                                                </button>
+                                                <button class="btn btn-outline-warning" title="تنظیم درصد پورسانت اختصاصی" onclick="openSetCommissionModal({{ r.id }}, '{{ r.name }}', {{ r.affiliate_commission_percent or 'null' }})">
+                                                    <i class="fas fa-percent"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="7" class="text-center py-5 text-muted">نماینده‌ای یافت نشد.</td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- TAB 2: Commissions History -->
+                <div class="tab-pane fade" id="commissions" role="tabpanel">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="ps-4">شناسه</th>
+                                    <th>نماینده معرف (بالادستی)</th>
+                                    <th>نماینده فروشنده (زیرمجموعه)</th>
+                                    <th>پلن و اکانت</th>
+                                    <th class="text-center">مبلغ پلن</th>
+                                    <th class="text-center">پورسانت واریزی</th>
+                                    <th class="pe-4 text-end">تاریخ و ساعت</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if commissions %}
+                                    {% for c in commissions %}
+                                    <tr>
+                                        <td class="ps-4">
+                                            <span class="badge bg-secondary font-monospace">#{{ c.id }}</span>
+                                        </td>
+                                        <td>
+                                            <div class="fw-bold text-success">{{ c.parent_reseller_name or 'معرف' }}</div>
+                                            <small class="text-muted dir-ltr">@{{ c.parent_reseller_username }}</small>
+                                        </td>
+                                        <td>
+                                            <div class="fw-bold text-foreground">{{ c.sub_reseller_name or 'زیرمجموعه' }}</div>
+                                            <small class="text-muted dir-ltr">@{{ c.sub_reseller_username }}</small>
+                                        </td>
+                                        <td>
+                                            <span class="fw-semibold d-block">{{ c.plan_name }}</span>
+                                            <small class="text-muted font-monospace">{{ c.account_name }}</small>
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="text-muted">{{ "{:,}".format(c.plan_price) }} ت</span>
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="badge bg-success bg-opacity-10 text-success fw-bold px-2 py-1 fs-6">
+                                                +{{ "{:,}".format(c.commission_amount) }} تومان
+                                            </span>
+                                            <small class="text-muted d-block" style="font-size: 0.72rem;">({{ c.commission_percent }}٪)</small>
+                                        </td>
+                                        <td class="pe-4 text-end">
+                                            <small class="text-muted dir-ltr">{{ c.created_at[:16].replace('T', ' ') if c.created_at else '-' }}</small>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="7" class="text-center py-5 text-muted">
+                                            <i class="fas fa-receipt fs-2 mb-2 d-block opacity-50"></i>
+                                            هنوز تراکنش پورسانتی در سامانه ثبت نشده است.
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- TAB 3: Applications -->
+                <div class="tab-pane fade" id="applications" role="tabpanel">
+                    <div class="p-3 border-bottom d-flex justify-content-between align-items-center bg-light bg-opacity-25">
+                        <div class="small text-muted">
+                            <i class="fas fa-envelope-open-text me-1 text-info"></i>
+                            درخواست‌های ارسال شده توسط متقاضیان از طریق فرم عمومی و لینک دعوت همکاران
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="ps-4">متقاضی</th>
+                                    <th>شماره تماس / تلگرام</th>
+                                    <th>نام کاربری درخواستی</th>
+                                    <th>معرف</th>
+                                    <th class="text-center">وضعیت</th>
+                                    <th class="text-center">تاریخ درخواست</th>
+                                    <th class="text-center pe-4">اقدام</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if applications %}
+                                    {% for app in applications %}
+                                    {% set req = app.request_data|from_json if app.request_data else {} %}
+                                    <tr>
+                                        <td class="ps-4">
+                                            <div class="fw-bold text-foreground">{{ req.get('full_name') or app.subject }}</div>
+                                            {% if req.get('notes') %}
+                                                <small class="text-muted d-block text-truncate" style="max-width: 250px;">{{ req.get('notes') }}</small>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="font-monospace text-primary dir-ltr d-inline-block">{{ req.get('phone_number') or '-' }}</div>
+                                            {% if req.get('telegram_id') %}
+                                                <small class="text-muted d-block dir-ltr">TG: {{ req.get('telegram_id') }}</small>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-secondary font-monospace px-2 py-1">@{{ req.get('requested_username') or '-' }}</span>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-info bg-opacity-10 text-info px-2 py-1 rounded-pill">
+                                                {{ req.get('referrer_name') or 'مستقیم' }}
+                                            </span>
+                                        </td>
+                                        <td class="text-center">
+                                            {% if app.request_status == 'approved' %}
+                                                <span class="badge bg-success rounded-pill px-2 py-1">تایید شده</span>
+                                            {% elif app.request_status == 'rejected' %}
+                                                <span class="badge bg-danger rounded-pill px-2 py-1">رد شده</span>
+                                            {% else %}
+                                                <span class="badge bg-warning text-dark rounded-pill px-2 py-1">در انتظار بررسی</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-center">
+                                            <small class="text-muted dir-ltr">{{ app.created_at[:16].replace('T', ' ') if app.created_at else '-' }}</small>
+                                        </td>
+                                        <td class="text-center pe-4">
+                                            {% if app.request_status == 'pending' %}
+                                                <div class="btn-group btn-group-sm">
+                                                    <button class="btn btn-success" onclick="openApproveModal({{ app.id }}, '{{ req.get('full_name') }}', '{{ req.get('requested_username') }}')">
+                                                        <i class="fas fa-check me-1"></i> تایید و ایجاد پنل
+                                                    </button>
+                                                    <button class="btn btn-outline-danger" onclick="openRejectModal({{ app.id }})">
+                                                        <i class="fas fa-xmark"></i>
+                                                    </button>
+                                                </div>
+                                            {% else %}
+                                                <span class="text-muted small">بررسی شده</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="7" class="text-center py-5 text-muted">
+                                            <i class="fas fa-inbox fs-2 mb-2 d-block opacity-50"></i>
+                                            در حال حاضر درخواست جدیدی ثبت نشده است.
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- TAB 4: Settings -->
+                <div class="tab-pane fade" id="settings" role="tabpanel">
+                    <div class="p-4" style="max-width: 760px;">
+                        <form method="POST" action="{{ url_for('admin_reseller_affiliates_update_settings') }}">
+                            <div class="mb-4">
+                                <div class="form-check form-switch fs-5">
+                                    <input class="form-check-input" type="checkbox" id="affEnabled" name="enabled" value="1" {% if overview.settings.enabled %}checked{% endif %}>
+                                    <label class="form-check-label fw-bold" for="affEnabled">فعال‌سازی سیستم زیرمجموعه‌گیری نمایندگان</label>
+                                </div>
+                                <small class="text-muted d-block mt-1">با فعال بودن این گزینه، نمایندگان لینک اختصاصی دریافت کرده و پورسانت خریدهای زیرمجموعه‌ها به صورت خودکار محاسبه می‌شود.</small>
+                            </div>
+
+                            <div class="row g-3 mb-4">
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label fw-bold">درصد پورسانت پیش‌فرض (%)</label>
+                                    <div class="input-group">
+                                        <input type="number" step="0.5" min="0" max="100" name="default_percent" class="form-control" value="{{ overview.settings.default_percent }}" required>
+                                        <span class="input-group-text">٪</span>
+                                    </div>
+                                    <small class="text-muted">درصد پیش‌فرضی که از هر خرید زیرمجموعه به نماینده بالادستی تعلق می‌گیرد.</small>
+                                </div>
+
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label fw-bold">مبنای محاسبه پورسانت</label>
+                                    <select name="calc_base" class="form-select">
+                                        <option value="plan_price" {% if overview.settings.calc_base == 'plan_price' %}selected{% endif %}>قیمت اصلی پلن (پیش‌فرض پیشنهادی)</option>
+                                        <option value="wholesale_price" {% if overview.settings.calc_base == 'wholesale_price' %}selected{% endif %}>مبلغ عمده کسر شده از کیف پول نماینده</option>
+                                    </select>
+                                    <small class="text-muted">نحوه محاسبه مبلغ پورسانت بر مبنای قیمت کامل پلن یا هزینه عمده.</small>
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <label class="form-label fw-bold">متن شرایط و توضیحات صفحه اخذ نمایندگی</label>
+                                <textarea name="terms" class="form-control" rows="4">{{ overview.settings.terms }}</textarea>
+                                <small class="text-muted">این متن در صفحه عمومی ثبت درخواست نمایندگی (فرم ثبت‌نام) برای متقاضیان نمایش داده می‌شود.</small>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary px-4 py-2 fw-bold rounded-pill">
+                                <i class="fas fa-save me-1"></i> ذخیره تنظیمات زیرمجموعه‌گیری
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Set Parent Reseller -->
+<div class="modal fade" id="setParentModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content rounded-4 border-0 shadow">
+            <form method="POST" action="{{ url_for('admin_reseller_affiliates_set_parent') }}">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold">تغییر معرف بالادستی</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="reseller_id" id="parentModalResellerId">
+                    <p class="text-muted small mb-3">نماینده: <strong id="parentModalResellerName" class="text-foreground"></strong></p>
+                    
+                    <label class="form-label fw-bold">انتخاب معرف جدید:</label>
+                    <select name="parent_reseller_id" id="parentModalSelect" class="form-select mb-3">
+                        <option value="">-- بدون معرف (مستقیم با مدیریت) --</option>
+                        {% for res in overview.resellers %}
+                            <option value="{{ res.id }}">{{ res.name }} (@{{ res.username }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-secondary rounded-pill" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary rounded-pill fw-bold">ذخیره تغییرات</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Set Custom Commission -->
+<div class="modal fade" id="setCommissionModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content rounded-4 border-0 shadow">
+            <form method="POST" action="{{ url_for('admin_reseller_affiliates_set_commission') }}">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold">تنظیم درصد پورسانت اختصاصی</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="reseller_id" id="commissionModalResellerId">
+                    <p class="text-muted small mb-3">نماینده: <strong id="commissionModalResellerName" class="text-foreground"></strong></p>
+                    
+                    <label class="form-label fw-bold">درصد پورسانت اختصاصی از زیرمجموعه‌ها (%):</label>
+                    <div class="input-group mb-2">
+                        <input type="number" step="0.5" min="0" max="100" name="custom_percent" id="commissionModalInput" class="form-control" placeholder="خالی = درصد پیش‌فرض سیستم ({{ overview.settings.default_percent }}٪)">
+                        <span class="input-group-text">٪</span>
+                    </div>
+                    <small class="text-muted">در صورت خالی گذاشتن، درصد پیش‌فرض سراسری تنظیمات اعمال خواهد شد.</small>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-secondary rounded-pill" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-warning rounded-pill fw-bold">ذخیره درصد</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Approve Application -->
+<div class="modal fade" id="approveAppModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content rounded-4 border-0 shadow">
+            <form id="approveAppForm" method="POST" action="">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold text-success">
+                        <i class="fas fa-check-circle me-1"></i> تایید درخواست و ساخت پنل نمایندگی
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        ایجاد حساب برای: <strong id="approveModalFullName" class="text-foreground"></strong> (<span id="approveModalUsername" class="font-monospace"></span>)
+                    </p>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">رمز عبور ورود به پنل:</label>
+                        <input type="text" name="password" class="form-control font-monospace" placeholder="خالی = تولید خودکار رمز عبور تصادفی">
+                    </div>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">درصد تخفیف همکاری (%):</label>
+                            <input type="number" name="discount_percent" class="form-control" value="20" min="0" max="100">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">شارژ هدیه اولیه (تومان):</label>
+                            <input type="number" name="initial_balance" class="form-control" value="0" min="0">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-secondary rounded-pill" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-success rounded-pill fw-bold px-4">تایید و ساخت پنل</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Reject Application -->
+<div class="modal fade" id="rejectAppModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content rounded-4 border-0 shadow">
+            <form id="rejectAppForm" method="POST" action="">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold text-danger">رد درخواست اخذ نمایندگی</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label fw-bold">علت رد درخواست (اختیاری):</label>
+                    <textarea name="reason" class="form-control" rows="3" placeholder="مثلاً: عدم تطابق شرایط یا تکمیل نبودن اطلاعات تماس"></textarea>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-secondary rounded-pill" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-danger rounded-pill fw-bold">رد قطعی درخواست</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function openSetParentModal(resellerId, resellerName, currentParentId) {
+    document.getElementById("parentModalResellerId").value = resellerId;
+    document.getElementById("parentModalResellerName").textContent = resellerName;
+    document.getElementById("parentModalSelect").value = currentParentId ? currentParentId : "";
+    new bootstrap.Modal(document.getElementById("setParentModal")).show();
+}
+
+function openSetCommissionModal(resellerId, resellerName, currentCommission) {
+    document.getElementById("commissionModalResellerId").value = resellerId;
+    document.getElementById("commissionModalResellerName").textContent = resellerName;
+    document.getElementById("commissionModalInput").value = currentCommission ? currentCommission : "";
+    new bootstrap.Modal(document.getElementById("setCommissionModal")).show();
+}
+
+function openApproveModal(ticketId, fullName, username) {
+    document.getElementById("approveAppForm").action = "/admin/reseller-application/" + ticketId + "/approve";
+    document.getElementById("approveModalFullName").textContent = fullName;
+    document.getElementById("approveModalUsername").textContent = "@" + username;
+    new bootstrap.Modal(document.getElementById("approveAppModal")).show();
+}
+
+function openRejectModal(ticketId) {
+    document.getElementById("rejectAppForm").action = "/admin/reseller-application/" + ticketId + "/reject";
+    new bootstrap.Modal(document.getElementById("rejectAppModal")).show();
+}
+</script>
+{% endblock %}

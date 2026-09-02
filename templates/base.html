@@ -2,7 +2,7 @@
 <html lang="fa" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>{% block title %}پنل مدیریت ربات VPN{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -120,6 +120,28 @@
 
         [data-bs-theme="dark"] .border-dashed {
             border-color: #334155 !important;
+        }
+
+        /* ─── بهینه‌سازی اختصاصی لایه‌بندی و مودال‌ها در iOS و WebKit (iPhone 8 تا iPhone 15) ─── */
+        .modal {
+            z-index: 1060 !important;
+            -webkit-overflow-scrolling: touch !important;
+        }
+        .modal-backdrop {
+            z-index: 1050 !important;
+        }
+        .modal-dialog {
+            max-width: 520px;
+            margin: 1.5rem auto;
+        }
+        @media (max-width: 576px) {
+            .modal-dialog {
+                margin: 0.75rem auto;
+                max-width: calc(100vw - 1.5rem);
+            }
+        }
+        body {
+            padding-bottom: env(safe-area-inset-bottom, 0);
         }
 
         [data-bs-theme="dark"] .modal-content {
@@ -790,6 +812,9 @@
                 <a class="nav-link {% if request.endpoint == 'reseller_reports' %}active{% endif %}" href="{{ url_for('reseller_reports') }}">
                     <i class="fas fa-chart-line"></i> گزارشات و هوش مالی
                 </a>
+                <a class="nav-link {% if request.endpoint == 'reseller_affiliates' %}active{% endif %}" href="{{ url_for('reseller_affiliates') }}">
+                    <i class="fas fa-users-rays text-warning"></i> زیرمجموعه‌گیری و پورسانت
+                </a>
                 {% endif %}
 
                 <a class="nav-link {% if request.endpoint == 'reseller_profile' %}active{% endif %}" href="{{ url_for('reseller_profile') }}">
@@ -845,6 +870,9 @@
                 {% if has_permission('manage_resellers') %}
                 <a class="nav-link {% if request.endpoint == 'admin_resellers' %}active{% endif %}" href="{{ url_for('admin_resellers') }}">
                     <i class="fas fa-handshake"></i> نمایندگان فروش (Resellers)
+                </a>
+                <a class="nav-link {% if request.endpoint == 'admin_reseller_affiliates' %}active{% endif %}" href="{{ url_for('admin_reseller_affiliates') }}">
+                    <i class="fas fa-network-wired text-warning"></i> زیرمجموعه‌گیری همکاران
                 </a>
                 {% endif %}
 
@@ -1073,41 +1101,73 @@
         }
 
         // ─── سیستم اعلان زنده و پخش صدای ملایم ───
-        function playChimeAlert() {
+        // ─── سیستم اعلان صوتی اختصاصی: صدای مشتریان vs صدای نمایندگان و مدیریت ───
+        function playCustomerTicketSound() {
             try {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
                 if (!AudioContext) return;
                 const ctx = new AudioContext();
                 const now = ctx.currentTime;
 
-                // نت اول (Chime)
+                // نت اول صدای مشتری (زنگ ملایم دوگانه)
                 const osc1 = ctx.createOscillator();
                 const gain1 = ctx.createGain();
                 osc1.type = 'sine';
                 osc1.frequency.setValueAtTime(880, now);
-                osc1.frequency.exponentialRampToValueAtTime(1760, now + 0.12);
-                gain1.gain.setValueAtTime(0.25, now);
-                gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+                osc1.frequency.exponentialRampToValueAtTime(1320, now + 0.12);
+                gain1.gain.setValueAtTime(0.2, now);
+                gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
                 osc1.connect(gain1);
                 gain1.connect(ctx.destination);
                 osc1.start(now);
-                osc1.stop(now + 0.5);
+                osc1.stop(now + 0.45);
 
-                // نت دوم (Message Bell)
+                // نت دوم
                 const osc2 = ctx.createOscillator();
                 const gain2 = ctx.createGain();
                 osc2.type = 'sine';
-                osc2.frequency.setValueAtTime(1320, now + 0.08);
-                gain2.gain.setValueAtTime(0.2, now + 0.08);
-                gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+                osc2.frequency.setValueAtTime(1174.66, now + 0.1);
+                gain2.gain.setValueAtTime(0.18, now + 0.1);
+                gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
                 osc2.connect(gain2);
                 gain2.connect(ctx.destination);
-                osc2.start(now + 0.08);
-                osc2.stop(now + 0.7);
+                osc2.start(now + 0.1);
+                osc2.stop(now + 0.6);
             } catch (err) {
-                console.warn('Audio notification notice:', err);
+                console.warn('Customer sound notice:', err);
             }
         }
+
+        function playResellerAdminTicketSound() {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                const ctx = new AudioContext();
+                const now = ctx.currentTime;
+
+                // آکورد مجلل و متمایز ۳ تایی مدیریتی (C5 -> E5 -> G5 -> C6)
+                const notes = [523.25, 659.25, 783.99, 1046.50];
+                notes.forEach((freq, idx) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.09);
+                    gain.gain.setValueAtTime(0.28, now + idx * 0.09);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.09 + 0.55);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(now + idx * 0.09);
+                    osc.stop(now + idx * 0.09 + 0.55);
+                });
+            } catch (err) {
+                console.warn('Reseller/Admin sound notice:', err);
+            }
+        }
+
+        // توابع عمومی قابل فراخوانی
+        window.playChimeAlert = playCustomerTicketSound;
+        window.playCustomerTicketSound = playCustomerTicketSound;
+        window.playResellerAdminTicketSound = playResellerAdminTicketSound;
 
         // درخواست مجوز اعلان‌های مرورگر
         if ("Notification" in window && Notification.permission === "default") {
@@ -1117,8 +1177,9 @@
             }, { once: true });
         }
 
-        let lastPendingCount = -1;
-        let lastTicketsCount = -1;
+        let lastAdminPendingCount = -1;
+        let lastAdminCustomerTicketsCount = -1;
+        let lastAdminResellerTicketsCount = -1;
 
         async function pollAdminNotifications() {
             try {
@@ -1146,9 +1207,32 @@
                     }
                 }
 
-                // اگر تعداد پرداخت‌های در انتظار افزایش یافته باشد
-                if (lastPendingCount !== -1 && data.pending_payments_count > lastPendingCount) {
-                    playChimeAlert();
+                // ۱. اگر تیکت جدید از نمایندگان آمده باشد -> صدای اختصاصی نمایندگان
+                if (lastAdminResellerTicketsCount !== -1 && data.open_reseller_tickets_count > lastAdminResellerTicketsCount) {
+                    playResellerAdminTicketSound();
+                    const toastEl = document.getElementById('liveAlertToast');
+                    if (toastEl) {
+                        document.getElementById('liveAlertToastTitle').textContent = '👑 تیکت / درخواست جدید از نماینده!';
+                        document.getElementById('liveAlertToastMsg').textContent = `یک تیکت یا درخواست تغییر مشخصات جدید از نمایندگان دریافت شد.`;
+                        const toast = new bootstrap.Toast(toastEl, { delay: 9000 });
+                        toast.show();
+                    }
+                }
+                // ۲. اگر تیکت جدید از مشتریان آمده باشد -> صدای مشتری
+                else if (lastAdminCustomerTicketsCount !== -1 && data.open_customer_tickets_count > lastAdminCustomerTicketsCount) {
+                    playCustomerTicketSound();
+                    const toastEl = document.getElementById('liveAlertToast');
+                    if (toastEl) {
+                        document.getElementById('liveAlertToastTitle').textContent = '💬 تیکت پشتیبانی مشتری جدید!';
+                        document.getElementById('liveAlertToastMsg').textContent = `یک پیام پشتیبانی جدید از کاربران دریافت شد.`;
+                        const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
+                        toast.show();
+                    }
+                }
+
+                // ۳. اگر پرداخت جدید آمده باشد
+                if (lastAdminPendingCount !== -1 && data.pending_payments_count > lastAdminPendingCount) {
+                    playCustomerTicketSound();
                     const toastEl = document.getElementById('liveAlertToast');
                     if (toastEl) {
                         document.getElementById('liveAlertToastTitle').textContent = '💳 پرداخت کارت به کارت جدید!';
@@ -1156,34 +1240,11 @@
                         const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
                         toast.show();
                     }
-                    if ("Notification" in window && Notification.permission === "granted") {
-                        new Notification("💳 فیش واریزی جدید", {
-                            body: "یک پرداخت جدید برای بررسی و تایید ثبت شده است.",
-                            icon: "https://cdn-icons-png.flaticon.com/512/3135/3135706.png"
-                        });
-                    }
                 }
 
-                // اگر تیکت جدیدی ثبت شده باشد
-                if (lastTicketsCount !== -1 && data.open_tickets_count > lastTicketsCount) {
-                    playChimeAlert();
-                    const toastEl = document.getElementById('liveAlertToast');
-                    if (toastEl) {
-                        document.getElementById('liveAlertToastTitle').textContent = '💬 تیکت پشتیبانی جدید!';
-                        document.getElementById('liveAlertToastMsg').textContent = `یک پیام پشتیبانی جدید از کاربران دریافت شد.`;
-                        const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
-                        toast.show();
-                    }
-                    if ("Notification" in window && Notification.permission === "granted") {
-                        new Notification("💬 تیکت پشتیبانی جدید", {
-                            body: "یک پیام پشتیبانی جدید از کاربران دریافت شد.",
-                            icon: "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
-                        });
-                    }
-                }
-
-                lastPendingCount = data.pending_payments_count;
-                lastTicketsCount = data.open_tickets_count;
+                lastAdminPendingCount = data.pending_payments_count;
+                lastAdminCustomerTicketsCount = data.open_customer_tickets_count;
+                lastAdminResellerTicketsCount = data.open_reseller_tickets_count;
             } catch (e) {
                 // Ignore network errors in background polling
             }
@@ -1228,7 +1289,8 @@
         applyTheme(savedTheme);
 
         let lastResellerReceiptsCount = -1;
-        let lastResellerTicketsCount = -1;
+        let lastResellerCustomerTicketsCount = -1;
+        let lastResellerAdminRepliesCount = -1;
 
         async function pollResellerNotifications() {
             try {
@@ -1261,8 +1323,37 @@
                     }
                 }
 
+                // ۱. اگر پاسخ یا تیکت جدیدی از مدیریت دریافت شده باشد -> صدای مدیریتی
+                if (lastResellerAdminRepliesCount !== -1 && (data.admin_replied_tickets_count || 0) > lastResellerAdminRepliesCount) {
+                    playResellerAdminTicketSound();
+                    const toastEl = document.getElementById('liveAlertToast');
+                    if (toastEl) {
+                        document.getElementById('liveAlertToastTitle').textContent = '🏢 پیام جدید از پنل مدیریت!';
+                        document.getElementById('liveAlertToastMsg').textContent = `مدیریت به تیکت یا درخواست شما پاسخ داد.`;
+                        const toast = new bootstrap.Toast(toastEl, { delay: 9000 });
+                        toast.show();
+                    }
+                }
+                // ۲. اگر تیکت جدید از مشتری آمده باشد -> صدای مشتری
+                else if (lastResellerCustomerTicketsCount !== -1 && (data.open_customer_tickets_count || 0) > lastResellerCustomerTicketsCount) {
+                    playCustomerTicketSound();
+                    const toastEl = document.getElementById('liveAlertToast');
+                    if (toastEl) {
+                        document.getElementById('liveAlertToastTitle').textContent = '💬 تیکت مشتری جدید!';
+                        document.getElementById('liveAlertToastMsg').textContent = `یک مشتری تیکت پشتیبانی جدید ارسال کرده است.`;
+                        const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
+                        toast.show();
+                    }
+                }
+
+                // ۳. اگر فیش جدید مشتری آمده باشد
+                if (lastResellerReceiptsCount !== -1 && data.pending_customer_receipts_count > lastResellerReceiptsCount) {
+                    playCustomerTicketSound();
+                }
+
                 lastResellerReceiptsCount = data.pending_customer_receipts_count;
-                lastResellerTicketsCount = data.open_tickets_count;
+                lastResellerCustomerTicketsCount = data.open_customer_tickets_count || 0;
+                lastResellerAdminRepliesCount = data.admin_replied_tickets_count || 0;
             } catch (e) {
                 // Ignore network errors in background polling
             }
