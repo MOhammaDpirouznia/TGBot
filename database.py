@@ -821,6 +821,7 @@ class Database:
         for col_def in [
             "reseller_id INTEGER DEFAULT 0",
             "ticket_type TEXT DEFAULT 'general'",
+            "target_role TEXT DEFAULT 'admin'",
             "request_data TEXT",
             "request_status TEXT DEFAULT 'pending'"
         ]:
@@ -828,6 +829,45 @@ class Database:
                 cursor.execute(f"ALTER TABLE support_tickets ADD COLUMN {col_def}")
             except Exception:
                 pass
+
+        # ستون‌های سیستم زیرمجموعه‌گیری و پورسانت نمایندگان
+        for col_def in [
+            "parent_reseller_id INTEGER DEFAULT NULL",
+            "affiliate_commission_percent REAL DEFAULT NULL",
+            "referral_code TEXT"
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE resellers ADD COLUMN {col_def}")
+            except Exception:
+                pass
+
+        # جدول تراکنش‌های پورسانت زیرمجموعه‌گیری نمایندگان
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS reseller_affiliate_commissions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                parent_reseller_id INTEGER NOT NULL,
+                sub_reseller_id INTEGER NOT NULL,
+                sub_id INTEGER,
+                account_name TEXT,
+                plan_id TEXT,
+                plan_name TEXT,
+                plan_price INTEGER NOT NULL,
+                commission_percent REAL NOT NULL,
+                commission_amount INTEGER NOT NULL,
+                description TEXT,
+                created_at TEXT NOT NULL
+            )
+        """)
+
+        # مقداردهی اولیه تنظیمات زیرمجموعه‌گیری در صورت عدم وجود
+        default_aff_settings = {
+            "reseller_affiliate_enabled": "1",
+            "reseller_affiliate_default_percent": "10",
+            "reseller_affiliate_calc_base": "plan_price",
+            "reseller_affiliate_terms": "با پیوستن به عنوان همکار و نماینده زیرمجموعه، از ربات اختصاصی هوشمند، ساب‌دامنه‌های بدون فیلتر و پنل مدیریت فروش با تسویه آنی بهره‌مند شوید."
+        }
+        for k, v in default_aff_settings.items():
+            cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
 
         conn.commit()
         conn.close()
@@ -3106,27 +3146,48 @@ class Database:
         finally:
             conn.close()
 
-    def get_all_tickets(self, status=None, reseller_id=None, search=None, vip_only=False):
-        """دریافت تمام تیکت‌ها با فیلتر وضعیت، جستجو و نماینده همراه با اولویت تیکت‌های VIP"""
+    def get_all_tickets(self, status=None, reseller_id=None, search=None, vip_only=False, category=None):
+        """دریافت تمام تیکت‌ها با فیلتر وضعیت، جستجو، نماینده و تفکیک دسته‌بندی مشتریان و نمایندگان"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             query = """
-                SELECT t.*, u.username, u.phone_number,
+                SELECT t.*, 
+                       u.username as user_username, 
+                       u.phone_number as user_phone,
                        COALESCE(u.is_vip, 0) as is_vip,
-                       COALESCE(u.wallet_balance, 0) as wallet_balance,
+                       r.name as reseller_name,
+                       r.username as reseller_username,
+                       r.balance as reseller_balance,
+                       r.telegram_id as reseller_telegram_id,
                        (SELECT COUNT(*) FROM subscriptions WHERE telegram_id = t.telegram_id AND status = 'active') as active_subs_count,
                        (SELECT COUNT(*) FROM ticket_messages WHERE ticket_id = t.id) as messages_count
                 FROM support_tickets t
                 LEFT JOIN users u ON t.telegram_id = u.telegram_id
+                LEFT JOIN resellers r ON t.reseller_id = r.id
                 WHERE 1=1
             """
             params = []
+
+            # فیلتر دسته‌بندی و نماینده
             if reseller_id is not None:
-                query += " AND t.reseller_id = ?"
-                params.append(reseller_id)
+                # پنل نماینده
+                if category == "admin":
+                    query += " AND t.reseller_id = ? AND (t.ticket_type IN ('reseller_to_admin', 'quota_change', 'reseller_application') OR t.target_role = 'admin')"
+                    params.append(reseller_id)
+                elif category == "customers":
+                    query += " AND t.reseller_id = ? AND (t.ticket_type NOT IN ('reseller_to_admin', 'quota_change', 'reseller_application') OR t.ticket_type IS NULL) AND (t.target_role IS NULL OR t.target_role != 'admin')"
+                    params.append(reseller_id)
+                else:
+                    query += " AND t.reseller_id = ?"
+                    params.append(reseller_id)
             else:
-                query += " AND (t.reseller_id IS NULL OR t.reseller_id = 0)"
+                # پنل مدیریت
+                if category == "resellers":
+                    query += " AND (t.ticket_type IN ('reseller_to_admin', 'quota_change', 'reseller_application') OR (t.reseller_id > 0 AND (t.ticket_type IS NOT NULL OR t.target_role = 'admin')))"
+                elif category == "customers":
+                    query += " AND (t.reseller_id IS NULL OR t.reseller_id = 0) AND (t.ticket_type NOT IN ('reseller_to_admin', 'quota_change', 'reseller_application') OR t.ticket_type IS NULL)"
+                # اگر category == 'all' یا نامشخص بود، همه را برمی‌گرداند
 
             if vip_only:
                 query += " AND u.is_vip = 1"
@@ -3144,8 +3205,8 @@ class Database:
                     query += " AND u.is_vip = 1 AND t.status != 'closed'"
 
             if search:
-                query += " AND (t.id LIKE ? OR t.message LIKE ? OR t.admin_reply LIKE ? OR u.username LIKE ? OR t.telegram_id LIKE ? OR u.phone_number LIKE ?)"
-                params.extend([f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"])
+                query += " AND (t.id LIKE ? OR t.message LIKE ? OR t.admin_reply LIKE ? OR t.subject LIKE ? OR u.username LIKE ? OR u.phone_number LIKE ? OR t.telegram_id LIKE ? OR r.name LIKE ? OR r.username LIKE ?)"
+                params.extend([f"%{search}%"] * 9)
 
             query += " ORDER BY COALESCE(u.is_vip, 0) DESC, CASE WHEN t.status = 'open' THEN 1 WHEN t.status = 'in_progress' THEN 2 WHEN t.status = 'replied' THEN 3 ELSE 4 END, t.created_at DESC"
             cursor.execute(query, params)
@@ -3160,17 +3221,23 @@ class Database:
             conn.close()
 
     def get_ticket_details(self, ticket_id):
-        """دریافت اطلاعات جامع تیکت به همراه پروفایل کاربر و تاریخچه گفتگو"""
+        """دریافت اطلاعات جامع تیکت به همراه پروفایل کاربر، نماینده و تاریخچه گفتگو"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute("""
-                SELECT t.*, u.username, u.phone_number, 
+                SELECT t.*, 
+                       u.username as user_username, 
+                       u.phone_number as user_phone, 
                        COALESCE(u.is_vip, 0) as is_vip,
-                       COALESCE(u.wallet_balance, 0) as wallet_balance,
+                       r.name as reseller_name,
+                       r.username as reseller_username,
+                       r.balance as reseller_balance,
+                       r.telegram_id as reseller_telegram_id,
                        (SELECT COUNT(*) FROM subscriptions WHERE telegram_id = t.telegram_id AND status = 'active') as active_subs_count
                 FROM support_tickets t
                 LEFT JOIN users u ON t.telegram_id = u.telegram_id
+                LEFT JOIN resellers r ON t.reseller_id = r.id
                 WHERE t.id = ?
             """, (ticket_id,))
             row = cursor.fetchone()
@@ -3186,40 +3253,140 @@ class Database:
             conn.close()
 
     def get_tickets_stats(self, reseller_id=None):
-        """محاسبه آمار تفکیکی تیکت‌ها برای تب‌های فیلتر"""
+        """محاسبه آمار تفکیکی تیکت‌ها برای تب‌های فیلتر با تفکیک مشتریان و نمایندگان"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            base_where = "WHERE (t.reseller_id IS NULL OR t.reseller_id = 0)" if reseller_id is None else "WHERE t.reseller_id = ?"
-            params = [] if reseller_id is None else [reseller_id]
+            def _calc_stats(where_clause, params_list):
+                q = f"""
+                    SELECT 
+                        COUNT(*) as total_count,
+                        SUM(CASE WHEN t.status = 'open' THEN 1 ELSE 0 END) as open_count,
+                        SUM(CASE WHEN t.status = 'in_progress' THEN 1 ELSE 0 END) as in_progress_count,
+                        SUM(CASE WHEN t.status = 'replied' THEN 1 ELSE 0 END) as replied_count,
+                        SUM(CASE WHEN t.status = 'closed' THEN 1 ELSE 0 END) as closed_count,
+                        SUM(CASE WHEN COALESCE(u.is_vip, 0) = 1 AND t.status != 'closed' THEN 1 ELSE 0 END) as vip_count
+                    FROM support_tickets t
+                    LEFT JOIN users u ON t.telegram_id = u.telegram_id
+                    {where_clause}
+                """
+                cursor.execute(q, params_list)
+                r = cursor.fetchone()
+                if not r:
+                    return {"all": 0, "open": 0, "in_progress": 0, "replied": 0, "closed": 0, "vip": 0}
+                return {
+                    "all": r["total_count"] or 0,
+                    "open": r["open_count"] or 0,
+                    "in_progress": r["in_progress_count"] or 0,
+                    "replied": r["replied_count"] or 0,
+                    "closed": r["closed_count"] or 0,
+                    "vip": r["vip_count"] or 0,
+                }
 
-            query = f"""
-                SELECT 
-                    COUNT(*) as total_count,
-                    SUM(CASE WHEN t.status = 'open' THEN 1 ELSE 0 END) as open_count,
-                    SUM(CASE WHEN t.status = 'in_progress' THEN 1 ELSE 0 END) as in_progress_count,
-                    SUM(CASE WHEN t.status = 'replied' THEN 1 ELSE 0 END) as replied_count,
-                    SUM(CASE WHEN t.status = 'closed' THEN 1 ELSE 0 END) as closed_count,
-                    SUM(CASE WHEN COALESCE(u.is_vip, 0) = 1 AND t.status != 'closed' THEN 1 ELSE 0 END) as vip_count
-                FROM support_tickets t
-                LEFT JOIN users u ON t.telegram_id = u.telegram_id
-                {base_where}
-            """
-            cursor.execute(query, params)
-            row = cursor.fetchone()
-            if not row:
-                return {"all": 0, "open": 0, "in_progress": 0, "replied": 0, "closed": 0, "vip": 0}
-            return {
-                "all": row["total_count"] or 0,
-                "open": row["open_count"] or 0,
-                "in_progress": row["in_progress_count"] or 0,
-                "replied": row["replied_count"] or 0,
-                "closed": row["closed_count"] or 0,
-                "vip": row["vip_count"] or 0,
-            }
+            if reseller_id is None:
+                # پنل مدیریت
+                cust_stats = _calc_stats("WHERE (t.reseller_id IS NULL OR t.reseller_id = 0) AND (t.ticket_type NOT IN ('reseller_to_admin', 'quota_change', 'reseller_application') OR t.ticket_type IS NULL)", [])
+                res_stats = _calc_stats("WHERE t.ticket_type IN ('reseller_to_admin', 'quota_change', 'reseller_application') OR (t.reseller_id > 0 AND (t.ticket_type IS NOT NULL OR t.target_role = 'admin'))", [])
+                all_stats = _calc_stats("WHERE 1=1", [])
+                
+                return {
+                    "all": all_stats["all"],
+                    "open": all_stats["open"],
+                    "in_progress": all_stats["in_progress"],
+                    "replied": all_stats["replied"],
+                    "closed": all_stats["closed"],
+                    "vip": all_stats["vip"],
+                    "customers": cust_stats,
+                    "resellers": res_stats
+                }
+            else:
+                # پنل نماینده
+                cust_stats = _calc_stats("WHERE t.reseller_id = ? AND (t.ticket_type NOT IN ('reseller_to_admin', 'quota_change', 'reseller_application') OR t.ticket_type IS NULL) AND (t.target_role IS NULL OR t.target_role != 'admin')", [reseller_id])
+                admin_stats = _calc_stats("WHERE t.reseller_id = ? AND (t.ticket_type IN ('reseller_to_admin', 'quota_change', 'reseller_application') OR t.target_role = 'admin')", [reseller_id])
+                all_stats = _calc_stats("WHERE t.reseller_id = ?", [reseller_id])
+
+                return {
+                    "all": all_stats["all"],
+                    "open": all_stats["open"],
+                    "in_progress": all_stats["in_progress"],
+                    "replied": all_stats["replied"],
+                    "closed": all_stats["closed"],
+                    "vip": all_stats["vip"],
+                    "customers": cust_stats,
+                    "admin": admin_stats
+                }
         except Exception as e:
             logger.error(f"Error getting ticket stats: {e}")
-            return {"all": 0, "open": 0, "in_progress": 0, "replied": 0, "closed": 0, "vip": 0}
+            empty = {"all": 0, "open": 0, "in_progress": 0, "replied": 0, "closed": 0, "vip": 0}
+            return {"all": 0, "open": 0, "in_progress": 0, "replied": 0, "closed": 0, "vip": 0, "customers": empty, "resellers": empty, "admin": empty}
+        finally:
+            conn.close()
+
+    def create_reseller_to_admin_ticket(self, reseller_id: int, subject: str, message: str, priority: str = 'normal') -> dict:
+        """ثبت تیکت مستقیم توسط نماینده برای پنل مدیریت"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT * FROM resellers WHERE id=?", (reseller_id,))
+            reseller = cursor.fetchone()
+            r_name = reseller["name"] if reseller else f"نماینده #{reseller_id}"
+            r_tg = reseller["telegram_id"] if reseller else 0
+
+            cursor.execute("""
+                INSERT INTO support_tickets (
+                    telegram_id, subject, message, status, reseller_id,
+                    ticket_type, target_role, created_at, updated_at
+                ) VALUES (?, ?, ?, 'open', ?, 'reseller_to_admin', 'admin', ?, ?)
+            """, (r_tg or 0, subject.strip(), message.strip(), reseller_id, now, now))
+            ticket_id = cursor.lastrowid
+
+            cursor.execute("""
+                INSERT INTO ticket_messages (
+                    ticket_id, sender_type, sender_id, sender_name, message, created_at
+                ) VALUES (?, 'reseller', ?, ?, ?, ?)
+            """, (ticket_id, reseller_id, r_name, message.strip(), now))
+
+            conn.commit()
+            return {"success": True, "ticket_id": ticket_id}
+        except Exception as e:
+            logger.error(f"Error creating reseller to admin ticket: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def add_reseller_admin_ticket_reply(self, ticket_id: int, reseller_id: int, message: str) -> dict:
+        """ارسال پاسخ از سمت نماینده در تیکت مکاتبه با مدیریت"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT * FROM support_tickets WHERE id=? AND reseller_id=?", (ticket_id, reseller_id))
+            ticket = cursor.fetchone()
+            if not ticket:
+                return {"success": False, "error": "تیکت یافت نشد"}
+
+            cursor.execute("SELECT * FROM resellers WHERE id=?", (reseller_id,))
+            reseller = cursor.fetchone()
+            r_name = reseller["name"] if reseller else f"نماینده #{reseller_id}"
+
+            cursor.execute("""
+                INSERT INTO ticket_messages (
+                    ticket_id, sender_type, sender_id, sender_name, message, created_at
+                ) VALUES (?, 'reseller', ?, ?, ?, ?)
+            """, (ticket_id, reseller_id, r_name, message.strip(), now))
+
+            cursor.execute("""
+                UPDATE support_tickets
+                SET status = 'open', updated_at = ?
+                WHERE id = ?
+            """, (now, ticket_id))
+
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error adding reseller admin ticket reply: {e}")
+            return {"success": False, "error": str(e)}
         finally:
             conn.close()
 
@@ -3708,8 +3875,8 @@ class Database:
             cursor.execute("""
                 INSERT INTO support_tickets (
                     telegram_id, subject, message, status, reseller_id,
-                    ticket_type, request_data, request_status, created_at, updated_at
-                ) VALUES (?, ?, ?, 'open', ?, 'quota_change', ?, 'pending', ?, ?)
+                    ticket_type, target_role, request_data, request_status, created_at, updated_at
+                ) VALUES (?, ?, ?, 'open', ?, 'quota_change', 'admin', ?, 'pending', ?, ?)
             """, (r_tg or 0, subject, msg, reseller_id, req_json, now, now))
             ticket_id = cursor.lastrowid
 
@@ -4272,19 +4439,36 @@ class Database:
 
     def create_reseller(self, username: str, password: str, name: str,
                         telegram_id: int = None, discount_percent: int = 20, initial_balance: int = 0,
-                        hiddify_admin_uuid: str = None) -> dict:
-        """ایجاد نماینده جدید با پشتیبانی از ادمین اختصاصی هیدیفای"""
+                        hiddify_admin_uuid: str = None, parent_reseller_id: int = None,
+                        affiliate_commission_percent: float = None, referral_code: str = None) -> dict:
+        """ایجاد نماینده جدید با پشتیبانی از ادمین اختصاصی هیدیفای و انتساب نماینده معرف"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         password_hash = self.hash_password(password)
+        cleaned_user = username.strip().lower()
+        if not referral_code:
+            referral_code = f"REF-{cleaned_user}"
         try:
             cursor.execute("""
-                INSERT INTO resellers (username, password_hash, name, telegram_id, balance, discount_percent, status, hiddify_admin_uuid, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
-            """, (username.strip().lower(), password_hash, name.strip(), telegram_id, initial_balance, discount_percent, (hiddify_admin_uuid.strip() if hiddify_admin_uuid else None), now, now))
+                INSERT INTO resellers (
+                    username, password_hash, name, telegram_id, balance, 
+                    discount_percent, status, hiddify_admin_uuid, 
+                    parent_reseller_id, affiliate_commission_percent, referral_code,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)
+            """, (
+                cleaned_user, password_hash, name.strip(), telegram_id, initial_balance, 
+                discount_percent, (hiddify_admin_uuid.strip() if hiddify_admin_uuid else None),
+                parent_reseller_id, affiliate_commission_percent, referral_code,
+                now, now
+            ))
             reseller_id = cursor.lastrowid
             
+            # تضمین تولید کد رفرال یکتا و تمیز
+            final_ref_code = f"REF-{reseller_id}"
+            cursor.execute("UPDATE resellers SET referral_code = ? WHERE id = ?", (final_ref_code, reseller_id))
+
             if initial_balance > 0:
                 cursor.execute("""
                     INSERT INTO reseller_transactions (reseller_id, type, amount, description, created_at)
@@ -4292,11 +4476,572 @@ class Database:
                 """, (reseller_id, initial_balance, now))
 
             conn.commit()
-            return {"success": True, "reseller_id": reseller_id}
+            return {"success": True, "reseller_id": reseller_id, "referral_code": final_ref_code}
         except sqlite3.IntegrityError:
             return {"success": False, "error": "این نام کاربری قبلاً ثبت شده است."}
         except Exception as e:
             return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # سیستم زیرمجموعه‌گیری و پورسانت نمایندگان (Reseller Affiliate System)
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def get_reseller_affiliate_settings(self) -> dict:
+        """دریافت تنظیمات سراسری سیستم زیرمجموعه‌گیری نمایندگان"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        settings = {
+            "enabled": True,
+            "default_percent": 10.0,
+            "calc_base": "plan_price",
+            "terms": "با پیوستن به عنوان همکار و نماینده زیرمجموعه، از ربات اختصاصی هوشمند، ساب‌دامنه‌های بدون فیلتر و پنل مدیریت فروش با تسویه آنی بهره‌مند شوید."
+        }
+        try:
+            cursor.execute("SELECT key, value FROM settings WHERE key LIKE 'reseller_affiliate_%'")
+            for row in cursor.fetchall():
+                k = row["key"]
+                v = row["value"]
+                if k == "reseller_affiliate_enabled":
+                    settings["enabled"] = (str(v).strip() in ("1", "true", "True"))
+                elif k == "reseller_affiliate_default_percent":
+                    try:
+                        settings["default_percent"] = float(v)
+                    except (ValueError, TypeError):
+                        pass
+                elif k == "reseller_affiliate_calc_base":
+                    settings["calc_base"] = str(v).strip()
+                elif k == "reseller_affiliate_terms":
+                    settings["terms"] = str(v)
+        except Exception as e:
+            logger.error(f"Error getting reseller affiliate settings: {e}")
+        finally:
+            conn.close()
+        return settings
+
+    def update_reseller_affiliate_settings(self, enabled: bool, default_percent: float, calc_base: str, terms: str) -> dict:
+        """بروزرسانی تنظیمات سیستم زیرمجموعه‌گیری نمایندگان"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            data = {
+                "reseller_affiliate_enabled": "1" if enabled else "0",
+                "reseller_affiliate_default_percent": str(default_percent),
+                "reseller_affiliate_calc_base": calc_base,
+                "reseller_affiliate_terms": terms
+            }
+            for k, v in data.items():
+                cursor.execute("""
+                    INSERT INTO settings (key, value) VALUES (?, ?)
+                    ON CONFLICT(key) DO UPDATE SET value=excluded.value
+                """, (k, v))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error updating reseller affiliate settings: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_reseller_referral_code(self, reseller_id: int) -> str:
+        """دریافت یا تولید کد دعوت اختصاصی نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT id, referral_code, username FROM resellers WHERE id=?", (reseller_id,))
+            row = cursor.fetchone()
+            if not row:
+                return f"REF-{reseller_id}"
+            
+            ref_code = row["referral_code"]
+            if not ref_code:
+                ref_code = f"REF-{reseller_id}"
+                cursor.execute("UPDATE resellers SET referral_code=? WHERE id=?", (ref_code, reseller_id))
+                conn.commit()
+            return ref_code
+        except Exception as e:
+            logger.error(f"Error getting reseller referral code: {e}")
+            return f"REF-{reseller_id}"
+        finally:
+            conn.close()
+
+    def get_reseller_by_referral_code(self, code_or_id: str) -> Optional[dict]:
+        """پیدا کردن مشخصات نماینده معرف بر اساس کد یا شناسه"""
+        if not code_or_id:
+            return None
+        code_clean = str(code_or_id).strip()
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            # ۱. جستجو با referral_code
+            cursor.execute("SELECT * FROM resellers WHERE UPPER(referral_code) = UPPER(?) AND status = 'active'", (code_clean,))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+
+            # ۲. بررسی اگر فرمت شناسه عددی باشد (مثلاً 5 یا REF-5)
+            numeric_id = None
+            if code_clean.isdigit():
+                numeric_id = int(code_clean)
+            elif code_clean.upper().startswith("REF-") and code_clean[4:].isdigit():
+                numeric_id = int(code_clean[4:])
+
+            if numeric_id:
+                cursor.execute("SELECT * FROM resellers WHERE id = ? AND status = 'active'", (numeric_id,))
+                row = cursor.fetchone()
+                if row:
+                    return dict(row)
+
+            # ۳. جستجو بر اساس نام کاربری
+            cursor.execute("SELECT * FROM resellers WHERE LOWER(username) = LOWER(?) AND status = 'active'", (code_clean,))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+
+            return None
+        except Exception as e:
+            logger.error(f"Error finding reseller by referral code: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def get_sub_resellers(self, parent_reseller_id: int) -> list:
+        """لیست نمایندگان زیرمجموعه یک نماینده به همراه آمار فروش و سود تولید شده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT r.*,
+                       (SELECT COUNT(*) FROM subscriptions WHERE reseller_id = r.id) as total_subscriptions,
+                       (SELECT COUNT(*) FROM subscriptions WHERE reseller_id = r.id AND status = 'active') as active_subscriptions,
+                       (SELECT COUNT(*) FROM users WHERE reseller_id = r.id) as total_customers,
+                       (SELECT COALESCE(SUM(commission_amount), 0) 
+                        FROM reseller_affiliate_commissions 
+                        WHERE parent_reseller_id = ? AND sub_reseller_id = r.id) as total_commission_earned
+                FROM resellers r
+                WHERE r.parent_reseller_id = ?
+                ORDER BY r.created_at DESC
+            """, (parent_reseller_id, parent_reseller_id))
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error getting sub resellers for {parent_reseller_id}: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_reseller_affiliate_stats(self, reseller_id: int) -> dict:
+        """شاخص‌ها و آمار کامل زیرمجموعه‌گیری نماینده"""
+        reseller = self.get_reseller(reseller_id)
+        if not reseller:
+            return {}
+
+        aff_settings = self.get_reseller_affiliate_settings()
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            ref_code = self.get_reseller_referral_code(reseller_id)
+
+            # تعداد کل زیرمجموعه‌ها
+            cursor.execute("SELECT COUNT(*) FROM resellers WHERE parent_reseller_id = ?", (reseller_id,))
+            sub_count = cursor.fetchone()[0] or 0
+
+            # تعداد زیرمجموعه‌های فعال
+            cursor.execute("SELECT COUNT(*) FROM resellers WHERE parent_reseller_id = ? AND status = 'active'", (reseller_id,))
+            active_sub_count = cursor.fetchone()[0] or 0
+
+            # مجموع کل کمیسیون دریافتی
+            cursor.execute("SELECT COALESCE(SUM(commission_amount), 0) FROM reseller_affiliate_commissions WHERE parent_reseller_id = ?", (reseller_id,))
+            total_commission = cursor.fetchone()[0] or 0
+
+            # کمیسیون ۳۰ روز اخیر
+            month_ago = (datetime.now() - timedelta(days=30)).isoformat()
+            cursor.execute("SELECT COALESCE(SUM(commission_amount), 0) FROM reseller_affiliate_commissions WHERE parent_reseller_id = ? AND created_at >= ?", (reseller_id, month_ago))
+            recent_commission = cursor.fetchone()[0] or 0
+
+            # درصد کمیسیون موثر برای این نماینده
+            effective_percent = reseller.get("affiliate_commission_percent")
+            if effective_percent is None or effective_percent <= 0:
+                effective_percent = aff_settings.get("default_percent", 10.0)
+
+            # مشخصات نماینده بالادستی (اگر وجود دارد)
+            parent_reseller = None
+            if reseller.get("parent_reseller_id"):
+                cursor.execute("SELECT id, name, username, telegram_id FROM resellers WHERE id = ?", (reseller["parent_reseller_id"],))
+                p_row = cursor.fetchone()
+                if p_row:
+                    parent_reseller = dict(p_row)
+
+            return {
+                "reseller_id": reseller_id,
+                "referral_code": ref_code,
+                "is_enabled": aff_settings.get("enabled", True),
+                "commission_percent": effective_percent,
+                "is_custom_percent": (reseller.get("affiliate_commission_percent") is not None),
+                "sub_resellers_count": sub_count,
+                "active_sub_resellers_count": active_sub_count,
+                "total_commission_earned": total_commission,
+                "recent_month_commission": recent_commission,
+                "parent_reseller": parent_reseller
+            }
+        except Exception as e:
+            logger.error(f"Error getting reseller affiliate stats: {e}")
+            return {}
+        finally:
+            conn.close()
+
+    def get_reseller_affiliate_commissions_history(self, reseller_id: int = None, limit: int = 100) -> list:
+        """دریافت ریز تراکنش‌های پورسانت زیرمجموعه‌گیری"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if reseller_id:
+                cursor.execute("""
+                    SELECT c.*, 
+                           sr.name as sub_reseller_name,
+                           sr.username as sub_reseller_username
+                    FROM reseller_affiliate_commissions c
+                    LEFT JOIN resellers sr ON c.sub_reseller_id = sr.id
+                    WHERE c.parent_reseller_id = ?
+                    ORDER BY c.created_at DESC
+                    LIMIT ?
+                """, (reseller_id, limit))
+            else:
+                cursor.execute("""
+                    SELECT c.*, 
+                           pr.name as parent_reseller_name,
+                           pr.username as parent_reseller_username,
+                           sr.name as sub_reseller_name,
+                           sr.username as sub_reseller_username
+                    FROM reseller_affiliate_commissions c
+                    LEFT JOIN resellers pr ON c.parent_reseller_id = pr.id
+                    LEFT JOIN resellers sr ON c.sub_reseller_id = sr.id
+                    ORDER BY c.created_at DESC
+                    LIMIT ?
+                """, (limit,))
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error getting affiliate commissions history: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def process_sub_reseller_affiliate_commission(self, sub_reseller_id: int, plan_price: int, plan_name: str, account_name: str, sub_id: int = None) -> dict:
+        """
+        محاسبه و واریز خودکار درصد پورسانت به نماینده بالادستی به ازای هر خرید یا ساخت اکانت توسط زیرمجموعه
+        """
+        if not sub_reseller_id or plan_price <= 0:
+            return {"success": False, "reason": "invalid_parameters"}
+
+        aff_settings = self.get_reseller_affiliate_settings()
+        if not aff_settings.get("enabled", True):
+            return {"success": False, "reason": "affiliate_disabled"}
+
+        sub_reseller = self.get_reseller(sub_reseller_id)
+        if not sub_reseller or not sub_reseller.get("parent_reseller_id"):
+            return {"success": False, "reason": "no_parent_reseller"}
+
+        parent_id = int(sub_reseller["parent_reseller_id"])
+        parent_reseller = self.get_reseller(parent_id)
+        if not parent_reseller or parent_reseller.get("status") != "active":
+            return {"success": False, "reason": "parent_reseller_inactive"}
+
+        # درصد کمیسیون (اختصاصی بالادستی یا پیش‌فرض سیستم)
+        commission_percent = parent_reseller.get("affiliate_commission_percent")
+        if commission_percent is None or commission_percent <= 0:
+            commission_percent = float(aff_settings.get("default_percent", 10.0))
+
+        commission_amount = int((plan_price * commission_percent) / 100)
+        if commission_amount <= 0:
+            return {"success": False, "reason": "zero_commission"}
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        sub_name = sub_reseller.get("name") or f"نماینده #{sub_reseller_id}"
+        desc = f"پورسانت {commission_percent:g}٪ از ساخت اشتراک «{account_name}» ({plan_name}) توسط زیرمجموعه «{sub_name}»"
+
+        try:
+            # ۱. افزایش موجودی کیف پول نماینده بالادستی
+            cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at = ? WHERE id = ?", (commission_amount, now, parent_id))
+
+            # ۲. ثبت تراکنش در reseller_transactions
+            cursor.execute("""
+                INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
+                VALUES (?, 'deposit', ?, ?, ?, ?, ?)
+            """, (parent_id, commission_amount, plan_name, account_name, desc, now))
+
+            # ۳. ثبت رکورد در جدول تخصصی پورسانت‌های زیرمجموعه‌گیری
+            cursor.execute("""
+                INSERT INTO reseller_affiliate_commissions (
+                    parent_reseller_id, sub_reseller_id, sub_id, account_name,
+                    plan_id, plan_name, plan_price, commission_percent, commission_amount,
+                    description, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                parent_id, sub_reseller_id, sub_id, account_name,
+                "-", plan_name, plan_price, commission_percent, commission_amount,
+                desc, now
+            ))
+
+            conn.commit()
+
+            # ۴. ارسال اعلان بلادرنگ به پنل نماینده بالادستی
+            self.add_reseller_notification(
+                reseller_id=parent_id,
+                title="💰 واریز پورسانت زیرمجموعه",
+                message=f"مبلغ {commission_amount:,} تومان بابت فروش اشتراک «{account_name}» توسط زیرمجموعه شما ({sub_name}) به کیف پول شما واریز شد.",
+                type="success"
+            )
+
+            logger.info(f"Affiliate commission of {commission_amount} IRR paid to Parent #{parent_id} from Sub #{sub_reseller_id}")
+            return {
+                "success": True,
+                "parent_id": parent_id,
+                "commission_amount": commission_amount,
+                "commission_percent": commission_percent
+            }
+        except Exception as e:
+            logger.error(f"Error processing sub reseller affiliate commission: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def create_reseller_application(self, referrer_id: Optional[int], full_name: str, phone_number: str, 
+                                    telegram_id: Optional[int], requested_username: str, notes: str = "") -> dict:
+        """ثبت فرم درخواست اخذ نمایندگی با لینک معرف و ایجاد تیکت رسمی برای مدیریت"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+
+        referrer_name = "مستقیم (بدون معرف)"
+        if referrer_id:
+            cursor.execute("SELECT name, username FROM resellers WHERE id=?", (referrer_id,))
+            ref_row = cursor.fetchone()
+            if ref_row:
+                referrer_name = f"{ref_row['name']} (@{ref_row['username']})"
+
+        req_payload = {
+            "full_name": full_name.strip(),
+            "phone_number": phone_number.strip(),
+            "telegram_id": telegram_id,
+            "requested_username": requested_username.strip().lower(),
+            "notes": notes.strip(),
+            "referrer_id": referrer_id,
+            "referrer_name": referrer_name,
+            "applied_at": now
+        }
+        req_json = json.dumps(req_payload, ensure_ascii=False)
+
+        subject = f"💼 درخواست اخذ پنل نمایندگی توسط «{full_name.strip()}» (معرف: {referrer_name})"
+        msg = (
+            f"🌟 درخواست جدید برای اخذ پنل نمایندگی ثبت گردید:\n"
+            f"👤 متقاضی: {full_name.strip()}\n"
+            f"📱 شماره تماس: {phone_number.strip()}\n"
+            f"🆔 تلگرام: {telegram_id or 'ثبت نشده'}\n"
+            f"👤 نام کاربری درخواستی: {requested_username.strip().lower()}\n"
+            f"🤝 نماینده معرف: {referrer_name}\n"
+        )
+        if notes.strip():
+            msg += f"📝 توضیحات/سوابق: {notes.strip()}\n"
+
+        try:
+            cursor.execute("""
+                INSERT INTO support_tickets (
+                    telegram_id, subject, message, status, reseller_id,
+                    ticket_type, target_role, request_data, request_status, created_at, updated_at
+                ) VALUES (?, ?, ?, 'open', ?, 'reseller_application', 'admin', ?, 'pending', ?, ?)
+            """, (telegram_id or 0, subject, msg, referrer_id or 0, req_json, now, now))
+            ticket_id = cursor.lastrowid
+
+            cursor.execute("""
+                INSERT INTO ticket_messages (
+                    ticket_id, sender_type, sender_id, sender_name, message, created_at
+                ) VALUES (?, 'user', ?, ?, ?, ?)
+            """, (ticket_id, telegram_id or 0, full_name.strip(), msg, now))
+
+            conn.commit()
+            return {"success": True, "ticket_id": ticket_id}
+        except Exception as e:
+            logger.error(f"Error creating reseller application ticket: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def approve_reseller_application(self, ticket_id: int, password: str = None, 
+                                     initial_balance: int = 0, discount_percent: int = 20, 
+                                     custom_commission: float = None) -> dict:
+        """تایید درخواست نمایندگی توسط مدیریت و ایجاد آنی حساب نماینده با انتساب معرف"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT * FROM support_tickets WHERE id=? AND ticket_type='reseller_application'", (ticket_id,))
+            ticket = cursor.fetchone()
+            if not ticket:
+                return {"success": False, "error": "درخواست نمایندگی یافت نشد."}
+
+            if ticket["request_status"] == "approved":
+                return {"success": False, "error": "این درخواست قبلاً تایید شده است."}
+
+            req_data = json.loads(ticket["request_data"] or "{}")
+            username = req_data.get("requested_username")
+            full_name = req_data.get("full_name") or f"نماینده {username}"
+            telegram_id = req_data.get("telegram_id")
+            referrer_id = req_data.get("referrer_id")
+
+            if not password:
+                import random
+                password = f"Pass@{random.randint(1000, 9999)}"
+
+            # ایجاد نماینده با اتصال به parent_reseller_id
+            create_res = self.create_reseller(
+                username=username,
+                password=password,
+                name=full_name,
+                telegram_id=telegram_id,
+                discount_percent=discount_percent,
+                initial_balance=initial_balance,
+                parent_reseller_id=referrer_id,
+                affiliate_commission_percent=custom_commission
+            )
+
+            if not create_res.get("success"):
+                return create_res
+
+            reseller_id = create_res["reseller_id"]
+
+            # به‌روزرسانی وضعیت تیکت
+            cursor.execute("""
+                UPDATE support_tickets 
+                SET request_status = 'approved', status = 'closed', updated_at = ?
+                WHERE id = ?
+            """, (now, ticket_id))
+
+            reply_msg = f"✅ درخواست نمایندگی شما با موفقیت تایید و پنل شما ایجاد شد.\n👤 نام کاربری: {username}\n🔑 رمز عبور: {password}"
+            cursor.execute("""
+                INSERT INTO ticket_messages (ticket_id, sender_type, sender_name, message, created_at)
+                VALUES (?, 'support', 'مدیریت سامانه', ?, ?)
+            """, (ticket_id, reply_msg, now))
+
+            conn.commit()
+
+            # اطلاع‌رسانی به نماینده معرف در صورت وجود
+            if referrer_id:
+                self.add_reseller_notification(
+                    reseller_id=referrer_id,
+                    title="🎉 عضویت زیرمجموعه جدید",
+                    message=f"درخواست نمایندگی «{full_name}» تایید و به عنوان زیرمجموعه رسمی شما فعال شد.",
+                    type="success"
+                )
+
+            return {
+                "success": True,
+                "reseller_id": reseller_id,
+                "username": username,
+                "password": password
+            }
+        except Exception as e:
+            logger.error(f"Error approving reseller application: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def reject_reseller_application(self, ticket_id: int, reason: str = "") -> dict:
+        """رد درخواست اخذ نمایندگی"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("UPDATE support_tickets SET request_status = 'rejected', status = 'closed', updated_at = ? WHERE id = ? AND ticket_type = 'reseller_application'", (now, ticket_id))
+            reject_msg = "❌ متأسفانه با درخواست اخذ پنل نمایندگی شما موافقت نگردید."
+            if reason.strip():
+                reject_msg += f"\nعلت: {reason.strip()}"
+            cursor.execute("""
+                INSERT INTO ticket_messages (ticket_id, sender_type, sender_name, message, created_at)
+                VALUES (?, 'support', 'مدیریت سامانه', ?, ?)
+            """, (ticket_id, reject_msg, now))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error rejecting reseller application: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def update_reseller_parent(self, reseller_id: int, parent_reseller_id: Optional[int]) -> dict:
+        """تغییر یا حذف نماینده بالادستی یک نماینده"""
+        if parent_reseller_id == reseller_id:
+            return {"success": False, "error": "یک نماینده نمی‌تواند معرف خودش باشد."}
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("UPDATE resellers SET parent_reseller_id = ?, updated_at = ? WHERE id = ?", (parent_reseller_id, now, reseller_id))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error updating reseller parent: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def update_reseller_custom_commission(self, reseller_id: int, percent: Optional[float]) -> dict:
+        """تخصیص درصد پورسانت اختصاصی برای یک نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("UPDATE resellers SET affiliate_commission_percent = ?, updated_at = ? WHERE id = ?", (percent, now, reseller_id))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error updating reseller custom commission: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_admin_reseller_affiliates_overview(self) -> dict:
+        """گزارش آماری جامع سیستم زیرمجموعه‌گیری برای پنل مدیریت"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            # ۱. لیست تمام نمایندگان با اطلاعات معرف و زیرمجموعه‌ها
+            cursor.execute("""
+                SELECT r.*,
+                       pr.name as parent_name,
+                       pr.username as parent_username,
+                       (SELECT COUNT(*) FROM resellers WHERE parent_reseller_id = r.id) as sub_resellers_count,
+                       (SELECT COALESCE(SUM(commission_amount), 0) FROM reseller_affiliate_commissions WHERE parent_reseller_id = r.id) as total_commissions_earned,
+                       (SELECT COALESCE(SUM(commission_amount), 0) FROM reseller_affiliate_commissions WHERE sub_reseller_id = r.id) as total_commissions_generated
+                FROM resellers r
+                LEFT JOIN resellers pr ON r.parent_reseller_id = pr.id
+                ORDER BY sub_resellers_count DESC, total_commissions_earned DESC, r.created_at DESC
+            """)
+            resellers = [dict(row) for row in cursor.fetchall()]
+
+            # ۲. آمار کلی سامانه
+            cursor.execute("SELECT COUNT(*) FROM resellers WHERE parent_reseller_id IS NOT NULL")
+            total_network_subs = cursor.fetchone()[0] or 0
+
+            cursor.execute("SELECT COALESCE(SUM(commission_amount), 0) FROM reseller_affiliate_commissions")
+            total_commissions_paid = cursor.fetchone()[0] or 0
+
+            cursor.execute("SELECT COUNT(*) FROM support_tickets WHERE ticket_type = 'reseller_application' AND request_status = 'pending'")
+            pending_applications_count = cursor.fetchone()[0] or 0
+
+            settings = self.get_reseller_affiliate_settings()
+
+            return {
+                "resellers": resellers,
+                "total_network_subs": total_network_subs,
+                "total_commissions_paid": total_commissions_paid,
+                "pending_applications_count": pending_applications_count,
+                "settings": settings
+            }
+        except Exception as e:
+            logger.error(f"Error getting admin affiliate overview: {e}")
+            return {"resellers": [], "total_network_subs": 0, "total_commissions_paid": 0, "pending_applications_count": 0, "settings": {}}
         finally:
             conn.close()
 

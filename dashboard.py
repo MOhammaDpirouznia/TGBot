@@ -2944,32 +2944,46 @@ def serve_receipt_file(filename):
 @app.route("/api/admin/notifications-check")
 @admin_required
 def api_admin_notifications_check():
-    """بررسی لحظه‌ای اعلان‌های جدید (پرداخت‌های معلق و تیکت‌های باز) برای پخش صدا و هشدار وب"""
+    """بررسی لحظه‌ای اعلان‌های جدید (پرداخت‌های معلق و تفکیک تیکت‌های باز مشتریان و نمایندگان)"""
     conn = db.get_connection()
-    pending_payments = conn.execute("""
+    cursor = conn.cursor()
+    cursor.execute("""
         SELECT id, user_id, username, amount, plan_name, tracking_code, created_at 
         FROM transactions 
         WHERE status='pending' AND ((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')
         ORDER BY created_at DESC LIMIT 10
-    """).fetchall()
+    """)
+    pending_payments = [dict(p) for p in cursor.fetchall()]
 
-    open_tickets = conn.execute("""
+    # تیکت‌های باز مشتریان
+    cursor.execute("""
         SELECT id, telegram_id, subject, message, created_at 
         FROM support_tickets 
-        WHERE status='open' AND (reseller_id IS NULL OR reseller_id = 0)
+        WHERE status='open' AND (reseller_id IS NULL OR reseller_id = 0) AND (ticket_type NOT IN ('reseller_to_admin', 'quota_change') OR ticket_type IS NULL)
         ORDER BY created_at DESC LIMIT 10
-    """).fetchall()
+    """)
+    customer_tickets = [dict(t) for t in cursor.fetchall()]
+
+    # تیکت‌های باز نمایندگان
+    cursor.execute("""
+        SELECT t.id, t.telegram_id, t.subject, t.message, t.reseller_id, t.ticket_type, t.created_at, r.name as reseller_name
+        FROM support_tickets t
+        LEFT JOIN resellers r ON t.reseller_id = r.id
+        WHERE t.status='open' AND (t.ticket_type IN ('reseller_to_admin', 'quota_change') OR (t.reseller_id > 0 AND t.target_role = 'admin'))
+        ORDER BY t.created_at DESC LIMIT 10
+    """)
+    reseller_tickets = [dict(t) for t in cursor.fetchall()]
     conn.close()
 
-    pending_list = [dict(p) for p in pending_payments]
-    ticket_list = [dict(t) for t in open_tickets]
-
     return jsonify({
-        "pending_payments_count": len(pending_list),
-        "open_tickets_count": len(ticket_list),
-        "total_alerts": len(pending_list) + len(ticket_list),
-        "pending_payments": pending_list,
-        "open_tickets": ticket_list
+        "pending_payments_count": len(pending_payments),
+        "open_customer_tickets_count": len(customer_tickets),
+        "open_reseller_tickets_count": len(reseller_tickets),
+        "open_tickets_count": len(customer_tickets) + len(reseller_tickets),
+        "total_alerts": len(pending_payments) + len(customer_tickets) + len(reseller_tickets),
+        "pending_payments": pending_payments,
+        "customer_tickets": customer_tickets,
+        "reseller_tickets": reseller_tickets
     })
 
 
@@ -3734,17 +3748,19 @@ def broadcast():
 @app.route("/tickets")
 @permission_required("tickets")
 def tickets():
-    """لیست و میز کار تیکت‌های پشتیبانی با تب‌های وضعیت، گفتگوها و آمار"""
+    """لیست و میز کار تیکت‌های پشتیبانی با تفکیک تب‌های مشتریان و نمایندگان، وضعیت‌ها و آمار"""
+    category_filter = request.args.get("category", "customers")
     status_filter = request.args.get("status", "all")
     search = request.args.get("search", "").strip()
 
-    ticket_list = db.get_all_tickets(status=status_filter, reseller_id=None, search=search)
+    ticket_list = db.get_all_tickets(status=status_filter, reseller_id=None, search=search, category=category_filter)
     stats = db.get_tickets_stats(reseller_id=None)
 
     return render_template(
         "tickets.html",
         tickets=ticket_list,
         status_filter=status_filter,
+        category_filter=category_filter,
         search=search,
         stats=stats
     )
@@ -4620,6 +4636,18 @@ def reseller_create_user():
             start_date=now
         )
 
+        # محاسبه و واریز خودکار پورسانت به نماینده معرف (بالادستی)
+        try:
+            db.process_sub_reseller_affiliate_commission(
+                sub_reseller_id=reseller_id,
+                plan_price=original_price,
+                plan_name=plan["name"],
+                account_name=account_name,
+                sub_id=sub_id
+            )
+        except Exception as e:
+            logger.error(f"Error processing affiliate commission: {e}")
+
         subscription_url = f"{get_hiddify_url()}/{get_user_proxy()}/{user_uuid}/"
         single_link_template = get_single_link_template(db)
         single_url = format_single_link(single_link_template, uuid=user_uuid, name=account_name)
@@ -5319,9 +5347,22 @@ def api_reseller_notifications_poll():
     # تیکت‌های باز مشتریان این نماینده
     cursor.execute("""
         SELECT COUNT(*) FROM support_tickets 
-        WHERE reseller_id = ? AND status = 'open'
+        WHERE reseller_id = ? AND status = 'open' 
+          AND (ticket_type NOT IN ('reseller_to_admin', 'quota_change') OR ticket_type IS NULL) 
+          AND (target_role IS NULL OR target_role != 'admin')
     """, (reseller_id,))
-    open_tickets_count = cursor.fetchone()[0] or 0
+    open_customer_tickets_count = cursor.fetchone()[0] or 0
+
+    # پیام‌ها یا تیکت‌های پاسخ‌داده‌شده توسط مدیریت به این نماینده
+    cursor.execute("""
+        SELECT COUNT(*) FROM support_tickets 
+        WHERE reseller_id = ? AND status = 'replied' 
+          AND (ticket_type IN ('reseller_to_admin', 'quota_change') OR target_role = 'admin')
+    """, (reseller_id,))
+    admin_replied_tickets_count = cursor.fetchone()[0] or 0
+
+    # کل تیکت‌های نیازمند اقدام
+    open_tickets_count = open_customer_tickets_count + admin_replied_tickets_count
 
     # دریافت آخرین فیش‌های اخیر جهت آگاهی از تغییر وضعیت
     cursor.execute("""
@@ -5340,6 +5381,8 @@ def api_reseller_notifications_poll():
         "unread_count": len(unread_notifs),
         "notifications": unread_notifs,
         "pending_customer_receipts_count": pending_customer_receipts_count,
+        "open_customer_tickets_count": open_customer_tickets_count,
+        "admin_replied_tickets_count": admin_replied_tickets_count,
         "open_tickets_count": open_tickets_count,
         "recent_txs": recent_txs,
         "current_balance": reseller.get("balance", 0)
@@ -5645,7 +5688,7 @@ def reseller_payment_approve(payment_id):
 
     # ثبت اشتراک برای کاربر
     plan_id_val = str(selected_plan.get("id") or 1) if selected_plan else "1"
-    db.save_subscription(
+    sub_row_id = db.save_subscription(
         telegram_id=user_id,
         hidify_uuid=uuid_val,
         plan_id=plan_id_val,
@@ -5658,6 +5701,19 @@ def reseller_payment_approve(payment_id):
         account_comment=user_comment,
         reseller_id=reseller_id
     )
+
+    # واریز پورسانت زیرمجموعه‌گیری به بالادستی
+    try:
+        plan_base_price = int(selected_plan.get("price") or wholesale_price) if selected_plan else wholesale_price
+        db.process_sub_reseller_affiliate_commission(
+            sub_reseller_id=reseller_id,
+            plan_price=plan_base_price,
+            plan_name=plan_name,
+            account_name=account_name,
+            sub_id=sub_row_id
+        )
+    except Exception as e:
+        logger.error(f"Error processing affiliate commission in quick create: {e}")
 
     # بروزرسانی وضعیت تراکنش
     reseller_name = session.get("name") or session.get("username") or f"نماینده #{reseller_id}"
@@ -5860,21 +5916,63 @@ def reseller_card_delete(card_id):
 @app.route("/reseller/tickets")
 @reseller_required
 def reseller_tickets():
-    """مشاهده و مدیریت تیکت‌های پشتیبانی مشتریان ربات نماینده با تب‌های وضعیت، گفتگوها و آمار"""
+    """مشاهده و مدیریت تیکت‌های پشتیبانی مشتریان ربات نماینده و مکاتبات با مدیریت"""
     reseller_id = session.get("reseller_id")
+    category_filter = request.args.get("category", "customers")
     status_filter = request.args.get("status", "all")
     search = request.args.get("search", "").strip()
 
-    ticket_list = db.get_all_tickets(status=status_filter, reseller_id=reseller_id, search=search)
+    ticket_list = db.get_all_tickets(status=status_filter, reseller_id=reseller_id, search=search, category=category_filter)
     stats = db.get_tickets_stats(reseller_id=reseller_id)
 
     return render_template(
         "reseller_tickets.html",
         tickets=ticket_list,
         status_filter=status_filter,
+        category_filter=category_filter,
         search=search,
         stats=stats
     )
+
+
+@app.route("/reseller/ticket/create-to-admin", methods=["POST"])
+@reseller_required
+def reseller_create_ticket_to_admin():
+    """ارسال تیکت جدید از سمت نماینده به مدیریت با قالب‌های آماده"""
+    reseller_id = session.get("reseller_id")
+    subject = request.form.get("subject", "").strip()
+    category_type = request.form.get("category_type", "").strip()
+    message = request.form.get("message", "").strip()
+
+    if not subject or not message:
+        flash("لطفاً موضوع و متن پیام تیکت را وارد نمایید.", "warning")
+        return redirect(url_for("reseller_tickets", category="admin"))
+
+    full_subject = f"[{category_type}] {subject}" if category_type and category_type != "عمومی" else subject
+    res = db.create_reseller_to_admin_ticket(reseller_id=reseller_id, subject=full_subject, message=message)
+    if res.get("success"):
+        flash("✅ تیکت شما با موفقیت برای مدیریت ارسال شد و در اسرع وقت پاسخ داده می‌شود.", "success")
+    else:
+        flash(f"خطا در ارسال تیکت: {res.get('error')}", "danger")
+    return redirect(url_for("reseller_tickets", category="admin"))
+
+
+@app.route("/reseller/ticket/<int:ticket_id>/reply-to-admin", methods=["POST"])
+@reseller_required
+def reseller_ticket_reply_to_admin(ticket_id):
+    """ارسال پاسخ یا ادامه گفتگو توسط نماینده در تیکت‌های مکاتبه با مدیریت"""
+    reseller_id = session.get("reseller_id")
+    reply_msg = request.form.get("reply_message", "").strip()
+    if not reply_msg:
+        flash("متن پیام نمی‌تواند خالی باشد.", "warning")
+        return redirect(url_for("reseller_tickets", category="admin"))
+
+    res = db.add_reseller_admin_ticket_reply(ticket_id=ticket_id, reseller_id=reseller_id, message=reply_msg)
+    if res.get("success"):
+        flash("✅ پیام شما برای مدیریت ارسال شد.", "success")
+    else:
+        flash(f"خطا در ثبت پیام: {res.get('error')}", "danger")
+    return redirect(url_for("reseller_tickets", category="admin"))
 
 
 @app.route("/reseller/ticket/<int:ticket_id>/reply", methods=["POST"])
@@ -7115,6 +7213,192 @@ def blupal_callback(order_id: str = None):
         amount=amount,
         plan_name=plan_name,
         message="پرداخت هنوز تایید نشده است یا مهلت فاکتور به پایان رسیده است."
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# سیستم زیرمجموعه‌گیری و پورسانت نمایندگان (Reseller Affiliate System)
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/admin/reseller-affiliates", methods=["GET"])
+@admin_required
+def admin_reseller_affiliates():
+    """صفحه مدیریت جامع زیرمجموعه‌گیری و پورسانت‌های نمایندگان در پنل مدیریت"""
+    overview = db.get_admin_reseller_affiliates_overview()
+    commissions = db.get_reseller_affiliate_commissions_history(limit=150)
+    all_tickets = db.get_all_tickets(category="resellers")
+    applications = [t for t in all_tickets if t.get("ticket_type") == "reseller_application"]
+    
+    return render_template(
+        "admin_reseller_affiliates.html",
+        overview=overview,
+        commissions=commissions,
+        applications=applications
+    )
+
+
+@app.route("/admin/reseller-affiliates/update-settings", methods=["POST"])
+@admin_required
+def admin_reseller_affiliates_update_settings():
+    """بروزرسانی تنظیمات سراسری سیستم زیرمجموعه‌گیری همکاران"""
+    enabled = bool(request.form.get("enabled"))
+    try:
+        default_percent = float(request.form.get("default_percent", 10.0))
+    except (ValueError, TypeError):
+        default_percent = 10.0
+    calc_base = request.form.get("calc_base", "plan_price").strip()
+    terms = request.form.get("terms", "").strip()
+
+    res = db.update_reseller_affiliate_settings(enabled, default_percent, calc_base, terms)
+    if res.get("success"):
+        flash("تنظیمات سیستم زیرمجموعه‌گیری با موفقیت ذخیره شد.", "success")
+    else:
+        flash(f"خطا در ذخیره تنظیمات: {res.get('error')}", "danger")
+    return redirect(url_for("admin_reseller_affiliates"))
+
+
+@app.route("/admin/reseller-affiliates/set-parent", methods=["POST"])
+@admin_required
+def admin_reseller_affiliates_set_parent():
+    """تغییر یا انتساب نماینده بالادستی (معرف)"""
+    reseller_id = int(request.form.get("reseller_id", 0))
+    parent_id_raw = request.form.get("parent_reseller_id", "").strip()
+    parent_id = int(parent_id_raw) if parent_id_raw.isdigit() and int(parent_id_raw) > 0 else None
+
+    res = db.update_reseller_parent(reseller_id, parent_id)
+    if res.get("success"):
+        flash("نماینده بالادستی با موفقیت بروزرسانی شد.", "success")
+    else:
+        flash(f"خطا در انتساب بالادستی: {res.get('error')}", "danger")
+    return redirect(url_for("admin_reseller_affiliates"))
+
+
+@app.route("/admin/reseller-affiliates/set-commission", methods=["POST"])
+@admin_required
+def admin_reseller_affiliates_set_commission():
+    """تنظیم درصد پورسانت اختصاصی برای یک نماینده"""
+    reseller_id = int(request.form.get("reseller_id", 0))
+    custom_percent_raw = request.form.get("custom_percent", "").strip()
+    custom_percent = float(custom_percent_raw) if custom_percent_raw else None
+
+    res = db.update_reseller_custom_commission(reseller_id, custom_percent)
+    if res.get("success"):
+        flash("درصد پورسانت اختصاصی نماینده با موفقیت ذخیره شد.", "success")
+    else:
+        flash(f"خطا در تغییر درصد پورسانت: {res.get('error')}", "danger")
+    return redirect(url_for("admin_reseller_affiliates"))
+
+
+@app.route("/admin/reseller-application/<int:ticket_id>/approve", methods=["POST"])
+@admin_required
+def admin_reseller_application_approve(ticket_id):
+    """تایید درخواست اخذ نمایندگی و ساخت آنی حساب"""
+    password = request.form.get("password", "").strip() or None
+    discount_percent = int(request.form.get("discount_percent", 20))
+    initial_balance = int(request.form.get("initial_balance", 0))
+    custom_commission_raw = request.form.get("custom_commission", "").strip()
+    custom_commission = float(custom_commission_raw) if custom_commission_raw else None
+
+    res = db.approve_reseller_application(
+        ticket_id=ticket_id,
+        password=password,
+        initial_balance=initial_balance,
+        discount_percent=discount_percent,
+        custom_commission=custom_commission
+    )
+    if res.get("success"):
+        flash(f"حساب نمایندگی با نام کاربری «{res['username']}» با موفقیت ایجاد و به معرف متصل گردید. رمز عبور: {res['password']}", "success")
+    else:
+        flash(f"خطا در تایید درخواست: {res.get('error')}", "danger")
+    return redirect(request.referrer or url_for("admin_reseller_affiliates"))
+
+
+@app.route("/admin/reseller-application/<int:ticket_id>/reject", methods=["POST"])
+@admin_required
+def admin_reseller_application_reject(ticket_id):
+    """رد درخواست اخذ نمایندگی"""
+    reason = request.form.get("reason", "").strip()
+    res = db.reject_reseller_application(ticket_id, reason=reason)
+    if res.get("success"):
+        flash("درخواست نمایندگی با موفقیت رد شد.", "info")
+    else:
+        flash(f"خطا در رد درخواست: {res.get('error')}", "danger")
+    return redirect(request.referrer or url_for("admin_reseller_affiliates"))
+
+
+@app.route("/reseller/affiliates", methods=["GET"])
+@reseller_required
+def reseller_affiliates():
+    """صفحه زیرمجموعه‌گیری و کسب درآمد پورسانت در پنل نماینده"""
+    reseller_id = session.get("reseller_id")
+    stats = db.get_reseller_affiliate_stats(reseller_id)
+    sub_resellers = db.get_sub_resellers(reseller_id)
+    commissions = db.get_reseller_affiliate_commissions_history(reseller_id=reseller_id, limit=100)
+    
+    # تولید لینک دعوت اختصاصی
+    base_url = request.host_url.rstrip("/")
+    ref_code = stats.get("referral_code", f"REF-{reseller_id}")
+    invite_link = f"{base_url}/reseller/apply?ref={ref_code}"
+
+    return render_template(
+        "reseller_affiliates.html",
+        stats=stats,
+        sub_resellers=sub_resellers,
+        commissions=commissions,
+        invite_link=invite_link
+    )
+
+
+@app.route("/reseller/apply", methods=["GET", "POST"])
+@app.route("/apply-reseller", methods=["GET", "POST"])
+def reseller_apply():
+    """صفحه و فرم عمومی ثبت درخواست نمایندگی با لینک معرف"""
+    ref_code = request.args.get("ref", "").strip() or request.form.get("ref_code", "").strip()
+    referrer = db.get_reseller_by_referral_code(ref_code) if ref_code else None
+    aff_settings = db.get_reseller_affiliate_settings()
+
+    if request.method == "POST":
+        full_name = request.form.get("full_name", "").strip()
+        phone_number = request.form.get("phone_number", "").strip()
+        telegram_id_raw = request.form.get("telegram_id", "").strip()
+        requested_username = request.form.get("requested_username", "").strip()
+        notes = request.form.get("notes", "").strip()
+
+        if not full_name or not phone_number or not requested_username:
+            flash("لطفاً تمامی فیلدهای الزامی را تکمیل نمایید.", "danger")
+            return render_template("reseller_apply.html", referrer=referrer, ref_code=ref_code, aff_settings=aff_settings)
+
+        telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else None
+        referrer_id = referrer["id"] if referrer else None
+
+        res = db.create_reseller_application(
+            referrer_id=referrer_id,
+            full_name=full_name,
+            phone_number=phone_number,
+            telegram_id=telegram_id,
+            requested_username=requested_username,
+            notes=notes
+        )
+
+        if res.get("success"):
+            return render_template(
+                "reseller_apply.html",
+                submitted=True,
+                full_name=full_name,
+                requested_username=requested_username,
+                ticket_id=res.get("ticket_id"),
+                referrer=referrer,
+                aff_settings=aff_settings
+            )
+        else:
+            flash(f"خطا در ثبت درخواست: {res.get('error')}", "danger")
+
+    return render_template(
+        "reseller_apply.html",
+        referrer=referrer,
+        ref_code=ref_code,
+        aff_settings=aff_settings,
+        submitted=False
     )
 
 
