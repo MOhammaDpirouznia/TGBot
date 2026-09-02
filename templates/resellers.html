@@ -174,427 +174,6 @@
                                     <i class="fas fa-trash-can"></i>
                                 </a>
                             </div>
-
-                            <!-- Modal مشاهده سوابق و جزئیات پرداخت‌های نماینده -->
-                            <div class="modal fade" id="resellerPaymentModal{{ r['id'] }}" tabindex="-1" aria-hidden="true">
-                                <div class="modal-dialog modal-xl modal-dialog-scrollable">
-                                    <div class="modal-content text-start">
-                                        <div class="modal-header bg-primary text-white py-3">
-                                            <div class="d-flex align-items-center gap-2">
-                                                <i class="fas fa-file-invoice-dollar fs-4"></i>
-                                                <div>
-                                                    <h5 class="modal-title fw-bold mb-0">سوابق مالی و جزئیات پرداخت‌های «{{ r['name'] }}»</h5>
-                                                    <small class="opacity-75">نام کاربری: @{{ r['username'] }} {% if r['telegram_id'] %}| آیدی تلگرام: {{ r['telegram_id'] }}{% endif %}</small>
-                                                </div>
-                                            </div>
-                                            <div class="d-flex align-items-center gap-2">
-                                                <a href="{{ url_for('admin_reseller_export_payments', reseller_id=r['id']) }}" class="btn btn-sm btn-light fw-bold">
-                                                    <i class="fas fa-file-excel text-success me-1"></i> خروجی اکسل
-                                                </a>
-                                                <a href="{{ url_for('admin_reseller_payments', reseller_id=r['id']) }}" class="btn btn-sm btn-outline-light">
-                                                    <i class="fas fa-arrow-up-right-from-square me-1"></i> صفحه اختصاصی
-                                                </a>
-                                                <button type="button" class="btn-close btn-close-white ms-2" data-bs-dismiss="modal"></button>
-                                            </div>
-                                        </div>
-                                        <div class="modal-body p-4">
-                                            {% set p_hist = r.get('payment_history', {}) %}
-                                            <!-- ۴ کارت آماری وضعیت مالی نماینده -->
-                                            <div class="row g-3 mb-4">
-                                                <div class="col-md-3 col-sm-6">
-                                                    <div class="card border-0 shadow-sm p-3 bg-success bg-opacity-10 border-start border-success border-4">
-                                                        <span class="text-muted small">موجودی کیف پول فعلی</span>
-                                                        <h5 class="fw-bold text-success font-monospace mb-0 mt-1">{{ "{:,}".format(r['balance'] or 0) }} تومان</h5>
-                                                    </div>
-                                                </div>
-                                                <div class="col-md-3 col-sm-6">
-                                                    <div class="card border-0 shadow-sm p-3 bg-primary bg-opacity-10 border-start border-primary border-4">
-                                                        <span class="text-muted small">مجموع کل شارژها و واریزی‌ها</span>
-                                                        <h5 class="fw-bold text-primary font-monospace mb-0 mt-1">{{ "{:,}".format(p_hist.get('total_deposited', 0)) }} تومان</h5>
-                                                    </div>
-                                                </div>
-                                                <div class="col-md-3 col-sm-6">
-                                                    <div class="card border-0 shadow-sm p-3 bg-danger bg-opacity-10 border-start border-danger border-4">
-                                                        <span class="text-muted small">مجموع خریدها و تمدیدها</span>
-                                                        <h5 class="fw-bold text-danger font-monospace mb-0 mt-1">{{ "{:,}".format(p_hist.get('total_spent', 0)) }} تومان</h5>
-                                                    </div>
-                                                </div>
-                                                <div class="col-md-3 col-sm-6">
-                                                    <div class="card border-0 shadow-sm p-3 bg-info bg-opacity-10 border-start border-info border-4">
-                                                        <span class="text-muted small">تخفیف همکاری و بونوس‌ها</span>
-                                                        <h5 class="fw-bold text-info font-monospace mb-0 mt-1">{{ r['discount_percent'] }}٪ تخفیف</h5>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <!-- تب‌های تراکنش‌های کیف پول و فیش‌های بانکی -->
-                                            <ul class="nav nav-pills mb-3" id="modalPaymentTab{{ r['id'] }}" role="tablist">
-                                                <li class="nav-item" role="presentation">
-                                                    <button class="nav-link active fw-bold btn-sm py-2 px-3" id="modal-wallet-tab{{ r['id'] }}" data-bs-toggle="pill" data-bs-target="#modal-wallet-content{{ r['id'] }}" type="button" role="tab">
-                                                        <i class="fas fa-wallet me-1 text-primary"></i> تراکنش‌های کیف پول ({{ p_hist.get('wallet_transactions', [])|length }})
-                                                    </button>
-                                                </li>
-                                                <li class="nav-item" role="presentation">
-                                                    <button class="nav-link fw-bold btn-sm py-2 px-3" id="modal-receipt-tab{{ r['id'] }}" data-bs-toggle="pill" data-bs-target="#modal-receipt-content{{ r['id'] }}" type="button" role="tab">
-                                                        <i class="fas fa-receipt me-1 text-warning"></i> بسته‌ها و فیش‌های ثبت‌شده ({{ p_hist.get('receipt_transactions', [])|length }})
-                                                    </button>
-                                                </li>
-                                            </ul>
-
-                                            <div class="tab-content" id="modalPaymentTabContent{{ r['id'] }}">
-                                                <!-- تب ۱: تراکنش‌های کیف پول -->
-                                                <div class="tab-pane fade show active" id="modal-wallet-content{{ r['id'] }}" role="tabpanel">
-                                                    <div class="table-responsive border rounded">
-                                                        <table class="table table-sm table-hover align-middle mb-0">
-                                                            <thead class="table-light">
-                                                                <tr>
-                                                                    <th class="ps-3">شناسه</th>
-                                                                    <th>نوع تراکنش</th>
-                                                                    <th>مبلغ</th>
-                                                                    <th>پلن / اکانت هیدیفای</th>
-                                                                    <th>توضیحات</th>
-                                                                    <th>تاریخ و زمان</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                                {% for tx in p_hist.get('wallet_transactions', []) %}
-                                                                <tr>
-                                                                    <td class="ps-3"><code class="font-monospace">#{{ tx['id'] }}</code></td>
-                                                                    <td>
-                                                                        {% if tx['type'] == 'deposit' %}
-                                                                            <span class="badge bg-success"><i class="fas fa-arrow-down me-1"></i> شارژ کیف پول</span>
-                                                                        {% elif tx['type'] == 'refund' %}
-                                                                            <span class="badge bg-info text-dark"><i class="fas fa-rotate-left me-1"></i> استرداد وجه</span>
-                                                                        {% elif tx['type'] == 'renewal' %}
-                                                                            <span class="badge bg-warning text-dark"><i class="fas fa-arrows-rotate me-1"></i> تمدید اشتراک</span>
-                                                                        {% else %}
-                                                                            <span class="badge bg-danger"><i class="fas fa-arrow-up me-1"></i> خرید اشتراک</span>
-                                                                        {% endif %}
-                                                                    </td>
-                                                                    <td>
-                                                                        <strong class="{{ 'text-success' if (tx['type'] in ['deposit', 'refund']) else 'text-danger' }} font-monospace">
-                                                                            {{ '+' if (tx['type'] in ['deposit', 'refund']) else '-' }}{{ "{:,}".format(tx['amount'] or 0) }} تومان
-                                                                        </strong>
-                                                                    </td>
-                                                                    <td>
-                                                                        {{ tx['plan_name'] or '-' }}
-                                                                        {% if tx['account_name'] and tx['account_name'] != '-' %}
-                                                                            <code class="ms-1">{{ tx['account_name'] }}</code>
-                                                                        {% endif %}
-                                                                    </td>
-                                                                    <td><small class="text-muted">{{ tx['description'] or '-' }}</small></td>
-                                                                    <td><small class="text-muted">{{ tx['created_at'][:16].replace('T', ' ') if tx['created_at'] else '-' }}</small></td>
-                                                                </tr>
-                                                                {% endfor %}
-                                                                {% if not p_hist.get('wallet_transactions') %}
-                                                                <tr>
-                                                                    <td colspan="6" class="text-center py-4 text-muted">تراکنشی در کیف پول این نماینده ثبت نشده است.</td>
-                                                                </tr>
-                                                                {% endif %}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                </div>
-
-                                                <!-- تب ۲: فیش‌ها و بسته‌های ثبت‌شده -->
-                                                <div class="tab-pane fade" id="modal-receipt-content{{ r['id'] }}" role="tabpanel">
-                                                    <div class="table-responsive border rounded">
-                                                        <table class="table table-sm table-hover align-middle mb-0">
-                                                            <thead class="table-light">
-                                                                <tr>
-                                                                    <th class="ps-3">کد سفارش</th>
-                                                                    <th>بسته / پلن</th>
-                                                                    <th>مبلغ</th>
-                                                                    <th>روش پرداخت</th>
-                                                                    <th>کد پیگیری</th>
-                                                                    <th>وضعیت</th>
-                                                                    <th>تاریخ ثبت</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                                {% for rc in p_hist.get('receipt_transactions', []) %}
-                                                                <tr>
-                                                                    <td class="ps-3"><code class="font-monospace">{{ rc['order_id'] }}</code></td>
-                                                                    <td>
-                                                                        {% if rc.get('gateway') == 'bundle_reseller' or (rc.get('order_id') and rc['order_id'].startswith('R_BUNDLE')) %}
-                                                                            <span class="badge mb-1 d-inline-block" style="background: linear-gradient(135deg, #7c3aed, #db2777); color: #fff; font-size: 0.7rem;">
-                                                                                <i class="fas fa-crown me-1 text-warning"></i> بسته اعتباری
-                                                                            </span>
-                                                                        {% endif %}
-                                                                        <div class="fw-bold">{{ rc['plan_name'] or '-' }}</div>
-                                                                    </td>
-                                                                    <td><strong class="text-primary font-monospace">{{ "{:,}".format(rc['amount'] or 0) }} تومان</strong></td>
-                                                                    <td><span class="badge bg-light text-dark border">{{ rc['gateway']|gateway_name }}</span></td>
-                                                                    <td>
-                                                                        {% if rc['tracking_code'] %}
-                                                                            <code class="text-secondary">{{ rc['tracking_code'] }}</code>
-                                                                        {% else %}
-                                                                            <span class="text-muted">-</span>
-                                                                        {% endif %}
-                                                                    </td>
-                                                                    <td>
-                                                                        {% if rc['status'] in ['approved', 'completed'] %}
-                                                                            <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i> تایید شده</span>
-                                                                        {% elif rc['status'] == 'pending' %}
-                                                                            <span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i> در انتظار بررسی</span>
-                                                                        {% elif rc['status'] == 'revoked' %}
-                                                                            <span class="badge bg-secondary"><i class="fas fa-ban me-1"></i> ابطال‌شده</span>
-                                                                        {% else %}
-                                                                            <span class="badge bg-danger"><i class="fas fa-times-circle me-1"></i> رد شده</span>
-                                                                        {% endif %}
-                                                                    </td>
-                                                                    <td><small class="text-muted">{{ rc['created_at'][:16].replace('T', ' ') if rc['created_at'] else '-' }}</small></td>
-                                                                </tr>
-                                                                {% endfor %}
-                                                                {% if not p_hist.get('receipt_transactions') %}
-                                                                <tr>
-                                                                    <td colspan="7" class="text-center py-4 text-muted">فیش یا سفارشی برای این نماینده ثبت نشده است.</td>
-                                                                </tr>
-                                                                {% endif %}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="modal-footer d-flex justify-content-between bg-light py-2">
-                                            <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#topupModal{{ r['id'] }}">
-                                                <i class="fas fa-plus me-1"></i> شارژ دستی کیف پول این نماینده
-                                            </button>
-                                            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">بستن</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Modal مشاهده نشست‌ها و امنیت نماینده -->
-                            <div class="modal fade" id="securityModal{{ r['id'] }}" tabindex="-1" aria-hidden="true">
-                                <div class="modal-dialog modal-lg modal-dialog-scrollable">
-                                    <div class="modal-content text-start">
-                                        <div class="modal-header bg-info bg-opacity-10 py-3">
-                                            <h5 class="modal-title fw-bold text-info-emphasis">
-                                                <i class="fas fa-shield-halved me-2"></i> پایش امنیت و نشست‌های «{{ r['name'] }}»
-                                            </h5>
-                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                        </div>
-                                        <div class="modal-body p-3">
-                                            <!-- وضعیت اتصال زنده -->
-                                            <div class="p-3 bg-light rounded border mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
-                                                <div>
-                                                    <span class="text-muted small">نام کاربری:</span> <strong><code>{{ r['username'] }}</code></strong>
-                                                    {% if r['telegram_id'] %}
-                                                        | <span class="text-muted small">آیدی تلگرام:</span> <code>{{ r['telegram_id'] }}</code>
-                                                    {% endif %}
-                                                </div>
-                                                <div>
-                                                    <span class="text-muted small me-2">وضعیت زنده:</span>
-                                                    {% if r.get('is_online') %}
-                                                        <span class="badge bg-success"><i class="fas fa-circle me-1" style="font-size: 0.5rem;"></i>آنلاین (فعال در ۱۵ دقیقه اخیر)</span>
-                                                    {% else %}
-                                                        <span class="badge bg-secondary">آفلاین</span>
-                                                    {% endif %}
-                                                </div>
-                                            </div>
-
-                                            <!-- تب‌های نشست‌های موفق و ورودهای ناموفق -->
-                                            <ul class="nav nav-pills mb-3" id="securityTab{{ r['id'] }}" role="tablist">
-                                                <li class="nav-item" role="presentation">
-                                                    <button class="nav-link active btn-sm py-1 px-3" id="sessions-tab{{ r['id'] }}" data-bs-toggle="pill" data-bs-target="#sessions-content{{ r['id'] }}" type="button" role="tab">
-                                                        <i class="fas fa-circle-check me-1 text-success"></i> نشست‌های ورود موفق ({{ r['security_logs']['sessions']|length if r.get('security_logs') else 0 }})
-                                                    </button>
-                                                </li>
-                                                <li class="nav-item" role="presentation">
-                                                    <button class="nav-link btn-sm py-1 px-3" id="failed-tab{{ r['id'] }}" data-bs-toggle="pill" data-bs-target="#failed-content{{ r['id'] }}" type="button" role="tab">
-                                                        <i class="fas fa-circle-xmark me-1 text-danger"></i> تلاش‌های ورود ناموفق ({{ r['security_logs']['failed_attempts']|length if r.get('security_logs') else 0 }})
-                                                    </button>
-                                                </li>
-                                            </ul>
-
-                                            <div class="tab-content" id="securityTabContent{{ r['id'] }}">
-                                                <!-- تب نشست‌های موفق -->
-                                                <div class="tab-pane fade show active" id="sessions-content{{ r['id'] }}" role="tabpanel">
-                                                    <div class="table-responsive border rounded">
-                                                        <table class="table table-sm table-hover align-middle mb-0">
-                                                            <thead class="table-light">
-                                                                <tr>
-                                                                    <th>دستگاه و سیستم‌عامل</th>
-                                                                    <th>مرورگر</th>
-                                                                    <th>آدرس آی‌پی</th>
-                                                                    <th>زمان ورود</th>
-                                                                    <th>آخرین فعالیت / خروج</th>
-                                                                    <th>وضعیت</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                                {% if r.get('security_logs') and r['security_logs']['sessions'] %}
-                                                                    {% for s in r['security_logs']['sessions'] %}
-                                                                    <tr>
-                                                                        <td><small><strong>{{ s['device_os'] or '💻 نامشخص' }}</strong></small></td>
-                                                                        <td><small>{{ s['browser'] or '🌐 نامشخص' }}</small></td>
-                                                                        <td><code class="font-monospace small">{{ s['ip_address'] }}</code></td>
-                                                                        <td><small class="text-muted">{{ s['login_at'][:16].replace('T', ' ') if s['login_at'] else '-' }}</small></td>
-                                                                        <td>
-                                                                            {% if s['logout_at'] %}
-                                                                                <small class="text-muted"><i class="fas fa-right-from-bracket me-1 text-danger"></i>{{ s['logout_at'][:16].replace('T', ' ') }}</small>
-                                                                            {% elif s['last_active_at'] %}
-                                                                                <small class="text-muted"><i class="fas fa-bolt me-1 text-warning"></i>{{ s['last_active_at'][:16].replace('T', ' ') }}</small>
-                                                                            {% else %}
-                                                                                -
-                                                                            {% endif %}
-                                                                        </td>
-                                                                        <td>
-                                                                            {% if s['is_active'] %}
-                                                                                <span class="badge bg-success" style="font-size: 0.65rem;">نشست فعال</span>
-                                                                            {% else %}
-                                                                                <span class="badge bg-light text-muted border" style="font-size: 0.65rem;">خارج شده</span>
-                                                                            {% endif %}
-                                                                        </td>
-                                                                    </tr>
-                                                                    {% endfor %}
-                                                                {% else %}
-                                                                    <tr>
-                                                                        <td colspan="6" class="text-center py-3 text-muted small">نشست ورودی برای این نماینده ثبت نشده است.</td>
-                                                                    </tr>
-                                                                {% endif %}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                </div>
-
-                                                <!-- تب تلاش‌های ناموفق -->
-                                                <div class="tab-pane fade" id="failed-content{{ r['id'] }}" role="tabpanel">
-                                                    <div class="table-responsive border rounded">
-                                                        <table class="table table-sm table-hover align-middle mb-0">
-                                                            <thead class="table-light">
-                                                                <tr>
-                                                                    <th>رمز عبور استفاده شده</th>
-                                                                    <th>آدرس آی‌پی</th>
-                                                                    <th>دستگاه و مرورگر</th>
-                                                                    <th>زمان تلاش</th>
-                                                                    <th>علت خطا</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                                {% if r.get('security_logs') and r['security_logs']['failed_attempts'] %}
-                                                                    {% for f in r['security_logs']['failed_attempts'] %}
-                                                                    <tr>
-                                                                        <td><code class="text-danger fw-bold font-monospace">{{ f['attempted_password'] or '(خالی)' }}</code></td>
-                                                                        <td><code class="font-monospace small">{{ f['ip_address'] }}</code></td>
-                                                                        <td><small>{{ f['device_os'] }} - {{ f['browser'] }}</small></td>
-                                                                        <td><small class="text-muted">{{ f['login_at'][:16].replace('T', ' ') if f['login_at'] else '-' }}</small></td>
-                                                                        <td><span class="badge bg-danger-subtle text-danger border border-danger small">{{ f['failure_reason'] or 'رمز اشتباه' }}</span></td>
-                                                                    </tr>
-                                                                    {% endfor %}
-                                                                {% else %}
-                                                                    <tr>
-                                                                        <td colspan="5" class="text-center py-3 text-muted small">هیچ تلاش ناموفقی برای این نام کاربری ثبت نشده است.</td>
-                                                                    </tr>
-                                                                {% endif %}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="modal-footer py-2">
-                                            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">بستن</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Modal شارژ کیف پول نماینده -->
-                            <div class="modal fade" id="topupModal{{ r['id'] }}" tabindex="-1">
-                                <div class="modal-dialog">
-                                    <div class="modal-content">
-                                        <form method="POST" action="{{ url_for('admin_reseller_add_balance', reseller_id=r['id']) }}">
-                                            <div class="modal-header">
-                                                <h5 class="modal-title fw-bold">شارژ کیف پول «{{ r['name'] }}»</h5>
-                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                            </div>
-                                            <div class="modal-body">
-                                                <p>موجودی فعلی: <strong>{{ "{:,}".format(r['balance'] or 0) }} تومان</strong></p>
-                                                <div class="mb-3">
-                                                    <label class="form-label">مبلغ شارژ (تومان):</label>
-                                                    <input type="number" name="amount" class="form-control" placeholder="مثال: 500000" min="1000" required>
-                                                </div>
-                                                <div class="mb-3">
-                                                    <label class="form-label">توضیحات (اختیاری):</label>
-                                                    <input type="text" name="description" class="form-control" value="شارژ کیف پول توسط مدیر">
-                                                </div>
-                                            </div>
-                                            <div class="modal-footer">
-                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
-                                                <button type="submit" class="btn btn-success">افزایش موجودی</button>
-                                            </div>
-                                        </form>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Modal ویرایش نماینده -->
-                            <div class="modal fade" id="editResellerModal{{ r['id'] }}" tabindex="-1">
-                                <div class="modal-dialog">
-                                    <div class="modal-content">
-                                        <form method="POST" action="{{ url_for('admin_reseller_edit', reseller_id=r['id']) }}">
-                                            <div class="modal-header">
-                                                <h5 class="modal-title fw-bold"><i class="fas fa-user-pen text-primary me-2"></i>ویرایش نماینده «{{ r['name'] }}»</h5>
-                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                            </div>
-                                            <div class="modal-body">
-                                                <div class="mb-3">
-                                                    <label class="form-label">نام و عنوان نماینده:</label>
-                                                    <input type="text" name="name" class="form-control" value="{{ r['name'] }}" required>
-                                                </div>
-                                                <div class="row g-2 mb-3">
-                                                    <div class="col-md-6">
-                                                        <label class="form-label">نام کاربری ورود:</label>
-                                                        <input type="text" name="username" class="form-control" value="{{ r['username'] }}" required>
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <label class="form-label">رمز عبور جدید (اختیاری):</label>
-                                                        <input type="password" name="new_password" class="form-control" placeholder="برای عدم تغییر خالی بگذارید">
-                                                    </div>
-                                                </div>
-                                                <div class="row g-2 mb-3">
-                                                    <div class="col-md-6">
-                                                        <label class="form-label">درصد تخفیف همکاری (%):</label>
-                                                        <input type="number" name="discount_percent" class="form-control" value="{{ r['discount_percent'] }}" min="1" max="99" required>
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <label class="form-label">وضعیت حساب:</label>
-                                                        <select name="status" class="form-select">
-                                                            <option value="active" {% if r['status'] == 'active' %}selected{% endif %}>فعال</option>
-                                                            <option value="suspended" {% if r['status'] != 'active' %}selected{% endif %}>معلق / غیرفعال</option>
-                                                        </select>
-                                                    </div>
-                                                </div>
-                                                <div class="mb-3">
-                                                    <label class="form-label">آیدی عددی تلگرام:</label>
-                                                    <input type="number" name="telegram_id" class="form-control" value="{{ r['telegram_id'] or '' }}" placeholder="مثال: 123456789">
-                                                </div>
-                                                <div class="mb-3 border p-2 rounded bg-light">
-                                                    <label class="form-label fw-bold small text-primary"><i class="fas fa-server me-1"></i> تنظیمات ادمین اختصاصی در هیدیفای:</label>
-                                                    <div class="input-group input-group-sm mb-2">
-                                                        <span class="input-group-text font-monospace" style="font-size: 0.75rem;">Admin UUID</span>
-                                                        <input type="text" name="hiddify_admin_uuid" class="form-control font-monospace" value="{{ r.get('hiddify_admin_uuid') or '' }}" placeholder="شناسه Admin UUID در هیدیفای">
-                                                    </div>
-                                                    <div class="form-check form-switch small">
-                                                        <input class="form-check-input" type="checkbox" name="auto_create_hiddify_admin" id="autoHiddifyEdit{{ r['id'] }}">
-                                                        <label class="form-check-label text-muted" for="autoHiddifyEdit{{ r['id'] }}">
-                                                            در صورت خالی بودن شناسه، به صورت خودکار یک ادمین در هیدیفای بساز
-                                                        </label>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="modal-footer">
-                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
-                                                <button type="submit" class="btn btn-primary">ذخیره تغییرات</button>
-                                            </div>
-                                        </form>
-                                    </div>
-                                </div>
-                            </div>
                         </td>
                     </tr>
                     {% endfor %}
@@ -608,6 +187,432 @@
         </div>
     </div>
 </div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- ─── مودال‌های مدیریت نمایندگان (خارج از ساختار جدول) ─── -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+{% for r in resellers %}
+<!-- ۱. Modal مشاهده سوابق و جزئیات پرداخت‌های نماینده -->
+<div class="modal fade text-start" id="resellerPaymentModal{{ r['id'] }}" tabindex="-1" aria-labelledby="resellerPaymentModalLabel{{ r['id'] }}" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content shadow-lg border-0 text-start">
+            <div class="modal-header bg-primary text-white py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="fas fa-file-invoice-dollar fs-4"></i>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0" id="resellerPaymentModalLabel{{ r['id'] }}">سوابق مالی و جزئیات پرداخت‌های «{{ r['name'] }}»</h5>
+                        <small class="opacity-75">نام کاربری: @{{ r['username'] }} {% if r['telegram_id'] %}| آیدی تلگرام: {{ r['telegram_id'] }}{% endif %}</small>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <a href="{{ url_for('admin_reseller_export_payments', reseller_id=r['id']) }}" class="btn btn-sm btn-light fw-bold">
+                        <i class="fas fa-file-excel text-success me-1"></i> خروجی اکسل
+                    </a>
+                    <a href="{{ url_for('admin_reseller_payments', reseller_id=r['id']) }}" class="btn btn-sm btn-outline-light">
+                        <i class="fas fa-arrow-up-right-from-square me-1"></i> صفحه اختصاصی
+                    </a>
+                    <button type="button" class="btn-close btn-close-white ms-2" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+            </div>
+            <div class="modal-body p-4">
+                {% set p_hist = r.get('payment_history', {}) %}
+                <!-- ۴ کارت آماری وضعیت مالی نماینده -->
+                <div class="row g-3 mb-4">
+                    <div class="col-md-3 col-sm-6">
+                        <div class="card border-0 shadow-sm p-3 bg-success bg-opacity-10 border-start border-success border-4">
+                            <span class="text-muted small">موجودی کیف پول فعلی</span>
+                            <h5 class="fw-bold text-success font-monospace mb-0 mt-1">{{ "{:,}".format(r['balance'] or 0) }} تومان</h5>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <div class="card border-0 shadow-sm p-3 bg-primary bg-opacity-10 border-start border-primary border-4">
+                            <span class="text-muted small">مجموع کل شارژها و واریزی‌ها</span>
+                            <h5 class="fw-bold text-primary font-monospace mb-0 mt-1">{{ "{:,}".format(p_hist.get('total_deposited', 0)) }} تومان</h5>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <div class="card border-0 shadow-sm p-3 bg-danger bg-opacity-10 border-start border-danger border-4">
+                            <span class="text-muted small">مجموع خریدها و تمدیدها</span>
+                            <h5 class="fw-bold text-danger font-monospace mb-0 mt-1">{{ "{:,}".format(p_hist.get('total_spent', 0)) }} تومان</h5>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <div class="card border-0 shadow-sm p-3 bg-info bg-opacity-10 border-start border-info border-4">
+                            <span class="text-muted small">تخفیف همکاری و بونوس‌ها</span>
+                            <h5 class="fw-bold text-info font-monospace mb-0 mt-1">{{ r['discount_percent'] }}٪ تخفیف</h5>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- تب‌های تراکنش‌های کیف پول و فیش‌های بانکی -->
+                <ul class="nav nav-pills mb-3" id="modalPaymentTab{{ r['id'] }}" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active fw-bold btn-sm py-2 px-3" id="modal-wallet-tab{{ r['id'] }}" data-bs-toggle="pill" data-bs-target="#modal-wallet-content{{ r['id'] }}" type="button" role="tab">
+                            <i class="fas fa-wallet me-1 text-primary"></i> تراکنش‌های کیف پول ({{ p_hist.get('wallet_transactions', [])|length }})
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link fw-bold btn-sm py-2 px-3" id="modal-receipt-tab{{ r['id'] }}" data-bs-toggle="pill" data-bs-target="#modal-receipt-content{{ r['id'] }}" type="button" role="tab">
+                            <i class="fas fa-receipt me-1 text-warning"></i> بسته‌ها و فیش‌های ثبت‌شده ({{ p_hist.get('receipt_transactions', [])|length }})
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content" id="modalPaymentTabContent{{ r['id'] }}">
+                    <!-- تب ۱: تراکنش‌های کیف پول -->
+                    <div class="tab-pane fade show active" id="modal-wallet-content{{ r['id'] }}" role="tabpanel">
+                        <div class="table-responsive border rounded">
+                            <table class="table table-sm table-hover align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="ps-3">شناسه</th>
+                                        <th>نوع تراکنش</th>
+                                        <th>مبلغ</th>
+                                        <th>پلن / اکانت هیدیفای</th>
+                                        <th>توضیحات</th>
+                                        <th>تاریخ و زمان</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for tx in p_hist.get('wallet_transactions', []) %}
+                                    <tr>
+                                        <td class="ps-3"><code class="font-monospace">#{{ tx['id'] }}</code></td>
+                                        <td>
+                                            {% if tx['type'] == 'deposit' %}
+                                                <span class="badge bg-success"><i class="fas fa-arrow-down me-1"></i> شارژ کیف پول</span>
+                                            {% elif tx['type'] == 'refund' %}
+                                                <span class="badge bg-info text-dark"><i class="fas fa-rotate-left me-1"></i> استرداد وجه</span>
+                                            {% elif tx['type'] == 'renewal' %}
+                                                <span class="badge bg-warning text-dark"><i class="fas fa-arrows-rotate me-1"></i> تمدید اشتراک</span>
+                                            {% else %}
+                                                <span class="badge bg-danger"><i class="fas fa-arrow-up me-1"></i> خرید اشتراک</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <strong class="{{ 'text-success' if (tx['type'] in ['deposit', 'refund']) else 'text-danger' }} font-monospace">
+                                                {{ '+' if (tx['type'] in ['deposit', 'refund']) else '-' }}{{ "{:,}".format(tx['amount'] or 0) }} تومان
+                                            </strong>
+                                        </td>
+                                        <td>
+                                            {{ tx['plan_name'] or '-' }}
+                                            {% if tx['account_name'] and tx['account_name'] != '-' %}
+                                                <code class="ms-1">{{ tx['account_name'] }}</code>
+                                            {% endif %}
+                                        </td>
+                                        <td><small class="text-muted">{{ tx['description'] or '-' }}</small></td>
+                                        <td><small class="text-muted">{{ tx['created_at'][:16].replace('T', ' ') if tx['created_at'] else '-' }}</small></td>
+                                    </tr>
+                                    {% endfor %}
+                                    {% if not p_hist.get('wallet_transactions') %}
+                                    <tr>
+                                        <td colspan="6" class="text-center py-4 text-muted">تراکنشی در کیف پول این نماینده ثبت نشده است.</td>
+                                    </tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- تب ۲: فیش‌ها و بسته‌های ثبت‌شده -->
+                    <div class="tab-pane fade" id="modal-receipt-content{{ r['id'] }}" role="tabpanel">
+                        <div class="table-responsive border rounded">
+                            <table class="table table-sm table-hover align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="ps-3">کد سفارش</th>
+                                        <th>بسته / پلن</th>
+                                        <th>مبلغ</th>
+                                        <th>روش پرداخت</th>
+                                        <th>کد پیگیری</th>
+                                        <th>وضعیت</th>
+                                        <th>تاریخ ثبت</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for rc in p_hist.get('receipt_transactions', []) %}
+                                    <tr>
+                                        <td class="ps-3"><code class="font-monospace">{{ rc['order_id'] }}</code></td>
+                                        <td>
+                                            {% if rc.get('gateway') == 'bundle_reseller' or (rc.get('order_id') and rc['order_id'].startswith('R_BUNDLE')) %}
+                                                <span class="badge mb-1 d-inline-block" style="background: linear-gradient(135deg, #7c3aed, #db2777); color: #fff; font-size: 0.7rem;">
+                                                    <i class="fas fa-crown me-1 text-warning"></i> بسته اعتباری
+                                                </span>
+                                            {% endif %}
+                                            <div class="fw-bold">{{ rc['plan_name'] or '-' }}</div>
+                                        </td>
+                                        <td><strong class="text-primary font-monospace">{{ "{:,}".format(rc['amount'] or 0) }} تومان</strong></td>
+                                        <td><span class="badge bg-light text-dark border">{{ rc['gateway']|gateway_name }}</span></td>
+                                        <td>
+                                            {% if rc['tracking_code'] %}
+                                                <code class="text-secondary">{{ rc['tracking_code'] }}</code>
+                                            {% else %}
+                                                <span class="text-muted">-</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if rc['status'] in ['approved', 'completed'] %}
+                                                <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i> تایید شده</span>
+                                            {% elif rc['status'] == 'pending' %}
+                                                <span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i> در انتظار بررسی</span>
+                                            {% elif rc['status'] == 'revoked' %}
+                                                <span class="badge bg-secondary"><i class="fas fa-ban me-1"></i> ابطال‌شده</span>
+                                            {% else %}
+                                                <span class="badge bg-danger"><i class="fas fa-times-circle me-1"></i> رد شده</span>
+                                            {% endif %}
+                                        </td>
+                                        <td><small class="text-muted">{{ rc['created_at'][:16].replace('T', ' ') if rc['created_at'] else '-' }}</small></td>
+                                    </tr>
+                                    {% endfor %}
+                                    {% if not p_hist.get('receipt_transactions') %}
+                                    <tr>
+                                        <td colspan="7" class="text-center py-4 text-muted">فیش یا سفارشی برای این نماینده ثبت نشده است.</td>
+                                    </tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer d-flex justify-content-between bg-light py-2">
+                <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#topupModal{{ r['id'] }}">
+                    <i class="fas fa-plus me-1"></i> شارژ دستی کیف پول این نماینده
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">بستن</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ۲. Modal مشاهده نشست‌ها و امنیت نماینده -->
+<div class="modal fade text-start" id="securityModal{{ r['id'] }}" tabindex="-1" aria-labelledby="securityModalLabel{{ r['id'] }}" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content shadow-lg border-0 text-start">
+            <div class="modal-header bg-info bg-opacity-10 py-3">
+                <h5 class="modal-title fw-bold text-info-emphasis" id="securityModalLabel{{ r['id'] }}">
+                    <i class="fas fa-shield-halved me-2"></i> پایش امنیت و نشست‌های «{{ r['name'] }}»
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-3">
+                <!-- وضعیت اتصال زنده -->
+                <div class="p-3 bg-light rounded border mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div>
+                        <span class="text-muted small">نام کاربری:</span> <strong><code>{{ r['username'] }}</code></strong>
+                        {% if r['telegram_id'] %}
+                            | <span class="text-muted small">آیدی تلگرام:</span> <code>{{ r['telegram_id'] }}</code>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <span class="text-muted small me-2">وضعیت زنده:</span>
+                        {% if r.get('is_online') %}
+                            <span class="badge bg-success"><i class="fas fa-circle me-1" style="font-size: 0.5rem;"></i>آنلاین (فعال در ۱۵ دقیقه اخیر)</span>
+                        {% else %}
+                            <span class="badge bg-secondary">آفلاین</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- تب‌های نشست‌های موفق و ورودهای ناموفق -->
+                <ul class="nav nav-pills mb-3" id="securityTab{{ r['id'] }}" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active btn-sm py-1 px-3" id="sessions-tab{{ r['id'] }}" data-bs-toggle="pill" data-bs-target="#sessions-content{{ r['id'] }}" type="button" role="tab">
+                            <i class="fas fa-circle-check me-1 text-success"></i> نشست‌های ورود موفق ({{ r['security_logs']['sessions']|length if r.get('security_logs') else 0 }})
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link btn-sm py-1 px-3" id="failed-tab{{ r['id'] }}" data-bs-toggle="pill" data-bs-target="#failed-content{{ r['id'] }}" type="button" role="tab">
+                            <i class="fas fa-circle-xmark me-1 text-danger"></i> تلاش‌های ورود ناموفق ({{ r['security_logs']['failed_attempts']|length if r.get('security_logs') else 0 }})
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content" id="securityTabContent{{ r['id'] }}">
+                    <!-- تب نشست‌های موفق -->
+                    <div class="tab-pane fade show active" id="sessions-content{{ r['id'] }}" role="tabpanel">
+                        <div class="table-responsive border rounded">
+                            <table class="table table-sm table-hover align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>دستگاه و سیستم‌عامل</th>
+                                        <th>مرورگر</th>
+                                        <th>آدرس آی‌پی</th>
+                                        <th>زمان ورود</th>
+                                        <th>آخرین فعالیت / خروج</th>
+                                        <th>وضعیت</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% if r.get('security_logs') and r['security_logs']['sessions'] %}
+                                        {% for s in r['security_logs']['sessions'] %}
+                                        <tr>
+                                            <td><small><strong>{{ s['device_os'] or '💻 نامشخص' }}</strong></small></td>
+                                            <td><small>{{ s['browser'] or '🌐 نامشخص' }}</small></td>
+                                            <td><code class="font-monospace small">{{ s['ip_address'] }}</code></td>
+                                            <td><small class="text-muted">{{ s['login_at'][:16].replace('T', ' ') if s['login_at'] else '-' }}</small></td>
+                                            <td>
+                                                {% if s['logout_at'] %}
+                                                    <small class="text-muted"><i class="fas fa-right-from-bracket me-1 text-danger"></i>{{ s['logout_at'][:16].replace('T', ' ') }}</small>
+                                                {% elif s['last_active_at'] %}
+                                                    <small class="text-muted"><i class="fas fa-bolt me-1 text-warning"></i>{{ s['last_active_at'][:16].replace('T', ' ') }}</small>
+                                                {% else %}
+                                                    -
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if s['is_active'] %}
+                                                    <span class="badge bg-success" style="font-size: 0.65rem;">نشست فعال</span>
+                                                {% else %}
+                                                    <span class="badge bg-light text-muted border" style="font-size: 0.65rem;">خارج شده</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    {% else %}
+                                        <tr>
+                                            <td colspan="6" class="text-center py-3 text-muted small">نشست ورودی برای این نماینده ثبت نشده است.</td>
+                                        </tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- تب تلاش‌های ناموفق -->
+                    <div class="tab-pane fade" id="failed-content{{ r['id'] }}" role="tabpanel">
+                        <div class="table-responsive border rounded">
+                            <table class="table table-sm table-hover align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>رمز عبور استفاده شده</th>
+                                        <th>آدرس آی‌پی</th>
+                                        <th>دستگاه و مرورگر</th>
+                                        <th>زمان تلاش</th>
+                                        <th>علت خطا</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% if r.get('security_logs') and r['security_logs']['failed_attempts'] %}
+                                        {% for f in r['security_logs']['failed_attempts'] %}
+                                        <tr>
+                                            <td><code class="text-danger fw-bold font-monospace">{{ f['attempted_password'] or '(خالی)' }}</code></td>
+                                            <td><code class="font-monospace small">{{ f['ip_address'] }}</code></td>
+                                            <td><small>{{ f['device_os'] }} - {{ f['browser'] }}</small></td>
+                                            <td><small class="text-muted">{{ f['login_at'][:16].replace('T', ' ') if f['login_at'] else '-' }}</small></td>
+                                            <td><span class="badge bg-danger-subtle text-danger border border-danger small">{{ f['failure_reason'] or 'رمز اشتباه' }}</span></td>
+                                        </tr>
+                                        {% endfor %}
+                                    {% else %}
+                                        <tr>
+                                            <td colspan="5" class="text-center py-3 text-muted small">هیچ تلاش ناموفقی برای این نام کاربری ثبت نشده است.</td>
+                                        </tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">بستن</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ۳. Modal شارژ کیف پول نماینده -->
+<div class="modal fade text-start" id="topupModal{{ r['id'] }}" tabindex="-1" aria-labelledby="topupModalLabel{{ r['id'] }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <form method="POST" action="{{ url_for('admin_reseller_add_balance', reseller_id=r['id']) }}">
+                <div class="modal-header bg-success text-white py-3">
+                    <h5 class="modal-title fw-bold" id="topupModalLabel{{ r['id'] }}"><i class="fas fa-wallet me-2"></i>شارژ کیف پول «{{ r['name'] }}»</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <p class="mb-3">موجودی فعلی: <strong>{{ "{:,}".format(r['balance'] or 0) }} تومان</strong></p>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">مبلغ شارژ (تومان):</label>
+                        <input type="number" name="amount" class="form-control font-monospace" placeholder="مثال: 500000" min="1000" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">توضیحات (اختیاری):</label>
+                        <input type="text" name="description" class="form-control" value="شارژ کیف پول توسط مدیر">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-success fw-bold px-4">افزایش موجودی</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ۴. Modal ویرایش نماینده -->
+<div class="modal fade text-start" id="editResellerModal{{ r['id'] }}" tabindex="-1" aria-labelledby="editResellerModalLabel{{ r['id'] }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <form method="POST" action="{{ url_for('admin_reseller_edit', reseller_id=r['id']) }}">
+                <div class="modal-header bg-primary text-white py-3">
+                    <h5 class="modal-title fw-bold" id="editResellerModalLabel{{ r['id'] }}"><i class="fas fa-user-pen me-2"></i>ویرایش نماینده «{{ r['name'] }}»</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">نام و عنوان نماینده:</label>
+                        <input type="text" name="name" class="form-control" value="{{ r['name'] }}" required>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">نام کاربری ورود:</label>
+                            <input type="text" name="username" class="form-control" value="{{ r['username'] }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">رمز عبور جدید (اختیاری):</label>
+                            <input type="password" name="new_password" class="form-control" placeholder="برای عدم تغییر خالی بگذارید">
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">درصد تخفیف همکاری (%):</label>
+                            <input type="number" name="discount_percent" class="form-control font-monospace" value="{{ r['discount_percent'] }}" min="1" max="99" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">وضعیت حساب:</label>
+                            <select name="status" class="form-select">
+                                <option value="active" {% if r['status'] == 'active' %}selected{% endif %}>فعال</option>
+                                <option value="suspended" {% if r['status'] != 'active' %}selected{% endif %}>معلق / غیرفعال</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">آیدی عددی تلگرام:</label>
+                        <input type="number" name="telegram_id" class="form-control font-monospace" value="{{ r['telegram_id'] or '' }}" placeholder="مثال: 123456789">
+                    </div>
+                    <div class="mb-3 border p-3 rounded bg-light">
+                        <label class="form-label fw-bold small text-primary"><i class="fas fa-server me-1"></i> تنظیمات ادمین اختصاصی در هیدیفای:</label>
+                        <div class="input-group input-group-sm mb-2">
+                            <span class="input-group-text font-monospace" style="font-size: 0.75rem;">Admin UUID</span>
+                            <input type="text" name="hiddify_admin_uuid" class="form-control font-monospace" value="{{ r.get('hiddify_admin_uuid') or '' }}" placeholder="شناسه Admin UUID در هیدیفای">
+                        </div>
+                        <div class="form-check form-switch small">
+                            <input class="form-check-input" type="checkbox" name="auto_create_hiddify_admin" id="autoHiddifyEdit{{ r['id'] }}">
+                            <label class="form-check-label text-muted" for="autoHiddifyEdit{{ r['id'] }}">
+                                در صورت خالی بودن شناسه، به صورت خودکار یک ادمین در هیدیفای بساز
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold">ذخیره تغییرات</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
 
 <!-- Modal تعریف نماینده جدید -->
 <div class="modal fade" id="addResellerModal" tabindex="-1">

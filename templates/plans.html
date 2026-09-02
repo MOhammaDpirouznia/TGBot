@@ -79,54 +79,6 @@
                             </a>
                         </td>
                     </tr>
-
-                    <!-- مودال ویرایش پلن -->
-                    <div class="modal fade" id="editModal{{ pid }}" tabindex="-1" aria-hidden="true">
-                        <div class="modal-dialog">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h5 class="modal-title fw-bold">ویرایش پلن: {{ p.name }}</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                </div>
-                                <form method="POST" action="{{ url_for('admin_plan_edit', plan_id=pid) }}">
-                                    <div class="modal-body">
-                                        <div class="mb-3">
-                                            <label class="form-label fw-semibold">شناسه پلن (انگلیسی / ID)</label>
-                                            <input type="text" name="new_plan_id" class="form-control font-monospace" value="{{ pid }}" required pattern="^[a-zA-Z0-9_-]+$">
-                                            <small class="text-muted">فقط حروف انگلیسی، اعداد و خط فاصله/آندرلاین</small>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-label fw-semibold">نام پلن</label>
-                                            <input type="text" name="name" class="form-control" value="{{ p.name }}" required>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-label fw-semibold">قیمت (تومان)</label>
-                                            <input type="number" name="price" class="form-control" value="{{ p.price }}" required min="0">
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-label fw-semibold">حجم به گیگابایت (0 = نامحدود)</label>
-                                            <input type="number" name="data_limit" class="form-control" value="{{ p.data_limit or 0 }}" required min="0">
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-label fw-semibold">مدت زمان (روز)</label>
-                                            <input type="number" name="duration" class="form-control" value="{{ p.duration or 30 }}" required min="1">
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-label fw-semibold">وضعیت فروش</label>
-                                            <select name="is_active" class="form-select">
-                                                <option value="1" {% if p.is_active %}selected{% endif %}>🟢 فعال</option>
-                                                <option value="0" {% if not p.is_active %}selected{% endif %}>🔴 غیرفعال</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div class="modal-footer">
-                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
-                                        <button type="submit" class="btn btn-primary">ذخیره تغییرات</button>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
                     {% else %}
                     <tr>
                         <td colspan="7" class="text-center py-4 text-muted">هیچ پلنی یافت نشد. برای شروع، روی «افزودن پلن جدید» کلیک کنید.</td>
@@ -138,9 +90,59 @@
     </div>
 </div>
 
+<!-- مودال‌های ویرایش پلن (خارج از ساختار جدول) -->
+{% for pid, p in plans.items() %}
+<div class="modal fade text-start" id="editModal{{ pid }}" tabindex="-1" aria-labelledby="editModalLabel{{ pid }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-primary text-white py-3">
+                <h5 class="modal-title fw-bold" id="editModalLabel{{ pid }}"><i class="fas fa-pen-to-square me-2"></i>ویرایش پلن: {{ p.name }}</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('admin_plan_edit', plan_id=pid) }}">
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">شناسه پلن (انگلیسی / ID)</label>
+                        <input type="text" name="new_plan_id" class="form-control font-monospace" value="{{ pid }}" required pattern="^[a-zA-Z0-9_-]+$">
+                        <small class="text-muted">فقط حروف انگلیسی، اعداد و خط فاصله/آندرلاین</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">نام پلن</label>
+                        <input type="text" name="name" class="form-control" value="{{ p.name }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">قیمت (تومان)</label>
+                        <input type="number" name="price" class="form-control font-monospace" value="{{ p.price }}" required min="0">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">حجم به گیگابایت (0 = نامحدود)</label>
+                        <input type="number" name="data_limit" class="form-control font-monospace" value="{{ p.data_limit or 0 }}" required min="0">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">مدت زمان (روز)</label>
+                        <input type="number" name="duration" class="form-control font-monospace" value="{{ p.duration or 30 }}" required min="1">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">وضعیت فروش</label>
+                        <select name="is_active" class="form-select">
+                            <option value="1" {% if p.is_active %}selected{% endif %}>🟢 فعال</option>
+                            <option value="0" {% if not p.is_active %}selected{% endif %}>🔴 غیرفعال</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold">ذخیره تغییرات</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
 <!-- مودال افزودن پلن -->
-<div class="modal fade" id="addPlanModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
+<div class="modal fade text-start" id="addPlanModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title fw-bold">افزودن پلن فروش جدید</h5>
