@@ -173,7 +173,7 @@
                 </thead>
                 <tbody>
                     {% for ticket in tickets %}
-                    {% set is_admin_ticket = (ticket.get('ticket_type') in ('reseller_to_admin', 'quota_change') or category_filter == 'admin') %}
+                    {% set is_admin_ticket = (ticket.get('ticket_type') in ('reseller_to_admin', 'quota_change', 'reseller_application') or category_filter == 'admin') %}
                     <tr class="{% if is_admin_ticket %}table-warning bg-opacity-25 border-start border-warning border-3{% elif ticket.get('is_vip') %}table-warning bg-opacity-10 border-start border-warning border-2{% elif ticket.get('status') == 'open' %}table-light{% endif %}"
                         style="cursor: pointer;"
                         onclick="if(!event.target.closest('button') && !event.target.closest('a') && !event.target.closest('form')) { new bootstrap.Modal(document.getElementById('ticketChatModal{{ ticket['id'] }}')).show(); }">
@@ -369,7 +369,7 @@
 
 <!-- مودال‌های گفتگوی جامع و تعاملی تیکت‌های نماینده (خارج از ساختار جدول) -->
 {% for ticket in tickets %}
-{% set is_admin_ticket = (ticket.get('ticket_type') in ('reseller_to_admin', 'quota_change') or category_filter == 'admin') %}
+{% set is_admin_ticket = (ticket.get('ticket_type') in ('reseller_to_admin', 'quota_change', 'reseller_application') or category_filter == 'admin') %}
 <div class="modal fade text-start" id="ticketChatModal{{ ticket['id'] }}" tabindex="-1" aria-labelledby="ticketChatModalLabel{{ ticket['id'] }}" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
         <div class="modal-content border-0 shadow-lg text-start">

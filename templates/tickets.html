@@ -181,7 +181,7 @@
                 </thead>
                 <tbody>
                     {% for t in tickets %}
-                    {% set is_reseller_ticket = (t.get('ticket_type') in ('reseller_to_admin', 'quota_change') or t.get('reseller_id', 0) > 0) %}
+                    {% set is_reseller_ticket = (t.get('ticket_type') in ('reseller_to_admin', 'quota_change', 'reseller_application') or (t.get('reseller_id') or 0) > 0) %}
                     <tr class="{% if is_reseller_ticket %}table-warning bg-opacity-25 border-start border-warning border-3{% elif t.get('is_vip') %}table-warning bg-opacity-10 border-start border-warning border-2{% elif t.get('status') == 'open' %}table-light{% endif %}" 
                         style="cursor: pointer;"
                         onclick="if(!event.target.closest('button') && !event.target.closest('a') && !event.target.closest('form')) { new bootstrap.Modal(document.getElementById('ticketChatModal{{ t['id'] }}')).show(); }">
@@ -319,7 +319,7 @@
 
 <!-- مودال‌های گفتگوی جامع و تعاملی تیکت‌ها (خارج از ساختار جدول) -->
 {% for t in tickets %}
-{% set is_reseller_ticket = (t.get('ticket_type') in ('reseller_to_admin', 'quota_change') or t.get('reseller_id', 0) > 0) %}
+{% set is_reseller_ticket = (t.get('ticket_type') in ('reseller_to_admin', 'quota_change', 'reseller_application') or (t.get('reseller_id') or 0) > 0) %}
 <div class="modal fade text-start" id="ticketChatModal{{ t['id'] }}" tabindex="-1" aria-labelledby="ticketChatModalLabel{{ t['id'] }}" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
         <div class="modal-content border-0 shadow-lg text-start">
