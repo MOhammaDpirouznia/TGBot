@@ -176,15 +176,18 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0 sortable-table" id="resellerTicketsTable">
+            <table class="table table-hover align-middle mb-0 sortable-table bulk-table" id="resellerTicketsTable" data-bulk-bar="resellerTicketsBulkBar">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-3 sortable-th" data-column="0" style="width: 80px;">شماره</th>
-                        <th class="sortable-th" data-column="1">{% if category_filter == 'admin' %}مخاطب{% else %}مشتری / طرف گفتگو{% endif %}</th>
-                        <th class="sortable-th" data-column="2">موضوع و پیام</th>
-                        <th class="sortable-th" data-column="3">گفتگو</th>
-                        <th class="sortable-th" data-column="4">وضعیت</th>
-                        <th class="sortable-th" data-column="5">تاریخ ثبت</th>
+                        <th class="text-center" style="width: 40px;">
+                            <input type="checkbox" class="form-check-input bulk-select-all" title="انتخاب همه">
+                        </th>
+                        <th class="ps-2 sortable-th" data-column="1" style="width: 80px;">شماره</th>
+                        <th class="sortable-th" data-column="2">{% if category_filter == 'admin' %}مخاطب{% else %}مشتری / طرف گفتگو{% endif %}</th>
+                        <th class="sortable-th" data-column="3">موضوع و پیام</th>
+                        <th class="sortable-th" data-column="4">گفتگو</th>
+                        <th class="sortable-th" data-column="5">وضعیت</th>
+                        <th class="sortable-th" data-column="6">تاریخ ثبت</th>
                         <th class="text-end pe-3" style="min-width: 160px;">عملیات و گفتگو</th>
                     </tr>
                 </thead>
@@ -193,8 +196,11 @@
                     {% set is_admin_ticket = (ticket.get('ticket_type') in ('reseller_to_admin', 'quota_change', 'reseller_application') or (ticket.get('target_role') == 'admin')) %}
                     <tr class="{% if ticket.get('status') == 'open' %}ticket-row-open{% elif ticket.get('status') == 'in_progress' %}ticket-row-inprogress{% elif ticket.get('status') == 'replied' %}ticket-row-replied{% else %}ticket-row-closed{% endif %}"
                         style="cursor: pointer;"
-                        onclick="if(!event.target.closest('button') && !event.target.closest('a') && !event.target.closest('form')) { new bootstrap.Modal(document.getElementById('ticketChatModal{{ ticket['id'] }}')).show(); }">
-                        <td class="ps-3" data-value="{{ ticket['id'] }}">
+                        onclick="if(!event.target.closest('button') && !event.target.closest('a') && !event.target.closest('form') && !event.target.closest('input')) { new bootstrap.Modal(document.getElementById('ticketChatModal{{ ticket['id'] }}')).show(); }">
+                        <td class="text-center" onclick="event.stopPropagation();">
+                            <input type="checkbox" class="form-check-input bulk-select-row" value="{{ ticket['id'] }}">
+                        </td>
+                        <td class="ps-2" data-value="{{ ticket['id'] }}">
                             <code class="badge ticket-badge-pill font-monospace fs-6">#{{ ticket['id'] }}</code>
                             {% if is_admin_ticket %}
                                 <span class="badge bg-dark text-warning d-block mt-1"><i class="fas fa-building"></i> مدیریت</span>
@@ -298,7 +304,7 @@
 
                     {% if not tickets %}
                     <tr>
-                        <td colspan="7" class="text-center py-5 text-muted">
+                        <td colspan="8" class="text-center py-5 text-muted">
                             <i class="fas fa-headset fs-1 d-block mb-3 text-secondary opacity-50"></i>
                             <h6 class="fw-bold">
                                 {% if category_filter == 'admin' %}
@@ -314,6 +320,26 @@
             </table>
         </div>
     </div>
+</div>
+
+<!-- ─── نوار ابزار شناور مدیریت گروهی تیکت‌های نماینده ─── -->
+<div class="bulk-actions-bar" id="resellerTicketsBulkBar">
+    <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-primary rounded-pill fs-6 px-3 py-2">
+            <i class="fas fa-check-double me-1"></i> <span class="bulk-selected-count">0</span> تیکت انتخاب شد
+        </span>
+    </div>
+    <form id="resellerTicketBulkForm" method="POST" action="{{ url_for('reseller_tickets_bulk') }}" class="d-flex align-items-center flex-wrap gap-2 m-0">
+        <input type="hidden" name="bulk_action" value="">
+        <input type="hidden" name="selected_ids_str" class="bulk-selected-ids-input" value="">
+        
+        <button type="button" class="btn btn-sm btn-outline-light" onclick="submitBulkAction('resellerTicketBulkForm', 'close', 'آیا از بستن تیکت‌های انتخاب شده اطمینان دارید؟')">
+            <i class="fas fa-check-double me-1"></i> بستن تیکت‌های انتخابی
+        </button>
+        <button type="button" class="btn btn-sm btn-danger" onclick="submitBulkAction('resellerTicketBulkForm', 'delete', 'هشدار: آیا از حذف کامل تیکت‌های انتخاب شده اطمینان دارید؟')">
+            <i class="fas fa-trash-can me-1"></i> حذف گروهی
+        </button>
+    </form>
 </div>
 
 <!-- مودال ثبت تیکت جدید برای مدیریت -->

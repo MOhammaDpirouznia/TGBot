@@ -37,23 +37,29 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0 sortable-table" id="customerPaymentsTable">
+            <table class="table table-hover align-middle mb-0 sortable-table bulk-table" id="customerPaymentsTable" data-bulk-bar="resellerCustomerPaymentsBulkBar">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-3 sortable-th" data-column="0">سفارش</th>
-                        <th class="sortable-th" data-column="1">کاربر تلگرام</th>
-                        <th class="sortable-th" data-column="2">پلن درخواستی</th>
-                        <th class="sortable-th" data-column="3">مبلغ</th>
-                        <th class="sortable-th" data-column="4">روش پرداخت</th>
-                        <th class="sortable-th" data-column="5">وضعیت</th>
-                        <th class="sortable-th" data-column="6">تاریخ ثبت</th>
+                        <th class="text-center" style="width: 40px;">
+                            <input type="checkbox" class="form-check-input bulk-select-all" title="انتخاب همه">
+                        </th>
+                        <th class="ps-2 sortable-th" data-column="1">سفارش</th>
+                        <th class="sortable-th" data-column="2">کاربر تلگرام</th>
+                        <th class="sortable-th" data-column="3">پلن درخواستی</th>
+                        <th class="sortable-th" data-column="4">مبلغ</th>
+                        <th class="sortable-th" data-column="5">روش پرداخت</th>
+                        <th class="sortable-th" data-column="6">وضعیت</th>
+                        <th class="sortable-th" data-column="7">تاریخ ثبت</th>
                         <th class="text-end pe-3" style="min-width: 170px;">عملیات و جزئیات</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for tx in transactions %}
                     <tr>
-                        <td class="ps-3" data-value="{{ tx['id'] }}">
+                        <td class="text-center">
+                            <input type="checkbox" class="form-check-input bulk-select-row" value="{{ tx['id'] }}">
+                        </td>
+                        <td class="ps-2" data-value="{{ tx['id'] }}">
                             <code class="badge bg-light text-dark border font-monospace fs-6">#{{ tx['id'] }}</code>
                             {% if tx.get('order_id') %}
                                 <div class="text-muted small font-monospace" style="font-size: 0.72rem;">{{ tx['order_id'] }}</div>
@@ -117,7 +123,7 @@
                     {% endfor %}
                     {% if not transactions %}
                     <tr>
-                        <td colspan="8" class="text-center py-5 text-muted">
+                        <td colspan="9" class="text-center py-5 text-muted">
                             <i class="fas fa-receipt fs-1 text-secondary opacity-50 mb-3 d-block"></i>
                             <h6 class="fw-bold">فیش پرداختی از سمت مشتریان ثبت نشده است.</h6>
                         </td>
@@ -127,6 +133,26 @@
             </table>
         </div>
     </div>
+</div>
+
+<!-- ─── نوار ابزار شناور مدیریت گروهی فیش‌های مشتریان ─── -->
+<div class="bulk-actions-bar" id="resellerCustomerPaymentsBulkBar">
+    <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-primary rounded-pill fs-6 px-3 py-2">
+            <i class="fas fa-check-double me-1"></i> <span class="bulk-selected-count">0</span> فیش انتخاب شد
+        </span>
+    </div>
+    <form id="resellerPaymentBulkForm" method="POST" action="{{ url_for('reseller_customer_payments_bulk') }}" class="d-flex align-items-center flex-wrap gap-2 m-0">
+        <input type="hidden" name="bulk_action" value="">
+        <input type="hidden" name="selected_ids_str" class="bulk-selected-ids-input" value="">
+        
+        <button type="button" class="btn btn-sm btn-outline-warning" onclick="submitBulkAction('resellerPaymentBulkForm', 'reject', 'آیا از رد تمام فیش‌های انتخاب شده اطمینان دارید؟')">
+            <i class="fas fa-times me-1"></i> رد فیش‌های انتخابی
+        </button>
+        <button type="button" class="btn btn-sm btn-danger" onclick="submitBulkAction('resellerPaymentBulkForm', 'delete', 'هشدار: آیا از حذف کامل فیش‌های انتخاب شده اطمینان دارید؟')">
+            <i class="fas fa-trash-can me-1"></i> حذف گروهی
+        </button>
+    </form>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════ -->

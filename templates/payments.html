@@ -72,28 +72,31 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0 sortable-table" id="paymentsTable">
+            <table class="table table-hover align-middle mb-0 sortable-table bulk-table" id="paymentsTable" data-bulk-bar="adminPaymentsBulkBar">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-3 sortable-th" data-column="0" style="width: 100px; cursor: pointer;">
+                        <th class="text-center" style="width: 40px;">
+                            <input type="checkbox" class="form-check-input bulk-select-all" title="انتخاب همه">
+                        </th>
+                        <th class="ps-2 sortable-th" data-column="1" style="width: 100px; cursor: pointer;">
                             سفارش <i class="fas fa-sort text-muted ms-1"></i>
                         </th>
-                        <th class="sortable-th" data-column="1" style="cursor: pointer;">
+                        <th class="sortable-th" data-column="2" style="cursor: pointer;">
                             کاربر تلگرام <i class="fas fa-sort text-muted ms-1"></i>
                         </th>
-                        <th class="sortable-th" data-column="2" style="cursor: pointer;">
+                        <th class="sortable-th" data-column="3" style="cursor: pointer;">
                             پلن / نوع <i class="fas fa-sort text-muted ms-1"></i>
                         </th>
-                        <th class="sortable-th" data-column="3" style="cursor: pointer;">
+                        <th class="sortable-th" data-column="4" style="cursor: pointer;">
                             مبلغ پرداختی <i class="fas fa-sort text-muted ms-1"></i>
                         </th>
-                        <th class="sortable-th" data-column="4" style="cursor: pointer;">
+                        <th class="sortable-th" data-column="5" style="cursor: pointer;">
                             روش پرداخت <i class="fas fa-sort text-muted ms-1"></i>
                         </th>
-                        <th class="sortable-th" data-column="5" style="cursor: pointer;">
+                        <th class="sortable-th" data-column="6" style="cursor: pointer;">
                             وضعیت <i class="fas fa-sort text-muted ms-1"></i>
                         </th>
-                        <th class="sortable-th" data-column="6" style="cursor: pointer;">
+                        <th class="sortable-th" data-column="7" style="cursor: pointer;">
                             تاریخ ثبت <i class="fas fa-sort text-muted ms-1"></i>
                         </th>
                         <th class="text-end pe-3" style="min-width: 170px;">عملیات و جزئیات</th>
@@ -102,7 +105,10 @@
                 <tbody>
                     {% for tx in payments %}
                     <tr class="payment-row {% if tx.get('gateway') == 'bundle_reseller' or (tx.get('order_id') and tx['order_id'].startswith('R_BUNDLE')) %}table-purple-subtle border-start border-4 border-purple{% endif %}">
-                        <td class="ps-3" data-value="{{ tx['id'] }}">
+                        <td class="text-center">
+                            <input type="checkbox" class="form-check-input bulk-select-row" value="{{ tx['id'] }}">
+                        </td>
+                        <td class="ps-2" data-value="{{ tx['id'] }}">
                             <span class="badge bg-light text-dark border font-monospace fs-6">#{{ tx['id'] }}</span>
                         </td>
                         <td data-value="{{ tx['username'] or tx['user_id'] or '' }}">
@@ -218,7 +224,7 @@
 
                     {% if not payments %}
                     <tr>
-                        <td colspan="8" class="text-center py-5 text-muted">
+                        <td colspan="9" class="text-center py-5 text-muted">
                             <i class="fas fa-receipt fs-1 text-secondary opacity-50 mb-3 d-block"></i>
                             <h6 class="fw-bold">تراکنشی با این شرایط یافت نشد.</h6>
                         </td>
@@ -228,6 +234,29 @@
             </table>
         </div>
     </div>
+</div>
+
+<!-- ─── نوار ابزار شناور مدیریت گروهی پرداخت‌ها و فیش‌ها ─── -->
+<div class="bulk-actions-bar" id="adminPaymentsBulkBar">
+    <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-primary rounded-pill fs-6 px-3 py-2">
+            <i class="fas fa-check-double me-1"></i> <span class="bulk-selected-count">0</span> پرداخت انتخاب شد
+        </span>
+    </div>
+    <form id="adminPaymentBulkForm" method="POST" action="{{ url_for('admin_payments_bulk') }}" class="d-flex align-items-center flex-wrap gap-2 m-0">
+        <input type="hidden" name="bulk_action" value="">
+        <input type="hidden" name="selected_ids_str" class="bulk-selected-ids-input" value="">
+        
+        <button type="button" class="btn btn-sm btn-success" onclick="submitBulkAction('adminPaymentBulkForm', 'approve', 'هشدار: آیا از تایید تمام پرداخت‌های در انتظار انتخاب شده و صدور آنی اشتراک‌ها در هیدیفای اطمینان دارید؟')">
+            <i class="fas fa-check-double me-1"></i> تایید گروهی و صدور آنی
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-warning" onclick="submitBulkAction('adminPaymentBulkForm', 'reject', 'آیا از رد تمام پرداخت‌های انتخاب شده اطمینان دارید؟')">
+            <i class="fas fa-times me-1"></i> رد فیش‌های انتخابی
+        </button>
+        <button type="button" class="btn btn-sm btn-danger" onclick="submitBulkAction('adminPaymentBulkForm', 'delete', 'هشدار: آیا از حذف کامل تراکنش‌های انتخاب شده اطمینان دارید؟')">
+            <i class="fas fa-trash-can me-1"></i> حذف گروهی
+        </button>
+    </form>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════ -->

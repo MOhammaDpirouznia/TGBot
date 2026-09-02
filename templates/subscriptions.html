@@ -40,18 +40,21 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0 sortable-table" id="subscriptionsTable">
+            <table class="table table-hover align-middle mb-0 sortable-table bulk-table" id="subscriptionsTable" data-bulk-bar="adminSubscriptionsBulkBar">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-3 sortable-th" data-column="0">مالک / کاربر</th>
-                        <th class="sortable-th" data-column="1">نام اکانت هیدیفای</th>
-                        <th class="sortable-th" data-column="2">وضعیت مالی</th>
-                        <th class="sortable-th" data-column="3">پلن انتخابی</th>
-                        <th class="sortable-th" data-column="4">مصرف / سقف</th>
-                        <th class="sortable-th" data-column="5">مدت اعتبار</th>
-                        <th class="sortable-th" data-column="6">انقضا</th>
-                        <th class="sortable-th" data-column="7">وضعیت اتصال</th>
-                        <th class="sortable-th" data-column="8">صادرکننده</th>
+                        <th class="text-center" style="width: 40px;">
+                            <input type="checkbox" class="form-check-input bulk-select-all" title="انتخاب همه">
+                        </th>
+                        <th class="ps-2 sortable-th" data-column="1">مالک / کاربر</th>
+                        <th class="sortable-th" data-column="2">نام اکانت هیدیفای</th>
+                        <th class="sortable-th" data-column="3">وضعیت مالی</th>
+                        <th class="sortable-th" data-column="4">پلن انتخابی</th>
+                        <th class="sortable-th" data-column="5">مصرف / سقف</th>
+                        <th class="sortable-th" data-column="6">مدت اعتبار</th>
+                        <th class="sortable-th" data-column="7">انقضا</th>
+                        <th class="sortable-th" data-column="8">وضعیت اتصال</th>
+                        <th class="sortable-th" data-column="9">صادرکننده</th>
                         <th class="text-end pe-3">عملیات و مدیریت</th>
                     </tr>
                 </thead>
@@ -61,7 +64,10 @@
                     {% set single_url = sub|format_single_link(single_link_template) if sub['hidify_uuid'] else '' %}
                     {% set is_debtor = (sub.get('payment_status') in ('unpaid', 'debtor') or (sub.get('debt_amount')|int or 0) > 0) %}
                     <tr class="{% if is_debtor %}table-danger bg-opacity-10 border-start border-danger border-3{% endif %}">
-                        <td class="ps-3" data-value="{{ sub['telegram_id'] or sub['account_name'] or '' }}">
+                        <td class="text-center">
+                            <input type="checkbox" class="form-check-input bulk-select-row" value="{{ sub['id'] }}">
+                        </td>
+                        <td class="ps-2" data-value="{{ sub['telegram_id'] or sub['account_name'] or '' }}">
                             {% if sub['telegram_id'] and sub['telegram_id'] != 0 %}
                                 <div class="d-flex align-items-center gap-2">
                                     <div class="position-relative">
@@ -242,6 +248,34 @@
             </table>
         </div>
     </div>
+</div>
+
+<!-- ─── نوار ابزار شناور مدیریت گروهی اشتراک‌ها ─── -->
+<div class="bulk-actions-bar" id="adminSubscriptionsBulkBar">
+    <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-primary rounded-pill fs-6 px-3 py-2">
+            <i class="fas fa-check-double me-1"></i> <span class="bulk-selected-count">0</span> اشتراک انتخاب شد
+        </span>
+    </div>
+    <form id="adminSubBulkForm" method="POST" action="{{ url_for('admin_subscriptions_bulk') }}" class="d-flex align-items-center flex-wrap gap-2 m-0">
+        <input type="hidden" name="bulk_action" value="">
+        <input type="hidden" name="selected_ids_str" class="bulk-selected-ids-input" value="">
+        
+        <button type="button" class="btn btn-sm btn-outline-light" onclick="submitBulkAction('adminSubBulkForm', 'disable', 'آیا از غیرفعال‌سازی موقت اشتراک‌های انتخاب شده اطمینان دارید؟')">
+            <i class="fas fa-user-slash me-1"></i> غیرفعال‌سازی
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-light" onclick="submitBulkAction('adminSubBulkForm', 'enable', 'آیا از فعال‌سازی مجدد اشتراک‌های انتخاب شده اطمینان دارید؟')">
+            <i class="fas fa-user-check me-1"></i> فعال‌سازی
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-success" onclick="submitBulkAction('adminSubBulkForm', 'clear_debt', 'آیا از تسویه بدهی تمام مشتریان انتخاب شده اطمینان دارید؟')">
+            <i class="fas fa-check-double me-1"></i> تسویه بدهی
+        </button>
+        {% if has_permission('sub_delete') %}
+        <button type="button" class="btn btn-sm btn-danger" onclick="submitBulkAction('adminSubBulkForm', 'delete', 'هشدار: آیا از حذف کامل اشتراک‌های انتخاب شده از سرور هیدیفای و دیتابیس اطمینان دارید؟')">
+            <i class="fas fa-trash-can me-1"></i> حذف گروهی
+        </button>
+        {% endif %}
+    </form>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════ -->

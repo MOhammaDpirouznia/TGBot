@@ -63,16 +63,19 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0 sortable-table" id="resellerUsersTable">
+            <table class="table table-hover align-middle mb-0 sortable-table bulk-table" id="resellerUsersTable" data-bulk-bar="resellerUsersBulkBar">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-3 sortable-th" data-column="0">مشتری / اکانت</th>
-                        <th class="sortable-th" data-column="1">شماره و تلگرام</th>
-                        <th class="sortable-th" data-column="2">وضعیت مالی</th>
-                        <th class="sortable-th" data-column="3">پلن و حجم</th>
-                        <th class="sortable-th" data-column="4">مدت اعتبار</th>
-                        <th class="sortable-th" data-column="5">وضعیت اتصال</th>
-                        <th class="sortable-th" data-column="6">تاریخ صدور</th>
+                        <th class="text-center" style="width: 40px;">
+                            <input type="checkbox" class="form-check-input bulk-select-all" title="انتخاب همه">
+                        </th>
+                        <th class="ps-2 sortable-th" data-column="1">مشتری / اکانت</th>
+                        <th class="sortable-th" data-column="2">شماره و تلگرام</th>
+                        <th class="sortable-th" data-column="3">وضعیت مالی</th>
+                        <th class="sortable-th" data-column="4">پلن و حجم</th>
+                        <th class="sortable-th" data-column="5">مدت اعتبار</th>
+                        <th class="sortable-th" data-column="6">وضعیت اتصال</th>
+                        <th class="sortable-th" data-column="7">تاریخ صدور</th>
                         <th class="text-end pe-3">عملیات و مدیریت</th>
                     </tr>
                 </thead>
@@ -83,8 +86,11 @@
                     {% set ref = sub.get('refund_info') or {} %}
                     {% set is_debtor = (sub.get('payment_status') in ('unpaid', 'debtor') or (sub.get('debt_amount')|int or 0) > 0) %}
                     <tr class="{% if is_debtor %}table-danger bg-opacity-10 border-start border-danger border-3{% elif sub.get('is_vip') %}table-warning bg-opacity-10{% endif %}">
-                        <td class="ps-3" data-value="{{ (sub['account_name'] or '')|striptags }}">
-                            <div class="d-flex align-items-center gap-2">
+                        <td class="text-center">
+                            <input type="checkbox" class="form-check-input bulk-select-row" value="{{ sub['id'] }}">
+                        </td>
+                        <td class="ps-2" data-value="{{ (sub['account_name'] or '')|striptags }}">
+                            <div class="d-flex align-items-center gap-2 cursor-pointer" role="button" data-bs-toggle="modal" data-bs-target="#customerDetailModal{{ sub['id'] }}" title="مشاهده جزئیات، بارکدها و مدیریت">
                                 <div class="position-relative">
                                     <img src="{{ avatar_url(sub['phone_number'] or sub['account_name'] or 'Customer') }}" 
                                          alt="{{ sub['account_name'] }}" 
@@ -97,9 +103,9 @@
                                 </div>
                                 <div>
                                     <div class="fw-bold d-flex align-items-center gap-1">
-                                        <span>{{ sub['account_name'] or 'بدون نام' }}</span>
+                                        <span class="text-primary text-decoration-underline-hover">{{ sub['account_name'] or 'بدون نام' }}</span>
                                         {% if sub.get('is_vip') %}
-                                            <span class="badge bg-warning text-dark py-0 px-1" title="مشتری طلایی (VIP)"><i class="fas fa-crown"></i> VIP</span>
+                                             <span class="badge bg-warning text-dark py-0 px-1" title="مشتری طلایی (VIP)"><i class="fas fa-crown"></i> VIP</span>
                                         {% endif %}
                                     </div>
                                     {% if sub['account_comment'] %}
@@ -127,7 +133,7 @@
                         <td data-value="{{ sub.get('debt_amount')|int if is_debtor else 0 }}">
                             {% if is_debtor %}
                                 <div>
-                                    <span class="badge bg-danger text-white px-2 py-1 shadow-sm d-inline-flex align-items-center gap-1">
+                                    <span class="badge bg-danger text-white px-2 py-1 shadow-sm d-inline-flex align-items-center gap-1 cursor-pointer" role="button" data-bs-toggle="modal" data-bs-target="#customerDetailModal{{ sub['id'] }}">
                                         <i class="fas fa-hand-holding-dollar"></i> بدهکار: {{ "{:,}".format(sub.get('debt_amount')|int) }} ت
                                     </span>
                                     {% if sub.get('debt_notes') %}
@@ -185,63 +191,18 @@
                         </td>
                         <td data-value="{{ sub['created_at'] or '' }}"><small class="text-muted font-monospace">{{ sub['created_at'][:10] if sub['created_at'] else '-' }}</small></td>
                         <td class="text-end pe-3">
-                            <div class="btn-group btn-group-sm">
-                                <!-- دکمه تسویه سریع بدهی در صورت بدهکار بودن -->
-                                {% if is_debtor %}
-                                <form method="POST" action="{{ url_for('reseller_subscription_clear_debt', sub_id=sub['id']) }}" class="d-inline" onsubmit="return confirm('آیا از تسویه کامل بدهی این مشتری اطمینان دارید؟');">
-                                    <button type="submit" class="btn btn-success" title="تسویه بدهی و علامت‌گذاری به عنوان پرداخت شده">
-                                        <i class="fas fa-check-double"></i> تسویه
-                                    </button>
-                                </form>
-                                {% if sub.get('telegram_id') and sub['telegram_id'] > 0 %}
-                                <form method="POST" action="{{ url_for('subscription_send_debt_reminder', sub_id=sub['id']) }}" class="d-inline" onsubmit="return confirm('آیا از ارسال پیام یادآوری بدهی به تلگرام این کاربر اطمینان دارید؟');">
-                                    <button type="submit" class="btn btn-outline-danger" title="ارسال پیام یادآوری بدهی در تلگرام به مشتری">
-                                        <i class="fab fa-telegram"></i>
-                                    </button>
-                                </form>
-                                {% endif %}
-                                {% endif %}
-
-                                <!-- دکمه تمدید -->
-                                <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#renewModal{{ sub['id'] }}" title="تمدید اشتراک با کسر شارژ">
-                                    <i class="fas fa-arrows-rotate"></i> تمدید
-                                </button>
-                                
-                                <!-- دکمه درخواست تغییر حجم/روز به مدیریت -->
-                                <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#requestChangeModal{{ sub['id'] }}" title="درخواست تغییر حجم و روز (ارسال تیکت به مدیریت)">
-                                    <i class="fas fa-sliders"></i>
-                                </button>
-
-                                <!-- دکمه سوابق و تاریخچه دوره‌ها -->
-                                <button type="button" class="btn btn-outline-info" onclick="openSubscriptionHistory({{ sub['id'] }}, '{{ sub['account_name'] }}')" title="مشاهده سوابق و تاریخچه دوره‌ها و مبالغ پرداختی">
-                                    <i class="fas fa-history"></i>
-                                </button>
-
-                                <!-- دکمه ویرایش -->
-                                <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editModal{{ sub['id'] }}" title="ویرایش اطلاعات مشتری">
-                                    <i class="fas fa-pen-to-square"></i>
-                                </button>
-
-                                <!-- دکمه تغییر وضعیت فعال/غیرفعال -->
+                            <div class="d-inline-flex align-items-center gap-1">
+                                <!-- ۱. دکمه سریع تغییر وضعیت فعال/غیرفعال -->
                                 <form method="POST" action="{{ url_for('reseller_toggle_user', sub_id=sub['id']) }}" class="d-inline" onsubmit="return confirm('آیا از تغییر وضعیت این مشتری اطمینان دارید؟')">
-                                    <button type="submit" class="btn {% if sub['status'] == 'active' %}btn-outline-secondary{% else %}btn-outline-success{% endif %}" title="{% if sub['status'] == 'active' %}غیرفعال‌سازی اکانت{% else %}فعال‌سازی مجدد اکانت{% endif %}">
+                                    <button type="submit" class="btn btn-sm {% if sub['status'] == 'active' %}btn-outline-secondary{% else %}btn-outline-success{% endif %} px-2" title="{% if sub['status'] == 'active' %}غیرفعال‌سازی سریع اکانت{% else %}فعال‌سازی سریع مجدد{% endif %}">
                                         <i class="fas {% if sub['status'] == 'active' %}fa-user-slash{% else %}fa-user-check{% endif %}"></i>
                                     </button>
                                 </form>
 
-                                <!-- دکمه کپی لینک ساب -->
-                                <button type="button" class="btn btn-outline-secondary" onclick="copyLink('{{ sub_url }}', 'لینک ساب')" title="کپی لینک ساب">
-                                    <i class="fas fa-link"></i>
-                                </button>
-
-                                <!-- دکمه کپی لینک تکی -->
-                                <button type="button" class="btn btn-outline-secondary" onclick="copyLink('{{ single_url }}', 'لینک تکی')" title="کپی لینک مستقیم تکی">
-                                    <i class="fas fa-bolt"></i>
-                                </button>
-
-                                <!-- دکمه حذف هوشمند -->
-                                <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{ sub['id'] }}" title="حذف مشتری و استرداد وجه طبق قوانین">
-                                    <i class="fas fa-trash-can"></i>
+                                <!-- ۲. دکمه اصلی و جامع: مدیریت، بارکدها و لینک‌ها -->
+                                <button type="button" class="btn btn-sm btn-primary d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" data-bs-toggle="modal" data-bs-target="#customerDetailModal{{ sub['id'] }}" title="مشاهده بارکدها، لینک‌های اتصال و مدیریت کامل اشتراک">
+                                    <i class="fas fa-qrcode"></i>
+                                    <span class="d-none d-md-inline">مدیریت و اتصال</span>
                                 </button>
                             </div>
                         </td>
@@ -249,7 +210,7 @@
                     {% endfor %}
                     {% if not subscriptions %}
                     <tr>
-                        <td colspan="8" class="text-center py-5 text-muted">
+                        <td colspan="9" class="text-center py-5 text-muted">
                             <i class="fas fa-users fs-2 d-block mb-2 opacity-50"></i>
                             هنوز اشتراکی در این بخش یافت نشد.
                         </td>
@@ -261,11 +222,206 @@
     </div>
 </div>
 
+<!-- ─── نوار ابزار شناور مدیریت گروهی مشتریان ─── -->
+<div class="bulk-actions-bar" id="resellerUsersBulkBar">
+    <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-primary rounded-pill fs-6 px-3 py-2">
+            <i class="fas fa-check-double me-1"></i> <span class="bulk-selected-count">0</span> مشتری انتخاب شد
+        </span>
+    </div>
+    <form id="resellerBulkForm" method="POST" action="{{ url_for('reseller_subscriptions_bulk') }}" class="d-flex align-items-center flex-wrap gap-2 m-0">
+        <input type="hidden" name="bulk_action" value="">
+        <input type="hidden" name="selected_ids_str" class="bulk-selected-ids-input" value="">
+        
+        <button type="button" class="btn btn-sm btn-outline-light" onclick="submitBulkAction('resellerBulkForm', 'disable', 'آیا از غیرفعال‌سازی موقت اشتراک‌های انتخاب شده اطمینان دارید؟')">
+            <i class="fas fa-user-slash me-1"></i> غیرفعال‌سازی
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-light" onclick="submitBulkAction('resellerBulkForm', 'enable', 'آیا از فعال‌سازی مجدد اشتراک‌های انتخاب شده اطمینان دارید؟')">
+            <i class="fas fa-user-check me-1"></i> فعال‌سازی
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-success" onclick="submitBulkAction('resellerBulkForm', 'clear_debt', 'آیا از تسویه بدهی تمام مشتریان انتخاب شده اطمینان دارید؟')">
+            <i class="fas fa-check-double me-1"></i> تسویه بدهی
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-info" onclick="submitBulkAction('resellerBulkForm', 'send_reminder', 'آیا از ارسال پیام یادآوری بدهی به تلگرام مشتریان انتخاب شده اطمینان دارید؟')">
+            <i class="fab fa-telegram me-1"></i> یادآوری تلگرام
+        </button>
+        <button type="button" class="btn btn-sm btn-danger" onclick="submitBulkAction('resellerBulkForm', 'delete', 'هشدار: آیا از حذف کامل اشتراک‌های انتخاب شده و استرداد وجه طبق قوانین اطمینان دارید؟')">
+            <i class="fas fa-trash-can me-1"></i> حذف گروهی
+        </button>
+    </form>
+</div>
+
 <!-- ═══════════════════════════════════════════════════════════════ -->
 <!-- ─── مودال‌های مدیریت مشتریان (کاملاً مستقل و خارج از جدول) ─── -->
 <!-- ═══════════════════════════════════════════════════════════════ -->
 {% for sub in subscriptions %}
 {% set ref = sub.get('refund_info') or {} %}
+{% set sub_url = panel_url + '/' + user_proxy + '/' + sub['hidify_uuid'] + '/' if sub['hidify_uuid'] else '' %}
+{% set single_url = sub|format_single_link(single_link_template) if sub['hidify_uuid'] else '' %}
+{% set is_debtor = (sub.get('payment_status') in ('unpaid', 'debtor') or (sub.get('debt_amount')|int or 0) > 0) %}
+
+<!-- ─── Modal جامع مدیریت مشتری و بارکدهای اتصال ─── -->
+<div class="modal fade text-start customer-manage-modal" id="customerDetailModal{{ sub['id'] }}" tabindex="-1" aria-labelledby="customerDetailModalLabel{{ sub['id'] }}" aria-hidden="true" data-sub-id="{{ sub['id'] }}" data-sub-url="{{ sub_url }}" data-single-url="{{ single_url }}">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-dark text-white py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <img src="{{ avatar_url(sub['phone_number'] or sub['account_name'] or 'Customer') }}" class="rounded-circle border shadow-sm" style="width: 42px; height: 42px; object-fit: cover;">
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0" id="customerDetailModalLabel{{ sub['id'] }}">
+                            {{ sub['account_name'] or 'بدون نام' }}
+                            {% if sub.get('is_vip') %}<span class="badge bg-warning text-dark ms-1"><i class="fas fa-crown"></i> VIP</span>{% endif %}
+                        </h5>
+                        <small class="text-muted font-monospace">شناسه: #{{ sub['id'] }} | پلن: {{ sub['plan_name'] }}</small>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    {% if sub.get('is_online') %}
+                        <span class="badge bg-success font-monospace"><span class="pulse-indicator"></span> آنلاین</span>
+                    {% elif sub['status'] == 'active' %}
+                        <span class="badge bg-light text-secondary font-monospace">آفلاین</span>
+                    {% else %}
+                        <span class="badge bg-danger font-monospace">غیرفعال</span>
+                    {% endif %}
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+            </div>
+            <div class="modal-body p-4">
+                <!-- بخش بارکدها و لینک‌های اتصال -->
+                <div class="row g-3 mb-4">
+                    <!-- ۱. لینک سابسکریپشن -->
+                    <div class="col-md-6 col-12">
+                        <div class="card h-100 border shadow-sm">
+                            <div class="card-header bg-primary bg-opacity-10 py-2 d-flex justify-content-between align-items-center">
+                                <span class="fw-bold text-primary small"><i class="fas fa-rss me-1"></i> لینک سابسکریپشن (هوشمند)</span>
+                                <span class="badge bg-primary">پیشنهادی</span>
+                            </div>
+                            <div class="card-body text-center p-3">
+                                <div class="p-2 bg-white rounded border d-inline-block shadow-sm mb-3">
+                                    <div id="subQr{{ sub['id'] }}" class="d-flex justify-content-center"></div>
+                                </div>
+                                <div class="input-group input-group-sm mb-2">
+                                    <input type="text" class="form-control text-center font-monospace" value="{{ sub_url }}" readonly id="subInput{{ sub['id'] }}" style="direction: ltr; font-size: 11px;">
+                                    <button class="btn btn-primary" onclick="copyLink('{{ sub_url }}', 'لینک ساب')"><i class="fas fa-copy"></i></button>
+                                </div>
+                                <div class="d-flex flex-wrap gap-1 justify-content-center">
+                                    {% if sub_url %}
+                                    <a href="hiddify://install-sub?url={{ sub_url|urlencode }}" class="btn btn-sm btn-outline-primary py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-rocket me-1"></i> Hiddify</a>
+                                    <a href="streisand://import/{{ sub_url|urlencode }}" class="btn btn-sm btn-outline-info py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-bolt me-1"></i> Streisand</a>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2 font-monospace" style="font-size: 11px;" onclick="downloadQrCode('subQr{{ sub['id'] }}', 'Sub_{{ sub['account_name'] }}.png')"><i class="fas fa-download me-1"></i> دانلود QR</button>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ۲. لینک مستقیم تکی -->
+                    <div class="col-md-6 col-12">
+                        <div class="card h-100 border shadow-sm">
+                            <div class="card-header bg-warning bg-opacity-10 py-2 d-flex justify-content-between align-items-center">
+                                <span class="fw-bold text-dark small"><i class="fas fa-bolt text-warning me-1"></i> لینک مستقیم تکی (Single Config)</span>
+                                <span class="badge bg-secondary">V2Ray / Clash</span>
+                            </div>
+                            <div class="card-body text-center p-3">
+                                <div class="p-2 bg-white rounded border d-inline-block shadow-sm mb-3">
+                                    <div id="singleQr{{ sub['id'] }}" class="d-flex justify-content-center"></div>
+                                </div>
+                                <div class="input-group input-group-sm mb-2">
+                                    <input type="text" class="form-control text-center font-monospace" value="{{ single_url }}" readonly id="singleInput{{ sub['id'] }}" style="direction: ltr; font-size: 11px;">
+                                    <button class="btn btn-warning" onclick="copyLink('{{ single_url }}', 'لینک تکی')"><i class="fas fa-copy"></i></button>
+                                </div>
+                                <div class="d-flex flex-wrap gap-1 justify-content-center">
+                                    {% if single_url %}
+                                    <button type="button" class="btn btn-sm btn-outline-warning py-1 px-2 font-monospace" style="font-size: 11px;" onclick="copyLink('{{ single_url }}', 'لینک مستقیم تکی')"><i class="fas fa-copy me-1"></i> کپی کانفیگ</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2 font-monospace" style="font-size: 11px;" onclick="downloadQrCode('singleQr{{ sub['id'] }}', 'Single_{{ sub['account_name'] }}.png')"><i class="fas fa-download me-1"></i> دانلود QR</button>
+                                    {% else %}
+                                    <small class="text-muted">لینک تکی در دسترس نیست</small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- بخش مشخصات فنی و تراز مصرف -->
+                <div class="card bg-light border-0 rounded-3 p-3 mb-4">
+                    <div class="row g-3 text-center">
+                        <div class="col-sm-3 col-6">
+                            <small class="text-muted d-block">حجم مصرفی</small>
+                            <strong class="font-monospace text-primary" dir="ltr">{{ "%.2f"|format(sub['data_used']|float or 0) }} / {{ "%.1f"|format(sub['data_limit']|float or 0) }} GB</strong>
+                        </div>
+                        <div class="col-sm-3 col-6">
+                            <small class="text-muted d-block">اعتبار باقی‌مانده</small>
+                            <strong class="font-monospace">{{ sub.get('remaining_days', sub['duration']) }} روز</strong>
+                        </div>
+                        <div class="col-sm-3 col-6">
+                            <small class="text-muted d-block">وضعیت مالی</small>
+                            {% if is_debtor %}
+                                <strong class="text-danger font-monospace">{{ "{:,}".format(sub.get('debt_amount')|int) }} ت بدهی</strong>
+                            {% else %}
+                                <strong class="text-success">تسویه شده</strong>
+                            {% endif %}
+                        </div>
+                        <div class="col-sm-3 col-6">
+                            <small class="text-muted d-block">تاریخ ایجاد</small>
+                            <strong class="font-monospace text-muted">{{ sub['created_at'][:10] if sub['created_at'] else '-' }}</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- بخش دکمه‌های مدیریتی -->
+                <h6 class="fw-bold mb-3"><i class="fas fa-gears text-primary me-2"></i>عملیات و مدیریت اشتراک</h6>
+                <div class="d-flex flex-wrap gap-2">
+                    <!-- دکمه تمدید -->
+                    <button type="button" class="btn btn-outline-success flex-grow-1 py-2" data-bs-toggle="modal" data-bs-target="#renewModal{{ sub['id'] }}">
+                        <i class="fas fa-arrows-rotate me-1"></i> تمدید اشتراک
+                    </button>
+                    <!-- دکمه ویرایش -->
+                    <button type="button" class="btn btn-outline-primary flex-grow-1 py-2" data-bs-toggle="modal" data-bs-target="#editModal{{ sub['id'] }}">
+                        <i class="fas fa-pen-to-square me-1"></i> ویرایش مشخصات
+                    </button>
+                    <!-- دکمه تغییر حجم -->
+                    <button type="button" class="btn btn-outline-warning flex-grow-1 py-2" data-bs-toggle="modal" data-bs-target="#requestChangeModal{{ sub['id'] }}">
+                        <i class="fas fa-sliders me-1"></i> درخواست تغییر حجم/مدت
+                    </button>
+                    <!-- دکمه سوابق -->
+                    <button type="button" class="btn btn-outline-info flex-grow-1 py-2" onclick="openSubscriptionHistory({{ sub['id'] }}, '{{ sub['account_name'] }}')">
+                        <i class="fas fa-history me-1"></i> سوابق دوره‌ها
+                    </button>
+                    <!-- تسویه بدهی -->
+                    {% if is_debtor %}
+                    <form method="POST" action="{{ url_for('reseller_subscription_clear_debt', sub_id=sub['id']) }}" class="d-inline flex-grow-1" onsubmit="return confirm('آیا از تسویه کامل بدهی این مشتری اطمینان دارید؟');">
+                        <button type="submit" class="btn btn-success w-100 py-2">
+                            <i class="fas fa-check-double me-1"></i> تسویه کامل بدهی
+                        </button>
+                    </form>
+                    {% if sub.get('telegram_id') and sub['telegram_id'] > 0 %}
+                    <form method="POST" action="{{ url_for('subscription_send_debt_reminder', sub_id=sub['id']) }}" class="d-inline flex-grow-1" onsubmit="return confirm('آیا از ارسال پیام یادآوری بدهی به تلگرام این کاربر اطمینان دارید؟');">
+                        <button type="submit" class="btn btn-outline-danger w-100 py-2">
+                            <i class="fab fa-telegram me-1"></i> یادآوری بدهی تلگرام
+                        </button>
+                    </form>
+                    {% endif %}
+                    {% endif %}
+                    <!-- تغییر وضعیت فعال/غیرفعال -->
+                    <form method="POST" action="{{ url_for('reseller_toggle_user', sub_id=sub['id']) }}" class="d-inline flex-grow-1" onsubmit="return confirm('آیا از تغییر وضعیت این مشتری اطمینان دارید؟')">
+                        <button type="submit" class="btn {% if sub['status'] == 'active' %}btn-outline-secondary{% else %}btn-outline-success{% endif %} w-100 py-2">
+                            <i class="fas {% if sub['status'] == 'active' %}fa-user-slash{% else %}fa-user-check{% endif %} me-1"></i>
+                            {{ 'غیرفعال‌سازی اکانت' if sub['status'] == 'active' else 'فعال‌سازی مجدد' }}
+                        </button>
+                    </form>
+                    <!-- حذف -->
+                    <button type="button" class="btn btn-outline-danger flex-grow-1 py-2" data-bs-toggle="modal" data-bs-target="#deleteModal{{ sub['id'] }}">
+                        <i class="fas fa-trash-can me-1"></i> حذف و استرداد وجه
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer py-2 bg-light">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">بستن</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- ─── ۱. Modal تمدید اشتراک ─── -->
 <div class="modal fade text-start" id="renewModal{{ sub['id'] }}" tabindex="-1" aria-labelledby="renewModalLabel{{ sub['id'] }}" aria-hidden="true">
@@ -757,5 +913,56 @@ function openSubscriptionHistory(subId, accountName) {
             body.innerHTML = '<div class="alert alert-danger">خطا در بارگذاری اطلاعات: ' + err + '</div>';
         });
 }
+
+function downloadQrCode(elementId, filename) {
+    const container = document.getElementById(elementId);
+    if (!container) return;
+    const img = container.querySelector('img');
+    const canvas = container.querySelector('canvas');
+    let dataUrl = '';
+    if (img && img.src) {
+        dataUrl = img.src;
+    } else if (canvas) {
+        dataUrl = canvas.toDataURL('image/png');
+    }
+    if (dataUrl) {
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = filename || ('qrcode_' + Date.now() + '.png');
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.customer-manage-modal').forEach(modalEl => {
+        modalEl.addEventListener('shown.bs.modal', function () {
+            const subId = this.getAttribute('data-sub-id');
+            const subUrl = this.getAttribute('data-sub-url');
+            const singleUrl = this.getAttribute('data-single-url');
+
+            const subContainer = document.getElementById('subQr' + subId);
+            if (subContainer && !subContainer.hasChildNodes() && subUrl) {
+                new QRCode(subContainer, {
+                    text: subUrl,
+                    width: 140,
+                    height: 140,
+                    correctLevel: QRCode.CorrectLevel.M
+                });
+            }
+
+            const singleContainer = document.getElementById('singleQr' + subId);
+            if (singleContainer && !singleContainer.hasChildNodes() && singleUrl) {
+                new QRCode(singleContainer, {
+                    text: singleUrl,
+                    width: 140,
+                    height: 140,
+                    correctLevel: QRCode.CorrectLevel.M
+                });
+            }
+        });
+    });
+});
 </script>
 {% endblock %}

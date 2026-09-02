@@ -694,6 +694,55 @@
             animation: pulseAlert 2s infinite;
         }
 
+        /* ─── نوار ابزار شناور مدیریت گروهی (Bulk Actions Toolbar) ─── */
+        .bulk-actions-bar {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(120px);
+            z-index: 1040;
+            background: rgba(15, 23, 42, 0.94);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 50rem;
+            padding: 8px 18px;
+            box-shadow: 0 14px 35px rgba(0, 0, 0, 0.45);
+            transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+            opacity: 0;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            max-width: 95vw;
+        }
+        .bulk-actions-bar.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+            pointer-events: auto;
+        }
+        [data-bs-theme="dark"] .bulk-actions-bar {
+            background: rgba(30, 41, 59, 0.95);
+            border-color: rgba(255, 255, 255, 0.12);
+        }
+        @media (max-width: 768px) {
+            .bulk-actions-bar {
+                bottom: 14px;
+                border-radius: 16px;
+                padding: 10px 14px;
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 8px;
+            }
+        }
+        tr.table-active-row-selected {
+            background-color: rgba(59, 130, 246, 0.08) !important;
+        }
+        [data-bs-theme="dark"] tr.table-active-row-selected {
+            background-color: rgba(59, 130, 246, 0.16) !important;
+        }
+
         .table-responsive {
             -webkit-overflow-scrolling: touch;
             border-radius: 10px;
@@ -927,7 +976,7 @@
                 <div class="nav-category">اصلی و عملیات</div>
                 {% if has_permission('dashboard') %}
                 <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
-                    <i class="fas fa-gauge-high"></i> داشبورد اصلی
+                    <i class="fas fa-chart-pie" style="color: #6366f1;"></i> داشبورد اصلی
                 </a>
                 {% endif %}
 
@@ -939,14 +988,14 @@
 
                 {% if has_permission('payments_view') %}
                 <a class="nav-link {% if request.endpoint == 'payments' %}active{% endif %}" href="{{ url_for('payments') }}">
-                    <i class="fas fa-receipt"></i> پرداخت‌ها و تایید فیش
+                    <i class="fas fa-receipt text-warning"></i> پرداخت‌ها و تایید فیش
                     <span id="sidebarPendingBadge" class="badge bg-danger ms-auto rounded-pill" style="display: none; font-size: 0.75rem;">0</span>
                 </a>
                 {% endif %}
 
                 {% if has_permission('users_view') %}
                 <a class="nav-link {% if request.endpoint == 'users' %}active{% endif %}" href="{{ url_for('users') }}">
-                    <i class="fas fa-users"></i> کاربران تلگرام
+                    <i class="fas fa-users" style="color: #3b82f6;"></i> کاربران تلگرام
                 </a>
                 <a class="nav-link {% if request.endpoint == 'vip_settings' %}active{% endif %}" href="{{ url_for('vip_settings') }}">
                     <i class="fas fa-crown text-warning"></i> مشتریان پرمیوم (VIP)
@@ -955,13 +1004,13 @@
 
                 {% if has_permission('subscriptions_view') %}
                 <a class="nav-link {% if request.endpoint == 'subscriptions' %}active{% endif %}" href="{{ url_for('subscriptions') }}">
-                    <i class="fas fa-key"></i> اشتراک‌های هیدیفای
+                    <i class="fas fa-key" style="color: #ec4899;"></i> اشتراک‌های هیدیفای
                 </a>
                 {% endif %}
 
                 {% if has_permission('plans') %}
                 <a class="nav-link {% if request.endpoint == 'admin_plans_page' %}active{% endif %}" href="{{ url_for('admin_plans_page') }}">
-                    <i class="fas fa-box-open"></i> پلن‌های فروش
+                    <i class="fas fa-layer-group text-info"></i> پلن‌های فروش
                 </a>
                 {% endif %}
 
@@ -971,7 +1020,7 @@
 
                 {% if has_permission('manage_resellers') %}
                 <a class="nav-link {% if request.endpoint == 'admin_resellers' %}active{% endif %}" href="{{ url_for('admin_resellers') }}">
-                    <i class="fas fa-handshake"></i> نمایندگان فروش (Resellers)
+                    <i class="fas fa-handshake" style="color: #8b5cf6;"></i> نمایندگان فروش (Resellers)
                 </a>
                 <a class="nav-link {% if request.endpoint == 'admin_reseller_affiliates' %}active{% endif %}" href="{{ url_for('admin_reseller_affiliates') }}">
                     <i class="fas fa-network-wired text-warning"></i> زیرمجموعه‌گیری همکاران
@@ -980,19 +1029,19 @@
 
                 {% if has_permission('broadcast') %}
                 <a class="nav-link {% if request.endpoint == 'broadcast' %}active{% endif %}" href="{{ url_for('broadcast') }}">
-                    <i class="fas fa-bullhorn"></i> پیام همگانی (Broadcast)
+                    <i class="fas fa-bullhorn" style="color: #f97316;"></i> پیام همگانی (Broadcast)
                 </a>
                 {% endif %}
 
                 {% if has_permission('discounts') %}
                 <a class="nav-link {% if request.endpoint == 'admin_discounts_page' %}active{% endif %}" href="{{ url_for('admin_discounts_page') }}">
-                    <i class="fas fa-tags"></i> کدهای تخفیف
+                    <i class="fas fa-ticket text-danger"></i> کدهای تخفیف
                 </a>
                 {% endif %}
 
                 {% if has_permission('tickets') %}
                 <a class="nav-link {% if request.endpoint == 'tickets' %}active{% endif %}" href="{{ url_for('tickets') }}">
-                    <i class="fas fa-headset"></i> تیکت‌های پشتیبانی
+                    <i class="fas fa-headset text-info"></i> تیکت‌های پشتیبانی
                     <span id="sidebarTicketsBadge" class="badge bg-warning text-dark ms-auto rounded-pill" style="display: none; font-size: 0.75rem;">0</span>
                 </a>
                 {% endif %}
@@ -1000,47 +1049,47 @@
                 <div class="nav-category">سیستم و حسابداری</div>
                 {% if has_permission('cards') %}
                 <a class="nav-link {% if request.endpoint == 'cards' %}active{% endif %}" href="{{ url_for('cards') }}">
-                    <i class="fas fa-credit-card text-primary"></i> روش‌ها و تنظیمات پرداخت
+                    <i class="fas fa-credit-card text-success"></i> روش‌ها و تنظیمات پرداخت
                 </a>
                 {% endif %}
 
                 {% if has_permission('reports') %}
                 <a class="nav-link {% if request.endpoint == 'reports' %}active{% endif %}" href="{{ url_for('reports') }}">
-                    <i class="fas fa-chart-line"></i> گزارشات و هوش مالی
+                    <i class="fas fa-chart-line" style="color: #10b981;"></i> گزارشات و هوش مالی
                 </a>
                 {% endif %}
 
                 {% if has_permission('accounting') %}
                 <a class="nav-link {% if request.endpoint == 'accounting' %}active{% endif %}" href="{{ url_for('accounting') }}">
-                    <i class="fas fa-file-invoice-dollar"></i> حسابداری و تراز سود
+                    <i class="fas fa-file-invoice-dollar text-primary"></i> حسابداری و تراز سود
                 </a>
                 {% endif %}
 
                 {% if session.get('admin_role') == 'super_admin' %}
                 <a class="nav-link {% if request.endpoint == 'admin_managers' %}active{% endif %}" href="{{ url_for('admin_managers') }}">
-                    <i class="fas fa-user-shield"></i> مدیران و دسترسی‌ها
+                    <i class="fas fa-users-gear" style="color: #8b5cf6;"></i> مدیران و دسترسی‌ها
                 </a>
                 {% endif %}
 
                 <a class="nav-link {% if request.endpoint == 'admin_profile' %}active{% endif %}" href="{{ url_for('admin_profile') }}">
-                    <i class="fas fa-user-gear"></i> حساب کاربری من
+                    <i class="fas fa-user-gear" style="color: #64748b;"></i> حساب کاربری من
                 </a>
 
                 {% if has_permission('servers_view') %}
                 <a class="nav-link {% if request.endpoint == 'admin_logs' %}active{% endif %}" href="{{ url_for('admin_logs') }}">
-                    <i class="fas fa-terminal"></i> وضعیت سرور و لاگ‌ها
+                    <i class="fas fa-terminal" style="color: #06b6d4;"></i> وضعیت سرور و لاگ‌ها
                 </a>
                 {% endif %}
 
                 {% if session.get('admin_role') == 'super_admin' or has_permission('settings_manage') %}
                 <a class="nav-link {% if request.endpoint in ['bot_menu_settings', 'admin_bot_settings'] %}active{% endif %}" href="{{ url_for('bot_menu_settings') }}">
-                    <i class="fas fa-th-large text-primary"></i> چیدمان دکمه‌های ربات
+                    <i class="fas fa-robot text-primary"></i> چیدمان دکمه‌های ربات
                 </a>
                 {% endif %}
 
                 {% if session.get('admin_role') == 'super_admin' %}
                 <a class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">
-                    <i class="fas fa-sliders"></i> تنظیمات
+                    <i class="fas fa-sliders" style="color: #94a3b8;"></i> تنظیمات سیستم
                 </a>
                 {% endif %}
             {% endif %}
@@ -1668,12 +1717,91 @@
             });
         }
 
+        // ─── سیستم سراسری مدیریت گروهی (Universal Bulk Actions) ───
+        function initUniversalBulkActions() {
+            document.querySelectorAll('.bulk-table').forEach(table => {
+                const selectAllCb = table.querySelector('.bulk-select-all');
+                const rowCbs = table.querySelectorAll('.bulk-select-row');
+                const barId = table.getAttribute('data-bulk-bar');
+                const bulkBar = barId ? document.getElementById(barId) : document.querySelector('.bulk-actions-bar');
+                const countSpan = bulkBar ? bulkBar.querySelector('.bulk-selected-count') : null;
+                const hiddenInput = bulkBar ? bulkBar.querySelector('.bulk-selected-ids-input') : null;
+
+                function updateState() {
+                    const checkedBoxes = Array.from(table.querySelectorAll('.bulk-select-row:checked'));
+                    const count = checkedBoxes.length;
+                    const ids = checkedBoxes.map(cb => cb.value);
+
+                    if (countSpan) countSpan.innerText = count;
+                    if (hiddenInput) hiddenInput.value = ids.join(',');
+
+                    // هایلایت ردیف‌های انتخاب شده
+                    rowCbs.forEach(cb => {
+                        const tr = cb.closest('tr');
+                        if (tr) {
+                            if (cb.checked) tr.classList.add('table-active-row-selected');
+                            else tr.classList.remove('table-active-row-selected');
+                        }
+                    });
+
+                    if (bulkBar) {
+                        if (count > 0) {
+                            bulkBar.classList.add('show');
+                        } else {
+                            bulkBar.classList.remove('show');
+                        }
+                    }
+
+                    if (selectAllCb) {
+                        const totalRows = table.querySelectorAll('.bulk-select-row').length;
+                        selectAllCb.checked = (count > 0 && count === totalRows);
+                        selectAllCb.indeterminate = (count > 0 && count < totalRows);
+                    }
+                }
+
+                if (selectAllCb) {
+                    selectAllCb.addEventListener('change', function() {
+                        rowCbs.forEach(cb => {
+                            const tr = cb.closest('tr');
+                            if (!tr || tr.style.display !== 'none') {
+                                cb.checked = selectAllCb.checked;
+                            }
+                        });
+                        updateState();
+                    });
+                }
+
+                rowCbs.forEach(cb => {
+                    cb.addEventListener('change', updateState);
+                });
+            });
+        }
+
+        function submitBulkAction(formId, actionName, confirmMsg) {
+            const form = document.getElementById(formId);
+            if (!form) return false;
+            const hiddenIds = form.querySelector('.bulk-selected-ids-input');
+            if (!hiddenIds || !hiddenIds.value) {
+                alert('لطفاً حداقل یک مورد را انتخاب کنید.');
+                return false;
+            }
+            if (confirmMsg && !confirm(confirmMsg)) {
+                return false;
+            }
+            const actionInput = form.querySelector('input[name="bulk_action"]');
+            if (actionInput) actionInput.value = actionName;
+            form.submit();
+            return true;
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             initTableSearch();
             initUniversalTableSorting();
+            initUniversalBulkActions();
         });
         initTableSearch();
         initUniversalTableSorting();
+        initUniversalBulkActions();
     </script>
     {% block scripts %}{% endblock %}
 </body>
