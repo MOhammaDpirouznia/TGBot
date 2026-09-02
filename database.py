@@ -834,12 +834,41 @@ class Database:
         for col_def in [
             "parent_reseller_id INTEGER DEFAULT NULL",
             "affiliate_commission_percent REAL DEFAULT NULL",
-            "referral_code TEXT"
+            "referral_code TEXT",
+            "credit_enabled INTEGER DEFAULT 0",
+            "credit_limit INTEGER DEFAULT 0",
+            "credit_debt INTEGER DEFAULT 0"
         ]:
             try:
                 cursor.execute(f"ALTER TABLE resellers ADD COLUMN {col_def}")
             except Exception:
                 pass
+
+        # ستون‌های شخصی‌سازی حجم و مدت در پلن‌های نماینده
+        for col_def in [
+            "custom_data_limit REAL DEFAULT NULL",
+            "custom_duration INTEGER DEFAULT NULL"
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE reseller_plans ADD COLUMN {col_def}")
+            except Exception:
+                pass
+
+        # ستون‌های پرمیوم و خرید اعتباری اشتراک‌ها و کاربران
+        for col_def in [
+            "is_vip INTEGER DEFAULT 0",
+            "is_credit INTEGER DEFAULT 0",
+            "credit_debt_amount INTEGER DEFAULT 0"
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE subscriptions ADD COLUMN {col_def}")
+            except Exception:
+                pass
+
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN is_vip INTEGER DEFAULT 0")
+        except Exception:
+            pass
 
         # جدول تراکنش‌های پورسانت زیرمجموعه‌گیری نمایندگان
         cursor.execute("""
@@ -5295,25 +5324,106 @@ class Database:
         finally:
             conn.close()
 
-    def deduct_reseller_balance(self, reseller_id: int, amount: int, plan_name: str, account_name: str):
-        """کسر موجودی نماینده هنگام خرید اکانت"""
+    def deduct_reseller_balance(self, reseller_id: int, amount: int, plan_name: str, account_name: str, description: str = "خرید اشتراک برای مشتری"):
+        """کسر موجودی نقدی یا استفاده از اعتبار مجاز نماینده هنگام خرید اکانت"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
-            cursor.execute("SELECT balance FROM resellers WHERE id=?", (reseller_id,))
+            cursor.execute("SELECT balance, credit_limit, credit_debt, credit_enabled FROM resellers WHERE id=?", (reseller_id,))
             row = cursor.fetchone()
-            if not row or row["balance"] < amount:
-                return {"success": False, "error": "موجودی کیف پول نماینده کافی نیست."}
+            if not row:
+                return {"success": False, "error": "نماینده یافت نشد."}
 
-            cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (amount, now, reseller_id))
+            balance = row["balance"] or 0
+            credit_limit = row["credit_limit"] or 0
+            credit_debt = row["credit_debt"] or 0
+            credit_enabled = bool(row["credit_enabled"])
+            available_credit = max(0, credit_limit - credit_debt) if credit_enabled else 0
+
+            total_available = balance + available_credit
+            if total_available < amount:
+                return {
+                    "success": False, 
+                    "error": f"موجودی و اعتبار کافی نیست! موجودی: {balance:,} تومان | اعتبار باقیمانده: {available_credit:,} تومان | مبلغ کل: {amount:,} تومان"
+                }
+
+            is_credit = False
+            credit_used = 0
+
+            if balance >= amount:
+                # کسر کامل از کیف پول نقدی
+                cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (amount, now, reseller_id))
+                cursor.execute("""
+                    INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
+                    VALUES (?, 'purchase', ?, ?, ?, ?, ?)
+                """, (reseller_id, amount, plan_name, account_name, description, now))
+            else:
+                # استفاده از کل موجودی نقدی و تامین باقیمانده از اعتبار
+                credit_used = amount - balance
+                cursor.execute("""
+                    UPDATE resellers SET 
+                        balance = 0, 
+                        credit_debt = credit_debt + ?, 
+                        updated_at = ? 
+                    WHERE id = ?
+                """, (credit_used, now, reseller_id))
+
+                desc_text = f"{description} (خرید اعتباری: {credit_used:,} تومان بدهی)"
+                cursor.execute("""
+                    INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
+                    VALUES (?, 'purchase_credit', ?, ?, ?, ?, ?)
+                """, (reseller_id, amount, plan_name, account_name, desc_text, now))
+                is_credit = True
+
+            conn.commit()
+            return {"success": True, "is_credit": is_credit, "credit_used": credit_used}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def settle_reseller_debt(self, reseller_id: int, amount: int, description: str = "تسویه بدهی اعتباری", settled_by: str = "مدیر ارشد") -> dict:
+        """ثبت تسویه حساب بدهی اعتباری نماینده توسط مدیریت"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT credit_debt, name, username FROM resellers WHERE id=?", (reseller_id,))
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "error": "نماینده یافت نشد."}
+
+            current_debt = row["credit_debt"] or 0
+            if amount <= 0:
+                return {"success": False, "error": "مبلغ تسویه باید بزرگتر از صفر باشد."}
+
+            new_debt = max(0, current_debt - amount)
+            cursor.execute("UPDATE resellers SET credit_debt = ?, updated_at = ? WHERE id = ?", (new_debt, now, reseller_id))
+
             cursor.execute("""
                 INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
-                VALUES (?, 'purchase', ?, ?, ?, 'خرید اشتراک برای مشتری', ?)
-            """, (reseller_id, amount, plan_name, account_name, now))
+                VALUES (?, 'settle_debt', ?, 'تسویه بدهی', ?, ?, ?)
+            """, (reseller_id, amount, row["username"], f"{description} توسط {settled_by}", now))
+
+            # ثبت سند درآمدی تسویه در سیستم حسابداری
+            try:
+                self.add_accounting_record(
+                    type="income",
+                    category="شارژ نماینده",
+                    title=f"تسویه بدهی اعتباری نماینده {row['name']}",
+                    amount=amount,
+                    source="reseller_debt_settle",
+                    description=f"{description} (مانده بدهی جدید: {new_debt:,} تومان)",
+                    date=now[:10]
+                )
+            except Exception:
+                pass
+
             conn.commit()
-            return {"success": True}
+            return {"success": True, "remaining_debt": new_debt}
         except Exception as e:
+            logger.error(f"Error settling reseller debt: {e}")
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
@@ -7760,7 +7870,7 @@ class Database:
     # ─── مدیریت پلن‌های اختصاصی نمایندگان (Reseller Custom Plans) ───
 
     def get_reseller_plans(self, reseller_id: int) -> List[dict]:
-        """دریافت لیست تمام پلن‌های مادر با اعمال شخصی‌سازی‌ها و قیمت‌های سفارشی نماینده"""
+        """دریافت لیست تمام پلن‌های مادر با اعمال شخصی‌سازی‌ها، حجم، مدت و قیمت‌های سفارشی نماینده"""
         from admin_manager import load_plans
         master_plans = load_plans()
         reseller = self.get_reseller(reseller_id) or {}
@@ -7770,11 +7880,16 @@ class Database:
         cursor = conn.cursor()
         overrides = {}
         try:
-            cursor.execute("SELECT plan_id, custom_name, custom_price, is_active FROM reseller_plans WHERE reseller_id = ?", (reseller_id,))
+            cursor.execute("""
+                SELECT plan_id, custom_name, custom_price, custom_data_limit, custom_duration, is_active 
+                FROM reseller_plans WHERE reseller_id = ?
+            """, (reseller_id,))
             for row in cursor.fetchall():
                 overrides[row["plan_id"]] = {
                     "custom_name": row["custom_name"],
                     "custom_price": row["custom_price"],
+                    "custom_data_limit": row["custom_data_limit"],
+                    "custom_duration": row["custom_duration"],
                     "is_active": bool(row["is_active"])
                 }
         except Exception as e:
@@ -7787,15 +7902,25 @@ class Database:
             ov = overrides.get(pid, {})
             custom_name = ov.get("custom_name") or ""
             custom_price = ov.get("custom_price")
+            custom_data_limit = ov.get("custom_data_limit")
+            custom_duration = ov.get("custom_duration")
             is_active_override = ov.get("is_active")
 
             master_price = p.get("price", 0)
             display_price = custom_price if (custom_price is not None and custom_price > 0) else master_price
             display_name = custom_name if custom_name else p.get("name", "پلن")
+            
+            master_data_limit = p.get("data_limit", 0)
+            display_data_limit = custom_data_limit if (custom_data_limit is not None and custom_data_limit >= 0) else master_data_limit
+
+            master_duration = p.get("duration", 30)
+            display_duration = custom_duration if (custom_duration is not None and custom_duration > 0) else master_duration
+
             is_active = is_active_override if is_active_override is not None else p.get("is_active", True)
             
-            # قیمت تمام‌شده عمده برای نماینده
-            wholesale_price = int(master_price * (100 - discount_pct) / 100)
+            # قیمت تمام‌شده عمده برای نماینده بر اساس قیمت پلن اصلی یا سفارشی
+            base_calc_price = custom_price if (custom_price is not None and custom_price > 0) else master_price
+            wholesale_price = int(base_calc_price * (100 - discount_pct) / 100)
 
             result.append({
                 "plan_id": pid,
@@ -7806,8 +7931,14 @@ class Database:
                 "display_price": display_price,
                 "custom_price": custom_price,
                 "wholesale_price": wholesale_price,
-                "data_limit": p.get("data_limit", 0),
-                "duration": p.get("duration", 30),
+                "master_data_limit": master_data_limit,
+                "display_data_limit": display_data_limit,
+                "data_limit": display_data_limit,
+                "custom_data_limit": custom_data_limit,
+                "master_duration": master_duration,
+                "display_duration": display_duration,
+                "duration": display_duration,
+                "custom_duration": custom_duration,
                 "description": p.get("description", ""),
                 "is_active": is_active,
                 "master_is_active": p.get("is_active", True)
@@ -7828,25 +7959,29 @@ class Database:
                 return p
         return None
 
-    def update_reseller_plan_override(self, reseller_id: int, plan_id: str, custom_name: str = None, custom_price: int = None, is_active: bool = True) -> dict:
-        """بروزرسانی یا ثبت تنظیمات اختصاصی نماینده برای یک پلن"""
+    def update_reseller_plan_override(self, reseller_id: int, plan_id: str, custom_name: str = None, custom_price: int = None, custom_data_limit: float = None, custom_duration: int = None, is_active: bool = True) -> dict:
+        """بروزرسانی یا ثبت تنظیمات اختصاصی نماینده برای یک پلن (نام، قیمت، حجم، مدت، وضعیت)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
             cursor.execute("""
-                INSERT INTO reseller_plans (reseller_id, plan_id, custom_name, custom_price, is_active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO reseller_plans (reseller_id, plan_id, custom_name, custom_price, custom_data_limit, custom_duration, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(reseller_id, plan_id) DO UPDATE SET
                     custom_name = excluded.custom_name,
                     custom_price = excluded.custom_price,
+                    custom_data_limit = excluded.custom_data_limit,
+                    custom_duration = excluded.custom_duration,
                     is_active = excluded.is_active,
                     updated_at = excluded.updated_at
             """, (
                 reseller_id, 
                 plan_id, 
                 custom_name.strip() if custom_name else None, 
-                custom_price if (custom_price and custom_price > 0) else None, 
+                custom_price if (custom_price is not None and custom_price > 0) else None, 
+                custom_data_limit if (custom_data_limit is not None and custom_data_limit >= 0) else None,
+                custom_duration if (custom_duration is not None and custom_duration > 0) else None,
                 1 if is_active else 0, 
                 now, 
                 now
@@ -7873,9 +8008,211 @@ class Database:
         finally:
             conn.close()
 
+    def get_monthly_accounting_audit(self, reseller_id: int = None, days: int = 30) -> dict:
+        """
+        گزارش جامع گردش حساب و حسابرسی ۳۰ روز اخیر با جزئیات سود، فروش نقدی/اعتباری،
+        ترافیک واگذار شده، تعداد اشتراک‌ها و ریز تراکنش‌ها به همراه خروجی تفکیکی
+        """
+        from datetime import datetime, timedelta
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now_dt = get_now_naive()
+        start_dt = now_dt - timedelta(days=days)
+        start_iso = start_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+        audit = {
+            "days": days,
+            "start_date": start_iso,
+            "end_date": now_dt.strftime("%Y-%m-%d %H:%M:%S"),
+            "total_revenue": 0,
+            "cash_revenue": 0,
+            "credit_revenue": 0,
+            "total_expenses": 0,
+            "net_profit": 0,
+            "total_gb_sold": 0.0,
+            "total_subs_count": 0,
+            "new_subs_count": 0,
+            "renew_subs_count": 0,
+            "total_outstanding_debt": 0,
+            "transactions": [],
+            "daily_turnover": {}
+        }
+
+        try:
+            # ۱. استخراج تراکنش‌های تایید شده در بازه زمانی
+            if reseller_id:
+                cursor.execute("""
+                    SELECT * FROM transactions 
+                    WHERE reseller_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)
+                      AND status IN ('approved', 'completed')
+                      AND created_at >= ?
+                    ORDER BY created_at DESC
+                """, (reseller_id, start_iso))
+            else:
+                cursor.execute("""
+                    SELECT * FROM transactions 
+                    WHERE (is_deleted = 0 OR is_deleted IS NULL)
+                      AND status IN ('approved', 'completed')
+                      AND created_at >= ?
+                    ORDER BY created_at DESC
+                """, (start_iso,))
+            
+            tx_rows = cursor.fetchall()
+            for r in tx_rows:
+                r_dict = dict(r)
+                amount = int(r_dict.get("amount") or 0)
+                audit["total_revenue"] += amount
+                
+                is_credit_tx = bool(r_dict.get("gateway") == "credit" or "credit" in str(r_dict.get("order_id", "")).lower() or "اعتباری" in str(r_dict.get("tracking_code", "")))
+                if is_credit_tx:
+                    audit["credit_revenue"] += amount
+                else:
+                    audit["cash_revenue"] += amount
+
+                if r_dict.get("is_renewal"):
+                    audit["renew_subs_count"] += 1
+                else:
+                    audit["new_subs_count"] += 1
+
+                c_date = str(r_dict.get("created_at", ""))[:10]
+                if c_date:
+                    if c_date not in audit["daily_turnover"]:
+                        audit["daily_turnover"][c_date] = {"date": c_date, "income": 0, "expense": 0, "count": 0}
+                    audit["daily_turnover"][c_date]["income"] += amount
+                    audit["daily_turnover"][c_date]["count"] += 1
+
+                audit["transactions"].append(r_dict)
+
+            # ۲. اشتراک‌های ایجاد شده در بازه زمانی جهت محاسبه حجم کل GB
+            if reseller_id:
+                cursor.execute("""
+                    SELECT data_limit, cost_paid, is_credit, created_at 
+                    FROM subscriptions 
+                    WHERE reseller_id = ? AND created_at >= ?
+                """, (reseller_id, start_iso))
+            else:
+                cursor.execute("""
+                    SELECT data_limit, cost_paid, is_credit, created_at 
+                    FROM subscriptions 
+                    WHERE created_at >= ?
+                """, (start_iso,))
+            
+            sub_rows = cursor.fetchall()
+            audit["total_subs_count"] = len(sub_rows)
+            for s in sub_rows:
+                audit["total_gb_sold"] += float(s["data_limit"] or 0)
+
+            # ۳. محاسبه هزینه‌ها و بدهی‌ها
+            if not reseller_id:
+                cursor.execute("""
+                    SELECT SUM(amount) FROM accounting_records 
+                    WHERE type = 'expense' AND (date >= ? OR created_at >= ?)
+                """, (start_iso[:10], start_iso))
+                exp_row = cursor.fetchone()
+                audit["total_expenses"] = exp_row[0] if (exp_row and exp_row[0]) else 0
+                
+                cursor.execute("SELECT SUM(credit_debt) FROM resellers WHERE credit_debt > 0")
+                debt_row = cursor.fetchone()
+                audit["total_outstanding_debt"] = debt_row[0] if (debt_row and debt_row[0]) else 0
+            else:
+                res_row = self.get_reseller(reseller_id)
+                if res_row:
+                    audit["total_outstanding_debt"] = res_row.get("credit_debt", 0)
+                    discount = res_row.get("discount_percent", 20)
+                    audit["total_expenses"] = int(audit["total_revenue"] * (100 - discount) / 100)
+
+            audit["net_profit"] = max(0, audit["total_revenue"] - audit["total_expenses"])
+        except Exception as e:
+            logger.error(f"Error calculating monthly accounting audit: {e}")
+        finally:
+            conn.close()
+
+        return audit
+
+    def get_customers_ticket_status_map(self, reseller_id: int = None) -> dict:
+        """نقشه سریع وضعیت تیکت‌های کاربران و مشتریان (باز، در انتظار، بسته)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        result = {}
+        try:
+            query = "SELECT id, telegram_id, status, created_at FROM support_tickets WHERE 1=1"
+            params = []
+            if reseller_id:
+                query += " AND (reseller_id = ? OR reseller_id = 0 OR reseller_id IS NULL)"
+                params.append(reseller_id)
+            query += " ORDER BY id DESC"
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            for r in rows:
+                tg_id = r["telegram_id"]
+                if not tg_id:
+                    continue
+                if tg_id not in result:
+                    result[tg_id] = {
+                        "has_open": False,
+                        "has_pending": False,
+                        "has_closed": False,
+                        "latest_ticket_id": r["id"],
+                        "latest_status": r["status"]
+                    }
+                st = str(r["status"]).lower()
+                if st == "open":
+                    result[tg_id]["has_open"] = True
+                elif st in ("pending", "in_progress", "replied", "waiting"):
+                    result[tg_id]["has_pending"] = True
+                elif st in ("closed", "resolved"):
+                    result[tg_id]["has_closed"] = True
+        except Exception as e:
+            logger.error(f"Error getting ticket status map: {e}")
+        finally:
+            conn.close()
+        return result
+
+    def add_subscription_traffic(self, sub_id: int, extra_gb: float) -> dict:
+        """افزایش دستی حجم اشتراک در دیتابیس و پنل هیدیفای"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,))
+            sub = cursor.fetchone()
+            if not sub:
+                return {"success": False, "error": "اشتراک یافت نشد."}
+            
+            old_limit = float(sub["data_limit"] or 0)
+            new_limit = round(old_limit + extra_gb, 2)
+            
+            cursor.execute("UPDATE subscriptions SET data_limit = ?, updated_at = ? WHERE id = ?", (new_limit, now, sub_id))
+            conn.commit()
+
+            return {"success": True, "old_limit": old_limit, "new_limit": new_limit, "hidify_uuid": sub["hidify_uuid"]}
+        except Exception as e:
+            logger.error(f"Error adding subscription traffic: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def set_subscription_vip(self, sub_id: int, is_vip: bool = True) -> dict:
+        """تنظیم وضعیت مشتری پرمیوم / VIP برای اشتراک"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("UPDATE subscriptions SET is_vip = ?, updated_at = ? WHERE id = ?", (1 if is_vip else 0, now, sub_id))
+            cursor.execute("SELECT telegram_id FROM subscriptions WHERE id = ?", (sub_id,))
+            row = cursor.fetchone()
+            if row and row["telegram_id"]:
+                cursor.execute("UPDATE users SET is_vip = ?, updated_at = ? WHERE telegram_id = ?", (1 if is_vip else 0, now, row["telegram_id"]))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error setting subscription VIP: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
     def apply_reseller_bundle_credit(self, reseller_id: int, amount: int, bundle_title: str, tx_id: int = None) -> dict:
         """واریز شارژ بسته اعتباری و بونوس مربوطه به کیف پول نماینده پس از تایید رسید"""
-        # یافتن مشخصات بسته بر اساس عنوان یا مبلغ
         bundles = {b["price"]: b for b in self.get_reseller_credit_bundles()}
         bundle = bundles.get(amount)
         if not bundle:

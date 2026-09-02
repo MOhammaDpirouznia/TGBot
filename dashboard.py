@@ -2108,36 +2108,58 @@ def user_detail(telegram_id):
 @app.route("/payments")
 @admin_required
 def payments():
-    """کارتابل مدیریت و تایید فیش‌های پرداخت"""
+    """کارتابل مدیریت و تایید فیش‌های پرداخت با تفکیک ۳ تب: مدیریت، نمایندگان و همه به همراه فیلتر نماینده"""
     conn = db.get_connection()
     status_filter = request.args.get("status", "all")
+    source_tab = request.args.get("source", "admin")  # 'admin', 'resellers', 'all'
+    reseller_filter_id = request.args.get("reseller_id", "")
     search = request.args.get("search", "").strip()
 
-    query = "SELECT * FROM transactions WHERE ((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')"
+    base_conditions = []
     params = []
 
+    if source_tab == "admin":
+        base_conditions.append("((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')")
+    elif source_tab == "resellers":
+        base_conditions.append("(reseller_id IS NOT NULL AND reseller_id > 0 AND gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')")
+        if reseller_filter_id and reseller_filter_id.isdigit():
+            base_conditions.append("reseller_id = ?")
+            params.append(int(reseller_filter_id))
+    elif source_tab == "all":
+        if reseller_filter_id and reseller_filter_id.isdigit():
+            base_conditions.append("reseller_id = ?")
+            params.append(int(reseller_filter_id))
+
     if status_filter == "deleted":
-        query += " AND is_deleted=1"
+        base_conditions.append("is_deleted = 1")
     else:
-        query += " AND (is_deleted=0 OR is_deleted IS NULL)"
+        base_conditions.append("(is_deleted = 0 OR is_deleted IS NULL)")
         if status_filter != "all":
-            query += " AND status=?"
+            base_conditions.append("status = ?")
             params.append(status_filter)
 
     if search:
-        query += " AND (tracking_code LIKE ? OR username LIKE ? OR user_id LIKE ? OR order_id LIKE ? OR account_name LIKE ?)"
+        base_conditions.append("(tracking_code LIKE ? OR username LIKE ? OR user_id LIKE ? OR order_id LIKE ? OR account_name LIKE ?)")
         params.extend([f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"])
 
-    query += " ORDER BY created_at DESC LIMIT 200"
+    where_clause = " WHERE " + " AND ".join(base_conditions) if base_conditions else ""
+    query = f"SELECT * FROM transactions {where_clause} ORDER BY created_at DESC LIMIT 300"
     raw_payment_list = conn.execute(query, params).fetchall()
 
-    # شمارنده‌های آماری برای تب‌ها (مخصوص ربات اصلی مدیریت و فیش‌های شارژ اعتبار بسته‌های نماینده)
-    admin_scope = "((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')"
-    pending_count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='pending' AND {admin_scope}").fetchone()[0]
-    approved_count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status IN ('approved', 'completed') AND {admin_scope}").fetchone()[0]
-    rejected_count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='rejected' AND {admin_scope}").fetchone()[0]
-    revoked_count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='revoked' AND {admin_scope}").fetchone()[0]
-    deleted_count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE is_deleted=1 AND {admin_scope}").fetchone()[0]
+    # شمارنده‌های آماری بر اساس تب منبع فعلی
+    scope_cond = "1=1"
+    if source_tab == "admin":
+        scope_cond = "((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')"
+    elif source_tab == "resellers":
+        scope_cond = "(reseller_id IS NOT NULL AND reseller_id > 0 AND gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')"
+        if reseller_filter_id and reseller_filter_id.isdigit():
+            scope_cond += f" AND reseller_id = {int(reseller_filter_id)}"
+
+    pending_count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='pending' AND {scope_cond}").fetchone()[0]
+    approved_count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status IN ('approved', 'completed') AND {scope_cond}").fetchone()[0]
+    rejected_count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='rejected' AND {scope_cond}").fetchone()[0]
+    revoked_count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='revoked' AND {scope_cond}").fetchone()[0]
+    deleted_count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE is_deleted=1 AND {scope_cond}").fetchone()[0]
 
     # اضافه کردن لاگ‌های حسابرسی برای هر تراکنش
     payment_list = []
@@ -2148,11 +2170,15 @@ def payments():
 
     conn.close()
 
+    resellers_list = db.get_all_resellers()
     cards = db.get_active_bank_cards()
     return render_template(
         "payments.html",
         payments=payment_list,
         status_filter=status_filter,
+        source_tab=source_tab,
+        reseller_filter_id=reseller_filter_id,
+        resellers_list=resellers_list,
         search=search,
         cards=cards,
         counts={
@@ -3150,37 +3176,64 @@ def api_subscription_sessions(sub_id: int):
 @app.route("/subscriptions")
 @permission_required("subscriptions_view")
 def subscriptions():
-    """لیست اشتراک‌های هیدیفای همراه با وضعیت آنلاین بودن، تب بدهکاران و اطلاعات استرداد وجه"""
+    """لیست مشتریان و اشتراک‌ها همراه با وضعیت آنلاین، تب بدهکاران، فیلتر نماینده و نشان وضعیت تیکت"""
     sync_hiddify_online_users()
     conn = db.get_connection()
     status_filter = request.args.get("status", "all")
+    reseller_filter_id = request.args.get("reseller_id", "")
+    search = request.args.get("search", "").strip()
+
+    base_conditions = []
+    params = []
+
     if status_filter == "online":
-        sub_list = conn.execute("SELECT * FROM subscriptions WHERE is_online=1 ORDER BY updated_at DESC LIMIT 150").fetchall()
+        base_conditions.append("is_online = 1")
     elif status_filter == "debtors":
-        sub_list = conn.execute("""
-            SELECT * FROM subscriptions 
-            WHERE payment_status IN ('unpaid', 'debtor') OR debt_amount > 0 
-            ORDER BY COALESCE(debt_created_at, created_at) DESC LIMIT 150
-        """).fetchall()
-    elif status_filter == "all":
-        sub_list = conn.execute("SELECT * FROM subscriptions ORDER BY created_at DESC LIMIT 150").fetchall()
-    else:
-        sub_list = conn.execute("SELECT * FROM subscriptions WHERE status=? ORDER BY created_at DESC LIMIT 150", (status_filter,)).fetchall()
+        base_conditions.append("(payment_status IN ('unpaid', 'debtor') OR debt_amount > 0 OR is_credit = 1)")
+    elif status_filter == "active":
+        base_conditions.append("status = 'active'")
+    elif status_filter == "expired":
+        base_conditions.append("status != 'active'")
+    elif status_filter == "direct":
+        base_conditions.append("(reseller_id IS NULL OR reseller_id = 0)")
+    elif status_filter == "resellers":
+        base_conditions.append("(reseller_id IS NOT NULL AND reseller_id > 0)")
+
+    if reseller_filter_id and reseller_filter_id.isdigit():
+        base_conditions.append("reseller_id = ?")
+        params.append(int(reseller_filter_id))
+
+    if search:
+        base_conditions.append("(account_name LIKE ? OR hidify_uuid LIKE ? OR phone_number LIKE ? OR plan_name LIKE ?)")
+        params.extend([f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"])
+
+    where_clause = " WHERE " + " AND ".join(base_conditions) if base_conditions else ""
+    query = f"SELECT * FROM subscriptions {where_clause} ORDER BY created_at DESC LIMIT 500"
+    sub_list = conn.execute(query, params).fetchall()
     conn.close()
 
+    tickets_map = db.get_customers_ticket_status_map()
     subscriptions_with_refund = []
     for s in sub_list:
         s_dict = enrich_subscription_details(s)
         s_dict["refund_info"] = db.calculate_customer_refund(s["id"])
+        
+        # وضعیت هوشمند تیکت مشتری
+        tg_id = s_dict.get("telegram_id")
+        s_dict["ticket_info"] = tickets_map.get(tg_id) if tg_id else None
         subscriptions_with_refund.append(s_dict)
     
     online_stats = db.get_online_users_stats()
     debtor_count = db.get_debtor_count()
+    resellers_list = db.get_all_resellers()
     single_link_template = get_single_link_template(db)
     return render_template(
         "subscriptions.html",
         subscriptions=subscriptions_with_refund,
         status_filter=status_filter,
+        reseller_filter_id=reseller_filter_id,
+        resellers_list=resellers_list,
+        search=search,
         online_count=online_stats["online_count"],
         online_stats=online_stats,
         debtor_count=debtor_count,
@@ -3188,6 +3241,47 @@ def subscriptions():
         user_proxy=get_user_proxy(),
         single_link_template=single_link_template
     )
+
+
+@app.route("/admin/subscription/<int:sub_id>/add-traffic", methods=["POST"])
+@permission_required("sub_manage")
+def admin_subscription_add_traffic(sub_id):
+    """افزایش دستی سقف حجم ترافیک اشتراک و همگام‌سازی با هیدیفای"""
+    extra_gb_raw = request.form.get("extra_gb", "0").strip()
+    try:
+        extra_gb = float(extra_gb_raw)
+    except ValueError:
+        extra_gb = 0
+
+    if extra_gb <= 0:
+        flash("مقدار حجم اضافه باید بزرگتر از صفر باشد.", "warning")
+        return redirect(url_for("subscriptions"))
+
+    res = db.add_subscription_traffic(sub_id, extra_gb)
+    if res.get("success"):
+        if res.get("hidify_uuid"):
+            try:
+                hidify_sync_update_user(res["hidify_uuid"], usage_limit_GB=res["new_limit"])
+            except Exception as e:
+                logger.error(f"Error syncing extra traffic with Hiddify: {e}")
+        flash(f"سقف ترافیک با موفقیت {extra_gb} گیگابایت افزایش یافت (سقف جدید: {res['new_limit']} GB).", "success")
+    else:
+        flash(f"خطا در افزایش ترافیک: {res.get('error')}", "danger")
+    return redirect(url_for("subscriptions"))
+
+
+@app.route("/admin/subscription/<int:sub_id>/toggle-vip", methods=["POST"])
+@permission_required("sub_manage")
+def admin_subscription_toggle_vip(sub_id):
+    """تنظیم وضعیت کاربر ویژه (VIP) برای مشتری"""
+    is_vip = request.form.get("is_vip") == "1"
+    res = db.set_subscription_vip(sub_id, is_vip=is_vip)
+    if res.get("success"):
+        label = "کاربر ویژه (VIP)" if is_vip else "کاربر عادی"
+        flash(f"وضعیت اشتراک با موفقیت به «{label}» تغییر یافت.", "success")
+    else:
+        flash(f"خطا در تغییر وضعیت: {res.get('error')}", "danger")
+    return redirect(url_for("subscriptions"))
 
 
 @app.route("/admin/subscription/<int:sub_id>/edit", methods=["POST"])
@@ -3534,13 +3628,18 @@ def admin_reseller_edit(reseller_id):
             hiddify_admin_uuid = h_admin["uuid"]
             flash(f"ادمین اختصاصی هیدیفای با شناسه {hiddify_admin_uuid[:8]}... برای نماینده ساخته شد.", "info")
 
+    credit_enabled = 1 if request.form.get("credit_enabled") else 0
+    credit_limit = int(request.form.get("credit_limit", 0) or 0)
+
     updates = {
         "name": name or r["name"],
         "username": username or r["username"],
         "telegram_id": telegram_id,
         "discount_percent": discount_percent,
         "status": status,
-        "hiddify_admin_uuid": hiddify_admin_uuid or None
+        "hiddify_admin_uuid": hiddify_admin_uuid or None,
+        "credit_enabled": credit_enabled,
+        "credit_limit": credit_limit
     }
     if new_password:
         updates["password"] = new_password
@@ -3550,6 +3649,25 @@ def admin_reseller_edit(reseller_id):
         flash(f"اطلاعات نماینده «{updates['name']}» با موفقیت ویرایش شد.", "success")
     else:
         flash(f"خطا در ویرایش نماینده: {res.get('error')}", "danger")
+    return redirect(url_for("admin_resellers"))
+
+
+@app.route("/admin/reseller/<int:reseller_id>/settle-debt", methods=["POST"])
+@admin_required
+def admin_reseller_settle_debt(reseller_id):
+    """ثبت تسویه حساب بدهی اعتباری نماینده توسط مدیر"""
+    amount = int(request.form.get("amount", 0))
+    description = request.form.get("description", "تسویه بدهی اعتباری").strip()
+    if amount <= 0:
+        flash("مبلغ تسویه باید بزرگتر از صفر باشد.", "warning")
+        return redirect(url_for("admin_resellers"))
+
+    settler_name = session.get("name") or session.get("username") or "مدیر ارشد"
+    res = db.settle_reseller_debt(reseller_id, amount, description, settled_by=settler_name)
+    if res.get("success"):
+        flash(f"تسویه بدهی به مبلغ {amount:,} تومان با موفقیت ثبت شد. مانده بدهی فعلی: {res.get('remaining_debt', 0):,} تومان", "success")
+    else:
+        flash(f"خطا در تسویه بدهی: {res.get('error')}", "danger")
     return redirect(url_for("admin_resellers"))
 
 
@@ -3670,11 +3788,13 @@ def admin_reseller_delete(reseller_id):
 @app.route("/accounting", methods=["GET"])
 @permission_required("accounting")
 def accounting():
-    """داشبورد حسابداری و مدیریت مالی، هزینه‌ها، سود خالص، اسناد مالی و تراز بدهی مدیران و شرکا"""
+    """داشبورد حسابداری و مدیریت مالی، هزینه‌ها، سود خالص، گردش حساب ۳۰ روز اخیر و تراز بدهی"""
     type_filter = request.args.get("type", "all")
     category_filter = request.args.get("category", "all")
     period = request.args.get("period", "all")
     search = request.args.get("search", "")
+    reseller_audit_id = request.args.get("reseller_id", "")
+    selected_reseller_id = int(reseller_audit_id) if reseller_audit_id.isdigit() else None
 
     summary = db.get_accounting_summary()
     records = db.get_accounting_records(
@@ -3684,6 +3804,11 @@ def accounting():
         period=period,
         search=search
     )
+
+    # گزارش حسابرسی جامع ۳۰ روز اخیر (کل سیستم یا اختصاصی یک نماینده)
+    monthly_audit = db.get_monthly_accounting_audit(reseller_id=selected_reseller_id, days=30)
+    resellers_list = db.get_all_resellers()
+    selected_reseller = db.get_reseller(selected_reseller_id) if selected_reseller_id else None
 
     admin_role = session.get("admin_role", "super_admin")
     admin_id = session.get("admin_id")
@@ -3712,8 +3837,68 @@ def accounting():
         current_category=category_filter,
         current_period=period,
         search=search,
+        monthly_audit=monthly_audit,
+        resellers_list=resellers_list,
+        selected_reseller_id=selected_reseller_id,
+        selected_reseller=selected_reseller,
         admin_debts_summary=admin_debts_summary,
         admin_debts_logs=admin_debts_logs
+    )
+
+
+@app.route("/accounting/export/monthly-audit")
+@permission_required("accounting")
+def accounting_export_monthly_audit():
+    """خروجی اکسل استاندارد با فرمت UTF-8 BOM از گردش حساب و حسابرسی ۳۰ روز اخیر"""
+    reseller_audit_id = request.args.get("reseller_id", "")
+    selected_reseller_id = int(reseller_audit_id) if reseller_audit_id.isdigit() else None
+    audit = db.get_monthly_accounting_audit(reseller_id=selected_reseller_id, days=30)
+    reseller = db.get_reseller(selected_reseller_id) if selected_reseller_id else None
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    title_text = f"گزارش حسابرسی و گردش حساب ۳۰ روز اخیر ({reseller.get('name')})" if reseller else "گزارش حسابرسی و گردش حساب ۳۰ روز اخیر (کل سامانه)"
+    writer.writerow([title_text])
+    writer.writerow(["تاریخ تهیه گزارش:", filter_shamsi_date(get_now_iso())])
+    writer.writerow([])
+    writer.writerow(["--- شاخص‌های کلیدی مالی ---"])
+    writer.writerow(["فروش کل (تومان)", "فروش نقدی (تومان)", "فروش اعتباری/تسویه نشده (تومان)", "هزینه‌ها و مخارج (تومان)", "سود خالص دوره (تومان)", "حجم واگذار شده (GB)", "تعداد کل اشتراک‌ها", "مانده کل بدهی اعتباری"])
+    writer.writerow([
+        f"{audit['total_revenue']:,}",
+        f"{audit['cash_revenue']:,}",
+        f"{audit['credit_revenue']:,}",
+        f"{audit['total_expenses']:,}",
+        f"{audit['net_profit']:,}",
+        f"{audit['total_gb_sold']:.1f}",
+        audit['total_subs_count'],
+        f"{audit['total_outstanding_debt']:,}"
+    ])
+    writer.writerow([])
+    writer.writerow(["--- ریز گردش حساب و تراکنش‌های دوره ---"])
+    writer.writerow(["شناسه تراکنش", "کد سفارش", "کاربر / مشتری", "شرح پلن", "مبلغ (تومان)", "روش پرداخت", "کد پیگیری", "وضعیت", "تاریخ ثبت (شمسی)", "تاریخ ثبت (میلادی)"])
+    
+    for tx in audit.get("transactions", []):
+        c_at = tx.get("created_at") or ""
+        writer.writerow([
+            tx.get("id"),
+            tx.get("order_id") or "",
+            tx.get("username") or tx.get("user_id") or "",
+            tx.get("plan_name") or "",
+            tx.get("amount") or 0,
+            tx.get("gateway") or "",
+            tx.get("tracking_code") or "",
+            "تایید شده",
+            filter_shamsi_date(c_at) if c_at else "",
+            c_at
+        ])
+
+    csv_data = "\ufeff" + output.getvalue()
+    filename = f"monthly_audit_{selected_reseller_id or 'all'}_{get_now_iso()[:10]}.csv"
+    return Response(
+        csv_data.encode("utf-8-sig"),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment;filename={filename}"}
     )
 
 
@@ -4337,7 +4522,11 @@ def card_delete(card_id):
 @app.route("/plans", methods=["GET", "POST"])
 @permission_required("plans")
 def admin_plans_page():
-    """مدیریت و ویرایش کامل پلن‌ها"""
+    """مدیریت و ویرایش کامل پلن‌ها با تفکیک پلن‌های مدیریت و پلن‌های نمایندگان"""
+    current_tab = request.args.get("tab", "admin")  # 'admin' or 'resellers'
+    reseller_id_param = request.args.get("reseller_id", "")
+    selected_reseller_id = int(reseller_id_param) if reseller_id_param.isdigit() else None
+
     if request.method == "POST":
         action = request.form.get("action")
         if action == "add":
@@ -4350,10 +4539,86 @@ def admin_plans_page():
                 flash("پلن جدید با موفقیت افزوده شد.", "success")
             else:
                 flash(f"خطا در افزودن پلن: {res.get('error')}", "danger")
-        return redirect(url_for("admin_plans_page"))
+        return redirect(url_for("admin_plans_page", tab=current_tab, reseller_id=reseller_id_param))
 
     plans = get_all_plans()
-    return render_template("plans.html", plans=plans)
+    resellers_list = db.get_all_resellers()
+    selected_reseller = db.get_reseller(selected_reseller_id) if selected_reseller_id else None
+    selected_reseller_plans = db.get_reseller_plans(selected_reseller_id) if selected_reseller_id else []
+
+    # محاسبه پلن‌های پیش‌فرض نمایندگان با تخفیف پایه ۲۰ درصد
+    default_reseller_plans = []
+    for pid, p in plans.items():
+        base_price = p.get("price", 0)
+        default_reseller_plans.append({
+            "plan_id": pid,
+            "name": p.get("name", "پلن"),
+            "price": base_price,
+            "wholesale_price": int(base_price * 0.8),
+            "data_limit": p.get("data_limit", 0),
+            "duration": p.get("duration", 30),
+            "is_active": p.get("is_active", True)
+        })
+
+    return render_template(
+        "plans.html",
+        plans=plans,
+        current_tab=current_tab,
+        resellers_list=resellers_list,
+        selected_reseller_id=selected_reseller_id,
+        selected_reseller=selected_reseller,
+        selected_reseller_plans=selected_reseller_plans,
+        default_reseller_plans=default_reseller_plans
+    )
+
+
+@app.route("/admin/reseller/plan/override", methods=["POST"])
+@permission_required("plans_manage")
+def admin_reseller_plan_override():
+    """شخصی‌سازی پلن اختصاصی برای یک نماینده توسط مدیر (نام، قیمت، حجم، مدت، وضعیت)"""
+    reseller_id = int(request.form.get("reseller_id", 0))
+    plan_id = request.form.get("plan_id", "").strip()
+    custom_name = request.form.get("custom_name", "").strip()
+    custom_price = int(request.form.get("custom_price", 0)) if request.form.get("custom_price") else None
+    
+    custom_data_limit_raw = request.form.get("custom_data_limit", "").strip()
+    custom_data_limit = float(custom_data_limit_raw) if custom_data_limit_raw else None
+    
+    custom_duration_raw = request.form.get("custom_duration", "").strip()
+    custom_duration = int(custom_duration_raw) if custom_duration_raw else None
+    
+    is_active = request.form.get("is_active") == "1"
+
+    if reseller_id <= 0 or not plan_id:
+        flash("شناسه نماینده و پلن نامعتبر است.", "danger")
+        return redirect(url_for("admin_plans_page", tab="resellers"))
+
+    res = db.update_reseller_plan_override(
+        reseller_id=reseller_id,
+        plan_id=plan_id,
+        custom_name=custom_name,
+        custom_price=custom_price,
+        custom_data_limit=custom_data_limit,
+        custom_duration=custom_duration,
+        is_active=is_active
+    )
+    if res.get("success"):
+        flash("تنظیمات پلن اختصاصی نماینده با موفقیت ذخیره شد.", "success")
+    else:
+        flash(f"خطا در ثبت پلن: {res.get('error')}", "danger")
+    return redirect(url_for("admin_plans_page", tab="resellers", reseller_id=reseller_id))
+
+
+@app.route("/admin/reseller/plan/reset", methods=["POST"])
+@permission_required("plans_manage")
+def admin_reseller_plan_reset():
+    """بازنشانی پلن سفارشی نماینده به حالت پیش‌فرض"""
+    reseller_id = int(request.form.get("reseller_id", 0))
+    plan_id = request.form.get("plan_id", "").strip()
+    if reseller_id > 0 and plan_id:
+        db.reset_reseller_plan_override(reseller_id, plan_id)
+        flash("پلن نماینده با موفقیت به حالت پیش‌فرض بازگردانده شد.", "info")
+    return redirect(url_for("admin_plans_page", tab="resellers", reseller_id=reseller_id))
 
 
 @app.route("/plans/edit/<plan_id>", methods=["POST"])
@@ -4764,9 +5029,10 @@ def upload_backup():
 @app.route("/reseller/dashboard")
 @reseller_required
 def reseller_dashboard():
-    """داشبورد اصلی نماینده فروش به همراه هوش مالی و خلاصه وضعیت"""
+    """داشبورد اصلی نماینده فروش به همراه هوش مالی و خلاصه وضعیت اعتبار و بدهی"""
     sync_hiddify_online_users()
     reseller_id = session.get("reseller_id")
+    reseller = db.get_reseller(reseller_id) or {}
     stats = db.get_reseller_stats(reseller_id)
     session["balance"] = stats["balance"]
     recent_transactions = db.get_reseller_transactions(reseller_id, limit=6)
@@ -4775,6 +5041,7 @@ def reseller_dashboard():
     fin_summary = db.get_reseller_financial_summary(reseller_id)
     return render_template(
         "reseller_dashboard.html",
+        reseller=reseller,
         stats=stats,
         recent_transactions=recent_transactions,
         analytics=analytics,
@@ -4786,11 +5053,15 @@ def reseller_dashboard():
 @app.route("/reseller/create-user", methods=["GET", "POST"])
 @reseller_required
 def reseller_create_user():
-    """ساخت آنی اشتراک مشتری توسط نماینده با کسر اعتبار عمده‌فروشی و ثبت وضعیت پرداخت/بدهی"""
+    """ساخت آنی اشتراک مشتری توسط نماینده با کسر اعتبار عمده‌فروشی یا خرید اعتباری"""
     reseller_id = session.get("reseller_id")
+    reseller = db.get_reseller(reseller_id) or {}
     stats = db.get_reseller_stats(reseller_id)
-    discount = stats["discount_percent"]
-    plans = get_plans_dict()
+    discount = stats.get("discount_percent", 20)
+    
+    # بارگذاری پلن‌های اختصاصی و فعال این نماینده
+    reseller_plans_list = db.get_reseller_plans(reseller_id)
+    plans = {p["plan_id"]: p for p in reseller_plans_list}
 
     if request.method == "POST":
         plan_key = request.form.get("plan_id")
@@ -4808,12 +5079,17 @@ def reseller_create_user():
             return redirect(url_for("reseller_create_user"))
 
         plan = plans[plan_key]
-        original_price = plan["price"]
-        discount_amount = int((original_price * discount) / 100)
-        final_price = original_price - discount_amount
+        final_price = plan.get("wholesale_price") or int(plan["price"] * (100 - discount) / 100)
 
-        if stats["balance"] < final_price:
-            flash(f"اعتبار کیف پول شما کافی نیست! موجودی: {stats['balance']:,} تومان | مبلغ مورد نیاز: {final_price:,} تومان", "danger")
+        # بررسی موجودی نقدی + اعتبار مجاز برای خرید
+        credit_enabled = bool(reseller.get("credit_enabled"))
+        credit_limit = int(reseller.get("credit_limit") or 0)
+        credit_debt = int(reseller.get("credit_debt") or 0)
+        available_credit = max(0, credit_limit - credit_debt) if credit_enabled else 0
+        total_purchasing_power = stats["balance"] + available_credit
+
+        if total_purchasing_power < final_price:
+            flash(f"موجودی کیف پول و سقف اعتبار شما کافی نیست! موجودی: {stats['balance']:,} ت | اعتبار باقیمانده: {available_credit:,} ت | مبلغ مورد نیاز: {final_price:,} ت", "danger")
             return redirect(url_for("reseller_create_user"))
 
         if not account_name:
@@ -4821,7 +5097,7 @@ def reseller_create_user():
 
         telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else 0
         if payment_status in ("unpaid", "debtor"):
-            debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else original_price
+            debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else plan.get("display_price", plan.get("price", 0))
         else:
             debt_amount = 0
 
@@ -4846,8 +5122,9 @@ def reseller_create_user():
             flash(f"خطا در ساخت اکانت روی سرور هیدیفای: {err_msg}", "danger")
             return redirect(url_for("reseller_create_user"))
 
-        # ۲. پس از تایید ۱۰۰٪ ساخت در هیدیفای، موجودی کسر و تراکنش خرید ثبت می‌گردد
-        deduct_res = db.deduct_reseller_balance(reseller_id, final_price, plan["name"], account_name)
+        # ۲. پس از تایید ۱۰۰٪ ساخت در هیدیفای، موجودی/اعتبار کسر و تراکنش خرید ثبت می‌گردد
+        plan_title = plan.get("display_name") or plan.get("name")
+        deduct_res = db.deduct_reseller_balance(reseller_id, final_price, plan_title, account_name)
         if not deduct_res.get("success"):
             logger.error(f"Failed to deduct balance after user creation: {deduct_res.get('error')}")
 
@@ -4858,6 +5135,8 @@ def reseller_create_user():
 
         now = get_now_iso()
         debt_created = now if debt_amount > 0 else None
+        is_credit_sub = 1 if deduct_res.get("is_credit") else 0
+        credit_used_amount = deduct_res.get("credit_used", 0)
 
         # ۳. ثبت اشتراک با وضعیت بدهی، شناسه نماینده، شماره تلفن و هزینه در دیتابیس
         conn = db.get_connection()
@@ -4866,12 +5145,12 @@ def reseller_create_user():
             INSERT INTO subscriptions 
             (telegram_id, hidify_uuid, plan_id, plan_name, account_name, phone_number,
              data_limit, duration, status, reseller_id, user_limit, cost_paid,
-             payment_status, debt_amount, debt_notes, debt_created_at, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             payment_status, debt_amount, debt_notes, debt_created_at, is_credit, credit_debt_amount, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            telegram_id, user_uuid, plan_key, plan["name"], account_name, phone_number or None,
+            telegram_id, user_uuid, plan_key, plan_title, account_name, phone_number or None,
             plan["data_limit"], plan["duration"], reseller_id, user_limit, final_price,
-            payment_status, debt_amount, debt_notes or None, debt_created, now, now
+            payment_status, debt_amount, debt_notes or None, debt_created, is_credit_sub, credit_used_amount, now, now
         ))
         sub_id = cursor.lastrowid
 
@@ -4926,6 +5205,7 @@ def reseller_create_user():
             "reseller_created_success.html",
             account_name=account_name,
             plan=plan,
+            sub_id=sub_id,
             sub_url=subscription_url,
             single_url=single_url,
             final_price=final_price,
@@ -5589,22 +5869,81 @@ def reseller_bundles_online_pay(bundle_id: str):
 @app.route("/reseller/reports")
 @reseller_required
 def reseller_reports():
-    """گزارشات و هوش مالی پیشرفته نماینده فروش"""
+    """گزارشات، گردش حساب ۳۰ روز اخیر و هوش مالی پیشرفته نماینده فروش"""
     reseller_id = session.get("reseller_id")
+    reseller = db.get_reseller(reseller_id)
     stats = db.get_reseller_stats(reseller_id)
     analytics = db.get_advanced_analytics(reseller_id=reseller_id)
-    
     fin_summary = db.get_reseller_financial_summary(reseller_id)
+    monthly_audit = db.get_monthly_accounting_audit(reseller_id=reseller_id, days=30)
+
     return render_template(
         "reseller_reports.html",
+        reseller=reseller,
         stats=stats,
         fin_summary=fin_summary,
+        monthly_audit=monthly_audit,
         popular_plans=analytics.get("popular_plans", []),
         top_users_month=analytics.get("top_users_month", []),
         top_users_year=analytics.get("top_users_year", []),
         most_active_users=analytics.get("most_active_users", []),
         usage_history=analytics.get("usage_history", []),
         timeline_subscriptions=analytics.get("timeline_subscriptions", [])
+    )
+
+
+@app.route("/reseller/reports/export/monthly-audit")
+@reseller_required
+def reseller_reports_export_monthly_audit():
+    """خروجی اکسل/CSV استاندارد با فرمت UTF-8 BOM از حسابرسی و گردش حساب ۳۰ روز اخیر نماینده"""
+    reseller_id = session.get("reseller_id")
+    reseller = db.get_reseller(reseller_id)
+    if not reseller:
+        flash("اطلاعات نماینده یافت نشد.", "danger")
+        return redirect(url_for("reseller_reports"))
+
+    audit = db.get_monthly_accounting_audit(reseller_id=reseller_id, days=30)
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow([f"گزارش حسابرسی و گردش حساب ۳۰ روز اخیر نماینده: {reseller.get('name')} (@{reseller.get('username')})"])
+    writer.writerow(["تاریخ تهیه گزارش:", filter_shamsi_date(get_now_iso())])
+    writer.writerow([])
+    writer.writerow(["--- شاخص‌های مالی و عملکرد دوره ---"])
+    writer.writerow(["فروش کل (تومان)", "فروش نقدی (تومان)", "خرید/فروش اعتباری (تومان)", "بهای تمام شده پلن‌ها (تومان)", "سود ناخالص نماینده (تومان)", "ترافیک مصرفی کل (GB)", "تعداد کل اشتراک‌ها", "مانده بدهی اعتباری"])
+    writer.writerow([
+        f"{audit['total_revenue']:,}",
+        f"{audit['cash_revenue']:,}",
+        f"{audit['credit_revenue']:,}",
+        f"{audit['total_expenses']:,}",
+        f"{audit['net_profit']:,}",
+        f"{audit['total_gb_sold']:.1f}",
+        audit['total_subs_count'],
+        f"{audit['total_outstanding_debt']:,}"
+    ])
+    writer.writerow([])
+    writer.writerow(["--- ریز تراکنش‌ها و سفارشات ۳۰ روز اخیر ---"])
+    writer.writerow(["شناسه", "کد سفارش", "مشتری / کاربر", "پلن", "مبلغ (تومان)", "روش پرداخت", "کد پیگیری", "تاریخ ثبت (شمسی)"])
+
+    for tx in audit.get("transactions", []):
+        c_at = tx.get("created_at") or ""
+        writer.writerow([
+            tx.get("id"),
+            tx.get("order_id") or "",
+            tx.get("username") or tx.get("user_id") or "",
+            tx.get("plan_name") or "",
+            tx.get("amount") or 0,
+            tx.get("gateway") or "",
+            tx.get("tracking_code") or "",
+            filter_shamsi_date(c_at) if c_at else ""
+        ])
+
+    csv_data = "\ufeff" + output.getvalue()
+    filename = f"reseller_monthly_audit_{reseller_id}_{get_now_iso()[:10]}.csv"
+    return Response(
+        csv_data.encode("utf-8-sig"),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment;filename={filename}"}
     )
 
 
@@ -6799,6 +7138,7 @@ def admin_create_customer():
         flash(f"✅ اشتراک «{account_name}» با موفقیت ایجاد شد!{debt_info_text}", "success")
         return render_template(
             "admin_customer_created.html",
+            sub_id=sub_id,
             sub_url=sub_url,
             single_url=single_url,
             account_name=account_name,
@@ -7282,7 +7622,7 @@ def reseller_avatar_delete():
 
 @app.route("/invoice/<int:sub_id>")
 def view_invoice(sub_id: int):
-    """نمایش فاکتور رسمی دیجیتال با امکان چاپ، بارکد QR و اطلاعات تکمیلی اشتراک"""
+    """نمایش فاکتور رسمی دیجیتال با امکان چاپ، بارکد QR، تاریخ‌های شمسی و اطلاعات کامل سرویس اینترنت پرو"""
     sub = db.get_subscription(sub_id)
     if not sub:
         flash("اشتراک مورد نظر یافت نشد.", "danger")
@@ -7294,23 +7634,39 @@ def view_invoice(sub_id: int):
         reseller = db.get_reseller(sub["reseller_id"])
         if reseller:
             branding = {
-                "brand_title": reseller.get("brand_title") or reseller.get("name"),
+                "brand_title": reseller.get("brand_title") or reseller.get("name") or "خدمات اینترنت پرو",
                 "logo_url": reseller.get("logo_url"),
-                "footer_text": reseller.get("footer_text"),
+                "footer_text": reseller.get("footer_text") or "کلیه حقوق برای سامانه محفوظ است.",
                 "primary_color": reseller.get("primary_color") or "#4f46e5"
             }
     if not branding:
         branding = {
-            "brand_title": db.get_setting("brand_title") or "سامانه هوشمند VPN",
+            "brand_title": db.get_setting("brand_title") or "سامانه هوشمند اینترنت بین‌الملل پرو",
             "logo_url": db.get_setting("logo_url") or "",
-            "footer_text": "کلیه حقوق برای سامانه محفوظ است.",
+            "footer_text": "ارائه‌دهنده راهکارهای ارتباطی و شبکه پرسرعت بین‌الملل",
             "primary_color": "#4f46e5"
         }
 
     single_link_template = get_single_link_template(db)
     sub_url = format_single_link(single_link_template, uuid=sub.get("hidify_uuid") or "", name=sub.get("account_name") or "")
 
-    return render_template("invoice.html", sub=sub, branding=branding, sub_url=sub_url)
+    # فرمت تاریخ‌های شمسی
+    shamsi_created = filter_shamsi_date(sub.get("created_at") or "")
+    shamsi_start = filter_shamsi_date(sub.get("start_date") or "") if sub.get("start_date") else "پس از اولین اتصال"
+    shamsi_expire = filter_shamsi_date(sub.get("expire_date") or "") if sub.get("expire_date") else "بر اساس مدت اعتبار"
+
+    is_credit = bool(sub.get("is_credit") or sub.get("payment_status") in ("unpaid", "debtor") or (sub.get("debt_amount") or 0) > 0)
+
+    return render_template(
+        "invoice.html",
+        sub=sub,
+        branding=branding,
+        sub_url=sub_url,
+        shamsi_created=shamsi_created,
+        shamsi_start=shamsi_start,
+        shamsi_expire=shamsi_expire,
+        is_credit=is_credit
+    )
 
 
 @app.route("/api/sub/<int:sub_id>/prediction")
