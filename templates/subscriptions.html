@@ -1,40 +1,72 @@
 {% extends "base.html" %}
 
-{% block title %}اشتراک‌های هیدیفای - پنل مدیریت VPN{% endblock %}
+{% block title %}مدیریت مشتریان و اشتراک‌ها - پنل مدیریت{% endblock %}
 
 {% block content %}
-<div class="page-header">
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
     <div>
-        <h1 class="page-title"><i class="fas fa-key text-primary"></i> مدیریت اشتراک‌ها و کانفیگ‌ها</h1>
-        <p class="text-muted mb-0">مشاهده تمام اشتراک‌های صادر شده، وضعیت اتصال و آنلاین بودن در لحظه</p>
+        <h1 class="page-title"><i class="fas fa-users-gear text-primary"></i> مدیریت مشتریان و اشتراک‌ها</h1>
+        <p class="text-muted mb-0">مشاهده و مدیریت کامل کلیه مشتریان، وضعیت تیکت‌های پشتیبانی، آنلاین بودن و تمدید</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <a href="{{ url_for('subscriptions', status='all') }}" class="btn btn-sm {{ 'btn-primary' if status_filter == 'all' else 'btn-outline-secondary' }}">همه اشتراک‌ها</a>
-        <a href="{{ url_for('subscriptions', status='debtors') }}" class="btn btn-sm {{ 'btn-danger text-white fw-bold shadow-sm' if status_filter == 'debtors' else 'btn-outline-danger' }}">
+        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='all') }}" class="btn btn-sm {{ 'btn-primary' if status_filter == 'all' else 'btn-outline-secondary' }}">همه مشتریان</a>
+        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='direct') }}" class="btn btn-sm {{ 'btn-primary' if status_filter == 'direct' else 'btn-outline-primary' }}">
+            <i class="fas fa-crown me-1"></i> مشتریان مستقیم مدیریت
+        </a>
+        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='resellers') }}" class="btn btn-sm {{ 'btn-info text-dark' if status_filter == 'resellers' else 'btn-outline-info' }}">
+            <i class="fas fa-handshake me-1"></i> مشتریان نمایندگان
+        </a>
+        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='debtors') }}" class="btn btn-sm {{ 'btn-danger text-white fw-bold shadow-sm' if status_filter == 'debtors' else 'btn-outline-danger' }}">
             <i class="fas fa-hand-holding-dollar me-1"></i> 🔴 بدهکاران ({{ debtor_count }})
         </a>
-        <a href="{{ url_for('subscriptions', status='online') }}" class="btn btn-sm {{ 'btn-success' if status_filter == 'online' else 'btn-outline-success' }}">
+        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='online') }}" class="btn btn-sm {{ 'btn-success' if status_filter == 'online' else 'btn-outline-success' }}">
             <span class="pulse-indicator me-1"></span> کاربران آنلاین ({{ online_count or 0 }})
         </a>
-        <a href="{{ url_for('subscriptions', status='active') }}" class="btn btn-sm {{ 'btn-info text-white' if status_filter == 'active' else 'btn-outline-info' }}">فقط فعال‌ها</a>
-        <a href="{{ url_for('subscriptions', status='expired') }}" class="btn btn-sm {{ 'btn-danger' if status_filter == 'expired' else 'btn-outline-danger' }}">منقضی شده‌ها</a>
+    </div>
+</div>
+
+<!-- منوی کشویی فیلتر به تفکیک نماینده -->
+<div class="card mb-4 border-0 shadow-sm bg-light">
+    <div class="card-body py-2 px-3">
+        <div class="row align-items-center g-2">
+            <div class="col-md-6 d-flex align-items-center gap-2">
+                <label class="form-label fw-bold small text-primary mb-0 text-nowrap">
+                    <i class="fas fa-user-tie me-1"></i> فیلتر مشتریان یک نماینده خاص:
+                </label>
+                <select class="form-select form-select-sm" onchange="location.href='{{ url_for('subscriptions', status=status_filter) }}&reseller_id=' + this.value;">
+                    <option value="">-- نمایش مشتریان کلیه نمایندگان و مدیریت --</option>
+                    {% for r in resellers_list %}
+                    <option value="{{ r['id'] }}" {% if reseller_filter_id == (r['id']|string) %}selected{% endif %}>
+                        مشتریان نماینده: {{ r['name'] }} (@{{ r['username'] }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6 text-md-end">
+                {% if reseller_filter_id %}
+                <a href="{{ url_for('subscriptions', status=status_filter) }}" class="btn btn-sm btn-outline-secondary">
+                    <i class="fas fa-times me-1"></i> پاک کردن فیلتر نماینده
+                </a>
+                {% endif %}
+            </div>
+        </div>
     </div>
 </div>
 
 <div class="card shadow-sm border-0">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="d-flex align-items-center gap-2">
-            <h5 class="mb-0 fw-bold"><i class="fas fa-key text-primary me-2"></i>لیست اشتراک‌ها</h5>
+            <h5 class="mb-0 fw-bold"><i class="fas fa-users-gear text-primary me-2"></i>لیست مشتریان</h5>
             <span class="badge bg-secondary" data-table-count="subscriptionsTable">{{ subscriptions|length }} مورد</span>
             {% if status_filter == 'debtors' %}
-                <span class="badge bg-danger text-white"><i class="fas fa-hand-holding-dollar me-1"></i>فیلتر: اشتراک‌های بدهکار و تسویه نشده</span>
+                <span class="badge bg-danger text-white"><i class="fas fa-hand-holding-dollar me-1"></i>فیلتر: مشتریان بدهکار و تسویه نشده</span>
             {% elif status_filter == 'online' %}
-                <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-wifi me-1"></i>فیلتر: فقط کاربران آنلاین</span>
+                <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-wifi me-1"></i>فیلتر: فقط مشتریان آنلاین</span>
             {% endif %}
         </div>
         <div class="table-search-wrapper">
             <i class="fas fa-search table-search-icon"></i>
-            <input type="text" class="form-control table-search-input" data-table="subscriptionsTable" placeholder="جستجو در اشتراک‌ها، کاربر، نام اکانت، پلن...">
+            <input type="text" class="form-control table-search-input" data-table="subscriptionsTable" placeholder="جستجو در نام، شماره تلفن، پلن یا آیدی...">
             <button type="button" class="table-search-clear" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
         </div>
     </div>
@@ -46,16 +78,16 @@
                         <th class="text-center" style="width: 40px;">
                             <input type="checkbox" class="form-check-input bulk-select-all" title="انتخاب همه">
                         </th>
-                        <th class="ps-2 sortable-th" data-column="1">مالک / کاربر</th>
-                        <th class="sortable-th" data-column="2">نام اکانت هیدیفای</th>
+                        <th class="ps-2 sortable-th" data-column="1">مشتری / کاربر</th>
+                        <th class="sortable-th" data-column="2">شناسه اکانت</th>
                         <th class="sortable-th" data-column="3">وضعیت مالی</th>
                         <th class="sortable-th" data-column="4">پلن انتخابی</th>
                         <th class="sortable-th" data-column="5">مصرف / سقف</th>
                         <th class="sortable-th" data-column="6">مدت اعتبار</th>
                         <th class="sortable-th" data-column="7">انقضا</th>
                         <th class="sortable-th" data-column="8">وضعیت اتصال</th>
-                        <th class="sortable-th" data-column="9">صادرکننده</th>
-                        <th class="text-end pe-3">عملیات و مدیریت</th>
+                        <th class="sortable-th" data-column="9">نماینده صادرکننده</th>
+                        <th class="text-end pe-3">عملیات و فاکتور</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -81,11 +113,36 @@
                                         {% endif %}
                                     </div>
                                     <div>
-                                        <a href="{{ url_for('user_detail', telegram_id=sub['telegram_id']) }}" class="text-decoration-none fw-bold">
-                                            <code>{{ sub['telegram_id'] }}</code>
-                                        </a>
+                                        <div class="d-flex align-items-center gap-1 flex-wrap">
+                                            <a href="{{ url_for('user_detail', telegram_id=sub['telegram_id']) }}" class="text-decoration-none fw-bold">
+                                                <code>{{ sub['telegram_id'] }}</code>
+                                            </a>
+                                            {% if sub.get('is_vip') %}
+                                                <span class="badge bg-warning text-dark shadow-sm" style="font-size: 0.7rem;" title="مشتری پرمیوم و ویژه (VIP)">
+                                                    <i class="fas fa-crown"></i> VIP
+                                                </span>
+                                            {% endif %}
+                                        </div>
                                         {% if sub.get('phone_number') %}
                                             <small class="text-muted d-block">{{ sub['phone_number'] }}</small>
+                                        {% endif %}
+                                        
+                                        <!-- نشان هوشمند تیکت پشتیبانی -->
+                                        {% set tinfo = sub.get('ticket_info') %}
+                                        {% if tinfo %}
+                                            {% if tinfo.open_count > 0 %}
+                                                <a href="{{ url_for('admin_tickets_page') }}?search={{ sub['telegram_id'] }}" class="badge bg-danger text-white text-decoration-none shadow-sm mt-1 d-inline-block" style="font-size: 0.7rem;" title="مشتری دارای تیکت باز و پاسخ‌داده نشده است">
+                                                    <i class="fas fa-headset me-1"></i> 🔴 تیکت باز ({{ tinfo.open_count }})
+                                                </a>
+                                            {% elif tinfo.in_progress_count > 0 %}
+                                                <a href="{{ url_for('admin_tickets_page') }}?search={{ sub['telegram_id'] }}" class="badge bg-warning text-dark text-decoration-none shadow-sm mt-1 d-inline-block" style="font-size: 0.7rem;" title="تیکت در انتظار پیگیری">
+                                                    <i class="fas fa-clock-rotate-left me-1"></i> 🟠 در انتظار
+                                                </a>
+                                            {% elif tinfo.closed_count > 0 %}
+                                                <span class="badge bg-success-subtle text-success border border-success mt-1 d-inline-block" style="font-size: 0.68rem;" title="تمام تیکت‌های قبلی بسته شده است">
+                                                    <i class="fas fa-check-circle me-1"></i> 🟢 تیکت بسته
+                                                </span>
+                                            {% endif %}
                                         {% endif %}
                                     </div>
                                 </div>
@@ -102,7 +159,14 @@
                                         {% endif %}
                                     </div>
                                     <div>
-                                        <span class="text-muted small">مشتری همکار / دستی</span>
+                                        <div class="d-flex align-items-center gap-1">
+                                            <span class="text-muted small">مشتری همکار / دستی</span>
+                                            {% if sub.get('is_vip') %}
+                                                <span class="badge bg-warning text-dark shadow-sm" style="font-size: 0.7rem;">
+                                                    <i class="fas fa-crown"></i> VIP
+                                                </span>
+                                            {% endif %}
+                                        </div>
                                         {% if sub.get('phone_number') %}
                                             <small class="text-muted d-block">{{ sub['phone_number'] }}</small>
                                         {% endif %}
@@ -216,6 +280,11 @@
                                 </a>
 
                                 {% if has_permission('sub_manage') %}
+                                <!-- دکمه افزایش دستی حجم و تنظیم VIP -->
+                                <button type="button" class="btn btn-outline-warning py-1 px-2" data-bs-toggle="modal" data-bs-target="#vipBoostModal{{ sub['id'] }}" title="افزایش دستی حجم / تنظیم مشتری پرمیوم (VIP)">
+                                    <i class="fas fa-crown text-warning"></i>
+                                </button>
+
                                 <!-- دکمه شارژ حجم اضافه -->
                                 <button type="button" class="btn btn-outline-success py-1 px-2" data-bs-toggle="modal" data-bs-target="#topupModal{{ sub['id'] }}" title="افزودن حجم ترافیک اضافه (Top-up)">
                                     <i class="fas fa-plus-circle"></i>
@@ -283,6 +352,42 @@
 <!-- ═══════════════════════════════════════════════════════════════ -->
 {% for sub in subscriptions %}
 {% set ref = sub.get('refund_info') or {} %}
+
+<!-- ۰. مودال افزایش دستی حجم و مدیریت مشتری پرمیوم (VIP Boost) -->
+<div class="modal fade text-start" id="vipBoostModal{{ sub['id'] }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-warning text-dark py-3">
+                <h5 class="modal-title fw-bold"><i class="fas fa-crown me-2"></i>مدیریت مشتری پرمیوم و افزایش حجم: {{ sub['account_name'] }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <!-- فرم افزایش حجم -->
+                <form action="{{ url_for('admin_subscription_add_traffic', sub_id=sub['id']) }}" method="POST" class="mb-4 pb-3 border-bottom">
+                    <h6 class="fw-bold text-primary mb-2"><i class="fas fa-plus-circle me-1"></i> افزایش دستی سقف حجم ترافیک (گیگابایت)</h6>
+                    <p class="small text-muted mb-2">سقف فعلی ترافیک: <strong>{{ sub['data_limit'] or sub['traffic_limit'] or 0 }} گیگابایت</strong> | مصرف شده: <strong>{{ "%.2f"|format(sub['data_used'] or 0) }} GB</strong></p>
+                    <div class="input-group mb-2">
+                        <input type="number" name="extra_gb" class="form-control font-monospace" placeholder="مثال: 20" min="1" step="0.5" required>
+                        <span class="input-group-text">GB</span>
+                        <button type="submit" class="btn btn-primary fw-bold"><i class="fas fa-bolt me-1"></i> اعمال افزایش حجم</button>
+                    </div>
+                </form>
+
+                <!-- فرم تغییر وضعیت VIP -->
+                <form action="{{ url_for('admin_subscription_toggle_vip', sub_id=sub['id']) }}" method="POST">
+                    <h6 class="fw-bold text-dark mb-2"><i class="fas fa-star text-warning me-1"></i> وضعیت مشتری در باشگاه مشتریان ویژه</h6>
+                    <div class="mb-3">
+                        <select name="is_vip" class="form-select">
+                            <option value="1" {% if sub.get('is_vip') %}selected{% endif %}>👑 مشتری پرمیوم (VIP)</option>
+                            <option value="0" {% if not sub.get('is_vip') %}selected{% endif %}>👤 مشتری عادی</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-warning w-100 fw-bold"><i class="fas fa-save me-1"></i> ذخیره وضعیت VIP</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- ۱. مدال شارژ حجم اضافه (Top-up) -->
 <div class="modal fade text-start" id="topupModal{{ sub['id'] }}" tabindex="-1" aria-labelledby="topupModalLabel{{ sub['id'] }}" aria-hidden="true">

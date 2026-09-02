@@ -113,7 +113,21 @@
                             {% endif %}
                         </td>
                         <td data-value="{{ r['discount_percent'] or 0 }}"><span class="badge bg-primary fs-6">{{ r['discount_percent'] }}%</span></td>
-                        <td data-value="{{ r['balance'] or 0 }}"><strong class="text-success font-monospace">{{ "{:,}".format(r['balance'] or 0) }} تومان</strong></td>
+                        <td data-value="{{ r['balance'] or 0 }}">
+                            <strong class="text-success font-monospace">{{ "{:,}".format(r['balance'] or 0) }} تومان</strong>
+                            {% if r.get('credit_enabled') %}
+                                <div class="mt-1">
+                                    <span class="badge bg-warning-subtle text-dark border border-warning font-monospace" style="font-size: 0.68rem;" title="سقف مجاز خرید اعتباری">
+                                        سقف اعتبار: {{ "{:,}".format(r.get('credit_limit') or 0) }} ت
+                                    </span>
+                                    {% if (r.get('credit_debt') or 0) > 0 %}
+                                        <span class="badge bg-danger text-white d-block mt-1 font-monospace shadow-sm" style="font-size: 0.68rem;" title="بدهی تسویه نشده از خریدهای اعتباری">
+                                            <i class="fas fa-hand-holding-dollar me-1"></i> بدهی: {{ "{:,}".format(r.get('credit_debt') or 0) }} ت
+                                        </span>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+                        </td>
                         <td data-value="{{ 1 if (r.get('bot_status', {}).get('is_running')) else 0 }}">
                             {% set bstat = r.get('bot_status', {}) %}
                             {% if bstat.get('is_running') %}
@@ -154,6 +168,11 @@
                                 <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#topupModal{{ r['id'] }}" title="شارژ کیف پول">
                                     <i class="fas fa-wallet me-1"></i> شارژ
                                 </button>
+                                {% if r.get('credit_enabled') or (r.get('credit_debt') or 0) > 0 %}
+                                <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#settleDebtModal{{ r['id'] }}" title="تسویه حساب و تسویه بدهی اعتباری">
+                                    <i class="fas fa-hand-holding-dollar"></i>
+                                </button>
+                                {% endif %}
                                 {% if r.get('bot_token') %}
                                 <form action="{{ url_for('admin_reseller_bot_toggle', reseller_id=r['id']) }}" method="POST" class="d-inline">
                                     <button type="submit" class="btn {{ 'btn-outline-danger' if r.get('bot_status', {}).get('is_running') else 'btn-outline-success' }}" title="{{ 'توقف ربات اختصاصی' if r.get('bot_status', {}).get('is_running') else 'روشن کردن ربات اختصاصی' }}">
@@ -590,6 +609,25 @@
                         <label class="form-label fw-bold">آیدی عددی تلگرام:</label>
                         <input type="number" name="telegram_id" class="form-control font-monospace" value="{{ r['telegram_id'] or '' }}" placeholder="مثال: 123456789">
                     </div>
+
+                    <!-- بخش تنظیمات خرید اعتباری (خرید نسیه/پیش‌اعتبار) -->
+                    <div class="mb-3 border border-warning p-3 rounded bg-warning bg-opacity-10">
+                        <label class="form-label fw-bold text-dark"><i class="fas fa-hand-holding-dollar text-warning me-1"></i> تنظیمات خرید اعتباری (پست‌پی / نسیه):</label>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" name="credit_enabled" id="creditEnabledEdit{{ r['id'] }}" {% if r.get('credit_enabled') %}checked{% endif %}>
+                            <label class="form-check-label fw-bold small text-dark" for="creditEnabledEdit{{ r['id'] }}">
+                                اجازه خرید اعتباری و ثبت اشتراک بدون پرداخت نقدی پیشاپیش
+                            </label>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small text-muted">سقف مجاز اعتبار خرید (تومان):</label>
+                            <input type="number" step="10000" name="credit_limit" class="form-control form-control-sm font-monospace" value="{{ r.get('credit_limit') or 0 }}" placeholder="مثال: 2000000">
+                        </div>
+                        <small class="text-muted d-block" style="font-size: 0.72rem;">
+                            بدهی فعلی نماینده: <strong>{{ "{:,}".format(r.get('credit_debt') or 0) }} تومان</strong>
+                        </small>
+                    </div>
+
                     <div class="mb-3 border p-3 rounded bg-light">
                         <label class="form-label fw-bold small text-primary"><i class="fas fa-server me-1"></i> تنظیمات ادمین اختصاصی در هیدیفای:</label>
                         <div class="input-group input-group-sm mb-2">
@@ -607,6 +645,38 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
                     <button type="submit" class="btn btn-primary px-4 fw-bold">ذخیره تغییرات</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ۵. Modal تسویه بدهی اعتباری نماینده -->
+<div class="modal fade text-start" id="settleDebtModal{{ r['id'] }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <form method="POST" action="{{ url_for('admin_reseller_settle_debt', reseller_id=r['id']) }}">
+                <div class="modal-header bg-danger text-white py-3">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-hand-holding-dollar me-2"></i>تسویه بدهی اعتباری «{{ r['name'] }}»</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-danger py-2 mb-3">
+                        بدهی اعتباری فعلی نماینده: <strong>{{ "{:,}".format(r.get('credit_debt') or 0) }} تومان</strong>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">مبلغ پرداختی / تسویه‌شده (تومان):</label>
+                        <input type="number" name="amount" class="form-control font-monospace" value="{{ r.get('credit_debt') or 0 }}" min="1" max="{{ r.get('credit_debt') or 100000000 }}" required>
+                        <small class="text-muted">مبلغی که نماینده تسویه و پرداخت نموده است را وارد کنید.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">توضیحات و بابت (اختیاری):</label>
+                        <input type="text" name="description" class="form-control" placeholder="مثال: تسویه واریزی کارت به کارت فلان تاریخ">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-danger fw-bold px-4">ثبت تسویه حساب</button>
                 </div>
             </form>
         </div>
@@ -648,6 +718,21 @@
                             <input type="number" name="initial_balance" class="form-control" value="0" min="0">
                         </div>
                     </div>
+
+                    <!-- بخش فعال‌سازی اولیه خرید اعتباری -->
+                    <div class="mb-3 border border-warning p-2 rounded bg-warning bg-opacity-10">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" name="credit_enabled" id="creditEnabledAdd">
+                            <label class="form-check-label fw-bold small text-dark" for="creditEnabledAdd">
+                                فعال‌سازی قابلیت خرید اعتباری (Post-paid)
+                            </label>
+                        </div>
+                        <div>
+                            <label class="form-label small text-muted mb-1">سقف اولیه اعتبار خرید (تومان):</label>
+                            <input type="number" step="10000" name="credit_limit" class="form-control form-control-sm font-monospace" value="0" placeholder="مثال: 1000000">
+                        </div>
+                    </div>
+
                     <div class="mb-3">
                         <label class="form-label">آیدی عددی تلگرام (اختیاری برای نوتیفیکیشن):</label>
                         <input type="number" name="telegram_id" class="form-control" placeholder="مثال: 123456789">

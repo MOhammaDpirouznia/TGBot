@@ -102,10 +102,28 @@
                                     {% endif %}
                                 </div>
                                 <div>
-                                    <div class="fw-bold d-flex align-items-center gap-1">
+                                    <div class="fw-bold d-flex align-items-center gap-1 flex-wrap">
                                         <span class="text-primary text-decoration-underline-hover">{{ sub['account_name'] or 'بدون نام' }}</span>
                                         {% if sub.get('is_vip') %}
                                              <span class="badge bg-warning text-dark py-0 px-1" title="مشتری طلایی (VIP)"><i class="fas fa-crown"></i> VIP</span>
+                                        {% endif %}
+                                        
+                                        <!-- نشان وضعیت تیکت مشتری -->
+                                        {% set tinfo = sub.get('ticket_info') %}
+                                        {% if tinfo %}
+                                            {% if tinfo.open_count > 0 %}
+                                                <span class="badge bg-danger text-white py-0 px-1" style="font-size: 0.65rem;" title="مشتری دارای تیکت باز است">
+                                                    <i class="fas fa-headset me-1"></i> تیکت باز
+                                                </span>
+                                            {% elif tinfo.in_progress_count > 0 %}
+                                                <span class="badge bg-warning text-dark py-0 px-1" style="font-size: 0.65rem;" title="تیکت در حال پیگیری">
+                                                    <i class="fas fa-clock me-1"></i> در انتظار
+                                                </span>
+                                            {% elif tinfo.closed_count > 0 %}
+                                                <span class="badge bg-secondary-subtle text-secondary py-0 px-1" style="font-size: 0.65rem;" title="تیکت قبلی بسته شده">
+                                                    <i class="fas fa-check me-1"></i> تیکت بسته
+                                                </span>
+                                            {% endif %}
                                         {% endif %}
                                     </div>
                                     {% if sub['account_comment'] %}
@@ -297,8 +315,8 @@
                                 <span class="badge bg-primary">پیشنهادی</span>
                             </div>
                             <div class="card-body text-center p-3">
-                                <div class="p-2 bg-white rounded border d-inline-block shadow-sm mb-3">
-                                    <div id="subQr{{ sub['id'] }}" class="d-flex justify-content-center"></div>
+                                <div class="p-3 bg-white rounded-4 border d-inline-block shadow-sm mb-3" style="background-color: #ffffff !important; border: 4px solid #ffffff !important; box-shadow: 0 4px 15px rgba(0,0,0,0.1) !important;">
+                                    <div id="subQr{{ sub['id'] }}" class="d-flex justify-content-center p-1" style="background-color: #ffffff !important;"></div>
                                 </div>
                                 <div class="input-group input-group-sm mb-2">
                                     <input type="text" class="form-control text-center font-monospace" value="{{ sub_url }}" readonly id="subInput{{ sub['id'] }}" style="direction: ltr; font-size: 11px;">
@@ -323,8 +341,8 @@
                                 <span class="badge bg-secondary">V2Ray / Clash</span>
                             </div>
                             <div class="card-body text-center p-3">
-                                <div class="p-2 bg-white rounded border d-inline-block shadow-sm mb-3">
-                                    <div id="singleQr{{ sub['id'] }}" class="d-flex justify-content-center"></div>
+                                <div class="p-3 bg-white rounded-4 border d-inline-block shadow-sm mb-3" style="background-color: #ffffff !important; border: 4px solid #ffffff !important; box-shadow: 0 4px 15px rgba(0,0,0,0.1) !important;">
+                                    <div id="singleQr{{ sub['id'] }}" class="d-flex justify-content-center p-1" style="background-color: #ffffff !important;"></div>
                                 </div>
                                 <div class="input-group input-group-sm mb-2">
                                     <input type="text" class="form-control text-center font-monospace" value="{{ single_url }}" readonly id="singleInput{{ sub['id'] }}" style="direction: ltr; font-size: 11px;">
@@ -341,6 +359,13 @@
                             </div>
                         </div>
                     </div>
+                </div>
+
+                <!-- دکمه ویژه صدور فاکتور دیجیتال رسمی -->
+                <div class="mb-4 text-center">
+                    <a href="{{ url_for('view_invoice', sub_id=sub['id']) }}" target="_blank" class="btn btn-success btn-lg w-100 fw-bold shadow-sm py-2">
+                        <i class="fas fa-file-invoice-dollar me-2"></i> صدور و مشاهده فاکتور رسمی دیجیتال برای این مشتری
+                    </a>
                 </div>
 
                 <!-- بخش مشخصات فنی و تراز مصرف -->

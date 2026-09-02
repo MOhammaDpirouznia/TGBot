@@ -87,6 +87,11 @@
         </button>
     </li>
     <li class="nav-item" role="presentation">
+        <button class="nav-link" id="monthly-audit-tab" data-bs-toggle="tab" data-bs-target="#monthlyAuditPane" type="button" role="tab">
+            <i class="fas fa-chart-line text-info me-1"></i> گردش حسابرسی ۳۰ روزه (ماه اخیر)
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
         <button class="nav-link" id="partner-debts-tab" data-bs-toggle="tab" data-bs-target="#partnerDebtsPane" type="button" role="tab">
             <i class="fas fa-handshake text-purple me-1" style="color: #7c3aed;"></i> تراز بدهی و سهم شراکت مدیران
             {% set total_open_debt = admin_debts_summary|sum(attribute='debt_balance') if admin_debts_summary else 0 %}
@@ -410,6 +415,150 @@
                                 <td colspan="9" class="text-center py-4 text-muted">
                                     هنوز هیچ تراکنش فروش نقدی یا تسویه‌حساب مدیریتی ثبت نشده است.
                                 </td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- تب ۳: گردش حسابرسی ۳۰ روزه (ماه اخیر) -->
+    <div class="tab-pane fade" id="monthlyAuditPane" role="tabpanel">
+        
+        <!-- نوار فیلتر نماینده و دکمه‌های پرینت و اکسل -->
+        <div class="card mb-4 border-0 shadow-sm bg-light">
+            <div class="card-body py-3 px-3">
+                <div class="row align-items-center g-3">
+                    <div class="col-lg-6 d-flex align-items-center gap-2">
+                        <label class="form-label fw-bold small text-primary mb-0 text-nowrap">
+                            <i class="fas fa-filter me-1"></i> گزارش حسابرسی یک ماه اخیر:
+                        </label>
+                        <select class="form-select form-select-sm" onchange="location.href='{{ url_for('accounting') }}?reseller_id=' + this.value;">
+                            <option value="">-- گزارش کل سامانه (مدیریت + تمام نمایندگان) --</option>
+                            <option value="0" {% if reseller_filter_id == '0' %}selected{% endif %}>فقط فروش مستقیم مدیریت و ربات</option>
+                            {% for r in resellers_list %}
+                            <option value="{{ r['id'] }}" {% if reseller_filter_id == (r['id']|string) %}selected{% endif %}>
+                                عملکرد نماینده: {{ r['name'] }} (@{{ r['username'] }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-lg-6 text-lg-end d-flex justify-content-lg-end gap-2 flex-wrap">
+                        <a href="{{ url_for('accounting_export_monthly_audit', reseller_id=reseller_filter_id or '') }}" class="btn btn-success btn-sm">
+                            <i class="fas fa-file-excel me-1"></i> دریافت خروجی اکسل (CSV)
+                        </a>
+                        <button type="button" onclick="window.print()" class="btn btn-outline-secondary btn-sm">
+                            <i class="fas fa-print me-1"></i> چاپ رسمی گزارش ۳۰ روزه
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% set ma = monthly_audit or {} %}
+        {% set masum = ma.get('summary', {}) %}
+        
+        <!-- ۶ کارت شاخص‌های حسابرسی ۳۰ روزه -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-4 col-sm-6">
+                <div class="card h-100 border-start border-primary border-4 shadow-sm">
+                    <div class="card-body p-3">
+                        <span class="text-muted small fw-bold">گردش کل ناخالص (Turnover)</span>
+                        <h4 class="fw-bold my-1 text-primary font-monospace">{{ "{:,}".format(masum.get('total_revenue', 0)) }} <small class="fs-6 text-muted">تومان</small></h4>
+                        <small class="text-muted">مجموع فروش نقدی + ارزش خریدهای اعتباری</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 col-sm-6">
+                <div class="card h-100 border-start border-success border-4 shadow-sm">
+                    <div class="card-body p-3">
+                        <span class="text-muted small fw-bold">فروش و دریافتی نقدی قطعی</span>
+                        <h4 class="fw-bold my-1 text-success font-monospace">{{ "{:,}".format(masum.get('cash_revenue', 0)) }} <small class="fs-6 text-muted">تومان</small></h4>
+                        <small class="text-success"><i class="fas fa-check-circle me-1"></i> مبالغ واریز و تسویه شده در حساب</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 col-sm-6">
+                <div class="card h-100 border-start border-warning border-4 shadow-sm">
+                    <div class="card-body p-3">
+                        <span class="text-muted small fw-bold">مانده خریدهای اعتباری (طلب)</span>
+                        <h4 class="fw-bold my-1 text-warning font-monospace">{{ "{:,}".format(masum.get('credit_revenue', 0)) }} <small class="fs-6 text-muted">تومان</small></h4>
+                        <small class="text-muted">خریدهای انجام شده به صورت نسیه و اعتبار</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 col-sm-6">
+                <div class="card h-100 border-start border-danger border-4 shadow-sm">
+                    <div class="card-body p-3">
+                        <span class="text-muted small fw-bold">کل هزینه‌ها و مخارج ثبت‌شده</span>
+                        <h4 class="fw-bold my-1 text-danger font-monospace">{{ "{:,}".format(masum.get('total_expenses', 0)) }} <small class="fs-6 text-muted">تومان</small></h4>
+                        <small class="text-muted">هزینه‌های سرورها و نگهداری ماه اخیر</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 col-sm-6">
+                <div class="card h-100 border-start {% if masum.get('net_profit', 0) >= 0 %}border-success{% else %}border-danger{% endif %} border-4 shadow-sm">
+                    <div class="card-body p-3">
+                        <span class="text-muted small fw-bold">سود خالص دوره ۳۰ روزه</span>
+                        <h4 class="fw-bold my-1 {% if masum.get('net_profit', 0) >= 0 %}text-success{% else %}text-danger{% endif %} font-monospace">
+                            {{ "{:,}".format(masum.get('net_profit', 0)) }} <small class="fs-6 text-muted">تومان</small>
+                        </h4>
+                        <small class="text-muted">درآمد کل منهای مخارج دوره</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 col-sm-6">
+                <div class="card h-100 border-start border-info border-4 shadow-sm">
+                    <div class="card-body p-3">
+                        <span class="text-muted small fw-bold">اشتراک‌ها و ترافیک واگذار شده</span>
+                        <h4 class="fw-bold my-1 text-info font-monospace">{{ masum.get('sub_count', 0) }} <small class="fs-6 text-muted">اشتراک</small></h4>
+                        <small class="text-muted">مجموع حجم داده: <strong>{{ "%.1f"|format(masum.get('total_data_gb', 0)) }} GB</strong></small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- جدول ریز تراکنش‌ها و روزشمار ۳۰ روز اخیر -->
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-calendar-days text-primary me-2"></i>روزشمار گردش حساب و تراکنش‌های ۳۰ روز اخیر</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-3">تاریخ (شمسی / میلادی)</th>
+                                <th>تعداد مشتری/اشتراک</th>
+                                <th>حجم واگذار شده (GB)</th>
+                                <th>فروش نقدی</th>
+                                <th>فروش اعتباری</th>
+                                <th>هزینه‌های روز</th>
+                                <th>تراز خالص روز</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for day in ma.get('daily_stats', []) %}
+                            <tr>
+                                <td class="ps-3 font-monospace fw-bold">{{ day.jalali_date }} <small class="text-muted">({{ day.date }})</small></td>
+                                <td><span class="badge bg-secondary font-monospace">{{ day.sub_count }} اشتراک</span></td>
+                                <td><span class="font-monospace">{{ "%.1f"|format(day.data_gb) }} GB</span></td>
+                                <td><span class="text-success font-monospace">{{ "{:,}".format(day.cash_income) }} ت</span></td>
+                                <td><span class="text-warning font-monospace">{{ "{:,}".format(day.credit_income) }} ت</span></td>
+                                <td><span class="text-danger font-monospace">{{ "{:,}".format(day.expense) }} ت</span></td>
+                                <td>
+                                    {% set day_net = day.total_income - day.expense %}
+                                    <strong class="{% if day_net >= 0 %}text-success{% else %}text-danger{% endif %} font-monospace">
+                                        {{ "{:,}".format(day_net) }} ت
+                                    </strong>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            {% if not ma.get('daily_stats') %}
+                            <tr>
+                                <td colspan="7" class="text-center py-4 text-muted">گردش مالی در ۳۰ روز گذشته یافت نشد.</td>
                             </tr>
                             {% endif %}
                         </tbody>

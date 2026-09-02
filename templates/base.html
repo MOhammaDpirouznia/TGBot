@@ -1004,7 +1004,7 @@
 
                 {% if has_permission('subscriptions_view') %}
                 <a class="nav-link {% if request.endpoint == 'subscriptions' %}active{% endif %}" href="{{ url_for('subscriptions') }}">
-                    <i class="fas fa-key" style="color: #ec4899;"></i> اشتراک‌های هیدیفای
+                    <i class="fas fa-users-gear" style="color: #ec4899;"></i> مشتریان
                 </a>
                 {% endif %}
 
@@ -1151,8 +1151,8 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body text-center p-4">
-                    <div class="p-3 rounded-3 d-inline-block shadow-sm mb-3" style="background-color: #ffffff !important; border: 1px solid #cbd5e1;">
-                        <div id="qrCodeContainer" class="d-flex justify-content-center"></div>
+                    <div class="p-3 rounded-4 d-inline-block shadow mb-3" style="background-color: #ffffff !important; border: 4px solid #ffffff; box-shadow: 0 6px 24px rgba(0,0,0,0.15) !important;">
+                        <div id="qrCodeContainer" class="d-flex justify-content-center p-2" style="background-color: #ffffff !important;"></div>
                     </div>
                     <div class="mb-3 text-start">
                         <label class="form-label small text-muted fw-bold">لینک اتصال مستقیم:</label>

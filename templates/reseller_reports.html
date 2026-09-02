@@ -9,15 +9,116 @@
         <p class="text-muted mb-0">تحلیل رفتار مشتریان شما، محبوبیت پلن‌ها، سوابق مصرف دوره‌های قبل و تراز مالی</p>
     </div>
     <div class="d-flex align-items-center gap-2 flex-wrap">
+        <a href="{{ url_for('reseller_reports_export_monthly_audit') }}" class="btn btn-success btn-sm fw-bold">
+            <i class="fas fa-file-excel me-1"></i> خروجی اکسل گردش ۳۰ روزه
+        </a>
+        <button type="button" onclick="window.print()" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-print me-1"></i> چاپ رسمی گزارش
+        </button>
         <a href="{{ url_for('reseller_export_transactions') }}" class="btn btn-outline-success btn-sm">
-            <i class="fas fa-file-excel me-1"></i> دانلود تراکنش‌ها (CSV)
+            <i class="fas fa-file-excel me-1"></i> تراکنش‌ها (CSV)
         </a>
         <a href="{{ url_for('reseller_export_users') }}" class="btn btn-outline-primary btn-sm">
-            <i class="fas fa-users me-1"></i> دانلود مشتریان (CSV)
+            <i class="fas fa-users me-1"></i> مشتریان (CSV)
         </a>
-        <a href="{{ url_for('reseller_export_analytics') }}" class="btn btn-success btn-sm fw-bold">
-            <i class="fas fa-chart-pie me-1"></i> تراز مالی و سود (CSV)
-        </a>
+    </div>
+</div>
+
+<!-- بخش گردش حسابرسی ۳۰ روزه (ماه اخیر) نماینده -->
+{% set ma = monthly_audit or {} %}
+{% set masum = ma.get('summary', {}) %}
+<div class="card shadow-sm border-0 mb-4 bg-white">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2 border-bottom">
+        <div>
+            <h5 class="fw-bold mb-0 text-primary"><i class="fas fa-calendar-check me-2"></i> گردش حساب و حسابرسی یک ماه اخیر (۳۰ روز گذشته)</h5>
+            <small class="text-muted">محاسبه دقیق گردش مالی، واریزی‌های نقدی، سهم اعتبار و حجم دیتای صادر شده</small>
+        </div>
+        <div>
+            <a href="{{ url_for('reseller_reports_export_monthly_audit') }}" class="btn btn-sm btn-outline-success">
+                <i class="fas fa-file-csv me-1"></i> دانلود فایل اکسل (CSV)
+            </a>
+        </div>
+    </div>
+    <div class="card-body p-4">
+        <!-- ۶ کارت آماری گردش ۳۰ روز اخیر -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-4 col-sm-6">
+                <div class="p-3 bg-light rounded-3 border-start border-primary border-4 shadow-sm">
+                    <span class="text-muted small fw-bold">گردش کل سفارشات ۳۰ روزه</span>
+                    <h4 class="fw-bold text-primary font-monospace my-1">{{ "{:,}".format(masum.get('total_revenue', 0)) }} <small class="fs-6 text-muted">تومان</small></h4>
+                    <span class="text-muted small">مجموع ارزش خریدهای نقدی و اعتباری</span>
+                </div>
+            </div>
+            <div class="col-md-4 col-sm-6">
+                <div class="p-3 bg-light rounded-3 border-start border-success border-4 shadow-sm">
+                    <span class="text-muted small fw-bold">پرداخت نقدی از کیف پول</span>
+                    <h4 class="fw-bold text-success font-monospace my-1">{{ "{:,}".format(masum.get('cash_revenue', 0)) }} <small class="fs-6 text-muted">تومان</small></h4>
+                    <span class="text-success small"><i class="fas fa-check me-1"></i> کسر شده و تسویه شده کامل</span>
+                </div>
+            </div>
+            <div class="col-md-4 col-sm-6">
+                <div class="p-3 bg-light rounded-3 border-start border-warning border-4 shadow-sm">
+                    <span class="text-muted small fw-bold">خریدهای اعتباری (نسیه)</span>
+                    <h4 class="fw-bold text-warning font-monospace my-1">{{ "{:,}".format(masum.get('credit_revenue', 0)) }} <small class="fs-6 text-muted">تومان</small></h4>
+                    <span class="text-muted small">اشتراک‌های ساخته شده با اعتبار پست‌پی</span>
+                </div>
+            </div>
+            <div class="col-md-4 col-sm-6">
+                <div class="p-3 bg-light rounded-3 border-start border-info border-4 shadow-sm">
+                    <span class="text-muted small fw-bold">تعداد کل اشتراک‌های صادر شده</span>
+                    <h4 class="fw-bold text-info font-monospace my-1">{{ masum.get('sub_count', 0) }} <small class="fs-6 text-muted">مشتری</small></h4>
+                    <span class="text-muted small">سفارشات جدید و تمدید در ۳۰ روز</span>
+                </div>
+            </div>
+            <div class="col-md-4 col-sm-6">
+                <div class="p-3 bg-light rounded-3 border-start border-secondary border-4 shadow-sm">
+                    <span class="text-muted small fw-bold">مجموع حجم دیتای واگذار شده</span>
+                    <h4 class="fw-bold text-secondary font-monospace my-1">{{ "%.1f"|format(masum.get('total_data_gb', 0)) }} <small class="fs-6 text-muted">GB</small></h4>
+                    <span class="text-muted small">سقف ترافیک تخصیص‌یافته به مشتریان</span>
+                </div>
+            </div>
+            <div class="col-md-4 col-sm-6">
+                <div class="p-3 bg-light rounded-3 border-start border-success border-4 shadow-sm">
+                    <span class="text-muted small fw-bold">سود همکاری برآورد شده</span>
+                    <h4 class="fw-bold text-success font-monospace my-1">+ {{ "{:,}".format(fin_summary.get('estimated_profit', 0)) }} <small class="fs-6 text-muted">تومان</small></h4>
+                    <span class="badge bg-success text-white small">مارجین سود حاصل از تخفیف شما</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- جدول ریز تراکنش‌های روزانه در ۳۰ روز گذشته -->
+        <h6 class="fw-bold text-secondary mb-3"><i class="fas fa-list-ol me-2 text-primary"></i>ریز عملکرد روزانه در ۳۰ روز اخیر:</h6>
+        <div class="table-responsive border rounded-3">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">تاریخ (شمسی / میلادی)</th>
+                        <th>تعداد اشتراک</th>
+                        <th>حجم دیتا (GB)</th>
+                        <th>خرید نقدی (کیف پول)</th>
+                        <th>خرید اعتباری</th>
+                        <th>مجموع روز</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for day in ma.get('daily_stats', []) %}
+                    <tr>
+                        <td class="ps-3 font-monospace fw-bold">{{ day.jalali_date }} <small class="text-muted">({{ day.date }})</small></td>
+                        <td><span class="badge bg-secondary font-monospace">{{ day.sub_count }}</span></td>
+                        <td><span class="font-monospace">{{ "%.1f"|format(day.data_gb) }} GB</span></td>
+                        <td><span class="text-success font-monospace">{{ "{:,}".format(day.cash_income) }} ت</span></td>
+                        <td><span class="text-warning font-monospace">{{ "{:,}".format(day.credit_income) }} ت</span></td>
+                        <td><strong class="text-primary font-monospace">{{ "{:,}".format(day.total_income) }} ت</strong></td>
+                    </tr>
+                    {% endfor %}
+                    {% if not ma.get('daily_stats') %}
+                    <tr>
+                        <td colspan="6" class="text-center py-3 text-muted">سابقه‌ای در ۳۰ روز اخیر ثبت نشده است.</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 

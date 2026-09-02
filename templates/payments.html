@@ -18,29 +18,79 @@
     </div>
 </div>
 
+<!-- تب‌های اصلی تفکیک منابع پرداخت -->
+<ul class="nav nav-pills nav-fill bg-white p-2 rounded-3 shadow-sm border mb-4">
+    <li class="nav-item">
+        <a class="nav-link fw-bold py-2 {{ 'active' if source_tab == 'admin' else '' }}" href="{{ url_for('payments', source='admin', status=status_filter) }}">
+            <i class="fas fa-crown me-2"></i> پرداخت‌های مستقیم مدیریت و ربات
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link fw-bold py-2 {{ 'active' if source_tab == 'resellers' else '' }}" href="{{ url_for('payments', source='resellers', status=status_filter, reseller_id=reseller_filter_id or '') }}">
+            <i class="fas fa-handshake me-2"></i> پرداخت‌ها و رسیدهای نمایندگان
+            <span class="badge {{ 'bg-white text-primary' if source_tab == 'resellers' else 'bg-secondary' }} ms-1">{{ resellers_list|length }} نماینده</span>
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link fw-bold py-2 {{ 'active' if source_tab == 'all' else '' }}" href="{{ url_for('payments', source='all', status=status_filter) }}">
+            <i class="fas fa-layer-group me-2"></i> همه پرداخت‌های سامانه
+        </a>
+    </li>
+</ul>
+
+<!-- در صورت انتخاب تب نمایندگان یا همه: منوی کشویی انتخاب نماینده -->
+{% if source_tab in ['resellers', 'all'] %}
+<div class="card mb-4 border-0 shadow-sm bg-light">
+    <div class="card-body py-2 px-3">
+        <div class="row align-items-center g-2">
+            <div class="col-md-6 d-flex align-items-center gap-2">
+                <label class="form-label fw-bold small text-primary mb-0 text-nowrap">
+                    <i class="fas fa-filter me-1"></i> فیلتر پرداخت‌های یک نماینده خاص:
+                </label>
+                <select class="form-select form-select-sm" onchange="location.href='{{ url_for('payments', source=source_tab, status=status_filter) }}&reseller_id=' + this.value;">
+                    <option value="">-- نمایش فیش‌ها و تراکنش‌های تمام نمایندگان --</option>
+                    {% for r in resellers_list %}
+                    <option value="{{ r['id'] }}" {% if reseller_filter_id == (r['id']|string) %}selected{% endif %}>
+                        {{ r['name'] }} (@{{ r['username'] }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6 text-md-end">
+                {% if reseller_filter_id %}
+                <a href="{{ url_for('payments', source=source_tab, status=status_filter) }}" class="btn btn-sm btn-outline-secondary">
+                    <i class="fas fa-times me-1"></i> حذف فیلتر نماینده
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <!-- تب‌های فیلتر وضعیت و جستجو -->
 <div class="card mb-4 border-0 shadow-sm">
     <div class="card-body py-3">
         <div class="row align-items-center g-3">
             <div class="col-lg-8">
                 <div class="d-flex flex-wrap gap-2">
-                    <a href="{{ url_for('payments', status='all') }}" class="btn btn-sm {{ 'btn-primary' if status_filter == 'all' else 'btn-outline-secondary' }}">
-                        همه پرداخت‌ها <span class="badge bg-light text-dark ms-1">{{ counts.total if counts else payments|length }}</span>
+                    <a href="{{ url_for('payments', source=source_tab, reseller_id=reseller_filter_id or '', status='all') }}" class="btn btn-sm {{ 'btn-primary' if status_filter == 'all' else 'btn-outline-secondary' }}">
+                        همه وضعیت‌ها <span class="badge bg-light text-dark ms-1">{{ counts.total if counts else payments|length }}</span>
                     </a>
-                    <a href="{{ url_for('payments', status='pending') }}" class="btn btn-sm {{ 'btn-warning' if status_filter == 'pending' else 'btn-outline-warning' }}">
+                    <a href="{{ url_for('payments', source=source_tab, reseller_id=reseller_filter_id or '', status='pending') }}" class="btn btn-sm {{ 'btn-warning' if status_filter == 'pending' else 'btn-outline-warning' }}">
                         <i class="fas fa-clock me-1"></i> در انتظار بررسی <span class="badge bg-dark ms-1">{{ counts.pending if counts else 0 }}</span>
                     </a>
-                    <a href="{{ url_for('payments', status='approved') }}" class="btn btn-sm {{ 'btn-success' if status_filter == 'approved' else 'btn-outline-success' }}">
+                    <a href="{{ url_for('payments', source=source_tab, reseller_id=reseller_filter_id or '', status='approved') }}" class="btn btn-sm {{ 'btn-success' if status_filter == 'approved' else 'btn-outline-success' }}">
                         <i class="fas fa-check-circle me-1"></i> تایید شده <span class="badge bg-light text-dark ms-1">{{ counts.approved if counts else 0 }}</span>
                     </a>
-                    <a href="{{ url_for('payments', status='rejected') }}" class="btn btn-sm {{ 'btn-danger' if status_filter == 'rejected' else 'btn-outline-danger' }}">
+                    <a href="{{ url_for('payments', source=source_tab, reseller_id=reseller_filter_id or '', status='rejected') }}" class="btn btn-sm {{ 'btn-danger' if status_filter == 'rejected' else 'btn-outline-danger' }}">
                         <i class="fas fa-times-circle me-1"></i> رد شده <span class="badge bg-light text-dark ms-1">{{ counts.rejected if counts else 0 }}</span>
                     </a>
-                    <a href="{{ url_for('payments', status='revoked') }}" class="btn btn-sm {{ 'btn-secondary' if status_filter == 'revoked' else 'btn-outline-secondary' }}">
+                    <a href="{{ url_for('payments', source=source_tab, reseller_id=reseller_filter_id or '', status='revoked') }}" class="btn btn-sm {{ 'btn-secondary' if status_filter == 'revoked' else 'btn-outline-secondary' }}">
                         <i class="fas fa-ban me-1"></i> ابطال‌شده <span class="badge bg-light text-dark ms-1">{{ counts.revoked if counts else 0 }}</span>
                     </a>
                     {% if session.get('admin_role') == 'super_admin' %}
-                    <a href="{{ url_for('payments', status='deleted') }}" class="btn btn-sm {{ 'btn-dark' if status_filter == 'deleted' else 'btn-outline-dark' }}" title="سطل زباله و رکوردهای حذف نرم شده">
+                    <a href="{{ url_for('payments', source=source_tab, reseller_id=reseller_filter_id or '', status='deleted') }}" class="btn btn-sm {{ 'btn-dark' if status_filter == 'deleted' else 'btn-outline-dark' }}" title="سطل زباله و رکوردهای حذف نرم شده">
                         <i class="fas fa-trash-can me-1"></i> سطل زباله ({{ counts.deleted if counts else 0 }})
                     </a>
                     {% endif %}
@@ -48,6 +98,8 @@
             </div>
             <div class="col-lg-4">
                 <form method="GET" action="{{ url_for('payments') }}" class="d-flex gap-2">
+                    <input type="hidden" name="source" value="{{ source_tab }}">
+                    <input type="hidden" name="reseller_id" value="{{ reseller_filter_id or '' }}">
                     <input type="hidden" name="status" value="{{ status_filter }}">
                     <input type="text" name="search" value="{{ search or '' }}" class="form-control form-control-sm" placeholder="جستجو کد پیگیری، آیدی یا نام...">
                     <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-search"></i></button>
