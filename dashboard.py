@@ -5056,7 +5056,7 @@ def reseller_create_user():
     """ساخت آنی اشتراک مشتری توسط نماینده با کسر اعتبار عمده‌فروشی یا خرید اعتباری"""
     reseller_id = session.get("reseller_id")
     reseller = db.get_reseller(reseller_id) or {}
-    stats = db.get_reseller_stats(reseller_id)
+    stats = db.get_reseller_stats(reseller_id) or {}
     discount = stats.get("discount_percent", 20)
     
     # بارگذاری پلن‌های اختصاصی و فعال این نماینده
@@ -5079,17 +5079,19 @@ def reseller_create_user():
             return redirect(url_for("reseller_create_user"))
 
         plan = plans[plan_key]
-        final_price = plan.get("wholesale_price") or int(plan["price"] * (100 - discount) / 100)
+        original_price = plan.get("master_price") or plan.get("price") or 0
+        final_price = plan.get("wholesale_price") if plan.get("wholesale_price") is not None else int(original_price * (100 - discount) / 100)
 
         # بررسی موجودی نقدی + اعتبار مجاز برای خرید
         credit_enabled = bool(reseller.get("credit_enabled"))
         credit_limit = int(reseller.get("credit_limit") or 0)
         credit_debt = int(reseller.get("credit_debt") or 0)
         available_credit = max(0, credit_limit - credit_debt) if credit_enabled else 0
-        total_purchasing_power = stats["balance"] + available_credit
+        current_balance = stats.get("balance", 0)
+        total_purchasing_power = current_balance + available_credit
 
         if total_purchasing_power < final_price:
-            flash(f"موجودی کیف پول و سقف اعتبار شما کافی نیست! موجودی: {stats['balance']:,} ت | اعتبار باقیمانده: {available_credit:,} ت | مبلغ مورد نیاز: {final_price:,} ت", "danger")
+            flash(f"موجودی کیف پول و سقف اعتبار شما کافی نیست! موجودی: {current_balance:,} ت | اعتبار باقیمانده: {available_credit:,} ت | مبلغ مورد نیاز: {final_price:,} ت", "danger")
             return redirect(url_for("reseller_create_user"))
 
         if not account_name:
@@ -5108,10 +5110,12 @@ def reseller_create_user():
             user_comment += f" | TG: {telegram_id}"
 
         # ۱. ابتدا ساخت کاربر در سرور هیدیفای انجام می‌شود
+        data_limit_gb = plan.get("data_limit", 30)
+        duration_days = plan.get("duration", 30)
         h_res = hidify_sync_create_user(
             name=account_name,
-            usage_limit_gb=plan["data_limit"],
-            package_days=plan["duration"],
+            usage_limit_gb=data_limit_gb,
+            package_days=duration_days,
             comment=user_comment,
             reseller_id=reseller_id
         )
@@ -5123,7 +5127,7 @@ def reseller_create_user():
             return redirect(url_for("reseller_create_user"))
 
         # ۲. پس از تایید ۱۰۰٪ ساخت در هیدیفای، موجودی/اعتبار کسر و تراکنش خرید ثبت می‌گردد
-        plan_title = plan.get("display_name") or plan.get("name")
+        plan_title = plan.get("display_name") or plan.get("name") or plan.get("master_name", "")
         deduct_res = db.deduct_reseller_balance(reseller_id, final_price, plan_title, account_name)
         if not deduct_res.get("success"):
             logger.error(f"Failed to deduct balance after user creation: {deduct_res.get('error')}")
@@ -5149,7 +5153,7 @@ def reseller_create_user():
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             telegram_id, user_uuid, plan_key, plan_title, account_name, phone_number or None,
-            plan["data_limit"], plan["duration"], reseller_id, user_limit, final_price,
+            data_limit_gb, duration_days, reseller_id, user_limit, final_price,
             payment_status, debt_amount, debt_notes or None, debt_created, is_credit_sub, credit_used_amount, now, now
         ))
         sub_id = cursor.lastrowid
@@ -5171,10 +5175,10 @@ def reseller_create_user():
             telegram_id=telegram_id,
             hidify_uuid=user_uuid,
             account_name=account_name,
-            plan_name=plan["name"],
+            plan_name=plan_title,
             previous_usage_gb=0,
-            previous_limit_gb=plan["data_limit"],
-            period_days=plan["duration"],
+            previous_limit_gb=data_limit_gb,
+            period_days=duration_days,
             renewal_type="new_subscription",
             reseller_id=reseller_id,
             plan_price=original_price,
@@ -5187,7 +5191,7 @@ def reseller_create_user():
             db.process_sub_reseller_affiliate_commission(
                 sub_reseller_id=reseller_id,
                 plan_price=original_price,
-                plan_name=plan["name"],
+                plan_name=plan_title,
                 account_name=account_name,
                 sub_id=sub_id
             )
@@ -5212,7 +5216,7 @@ def reseller_create_user():
             current_reseller_balance=current_reseller_balance
         )
 
-    return render_template("reseller_create_user.html", plans=plans, discount=discount, balance=stats["balance"])
+    return render_template("reseller_create_user.html", plans=plans, discount=discount, balance=stats.get("balance", 0))
 
 
 @app.route("/reseller/users")

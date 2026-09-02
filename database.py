@@ -7924,6 +7924,8 @@ class Database:
 
             result.append({
                 "plan_id": pid,
+                "name": display_name,
+                "price": display_price,
                 "master_name": p.get("name", "پلن"),
                 "display_name": display_name,
                 "custom_name": custom_name,
