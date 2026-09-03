@@ -97,25 +97,12 @@
                                 <form method="POST" action="{{ url_for('reseller_bundles_submit_receipt') }}" enctype="multipart/form-data">
                                     <input type="hidden" name="bundle_id" value="{{ b['id'] }}">
                                     <div class="mb-3">
-                                        <div class="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-1">
-                                            <label class="form-label small fw-bold mb-0" id="receiptTextLabel{{ b['id'] }}" for="trackingCode{{ b['id'] }}">متن رسید پرداخت:</label>
-                                            <div class="form-check mb-0">
-                                                <input class="form-check-input" type="checkbox" id="sendImageCheck{{ b['id'] }}" name="send_image_only" value="1" onchange="toggleReceiptMode('{{ b['id'] }}')">
-                                                <label class="form-check-label small text-muted user-select-none" for="sendImageCheck{{ b['id'] }}" style="cursor: pointer;">
-                                                    اسکرینشات یا تصویر رسید میفرستم
-                                                </label>
-                                            </div>
-                                        </div>
-                                        <input type="text" class="form-control" name="tracking_code" id="trackingCode{{ b['id'] }}" placeholder="مثال: 123456789 یا متن پیامک واریز" required>
+                                        <label class="form-label small fw-bold">کد پیگیری / شماره ارجاع واریز:</label>
+                                        <input type="text" class="form-control" name="tracking_code" placeholder="مثال: 123456789" required>
                                     </div>
                                     <div class="mb-3">
-                                        <label class="form-label small fw-bold" id="receiptImageLabel{{ b['id'] }}" for="receiptImage{{ b['id'] }}">
-                                            تصویر فیش واریزی <span id="receiptImageReqStatus{{ b['id'] }}">(اختیاری):</span>
-                                        </label>
-                                        <input type="file" class="form-control" name="receipt_image" id="receiptImage{{ b['id'] }}" accept="image/*">
-                                        <div class="form-text small text-danger d-none" id="receiptImageHint{{ b['id'] }}">
-                                            <i class="fas fa-exclamation-circle me-1"></i> با انتخاب گزینه بالا، پیوست تصویر فیش الزامی است.
-                                        </div>
+                                        <label class="form-label small fw-bold">تصویر فیش واریزی (اختیاری):</label>
+                                        <input type="file" class="form-control" name="receipt_image" accept="image/*">
                                     </div>
                                     <div class="mb-3">
                                         <label class="form-label small fw-bold">توضیحات و یادداشت (اختیاری):</label>
@@ -147,6 +134,85 @@
     {% endfor %}
 </div>
 
+<!-- بخش قبوض بدهی و مطالبات حسابداری نماینده -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2 border-bottom">
+        <div>
+            <h5 class="mb-0 fw-bold text-danger">
+                <i class="fas fa-file-invoice-dollar me-2"></i> قبوض بدهی و مطالبات حسابداری
+            </h5>
+            <small class="text-muted">لیست بدهی‌های ثبت‌شده توسط مدیریت (این مبالغ از اعتبار خرید و شارژ کیف پول کسر نمی‌شوند)</small>
+        </div>
+        <div>
+            <span class="badge bg-danger fs-6 py-2 px-3">
+                مجموع بدهی پرداخت‌نشده: {{ "{:,}".format(stats.get('unpaid_debts_total', 0)) }} تومان
+            </span>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">شماره قبض</th>
+                        <th>عنوان و شرح بدهی</th>
+                        <th>مبلغ بدهی</th>
+                        <th>مهلت پرداخت</th>
+                        <th>وضعیت تسویه</th>
+                        <th>تاریخ ثبت</th>
+                        <th class="text-end pe-3">پشتیبانی و تیکت</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for d in debts %}
+                    <tr class="{% if d['status'] == 'unpaid' %}table-danger bg-opacity-10{% else %}table-success bg-opacity-10{% endif %}">
+                        <td class="ps-3"><code>#DEBT-{{ d['id'] }}</code></td>
+                        <td>
+                            <strong class="text-dark">{{ d['title'] }}</strong>
+                            {% if d['notes'] %}
+                                <small class="text-muted d-block mt-1">{{ d['notes'] }}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <strong class="font-monospace text-danger fs-6">{{ "{:,}".format(d['amount']) }} تومان</strong>
+                        </td>
+                        <td>
+                            <span class="small">{{ d['due_date'] or 'تعیین نشده' }}</span>
+                        </td>
+                        <td>
+                            {% if d['status'] == 'paid' %}
+                                <span class="badge bg-success"><i class="fas fa-check me-1"></i>تسویه شده</span>
+                                <small class="text-muted d-block font-monospace">{{ d['settled_at'][:10] if d['settled_at'] else '' }}</small>
+                            {% else %}
+                                <span class="badge bg-danger"><i class="fas fa-clock me-1"></i>پرداخت نشده</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <small class="text-muted">{{ d['created_at'][:10] if d['created_at'] else '-' }}</small>
+                        </td>
+                        <td class="text-end pe-3">
+                            {% set t_subject = "پیگیری قبض بدهی شماره DEBT-" ~ d['id'] ~ " (" ~ d['title'] ~ ")" %}
+                            {% set t_message = "با سلام و احترام،\nپیرامون قبض بدهی شماره DEBT-" ~ d['id'] ~ " به مبلغ " ~ "{:,}".format(d['amount']) ~ " تومان با عنوان «" ~ d['title'] ~ "»، لطفاً موارد مربوطه را بررسی فرمایید:\n" %}
+                            <a href="{{ url_for('reseller_tickets', subject=t_subject, message=t_message, open_modal='1') }}" class="btn btn-sm btn-outline-primary fw-bold text-nowrap d-inline-flex align-items-center gap-1 shadow-sm">
+                                <i class="fas fa-headset"></i> ثبت تیکت پیرامون این قبض 📩
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not debts %}
+                    <tr>
+                        <td colspan="7" class="text-center py-4 text-muted">
+                            <i class="fas fa-circle-check text-success fa-2x d-block mb-2"></i>
+                            هیچ قبض بدهی ثبت‌شده‌ای وجود ندارد و وضعیت حسابداری شما کاملاً تسویه است.
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <div class="card shadow-sm border-0">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="d-flex align-items-center gap-2">
@@ -164,12 +230,22 @@
             <table class="table table-hover align-middle mb-0 sortable-table" id="resellerTxTable">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-3 sortable-th" data-column="0">شناسه</th>
-                        <th class="sortable-th" data-column="1">نوع تراکنش</th>
-                        <th class="sortable-th" data-column="2">مبلغ</th>
-                        <th class="sortable-th" data-column="3">پلن / نام کاربری مشتری</th>
-                        <th class="sortable-th" data-column="4">توضیحات</th>
-                        <th class="sortable-th" data-column="5">تاریخ و زمان</th>
+                        <th class="ps-3 sortable-th" data-column="0" style="cursor: pointer;">
+                            شناسه <i class="fas fa-sort text-muted ms-1"></i>
+                        </th>
+                        <th class="sortable-th" data-column="1" style="cursor: pointer;">
+                            نوع تراکنش <i class="fas fa-sort text-muted ms-1"></i>
+                        </th>
+                        <th class="sortable-th" data-column="2" style="cursor: pointer;">
+                            مبلغ <i class="fas fa-sort text-muted ms-1"></i>
+                        </th>
+                        <th class="sortable-th" data-column="3" style="cursor: pointer;">
+                            پلن / نام کاربری مشتری <i class="fas fa-sort text-muted ms-1"></i>
+                        </th>
+                        <th>توضیحات</th>
+                        <th class="sortable-th" data-column="5" style="cursor: pointer;">
+                            تاریخ و زمان <i class="fas fa-sort text-muted ms-1"></i>
+                        </th>
                         <th class="text-end pe-3">جزئیات</th>
                     </tr>
                 </thead>
@@ -194,12 +270,69 @@
                             </strong>
                         </td>
                         <td data-value="{{ tx['plan_name'] or '' }}">{{ tx['plan_name'] or '-' }} {% if tx['account_name'] %}<code class="ms-1">{{ tx['account_name'] }}</code>{% endif %}</td>
-                        <td data-value="{{ tx['description'] or '' }}"><small class="text-muted">{{ tx['description'] or '-' }}</small></td>
+                        <td><small class="text-muted">{{ tx['description'] or '-' }}</small></td>
                         <td data-value="{{ tx['created_at'] or '' }}"><small class="text-muted">{{ tx['created_at'][:16].replace('T', ' ') if tx['created_at'] else '-' }}</small></td>
                         <td class="text-end pe-3">
                             <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#resellerTxDetail{{ tx['id'] }}" title="مشاهده جزئیات کامل">
                                 <i class="fas fa-eye me-1"></i> مشاهده
                             </button>
+
+                            <!-- Modal جزئیات تراکنش نماینده -->
+                            <div class="modal fade" id="resellerTxDetail{{ tx['id'] }}" tabindex="-1" aria-hidden="true">
+                                <div class="modal-dialog modal-dialog-centered">
+                                    <div class="modal-content text-start">
+                                        <div class="modal-header bg-primary text-white py-3">
+                                            <h5 class="modal-title fw-bold"><i class="fas fa-receipt me-2"></i>جزئیات کامل تراکنش #{{ tx['id'] }}</h5>
+                                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                        </div>
+                                        <div class="modal-body p-4">
+                                            <div class="list-group list-group-flush border rounded">
+                                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                                    <span class="text-muted">شناسه تراکنش:</span>
+                                                    <code class="fw-bold">#{{ tx['id'] }}</code>
+                                                </div>
+                                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                                    <span class="text-muted">نوع تراکنش:</span>
+                                                    <div>
+                                                        {% if tx['type'] == 'deposit' %}
+                                                            <span class="badge bg-success">شارژ کیف پول</span>
+                                                        {% elif tx['type'] == 'refund' %}
+                                                            <span class="badge bg-info text-dark">استرداد وجه</span>
+                                                        {% elif tx['type'] == 'renewal' %}
+                                                            <span class="badge bg-warning text-dark">تمدید اشتراک</span>
+                                                        {% else %}
+                                                            <span class="badge bg-danger">خرید اشتراک</span>
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+                                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                                    <span class="text-muted">مبلغ تراکنش:</span>
+                                                    <strong class="{{ 'text-success' if (tx['type'] in ['deposit', 'refund']) else 'text-danger' }}">
+                                                        {{ '+' if (tx['type'] in ['deposit', 'refund']) else '-' }}{{ "{:,}".format(tx['amount'] or 0) }} تومان
+                                                    </strong>
+                                                </div>
+                                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                                    <span class="text-muted">پلن / اکانت هیدیفای:</span>
+                                                    <span>{{ tx['plan_name'] or '-' }} {% if tx['account_name'] %}<code>{{ tx['account_name'] }}</code>{% endif %}</span>
+                                                </div>
+                                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                                    <span class="text-muted">تاریخ و زمان:</span>
+                                                    <small class="text-muted">{{ tx['created_at'] or '-' }}</small>
+                                                </div>
+                                                {% if tx['description'] %}
+                                                <div class="list-group-item">
+                                                    <div class="text-muted small mb-1">توضیحات و شرح تراکنش:</div>
+                                                    <div class="bg-light p-2 rounded small">{{ tx['description'] }}</div>
+                                                </div>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">بستن</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
@@ -214,104 +347,50 @@
     </div>
 </div>
 
-<!-- مودال‌های جزئیات تراکنش نماینده (خارج از ساختار جدول) -->
-{% for tx in transactions %}
-<div class="modal fade text-start" id="resellerTxDetail{{ tx['id'] }}" tabindex="-1" aria-labelledby="resellerTxDetailLabel{{ tx['id'] }}" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content shadow-lg border-0 text-start">
-            <div class="modal-header bg-primary text-white py-3">
-                <h5 class="modal-title fw-bold" id="resellerTxDetailLabel{{ tx['id'] }}"><i class="fas fa-receipt me-2"></i>جزئیات کامل تراکنش #{{ tx['id'] }}</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body p-4">
-                <div class="list-group list-group-flush border rounded">
-                    <div class="list-group-item d-flex justify-content-between align-items-center">
-                        <span class="text-muted">شناسه تراکنش:</span>
-                        <code class="fw-bold">#{{ tx['id'] }}</code>
-                    </div>
-                    <div class="list-group-item d-flex justify-content-between align-items-center">
-                        <span class="text-muted">نوع تراکنش:</span>
-                        <div>
-                            {% if tx['type'] == 'deposit' %}
-                                <span class="badge bg-success">شارژ کیف پول</span>
-                            {% elif tx['type'] == 'refund' %}
-                                <span class="badge bg-info text-dark">استرداد وجه</span>
-                            {% elif tx['type'] == 'renewal' %}
-                                <span class="badge bg-warning text-dark">تمدید اشتراک</span>
-                            {% else %}
-                                <span class="badge bg-danger">خرید اشتراک</span>
-                            {% endif %}
-                        </div>
-                    </div>
-                    <div class="list-group-item d-flex justify-content-between align-items-center">
-                        <span class="text-muted">مبلغ تراکنش:</span>
-                        <strong class="{{ 'text-success' if (tx['type'] in ['deposit', 'refund']) else 'text-danger' }}">
-                            {{ '+' if (tx['type'] in ['deposit', 'refund']) else '-' }}{{ "{:,}".format(tx['amount'] or 0) }} تومان
-                        </strong>
-                    </div>
-                    <div class="list-group-item d-flex justify-content-between align-items-center">
-                        <span class="text-muted">پلن / اکانت هیدیفای:</span>
-                        <span>{{ tx['plan_name'] or '-' }} {% if tx['account_name'] %}<code>{{ tx['account_name'] }}</code>{% endif %}</span>
-                    </div>
-                    <div class="list-group-item d-flex justify-content-between align-items-center">
-                        <span class="text-muted">تاریخ و زمان:</span>
-                        <small class="text-muted">{{ tx['created_at'] or '-' }}</small>
-                    </div>
-                    {% if tx['description'] %}
-                    <div class="list-group-item">
-                        <div class="text-muted small mb-1">توضیحات و شرح تراکنش:</div>
-                        <div class="bg-light p-2 rounded small">{{ tx['description'] }}</div>
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">بستن</button>
-            </div>
-        </div>
-    </div>
-</div>
-{% endfor %}
-
 <script>
-function toggleReceiptMode(bundleId) {
-    const checkEl = document.getElementById('sendImageCheck' + bundleId);
-    const trackingEl = document.getElementById('trackingCode' + bundleId);
-    const imageEl = document.getElementById('receiptImage' + bundleId);
-    const statusEl = document.getElementById('receiptImageReqStatus' + bundleId);
-    const hintEl = document.getElementById('receiptImageHint' + bundleId);
+document.addEventListener("DOMContentLoaded", function () {
+    // قابلیت مرتب‌سازی ستون‌های جدول
+    document.querySelectorAll(".sortable-th").forEach(header => {
+        header.addEventListener("click", function () {
+            const table = header.closest("table");
+            const tbody = table.querySelector("tbody");
+            const colIndex = parseInt(header.getAttribute("data-column"));
+            const currentDir = header.getAttribute("data-dir") === "asc" ? "desc" : "asc";
+            
+            // ریست آیکون‌های دیگر
+            table.querySelectorAll(".sortable-th").forEach(th => {
+                th.removeAttribute("data-dir");
+                const icon = th.querySelector("i");
+                if (icon) icon.className = "fas fa-sort text-muted ms-1";
+            });
 
-    if (!checkEl || !trackingEl || !imageEl) return;
+            header.setAttribute("data-dir", currentDir);
+            const icon = header.querySelector("i");
+            if (icon) {
+                icon.className = currentDir === "asc" ? "fas fa-sort-up text-primary ms-1" : "fas fa-sort-down text-primary ms-1";
+            }
 
-    if (checkEl.checked) {
-        trackingEl.disabled = true;
-        trackingEl.required = false;
-        trackingEl.value = '';
-        trackingEl.classList.add('bg-secondary', 'bg-opacity-10');
-        trackingEl.placeholder = 'تصویر رسید ارسال می‌شود (ثبت متن غیرفعال شد)';
+            const rows = Array.from(tbody.querySelectorAll("tr"));
+            rows.sort((a, b) => {
+                const cellA = a.children[colIndex];
+                const cellB = b.children[colIndex];
+                if (!cellA || !cellB) return 0;
+                
+                let valA = cellA.getAttribute("data-value") !== null ? cellA.getAttribute("data-value") : cellA.innerText.trim();
+                let valB = cellB.getAttribute("data-value") !== null ? cellB.getAttribute("data-value") : cellB.innerText.trim();
 
-        imageEl.required = true;
-        if (statusEl) {
-            statusEl.innerHTML = '<span class="text-danger fw-bold">(اجباری):</span>';
-        }
-        if (hintEl) {
-            hintEl.classList.remove('d-none');
-        }
-        imageEl.focus();
-    } else {
-        trackingEl.disabled = false;
-        trackingEl.required = true;
-        trackingEl.classList.remove('bg-secondary', 'bg-opacity-10');
-        trackingEl.placeholder = 'مثال: 123456789 یا متن پیامک واریز';
+                const numA = parseFloat(valA);
+                const numB = parseFloat(valB);
 
-        imageEl.required = false;
-        if (statusEl) {
-            statusEl.innerHTML = '<span class="text-muted fw-normal">(اختیاری):</span>';
-        }
-        if (hintEl) {
-            hintEl.classList.add('d-none');
-        }
-    }
-}
+                if (!isNaN(numA) && !isNaN(numB)) {
+                    return currentDir === "asc" ? numA - numB : numB - numA;
+                }
+                return currentDir === "asc" ? valA.localeCompare(valB, "fa") : valB.localeCompare(valA, "fa");
+            });
+
+            rows.forEach(r => tbody.appendChild(r));
+        });
+    });
+});
 </script>
 {% endblock %}

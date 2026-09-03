@@ -93,7 +93,7 @@
                                                 <span>دریافت و بروزرسانی مشتری از هیدیفای</span>
                                             </button>
                                         </form>
-                                        <form action="{{ url_for('admin_reseller_sync_hiddify', reseller_id=r['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('هشدار پاکسازی:\nآیا از همگام‌سازی پنل با هیدیفای مطمئن هستید؟\n\nکلیه مشتریانی که در پنل هیدیفای موجود نیستند (یا از هیدیفای پاک شده‌اند)، به طور خودکار از پنل نماینده «{{ r[\'name\'] }}» حذف خواهند شد.');">
+                                        <form action="{{ url_for('admin_reseller_sync_hiddify', reseller_id=r['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('هشدار پاکسازی: آیا از همگام‌سازی پنل با هیدیفای مطمئن هستید؟ کلیه مشتریانی که در پنل هیدیفای موجود نیستند، از این پنل حذف خواهند شد.');">
                                             <input type="hidden" name="mode" value="full_sync">
                                             <button type="submit" class="btn btn-xs btn-outline-danger py-0 px-1 text-nowrap d-inline-flex align-items-center gap-1" style="font-size: 0.62rem;" title="همگامسازی پنل با هیدیفای (برای حذف و بروزرسانی مشتریان از پنل هیدیفای, اگه مشتری در پنل هیدیفای موجود نبود از پنل نماینده حذف بشه)">
                                                 <i class="fas fa-arrows-rotate"></i>
@@ -127,7 +127,7 @@
                                             <i class="fas fa-cloud-arrow-down me-1"></i> دریافت و بروزرسانی مشتری از هیدیفای
                                         </button>
                                     </form>
-                                    <form action="{{ url_for('admin_reseller_sync_hiddify', reseller_id=r['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('هشدار پاکسازی:\nآیا از همگام‌سازی پنل با هیدیفای مطمئن هستید؟\n\nکلیه مشتریانی که در پنل هیدیفای موجود نیستند، به طور خودکار از پنل نماینده «{{ r[\'name\'] }}» حذف خواهند شد.');">
+                                    <form action="{{ url_for('admin_reseller_sync_hiddify', reseller_id=r['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('هشدار پاکسازی: آیا از همگام‌سازی پنل با هیدیفای مطمئن هستید؟ کلیه مشتریانی که در پنل هیدیفای موجود نیستند، از این پنل حذف خواهند شد.');">
                                         <input type="hidden" name="mode" value="full_sync">
                                         <button type="submit" class="btn btn-xs btn-outline-danger py-0 px-1 text-nowrap text-start" style="font-size: 0.65rem;" title="همگامسازی پنل با هیدیفای (برای حذف و بروزرسانی مشتریان از پنل هیدیفای, اگه مشتری در پنل هیدیفای موجود نبود از پنل نماینده حذف بشه)">
                                             <i class="fas fa-arrows-rotate me-1"></i> همگامسازی پنل با هیدیفای
@@ -178,6 +178,9 @@
                                 <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#topupModal{{ r['id'] }}" title="شارژ کیف پول">
                                     <i class="fas fa-wallet me-1"></i> شارژ
                                 </button>
+                                <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#addDebtModal{{ r['id'] }}" title="ثبت قبض بدهی قبلی/جدید">
+                                    <i class="fas fa-file-invoice-dollar me-1"></i> ثبت بدهی
+                                </button>
                                 {% if r.get('bot_token') %}
                                 <form action="{{ url_for('admin_reseller_bot_toggle', reseller_id=r['id']) }}" method="POST" class="d-inline">
                                     <button type="submit" class="btn {{ 'btn-outline-danger' if r.get('bot_status', {}).get('is_running') else 'btn-outline-success' }}" title="{{ 'توقف ربات اختصاصی' if r.get('bot_status', {}).get('is_running') else 'روشن کردن ربات اختصاصی' }}">
@@ -197,6 +200,51 @@
                                 <a href="{{ url_for('admin_reseller_delete', reseller_id=r['id']) }}" class="btn btn-outline-danger" title="حذف نماینده" onclick="return confirm('آیا از حذف کامل این نماینده و سوابق آن اطمینان دارید؟ این عمل غیرقابل بازگشت است.')">
                                     <i class="fas fa-trash-can"></i>
                                 </a>
+                            </div>
+
+                            <!-- Modal ثبت قبض بدهی برای نماینده -->
+                            <div class="modal fade" id="addDebtModal{{ r['id'] }}" tabindex="-1">
+                                <div class="modal-dialog modal-dialog-centered">
+                                    <div class="modal-content text-start">
+                                        <form method="POST" action="{{ url_for('admin_reseller_add_debt', reseller_id=r['id']) }}">
+                                            <div class="modal-header bg-danger text-white py-3">
+                                                <h5 class="modal-title fw-bold">
+                                                    <i class="fas fa-file-invoice-dollar me-2"></i> ثبت قبض بدهی برای «{{ r['name'] }}»
+                                                </h5>
+                                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body p-4">
+                                                <div class="alert alert-warning py-2 small mb-3">
+                                                    <i class="fas fa-info-circle me-1"></i> این قبض به عنوان یک صورتحساب بدهی در پنل نماینده ثبت می‌شود و از سقف اعتبار خرید او کسر نخواهد شد.
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label class="form-label small fw-bold">موضوع یا عنوان قبض: <span class="text-danger">*</span></label>
+                                                    <input type="text" name="title" class="form-control" placeholder="مثال: تسویه حساب ماه گذشته / بدهی معوقه" required>
+                                                </div>
+                                                <div class="row g-2 mb-3">
+                                                    <div class="col-md-6">
+                                                        <label class="form-label small fw-bold">مبلغ بدهی (تومان): <span class="text-danger">*</span></label>
+                                                        <input type="number" name="amount" class="form-control font-monospace" placeholder="مثال: 500000" min="1000" required>
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <label class="form-label small fw-bold">سررسید یا مهلت پرداخت:</label>
+                                                        <input type="text" name="due_date" class="form-control font-monospace" placeholder="مثال: 1403/07/01">
+                                                    </div>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label class="form-label small fw-bold">توضیحات و جزئیات قبض:</label>
+                                                    <textarea name="notes" class="form-control" rows="3" placeholder="توضیحات اختیاری پیرامون نحوه واریز، شماره کارت یا شرایط..."></textarea>
+                                                </div>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                                                <button type="submit" class="btn btn-danger fw-bold">
+                                                    <i class="fas fa-plus me-1"></i> ثبت و صدور قبض بدهی
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- Modal مشاهده سوابق و جزئیات پرداخت‌های نماینده -->
@@ -597,6 +645,20 @@
                                                     <label class="form-label">آیدی عددی تلگرام:</label>
                                                     <input type="number" name="telegram_id" class="form-control" value="{{ r['telegram_id'] or '' }}" placeholder="مثال: 123456789">
                                                 </div>
+                                                <div class="row g-2 mb-3 border p-2 rounded bg-light">
+                                                    <div class="col-md-6 d-flex align-items-center">
+                                                        <div class="form-check form-switch mb-0">
+                                                            <input class="form-check-input" type="checkbox" name="credit_enabled" id="editCreditEnabled{{ r['id'] }}" {% if r.get('credit_enabled') %}checked{% endif %}>
+                                                            <label class="form-check-label fw-bold small text-dark" for="editCreditEnabled{{ r['id'] }}">
+                                                                فعال‌سازی اعتبار خرید و تمدید
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <label class="form-label small fw-bold text-muted">سقف اعتبار خرید (تومان):</label>
+                                                        <input type="number" name="credit_limit" class="form-control form-control-sm" value="{{ r.get('credit_limit') or 0 }}" min="0">
+                                                    </div>
+                                                </div>
                                                 <div class="mb-3 border p-2 rounded bg-light">
                                                     <label class="form-label fw-bold small text-primary"><i class="fas fa-server me-1"></i> تنظیمات ادمین اختصاصی در هیدیفای:</label>
                                                     <div class="input-group input-group-sm mb-2">
@@ -670,6 +732,20 @@
                     <div class="mb-3">
                         <label class="form-label">آیدی عددی تلگرام (اختیاری برای نوتیفیکیشن):</label>
                         <input type="number" name="telegram_id" class="form-control" placeholder="مثال: 123456789">
+                    </div>
+                    <div class="row g-2 mb-3 border p-2 rounded bg-light">
+                        <div class="col-md-6 d-flex align-items-center">
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" name="credit_enabled" id="addCreditEnabled">
+                                <label class="form-check-label fw-bold small text-dark" for="addCreditEnabled">
+                                    فعال‌سازی اعتبار خرید و تمدید
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold text-muted">سقف اعتبار خرید (تومان):</label>
+                            <input type="number" name="credit_limit" class="form-control form-control-sm" value="0" min="0" placeholder="مثال: 2000000">
+                        </div>
                     </div>
                     <div class="mb-3 border p-2 rounded bg-light">
                         <label class="form-label fw-bold small text-primary"><i class="fas fa-server me-1"></i> اتصال به ادمین پنل هیدیفای:</label>

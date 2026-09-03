@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}میز پشتیبانی و تیکت‌ها - پنل نماینده{% endblock %}
+{% block title %}میز پشتیبانی و تیکت‌های مشتریان - پنل نماینده{% endblock %}
 
 {% block content %}
 <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
@@ -12,91 +12,19 @@
         </nav>
         <h1 class="page-title d-flex align-items-center gap-2 mb-0">
             <i class="fas fa-headset text-primary"></i>
-            میز پشتیبانی و تیکت‌ها
+            تیکت‌ها و پشتیبانی مشتریان
         </h1>
-        <p class="text-muted mb-0">مدیریت پاسخگویی به مشتریان ربات اختصاصی شما و مکاتبه مستقیم با پنل مدیریت</p>
+        <p class="text-muted mb-0">مشاهده زنجیره گفتگوها، مدیریت وضعیت و ارسال پاسخ مستقیم به تلگرام مشتریان ربات اختصاصی شما</p>
     </div>
-    <div class="d-flex align-items-center gap-2 flex-wrap">
-        <!-- دکمه‌های تست صدای اعلان -->
-        <button type="button" class="btn btn-outline-info btn-sm" onclick="playCustomerTicketSound()" title="پخش نمونه صدای اعلان تیکت مشتریان">
-            <i class="fas fa-volume-high me-1"></i> تست صدای مشتری
+    <div class="d-flex align-items-center gap-2">
+        <button type="button" class="btn btn-primary btn-sm fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#createAdminTicketModal">
+            <i class="fas fa-plus me-1"></i> ارسال تیکت جدید به مدیریت
         </button>
-        <button type="button" class="btn btn-outline-warning btn-sm" onclick="playResellerAdminTicketSound()" title="پخش نمونه صدای اعلان پیام مدیریت">
-            <i class="fas fa-building me-1 text-warning"></i> تست صدای مدیریت
-        </button>
-        <!-- دکمه ارسال تیکت جدید به مدیریت -->
-        <button type="button" class="btn btn-warning text-dark fw-bold" data-bs-toggle="modal" data-bs-target="#createAdminTicketModal">
-            <i class="fas fa-plus-circle me-1"></i> ارسال تیکت به مدیریت
-        </button>
-        <a href="{{ url_for('reseller_tickets', category=category_filter, status=status_filter) }}" class="btn btn-outline-secondary btn-sm">
-            <i class="fas fa-sync-alt me-1"></i> بروزرسانی
+        <a href="{{ url_for('reseller_tickets') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-sync-alt me-1"></i> بروزرسانی لیست
         </a>
     </div>
 </div>
-
-<!-- تب‌های اصلی دسته‌بندی تیکت‌ها (همه تیکت‌ها vs مشتریان من vs مکاتبات با مدیریت) -->
-<div class="card shadow-sm border-0 mb-3">
-    <div class="card-body p-2 bg-light rounded-3">
-        <ul class="nav nav-pills nav-fill flex-column flex-md-row gap-2">
-            <li class="nav-item">
-                <a class="nav-link py-2 px-3 d-flex justify-content-between align-items-center gap-2 {% if category_filter == 'all' or not category_filter %}active fw-bold shadow-sm bg-dark text-white{% endif %}" 
-                   href="{{ url_for('reseller_tickets', category='all', status='all') }}">
-                    <div class="d-flex align-items-center gap-2">
-                        <i class="fas fa-layer-group fs-5"></i>
-                        <span>🗂️ همه تیکت‌های سامانه</span>
-                    </div>
-                    <div class="d-flex align-items-center gap-1">
-                        {% if stats.open > 0 %}
-                            <span class="badge bg-warning text-dark">{{ stats.open }} باز</span>
-                        {% endif %}
-                        <span class="badge {% if category_filter == 'all' or not category_filter %}bg-white text-dark{% else %}bg-secondary{% endif %} rounded-pill">
-                            {{ stats.all }}
-                        </span>
-                    </div>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link py-2 px-3 d-flex justify-content-between align-items-center gap-2 {% if category_filter == 'customers' %}active fw-bold shadow-sm{% endif %}" 
-                   href="{{ url_for('reseller_tickets', category='customers', status='all') }}">
-                    <div class="d-flex align-items-center gap-2">
-                        <i class="fas fa-users fs-5"></i>
-                        <span>👥 پشتیبانی مشتریان من</span>
-                    </div>
-                    <div class="d-flex align-items-center gap-1">
-                        {% if stats.customers.open > 0 %}
-                            <span class="badge bg-warning text-dark">{{ stats.customers.open }} باز</span>
-                        {% endif %}
-                        <span class="badge {% if category_filter == 'customers' %}bg-white text-primary{% else %}bg-secondary{% endif %} rounded-pill">
-                            {{ stats.customers.all }}
-                        </span>
-                    </div>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link py-2 px-3 d-flex justify-content-between align-items-center gap-2 {% if category_filter == 'admin' %}active fw-bold shadow-sm bg-warning text-dark border border-warning{% endif %}" 
-                   href="{{ url_for('reseller_tickets', category='admin', status='all') }}">
-                    <div class="d-flex align-items-center gap-2">
-                        <i class="fas fa-building-user fs-5 text-warning"></i>
-                        <span>🏢 مکاتبات و تیکت‌ها با مدیریت</span>
-                    </div>
-                    <div class="d-flex align-items-center gap-1">
-                        {% if stats.admin.replied > 0 %}
-                            <span class="badge bg-success text-white pulse-indicator-badge">{{ stats.admin.replied }} پاسخ جدید</span>
-                        {% elif stats.admin.open > 0 %}
-                            <span class="badge bg-warning text-dark">{{ stats.admin.open }} در انتظار</span>
-                        {% endif %}
-                        <span class="badge {% if category_filter == 'admin' %}bg-dark text-white{% else %}bg-warning text-dark{% endif %} rounded-pill">
-                            {{ stats.admin.all }}
-                        </span>
-                    </div>
-                </a>
-            </li>
-        </ul>
-    </div>
-</div>
-
-<!-- متغیر آمار مربوط به تب انتخابی -->
-{% set current_stats = stats.admin if category_filter == 'admin' else (stats.customers if category_filter == 'customers' else stats) %}
 
 <!-- تب‌های فیلتر وضعیت و آمار تیکت‌ها برای نماینده -->
 <div class="card shadow-sm border-0 mb-4">
@@ -104,54 +32,52 @@
         <ul class="nav nav-pills nav-fill flex-column flex-sm-row gap-1">
             <li class="nav-item">
                 <a class="nav-link py-2 d-flex justify-content-center align-items-center gap-2 {% if status_filter == 'all' or not status_filter %}active fw-bold{% endif %}" 
-                   href="{{ url_for('reseller_tickets', category=category_filter, status='all') }}">
+                   href="{{ url_for('reseller_tickets', status='all') }}">
                     <i class="fas fa-inbox"></i>
-                    <span>همه</span>
-                    <span class="badge {% if status_filter == 'all' or not status_filter %}bg-white text-primary{% else %}bg-secondary{% endif %} rounded-pill">{{ current_stats.all }}</span>
+                    <span>همه تیکت‌ها</span>
+                    <span class="badge {% if status_filter == 'all' or not status_filter %}bg-white text-primary{% else %}bg-secondary{% endif %} rounded-pill">{{ stats.all }}</span>
                 </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link py-2 d-flex justify-content-center align-items-center gap-2 {% if status_filter == 'open' %}active fw-bold bg-warning text-dark{% endif %}" 
-                   href="{{ url_for('reseller_tickets', category=category_filter, status='open') }}">
+                   href="{{ url_for('reseller_tickets', status='open') }}">
                     <i class="fas fa-envelope-open text-warning"></i>
-                    <span>باز و در انتظار</span>
-                    <span class="badge {% if status_filter == 'open' %}bg-dark text-white{% else %}bg-warning text-dark{% endif %} rounded-pill">{{ current_stats.open }}</span>
+                    <span>باز و جدید</span>
+                    <span class="badge {% if status_filter == 'open' %}bg-dark text-white{% else %}bg-warning text-dark{% endif %} rounded-pill">{{ stats.open }}</span>
                 </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link py-2 d-flex justify-content-center align-items-center gap-2 {% if status_filter == 'in_progress' %}active fw-bold bg-info text-white{% endif %}" 
-                   href="{{ url_for('reseller_tickets', category=category_filter, status='in_progress') }}">
+                   href="{{ url_for('reseller_tickets', status='in_progress') }}">
                     <i class="fas fa-spinner fa-spin text-info"></i>
                     <span>در حال بررسی</span>
-                    <span class="badge {% if status_filter == 'in_progress' %}bg-white text-info{% else %}bg-info text-white{% endif %} rounded-pill">{{ current_stats.in_progress }}</span>
+                    <span class="badge {% if status_filter == 'in_progress' %}bg-white text-info{% else %}bg-info text-white{% endif %} rounded-pill">{{ stats.in_progress }}</span>
                 </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link py-2 d-flex justify-content-center align-items-center gap-2 {% if status_filter == 'replied' %}active fw-bold bg-success text-white{% endif %}" 
-                   href="{{ url_for('reseller_tickets', category=category_filter, status='replied') }}">
+                   href="{{ url_for('reseller_tickets', status='replied') }}">
                     <i class="fas fa-reply text-success"></i>
                     <span>پاسخ داده شده</span>
-                    <span class="badge {% if status_filter == 'replied' %}bg-white text-success{% else %}bg-success text-white{% endif %} rounded-pill">{{ current_stats.replied }}</span>
+                    <span class="badge {% if status_filter == 'replied' %}bg-white text-success{% else %}bg-success text-white{% endif %} rounded-pill">{{ stats.replied }}</span>
                 </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link py-2 d-flex justify-content-center align-items-center gap-2 {% if status_filter == 'closed' %}active fw-bold bg-secondary text-white{% endif %}" 
-                   href="{{ url_for('reseller_tickets', category=category_filter, status='closed') }}">
+                   href="{{ url_for('reseller_tickets', status='closed') }}">
                     <i class="fas fa-check-double text-secondary"></i>
                     <span>بسته شده</span>
-                    <span class="badge {% if status_filter == 'closed' %}bg-white text-dark{% else %}bg-secondary{% endif %} rounded-pill">{{ current_stats.closed }}</span>
+                    <span class="badge {% if status_filter == 'closed' %}bg-white text-dark{% else %}bg-secondary{% endif %} rounded-pill">{{ stats.closed }}</span>
                 </a>
             </li>
-            {% if category_filter != 'admin' and current_stats.get('vip') is not none %}
             <li class="nav-item">
                 <a class="nav-link py-2 d-flex justify-content-center align-items-center gap-2 {% if status_filter == 'vip' %}active fw-bold bg-warning text-dark border border-warning{% endif %}" 
-                   href="{{ url_for('reseller_tickets', category=category_filter, status='vip') }}">
+                   href="{{ url_for('reseller_tickets', status='vip') }}">
                     <i class="fas fa-crown text-warning"></i>
                     <span>مشتریان VIP</span>
-                    <span class="badge bg-warning text-dark rounded-pill">{{ current_stats.vip }}</span>
+                    <span class="badge bg-warning text-dark rounded-pill">{{ stats.vip }}</span>
                 </a>
             </li>
-            {% endif %}
         </ul>
     </div>
 </div>
@@ -159,160 +85,291 @@
 <div class="card shadow-sm border-0">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="d-flex align-items-center gap-2">
-            <h5 class="mb-0 fw-bold">
-                {% if category_filter == 'admin' %}
-                    <i class="fas fa-building text-warning me-2"></i>مکاتبات و تیکت‌ها با مدیریت
-                {% else %}
-                    <i class="fas fa-comments text-primary me-2"></i>لیست تیکت‌های مشتریان شما
-                {% endif %}
-            </h5>
+            <h5 class="mb-0 fw-bold"><i class="fas fa-comments text-primary me-2"></i>لیست تیکت‌های پشتیبانی</h5>
             <span class="badge bg-secondary" data-table-count="resellerTicketsTable">{{ tickets|length }} مورد</span>
         </div>
         <div class="table-search-wrapper">
             <i class="fas fa-search table-search-icon"></i>
-            <input type="text" class="form-control table-search-input" data-table="resellerTicketsTable" placeholder="جستجو در تیکت‌ها، موضوع، متن پیام..." value="{{ search }}">
+            <input type="text" class="form-control table-search-input" data-table="resellerTicketsTable" placeholder="جستجو در تیکت‌ها، مشتری، متن پیام..." value="{{ search }}">
             <button type="button" class="table-search-clear" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
         </div>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0 sortable-table bulk-table" id="resellerTicketsTable" data-bulk-bar="resellerTicketsBulkBar">
+            <table class="table table-hover align-middle mb-0" id="resellerTicketsTable">
                 <thead class="table-light">
                     <tr>
-                        <th class="text-center" style="width: 40px;">
-                            <input type="checkbox" class="form-check-input bulk-select-all" title="انتخاب همه">
-                        </th>
-                        <th class="ps-2 sortable-th" data-column="1" style="width: 80px;">شماره</th>
-                        <th class="sortable-th" data-column="2">{% if category_filter == 'admin' %}مخاطب{% else %}مشتری / طرف گفتگو{% endif %}</th>
-                        <th class="sortable-th" data-column="3">موضوع و پیام</th>
-                        <th class="sortable-th" data-column="4">گفتگو</th>
-                        <th class="sortable-th" data-column="5">وضعیت</th>
-                        <th class="sortable-th" data-column="6">تاریخ ثبت</th>
+                        <th class="ps-3" style="width: 80px;">شماره</th>
+                        <th>مشتری تلگرام</th>
+                        <th>موضوع و پیام</th>
+                        <th>گفتگو</th>
+                        <th>وضعیت</th>
+                        <th>تاریخ ثبت</th>
                         <th class="text-end pe-3" style="min-width: 160px;">عملیات و گفتگو</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for ticket in tickets %}
-                    {% set is_admin_ticket = (ticket.get('ticket_type') in ('reseller_to_admin', 'quota_change', 'reseller_application') or (ticket.get('target_role') == 'admin')) %}
-                    <tr class="{% if ticket.get('status') == 'open' %}ticket-row-open{% elif ticket.get('status') == 'in_progress' %}ticket-row-inprogress{% elif ticket.get('status') == 'replied' %}ticket-row-replied{% else %}ticket-row-closed{% endif %}"
+                    <tr class="{% if ticket.get('is_vip') %}table-warning bg-opacity-25 border-start border-warning border-3{% elif ticket.get('status') == 'open' %}table-warning bg-opacity-10{% endif %}"
                         style="cursor: pointer;"
-                        onclick="if(!event.target.closest('button') && !event.target.closest('a') && !event.target.closest('form') && !event.target.closest('input')) { new bootstrap.Modal(document.getElementById('ticketChatModal{{ ticket['id'] }}')).show(); }">
-                        <td class="text-center" onclick="event.stopPropagation();">
-                            <input type="checkbox" class="form-check-input bulk-select-row" value="{{ ticket['id'] }}">
-                        </td>
-                        <td class="ps-2" data-value="{{ ticket['id'] }}">
+                        onclick="if(!event.target.closest('button') && !event.target.closest('a') && !event.target.closest('form')) { new bootstrap.Modal(document.getElementById('ticketChatModal{{ ticket['id'] }}')).show(); }">
+                        <td class="ps-3">
                             <code class="badge ticket-badge-pill font-monospace fs-6">#{{ ticket['id'] }}</code>
-                            {% if is_admin_ticket %}
-                                <span class="badge bg-dark text-warning d-block mt-1"><i class="fas fa-building"></i> مدیریت</span>
-                            {% elif ticket.get('is_vip') %}
+                            {% if ticket.get('is_vip') %}
                                 <span class="badge bg-warning text-dark d-block mt-1"><i class="fas fa-crown"></i> VIP</span>
                             {% endif %}
                         </td>
-                        <td data-value="{{ ('مدیریت سامانه' if is_admin_ticket else (ticket.get('username') or ticket.get('first_name') or ticket.get('user_id') or ticket.get('telegram_id') or ''))|striptags }}">
-                            {% if is_admin_ticket %}
-                                <div class="d-flex align-items-center gap-2">
-                                    <div class="rounded-circle bg-warning bg-opacity-25 border border-warning d-flex align-items-center justify-content-center text-warning flex-shrink-0" style="width: 38px; height: 38px;">
-                                        <i class="fas fa-shield-halved fs-5"></i>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <img src="{{ avatar_url(ticket.get('user_id') or ticket.get('telegram_id') or ticket.get('username') or 'User') }}" 
+                                     alt="Avatar" 
+                                     class="rounded-circle border shadow-sm flex-shrink-0" 
+                                     style="width: 38px; height: 38px; object-fit: cover;" 
+                                     loading="lazy">
+                                <div>
+                                    <div class="d-flex align-items-center gap-1">
+                                        <strong class="ticket-user-title">{{ ticket.get('username') or ticket.get('first_name') or 'مشتری' }}</strong>
+                                        {% if ticket.get('is_vip') %}
+                                            <i class="fas fa-star text-warning" title="مشتری ویژه (VIP)"></i>
+                                        {% endif %}
                                     </div>
-                                    <div>
-                                        <strong class="ticket-user-title text-warning-emphasis">مدیریت سامانه</strong>
-                                        <div class="text-muted small">مرکز پشتیبانی فنی و مالی</div>
-                                    </div>
+                                    <div class="text-muted small"><code>{{ ticket.get('user_id') or ticket.get('telegram_id') }}</code></div>
                                 </div>
-                            {% else %}
-                                <div class="d-flex align-items-center gap-2">
-                                    <img src="{{ avatar_url(ticket.get('user_id') or ticket.get('telegram_id') or ticket.get('username') or 'User') }}" 
-                                         alt="Avatar" 
-                                         class="rounded-circle border shadow-sm flex-shrink-0" 
-                                         style="width: 38px; height: 38px; object-fit: cover;" 
-                                         loading="lazy">
-                                    <div>
-                                        <div class="d-flex align-items-center gap-1">
-                                            <strong class="ticket-user-title">{{ ticket.get('username') or ticket.get('first_name') or 'مشتری' }}</strong>
-                                            {% if ticket.get('is_vip') %}
-                                                <i class="fas fa-star text-warning" title="مشتری ویژه (VIP)"></i>
-                                            {% endif %}
-                                        </div>
-                                        <div class="text-muted small"><code>{{ ticket.get('user_id') or ticket.get('telegram_id') }}</code></div>
-                                    </div>
-                                </div>
-                            {% endif %}
+                            </div>
                         </td>
-                        <td style="max-width: 280px;" data-value="{{ (ticket.get('subject') or ticket.get('ticket_type') or ticket.get('message') or '')|striptags }}">
-                            <div class="d-flex align-items-center gap-1 mb-1 flex-wrap">
-                                {% if ticket.get('ticket_type') == 'quota_change' %}
-                                    <span class="badge bg-warning text-dark"><i class="fas fa-sliders me-1"></i>درخواست تغییر مشخصات</span>
-                                    {% if ticket.get('request_status') == 'approved' %}
-                                        <span class="badge bg-success py-0">تایید شد</span>
-                                    {% elif ticket.get('request_status') == 'rejected' %}
-                                        <span class="badge bg-danger py-0">رد شد</span>
-                                    {% else %}
-                                        <span class="badge bg-primary py-0">در انتظار تایید</span>
-                                    {% endif %}
-                                {% elif ticket.get('ticket_type') == 'reseller_to_admin' %}
-                                    <span class="badge bg-primary-subtle text-primary border border-primary"><i class="fas fa-building me-1"></i>پیام به مدیریت</span>
-                                    <span class="badge ticket-badge-pill">{{ ticket.get('subject') or 'مکاتبه' }}</span>
-                                {% else %}
-                                    <span class="badge ticket-badge-pill">{{ ticket.get('subject') or 'پشتیبانی' }}</span>
-                                {% endif %}
+                        <td style="max-width: 280px;">
+                            <div class="d-flex align-items-center gap-1 mb-1">
+                                <span class="badge ticket-badge-pill">{{ ticket.get('subject') or 'پشتیبانی' }}</span>
                             </div>
                             <div class="text-truncate text-secondary small" title="{{ ticket.get('message') }}">
                                 {{ ticket.get('message') }}
                             </div>
                         </td>
-                        <td data-value="{{ ticket.messages|length if ticket.messages else 1 }}">
+                        <td>
                             <span class="badge bg-primary-subtle text-primary border border-primary">
                                 <i class="fas fa-comments me-1"></i> {{ (ticket.messages|length) if ticket.messages else 1 }} پیام
                             </span>
                         </td>
-                        <td data-value="{{ 1 if ticket.get('status') == 'open' else (2 if ticket.get('status') == 'in_progress' else (3 if ticket.get('status') == 'replied' else 4)) }}">
+                        <td>
                             {% if ticket.get('status') == 'open' %}
-                                <span class="badge bg-warning text-dark fw-bold px-2 py-1 pulse-indicator"><i class="fas fa-envelope-open-text me-1"></i> باز / جدید</span>
+                                <span class="badge bg-warning text-dark"><i class="fas fa-envelope-open me-1"></i> باز / در انتظار</span>
                             {% elif ticket.get('status') == 'in_progress' %}
-                                <span class="badge bg-info text-white fw-bold px-2 py-1"><i class="fas fa-spinner fa-spin me-1"></i> در حال بررسی</span>
+                                <span class="badge bg-info-subtle text-info border border-info"><i class="fas fa-spinner fa-spin me-1"></i> در حال بررسی</span>
                             {% elif ticket.get('status') == 'replied' %}
-                                <span class="badge bg-success-subtle text-success border border-success fw-bold px-2 py-1"><i class="fas fa-reply me-1"></i> پاسخ داده شده</span>
+                                <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-reply me-1"></i> پاسخ داده شده</span>
                             {% else %}
-                                <span class="badge bg-secondary text-white px-2 py-1"><i class="fas fa-check-double me-1"></i> بسته شده</span>
+                                <span class="badge bg-secondary"><i class="fas fa-check-double me-1"></i> بسته شده</span>
                             {% endif %}
                         </td>
-                        <td data-value="{{ ticket.get('created_at') or '' }}"><small class="text-muted font-monospace">{{ ticket.get('created_at')[:16].replace('T', ' ') if ticket.get('created_at') else '-' }}</small></td>
+                        <td><small class="text-muted">{{ ticket.get('created_at')[:16].replace('T', ' ') if ticket.get('created_at') else '-' }}</small></td>
                         <td class="text-end pe-3">
                             <div class="btn-group btn-group-sm">
                                 <button type="button" class="btn btn-primary fw-bold" data-bs-toggle="modal" data-bs-target="#ticketChatModal{{ ticket['id'] }}" title="مشاهده گفتگو و پاسخ">
                                     <i class="fas fa-comments me-1"></i> گفتگو
                                 </button>
-                                {% if not is_admin_ticket %}
-                                    {% if ticket.get('status') != 'closed' %}
-                                    <form action="{{ url_for('reseller_ticket_close', ticket_id=ticket['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از بستن این تیکت اطمینان دارید؟');">
-                                        <button type="submit" class="btn btn-outline-secondary" title="بستن تیکت">
-                                            <i class="fas fa-check"></i>
-                                        </button>
-                                    </form>
-                                    {% else %}
-                                    <form action="{{ url_for('reseller_ticket_reopen', ticket_id=ticket['id']) }}" method="POST" class="d-inline">
-                                        <button type="submit" class="btn btn-outline-success" title="بازگشایی مجدد">
-                                            <i class="fas fa-redo"></i>
-                                        </button>
-                                    </form>
-                                    {% endif %}
+                                {% if ticket.get('status') != 'closed' %}
+                                <form action="{{ url_for('reseller_ticket_close', ticket_id=ticket['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از بستن این تیکت اطمینان دارید؟');">
+                                    <button type="submit" class="btn btn-outline-secondary" title="بستن تیکت">
+                                        <i class="fas fa-check"></i>
+                                    </button>
+                                </form>
+                                {% else %}
+                                <form action="{{ url_for('reseller_ticket_reopen', ticket_id=ticket['id']) }}" method="POST" class="d-inline">
+                                    <button type="submit" class="btn btn-outline-success" title="بازگشایی مجدد">
+                                        <i class="fas fa-redo"></i>
+                                    </button>
+                                </form>
                                 {% endif %}
                             </div>
                         </td>
                     </tr>
+
+                    <!-- مودال گفتگوی جامع و تعاملی تیکت نماینده -->
+                    <div class="modal fade" id="ticketChatModal{{ ticket['id'] }}" tabindex="-1" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+                            <div class="modal-content border-0 shadow-lg">
+                                <!-- هدر مودال -->
+                                <div class="modal-header bg-primary text-white py-3">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <i class="fas fa-comments fs-4"></i>
+                                        <div>
+                                            <h5 class="modal-title fw-bold mb-0">تیکت پشتیبانی #{{ ticket['id'] }}</h5>
+                                            <small class="opacity-75">{{ ticket.get('subject') or 'پشتیبانی فنی مشتری' }}</small>
+                                        </div>
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        {% if ticket.get('is_vip') %}
+                                            <span class="badge bg-warning text-dark"><i class="fas fa-crown me-1"></i> مشتری طلایی VIP</span>
+                                        {% endif %}
+                                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                    </div>
+                                </div>
+
+                                <div class="modal-body p-0">
+                                    <!-- کارت اطلاعات ۳۶۰ درجه مشتری نماینده -->
+                                    <div class="ticket-user-summary-card p-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                        <div class="d-flex align-items-center gap-3">
+                                            <img src="{{ avatar_url(ticket.get('user_id') or ticket.get('telegram_id') or ticket.get('username') or 'User') }}" 
+                                                 alt="Avatar" class="rounded-circle border shadow-sm" style="width: 44px; height: 44px; object-fit: cover;">
+                                            <div>
+                                                <div class="fw-bold ticket-user-title fs-6">{{ ticket.get('username') or ticket.get('first_name') or 'مشتری' }}</div>
+                                                <div class="text-muted small">
+                                                    <span class="me-2">🆔 <code>{{ ticket.get('user_id') or ticket.get('telegram_id') }}</code></span>
+                                                    {% if ticket.get('username') and not ticket.get('username').startswith('tg_') and ticket.get('username') != 'مشتری' %}
+                                                        <span class="me-2">💬 @{{ ticket.get('username') }}</span>
+                                                    {% endif %}
+                                                    {% if ticket.get('phone_number') %}
+                                                        <span>📱 {{ ticket.phone_number }}</span>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="badge ticket-info-pill py-2 px-3">
+                                                <i class="fas fa-shield-halved text-success me-1"></i> {{ ticket.get('active_subs_count', 0) }} اشتراک فعال
+                                            </span>
+                                            <span class="badge ticket-info-pill py-2 px-3">
+                                                <i class="fas fa-wallet text-primary me-1"></i> {{ "{:,}".format(ticket.get('wallet_balance', 0)) }} ت
+                                            </span>
+                                            {% if ticket.get('username') and not ticket.get('username').startswith('tg_') and ticket.get('username') != 'مشتری' %}
+                                                <a href="https://t.me/{{ ticket.get('username').replace('@', '') }}" target="_blank" class="btn btn-sm btn-outline-primary" title="چت در تلگرام">
+                                                    <i class="fab fa-telegram me-1"></i> تلگرام
+                                                </a>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+
+                                    <!-- جریان زنجیره گفتگو (Chat Stream) -->
+                                    <div class="p-3 chat-messages-container ticket-chat-box m-3" style="min-height: 280px; max-height: 420px; overflow-y: auto;">
+                                        {% if ticket.messages %}
+                                            {% for msg in ticket.messages %}
+                                                {% if msg['sender_type'] == 'user' %}
+                                                    <!-- پیام مشتری -->
+                                                    <div class="d-flex flex-column align-items-start mb-3">
+                                                        <div class="d-flex align-items-center gap-2 mb-1">
+                                                            <span class="badge bg-secondary-subtle text-secondary border">{{ msg.get('sender_name') or 'مشتری' }}</span>
+                                                            <small class="text-muted" style="font-size: 0.75rem;">{{ msg['created_at'][:16].replace('T', ' ') if msg['created_at'] else '' }}</small>
+                                                        </div>
+                                                        <div class="p-3 shadow-sm ticket-msg-user" style="max-width: 85%;">
+                                                            <p class="mb-0" style="white-space: pre-line; word-break: break-word;">{{ msg['message'] }}</p>
+                                                        </div>
+                                                    </div>
+                                                {% else %}
+                                                    <!-- پیام پشتیبانی نماینده -->
+                                                    <div class="d-flex flex-column align-items-end mb-3">
+                                                        <div class="d-flex align-items-center gap-2 mb-1">
+                                                            <small class="text-muted" style="font-size: 0.75rem;">{{ msg['created_at'][:16].replace('T', ' ') if msg['created_at'] else '' }}</small>
+                                                            <span class="badge bg-primary text-white"><i class="fas fa-headset me-1"></i> {{ msg.get('sender_name') or 'پشتیبانی' }}</span>
+                                                        </div>
+                                                        <div class="p-3 shadow-sm ticket-msg-support" style="max-width: 85%;">
+                                                            <p class="mb-0" style="white-space: pre-line; word-break: break-word;">{{ msg['message'] }}</p>
+                                                        </div>
+                                                    </div>
+                                                {% endif %}
+                                            {% endfor %}
+                                        {% else %}
+                                            <div class="d-flex flex-column align-items-start mb-3">
+                                                <div class="d-flex align-items-center gap-2 mb-1">
+                                                    <span class="badge bg-secondary-subtle text-secondary border">مشتری</span>
+                                                    <small class="text-muted" style="font-size: 0.75rem;">{{ ticket.get('created_at')[:16] if ticket.get('created_at') else '' }}</small>
+                                                </div>
+                                                <div class="p-3 shadow-sm ticket-msg-user" style="max-width: 85%;">
+                                                    <p class="mb-0">{{ ticket.get('message') }}</p>
+                                                </div>
+                                            </div>
+                                            {% if ticket.get('admin_reply') %}
+                                            <div class="d-flex flex-column align-items-end mb-3">
+                                                <div class="d-flex align-items-center gap-2 mb-1">
+                                                    <span class="badge bg-primary text-white"><i class="fas fa-headset me-1"></i> پشتیبانی</span>
+                                                </div>
+                                                <div class="p-3 shadow-sm ticket-msg-support" style="max-width: 85%;">
+                                                    <p class="mb-0">{{ ticket.get('admin_reply') }}</p>
+                                                </div>
+                                            </div>
+                                            {% endif %}
+                                        {% endif %}
+                                    </div>
+
+                                    <!-- پاسخ‌های آماده و سریع (Quick Canned Replies) -->
+                                    <div class="px-3 py-2 ticket-quick-replies-bar border-top border-bottom">
+                                        <div class="d-flex align-items-center gap-2 overflow-auto py-1" style="scrollbar-width: none;">
+                                            <span class="text-muted small fw-bold flex-shrink-0"><i class="fas fa-bolt text-warning me-1"></i>پاسخ سریع:</span>
+                                            <button type="button" class="btn ticket-quick-chip py-0 px-2 flex-shrink-0 rounded-pill" 
+                                                    onclick="insertCannedReply('resellerReplyArea{{ ticket['id'] }}', 'سلام و درود، پیام شما دریافت شد و توسط کارشناسان در حال بررسی است.')">
+                                                ⏳ در حال پیگیری
+                                            </button>
+                                            <button type="button" class="btn ticket-quick-chip py-0 px-2 flex-shrink-0 rounded-pill" 
+                                                    onclick="insertCannedReply('resellerReplyArea{{ ticket['id'] }}', 'مشکل سرور برطرف گردید. لطفاً مجدداً تست فرمایید.')">
+                                                🔧 مشکل سرور برطرف شد
+                                            </button>
+                                            <button type="button" class="btn ticket-quick-chip py-0 px-2 flex-shrink-0 rounded-pill" 
+                                                    onclick="insertCannedReply('resellerReplyArea{{ ticket['id'] }}', 'لطفاً لینک اتصال را در اپلیکیشن خود بروزرسانی (Update) فرمایید.')">
+                                                🔄 آپدیت لینک اتصال
+                                            </button>
+                                            <button type="button" class="btn ticket-quick-chip py-0 px-2 flex-shrink-0 rounded-pill" 
+                                                    onclick="insertCannedReply('resellerReplyArea{{ ticket['id'] }}', 'لطفاً نرم‌افزار اتصال (v2rayNG / Hiddify) را به آخرین نسخه بروزرسانی فرمایید.')">
+                                                📱 بروزرسانی نرم‌افزار
+                                            </button>
+                                            <button type="button" class="btn ticket-quick-chip py-0 px-2 flex-shrink-0 rounded-pill" 
+                                                    onclick="insertCannedReply('resellerReplyArea{{ ticket['id'] }}', 'پرداخت شما تایید شد و اشتراک با موفقیت فعال گردید.')">
+                                                💳 تایید پرداخت
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- فرم ارسال پاسخ -->
+                                    <div class="p-3 ticket-reply-box">
+                                        <form action="{{ url_for('reseller_ticket_reply', ticket_id=ticket['id']) }}" method="POST">
+                                            <div class="mb-2">
+                                                <textarea id="resellerReplyArea{{ ticket['id'] }}" 
+                                                          name="reply_message" 
+                                                          class="form-control" 
+                                                          rows="3" 
+                                                          placeholder="متن پاسخ خود را بنویسید (مستقیماً با ربات اختصاصی شما برای مشتری ارسال خواهد شد)..." 
+                                                          required></textarea>
+                                            </div>
+                                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                                <div class="d-flex align-items-center gap-3">
+                                                    <div class="form-check form-switch mb-0">
+                                                        <input class="form-check-input" type="checkbox" name="close_ticket" id="rCloseCheck{{ ticket['id'] }}" value="1" {% if ticket.get('status') != 'closed' %}checked{% endif %}>
+                                                        <label class="form-check-label small text-muted" for="rCloseCheck{{ ticket['id'] }}">بستن تیکت پس از ارسال پاسخ</label>
+                                                    </div>
+                                                </div>
+                                                <div class="d-flex gap-2">
+                                                    <button type="submit" class="btn btn-success fw-bold px-4">
+                                                        <i class="fas fa-paper-plane me-1"></i> ارسال پاسخ به مشتری
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+
+                                <!-- فوتر مودال با گزینه‌های تغییر وضعیت -->
+                                <div class="modal-footer py-2 d-flex justify-content-between align-items-center">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="text-muted small">تغییر وضعیت دستی:</span>
+                                        <form action="{{ url_for('reseller_ticket_status', ticket_id=ticket['id']) }}" method="POST" class="d-inline">
+                                            <select name="status" class="form-select form-select-sm d-inline-block w-auto" onchange="this.form.submit()">
+                                                <option value="open" {% if ticket.get('status') == 'open' %}selected{% endif %}>🟢 باز / در انتظار</option>
+                                                <option value="in_progress" {% if ticket.get('status') == 'in_progress' %}selected{% endif %}>🟡 در حال بررسی</option>
+                                                <option value="replied" {% if ticket.get('status') == 'replied' %}selected{% endif %}>🔵 پاسخ داده شده</option>
+                                                <option value="closed" {% if ticket.get('status') == 'closed' %}selected{% endif %}>⚫️ بسته شده</option>
+                                            </select>
+                                        </form>
+                                    </div>
+                                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">بستن پنجره</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     {% endfor %}
 
                     {% if not tickets %}
                     <tr>
-                        <td colspan="8" class="text-center py-5 text-muted">
+                        <td colspan="7" class="text-center py-5 text-muted">
                             <i class="fas fa-headset fs-1 d-block mb-3 text-secondary opacity-50"></i>
-                            <h6 class="fw-bold">
-                                {% if category_filter == 'admin' %}
-                                    هیچ تیکت یا مکاتبه‌ای با مدیریت در این بخش ثبت نشده است.
-                                {% else %}
-                                    هیچ تیکت پشتیبانی از سمت مشتریان شما در این بخش یافت نشد.
-                                {% endif %}
-                            </h6>
+                            <h6 class="fw-bold">هیچ تیکت پشتیبانی از سمت مشتریان شما در این بخش یافت نشد.</h6>
                         </td>
                     </tr>
                     {% endif %}
@@ -322,356 +379,38 @@
     </div>
 </div>
 
-<!-- ─── نوار ابزار شناور مدیریت گروهی تیکت‌های نماینده ─── -->
-<div class="bulk-actions-bar" id="resellerTicketsBulkBar">
-    <div class="d-flex align-items-center gap-2">
-        <span class="badge bg-primary rounded-pill fs-6 px-3 py-2">
-            <i class="fas fa-check-double me-1"></i> <span class="bulk-selected-count">0</span> تیکت انتخاب شد
-        </span>
-    </div>
-    <form id="resellerTicketBulkForm" method="POST" action="{{ url_for('reseller_tickets_bulk') }}" class="d-flex align-items-center flex-wrap gap-2 m-0">
-        <input type="hidden" name="bulk_action" value="">
-        <input type="hidden" name="selected_ids_str" class="bulk-selected-ids-input" value="">
-        
-        <button type="button" class="btn btn-sm btn-outline-light" onclick="submitBulkAction('resellerTicketBulkForm', 'close', 'آیا از بستن تیکت‌های انتخاب شده اطمینان دارید؟')">
-            <i class="fas fa-check-double me-1"></i> بستن تیکت‌های انتخابی
-        </button>
-        <button type="button" class="btn btn-sm btn-danger" onclick="submitBulkAction('resellerTicketBulkForm', 'delete', 'هشدار: آیا از حذف کامل تیکت‌های انتخاب شده اطمینان دارید؟')">
-            <i class="fas fa-trash-can me-1"></i> حذف گروهی
-        </button>
-    </form>
-</div>
-
-<!-- مودال ثبت تیکت جدید برای مدیریت -->
-<div class="modal fade text-start" id="createAdminTicketModal" tabindex="-1" aria-labelledby="createAdminTicketModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-        <div class="modal-content border-0 shadow-lg">
-            <form action="{{ url_for('reseller_create_ticket_to_admin') }}" method="POST">
-                <div class="modal-header bg-warning text-dark py-3">
-                    <div class="d-flex align-items-center gap-2">
-                        <i class="fas fa-paper-plane fs-4"></i>
-                        <h5 class="modal-title fw-bold mb-0" id="createAdminTicketModalLabel">ارسال تیکت جدید به مدیریت</h5>
-                    </div>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+<!-- Modal ارسال تیکت مستقیم به مدیریت (مثلاً پیرامون قبوض بدهی یا پشتیبانی) -->
+<div class="modal fade text-start" id="createAdminTicketModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <form method="POST" action="{{ url_for('reseller_create_ticket') }}">
+                <div class="modal-header bg-primary text-white py-3">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-paper-plane me-2"></i>ارسال تیکت جدید به مدیریت</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body p-4">
-                    <!-- انتخاب دسته‌بندی موضوع -->
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold small"><i class="fas fa-folder text-primary me-1"></i>دسته‌بندی موضوع:</label>
-                            <select name="category_type" id="ticketCategorySelect" class="form-select" onchange="handleAdminCategoryChange(this.value)">
-                                <option value="عمومی">عمومی / راهنمایی</option>
-                                <option value="شارژ حساب">💳 درخواست شارژ حساب / ثبت فیش پایا</option>
-                                <option value="دامنه اختصاصی">⚡ درخواست ایجاد ساب‌دامنه اختصاصی</option>
-                                <option value="گزارش اختلال">🔧 گزارش اختلال یا قطعی سرور</option>
-                                <option value="پلن‌ها و سهم">🔄 درخواست ارتقای سقف و پلن‌ها</option>
-                                <option value="سوال فنی">❓ سوال و راهنمایی فنی</option>
-                            </select>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold small"><i class="fas fa-heading text-primary me-1"></i>موضوع تیکت:</label>
-                            <input type="text" name="subject" id="ticketSubjectInput" class="form-control" placeholder="مثلاً: درخواست بررسی ساب‌دامنه یا شارژ..." required>
-                        </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">موضوع تیکت: <span class="text-danger">*</span></label>
+                        <input type="text" name="subject" class="form-control" placeholder="موضوع تیکت یا شماره قبض..." value="{{ prefill_subject or '' }}" required>
                     </div>
-
-                    <!-- دکمه‌های پیام آماده و پرکاربرد -->
-                    <div class="mb-3 p-3 bg-light rounded-3 border">
-                        <label class="form-label fw-bold small text-muted mb-2"><i class="fas fa-bolt text-warning me-1"></i>قالب‌های آماده و پرکاربرد (جهت درج سریع کلیک کنید):</label>
-                        <div class="d-flex flex-wrap gap-2">
-                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="setAdminTicketTemplate('درخواست شارژ حساب', 'با سلام و احترام،\nمبلغ واریزی به حساب واریز گردید. لطفاً حساب کاربری اینجانب را شارژ فرمایید.\nشماره پیگیری / فیش:\nبا تشکر')">
-                                💳 درخواست شارژ حساب
-                            </button>
-                            <button type="button" class="btn btn-sm btn-outline-info" onclick="setAdminTicketTemplate('درخواست ساب‌دامنه اختصاصی', 'با سلام،\nلطفاً یک ساب‌دامنه تمیز و بدون فیلتر برای ربات اختصاصی اینجانب تنظیم فرمایید.\nدامنه مد نظر:\nبا تشکر')">
-                                ⚡ درخواست ساب‌دامنه
-                            </button>
-                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="setAdminTicketTemplate('گزارش اختلال در سرور', 'با سلام و احترام،\nتعدادی از کاربران در اتصال به لوکیشن‌های زیر با کندی یا قطعی مواجه شده‌اند:\nلوکیشن‌ها / نودها:\nلطفاً بررسی فرمایید.')">
-                                🔧 گزارش اختلال سرور
-                            </button>
-                            <button type="button" class="btn btn-sm btn-outline-success" onclick="setAdminTicketTemplate('درخواست افزایش سهمیه', 'با سلام،\nبا توجه به افزایش تعداد کاربران، لطفاً سقف مجاز صدور اشتراک اینجانب را افزایش دهید.\nبا تشکر')">
-                                🔄 افزایش سهمیه
-                            </button>
-                        </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">متن پیام یا توضیحات قبض: <span class="text-danger">*</span></label>
+                        <textarea name="message" class="form-control" rows="5" placeholder="شرح درخواست، سوال پیرامون قبض بدهی یا گزارش مشکل..." required>{{ prefill_message or '' }}</textarea>
                     </div>
-
-                    <!-- متن پیام -->
-                    <div class="mb-2">
-                        <label class="form-label fw-bold small"><i class="fas fa-comment-dots text-primary me-1"></i>متن پیام و توضیحات:</label>
-                        <textarea name="message" id="ticketMessageArea" rows="5" class="form-control" placeholder="متن پیام خود را با جزئیات کامل بنویسید..." required></textarea>
+                    <div class="alert alert-info py-2 small mb-0">
+                        <i class="fas fa-info-circle me-1"></i> پیام شما مستقیماً در پنل مدیریت ثبت و توسط پشتیبان ارشد پاسخ داده خواهد شد.
                     </div>
                 </div>
-                <div class="modal-footer py-2">
+                <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
-                    <button type="submit" class="btn btn-warning text-dark fw-bold px-4">
-                        <i class="fas fa-paper-plane me-1"></i> ارسال تیکت به مدیریت
+                    <button type="submit" class="btn btn-primary fw-bold">
+                        <i class="fas fa-send me-1"></i> ارسال تیکت
                     </button>
                 </div>
             </form>
         </div>
     </div>
 </div>
-
-<!-- مودال‌های گفتگوی جامع و تعاملی تیکت‌های نماینده (خارج از ساختار جدول) -->
-{% for ticket in tickets %}
-{% set is_admin_ticket = (ticket.get('ticket_type') in ('reseller_to_admin', 'quota_change', 'reseller_application') or category_filter == 'admin') %}
-<div class="modal fade text-start" id="ticketChatModal{{ ticket['id'] }}" tabindex="-1" aria-labelledby="ticketChatModalLabel{{ ticket['id'] }}" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
-        <div class="modal-content border-0 shadow-lg text-start">
-            <!-- هدر مودال -->
-            <div class="modal-header {% if is_admin_ticket %}bg-dark text-warning border-bottom border-warning{% else %}bg-primary text-white{% endif %} py-3">
-                <div class="d-flex align-items-center gap-2">
-                    <i class="fas {% if is_admin_ticket %}fa-building text-warning{% else %}fa-comments{% endif %} fs-4"></i>
-                    <div>
-                        <h5 class="modal-title fw-bold mb-0" id="ticketChatModalLabel{{ ticket['id'] }}">
-                            {% if is_admin_ticket %}
-                                مکاتبه با مدیریت #{{ ticket['id'] }}
-                            {% else %}
-                                تیکت پشتیبانی مشتری #{{ ticket['id'] }}
-                            {% endif %}
-                        </h5>
-                        <small class="opacity-75">{{ ticket.get('subject') or 'پشتیبانی فنی' }}</small>
-                    </div>
-                </div>
-                <div class="d-flex align-items-center gap-2">
-                    {% if is_admin_ticket %}
-                        <span class="badge bg-warning text-dark"><i class="fas fa-building me-1"></i> پنل مدیریت</span>
-                    {% elif ticket.get('is_vip') %}
-                        <span class="badge bg-warning text-dark"><i class="fas fa-crown me-1"></i> مشتری طلایی VIP</span>
-                    {% endif %}
-                    <button type="button" class="btn-close {% if not is_admin_ticket %}btn-close-white{% endif %}" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-            </div>
-
-            <div class="modal-body p-0">
-                <!-- کارت اطلاعات ۳۶۰ درجه مخاطب -->
-                <div class="ticket-user-summary-card p-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
-                    {% if is_admin_ticket %}
-                        <div class="d-flex align-items-center gap-3">
-                            <div class="rounded-circle bg-warning bg-opacity-25 border border-warning d-flex align-items-center justify-content-center text-warning" style="width: 44px; height: 44px;">
-                                <i class="fas fa-shield-halved fs-4"></i>
-                            </div>
-                            <div>
-                                <div class="fw-bold ticket-user-title fs-6">مدیریت و پشتیبانی سامانه</div>
-                                <div class="text-muted small">مکاتبه مستقیم با مدیران سیستم</div>
-                            </div>
-                        </div>
-                        <div>
-                            <span class="badge bg-warning-subtle text-warning border border-warning py-2 px-3">
-                                <i class="fas fa-clock me-1"></i> زمان پاسخگویی: سریع
-                            </span>
-                        </div>
-                    {% else %}
-                        <div class="d-flex align-items-center gap-3">
-                            <img src="{{ avatar_url(ticket.get('user_id') or ticket.get('telegram_id') or ticket.get('username') or 'User') }}" 
-                                 alt="Avatar" class="rounded-circle border shadow-sm" style="width: 44px; height: 44px; object-fit: cover;">
-                            <div>
-                                <div class="fw-bold ticket-user-title fs-6">{{ ticket.get('username') or ticket.get('first_name') or 'مشتری' }}</div>
-                                <div class="text-muted small">
-                                    <span class="me-2">🆔 <code>{{ ticket.get('user_id') or ticket.get('telegram_id') }}</code></span>
-                                    {% if ticket.get('username') and not ticket.get('username').startswith('tg_') and ticket.get('username') != 'مشتری' %}
-                                        <span class="me-2">💬 @{{ ticket.get('username') }}</span>
-                                    {% endif %}
-                                    {% if ticket.get('phone_number') %}
-                                        <span>📱 {{ ticket.phone_number }}</span>
-                                    {% endif %}
-                                </div>
-                            </div>
-                        </div>
-                        <div class="d-flex align-items-center gap-2">
-                            <span class="badge ticket-info-pill py-2 px-3">
-                                <i class="fas fa-shield-halved text-success me-1"></i> {{ ticket.get('active_subs_count', 0) }} اشتراک فعال
-                            </span>
-                            <span class="badge ticket-info-pill py-2 px-3">
-                                <i class="fas fa-wallet text-primary me-1"></i> {{ "{:,}".format(ticket.get('wallet_balance', 0)) }} ت
-                            </span>
-                            {% if ticket.get('username') and not ticket.get('username').startswith('tg_') and ticket.get('username') != 'مشتری' %}
-                                <a href="https://t.me/{{ ticket.get('username').replace('@', '') }}" target="_blank" class="btn btn-sm btn-outline-primary" title="چت در تلگرام">
-                                    <i class="fab fa-telegram me-1"></i> تلگرام
-                                </a>
-                            {% endif %}
-                        </div>
-                    {% endif %}
-                </div>
-
-                {% if ticket.get('ticket_type') == 'quota_change' %}
-                {% set r_data = ticket.get('request_data')|from_json %}
-                <!-- کارت خلاصه وضعیت درخواست تغییر مشخصات نماینده -->
-                <div class="alert alert-warning border-warning p-3 m-3 mb-0 rounded-3 shadow-sm">
-                    <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
-                        <h6 class="fw-bold text-dark mb-0"><i class="fas fa-sliders text-warning me-2"></i>درخواست تغییر مشخصات اشتراک مشتری</h6>
-                        <span class="badge {% if ticket.get('request_status') == 'approved' %}bg-success{% elif ticket.get('request_status') == 'rejected' %}bg-danger{% else %}bg-warning text-dark{% endif %} fs-6">
-                            {% if ticket.get('request_status') == 'approved' %}✅ تایید و اعمال شده توسط مدیر{% elif ticket.get('request_status') == 'rejected' %}❌ رد شده توسط مدیر{% else %}⏳ در انتظار بررسی مدیریت{% endif %}
-                        </span>
-                    </div>
-                    <div class="row g-2 text-center my-3">
-                        <div class="col-md-4 col-12">
-                            <div class="p-2 bg-white rounded border">
-                                <small class="text-muted d-block">نام مشتری:</small>
-                                <strong class="font-monospace text-primary">{{ r_data.get('account_name') }}</strong>
-                            </div>
-                        </div>
-                        <div class="col-md-4 col-6">
-                            <div class="p-2 bg-white rounded border">
-                                <small class="text-muted d-block">تغییر حجم:</small>
-                                <span class="text-muted font-monospace">{{ r_data.get('current_limit') }}GB</span> ➔ <strong class="text-success font-monospace fs-6">{{ r_data.get('requested_limit') }}GB</strong>
-                            </div>
-                        </div>
-                        <div class="col-md-4 col-6">
-                            <div class="p-2 bg-white rounded border">
-                                <small class="text-muted d-block">تغییر مدت اعتبار:</small>
-                                <span class="text-muted font-monospace">{{ r_data.get('current_duration') }} روز</span> ➔ <strong class="text-success font-monospace fs-6">{{ r_data.get('requested_duration') }} روز</strong>
-                            </div>
-                        </div>
-                    </div>
-                    {% if r_data.get('reason') %}
-                    <div class="p-2 bg-white rounded border">
-                        <small class="text-muted fw-bold d-block mb-1">علت و توضیحات ارسالی شما:</small>
-                        <p class="mb-0 small">{{ r_data.get('reason') }}</p>
-                    </div>
-                    {% endif %}
-                </div>
-                {% endif %}
-
-                <!-- جریان زنجیره گفتگو (Chat Stream) -->
-                <div class="p-3 chat-messages-container ticket-chat-box m-3" style="min-height: 280px; max-height: 420px; overflow-y: auto;">
-                    {% if ticket.get('messages') %}
-                        {% for msg in ticket.messages %}
-                            {% if (is_admin_ticket and msg.get('sender_type') == 'reseller') or (not is_admin_ticket and msg.get('sender_type') == 'user') %}
-                                <!-- پیام ارسالی توسط مشتری یا پیام خود نماینده به مدیریت -->
-                                <div class="d-flex flex-column align-items-start mb-3">
-                                    <div class="d-flex align-items-center gap-2 mb-1">
-                                        <span class="badge bg-secondary-subtle text-secondary border">
-                                            {% if is_admin_ticket %}پیام شما{% else %}{{ msg.get('sender_name') or 'مشتری' }}{% endif %}
-                                        </span>
-                                        <small class="text-muted" style="font-size: 0.75rem;">{{ msg.get('created_at')[:16].replace('T', ' ') if msg.get('created_at') else '' }}</small>
-                                    </div>
-                                    <div class="p-3 shadow-sm ticket-msg-user" style="max-width: 85%;">
-                                        <p class="mb-0" style="white-space: pre-line; word-break: break-word;">{{ msg.get('message') }}</p>
-                                    </div>
-                                </div>
-                            {% else %}
-                                <!-- پیام پاسخ (پاسخ مدیریت یا پاسخ نماینده به مشتری) -->
-                                <div class="d-flex flex-column align-items-end mb-3">
-                                    <div class="d-flex align-items-center gap-2 mb-1">
-                                        <small class="text-muted" style="font-size: 0.75rem;">{{ msg.get('created_at')[:16].replace('T', ' ') if msg.get('created_at') else '' }}</small>
-                                        <span class="badge bg-primary text-white">
-                                            <i class="fas fa-headset me-1"></i> 
-                                            {% if is_admin_ticket %}پاسخ مدیریت{% else %}{{ msg.get('sender_name') or 'پشتیبانی نماینده' }}{% endif %}
-                                        </span>
-                                    </div>
-                                    <div class="p-3 shadow-sm ticket-msg-support" style="max-width: 85%;">
-                                        <p class="mb-0" style="white-space: pre-line; word-break: break-word;">{{ msg.get('message') }}</p>
-                                    </div>
-                                </div>
-                            {% endif %}
-                        {% endfor %}
-                    {% else %}
-                        <div class="d-flex flex-column align-items-start mb-3">
-                            <div class="d-flex align-items-center gap-2 mb-1">
-                                <span class="badge bg-secondary-subtle text-secondary border">پیام اولیه</span>
-                                <small class="text-muted" style="font-size: 0.75rem;">{{ ticket.get('created_at')[:16] if ticket.get('created_at') else '' }}</small>
-                            </div>
-                            <div class="p-3 shadow-sm ticket-msg-user" style="max-width: 85%;">
-                                <p class="mb-0">{{ ticket.get('message') }}</p>
-                            </div>
-                        </div>
-                    {% endif %}
-                </div>
-
-                {% if is_admin_ticket %}
-                    <!-- فرم ارسال پیام / ادامه گفتگو با مدیریت -->
-                    <div class="p-3 ticket-reply-box">
-                        <form action="{{ url_for('reseller_ticket_reply_to_admin', ticket_id=ticket['id']) }}" method="POST">
-                            <div class="mb-2">
-                                <textarea id="resellerAdminReplyArea{{ ticket['id'] }}" 
-                                          name="reply_message" 
-                                          class="form-control" 
-                                          rows="3" 
-                                          placeholder="پیام یا توضیحات خود را برای مدیریت بنویسید..." 
-                                          required></textarea>
-                            </div>
-                            <div class="d-flex justify-content-end">
-                                <button type="submit" class="btn btn-warning text-dark fw-bold px-4">
-                                    <i class="fas fa-paper-plane me-1"></i> ارسال پیام به مدیریت
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                {% else %}
-                    <!-- پاسخ‌های آماده و سریع برای مشتریان (Quick Canned Replies) -->
-                    <div class="px-3 py-2 ticket-quick-replies-bar border-top border-bottom">
-                        <div class="d-flex align-items-center gap-2 overflow-auto py-1" style="scrollbar-width: none;">
-                            <span class="text-muted small fw-bold flex-shrink-0"><i class="fas fa-bolt text-warning me-1"></i>پاسخ سریع:</span>
-                            <button type="button" class="btn ticket-quick-chip py-0 px-2 flex-shrink-0 rounded-pill" 
-                                    onclick="insertCannedReply('resellerReplyArea{{ ticket['id'] }}', 'سلام و احترام، پیام شما دریافت شد و بررسی وضعیت در حال انجام است.')">
-                                ⏳ در حال پیگیری
-                            </button>
-                            <button type="button" class="btn ticket-quick-chip py-0 px-2 flex-shrink-0 rounded-pill" 
-                                    onclick="insertCannedReply('resellerReplyArea{{ ticket['id'] }}', 'مشکل موقت اتصال برطرف گردید. لطفاً مجدداً متصل شوید.')">
-                                🔧 مشکل سرور برطرف شد
-                            </button>
-                            <button type="button" class="btn ticket-quick-chip py-0 px-2 flex-shrink-0 rounded-pill" 
-                                    onclick="insertCannedReply('resellerReplyArea{{ ticket['id'] }}', 'لطفاً لینک اتصال را در برنامه خود آپدیت و بروزرسانی فرمایید.')">
-                                🔄 آپدیت لینک اتصال
-                            </button>
-                            <button type="button" class="btn ticket-quick-chip py-0 px-2 flex-shrink-0 rounded-pill" 
-                                    onclick="insertCannedReply('resellerReplyArea{{ ticket['id'] }}', 'لطفاً برنامه اتصال خود را به آخرین نسخه بروزرسانی فرمایید.')">
-                                📱 بروزرسانی برنامه
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- فرم ارسال پاسخ به مشتری -->
-                    <div class="p-3 ticket-reply-box">
-                        <form action="{{ url_for('reseller_ticket_reply', ticket_id=ticket['id']) }}" method="POST">
-                            <div class="mb-2">
-                                <textarea id="resellerReplyArea{{ ticket['id'] }}" 
-                                          name="reply_message" 
-                                          class="form-control" 
-                                          rows="3" 
-                                          placeholder="متن پاسخ خود را به مشتری بنویسید (در ربات تلگرام تحویل داده می‌شود)..." 
-                                          required></textarea>
-                            </div>
-                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                                <div class="d-flex align-items-center gap-3">
-                                    <div class="form-check form-switch mb-0">
-                                        <input class="form-check-input" type="checkbox" name="close_ticket" id="rCloseCheck{{ ticket['id'] }}" value="1" {% if ticket.get('status') != 'closed' %}checked{% endif %}>
-                                        <label class="form-check-label small text-muted" for="rCloseCheck{{ ticket['id'] }}">بستن تیکت پس از ارسال پاسخ</label>
-                                    </div>
-                                </div>
-                                <div class="d-flex gap-2">
-                                    <button type="submit" class="btn btn-success fw-bold px-4">
-                                        <i class="fas fa-paper-plane me-1"></i> ارسال پاسخ به کاربر
-                                    </button>
-                                </div>
-                            </div>
-                        </form>
-                    </div>
-                {% endif %}
-            </div>
-
-            <!-- فوتر مودال -->
-            <div class="modal-footer py-2 d-flex justify-content-between align-items-center">
-                {% if not is_admin_ticket %}
-                    <div class="d-flex align-items-center gap-2">
-                        <span class="text-muted small">تغییر وضعیت دستی:</span>
-                        <form action="{{ url_for('reseller_ticket_status', ticket_id=ticket['id']) }}" method="POST" class="d-inline">
-                            <select name="status" class="form-select form-select-sm d-inline-block w-auto" onchange="this.form.submit()">
-                                <option value="open" {% if ticket.get('status') == 'open' %}selected{% endif %}>🟢 باز / در انتظار</option>
-                                <option value="in_progress" {% if ticket.get('status') == 'in_progress' %}selected{% endif %}>🟡 در حال بررسی</option>
-                                <option value="replied" {% if ticket.get('status') == 'replied' %}selected{% endif %}>🔵 پاسخ داده شده</option>
-                                <option value="closed" {% if ticket.get('status') == 'closed' %}selected{% endif %}>⚫️ بسته شده</option>
-                            </select>
-                        </form>
-                    </div>
-                {% else %}
-                    <span class="text-muted small"><i class="fas fa-info-circle me-1"></i>وضعیت این تیکت توسط مدیریت به‌روزرسانی می‌شود.</span>
-                {% endif %}
-                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">بستن پنجره</button>
-            </div>
-        </div>
-    </div>
-</div>
-{% endfor %}
 
 <script>
 function insertCannedReply(areaId, text) {
@@ -686,18 +425,14 @@ function insertCannedReply(areaId, text) {
     }
 }
 
-function setAdminTicketTemplate(subject, message) {
-    const subjInput = document.getElementById('ticketSubjectInput');
-    const msgArea = document.getElementById('ticketMessageArea');
-    if (subjInput) subjInput.value = subject;
-    if (msgArea) msgArea.value = message;
-}
-
-function handleAdminCategoryChange(cat) {
-    const subjInput = document.getElementById('ticketSubjectInput');
-    if (subjInput && !subjInput.value) {
-        subjInput.value = cat;
+{% if open_modal == '1' or prefill_subject %}
+document.addEventListener('DOMContentLoaded', function () {
+    const modalEl = document.getElementById('createAdminTicketModal');
+    if (modalEl) {
+        const modal = new bootstrap.Modal(modalEl);
+        modal.show();
     }
-}
+});
+{% endif %}
 </script>
 {% endblock %}
