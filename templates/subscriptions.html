@@ -9,20 +9,20 @@
         <p class="text-muted mb-0">مشاهده، تمدید، بارکدهای اتصال، سوابق مصرف، فاکتورها و مدیریت هوشمند کلیه مشتریان</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='all', per_page=per_page_str) }}" class="btn btn-sm {{ 'btn-primary' if status_filter == 'all' or not status_filter else 'btn-outline-secondary' }}">همه مشتریان</a>
-        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='direct', per_page=per_page_str) }}" class="btn btn-sm {{ 'btn-primary' if status_filter == 'direct' else 'btn-outline-primary' }}">
+        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='all', per_page=per_page_str, search=search) }}" class="btn btn-sm {{ 'btn-primary' if status_filter == 'all' or not status_filter else 'btn-outline-secondary' }}">همه مشتریان</a>
+        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='direct', per_page=per_page_str, search=search) }}" class="btn btn-sm {{ 'btn-primary' if status_filter == 'direct' else 'btn-outline-primary' }}">
             <i class="fas fa-crown me-1"></i> مشتریان مستقیم مدیریت
         </a>
-        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='resellers', per_page=per_page_str) }}" class="btn btn-sm {{ 'btn-info text-dark' if status_filter == 'resellers' else 'btn-outline-info' }}">
+        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='resellers', per_page=per_page_str, search=search) }}" class="btn btn-sm {{ 'btn-info text-dark' if status_filter == 'resellers' else 'btn-outline-info' }}">
             <i class="fas fa-handshake me-1"></i> مشتریان نمایندگان
         </a>
-        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='vip', per_page=per_page_str) }}" class="btn btn-sm {{ 'btn-warning text-dark fw-bold' if status_filter == 'vip' else 'btn-outline-warning' }}">
+        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='vip', per_page=per_page_str, search=search) }}" class="btn btn-sm {{ 'btn-warning text-dark fw-bold' if status_filter == 'vip' else 'btn-outline-warning' }}">
             <i class="fas fa-crown me-1"></i> مشتریان پریمیوم ⭐️
         </a>
-        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='debtors', per_page=per_page_str) }}" class="btn btn-sm {{ 'btn-danger text-white fw-bold shadow-sm' if status_filter == 'debtors' else 'btn-outline-danger' }}">
+        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='debtors', per_page=per_page_str, search=search) }}" class="btn btn-sm {{ 'btn-danger text-white fw-bold shadow-sm' if status_filter == 'debtors' else 'btn-outline-danger' }}">
             <i class="fas fa-hand-holding-dollar me-1"></i> 🔴 بدهکاران ({{ debtor_count }})
         </a>
-        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='online', per_page=per_page_str) }}" class="btn btn-sm {{ 'btn-success' if status_filter == 'online' else 'btn-outline-success' }}">
+        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='online', per_page=per_page_str, search=search) }}" class="btn btn-sm {{ 'btn-success' if status_filter == 'online' else 'btn-outline-success' }}">
             <span class="pulse-indicator me-1"></span> کاربران آنلاین ({{ online_count or 0 }})
         </a>
     </div>
@@ -36,7 +36,7 @@
                 <label class="form-label fw-bold small text-primary mb-0 text-nowrap">
                     <i class="fas fa-user-tie me-1"></i> فیلتر مشتریان یک نماینده خاص:
                 </label>
-                <select class="form-select form-select-sm" onchange="location.href='{{ url_for('subscriptions', status=status_filter, per_page=per_page_str) }}&reseller_id=' + this.value;">
+                <select class="form-select form-select-sm" onchange="location.href='{{ url_for('subscriptions', status=status_filter, per_page=per_page_str, search=search) }}&reseller_id=' + this.value;">
                     <option value="">-- نمایش مشتریان کلیه نمایندگان و مدیریت --</option>
                     {% for r in resellers_list %}
                     <option value="{{ r['id'] }}" {% if reseller_filter_id == (r['id']|string) %}selected{% endif %}>
@@ -47,7 +47,7 @@
             </div>
             <div class="col-md-6 text-md-end">
                 {% if reseller_filter_id %}
-                <a href="{{ url_for('subscriptions', status=status_filter, per_page=per_page_str) }}" class="btn btn-sm btn-outline-secondary">
+                <a href="{{ url_for('subscriptions', status=status_filter, per_page=per_page_str, search=search) }}" class="btn btn-sm btn-outline-secondary">
                     <i class="fas fa-times me-1"></i> پاک کردن فیلتر نماینده
                 </a>
                 {% endif %}
@@ -61,8 +61,18 @@
         <div class="d-flex align-items-center gap-2 flex-wrap">
             <h5 class="mb-0 fw-bold"><i class="fas fa-users-gear text-primary me-2"></i>لیست مشتریان</h5>
             <span class="badge bg-primary rounded-pill py-2 px-3">
-                نمایش {{ start_item }} تا {{ end_item }} از {{ "{:,}".format(total_count) }} مشتری
+                {% if search %}
+                    یافت‌شده در کل پایگاه داده: {{ "{:,}".format(total_count) }} مورد
+                {% else %}
+                    نمایش {{ start_item }} تا {{ end_item }} از {{ "{:,}".format(total_count) }} مشتری
+                {% endif %}
             </span>
+            {% if search %}
+                <span class="badge bg-info text-dark d-inline-flex align-items-center gap-1">
+                    <i class="fas fa-magnifying-glass me-1"></i> عبارت جستجو: «{{ search }}»
+                    <a href="{{ url_for('subscriptions', status=status_filter or 'all', reseller_id=reseller_filter_id or '', per_page=per_page_str or '50') }}" class="text-dark ms-1" title="حذف جستجو و مشاهده همه"><i class="fas fa-times-circle"></i></a>
+                </span>
+            {% endif %}
             {% if status_filter == 'vip' %}
                 <span class="badge bg-warning text-dark"><i class="fas fa-crown me-1"></i>فیلتر: مشتریان ویژه VIP</span>
             {% elif status_filter == 'debtors' %}
@@ -86,11 +96,24 @@
                 </select>
             </div>
 
-            <div class="table-search-wrapper">
-                <i class="fas fa-search table-search-icon"></i>
-                <input type="text" class="form-control table-search-input" data-table="subscriptionsTable" placeholder="جستجو در نام، شماره، پلن، آیدی..." value="{{ search }}">
-                <button type="button" class="table-search-clear" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
-            </div>
+            <!-- فرم جستجوی سراسری سرور (در کل پایگاه داده و تمام ۱۲۰۰+ کاربر) -->
+            <form method="GET" action="{{ url_for('subscriptions') }}" class="d-flex align-items-center m-0" id="serverCustomerSearchForm">
+                <input type="hidden" name="status" value="{{ status_filter or 'all' }}">
+                <input type="hidden" name="reseller_id" value="{{ reseller_filter_id or '' }}">
+                <input type="hidden" name="per_page" value="{{ per_page_str or '50' }}">
+                
+                <div class="input-group input-group-sm" style="min-width: 280px;">
+                    <input type="text" name="search" id="serverCustomerSearchInput" class="form-control form-control-sm" placeholder="جستجو در تمام مشتریان (نام، شماره، آیدی، پلن...)" value="{{ search }}">
+                    {% if search %}
+                    <a href="{{ url_for('subscriptions', status=status_filter or 'all', reseller_id=reseller_filter_id or '', per_page=per_page_str or '50') }}" class="btn btn-outline-secondary btn-sm" title="پاک کردن جستجو">
+                        <i class="fas fa-times"></i>
+                    </a>
+                    {% endif %}
+                    <button type="submit" class="btn btn-primary btn-sm px-3" title="جستجو در تمام مشتریان">
+                        <i class="fas fa-search me-1"></i> جستجو
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
     <div class="card-body p-0">
@@ -268,8 +291,17 @@
                     {% if not subscriptions %}
                     <tr>
                         <td colspan="10" class="text-center py-5 text-muted">
-                            <i class="fas fa-users-gear fs-2 d-block mb-2 opacity-50"></i>
-                            هیچ مشتری یا اشتراکی با این مشخصات یافت نشد.
+                            <i class="fas fa-users-slash fs-2 d-block mb-2 opacity-50"></i>
+                            {% if search %}
+                                هیچ مشتری یا اشتراکی با عبارت «<strong>{{ search }}</strong>» در بین تمام مشتریان سیستم یافت نشد.
+                                <div class="mt-3">
+                                    <a href="{{ url_for('subscriptions', status=status_filter or 'all', reseller_id=reseller_filter_id or '', per_page=per_page_str or '50') }}" class="btn btn-sm btn-outline-primary px-3">
+                                        <i class="fas fa-rotate-left me-1"></i> پاک کردن جستجو و نمایش همه مشتریان
+                                    </a>
+                                </div>
+                            {% else %}
+                                هیچ مشتری یا اشتراکی با این مشخصات یافت نشد.
+                            {% endif %}
                         </td>
                     </tr>
                     {% endif %}
