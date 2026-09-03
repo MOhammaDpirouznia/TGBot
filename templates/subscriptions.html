@@ -25,6 +25,9 @@
         <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='online', per_page=per_page_str, search=search) }}" class="btn btn-sm {{ 'btn-success' if status_filter == 'online' else 'btn-outline-success' }}">
             <span class="pulse-indicator me-1"></span> کاربران آنلاین ({{ online_count or 0 }})
         </a>
+        <button type="button" class="btn btn-sm btn-dark text-white fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#patternTransferModal">
+            <i class="fas fa-wand-magic-sparkles text-warning me-1"></i> انتقال هوشمند با الگو ⚡️
+        </button>
     </div>
 </div>
 
@@ -379,7 +382,12 @@
     <form id="adminSubBulkForm" method="POST" action="{{ url_for('admin_subscriptions_bulk') }}" class="d-flex align-items-center flex-wrap gap-2 m-0">
         <input type="hidden" name="bulk_action" value="">
         <input type="hidden" name="selected_ids_str" class="bulk-selected-ids-input" value="">
+        <input type="hidden" name="target_reseller_id" id="adminBulkTargetResellerId" value="">
+        <input type="hidden" name="target_hiddify_admin" id="adminBulkTargetHiddifyAdmin" value="">
         
+        <button type="button" class="btn btn-sm btn-info text-dark fw-bold" onclick="openBulkTransferModal()">
+            <i class="fas fa-arrow-right-arrow-left me-1"></i> انتقال به نماینده
+        </button>
         <button type="button" class="btn btn-sm btn-outline-light" onclick="submitBulkAction('adminSubBulkForm', 'disable', 'آیا از غیرفعال‌سازی موقت مشتریان انتخاب شده اطمینان دارید؟')">
             <i class="fas fa-user-slash me-1"></i> غیرفعال‌سازی
         </button>
@@ -1276,6 +1284,358 @@ function downloadQrCode(elementId, filename) {
         a.click();
         document.body.removeChild(a);
     }
+}
+
+<!-- ─── مودال انتقال دستی گروهی اشتراک‌های انتخاب‌شده به نماینده ─── -->
+<div class="modal fade" id="bulkTransferModal" tabindex="-1" aria-labelledby="bulkTransferModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white py-3">
+                <h5 class="modal-title fw-bold mb-0" id="bulkTransferModalLabel">
+                    <i class="fas fa-arrow-right-arrow-left me-2"></i> انتقال گروهی مشتریان به نماینده
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="alert alert-info py-2 px-3 small mb-3">
+                    <i class="fas fa-info-circle me-1"></i>
+                    تعداد <strong id="modalBulkCount">0</strong> مشتری برای انتقال انتخاب شده‌اند. با انجام این عملیات، مالکیت این مشتریان هم در <strong>پنل هیدیفای</strong> و هم در <strong>پنل مدیریت</strong> به نماینده مقصد واگذار می‌شود.
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-secondary">
+                        <i class="fas fa-user-tie me-1"></i> انتخاب نماینده مقصد: <span class="text-danger">*</span>
+                    </label>
+                    <select class="form-select" id="manualBulkTargetReseller" required>
+                        <option value="">-- لطفاً یک نماینده را انتخاب کنید --</option>
+                        {% for r in resellers_list %}
+                        <option value="{{ r['id'] }}" data-hiddify-admin="{{ r.get('hiddify_admin_uuid') or '' }}">
+                            {{ r['name'] }} (@{{ r['username'] }}) {% if r.get('hiddify_admin_uuid') %}[ادمین هیدیفای متصل]{% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer bg-light py-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">انصراف</button>
+                <button type="button" class="btn btn-primary btn-sm px-4 fw-bold" onclick="confirmManualBulkTransfer()">
+                    <i class="fas fa-check me-1"></i> انتقال قطعی به نماینده
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ─── مودال انتقال هوشمند بر اساس الگو (Pattern / Regex Migration) ─── -->
+<div class="modal fade" id="patternTransferModal" tabindex="-1" aria-labelledby="patternTransferModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-dark text-white py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="fas fa-wand-magic-sparkles text-warning fs-5"></i>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0" id="patternTransferModalLabel">
+                            انتقال هوشمند و گروهی مشتریان بر اساس الگو
+                        </h5>
+                        <small class="text-muted">انتقال همزمان در پنل هیدیفای و پنل مدیریت با پیشوند/الگوی دلخواه</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="alert alert-warning py-2 px-3 small mb-3">
+                    <i class="fas fa-shield-halved me-1"></i>
+                    <strong>قانون امنیت استرداد:</strong> کلیه مشتریان با تاریخ ایجاد واقعی یا تاریخ امن (> ۲۴ ساعت گذشته) به نماینده منتقل می‌شوند تا امکان سوءاستفاده از استرداد وجه وجود نداشته باشد.
+                </div>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6 col-12">
+                        <label class="form-label fw-bold small text-secondary">
+                            <i class="fas fa-i-cursor me-1"></i> الگو یا عبارت نامگذاری مشتریان: <span class="text-danger">*</span>
+                        </label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="patternInput" placeholder="مثال: Kzmi-S3- یا Kzmi-S3-*" dir="ltr">
+                            <button type="button" class="btn btn-outline-primary" id="btnRunPatternPreview" onclick="fetchPatternPreview()">
+                                <i class="fas fa-search me-1"></i> پیش‌نمایش
+                            </button>
+                        </div>
+                        <small class="text-muted" style="font-size: 11px;">
+                            می‌توانید پیشوند ثابت (مثل <code>Kzmi-S3-</code>) یا وایلدکارد (مثل <code>Kzmi-S3-*</code>) یا ریجکس وارد کنید.
+                        </small>
+                    </div>
+
+                    <div class="col-md-6 col-12">
+                        <label class="form-label fw-bold small text-secondary">
+                            <i class="fas fa-filter me-1"></i> جستجو در میان:
+                        </label>
+                        <select class="form-select" id="patternSourceFilter" onchange="fetchPatternPreview()">
+                            <option value="all">تمام مشتریان پایگاه‌داده</option>
+                            <option value="direct" selected>فقط مشتریان مستقیم مدیریت (بدون نماینده)</option>
+                            {% for r in resellers_list %}
+                            <option value="reseller_{{ r['id'] }}">مشتریان نماینده: {{ r['name'] }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-6 col-12">
+                        <label class="form-label fw-bold small text-secondary">
+                            <i class="fas fa-code me-1"></i> نوع تطبیق الگو:
+                        </label>
+                        <select class="form-select" id="patternTypeSelect" onchange="fetchPatternPreview()">
+                            <option value="auto" selected>هوشمند (Auto - پیشوند و وایلدکارد)</option>
+                            <option value="prefix">شروع با پیشوند (Prefix)</option>
+                            <option value="wildcard">وایلدکارد با ستاره (*)</option>
+                            <option value="contains">حاوی عبارت (Substring)</option>
+                            <option value="regex">عبارت منظم (Regex)</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-6 col-12">
+                        <label class="form-label fw-bold small text-secondary">
+                            <i class="fas fa-user-tie text-success me-1"></i> نماینده مقصد انتقال: <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select" id="patternTargetReseller">
+                            <option value="">-- لطفاً نماینده مقصد را انتخاب کنید --</option>
+                            {% for r in resellers_list %}
+                            <option value="{{ r['id'] }}" data-hiddify-admin="{{ r.get('hiddify_admin_uuid') or '' }}">
+                                {{ r['name'] }} (@{{ r['username'] }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <!-- ناحیه نمایش زنده نتایج پیش‌نمایش -->
+                <div id="patternPreviewContainer" class="d-none">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="fw-bold mb-0 text-primary small">
+                            <i class="fas fa-list-check me-1"></i> مشتریان شناسایی شده (<span id="patternMatchCount">0</span> مورد):
+                        </h6>
+                    </div>
+                    <div class="table-responsive border rounded bg-white" style="max-height: 240px; overflow-y: auto;">
+                        <table class="table table-sm table-hover align-middle mb-0 text-center" style="font-size: 12px;">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th>#</th>
+                                    <th>نام اکانت</th>
+                                    <th>پلن / حجم</th>
+                                    <th>مالک فعلی</th>
+                                    <th>وضعیت</th>
+                                    <th>تاریخ صدور</th>
+                                </tr>
+                            </thead>
+                            <tbody id="patternPreviewTbody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- باکس لودینگ یا پیام هشدار -->
+                <div id="patternStatusMessage" class="mt-3 d-none"></div>
+            </div>
+            <div class="modal-footer bg-light py-2 d-flex justify-content-between">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">انصراف</button>
+                <button type="button" class="btn btn-success btn-sm px-4 fw-bold" id="btnExecutePatternTransfer" onclick="executePatternTransfer()" disabled>
+                    <i class="fas fa-bolt me-1"></i> شروع انتقال گروهی به نماینده
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// باز کردن مودال انتقال دستی انتخاب‌شده‌ها
+function openBulkTransferModal() {
+    const idsStr = document.querySelector('#adminSubBulkForm .bulk-selected-ids-input')?.value || '';
+    const ids = idsStr.split(',').map(x => x.trim()).filter(x => x.length > 0);
+    if (ids.length === 0) {
+        alert('⚠️ لطفاً حداقل یک مشتری را از جدول انتخاب کنید.');
+        return;
+    }
+    document.getElementById('modalBulkCount').innerText = ids.length;
+    const modalEl = document.getElementById('bulkTransferModal');
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+}
+
+function confirmManualBulkTransfer() {
+    const sel = document.getElementById('manualBulkTargetReseller');
+    const targetResellerId = sel.value;
+    if (!targetResellerId) {
+        alert('⚠️ لطفاً نماینده مقصد را انتخاب کنید.');
+        return;
+    }
+    const opt = sel.options[sel.selectedIndex];
+    const targetHiddifyAdmin = opt.getAttribute('data-hiddify-admin') || '';
+    const resellerName = opt.text.trim();
+
+    if (!confirm('آیا از انتقال قطعی مشتریان انتخاب شده به نماینده «' + resellerName + '» هم در پنل هیدیفای و هم در پنل مدیریت اطمینان دارید؟')) {
+        return;
+    }
+
+    document.getElementById('adminBulkTargetResellerId').value = targetResellerId;
+    document.getElementById('adminBulkTargetHiddifyAdmin').value = targetHiddifyAdmin;
+
+    // بستن مودال و ارسال فرم
+    bootstrap.Modal.getInstance(document.getElementById('bulkTransferModal'))?.hide();
+    submitBulkAction('adminSubBulkForm', 'transfer_reseller', '');
+}
+
+// پیش‌نمایش مشتریان با الگو
+let patternMatchedSubs = [];
+function fetchPatternPreview() {
+    const pattern = document.getElementById('patternInput').value.trim();
+    const patternType = document.getElementById('patternTypeSelect').value;
+    const sourceFilter = document.getElementById('patternSourceFilter').value;
+    const previewContainer = document.getElementById('patternPreviewContainer');
+    const statusMsg = document.getElementById('patternStatusMessage');
+    const btnExecute = document.getElementById('btnExecutePatternTransfer');
+    const btnRun = document.getElementById('btnRunPatternPreview');
+
+    if (!pattern) {
+        alert('⚠️ لطفاً الگو یا عبارت نامگذاری را وارد کنید (مثال: Kzmi-S3-).');
+        return;
+    }
+
+    btnRun.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال جستجو...';
+    btnRun.disabled = true;
+    statusMsg.classList.add('d-none');
+    btnExecute.disabled = true;
+
+    fetch('/api/admin/transfer-by-pattern/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            pattern: pattern,
+            pattern_type: patternType,
+            source_filter: sourceFilter
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btnRun.innerHTML = '<i class="fas fa-search me-1"></i> پیش‌نمایش';
+        btnRun.disabled = false;
+
+        if (!data.success) {
+            statusMsg.className = 'alert alert-danger mt-3 py-2 px-3 small';
+            statusMsg.innerHTML = '<i class="fas fa-triangle-exclamation me-1"></i> ' + (data.error || 'خطا در جستجو');
+            statusMsg.classList.remove('d-none');
+            previewContainer.classList.add('d-none');
+            return;
+        }
+
+        patternMatchedSubs = data.subscriptions || [];
+        document.getElementById('patternMatchCount').innerText = data.count;
+
+        if (patternMatchedSubs.length === 0) {
+            statusMsg.className = 'alert alert-warning mt-3 py-2 px-3 small';
+            statusMsg.innerHTML = '<i class="fas fa-circle-exclamation me-1"></i> هیچ مشتری منطبق با این الگو یافت نشد.';
+            statusMsg.classList.remove('d-none');
+            previewContainer.classList.add('d-none');
+            btnExecute.disabled = true;
+            return;
+        }
+
+        let tbodyHtml = '';
+        patternMatchedSubs.forEach((s, idx) => {
+            const statusBadge = s.status === 'active' ? '<span class="badge bg-success">فعال</span>' : '<span class="badge bg-secondary">غیرفعال</span>';
+            tbodyHtml += `
+                <tr>
+                    <td class="text-muted">${idx + 1}</td>
+                    <td class="fw-bold text-dark font-monospace">${s.account_name}</td>
+                    <td>${s.plan_name}</td>
+                    <td><span class="badge bg-light text-dark border">${s.reseller_name}</span></td>
+                    <td>${statusBadge}</td>
+                    <td class="text-muted small">${(s.created_at || '').substring(0, 10)}</td>
+                </tr>
+            `;
+        });
+
+        document.getElementById('patternPreviewTbody').innerHTML = tbodyHtml;
+        previewContainer.classList.remove('d-none');
+        btnExecute.disabled = false;
+    })
+    .catch(err => {
+        btnRun.innerHTML = '<i class="fas fa-search me-1"></i> پیش‌نمایش';
+        btnRun.disabled = false;
+        statusMsg.className = 'alert alert-danger mt-3 py-2 px-3 small';
+        statusMsg.innerHTML = '<i class="fas fa-triangle-exclamation me-1"></i> خطای اتصال به سرور: ' + err;
+        statusMsg.classList.remove('d-none');
+    });
+}
+
+// اجرای انتقال با الگو
+function executePatternTransfer() {
+    const pattern = document.getElementById('patternInput').value.trim();
+    const patternType = document.getElementById('patternTypeSelect').value;
+    const sourceFilter = document.getElementById('patternSourceFilter').value;
+    const sel = document.getElementById('patternTargetReseller');
+    const targetResellerId = sel.value;
+    const statusMsg = document.getElementById('patternStatusMessage');
+    const btnExecute = document.getElementById('btnExecutePatternTransfer');
+
+    if (!pattern) {
+        alert('⚠️ الگو مشخص نشده است.');
+        return;
+    }
+    if (!targetResellerId) {
+        alert('⚠️ لطفاً نماینده مقصد را انتخاب کنید.');
+        return;
+    }
+
+    const opt = sel.options[sel.selectedIndex];
+    const targetHiddifyAdmin = opt.getAttribute('data-hiddify-admin') || '';
+    const resellerName = opt.text.trim();
+
+    if (!confirm('هشدار: آیا از انتقال قطعی ' + patternMatchedSubs.length + ' مشتری منطبق با این الگو به نماینده «' + resellerName + '» هم در پنل هیدیفای و هم در پنل مدیریت اطمینان دارید؟')) {
+        return;
+    }
+
+    btnExecute.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال انتقال مشتریان در هیدیفای و دیتابیس...';
+    btnExecute.disabled = true;
+
+    fetch('/api/admin/transfer-by-pattern/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            pattern: pattern,
+            pattern_type: patternType,
+            source_filter: sourceFilter,
+            target_reseller_id: parseInt(targetResellerId),
+            target_hiddify_admin: targetHiddifyAdmin
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btnExecute.innerHTML = '<i class="fas fa-bolt me-1"></i> شروع انتقال گروهی به نماینده';
+        if (data.success) {
+            statusMsg.className = 'alert alert-success mt-3 py-3 px-3';
+            statusMsg.innerHTML = `
+                <div class="fw-bold mb-1"><i class="fas fa-circle-check text-success me-1"></i> عملیات انتقال با موفقیت انجام شد!</div>
+                <div class="small">
+                    • تعداد کل منتقل‌شده در دیتابیس: <strong>${data.transferred_count}</strong> کاربر<br>
+                    • تعداد همگام‌سازی شده در سرور هیدیفای: <strong>${data.hiddify_synced_count}</strong> کاربر<br>
+                    • نماینده مقصد: <strong>${data.target_reseller?.name || resellerName}</strong>
+                </div>
+            `;
+            statusMsg.classList.remove('d-none');
+            setTimeout(() => {
+                location.reload();
+            }, 2500);
+        } else {
+            btnExecute.disabled = false;
+            statusMsg.className = 'alert alert-danger mt-3 py-2 px-3 small';
+            statusMsg.innerHTML = '<i class="fas fa-triangle-exclamation me-1"></i> خطا در انتقال: ' + (data.error || 'نامشخص');
+            statusMsg.classList.remove('d-none');
+        }
+    })
+    .catch(err => {
+        btnExecute.innerHTML = '<i class="fas fa-bolt me-1"></i> شروع انتقال گروهی به نماینده';
+        btnExecute.disabled = false;
+        statusMsg.className = 'alert alert-danger mt-3 py-2 px-3 small';
+        statusMsg.innerHTML = '<i class="fas fa-triangle-exclamation me-1"></i> خطای اتصال به سرور: ' + err;
+        statusMsg.classList.remove('d-none');
+    });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
