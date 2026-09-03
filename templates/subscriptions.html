@@ -1,108 +1,319 @@
 {% extends "base.html" %}
 
-{% block title %}اشتراک‌های هیدیفای - پنل مدیریت VPN{% endblock %}
+{% block title %}مدیریت مشتریان و اشتراک‌ها - پنل مدیریت{% endblock %}
 
 {% block content %}
-<div class="page-header">
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
     <div>
-        <h1 class="page-title"><i class="fas fa-key text-primary"></i> مدیریت اشتراک‌ها و کانفیگ‌ها</h1>
-        <p class="text-muted mb-0">مشاهده تمام اشتراک‌های صادر شده، وضعیت اتصال و آنلاین بودن در لحظه</p>
+        <h1 class="page-title"><i class="fas fa-users-gear text-primary"></i> مدیریت مشتریان و اشتراک‌ها</h1>
+        <p class="text-muted mb-0">مشاهده، تمدید، بارکدهای اتصال، سوابق مصرف، فاکتورها و مدیریت هوشمند کلیه مشتریان</p>
     </div>
-    <div class="d-flex gap-2 flex-wrap align-items-center">
-        <a href="{{ url_for('subscriptions', status='all') }}" class="btn btn-sm {{ 'btn-primary' if status_filter == 'all' or not status_filter else 'btn-outline-secondary' }}">همه اشتراک‌ها</a>
-        <a href="{{ url_for('subscriptions', status='online') }}" class="btn btn-sm {{ 'btn-success' if status_filter == 'online' else 'btn-outline-success' }}">
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='all', per_page=per_page_str, search=search) }}" class="btn btn-sm {{ 'btn-primary' if status_filter == 'all' or not status_filter else 'btn-outline-secondary' }}">همه مشتریان</a>
+        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='direct', per_page=per_page_str, search=search) }}" class="btn btn-sm {{ 'btn-primary' if status_filter == 'direct' else 'btn-outline-primary' }}">
+            <i class="fas fa-crown me-1"></i> مشتریان مستقیم مدیریت
+        </a>
+        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='resellers', per_page=per_page_str, search=search) }}" class="btn btn-sm {{ 'btn-info text-dark' if status_filter == 'resellers' else 'btn-outline-info' }}">
+            <i class="fas fa-handshake me-1"></i> مشتریان نمایندگان
+        </a>
+        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='vip', per_page=per_page_str, search=search) }}" class="btn btn-sm {{ 'btn-warning text-dark fw-bold' if status_filter == 'vip' else 'btn-outline-warning' }}">
+            <i class="fas fa-crown me-1"></i> مشتریان پریمیوم ⭐️
+        </a>
+        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='debtors', per_page=per_page_str, search=search) }}" class="btn btn-sm {{ 'btn-danger text-white fw-bold shadow-sm' if status_filter == 'debtors' else 'btn-outline-danger' }}">
+            <i class="fas fa-hand-holding-dollar me-1"></i> 🔴 بدهکاران ({{ debtor_count }})
+        </a>
+        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='online', per_page=per_page_str, search=search) }}" class="btn btn-sm {{ 'btn-success' if status_filter == 'online' else 'btn-outline-success' }}">
             <span class="pulse-indicator me-1"></span> کاربران آنلاین ({{ online_count or 0 }})
         </a>
-        <a href="{{ url_for('subscriptions', status='active') }}" class="btn btn-sm {{ 'btn-info text-white' if status_filter == 'active' else 'btn-outline-info' }}">فقط فعال‌ها</a>
-        <a href="{{ url_for('subscriptions', status='expired') }}" class="btn btn-sm {{ 'btn-danger' if status_filter == 'expired' else 'btn-outline-danger' }}">منقضی شده‌ها</a>
-        <a href="{{ url_for('subscriptions', status='deleted') }}" class="btn btn-sm {{ 'btn-dark text-warning border-warning' if status_filter == 'deleted' else 'btn-outline-secondary' }}">
-            <i class="fas fa-trash-can me-1"></i> سطل زباله
-            {% if deleted_count and deleted_count > 0 %}
-                <span class="badge bg-danger ms-1">{{ deleted_count }}</span>
-            {% endif %}
+        <a href="{{ url_for('subscriptions', reseller_id=reseller_filter_id or '', status='deleted', per_page=per_page_str, search=search) }}" class="btn btn-sm {{ 'btn-danger text-white fw-bold shadow-sm' if status_filter == 'deleted' else 'btn-outline-danger' }}">
+            <i class="fas fa-trash-can me-1"></i> سطل زباله ({{ deleted_count or 0 }})
         </a>
+        <button type="button" class="btn btn-sm btn-dark text-white fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#patternTransferModal">
+            <i class="fas fa-wand-magic-sparkles text-warning me-1"></i> انتقال هوشمند با الگو ⚡️
+        </button>
+    </div>
+</div>
+
+<!-- منوی کشویی فیلتر به تفکیک نماینده -->
+<div class="card mb-4 border-0 shadow-sm bg-light">
+    <div class="card-body py-2 px-3">
+        <div class="row align-items-center g-2">
+            <div class="col-md-6 d-flex align-items-center gap-2">
+                <label class="form-label fw-bold small text-primary mb-0 text-nowrap">
+                    <i class="fas fa-user-tie me-1"></i> فیلتر مشتریان یک نماینده خاص:
+                </label>
+                <select class="form-select form-select-sm" onchange="location.href='{{ url_for('subscriptions', status=status_filter, per_page=per_page_str, search=search) }}&reseller_id=' + this.value;">
+                    <option value="">-- نمایش مشتریان کلیه نمایندگان و مدیریت --</option>
+                    {% for r in resellers_list %}
+                    <option value="{{ r['id'] }}" {% if reseller_filter_id == (r['id']|string) %}selected{% endif %}>
+                        مشتریان نماینده: {{ r['name'] }} (@{{ r['username'] }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6 text-md-end">
+                {% if reseller_filter_id %}
+                <a href="{{ url_for('subscriptions', status=status_filter, per_page=per_page_str, search=search) }}" class="btn btn-sm btn-outline-secondary">
+                    <i class="fas fa-times me-1"></i> پاک کردن فیلتر نماینده
+                </a>
+                {% endif %}
+            </div>
+        </div>
     </div>
 </div>
 
 <div class="card shadow-sm border-0">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div class="d-flex align-items-center gap-2">
-            <h5 class="mb-0 fw-bold"><i class="fas fa-key text-primary me-2"></i>لیست اشتراک‌ها</h5>
-            <span class="badge bg-secondary" data-table-count="subscriptionsTable">{{ subscriptions|length }} مورد</span>
-            {% if status_filter == 'online' %}
-                <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-wifi me-1"></i>فیلتر: فقط کاربران آنلاین</span>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <h5 class="mb-0 fw-bold"><i class="fas fa-users-gear text-primary me-2"></i>لیست مشتریان</h5>
+            <span class="badge bg-primary rounded-pill py-2 px-3">
+                {% if search %}
+                    یافت‌شده در کل پایگاه داده: {{ "{:,}".format(total_count) }} مورد
+                {% else %}
+                    نمایش {{ start_item }} تا {{ end_item }} از {{ "{:,}".format(total_count) }} مشتری
+                {% endif %}
+            </span>
+            {% if search %}
+                <span class="badge bg-info text-dark d-inline-flex align-items-center gap-1">
+                    <i class="fas fa-magnifying-glass me-1"></i> عبارت جستجو: «{{ search }}»
+                    <a href="{{ url_for('subscriptions', status=status_filter or 'all', reseller_id=reseller_filter_id or '', per_page=per_page_str or '50') }}" class="text-dark ms-1" title="حذف جستجو و مشاهده همه"><i class="fas fa-times-circle"></i></a>
+                </span>
+            {% endif %}
+            {% if status_filter == 'vip' %}
+                <span class="badge bg-warning text-dark"><i class="fas fa-crown me-1"></i>فیلتر: مشتریان ویژه VIP</span>
+            {% elif status_filter == 'debtors' %}
+                <span class="badge bg-danger text-white"><i class="fas fa-hand-holding-dollar me-1"></i>فیلتر: مشتریان بدهکار (تسویه نشده)</span>
+            {% elif status_filter == 'online' %}
+                <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-wifi me-1"></i>فیلتر: فقط متصلین آنلاین</span>
             {% endif %}
         </div>
-        <div class="table-search-wrapper">
-            <i class="fas fa-search table-search-icon"></i>
-            <input type="text" class="form-control table-search-input" data-table="subscriptionsTable" placeholder="جستجو در اشتراک‌ها، کاربر، نام اکانت، پلن...">
-            <button type="button" class="table-search-clear" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
+        
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <!-- منوی کشویی انتخاب تعداد در صفحه -->
+            <div class="d-flex align-items-center gap-1">
+                <label class="small text-muted text-nowrap mb-0"><i class="fas fa-list-ol me-1"></i>تعداد نمایش:</label>
+                <select class="form-select form-select-sm" style="width: auto;" onchange="changePerPage(this.value)">
+                    <option value="25" {% if per_page_str == '25' %}selected{% endif %}>۲۵ تایی</option>
+                    <option value="50" {% if per_page_str == '50' %}selected{% endif %}>۵۰ تایی</option>
+                    <option value="100" {% if per_page_str == '100' %}selected{% endif %}>۱۰۰ تایی</option>
+                    <option value="200" {% if per_page_str == '200' %}selected{% endif %}>۲۰۰ تایی</option>
+                    <option value="500" {% if per_page_str == '500' %}selected{% endif %}>۵۰۰ تایی</option>
+                    <option value="all" {% if per_page_str == 'all' %}selected{% endif %}>همه (یکجا)</option>
+                </select>
+            </div>
+
+            <!-- فرم جستجوی سراسری سرور (در کل پایگاه داده و تمام ۱۲۰۰+ کاربر) -->
+            <form method="GET" action="{{ url_for('subscriptions') }}" class="d-flex align-items-center m-0" id="serverCustomerSearchForm">
+                <input type="hidden" name="status" value="{{ status_filter or 'all' }}">
+                <input type="hidden" name="reseller_id" value="{{ reseller_filter_id or '' }}">
+                <input type="hidden" name="per_page" value="{{ per_page_str or '50' }}">
+                
+                <div class="input-group input-group-sm" style="min-width: 280px;">
+                    <input type="text" name="search" id="serverCustomerSearchInput" class="form-control form-control-sm" placeholder="جستجو در تمام مشتریان (نام، شماره، آیدی، پلن...)" value="{{ search }}">
+                    {% if search %}
+                    <a href="{{ url_for('subscriptions', status=status_filter or 'all', reseller_id=reseller_filter_id or '', per_page=per_page_str or '50') }}" class="btn btn-outline-secondary btn-sm" title="پاک کردن جستجو">
+                        <i class="fas fa-times"></i>
+                    </a>
+                    {% endif %}
+                    <button type="submit" class="btn btn-primary btn-sm px-3" title="جستجو در تمام مشتریان">
+                        <i class="fas fa-search me-1"></i> جستجو
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
+            {% if status_filter == 'deleted' %}
+            <!-- جدول اختصاصی سطل زباله مدیریت -->
             <table class="table table-hover align-middle mb-0" id="subscriptionsTable">
-                <thead>
+                <thead class="table-light">
                     <tr>
-                        <th>مالک / کاربر</th>
-                        <th>نام اکانت هیدیفای</th>
-                        <th>پلن انتخابی</th>
-                        <th>مصرف / سقف</th>
-                        <th>مدت اعتبار</th>
-                        <th>انقضا</th>
-                        <th>وضعیت اتصال</th>
-                        <th>صادرکننده</th>
-                        <th>لینک اتصال</th>
+                        <th class="ps-3">مشتری / اکانت</th>
+                        <th>نماینده / منبع</th>
+                        <th>پلن منقضی/حذف‌شده</th>
+                        <th>علت حذف</th>
+                        <th>حذف‌کننده</th>
+                        <th>تاریخ حذف</th>
+                        <th>مهلت تا پاکسازی ۷ روزه هیدیفای</th>
+                        <th class="text-end pe-3">عملیات بازگردانی</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sub in subscriptions %}
+                    <tr class="table-danger bg-opacity-10">
+                        <td class="ps-3">
+                            <div class="d-flex align-items-center gap-2">
+                                <img src="{{ avatar_url(sub['phone_number'] or sub['account_name'] or sub.get('telegram_id') or 'Customer') }}" 
+                                     alt="{{ sub['account_name'] }}" 
+                                     class="rounded-circle border shadow-sm flex-shrink-0" 
+                                     style="width: 38px; height: 38px; object-fit: cover;">
+                                <div>
+                                    <div class="fw-bold">{{ sub['account_name'] or 'بدون نام' }}</div>
+                                    <small class="text-muted font-monospace">{{ sub['phone_number'] or sub.get('telegram_id') or '-' }}</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            {% if sub.get('reseller_id') %}
+                                <span class="badge bg-info text-dark">نماینده #{{ sub['reseller_id'] }}</span>
+                            {% else %}
+                                <span class="badge bg-primary">مشتری مستقیم</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-light text-dark border">{{ sub['plan_name'] or '-' }}</span>
+                        </td>
+                        <td>
+                            <span class="badge bg-danger text-white">{{ sub['delete_reason'] or 'سایر' }}</span>
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary">{{ sub['deleted_by'] or 'مدیر' }}</span>
+                        </td>
+                        <td>
+                            <small class="text-muted font-monospace">{{ sub['deleted_at'][:16].replace('T', ' ') if sub['deleted_at'] else '-' }}</small>
+                        </td>
+                        <td>
+                            {% if sub.get('purged_from_hiddify') %}
+                            <span class="badge bg-dark">از هیدیفای پاکسازی شد</span>
+                            {% else %}
+                            <span class="badge bg-warning text-dark">
+                                <i class="fas fa-clock me-1"></i> {{ sub.get('days_left', 7) }} روز باقی‌مانده
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end pe-3">
+                            <form method="POST" action="{{ url_for('admin_subscription_restore', sub_id=sub['id']) }}" class="d-inline" onsubmit="return confirm('آیا از بازگردانی اشتراک «{{ sub['account_name'] }}» از سطل زباله اطمینان دارید؟ اکانت در پنل هیدیفای مجدداً فعال خواهد شد.')">
+                                <button type="submit" class="btn btn-sm btn-success fw-bold px-3">
+                                    <i class="fas fa-rotate-left me-1"></i> بازگردانی به لیست فعال
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not subscriptions %}
+                    <tr>
+                        <td colspan="8" class="text-center py-5 text-muted">
+                            <i class="fas fa-trash-can fs-2 d-block mb-2 opacity-50"></i>
+                            سطل زباله خالی است. هیچ اشتراک حذف‌شده‌ای یافت نشد.
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+            {% else %}
+            <table class="table table-hover align-middle mb-0 sortable-table bulk-table" id="subscriptionsTable" data-bulk-bar="adminSubscriptionsBulkBar">
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-center" style="width: 40px;">
+                            <input type="checkbox" class="form-check-input bulk-select-all" title="انتخاب همه">
+                        </th>
+                        <th class="ps-2 sortable-th" data-column="1">مشتری / اکانت</th>
+                        <th class="sortable-th" data-column="2">شماره و تلگرام</th>
+                        <th class="sortable-th" data-column="3">وضعیت مالی</th>
+                        <th class="sortable-th" data-column="4">پلن و حجم</th>
+                        <th class="sortable-th" data-column="5">مدت اعتبار</th>
+                        <th class="sortable-th" data-column="6">وضعیت اتصال</th>
+                        <th class="sortable-th" data-column="7">نماینده صادرکننده</th>
+                        <th class="sortable-th" data-column="8">تاریخ صدور</th>
+                        <th class="text-end pe-3">عملیات و مدیریت</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for sub in subscriptions %}
                     {% set sub_url = (panel_url + '/' + user_proxy + '/' + sub['hidify_uuid'] + '/') if sub['hidify_uuid'] else '' %}
                     {% set single_url = sub|format_single_link(single_link_template) if sub['hidify_uuid'] else '' %}
-                    <tr>
-                        <td>
-                            {% if sub['telegram_id'] and sub['telegram_id'] != 0 %}
-                                <div class="d-flex align-items-center gap-2">
-                                    <div class="position-relative">
-                                        <img src="{{ avatar_url(sub['telegram_id']) }}" 
-                                             alt="{{ sub['telegram_id'] }}" 
-                                             class="rounded-circle border shadow-sm flex-shrink-0" 
-                                             style="width: 36px; height: 36px; object-fit: cover;" 
-                                             loading="lazy">
-                                        {% if sub['is_online'] %}
-                                            <span class="position-absolute bottom-0 end-0 p-1 bg-success border border-white rounded-circle" title="آنلاین"></span>
-                                        {% endif %}
-                                    </div>
-                                    <a href="{{ url_for('user_detail', telegram_id=sub['telegram_id']) }}" class="text-decoration-none fw-bold">
-                                        <code>{{ sub['telegram_id'] }}</code>
-                                    </a>
-                                </div>
-                            {% else %}
-                                <div class="d-flex align-items-center gap-2">
-                                    <div class="position-relative">
-                                        <img src="{{ avatar_url(sub['account_name'] or 'Customer') }}" 
-                                             alt="مشتری همکار" 
-                                             class="rounded-circle border shadow-sm flex-shrink-0" 
-                                             style="width: 36px; height: 36px; object-fit: cover;" 
-                                             loading="lazy">
-                                        {% if sub['is_online'] %}
-                                            <span class="position-absolute bottom-0 end-0 p-1 bg-success border border-white rounded-circle" title="آنلاین"></span>
-                                        {% endif %}
-                                    </div>
-                                    <span class="text-muted">مشتری همکار</span>
-                                </div>
-                            {% endif %}
+                    {% set is_debtor = (sub.get('payment_status') in ('unpaid', 'debtor') or (sub.get('debt_amount')|int or 0) > 0) %}
+                    <tr class="{% if is_debtor %}table-danger bg-opacity-10 border-start border-danger border-3{% elif sub.get('is_vip') %}table-warning bg-opacity-10{% endif %}">
+                        <td class="text-center">
+                            <input type="checkbox" class="form-check-input bulk-select-row" value="{{ sub['id'] }}">
                         </td>
-                        <td><code>{{ sub['account_name'] or '-' }}</code></td>
-                        <td>{{ sub['plan_name'] or '-' }}</td>
-                        <td>
-                            <div dir="ltr" class="font-monospace text-nowrap fw-bold">{{ "%.2f"|format(sub['data_used']|float or 0) }} / {{ "%.1f"|format(sub['data_limit']|float or 0) }} GB</div>
-                            <div class="progress mt-1" style="height: 5px; width: 90px;">
-                                {% set pct = (((sub['data_used']|float or 0) / (sub['data_limit']|float or 1)) * 100)|int %}
-                                <div class="progress-bar {{ 'bg-danger' if pct > 90 else ('bg-warning' if pct > 70 else 'bg-success') }}" style="width: {{ pct if pct <= 100 else 100 }}%"></div>
+                        <td class="ps-2" data-value="{{ (sub['account_name'] or sub.get('telegram_id') or '')|striptags }}">
+                            <div class="d-flex align-items-center gap-2 cursor-pointer" role="button" data-bs-toggle="modal" data-bs-target="#customerDetailModal{{ sub['id'] }}" title="مشاهده جزئیات، بارکدها و مدیریت کامل">
+                                <div class="position-relative">
+                                    <img src="{{ avatar_url(sub['phone_number'] or sub['account_name'] or sub['telegram_id'] or 'Customer') }}" 
+                                         alt="{{ sub['account_name'] or sub['telegram_id'] }}" 
+                                         class="rounded-circle border shadow-sm flex-shrink-0" 
+                                         style="width: 38px; height: 38px; object-fit: cover;" 
+                                         loading="lazy">
+                                    {% if sub.get('is_online') %}
+                                        <span class="position-absolute bottom-0 end-0 p-1 bg-success border border-white rounded-circle" title="آنلاین"></span>
+                                    {% endif %}
+                                </div>
+                                <div>
+                                    <div class="fw-bold d-flex align-items-center gap-1 flex-wrap">
+                                        <span class="text-primary text-decoration-underline-hover">{{ sub['account_name'] or 'بدون نام' }}</span>
+                                        {% if sub.get('is_vip') %}
+                                             <span class="badge bg-warning text-dark py-0 px-1" title="مشتری طلایی (VIP)"><i class="fas fa-crown"></i> VIP</span>
+                                        {% endif %}
+                                        
+                                        <!-- نشان وضعیت تیکت مشتری -->
+                                        {% set tinfo = sub.get('ticket_info') %}
+                                        {% if tinfo %}
+                                            {% if (tinfo.get('open_count', 0) > 0) or tinfo.get('has_open') %}
+                                                <span class="badge bg-danger text-white py-0 px-1" style="font-size: 0.65rem;" title="مشتری دارای تیکت باز است">
+                                                    <i class="fas fa-headset me-1"></i> تیکت باز ({{ tinfo.get('open_count', 1) }})
+                                                </span>
+                                            {% elif (tinfo.get('in_progress_count', 0) > 0) or tinfo.get('has_pending') %}
+                                                <span class="badge bg-warning text-dark py-0 px-1" style="font-size: 0.65rem;" title="تیکت در حال پیگیری">
+                                                    <i class="fas fa-clock me-1"></i> در انتظار
+                                                </span>
+                                            {% elif (tinfo.get('closed_count', 0) > 0) or tinfo.get('has_closed') %}
+                                                <span class="badge bg-secondary-subtle text-secondary py-0 px-1" style="font-size: 0.65rem;" title="تیکت قبلی بسته شده">
+                                                    <i class="fas fa-check me-1"></i> تیکت بسته
+                                                </span>
+                                            {% endif %}
+                                        {% endif %}
+                                    </div>
+                                    {% if sub['account_comment'] %}
+                                        <small class="text-muted text-truncate d-block" style="max-width: 140px;" title="{{ sub['account_comment'] }}">{{ sub['account_comment'] }}</small>
+                                    {% endif %}
+                                </div>
                             </div>
                         </td>
-                        <td>
+                        <td data-value="{{ sub['phone_number'] or sub.get('telegram_id') or '' }}">
+                            <div>
+                                {% if sub['phone_number'] %}
+                                    <a href="tel:{{ sub['phone_number'] }}" class="text-decoration-none font-monospace small d-block">
+                                        <i class="fas fa-phone text-success me-1"></i>{{ sub['phone_number'] }}
+                                    </a>
+                                {% endif %}
+                                {% if sub.get('telegram_id') and sub['telegram_id'] > 0 %}
+                                    <a href="{{ url_for('user_detail', telegram_id=sub['telegram_id']) }}" class="badge bg-light text-secondary font-monospace border text-decoration-none" style="font-size: 11px;">
+                                        <i class="fab fa-telegram text-primary me-1"></i>{{ sub['telegram_id'] }}
+                                    </a>
+                                {% elif not sub['phone_number'] %}
+                                    <span class="text-muted small">-</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td data-value="{{ sub.get('debt_amount')|int if is_debtor else 0 }}">
+                            {% if is_debtor %}
+                                <div>
+                                    <span class="badge bg-danger text-white px-2 py-1 shadow-sm d-inline-flex align-items-center gap-1 cursor-pointer" role="button" data-bs-toggle="modal" data-bs-target="#customerDetailModal{{ sub['id'] }}">
+                                        <i class="fas fa-hand-holding-dollar"></i> بدهکار: {{ "{:,}".format(sub.get('debt_amount')|int) }} ت
+                                    </span>
+                                    {% if sub.get('debt_notes') %}
+                                        <div class="text-danger small mt-1" style="font-size: 10px;" title="{{ sub.get('debt_notes') }}">{{ sub.get('debt_notes')[:20] }}</div>
+                                    {% endif %}
+                                </div>
+                            {% else %}
+                                <span class="badge bg-success-subtle text-success border border-success">
+                                    <i class="fas fa-check-circle me-1"></i> تسویه شده
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td data-value="{{ sub['data_limit']|float or 0 }}">
+                            <div>
+                                <span class="badge bg-primary bg-opacity-10 text-primary mb-1">{{ sub['plan_name'] or '-' }}</span>
+                                <div class="small fw-bold font-monospace text-nowrap" dir="ltr">{{ "%.2f"|format(sub['data_used']|float or 0) }} / {{ "%.1f"|format(sub['data_limit']|float or 0) }} GB</div>
+                                <div class="progress mt-1" style="height: 5px; width: 90px;">
+                                    {% set pct = (((sub['data_used']|float or 0) / (sub['data_limit']|float or 1)) * 100)|int %}
+                                    <div class="progress-bar {{ 'bg-danger' if pct > 90 else ('bg-warning' if pct > 70 else 'bg-success') }}" style="width: {{ pct if pct <= 100 else 100 }}%"></div>
+                                </div>
+                            </div>
+                        </td>
+                        <td data-value="{{ sub.get('remaining_days', sub['duration'] or 0) }}">
                             {% if sub.get('is_started') %}
                                 <div>
                                     <span class="badge {% if sub.get('remaining_days', 30) <= 3 %}bg-danger-subtle text-danger border border-danger{% else %}bg-success-subtle text-success border border-success{% endif %} font-monospace fs-6">
@@ -117,9 +328,8 @@
                                 </div>
                             {% endif %}
                         </td>
-                        <td><small class="text-muted">{{ sub['expire_date'][:10] if sub['expire_date'] else '-' }}</small></td>
-                        <td>
-                            {% if sub['is_online'] %}
+                        <td data-value="{{ 1 if sub.get('is_online') else (2 if sub['status'] == 'active' else 3) }}">
+                            {% if sub.get('is_online') %}
                                 <span class="badge bg-success-subtle text-success border border-success d-inline-flex align-items-center gap-1 font-monospace">
                                     <span class="pulse-indicator"></span> آنلاین
                                 </span>
@@ -127,248 +337,836 @@
                                 {% if sub['status'] == 'active' %}
                                     <span class="badge bg-light text-secondary border font-monospace">آفلاین</span>
                                 {% else %}
-                                    <span class="badge bg-danger-subtle text-danger border border-danger font-monospace">منقضی</span>
+                                    <span class="badge bg-danger-subtle text-danger border border-danger font-monospace">غیرفعال</span>
                                 {% endif %}
-                                {% if sub['last_online'] %}
+                                {% if sub.get('last_online') %}
                                     <div class="text-muted small" style="font-size: 11px;" title="آخرین اتصال: {{ sub['last_online'] }}">
                                         {{ sub['last_online'][11:16] }}
                                     </div>
                                 {% endif %}
                             {% endif %}
                         </td>
-                        <td>
+                        <td data-value="{{ sub['reseller_id'] or 0 }}">
                             {% if sub['reseller_id'] %}
                                 <span class="badge bg-info text-dark" style="font-size: 0.75rem;">نماینده #{{ sub['reseller_id'] }}</span>
                             {% else %}
-                                <span class="badge bg-secondary" style="font-size: 0.75rem;">ربات تلگرام</span>
+                                <span class="badge bg-secondary" style="font-size: 0.75rem;">مدیریت / مستقیم</span>
                             {% endif %}
                         </td>
+                        <td data-value="{{ sub['created_at'] or '' }}"><small class="text-muted font-monospace">{{ sub['created_at'][:10] if sub['created_at'] else '-' }}</small></td>
                         <td class="text-end pe-3">
-                            {% if status_filter == 'deleted' %}
-                                <form action="{{ url_for('admin_subscription_restore', sub_id=sub['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از بازگردانی این اشتراک از سطل زباله مطمئن هستید؟');">
-                                    <button type="submit" class="btn btn-sm btn-success fw-bold d-inline-flex align-items-center gap-1 shadow-sm">
-                                        <i class="fas fa-trash-arrow-up"></i> بازگردانی
+                            <div class="d-inline-flex align-items-center gap-1">
+                                <!-- ۱. دکمه سریع تغییر وضعیت فعال/غیرفعال -->
+                                <form method="POST" action="{{ url_for('admin_subscription_toggle', sub_id=sub['id']) }}" class="d-inline" onsubmit="return confirm('آیا از تغییر وضعیت این مشتری اطمینان دارید؟');">
+                                    <button type="submit" class="btn btn-sm {% if sub['status'] == 'active' %}btn-outline-secondary{% else %}btn-outline-success{% endif %} px-2" title="{% if sub['status'] == 'active' %}غیرفعال‌سازی سریع اکانت{% else %}فعال‌سازی سریع مجدد{% endif %}">
+                                        <i class="fas {% if sub['status'] == 'active' %}fa-user-slash{% else %}fa-user-check{% endif %}"></i>
                                     </button>
                                 </form>
-                            {% else %}
-                            <div class="btn-group btn-group-sm">
-                                {% if sub_url %}
-                                <button type="button" class="btn btn-outline-primary py-1 px-2" onclick="showQrModal('{{ sub_url }}', 'لینک و QR سابسکریپشن: {{ sub['account_name'] }}')" title="مشاهده QR کد و لینک ساب">
+
+                                <!-- ۲. دکمه اصلی و جامع: مدیریت، بارکدها و لینک‌ها -->
+                                <button type="button" class="btn btn-sm btn-primary d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" data-bs-toggle="modal" data-bs-target="#customerDetailModal{{ sub['id'] }}" title="مشاهده بارکدها، لینک‌های اتصال و مدیریت کامل اشتراک">
                                     <i class="fas fa-qrcode"></i>
+                                    <span class="d-none d-md-inline">مدیریت و اتصال</span>
                                 </button>
-                                <button type="button" class="btn btn-outline-warning py-1 px-2" onclick="showQrModal('{{ single_url }}', 'لینک و QR اتصال تکی (VMess): {{ sub['account_name'] }}')" title="مشاهده QR کد و لینک تکی VMess">
-                                    <i class="fas fa-bolt text-warning"></i>
-                                </button>
-                                <a href="{{ sub_url }}" target="_blank" class="btn btn-outline-secondary py-1 px-2" title="باز کردن پنل کاربری در مرورگر">
-                                    <i class="fas fa-external-link-alt"></i>
-                                </a>
-                                {% endif %}
-
-                                <a href="{{ url_for('view_invoice', sub_id=sub['id']) }}" class="btn btn-outline-info py-1 px-2" title="مشاهده و چاپ فاکتور رسمی" target="_blank">
-                                    <i class="fas fa-file-invoice"></i>
-                                </a>
-
-                                {% if has_permission('sub_manage') %}
-                                <!-- دکمه شارژ حجم اضافه -->
-                                <button type="button" class="btn btn-outline-success py-1 px-2" data-bs-toggle="modal" data-bs-target="#topupModal{{ sub['id'] }}" title="افزودن حجم ترافیک اضافه (Top-up)">
-                                    <i class="fas fa-plus-circle"></i>
-                                </button>
-
-                                <!-- دکمه فعال/غیرفعال‌سازی -->
-                                <form action="{{ url_for('admin_subscription_toggle', sub_id=sub['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از تغییر وضعیت این اشتراک مطمئن هستید؟');">
-                                    <button type="submit" class="btn {{ 'btn-outline-danger' if sub['status'] == 'active' else 'btn-outline-success' }} py-1 px-2" title="{{ 'غیرفعال‌سازی اشتراک' if sub['status'] == 'active' else 'فعال‌سازی اشتراک' }}">
-                                        <i class="fas {{ 'fa-pause' if sub['status'] == 'active' else 'fa-play' }}"></i>
-                                    </button>
-                                </form>
-
-                                <!-- دکمه ویرایش اشتراک -->
-                                <button type="button" class="btn btn-outline-primary py-1 px-2" data-bs-toggle="modal" data-bs-target="#editSubModal{{ sub['id'] }}" title="ویرایش اشتراک">
-                                    <i class="fas fa-pen-to-square"></i>
-                                </button>
-                                {% endif %}
-
-                                {% if has_permission('sub_delete') %}
-                                <!-- دکمه حذف اشتراک با استرداد وجه -->
-                                <button type="button" class="btn btn-outline-danger py-1 px-2" data-bs-toggle="modal" data-bs-target="#deleteSubModal{{ sub['id'] }}" title="حذف اشتراک و استرداد وجه">
-                                    <i class="fas fa-trash-can"></i>
-                                </button>
-                                {% endif %}
-                            </div>
-                            {% endif %}
-
-                            <!-- مدال شارژ حجم اضافه (Top-up) -->
-                            <div class="modal fade text-start" id="topupModal{{ sub['id'] }}" tabindex="-1" aria-hidden="true">
-                                <div class="modal-dialog modal-dialog-centered">
-                                    <div class="modal-content">
-                                        <form action="{{ url_for('admin_sub_add_traffic', sub_id=sub['id']) }}" method="POST">
-                                            <div class="modal-header bg-success text-white py-3">
-                                                <h5 class="modal-title fw-bold"><i class="fas fa-plus-circle me-2"></i>افزایش ترافیک اشتراک: {{ sub['account_name'] }}</h5>
-                                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                                            </div>
-                                            <div class="modal-body p-4">
-                                                <div class="alert alert-info py-2 small mb-3">
-                                                    <i class="fas fa-info-circle me-1"></i> سقف فعلی: <strong>{{ sub['traffic_limit'] or 0 }} گیگابایت</strong> | مصرف شده: <strong>{{ "%.2f"|format(sub['current_usage'] or 0) }} گیگابایت</strong>
-                                                </div>
-                                                <div class="mb-3">
-                                                    <label class="form-label fw-bold">مقدار ترافیک افزایشی (گیگابایت) <span class="text-danger">*</span></label>
-                                                    <div class="input-group">
-                                                        <input type="number" step="1" min="1" max="1000" class="form-control font-monospace" name="extra_gb" value="10" required>
-                                                        <span class="input-group-text bg-light">GB</span>
-                                                    </div>
-                                                    <div class="form-text text-muted small mt-1">
-                                                        حجم افزوده شده بدون تغییر در لینک، کانفیگ یا مدت زمان به سقف اشتراک در هیدیفای اضافه می‌گردد.
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="modal-footer">
-                                                <button type="button" class="btn btn-light" data-bs-dismiss="modal">انصراف</button>
-                                                <button type="submit" class="btn btn-success px-4 fw-bold">افزودن و اعمال آنی</button>
-                                            </div>
-                                        </form>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {% set ref = sub.get('refund_info') or {} %}
-
-                            <!-- مدال ویرایش اشتراک -->
-                            <div class="modal fade text-start" id="editSubModal{{ sub['id'] }}" tabindex="-1" aria-hidden="true">
-                                <div class="modal-dialog">
-                                    <div class="modal-content">
-                                        <form action="{{ url_for('admin_subscription_edit', sub_id=sub['id']) }}" method="POST">
-                                            <div class="modal-header bg-primary text-white py-3">
-                                                <h5 class="modal-title fw-bold"><i class="fas fa-pen-to-square me-2"></i>ویرایش اشتراک «{{ sub['account_name'] }}»</h5>
-                                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                                            </div>
-                                            <div class="modal-body p-4">
-                                                <div class="mb-3">
-                                                    <label class="form-label fw-bold">نام اکانت هیدیفای <span class="text-danger">*</span></label>
-                                                    <input type="text" class="form-control font-monospace" name="account_name" value="{{ sub['account_name'] }}" required dir="ltr">
-                                                </div>
-                                                <div class="row g-3 mb-3">
-                                                    <div class="col-md-6">
-                                                        <label class="form-label fw-bold">حجم مجاز (GB)</label>
-                                                        <input type="number" step="0.1" class="form-control font-monospace" name="data_limit" value="{{ sub['data_limit'] or 30 }}" required>
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <label class="form-label fw-bold">مدت زمان اعتبار (روز) <span class="text-danger">*</span></label>
-                                                        <div class="input-group">
-                                                            <input type="number" min="1" max="3650" class="form-control font-monospace" name="duration" value="{{ sub['duration'] or 30 }}" required>
-                                                            <span class="input-group-text bg-light">روز</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div class="mb-3">
-                                                    <label class="form-label fw-bold">وضعیت اشتراک</label>
-                                                    <select class="form-select" name="status">
-                                                        <option value="active" {% if sub['status'] == 'active' %}selected{% endif %}>فعال (Active)</option>
-                                                        <option value="disabled" {% if sub['status'] == 'disabled' %}selected{% endif %}>غیرفعال (Disabled)</option>
-                                                        <option value="expired" {% if sub['status'] == 'expired' %}selected{% endif %}>منقضی (Expired)</option>
-                                                    </select>
-                                                    <div class="form-text text-muted small mt-1">
-                                                        <i class="fas fa-info-circle me-1"></i> نکته: زمان تمامی اشتراک‌ها در هیدیفای پس از اولین اتصال کاربر محاسبه و آغاز می‌شود.
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="modal-footer">
-                                                <button type="button" class="btn btn-light" data-bs-dismiss="modal">انصراف</button>
-                                                <button type="submit" class="btn btn-primary px-4 fw-bold">ذخیره تغییرات در هیدیفای</button>
-                                            </div>
-                                        </form>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- مدال حذف هوشمند اشتراک با استرداد وجه -->
-                            <div class="modal fade text-start" id="deleteSubModal{{ sub['id'] }}" tabindex="-1" aria-hidden="true">
-                                <div class="modal-dialog">
-                                    <div class="modal-content">
-                                        <form action="{{ url_for('admin_subscription_delete', sub_id=sub['id']) }}" method="POST">
-                                            <div class="modal-header bg-danger text-white py-3">
-                                                <h5 class="modal-title fw-bold"><i class="fas fa-trash-can me-2"></i>حذف اشتراک «{{ sub['account_name'] }}»</h5>
-                                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                                            </div>
-                                            <div class="modal-body p-4">
-                                                <p class="text-muted mb-3">آیا از انتقال این اشتراک به سطل زباله و غیرفعال‌سازی آن در هیدیفای اطمینان دارید؟</p>
-
-                                                <!-- انتخاب علت حذف با گزینه‌های پرکاربرد -->
-                                                <div class="mb-3">
-                                                    <label class="form-label small fw-bold text-danger">علت حذف مشتری را مشخص نمایید: <span class="text-danger">*</span></label>
-                                                    <select name="reason" class="form-select form-select-sm mb-2" onchange="toggleAdminCustomReason(this, 'adminCustomReason{{ sub['id'] }}')">
-                                                        <option value="عدم تسویه حساب">عدم تسویه حساب و عدم پرداخت بدهی</option>
-                                                        <option value="انصراف مشتری">انصراف یا عدم رضایت مشتری</option>
-                                                        <option value="تغییر به سرویس دیگر">تغییر به پلن یا سرور دیگر</option>
-                                                        <option value="مشکل فنی در اتصال">مشکل فنی در اینترنت یا اتصال کلاینت</option>
-                                                        <option value="ثبت اشتباهی">ثبت اشتباهی در سیستم</option>
-                                                        <option value="سایر موارد">سایر موارد (توضیح دستی)...</option>
-                                                    </select>
-                                                    <div id="adminCustomReason{{ sub['id'] }}" style="display: none;">
-                                                        <input type="text" name="custom_reason" class="form-control form-control-sm" placeholder="توضیح کوتاه دلیل حذف را بنویسید...">
-                                                    </div>
-                                                </div>
-
-                                                <!-- کارت محاسبه استرداد وجه -->
-                                                <div class="p-3 bg-light rounded-3 border mb-3">
-                                                    <div class="d-flex justify-content-between align-items-center mb-2">
-                                                        <span class="text-muted small">مدت زمان گذشته:</span>
-                                                        <span class="fw-bold">{{ ref.get('time_passed_text', 'نامشخص') }}</span>
-                                                    </div>
-                                                    <div class="d-flex justify-content-between align-items-center mb-2">
-                                                        <span class="text-muted small">درصد استرداد مجاز:</span>
-                                                        <span class="badge {% if ref.get('refund_percent', 0) == 100 %}bg-success{% elif ref.get('refund_percent', 0) == 90 %}bg-warning text-dark{% else %}bg-secondary{% endif %} fs-6">
-                                                            {{ ref.get('refund_percent', 0) }}%
-                                                        </span>
-                                                    </div>
-                                                    <div class="d-flex justify-content-between align-items-center border-top pt-2">
-                                                        <span class="fw-bold text-dark">مبلغ قابل استرداد به مشتری:</span>
-                                                        <strong class="text-success fs-5">{{ "{:,}".format(ref.get('refund_amount', 0)) }} تومان</strong>
-                                                    </div>
-                                                </div>
-
-                                                <!-- سوئیچ استرداد وجه منحصراً برای مدیر ارشد -->
-                                                {% if session.get('admin_role') == 'super_admin' %}
-                                                <div class="p-3 bg-white rounded-3 border border-primary border-opacity-25 mb-3">
-                                                    <div class="form-check form-switch d-flex align-items-center justify-content-between p-0 m-0">
-                                                        <label class="form-check-label fw-bold text-dark" for="refundSwitch{{ sub['id'] }}">
-                                                            <i class="fas fa-coins text-warning me-1"></i> مبلغ به مشتری استرداد داده شود
-                                                        </label>
-                                                        <input class="form-check-input ms-0" type="checkbox" name="refund_to_customer" id="refundSwitch{{ sub['id'] }}" value="1" {% if ref.get('refund_amount', 0) > 0 %}checked{% endif %}>
-                                                    </div>
-                                                    <div class="form-text text-muted mt-1 small">
-                                                        این گزینه منحصراً در اختیار مدیریت ارشد است؛ در صورت فعال بودن، مبلغ به صورت خودکار به کیف پول تلگرام مشتری شارژ می‌شود.
-                                                    </div>
-                                                </div>
-                                                {% else %}
-                                                <div class="alert alert-info py-2 small mb-3">
-                                                    <i class="fas fa-info-circle me-1"></i> استرداد وجه بر اساس قوانین مصوب سیستم مستقیماً به کیف پول مشتری اعمال خواهد شد.
-                                                </div>
-                                                {% endif %}
-                                            </div>
-                                            <div class="modal-footer">
-                                                <button type="button" class="btn btn-light" data-bs-dismiss="modal">انصراف</button>
-                                                <button type="submit" class="btn btn-danger px-4 fw-bold">حذف اشتراک</button>
-                                            </div>
-                                        </form>
-                                    </div>
-                                </div>
                             </div>
                         </td>
                     </tr>
                     {% endfor %}
+                    {% if not subscriptions %}
+                    <tr>
+                        <td colspan="10" class="text-center py-5 text-muted">
+                            <i class="fas fa-users-slash fs-2 d-block mb-2 opacity-50"></i>
+                            {% if search %}
+                                هیچ مشتری یا اشتراکی با عبارت «<strong>{{ search }}</strong>» در بین تمام مشتریان سیستم یافت نشد.
+                                <div class="mt-3">
+                                    <a href="{{ url_for('subscriptions', status=status_filter or 'all', reseller_id=reseller_filter_id or '', per_page=per_page_str or '50') }}" class="btn btn-sm btn-outline-primary px-3">
+                                        <i class="fas fa-rotate-left me-1"></i> پاک کردن جستجو و نمایش همه مشتریان
+                                    </a>
+                                </div>
+                            {% else %}
+                                هیچ مشتری یا اشتراکی با این مشخصات یافت نشد.
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endif %}
                 </tbody>
             </table>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- ─── نوار ناوبری و صفحه‌بندی (Pagination) ─── -->
+    {% if total_pages > 1 %}
+    <div class="card-footer bg-white py-3 border-top d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="small text-muted">
+            صفحه <strong>{{ page }}</strong> از <strong>{{ total_pages }}</strong> (مجموع: {{ "{:,}".format(total_count) }} مشتری)
+        </div>
+        <nav aria-label="Page navigation">
+            <ul class="pagination pagination-sm mb-0">
+                <!-- دکمه صفحه اول -->
+                <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('subscriptions', status=status_filter, reseller_id=reseller_filter_id, search=search, per_page=per_page_str, page=1) }}" title="صفحه اول">
+                        <i class="fas fa-angles-right"></i>
+                    </a>
+                </li>
+                <!-- دکمه صفحه قبلی -->
+                <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('subscriptions', status=status_filter, reseller_id=reseller_filter_id, search=search, per_page=per_page_str, page=page-1) }}" title="صفحه قبلی">
+                        <i class="fas fa-angle-right"></i> قبلی
+                    </a>
+                </li>
+
+                <!-- شماره صفحات با محاسبه هوشمند محدوده -->
+                {% set start_page = [1, page - 2]|max %}
+                {% set end_page = [total_pages, page + 2]|min %}
+                
+                {% if start_page > 1 %}
+                    <li class="page-item"><a class="page-link" href="{{ url_for('subscriptions', status=status_filter, reseller_id=reseller_filter_id, search=search, per_page=per_page_str, page=1) }}">1</a></li>
+                    {% if start_page > 2 %}<li class="page-item disabled"><span class="page-link">...</span></li>{% endif %}
+                {% endif %}
+
+                {% for p_num in range(start_page, end_page + 1) %}
+                <li class="page-item {% if p_num == page %}active fw-bold{% endif %}">
+                    <a class="page-link" href="{{ url_for('subscriptions', status=status_filter, reseller_id=reseller_filter_id, search=search, per_page=per_page_str, page=p_num) }}">{{ p_num }}</a>
+                </li>
+                {% endfor %}
+
+                {% if end_page < total_pages %}
+                    {% if end_page < total_pages - 1 %}<li class="page-item disabled"><span class="page-link">...</span></li>{% endif %}
+                    <li class="page-item"><a class="page-link" href="{{ url_for('subscriptions', status=status_filter, reseller_id=reseller_filter_id, search=search, per_page=per_page_str, page=total_pages) }}">{{ total_pages }}</a></li>
+                {% endif %}
+
+                <!-- دکمه صفحه بعدی -->
+                <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('subscriptions', status=status_filter, reseller_id=reseller_filter_id, search=search, per_page=per_page_str, page=page+1) }}" title="صفحه بعدی">
+                        بعدی <i class="fas fa-angle-left"></i>
+                    </a>
+                </li>
+                <!-- دکمه صفحه آخر -->
+                <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('subscriptions', status=status_filter, reseller_id=reseller_filter_id, search=search, per_page=per_page_str, page=total_pages) }}" title="صفحه آخر">
+                        <i class="fas fa-angles-left"></i>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
+</div>
+
+<!-- ─── نوار ابزار شناور مدیریت گروهی مشتریان ─── -->
+<div class="bulk-actions-bar" id="adminSubscriptionsBulkBar">
+    <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-primary rounded-pill fs-6 px-3 py-2">
+            <i class="fas fa-check-double me-1"></i> <span class="bulk-selected-count">0</span> مشتری انتخاب شد
+        </span>
+    </div>
+    <form id="adminSubBulkForm" method="POST" action="{{ url_for('admin_subscriptions_bulk') }}" class="d-flex align-items-center flex-wrap gap-2 m-0">
+        <input type="hidden" name="bulk_action" value="">
+        <input type="hidden" name="selected_ids_str" class="bulk-selected-ids-input" value="">
+        <input type="hidden" name="target_reseller_id" id="adminBulkTargetResellerId" value="">
+        <input type="hidden" name="target_hiddify_admin" id="adminBulkTargetHiddifyAdmin" value="">
+        
+        <button type="button" class="btn btn-sm btn-info text-dark fw-bold" onclick="openBulkTransferModal()">
+            <i class="fas fa-arrow-right-arrow-left me-1"></i> انتقال به نماینده
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-light" onclick="submitBulkAction('adminSubBulkForm', 'disable', 'آیا از غیرفعال‌سازی موقت مشتریان انتخاب شده اطمینان دارید؟')">
+            <i class="fas fa-user-slash me-1"></i> غیرفعال‌سازی
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-light" onclick="submitBulkAction('adminSubBulkForm', 'enable', 'آیا از فعال‌سازی مجدد مشتریان انتخاب شده اطمینان دارید؟')">
+            <i class="fas fa-user-check me-1"></i> فعال‌سازی
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-success" onclick="submitBulkAction('adminSubBulkForm', 'clear_debt', 'آیا از تسویه بدهی تمام مشتریان انتخاب شده اطمینان دارید؟')">
+            <i class="fas fa-check-double me-1"></i> تسویه بدهی
+        </button>
+        {% if has_permission('sub_delete') %}
+        <button type="button" class="btn btn-sm btn-danger" onclick="submitBulkAction('adminSubBulkForm', 'delete', 'هشدار: آیا از حذف کامل مشتریان انتخاب شده از سرور هیدیفای و پایگاه‌داده اطمینان دارید؟')">
+            <i class="fas fa-trash-can me-1"></i> حذف گروهی
+        </button>
+        {% endif %}
+    </form>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- ─── مودال‌های مدیریت مشتریان (کاملاً مستقل و خارج از جدول) ─── -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+{% for sub in subscriptions %}
+{% set ref = sub.get('refund_info') or {} %}
+{% set sub_url = (panel_url + '/' + user_proxy + '/' + sub['hidify_uuid'] + '/') if sub['hidify_uuid'] else '' %}
+{% set single_url = sub|format_single_link(single_link_template) if sub['hidify_uuid'] else '' %}
+{% set is_debtor = (sub.get('payment_status') in ('unpaid', 'debtor') or (sub.get('debt_amount')|int or 0) > 0) %}
+
+<!-- ─── Modal جامع مدیریت مشتری و بارکدهای اتصال ─── -->
+<div class="modal fade text-start customer-manage-modal" id="customerDetailModal{{ sub['id'] }}" tabindex="-1" aria-labelledby="customerDetailModalLabel{{ sub['id'] }}" aria-hidden="true" data-sub-id="{{ sub['id'] }}" data-sub-url="{{ sub_url }}" data-single-url="{{ single_url }}">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-dark text-white py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <img src="{{ avatar_url(sub['phone_number'] or sub['account_name'] or sub['telegram_id'] or 'Customer') }}" class="rounded-circle border shadow-sm" style="width: 42px; height: 42px; object-fit: cover;">
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0" id="customerDetailModalLabel{{ sub['id'] }}">
+                            {{ sub['account_name'] or 'بدون نام' }}
+                            {% if sub.get('is_vip') %}<span class="badge bg-warning text-dark ms-1"><i class="fas fa-crown"></i> VIP</span>{% endif %}
+                        </h5>
+                        <small class="text-muted font-monospace">شناسه: #{{ sub['id'] }} | پلن: {{ sub['plan_name'] }}</small>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    {% if sub.get('is_online') %}
+                        <span class="badge bg-success font-monospace"><span class="pulse-indicator"></span> آنلاین</span>
+                    {% elif sub['status'] == 'active' %}
+                        <span class="badge bg-light text-secondary font-monospace">آفلاین</span>
+                    {% else %}
+                        <span class="badge bg-danger font-monospace">غیرفعال</span>
+                    {% endif %}
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+            </div>
+            <div class="modal-body p-4">
+                <!-- بخش بارکدها و لینک‌های اتصال -->
+                <div class="row g-3 mb-4">
+                    <!-- ۱. لینک سابسکریپشن -->
+                    <div class="col-md-6 col-12">
+                        <div class="card h-100 border shadow-sm">
+                            <div class="card-header bg-primary bg-opacity-10 py-2 d-flex justify-content-between align-items-center">
+                                <span class="fw-bold text-primary small"><i class="fas fa-rss me-1"></i> لینک سابسکریپشن (هوشمند)</span>
+                                <span class="badge bg-primary">پیشنهادی</span>
+                            </div>
+                            <div class="card-body text-center p-3 d-flex flex-column align-items-center">
+                                <div class="qr-code-wrapper mx-auto mb-3" style="width: 170px; height: 170px; background: #ffffff !important; border-radius: 16px; border: 2px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.06); display: flex; align-items: center; justify-content: center; padding: 10px;">
+                                    <div id="subQr{{ sub['id'] }}" class="d-flex justify-content-center align-items-center" style="width: 150px; height: 150px; background: #ffffff !important;"></div>
+                                </div>
+                                <div class="input-group input-group-sm mb-2 w-100">
+                                    <input type="text" class="form-control text-center font-monospace" value="{{ sub_url }}" readonly id="subInput{{ sub['id'] }}" style="direction: ltr; font-size: 11px;">
+                                    <button class="btn btn-primary" onclick="copyLink('{{ sub_url }}', 'لینک ساب')"><i class="fas fa-copy"></i></button>
+                                </div>
+                                <div class="d-flex flex-wrap gap-1 justify-content-center">
+                                    {% if sub_url %}
+                                    <a href="hiddify://install-sub?url={{ sub_url|urlencode }}" class="btn btn-sm btn-outline-primary py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-rocket me-1"></i> Hiddify</a>
+                                    <a href="streisand://import/{{ sub_url|urlencode }}" class="btn btn-sm btn-outline-info py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-bolt me-1"></i> Streisand</a>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2 font-monospace" style="font-size: 11px;" onclick="downloadQrCode('subQr{{ sub['id'] }}', 'Sub_{{ sub['account_name'] }}.png')"><i class="fas fa-download me-1"></i> دانلود QR</button>
+                                    <a href="{{ sub_url }}" target="_blank" class="btn btn-sm btn-outline-secondary py-1 px-2 font-monospace" style="font-size: 11px;" title="باز کردن در مرورگر"><i class="fas fa-external-link-alt"></i></a>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ۲. لینک مستقیم تکی -->
+                    <div class="col-md-6 col-12">
+                        <div class="card h-100 border shadow-sm">
+                            <div class="card-header bg-warning bg-opacity-10 py-2 d-flex justify-content-between align-items-center">
+                                <span class="fw-bold text-dark small"><i class="fas fa-bolt text-warning me-1"></i> لینک مستقیم تکی (Single Config)</span>
+                                <span class="badge bg-secondary">V2Ray / Clash</span>
+                            </div>
+                            <div class="card-body text-center p-3 d-flex flex-column align-items-center">
+                                <div class="qr-code-wrapper mx-auto mb-3" style="width: 170px; height: 170px; background: #ffffff !important; border-radius: 16px; border: 2px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.06); display: flex; align-items: center; justify-content: center; padding: 10px;">
+                                    <div id="singleQr{{ sub['id'] }}" class="d-flex justify-content-center align-items-center" style="width: 150px; height: 150px; background: #ffffff !important;"></div>
+                                </div>
+                                <div class="input-group input-group-sm mb-2 w-100">
+                                    <input type="text" class="form-control text-center font-monospace" value="{{ single_url }}" readonly id="singleInput{{ sub['id'] }}" style="direction: ltr; font-size: 11px;">
+                                    <button class="btn btn-warning" onclick="copyLink('{{ single_url }}', 'لینک تکی')"><i class="fas fa-copy"></i></button>
+                                </div>
+                                <div class="d-flex flex-wrap gap-1 justify-content-center">
+                                    {% if single_url %}
+                                    <button type="button" class="btn btn-sm btn-outline-warning py-1 px-2 font-monospace" style="font-size: 11px;" onclick="copyLink('{{ single_url }}', 'لینک مستقیم تکی')"><i class="fas fa-copy me-1"></i> کپی کانفیگ</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2 font-monospace" style="font-size: 11px;" onclick="downloadQrCode('singleQr{{ sub['id'] }}', 'Single_{{ sub['account_name'] }}.png')"><i class="fas fa-download me-1"></i> دانلود QR</button>
+                                    {% else %}
+                                    <small class="text-muted">لینک تکی در دسترس نیست</small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- دکمه ویژه صدور فاکتور دیجیتال رسمی -->
+                <div class="mb-4 text-center">
+                    <a href="{{ url_for('view_invoice', sub_id=sub['id']) }}" target="_blank" class="btn btn-success btn-lg w-100 fw-bold shadow-sm py-2">
+                        <i class="fas fa-file-invoice-dollar me-2"></i> صدور و مشاهده فاکتور رسمی دیجیتال برای این مشتری
+                    </a>
+                </div>
+
+                <!-- بخش مشخصات فنی و تراز مصرف -->
+                <div class="card bg-light border-0 rounded-3 p-3 mb-4">
+                    <div class="row g-3 text-center">
+                        <div class="col-sm-3 col-6">
+                            <small class="text-muted d-block">حجم مصرفی</small>
+                            <strong class="font-monospace text-primary" dir="ltr">{{ "%.2f"|format(sub['data_used']|float or 0) }} / {{ "%.1f"|format(sub['data_limit']|float or 0) }} GB</strong>
+                        </div>
+                        <div class="col-sm-3 col-6">
+                            <small class="text-muted d-block">اعتبار باقی‌مانده</small>
+                            <strong class="font-monospace">{{ sub.get('remaining_days', sub['duration']) }} روز</strong>
+                        </div>
+                        <div class="col-sm-3 col-6">
+                            <small class="text-muted d-block">وضعیت مالی</small>
+                            {% if is_debtor %}
+                                <strong class="text-danger font-monospace">{{ "{:,}".format(sub.get('debt_amount')|int) }} ت بدهی</strong>
+                            {% else %}
+                                <strong class="text-success">تسویه شده</strong>
+                            {% endif %}
+                        </div>
+                        <div class="col-sm-3 col-6">
+                            <small class="text-muted d-block">نماینده / صادرکننده</small>
+                            <strong class="text-dark">{{ "نماینده #" + (sub['reseller_id']|string) if sub['reseller_id'] else "مدیریت مستقیم" }}</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- بخش دکمه‌های مدیریتی -->
+                <h6 class="fw-bold mb-3"><i class="fas fa-gears text-primary me-2"></i>عملیات و مدیریت جامع مشتری</h6>
+                <div class="d-flex flex-wrap gap-2">
+                    {% if has_permission('sub_manage') %}
+                    <!-- ۱. دکمه تمدید -->
+                    <button type="button" class="btn btn-outline-success flex-grow-1 py-2 fw-bold" data-bs-toggle="modal" data-bs-target="#renewModal{{ sub['id'] }}">
+                        <i class="fas fa-arrows-rotate me-1"></i> تمدید اشتراک
+                    </button>
+                    <!-- ۲. دکمه شارژ حجم اضافه -->
+                    <button type="button" class="btn btn-outline-primary flex-grow-1 py-2 fw-bold" data-bs-toggle="modal" data-bs-target="#topupModal{{ sub['id'] }}">
+                        <i class="fas fa-plus-circle me-1"></i> افزایش حجم ترافیک
+                    </button>
+                    <!-- ۳. دکمه ویرایش -->
+                    <button type="button" class="btn btn-outline-secondary flex-grow-1 py-2" data-bs-toggle="modal" data-bs-target="#editSubModal{{ sub['id'] }}">
+                        <i class="fas fa-pen-to-square me-1"></i> ویرایش مشخصات
+                    </button>
+                    <!-- ۴. دکمه تنظیم VIP -->
+                    <button type="button" class="btn btn-outline-warning text-dark flex-grow-1 py-2" data-bs-toggle="modal" data-bs-target="#vipBoostModal{{ sub['id'] }}">
+                        <i class="fas fa-crown text-warning me-1"></i> تنظیم مشتری VIP
+                    </button>
+                    {% endif %}
+
+                    <!-- ۵. دکمه سوابق -->
+                    <button type="button" class="btn btn-outline-info flex-grow-1 py-2" onclick="openSubscriptionHistory({{ sub['id'] }}, '{{ sub['account_name'] }}')">
+                        <i class="fas fa-history me-1"></i> سوابق دوره‌ها
+                    </button>
+
+                    <!-- ۶. تسویه بدهی -->
+                    {% if is_debtor %}
+                    <form method="POST" action="{{ url_for('admin_subscription_clear_debt', sub_id=sub['id']) }}" class="d-inline flex-grow-1" onsubmit="return confirm('آیا از تسویه کامل بدهی این مشتری اطمینان دارید؟');">
+                        <button type="submit" class="btn btn-success w-100 py-2 fw-bold">
+                            <i class="fas fa-check-double me-1"></i> تسویه کامل بدهی
+                        </button>
+                    </form>
+                    {% if sub.get('telegram_id') and sub['telegram_id'] > 0 %}
+                    <form method="POST" action="{{ url_for('subscription_send_debt_reminder', sub_id=sub['id']) }}" class="d-inline flex-grow-1" onsubmit="return confirm('آیا از ارسال پیام یادآوری بدهی به تلگرام این کاربر اطمینان دارید؟');">
+                        <button type="submit" class="btn btn-outline-danger w-100 py-2">
+                            <i class="fab fa-telegram me-1"></i> یادآوری بدهی تلگرام
+                        </button>
+                    </form>
+                    {% endif %}
+                    {% endif %}
+
+                    {% if has_permission('sub_manage') %}
+                    <!-- ۷. تغییر وضعیت فعال/غیرفعال -->
+                    <form method="POST" action="{{ url_for('admin_subscription_toggle', sub_id=sub['id']) }}" class="d-inline flex-grow-1" onsubmit="return confirm('آیا از تغییر وضعیت این مشتری اطمینان دارید؟');">
+                        <button type="submit" class="btn {% if sub['status'] == 'active' %}btn-outline-secondary{% else %}btn-outline-success{% endif %} w-100 py-2">
+                            <i class="fas {% if sub['status'] == 'active' %}fa-user-slash{% else %}fa-user-check{% endif %} me-1"></i>
+                            {{ 'غیرفعال‌سازی اکانت' if sub['status'] == 'active' else 'فعال‌سازی مجدد' }}
+                        </button>
+                    </form>
+                    {% endif %}
+
+                    {% if has_permission('sub_delete') %}
+                    <!-- ۸. حذف -->
+                    <button type="button" class="btn btn-outline-danger flex-grow-1 py-2" data-bs-toggle="modal" data-bs-target="#deleteSubModal{{ sub['id'] }}">
+                        <i class="fas fa-trash-can me-1"></i> حذف و استرداد وجه
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="modal-footer py-2 bg-light">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">بستن</button>
+            </div>
         </div>
     </div>
 </div>
 
-<script>
-function toggleAdminCustomReason(selectElem, targetId) {
-    const el = document.getElementById(targetId);
-    if (el) {
-        el.style.display = (selectElem.value === 'سایر موارد') ? 'block' : 'none';
-    }
-}
-</script>
+<!-- ─── ۱. Modal تمدید اشتراک مدیریت ─── -->
+<div class="modal fade text-start" id="renewModal{{ sub['id'] }}" tabindex="-1" aria-labelledby="renewModalLabel{{ sub['id'] }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <form method="POST" action="{{ url_for('admin_subscription_renew', sub_id=sub['id']) }}">
+                <div class="modal-header bg-success text-white py-3">
+                    <h5 class="modal-title fw-bold" id="renewModalLabel{{ sub['id'] }}">
+                        <i class="fas fa-arrows-rotate me-2"></i>تمدید اشتراک «{{ sub['account_name'] }}»
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-info py-2 small mb-3">
+                        <i class="fas fa-info-circle me-1"></i>
+                        سقف فعلی: <strong>{{ sub['data_limit'] }} گیگابایت</strong> | مصرف: <strong>{{ "%.2f"|format(sub['data_used'] or 0) }} GB</strong>
+                    </div>
+
+                    <label class="form-label fw-bold">انتخاب پلن تمدید:</label>
+                    <div class="d-flex flex-column gap-2 mb-3">
+                        {% for p_key, p in plans.items() %}
+                        <label class="p-3 border rounded-3 cursor-pointer d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="radio" name="plan_id" value="{{ p_key }}" class="form-check-input mt-0" {% if p_key == sub['plan_id'] or loop.first %}checked{% endif %}>
+                                <div>
+                                    <div class="fw-bold">{{ p['name'] }}</div>
+                                    <small class="text-muted">{{ p['data_limit'] }} گیگ | {{ p['duration'] }} روز</small>
+                                </div>
+                            </div>
+                            <div class="text-end">
+                                <strong class="text-success">{{ "{:,}".format(p['price']) }} ت</strong>
+                            </div>
+                        </label>
+                        {% endfor %}
+                    </div>
+
+                    <div class="border-top pt-3">
+                        <label class="form-label fw-bold text-muted small"><i class="fas fa-sliders me-1"></i> یا وارد کردن مشخصات سفارشی:</label>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <input type="number" step="0.5" name="custom_limit" class="form-control form-control-sm font-monospace" placeholder="حجم سفارشی (GB)">
+                            </div>
+                            <div class="col-6">
+                                <input type="number" name="custom_duration" class="form-control form-control-sm font-monospace" placeholder="تعداد روز سفارشی">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-success fw-bold px-4">
+                        <i class="fas fa-check me-1"></i> تایید و اعمال تمدید
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ─── ۲. Modal افزایش دستی حجم ترافیک (Top-up) ─── -->
+<div class="modal fade text-start" id="topupModal{{ sub['id'] }}" tabindex="-1" aria-labelledby="topupModalLabel{{ sub['id'] }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <form action="{{ url_for('admin_subscription_add_traffic', sub_id=sub['id']) }}" method="POST">
+                <div class="modal-header bg-primary text-white py-3">
+                    <h5 class="modal-title fw-bold" id="topupModalLabel{{ sub['id'] }}">
+                        <i class="fas fa-plus-circle me-2"></i>افزایش ترافیک اشتراک: {{ sub['account_name'] }}
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-info py-2 small mb-3">
+                        <i class="fas fa-info-circle me-1"></i> سقف فعلی: <strong>{{ sub['data_limit'] or 0 }} گیگابایت</strong> | مصرف شده: <strong>{{ "%.2f"|format(sub['data_used'] or 0) }} گیگابایت</strong>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">مقدار ترافیک افزایشی (گیگابایت) <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <input type="number" step="0.5" min="0.5" max="1000" class="form-control font-monospace" name="extra_gb" value="10" required>
+                            <span class="input-group-text bg-light">GB</span>
+                        </div>
+                        <div class="form-text text-muted small mt-1">
+                            حجم افزوده شده بدون تغییر در لینک، کانفیگ یا مدت زمان به سقف اشتراک در هیدیفای اضافه می‌گردد.
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold">افزودن و اعمال آنی</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ─── ۳. Modal ویرایش اشتراک ─── -->
+<div class="modal fade text-start" id="editSubModal{{ sub['id'] }}" tabindex="-1" aria-labelledby="editSubModalLabel{{ sub['id'] }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content shadow-lg border-0">
+            <form action="{{ url_for('admin_subscription_edit', sub_id=sub['id']) }}" method="POST">
+                <div class="modal-header bg-secondary text-white py-3">
+                    <h5 class="modal-title fw-bold" id="editSubModalLabel{{ sub['id'] }}">
+                        <i class="fas fa-pen-to-square me-2"></i>ویرایش اشتراک «{{ sub['account_name'] }}»
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">نام اکانت هیدیفای <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control font-monospace" name="account_name" value="{{ sub['account_name'] }}" required dir="ltr">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">شماره تلفن مشتری:</label>
+                            <input type="text" class="form-control font-monospace" name="phone_number" value="{{ sub['phone_number'] or '' }}" placeholder="09121234567" dir="ltr">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">شناسه عددی تلگرام (Telegram ID):</label>
+                            <input type="number" class="form-control font-monospace" name="telegram_id" value="{{ sub['telegram_id'] if sub['telegram_id'] and sub['telegram_id'] > 0 else '' }}" placeholder="123456789" dir="ltr">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">وضعیت اشتراک:</label>
+                            <select class="form-select" name="status">
+                                <option value="active" {% if sub['status'] == 'active' %}selected{% endif %}>🟢 فعال (Active)</option>
+                                <option value="disabled" {% if sub['status'] == 'disabled' %}selected{% endif %}>🔴 غیرفعال (Disabled)</option>
+                                <option value="expired" {% if sub['status'] == 'expired' %}selected{% endif %}>⚫️ منقضی (Expired)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- بخش مدیریت وضعیت بدهی و تسویه حساب -->
+                    <div class="p-3 bg-danger-subtle border border-danger-subtle rounded-3 mb-3">
+                        <h6 class="fw-bold text-danger mb-3"><i class="fas fa-hand-holding-dollar me-2"></i>وضعیت پرداخت و تسویه حساب:</h6>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">وضعیت پرداخت:</label>
+                                <select name="payment_status" class="form-select" onchange="toggleDebtorFields(this, 'adminDebtAmountSection_{{ sub['id'] }}')">
+                                    <option value="paid" {% if sub.get('payment_status') == 'paid' and (sub.get('debt_amount')|int or 0) == 0 %}selected{% endif %}>🟢 پرداخت شده / تسویه کامل</option>
+                                    <option value="unpaid" {% if sub.get('payment_status') in ('unpaid', 'debtor') or (sub.get('debt_amount')|int or 0) > 0 %}selected{% endif %}>🔴 مشتری بدهکار است (پرداخت بعداً)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6" id="adminDebtAmountSection_{{ sub['id'] }}" style="{% if not (sub.get('payment_status') in ('unpaid', 'debtor') or (sub.get('debt_amount')|int or 0) > 0) %}display: none;{% endif %}">
+                                <label class="form-label fw-bold text-danger">مبلغ بدهی (تومان):</label>
+                                <input type="number" step="1000" name="debt_amount" class="form-control font-monospace border-danger" value="{{ sub.get('debt_amount') or 0 }}" dir="ltr">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small text-muted">یادداشت موعد یا شرایط بدهی:</label>
+                                <input type="text" name="debt_notes" class="form-control form-control-sm" placeholder="مثلاً: تا آخر ماه تسویه می‌شود" value="{{ sub.get('debt_notes') or '' }}">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">حجم مجاز (GB) <span class="text-danger">*</span></label>
+                            <input type="number" step="0.1" class="form-control font-monospace" name="data_limit" value="{{ sub['data_limit'] or 30 }}" required dir="ltr">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">مدت زمان اعتبار (روز) <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="number" min="1" max="3650" class="form-control font-monospace" name="duration" value="{{ sub['duration'] or 30 }}" required dir="ltr">
+                                <span class="input-group-text bg-light">روز</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">توضیحات و یادداشت اشتراک:</label>
+                        <textarea class="form-control" name="comment" rows="2" placeholder="یادداشت خصوصی مدیریت...">{{ sub['account_comment'] or '' }}</textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold">ذخیره تغییرات در هیدیفای</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ─── ۴. Modal تنظیمات مشتری پرمیوم (VIP Boost) ─── -->
+<div class="modal fade text-start" id="vipBoostModal{{ sub['id'] }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-warning text-dark py-3">
+                <h5 class="modal-title fw-bold"><i class="fas fa-crown me-2"></i>مدیریت مشتری پرمیوم: {{ sub['account_name'] }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form action="{{ url_for('admin_subscription_toggle_vip', sub_id=sub['id']) }}" method="POST">
+                    <h6 class="fw-bold text-dark mb-2"><i class="fas fa-star text-warning me-1"></i> وضعیت در باشگاه مشتریان VIP</h6>
+                    <div class="mb-3">
+                        <select name="is_vip" class="form-select">
+                            <option value="1" {% if sub.get('is_vip') %}selected{% endif %}>👑 مشتری پرمیوم (VIP)</option>
+                            <option value="0" {% if not sub.get('is_vip') %}selected{% endif %}>👤 مشتری عادی</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-warning w-100 fw-bold"><i class="fas fa-save me-1"></i> ذخیره وضعیت VIP</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ─── ۵. Modal حذف هوشمند با استرداد وجه ─── -->
+<div class="modal fade text-start" id="deleteSubModal{{ sub['id'] }}" tabindex="-1" aria-labelledby="deleteSubModalLabel{{ sub['id'] }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <form action="{{ url_for('admin_subscription_delete', sub_id=sub['id']) }}" method="POST">
+                <div class="modal-header bg-danger text-white py-3">
+                    <h5 class="modal-title fw-bold" id="deleteSubModalLabel{{ sub['id'] }}">
+                        <i class="fas fa-trash-can me-2"></i>حذف اشتراک «{{ sub['account_name'] }}»
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <p class="text-muted mb-3">آیا از حذف این اشتراک از سرور هیدیفای و پایگاه‌داده اطمینان دارید؟</p>
+
+                    <!-- کارت محاسبه استرداد وجه -->
+                    <div class="p-3 bg-light rounded-3 border mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted small">آخرین زمان اقدام:</span>
+                            <span class="fw-bold">{{ ref.get('time_passed_text', 'نامشخص') }}</span>
+                        </div>
+                        {% if ref.get('items') and ref.get('items')|length > 1 %}
+                        <div class="mb-2 p-2 bg-white rounded border small">
+                            <div class="text-muted fw-bold mb-1 border-bottom pb-1">ریز محاسبات خرید و تمدیدها:</div>
+                            {% for itm in ref.get('items') %}
+                            <div class="d-flex justify-content-between align-items-center py-1 {% if not loop.last %}border-bottom{% endif %}">
+                                <div>
+                                    <span class="badge bg-light text-dark border">{{ itm['type_title'] }}</span>
+                                    <span class="text-muted ms-1">({{ itm['time_passed_text'] }})</span>
+                                </div>
+                                <div>
+                                    <span>{{ "{:,}".format(itm['amount']) }} ت</span>
+                                    <span class="badge {% if itm['refund_percent'] == 100 %}bg-success{% elif itm['refund_percent'] == 80 %}bg-warning text-dark{% else %}bg-secondary{% endif %} ms-1">
+                                        {{ itm['refund_percent'] }}%
+                                    </span>
+                                    <strong class="text-success ms-1">+{{ "{:,}".format(itm['refund_amount']) }}</strong>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted small">درصد استرداد مجاز:</span>
+                            <span class="badge {% if ref.get('refund_percent', 0) == 100 %}bg-success{% elif ref.get('refund_percent', 0) >= 80 %}bg-warning text-dark{% else %}bg-secondary{% endif %} fs-6">
+                                {{ ref.get('refund_percent', 0) }}%
+                            </span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center border-top pt-2">
+                            <span class="fw-bold text-dark">مبلغ کل قابل استرداد به مشتری:</span>
+                            <strong class="text-success fs-5">{{ "{:,}".format(ref.get('refund_amount', 0)) }} تومان</strong>
+                        </div>
+                    </div>
+
+                    <!-- سوئیچ استرداد وجه منحصراً برای مدیر ارشد -->
+                    {% if session.get('admin_role') == 'super_admin' %}
+                    <div class="p-3 bg-white rounded-3 border border-primary border-opacity-25 mb-3">
+                        <div class="form-check form-switch d-flex align-items-center justify-content-between p-0 m-0">
+                            <label class="form-check-label fw-bold text-dark" for="refundSwitch{{ sub['id'] }}">
+                                <i class="fas fa-coins text-warning me-1"></i> مبلغ به مشتری استرداد داده شود
+                            </label>
+                            <input class="form-check-input ms-0" type="checkbox" name="refund_to_customer" id="refundSwitch{{ sub['id'] }}" value="1" {% if ref.get('refund_amount', 0) > 0 %}checked{% endif %}>
+                        </div>
+                        <div class="form-text text-muted mt-1 small">
+                            این گزینه منحصراً در اختیار مدیریت ارشد است؛ در صورت فعال بودن، مبلغ به صورت خودکار به کیف پول تلگرام مشتری شارژ می‌شود.
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info py-2 small mb-3">
+                        <i class="fas fa-info-circle me-1"></i> استرداد وجه بر اساس قوانین مصوب سیستم مستقیماً به کیف پول مشتری اعمال خواهد شد.
+                    </div>
+                    <!-- علت حذف اشتراک -->
+                    <div class="p-3 bg-white rounded-3 border mb-3">
+                        <label class="form-label fw-bold small text-dark mb-1">
+                            <i class="fas fa-question-circle text-danger me-1"></i>علت حذف اشتراک:
+                        </label>
+                        <select name="reason" class="form-select form-select-sm mb-2" required onchange="toggleCustomReason(this, 'adminCustomReason{{ sub['id'] }}')">
+                            <option value="عدم تسویه حساب / بدهی مشتری">عدم تسویه حساب / بدهی مشتری</option>
+                            <option value="عدم رضایت مشتری یا انصراف">عدم رضایت مشتری یا انصراف</option>
+                            <option value="اتمام دوره و عدم تمدید">اتمام دوره و عدم تمدید</option>
+                            <option value="مشکل فنی / تعویض سرور یا کانفیگ">مشکل فنی / تعویض سرور یا کانفیگ</option>
+                            <option value="custom">سایر دلایل (با توضیح دستی)...</option>
+                        </select>
+                        <div class="d-none" id="adminCustomReason{{ sub['id'] }}">
+                            <input type="text" name="custom_reason" class="form-control form-control-sm" placeholder="علت حذف را اینجا بنویسید...">
+                        </div>
+                        <div class="form-text text-muted small mt-2">
+                            <i class="fas fa-shield-alt text-primary me-1"></i> این اشتراک ابتدا به سطل زباله منتقل شده و پس از ۷ روز خودکار از سرور هیدیفای حذف خواهد شد.
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-danger px-4 fw-bold">
+                        <i class="fas fa-trash-can me-1"></i> انتقال به سطل زباله
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<!-- ─── ۶. Modal عمومی تاریخچه دوره‌ها و سوابق مصرف (Universal History Modal) ─── -->
+<div class="modal fade text-start" id="subscriptionHistoryModal" tabindex="-1" aria-labelledby="historyModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-info text-white py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="fas fa-history fs-4"></i>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0" id="historyModalTitle">سوابق مصرف دوره‌های قبلی</h5>
+                        <small class="opacity-75" id="historyModalSubtitle"></small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4" id="historyModalBody">
+                <div class="text-center py-4">
+                    <div class="spinner-border text-info mb-2" role="status"></div>
+                    <div class="text-muted">در حال بارگذاری تاریخچه مصرف...</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">بستن</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ─── مودال انتقال دستی گروهی اشتراک‌های انتخاب‌شده به نماینده ─── -->
+<div class="modal fade" id="bulkTransferModal" tabindex="-1" aria-labelledby="bulkTransferModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white py-3">
+                <h5 class="modal-title fw-bold mb-0" id="bulkTransferModalLabel">
+                    <i class="fas fa-arrow-right-arrow-left me-2"></i> انتقال گروهی مشتریان به نماینده
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="alert alert-info py-2 px-3 small mb-3">
+                    <i class="fas fa-info-circle me-1"></i>
+                    تعداد <strong id="modalBulkCount">0</strong> مشتری برای انتقال انتخاب شده‌اند. با انجام این عملیات، مالکیت این مشتریان هم در <strong>پنل هیدیفای</strong> و هم در <strong>پنل مدیریت</strong> به نماینده مقصد واگذار می‌شود.
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-secondary">
+                        <i class="fas fa-user-tie me-1"></i> انتخاب نماینده مقصد: <span class="text-danger">*</span>
+                    </label>
+                    <select class="form-select" id="manualBulkTargetReseller" required>
+                        <option value="">-- لطفاً یک نماینده را انتخاب کنید --</option>
+                        {% for r in resellers_list %}
+                        <option value="{{ r['id'] }}" data-hiddify-admin="{{ r.get('hiddify_admin_uuid') or '' }}">
+                            {{ r['name'] }} (@{{ r['username'] }}) {% if r.get('hiddify_admin_uuid') %}[ادمین هیدیفای متصل]{% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer bg-light py-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">انصراف</button>
+                <button type="button" class="btn btn-primary btn-sm px-4 fw-bold" onclick="confirmManualBulkTransfer()">
+                    <i class="fas fa-check me-1"></i> انتقال قطعی به نماینده
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ─── مودال انتقال هوشمند بر اساس الگو (Pattern / Regex Migration) ─── -->
+<div class="modal fade" id="patternTransferModal" tabindex="-1" aria-labelledby="patternTransferModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-dark text-white py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="fas fa-wand-magic-sparkles text-warning fs-5"></i>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0" id="patternTransferModalLabel">
+                            انتقال هوشمند و گروهی مشتریان بر اساس الگو
+                        </h5>
+                        <small class="text-muted">انتقال همزمان در پنل هیدیفای و پنل مدیریت با پیشوند/الگوی دلخواه</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="alert alert-warning py-2 px-3 small mb-3">
+                    <i class="fas fa-shield-halved me-1"></i>
+                    <strong>قانون امنیت استرداد:</strong> کلیه مشتریان با تاریخ ایجاد واقعی یا تاریخ امن (> ۲۴ ساعت گذشته) به نماینده منتقل می‌شوند تا امکان سوءاستفاده از استرداد وجه وجود نداشته باشد.
+                </div>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6 col-12">
+                        <label class="form-label fw-bold small text-secondary">
+                            <i class="fas fa-i-cursor me-1"></i> الگو یا عبارت نامگذاری مشتریان: <span class="text-danger">*</span>
+                        </label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="patternInput" placeholder="مثال: Kzmi-S3- یا Kzmi-S3-*" dir="ltr">
+                            <button type="button" class="btn btn-outline-primary" id="btnRunPatternPreview" onclick="fetchPatternPreview()">
+                                <i class="fas fa-search me-1"></i> پیش‌نمایش
+                            </button>
+                        </div>
+                        <small class="text-muted" style="font-size: 11px;">
+                            می‌توانید پیشوند ثابت (مثل <code>Kzmi-S3-</code>) یا وایلدکارد (مثل <code>Kzmi-S3-*</code>) یا ریجکس وارد کنید.
+                        </small>
+                    </div>
+
+                    <div class="col-md-6 col-12">
+                        <label class="form-label fw-bold small text-secondary">
+                            <i class="fas fa-filter me-1"></i> جستجو در میان:
+                        </label>
+                        <select class="form-select" id="patternSourceFilter" onchange="fetchPatternPreview()">
+                            <option value="all">تمام مشتریان پایگاه‌داده</option>
+                            <option value="direct" selected>فقط مشتریان مستقیم مدیریت (بدون نماینده)</option>
+                            {% for r in resellers_list %}
+                            <option value="reseller_{{ r['id'] }}">مشتریان نماینده: {{ r['name'] }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-6 col-12">
+                        <label class="form-label fw-bold small text-secondary">
+                            <i class="fas fa-code me-1"></i> نوع تطبیق الگو:
+                        </label>
+                        <select class="form-select" id="patternTypeSelect" onchange="fetchPatternPreview()">
+                            <option value="auto" selected>هوشمند (Auto - پیشوند و وایلدکارد)</option>
+                            <option value="prefix">شروع با پیشوند (Prefix)</option>
+                            <option value="wildcard">وایلدکارد با ستاره (*)</option>
+                            <option value="contains">حاوی عبارت (Substring)</option>
+                            <option value="regex">عبارت منظم (Regex)</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-6 col-12">
+                        <label class="form-label fw-bold small text-secondary">
+                            <i class="fas fa-user-tie text-success me-1"></i> نماینده مقصد انتقال: <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select" id="patternTargetReseller">
+                            <option value="">-- لطفاً نماینده مقصد را انتخاب کنید --</option>
+                            {% for r in resellers_list %}
+                            <option value="{{ r['id'] }}" data-hiddify-admin="{{ r.get('hiddify_admin_uuid') or '' }}">
+                                {{ r['name'] }} (@{{ r['username'] }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <!-- ناحیه نمایش زنده نتایج پیش‌نمایش -->
+                <div id="patternPreviewContainer" class="d-none">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="fw-bold mb-0 text-primary small">
+                            <i class="fas fa-list-check me-1"></i> مشتریان شناسایی شده (<span id="patternMatchCount">0</span> مورد):
+                        </h6>
+                    </div>
+                    <div class="table-responsive border rounded bg-white" style="max-height: 240px; overflow-y: auto;">
+                        <table class="table table-sm table-hover align-middle mb-0 text-center" style="font-size: 12px;">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th>#</th>
+                                    <th>نام اکانت</th>
+                                    <th>پلن / حجم</th>
+                                    <th>مالک فعلی</th>
+                                    <th>وضعیت</th>
+                                    <th>تاریخ صدور</th>
+                                </tr>
+                            </thead>
+                            <tbody id="patternPreviewTbody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- باکس لودینگ یا پیام هشدار -->
+                <div id="patternStatusMessage" class="mt-3 d-none"></div>
+            </div>
+            <div class="modal-footer bg-light py-2 d-flex justify-content-between">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">انصراف</button>
+                <button type="button" class="btn btn-success btn-sm px-4 fw-bold" id="btnExecutePatternTransfer" onclick="executePatternTransfer()" disabled>
+                    <i class="fas fa-bolt me-1"></i> شروع انتقال گروهی به نماینده
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <style>
 .pulse-indicator {
@@ -384,6 +1182,640 @@ function toggleAdminCustomReason(selectElem, targetId) {
     0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
     70% { transform: scale(1.15); box-shadow: 0 0 0 7px rgba(34, 197, 94, 0); }
     100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+.cursor-pointer {
+    cursor: pointer;
+}
+.text-decoration-underline-hover:hover {
+    text-decoration: underline;
+}
+</style>
+
+<script>
+function changePerPage(val) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('per_page', val);
+    url.searchParams.set('page', '1');
+    window.location.href = url.toString();
+}
+
+function copyLink(text, label) {
+    if (!text) {
+        alert('لینکی جهت کپی موجود نیست.');
+        return;
+    }
+    navigator.clipboard.writeText(text).then(() => {
+        alert((label || 'لینک') + ' با موفقیت در کلیپ‌بورد کپی شد.');
+    }).catch(() => {
+        const inp = document.createElement('input');
+        inp.value = text;
+        document.body.appendChild(inp);
+        inp.select();
+        document.execCommand('copy');
+        document.body.removeChild(inp);
+        alert((label || 'لینک') + ' کپی شد.');
+    });
+}
+
+function toggleDebtorFields(selectElem, targetId) {
+    const el = document.getElementById(targetId);
+    if (el) {
+        el.style.display = (selectElem.value === 'unpaid') ? 'block' : 'none';
+    }
+}
+
+function handlePeriodOffsetChange(sel) {
+    const customInput = document.getElementById('histCustomLabel');
+    if (customInput) {
+        customInput.style.display = (sel.value === 'custom') ? 'block' : 'none';
+    }
+}
+
+function openSubscriptionHistory(subId, accountName) {
+    const modalEl = document.getElementById('subscriptionHistoryModal');
+    const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+    document.getElementById('historyModalTitle').innerText = 'سوابق و تاریخچه دوره‌های «' + accountName + '»';
+    document.getElementById('historyModalSubtitle').innerText = 'شناسه اشتراک #' + subId;
+    const body = document.getElementById('historyModalBody');
+    body.innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border text-info mb-2" role="status"></div>
+            <div class="text-muted">در حال دریافت اطلاعات دوره‌ها...</div>
+        </div>
+    `;
+    modal.show();
+
+    fetch('/api/subscription/' + subId + '/history')
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) {
+                body.innerHTML = '<div class="alert alert-danger">خطا در دریافت تاریخچه: ' + (data.error || 'خطای نامشخص') + '</div>';
+                return;
+            }
+            const cur = data.current || {};
+            const history = data.history || [];
+
+            let html = `
+                <!-- دوره فعلی -->
+                <div class="card border-info mb-3 bg-info-subtle shadow-sm">
+                    <div class="card-header bg-info text-white py-2 fw-bold d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-bolt me-1"></i> وضعیت دوره جاری اشتراک</span>
+                        <span class="badge bg-light text-dark font-monospace">شناسه #${cur.id || subId}</span>
+                    </div>
+                    <div class="card-body p-3">
+                        <div class="row g-2 text-center">
+                            <div class="col-md-3 col-6">
+                                <small class="text-muted d-block">پلن جاری:</small>
+                                <strong class="text-dark">${cur.plan_name || '-'}</strong>
+                            </div>
+                            <div class="col-md-3 col-6">
+                                <small class="text-muted d-block">مصرف / سقف:</small>
+                                <strong class="text-primary font-monospace" dir="ltr">${(cur.data_used || 0).toFixed(2)} / ${(cur.data_limit || 0).toFixed(1)} GB</strong>
+                            </div>
+                            <div class="col-md-3 col-6">
+                                <small class="text-muted d-block">مدت دوره:</small>
+                                <strong>${cur.duration || 30} روز</strong>
+                            </div>
+                            <div class="col-md-3 col-6">
+                                <small class="text-muted d-block">هزینه ثبت‌شده:</small>
+                                <strong class="text-success">${(cur.cost_paid || 0).toLocaleString('fa-IR')} تومان</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- بخش فرم افزودن سابقه دوره دستی -->
+                <div class="card border-warning mb-4 shadow-sm">
+                    <div class="card-header bg-warning bg-opacity-10 py-2 d-flex justify-content-between align-items-center cursor-pointer" data-bs-toggle="collapse" data-bs-target="#addManualHistoryCollapse" aria-expanded="false">
+                        <span class="fw-bold text-dark"><i class="fas fa-plus-circle text-warning me-2"></i>➕ افزودن سابقه و گزارش دوره قبلی (دستی)</span>
+                        <button class="btn btn-xs btn-outline-warning text-dark fw-bold py-1 px-2">
+                            <i class="fas fa-chevron-down"></i> باز / بستن فرم
+                        </button>
+                    </div>
+                    <div class="collapse" id="addManualHistoryCollapse">
+                        <div class="card-body p-3 bg-light">
+                            <div class="row g-2">
+                                <div class="col-md-4 col-12">
+                                    <label class="form-label small fw-bold mb-1"><span class="text-danger">*</span> حجم مصرف شده در دوره (GB):</label>
+                                    <input type="number" step="0.01" min="0" class="form-control form-control-sm font-monospace" id="histUsageGb" placeholder="مثلاً: 18.5" required>
+                                </div>
+                                <div class="col-md-4 col-12">
+                                    <label class="form-label small fw-bold mb-1">سقف کل حجم دوره (GB):</label>
+                                    <input type="number" step="0.1" min="0" class="form-control form-control-sm font-monospace" id="histLimitGb" placeholder="پیش‌فرض: ${(cur.data_limit || 0).toFixed(1)} GB" value="${cur.data_limit || ''}">
+                                </div>
+                                <div class="col-md-4 col-12">
+                                    <label class="form-label small fw-bold mb-1">مدت دوره (تعداد روز):</label>
+                                    <input type="number" min="1" class="form-control form-control-sm font-monospace" id="histPeriodDays" placeholder="مثلاً: 30" value="${cur.duration || 30}">
+                                </div>
+
+                                <div class="col-md-4 col-12">
+                                    <label class="form-label small fw-bold mb-1"><i class="fas fa-layer-group text-primary me-1"></i>تنظیم ترتیب دوره نسبت به هم:</label>
+                                    <select class="form-select form-select-sm" id="histPeriodOffset" onchange="handlePeriodOffsetChange(this)">
+                                        <option value="1">۱ دوره قبل (دوره گذشته)</option>
+                                        <option value="2">۲ دوره قبل</option>
+                                        <option value="3">۳ دوره قبل</option>
+                                        <option value="4">۴ دوره قبل</option>
+                                        <option value="5">۵ دوره قبل</option>
+                                        <option value="6">۶ دوره قبل</option>
+                                        <option value="custom">✨ عنوان و دوره سفارشی...</option>
+                                    </select>
+                                    <input type="text" class="form-control form-control-sm mt-1" id="histCustomLabel" placeholder="عنوان سفارشی دوره (مثلاً: دوره پاییز ۱۴۰۲)" style="display: none;">
+                                </div>
+                                <div class="col-md-4 col-12">
+                                    <label class="form-label small fw-bold mb-1">نام پلن در آن دوره (اختیاری):</label>
+                                    <input type="text" class="form-control form-control-sm" id="histPlanName" placeholder="پیش‌فرض: ${cur.plan_name || 'پلن جاری'}" value="${cur.plan_name || ''}">
+                                </div>
+                                <div class="col-md-4 col-12">
+                                    <label class="form-label small fw-bold mb-1">مبلغ / هزینه پرداختی (تومان - اختیاری):</label>
+                                    <input type="number" class="form-control form-control-sm font-monospace" id="histCostPaid" placeholder="مثلاً: 120000">
+                                </div>
+
+                                <div class="col-md-6 col-12">
+                                    <label class="form-label small fw-bold mb-1">تاریخ پایان دوره / تمدید (اختیاری):</label>
+                                    <input type="datetime-local" class="form-control form-control-sm font-monospace" id="histRenewedAt">
+                                    <small class="text-muted" style="font-size: 11px;">در صورت خالی گذاشتن، تاریخ جاری ثبت می‌شود.</small>
+                                </div>
+                                <div class="col-md-6 col-12">
+                                    <label class="form-label small fw-bold mb-1">یادداشت / توضیحات (اختیاری):</label>
+                                    <input type="text" class="form-control form-control-sm" id="histNote" placeholder="مثلاً: انتقال سابقه از پنل قدیمی، مصرف دوره قبل">
+                                </div>
+                            </div>
+                            <div class="mt-3 text-end">
+                                <button type="button" class="btn btn-sm btn-success fw-bold px-4" id="btnSubmitHist" onclick="submitManualHistoryForm(${subId}, '${accountName}')">
+                                    <i class="fas fa-check-circle me-1"></i> ثبت و ذخیره سابقه در سیستم
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="fw-bold text-secondary mb-0"><i class="fas fa-archive me-2 text-primary"></i>آرشیو دوره‌های قبلی و مصرف گذشته (${history.length} دوره):</h6>
+                </div>
+            `;
+
+            if (history.length === 0) {
+                html += `
+                    <div class="text-center py-4 bg-light rounded-3 border text-muted">
+                        <i class="fas fa-calendar-check fs-2 d-block mb-2 text-secondary opacity-50"></i>
+                        هنوز دوره قبلی برای این اشتراک آرشیو نشده است (اشتراک در اولین دوره خود قرار دارد).
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="text-center" style="width: 40px;">#</th>
+                                    <th>دوره و ترتیب</th>
+                                    <th>نوع ثبت</th>
+                                    <th>تاریخ پایان / تمدید</th>
+                                    <th>مشخصات پلن</th>
+                                    <th>مبلغ دوره</th>
+                                    <th>میزان مصرف در دوره</th>
+                                    <th class="text-center">عملیات</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+                history.forEach((h, idx) => {
+                    const priceVal = h.plan_price || h.cost_paid || 0;
+                    const used = (h.previous_usage_gb || 0).toFixed(2);
+                    const limit = (h.previous_limit_gb || 0).toFixed(1);
+                    const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+                    const dateStr = h.renewed_at ? h.renewed_at.replace('T', ' ').substring(0, 16) : '-';
+                    const isManual = (h.is_manual === 1 || h.renewal_type === 'manual');
+                    const periodLabel = h.period_label || (h.period_offset ? (h.period_offset + ' دوره قبل') : 'دوره گذشته');
+
+                    html += `
+                        <tr class="${isManual ? 'table-warning bg-opacity-10' : ''}">
+                            <td class="text-center font-monospace small">${idx + 1}</td>
+                            <td>
+                                <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 fw-bold">
+                                    <i class="fas fa-clock-rotate-left me-1"></i>${periodLabel}
+                                </span>
+                            </td>
+                            <td>
+                                ${isManual ? 
+                                    '<span class="badge bg-warning text-dark border border-warning shadow-sm"><i class="fas fa-hand me-1"></i> دستی</span>' : 
+                                    '<span class="badge bg-light text-secondary border">سیستمی</span>'
+                                }
+                            </td>
+                            <td><small class="font-monospace text-muted">${dateStr}</small></td>
+                            <td>
+                                <strong>${h.plan_name || '-'}</strong>
+                                <small class="text-muted d-block font-monospace">${h.period_days || 30} روزه</small>
+                                ${h.note ? `<div class="text-muted small mt-1" style="font-size: 10.5px;"><i class="fas fa-comment-dots text-info me-1"></i>${h.note}</div>` : ''}
+                            </td>
+                            <td>
+                                <strong class="text-success font-monospace">${priceVal > 0 ? (priceVal.toLocaleString('fa-IR') + ' ت') : '-'}</strong>
+                            </td>
+                            <td>
+                                <div class="font-monospace small mb-1" dir="ltr"><strong>${used}</strong> / ${limit} GB (${pct}%)</div>
+                                <div class="progress" style="height: 6px;">
+                                    <div class="progress-bar ${pct > 90 ? 'bg-danger' : (pct > 70 ? 'bg-warning' : 'bg-success')}" style="width: ${pct}%"></div>
+                                </div>
+                            </td>
+                            <td class="text-center">
+                                ${isManual ? `
+                                    <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2" onclick="deleteManualHistoryEntry(${h.id}, ${subId}, '${accountName}')" title="حذف این سابقه دستی">
+                                        <i class="fas fa-trash-can"></i>
+                                    </button>
+                                ` : '<span class="text-muted small">-</span>'}
+                            </td>
+                        </tr>
+                    `;
+                });
+                html += `
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+            body.innerHTML = html;
+        })
+        .catch(err => {
+            body.innerHTML = '<div class="alert alert-danger">خطا در بارگذاری اطلاعات: ' + err + '</div>';
+        });
+}
+
+function submitManualHistoryForm(subId, accountName) {
+    const usageInput = document.getElementById('histUsageGb');
+    if (!usageInput || !usageInput.value) {
+        alert('لطفاً میزان حجم مصرف شده در دوره را وارد فرمایید.');
+        if (usageInput) usageInput.focus();
+        return;
+    }
+
+    const offsetSelect = document.getElementById('histPeriodOffset');
+    let offsetVal = 1;
+    let customLabel = '';
+    if (offsetSelect.value === 'custom') {
+        offsetVal = 1;
+        customLabel = document.getElementById('histCustomLabel').value.trim();
+    } else {
+        offsetVal = parseInt(offsetSelect.value) || 1;
+    }
+
+    const payload = {
+        previous_usage_gb: parseFloat(usageInput.value) || 0,
+        previous_limit_gb: parseFloat(document.getElementById('histLimitGb').value) || null,
+        period_days: parseInt(document.getElementById('histPeriodDays').value) || 30,
+        period_offset: offsetVal,
+        period_label: customLabel,
+        plan_name: document.getElementById('histPlanName').value.trim(),
+        cost_paid: parseInt(document.getElementById('histCostPaid').value) || 0,
+        renewed_at: document.getElementById('histRenewedAt').value || null,
+        note: document.getElementById('histNote').value.trim()
+    };
+
+    const btn = document.getElementById('btnSubmitHist');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال ذخیره...';
+    }
+
+    fetch('/api/subscription/' + subId + '/history/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) {
+            alert('✅ سابقه دوره قبلی با موفقیت ثبت و نشان «دستی» به آن افزوده شد.');
+            openSubscriptionHistory(subId, accountName);
+        } else {
+            alert('❌ خطا در ثبت سابقه: ' + (res.error || 'خطای ناشناخته'));
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-check-circle me-1"></i> ثبت و ذخیره سابقه در سیستم';
+            }
+        }
+    })
+    .catch(err => {
+        alert('❌ خطای ارتباط با سرور: ' + err);
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-check-circle me-1"></i> ثبت و ذخیره سابقه در سیستم';
+        }
+    });
+}
+
+function deleteManualHistoryEntry(historyId, subId, accountName) {
+    if (!confirm('آیا از حذف این سابقه دوره قبلی اطمینان دارید؟')) {
+        return;
+    }
+
+    fetch('/api/subscription/history/' + historyId + '/delete', {
+        method: 'POST'
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) {
+            openSubscriptionHistory(subId, accountName);
+        } else {
+            alert('❌ خطا در حذف سابقه: ' + (res.error || 'خطای ناشناخته'));
+        }
+    })
+    .catch(err => {
+        alert('❌ خطای ارتباط با سرور: ' + err);
+    });
+}
+
+function downloadQrCode(elementId, filename) {
+    const container = document.getElementById(elementId);
+    if (!container) return;
+    const canvas = container.querySelector('canvas');
+    const img = container.querySelector('img');
+    let dataUrl = '';
+    if (canvas) {
+        try {
+            dataUrl = canvas.toDataURL('image/png');
+        } catch (e) {}
+    } else if (img && img.src) {
+        dataUrl = img.src;
+    }
+    if (dataUrl) {
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = filename || ('qrcode_' + Date.now() + '.png');
+        a.target = '_blank';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    } else {
+        alert('تصویر بارکد برای دانلود آماده نیست.');
+    }
+}
+
+// باز کردن مودال انتقال دستی انتخاب‌شده‌ها
+function openBulkTransferModal() {
+    const idsStr = document.querySelector('#adminSubBulkForm .bulk-selected-ids-input')?.value || '';
+    const ids = idsStr.split(',').map(x => x.trim()).filter(x => x.length > 0);
+    if (ids.length === 0) {
+        alert('⚠️ لطفاً حداقل یک مشتری را از جدول انتخاب کنید.');
+        return;
+    }
+    document.getElementById('modalBulkCount').innerText = ids.length;
+    const modalEl = document.getElementById('bulkTransferModal');
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+}
+
+function confirmManualBulkTransfer() {
+    const sel = document.getElementById('manualBulkTargetReseller');
+    const targetResellerId = sel.value;
+    if (!targetResellerId) {
+        alert('⚠️ لطفاً نماینده مقصد را انتخاب کنید.');
+        return;
+    }
+    const opt = sel.options[sel.selectedIndex];
+    const targetHiddifyAdmin = opt.getAttribute('data-hiddify-admin') || '';
+    const resellerName = opt.text.trim();
+
+    if (!confirm('آیا از انتقال قطعی مشتریان انتخاب شده به نماینده «' + resellerName + '» هم در پنل هیدیفای و هم در پنل مدیریت اطمینان دارید؟')) {
+        return;
+    }
+
+    document.getElementById('adminBulkTargetResellerId').value = targetResellerId;
+    document.getElementById('adminBulkTargetHiddifyAdmin').value = targetHiddifyAdmin;
+
+    // بستن مودال و ارسال فرم
+    bootstrap.Modal.getInstance(document.getElementById('bulkTransferModal'))?.hide();
+    submitBulkAction('adminSubBulkForm', 'transfer_reseller', '');
+}
+
+// پیش‌نمایش مشتریان با الگو
+let patternMatchedSubs = [];
+function fetchPatternPreview() {
+    const pattern = document.getElementById('patternInput').value.trim();
+    const patternType = document.getElementById('patternTypeSelect').value;
+    const sourceFilter = document.getElementById('patternSourceFilter').value;
+    const previewContainer = document.getElementById('patternPreviewContainer');
+    const statusMsg = document.getElementById('patternStatusMessage');
+    const btnExecute = document.getElementById('btnExecutePatternTransfer');
+    const btnRun = document.getElementById('btnRunPatternPreview');
+
+    if (!pattern) {
+        alert('⚠️ لطفاً الگو یا عبارت نامگذاری را وارد کنید (مثال: Kzmi-S3-).');
+        return;
+    }
+
+    btnRun.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال جستجو...';
+    btnRun.disabled = true;
+    statusMsg.classList.add('d-none');
+    btnExecute.disabled = true;
+
+    fetch('/api/admin/transfer-by-pattern/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            pattern: pattern,
+            pattern_type: patternType,
+            source_filter: sourceFilter
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btnRun.innerHTML = '<i class="fas fa-search me-1"></i> پیش‌نمایش';
+        btnRun.disabled = false;
+
+        if (!data.success) {
+            statusMsg.className = 'alert alert-danger mt-3 py-2 px-3 small';
+            statusMsg.innerHTML = '<i class="fas fa-triangle-exclamation me-1"></i> ' + (data.error || 'خطا در جستجو');
+            statusMsg.classList.remove('d-none');
+            previewContainer.classList.add('d-none');
+            return;
+        }
+
+        patternMatchedSubs = data.subscriptions || [];
+        document.getElementById('patternMatchCount').innerText = data.count;
+
+        if (patternMatchedSubs.length === 0) {
+            statusMsg.className = 'alert alert-warning mt-3 py-2 px-3 small';
+            statusMsg.innerHTML = '<i class="fas fa-circle-exclamation me-1"></i> هیچ مشتری منطبق با این الگو یافت نشد.';
+            statusMsg.classList.remove('d-none');
+            previewContainer.classList.add('d-none');
+            btnExecute.disabled = true;
+            return;
+        }
+
+        let tbodyHtml = '';
+        patternMatchedSubs.forEach((s, idx) => {
+            const statusBadge = s.status === 'active' ? '<span class="badge bg-success">فعال</span>' : '<span class="badge bg-secondary">غیرفعال</span>';
+            tbodyHtml += `
+                <tr>
+                    <td class="text-muted">${idx + 1}</td>
+                    <td class="fw-bold text-dark font-monospace">${s.account_name}</td>
+                    <td>${s.plan_name}</td>
+                    <td><span class="badge bg-light text-dark border">${s.reseller_name}</span></td>
+                    <td>${statusBadge}</td>
+                    <td class="text-muted small">${(s.created_at || '').substring(0, 10)}</td>
+                </tr>
+            `;
+        });
+
+        document.getElementById('patternPreviewTbody').innerHTML = tbodyHtml;
+        previewContainer.classList.remove('d-none');
+        btnExecute.disabled = false;
+    })
+    .catch(err => {
+        btnRun.innerHTML = '<i class="fas fa-search me-1"></i> پیش‌نمایش';
+        btnRun.disabled = false;
+        statusMsg.className = 'alert alert-danger mt-3 py-2 px-3 small';
+        statusMsg.innerHTML = '<i class="fas fa-triangle-exclamation me-1"></i> خطای اتصال به سرور: ' + err;
+        statusMsg.classList.remove('d-none');
+    });
+}
+
+// اجرای انتقال با الگو
+function executePatternTransfer() {
+    const pattern = document.getElementById('patternInput').value.trim();
+    const patternType = document.getElementById('patternTypeSelect').value;
+    const sourceFilter = document.getElementById('patternSourceFilter').value;
+    const sel = document.getElementById('patternTargetReseller');
+    const targetResellerId = sel.value;
+    const statusMsg = document.getElementById('patternStatusMessage');
+    const btnExecute = document.getElementById('btnExecutePatternTransfer');
+
+    if (!pattern) {
+        alert('⚠️ الگو مشخص نشده است.');
+        return;
+    }
+    if (!targetResellerId) {
+        alert('⚠️ لطفاً نماینده مقصد را انتخاب کنید.');
+        return;
+    }
+
+    const opt = sel.options[sel.selectedIndex];
+    const targetHiddifyAdmin = opt.getAttribute('data-hiddify-admin') || '';
+    const resellerName = opt.text.trim();
+
+    if (!confirm('هشدار: آیا از انتقال قطعی ' + patternMatchedSubs.length + ' مشتری منطبق با این الگو به نماینده «' + resellerName + '» هم در پنل هیدیفای و هم در پنل مدیریت اطمینان دارید؟')) {
+        return;
+    }
+
+    btnExecute.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال انتقال مشتریان در هیدیفای و دیتابیس...';
+    btnExecute.disabled = true;
+
+    fetch('/api/admin/transfer-by-pattern/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            pattern: pattern,
+            pattern_type: patternType,
+            source_filter: sourceFilter,
+            target_reseller_id: parseInt(targetResellerId),
+            target_hiddify_admin: targetHiddifyAdmin
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btnExecute.innerHTML = '<i class="fas fa-bolt me-1"></i> شروع انتقال گروهی به نماینده';
+        if (data.success) {
+            statusMsg.className = 'alert alert-success mt-3 py-3 px-3';
+            statusMsg.innerHTML = `
+                <div class="fw-bold mb-1"><i class="fas fa-circle-check text-success me-1"></i> عملیات انتقال با موفقیت انجام شد!</div>
+                <div class="small">
+                    • تعداد کل منتقل‌شده در دیتابیس: <strong>${data.transferred_count}</strong> کاربر<br>
+                    • تعداد همگام‌سازی شده در سرور هیدیفای: <strong>${data.hiddify_synced_count}</strong> کاربر<br>
+                    • نماینده مقصد: <strong>${data.target_reseller?.name || resellerName}</strong>
+                </div>
+            `;
+            statusMsg.classList.remove('d-none');
+            setTimeout(() => {
+                location.reload();
+            }, 2500);
+        } else {
+            btnExecute.disabled = false;
+            statusMsg.className = 'alert alert-danger mt-3 py-2 px-3 small';
+            statusMsg.innerHTML = '<i class="fas fa-triangle-exclamation me-1"></i> خطا در انتقال: ' + (data.error || 'نامشخص');
+            statusMsg.classList.remove('d-none');
+        }
+    })
+    .catch(err => {
+        btnExecute.innerHTML = '<i class="fas fa-bolt me-1"></i> شروع انتقال گروهی به نماینده';
+        btnExecute.disabled = false;
+        statusMsg.className = 'alert alert-danger mt-3 py-2 px-3 small';
+        statusMsg.innerHTML = '<i class="fas fa-triangle-exclamation me-1"></i> خطای اتصال به سرور: ' + err;
+        statusMsg.classList.remove('d-none');
+    });
+}
+
+function renderQrCodeSafely(container, text, size) {
+    if (!container || !text) return;
+    container.innerHTML = '';
+    const qrSize = size || 140;
+    try {
+        if (typeof QRCode !== 'undefined') {
+            const correctLvl = (typeof QRCode.CorrectLevel !== 'undefined' && QRCode.CorrectLevel.L !== undefined) 
+                ? QRCode.CorrectLevel.L 
+                : 1;
+            new QRCode(container, {
+                text: text,
+                width: qrSize,
+                height: qrSize,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: correctLvl
+            });
+            return;
+        }
+    } catch (e) {
+        console.warn('QRCode generation exception:', e);
+    }
+    // Fallback if QRCode library is not loaded or throws error
+    container.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=${qrSize}x${qrSize}&data=${encodeURIComponent(text)}" alt="QR Code" class="img-fluid rounded" style="width: ${qrSize}px; height: ${qrSize}px; max-width: 100%;">`;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.customer-manage-modal').forEach(modalEl => {
+        modalEl.addEventListener('shown.bs.modal', function () {
+            const subId = this.getAttribute('data-sub-id');
+            const subUrl = this.getAttribute('data-sub-url');
+            const singleUrl = this.getAttribute('data-single-url');
+
+            const subContainer = document.getElementById('subQr' + subId);
+            if (subContainer && subUrl && (!subContainer.querySelector('canvas') && !subContainer.querySelector('img'))) {
+                renderQrCodeSafely(subContainer, subUrl, 140);
+            }
+
+            const singleContainer = document.getElementById('singleQr' + subId);
+            if (singleContainer && singleUrl && (!singleContainer.querySelector('canvas') && !singleContainer.querySelector('img'))) {
+                renderQrCodeSafely(singleContainer, singleUrl, 140);
+            }
+        });
+    });
+});
+
+function toggleCustomReason(selectEl, customBoxId) {
+    const box = document.getElementById(customBoxId);
+    if (!box) return;
+    if (selectEl.value === 'custom') {
+        box.classList.remove('d-none');
+        const inp = box.querySelector('input');
+        if (inp) inp.focus();
+    } else {
+        box.classList.add('d-none');
+    }
+}
+</script>
+
+<style>
+.qr-code-wrapper canvas, .qr-code-wrapper img {
+    max-width: 100% !important;
+    height: auto !important;
+    aspect-ratio: 1 / 1 !important;
+    display: block !important;
+    margin: 0 auto !important;
+}
+@media (max-width: 576px) {
+    .qr-code-wrapper {
+        width: 150px !important;
+        height: 150px !important;
+    }
 }
 </style>
 {% endblock %}

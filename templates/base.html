@@ -2,7 +2,7 @@
 <html lang="fa" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>{% block title %}پنل مدیریت ربات VPN{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -120,6 +120,28 @@
 
         [data-bs-theme="dark"] .border-dashed {
             border-color: #334155 !important;
+        }
+
+        /* ─── بهینه‌سازی اختصاصی لایه‌بندی و مودال‌ها در iOS و WebKit (iPhone 8 تا iPhone 15) ─── */
+        .modal {
+            z-index: 1060 !important;
+            -webkit-overflow-scrolling: touch !important;
+        }
+        .modal-backdrop {
+            z-index: 1050 !important;
+        }
+        .modal-dialog {
+            max-width: 520px;
+            margin: 1.5rem auto;
+        }
+        @media (max-width: 576px) {
+            .modal-dialog {
+                margin: 0.75rem auto;
+                max-width: calc(100vw - 1.5rem);
+            }
+        }
+        body {
+            padding-bottom: env(safe-area-inset-bottom, 0);
         }
 
         [data-bs-theme="dark"] .modal-content {
@@ -570,6 +592,157 @@
             color: var(--danger);
         }
 
+        /* ─── استایل‌های ستون‌های قابل مرتب‌سازی جداول (Sortable Table Headers) ─── */
+        .sortable-th {
+            cursor: pointer !important;
+            user-select: none;
+            white-space: nowrap;
+            transition: background-color 0.2s ease, color 0.2s ease;
+            position: relative;
+        }
+        .sortable-th:hover {
+            background-color: rgba(79, 70, 229, 0.08) !important;
+            color: var(--primary) !important;
+        }
+        .sortable-th i.fas {
+            transition: transform 0.2s ease, color 0.2s ease;
+        }
+        [data-bs-theme="dark"] .sortable-th:hover {
+            background-color: rgba(255, 255, 255, 0.06) !important;
+            color: #818cf8 !important;
+        }
+
+        /* ─── استایل‌های تفکیک رنگی تیکت‌ها بر اساس وضعیت (Ticket Status Highlights) ─── */
+        .ticket-row-open {
+            background-color: rgba(245, 158, 11, 0.09) !important;
+            border-right: 4px solid #f59e0b !important;
+        }
+        .ticket-row-open:hover {
+            background-color: rgba(245, 158, 11, 0.16) !important;
+        }
+        .ticket-row-inprogress {
+            background-color: rgba(6, 182, 212, 0.06) !important;
+            border-right: 4px solid #06b6d4 !important;
+        }
+        .ticket-row-inprogress:hover {
+            background-color: rgba(6, 182, 212, 0.12) !important;
+        }
+        .ticket-row-replied {
+            background-color: rgba(16, 185, 129, 0.05) !important;
+            border-right: 4px solid #10b981 !important;
+        }
+        .ticket-row-replied:hover {
+            background-color: rgba(16, 185, 129, 0.11) !important;
+        }
+        .ticket-row-closed {
+            background-color: rgba(100, 116, 139, 0.03) !important;
+            border-right: 4px solid #94a3b8 !important;
+            opacity: 0.85;
+        }
+        .ticket-row-closed:hover {
+            background-color: rgba(100, 116, 139, 0.08) !important;
+            opacity: 1;
+        }
+
+        /* تم تاریک برای سطرهای تیکت */
+        [data-bs-theme="dark"] .ticket-row-open {
+            background-color: rgba(245, 158, 11, 0.14) !important;
+            border-right-color: #fbbf24 !important;
+        }
+        [data-bs-theme="dark"] .ticket-row-open:hover {
+            background-color: rgba(245, 158, 11, 0.22) !important;
+        }
+        [data-bs-theme="dark"] .ticket-row-inprogress {
+            background-color: rgba(6, 182, 212, 0.12) !important;
+            border-right-color: #22d3ee !important;
+        }
+        [data-bs-theme="dark"] .ticket-row-inprogress:hover {
+            background-color: rgba(6, 182, 212, 0.18) !important;
+        }
+        [data-bs-theme="dark"] .ticket-row-replied {
+            background-color: rgba(16, 185, 129, 0.10) !important;
+            border-right-color: #34d399 !important;
+        }
+        [data-bs-theme="dark"] .ticket-row-replied:hover {
+            background-color: rgba(16, 185, 129, 0.16) !important;
+        }
+        [data-bs-theme="dark"] .ticket-row-closed {
+            background-color: rgba(15, 23, 42, 0.5) !important;
+            border-right-color: #475569 !important;
+            opacity: 0.75;
+        }
+        [data-bs-theme="dark"] .ticket-row-closed:hover {
+            background-color: rgba(30, 41, 59, 0.7) !important;
+            opacity: 1;
+        }
+
+        /* افکت ضربان بج تیکت جدید */
+        @keyframes pulseAlert {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 7px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        @keyframes pulseWarning {
+            0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+            70% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+        }
+        .pulse-indicator {
+            animation: pulseWarning 2s infinite;
+        }
+        .pulse-indicator-badge {
+            animation: pulseAlert 2s infinite;
+        }
+
+        /* ─── نوار ابزار شناور مدیریت گروهی (Bulk Actions Toolbar) ─── */
+        .bulk-actions-bar {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(120px);
+            z-index: 1040;
+            background: rgba(15, 23, 42, 0.94);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 50rem;
+            padding: 8px 18px;
+            box-shadow: 0 14px 35px rgba(0, 0, 0, 0.45);
+            transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+            opacity: 0;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            max-width: 95vw;
+        }
+        .bulk-actions-bar.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+            pointer-events: auto;
+        }
+        [data-bs-theme="dark"] .bulk-actions-bar {
+            background: rgba(30, 41, 59, 0.95);
+            border-color: rgba(255, 255, 255, 0.12);
+        }
+        @media (max-width: 768px) {
+            .bulk-actions-bar {
+                bottom: 14px;
+                border-radius: 16px;
+                padding: 10px 14px;
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 8px;
+            }
+        }
+        tr.table-active-row-selected {
+            background-color: rgba(59, 130, 246, 0.08) !important;
+        }
+        [data-bs-theme="dark"] tr.table-active-row-selected {
+            background-color: rgba(59, 130, 246, 0.16) !important;
+        }
+
         .table-responsive {
             -webkit-overflow-scrolling: touch;
             border-radius: 10px;
@@ -790,6 +963,9 @@
                 <a class="nav-link {% if request.endpoint == 'reseller_reports' %}active{% endif %}" href="{{ url_for('reseller_reports') }}">
                     <i class="fas fa-chart-line"></i> گزارشات و هوش مالی
                 </a>
+                <a class="nav-link {% if request.endpoint == 'reseller_affiliates' %}active{% endif %}" href="{{ url_for('reseller_affiliates') }}">
+                    <i class="fas fa-users-rays text-warning"></i> زیرمجموعه‌گیری و پورسانت
+                </a>
                 {% endif %}
 
                 <a class="nav-link {% if request.endpoint == 'reseller_profile' %}active{% endif %}" href="{{ url_for('reseller_profile') }}">
@@ -800,7 +976,7 @@
                 <div class="nav-category">اصلی و عملیات</div>
                 {% if has_permission('dashboard') %}
                 <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
-                    <i class="fas fa-gauge-high"></i> داشبورد اصلی
+                    <i class="fas fa-chart-pie" style="color: #6366f1;"></i> داشبورد اصلی
                 </a>
                 {% endif %}
 
@@ -812,14 +988,14 @@
 
                 {% if has_permission('payments_view') %}
                 <a class="nav-link {% if request.endpoint == 'payments' %}active{% endif %}" href="{{ url_for('payments') }}">
-                    <i class="fas fa-receipt"></i> پرداخت‌ها و تایید فیش
+                    <i class="fas fa-receipt text-warning"></i> پرداخت‌ها و تایید فیش
                     <span id="sidebarPendingBadge" class="badge bg-danger ms-auto rounded-pill" style="display: none; font-size: 0.75rem;">0</span>
                 </a>
                 {% endif %}
 
                 {% if has_permission('users_view') %}
                 <a class="nav-link {% if request.endpoint == 'users' %}active{% endif %}" href="{{ url_for('users') }}">
-                    <i class="fas fa-users"></i> کاربران تلگرام
+                    <i class="fas fa-users" style="color: #3b82f6;"></i> کاربران تلگرام
                 </a>
                 <a class="nav-link {% if request.endpoint == 'vip_settings' %}active{% endif %}" href="{{ url_for('vip_settings') }}">
                     <i class="fas fa-crown text-warning"></i> مشتریان پرمیوم (VIP)
@@ -828,13 +1004,13 @@
 
                 {% if has_permission('subscriptions_view') %}
                 <a class="nav-link {% if request.endpoint == 'subscriptions' %}active{% endif %}" href="{{ url_for('subscriptions') }}">
-                    <i class="fas fa-key"></i> اشتراک‌های هیدیفای
+                    <i class="fas fa-users-gear" style="color: #ec4899;"></i> مشتریان
                 </a>
                 {% endif %}
 
                 {% if has_permission('plans') %}
                 <a class="nav-link {% if request.endpoint == 'admin_plans_page' %}active{% endif %}" href="{{ url_for('admin_plans_page') }}">
-                    <i class="fas fa-box-open"></i> پلن‌های فروش
+                    <i class="fas fa-layer-group text-info"></i> پلن‌های فروش
                 </a>
                 {% endif %}
 
@@ -844,25 +1020,28 @@
 
                 {% if has_permission('manage_resellers') %}
                 <a class="nav-link {% if request.endpoint == 'admin_resellers' %}active{% endif %}" href="{{ url_for('admin_resellers') }}">
-                    <i class="fas fa-handshake"></i> نمایندگان فروش (Resellers)
+                    <i class="fas fa-handshake" style="color: #8b5cf6;"></i> نمایندگان فروش (Resellers)
+                </a>
+                <a class="nav-link {% if request.endpoint == 'admin_reseller_affiliates' %}active{% endif %}" href="{{ url_for('admin_reseller_affiliates') }}">
+                    <i class="fas fa-network-wired text-warning"></i> زیرمجموعه‌گیری همکاران
                 </a>
                 {% endif %}
 
                 {% if has_permission('broadcast') %}
                 <a class="nav-link {% if request.endpoint == 'broadcast' %}active{% endif %}" href="{{ url_for('broadcast') }}">
-                    <i class="fas fa-bullhorn"></i> پیام همگانی (Broadcast)
+                    <i class="fas fa-bullhorn" style="color: #f97316;"></i> پیام همگانی (Broadcast)
                 </a>
                 {% endif %}
 
                 {% if has_permission('discounts') %}
                 <a class="nav-link {% if request.endpoint == 'admin_discounts_page' %}active{% endif %}" href="{{ url_for('admin_discounts_page') }}">
-                    <i class="fas fa-tags"></i> کدهای تخفیف
+                    <i class="fas fa-ticket text-danger"></i> کدهای تخفیف
                 </a>
                 {% endif %}
 
                 {% if has_permission('tickets') %}
                 <a class="nav-link {% if request.endpoint == 'tickets' %}active{% endif %}" href="{{ url_for('tickets') }}">
-                    <i class="fas fa-headset"></i> تیکت‌های پشتیبانی
+                    <i class="fas fa-headset text-info"></i> تیکت‌های پشتیبانی
                     <span id="sidebarTicketsBadge" class="badge bg-warning text-dark ms-auto rounded-pill" style="display: none; font-size: 0.75rem;">0</span>
                 </a>
                 {% endif %}
@@ -870,47 +1049,47 @@
                 <div class="nav-category">سیستم و حسابداری</div>
                 {% if has_permission('cards') %}
                 <a class="nav-link {% if request.endpoint == 'cards' %}active{% endif %}" href="{{ url_for('cards') }}">
-                    <i class="fas fa-credit-card text-primary"></i> روش‌ها و تنظیمات پرداخت
+                    <i class="fas fa-credit-card text-success"></i> روش‌ها و تنظیمات پرداخت
                 </a>
                 {% endif %}
 
                 {% if has_permission('reports') %}
                 <a class="nav-link {% if request.endpoint == 'reports' %}active{% endif %}" href="{{ url_for('reports') }}">
-                    <i class="fas fa-chart-line"></i> گزارشات و هوش مالی
+                    <i class="fas fa-chart-line" style="color: #10b981;"></i> گزارشات و هوش مالی
                 </a>
                 {% endif %}
 
                 {% if has_permission('accounting') %}
                 <a class="nav-link {% if request.endpoint == 'accounting' %}active{% endif %}" href="{{ url_for('accounting') }}">
-                    <i class="fas fa-file-invoice-dollar"></i> حسابداری و تراز سود
+                    <i class="fas fa-file-invoice-dollar text-primary"></i> حسابداری و تراز سود
                 </a>
                 {% endif %}
 
                 {% if session.get('admin_role') == 'super_admin' %}
                 <a class="nav-link {% if request.endpoint == 'admin_managers' %}active{% endif %}" href="{{ url_for('admin_managers') }}">
-                    <i class="fas fa-user-shield"></i> مدیران و دسترسی‌ها
+                    <i class="fas fa-users-gear" style="color: #8b5cf6;"></i> مدیران و دسترسی‌ها
                 </a>
                 {% endif %}
 
                 <a class="nav-link {% if request.endpoint == 'admin_profile' %}active{% endif %}" href="{{ url_for('admin_profile') }}">
-                    <i class="fas fa-user-gear"></i> حساب کاربری من
+                    <i class="fas fa-user-gear" style="color: #64748b;"></i> حساب کاربری من
                 </a>
 
                 {% if has_permission('servers_view') %}
                 <a class="nav-link {% if request.endpoint == 'admin_logs' %}active{% endif %}" href="{{ url_for('admin_logs') }}">
-                    <i class="fas fa-terminal"></i> وضعیت سرور و لاگ‌ها
+                    <i class="fas fa-terminal" style="color: #06b6d4;"></i> وضعیت سرور و لاگ‌ها
                 </a>
                 {% endif %}
 
                 {% if session.get('admin_role') == 'super_admin' or has_permission('settings_manage') %}
                 <a class="nav-link {% if request.endpoint in ['bot_menu_settings', 'admin_bot_settings'] %}active{% endif %}" href="{{ url_for('bot_menu_settings') }}">
-                    <i class="fas fa-th-large text-primary"></i> چیدمان دکمه‌های ربات
+                    <i class="fas fa-robot text-primary"></i> چیدمان دکمه‌های ربات
                 </a>
                 {% endif %}
 
                 {% if session.get('admin_role') == 'super_admin' %}
                 <a class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">
-                    <i class="fas fa-sliders"></i> تنظیمات
+                    <i class="fas fa-sliders" style="color: #94a3b8;"></i> تنظیمات سیستم
                 </a>
                 {% endif %}
             {% endif %}
@@ -920,19 +1099,19 @@
             <a href="{% if session.get('role') == 'reseller' %}{{ url_for('reseller_profile') }}{% else %}{{ url_for('admin_profile') }}{% endif %}" class="user-pill mb-2 text-decoration-none d-flex align-items-center gap-2" title="مشاهده و ویرایش حساب کاربری">
                 <img src="{{ avatar_url(session.get('telegram_id') or session.get('username') or 'Admin') }}" 
                      alt="{{ session.get('username') }}" 
-                     class="rounded-circle border border-light flex-shrink-0" 
+                     class="rounded-circle border border-secondary border-opacity-25 flex-shrink-0" 
                      style="width: 38px; height: 38px; object-fit: cover;" 
                      loading="lazy">
-                <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                    <div style="font-weight: 600; font-size: 0.9rem; color: #fff;">{{ session.get('username') }}</div>
+                <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">
+                    <div style="font-weight: 700; font-size: 0.9rem; color: var(--sidebar-brand);">{{ session.get('username') }}</div>
                     {% if session.get('role') == 'reseller' %}
-                        <div style="font-size: 0.75rem; color: #38bdf8;">اعتبار: {{ "{:,}".format(session.get('balance') or 0) }} ت</div>
+                        <div style="font-size: 0.78rem; color: #0284c7; font-weight: 600;">اعتبار: <span id="sidebarResellerBalance">{{ "{:,}".format(session.get('balance', 0)) }}</span> ت</div>
                     {% else %}
-                        <div style="font-size: 0.75rem; color: #a5b4fc;">{{ session.get('name', 'مدیر سیستم') }}</div>
+                        <div style="font-size: 0.75rem; color: var(--sidebar-text-muted);">{{ session.get('name', 'مدیر سیستم') }}</div>
                     {% endif %}
                 </div>
             </a>
-            <button type="button" class="btn btn-outline-light btn-sm w-100 mb-2 d-flex align-items-center justify-content-center gap-2" id="themeToggleBtn" onclick="toggleTheme()">
+            <button type="button" class="btn btn-outline-secondary btn-sm w-100 mb-2 d-flex align-items-center justify-content-center gap-2" id="themeToggleBtn" onclick="toggleTheme()">
                 <i id="themeIcon" class="fas fa-moon text-info"></i> <span id="themeLabel">حالت تیره</span>
             </button>
             <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-sm w-100">
@@ -972,8 +1151,8 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body text-center p-4">
-                    <div class="p-3 bg-light rounded-3 d-inline-block shadow-sm mb-3 border">
-                        <div id="qrCodeContainer" class="d-flex justify-content-center"></div>
+                    <div class="p-3 rounded-4 d-inline-block shadow mb-3" style="background-color: #ffffff !important; border: 4px solid #ffffff; box-shadow: 0 6px 24px rgba(0,0,0,0.15) !important;">
+                        <div id="qrCodeContainer" class="d-flex justify-content-center p-2" style="background-color: #ffffff !important;"></div>
                     </div>
                     <div class="mb-3 text-start">
                         <label class="form-label small text-muted fw-bold">لینک اتصال مستقیم:</label>
@@ -1014,6 +1193,11 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script>
+        if (typeof QRCode === 'undefined') {
+            document.write('<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>');
+        }
+    </script>
 
     <script>
         // ─── تابع عمومی نمایش بارکد QR و لینک ───
@@ -1039,14 +1223,21 @@
             if (sBtn) sBtn.href = 'streisand://import/' + encodeURIComponent(url);
 
             try {
-                new QRCode(container, {
-                    text: url,
-                    width: 200,
-                    height: 200,
-                    colorDark: "#0f172a",
-                    colorLight: "#ffffff",
-                    correctLevel: QRCode.CorrectLevel.M
-                });
+                if (typeof QRCode !== 'undefined') {
+                    const correctLvl = (typeof QRCode.CorrectLevel !== 'undefined' && QRCode.CorrectLevel.L !== undefined) 
+                        ? QRCode.CorrectLevel.L 
+                        : 1;
+                    new QRCode(container, {
+                        text: url,
+                        width: 200,
+                        height: 200,
+                        colorDark: "#000000",
+                        colorLight: "#ffffff",
+                        correctLevel: correctLvl
+                    });
+                } else {
+                    container.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}" alt="QR Code" class="img-fluid rounded">`;
+                }
             } catch (e) {
                 container.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}" alt="QR Code" class="img-fluid rounded">`;
             }
@@ -1073,41 +1264,73 @@
         }
 
         // ─── سیستم اعلان زنده و پخش صدای ملایم ───
-        function playChimeAlert() {
+        // ─── سیستم اعلان صوتی اختصاصی: صدای مشتریان vs صدای نمایندگان و مدیریت ───
+        function playCustomerTicketSound() {
             try {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
                 if (!AudioContext) return;
                 const ctx = new AudioContext();
                 const now = ctx.currentTime;
 
-                // نت اول (Chime)
+                // نت اول صدای مشتری (زنگ ملایم دوگانه)
                 const osc1 = ctx.createOscillator();
                 const gain1 = ctx.createGain();
                 osc1.type = 'sine';
                 osc1.frequency.setValueAtTime(880, now);
-                osc1.frequency.exponentialRampToValueAtTime(1760, now + 0.12);
-                gain1.gain.setValueAtTime(0.25, now);
-                gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+                osc1.frequency.exponentialRampToValueAtTime(1320, now + 0.12);
+                gain1.gain.setValueAtTime(0.2, now);
+                gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
                 osc1.connect(gain1);
                 gain1.connect(ctx.destination);
                 osc1.start(now);
-                osc1.stop(now + 0.5);
+                osc1.stop(now + 0.45);
 
-                // نت دوم (Message Bell)
+                // نت دوم
                 const osc2 = ctx.createOscillator();
                 const gain2 = ctx.createGain();
                 osc2.type = 'sine';
-                osc2.frequency.setValueAtTime(1320, now + 0.08);
-                gain2.gain.setValueAtTime(0.2, now + 0.08);
-                gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+                osc2.frequency.setValueAtTime(1174.66, now + 0.1);
+                gain2.gain.setValueAtTime(0.18, now + 0.1);
+                gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
                 osc2.connect(gain2);
                 gain2.connect(ctx.destination);
-                osc2.start(now + 0.08);
-                osc2.stop(now + 0.7);
+                osc2.start(now + 0.1);
+                osc2.stop(now + 0.6);
             } catch (err) {
-                console.warn('Audio notification notice:', err);
+                console.warn('Customer sound notice:', err);
             }
         }
+
+        function playResellerAdminTicketSound() {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                const ctx = new AudioContext();
+                const now = ctx.currentTime;
+
+                // آکورد مجلل و متمایز ۳ تایی مدیریتی (C5 -> E5 -> G5 -> C6)
+                const notes = [523.25, 659.25, 783.99, 1046.50];
+                notes.forEach((freq, idx) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.09);
+                    gain.gain.setValueAtTime(0.28, now + idx * 0.09);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.09 + 0.55);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(now + idx * 0.09);
+                    osc.stop(now + idx * 0.09 + 0.55);
+                });
+            } catch (err) {
+                console.warn('Reseller/Admin sound notice:', err);
+            }
+        }
+
+        // توابع عمومی قابل فراخوانی
+        window.playChimeAlert = playCustomerTicketSound;
+        window.playCustomerTicketSound = playCustomerTicketSound;
+        window.playResellerAdminTicketSound = playResellerAdminTicketSound;
 
         // درخواست مجوز اعلان‌های مرورگر
         if ("Notification" in window && Notification.permission === "default") {
@@ -1117,8 +1340,9 @@
             }, { once: true });
         }
 
-        let lastPendingCount = -1;
-        let lastTicketsCount = -1;
+        let lastAdminPendingCount = -1;
+        let lastAdminCustomerTicketsCount = -1;
+        let lastAdminResellerTicketsCount = -1;
 
         async function pollAdminNotifications() {
             try {
@@ -1146,9 +1370,32 @@
                     }
                 }
 
-                // اگر تعداد پرداخت‌های در انتظار افزایش یافته باشد
-                if (lastPendingCount !== -1 && data.pending_payments_count > lastPendingCount) {
-                    playChimeAlert();
+                // ۱. اگر تیکت جدید از نمایندگان آمده باشد -> صدای اختصاصی نمایندگان
+                if (lastAdminResellerTicketsCount !== -1 && data.open_reseller_tickets_count > lastAdminResellerTicketsCount) {
+                    playResellerAdminTicketSound();
+                    const toastEl = document.getElementById('liveAlertToast');
+                    if (toastEl) {
+                        document.getElementById('liveAlertToastTitle').textContent = '👑 تیکت / درخواست جدید از نماینده!';
+                        document.getElementById('liveAlertToastMsg').textContent = `یک تیکت یا درخواست تغییر مشخصات جدید از نمایندگان دریافت شد.`;
+                        const toast = new bootstrap.Toast(toastEl, { delay: 9000 });
+                        toast.show();
+                    }
+                }
+                // ۲. اگر تیکت جدید از مشتریان آمده باشد -> صدای مشتری
+                else if (lastAdminCustomerTicketsCount !== -1 && data.open_customer_tickets_count > lastAdminCustomerTicketsCount) {
+                    playCustomerTicketSound();
+                    const toastEl = document.getElementById('liveAlertToast');
+                    if (toastEl) {
+                        document.getElementById('liveAlertToastTitle').textContent = '💬 تیکت پشتیبانی مشتری جدید!';
+                        document.getElementById('liveAlertToastMsg').textContent = `یک پیام پشتیبانی جدید از کاربران دریافت شد.`;
+                        const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
+                        toast.show();
+                    }
+                }
+
+                // ۳. اگر پرداخت جدید آمده باشد
+                if (lastAdminPendingCount !== -1 && data.pending_payments_count > lastAdminPendingCount) {
+                    playCustomerTicketSound();
                     const toastEl = document.getElementById('liveAlertToast');
                     if (toastEl) {
                         document.getElementById('liveAlertToastTitle').textContent = '💳 پرداخت کارت به کارت جدید!';
@@ -1156,34 +1403,11 @@
                         const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
                         toast.show();
                     }
-                    if ("Notification" in window && Notification.permission === "granted") {
-                        new Notification("💳 فیش واریزی جدید", {
-                            body: "یک پرداخت جدید برای بررسی و تایید ثبت شده است.",
-                            icon: "https://cdn-icons-png.flaticon.com/512/3135/3135706.png"
-                        });
-                    }
                 }
 
-                // اگر تیکت جدیدی ثبت شده باشد
-                if (lastTicketsCount !== -1 && data.open_tickets_count > lastTicketsCount) {
-                    playChimeAlert();
-                    const toastEl = document.getElementById('liveAlertToast');
-                    if (toastEl) {
-                        document.getElementById('liveAlertToastTitle').textContent = '💬 تیکت پشتیبانی جدید!';
-                        document.getElementById('liveAlertToastMsg').textContent = `یک پیام پشتیبانی جدید از کاربران دریافت شد.`;
-                        const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
-                        toast.show();
-                    }
-                    if ("Notification" in window && Notification.permission === "granted") {
-                        new Notification("💬 تیکت پشتیبانی جدید", {
-                            body: "یک پیام پشتیبانی جدید از کاربران دریافت شد.",
-                            icon: "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
-                        });
-                    }
-                }
-
-                lastPendingCount = data.pending_payments_count;
-                lastTicketsCount = data.open_tickets_count;
+                lastAdminPendingCount = data.pending_payments_count;
+                lastAdminCustomerTicketsCount = data.open_customer_tickets_count;
+                lastAdminResellerTicketsCount = data.open_reseller_tickets_count;
             } catch (e) {
                 // Ignore network errors in background polling
             }
@@ -1227,10 +1451,91 @@
         const savedTheme = localStorage.getItem('app_theme') || 'light';
         applyTheme(savedTheme);
 
-        // اجرای پایش هر ۱۲ ثانیه برای مدیر
+        let lastResellerReceiptsCount = -1;
+        let lastResellerCustomerTicketsCount = -1;
+        let lastResellerAdminRepliesCount = -1;
+
+        async function pollResellerNotifications() {
+            try {
+                const res = await fetch('/api/reseller/notifications/poll');
+                if (!res.ok) return;
+                const data = await res.json();
+
+                // بروزرسانی هوشمند عدد موجودی کیف پول نماینده در سایدبار
+                if (typeof data.current_balance === 'number' && window.updateResellerSidebarBalance) {
+                    window.updateResellerSidebarBalance(data.current_balance);
+                }
+
+                const receiptsBadge = document.getElementById('sidebarResellerCustomerReceiptsBadge');
+                if (receiptsBadge) {
+                    if (data.pending_customer_receipts_count > 0) {
+                        receiptsBadge.textContent = data.pending_customer_receipts_count;
+                        receiptsBadge.style.display = 'inline-block';
+                    } else {
+                        receiptsBadge.style.display = 'none';
+                    }
+                }
+
+                const ticketsBadge = document.getElementById('sidebarResellerTicketsBadge');
+                if (ticketsBadge) {
+                    if (data.open_tickets_count > 0) {
+                        ticketsBadge.textContent = data.open_tickets_count;
+                        ticketsBadge.style.display = 'inline-block';
+                    } else {
+                        ticketsBadge.style.display = 'none';
+                    }
+                }
+
+                // ۱. اگر پاسخ یا تیکت جدیدی از مدیریت دریافت شده باشد -> صدای مدیریتی
+                if (lastResellerAdminRepliesCount !== -1 && (data.admin_replied_tickets_count || 0) > lastResellerAdminRepliesCount) {
+                    playResellerAdminTicketSound();
+                    const toastEl = document.getElementById('liveAlertToast');
+                    if (toastEl) {
+                        document.getElementById('liveAlertToastTitle').textContent = '🏢 پیام جدید از پنل مدیریت!';
+                        document.getElementById('liveAlertToastMsg').textContent = `مدیریت به تیکت یا درخواست شما پاسخ داد.`;
+                        const toast = new bootstrap.Toast(toastEl, { delay: 9000 });
+                        toast.show();
+                    }
+                }
+                // ۲. اگر تیکت جدید از مشتری آمده باشد -> صدای مشتری
+                else if (lastResellerCustomerTicketsCount !== -1 && (data.open_customer_tickets_count || 0) > lastResellerCustomerTicketsCount) {
+                    playCustomerTicketSound();
+                    const toastEl = document.getElementById('liveAlertToast');
+                    if (toastEl) {
+                        document.getElementById('liveAlertToastTitle').textContent = '💬 تیکت مشتری جدید!';
+                        document.getElementById('liveAlertToastMsg').textContent = `یک مشتری تیکت پشتیبانی جدید ارسال کرده است.`;
+                        const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
+                        toast.show();
+                    }
+                }
+
+                // ۳. اگر فیش جدید مشتری آمده باشد
+                if (lastResellerReceiptsCount !== -1 && data.pending_customer_receipts_count > lastResellerReceiptsCount) {
+                    playCustomerTicketSound();
+                }
+
+                lastResellerReceiptsCount = data.pending_customer_receipts_count;
+                lastResellerCustomerTicketsCount = data.open_customer_tickets_count || 0;
+                lastResellerAdminRepliesCount = data.admin_replied_tickets_count || 0;
+            } catch (e) {
+                // Ignore network errors in background polling
+            }
+        }
+
+        window.updateResellerSidebarBalance = function(newBalance) {
+            const el = document.getElementById('sidebarResellerBalance');
+            if (el && typeof newBalance === 'number') {
+                el.textContent = Number(newBalance).toLocaleString('en-US');
+            }
+        };
+
+        // اجرای پایش هر ۱۲ ثانیه برای مدیر و نماینده
         {% if session.get('role') == 'admin' %}
         setInterval(pollAdminNotifications, 12000);
         setTimeout(pollAdminNotifications, 1500);
+        {% elif session.get('role') == 'reseller' %}
+        setInterval(pollResellerNotifications, 12000);
+        setTimeout(pollResellerNotifications, 1500);
         {% endif %}
 
         // ─── موتور جستجوی زنده سراسری جداول (Universal Instant Table Search) ───
@@ -1308,8 +1613,207 @@
             });
         }
 
-        document.addEventListener('DOMContentLoaded', initTableSearch);
+        // ─── موتور مرتب‌سازی هوشمند سراسری جداول (Universal Smart Table Sorter) ───
+        function parseSortValue(raw) {
+            if (raw === null || raw === undefined) return { type: 'string', val: '' };
+            let str = String(raw).trim();
+            if (!str) return { type: 'string', val: '' };
+
+            // ۱. بررسی عدد مستقیم، اعشاری یا منفی
+            if (/^-?\d+(\.\d+)?$/.test(str)) {
+                return { type: 'number', val: parseFloat(str) };
+            }
+
+            // ۲. بررسی تاریخ و ساعت استاندارد میلادی (ISO / YYYY-MM-DD HH:MM:SS)
+            if (/^\d{4}[-/]\d{2}[-/]\d{2}/.test(str)) {
+                const parsedDate = Date.parse(str.replace(' ', 'T'));
+                if (!isNaN(parsedDate)) {
+                    return { type: 'date', val: parsedDate };
+                }
+                return { type: 'string', val: str };
+            }
+
+            // ۳. بررسی تاریخ شمسی با فرمت YYYY/MM/DD
+            if (/^1[34]\d{2}\/\d{1,2}\/\d{1,2}/.test(str)) {
+                const parts = str.split(' ')[0].split('/');
+                const y = parts[0];
+                const m = (parts[1] || '1').padStart(2, '0');
+                const d = (parts[2] || '1').padStart(2, '0');
+                const time = str.split(' ')[1] || '00:00:00';
+                return { type: 'string', val: `${y}/${m}/${d} ${time}` };
+            }
+
+            // ۴. بررسی مبالغ مالی دارای ویرگول و کلمات (مانند "1,500,000 تومان" یا "250,000")
+            const fa2en = str.replace(/[\u0660-\u0669\u06F0-\u06F9]/g, d => d.charCodeAt(0) % 16);
+            const cleanNum = fa2en.replace(/,/g, '').replace(/[^\d.-]/g, '');
+            if (cleanNum && /^-?\d+(\.\d+)?$/.test(cleanNum) && !str.includes('/') && !str.includes(':')) {
+                return { type: 'number', val: parseFloat(cleanNum) };
+            }
+
+            return { type: 'string', val: str.toLowerCase() };
+        }
+
+        function initUniversalTableSorting() {
+            document.querySelectorAll('table.sortable-table, table').forEach(table => {
+                const headers = table.querySelectorAll('thead th.sortable-th');
+                if (!headers.length) return;
+
+                headers.forEach((header) => {
+                    // اطمینان از وجود آیکون سورت
+                    if (!header.querySelector('i.fa-sort, i.fa-sort-up, i.fa-sort-down')) {
+                        const icon = document.createElement('i');
+                        icon.className = 'fas fa-sort text-muted ms-1';
+                        header.appendChild(icon);
+                    }
+
+                    // حذف لیسنر تکراری در صورت مقداردهی دوباره
+                    if (header.dataset.sortBound) return;
+                    header.dataset.sortBound = 'true';
+
+                    header.addEventListener('click', function (e) {
+                        if (e.target.closest('button, input, select, a, form')) return;
+
+                        const tbody = table.querySelector('tbody');
+                        if (!tbody) return;
+
+                        const colAttr = header.getAttribute('data-column');
+                        const colIndex = colAttr !== null ? parseInt(colAttr, 10) : header.cellIndex;
+                        const currentDir = header.getAttribute('data-dir') === 'asc' ? 'desc' : 'asc';
+
+                        // ریست وضعیت سایر هدرهای جدول
+                        headers.forEach(th => {
+                            th.removeAttribute('data-dir');
+                            const icon = th.querySelector('i.fas');
+                            if (icon) icon.className = 'fas fa-sort text-muted ms-1';
+                        });
+
+                        // اعمال وضعیت هدر انتخابی
+                        header.setAttribute('data-dir', currentDir);
+                        const activeIcon = header.querySelector('i.fas');
+                        if (activeIcon) {
+                            activeIcon.className = currentDir === 'asc' 
+                                ? 'fas fa-sort-up text-primary ms-1' 
+                                : 'fas fa-sort-down text-primary ms-1';
+                        }
+
+                        // مرتب‌سازی ردیف‌ها
+                        const rows = Array.from(tbody.querySelectorAll(':scope > tr:not(.no-search-results):not(.static-row)'));
+                        if (rows.length <= 1) return;
+
+                        rows.sort((rowA, rowB) => {
+                            const cellA = rowA.children[colIndex];
+                            const cellB = rowB.children[colIndex];
+                            if (!cellA || !cellB) return 0;
+
+                            const rawA = cellA.getAttribute('data-sort') ?? cellA.getAttribute('data-value') ?? cellA.getAttribute('data-timestamp') ?? cellA.innerText.trim();
+                            const rawB = cellB.getAttribute('data-sort') ?? cellB.getAttribute('data-value') ?? cellB.getAttribute('data-timestamp') ?? cellB.innerText.trim();
+
+                            const pA = parseSortValue(rawA);
+                            const pB = parseSortValue(rawB);
+
+                            let diff = 0;
+                            if (pA.type === 'number' && pB.type === 'number') {
+                                diff = pA.val - pB.val;
+                            } else if (pA.type === 'date' && pB.type === 'date') {
+                                diff = pA.val - pB.val;
+                            } else {
+                                diff = String(pA.val).localeCompare(String(pB.val), 'fa', { numeric: true, sensitivity: 'base' });
+                            }
+
+                            return currentDir === 'asc' ? diff : -diff;
+                        });
+
+                        rows.forEach(r => tbody.appendChild(r));
+                    });
+                });
+            });
+        }
+
+        // ─── سیستم سراسری مدیریت گروهی (Universal Bulk Actions) ───
+        function initUniversalBulkActions() {
+            document.querySelectorAll('.bulk-table').forEach(table => {
+                const selectAllCb = table.querySelector('.bulk-select-all');
+                const rowCbs = table.querySelectorAll('.bulk-select-row');
+                const barId = table.getAttribute('data-bulk-bar');
+                const bulkBar = barId ? document.getElementById(barId) : document.querySelector('.bulk-actions-bar');
+                const countSpan = bulkBar ? bulkBar.querySelector('.bulk-selected-count') : null;
+                const hiddenInput = bulkBar ? bulkBar.querySelector('.bulk-selected-ids-input') : null;
+
+                function updateState() {
+                    const checkedBoxes = Array.from(table.querySelectorAll('.bulk-select-row:checked'));
+                    const count = checkedBoxes.length;
+                    const ids = checkedBoxes.map(cb => cb.value);
+
+                    if (countSpan) countSpan.innerText = count;
+                    if (hiddenInput) hiddenInput.value = ids.join(',');
+
+                    // هایلایت ردیف‌های انتخاب شده
+                    rowCbs.forEach(cb => {
+                        const tr = cb.closest('tr');
+                        if (tr) {
+                            if (cb.checked) tr.classList.add('table-active-row-selected');
+                            else tr.classList.remove('table-active-row-selected');
+                        }
+                    });
+
+                    if (bulkBar) {
+                        if (count > 0) {
+                            bulkBar.classList.add('show');
+                        } else {
+                            bulkBar.classList.remove('show');
+                        }
+                    }
+
+                    if (selectAllCb) {
+                        const totalRows = table.querySelectorAll('.bulk-select-row').length;
+                        selectAllCb.checked = (count > 0 && count === totalRows);
+                        selectAllCb.indeterminate = (count > 0 && count < totalRows);
+                    }
+                }
+
+                if (selectAllCb) {
+                    selectAllCb.addEventListener('change', function() {
+                        rowCbs.forEach(cb => {
+                            const tr = cb.closest('tr');
+                            if (!tr || tr.style.display !== 'none') {
+                                cb.checked = selectAllCb.checked;
+                            }
+                        });
+                        updateState();
+                    });
+                }
+
+                rowCbs.forEach(cb => {
+                    cb.addEventListener('change', updateState);
+                });
+            });
+        }
+
+        function submitBulkAction(formId, actionName, confirmMsg) {
+            const form = document.getElementById(formId);
+            if (!form) return false;
+            const hiddenIds = form.querySelector('.bulk-selected-ids-input');
+            if (!hiddenIds || !hiddenIds.value) {
+                alert('لطفاً حداقل یک مورد را انتخاب کنید.');
+                return false;
+            }
+            if (confirmMsg && !confirm(confirmMsg)) {
+                return false;
+            }
+            const actionInput = form.querySelector('input[name="bulk_action"]');
+            if (actionInput) actionInput.value = actionName;
+            form.submit();
+            return true;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initTableSearch();
+            initUniversalTableSorting();
+            initUniversalBulkActions();
+        });
         initTableSearch();
+        initUniversalTableSorting();
+        initUniversalBulkActions();
     </script>
     {% block scripts %}{% endblock %}
 </body>

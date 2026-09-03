@@ -14,44 +14,11 @@
         {% else %}
             <span class="badge bg-danger py-2 px-3"><i class="fas fa-triangle-exclamation me-1"></i> قطعی سرور هیدیفای</span>
         {% endif %}
-        <div class="btn-group">
-            <form action="{{ url_for('admin_sync_hidify') }}" method="POST" class="d-inline">
-                <input type="hidden" name="mode" value="update">
-                <button type="submit" class="btn btn-outline-primary btn-sm" title="دریافت و بروزرسانی مشتری از هیدیفای (بدون حذف کاربران ناموجود)">
-                    <i class="fas fa-cloud-arrow-down me-1"></i> دریافت و بروزرسانی از هیدیفای
-                </button>
-            </form>
-            <button type="button" class="btn btn-outline-primary btn-sm dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" title="حالت‌های همگام‌سازی هیدیفای">
-                <span class="visually-hidden">حالت‌های همگام‌سازی</span>
+        <form action="{{ url_for('admin_sync_hidify') }}" method="POST" class="d-inline" onsubmit="return confirm('آیا مایل به همگام‌سازی و بازیابی تمامی کاربران از پنل هیدیفای هستید؟');">
+            <button type="submit" class="btn btn-outline-primary btn-sm">
+                <i class="fas fa-rotate me-1"></i> همگام‌سازی با هیدیفای
             </button>
-            <ul class="dropdown-menu dropdown-menu-end shadow-sm small py-1" style="min-width: 270px;">
-                <li>
-                    <form action="{{ url_for('admin_sync_hidify') }}" method="POST">
-                        <input type="hidden" name="mode" value="update">
-                        <button type="submit" class="dropdown-item py-2 d-flex align-items-center gap-2">
-                            <i class="fas fa-cloud-arrow-down text-primary"></i>
-                            <div>
-                                <div class="fw-bold">دریافت و بروزرسانی مشتری از هیدیفای</div>
-                                <small class="text-muted" style="font-size: 0.7rem;">بروزرسانی حجم و روزها بدون حذف</small>
-                            </div>
-                        </button>
-                    </form>
-                </li>
-                <li><hr class="dropdown-divider my-1"></li>
-                <li>
-                    <form action="{{ url_for('admin_sync_hidify') }}" method="POST" onsubmit="return confirm('هشدار پاکسازی سراسری:\nآیا از همگام‌سازی پنل با هیدیفای مطمئن هستید؟\n\nکلیه مشتریانی که در پنل هیدیفای موجود نیستند (یا از قبل پاک شده‌اند)، به طور خودکار از پنل مدیریت و پنل نمایندگان حذف خواهند شد.');">
-                        <input type="hidden" name="mode" value="full_sync">
-                        <button type="submit" class="dropdown-item py-2 text-danger d-flex align-items-center gap-2">
-                            <i class="fas fa-arrows-rotate text-danger"></i>
-                            <div>
-                                <div class="fw-bold">همگامسازی پنل با هیدیفای</div>
-                                <small class="text-danger-emphasis" style="font-size: 0.7rem;">حذف کاربران ناموجود از پنل مدیریت و نمایندگان</small>
-                            </div>
-                        </button>
-                    </form>
-                </li>
-            </ul>
-        </div>
+        </form>
         <a href="{{ url_for('download_backup') }}" class="btn btn-outline-secondary btn-sm" title="دانلود فایل پشتیبان SQLite">
             <i class="fas fa-download me-1"></i> بکاپ دیتابیس
         </a>
@@ -263,15 +230,21 @@
                         </thead>
                         <tbody>
                             {% for h in analytics.get('usage_history', [])[:5] %}
-                            <tr>
-                                <td><strong>{{ h['account_name'] }}</strong></td>
+                            {% set is_manual = (h.get('is_manual') == 1 or h.get('renewal_type') == 'manual') %}
+                            <tr class="{% if is_manual %}table-warning bg-opacity-10{% endif %}">
+                                <td>
+                                    <strong>{{ h['account_name'] }}</strong>
+                                    {% if is_manual %}
+                                        <span class="badge bg-warning text-dark border border-warning ms-1" style="font-size: 10px;"><i class="fas fa-hand me-1"></i>دستی</span>
+                                    {% endif %}
+                                </td>
                                 <td><small>{{ h['plan_name'] }}</small></td>
                                 <td>
                                     <span class="badge bg-secondary font-monospace" dir="ltr">
                                         {{ "%.2f"|format(h['previous_usage_gb']|float or 0) }} / {{ "%.1f"|format(h['previous_limit_gb']|float or 0) }} GB
                                     </span>
                                 </td>
-                                <td><small class="text-muted">{{ h['renewed_at'][:16].replace('T', ' ') if h['renewed_at'] else '-' }}</small></td>
+                                <td><small class="text-muted font-monospace">{{ h['renewed_at'][:16].replace('T', ' ') if h['renewed_at'] else '-' }}</small></td>
                             </tr>
                             {% endfor %}
                             {% if not analytics.get('usage_history') %}

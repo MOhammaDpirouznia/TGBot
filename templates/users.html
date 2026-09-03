@@ -54,17 +54,17 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0" id="usersTable">
-                <thead>
+            <table class="table table-hover align-middle mb-0 sortable-table" id="usersTable">
+                <thead class="table-light">
                     <tr>
-                        <th>کاربر تلگرام</th>
-                        <th>وضعیت VIP</th>
-                        <th>شماره تلفن تلگرام</th>
-                        <th>UUID</th>
-                        <th>پلن</th>
-                        <th>تاریخ عضویت</th>
+                        <th class="ps-3 sortable-th" data-column="0">کاربر تلگرام</th>
+                        <th class="sortable-th" data-column="1">وضعیت VIP</th>
+                        <th class="sortable-th" data-column="2">شماره تلفن تلگرام</th>
+                        <th class="sortable-th" data-column="3">UUID</th>
+                        <th class="sortable-th" data-column="4">پلن</th>
+                        <th class="sortable-th" data-column="5">تاریخ عضویت</th>
                         <th>لینک‌های اتصال</th>
-                        <th>عملیات</th>
+                        <th class="text-end pe-3">عملیات</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -72,7 +72,7 @@
                     {% set sub_url = (panel_url + '/' + user_proxy + '/' + user['hidify_uuid'] + '/') if user['hidify_uuid'] else '' %}
                     {% set single_url = user|format_single_link(single_link_template) if user['hidify_uuid'] else '' %}
                     <tr class="{% if user['is_vip'] %}table-warning bg-opacity-10{% endif %}">
-                        <td>
+                        <td class="ps-3" data-value="{{ (user['username'] or user['telegram_id'] or '')|striptags }}">
                             <div class="d-flex align-items-center gap-2">
                                 <img src="{{ avatar_url(user['telegram_id'] or user['username'] or 'User') }}" 
                                      alt="{{ user['username'] or user['telegram_id'] }}" 
@@ -90,7 +90,7 @@
                                 </div>
                             </div>
                         </td>
-                        <td>
+                        <td data-value="{{ 1 if user['is_vip'] else 0 }}">
                             <div class="d-flex align-items-center gap-1">
                                 {% if user['is_vip'] %}
                                     <button type="button" class="btn btn-xs btn-warning text-dark py-0 px-2 fw-bold" data-bs-toggle="modal" data-bs-target="#editUserVipModal{{ user['telegram_id'] }}" title="ویرایش تنظیمات VIP">
@@ -109,16 +109,16 @@
                                 {% endif %}
                             </div>
                         </td>
-                        <td>
+                        <td data-value="{{ user['phone_number'] or '' }}">
                             {% if user['phone_number'] %}
                                 <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-phone me-1"></i><code>{{ user['phone_number'] }}</code></span>
                             {% else %}
                                 <span class="badge bg-warning-subtle text-warning border border-warning"><i class="fas fa-triangle-exclamation me-1"></i>تایید نشده</span>
                             {% endif %}
                         </td>
-                        <td><code>{{ user['hidify_uuid'][:8] if user['hidify_uuid'] else '-' }}...</code></td>
-                        <td>{{ user['plan_id'] or '-' }}</td>
-                        <td><small>{{ user['created_at'][:10] if user['created_at'] else '-' }}</small></td>
+                        <td data-value="{{ user['hidify_uuid'] or '' }}"><code>{{ user['hidify_uuid'][:8] if user['hidify_uuid'] else '-' }}...</code></td>
+                        <td data-value="{{ user['plan_id'] or '' }}">{{ user['plan_id'] or '-' }}</td>
+                        <td data-value="{{ user['created_at'] or '' }}"><small class="font-monospace">{{ user['created_at'][:10] if user['created_at'] else '-' }}</small></td>
                         <td>
                             {% if sub_url %}
                             <div class="btn-group btn-group-sm">
@@ -178,12 +178,12 @@
                     <div class="mb-3">
                         <label class="form-label fw-bold">مدت زمان اعتبار VIP (تعداد روز):</label>
                         <input type="number" name="vip_days" class="form-control" placeholder="برای وضعیت نامحدود خالی بگذارید" min="1" max="3650">
-                        <small class="text-muted">انقضای فعلی: {{ user['vip_expire_at'][:10] if user['vip_expire_at'] else 'مادام‌العمر' }}</small>
+                        <small class="text-muted">انقضای فعلی: {{ user.get('vip_expire_at')[:10] if user.get('vip_expire_at') else 'مادام‌العمر' }}</small>
                     </div>
 
                     <div class="mb-3">
                         <label class="form-label fw-bold">درصد کش‌بک سفارشی این کاربر (٪):</label>
-                        <input type="number" name="custom_cashback" class="form-control" value="{{ user['vip_custom_cashback'] if user['vip_custom_cashback'] is not none else '' }}" placeholder="پیش‌فرض سیستم" min="0" max="100">
+                        <input type="number" name="custom_cashback" class="form-control" value="{{ user.get('vip_custom_cashback') if user.get('vip_custom_cashback') is not none else '' }}" placeholder="پیش‌فرض سیستم" min="0" max="100">
                     </div>
                 </div>
                 <div class="modal-footer">
