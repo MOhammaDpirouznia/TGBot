@@ -3271,18 +3271,38 @@ def api_subscription_sessions(sub_id: int):
 @app.route("/subscriptions")
 @permission_required("subscriptions_view")
 def subscriptions():
-    """لیست مشتریان و اشتراک‌ها همراه با وضعیت آنلاین، تب بدهکاران، فیلتر نماینده و نشان وضعیت تیکت"""
+    """لیست مشتریان و اشتراک‌ها همراه با وضعیت آنلاین، تب بدهکاران، فیلتر نماینده و نشان وضعیت تیکت با صفحه‌بندی هوشمند"""
     sync_hiddify_online_users()
     conn = db.get_connection()
     status_filter = request.args.get("status", "all")
     reseller_filter_id = request.args.get("reseller_id", "")
     search = request.args.get("search", "").strip()
 
+    # پارامترهای صفحه‌بندی
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except (ValueError, TypeError):
+        page = 1
+
+    per_page_param = request.args.get("per_page", "50").strip()
+    if per_page_param.lower() in ("all", "همه", "0", "-1"):
+        per_page = 0
+        per_page_str = "all"
+    else:
+        try:
+            per_page = max(1, int(per_page_param))
+            per_page_str = str(per_page)
+        except (ValueError, TypeError):
+            per_page = 50
+            per_page_str = "50"
+
     base_conditions = []
     params = []
 
     if status_filter == "online":
         base_conditions.append("is_online = 1")
+    elif status_filter == "vip":
+        base_conditions.append("is_vip = 1")
     elif status_filter == "debtors":
         base_conditions.append("(payment_status IN ('unpaid', 'debtor') OR debt_amount > 0 OR is_credit = 1)")
     elif status_filter == "active":
@@ -3299,12 +3319,28 @@ def subscriptions():
         params.append(int(reseller_filter_id))
 
     if search:
-        base_conditions.append("(account_name LIKE ? OR hidify_uuid LIKE ? OR phone_number LIKE ? OR plan_name LIKE ?)")
-        params.extend([f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"])
+        base_conditions.append("(account_name LIKE ? OR hidify_uuid LIKE ? OR phone_number LIKE ? OR plan_name LIKE ? OR telegram_id LIKE ?)")
+        params.extend([f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"])
 
     where_clause = " WHERE " + " AND ".join(base_conditions) if base_conditions else ""
-    query = f"SELECT * FROM subscriptions {where_clause} ORDER BY created_at DESC LIMIT 500"
-    sub_list = conn.execute(query, params).fetchall()
+    
+    # محاسبه تعداد کل موارد
+    count_query = f"SELECT COUNT(*) FROM subscriptions {where_clause}"
+    total_count = conn.execute(count_query, params).fetchone()[0]
+
+    if per_page == 0 or per_page >= 100000:
+        total_pages = 1
+        page = 1
+        query = f"SELECT * FROM subscriptions {where_clause} ORDER BY created_at DESC"
+        sub_list = conn.execute(query, params).fetchall()
+    else:
+        total_pages = max(1, math.ceil(total_count / per_page)) if total_count > 0 else 1
+        if page > total_pages:
+            page = total_pages
+        offset = (page - 1) * per_page
+        query = f"SELECT * FROM subscriptions {where_clause} ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        sub_list = conn.execute(query, params + [per_page, offset]).fetchall()
+
     conn.close()
 
     tickets_map = db.get_customers_ticket_status_map()
@@ -3321,14 +3357,27 @@ def subscriptions():
     online_stats = db.get_online_users_stats()
     debtor_count = db.get_debtor_count()
     resellers_list = db.get_all_resellers()
+    plans = get_plans_dict()
     single_link_template = get_single_link_template(db)
+
+    start_item = ((page - 1) * per_page + 1) if (total_count > 0 and per_page > 0) else (1 if total_count > 0 else 0)
+    end_item = min(page * per_page, total_count) if (total_count > 0 and per_page > 0) else total_count
+
     return render_template(
         "subscriptions.html",
         subscriptions=subscriptions_with_refund,
         status_filter=status_filter,
         reseller_filter_id=reseller_filter_id,
         resellers_list=resellers_list,
+        plans=plans,
         search=search,
+        total_count=total_count,
+        page=page,
+        per_page=per_page,
+        per_page_str=per_page_str,
+        total_pages=total_pages,
+        start_item=start_item,
+        end_item=end_item,
         online_count=online_stats["online_count"],
         online_stats=online_stats,
         debtor_count=debtor_count,
@@ -3336,6 +3385,88 @@ def subscriptions():
         user_proxy=get_user_proxy(),
         single_link_template=single_link_template
     )
+
+
+@app.route("/admin/subscription/<int:sub_id>/renew", methods=["POST"])
+@permission_required("sub_manage")
+def admin_subscription_renew(sub_id: int):
+    """تمدید اشتراک مشتری توسط مدیریت با انتخاب پلن یا حجم/روز دلخواه"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,)).fetchone()
+    conn.close()
+    if not sub_row:
+        flash("اشتراک مورد نظر یافت نشد.", "danger")
+        return redirect(url_for("subscriptions"))
+
+    sub = dict(sub_row)
+    plan_key = request.form.get("plan_id", "").strip()
+    custom_limit_raw = request.form.get("custom_limit", "").strip()
+    custom_duration_raw = request.form.get("custom_duration", "").strip()
+
+    plans = get_plans_dict()
+    if plan_key and plan_key in plans:
+        plan = plans[plan_key]
+        plan_name = plan.get("name", "تمدید اشتراک")
+        data_limit = float(plan.get("data_limit", 30))
+        duration = int(plan.get("duration", 30))
+        cost_paid = int(plan.get("price", 0))
+    elif custom_limit_raw and custom_duration_raw:
+        try:
+            data_limit = float(custom_limit_raw)
+            duration = int(custom_duration_raw)
+            plan_name = f"{data_limit} گیگ {duration} روزه"
+            plan_key = "custom"
+            cost_paid = 0
+        except ValueError:
+            flash("مقادیر وارد شده برای حجم یا مدت نامعتبر است.", "danger")
+            return redirect(url_for("subscriptions"))
+    else:
+        data_limit = float(sub.get("data_limit") or 30)
+        duration = int(sub.get("duration") or 30)
+        plan_name = sub.get("plan_name") or f"{data_limit} گیگ {duration} روزه"
+        plan_key = sub.get("plan_id") or "custom"
+        cost_paid = 0
+
+    # ۱. تمدید هوشمند در سرور هیدیفای
+    renewal_res = {"renewal_type": "reset_and_replaced"}
+    if sub.get("hidify_uuid"):
+        try:
+            renewal_res = hidify_sync_renew_user(sub["hidify_uuid"], data_limit, duration)
+        except Exception as e:
+            logger.error(f"Admin renew Hiddify error: {e}")
+
+    # ۲. به‌روزرسانی در دیتابیس
+    now = get_now_iso()
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE subscriptions
+        SET plan_id=?, plan_name=?, data_limit=?, duration=?, status='active', updated_at=?, cost_paid=?
+        WHERE id=?
+    """, (plan_key, plan_name, data_limit, duration, now, cost_paid, sub_id))
+    conn.commit()
+    conn.close()
+
+    # ۳. ثبت در تاریخچه دوره‌های اشتراک
+    try:
+        db.log_subscription_history(
+            subscription_id=sub_id,
+            telegram_id=sub.get("telegram_id") or 0,
+            hidify_uuid=sub.get("hidify_uuid") or "",
+            account_name=sub.get("account_name") or "",
+            plan_name=plan_name,
+            previous_usage_gb=sub.get("data_used") or 0,
+            previous_limit_gb=sub.get("data_limit") or 0,
+            period_days=duration,
+            renewal_type=renewal_res.get("renewal_type", "reset_and_replaced"),
+            reseller_id=sub.get("reseller_id"),
+            cost_paid=cost_paid
+        )
+    except Exception as ex:
+        logger.error(f"Error logging subscription history in admin renew: {ex}")
+
+    flash(f"اشتراک «{sub.get('account_name')}» با موفقیت تمدید شد ({data_limit} GB - {duration} روز).", "success")
+    return redirect(url_for("subscriptions"))
 
 
 @app.route("/admin/subscription/<int:sub_id>/add-traffic", methods=["POST"])
