@@ -244,15 +244,21 @@
                         </thead>
                         <tbody>
                             {% for h in analytics.get('usage_history', [])[:5] %}
-                            <tr>
-                                <td><strong><code>{{ h['account_name'] }}</code></strong></td>
+                            {% set is_manual = (h.get('is_manual') == 1 or h.get('renewal_type') == 'manual') %}
+                            <tr class="{% if is_manual %}table-warning bg-opacity-10{% endif %}">
+                                <td>
+                                    <strong><code>{{ h['account_name'] }}</code></strong>
+                                    {% if is_manual %}
+                                        <span class="badge bg-warning text-dark border border-warning ms-1" style="font-size: 10px;"><i class="fas fa-hand me-1"></i>دستی</span>
+                                    {% endif %}
+                                </td>
                                 <td><small>{{ h['plan_name'] }}</small></td>
                                 <td>
-                                    <span class="badge bg-secondary">
-                                        {{ "%.2f"|format(h['previous_usage_gb'] or 0) }} / {{ h['previous_limit_gb'] }} GB
+                                    <span class="badge bg-secondary font-monospace" dir="ltr">
+                                        {{ "%.2f"|format(h['previous_usage_gb']|float or 0) }} / {{ "%.1f"|format(h['previous_limit_gb']|float or 0) }} GB
                                     </span>
                                 </td>
-                                <td><small class="text-muted">{{ h['renewed_at'][:16].replace('T', ' ') if h['renewed_at'] else '-' }}</small></td>
+                                <td><small class="text-muted font-monospace">{{ h['renewed_at'][:16].replace('T', ' ') if h['renewed_at'] else '-' }}</small></td>
                             </tr>
                             {% endfor %}
                             {% if not analytics.get('usage_history') %}

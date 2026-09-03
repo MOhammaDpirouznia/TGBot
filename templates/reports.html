@@ -321,20 +321,32 @@
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
-                    <table class="table table-hover mb-0">
+                    <table class="table table-hover align-middle mb-0">
                         <thead>
                             <tr>
                                 <th>نام اشتراک</th>
+                                <th>دوره و ترتیب</th>
                                 <th>پلن دوره قبل</th>
                                 <th>مصرف دوره قبل</th>
-                                <th>نوع تمدید</th>
-                                <th>تاریخ تمدید</th>
+                                <th>نوع ثبت / تمدید</th>
+                                <th>تاریخ ثبت / تمدید</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for h in usage_history %}
-                            <tr>
-                                <td><strong>{{ h['account_name'] }}</strong></td>
+                            {% set is_manual = (h.get('is_manual') == 1 or h.get('renewal_type') == 'manual') %}
+                            <tr class="{% if is_manual %}table-warning bg-opacity-10{% endif %}">
+                                <td>
+                                    <strong>{{ h['account_name'] }}</strong>
+                                    {% if h.get('note') %}
+                                        <small class="text-muted d-block" style="font-size: 11px;"><i class="fas fa-comment-dots text-info me-1"></i>{{ h['note'] }}</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25">
+                                        {{ h.get('period_label') or (h.get('period_offset') ~ ' دوره قبل' if h.get('period_offset') else 'دوره گذشته') }}
+                                    </span>
+                                </td>
                                 <td><span class="badge bg-light text-dark border">{{ h['plan_name'] }}</span></td>
                                 <td>
                                     <span class="badge bg-secondary font-monospace" dir="ltr">
@@ -342,18 +354,20 @@
                                     </span>
                                 </td>
                                 <td>
-                                    {% if h['renewal_type'] == 'reset_and_replaced' or h['renewal_type'] == 'replace' %}
-                                        <span class="badge bg-warning text-dark">ریست و جایگزین</span>
+                                    {% if is_manual %}
+                                        <span class="badge bg-warning text-dark border border-warning shadow-sm"><i class="fas fa-hand me-1"></i> دستی</span>
+                                    {% elif h['renewal_type'] == 'reset_and_replaced' or h['renewal_type'] == 'replace' %}
+                                        <span class="badge bg-info-subtle text-info border border-info">ریست و جایگزین</span>
                                     {% else %}
                                         <span class="badge bg-success">افزایش حجم</span>
                                     {% endif %}
                                 </td>
-                                <td><small>{{ h['renewed_at'][:16].replace('T', ' ') if h['renewed_at'] else '-' }}</small></td>
+                                <td><small class="font-monospace text-muted">{{ h['renewed_at'][:16].replace('T', ' ') if h['renewed_at'] else '-' }}</small></td>
                             </tr>
                             {% endfor %}
                             {% if not usage_history %}
                             <tr>
-                                <td colspan="5" class="text-center py-3 text-muted">هنوز تمدیدی در سامانه ثبت نشده است.</td>
+                                <td colspan="6" class="text-center py-3 text-muted">هنوز سابقه‌ای در سامانه ثبت نشده است.</td>
                             </tr>
                             {% endif %}
                         </tbody>

@@ -142,6 +142,7 @@
                         <th>تاریخ انقضا</th>
                         <th>وضعیت</th>
                         <th>لینک اتصال</th>
+                        <th class="text-end">سوابق و مدیریت</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -175,6 +176,11 @@
                             {% else %}
                                 <span class="text-muted">-</span>
                             {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <button type="button" class="btn btn-sm btn-outline-info" onclick="openSubscriptionHistory({{ sub['id'] }}, '{{ sub['account_name'] }}')">
+                                <i class="fas fa-history me-1"></i> سوابق دوره‌ها
+                            </button>
                         </td>
                     </tr>
                     {% endfor %}
@@ -318,11 +324,350 @@
                     {% endif %}
                 </div>
             </div>
+<!-- Modal سوابق دوره‌ها و مصرف گذشته -->
+<div class="modal fade text-start" id="subscriptionHistoryModal" tabindex="-1" aria-labelledby="historyModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-info text-white py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="fas fa-history fs-4"></i>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0" id="historyModalTitle">سوابق مصرف دوره‌های قبلی</h5>
+                        <small class="opacity-75" id="historyModalSubtitle"></small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4" id="historyModalBody">
+                <div class="text-center py-4">
+                    <div class="spinner-border text-info mb-2" role="status"></div>
+                    <div class="text-muted">در حال بارگذاری تاریخچه مصرف...</div>
+                </div>
+            </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">بستن</button>
             </div>
         </div>
     </div>
 </div>
-{% endfor %}
+
+<script>
+function copyLink(text, label) {
+    if (!text) {
+        alert('لینکی جهت کپی موجود نیست.');
+        return;
+    }
+    navigator.clipboard.writeText(text).then(() => {
+        alert((label || 'لینک') + ' با موفقیت کپی شد.');
+    }).catch(() => {
+        const inp = document.createElement('input');
+        inp.value = text;
+        document.body.appendChild(inp);
+        inp.select();
+        document.execCommand('copy');
+        document.body.removeChild(inp);
+        alert((label || 'لینک') + ' کپی شد.');
+    });
+}
+
+function handlePeriodOffsetChange(sel) {
+    const customInput = document.getElementById('histCustomLabel');
+    if (customInput) {
+        customInput.style.display = (sel.value === 'custom') ? 'block' : 'none';
+    }
+}
+
+function openSubscriptionHistory(subId, accountName) {
+    const modalEl = document.getElementById('subscriptionHistoryModal');
+    const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+    document.getElementById('historyModalTitle').innerText = 'سوابق و تاریخچه دوره‌های «' + accountName + '»';
+    document.getElementById('historyModalSubtitle').innerText = 'شناسه اشتراک #' + subId;
+    const body = document.getElementById('historyModalBody');
+    body.innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border text-info mb-2" role="status"></div>
+            <div class="text-muted">در حال دریافت اطلاعات دوره‌ها...</div>
+        </div>
+    `;
+    modal.show();
+
+    fetch('/api/subscription/' + subId + '/history')
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) {
+                body.innerHTML = '<div class="alert alert-danger">خطا در دریافت تاریخچه: ' + (data.error || 'خطای نامشخص') + '</div>';
+                return;
+            }
+            const cur = data.current || {};
+            const history = data.history || [];
+
+            let html = `
+                <!-- دوره فعلی -->
+                <div class="card border-info mb-3 bg-info-subtle shadow-sm">
+                    <div class="card-header bg-info text-white py-2 fw-bold d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-bolt me-1"></i> وضعیت دوره جاری اشتراک</span>
+                        <span class="badge bg-light text-dark font-monospace">شناسه #${cur.id || subId}</span>
+                    </div>
+                    <div class="card-body p-3">
+                        <div class="row g-2 text-center">
+                            <div class="col-md-3 col-6">
+                                <small class="text-muted d-block">پلن جاری:</small>
+                                <strong class="text-dark">${cur.plan_name || '-'}</strong>
+                            </div>
+                            <div class="col-md-3 col-6">
+                                <small class="text-muted d-block">مصرف / سقف:</small>
+                                <strong class="text-primary font-monospace" dir="ltr">${(cur.data_used || 0).toFixed(2)} / ${(cur.data_limit || 0).toFixed(1)} GB</strong>
+                            </div>
+                            <div class="col-md-3 col-6">
+                                <small class="text-muted d-block">مدت دوره:</small>
+                                <strong>${cur.duration || 30} روز</strong>
+                            </div>
+                            <div class="col-md-3 col-6">
+                                <small class="text-muted d-block">هزینه ثبت‌شده:</small>
+                                <strong class="text-success">${(cur.cost_paid || 0).toLocaleString('fa-IR')} تومان</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- بخش فرم افزودن سابقه دوره دستی -->
+                <div class="card border-warning mb-4 shadow-sm">
+                    <div class="card-header bg-warning bg-opacity-10 py-2 d-flex justify-content-between align-items-center cursor-pointer" data-bs-toggle="collapse" data-bs-target="#addManualHistoryCollapse" aria-expanded="false">
+                        <span class="fw-bold text-dark"><i class="fas fa-plus-circle text-warning me-2"></i>➕ افزودن سابقه و گزارش دوره قبلی (دستی)</span>
+                        <button class="btn btn-xs btn-outline-warning text-dark fw-bold py-1 px-2">
+                            <i class="fas fa-chevron-down"></i> باز / بستن فرم
+                        </button>
+                    </div>
+                    <div class="collapse" id="addManualHistoryCollapse">
+                        <div class="card-body p-3 bg-light">
+                            <div class="row g-2">
+                                <div class="col-md-4 col-12">
+                                    <label class="form-label small fw-bold mb-1"><span class="text-danger">*</span> حجم مصرف شده در دوره (GB):</label>
+                                    <input type="number" step="0.01" min="0" class="form-control form-control-sm font-monospace" id="histUsageGb" placeholder="مثلاً: 18.5" required>
+                                </div>
+                                <div class="col-md-4 col-12">
+                                    <label class="form-label small fw-bold mb-1">سقف کل حجم دوره (GB):</label>
+                                    <input type="number" step="0.1" min="0" class="form-control form-control-sm font-monospace" id="histLimitGb" placeholder="پیش‌فرض: ${(cur.data_limit || 0).toFixed(1)} GB" value="${cur.data_limit || ''}">
+                                </div>
+                                <div class="col-md-4 col-12">
+                                    <label class="form-label small fw-bold mb-1">مدت دوره (تعداد روز):</label>
+                                    <input type="number" min="1" class="form-control form-control-sm font-monospace" id="histPeriodDays" placeholder="مثلاً: 30" value="${cur.duration || 30}">
+                                </div>
+
+                                <div class="col-md-4 col-12">
+                                    <label class="form-label small fw-bold mb-1"><i class="fas fa-layer-group text-primary me-1"></i>تنظیم ترتیب دوره نسبت به هم:</label>
+                                    <select class="form-select form-select-sm" id="histPeriodOffset" onchange="handlePeriodOffsetChange(this)">
+                                        <option value="1">۱ دوره قبل (دوره گذشته)</option>
+                                        <option value="2">۲ دوره قبل</option>
+                                        <option value="3">۳ دوره قبل</option>
+                                        <option value="4">۴ دوره قبل</option>
+                                        <option value="5">۵ دوره قبل</option>
+                                        <option value="6">۶ دوره قبل</option>
+                                        <option value="custom">✨ عنوان و دوره سفارشی...</option>
+                                    </select>
+                                    <input type="text" class="form-control form-control-sm mt-1" id="histCustomLabel" placeholder="عنوان سفارشی دوره (مثلاً: دوره پاییز ۱۴۰۲)" style="display: none;">
+                                </div>
+                                <div class="col-md-4 col-12">
+                                    <label class="form-label small fw-bold mb-1">نام پلن در آن دوره (اختیاری):</label>
+                                    <input type="text" class="form-control form-control-sm" id="histPlanName" placeholder="پیش‌فرض: ${cur.plan_name || 'پلن جاری'}" value="${cur.plan_name || ''}">
+                                </div>
+                                <div class="col-md-4 col-12">
+                                    <label class="form-label small fw-bold mb-1">مبلغ / هزینه پرداختی (تومان - اختیاری):</label>
+                                    <input type="number" class="form-control form-control-sm font-monospace" id="histCostPaid" placeholder="مثلاً: 120000">
+                                </div>
+
+                                <div class="col-md-6 col-12">
+                                    <label class="form-label small fw-bold mb-1">تاریخ پایان دوره / تمدید (اختیاری):</label>
+                                    <input type="datetime-local" class="form-control form-control-sm font-monospace" id="histRenewedAt">
+                                    <small class="text-muted" style="font-size: 11px;">در صورت خالی گذاشتن، تاریخ جاری ثبت می‌شود.</small>
+                                </div>
+                                <div class="col-md-6 col-12">
+                                    <label class="form-label small fw-bold mb-1">یادداشت / توضیحات (اختیاری):</label>
+                                    <input type="text" class="form-control form-control-sm" id="histNote" placeholder="مثلاً: انتقال سابقه از پنل قدیمی، مصرف دوره قبل">
+                                </div>
+                            </div>
+                            <div class="mt-3 text-end">
+                                <button type="button" class="btn btn-sm btn-success fw-bold px-4" id="btnSubmitHist" onclick="submitManualHistoryForm(${subId}, '${accountName}')">
+                                    <i class="fas fa-check-circle me-1"></i> ثبت و ذخیره سابقه در سیستم
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="fw-bold text-secondary mb-0"><i class="fas fa-archive me-2 text-primary"></i>آرشیو دوره‌های قبلی و مصرف گذشته (${history.length} دوره):</h6>
+                </div>
+            `;
+
+            if (history.length === 0) {
+                html += `
+                    <div class="text-center py-4 bg-light rounded-3 border text-muted">
+                        <i class="fas fa-calendar-check fs-2 d-block mb-2 text-secondary opacity-50"></i>
+                        هنوز دوره قبلی برای این اشتراک آرشیو نشده است (اشتراک در اولین دوره خود قرار دارد).
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="text-center" style="width: 40px;">#</th>
+                                    <th>دوره و ترتیب</th>
+                                    <th>نوع ثبت</th>
+                                    <th>تاریخ پایان / تمدید</th>
+                                    <th>مشخصات پلن</th>
+                                    <th>مبلغ دوره</th>
+                                    <th>میزان مصرف در دوره</th>
+                                    <th class="text-center">عملیات</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+                history.forEach((h, idx) => {
+                    const priceVal = h.plan_price || h.cost_paid || 0;
+                    const used = (h.previous_usage_gb || 0).toFixed(2);
+                    const limit = (h.previous_limit_gb || 0).toFixed(1);
+                    const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+                    const dateStr = h.renewed_at ? h.renewed_at.replace('T', ' ').substring(0, 16) : '-';
+                    const isManual = (h.is_manual === 1 || h.renewal_type === 'manual');
+                    const periodLabel = h.period_label || (h.period_offset ? (h.period_offset + ' دوره قبل') : 'دوره گذشته');
+
+                    html += `
+                        <tr class="${isManual ? 'table-warning bg-opacity-10' : ''}">
+                            <td class="text-center font-monospace small">${idx + 1}</td>
+                            <td>
+                                <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 fw-bold">
+                                    <i class="fas fa-clock-rotate-left me-1"></i>${periodLabel}
+                                </span>
+                            </td>
+                            <td>
+                                ${isManual ? 
+                                    '<span class="badge bg-warning text-dark border border-warning shadow-sm"><i class="fas fa-hand me-1"></i> دستی</span>' : 
+                                    '<span class="badge bg-light text-secondary border">سیستمی</span>'
+                                }
+                            </td>
+                            <td><small class="font-monospace text-muted">${dateStr}</small></td>
+                            <td>
+                                <strong>${h.plan_name || '-'}</strong>
+                                <small class="text-muted d-block font-monospace">${h.period_days || 30} روزه</small>
+                                ${h.note ? `<div class="text-muted small mt-1" style="font-size: 10.5px;"><i class="fas fa-comment-dots text-info me-1"></i>${h.note}</div>` : ''}
+                            </td>
+                            <td>
+                                <strong class="text-success font-monospace">${priceVal > 0 ? (priceVal.toLocaleString('fa-IR') + ' ت') : '-'}</strong>
+                            </td>
+                            <td>
+                                <div class="font-monospace small mb-1" dir="ltr"><strong>${used}</strong> / ${limit} GB (${pct}%)</div>
+                                <div class="progress" style="height: 6px;">
+                                    <div class="progress-bar ${pct > 90 ? 'bg-danger' : (pct > 70 ? 'bg-warning' : 'bg-success')}" style="width: ${pct}%"></div>
+                                </div>
+                            </td>
+                            <td class="text-center">
+                                ${isManual ? `
+                                    <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2" onclick="deleteManualHistoryEntry(${h.id}, ${subId}, '${accountName}')" title="حذف این سابقه دستی">
+                                        <i class="fas fa-trash-can"></i>
+                                    </button>
+                                ` : '<span class="text-muted small">-</span>'}
+                            </td>
+                        </tr>
+                    `;
+                });
+                html += `
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+            body.innerHTML = html;
+        })
+        .catch(err => {
+            body.innerHTML = '<div class="alert alert-danger">خطا در بارگذاری اطلاعات: ' + err + '</div>';
+        });
+}
+
+function submitManualHistoryForm(subId, accountName) {
+    const usageInput = document.getElementById('histUsageGb');
+    if (!usageInput || !usageInput.value) {
+        alert('لطفاً میزان حجم مصرف شده در دوره را وارد فرمایید.');
+        if (usageInput) usageInput.focus();
+        return;
+    }
+
+    const offsetSelect = document.getElementById('histPeriodOffset');
+    let offsetVal = 1;
+    let customLabel = '';
+    if (offsetSelect.value === 'custom') {
+        offsetVal = 1;
+        customLabel = document.getElementById('histCustomLabel').value.trim();
+    } else {
+        offsetVal = parseInt(offsetSelect.value) || 1;
+    }
+
+    const payload = {
+        previous_usage_gb: parseFloat(usageInput.value) || 0,
+        previous_limit_gb: parseFloat(document.getElementById('histLimitGb').value) || null,
+        period_days: parseInt(document.getElementById('histPeriodDays').value) || 30,
+        period_offset: offsetVal,
+        period_label: customLabel,
+        plan_name: document.getElementById('histPlanName').value.trim(),
+        cost_paid: parseInt(document.getElementById('histCostPaid').value) || 0,
+        renewed_at: document.getElementById('histRenewedAt').value || null,
+        note: document.getElementById('histNote').value.trim()
+    };
+
+    const btn = document.getElementById('btnSubmitHist');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال ذخیره...';
+    }
+
+    fetch('/api/subscription/' + subId + '/history/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) {
+            alert('✅ سابقه دوره قبلی با موفقیت ثبت و نشان «دستی» به آن افزوده شد.');
+            openSubscriptionHistory(subId, accountName);
+        } else {
+            alert('❌ خطا در ثبت سابقه: ' + (res.error || 'خطای ناشناخته'));
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-check-circle me-1"></i> ثبت و ذخیره سابقه در سیستم';
+            }
+        }
+    })
+    .catch(err => {
+        alert('❌ خطای ارتباط با سرور: ' + err);
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-check-circle me-1"></i> ثبت و ذخیره سابقه در سیستم';
+        }
+    });
+}
+
+function deleteManualHistoryEntry(historyId, subId, accountName) {
+    if (!confirm('آیا از حذف این سابقه دوره قبلی اطمینان دارید؟')) {
+        return;
+    }
+
+    fetch('/api/subscription/history/' + historyId + '/delete', {
+        method: 'POST'
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) {
+            openSubscriptionHistory(subId, accountName);
+        } else {
+            alert('❌ خطا در حذف سابقه: ' + (res.error || 'خطای ناشناخته'));
+        }
+    })
+    .catch(err => {
+        alert('❌ خطای ارتباط با سرور: ' + err);
+    });
+}
+</script>
 {% endblock %}
