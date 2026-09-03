@@ -246,6 +246,11 @@
                                         {% if sub.get('is_vip') %}
                                              <span class="badge bg-warning text-dark py-0 px-1" title="مشتری طلایی (VIP)"><i class="fas fa-crown"></i> VIP</span>
                                         {% endif %}
+                                        {% if sub.get('has_queue') %}
+                                            <span class="badge bg-info text-dark py-0 px-2 shadow-sm" style="font-size: 0.7rem;" title="دارای بسته رزرو در صف: {{ sub['pending_queue']['plan_name'] }}">
+                                                <i class="fas fa-layer-group me-1"></i> بسته در صف: {{ sub['pending_queue']['plan_name'] }}
+                                            </span>
+                                        {% endif %}
                                         
                                         <!-- نشان وضعیت تیکت مشتری -->
                                         {% set tinfo = sub.get('ticket_info') %}
@@ -467,6 +472,9 @@
         <input type="hidden" name="target_reseller_id" id="adminBulkTargetResellerId" value="">
         <input type="hidden" name="target_hiddify_admin" id="adminBulkTargetHiddifyAdmin" value="">
         
+        <button type="button" class="btn btn-sm btn-success fw-bold" onclick="openAdminBulkRenewModal()">
+            <i class="fas fa-arrows-rotate me-1"></i> تمدید گروهی
+        </button>
         <button type="button" class="btn btn-sm btn-info text-dark fw-bold" onclick="openBulkTransferModal()">
             <i class="fas fa-arrow-right-arrow-left me-1"></i> انتقال به نماینده
         </button>
@@ -693,6 +701,14 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body p-4">
+                    {% if sub.get('pending_queue') %}
+                    <div class="alert alert-warning py-2 small mb-3">
+                        <i class="fas fa-layer-group me-1"></i>
+                        <strong>توجه:</strong> یک بسته تمدیدی از قبل در صف رزرو این مشتری است:
+                        <strong class="d-block mt-1">«{{ sub['pending_queue']['plan_name'] }}» ({{ sub['pending_queue']['data_limit'] }} گیگ - {{ sub['pending_queue']['duration'] }} روز)</strong>
+                    </div>
+                    {% endif %}
+
                     <div class="alert alert-info py-2 small mb-3">
                         <i class="fas fa-info-circle me-1"></i>
                         سقف فعلی: <strong>{{ sub['data_limit'] }} گیگابایت</strong> | مصرف: <strong>{{ "%.2f"|format(sub['data_used'] or 0) }} GB</strong>
@@ -718,12 +734,25 @@
 
                     <div class="border-top pt-3">
                         <label class="form-label fw-bold text-muted small"><i class="fas fa-sliders me-1"></i> یا وارد کردن مشخصات سفارشی:</label>
-                        <div class="row g-2">
+                        <div class="row g-2 mb-3">
                             <div class="col-6">
                                 <input type="number" step="0.5" name="custom_limit" class="form-control form-control-sm font-monospace" placeholder="حجم سفارشی (GB)">
                             </div>
                             <div class="col-6">
                                 <input type="number" name="custom_duration" class="form-control form-control-sm font-monospace" placeholder="تعداد روز سفارشی">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="border-top pt-3">
+                        <div class="form-check form-switch p-2 bg-light rounded-3 border">
+                            <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" name="instant_activate" id="adminInstantActivate{{ sub['id'] }}" value="1" {% if sub['status'] == 'expired' or (sub['data_limit'] > 0 and (sub['data_used'] or 0) >= sub['data_limit']) or (sub.get('remaining_days', 10) <= 1) %}checked{% endif %}>
+                            <label class="form-check-label fw-bold text-dark cursor-pointer" for="adminInstantActivate{{ sub['id'] }}">
+                                ⚡ فعال‌سازی آنی تمدید (ریست کامل حجم و روزها)
+                            </label>
+                            <div class="text-muted small mt-1 ps-4" style="font-size: 0.78rem;">
+                                <div><i class="fas fa-check-circle text-success me-1"></i> <strong>اگر تیک فعال باشد:</strong> حجم مصرفی در هیدیفای صفر شده و بسته جدید بلافاصله جایگزین می‌شود.</div>
+                                <div class="mt-1"><i class="fas fa-clock text-primary me-1"></i> <strong>اگر تیک خاموش باشد:</strong> بسته وارد <strong>صف رزرو</strong> می‌شود و پس از مصرف ۹۹٪ یا در روز پایانی اشتراک، به صورت خودکار و بدون قطعی فعال می‌گردد.</div>
                             </div>
                         </div>
                     </div>
@@ -1008,6 +1037,73 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">بستن</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- ─── مودال تمدید گروهی مشتریان توسط مدیریت ─── -->
+<div class="modal fade text-start" id="adminBulkRenewModal" tabindex="-1" aria-labelledby="adminBulkRenewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <form method="POST" action="{{ url_for('admin_subscriptions_bulk_renew') }}">
+                <input type="hidden" name="selected_ids_str" id="adminBulkRenewIds" value="">
+                <div class="modal-header bg-success text-white py-3">
+                    <h5 class="modal-title fw-bold mb-0" id="adminBulkRenewModalLabel">
+                        <i class="fas fa-arrows-rotate me-2"></i> تمدید گروهی اشتراک‌های انتخاب‌شده
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-info py-2 px-3 small mb-3">
+                        <i class="fas fa-info-circle me-1"></i>
+                        تعداد <strong id="adminBulkRenewCount">0</strong> اشتراک برای تمدید گروهی انتخاب شده‌اند.
+                    </div>
+
+                    <label class="form-label fw-bold">انتخاب پلن تمدید:</label>
+                    <div class="d-flex flex-column gap-2 mb-3">
+                        <label class="p-3 border rounded-3 cursor-pointer d-flex justify-content-between align-items-center bg-light">
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="radio" name="plan_id" value="current" class="form-check-input mt-0" checked>
+                                <div>
+                                    <div class="fw-bold">🔄 تمدید بر اساس پلن فعلی هر اشتراک (پیش‌فرض)</div>
+                                    <small class="text-muted">هر اشتراک با همان مشخصات حجم و روز پلن فعلی خود تمدید می‌شود.</small>
+                                </div>
+                            </div>
+                        </label>
+                        {% for p_key, p in plans.items() %}
+                        <label class="p-2 border rounded-3 cursor-pointer d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="radio" name="plan_id" value="{{ p_key }}" class="form-check-input mt-0">
+                                <div>
+                                    <div class="fw-bold fs-6">{{ p['name'] }}</div>
+                                    <small class="text-muted">{{ p['data_limit'] }} گیگ | {{ p['duration'] }} روز</small>
+                                </div>
+                            </div>
+                            <strong class="text-success small">{{ "{:,}".format(p['price']) }} ت</strong>
+                        </label>
+                        {% endfor %}
+                    </div>
+
+                    <div class="border-top pt-3">
+                        <div class="form-check form-switch p-2 bg-light rounded-3 border">
+                            <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" name="instant_activate" id="adminBulkInstantActivate" value="1">
+                            <label class="form-check-label fw-bold text-dark cursor-pointer" for="adminBulkInstantActivate">
+                                ⚡ فعال‌سازی آنی تمدید برای همه (ریست کامل حجم و روز)
+                            </label>
+                            <div class="text-muted small mt-1 ps-4" style="font-size: 0.78rem;">
+                                <div><i class="fas fa-check-circle text-success me-1"></i> <strong>اگر فعال باشد:</strong> مصرف فعلی در هیدیفای صفر شده و بسته جدید بلافاصله جایگزین می‌شود.</div>
+                                <div class="mt-1"><i class="fas fa-clock text-primary me-1"></i> <strong>اگر خاموش باشد:</strong> بسته‌ها به عنوان <strong>رزرو در صف تمدید</strong> قرار می‌گیرند و پس از مصرف ۹۹٪ یا در روز پایانی اشتراک، خودکار و بدون قطعی فعال خواهند شد.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-success btn-sm px-4 fw-bold">
+                        <i class="fas fa-check me-1"></i> تایید و اعمال تمدید گروهی
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -1549,6 +1645,21 @@ function downloadQrCode(elementId, filename) {
     } else {
         alert('تصویر بارکد برای دانلود آماده نیست.');
     }
+}
+
+// باز کردن مودال تمدید گروهی مشتریان توسط مدیریت
+function openAdminBulkRenewModal() {
+    const idsStr = document.querySelector('#adminSubBulkForm .bulk-selected-ids-input')?.value || '';
+    const ids = idsStr.split(',').map(x => x.trim()).filter(x => x.length > 0);
+    if (ids.length === 0) {
+        alert('⚠️ لطفاً ابتدا حداقل یک مشتری را از جدول انتخاب فرمایید.');
+        return;
+    }
+    document.getElementById('adminBulkRenewIds').value = idsStr;
+    document.getElementById('adminBulkRenewCount').innerText = ids.length;
+    const modalEl = document.getElementById('adminBulkRenewModal');
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
 }
 
 // باز کردن مودال انتقال دستی انتخاب‌شده‌ها
