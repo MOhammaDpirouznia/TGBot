@@ -3319,8 +3319,43 @@ def subscriptions():
         params.append(int(reseller_filter_id))
 
     if search:
-        base_conditions.append("(account_name LIKE ? OR hidify_uuid LIKE ? OR phone_number LIKE ? OR plan_name LIKE ? OR telegram_id LIKE ?)")
-        params.extend([f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"])
+        # تبدیل ارقام فارسی و عربی به انگلیسی برای جستجوی دقیق شماره‌ها و شناسه‌ها
+        persian_digits = "۰۱۲۳۴۵۶۷۸۹"
+        arabic_digits = "٠١٢٣٤٥٦٧٨٩"
+        clean_search = search.strip()
+        norm_search = clean_search
+        for i in range(10):
+            norm_search = norm_search.replace(persian_digits[i], str(i)).replace(arabic_digits[i], str(i))
+        
+        raw_pattern = f"%{clean_search}%"
+        norm_pattern = f"%{norm_search}%"
+        clean_no_hash = norm_search.lstrip("#")
+        id_pattern = f"%{clean_no_hash}%"
+
+        base_conditions.append("""(
+            account_name LIKE ? 
+            OR account_name LIKE ?
+            OR hidify_uuid LIKE ? 
+            OR phone_number LIKE ? 
+            OR phone_number LIKE ?
+            OR plan_name LIKE ? 
+            OR CAST(telegram_id AS TEXT) LIKE ? 
+            OR account_comment LIKE ? 
+            OR debt_notes LIKE ? 
+            OR CAST(id AS TEXT) LIKE ?
+            OR telegram_id IN (SELECT telegram_id FROM users WHERE username LIKE ? OR username LIKE ? OR phone_number LIKE ?)
+        )""")
+        params.extend([
+            raw_pattern, norm_pattern,
+            norm_pattern,
+            raw_pattern, norm_pattern,
+            raw_pattern,
+            norm_pattern,
+            raw_pattern,
+            raw_pattern,
+            id_pattern,
+            raw_pattern, f"%{clean_search.lstrip('@')}%", norm_pattern
+        ])
 
     where_clause = " WHERE " + " AND ".join(base_conditions) if base_conditions else ""
     
