@@ -2722,30 +2722,78 @@ def api_subscription_sessions(sub_id: int):
 @app.route("/subscriptions")
 @permission_required("subscriptions_view")
 def subscriptions():
-    """لیست اشتراک‌های هیدیفای همراه با وضعیت آنلاین بودن و اطلاعات استرداد وجه"""
+    """لیست اشتراک‌های هیدیفای همراه با وضعیت آنلاین، حذف نرم، سطل زباله و صفحه بندی"""
     sync_hiddify_online_users()
-    conn = db.get_connection()
+    
+    # بررسی و پاکسازی دوره‌ای موارد منقضی شده سطل زباله (بیش از ۷ روز)
+    try:
+        purged = db.purge_expired_deleted_subscriptions(days=7)
+        for p in purged:
+            if p.get("hidify_uuid"):
+                try:
+                    hidify_sync_delete_user(p["hidify_uuid"])
+                except Exception as e:
+                    logger.warning(f"Error purging user {p['hidify_uuid']} from Hiddify: {e}")
+    except Exception as e:
+        logger.warning(f"Error during expired deleted auto-purge: {e}")
+
     status_filter = request.args.get("status", "all")
-    if status_filter == "online":
-        sub_list = conn.execute("SELECT * FROM subscriptions WHERE is_online=1 ORDER BY updated_at DESC LIMIT 150").fetchall()
+    search = request.args.get("search", "").strip().lower()
+    page = request.args.get("page", 1, type=int)
+    per_page_str = request.args.get("per_page", "50")
+    try:
+        per_page = 999999 if per_page_str == "all" else max(10, int(per_page_str))
+    except (ValueError, TypeError):
+        per_page = 50
+        per_page_str = "50"
+
+    conn = db.get_connection()
+    # شمارش موارد سطل زباله
+    deleted_count = conn.execute("SELECT COUNT(*) FROM subscriptions WHERE is_deleted=1").fetchone()[0]
+
+    if status_filter == "deleted":
+        sub_list = conn.execute("SELECT * FROM subscriptions WHERE is_deleted=1 ORDER BY deleted_at DESC, id DESC").fetchall()
+    elif status_filter == "online":
+        sub_list = conn.execute("SELECT * FROM subscriptions WHERE is_online=1 AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY updated_at DESC").fetchall()
     elif status_filter == "all":
-        sub_list = conn.execute("SELECT * FROM subscriptions ORDER BY created_at DESC LIMIT 150").fetchall()
+        sub_list = conn.execute("SELECT * FROM subscriptions WHERE (is_deleted=0 OR is_deleted IS NULL) ORDER BY created_at DESC").fetchall()
     else:
-        sub_list = conn.execute("SELECT * FROM subscriptions WHERE status=? ORDER BY created_at DESC LIMIT 150", (status_filter,)).fetchall()
+        sub_list = conn.execute("SELECT * FROM subscriptions WHERE status=? AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY created_at DESC", (status_filter,)).fetchall()
     conn.close()
 
-    subscriptions_with_refund = []
+    filtered = []
     for s in sub_list:
         s_dict = enrich_subscription_details(s)
         s_dict["refund_info"] = db.calculate_customer_refund(s["id"])
-        subscriptions_with_refund.append(s_dict)
-    
+        if search:
+            match = (
+                search in (s_dict.get("account_name") or "").lower() or
+                search in (s_dict.get("phone_number") or "").lower() or
+                search in (s_dict.get("plan_name") or "").lower() or
+                search in (s_dict.get("hidify_uuid") or "").lower()
+            )
+            if not match:
+                continue
+        filtered.append(s_dict)
+
+    total_count = len(filtered)
+    total_pages = max(1, math.ceil(total_count / per_page))
+    page = max(1, min(page, total_pages))
+    start_idx = (page - 1) * per_page
+    paginated_subs = filtered[start_idx : start_idx + per_page]
+
     online_stats = db.get_online_users_stats()
     single_link_template = get_single_link_template(db)
     return render_template(
         "subscriptions.html",
-        subscriptions=subscriptions_with_refund,
+        subscriptions=paginated_subs,
+        total_count=total_count,
+        page=page,
+        total_pages=total_pages,
+        per_page_str=per_page_str,
+        search=search,
         status_filter=status_filter,
+        deleted_count=deleted_count,
         online_count=online_stats["online_count"],
         online_stats=online_stats,
         panel_url=get_hiddify_url(),
@@ -2838,7 +2886,7 @@ def admin_subscription_toggle(sub_id):
 @app.route("/admin/subscription/<int:sub_id>/delete", methods=["POST"])
 @permission_required("sub_delete")
 def admin_subscription_delete(sub_id):
-    """حذف اشتراک مشتری با محاسبه زمان‌دار و استرداد مستقیم وجه به کیف پول مشتری"""
+    """حذف نرم اشتراک مشتری با ثبت دلیل حذف و استرداد وجه به کیف پول"""
     admin_role = session.get("admin_role", "support")
     admin_name = session.get("name") or session.get("username") or "مدیر"
     
@@ -2846,8 +2894,11 @@ def admin_subscription_delete(sub_id):
     if admin_role == "super_admin":
         refund_to_customer = (request.form.get("refund_to_customer") == "on" or request.form.get("refund_to_customer") == "1")
     else:
-        # برای مدیر پشتیبانی، استرداد طبق روال پیش‌فرض سیستمی انجام می‌شود
         refund_to_customer = True
+
+    reason = request.form.get("reason", "").strip()
+    custom_reason = request.form.get("custom_reason", "").strip()
+    final_reason = custom_reason if (reason == "سایر موارد" and custom_reason) else (reason or "حذف توسط مدیریت")
 
     conn = db.get_connection()
     sub_row = conn.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,)).fetchone()
@@ -2859,15 +2910,15 @@ def admin_subscription_delete(sub_id):
     sub = dict(sub_row)
     uuid_val = sub.get("hidify_uuid")
 
-    # حذف از سرور هیدیفای
+    # غیرفعال‌سازی در سرور هیدیفای بدون حذف فیزیکی (مهلت ۷ روزه تا پاکسازی کامل)
     if uuid_val:
         try:
-            hidify_sync_delete_user(uuid_val)
+            hidify_sync_update_user(uuid_val, enable=False, is_active=False)
         except Exception as ex:
-            logger.error(f"Error deleting user {uuid_val} from Hiddify: {ex}")
+            logger.error(f"Error disabling user {uuid_val} in Hiddify on soft-delete: {ex}")
 
-    # حذف و استرداد مستقیم وجه به مشتری در دیتابیس
-    del_res = db.delete_customer_subscription(sub_id, refund_to_customer=refund_to_customer, admin_name=admin_name)
+    # حذف نرم و استرداد مستقیم وجه به مشتری در دیتابیس
+    del_res = db.delete_customer_subscription(sub_id, refund_to_customer=refund_to_customer, admin_name=admin_name, reason=final_reason)
     if del_res.get("success"):
         if del_res.get("refund_done") and del_res.get("refund_amount", 0) > 0:
             # ارسال پیامک یا نوتیف تلگرام به کاربر
@@ -2883,13 +2934,30 @@ def admin_subscription_delete(sub_id):
                     send_telegram_msg(u_id, refund_msg)
                 except Exception:
                     pass
-            flash(f"اشتراک «{del_res['account_name']}» حذف شد و مبلغ {del_res['refund_amount']:,} تومان ({del_res['refund_percent']}٪ استرداد) مستقیماً به کیف پول مشتری بازگردانده شد.", "success")
+            flash(f"اشتراک «{del_res['account_name']}» به سطل زباله منتقل شد و مبلغ {del_res['refund_amount']:,} تومان به کیف پول مشتری بازگردانده شد. (دلیل: {final_reason})", "success")
         else:
-            flash(f"اشتراک «{del_res['account_name']}» با موفقیت حذف گردید (بدون استرداد وجه خودکار).", "info")
+            flash(f"اشتراک «{del_res['account_name']}» با موفقیت به سطل زباله منتقل گردید. (دلیل: {final_reason})", "info")
     else:
         flash(f"خطا در حذف اشتراک: {del_res.get('error')}", "danger")
 
-    return redirect(url_for("subscriptions"))
+    return redirect(request.referrer or url_for("subscriptions"))
+
+
+@app.route("/admin/subscription/<int:sub_id>/restore", methods=["POST"])
+@permission_required("sub_manage")
+def admin_subscription_restore(sub_id):
+    """بازگردانی اشتراک از سطل زباله توسط مدیر و فعال‌سازی مجدد در هیدیفای"""
+    res = db.restore_subscription(sub_id, is_reseller=False)
+    if res.get("success"):
+        if res.get("hidify_uuid"):
+            try:
+                hidify_sync_update_user(res["hidify_uuid"], enable=True, is_active=True)
+            except Exception as e:
+                logger.warning(f"Error re-enabling user in Hiddify on restore: {e}")
+        flash(f"اشتراک «{res.get('account_name')}» با موفقیت از سطل زباله بازیابی و در هیدیفای فعال گردید.", "success")
+    else:
+        flash(f"خطا در بازیابی اشتراک: {res.get('error')}", "danger")
+    return redirect(request.referrer or url_for("subscriptions"))
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -2924,7 +2992,13 @@ def admin_resellers():
                 logger.warning(f"Failed to auto-create Hiddify admin: {h_admin.get('error')}")
                 flash(f"هشدار: ادمین هیدیفای خودکار ساخته نشد ({h_admin.get('error')})، اما حساب نماینده ایجاد گردید.", "warning")
 
-        res = db.create_reseller(username, password, name, telegram_id, discount_percent, initial_balance, hiddify_admin_uuid=hiddify_admin_uuid)
+        credit_enabled = 1 if request.form.get("credit_enabled") else 0
+        try:
+            credit_limit = int(request.form.get("credit_limit") or 0)
+        except (ValueError, TypeError):
+            credit_limit = 0
+
+        res = db.create_reseller(username, password, name, telegram_id, discount_percent, initial_balance, hiddify_admin_uuid=hiddify_admin_uuid, credit_enabled=credit_enabled, credit_limit=credit_limit)
         if res.get("success"):
             flash(f"نماینده جدید «{name}» با موفقیت افزوده شد!", "success")
         else:
