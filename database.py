@@ -5481,6 +5481,203 @@ class Database:
         finally:
             conn.close()
 
+    def find_subscriptions_by_pattern(self, pattern: str, pattern_type: str = "auto", source_filter: str = "all") -> list:
+        """
+        جستجوی هوشمند اشتراک‌ها بر اساس الگو، پیشوند، وایلدکارد یا عبارت منظم (Regex)
+        جهت انتقال گروهی و دسته‌ای به نمایندگان
+        """
+        if not pattern or not str(pattern).strip():
+            return []
+
+        pattern = str(pattern).strip()
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        # اعمال فیلتر بر اساس منبع مالکیت
+        query = """
+            SELECT s.*, 
+                   r.name as reseller_name, 
+                   r.username as reseller_username,
+                   r.hiddify_admin_uuid as reseller_admin_uuid
+            FROM subscriptions s
+            LEFT JOIN resellers r ON s.reseller_id = r.id
+        """
+        params = []
+        if source_filter == "direct":
+            query += " WHERE (s.reseller_id IS NULL OR s.reseller_id = 0)"
+        elif source_filter and source_filter.startswith("reseller_"):
+            try:
+                r_id = int(source_filter.replace("reseller_", ""))
+                query += " WHERE s.reseller_id = ?"
+                params.append(r_id)
+            except ValueError:
+                pass
+        elif source_filter and source_filter.isdigit():
+            query += " WHERE s.reseller_id = ?"
+            params.append(int(source_filter))
+
+        cursor.execute(query, params)
+        all_subs = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+
+        import re
+        import fnmatch
+
+        matched = []
+        pattern_lower = pattern.lower()
+
+        # تعیین نوع جستجو در حالت auto
+        is_regex = pattern_type == "regex" or (pattern_type == "auto" and (pattern.startswith("^") or pattern.endswith("$") or "\\d" in pattern))
+        is_wildcard = pattern_type == "wildcard" or (pattern_type == "auto" and not is_regex and ("*" in pattern or "?" in pattern))
+        is_prefix = pattern_type == "prefix"
+
+        regex_compiled = None
+        if is_regex:
+            try:
+                regex_compiled = re.compile(pattern, re.IGNORECASE)
+            except Exception:
+                regex_compiled = None
+
+        for sub in all_subs:
+            name = (sub.get("account_name") or "").strip()
+            comment = (sub.get("account_comment") or "").strip()
+            uuid_val = (sub.get("hidify_uuid") or "").strip()
+
+            is_match = False
+            if regex_compiled:
+                if regex_compiled.search(name) or regex_compiled.search(comment):
+                    is_match = True
+            elif is_wildcard:
+                if fnmatch.fnmatch(name.lower(), pattern_lower) or fnmatch.fnmatch(comment.lower(), pattern_lower):
+                    is_match = True
+            elif is_prefix:
+                if name.lower().startswith(pattern_lower) or comment.lower().startswith(pattern_lower):
+                    is_match = True
+            else:
+                # حالت پیش‌فرض / contains / prefix هوشمند
+                if name.lower().startswith(pattern_lower):
+                    is_match = True
+                elif pattern_lower in name.lower() or pattern_lower in comment.lower():
+                    is_match = True
+
+            if is_match:
+                matched.append(sub)
+
+        return matched
+
+    def transfer_subscriptions_to_reseller(self, sub_ids: list, target_reseller_id: int,
+                                          target_hiddify_admin: str = None,
+                                          safe_backdate_hours: int = 72,
+                                          admin_name: str = "مدیریت") -> dict:
+        """
+        انتقال دسته‌ای و هوشمند اشتراک‌ها به یک نماینده با رعایت شروط امنیتی:
+        ۱. حفظ تاریخ واقعی یا تنظیم تاریخ به بیش از ۲۴ ساعت گذشته جهت جلوگیری از سوءاستفاده استرداد وجه
+        ۲. انتساب به reseller_id نماینده و ثبت لاگ تاریخچه
+        ۳. بازگرداندن اطلاعات لازم جهت اعمال همزمان در API هیدیفای (تغییر added_by)
+        """
+        if not sub_ids or not isinstance(sub_ids, list):
+            return {"success": False, "transferred_count": 0, "error": "هیچ اشتراکی برای انتقال انتخاب نشده است."}
+
+        target_reseller = self.get_reseller(target_reseller_id)
+        if not target_reseller:
+            return {"success": False, "transferred_count": 0, "error": "نماینده مقصد یافت نشد."}
+
+        # تعیین شناسه ادمین هیدیفای نماینده
+        final_hiddify_admin = target_hiddify_admin or target_reseller.get("hiddify_admin_uuid")
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        now_dt = get_now_naive()
+
+        # زمان امن گذشته (حداقل ۷۲ ساعت پیش) در صورت نبود تاریخ یا تاریخ کمتر از ۲۴ ساعت
+        safe_past_dt = now_dt - timedelta(hours=max(25, safe_backdate_hours))
+        safe_past_iso = safe_past_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+        transferred_subs = []
+        try:
+            for sub_id in sub_ids:
+                cursor.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,))
+                sub_row = cursor.fetchone()
+                if not sub_row:
+                    continue
+
+                sub = dict(sub_row)
+                current_created = sub.get("created_at")
+                
+                # بررسی اینکه آیا تاریخ ایجاد قبلی معتبر و بیش از ۲۴ ساعت گذشته است
+                is_older_than_24h = False
+                final_created_at = safe_past_iso
+                if current_created:
+                    try:
+                        clean = str(current_created).strip().replace("Z", "")
+                        dt = datetime.fromisoformat(clean)
+                        if dt.tzinfo is not None:
+                            dt = dt.astimezone(TEHRAN_TZ).replace(tzinfo=None)
+                        if (now_dt - dt).total_seconds() >= 24 * 3600:
+                            is_older_than_24h = True
+                            final_created_at = current_created
+                    except Exception:
+                        pass
+
+                # بروزرسانی اشتراک: تغییر مالکیت، تنظیم تاریخ امن، و صفر کردن هزینه پرداختی نماینده
+                cursor.execute("""
+                    UPDATE subscriptions
+                    SET reseller_id = ?,
+                        created_at = ?,
+                        cost_paid = 0,
+                        updated_at = ?
+                    WHERE id = ?
+                """, (target_reseller_id, final_created_at, now, sub_id))
+
+                # ثبت در جدول تاریخچه اشتراک‌ها (سوابق مدیریت)
+                try:
+                    cursor.execute("""
+                        INSERT INTO subscription_history (
+                            subscription_id, telegram_id, hidify_uuid, account_name,
+                            plan_name, previous_usage_gb, previous_limit_gb, period_days,
+                            renewal_type, renewed_at, reseller_id, plan_price, cost_paid,
+                            start_date, expire_date, note, created_by
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'migrated_to_reseller', ?, ?, 0, 0, ?, ?, ?, ?)
+                    """, (
+                        sub_id, sub.get("telegram_id"), sub.get("hidify_uuid"), sub.get("account_name"),
+                        sub.get("plan_name"), float(sub.get("data_used") or 0), float(sub.get("data_limit") or 0),
+                        int(sub.get("duration") or 30), now, target_reseller_id, sub.get("start_date"),
+                        sub.get("expire_date"),
+                        f"انتقال سازمانی به نماینده {target_reseller['name']} (@{target_reseller['username']})",
+                        admin_name
+                    ))
+                except Exception as ex:
+                    logger.warning(f"Error recording subscription migration history for sub #{sub_id}: {ex}")
+
+                transferred_subs.append({
+                    "id": sub_id,
+                    "hidify_uuid": sub.get("hidify_uuid"),
+                    "account_name": sub.get("account_name"),
+                    "created_at": final_created_at,
+                    "previous_reseller_id": sub.get("reseller_id"),
+                    "new_reseller_id": target_reseller_id
+                })
+
+            conn.commit()
+            return {
+                "success": True,
+                "transferred_count": len(transferred_subs),
+                "transferred_subs": transferred_subs,
+                "target_reseller": {
+                    "id": target_reseller_id,
+                    "name": target_reseller["name"],
+                    "username": target_reseller["username"],
+                    "hiddify_admin_uuid": final_hiddify_admin
+                }
+            }
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Error transferring subscriptions to reseller: {e}")
+            return {"success": False, "transferred_count": 0, "error": str(e)}
+        finally:
+            conn.close()
+
     def authenticate_reseller(self, username: str, password: str):
         """احراز هویت نماینده"""
         conn = self.get_connection()

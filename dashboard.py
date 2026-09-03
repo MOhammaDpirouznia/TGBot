@@ -4694,6 +4694,39 @@ def admin_subscriptions_bulk():
         elif action == "clear_debt":
             db.clear_subscription_debt(sub_id)
             success_count += 1
+        elif action == "transfer_reseller":
+            pass
+
+    if action == "transfer_reseller":
+        target_reseller_id = request.form.get("target_reseller_id")
+        target_hiddify_admin = request.form.get("target_hiddify_admin")
+        if not target_reseller_id or not str(target_reseller_id).isdigit():
+            flash("❌ لطفاً نماینده مقصد را مشخص کنید.", "danger")
+            return redirect(url_for("subscriptions"))
+
+        target_r_id = int(target_reseller_id)
+        res = db.transfer_subscriptions_to_reseller(
+            sub_ids, target_r_id,
+            target_hiddify_admin=target_hiddify_admin,
+            admin_name=admin_name
+        )
+        if res.get("success"):
+            t_count = res.get("transferred_count", 0)
+            h_admin = res.get("target_reseller", {}).get("hiddify_admin_uuid")
+            h_success = 0
+            for item in res.get("transferred_subs", []):
+                h_uuid = item.get("hidify_uuid")
+                if h_uuid and h_admin:
+                    try:
+                        h_res = hidify_sync_update_user(h_uuid, added_by=h_admin)
+                        if isinstance(h_res, dict) and "error" not in h_res:
+                            h_success += 1
+                    except Exception as ex:
+                        logger.error(f"Error syncing user {h_uuid} admin in Hiddify: {ex}")
+            flash(f"✅ تعداد {t_count} مشتری با موفقیت به نماینده «{res['target_reseller']['name']}» منتقل شدند (سینک هیدیفای: {h_success} از {t_count}).", "success")
+        else:
+            flash(f"❌ خطا در انتقال اشتراک‌ها: {res.get('error', 'نامشخص')}", "danger")
+        return redirect(url_for("subscriptions"))
 
     if action == "disable":
         flash(f"✅ تعداد {success_count} اشتراک با موفقیت غیرفعال شدند.", "info")
@@ -4707,6 +4740,109 @@ def admin_subscriptions_bulk():
         flash(f"عملیات برای {success_count} اشتراک انجام شد.", "info")
 
     return redirect(url_for("subscriptions"))
+
+
+@app.route("/api/admin/transfer-by-pattern/preview", methods=["POST"])
+@permission_required("subscriptions_view")
+def api_transfer_by_pattern_preview():
+    """پیش‌نمایش مشتریان منطبق با الگو جهت انتقال گروهی"""
+    data = request.get_json(silent=True) or request.form
+    pattern = str(data.get("pattern") or "").strip()
+    pattern_type = str(data.get("pattern_type") or "auto").strip()
+    source_filter = str(data.get("source_filter") or "all").strip()
+
+    if not pattern:
+        return jsonify({"success": False, "error": "لطفاً الگو یا عبارت جستجو را وارد کنید."}), 400
+
+    matched = db.find_subscriptions_by_pattern(pattern, pattern_type=pattern_type, source_filter=source_filter)
+    
+    results = []
+    for s in matched:
+        results.append({
+            "id": s["id"],
+            "account_name": s["account_name"] or "بدون نام",
+            "hidify_uuid": s["hidify_uuid"],
+            "plan_name": s["plan_name"] or "-",
+            "data_limit": float(s.get("data_limit") or 0),
+            "data_used": float(s.get("data_used") or 0),
+            "status": s.get("status", "active"),
+            "created_at": s.get("created_at") or "-",
+            "reseller_id": s.get("reseller_id"),
+            "reseller_name": s.get("reseller_name") or "مستقیم مدیریت"
+        })
+
+    return jsonify({
+        "success": True,
+        "count": len(results),
+        "subscriptions": results
+    })
+
+
+@app.route("/api/admin/transfer-by-pattern/execute", methods=["POST"])
+@permission_required("subscriptions_edit")
+def api_transfer_by_pattern_execute():
+    """اجرای قطعی انتقال گروهی مشتریان بر اساس الگو در هیدیفای و پنل مدیریت"""
+    data = request.get_json(silent=True) or request.form
+    pattern = str(data.get("pattern") or "").strip()
+    pattern_type = str(data.get("pattern_type") or "auto").strip()
+    source_filter = str(data.get("source_filter") or "all").strip()
+    target_reseller_id = data.get("target_reseller_id")
+    target_hiddify_admin = data.get("target_hiddify_admin")
+
+    if not pattern:
+        return jsonify({"success": False, "error": "الگو مشخص نشده است."}), 400
+    if not target_reseller_id or not str(target_reseller_id).isdigit():
+        return jsonify({"success": False, "error": "نماینده مقصد مشخص نشده است."}), 400
+
+    target_reseller_id = int(target_reseller_id)
+    matched = db.find_subscriptions_by_pattern(pattern, pattern_type=pattern_type, source_filter=source_filter)
+    if not matched:
+        return jsonify({"success": False, "error": "هیچ مشتری منطبق با این الگو یافت نشد."}), 404
+
+    sub_ids = [s["id"] for s in matched]
+    admin_name = session.get("name") or session.get("username") or "مدیریت"
+
+    res = db.transfer_subscriptions_to_reseller(
+        sub_ids, target_reseller_id,
+        target_hiddify_admin=target_hiddify_admin,
+        admin_name=admin_name
+    )
+
+    if not res.get("success"):
+        return jsonify({"success": False, "error": res.get("error", "خطا در دیتابیس")}), 500
+
+    t_count = res.get("transferred_count", 0)
+    h_admin = res.get("target_reseller", {}).get("hiddify_admin_uuid")
+    h_success = 0
+    h_errors = []
+
+    for item in res.get("transferred_subs", []):
+        h_uuid = item.get("hidify_uuid")
+        if h_uuid and h_admin:
+            try:
+                h_res = hidify_sync_update_user(h_uuid, added_by=h_admin)
+                if isinstance(h_res, dict) and "error" not in h_res:
+                    h_success += 1
+                else:
+                    h_errors.append(f"{item.get('account_name')}: {h_res.get('error', 'نامشخص')}")
+            except Exception as ex:
+                h_errors.append(f"{item.get('account_name')}: {str(ex)}")
+
+    return jsonify({
+        "success": True,
+        "transferred_count": t_count,
+        "hiddify_synced_count": h_success,
+        "target_reseller": res.get("target_reseller"),
+        "errors": h_errors
+    })
+
+
+@app.route("/api/admin/hiddify-admins", methods=["GET"])
+@permission_required("subscriptions_view")
+def api_hiddify_admins():
+    """دریافت لیست ادمین‌های ثبت‌شده در پنل هیدیفای"""
+    admins = hidify_sync_get_admins()
+    return jsonify({"success": True, "admins": admins})
 
 
 @app.route("/api/subscription/<int:sub_id>/history", methods=["GET"])
