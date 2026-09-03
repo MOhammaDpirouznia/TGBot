@@ -882,19 +882,20 @@ def hidify_sync_create_user(name: str, usage_limit_gb: float = None, package_day
 
 
 def hidify_sync_create_admin(name: str, mode: str = "agent", comment: str = None,
+                            can_add_admin: bool = False, lang: str = "fa",
                             max_users: int = None, max_usage_limit_gb: float = None) -> dict:
     """ساخت ادمین / نماینده مستقل در هیدیفای"""
     payload = {
         "name": name,
-        "mode": mode,
-        "can_add_users": True,
-        "is_active": True
+        "mode": mode or "agent",
+        "can_add_admin": bool(can_add_admin),
+        "lang": lang or "fa"
     }
     if comment:
         payload["comment"] = str(comment)[:200]
-    if max_users is not None and max_users > 0:
+    if max_users is not None and int(max_users) > 0:
         payload["max_users"] = int(max_users)
-    if max_usage_limit_gb is not None and max_usage_limit_gb > 0:
+    if max_usage_limit_gb is not None and float(max_usage_limit_gb) > 0:
         payload["max_usage_limit_GB"] = float(max_usage_limit_gb)
 
     return hidify_sync_request("POST", "/admin/admin_user/", payload)
@@ -914,6 +915,26 @@ def hidify_sync_get_admin(uuid: str) -> dict:
 def hidify_sync_delete_admin(uuid: str) -> dict:
     """حذف یک ادمین از هیدیفای"""
     return hidify_sync_request("DELETE", f"/admin/admin_user/{uuid}/")
+
+
+def hidify_sync_update_admin(uuid: str, **kwargs) -> dict:
+    """بروزرسانی اطلاعات یک ادمین در هیدیفای"""
+    payload = {}
+    if "name" in kwargs and kwargs["name"]:
+        payload["name"] = str(kwargs["name"])
+    if "comment" in kwargs:
+        payload["comment"] = str(kwargs["comment"])[:200]
+    if "mode" in kwargs and kwargs["mode"]:
+        payload["mode"] = str(kwargs["mode"])
+    if "can_add_admin" in kwargs:
+        payload["can_add_admin"] = bool(kwargs["can_add_admin"])
+    if "lang" in kwargs and kwargs["lang"]:
+        payload["lang"] = str(kwargs["lang"])
+    if "max_users" in kwargs and kwargs["max_users"] is not None:
+        payload["max_users"] = int(kwargs["max_users"])
+    if "max_usage_limit_gb" in kwargs and kwargs["max_usage_limit_gb"] is not None:
+        payload["max_usage_limit_GB"] = float(kwargs["max_usage_limit_gb"])
+    return hidify_sync_request("PATCH", f"/admin/admin_user/{uuid}/", payload)
 
 
 def hidify_sync_update_user(uuid: str, api_key: str = None, reseller_id: int = None, **kwargs) -> dict:

@@ -8301,6 +8301,9 @@ class Database:
                     continue
                 if tg_id not in result:
                     result[tg_id] = {
+                        "open_count": 0,
+                        "in_progress_count": 0,
+                        "closed_count": 0,
                         "has_open": False,
                         "has_pending": False,
                         "has_closed": False,
@@ -8309,10 +8312,13 @@ class Database:
                     }
                 st = str(r["status"]).lower()
                 if st == "open":
+                    result[tg_id]["open_count"] += 1
                     result[tg_id]["has_open"] = True
                 elif st in ("pending", "in_progress", "replied", "waiting"):
+                    result[tg_id]["in_progress_count"] += 1
                     result[tg_id]["has_pending"] = True
                 elif st in ("closed", "resolved"):
+                    result[tg_id]["closed_count"] += 1
                     result[tg_id]["has_closed"] = True
         except Exception as e:
             logger.error(f"Error getting ticket status map: {e}")
