@@ -7131,13 +7131,14 @@ def reseller_payment_approve(payment_id):
 
     # واریز پورسانت زیرمجموعه‌گیری به بالادستی
     try:
+        sub_id_int = sub_row_id.get("subscription_id") if isinstance(sub_row_id, dict) else sub_row_id
         plan_base_price = int(selected_plan.get("price") or wholesale_price) if selected_plan else wholesale_price
         db.process_sub_reseller_affiliate_commission(
             sub_reseller_id=reseller_id,
             plan_price=plan_base_price,
             plan_name=plan_name,
             account_name=account_name,
-            sub_id=sub_row_id
+            sub_id=sub_id_int
         )
     except Exception as e:
         logger.error(f"Error processing affiliate commission in quick create: {e}")
@@ -7768,7 +7769,7 @@ def admin_create_customer():
         debt_created = now if debt_amount > 0 else None
 
         # ذخیره در دیتابیس
-        sub_id = db.save_subscription(
+        sub_res = db.save_subscription(
             telegram_id=telegram_id or 0,
             hidify_uuid=user_uuid,
             plan_id=plan_id or "custom_admin",
@@ -7779,6 +7780,7 @@ def admin_create_customer():
             account_name=account_name,
             user_limit=user_limit
         )
+        sub_id = sub_res.get("subscription_id") if isinstance(sub_res, dict) else sub_res
 
         # بروزرسانی شماره تماس، وضعیت پرداخت و بدهی در جدول subscriptions
         conn = db.get_connection()
