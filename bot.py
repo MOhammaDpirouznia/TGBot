@@ -2162,11 +2162,25 @@ async def show_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         remaining_text = f" (⏰ **{remaining_days} روز مانده**)" if remaining_days is not None else ""
 
+        # بررسی وجود بسته تمدیدی رزرو در صف
+        queue_text = ""
+        try:
+            queued_item = db.get_pending_queue_item(sub.get("id"))
+            if queued_item:
+                queue_text = (
+                    f"   ⏳ **بسته رزرو (در صف فعال‌سازی خودکار):**\n"
+                    f"      📦 پلن: {queued_item.get('plan_name')} ({queued_item.get('data_limit')} گیگ - {queued_item.get('duration')} روز)\n"
+                    f"      🔄 زمان فعال‌سازی: پس از مصرف ۹۹٪ حجم یا در روز پایانی اشتراک فعلی\n"
+                )
+        except Exception as e_q:
+            logger.debug(f"Error checking pending queue for sub {sub.get('id')}: {e_q}")
+
         text += (
             f"**{i}. {plan_name}** - {status_icon}\n"
             f"   📝 نام اکانت: `{account_name}`\n"
             f"   {data_text}\n"
-            f"   📅 شروع: {start_fmt} | انقضا: {expire_fmt}{remaining_text}\n\n"
+            f"   📅 شروع: {start_fmt} | انقضا: {expire_fmt}{remaining_text}\n"
+            f"{queue_text}\n"
         )
 
     try:

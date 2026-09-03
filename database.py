@@ -947,6 +947,31 @@ class Database:
         except Exception:
             pass
 
+        # جدول صف تمدید هوشمند و بسته‌های رزرو
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS subscription_queue (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    subscription_id INTEGER NOT NULL,
+                    telegram_id INTEGER DEFAULT 0,
+                    hidify_uuid TEXT,
+                    reseller_id INTEGER,
+                    plan_id TEXT,
+                    plan_name TEXT,
+                    data_limit REAL DEFAULT 0,
+                    duration INTEGER DEFAULT 30,
+                    cost INTEGER DEFAULT 0,
+                    status TEXT DEFAULT 'pending',
+                    created_at TEXT,
+                    activated_at TEXT,
+                    note TEXT,
+                    FOREIGN KEY (subscription_id) REFERENCES subscriptions(id) ON DELETE CASCADE
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sub_queue_sub_status ON subscription_queue(subscription_id, status)")
+        except Exception as e:
+            logger.warning(f"Error creating subscription_queue table: {e}")
+
         conn.commit()
         conn.close()
         logger.info("Database initialized successfully")
@@ -6209,8 +6234,9 @@ class Database:
             conn.close()
 
     def renew_reseller_subscription(self, reseller_id: int, sub_id: int, plan_id: str, plan_name: str,
-                                    cost: int, data_limit: float, duration: int, renewal_type: str = "reset_and_replaced"):
-        """تمدید اشتراک مشتری توسط نماینده با کسر هزینه از موجودی کیف پول و اعتبار خرید"""
+                                    cost: int, data_limit: float, duration: int,
+                                    instant_activate: bool = True, renewal_type: str = "reset_and_replaced"):
+        """تمدید اشتراک مشتری توسط نماینده با کسر هزینه از موجودی کیف پول و اعتبار خرید (آنی یا در صف رزرو)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -6237,14 +6263,15 @@ class Database:
                 return {"success": False, "error": "اشتراک مورد نظر یافت نشد."}
 
             # ۱. کسر هزینه از کیف پول و در صورت نیاز از اعتبار
+            mode_title = "فعال‌سازی آنی" if instant_activate else "رزرو در صف تمدید"
             if balance >= cost:
                 cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (cost, now, reseller_id))
-                tx_desc = f"تمدید اشتراک «{sub['account_name']}» با پلن {plan_name} (پرداخت از کیف پول)"
+                tx_desc = f"تمدید اشتراک «{sub['account_name']}» با پلن {plan_name} ({mode_title} - پرداخت از کیف پول)"
             else:
                 from_credit = cost - balance
                 new_debt = credit_debt + from_credit
                 cursor.execute("UPDATE resellers SET balance = 0, credit_debt = ?, updated_at=? WHERE id=?", (new_debt, now, reseller_id))
-                tx_desc = f"تمدید اشتراک «{sub['account_name']}» با پلن {plan_name} (کسر {balance:,} ت از کیف پول و {from_credit:,} ت از اعتبار)"
+                tx_desc = f"تمدید اشتراک «{sub['account_name']}» با پلن {plan_name} ({mode_title} - کسر {balance:,} ت از کیف پول و {from_credit:,} ت از اعتبار)"
 
             # ۲. ثبت تراکنش تمدید در تاریخچه مالی نماینده
             cursor.execute("""
@@ -6252,16 +6279,157 @@ class Database:
                 VALUES (?, 'renewal', ?, ?, ?, ?, ?)
             """, (reseller_id, cost, plan_name, sub["account_name"], tx_desc, now))
 
-            # ۳. به‌روزرسانی مشخصات اشتراک
-            cursor.execute("""
-                UPDATE subscriptions
-                SET plan_id=?, plan_name=?, data_limit=?, duration=?, status='active', updated_at=?, cost_paid=?
-                WHERE id=? AND reseller_id=?
-            """, (plan_id, plan_name, data_limit, duration, now, cost, sub_id, reseller_id))
+            if instant_activate:
+                # ۳. به‌روزرسانی آنی مشخصات اشتراک، ریست حجم مصرفی و ریست تاریخ شروع و انقضا
+                now_naive = get_now_naive()
+                new_start_date = now_naive.strftime("%Y-%m-%d")
+                new_expire_date = (now_naive + timedelta(days=duration)).isoformat()
+                cursor.execute("""
+                    UPDATE subscriptions
+                    SET plan_id=?, plan_name=?, data_limit=?, data_used=0, duration=?, status='active',
+                        start_date=?, expire_date=?, updated_at=?, cost_paid=?
+                    WHERE id=? AND reseller_id=?
+                """, (plan_id, plan_name, data_limit, duration, new_start_date, new_expire_date, now, cost, sub_id, reseller_id))
+                conn.commit()
+                return {"success": True, "mode": "instant"}
+            else:
+                # ۴. افزودن به صف تمدید هوشمند (رزرو بسته خودکار)
+                cursor.execute("UPDATE subscription_queue SET status='cancelled' WHERE subscription_id=? AND status='pending'", (sub_id,))
+                cursor.execute("""
+                    INSERT INTO subscription_queue (
+                        subscription_id, telegram_id, hidify_uuid, reseller_id,
+                        plan_id, plan_name, data_limit, duration, cost, status, created_at, note
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+                """, (sub_id, sub["telegram_id"] or 0, sub["hidify_uuid"] or "", reseller_id,
+                      plan_id, plan_name, data_limit, duration, cost, now, "تمدید رزرو نماینده"))
+                conn.commit()
+                return {"success": True, "mode": "queued"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
 
+    def add_to_subscription_queue(self, subscription_id: int, plan_id: str, plan_name: str,
+                                  data_limit: float, duration: int, cost: int = 0,
+                                  reseller_id: int = None, telegram_id: int = None,
+                                  hidify_uuid: str = None, note: str = None) -> dict:
+        """افزودن بسته تمدیدی به صف رزرو خودکار"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT * FROM subscriptions WHERE id=?", (subscription_id,))
+            sub_row = cursor.fetchone()
+            if not sub_row:
+                return {"success": False, "error": "اشتراک یافت نشد."}
+
+            sub = dict(sub_row)
+            t_id = telegram_id if telegram_id is not None else (sub.get("telegram_id") or 0)
+            u_uuid = hidify_uuid if hidify_uuid else (sub.get("hidify_uuid") or "")
+            r_id = reseller_id if reseller_id is not None else sub.get("reseller_id")
+
+            # لغو رزرو قبلی در صورت وجود
+            cursor.execute("UPDATE subscription_queue SET status='cancelled' WHERE subscription_id=? AND status='pending'", (subscription_id,))
+            cursor.execute("""
+                INSERT INTO subscription_queue (
+                    subscription_id, telegram_id, hidify_uuid, reseller_id,
+                    plan_id, plan_name, data_limit, duration, cost, status, created_at, note
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+            """, (subscription_id, t_id, u_uuid, r_id, plan_id, plan_name, data_limit, duration, cost, now, note or "تمدید در صف رزرو مدیریت"))
+            queue_id = cursor.lastrowid
+            conn.commit()
+            return {"success": True, "queue_id": queue_id}
+        except Exception as e:
+            logger.error(f"Error adding to subscription queue: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_pending_queue_item(self, subscription_id: int) -> dict:
+        """دریافت بسته رزرو در صف برای یک اشتراک خاص"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT * FROM subscription_queue
+                WHERE subscription_id=? AND status='pending'
+                ORDER BY id DESC LIMIT 1
+            """, (subscription_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error getting pending queue item for sub {subscription_id}: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def get_all_pending_queue_items(self) -> list:
+        """دریافت تمام بسته‌های در صف به همراه اطلاعات اشتراک مربوطه برای پردازش خودکار"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT q.*, s.account_name, s.data_used as curr_used, s.data_limit as curr_limit,
+                       s.duration as curr_duration, s.start_date as curr_start_date,
+                       s.expire_date as curr_expire_date, s.status as sub_status, s.telegram_id as sub_tg_id
+                FROM subscription_queue q
+                JOIN subscriptions s ON q.subscription_id = s.id
+                WHERE q.status = 'pending'
+                ORDER BY q.id ASC
+            """)
+            return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error getting all pending queue items: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def mark_queue_item_activated(self, queue_id: int) -> dict:
+        """علامت‌گذاری بسته در صف به عنوان فعال‌شده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("UPDATE subscription_queue SET status='activated', activated_at=? WHERE id=?", (now, queue_id))
             conn.commit()
             return {"success": True}
         except Exception as e:
+            logger.error(f"Error marking queue item {queue_id} activated: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def cancel_queue_item(self, queue_id: int, reseller_id: int = None) -> dict:
+        """لغو بسته در صف و استرداد وجه به کیف‌پول نماینده در صورت پرداخت هزینه"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT * FROM subscription_queue WHERE id=? AND status='pending'", (queue_id,))
+            item = cursor.fetchone()
+            if not item:
+                return {"success": False, "error": "بسته مورد نظر در صف یافت نشد یا قبلاً پردازش شده است."}
+
+            item_dict = dict(item)
+            cost = item_dict.get("cost") or 0
+            r_id = item_dict.get("reseller_id")
+
+            if reseller_id and r_id and r_id != reseller_id:
+                return {"success": False, "error": "شما به این بسته دسترسی ندارید."}
+
+            # استرداد وجه به نماینده
+            if r_id and cost > 0:
+                cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at=? WHERE id=?", (cost, now, r_id))
+                cursor.execute("""
+                    INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
+                    VALUES (?, 'refund', ?, ?, ?, ?, ?)
+                """, (r_id, cost, item_dict.get("plan_name", ""), f"sub_{item_dict['subscription_id']}", f"استرداد وجه لغو بسته رزرو در صف", now))
+
+            cursor.execute("UPDATE subscription_queue SET status='cancelled' WHERE id=?", (queue_id,))
+            conn.commit()
+            return {"success": True, "refunded_amount": cost}
+        except Exception as e:
+            logger.error(f"Error cancelling queue item {queue_id}: {e}")
             return {"success": False, "error": str(e)}
         finally:
             conn.close()

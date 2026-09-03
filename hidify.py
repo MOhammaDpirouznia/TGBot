@@ -119,6 +119,11 @@ class HidifyClient:
                     normalized_kwargs["usage_limit_GB"] = float(v)
                 except Exception:
                     pass
+            elif k in ("current_usage_GB", "current_usage_gb", "current_usage"):
+                try:
+                    normalized_kwargs["current_usage_GB"] = float(v)
+                except Exception:
+                    pass
             elif k in ("package_days", "duration"):
                 try:
                     normalized_kwargs["package_days"] = int(v)
@@ -138,7 +143,7 @@ class HidifyClient:
                 existing = await self.get_user(clean_uuid)
                 if isinstance(existing, dict) and "error" not in existing and existing.get("name"):
                     allowed_fields = {
-                        "name", "usage_limit_GB", "package_days", "comment", "mode",
+                        "name", "usage_limit_GB", "current_usage_GB", "package_days", "comment", "mode",
                         "start_date", "expire_date", "enable", "is_active", "lang",
                         "added_by", "wg_pk", "wg_pub", "wg_psk", "telegram_id"
                     }

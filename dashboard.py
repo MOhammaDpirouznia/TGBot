@@ -989,6 +989,11 @@ def hidify_sync_update_user(uuid: str, api_key: str = None, reseller_id: int = N
                 normalized_kwargs["usage_limit_GB"] = float(v)
             except Exception:
                 pass
+        elif k in ("current_usage_GB", "current_usage_gb", "current_usage"):
+            try:
+                normalized_kwargs["current_usage_GB"] = float(v)
+            except Exception:
+                pass
         elif k in ("package_days", "duration"):
             try:
                 normalized_kwargs["package_days"] = int(v)
@@ -1027,7 +1032,7 @@ def hidify_sync_update_user(uuid: str, api_key: str = None, reseller_id: int = N
             if isinstance(user_obj, dict) and "error" not in user_obj:
                 # فیلدهای مجاز مدل Pydantic هیدیفای برای UserPutSchema / UserSchema
                 allowed_hiddify_fields = {
-                    "name", "usage_limit_GB", "package_days", "comment", "mode",
+                    "name", "usage_limit_GB", "current_usage_GB", "package_days", "comment", "mode",
                     "start_date", "expire_date", "enable", "is_active", "lang",
                     "added_by", "added_by_uuid", "wg_pk", "wg_pub", "wg_psk", "telegram_id"
                 }
@@ -1052,11 +1057,11 @@ def hidify_sync_update_user(uuid: str, api_key: str = None, reseller_id: int = N
     return last_res
 
 
-def hidify_sync_renew_user(uuid: str, new_limit_gb: float, new_duration_days: int) -> dict:
+def hidify_sync_renew_user(uuid: str, new_limit_gb: float, new_duration_days: int, force_instant: bool = True) -> dict:
     """
-    تمدید هوشمند کاربر در هیدیفای با رعایت ۲ حالت:
-    حالت اول: اگر زمان یا حجم اشتراک تمام شده باشد -> جایگزینی حجم و روز با مقادیر پلن جدید + ریست حجم مصرفی و ریست زمان شروع
-    حالت دوم: اگر زمان یا حجم اشتراک هنوز تمام نشده باشد -> فقط اضافه کردن حجم و روز به مقادیر قبلی
+    تمدید هوشمند کاربر در هیدیفای با ریست کامل حجم و تاریخ شروع در حالت فعال‌سازی فوری:
+    حالت اول (force_instant یا منقضی): جایگزینی کامل حجم و روز + ریست حجم مصرفی (0) و ریست زمان شروع (None / آغاز مجدد)
+    حالت دوم (افزایشی): اضافه کردن حجم و روز به مقادیر قبلی
     """
     try:
         user_info = hidify_sync_request("GET", f"/admin/user/{uuid}/")
@@ -1078,13 +1083,23 @@ def hidify_sync_renew_user(uuid: str, new_limit_gb: float, new_duration_days: in
         is_active = user_info.get("is_active", True)
         enable = user_info.get("enable", True)
 
-        # بررسی اتمام حجم یا زمان اشتراک
-        is_traffic_finished = (curr_limit > 0 and current_usage >= curr_limit)
-        is_expired = (not is_active or not enable or is_traffic_finished)
+        # بررسی انقضای زمانی و انقضای حجمی
+        is_time_expired = False
+        start_date_val = user_info.get("start_date")
+        if start_date_val and curr_days > 0:
+            try:
+                st_date = datetime.fromisoformat(str(start_date_val)[:10])
+                if (datetime.now() - st_date).days >= curr_days:
+                    is_time_expired = True
+            except Exception:
+                pass
 
-        if is_expired:
-            # حالت اول: زمان یا حجم تمام شده -> جایگزینی مقادیر و ریست حجم مصرفی و زمان شروع
-            logger.info(f"Sync Renew {uuid}: Expired/Finished -> Resetting usage and replacing plan ({new_limit_gb} GB, {new_duration_days} days)")
+        is_traffic_finished = (curr_limit > 0 and current_usage >= curr_limit)
+        is_expired = (not is_active or not enable or is_traffic_finished or is_time_expired)
+
+        if force_instant or is_expired:
+            # جایگزینی مقادیر و ریست حجم مصرفی و زمان شروع
+            logger.info(f"Sync Renew {uuid}: Reset & Replace -> Usage=0, limit={new_limit_gb} GB, days={new_duration_days}")
             payload = {
                 "usage_limit_GB": new_limit_gb,
                 "package_days": new_duration_days,
@@ -1096,10 +1111,10 @@ def hidify_sync_renew_user(uuid: str, new_limit_gb: float, new_duration_days: in
             res = hidify_sync_update_user(uuid, **payload)
             return {"renewal_type": "reset_and_replaced", "new_limit": new_limit_gb, "new_days": new_duration_days, "res": res}
         else:
-            # حالت دوم: هنوز حجم یا زمان باقی مانده -> اضافه کردن حجم و روز به مقادیر قبلی
+            # حالت دوم: اضافه کردن حجم و روز به مقادیر قبلی
             combined_limit = (curr_limit + new_limit_gb) if curr_limit > 0 and new_limit_gb > 0 else (new_limit_gb if new_limit_gb > 0 else 0)
             combined_days = curr_days + new_duration_days
-            logger.info(f"Sync Renew {uuid}: Active -> Appending volume & days ({curr_limit}+{new_limit_gb}={combined_limit} GB, {curr_days}+{new_duration_days}={combined_days} days)")
+            logger.info(f"Sync Renew {uuid}: Appending volume & days ({curr_limit}+{new_limit_gb}={combined_limit} GB, {curr_days}+{new_duration_days}={combined_days} days)")
             payload = {
                 "usage_limit_GB": combined_limit,
                 "package_days": combined_days,
@@ -1110,8 +1125,148 @@ def hidify_sync_renew_user(uuid: str, new_limit_gb: float, new_duration_days: in
             return {"renewal_type": "appended", "new_limit": combined_limit, "new_days": combined_days, "res": res}
     except Exception as e:
         logger.error(f"Error in hidify_sync_renew_user for {uuid}: {e}")
-        res = hidify_sync_update_user(uuid, usage_limit_GB=new_limit_gb, package_days=new_duration_days, enable=True, is_active=True)
+        res = hidify_sync_update_user(uuid, usage_limit_GB=new_limit_gb, package_days=new_duration_days, current_usage_GB=0, enable=True, is_active=True)
         return {"renewal_type": "fallback", "new_limit": new_limit_gb, "new_days": new_duration_days, "res": res}
+
+
+def process_subscription_queue() -> dict:
+    """
+    بررسی هوشمند و خودکار صف تمدید و فعال‌سازی بلادرنگ بسته‌های رزرو:
+    شرایط فعال‌سازی:
+    ۱. مصرف ۹۹٪ از سقف حجم بسته فعلی (data_used >= data_limit * 0.99)
+    ۲. رسیدن به روز پایانی بسته فعلی (کمتر یا مساوی ۲۴ ساعت مانده به انقضا)
+    هنگام فعال‌سازی: ریست کامل حجم (0) و روزها در هیدیفای، بروزرسانی دیتابیس، ثبت سابقه در آرشیو و ارسال نوتیفیکیشن
+    """
+    try:
+        pending_items = db.get_all_pending_queue_items()
+        if not pending_items:
+            return {"processed": 0, "activated": 0}
+
+        activated_count = 0
+        now = get_now_naive()
+
+        for item in pending_items:
+            sub_id = item["subscription_id"]
+            uuid = item.get("hidify_uuid")
+            new_limit = float(item.get("data_limit") or 0)
+            new_duration = int(item.get("duration") or 30)
+            plan_name = item.get("plan_name") or f"{new_limit} گیگ"
+            plan_id = item.get("plan_id") or "custom"
+
+            curr_used = float(item.get("curr_used") or 0)
+            curr_limit = float(item.get("curr_limit") or 0)
+            curr_duration = int(item.get("curr_duration") or 30)
+            curr_start = item.get("curr_start_date")
+            curr_expire = item.get("curr_expire_date")
+
+            # استعلام مصرف زنده کاربر در صورت وجود UUID
+            if uuid:
+                try:
+                    u_info = hidify_sync_request("GET", f"/admin/user/{uuid}/")
+                    if isinstance(u_info, dict) and "error" not in u_info:
+                        curr_used = float(u_info.get("current_usage_GB") or 0)
+                        h_limit = float(u_info.get("usage_limit_GB") or 0)
+                        if h_limit > 0:
+                            curr_limit = h_limit
+                        if u_info.get("start_date"):
+                            curr_start = u_info.get("start_date")
+                        if u_info.get("package_days"):
+                            curr_duration = int(u_info.get("package_days"))
+                except Exception as ex:
+                    logger.warning(f"Live queue check error for {uuid}: {ex}")
+
+            # ۱. شرط اول: رسیدن به ۹۹٪ حجم
+            is_volume_99 = (curr_limit > 0 and curr_used >= (curr_limit * 0.99))
+
+            # ۲. شرط دوم: رسیدن به آخرین روز بسته فعلی (<= 1 روز مانده)
+            is_last_day = False
+            if curr_start and curr_duration:
+                try:
+                    st_date = datetime.fromisoformat(str(curr_start)[:10])
+                    exp_date = st_date + timedelta(days=curr_duration)
+                    days_left = (exp_date.date() - now.date()).days
+                    if days_left <= 1:
+                        is_last_day = True
+                except Exception:
+                    pass
+            elif curr_expire:
+                try:
+                    exp_date = datetime.fromisoformat(str(curr_expire)[:10])
+                    days_left = (exp_date.date() - now.date()).days
+                    if days_left <= 1:
+                        is_last_day = True
+                except Exception:
+                    pass
+
+            if is_volume_99 or is_last_day:
+                trigger_reason = "مصرف ۹۹٪ حجم بسته" if is_volume_99 else "رسیدن به روز پایانی بسته"
+                logger.info(f"Auto-activating queued renewal for sub {sub_id} ({item.get('account_name')}): {trigger_reason}")
+
+                # الف. فعال‌سازی در هیدیفای با ریست کامل حجم و روز
+                if uuid:
+                    try:
+                        hidify_sync_renew_user(uuid, new_limit, new_duration, force_instant=True)
+                    except Exception as e:
+                        logger.error(f"Hiddify auto-activation error for {uuid}: {e}")
+
+                # ب. به‌روزرسانی اشتراک در دیتابیس لوکال
+                now_str = get_now_iso()
+                new_start_str = now.strftime("%Y-%m-%d")
+                new_expire_str = (now + timedelta(days=new_duration)).isoformat()
+
+                conn = db.get_connection()
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE subscriptions
+                    SET plan_id=?, plan_name=?, data_limit=?, data_used=0, duration=?, status='active',
+                        start_date=?, expire_date=?, updated_at=?
+                    WHERE id=?
+                """, (plan_id, plan_name, new_limit, new_duration, new_start_str, new_expire_str, now_str, sub_id))
+                conn.commit()
+                conn.close()
+
+                # ج. ثبت در سوابق مصرف دوره‌های گذشته
+                try:
+                    db.log_subscription_history(
+                        subscription_id=sub_id,
+                        telegram_id=item.get("telegram_id") or 0,
+                        hidify_uuid=uuid or "",
+                        account_name=item.get("account_name") or "",
+                        plan_name=plan_name,
+                        previous_usage_gb=curr_used,
+                        previous_limit_gb=curr_limit,
+                        period_days=curr_duration,
+                        renewal_type="queued_auto_activated",
+                        reseller_id=item.get("reseller_id"),
+                        cost_paid=item.get("cost") or 0,
+                        note=f"فعال‌سازی خودکار از صف رزرو ({trigger_reason})"
+                    )
+                except Exception as ex:
+                    logger.warning(f"Error logging history for queue activation: {ex}")
+
+                # د. علامت‌گذاری در جدول صف
+                db.mark_queue_item_activated(item["id"])
+                activated_count += 1
+
+                # هـ. ارسال نوتیفیکیشن تلگرام
+                tg_id = item.get("telegram_id") or item.get("sub_tg_id")
+                if tg_id and int(tg_id) > 0:
+                    try:
+                        send_telegram_msg(
+                            int(tg_id),
+                            f"🎉 <b>اشتراک شما با موفقیت تمدید شد!</b>\n\n"
+                            f"بسته رزرو شده «{plan_name}» به صورت خودکار برای اشتراک <b>{item.get('account_name')}</b> فعال گردید.\n\n"
+                            f"📊 حجم جدید: <b>{new_limit} گیگابایت</b>\n"
+                            f"⏱ مدت اعتبار: <b>{new_duration} روز</b>\n"
+                            f"🔄 وضعیت: حجم مصرفی صفر شد و سرویس شما بدون قطعی ادامه دارد."
+                        )
+                    except Exception as ex:
+                        logger.debug(f"Could not send telegram alert for queued renewal: {ex}")
+
+        return {"processed": len(pending_items), "activated": activated_count}
+    except Exception as e:
+        logger.error(f"Error in process_subscription_queue: {e}")
+        return {"processed": 0, "activated": 0, "error": str(e)}
 
 
 def hidify_sync_delete_user(uuid: str) -> dict:
@@ -1145,6 +1300,7 @@ def sync_hiddify_online_users(force: bool = False):
     """
     همگام‌سازی بلادرنگ وضعیت آنلاین بودن و اطلاعات اشتراک‌ها از API هیدیفای
     دارای محافظ نرخ درخواست و کش هوشمند (حداقل فاصله ۵ ثانیه)
+    همراه با پردازش هوشمند صف تمدید خودکار
     """
     global _last_online_sync_time
     now = time.time()
@@ -1160,6 +1316,9 @@ def sync_hiddify_online_users(force: bool = False):
         users = hidify_sync_request("GET", "/admin/user/")
         if isinstance(users, list) and users:
             db.sync_from_hidify(users)
+        
+        # بررسی و فعال‌سازی خودکار بسته‌های در صف رزرو
+        process_subscription_queue()
     except Exception as e:
         logger.error(f"Error in sync_hiddify_online_users: {e}")
 
@@ -1216,6 +1375,14 @@ def enrich_subscription_details(sub: dict) -> dict:
             item["is_vip"] = False
     else:
         item["is_vip"] = False
+
+    try:
+        q_item = db.get_pending_queue_item(item.get("id"))
+        item["pending_queue"] = q_item
+        item["has_queue"] = bool(q_item)
+    except Exception:
+        item["pending_queue"] = None
+        item["has_queue"] = False
 
     item["duration"] = duration
     item["is_started"] = is_started
@@ -3476,45 +3643,177 @@ def admin_subscription_renew(sub_id: int):
         plan_key = sub.get("plan_id") or "custom"
         cost_paid = 0
 
-    # ۱. تمدید هوشمند در سرور هیدیفای
-    renewal_res = {"renewal_type": "reset_and_replaced"}
-    if sub.get("hidify_uuid"):
+    instant_activate = bool(request.form.get("instant_activate"))
+
+    if instant_activate:
+        # ۱. تمدید آنی در سرور هیدیفای با ریست کامل حجم (0) و روزها
+        renewal_res = {"renewal_type": "reset_and_replaced"}
+        if sub.get("hidify_uuid"):
+            try:
+                renewal_res = hidify_sync_renew_user(sub["hidify_uuid"], data_limit, duration, force_instant=True)
+            except Exception as e:
+                logger.error(f"Admin renew Hiddify error: {e}")
+
+        # ۲. به‌روزرسانی آنی در دیتابیس (صفر کردن مصرف و تنظیم تاریخ‌های جدید)
+        now = get_now_iso()
+        now_naive = get_now_naive()
+        new_start_date = now_naive.strftime("%Y-%m-%d")
+        new_expire_date = (now_naive + timedelta(days=duration)).isoformat()
+
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE subscriptions
+            SET plan_id=?, plan_name=?, data_limit=?, data_used=0, duration=?,
+                start_date=?, expire_date=?, status='active', updated_at=?, cost_paid=?
+            WHERE id=?
+        """, (plan_key, plan_name, data_limit, duration, new_start_date, new_expire_date, now, cost_paid, sub_id))
+        conn.commit()
+        conn.close()
+
+        # ۳. ثبت در تاریخچه دوره‌های اشتراک
         try:
-            renewal_res = hidify_sync_renew_user(sub["hidify_uuid"], data_limit, duration)
-        except Exception as e:
-            logger.error(f"Admin renew Hiddify error: {e}")
+            db.log_subscription_history(
+                subscription_id=sub_id,
+                telegram_id=sub.get("telegram_id") or 0,
+                hidify_uuid=sub.get("hidify_uuid") or "",
+                account_name=sub.get("account_name") or "",
+                plan_name=plan_name,
+                previous_usage_gb=sub.get("data_used") or 0,
+                previous_limit_gb=sub.get("data_limit") or 0,
+                period_days=duration,
+                renewal_type="reset_and_replaced",
+                reseller_id=sub.get("reseller_id"),
+                cost_paid=cost_paid
+            )
+        except Exception as ex:
+            logger.error(f"Error logging subscription history in admin renew: {ex}")
 
-    # ۲. به‌روزرسانی در دیتابیس
-    now = get_now_iso()
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE subscriptions
-        SET plan_id=?, plan_name=?, data_limit=?, duration=?, status='active', updated_at=?, cost_paid=?
-        WHERE id=?
-    """, (plan_key, plan_name, data_limit, duration, now, cost_paid, sub_id))
-    conn.commit()
-    conn.close()
-
-    # ۳. ثبت در تاریخچه دوره‌های اشتراک
-    try:
-        db.log_subscription_history(
+        flash(f"اشتراک «{sub.get('account_name')}» با موفقیت به صورت آنی تمدید شد ({data_limit} GB - {duration} روز) و حجم و روز آن ریست گردید.", "success")
+    else:
+        # ۴. قرار دادن در صف تمدید هوشمند (رزرو برای پس از اتمام بسته)
+        q_res = db.add_to_subscription_queue(
             subscription_id=sub_id,
+            plan_id=plan_key,
+            plan_name=plan_name,
+            data_limit=data_limit,
+            duration=duration,
+            cost=cost_paid,
+            reseller_id=sub.get("reseller_id"),
             telegram_id=sub.get("telegram_id") or 0,
             hidify_uuid=sub.get("hidify_uuid") or "",
-            account_name=sub.get("account_name") or "",
-            plan_name=plan_name,
-            previous_usage_gb=sub.get("data_used") or 0,
-            previous_limit_gb=sub.get("data_limit") or 0,
-            period_days=duration,
-            renewal_type=renewal_res.get("renewal_type", "reset_and_replaced"),
-            reseller_id=sub.get("reseller_id"),
-            cost_paid=cost_paid
+            note="تمدید در صف توسط مدیریت"
         )
-    except Exception as ex:
-        logger.error(f"Error logging subscription history in admin renew: {ex}")
+        if q_res.get("success"):
+            flash(f"بسته تمدیدی «{plan_name}» برای اشتراک «{sub.get('account_name')}» در صف رزرو قرار گرفت و پس از مصرف ۹۹٪ یا رسیدن به روز پایانی به صورت خودکار فعال خواهد شد.", "info")
+        else:
+            flash(f"خطا در افزودن بسته به صف: {q_res.get('error')}", "danger")
 
-    flash(f"اشتراک «{sub.get('account_name')}» با موفقیت تمدید شد ({data_limit} GB - {duration} روز).", "success")
+    return redirect(url_for("subscriptions"))
+
+
+@app.route("/admin/subscriptions/bulk-renew", methods=["POST"])
+@permission_required("sub_manage")
+def admin_subscriptions_bulk_renew():
+    """تمدید گروهی اشتراک‌های انتخاب‌شده در پنل مدیریت (آنی یا در صف)"""
+    selected_ids_str = request.form.get("selected_ids_str", "").strip()
+    if not selected_ids_str:
+        flash("هیچ اشتراکی برای تمدید گروهی انتخاب نشده است.", "warning")
+        return redirect(url_for("subscriptions"))
+
+    try:
+        sub_ids = [int(x.strip()) for x in selected_ids_str.split(",") if x.strip().isdigit()]
+    except Exception:
+        flash("شناسه‌های ارسالی نامعتبر هستند.", "danger")
+        return redirect(url_for("subscriptions"))
+
+    if not sub_ids:
+        flash("هیچ اشتراک معتبری یافت نشد.", "warning")
+        return redirect(url_for("subscriptions"))
+
+    plan_key = request.form.get("plan_id", "current").strip()
+    instant_activate = bool(request.form.get("instant_activate"))
+    plans = get_plans_dict()
+
+    success_count = 0
+    now = get_now_iso()
+    now_naive = get_now_naive()
+
+    conn = db.get_connection()
+    for s_id in sub_ids:
+        sub_row = conn.execute("SELECT * FROM subscriptions WHERE id=?", (s_id,)).fetchone()
+        if not sub_row:
+            continue
+        sub = dict(sub_row)
+
+        if plan_key == "current" or plan_key not in plans:
+            p_key = sub.get("plan_id") or "custom"
+            p_limit = float(sub.get("data_limit") or 30)
+            p_dur = int(sub.get("duration") or 30)
+            p_name = sub.get("plan_name") or f"{p_limit} گیگ {p_dur} روزه"
+            p_cost = int(sub.get("cost_paid") or 0)
+        else:
+            plan = plans[plan_key]
+            p_key = plan_key
+            p_limit = float(plan.get("data_limit", 30))
+            p_dur = int(plan.get("duration", 30))
+            p_name = plan.get("name", f"{p_limit} گیگ")
+            p_cost = int(plan.get("price", 0))
+
+        if instant_activate:
+            if sub.get("hidify_uuid"):
+                try:
+                    hidify_sync_renew_user(sub["hidify_uuid"], p_limit, p_dur, force_instant=True)
+                except Exception as e:
+                    logger.error(f"Bulk renew Hiddify error for {sub.get('hidify_uuid')}: {e}")
+
+            new_start_date = now_naive.strftime("%Y-%m-%d")
+            new_expire_date = (now_naive + timedelta(days=p_dur)).isoformat()
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE subscriptions
+                SET plan_id=?, plan_name=?, data_limit=?, data_used=0, duration=?,
+                    start_date=?, expire_date=?, status='active', updated_at=?, cost_paid=?
+                WHERE id=?
+            """, (p_key, p_name, p_limit, p_dur, new_start_date, new_expire_date, now, p_cost, s_id))
+            conn.commit()
+
+            try:
+                db.log_subscription_history(
+                    subscription_id=s_id,
+                    telegram_id=sub.get("telegram_id") or 0,
+                    hidify_uuid=sub.get("hidify_uuid") or "",
+                    account_name=sub.get("account_name") or "",
+                    plan_name=p_name,
+                    previous_usage_gb=sub.get("data_used") or 0,
+                    previous_limit_gb=sub.get("data_limit") or 0,
+                    period_days=p_dur,
+                    renewal_type="reset_and_replaced",
+                    reseller_id=sub.get("reseller_id"),
+                    cost_paid=p_cost
+                )
+            except Exception:
+                pass
+            success_count += 1
+        else:
+            q_res = db.add_to_subscription_queue(
+                subscription_id=s_id,
+                plan_id=p_key,
+                plan_name=p_name,
+                data_limit=p_limit,
+                duration=p_dur,
+                cost=p_cost,
+                reseller_id=sub.get("reseller_id"),
+                telegram_id=sub.get("telegram_id") or 0,
+                hidify_uuid=sub.get("hidify_uuid") or "",
+                note="تمدید گروهی در صف"
+            )
+            if q_res.get("success"):
+                success_count += 1
+
+    conn.close()
+    mode_text = "به صورت آنی تمدید و ریست شدند" if instant_activate else "در صف تمدید رزرو قرار گرفتند"
+    flash(f"{success_count} اشتراک با موفقیت {mode_text}.", "success")
     return redirect(url_for("subscriptions"))
 
 
@@ -6156,12 +6455,17 @@ def reseller_renew_user(sub_id: int):
         flash(f"توان خرید شما (کیف پول + اعتبار) برای تمدید این پلن کافی نیست! توان خرید: {total_purchasing_power:,} ت | هزینه تمدید: {final_price:,} ت", "danger")
         return redirect(url_for("reseller_users"))
 
-    # ۱. تمدید هوشمند در هیدیفای
-    renewal_res = {"renewal_type": "reset_and_replaced"}
-    if sub.get("hidify_uuid"):
-        renewal_res = hidify_sync_renew_user(sub["hidify_uuid"], plan["data_limit"], plan["duration"])
+    instant_activate = bool(request.form.get("instant_activate"))
 
-    # ۲. ثبت در دیتابیس و کسر موجودی/اعتبار
+    # ۱. در صورت فعال‌سازی آنی، هیدیفای بلافاصله ریست می‌شود
+    renewal_res = {"renewal_type": "reset_and_replaced"}
+    if instant_activate and sub.get("hidify_uuid"):
+        try:
+            renewal_res = hidify_sync_renew_user(sub["hidify_uuid"], plan["data_limit"], plan["duration"], force_instant=True)
+        except Exception as e:
+            logger.error(f"Error in reseller renew Hiddify {sub.get('hidify_uuid')}: {e}")
+
+    # ۲. ثبت در دیتابیس (آنی با ریست یا رزرو در صف) و کسر هزینه
     renew_db = db.renew_reseller_subscription(
         reseller_id=reseller_id,
         sub_id=sub_id,
@@ -6170,34 +6474,162 @@ def reseller_renew_user(sub_id: int):
         cost=final_price,
         data_limit=plan["data_limit"],
         duration=plan["duration"],
+        instant_activate=instant_activate,
         renewal_type=renewal_res.get("renewal_type", "reset_and_replaced")
     )
 
     if renew_db.get("success"):
-        # ثبت در تاریخچه سوابق مصرف دوره‌های گذشته
-        try:
-            db.log_subscription_history(
-                subscription_id=sub_id,
-                telegram_id=sub.get("telegram_id") or 0,
-                hidify_uuid=sub.get("hidify_uuid") or "",
-                account_name=sub["account_name"],
-                plan_name=plan["name"],
-                previous_usage_gb=sub.get("data_used") or 0,
-                previous_limit_gb=sub.get("data_limit") or 0,
-                period_days=plan["duration"],
-                renewal_type=renewal_res.get("renewal_type", "reset_and_replaced"),
-                reseller_id=reseller_id
-            )
-        except Exception as e:
-            logger.warning(f"Failed to log subscription history on reseller renew: {e}")
+        if instant_activate:
+            # ثبت در تاریخچه سوابق مصرف دوره‌های گذشته
+            try:
+                db.log_subscription_history(
+                    subscription_id=sub_id,
+                    telegram_id=sub.get("telegram_id") or 0,
+                    hidify_uuid=sub.get("hidify_uuid") or "",
+                    account_name=sub["account_name"],
+                    plan_name=plan["name"],
+                    previous_usage_gb=sub.get("data_used") or 0,
+                    previous_limit_gb=sub.get("data_limit") or 0,
+                    period_days=plan["duration"],
+                    renewal_type="reset_and_replaced",
+                    reseller_id=reseller_id,
+                    cost_paid=final_price
+                )
+            except Exception as e:
+                logger.warning(f"Failed to log subscription history on reseller renew: {e}")
 
-        flash(f"اشتراک «{sub['account_name']}» با پلن «{plan['name']}» با موفقیت تمدید شد و مبلغ {final_price:,} تومان از حساب/اعتبار شما کسر گردید.", "success")
+            flash(f"اشتراک «{sub['account_name']}» با پلن «{plan['name']}» به صورت آنی تمدید شد، حجم و روز آن ریست گردید و مبلغ {final_price:,} تومان از حساب/اعتبار شما کسر شد.", "success")
+        else:
+            flash(f"بسته تمدیدی «{plan['name']}» برای اشتراک «{sub['account_name']}» در صف رزرو قرار گرفت و مبلغ {final_price:,} تومان کسر شد. پس از مصرف ۹۹٪ یا در روز پایانی اشتراک به صورت خودکار فعال خواهد شد.", "info")
+
         r_after = db.get_reseller(reseller_id)
         if r_after:
             session["balance"] = r_after.get("balance", 0)
     else:
         flash(f"خطا در تمدید اشتراک: {renew_db.get('error')}", "danger")
 
+    return redirect(url_for("reseller_users"))
+
+
+@app.route("/reseller/subscriptions/bulk-renew", methods=["POST"])
+@reseller_required
+def reseller_subscriptions_bulk_renew():
+    """تمدید گروهی اشتراک‌های انتخابی نماینده (آنی یا در صف) با محاسبه مجموع هزینه و کسر از کیف‌پول/اعتبار"""
+    reseller_id = session.get("reseller_id")
+    selected_ids_str = request.form.get("selected_ids_str", "").strip()
+    if not selected_ids_str:
+        flash("هیچ اشتراکی برای تمدید گروهی انتخاب نشده است.", "warning")
+        return redirect(url_for("reseller_users"))
+
+    try:
+        sub_ids = [int(x.strip()) for x in selected_ids_str.split(",") if x.strip().isdigit()]
+    except Exception:
+        flash("شناسه‌های ارسالی نامعتبر هستند.", "danger")
+        return redirect(url_for("reseller_users"))
+
+    if not sub_ids:
+        flash("هیچ اشتراک معتبری یافت نشد.", "warning")
+        return redirect(url_for("reseller_users"))
+
+    plan_key = request.form.get("plan_id", "current").strip()
+    instant_activate = bool(request.form.get("instant_activate"))
+    plans = get_plans_dict()
+    stats = db.get_reseller_stats(reseller_id)
+    discount = stats["discount_percent"]
+
+    # ۱. محاسبه کل هزینه مورد نیاز و اعتبارسنجی توان خرید
+    subs_to_renew = []
+    total_cost_required = 0
+
+    for s_id in sub_ids:
+        sub = db.get_reseller_subscription(reseller_id, s_id)
+        if not sub:
+            continue
+
+        if plan_key == "current" or plan_key not in plans:
+            p_key = sub.get("plan_id") or "custom"
+            if p_key in plans:
+                p_item = plans[p_key]
+                p_name = p_item["name"]
+                p_limit = float(p_item["data_limit"])
+                p_dur = int(p_item["duration"])
+                orig_price = p_item["price"]
+            else:
+                p_limit = float(sub.get("data_limit") or 30)
+                p_dur = int(sub.get("duration") or 30)
+                p_name = sub.get("plan_name") or f"{p_limit} گیگ"
+                orig_price = int(sub.get("cost_paid") or 0)
+        else:
+            p_item = plans[plan_key]
+            p_key = plan_key
+            p_name = p_item["name"]
+            p_limit = float(p_item["data_limit"])
+            p_dur = int(p_item["duration"])
+            orig_price = p_item["price"]
+
+        disc_amount = int((orig_price * discount) / 100)
+        final_price = orig_price - disc_amount
+        total_cost_required += final_price
+
+        subs_to_renew.append({
+            "sub": sub,
+            "plan_key": p_key,
+            "plan_name": p_name,
+            "data_limit": p_limit,
+            "duration": p_dur,
+            "cost": final_price
+        })
+
+    total_purchasing_power = stats.get("total_purchasing_power", stats["balance"])
+    if total_purchasing_power < total_cost_required:
+        flash(f"توان خرید شما برای تمدید گروهی {len(subs_to_renew)} اشتراک کافی نیست! مبلغ مورد نیاز: {total_cost_required:,} ت | توان خرید شما: {total_purchasing_power:,} ت", "danger")
+        return redirect(url_for("reseller_users"))
+
+    # ۲. اعمال تمدیدها برای تک‌تک اشتراک‌ها
+    success_count = 0
+    for item in subs_to_renew:
+        sub = item["sub"]
+        renew_res = db.renew_reseller_subscription(
+            reseller_id=reseller_id,
+            sub_id=sub["id"],
+            plan_id=item["plan_key"],
+            plan_name=item["plan_name"],
+            cost=item["cost"],
+            data_limit=item["data_limit"],
+            duration=item["duration"],
+            instant_activate=instant_activate
+        )
+        if renew_res.get("success"):
+            if instant_activate and sub.get("hidify_uuid"):
+                try:
+                    hidify_sync_renew_user(sub["hidify_uuid"], item["data_limit"], item["duration"], force_instant=True)
+                except Exception as e:
+                    logger.error(f"Error in reseller bulk renew Hiddify {sub.get('hidify_uuid')}: {e}")
+
+                try:
+                    db.log_subscription_history(
+                        subscription_id=sub["id"],
+                        telegram_id=sub.get("telegram_id") or 0,
+                        hidify_uuid=sub.get("hidify_uuid") or "",
+                        account_name=sub["account_name"],
+                        plan_name=item["plan_name"],
+                        previous_usage_gb=sub.get("data_used") or 0,
+                        previous_limit_gb=sub.get("data_limit") or 0,
+                        period_days=item["duration"],
+                        renewal_type="reset_and_replaced",
+                        reseller_id=reseller_id,
+                        cost_paid=item["cost"]
+                    )
+                except Exception:
+                    pass
+            success_count += 1
+
+    r_after = db.get_reseller(reseller_id)
+    if r_after:
+        session["balance"] = r_after.get("balance", 0)
+
+    mode_text = "به صورت آنی تمدید و ریست شدند" if instant_activate else "در صف تمدید رزرو قرار گرفتند"
+    flash(f"{success_count} اشتراک با موفقیت {mode_text} و مجموع مبلغ {total_cost_required:,} تومان کسر گردید.", "success")
     return redirect(url_for("reseller_users"))
 
 

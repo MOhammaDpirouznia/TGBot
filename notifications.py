@@ -79,6 +79,13 @@ class NotificationScheduler:
                     if h_users and isinstance(h_users, list):
                         db.sync_from_hidify(h_users)
                         logger.info(f"Live Hiddify usage synced before notification check ({len(h_users)} users)")
+
+                    # بررسی و فعال‌سازی خودکار بسته‌های در صف تمدید
+                    try:
+                        from dashboard import process_subscription_queue
+                        await asyncio.to_thread(process_subscription_queue)
+                    except Exception as e_q:
+                        logger.warning(f"Error checking subscription queue in notifications: {e_q}")
                 except Exception as e:
                     logger.warning(f"Could not live sync Hiddify users for notifications: {e}")
 
