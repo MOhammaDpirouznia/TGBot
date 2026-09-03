@@ -1000,7 +1000,7 @@ def hidify_sync_update_user(uuid: str, api_key: str = None, reseller_id: int = N
             normalized_kwargs["comment"] = str(v).strip()[:500]
         elif k in ("enable", "is_active"):
             normalized_kwargs[k] = bool(v)
-        elif k in ("mode", "start_date", "expire_date", "expiry_time", "lang", "wg_pk", "wg_pub", "wg_psk", "telegram_id", "added_by"):
+        elif k in ("mode", "start_date", "expire_date", "expiry_time", "lang", "wg_pk", "wg_pub", "wg_psk", "telegram_id", "added_by", "added_by_uuid"):
             normalized_kwargs[k] = v
 
     # کلیدهایی که برای تلاش استفاده خواهند شد
@@ -1029,7 +1029,7 @@ def hidify_sync_update_user(uuid: str, api_key: str = None, reseller_id: int = N
                 allowed_hiddify_fields = {
                     "name", "usage_limit_GB", "package_days", "comment", "mode",
                     "start_date", "expire_date", "enable", "is_active", "lang",
-                    "added_by", "wg_pk", "wg_pub", "wg_psk", "telegram_id"
+                    "added_by", "added_by_uuid", "wg_pk", "wg_pub", "wg_psk", "telegram_id"
                 }
                 clean_payload = {k: v for k, v in user_obj.items() if k in allowed_hiddify_fields}
                 clean_payload.update(normalized_kwargs)
@@ -4718,7 +4718,7 @@ def admin_subscriptions_bulk():
                 h_uuid = item.get("hidify_uuid")
                 if h_uuid and h_admin:
                     try:
-                        h_res = hidify_sync_update_user(h_uuid, added_by=h_admin)
+                        h_res = hidify_sync_update_user(h_uuid, added_by_uuid=h_admin)
                         if isinstance(h_res, dict) and "error" not in h_res:
                             h_success += 1
                     except Exception as ex:
@@ -4820,7 +4820,7 @@ def api_transfer_by_pattern_execute():
         h_uuid = item.get("hidify_uuid")
         if h_uuid and h_admin:
             try:
-                h_res = hidify_sync_update_user(h_uuid, added_by=h_admin)
+                h_res = hidify_sync_update_user(h_uuid, added_by_uuid=h_admin)
                 if isinstance(h_res, dict) and "error" not in h_res:
                     h_success += 1
                 else:
