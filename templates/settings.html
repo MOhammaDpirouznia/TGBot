@@ -520,16 +520,26 @@ function sendTestSms() {
             
             <div class="row g-3 mb-3">
                 <div class="col-md-6">
-                    <label class="form-label fw-bold">دامنه یا ساب‌دامنه اختصاصی آموزش‌ها (Custom Domain / Subdomain)</label>
+                    <label class="form-label fw-bold">دامنه یا ساب‌دامنه اختصاصی راهنمای اتصال (📖 Tutorial Domain)</label>
                     <div class="input-group">
-                        <span class="input-group-text bg-light"><i class="fas fa-globe text-muted"></i></span>
+                        <span class="input-group-text bg-light"><i class="fas fa-book-open text-primary"></i></span>
                         <input type="text" class="form-control font-monospace" name="tutorial_domain" 
                                value="{{ tutorial_domain }}" placeholder="مثال: help.mydomain.com" dir="ltr">
                     </div>
-                    <div class="form-text text-muted">رکورد A یا CNAME این ساب‌دامنه را به سمت سرور تنظیم نمایید.</div>
+                    <div class="form-text text-muted">آدرس پورتال آموزش‌های تصویری اتصال برای کاربران.</div>
                 </div>
 
                 <div class="col-md-6">
+                    <label class="form-label fw-bold">دامنه اختصاصی حل مشکلات اتصال (🛠️ Troubleshoot Domain)</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light"><i class="fas fa-wrench text-warning"></i></span>
+                        <input type="text" class="form-control font-monospace" name="troubleshoot_domain" 
+                               value="{{ troubleshoot_domain }}" placeholder="مثال: fix.mydomain.com" dir="ltr">
+                    </div>
+                    <div class="form-text text-muted">آدرس سامانه ویزارد هوشمند عیب‌یابی و رفع قطعی اینترنت.</div>
+                </div>
+
+                <div class="col-12">
                     <label class="form-label fw-bold">عنوان اصلی پورتال آموزش‌ها</label>
                     <input type="text" class="form-control" name="tutorial_title" 
                            value="{{ tutorial_title }}" placeholder="مثال: مرکز آموزش و راهنمای اتصال VPN">
