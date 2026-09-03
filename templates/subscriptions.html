@@ -130,15 +130,15 @@
                                         <!-- نشان هوشمند تیکت پشتیبانی -->
                                         {% set tinfo = sub.get('ticket_info') %}
                                         {% if tinfo %}
-                                            {% if tinfo.open_count > 0 %}
-                                                <a href="{{ url_for('admin_tickets_page') }}?search={{ sub['telegram_id'] }}" class="badge bg-danger text-white text-decoration-none shadow-sm mt-1 d-inline-block" style="font-size: 0.7rem;" title="مشتری دارای تیکت باز و پاسخ‌داده نشده است">
-                                                    <i class="fas fa-headset me-1"></i> 🔴 تیکت باز ({{ tinfo.open_count }})
+                                            {% if (tinfo.get('open_count', 0) > 0) or tinfo.get('has_open') %}
+                                                <a href="{{ url_for('tickets') }}?search={{ sub['telegram_id'] }}" class="badge bg-danger text-white text-decoration-none shadow-sm mt-1 d-inline-block" style="font-size: 0.7rem;" title="مشتری دارای تیکت باز و پاسخ‌داده نشده است">
+                                                    <i class="fas fa-headset me-1"></i> 🔴 تیکت باز ({{ tinfo.get('open_count', 1) }})
                                                 </a>
-                                            {% elif tinfo.in_progress_count > 0 %}
-                                                <a href="{{ url_for('admin_tickets_page') }}?search={{ sub['telegram_id'] }}" class="badge bg-warning text-dark text-decoration-none shadow-sm mt-1 d-inline-block" style="font-size: 0.7rem;" title="تیکت در انتظار پیگیری">
+                                            {% elif (tinfo.get('in_progress_count', 0) > 0) or tinfo.get('has_pending') %}
+                                                <a href="{{ url_for('tickets') }}?search={{ sub['telegram_id'] }}" class="badge bg-warning text-dark text-decoration-none shadow-sm mt-1 d-inline-block" style="font-size: 0.7rem;" title="تیکت در انتظار پیگیری">
                                                     <i class="fas fa-clock-rotate-left me-1"></i> 🟠 در انتظار
                                                 </a>
-                                            {% elif tinfo.closed_count > 0 %}
+                                            {% elif (tinfo.get('closed_count', 0) > 0) or tinfo.get('has_closed') %}
                                                 <span class="badge bg-success-subtle text-success border border-success mt-1 d-inline-block" style="font-size: 0.68rem;" title="تمام تیکت‌های قبلی بسته شده است">
                                                     <i class="fas fa-check-circle me-1"></i> 🟢 تیکت بسته
                                                 </span>
