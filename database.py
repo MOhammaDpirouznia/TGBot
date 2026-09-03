@@ -918,7 +918,8 @@ class Database:
             ("deleted_at", "TEXT"),
             ("delete_reason", "TEXT"),
             ("deleted_by", "TEXT"),
-            ("purged_from_hiddify", "INTEGER DEFAULT 0")
+            ("purged_from_hiddify", "INTEGER DEFAULT 0"),
+            ("disable_reason", "TEXT")
         ]:
             try:
                 cursor.execute(f"ALTER TABLE subscriptions ADD COLUMN {col_def[0]} {col_def[1]}")
@@ -6208,8 +6209,8 @@ class Database:
         finally:
             conn.close()
 
-    def toggle_reseller_subscription(self, reseller_id: int, sub_id: int, enable: bool = None):
-        """فعال یا غیرفعال کردن مشتری نماینده بدون کسر یا بازگشت هزینه"""
+    def toggle_reseller_subscription(self, reseller_id: int, sub_id: int, enable: bool = None, reason: str = None):
+        """فعال یا غیرفعال کردن مشتری نماینده بدون کسر یا بازگشت هزینه همراه با ثبت علت غیرفعال‌سازی"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -6223,11 +6224,16 @@ class Database:
                 new_status = "disabled" if row["status"] == "active" else "active"
             else:
                 new_status = "active" if enable else "disabled"
+
+            dis_reason = reason if new_status == "disabled" else None
             
-            cursor.execute("UPDATE subscriptions SET status=?, updated_at=? WHERE id=? AND reseller_id=?",
-                           (new_status, now, sub_id, reseller_id))
+            cursor.execute("""
+                UPDATE subscriptions 
+                SET status=?, disable_reason=?, updated_at=? 
+                WHERE id=? AND reseller_id=?
+            """, (new_status, dis_reason, now, sub_id, reseller_id))
             conn.commit()
-            return {"success": True, "status": new_status}
+            return {"success": True, "status": new_status, "disable_reason": dis_reason}
         except Exception as e:
             return {"success": False, "error": str(e)}
         finally:
@@ -6833,16 +6839,28 @@ class Database:
         finally:
             conn.close()
 
-    def get_deleted_subscriptions(self, reseller_id: int = None) -> list:
-        """دریافت لیست اشتراک‌های موجود در سطل زباله به همراه محاسبه زمان گذشته و مهلت باقی‌مانده تا پاکسازی ۷ روزه"""
+    def get_deleted_subscriptions(self, reseller_id: int = None, sort_by: str = "newest") -> list:
+        """دریافت لیست اشتراک‌های موجود در سطل زباله با پشتیبانی از انواع مرتب‌سازی و محاسبه مهلت ۷ روزه"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now_dt = get_now_naive()
         try:
+            order_clause = "deleted_at DESC"
+            if sort_by == "oldest":
+                order_clause = "deleted_at ASC"
+            elif sort_by == "days_left_asc":
+                order_clause = "deleted_at ASC"
+            elif sort_by == "usage_desc":
+                order_clause = "data_used DESC"
+            elif sort_by == "limit_desc":
+                order_clause = "data_limit DESC"
+            elif sort_by == "name_asc":
+                order_clause = "account_name COLLATE NOCASE ASC"
+
             if reseller_id is not None:
-                cursor.execute("SELECT * FROM subscriptions WHERE is_deleted = 1 AND reseller_id = ? ORDER BY deleted_at DESC", (reseller_id,))
+                cursor.execute(f"SELECT * FROM subscriptions WHERE is_deleted = 1 AND reseller_id = ? ORDER BY {order_clause}", (reseller_id,))
             else:
-                cursor.execute("SELECT * FROM subscriptions WHERE is_deleted = 1 ORDER BY deleted_at DESC")
+                cursor.execute(f"SELECT * FROM subscriptions WHERE is_deleted = 1 ORDER BY {order_clause}")
             rows = cursor.fetchall()
             result = []
             for r in rows:
@@ -6858,6 +6876,10 @@ class Database:
                 item["days_passed"] = days_passed
                 item["days_left"] = max(0.0, round(7.0 - days_passed, 1))
                 result.append(item)
+
+            if sort_by == "days_left_asc":
+                result.sort(key=lambda x: x["days_left"])
+
             return result
         except Exception as e:
             logger.error(f"Error fetching deleted subscriptions: {e}")
@@ -6896,7 +6918,7 @@ class Database:
             # ساخت کوئری به‌روزرسانی با فیلدهای جدید
             update_sql = """
                 UPDATE subscriptions 
-                SET is_deleted = 0, deleted_at = NULL, delete_reason = NULL, deleted_by = NULL, 
+                SET is_deleted = 0, deleted_at = NULL, delete_reason = NULL, deleted_by = NULL, disable_reason = NULL,
                     purged_from_hiddify = 0, status = 'active', updated_at = ?
             """
             params = [now]
@@ -6932,14 +6954,41 @@ class Database:
         finally:
             conn.close()
 
+    def purge_subscription_permanently(self, sub_id: int, reseller_id: int = None) -> dict:
+        """حذف فیزیکی و قطعی اشتراک از سطل زباله دیتابیس"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if reseller_id is not None:
+                cursor.execute("SELECT * FROM subscriptions WHERE id = ? AND reseller_id = ? AND is_deleted = 1", (sub_id, reseller_id))
+            else:
+                cursor.execute("SELECT * FROM subscriptions WHERE id = ? AND is_deleted = 1", (sub_id,))
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "error": "اشتراک در سطل زباله یافت نشد."}
+
+            sub_dict = dict(row)
+            cursor.execute("DELETE FROM subscriptions WHERE id = ?", (sub_id,))
+            conn.commit()
+            return {
+                "success": True,
+                "account_name": sub_dict.get("account_name"),
+                "hidify_uuid": sub_dict.get("hidify_uuid")
+            }
+        except Exception as e:
+            logger.error(f"Error purging subscription {sub_id} permanently: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
     def purge_expired_deleted_subscriptions(self, hiddify_purge_func=None) -> int:
-        """پاکسازی دائمی خودکار اشتراک‌های سپری‌شده از مهلت ۷ روزه از سرور هیدیفای"""
+        """پاکسازی دائمی خودکار اشتراک‌های سپری‌شده از مهلت ۷ روزه از سرور هیدیفای و حذف قطعی از دیتابیس"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now_dt = get_now_naive()
         purged_count = 0
         try:
-            cursor.execute("SELECT id, hidify_uuid, account_name, deleted_at FROM subscriptions WHERE is_deleted = 1 AND (purged_from_hiddify = 0 OR purged_from_hiddify IS NULL)")
+            cursor.execute("SELECT id, hidify_uuid, account_name, deleted_at FROM subscriptions WHERE is_deleted = 1")
             rows = cursor.fetchall()
             for r in rows:
                 del_str = r["deleted_at"]
@@ -6957,7 +7006,8 @@ class Database:
                             hiddify_purge_func(uuid_val)
                         except Exception as e:
                             logger.warning(f"Error purging user {uuid_val} from Hiddify: {e}")
-                    cursor.execute("UPDATE subscriptions SET purged_from_hiddify = 1 WHERE id = ?", (r["id"],))
+                    # حذف قطعی از دیتابیس جهت تمیز شدن کامل سطل زباله
+                    cursor.execute("DELETE FROM subscriptions WHERE id = ?", (r["id"],))
                     purged_count += 1
             conn.commit()
         except Exception as e:

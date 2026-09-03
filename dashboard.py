@@ -1447,6 +1447,13 @@ def hiddify_restore_or_recreate_subscription(sub: dict, reseller_id: int = None)
     )
     logger.info(f"Updated restored user {final_uuid} in Hiddify: {upd_res}")
 
+    # تضمین قطعی فعال‌سازی در هیدیفای با ارسال صریح فلگ enable
+    for k in keys_to_try:
+        try:
+            hidify_sync_request("PATCH", f"/admin/user/{final_uuid}/", {"enable": True, "is_active": True}, api_key=k)
+        except Exception:
+            pass
+
     return {
         "success": True,
         "recreated": recreated,
@@ -3721,26 +3728,54 @@ def subscriptions():
     count_query = f"SELECT COUNT(*) FROM subscriptions {where_clause}"
     total_count = conn.execute(count_query, params).fetchone()[0]
 
+    sort_by = request.args.get("sort", "newest").strip()
+    order_clause = "created_at DESC"
+    if status_filter == "deleted":
+        order_clause = "deleted_at DESC"
+        if sort_by == "oldest":
+            order_clause = "deleted_at ASC"
+        elif sort_by == "days_left_asc":
+            order_clause = "deleted_at ASC"
+        elif sort_by == "usage_desc":
+            order_clause = "data_used DESC"
+        elif sort_by == "limit_desc":
+            order_clause = "data_limit DESC"
+        elif sort_by == "name_asc":
+            order_clause = "account_name COLLATE NOCASE ASC"
+
     if per_page == 0 or per_page >= 100000:
         total_pages = 1
         page = 1
-        query = f"SELECT * FROM subscriptions {where_clause} ORDER BY created_at DESC"
+        query = f"SELECT * FROM subscriptions {where_clause} ORDER BY {order_clause}"
         sub_list = conn.execute(query, params).fetchall()
     else:
         total_pages = max(1, math.ceil(total_count / per_page)) if total_count > 0 else 1
         if page > total_pages:
             page = total_pages
         offset = (page - 1) * per_page
-        query = f"SELECT * FROM subscriptions {where_clause} ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        query = f"SELECT * FROM subscriptions {where_clause} ORDER BY {order_clause} LIMIT ? OFFSET ?"
         sub_list = conn.execute(query, params + [per_page, offset]).fetchall()
 
     conn.close()
 
     tickets_map = db.get_customers_ticket_status_map()
     subscriptions_with_refund = []
+    now_naive_val = get_now_naive()
     for s in sub_list:
         s_dict = enrich_subscription_details(s)
         s_dict["refund_info"] = db.calculate_customer_refund(s["id"])
+
+        if status_filter == "deleted":
+            del_str = s_dict.get("deleted_at")
+            days_passed = 0.0
+            if del_str:
+                try:
+                    del_dt = datetime.fromisoformat(del_str.replace("Z", "+00:00")).replace(tzinfo=None)
+                    days_passed = round((now_naive_val - del_dt).total_seconds() / 86400.0, 1)
+                except Exception:
+                    days_passed = 0.0
+            s_dict["days_passed"] = days_passed
+            s_dict["days_left"] = max(0.0, round(7.0 - days_passed, 1))
         
         # وضعیت هوشمند تیکت مشتری
         tg_id = s_dict.get("telegram_id")
@@ -3772,6 +3807,7 @@ def subscriptions():
         resellers_list=resellers_list,
         plans=plans,
         search=search,
+        sort_by=sort_by,
         total_count=total_count,
         page=page,
         per_page=per_page,
@@ -4149,17 +4185,23 @@ def admin_subscription_toggle(sub_id):
     new_status = "disabled" if current_status == "active" else "active"
     is_enable = (new_status == "active")
 
+    reason = request.form.get("reason", "").strip()
+    custom_reason = request.form.get("custom_reason", "").strip()
+    final_reason = custom_reason if reason == "custom" and custom_reason else (reason or "سایر")
+    dis_reason = final_reason if not is_enable else None
+
     if sub.get("hidify_uuid"):
         hidify_sync_update_user(sub["hidify_uuid"], enable=is_enable, is_active=is_enable)
 
     conn = db.get_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE subscriptions SET status = ?, updated_at = ? WHERE id = ?", (new_status, get_now_iso(), sub_id))
+    cursor.execute("UPDATE subscriptions SET status = ?, disable_reason = ?, updated_at = ? WHERE id = ?", (new_status, dis_reason, get_now_iso(), sub_id))
     conn.commit()
     conn.close()
 
     action_fa = "فعال" if is_enable else "غیرفعال"
-    flash(f"اشتراک «{sub.get('account_name')}» با موفقیت {action_fa} شد.", "info")
+    reason_fa = f" (علت: {dis_reason})" if dis_reason else ""
+    flash(f"اشتراک «{sub.get('account_name')}» با موفقیت {action_fa} شد.{reason_fa}", "info")
     return redirect(url_for("subscriptions"))
 
 
@@ -4285,6 +4327,95 @@ def admin_subscription_restore(sub_id):
     else:
         flash(f"خطا در بازگردانی اشتراک: {res.get('error')}", "danger")
     return redirect(url_for("subscriptions"))
+
+
+@app.route("/admin/subscription/<int:sub_id>/purge", methods=["POST"])
+@permission_required("sub_delete")
+def admin_subscription_purge(sub_id):
+    """حذف دائمی اشتراک از سطل زباله و سرور هیدیفای توسط مدیر"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE id=? AND is_deleted=1", (sub_id,)).fetchone()
+    conn.close()
+    if not sub_row:
+        flash("اشتراک حذف‌شده‌ای یافت نشد.", "danger")
+        return redirect(url_for("subscriptions", status="deleted"))
+
+    sub = dict(sub_row)
+    uuid_val = sub.get("hidify_uuid")
+    if uuid_val:
+        try:
+            hidify_sync_delete_user(uuid_val)
+        except Exception as e:
+            logger.warning(f"Error purging user {uuid_val} from Hiddify: {e}")
+
+    res = db.purge_subscription_permanently(sub_id)
+    if res.get("success"):
+        flash(f"اشتراک «{sub.get('account_name')}» برای همیشه از سطل زباله و پنل هیدیفای حذف گردید.", "warning")
+    else:
+        flash(f"خطا در حذف دائمی اشتراک: {res.get('error')}", "danger")
+
+    return redirect(url_for("subscriptions", status="deleted"))
+
+
+@app.route("/admin/trash/bulk", methods=["POST"])
+@permission_required("sub_delete")
+def admin_trash_bulk():
+    """عملیات گروهی در سطل زباله مدیریت (بازگردانی گروهی یا حذف دائمی گروهی)"""
+    action = request.form.get("bulk_action")
+    raw_ids = request.form.getlist("selected_ids") or [x.strip() for x in request.form.get("selected_ids_str", "").split(",") if x.strip()]
+    sub_ids = []
+    for s_id in raw_ids:
+        try:
+            val = int(str(s_id).strip())
+            if val > 0:
+                sub_ids.append(val)
+        except (ValueError, TypeError):
+            continue
+
+    if not sub_ids:
+        flash("هیچ اشتراکی انتخاب نشده است.", "warning")
+        return redirect(url_for("subscriptions", status="deleted"))
+
+    success_count = 0
+    if action == "restore":
+        for sub_id in sub_ids:
+            conn = db.get_connection()
+            sub_row = conn.execute("SELECT * FROM subscriptions WHERE id=? AND is_deleted=1", (sub_id,)).fetchone()
+            conn.close()
+            if not sub_row:
+                continue
+            sub = dict(sub_row)
+            h_res = hiddify_restore_or_recreate_subscription(sub, reseller_id=sub.get("reseller_id"))
+            if h_res.get("success"):
+                db.restore_subscription(
+                    sub_id,
+                    is_reseller=False,
+                    new_uuid=h_res.get("uuid"),
+                    new_start_date=h_res.get("new_start_date"),
+                    new_expire_date=h_res.get("new_expire_date"),
+                    new_data_used=h_res.get("data_used")
+                )
+                success_count += 1
+        flash(f"{success_count} اشتراک با موفقیت از سطل زباله بازگردانی شدند و در هیدیفای فعال گردیدند.", "success")
+    elif action == "purge":
+        for sub_id in sub_ids:
+            conn = db.get_connection()
+            sub_row = conn.execute("SELECT * FROM subscriptions WHERE id=? AND is_deleted=1", (sub_id,)).fetchone()
+            conn.close()
+            if not sub_row:
+                continue
+            sub = dict(sub_row)
+            if sub.get("hidify_uuid"):
+                try:
+                    hidify_sync_delete_user(sub["hidify_uuid"])
+                except Exception as e:
+                    logger.warning(f"Error purging user {sub['hidify_uuid']} from Hiddify: {e}")
+            del_res = db.purge_subscription_permanently(sub_id)
+            if del_res.get("success"):
+                success_count += 1
+        flash(f"{success_count} اشتراک برای همیشه از سطل زباله و پنل هیدیفای حذف گردیدند.", "warning")
+
+    return redirect(url_for("subscriptions", status="deleted"))
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -5267,15 +5398,20 @@ def admin_subscriptions_bulk():
         sub = dict(sub_row)
         uuid_val = sub.get("hidify_uuid")
 
+        preset_reason = request.form.get("reason", "").strip()
+        custom_reason = request.form.get("custom_reason", "").strip()
+        final_reason = custom_reason if preset_reason == "custom" and custom_reason else (preset_reason or "سایر")
+
         if action == "disable":
+            dis_reason = final_reason if final_reason != "سایر" else "غیرفعال‌سازی توسط مدیریت"
             if uuid_val:
                 hidify_sync_update_user(uuid_val, enable=False, is_active=False)
-            db.update_subscription(sub_id, status="disabled")
+            db.update_subscription(sub_id, status="disabled", disable_reason=dis_reason)
             success_count += 1
         elif action == "enable":
             if uuid_val:
                 hidify_sync_update_user(uuid_val, enable=True, is_active=True)
-            db.update_subscription(sub_id, status="active")
+            db.update_subscription(sub_id, status="active", disable_reason=None)
             success_count += 1
         elif action == "delete":
             if uuid_val:
@@ -5283,7 +5419,7 @@ def admin_subscriptions_bulk():
                     hidify_sync_delete_user(uuid_val)
                 except Exception as ex:
                     logger.error(f"Error deleting user {uuid_val} from Hiddify: {ex}")
-            del_res = db.delete_customer_subscription(sub_id, refund_to_customer=False, admin_name=admin_name)
+            del_res = db.delete_customer_subscription(sub_id, refund_to_customer=False, admin_name=admin_name, reason=final_reason)
             if del_res.get("success"):
                 success_count += 1
         elif action == "clear_debt":
@@ -6389,8 +6525,10 @@ def reseller_users():
             per_page = 25
             per_page_str = "25"
     
+    sort_by = request.args.get("sort", "newest").strip()
+
     if status_filter == "deleted":
-        subs = db.get_deleted_subscriptions(reseller_id)
+        subs = db.get_deleted_subscriptions(reseller_id, sort_by=sort_by)
     else:
         raw_subs = db.get_reseller_subscriptions(reseller_id)
         subs = []
@@ -6447,6 +6585,7 @@ def reseller_users():
         display_start=start_idx + 1 if total_count > 0 else 0,
         display_end=end_idx,
         search=search_query,
+        sort_by=sort_by,
         panel_url=get_hiddify_url(),
         user_proxy=get_user_proxy(),
         single_link_template=single_link_template
@@ -6637,22 +6776,30 @@ def reseller_request_quota_change(sub_id):
 @app.route("/reseller/subscription/<int:sub_id>/toggle", methods=["POST"])
 @reseller_required
 def reseller_toggle_user(sub_id: int):
-    """فعال یا غیرفعال کردن مشتری نماینده (بدون کسر یا استرداد هزینه)"""
+    """فعال یا غیرفعال کردن مشتری نماینده با ثبت علت در صورت غیرفعال‌سازی (بدون کسر یا استرداد هزینه)"""
     reseller_id = session.get("reseller_id")
     sub = db.get_reseller_subscription(reseller_id, sub_id)
     if not sub:
         flash("اشتراک مورد نظر یافت نشد.", "danger")
         return redirect(url_for("reseller_users"))
 
-    res = db.toggle_reseller_subscription(reseller_id, sub_id)
+    current_status = sub.get("status", "active")
+    new_status = "disabled" if current_status == "active" else "active"
+    is_active = (new_status == "active")
+
+    reason = request.form.get("reason", "").strip()
+    custom_reason = request.form.get("custom_reason", "").strip()
+    final_reason = custom_reason if reason == "custom" and custom_reason else (reason or "سایر")
+    dis_reason = final_reason if not is_active else None
+
+    res = db.toggle_reseller_subscription(reseller_id, sub_id, enable=is_active, reason=dis_reason)
     if res.get("success"):
-        new_status = res.get("status")
-        is_active = (new_status == "active")
         if sub.get("hidify_uuid"):
-            hidify_sync_update_user(sub["hidify_uuid"], enable=is_active, is_active=is_active)
+            hidify_sync_update_user(sub["hidify_uuid"], enable=is_active, is_active=is_active, reseller_id=reseller_id)
         
         status_fa = "فعال" if is_active else "غیرفعال"
-        flash(f"وضعیت اشتراک «{sub['account_name']}» به حالت «{status_fa}» تغییر یافت. (هیچ مبلغی کسر یا اضافه نشد)", "info")
+        reason_fa = f" (علت: {dis_reason})" if dis_reason else ""
+        flash(f"وضعیت اشتراک «{sub['account_name']}» به حالت «{status_fa}» تغییر یافت.{reason_fa}", "info")
     else:
         flash(f"خطا در تغییر وضعیت: {res.get('error')}", "danger")
 
@@ -6999,10 +7146,128 @@ def reseller_restore_user(sub_id: int):
     return redirect(url_for("reseller_users"))
 
 
+@app.route("/reseller/subscription/<int:sub_id>/purge", methods=["POST"])
+@reseller_required
+def reseller_purge_user(sub_id: int):
+    """حذف دائمی مشتری از سطل زباله و سرور هیدیفای توسط نماینده"""
+    reseller_id = session.get("reseller_id")
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE id=? AND reseller_id=? AND is_deleted=1", (sub_id, reseller_id)).fetchone()
+    conn.close()
+    if not sub_row:
+        flash("اشتراک حذف‌شده‌ای یافت نشد.", "danger")
+        return redirect(url_for("reseller_users", status="deleted"))
+
+    sub = dict(sub_row)
+    uuid_val = sub.get("hidify_uuid")
+    if uuid_val:
+        try:
+            hidify_sync_delete_user(uuid_val)
+        except Exception as e:
+            logger.warning(f"Error purging user {uuid_val} from Hiddify by reseller: {e}")
+
+    res = db.purge_subscription_permanently(sub_id, reseller_id=reseller_id)
+    if res.get("success"):
+        flash(f"اشتراک «{sub.get('account_name')}» برای همیشه از سطل زباله و پنل هیدیفای حذف گردید.", "warning")
+    else:
+        flash(f"خطا در حذف دائمی اشتراک: {res.get('error')}", "danger")
+
+    return redirect(url_for("reseller_users", status="deleted"))
+
+
+@app.route("/reseller/trash/bulk", methods=["POST"])
+@reseller_required
+def reseller_trash_bulk():
+    """عملیات گروهی در سطل زباله نماینده (بازگردانی گروهی یا حذف دائمی گروهی)"""
+    reseller_id = session.get("reseller_id")
+    action = request.form.get("bulk_action")
+    raw_ids = request.form.getlist("selected_ids") or [x.strip() for x in request.form.get("selected_ids_str", "").split(",") if x.strip()]
+    sub_ids = []
+    for s_id in raw_ids:
+        try:
+            val = int(str(s_id).strip())
+            if val > 0:
+                sub_ids.append(val)
+        except (ValueError, TypeError):
+            continue
+
+    if not sub_ids:
+        flash("هیچ اشتراکی برای انجام عملیات گروهی سطل زباله انتخاب نشده است.", "warning")
+        return redirect(url_for("reseller_users", status="deleted"))
+
+    success_count = 0
+    if action == "restore":
+        plans = get_plans_dict()
+        stats = db.get_reseller_stats(reseller_id)
+        discount = stats.get("discount_percent", 20)
+
+        for sub_id in sub_ids:
+            conn = db.get_connection()
+            sub_row = conn.execute("SELECT * FROM subscriptions WHERE id=? AND reseller_id=? AND is_deleted=1", (sub_id, reseller_id)).fetchone()
+            conn.close()
+            if not sub_row:
+                continue
+            sub = dict(sub_row)
+            plan_key = sub.get("plan_id")
+            plan = plans.get(plan_key) if plan_key in plans else None
+            if plan:
+                original_price = plan.get("master_price") or plan.get("price") or 0
+                discount_amount = int((original_price * discount) / 100)
+                final_price = original_price - discount_amount
+            else:
+                final_price = sub.get("cost_paid") or 0
+
+            # بررسی توان خرید
+            r_cur = db.get_reseller_stats(reseller_id)
+            cur_power = r_cur.get("total_purchasing_power", r_cur["balance"])
+            if cur_power < final_price:
+                continue
+
+            h_res = hiddify_restore_or_recreate_subscription(sub, reseller_id=reseller_id)
+            if h_res.get("success"):
+                db.restore_subscription(
+                    sub_id,
+                    is_reseller=True,
+                    reseller_id=reseller_id,
+                    cost=final_price,
+                    new_uuid=h_res.get("uuid"),
+                    new_start_date=h_res.get("new_start_date"),
+                    new_expire_date=h_res.get("new_expire_date"),
+                    new_data_used=h_res.get("data_used")
+                )
+                success_count += 1
+
+        r_after = db.get_reseller(reseller_id)
+        if r_after:
+            session["balance"] = r_after.get("balance", 0)
+
+        flash(f"{success_count} اشتراک با موفقیت از سطل زباله بازگردانی و در هیدیفای فعال شدند.", "success")
+    elif action == "purge":
+        for sub_id in sub_ids:
+            conn = db.get_connection()
+            sub_row = conn.execute("SELECT * FROM subscriptions WHERE id=? AND reseller_id=? AND is_deleted=1", (sub_id, reseller_id)).fetchone()
+            conn.close()
+            if not sub_row:
+                continue
+            sub = dict(sub_row)
+            if sub.get("hidify_uuid"):
+                try:
+                    hidify_sync_delete_user(sub["hidify_uuid"])
+                except Exception as e:
+                    logger.warning(f"Error purging user {sub['hidify_uuid']} from Hiddify: {e}")
+            del_res = db.purge_subscription_permanently(sub_id, reseller_id=reseller_id)
+            if del_res.get("success"):
+                success_count += 1
+
+        flash(f"{success_count} اشتراک برای همیشه از سطل زباله و پنل هیدیفای حذف گردیدند.", "warning")
+
+    return redirect(url_for("reseller_users", status="deleted"))
+
+
 @app.route("/reseller/subscriptions/bulk", methods=["POST"])
 @reseller_required
 def reseller_subscriptions_bulk():
-    """عملیات گروهی روی اشتراک‌های انتخابی نماینده (غیرفعال، فعال، حذف، تسویه بدهی، ارسال یادآوری)"""
+    """عملیات گروهی روی اشتراک‌های انتخابی نماینده (غیرفعال، فعال، حذف، تسویه بدهی، ارسال یادآوری) با ثبت علت"""
     reseller_id = session.get("reseller_id")
     action = request.form.get("bulk_action")
     raw_ids = request.form.getlist("selected_ids") or [x.strip() for x in request.form.get("selected_ids_str", "").split(",") if x.strip()]
@@ -7019,6 +7284,10 @@ def reseller_subscriptions_bulk():
         flash("هیچ اشتراکی برای انجام عملیات گروهی انتخاب نشده است.", "warning")
         return redirect(url_for("reseller_users"))
 
+    bulk_reason = request.form.get("reason", "").strip()
+    bulk_custom_reason = request.form.get("custom_reason", "").strip()
+    final_bulk_reason = bulk_custom_reason if bulk_reason == "custom" and bulk_custom_reason else (bulk_reason or "عملیات گروهی")
+
     success_count = 0
     total_refund = 0
 
@@ -7028,7 +7297,7 @@ def reseller_subscriptions_bulk():
             continue
 
         if action == "disable":
-            res = db.toggle_reseller_subscription(reseller_id, sub_id, enable=False)
+            res = db.toggle_reseller_subscription(reseller_id, sub_id, enable=False, reason=final_bulk_reason)
             if res.get("success"):
                 if sub.get("hidify_uuid"):
                     hidify_sync_update_user(sub["hidify_uuid"], enable=False, is_active=False, reseller_id=reseller_id)
@@ -7065,7 +7334,7 @@ def reseller_subscriptions_bulk():
                     hidify_sync_update_user(sub["hidify_uuid"], enable=False, is_active=False, reseller_id=reseller_id)
                 except Exception as e:
                     logger.warning(f"Error bulk disabling user {sub['hidify_uuid']} in Hiddify: {e}")
-            del_res = db.delete_reseller_subscription(reseller_id, sub_id)
+            del_res = db.delete_reseller_subscription(reseller_id, sub_id, reason=final_bulk_reason)
             if del_res.get("success"):
                 success_count += 1
                 total_refund += del_res.get("refund_amount", 0)
