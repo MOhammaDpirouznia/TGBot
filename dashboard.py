@@ -2016,21 +2016,46 @@ def admin_vip_user_add():
 @app.route("/admin/bot-settings", methods=["GET", "POST"])
 @admin_required
 def bot_menu_settings():
-    """مدیریت و سفارشی‌سازی عناوین، فعال/غیرفعال بودن و چیدمان افقی و عمودی دکمه‌های منوی ربات"""
+    """مدیریت و سفارشی‌سازی عناوین، فعال/غیرفعال بودن و چیدمان افقی و عمودی دکمه‌های منوی ربات مدیریت و ربات‌های نمایندگان"""
+    active_tab = request.args.get("tab", "admin")
+
     if request.method == "POST":
-        buttons_raw = request.form.get("buttons_json")
-        if buttons_raw:
-            try:
-                buttons_list = json.loads(buttons_raw)
-                if isinstance(buttons_list, list):
-                    db.save_bot_menu_buttons(buttons_list)
-                    flash("تنظیمات و چیدمان دکمه‌های منوی ربات با موفقیت ذخیره شد.", "success")
-                    return redirect(url_for("bot_menu_settings"))
-            except Exception as e:
-                logger.error(f"Error parsing bot menu buttons json: {e}")
-                flash(f"خطا در پردازش اطلاعات ارسالی: {e}", "danger")
+        bot_type = request.form.get("bot_type", "admin").strip().lower()
+        action = request.form.get("action", "").strip()
+
+        if action == "save_domains" or bot_type == "domains":
+            tutorial_domain = request.form.get("tutorial_domain", "").strip().lower()
+            troubleshoot_domain = request.form.get("troubleshoot_domain", "").strip().lower()
+            db.save_setting("tutorial_domain", tutorial_domain)
+            db.save_setting("troubleshoot_domain", troubleshoot_domain)
+            flash("دامنه‌های راهنمای اتصال و حل مشکلات اتصال با موفقیت ذخیره شدند.", "success")
+            return redirect(url_for("bot_menu_settings", tab=request.form.get("active_tab", "admin")))
+
+        if bot_type == "reseller":
+            all_buttons = db.get_reseller_bot_menu_buttons()
+            updated_list = []
+            for btn in all_buttons:
+                b_id = btn["id"]
+                title = request.form.get(f"title_{b_id}", btn.get("title", ""))
+                row = int(request.form.get(f"row_{b_id}", btn.get("row", 0)))
+                col = int(request.form.get(f"col_{b_id}", btn.get("col", 0)))
+                is_enabled = request.form.get(f"enabled_{b_id}") == "1"
+                disabled_behavior = request.form.get(f"behavior_{b_id}", btn.get("disabled_behavior", "show_disabled"))
+                disabled_msg = request.form.get(f"dis_msg_{b_id}", btn.get("disabled_message", ""))
+                updated_list.append({
+                    "id": b_id,
+                    "title": title.strip(),
+                    "row": row,
+                    "col": col,
+                    "is_enabled": is_enabled,
+                    "disabled_behavior": disabled_behavior,
+                    "disabled_message": disabled_msg.strip(),
+                    "description": btn.get("description", ""),
+                })
+            db.save_reseller_bot_menu_buttons(updated_list)
+            flash("تنظیمات و چیدمان دکمه‌های ربات نمایندگان با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("bot_menu_settings", tab="reseller"))
         else:
-            # ذخیره از طریق فرم مستقیم
             all_buttons = db.get_bot_menu_buttons()
             updated_list = []
             for btn in all_buttons:
@@ -2052,15 +2077,27 @@ def bot_menu_settings():
                     "description": btn.get("description", ""),
                 })
             db.save_bot_menu_buttons(updated_list)
-            flash("تنظیمات و چیدمان دکمه‌های منوی ربات با موفقیت ذخیره شد.", "success")
-            return redirect(url_for("bot_menu_settings"))
+            flash("تنظیمات و چیدمان دکمه‌های ربات مدیریت با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("bot_menu_settings", tab="admin"))
 
-    buttons = db.get_bot_menu_buttons()
-    menu_rows = db.get_bot_menu_keyboard_rows(is_admin=True)
+    admin_buttons = db.get_bot_menu_buttons()
+    admin_menu_rows = db.get_bot_menu_keyboard_rows(is_admin=True, is_reseller=False)
+    reseller_buttons = db.get_reseller_bot_menu_buttons()
+    reseller_menu_rows = db.get_bot_menu_keyboard_rows(is_reseller=True)
+    tutorial_domain = db.get_setting("tutorial_domain", "")
+    troubleshoot_domain = db.get_setting("troubleshoot_domain", "")
+
     return render_template(
         "bot_menu_settings.html",
-        buttons=buttons,
-        menu_rows=menu_rows
+        admin_buttons=admin_buttons,
+        admin_menu_rows=admin_menu_rows,
+        reseller_buttons=reseller_buttons,
+        reseller_menu_rows=reseller_menu_rows,
+        tutorial_domain=tutorial_domain,
+        troubleshoot_domain=troubleshoot_domain,
+        active_tab=active_tab,
+        buttons=admin_buttons,
+        menu_rows=admin_menu_rows
     )
 
 
@@ -2068,9 +2105,15 @@ def bot_menu_settings():
 @admin_required
 def admin_bot_menu_reset():
     """بازنشانی دکمه‌های منوی ربات به چیدمان و نام‌های پیش‌فرض"""
-    db.reset_bot_menu_buttons()
-    flash("چیدمان و دکمه‌های منوی ربات با موفقیت به حالت پیش‌فرض بازنشانی شد.", "info")
-    return redirect(url_for("bot_menu_settings"))
+    reset_type = request.args.get("type") or request.form.get("type", "admin")
+    if reset_type == "reseller":
+        db.reset_reseller_bot_menu_buttons()
+        flash("چیدمان و دکمه‌های منوی ربات نمایندگان با موفقیت به حالت پیش‌فرض بازنشانی شد.", "info")
+        return redirect(url_for("bot_menu_settings", tab="reseller"))
+    else:
+        db.reset_bot_menu_buttons()
+        flash("چیدمان و دکمه‌های منوی ربات مدیریت با موفقیت به حالت پیش‌فرض بازنشانی شد.", "info")
+        return redirect(url_for("bot_menu_settings", tab="admin"))
 
 
 @app.route("/user/<int:telegram_id>")
@@ -2316,7 +2359,8 @@ def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: 
                 data_limit=data_limit,
                 duration=duration,
                 status="active",
-                account_name=account_name
+                account_name=account_name,
+                reseller_id=r_id
             )
 
     conn = db.get_connection()
@@ -4898,10 +4942,12 @@ def settings():
             return redirect(url_for("settings"))
         elif action == "save_tutorial_settings":
             tutorial_domain = request.form.get("tutorial_domain", "").strip().lower()
+            troubleshoot_domain = request.form.get("troubleshoot_domain", "").strip().lower()
             tutorial_title = request.form.get("tutorial_title", "").strip()
             db.save_setting("tutorial_domain", tutorial_domain)
+            db.save_setting("troubleshoot_domain", troubleshoot_domain)
             db.save_setting("tutorial_title", tutorial_title)
-            flash("تنظیمات دامنه و عنوان پورتال آموزش‌ها با موفقیت ذخیره شد.", "success")
+            flash("تنظیمات دامنه‌ها و عنوان پورتال آموزش‌ها با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
         elif action == "save_online_gateway_settings":
             gw_enabled = request.form.get("online_gateway_enabled") == "on"
@@ -4928,6 +4974,7 @@ def settings():
     crypto_config = CryptoPaymentGateway.get_crypto_config(db)
     admin_gateway = db.get_admin_gateway()
     tutorial_domain = db.get_setting("tutorial_domain", "")
+    troubleshoot_domain = db.get_setting("troubleshoot_domain", "")
     tutorial_title = db.get_setting("tutorial_title", "راهنما و آموزش اتصال")
     vip_settings = db.get_vip_settings()
     return render_template(
@@ -4938,6 +4985,7 @@ def settings():
         crypto_config=crypto_config,
         admin_gateway=admin_gateway,
         tutorial_domain=tutorial_domain,
+        troubleshoot_domain=troubleshoot_domain,
         tutorial_title=tutorial_title,
         vip_settings=vip_settings
     )

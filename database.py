@@ -2630,8 +2630,111 @@ class Database:
         },
     ]
 
+    DEFAULT_RESELLER_BOT_MENU_BUTTONS = [
+        {
+            "id": "buy",
+            "title": "🛍️ خرید اشتراک",
+            "description": "نمایش تعرفه‌ها و خرید اشتراک VPN از نماینده",
+            "row": 0,
+            "col": 0,
+            "is_enabled": True,
+            "disabled_behavior": "show_disabled",
+            "disabled_message": "⚠️ بخش خرید اشتراک موقتاً غیرفعال می‌باشد. لطفاً دقایقی دیگر مراجعه فرمایید.",
+        },
+        {
+            "id": "my_subs",
+            "title": "👤 اشتراک‌های من",
+            "description": "مشاهده وضعیت ترافیک، زمان، لینک‌ها و بارکد اتصال کاربر",
+            "row": 0,
+            "col": 1,
+            "is_enabled": True,
+            "disabled_behavior": "show_disabled",
+            "disabled_message": "⚠️ بخش اشتراک‌های من موقتاً در حال بروزرسانی است.",
+        },
+        {
+            "id": "wallet",
+            "title": "💳 کیف پول و شارژ",
+            "description": "مشاهده موجودی کیف پول و وضعیت حساب کاربری",
+            "row": 1,
+            "col": 0,
+            "is_enabled": True,
+            "disabled_behavior": "show_disabled",
+            "disabled_message": "⚠️ بخش کیف پول موقتاً در دسترس نیست.",
+        },
+        {
+            "id": "renew",
+            "title": "🔄 تمدید سرویس",
+            "description": "تمدید سریع اکانت‌های موجود بدون تغییر لینک",
+            "row": 1,
+            "col": 1,
+            "is_enabled": True,
+            "disabled_behavior": "show_disabled",
+            "disabled_message": "⚠️ بخش تمدید سرویس موقتاً غیرفعال است.",
+        },
+        {
+            "id": "test_sub",
+            "title": "⚡ تست رایگان",
+            "description": "دریافت کانفیگ تست رایگان برای کاربران جدید",
+            "row": 2,
+            "col": 0,
+            "is_enabled": True,
+            "disabled_behavior": "hide",
+            "disabled_message": "⚠️ اشتراک تست موقتاً غیرفعال است.",
+        },
+        {
+            "id": "support",
+            "title": "🎧 پشتیبانی و تیکت",
+            "description": "ارسال تیکت و پیام مستقیم به پشتیبانی نماینده",
+            "row": 2,
+            "col": 1,
+            "is_enabled": True,
+            "disabled_behavior": "show_disabled",
+            "disabled_message": "⚠️ پشتیبانی موقتاً غیرفعال است.",
+        },
+        {
+            "id": "tutorials",
+            "title": "📖 راهنمای اتصال",
+            "description": "آموزش‌های تصویری اتصال برای اندروید، آیفون، ویندوز و...",
+            "row": 3,
+            "col": 0,
+            "is_enabled": True,
+            "disabled_behavior": "show_disabled",
+            "disabled_message": "⚠️ بخش راهنمای اتصال در حال بروزرسانی است.",
+        },
+        {
+            "id": "troubleshoot",
+            "title": "🛠️ حل مشکلات اتصال",
+            "description": "ویزارد عیب‌یابی و رفع قطعی اینترنت",
+            "row": 3,
+            "col": 1,
+            "is_enabled": True,
+            "disabled_behavior": "show_disabled",
+            "disabled_message": "⚠️ سامانه حل مشکلات اتصال موقتاً در دسترس نیست.",
+        },
+        {
+            "id": "payments",
+            "title": "🧾 سابقه پرداخت‌ها",
+            "description": "مشاهده تراکنش‌ها و فیش‌های ارسالی کاربر",
+            "row": 4,
+            "col": 0,
+            "is_enabled": True,
+            "disabled_behavior": "hide",
+            "disabled_message": "⚠️ بخش سابقه پرداخت‌ها موقتاً غیرفعال است.",
+        },
+        {
+            "id": "language",
+            "title": "🌐 تغییر زبان",
+            "description": "تغییر زبان ربات به زبان‌های دیگر",
+            "row": 4,
+            "col": 1,
+            "is_enabled": True,
+            "disabled_behavior": "hide",
+            "disabled_message": "⚠️ قابلیت تغییر زبان موقتاً غیرفعال است.",
+        },
+    ]
+
     def get_bot_menu_buttons(self) -> List[dict]:
-        """دریافت لیست و تنظیمات چیدمان دکمه‌های منوی ربات"""
+        """دریافت لیست و تنظیمات چیدمان دکمه‌های منوی ربات مدیریت"""
         saved = self.get_setting("bot_menu_buttons_config")
         if not saved or not isinstance(saved, list):
             return copy.deepcopy(self.DEFAULT_BOT_MENU_BUTTONS)
@@ -2653,7 +2756,7 @@ class Database:
         return merged
 
     def save_bot_menu_buttons(self, buttons: List[dict]) -> bool:
-        """ذخیره تنظیمات و چیدمان دکمه‌های منوی اصلی ربات"""
+        """ذخیره تنظیمات و چیدمان دکمه‌های منوی اصلی ربات مدیریت"""
         try:
             clean_buttons = []
             for b in buttons:
@@ -2676,26 +2779,73 @@ class Database:
             return False
 
     def reset_bot_menu_buttons(self) -> List[dict]:
-        """بازنشانی تنظیمات دکمه‌های ربات به حالت پیش‌فرض اولیه"""
+        """بازنشانی تنظیمات دکمه‌های ربات مدیریت به حالت پیش‌فرض اولیه"""
         defaults = copy.deepcopy(self.DEFAULT_BOT_MENU_BUTTONS)
         self.set_setting("bot_menu_buttons_config", defaults)
         return defaults
 
+    def get_reseller_bot_menu_buttons(self) -> List[dict]:
+        """دریافت لیست و تنظیمات چیدمان دکمه‌های منوی ربات‌های نمایندگان"""
+        saved = self.get_setting("reseller_bot_menu_buttons_config")
+        if not saved or not isinstance(saved, list):
+            return copy.deepcopy(self.DEFAULT_RESELLER_BOT_MENU_BUTTONS)
+
+        saved_dict = {b["id"]: b for b in saved if isinstance(b, dict) and "id" in b}
+        merged = []
+        for def_btn in self.DEFAULT_RESELLER_BOT_MENU_BUTTONS:
+            b_id = def_btn["id"]
+            if b_id in saved_dict:
+                merged_btn = copy.deepcopy(def_btn)
+                merged_btn.update(saved_dict[b_id])
+                merged.append(merged_btn)
+            else:
+                merged.append(copy.deepcopy(def_btn))
+
+        merged.sort(key=lambda x: (int(x.get("row", 0)), int(x.get("col", 0))))
+        return merged
+
+    def save_reseller_bot_menu_buttons(self, buttons: List[dict]) -> bool:
+        """ذخیره تنظیمات و چیدمان دکمه‌های منوی ربات‌های نمایندگان"""
+        try:
+            clean_buttons = []
+            for b in buttons:
+                if not isinstance(b, dict) or "id" not in b:
+                    continue
+                clean_buttons.append({
+                    "id": str(b.get("id")),
+                    "title": str(b.get("title", "")).strip(),
+                    "row": int(b.get("row", 0)),
+                    "col": int(b.get("col", 0)),
+                    "is_enabled": bool(b.get("is_enabled", True)),
+                    "disabled_behavior": str(b.get("disabled_behavior", "show_disabled")),
+                    "disabled_message": str(b.get("disabled_message", "⚠️ این بخش موقتاً غیرفعال است.")).strip(),
+                    "description": str(b.get("description", "")),
+                })
+            self.set_setting("reseller_bot_menu_buttons_config", clean_buttons)
+            return True
+        except Exception as e:
+            logger.error(f"Error saving reseller bot menu buttons: {e}")
+            return False
+
+    def reset_reseller_bot_menu_buttons(self) -> List[dict]:
+        """بازنشانی تنظیمات دکمه‌های ربات نمایندگان به حالت پیش‌فرض اولیه"""
+        defaults = copy.deepcopy(self.DEFAULT_RESELLER_BOT_MENU_BUTTONS)
+        self.set_setting("reseller_bot_menu_buttons_config", defaults)
+        return defaults
+
     def get_bot_menu_keyboard_rows(self, is_admin: bool = False, is_reseller: bool = False) -> List[List[dict]]:
         """ساخت سطرهای چیدمان دکمه‌های منو بر اساس سطر و ستون و وضعیت فعال بودن"""
-        buttons = self.get_bot_menu_buttons()
+        buttons = self.get_reseller_bot_menu_buttons() if is_reseller else self.get_bot_menu_buttons()
         visible_buttons = []
         for b in buttons:
             b_id = b.get("id")
-            # برخی دکمه‌ها در حالت نماینده نیاز نیستند (مثل رفرال اصلی یا تغییر زبان در صورت تک‌زبانه بودن)
-            if is_reseller and b_id in ("language", "admin"):
+            if is_reseller and b_id in ("referral", "admin"):
                 continue
 
             if b.get("is_enabled", True):
                 visible_buttons.append(copy.deepcopy(b))
             elif b.get("disabled_behavior") == "show_disabled":
                 b_copy = copy.deepcopy(b)
-                # در حالت نمایش دکمه غیرفعال، می‌توان آیکون قفل را به عنوان اضافه کرد یا همان عنوان را نمایش داد
                 visible_buttons.append(b_copy)
 
         # مرتب‌سازی بر اساس سطر و ستون
@@ -2711,12 +2861,12 @@ class Database:
         sorted_rows = [rows_dict[r] for r in sorted(rows_dict.keys())]
         return sorted_rows
 
-    def match_bot_menu_button(self, text: str) -> Optional[dict]:
+    def match_bot_menu_button(self, text: str, is_reseller: bool = False) -> Optional[dict]:
         """تطبیق هوشمند متن ارسالی کاربر با اکشن‌های تعریف شده دکمه‌های منو"""
         if not text:
             return None
         text_clean = text.strip()
-        buttons = self.get_bot_menu_buttons()
+        buttons = self.get_reseller_bot_menu_buttons() if is_reseller else self.get_bot_menu_buttons()
 
         # ۱. تطبیق مستقیم با عنوان تنظیم‌شده دکمه
         for b in buttons:

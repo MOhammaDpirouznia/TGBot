@@ -896,15 +896,20 @@ async def back_to_enter_tracking(update: Update, context: ContextTypes.DEFAULT_T
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """دستور /help - راهنما و آموزش‌های تصویری اتصال"""
     custom_tutorial = db.get_setting("tutorial_domain")
+    custom_troubleshoot = db.get_setting("troubleshoot_domain")
     dashboard_url = os.getenv("DASHBOARD_URL", "").rstrip("/")
-    if custom_tutorial:
-        base_url = f"https://{custom_tutorial}" if not custom_tutorial.startswith("http") else custom_tutorial
-    elif dashboard_url:
-        base_url = f"{dashboard_url}/help"
-    else:
-        base_url = "http://127.0.0.1:5000/help"
 
-    troubleshoot_url = f"{base_url.rstrip('/')}/troubleshoot"
+    if custom_tutorial:
+        tutorial_url = f"https://{custom_tutorial}" if not str(custom_tutorial).startswith("http") else str(custom_tutorial)
+    elif dashboard_url:
+        tutorial_url = f"{dashboard_url}/help"
+    else:
+        tutorial_url = "http://127.0.0.1:5000/help"
+
+    if custom_troubleshoot:
+        troubleshoot_url = f"https://{custom_troubleshoot}" if not str(custom_troubleshoot).startswith("http") else str(custom_troubleshoot)
+    else:
+        troubleshoot_url = f"{tutorial_url.rstrip('/')}/troubleshoot"
 
     help_text = """
 📖 **مرکز آموزش تصویری و راهنمای اتصال**
@@ -918,7 +923,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🌐 **مودم و روتر:** OpenWrt, MikroTik
 """
     keyboard = [
-        [InlineKeyboardButton("🌐 مشاهده آموزش‌های تصویری تمام دستگاه‌ها", url=base_url)],
+        [InlineKeyboardButton("🌐 مشاهده آموزش‌های تصویری تمام دستگاه‌ها", url=tutorial_url)],
         [InlineKeyboardButton("🛠️ سامانه عیب‌یابی و حل مشکلات اتصال", url=troubleshoot_url)]
     ]
     
@@ -5298,11 +5303,22 @@ async def dynamic_main_menu_router(update: Update, context: ContextTypes.DEFAULT
         elif b_id == "support":
             return await support_menu(update, context)
         elif b_id in ("tutorials", "troubleshoot"):
-            base_url = (HIDIFY_PANEL_URL or "").rstrip("/")
-            if not base_url.startswith("http"):
-                base_url = f"https://{base_url}"
-            tutorial_url = f"{base_url}/help"
-            troubleshoot_url = f"{base_url}/help/troubleshoot"
+            custom_tutorial = db.get_setting("tutorial_domain")
+            custom_troubleshoot = db.get_setting("troubleshoot_domain")
+            dashboard_url = os.getenv("DASHBOARD_URL", "").rstrip("/")
+
+            if custom_tutorial:
+                tutorial_url = f"https://{custom_tutorial}" if not str(custom_tutorial).startswith("http") else str(custom_tutorial)
+            elif dashboard_url:
+                tutorial_url = f"{dashboard_url}/help"
+            else:
+                tutorial_url = "http://127.0.0.1:5000/help"
+
+            if custom_troubleshoot:
+                troubleshoot_url = f"https://{custom_troubleshoot}" if not str(custom_troubleshoot).startswith("http") else str(custom_troubleshoot)
+            else:
+                troubleshoot_url = f"{tutorial_url.rstrip('/')}/troubleshoot"
+
             guide_text = (
                 "📖 <b>مرکز آموزش تصویری و راهنمای اتصال</b>\n\n"
                 "برای مشاهده آموزش‌های مرحله‌به‌مرحله تصویری برای تمام سیستم‌عامل‌ها (اندروید، آیفون، ویندوز، مک و تلویزیون هوشمند) و رفع مشکلات اتصال، روی دکمه‌های زیر کلیک فرمایید:"
