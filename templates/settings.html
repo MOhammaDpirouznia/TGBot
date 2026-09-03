@@ -50,11 +50,25 @@
                     تمامی اطلاعات کانفیگ‌ها، حجم‌ها و مشتریان همیشه روی پنل هیدیفای محفوظ هستند. در صورت دیپلوی مجدد روی Railway یا خالی شدن دیتابیس، ربات به صورت خودکار یا با زدن دکمه زیر تمام کاربران را از پنل هیدیفای بازگردانی می‌کند.
                 </p>
 
-                <form action="{{ url_for('admin_sync_hidify') }}" method="POST" onsubmit="return confirm('آیا مایل به همگام‌سازی و بازیابی اطلاعات تمامی کاربران از هیدیفای هستید؟');">
-                    <button type="submit" class="btn btn-success mb-3">
-                        <i class="fas fa-cloud-arrow-down me-1"></i> همگام‌سازی و بازیابی کاربران از هیدیفای
-                    </button>
-                </form>
+                <div class="d-flex flex-column gap-2 mb-3">
+                    <form action="{{ url_for('admin_sync_hidify') }}" method="POST">
+                        <input type="hidden" name="mode" value="update">
+                        <button type="submit" class="btn btn-outline-success w-100 text-start py-2">
+                            <i class="fas fa-cloud-arrow-down me-2"></i>
+                            <strong>۱. دریافت و بروزرسانی مشتری از هیدیفای</strong>
+                            <div class="small opacity-75 mt-1">بروزرسانی حجم و روزهای مانده؛ مشتریانی که در هیدیفای نیستند از دیتابیس پاک نمی‌شوند.</div>
+                        </button>
+                    </form>
+
+                    <form action="{{ url_for('admin_sync_hidify') }}" method="POST" onsubmit="return confirm('هشدار پاکسازی سراسری:\nآیا از همگام‌سازی پنل با هیدیفای مطمئن هستید؟\n\nکلیه مشتریانی که در پنل هیدیفای موجود نیستند (یا از قبل پاک شده‌اند)، به طور خودکار از پنل مدیریت و پنل نمایندگان حذف خواهند شد.');">
+                        <input type="hidden" name="mode" value="full_sync">
+                        <button type="submit" class="btn btn-outline-danger w-100 text-start py-2">
+                            <i class="fas fa-arrows-rotate me-2"></i>
+                            <strong>۲. همگامسازی پنل با هیدیفای</strong>
+                            <div class="small opacity-75 mt-1">همگام‌سازی کامل؛ مشتریانی که در پنل هیدیفای موجود نیستند، از پنل مدیریت و پنل نمایندگان حذف می‌شوند.</div>
+                        </button>
+                    </form>
+                </div>
 
                 <div class="alert alert-info py-2 small mb-0">
                     <i class="fas fa-lightbulb me-1"></i> <strong>نکته Railway:</strong>
@@ -472,7 +486,6 @@ function sendTestSms() {
                 <div class="col-md-4">
                     <label class="form-label fw-bold">نوع ارائه‌دهنده درگاه (Gateway Provider)</label>
                     <select class="form-select" name="online_gateway_type">
-                        <option value="blupal" {% if admin_gateway.get('type') == 'blupal' %}selected{% endif %}>بلوپال - کارت به کارت هوشمند (BluPal)</option>
                         <option value="zarinpal" {% if admin_gateway.get('type') == 'zarinpal' %}selected{% endif %}>زرین‌پال (ZarinPal)</option>
                         <option value="idpay" {% if admin_gateway.get('type') == 'idpay' %}selected{% endif %}>آیدی‌پی (IDPay)</option>
                         <option value="nextpay" {% if admin_gateway.get('type') == 'nextpay' %}selected{% endif %}>نکست‌پی (NextPay)</option>
@@ -520,26 +533,16 @@ function sendTestSms() {
             
             <div class="row g-3 mb-3">
                 <div class="col-md-6">
-                    <label class="form-label fw-bold">دامنه یا ساب‌دامنه اختصاصی راهنمای اتصال (📖 Tutorial Domain)</label>
+                    <label class="form-label fw-bold">دامنه یا ساب‌دامنه اختصاصی آموزش‌ها (Custom Domain / Subdomain)</label>
                     <div class="input-group">
-                        <span class="input-group-text bg-light"><i class="fas fa-book-open text-primary"></i></span>
+                        <span class="input-group-text bg-light"><i class="fas fa-globe text-muted"></i></span>
                         <input type="text" class="form-control font-monospace" name="tutorial_domain" 
                                value="{{ tutorial_domain }}" placeholder="مثال: help.mydomain.com" dir="ltr">
                     </div>
-                    <div class="form-text text-muted">آدرس پورتال آموزش‌های تصویری اتصال برای کاربران.</div>
+                    <div class="form-text text-muted">رکورد A یا CNAME این ساب‌دامنه را به سمت سرور تنظیم نمایید.</div>
                 </div>
 
                 <div class="col-md-6">
-                    <label class="form-label fw-bold">دامنه اختصاصی حل مشکلات اتصال (🛠️ Troubleshoot Domain)</label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-light"><i class="fas fa-wrench text-warning"></i></span>
-                        <input type="text" class="form-control font-monospace" name="troubleshoot_domain" 
-                               value="{{ troubleshoot_domain }}" placeholder="مثال: fix.mydomain.com" dir="ltr">
-                    </div>
-                    <div class="form-text text-muted">آدرس سامانه ویزارد هوشمند عیب‌یابی و رفع قطعی اینترنت.</div>
-                </div>
-
-                <div class="col-12">
                     <label class="form-label fw-bold">عنوان اصلی پورتال آموزش‌ها</label>
                     <input type="text" class="form-control" name="tutorial_title" 
                            value="{{ tutorial_title }}" placeholder="مثال: مرکز آموزش و راهنمای اتصال VPN">
