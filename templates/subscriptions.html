@@ -533,8 +533,8 @@
                                 <span class="badge bg-primary">پیشنهادی</span>
                             </div>
                             <div class="card-body text-center p-3 d-flex flex-column align-items-center">
-                                <div class="qr-code-wrapper mx-auto mb-3" style="width: 170px; height: 170px; background: #ffffff !important; border-radius: 16px; border: 2px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.06); display: flex; align-items: center; justify-content: center; padding: 10px;">
-                                    <div id="subQr{{ sub['id'] }}" class="d-flex justify-content-center align-items-center" style="width: 150px; height: 150px; background: #ffffff !important;"></div>
+                                <div class="qr-box mx-auto mb-3">
+                                    <div id="subQr{{ sub['id'] }}" class="qr-target"></div>
                                 </div>
                                 <div class="input-group input-group-sm mb-2 w-100">
                                     <input type="text" class="form-control text-center font-monospace" value="{{ sub_url }}" readonly id="subInput{{ sub['id'] }}" style="direction: ltr; font-size: 11px;">
@@ -560,8 +560,8 @@
                                 <span class="badge bg-secondary">V2Ray / Clash</span>
                             </div>
                             <div class="card-body text-center p-3 d-flex flex-column align-items-center">
-                                <div class="qr-code-wrapper mx-auto mb-3" style="width: 170px; height: 170px; background: #ffffff !important; border-radius: 16px; border: 2px solid #e2e8f0; box-shadow: 0 4px 15px rgba(0,0,0,0.06); display: flex; align-items: center; justify-content: center; padding: 10px;">
-                                    <div id="singleQr{{ sub['id'] }}" class="d-flex justify-content-center align-items-center" style="width: 150px; height: 150px; background: #ffffff !important;"></div>
+                                <div class="qr-box mx-auto mb-3">
+                                    <div id="singleQr{{ sub['id'] }}" class="qr-target"></div>
                                 </div>
                                 <div class="input-group input-group-sm mb-2 w-100">
                                     <input type="text" class="form-control text-center font-monospace" value="{{ single_url }}" readonly id="singleInput{{ sub['id'] }}" style="direction: ltr; font-size: 11px;">
@@ -952,6 +952,7 @@
                     <div class="alert alert-info py-2 small mb-3">
                         <i class="fas fa-info-circle me-1"></i> استرداد وجه بر اساس قوانین مصوب سیستم مستقیماً به کیف پول مشتری اعمال خواهد شد.
                     </div>
+                    {% endif %}
                     <!-- علت حذف اشتراک -->
                     <div class="p-3 bg-white rounded-3 border mb-3">
                         <label class="form-label fw-bold small text-dark mb-1">
@@ -1747,12 +1748,12 @@ function executePatternTransfer() {
 function renderQrCodeSafely(container, text, size) {
     if (!container || !text) return;
     container.innerHTML = '';
-    const qrSize = size || 140;
+    const qrSize = size || 135;
     try {
         if (typeof QRCode !== 'undefined') {
-            const correctLvl = (typeof QRCode.CorrectLevel !== 'undefined' && QRCode.CorrectLevel.L !== undefined) 
-                ? QRCode.CorrectLevel.L 
-                : 1;
+            const correctLvl = (typeof QRCode.CorrectLevel !== 'undefined' && QRCode.CorrectLevel.M !== undefined) 
+                ? QRCode.CorrectLevel.M 
+                : 0;
             new QRCode(container, {
                 text: text,
                 width: qrSize,
@@ -1761,13 +1762,22 @@ function renderQrCodeSafely(container, text, size) {
                 colorLight: "#ffffff",
                 correctLevel: correctLvl
             });
+            setTimeout(() => {
+                const canvas = container.querySelector('canvas');
+                const img = container.querySelector('img');
+                if (canvas && img && img.src) {
+                    canvas.style.display = 'none';
+                    img.style.display = 'block';
+                    img.style.margin = '0 auto';
+                }
+            }, 30);
             return;
         }
     } catch (e) {
         console.warn('QRCode generation exception:', e);
     }
     // Fallback if QRCode library is not loaded or throws error
-    container.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=${qrSize}x${qrSize}&data=${encodeURIComponent(text)}" alt="QR Code" class="img-fluid rounded" style="width: ${qrSize}px; height: ${qrSize}px; max-width: 100%;">`;
+    container.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=${qrSize}x${qrSize}&data=${encodeURIComponent(text)}" alt="QR Code" style="width: ${qrSize}px; height: ${qrSize}px; max-width: 100%; display: block; margin: 0 auto; border-radius: 6px;">`;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1779,12 +1789,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const subContainer = document.getElementById('subQr' + subId);
             if (subContainer && subUrl && (!subContainer.querySelector('canvas') && !subContainer.querySelector('img'))) {
-                renderQrCodeSafely(subContainer, subUrl, 140);
+                renderQrCodeSafely(subContainer, subUrl, 135);
             }
 
             const singleContainer = document.getElementById('singleQr' + subId);
             if (singleContainer && singleUrl && (!singleContainer.querySelector('canvas') && !singleContainer.querySelector('img'))) {
-                renderQrCodeSafely(singleContainer, singleUrl, 140);
+                renderQrCodeSafely(singleContainer, singleUrl, 135);
             }
         });
     });
@@ -1804,17 +1814,56 @@ function toggleCustomReason(selectEl, customBoxId) {
 </script>
 
 <style>
-.qr-code-wrapper canvas, .qr-code-wrapper img {
-    max-width: 100% !important;
-    height: auto !important;
-    aspect-ratio: 1 / 1 !important;
+.qr-box {
+    width: 155px;
+    height: 155px;
+    max-width: 100%;
+    background-color: #ffffff !important;
+    border: 2px solid #e2e8f0;
+    border-radius: 16px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.06);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    margin: 0 auto 12px auto;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+.qr-target {
+    width: 135px;
+    height: 135px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    margin: 0 auto;
+}
+.qr-target canvas {
+    display: none;
+    max-width: 100%;
+    height: auto;
+}
+.qr-target canvas:only-child {
     display: block !important;
-    margin: 0 auto !important;
+    margin: 0 auto;
+}
+.qr-target img {
+    max-width: 100%;
+    height: auto;
+    aspect-ratio: 1 / 1;
+    display: block;
+    margin: 0 auto;
 }
 @media (max-width: 576px) {
-    .qr-code-wrapper {
-        width: 150px !important;
-        height: 150px !important;
+    .qr-box {
+        width: 140px;
+        height: 140px;
+        padding: 5px;
+    }
+    .qr-target {
+        width: 125px;
+        height: 125px;
     }
 }
 </style>
