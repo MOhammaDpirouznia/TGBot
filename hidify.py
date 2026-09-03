@@ -5,6 +5,7 @@ Hidify API Client - v2 API (Async)
 
 import httpx
 import logging
+import uuid
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -223,23 +224,43 @@ class HidifyClient:
         return await self._request("GET", f"/admin/admin_user/{uuid}/")
 
     async def create_admin(self, name: str, mode: str = "agent", comment: str = None,
-                           can_add_users: bool = True, max_users: int = None,
-                           max_usage_limit_gb: float = None) -> dict:
-        """ایجاد ادمین / نماینده جدید در هیدیفای"""
+                           can_add_admin: bool = False, lang: str = "fa",
+                           max_users: int = None, max_usage_limit_gb: float = None,
+                           admin_uuid: str = None) -> dict:
+        """ایجاد ادمین / نماینده جدید در هیدیفای با ارسال UUID الزامی و بازیابی خودکار"""
+        target_uuid = str(admin_uuid or uuid.uuid4())
         payload = {
+            "uuid": target_uuid,
             "name": name,
-            "mode": mode,
-            "can_add_users": can_add_users,
-            "is_active": True
+            "mode": mode or "agent",
+            "can_add_admin": bool(can_add_admin),
+            "lang": lang or "fa"
         }
         if comment:
             payload["comment"] = str(comment)[:200]
-        if max_users is not None and max_users > 0:
+        if max_users is not None and int(max_users) > 0:
             payload["max_users"] = int(max_users)
-        if max_usage_limit_gb is not None and max_usage_limit_gb > 0:
+        if max_usage_limit_gb is not None and float(max_usage_limit_gb) > 0:
             payload["max_usage_limit_GB"] = float(max_usage_limit_gb)
 
-        return await self._request("POST", "/admin/admin_user/", payload)
+        res = await self._request("POST", "/admin/admin_user/", payload)
+        if isinstance(res, dict) and res.get("uuid"):
+            return res
+
+        # در صورت بروز هرگونه اختلال یا خطا در پاسخ سرور، بازیابی و اعتبارسنجی را بررسی می‌کنیم
+        try:
+            check = await self.get_admin(target_uuid)
+            if isinstance(check, dict) and check.get("uuid"):
+                return check
+            admins = await self.get_admins()
+            if isinstance(admins, list):
+                for adm in admins:
+                    if isinstance(adm, dict) and (adm.get("name") == name or (comment and adm.get("comment") == comment)):
+                        return adm
+        except Exception as e:
+            logger.warning(f"Async admin recovery error: {e}")
+
+        return res
 
     async def update_admin(self, uuid: str, **kwargs) -> dict:
         """بروزرسانی ادمین در هیدیفای"""

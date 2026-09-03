@@ -883,9 +883,12 @@ def hidify_sync_create_user(name: str, usage_limit_gb: float = None, package_day
 
 def hidify_sync_create_admin(name: str, mode: str = "agent", comment: str = None,
                             can_add_admin: bool = False, lang: str = "fa",
-                            max_users: int = None, max_usage_limit_gb: float = None) -> dict:
-    """ساخت ادمین / نماینده مستقل در هیدیفای"""
+                            max_users: int = None, max_usage_limit_gb: float = None,
+                            admin_uuid: str = None) -> dict:
+    """ساخت ادمین / نماینده مستقل در هیدیفای با ارسال شناسه UUID الزامی و بازیابی خودکار"""
+    target_uuid = str(admin_uuid or uuid.uuid4())
     payload = {
+        "uuid": target_uuid,
         "name": name,
         "mode": mode or "agent",
         "can_add_admin": bool(can_add_admin),
@@ -898,7 +901,34 @@ def hidify_sync_create_admin(name: str, mode: str = "agent", comment: str = None
     if max_usage_limit_gb is not None and float(max_usage_limit_gb) > 0:
         payload["max_usage_limit_GB"] = float(max_usage_limit_gb)
 
-    return hidify_sync_request("POST", "/admin/admin_user/", payload)
+    res = hidify_sync_request("POST", "/admin/admin_user/", payload)
+
+    # اگر پاسخ مستقیماً موفقیت‌آمیز بود و حاوی UUID بود
+    if isinstance(res, dict) and res.get("uuid"):
+        return res
+
+    # در صورت بروز خطای 500 یا عدم دریافت مستقیم UUID، استعلام و بازیابی خودکار انجام می‌دهیم
+    try:
+        # ۱. بررسی با شناسه یکتای ارسال‌شده
+        check = hidify_sync_get_admin(target_uuid)
+        if isinstance(check, dict) and check.get("uuid"):
+            logger.info(f"Admin verified by UUID {target_uuid} on Hiddify")
+            return check
+
+        # ۲. جستجو در لیست کلیه ادمین‌ها بر اساس نام یا کامنت
+        admins_list = hidify_sync_get_admins()
+        if isinstance(admins_list, list):
+            for adm in admins_list:
+                if isinstance(adm, dict) and adm.get("uuid"):
+                    adm_name = str(adm.get("name") or "").strip()
+                    adm_comment = str(adm.get("comment") or "").strip()
+                    if adm_name == str(name).strip() or (comment and adm_comment == str(comment).strip()):
+                        logger.info(f"Admin recovered from Hiddify by name/comment: {adm.get('uuid')}")
+                        return adm
+    except Exception as e_rec:
+        logger.warning(f"Error during admin sync recovery: {e_rec}")
+
+    return res
 
 
 def hidify_sync_get_admins() -> list:
@@ -3739,16 +3769,36 @@ def admin_reseller_settle_debt(reseller_id):
 @app.route("/admin/reseller/<int:reseller_id>/create-hiddify-admin", methods=["POST"])
 @admin_required
 def admin_reseller_create_hiddify_admin(reseller_id):
-    """ساخت آنی ادمین اختصاصی هیدیفای برای نماینده و اتصال به دیتابیس"""
+    """ساخت آنی ادمین اختصاصی هیدیفای برای نماینده و اتصال به دیتابیس با قابلیت شناسایی هوشمند ادمین‌های موجود"""
     r = db.get_reseller(reseller_id)
     if not r:
         flash("نماینده یافت نشد.", "danger")
         return redirect(url_for("admin_resellers"))
 
+    # ۱. ابتدا بررسی می‌کنیم آیا ادمینی برای این نماینده از قبل در هیدیفای ایجاد شده است
+    try:
+        admins = hidify_sync_get_admins()
+        if isinstance(admins, list):
+            target_name = f"Reseller: {r['name']}".strip()
+            for adm in admins:
+                if isinstance(adm, dict) and adm.get("uuid"):
+                    aname = str(adm.get("name") or "").strip()
+                    acomm = str(adm.get("comment") or "").strip()
+                    if aname == target_name or (r['name'] and aname == str(r['name']).strip()) or (f"#{r['id']}" in acomm) or (r['username'] and f"({r['username']})" in acomm):
+                        existing_uuid = adm["uuid"]
+                        db.update_reseller(reseller_id, hiddify_admin_uuid=existing_uuid)
+                        flash(f"ادمین هیدیفای با شناسه «{existing_uuid}» با موفقیت شناسایی و به نماینده «{r['name']}» متصل گردید.", "success")
+                        return redirect(url_for("admin_resellers"))
+    except Exception as e_chk:
+        logger.warning(f"Error checking existing admins: {e_chk}")
+
+    # ۲. ایجاد ادمین جدید در صورت عدم وجود
     h_admin = hidify_sync_create_admin(
         name=f"Reseller: {r['name']}",
         mode="agent",
-        comment=f"Reseller #{r['id']} ({r['username']})"
+        comment=f"Reseller #{r['id']} ({r['username']})",
+        can_add_admin=False,
+        lang="fa"
     )
     if isinstance(h_admin, dict) and h_admin.get("uuid"):
         uuid_val = h_admin["uuid"]
@@ -3786,7 +3836,29 @@ def admin_reseller_sync_hiddify(reseller_id):
 @app.route("/admin/hiddify/bulk-restore-resellers", methods=["POST"])
 @admin_required
 def admin_hiddify_bulk_restore_resellers():
-    """بازیابی سراسری و تفکیک خودکار تمام اشتراک‌های نمایندگان از سرور هیدیفای"""
+    """بازیابی سراسری و تفکیک خودکار تمام اشتراک‌ها و اتصال ادمین‌های نمایندگان از سرور هیدیفای"""
+    # ۱. شناسایی و اتصال خودکار ادمین‌های موجود هیدیفای به نمایندگان متناظر
+    try:
+        admins_resp = hidify_sync_get_admins()
+        if isinstance(admins_resp, list):
+            resellers = db.get_all_resellers()
+            for r in resellers:
+                if not r.get("hiddify_admin_uuid"):
+                    r_name = str(r.get("name") or "").strip()
+                    r_user = str(r.get("username") or "").strip()
+                    r_id_str = f"#{r['id']}"
+                    for adm in admins_resp:
+                        if isinstance(adm, dict) and adm.get("uuid"):
+                            aname = str(adm.get("name") or "").strip()
+                            acomm = str(adm.get("comment") or "").strip()
+                            if (r_name and aname == f"Reseller: {r_name}") or (r_name and aname == r_name) or (r_id_str in acomm) or (r_user and f"({r_user})" in acomm):
+                                db.update_reseller(r["id"], hiddify_admin_uuid=adm["uuid"])
+                                logger.info(f"Auto-linked Hiddify admin {adm['uuid']} to reseller #{r['id']}")
+                                break
+    except Exception as e_adm:
+        logger.warning(f"Error auto-linking admins in bulk restore: {e_adm}")
+
+    # ۲. بازیابی کاربران و اشتراک‌ها
     users_resp = hidify_sync_request("GET", "/admin/user/")
     if isinstance(users_resp, list):
         restore_res = db.restore_subscriptions_from_hiddify(users_resp)
