@@ -1425,22 +1425,28 @@ function deleteManualHistoryEntry(historyId, subId, accountName) {
 function downloadQrCode(elementId, filename) {
     const container = document.getElementById(elementId);
     if (!container) return;
-    const img = container.querySelector('img');
     const canvas = container.querySelector('canvas');
+    const img = container.querySelector('img');
     let dataUrl = '';
-    if (img && img.src) {
+    if (canvas) {
+        try {
+            dataUrl = canvas.toDataURL('image/png');
+        } catch (e) {}
+    } else if (img && img.src) {
         dataUrl = img.src;
-    } else if (canvas) {
-        dataUrl = canvas.toDataURL('image/png');
     }
     if (dataUrl) {
         const a = document.createElement('a');
         a.href = dataUrl;
         a.download = filename || ('qrcode_' + Date.now() + '.png');
+        a.target = '_blank';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
+    } else {
+        alert('تصویر بارکد برای دانلود آماده نیست.');
     }
+}
 
 // باز کردن مودال انتقال دستی انتخاب‌شده‌ها
 function openBulkTransferModal() {
@@ -1636,6 +1642,32 @@ function executePatternTransfer() {
     });
 }
 
+function renderQrCodeSafely(container, text, size) {
+    if (!container || !text) return;
+    container.innerHTML = '';
+    const qrSize = size || 140;
+    try {
+        if (typeof QRCode !== 'undefined') {
+            const correctLvl = (typeof QRCode.CorrectLevel !== 'undefined' && QRCode.CorrectLevel.L !== undefined) 
+                ? QRCode.CorrectLevel.L 
+                : 1;
+            new QRCode(container, {
+                text: text,
+                width: qrSize,
+                height: qrSize,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: correctLvl
+            });
+            return;
+        }
+    } catch (e) {
+        console.warn('QRCode generation exception:', e);
+    }
+    // Fallback if QRCode library is not loaded or throws error
+    container.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=${qrSize}x${qrSize}&data=${encodeURIComponent(text)}" alt="QR Code" class="img-fluid rounded" style="width: ${qrSize}px; height: ${qrSize}px; max-width: 100%;">`;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.customer-manage-modal').forEach(modalEl => {
         modalEl.addEventListener('shown.bs.modal', function () {
@@ -1644,23 +1676,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const singleUrl = this.getAttribute('data-single-url');
 
             const subContainer = document.getElementById('subQr' + subId);
-            if (subContainer && !subContainer.hasChildNodes() && subUrl) {
-                new QRCode(subContainer, {
-                    text: subUrl,
-                    width: 140,
-                    height: 140,
-                    correctLevel: QRCode.CorrectLevel.M
-                });
+            if (subContainer && subUrl && (!subContainer.querySelector('canvas') && !subContainer.querySelector('img'))) {
+                renderQrCodeSafely(subContainer, subUrl, 140);
             }
 
             const singleContainer = document.getElementById('singleQr' + subId);
-            if (singleContainer && !singleContainer.hasChildNodes() && singleUrl) {
-                new QRCode(singleContainer, {
-                    text: singleUrl,
-                    width: 140,
-                    height: 140,
-                    correctLevel: QRCode.CorrectLevel.M
-                });
+            if (singleContainer && singleUrl && (!singleContainer.querySelector('canvas') && !singleContainer.querySelector('img'))) {
+                renderQrCodeSafely(singleContainer, singleUrl, 140);
             }
         });
     });

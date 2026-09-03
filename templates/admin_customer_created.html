@@ -201,32 +201,51 @@ function copyActionTextFallback(url, title) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // رندر QR کد لینک سابسکریپشن
+    // ۱. رندر QR کد لینک سابسکریپشن
     const subContainer = document.getElementById('subCreatedQrCode');
     const subUrl = "{{ sub_url }}";
     if (subContainer && subUrl) {
-        new QRCode(subContainer, {
-            text: subUrl,
-            width: 170,
-            height: 170,
-            colorDark: "#000000",
-            colorLight: "#ffffff",
-            correctLevel: QRCode.CorrectLevel.M
-        });
+        try {
+            if (typeof QRCode !== 'undefined') {
+                new QRCode(subContainer, {
+                    text: subUrl,
+                    width: 170,
+                    height: 170,
+                    colorDark: "#000000",
+                    colorLight: "#ffffff",
+                    correctLevel: QRCode.CorrectLevel.M
+                });
+            } else {
+                subContainer.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=170x170&data=${encodeURIComponent(subUrl)}" alt="QR Code" class="img-fluid rounded">`;
+            }
+        } catch (e) {
+            subContainer.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=170x170&data=${encodeURIComponent(subUrl)}" alt="QR Code" class="img-fluid rounded">`;
+        }
     }
 
-    // رندر QR کد لینک مستقیم تکی
+    // ۲. رندر QR کد لینک مستقیم تکی
     const singleContainer = document.getElementById('singleCreatedQrCode');
     const singleUrl = "{{ single_url }}";
     if (singleContainer && singleUrl) {
-        new QRCode(singleContainer, {
-            text: singleUrl,
-            width: 170,
-            height: 170,
-            colorDark: "#000000",
-            colorLight: "#ffffff",
-            correctLevel: QRCode.CorrectLevel.M
-        });
+        try {
+            if (typeof QRCode !== 'undefined') {
+                const correctLvl = (typeof QRCode.CorrectLevel !== 'undefined' && QRCode.CorrectLevel.L !== undefined) 
+                    ? QRCode.CorrectLevel.L 
+                    : 1;
+                new QRCode(singleContainer, {
+                    text: singleUrl,
+                    width: 170,
+                    height: 170,
+                    colorDark: "#000000",
+                    colorLight: "#ffffff",
+                    correctLevel: correctLvl
+                });
+            } else {
+                singleContainer.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=170x170&data=${encodeURIComponent(singleUrl)}" alt="QR Code" class="img-fluid rounded">`;
+            }
+        } catch (e) {
+            singleContainer.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=170x170&data=${encodeURIComponent(singleUrl)}" alt="QR Code" class="img-fluid rounded">`;
+        }
     }
 });
 </script>
