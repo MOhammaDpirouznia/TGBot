@@ -4720,6 +4720,107 @@ def api_subscription_history(sub_id):
     return jsonify(data)
 
 
+@app.route("/api/subscription/<int:sub_id>/history/add", methods=["POST"])
+def api_add_subscription_history(sub_id):
+    """وب‌سرویس افزودن دستی سابقه دوره قبلی برای یک اشتراک (توسط مدیر یا نماینده)"""
+    if not session.get("logged_in"):
+        return jsonify({"success": False, "error": "احراز هویت لازم است"}), 401
+
+    role = session.get("role")
+    reseller_id = session.get("reseller_id") if role == "reseller" else None
+    
+    if role not in ["admin", "superadmin", "reseller", "manager"]:
+        return jsonify({"success": False, "error": "عدم دسترسی کافی"}), 403
+
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    if not payload:
+        return jsonify({"success": False, "error": "داده‌های ارسالی نامعتبر است"}), 400
+    
+    try:
+        usage_gb = float(payload.get("previous_usage_gb") or payload.get("usage_gb") or 0)
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": "میزان حجم مصرفی معتبر نیست"}), 400
+
+    limit_gb = None
+    if payload.get("previous_limit_gb") or payload.get("limit_gb"):
+        try:
+            limit_gb = float(payload.get("previous_limit_gb") or payload.get("limit_gb"))
+        except (ValueError, TypeError):
+            limit_gb = None
+
+    period_days = 30
+    if payload.get("period_days"):
+        try:
+            period_days = int(payload.get("period_days"))
+        except (ValueError, TypeError):
+            period_days = 30
+
+    period_offset = 1
+    if payload.get("period_offset"):
+        try:
+            period_offset = int(payload.get("period_offset"))
+        except (ValueError, TypeError):
+            period_offset = 1
+
+    period_label = payload.get("period_label") or payload.get("custom_label") or ""
+    plan_name = payload.get("plan_name") or ""
+    
+    cost_paid = 0
+    if payload.get("cost_paid") or payload.get("plan_price"):
+        try:
+            cost_paid = int(payload.get("cost_paid") or payload.get("plan_price"))
+        except (ValueError, TypeError):
+            cost_paid = 0
+
+    note = payload.get("note") or payload.get("description") or ""
+    renewed_at = payload.get("renewed_at") or None
+    created_by = f"reseller_{reseller_id}" if reseller_id else (session.get("username") or "admin")
+
+    res = db.add_manual_subscription_history(
+        subscription_id=sub_id,
+        previous_usage_gb=usage_gb,
+        previous_limit_gb=limit_gb,
+        period_days=period_days,
+        period_offset=period_offset,
+        period_label=period_label,
+        plan_name=plan_name,
+        plan_price=cost_paid,
+        cost_paid=cost_paid,
+        note=note,
+        created_by=created_by,
+        reseller_id=reseller_id,
+        renewed_at=renewed_at
+    )
+
+    if res.get("success"):
+        logger.info(f"Manual subscription history added for sub #{sub_id} by {created_by}: {usage_gb} GB, offset {period_offset}")
+        return jsonify(res)
+    else:
+        return jsonify(res), 400
+
+
+@app.route("/api/subscription/history/<int:history_id>/delete", methods=["POST"])
+def api_delete_subscription_history(history_id):
+    """وب‌سرویس حذف یک سابقه دوره دستی"""
+    if not session.get("logged_in"):
+        return jsonify({"success": False, "error": "احراز هویت لازم است"}), 401
+
+    role = session.get("role")
+    reseller_id = session.get("reseller_id") if role == "reseller" else None
+    
+    if role not in ["admin", "superadmin", "reseller", "manager"]:
+        return jsonify({"success": False, "error": "عدم دسترسی کافی"}), 403
+
+    ok = db.delete_subscription_history_entry(history_id, reseller_id=reseller_id)
+    if ok:
+        created_by = f"reseller_{reseller_id}" if reseller_id else (session.get("username") or "admin")
+        logger.info(f"Subscription history #{history_id} deleted by {created_by}")
+        return jsonify({"success": True, "message": "سابقه دوره با موفقیت حذف گردید"})
+    else:
+        return jsonify({"success": False, "error": "رکورد مورد نظر یافت نشد یا دسترسی حذف آن را ندارید"}), 400
+
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # مدیریت کارت‌های بانکی مقصد (Bank Card Rotator)
 # ═══════════════════════════════════════════════════════════════════════

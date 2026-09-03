@@ -326,7 +326,7 @@ class Database:
             )
         """)
 
-        # جدول سابقه و تاریخچه مصرف دوره‌های گذشته اشتراک‌ها هنگام تمدید
+        # جدول سابقه و تاریخچه مصرف دوره‌های گذشته اشتراک‌ها هنگام تمدید یا ثبت دستی
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS subscription_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -340,7 +340,16 @@ class Database:
                 period_days INTEGER,
                 renewal_type TEXT,
                 renewed_at TEXT,
-                reseller_id INTEGER
+                reseller_id INTEGER,
+                plan_price INTEGER DEFAULT 0,
+                cost_paid INTEGER DEFAULT 0,
+                start_date TEXT,
+                expire_date TEXT,
+                is_manual INTEGER DEFAULT 0,
+                period_offset INTEGER DEFAULT 1,
+                period_label TEXT,
+                note TEXT,
+                created_by TEXT
             )
         """)
 
@@ -805,12 +814,17 @@ class Database:
             except Exception:
                 pass
 
-        # ستون‌های قیمت پلن و جزئیات مالی در سابقه دوره‌ها
+        # ستون‌های قیمت پلن، جزئیات مالی و ثبت دستی سوابق در سابقه دوره‌ها
         for col_def in [
             "plan_price INTEGER DEFAULT 0",
             "cost_paid INTEGER DEFAULT 0",
             "start_date TEXT",
-            "expire_date TEXT"
+            "expire_date TEXT",
+            "is_manual INTEGER DEFAULT 0",
+            "period_offset INTEGER DEFAULT 1",
+            "period_label TEXT",
+            "note TEXT",
+            "created_by TEXT"
         ]:
             try:
                 cursor.execute(f"ALTER TABLE subscription_history ADD COLUMN {col_def}")
@@ -3848,27 +3862,117 @@ class Database:
                                 account_name: str, plan_name: str, previous_usage_gb: float,
                                 previous_limit_gb: float, period_days: int, renewal_type: str = "replace",
                                 reseller_id: int = None, plan_price: int = 0, cost_paid: int = 0,
-                                start_date: str = None, expire_date: str = None) -> bool:
+                                start_date: str = None, expire_date: str = None,
+                                is_manual: int = 0, period_offset: int = 1, period_label: str = None,
+                                note: str = None, created_by: str = None, renewed_at: str = None) -> bool:
         """ثبت تاریخچه و میزان مصرف دوره قبلی همراه با قیمت پلن هنگام تمدید یا تغییر دوره اشتراک"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
+            now_str = renewed_at or get_now_iso()
             cursor.execute("""
                 INSERT INTO subscription_history (
                     subscription_id, telegram_id, hidify_uuid, account_name, plan_name,
                     previous_usage_gb, previous_limit_gb, period_days, renewal_type,
-                    renewed_at, reseller_id, plan_price, cost_paid, start_date, expire_date
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    renewed_at, reseller_id, plan_price, cost_paid, start_date, expire_date,
+                    is_manual, period_offset, period_label, note, created_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 subscription_id, telegram_id or 0, hidify_uuid, account_name, plan_name,
                 float(previous_usage_gb or 0), float(previous_limit_gb or 0),
-                int(period_days or 30), renewal_type, get_now_iso(), reseller_id,
-                int(plan_price or 0), int(cost_paid or 0), start_date, expire_date
+                int(period_days or 30), renewal_type, now_str, reseller_id,
+                int(plan_price or 0), int(cost_paid or 0), start_date, expire_date,
+                int(is_manual or 0), int(period_offset or 1), period_label, note, created_by
             ))
             conn.commit()
             return True
         except Exception as e:
             logger.error(f"Error saving subscription history: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def add_manual_subscription_history(self, subscription_id: int, previous_usage_gb: float,
+                                       previous_limit_gb: float = None, period_days: int = 30,
+                                       period_offset: int = 1, period_label: str = None,
+                                       plan_name: str = None, plan_price: int = 0, cost_paid: int = 0,
+                                       start_date: str = None, expire_date: str = None,
+                                       note: str = None, created_by: str = "manual",
+                                       reseller_id: int = None, renewed_at: str = None) -> dict:
+        """افزودن دستی سابقه و گزارش دوره قبلی مشتری با برچسب دوره، حجم، مدت و تگ دستی"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if reseller_id:
+                cursor.execute("SELECT * FROM subscriptions WHERE id=? AND reseller_id=?", (subscription_id, reseller_id))
+            else:
+                cursor.execute("SELECT * FROM subscriptions WHERE id=?", (subscription_id,))
+            sub_row = cursor.fetchone()
+            if not sub_row:
+                return {"success": False, "error": "اشتراک مورد نظر یافت نشد یا دسترسی مجاز نیست"}
+
+            sub_dict = dict(sub_row)
+            
+            p_limit = float(previous_limit_gb) if (previous_limit_gb is not None and float(previous_limit_gb) > 0) else float(sub_dict.get("data_limit") or previous_usage_gb or 0)
+            p_days = int(period_days) if (period_days and int(period_days) > 0) else int(sub_dict.get("duration") or 30)
+            p_name = plan_name.strip() if (plan_name and plan_name.strip()) else (sub_dict.get("plan_name") or "پلن سفارشی")
+            
+            p_offset = int(period_offset) if period_offset else 1
+            if not period_label or not period_label.strip():
+                if p_offset == 1:
+                    lbl = "۱ دوره قبل (دوره گذشته)"
+                elif p_offset == 2:
+                    lbl = "۲ دوره قبل"
+                elif p_offset == 3:
+                    lbl = "۳ دوره قبل"
+                elif p_offset == 4:
+                    lbl = "۴ دوره قبل"
+                elif p_offset == 5:
+                    lbl = "۵ دوره قبل"
+                else:
+                    lbl = f"{p_offset} دوره قبل"
+            else:
+                lbl = period_label.strip()
+
+            now_str = renewed_at if (renewed_at and renewed_at.strip()) else get_now_iso()
+
+            cursor.execute("""
+                INSERT INTO subscription_history (
+                    subscription_id, telegram_id, hidify_uuid, account_name, plan_name,
+                    previous_usage_gb, previous_limit_gb, period_days, renewal_type,
+                    renewed_at, reseller_id, plan_price, cost_paid, start_date, expire_date,
+                    is_manual, period_offset, period_label, note, created_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                subscription_id, sub_dict.get("telegram_id") or 0, sub_dict.get("hidify_uuid") or "",
+                sub_dict.get("account_name") or "", p_name,
+                float(previous_usage_gb or 0), p_limit, p_days, "manual",
+                now_str, sub_dict.get("reseller_id"),
+                int(plan_price or 0), int(cost_paid or 0), start_date, expire_date,
+                1, p_offset, lbl, note, created_by
+            ))
+            conn.commit()
+            inserted_id = cursor.lastrowid
+            return {"success": True, "id": inserted_id, "message": "سابقه دوره دستی با موفقیت اضافه شد"}
+        except Exception as e:
+            logger.error(f"Error adding manual subscription history: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def delete_subscription_history_entry(self, history_id: int, reseller_id: int = None) -> bool:
+        """حذف یک رکورد سابقه دوره با بررسی دسترسی نماینده یا مدیر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if reseller_id:
+                cursor.execute("DELETE FROM subscription_history WHERE id=? AND reseller_id=?", (history_id, reseller_id))
+            else:
+                cursor.execute("DELETE FROM subscription_history WHERE id=?", (history_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Error deleting subscription history entry {history_id}: {e}")
             return False
         finally:
             conn.close()
@@ -3894,7 +3998,12 @@ class Database:
             if reseller_id:
                 query += " AND reseller_id = ?"
                 params.append(reseller_id)
-            query += " ORDER BY renewed_at DESC LIMIT ?"
+            query += """ ORDER BY 
+                CASE 
+                    WHEN period_offset IS NOT NULL AND period_offset > 0 THEN period_offset 
+                    ELSE 9999 
+                END ASC,
+                renewed_at DESC, id DESC LIMIT ?"""
             params.append(limit)
 
             cursor.execute(query, params)
@@ -3922,7 +4031,14 @@ class Database:
             cursor.execute("""
                 SELECT * FROM subscription_history 
                 WHERE subscription_id = ? OR (hidify_uuid = ? AND hidify_uuid IS NOT NULL AND hidify_uuid != '')
-                ORDER BY renewed_at DESC LIMIT 50
+                ORDER BY 
+                    CASE 
+                        WHEN period_offset IS NOT NULL AND period_offset > 0 THEN period_offset 
+                        ELSE 9999 
+                    END ASC,
+                    renewed_at DESC, 
+                    id DESC
+                LIMIT 50
             """, (sub_id, sub_dict.get("hidify_uuid") or ""))
             history_rows = [dict(r) for r in cursor.fetchall()]
 
