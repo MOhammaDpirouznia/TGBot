@@ -823,8 +823,11 @@ def hidify_sync_request(method: str, endpoint: str, data: dict = None, api_key: 
 
 
 def hidify_sync_create_user(name: str, usage_limit_gb: float = None, package_days: int = None,
-                           comment: str = None, api_key: str = None, reseller_id: int = None) -> dict:
-    """ساخت کاربر در هیدیفای با پشتیبانی از ادمین اختصاصی نماینده، تگ‌گذاری هوشمند و بازیابی"""
+                           comment: str = None, api_key: str = None, reseller_id: int = None,
+                           uuid: str = None, current_usage_gb: float = None,
+                           start_date: str = None, expire_date: str = None,
+                           enable: bool = True, is_active: bool = True) -> dict:
+    """ساخت کاربر در هیدیفای با پشتیبانی از ادمین اختصاصی نماینده، UUID سفارشی، حجم مصرف‌شده اولیه و تاریخ‌ها"""
     active_api_key = api_key
     if not active_api_key and reseller_id:
         active_api_key = db.get_reseller_hiddify_key(reseller_id)
@@ -838,14 +841,25 @@ def hidify_sync_create_user(name: str, usage_limit_gb: float = None, package_day
 
     payload = {
         "name": raw_name,
-        "enable": True,
-        "is_active": True,
+        "enable": bool(enable),
+        "is_active": bool(is_active),
     }
+    if uuid:
+        payload["uuid"] = str(uuid).strip()
+
     if usage_limit_gb is not None:
         try:
             val_gb = float(usage_limit_gb)
-            if val_gb > 0:
+            if val_gb >= 0:
                 payload["usage_limit_GB"] = val_gb
+        except Exception:
+            pass
+
+    if current_usage_gb is not None:
+        try:
+            val_used = float(current_usage_gb)
+            if val_used >= 0:
+                payload["current_usage_GB"] = val_used
         except Exception:
             pass
 
@@ -857,19 +871,27 @@ def hidify_sync_create_user(name: str, usage_limit_gb: float = None, package_day
         except Exception:
             pass
 
+    if start_date and str(start_date).strip() not in ("None", "null", ""):
+        payload["start_date"] = str(start_date).strip()
+    if expire_date and str(expire_date).strip() not in ("None", "null", ""):
+        payload["expire_date"] = str(expire_date).strip()
+
     if full_comment:
         payload["comment"] = str(full_comment)[:200]
 
     # ارسال درخواست ساخت به هیدیفای با کلید اختصاصی ادمین نماینده یا کلید اصلی
     res = hidify_sync_request("POST", "/admin/user/", payload, api_key=active_api_key)
 
-    # در صورت بروز خطای 400، با حداقل فیلدهای استاندارد مجدداً تلاش می‌کنیم
-    if "error" in res and ("400" in str(res.get("error")) or "invalid" in str(res.get("error")).lower()):
+    # در صورت بروز خطای 400 یا خطای فیلدها، با حداقل فیلدهای استاندارد مجدداً تلاش می‌کنیم
+    if "error" in res and ("400" in str(res.get("error")) or "invalid" in str(res.get("error")).lower() or "unprocessable" in str(res.get("error")).lower()):
         logger.warning(f"Standard create_user failed ({res.get('error')}), trying fallback minimal payload...")
         minimal_payload = {
             "name": raw_name,
-            "enable": True
+            "enable": bool(enable),
+            "is_active": bool(is_active)
         }
+        if "uuid" in payload:
+            minimal_payload["uuid"] = payload["uuid"]
         if "usage_limit_GB" in payload:
             minimal_payload["usage_limit_GB"] = payload["usage_limit_GB"]
         if "package_days" in payload:
@@ -877,6 +899,12 @@ def hidify_sync_create_user(name: str, usage_limit_gb: float = None, package_day
         if "comment" in payload:
             minimal_payload["comment"] = payload["comment"]
         res = hidify_sync_request("POST", "/admin/user/", minimal_payload, api_key=active_api_key)
+
+        # اگر با وجود UUID دستی باز هم با خطا مواجه شد، تلاش برای ساخت بدون UUID
+        if "error" in res and "uuid" in minimal_payload:
+            logger.warning("Fallback with UUID failed, trying create without manual UUID...")
+            del minimal_payload["uuid"]
+            res = hidify_sync_request("POST", "/admin/user/", minimal_payload, api_key=active_api_key)
 
     return res
 
@@ -1274,6 +1302,164 @@ def hidify_sync_delete_user(uuid: str) -> dict:
     if not uuid:
         return {"error": "UUID نامعتبر است."}
     return hidify_sync_request("DELETE", f"/admin/user/{uuid}/")
+
+
+def hiddify_restore_or_recreate_subscription(sub: dict, reseller_id: int = None) -> dict:
+    """
+    بازگردانی هوشمند و ساخت مجدد اشتراک در پنل هیدیفای با حفظ کامل حجم مصرفی و ادامه زمان باقی‌مانده:
+    ۱. استخراج و محاسبه زمان مصرف‌شده قبل از حذف و تنظیم تاریخ شروع مجدد (start_date) بر اساس روزهای باقیمانده
+    ۲. بررسی زنده وجود داشتن یا نداشتن کاربر روی سرور هیدیفای (با کلید اختصاصی نماینده یا ادمین اصلی)
+    ۳. اگر کاربر حذف شده باشد، ساخت مجدد با همان UUID قبلی (جهت حفظ لینک کانفیگ مشتری)، سقف حجم و روزها
+    ۴. تنظیم و اعمال حجم مصرف‌شده (current_usage_GB) دقیقاً برابر با مقدار ذخیره‌شده تا صفر نشود
+    ۵. فعال‌سازی مجدد اکانت (enable=True, is_active=True)
+    """
+    uuid_val = sub.get("hidify_uuid")
+    if not uuid_val or not str(uuid_val).strip():
+        uuid_val = str(uuid.uuid4())
+
+    clean_uuid = str(uuid_val).strip().strip("/")
+    account_name = sub.get("account_name") or f"user_{clean_uuid[:8]}"
+    data_limit = float(sub.get("data_limit") or 0.0)
+    data_used = float(sub.get("data_used") or 0.0)
+    duration = int(sub.get("duration") or 30)
+    r_id = reseller_id if reseller_id is not None else sub.get("reseller_id")
+
+    active_api_key = db.get_reseller_hiddify_key(r_id) if r_id else None
+    main_admin_key = get_hiddify_key()
+
+    keys_to_try = []
+    if active_api_key:
+        keys_to_try.append(active_api_key)
+    if main_admin_key and main_admin_key not in keys_to_try:
+        keys_to_try.append(main_admin_key)
+
+    # محاسبه روزهای مصرف‌شده و روزهای باقی‌مانده
+    now_dt = get_now_naive()
+    today = now_dt.date()
+
+    start_date_str = sub.get("start_date")
+    deleted_at_str = sub.get("deleted_at")
+    
+    has_started = False
+    days_used = 0
+
+    if start_date_str and str(start_date_str).strip() not in ("None", "null", ""):
+        try:
+            clean_start = str(start_date_str).strip().replace("Z", "")[:10]
+            st_date = datetime.strptime(clean_start, "%Y-%m-%d").date()
+            has_started = True
+
+            if deleted_at_str and str(deleted_at_str).strip() not in ("None", "null", ""):
+                clean_del = str(deleted_at_str).strip().replace("Z", "+00:00")
+                del_dt = datetime.fromisoformat(clean_del).replace(tzinfo=None).date()
+                days_used = max(0, (del_dt - st_date).days)
+            else:
+                days_used = max(0, (today - st_date).days)
+        except Exception as ex:
+            logger.warning(f"Error calculating days_used for sub {sub.get('id')}: {ex}")
+            has_started = False
+            days_used = 0
+
+    if has_started:
+        days_used = min(days_used, duration)
+        remaining_days = max(1, duration - days_used) if duration > days_used else 0
+        new_start_date = (today - timedelta(days=days_used)).strftime("%Y-%m-%d")
+        new_expire_date = (today + timedelta(days=remaining_days)).strftime("%Y-%m-%d")
+    else:
+        remaining_days = duration
+        new_start_date = None
+        new_expire_date = None
+
+    # کامنت اشتراک
+    phone = sub.get("phone_number") or ""
+    tg_id = sub.get("telegram_id") or ""
+    orig_comment = sub.get("account_comment") or ""
+    comment_parts = []
+    if orig_comment:
+        comment_parts.append(orig_comment)
+    if phone and f"Phone: {phone}" not in orig_comment:
+        comment_parts.append(f"Phone: {phone}")
+    if tg_id and str(tg_id).isdigit() and int(tg_id) > 0 and f"TG: {tg_id}" not in orig_comment:
+        comment_parts.append(f"TG: {tg_id}")
+    comment_text = " | ".join(comment_parts)
+
+    reseller_tag = f"[RESELLER_ID: #{r_id}] " if r_id else ""
+    full_comment = f"{reseller_tag}{comment_text}".strip()[:200]
+
+    # ۱. بررسی اینکه آیا کاربر روی هیدیفای وجود دارد یا خیر
+    existing_user = None
+    for k in keys_to_try:
+        get_res = hidify_sync_request("GET", f"/admin/user/{clean_uuid}/", api_key=k)
+        if isinstance(get_res, dict) and "error" not in get_res and get_res.get("name"):
+            existing_user = get_res
+            break
+
+    recreated = False
+    final_uuid = clean_uuid
+
+    if not existing_user:
+        # کاربر روی سرور هیدیفای یافت نشد -> ساخت مجدد
+        logger.info(f"User {clean_uuid} not found in Hiddify. Recreating with usage={data_used} GB, start={new_start_date}...")
+        recreated = True
+        create_res = hidify_sync_create_user(
+            name=account_name,
+            usage_limit_gb=data_limit,
+            package_days=duration,
+            comment=full_comment,
+            api_key=active_api_key,
+            reseller_id=r_id,
+            uuid=clean_uuid,
+            current_usage_gb=data_used,
+            start_date=new_start_date,
+            expire_date=new_expire_date,
+            enable=True,
+            is_active=True
+        )
+
+        if isinstance(create_res, dict) and "error" in create_res:
+            logger.error(f"Failed to recreate user {clean_uuid} in Hiddify: {create_res.get('error')}")
+            return {
+                "success": False,
+                "error": f"عدم موفقیت در ساخت کاربر در پنل هیدیفای: {create_res.get('error')}"
+            }
+
+        if isinstance(create_res, dict) and create_res.get("uuid"):
+            final_uuid = create_res.get("uuid")
+
+    # ۲. به‌روزرسانی نهایی و تضمین ثبت current_usage_GB و تاریخ‌ها از طریق PATCH و PUT
+    update_payload = {
+        "name": account_name,
+        "usage_limit_GB": data_limit,
+        "current_usage_GB": data_used,
+        "package_days": duration,
+        "start_date": new_start_date,
+        "expire_date": new_expire_date,
+        "enable": True,
+        "is_active": True,
+        "comment": full_comment
+    }
+
+    upd_res = hidify_sync_update_user(
+        final_uuid,
+        api_key=active_api_key,
+        reseller_id=r_id,
+        **update_payload
+    )
+    logger.info(f"Updated restored user {final_uuid} in Hiddify: {upd_res}")
+
+    return {
+        "success": True,
+        "recreated": recreated,
+        "uuid": final_uuid,
+        "account_name": account_name,
+        "data_used": data_used,
+        "data_limit": data_limit,
+        "duration": duration,
+        "days_used": days_used,
+        "remaining_days": remaining_days,
+        "new_start_date": new_start_date,
+        "new_expire_date": new_expire_date
+    }
 
 
 def hidify_sync_ping() -> dict:
@@ -4004,8 +4190,33 @@ def admin_subscription_delete(sub_id):
     sub = dict(sub_row)
     uuid_val = sub.get("hidify_uuid")
 
-    # غیرفعال‌سازی در سرور هیدیفای به جای حذف قطعی
+    # بروزرسانی آخرین وضعیت مصرف و تاریخ‌ها از هیدیفای قبل از انتقال به سطل زباله
     if uuid_val:
+        try:
+            h_info = hidify_sync_request("GET", f"/admin/user/{uuid_val}/")
+            if isinstance(h_info, dict) and "error" not in h_info:
+                latest_used = float(h_info.get("current_usage_GB") or 0)
+                latest_start = h_info.get("start_date")
+                latest_exp = h_info.get("expiry_time") or h_info.get("expire_date")
+                conn = db.get_connection()
+                conn.execute("""
+                    UPDATE subscriptions 
+                    SET data_used = ?, 
+                        start_date = COALESCE(?, start_date), 
+                        expire_date = COALESCE(?, expire_date) 
+                    WHERE id = ?
+                """, (latest_used, latest_start, latest_exp, sub_id))
+                conn.commit()
+                conn.close()
+                sub["data_used"] = latest_used
+                if latest_start:
+                    sub["start_date"] = latest_start
+                if latest_exp:
+                    sub["expire_date"] = latest_exp
+        except Exception as ex:
+            logger.warning(f"Error syncing usage before admin soft-delete: {ex}")
+
+        # غیرفعال‌سازی در سرور هیدیفای به جای حذف قطعی
         try:
             hidify_sync_update_user(uuid_val, enable=False, is_active=False)
         except Exception as ex:
@@ -4040,16 +4251,37 @@ def admin_subscription_delete(sub_id):
 @app.route("/admin/subscription/<int:sub_id>/restore", methods=["POST"])
 @permission_required("sub_delete")
 def admin_subscription_restore(sub_id):
-    """بازگردانی اشتراک از سطل زباله توسط مدیر"""
-    res = db.restore_subscription(sub_id, is_reseller=False)
+    """بازگردانی اشتراک از سطل زباله توسط مدیر و ساخت مجدد در هیدیفای با حفظ حجم و زمان"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE id=? AND is_deleted=1", (sub_id,)).fetchone()
+    conn.close()
+    if not sub_row:
+        flash("اشتراک حذف‌شده‌ای یافت نشد.", "danger")
+        return redirect(url_for("subscriptions"))
+
+    sub = dict(sub_row)
+    reseller_id = sub.get("reseller_id")
+
+    # ۱. بازگردانی یا ساخت مجدد کاربر روی سرور هیدیفای با حفظ حجم و زمان
+    h_res = hiddify_restore_or_recreate_subscription(sub, reseller_id=reseller_id)
+    if not h_res.get("success"):
+        flash(f"خطا در ایجاد/فعال‌سازی کاربر در سرور هیدیفای: {h_res.get('error')}", "danger")
+        return redirect(url_for("subscriptions"))
+
+    # ۲. ثبت بازگردانی در دیتابیس
+    res = db.restore_subscription(
+        sub_id,
+        is_reseller=False,
+        new_uuid=h_res.get("uuid"),
+        new_start_date=h_res.get("new_start_date"),
+        new_expire_date=h_res.get("new_expire_date"),
+        new_data_used=h_res.get("data_used")
+    )
     if res.get("success"):
-        uuid_val = res.get("hidify_uuid")
-        if uuid_val:
-            try:
-                hidify_sync_update_user(uuid_val, enable=True, is_active=True)
-            except Exception as ex:
-                logger.warning(f"Error re-enabling user {uuid_val} in Hiddify: {ex}")
-        flash(f"اشتراک «{res.get('account_name')}» با موفقیت از سطل زباله بازگردانی شد.", "success")
+        recreated_text = "مجدداً در پنل هیدیفای ساخته شد" if h_res.get("recreated") else "در پنل هیدیفای فعال شد"
+        used_gb = h_res.get("data_used", 0)
+        rem_days = h_res.get("remaining_days", 0)
+        flash(f"اشتراک «{res.get('account_name')}» با موفقیت {recreated_text} و از سطل زباله بازگردانی شد (حجم مصرفی: {used_gb} گیگ | زمان باقی‌مانده: {rem_days} روز لحاظ گردید).", "success")
     else:
         flash(f"خطا در بازگردانی اشتراک: {res.get('error')}", "danger")
     return redirect(url_for("subscriptions"))
@@ -6650,10 +6882,36 @@ def reseller_delete_user(sub_id: int):
     custom_reason = request.form.get("custom_reason", "").strip()
     final_reason = custom_reason if preset_reason == "custom" and custom_reason else (preset_reason or "سایر")
 
-    # ۱. غیرفعال‌سازی کاربر در سرور هیدیفای به جای حذف قطعی
+    # ۱. بروزرسانی آخرین وضعیت مصرف و تاریخ‌ها از سرور هیدیفای قبل از انتقال به سطل زباله
     if sub.get("hidify_uuid"):
         try:
-            hidify_sync_update_user(sub["hidify_uuid"], enable=False, is_active=False)
+            active_k = db.get_reseller_hiddify_key(reseller_id)
+            h_info = hidify_sync_request("GET", f"/admin/user/{sub['hidify_uuid']}/", api_key=active_k)
+            if isinstance(h_info, dict) and "error" not in h_info:
+                latest_used = float(h_info.get("current_usage_GB") or 0)
+                latest_start = h_info.get("start_date")
+                latest_exp = h_info.get("expiry_time") or h_info.get("expire_date")
+                conn = db.get_connection()
+                conn.execute("""
+                    UPDATE subscriptions 
+                    SET data_used = ?, 
+                        start_date = COALESCE(?, start_date), 
+                        expire_date = COALESCE(?, expire_date) 
+                    WHERE id = ? AND reseller_id = ?
+                """, (latest_used, latest_start, latest_exp, sub_id, reseller_id))
+                conn.commit()
+                conn.close()
+                sub["data_used"] = latest_used
+                if latest_start:
+                    sub["start_date"] = latest_start
+                if latest_exp:
+                    sub["expire_date"] = latest_exp
+        except Exception as ex:
+            logger.warning(f"Error syncing usage before reseller soft-delete: {ex}")
+
+        # غیرفعال‌سازی کاربر در سرور هیدیفای به جای حذف قطعی
+        try:
+            hidify_sync_update_user(sub["hidify_uuid"], enable=False, is_active=False, reseller_id=reseller_id)
         except Exception as e:
             logger.warning(f"Error disabling user {sub['hidify_uuid']} in Hiddify on soft-delete: {e}")
 
@@ -6681,7 +6939,7 @@ def reseller_delete_user(sub_id: int):
 @app.route("/reseller/subscription/<int:sub_id>/restore", methods=["POST"])
 @reseller_required
 def reseller_restore_user(sub_id: int):
-    """بازگردانی مشتری از سطل زباله توسط نماینده با کسر هزینه پلن از توان خرید (کیف پول / اعتبار)"""
+    """بازگردانی مشتری از سطل زباله توسط نماینده با ساخت مجدد در هیدیفای، حفظ حجم مصرفی و زمان باقی‌مانده و کسر هزینه پلن"""
     reseller_id = session.get("reseller_id")
     conn = db.get_connection()
     sub = conn.execute("SELECT * FROM subscriptions WHERE id=? AND reseller_id=? AND is_deleted=1", (sub_id, reseller_id)).fetchone()
@@ -6709,17 +6967,34 @@ def reseller_restore_user(sub_id: int):
         flash(f"توان خرید شما (کیف پول + اعتبار: {total_power:,} ت) برای هزینه بازگردانی این اشتراک ({final_price:,} ت) کافی نیست.", "danger")
         return redirect(url_for("reseller_users", status="deleted"))
 
-    res = db.restore_subscription(sub_id, is_reseller=True, reseller_id=reseller_id, cost=final_price)
+    # ۱. بازگردانی یا ساخت مجدد کاربر در سرور هیدیفای با حفظ حجم و زمان مصرف‌شده
+    h_res = hiddify_restore_or_recreate_subscription(sub, reseller_id=reseller_id)
+    if not h_res.get("success"):
+        flash(f"خطا در ایجاد/فعال‌سازی کاربر در سرور هیدیفای: {h_res.get('error')}", "danger")
+        return redirect(url_for("reseller_users", status="deleted"))
+
+    # ۲. اعمال تغییرات در دیتابیس و کسر هزینه از حساب نماینده
+    res = db.restore_subscription(
+        sub_id,
+        is_reseller=True,
+        reseller_id=reseller_id,
+        cost=final_price,
+        new_uuid=h_res.get("uuid"),
+        new_start_date=h_res.get("new_start_date"),
+        new_expire_date=h_res.get("new_expire_date"),
+        new_data_used=h_res.get("data_used")
+    )
     if res.get("success"):
-        # فعال‌سازی مجدد در سرور هیدیفای
-        if res.get("hidify_uuid"):
-            try:
-                hidify_sync_update_user(res["hidify_uuid"], enable=True, is_active=True)
-            except Exception as e:
-                logger.warning(f"Error re-enabling user in Hiddify on restore: {e}")
-        flash(f"اشتراک «{res.get('account_name')}» با موفقیت از سطل زباله بازگردانی شد و مبلغ {final_price:,} تومان از حساب شما کسر گردید.", "success")
+        r_after = db.get_reseller(reseller_id)
+        if r_after:
+            session["balance"] = r_after.get("balance", 0)
+
+        recreated_text = "مجدداً در پنل هیدیفای ساخته شد" if h_res.get("recreated") else "در پنل هیدیفای فعال شد"
+        used_gb = h_res.get("data_used", 0)
+        rem_days = h_res.get("remaining_days", 0)
+        flash(f"اشتراک «{res.get('account_name')}» با موفقیت {recreated_text} و از سطل زباله بازگردانی شد (حجم مصرفی: {used_gb} گیگ | زمان باقی‌مانده: {rem_days} روز لحاظ گردید) و مبلغ {final_price:,} تومان از حساب شما کسر شد.", "success")
     else:
-        flash(f"خطا در بازگردانی اشتراک: {res.get('error')}", "danger")
+        flash(f"خطا در ثبت بازگردانی در پایگاه داده: {res.get('error')}", "danger")
 
     return redirect(url_for("reseller_users"))
 
@@ -6756,20 +7031,40 @@ def reseller_subscriptions_bulk():
             res = db.toggle_reseller_subscription(reseller_id, sub_id, enable=False)
             if res.get("success"):
                 if sub.get("hidify_uuid"):
-                    hidify_sync_update_user(sub["hidify_uuid"], enable=False, is_active=False)
+                    hidify_sync_update_user(sub["hidify_uuid"], enable=False, is_active=False, reseller_id=reseller_id)
                 success_count += 1
         elif action == "enable":
             res = db.toggle_reseller_subscription(reseller_id, sub_id, enable=True)
             if res.get("success"):
                 if sub.get("hidify_uuid"):
-                    hidify_sync_update_user(sub["hidify_uuid"], enable=True, is_active=True)
+                    hidify_sync_update_user(sub["hidify_uuid"], enable=True, is_active=True, reseller_id=reseller_id)
                 success_count += 1
         elif action == "delete":
             if sub.get("hidify_uuid"):
                 try:
-                    hidify_sync_delete_user(sub["hidify_uuid"])
+                    active_k = db.get_reseller_hiddify_key(reseller_id)
+                    h_info = hidify_sync_request("GET", f"/admin/user/{sub['hidify_uuid']}/", api_key=active_k)
+                    if isinstance(h_info, dict) and "error" not in h_info:
+                        latest_used = float(h_info.get("current_usage_GB") or 0)
+                        latest_start = h_info.get("start_date")
+                        latest_exp = h_info.get("expiry_time") or h_info.get("expire_date")
+                        conn = db.get_connection()
+                        conn.execute("""
+                            UPDATE subscriptions 
+                            SET data_used = ?, 
+                                start_date = COALESCE(?, start_date), 
+                                expire_date = COALESCE(?, expire_date) 
+                            WHERE id = ? AND reseller_id = ?
+                        """, (latest_used, latest_start, latest_exp, sub_id, reseller_id))
+                        conn.commit()
+                        conn.close()
+                except Exception as ex:
+                    logger.warning(f"Error syncing usage before bulk soft-delete: {ex}")
+
+                try:
+                    hidify_sync_update_user(sub["hidify_uuid"], enable=False, is_active=False, reseller_id=reseller_id)
                 except Exception as e:
-                    logger.warning(f"Error bulk deleting user {sub['hidify_uuid']} from Hiddify: {e}")
+                    logger.warning(f"Error bulk disabling user {sub['hidify_uuid']} in Hiddify: {e}")
             del_res = db.delete_reseller_subscription(reseller_id, sub_id)
             if del_res.get("success"):
                 success_count += 1

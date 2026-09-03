@@ -6865,8 +6865,10 @@ class Database:
         finally:
             conn.close()
 
-    def restore_subscription(self, sub_id: int, is_reseller: bool = False, reseller_id: int = None, cost: int = 0) -> dict:
-        """بازگردانی اشتراک از سطل زباله به لیست فعال و کسر هزینه در صورت بازگردانی توسط نماینده"""
+    def restore_subscription(self, sub_id: int, is_reseller: bool = False, reseller_id: int = None, cost: int = 0,
+                             new_uuid: str = None, new_start_date: str = None, new_expire_date: str = None,
+                             new_data_used: float = None) -> dict:
+        """بازگردانی اشتراک از سطل زباله به لیست فعال، به‌روزرسانی مشخصات و کسر هزینه در صورت بازگردانی توسط نماینده"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -6891,19 +6893,38 @@ class Database:
                 if not deduct_res.get("success"):
                     return {"success": False, "error": deduct_res.get("error", "موجودی یا اعتبار کافی نیست.")}
 
-            cursor.execute("""
+            # ساخت کوئری به‌روزرسانی با فیلدهای جدید
+            update_sql = """
                 UPDATE subscriptions 
                 SET is_deleted = 0, deleted_at = NULL, delete_reason = NULL, deleted_by = NULL, 
-                    status = 'active', updated_at = ?
-                WHERE id = ?
-            """, (now, sub_id))
+                    purged_from_hiddify = 0, status = 'active', updated_at = ?
+            """
+            params = [now]
+            if new_uuid:
+                update_sql += ", hidify_uuid = ?"
+                params.append(new_uuid)
+            if new_start_date is not None:
+                update_sql += ", start_date = ?"
+                params.append(new_start_date)
+            if new_expire_date is not None:
+                update_sql += ", expire_date = ?"
+                params.append(new_expire_date)
+            if new_data_used is not None:
+                update_sql += ", data_used = ?"
+                params.append(float(new_data_used))
+
+            update_sql += " WHERE id = ?"
+            params.append(sub_id)
+
+            cursor.execute(update_sql, tuple(params))
             conn.commit()
 
             return {
                 "success": True,
                 "account_name": account_name,
-                "hidify_uuid": sub_dict.get("hidify_uuid"),
-                "cost_deducted": cost
+                "hidify_uuid": new_uuid or sub_dict.get("hidify_uuid"),
+                "cost_deducted": cost,
+                "subscription": sub_dict
             }
         except Exception as e:
             logger.error(f"Error restoring subscription {sub_id}: {e}")

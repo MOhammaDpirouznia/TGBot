@@ -91,17 +91,27 @@ class HidifyClient:
 
     async def create_user(self, name: str, usage_limit_gb: float = None,
                     package_days: int = None, enable: bool = True,
-                    comment: str = None) -> dict:
-        """ساخت کاربر جدید"""
+                    comment: str = None, uuid: str = None,
+                    current_usage_gb: float = None, start_date: str = None,
+                    expire_date: str = None) -> dict:
+        """ساخت کاربر جدید با پشتیبانی از UUID اختصاصی، حجم مصرفی اولیه و تاریخ‌های شروع و انقضا"""
         payload = {
             "name": name,
             "enable": enable,
             "is_active": True,
         }
+        if uuid:
+            payload["uuid"] = str(uuid).strip()
         if usage_limit_gb is not None:
-            payload["usage_limit_GB"] = usage_limit_gb
+            payload["usage_limit_GB"] = float(usage_limit_gb)
+        if current_usage_gb is not None:
+            payload["current_usage_GB"] = float(current_usage_gb)
         if package_days is not None:
-            payload["package_days"] = package_days
+            payload["package_days"] = int(package_days)
+        if start_date:
+            payload["start_date"] = str(start_date).strip()
+        if expire_date:
+            payload["expire_date"] = str(expire_date).strip()
         if comment is not None:
             payload["comment"] = comment
         return await self._request("POST", "/admin/user/", payload)
