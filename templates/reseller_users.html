@@ -1656,6 +1656,8 @@ function deleteManualHistoryEntry(historyId, subId, accountName) {
     .catch(err => {
         alert('❌ خطای ارتباط با سرور: ' + err);
     });
+}
+
 // باز کردن مودال تمدید گروهی مشتریان نماینده
 function openResellerBulkRenewModal() {
     const idsStr = document.querySelector('#resellerBulkForm .bulk-selected-ids-input')?.value || '';

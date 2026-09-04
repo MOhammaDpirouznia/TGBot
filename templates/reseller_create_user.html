@@ -27,7 +27,7 @@
                 <h5 class="mb-0 fw-bold">مشخصات اشتراک مشتری</h5>
             </div>
             <div class="card-body p-4">
-                <form method="POST" id="createSubForm">
+                <form method="POST" action="{{ url_for('reseller_create_user') }}" id="createSubForm">
                     <div class="row g-3 mb-3">
                         <div class="col-md-4">
                             <label class="form-label fw-bold">نام یا شناسه مشتری (اختیاری):</label>
@@ -88,7 +88,7 @@
                             <div class="col-md-6">
                                 <label class="card p-3 h-100 cursor-pointer border-2 plan-option" style="cursor: pointer;">
                                     <div class="d-flex align-items-start gap-2">
-                                        <input type="radio" name="plan_id" value="{{ p_key }}" class="form-check-input mt-1" required onchange="calculatePrice({{ p_orig_price }}, {{ p_wholesale_price }})" {% if loop.first %}checked{% endif %}>
+                                        <input type="radio" name="plan_id" value="{{ p_key }}" class="form-check-input mt-1" required onchange="calculatePrice({{ p_orig_price|default(0) }}, {{ p_wholesale_price|default(0) }})" {% if loop.first %}checked{% endif %}>
                                         <div class="flex-grow-1">
                                             <div class="fw-bold">{{ p_name }}</div>
                                             <div class="text-muted small">حجم: {{ p.get('data_limit', 0) }} گیگ | مدت: {{ p.get('duration', 30) }} روز</div>
@@ -127,7 +127,7 @@
                             </div>
                             <div class="col-md-4">
                                 <label class="card p-2 text-center h-100 border-2 cursor-pointer mb-0" style="cursor: pointer;">
-                                    <input type="radio" name="payment_source" value="auto" class="form-check-input mx-auto mb-1">
+                                    <input type="radio" name="payment_source" value="auto" class="form-check-input mx-auto mb-1" {% if balance <= 0 and available_credit <= 0 %}checked{% endif %}>
                                     <span class="small fw-bold">خودکار (هوشمند)</span>
                                     <span class="text-muted small">ابتدا کیف پول، سپس اعتبار</span>
                                 </label>

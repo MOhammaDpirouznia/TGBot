@@ -664,6 +664,30 @@ function sendTestSms() {
                     <div class="form-text text-muted">اگر کاربر بین ۱۲ تا ۲۴ ساعت حذف شود، این درصد به نماینده عودت داده می‌شود (بعد از ۲۴ ساعت استرداد صفر خواهد بود).</div>
                 </div>
 
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">
+                        <i class="fas fa-trash-restore text-primary me-1"></i> سقف مجاز بازگردانی روزانه پیش‌فرض برای نمایندگان:
+                    </label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" name="daily_restore_limit" 
+                               value="{{ refund_settings.get('daily_restore_limit', 10) }}" placeholder="10" min="0" step="1">
+                        <span class="input-group-text bg-light fw-bold">بار در روز</span>
+                    </div>
+                    <div class="form-text text-muted">حداکثر دفعات مجاز بازگردانی مشتری از سطل زباله در ۲۴ ساعت برای هر نماینده (عدد ۰ یعنی نامحدود).</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">
+                        <i class="fas fa-clock text-warning me-1"></i> مهلت ماندگاری در سطل زباله (مدت انقضا):
+                    </label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" name="restore_window_days" 
+                               value="{{ refund_settings.get('restore_window_days', 7) }}" placeholder="7" min="1" max="365" step="1">
+                        <span class="input-group-text bg-light fw-bold">روز</span>
+                    </div>
+                    <div class="form-text text-muted">مدت زمانی که اشتراک پس از حذف در سطل زباله نگه داشته می‌شود و پس از آن کاملاً پاک خواهد شد.</div>
+                </div>
+
                 <div class="col-12">
                     <label class="form-label fw-bold">
                         <i class="fas fa-user-slash text-danger me-1"></i> نمایندگان مستثنی از سیستم استرداد وجه (غیرفعال برای این افراد):
@@ -690,6 +714,50 @@ function sendTestSms() {
                         {% endif %}
                     </div>
                     <div class="form-text text-muted">نمایندگانی که تیک خورده باشند، تحت هیچ شرایطی امکان استرداد وجه نخواهند داشت.</div>
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label fw-bold">
+                        <i class="fas fa-user-cog text-info me-1"></i> سقف مجاز بازگردانی روزانه اختصاصی برای هر نماینده (سفارشی‌سازی):
+                    </label>
+                    <div class="border rounded bg-light p-3">
+                        <p class="text-muted small mb-2">
+                            می‌توانید برای هر نماینده سقف متفاوتی برای بازگردانی روزانه تعیین کنید. در صورت خالی گذاشتن، سقف عمومی پیش‌فرض ({{ refund_settings.get('daily_restore_limit', 10) }} بار در روز) لحاظ می‌شود. مقدار ۰ به معنای بازگردانی نامحدود برای آن نماینده است.
+                        </p>
+                        {% if all_resellers %}
+                            <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
+                                <table class="table table-sm table-bordered bg-white align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th style="width: 70px;">شناسه</th>
+                                            <th>نام نماینده</th>
+                                            <th>نام کاربری / شرکت</th>
+                                            <th style="width: 200px;">سقف اختصاصی روزانه (بار)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for r in all_resellers %}
+                                        {% set custom_lim = refund_settings.get('reseller_daily_restore_limits', {}).get(r['id']|string, '') %}
+                                        <tr>
+                                            <td class="text-center font-monospace">#{{ r['id'] }}</td>
+                                            <td class="fw-bold">{{ r['name'] }}</td>
+                                            <td class="text-muted small">{{ r.get('username', '-') }} {% if r.get('company_name') %}({{ r['company_name'] }}){% endif %}</td>
+                                            <td>
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" class="form-control" name="reseller_restore_limit_{{ r['id'] }}" 
+                                                           value="{{ custom_lim }}" placeholder="پیش‌فرض ({{ refund_settings.get('daily_restore_limit', 10) }})" min="0" step="1">
+                                                    <span class="input-group-text bg-light text-muted">بار</span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <span class="text-muted small">هیچ نماینده‌ای یافت نشد.</span>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
 
