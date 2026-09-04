@@ -77,18 +77,29 @@
         <div class="d-flex align-items-center gap-2 flex-wrap">
             <div class="d-flex align-items-center gap-1">
                 <label class="small text-muted mb-0 fw-bold">تعداد در صفحه:</label>
-                <select class="form-select form-select-sm" style="width: auto;" onchange="location.href='{{ url_for('reseller_users', status=status_filter) }}&per_page=' + this.value">
+                <select class="form-select form-select-sm" style="width: auto;" onchange="location.href='{{ url_for('reseller_users', status=status_filter, search=search or '') }}&per_page=' + this.value">
                     <option value="25" {% if per_page == '25' %}selected{% endif %}>۲۵ تایی</option>
                     <option value="50" {% if per_page == '50' %}selected{% endif %}>۵۰ تایی</option>
                     <option value="100" {% if per_page == '100' %}selected{% endif %}>۱۰۰ تایی</option>
                     <option value="all" {% if per_page == 'all' %}selected{% endif %}>همه (یکجا)</option>
                 </select>
             </div>
-            <div class="table-search-wrapper">
-                <i class="fas fa-search table-search-icon"></i>
-                <input type="text" class="form-control table-search-input" data-table="resellerUsersTable" placeholder="جستجو بر اساس نام، شماره، پلن، وضعیت...">
-                <button type="button" class="table-search-clear" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
-            </div>
+            <!-- فرم جستجوی زنده سرور و کلاینت مشتریان نماینده -->
+            <form method="GET" action="{{ url_for('reseller_users') }}" class="d-flex align-items-center m-0 live-server-search-form" id="resellerCustomerSearchForm">
+                <input type="hidden" name="status" value="{{ status_filter or 'all' }}">
+                <input type="hidden" name="per_page" value="{{ per_page or '25' }}">
+                <div class="input-group input-group-sm" style="min-width: 280px;">
+                    <input type="text" name="search" id="resellerCustomerSearchInput" class="form-control form-control-sm live-server-search" data-table="resellerUsersTable" placeholder="جستجو در تمام مشتریان (نام، شماره، پلن...)" value="{{ search or '' }}">
+                    {% if search %}
+                    <a href="{{ url_for('reseller_users', status=status_filter or 'all', per_page=per_page or '25') }}" class="btn btn-outline-secondary btn-sm" title="پاک کردن جستجو">
+                        <i class="fas fa-times"></i>
+                    </a>
+                    {% endif %}
+                    <button type="submit" class="btn btn-primary btn-sm px-3" title="جستجو در کل مشتریان">
+                        <i class="fas fa-search me-1"></i> جستجو
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
     <div class="card-body p-0">
