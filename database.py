@@ -973,6 +973,23 @@ class Database:
         except Exception as e:
             logger.warning(f"Error creating subscription_queue table: {e}")
 
+        # ستون‌های مبدأ پرداخت کیف‌پول/اعتبار و رهگیری ویرایش اسناد حسابداری و بدهی‌ها
+        for col_sql in [
+            "ALTER TABLE subscriptions ADD COLUMN payment_source TEXT DEFAULT 'wallet'",
+            "ALTER TABLE reseller_transactions ADD COLUMN payment_source TEXT DEFAULT 'wallet'",
+            "ALTER TABLE reseller_transactions ADD COLUMN subscription_id INTEGER",
+            "ALTER TABLE accounting_records ADD COLUMN is_edited INTEGER DEFAULT 0",
+            "ALTER TABLE accounting_records ADD COLUMN edited_by TEXT",
+            "ALTER TABLE accounting_records ADD COLUMN edited_at TEXT",
+            "ALTER TABLE admin_debts ADD COLUMN is_edited INTEGER DEFAULT 0",
+            "ALTER TABLE admin_debts ADD COLUMN edited_by TEXT",
+            "ALTER TABLE admin_debts ADD COLUMN edited_at TEXT"
+        ]:
+            try:
+                cursor.execute(col_sql)
+            except Exception:
+                pass
+
         conn.commit()
         conn.close()
         logger.info("Database initialized successfully")
@@ -2587,6 +2604,57 @@ class Database:
             return {}
         finally:
             conn.close()
+
+    def get_refund_settings(self) -> dict:
+        """دریافت تنظیمات جامع قوانین استرداد وجه"""
+        raw = self.get_setting("refund_settings")
+        defaults = {
+            "refund_enabled": True,
+            "disabled_resellers": [],
+            "rate_before_12h": 100,
+            "rate_before_24h": 80,
+            "calc_from_creation": True
+        }
+        if isinstance(raw, dict):
+            defaults.update(raw)
+        
+        enabled = bool(defaults.get("refund_enabled", defaults.get("enabled", True)))
+        r12 = int(defaults.get("rate_before_12h", defaults.get("refund_rate_before_12h", defaults.get("before_12h_percent", 100))))
+        r24 = int(defaults.get("rate_before_24h", defaults.get("refund_rate_before_24h", defaults.get("before_24h_percent", 80))))
+        calc_creation = bool(defaults.get("calc_from_creation", defaults.get("refund_calc_from_creation", True)))
+        
+        raw_dis = defaults.get("disabled_resellers") or defaults.get("refund_disabled_resellers") or defaults.get("disabled_reseller_ids") or []
+        if isinstance(raw_dis, list):
+            dis_res = [int(x) for x in raw_dis if str(x).isdigit()]
+        else:
+            dis_res = []
+
+        res = {
+            "refund_enabled": enabled,
+            "enabled": enabled,
+            "rate_before_12h": r12,
+            "before_12h_percent": r12,
+            "refund_rate_before_12h": r12,
+            "rate_before_24h": r24,
+            "before_24h_percent": r24,
+            "refund_rate_before_24h": r24,
+            "calc_from_creation": calc_creation,
+            "refund_calc_from_creation": calc_creation,
+            "disabled_resellers": dis_res,
+            "disabled_reseller_ids": dis_res,
+            "refund_disabled_resellers": dis_res
+        }
+        return res
+
+    def save_refund_settings(self, settings_dict: dict) -> bool:
+        """ذخیره تنظیمات جامع قوانین استرداد وجه"""
+        try:
+            current = self.get_refund_settings()
+            current.update(settings_dict)
+            return self.save_setting("refund_settings", current)
+        except Exception as e:
+            logger.error(f"Error saving refund settings: {e}")
+            return False
 
     # ═══════════════════════════════════════════════════════════════
     # مدیریت و چیدمان سفارشی دکمه‌ها و منوی ربات (Bot Menu Customizer)
@@ -5848,8 +5916,10 @@ class Database:
         finally:
             conn.close()
 
-    def deduct_reseller_balance(self, reseller_id: int, amount: int, plan_name: str, account_name: str, description: str = "خرید اشتراک برای مشتری"):
-        """کسر موجودی نقدی یا استفاده از اعتبار مجاز نماینده هنگام خرید اکانت"""
+    def deduct_reseller_balance(self, reseller_id: int, amount: int, plan_name: str, account_name: str,
+                                description: str = "خرید اشتراک برای مشتری", payment_source: str = "auto",
+                                subscription_id: int = None):
+        """کسر هزینه با پشتیبانی از انتخاب دقیق مبدأ پرداخت (کیف پول نقدی یا اعتبار خرید)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -5865,43 +5935,74 @@ class Database:
             credit_enabled = bool(row["credit_enabled"])
             available_credit = max(0, credit_limit - credit_debt) if credit_enabled else 0
 
-            total_available = balance + available_credit
-            if total_available < amount:
-                return {
-                    "success": False, 
-                    "error": f"موجودی و اعتبار کافی نیست! موجودی: {balance:,} تومان | اعتبار باقیمانده: {available_credit:,} تومان | مبلغ کل: {amount:,} تومان"
-                }
+            chosen_source = str(payment_source).strip().lower() if payment_source else "auto"
 
-            is_credit = False
-            credit_used = 0
-
-            if balance >= amount:
-                # کسر کامل از کیف پول نقدی
+            if chosen_source == "wallet":
+                if balance < amount:
+                    return {
+                        "success": False,
+                        "error": f"موجودی کیف پول شما کافی نیست! موجودی: {balance:,} تومان | مبلغ مورد نیاز: {amount:,} تومان"
+                    }
                 cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (amount, now, reseller_id))
+                desc_text = f"{description} (کسر از کیف پول نقدی)"
                 cursor.execute("""
-                    INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
-                    VALUES (?, 'purchase', ?, ?, ?, ?, ?)
-                """, (reseller_id, amount, plan_name, account_name, description, now))
+                    INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
+                    VALUES (?, 'purchase', ?, ?, ?, ?, 'wallet', ?, ?)
+                """, (reseller_id, amount, plan_name, account_name, desc_text, subscription_id, now))
+                conn.commit()
+                return {"success": True, "is_credit": False, "credit_used": 0, "payment_source": "wallet"}
+
+            elif chosen_source == "credit":
+                if not credit_enabled:
+                    return {"success": False, "error": "اعتبار خرید برای شما فعال نشده است."}
+                if available_credit < amount:
+                    return {
+                        "success": False,
+                        "error": f"اعتبار خرید شما کافی نیست! اعتبار باقیمانده: {available_credit:,} تومان | مبلغ مورد نیاز: {amount:,} تومان"
+                    }
+                cursor.execute("UPDATE resellers SET credit_debt = credit_debt + ?, updated_at=? WHERE id=?", (amount, now, reseller_id))
+                desc_text = f"{description} (کسر از اعتبار خرید: {amount:,} ت بدهی)"
+                cursor.execute("""
+                    INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
+                    VALUES (?, 'purchase_credit', ?, ?, ?, ?, 'credit', ?, ?)
+                """, (reseller_id, amount, plan_name, account_name, desc_text, subscription_id, now))
+                conn.commit()
+                return {"success": True, "is_credit": True, "credit_used": amount, "payment_source": "credit"}
+
             else:
-                # استفاده از کل موجودی نقدی و تامین باقیمانده از اعتبار
-                credit_used = amount - balance
-                cursor.execute("""
-                    UPDATE resellers SET 
-                        balance = 0, 
-                        credit_debt = credit_debt + ?, 
-                        updated_at = ? 
-                    WHERE id = ?
-                """, (credit_used, now, reseller_id))
+                # حالت هوشمند و خودکار (auto)
+                total_available = balance + available_credit
+                if total_available < amount:
+                    return {
+                        "success": False, 
+                        "error": f"موجودی و اعتبار کافی نیست! موجودی: {balance:,} تومان | اعتبار باقیمانده: {available_credit:,} تومان | مبلغ کل: {amount:,} تومان"
+                    }
 
-                desc_text = f"{description} (خرید اعتباری: {credit_used:,} تومان بدهی)"
-                cursor.execute("""
-                    INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
-                    VALUES (?, 'purchase_credit', ?, ?, ?, ?, ?)
-                """, (reseller_id, amount, plan_name, account_name, desc_text, now))
-                is_credit = True
+                if balance >= amount:
+                    cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (amount, now, reseller_id))
+                    cursor.execute("""
+                        INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
+                        VALUES (?, 'purchase', ?, ?, ?, ?, 'wallet', ?, ?)
+                    """, (reseller_id, amount, plan_name, account_name, description, subscription_id, now))
+                    conn.commit()
+                    return {"success": True, "is_credit": False, "credit_used": 0, "payment_source": "wallet"}
+                else:
+                    credit_used = amount - balance
+                    cursor.execute("""
+                        UPDATE resellers SET 
+                            balance = 0, 
+                            credit_debt = credit_debt + ?, 
+                            updated_at = ? 
+                        WHERE id = ?
+                    """, (credit_used, now, reseller_id))
 
-            conn.commit()
-            return {"success": True, "is_credit": is_credit, "credit_used": credit_used}
+                    desc_text = f"{description} (خرید اعتباری: {credit_used:,} تومان بدهی)"
+                    cursor.execute("""
+                        INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
+                        VALUES (?, 'purchase_credit', ?, ?, ?, ?, 'credit', ?, ?)
+                    """, (reseller_id, amount, plan_name, account_name, desc_text, subscription_id, now))
+                    conn.commit()
+                    return {"success": True, "is_credit": True, "credit_used": credit_used, "payment_source": "credit"}
         except Exception as e:
             return {"success": False, "error": str(e)}
         finally:
@@ -6241,8 +6342,9 @@ class Database:
 
     def renew_reseller_subscription(self, reseller_id: int, sub_id: int, plan_id: str, plan_name: str,
                                     cost: int, data_limit: float, duration: int,
-                                    instant_activate: bool = True, renewal_type: str = "reset_and_replaced"):
-        """تمدید اشتراک مشتری توسط نماینده با کسر هزینه از موجودی کیف پول و اعتبار خرید (آنی یا در صف رزرو)"""
+                                    instant_activate: bool = True, renewal_type: str = "reset_and_replaced",
+                                    payment_source: str = "auto"):
+        """تمدید اشتراک مشتری توسط نماینده با انتخاب دقیق مبدأ پرداخت (کیف پول نقدی یا اعتبار خرید)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -6258,32 +6360,55 @@ class Database:
             credit_limit = (res_row["credit_limit"] or 0) if "credit_limit" in res_row.keys() else 0
             credit_debt = (res_row["credit_debt"] or 0) if "credit_debt" in res_row.keys() else 0
             available_credit = max(0, credit_limit - credit_debt) if credit_enabled else 0
-            total_purchasing_power = balance + available_credit
-
-            if total_purchasing_power < cost:
-                return {"success": False, "error": f"موجودی کیف پول ({balance:,} ت) و اعتبار تمدید ({available_credit:,} ت) برای تمدید این پلن ({cost:,} ت) کافی نیست."}
 
             cursor.execute("SELECT * FROM subscriptions WHERE id=? AND reseller_id=?", (sub_id, reseller_id))
             sub = cursor.fetchone()
             if not sub:
                 return {"success": False, "error": "اشتراک مورد نظر یافت نشد."}
 
-            # ۱. کسر هزینه از کیف پول و در صورت نیاز از اعتبار
+            chosen_source = str(payment_source).strip().lower() if payment_source else "auto"
             mode_title = "فعال‌سازی آنی" if instant_activate else "رزرو در صف تمدید"
-            if balance >= cost:
-                cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (cost, now, reseller_id))
-                tx_desc = f"تمدید اشتراک «{sub['account_name']}» با پلن {plan_name} ({mode_title} - پرداخت از کیف پول)"
-            else:
-                from_credit = cost - balance
-                new_debt = credit_debt + from_credit
-                cursor.execute("UPDATE resellers SET balance = 0, credit_debt = ?, updated_at=? WHERE id=?", (new_debt, now, reseller_id))
-                tx_desc = f"تمدید اشتراک «{sub['account_name']}» با پلن {plan_name} ({mode_title} - کسر {balance:,} ت از کیف پول و {from_credit:,} ت از اعتبار)"
+            actual_source = "wallet"
 
-            # ۲. ثبت تراکنش تمدید در تاریخچه مالی نماینده
+            if chosen_source == "wallet":
+                if balance < cost:
+                    return {"success": False, "error": f"موجودی کیف پول شما کافی نیست! موجودی: {balance:,} تومان | هزینه تمدید: {cost:,} تومان"}
+                cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (cost, now, reseller_id))
+                tx_desc = f"تمدید اشتراک «{sub['account_name']}» با پلن {plan_name} ({mode_title} - کسر از کیف پول نقدی)"
+                actual_source = "wallet"
+
+            elif chosen_source == "credit":
+                if not credit_enabled:
+                    return {"success": False, "error": "اعتبار خرید برای شما فعال نشده است."}
+                if available_credit < cost:
+                    return {"success": False, "error": f"اعتبار خرید شما کافی نیست! اعتبار باقیمانده: {available_credit:,} تومان | هزینه تمدید: {cost:,} تومان"}
+                new_debt = credit_debt + cost
+                cursor.execute("UPDATE resellers SET credit_debt = ?, updated_at=? WHERE id=?", (new_debt, now, reseller_id))
+                tx_desc = f"تمدید اشتراک «{sub['account_name']}» با پلن {plan_name} ({mode_title} - کسر از اعتبار خرید: {cost:,} ت بدهی)"
+                actual_source = "credit"
+
+            else:
+                # حالت هوشمند و خودکار (auto)
+                total_purchasing_power = balance + available_credit
+                if total_purchasing_power < cost:
+                    return {"success": False, "error": f"موجودی کیف پول ({balance:,} ت) و اعتبار تمدید ({available_credit:,} ت) برای تمدید این پلن ({cost:,} ت) کافی نیست."}
+
+                if balance >= cost:
+                    cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (cost, now, reseller_id))
+                    tx_desc = f"تمدید اشتراک «{sub['account_name']}» با پلن {plan_name} ({mode_title} - پرداخت از کیف پول)"
+                    actual_source = "wallet"
+                else:
+                    from_credit = cost - balance
+                    new_debt = credit_debt + from_credit
+                    cursor.execute("UPDATE resellers SET balance = 0, credit_debt = ?, updated_at=? WHERE id=?", (new_debt, now, reseller_id))
+                    tx_desc = f"تمدید اشتراک «{sub['account_name']}» با پلن {plan_name} ({mode_title} - کسر {balance:,} ت از کیف پول و {from_credit:,} ت از اعتبار)"
+                    actual_source = "credit"
+
+            # ثبت تراکنش تمدید با مشخص بودن مبدأ پرداخت
             cursor.execute("""
-                INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
-                VALUES (?, 'renewal', ?, ?, ?, ?, ?)
-            """, (reseller_id, cost, plan_name, sub["account_name"], tx_desc, now))
+                INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
+                VALUES (?, 'renewal', ?, ?, ?, ?, ?, ?, ?)
+            """, (reseller_id, cost, plan_name, sub["account_name"], tx_desc, actual_source, sub_id, now))
 
             if instant_activate:
                 # ۳. به‌روزرسانی آنی مشخصات اشتراک، ریست حجم مصرفی و ریست تاریخ شروع و انقضا
@@ -6293,11 +6418,11 @@ class Database:
                 cursor.execute("""
                     UPDATE subscriptions
                     SET plan_id=?, plan_name=?, data_limit=?, data_used=0, duration=?, status='active',
-                        start_date=?, expire_date=?, updated_at=?, cost_paid=?
+                        start_date=?, expire_date=?, updated_at=?, cost_paid=?, payment_source=?
                     WHERE id=? AND reseller_id=?
-                """, (plan_id, plan_name, data_limit, duration, new_start_date, new_expire_date, now, cost, sub_id, reseller_id))
+                """, (plan_id, plan_name, data_limit, duration, new_start_date, new_expire_date, now, cost, actual_source, sub_id, reseller_id))
                 conn.commit()
-                return {"success": True, "mode": "instant"}
+                return {"success": True, "mode": "instant", "payment_source": actual_source}
             else:
                 # ۴. افزودن به صف تمدید هوشمند (رزرو بسته خودکار)
                 cursor.execute("UPDATE subscription_queue SET status='cancelled' WHERE subscription_id=? AND status='pending'", (sub_id,))
@@ -6307,9 +6432,10 @@ class Database:
                         plan_id, plan_name, data_limit, duration, cost, status, created_at, note
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
                 """, (sub_id, sub["telegram_id"] or 0, sub["hidify_uuid"] or "", reseller_id,
-                      plan_id, plan_name, data_limit, duration, cost, now, "تمدید رزرو نماینده"))
+                      plan_id, plan_name, data_limit, duration, cost, now, f"تمدید رزرو نماینده ({actual_source})"))
+                cursor.execute("UPDATE subscriptions SET payment_source=? WHERE id=?", (actual_source, sub_id))
                 conn.commit()
-                return {"success": True, "mode": "queued"}
+                return {"success": True, "mode": "queued", "payment_source": actual_source}
         except Exception as e:
             return {"success": False, "error": str(e)}
         finally:
@@ -6442,10 +6568,11 @@ class Database:
 
     def calculate_reseller_refund(self, reseller_id: int, sub_id: int):
         """
-        محاسبه هوشمند و تجمیعی استرداد وجه حذف مشتری نماینده شامل خرید اولیه و کلیه تمدیدها:
-        - هر اقدام کمتر از ۱۲ ساعت پیش: ۱۰۰٪ مبلغ
-        - هر اقدام بین ۱۲ تا ۲۴ ساعت پیش: ۸۰٪ مبلغ
-        - هر اقدام بیش از ۲۴ ساعت پیش: ۰٪ مبلغ
+        محاسبه هوشمند استرداد وجه حذف مشتری نماینده طبق تنظیمات مدیریت:
+        - عدم تاثیرپذیری از مبلغ بدهی مشتری (صرفاً بر اساس هزینه خرید پلن کسر شده از نماینده)
+        - محاسبه زمان بر اساس زمان ساخت اولیه مشتری یا آخرین اقدام (طبق تنظیمات)
+        - رعایت درصدهای سفارشی مدیریت و غیرفعال‌سازی سراسری یا برای نماینده خاص
+        - تفکیک مبدأ بازگشت وجه (کیف پول نقدی یا اعتبار خرید)
         """
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -6455,15 +6582,32 @@ class Database:
             conn.close()
             return None
 
-        account_name = sub["account_name"] or "بدون نام"
+        sub_dict = dict(sub)
+        account_name = sub_dict.get("account_name") or f"user_{sub_id}"
         now_dt = get_now_naive()
+
+        # دریافت تنظیمات استرداد
+        settings = self.get_refund_settings()
+        refund_enabled = bool(settings.get("refund_enabled", True))
+        disabled_resellers = settings.get("disabled_resellers", [])
+        rate_12h = int(settings.get("rate_before_12h", 100))
+        rate_24h = int(settings.get("rate_before_24h", 80))
+        calc_from_creation = bool(settings.get("calc_from_creation", True))
+
+        is_disallowed = (not refund_enabled) or (reseller_id in disabled_resellers)
+
+        # تعیین مبدأ پرداخت (کیف پول یا اعتبار)
+        sub_source = str(sub_dict.get("payment_source") or "").lower()
+        is_credit_sub = bool(sub_dict.get("is_credit") or (sub_dict.get("credit_debt_amount") or 0) > 0 or sub_source == "credit")
 
         # جستجوی تمام اقدامات مالی کسر شده از نماینده برای این اکانت (خرید اولیه + تمدیدها)
         cursor.execute("""
             SELECT * FROM reseller_transactions
-            WHERE reseller_id = ? AND (account_name = ? OR description LIKE ?) AND type IN ('purchase', 'renewal')
+            WHERE reseller_id = ? 
+              AND (subscription_id = ? OR account_name = ? OR description LIKE ?)
+              AND type IN ('purchase', 'renewal', 'purchase_credit', 'renewal_credit')
             ORDER BY created_at ASC
-        """, (reseller_id, account_name, f"%{account_name}%"))
+        """, (reseller_id, sub_id, account_name, f"%{account_name}%"))
         tx_rows = cursor.fetchall()
         conn.close()
 
@@ -6488,25 +6632,52 @@ class Database:
             m = int((hours_val - h) * 60)
             return f"{h} ساعت و {m} دقیقه پیش" if h > 0 else f"{m} دقیقه پیش"
 
+        # محاسبه زمان بر اساس ساخت مشتری در صورت فعال بودن تنظیم
+        creation_dt_str = sub_dict.get("created_at") or get_now_iso()
+        creation_elapsed_hours = _calc_elapsed(creation_dt_str)
+        creation_time_passed_str = _format_time_passed(creation_elapsed_hours)
+
+        has_credit_tx = False
+        has_wallet_tx = False
+
         if tx_rows:
             for tx in tx_rows:
-                amount = int(tx["amount"] or 0)
+                tx_d = dict(tx)
+                amount = int(tx_d.get("amount") or 0)
                 if amount <= 0:
                     continue
-                created_str = tx["created_at"] or get_now_iso()
-                elapsed_hours = _calc_elapsed(created_str)
-                time_passed_str = _format_time_passed(elapsed_hours)
+
+                tx_src = tx_d.get("payment_source")
+                if not tx_src:
+                    tx_src = "credit" if (tx_d.get("type") in ("purchase_credit", "renewal_credit") or "اعتبار" in str(tx_d.get("description", ""))) else "wallet"
+
+                if tx_src == "credit":
+                    has_credit_tx = True
+                else:
+                    has_wallet_tx = True
+
+                # تعیین زمان مبنا
+                if calc_from_creation:
+                    elapsed_hours = creation_elapsed_hours
+                    time_passed_str = creation_time_passed_str
+                else:
+                    created_str = tx_d.get("created_at") or get_now_iso()
+                    elapsed_hours = _calc_elapsed(created_str)
+                    time_passed_str = _format_time_passed(elapsed_hours)
 
                 if elapsed_hours < latest_elapsed_hours:
                     latest_elapsed_hours = elapsed_hours
                     latest_time_passed_text = time_passed_str
 
-                if elapsed_hours <= 12.0:
-                    rate = 1.0
-                    percent = 100
+                if is_disallowed:
+                    rate = 0.0
+                    percent = 0
+                elif elapsed_hours <= 12.0:
+                    rate = rate_12h / 100.0
+                    percent = rate_12h
                 elif elapsed_hours <= 24.0:
-                    rate = 0.8
-                    percent = 80
+                    rate = rate_24h / 100.0
+                    percent = rate_24h
                 else:
                     rate = 0.0
                     percent = 0
@@ -6516,71 +6687,91 @@ class Database:
                 total_refund += ref_amount
 
                 items.append({
-                    "tx_id": tx["id"],
-                    "type": tx["type"],
-                    "type_title": "خرید اولیه" if tx["type"] == "purchase" else "تمدید اشتراک",
-                    "plan_name": tx["plan_name"] or sub["plan_name"] or "پلن",
+                    "tx_id": tx_d["id"],
+                    "type": tx_d["type"],
+                    "payment_source": tx_src,
+                    "type_title": "خرید اولیه" if "purchase" in tx_d["type"] else "تمدید اشتراک",
+                    "plan_name": tx_d.get("plan_name") or sub_dict.get("plan_name") or "پلن",
                     "amount": amount,
                     "elapsed_hours": round(elapsed_hours, 1),
                     "time_passed_text": time_passed_str,
                     "refund_percent": percent,
                     "refund_amount": ref_amount,
-                    "created_at": created_str
+                    "created_at": tx_d.get("created_at")
                 })
 
-        # در صورتی که لاگ تراکنش یافت نشد (اکانت‌های دستی یا قدیمی)
+        # در صورتی که تراکنشی یافت نشد (اکانت‌های دستی یا ایجاد مستقیم)
         if not items:
-            created_str = sub["created_at"] or get_now_iso()
-            elapsed_hours = _calc_elapsed(created_str)
-            time_passed_str = _format_time_passed(elapsed_hours)
+            elapsed_hours = creation_elapsed_hours
+            time_passed_str = creation_time_passed_str
             latest_elapsed_hours = elapsed_hours
             latest_time_passed_text = time_passed_str
 
-            if elapsed_hours <= 12.0:
-                percent = 100
-                rate = 1.0
+            if is_disallowed:
+                rate = 0.0
+                percent = 0
+            elif elapsed_hours <= 12.0:
+                percent = rate_12h
+                rate = rate_12h / 100.0
             elif elapsed_hours <= 24.0:
-                percent = 80
-                rate = 0.8
+                percent = rate_24h
+                rate = rate_24h / 100.0
             else:
                 percent = 0
                 rate = 0.0
 
-            cost_paid = int(sub["cost_paid"] or 0)
+            # مبلغ پرداختی واقعی: صرفاً هزینه پلن پرداخت‌شده (cost_paid) نه بدهی مشتری
+            cost_paid = int(sub_dict.get("cost_paid") or 0)
             ref_amount = int(cost_paid * rate)
             total_paid = cost_paid
             total_refund = ref_amount
 
+            fallback_src = "credit" if is_credit_sub else "wallet"
+            if fallback_src == "credit":
+                has_credit_tx = True
+            else:
+                has_wallet_tx = True
+
             items.append({
                 "tx_id": 0,
-                "type": "purchase",
-                "type_title": "خرید اولیه (ثبت سیستمی)",
-                "plan_name": sub["plan_name"] or "پلن",
+                "type": "purchase_credit" if is_credit_sub else "purchase",
+                "payment_source": fallback_src,
+                "type_title": "خرید اشتراک (سیستمی)",
+                "plan_name": sub_dict.get("plan_name") or "پلن",
                 "amount": cost_paid,
                 "elapsed_hours": round(elapsed_hours, 1),
                 "time_passed_text": time_passed_str,
                 "refund_percent": percent,
                 "refund_amount": ref_amount,
-                "created_at": created_str
+                "created_at": creation_dt_str
             })
 
-        effective_percent = int(round((total_refund / total_paid) * 100)) if total_paid > 0 else (100 if latest_elapsed_hours <= 12.0 else (80 if latest_elapsed_hours <= 24.0 else 0))
+        effective_percent = int(round((total_refund / total_paid) * 100)) if total_paid > 0 else (rate_12h if latest_elapsed_hours <= 12.0 else (rate_24h if latest_elapsed_hours <= 24.0 else 0))
+        if is_disallowed:
+            effective_percent = 0
+            total_refund = 0
+
+        # مبدأ کلی استرداد
+        final_payment_source = "credit" if (has_credit_tx and not has_wallet_tx) else ("wallet" if (has_wallet_tx and not has_credit_tx) else ("credit" if is_credit_sub else "wallet"))
 
         return {
             "sub_id": sub_id,
             "account_name": account_name,
-            "created_at": sub["created_at"],
+            "created_at": sub_dict.get("created_at"),
             "elapsed_hours": round(latest_elapsed_hours, 1) if latest_elapsed_hours < 999999 else 0.0,
             "time_passed_text": latest_time_passed_text,
             "refund_percent": effective_percent,
             "cost_paid": total_paid,
             "refund_amount": total_refund,
             "items": items,
-            "actions_count": len(items)
+            "actions_count": len(items),
+            "payment_source": final_payment_source,
+            "is_disallowed": is_disallowed,
+            "calc_from_creation": calc_from_creation
         }
 
     def delete_reseller_subscription(self, reseller_id: int, sub_id: int, reason: str = "سایر", deleted_by: str = None):
-        """حذف نرم مشتری نماینده به سطل زباله با استرداد هوشمند و تجمیعی وجه طبق قوانین ۱۲ و ۲۴ ساعته"""
+        """حذف نرم مشتری نماینده به سطل زباله با استرداد وجه دقیق به مبدأ اولیه (کیف پول یا اعتبار)"""
         refund_info = self.calculate_reseller_refund(reseller_id, sub_id)
         if not refund_info:
             return {"success": False, "error": "اشتراک مورد نظر یافت نشد."}
@@ -6593,15 +6784,26 @@ class Database:
             refund_percent = refund_info["refund_percent"]
             account_name = refund_info["account_name"]
             actions_count = refund_info.get("actions_count", 1)
+            payment_source = refund_info.get("payment_source", "wallet")
 
-            # ۱. در صورت تعلق استرداد وجه، موجودی نماینده افزایش یافته و تراکنش ثبت می‌شود
+            # ۱. در صورت تعلق استرداد وجه، برگشت به مبدأ اصلی انجام می‌شود
             if refund_amount > 0:
-                cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at=? WHERE id=?", (refund_amount, now, reseller_id))
-                desc_text = f"استرداد وجه {refund_percent}٪ بابت انتقال اشتراک «{account_name}» به سطل زباله ({actions_count} مرحله تراکنش/تمدید - آخرین اقدام: {refund_info['time_passed_text']}) - علت: {reason}"
-                cursor.execute("""
-                    INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
-                    VALUES (?, 'refund', ?, 'استرداد وجه', ?, ?, ?)
-                """, (reseller_id, refund_amount, account_name, desc_text, now))
+                if payment_source == "credit":
+                    # کسر بدهی اعتباری نماینده (بازگشت به سقف اعتبار)
+                    cursor.execute("UPDATE resellers SET credit_debt = MAX(0, credit_debt - ?), updated_at=? WHERE id=?", (refund_amount, now, reseller_id))
+                    desc_text = f"استرداد وجه {refund_percent}٪ بابت انتقال اشتراک «{account_name}» به سطل زباله (برگشت به اعتبار خرید - کاهش بدهی) - زمان گذشته: {refund_info['time_passed_text']} - علت: {reason}"
+                    cursor.execute("""
+                        INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
+                        VALUES (?, 'refund', ?, 'استرداد وجه اعتباری', ?, ?, 'credit', ?, ?)
+                    """, (reseller_id, refund_amount, account_name, desc_text, sub_id, now))
+                else:
+                    # افزایش موجودی کیف پول نقدی نماینده
+                    cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at=? WHERE id=?", (refund_amount, now, reseller_id))
+                    desc_text = f"استرداد وجه {refund_percent}٪ بابت انتقال اشتراک «{account_name}» به سطل زباله (واریز به کیف پول) - زمان گذشته: {refund_info['time_passed_text']} - علت: {reason}"
+                    cursor.execute("""
+                        INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
+                        VALUES (?, 'refund', ?, 'استرداد وجه', ?, ?, 'wallet', ?, ?)
+                    """, (reseller_id, refund_amount, account_name, desc_text, sub_id, now))
 
             # ۲. حذف نرم اشتراک از جدول (انتقال به سطل زباله)
             by_user = deleted_by or f"reseller_{reseller_id}"
@@ -6618,7 +6820,8 @@ class Database:
                 "refund_percent": refund_percent,
                 "time_passed_text": refund_info["time_passed_text"],
                 "actions_count": actions_count,
-                "items": refund_info.get("items", [])
+                "items": refund_info.get("items", []),
+                "payment_source": payment_source
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -6889,7 +7092,7 @@ class Database:
 
     def restore_subscription(self, sub_id: int, is_reseller: bool = False, reseller_id: int = None, cost: int = 0,
                              new_uuid: str = None, new_start_date: str = None, new_expire_date: str = None,
-                             new_data_used: float = None) -> dict:
+                             new_data_used: float = None, payment_source: str = "auto") -> dict:
         """بازگردانی اشتراک از سطل زباله به لیست فعال، به‌روزرسانی مشخصات و کسر هزینه در صورت بازگردانی توسط نماینده"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -6902,6 +7105,7 @@ class Database:
 
             sub_dict = dict(sub)
             account_name = sub_dict.get("account_name", "بدون نام")
+            chosen_source = "wallet"
 
             # اگر نماینده بازگردانی می‌کند و هزینه دارد، کسر از کیف پول یا اعتبار
             if is_reseller and reseller_id and cost > 0:
@@ -6910,18 +7114,21 @@ class Database:
                     amount=cost,
                     plan_name=sub_dict.get("plan_name") or "پلن اشتراک",
                     account_name=account_name,
-                    description=f"هزینه بازگردانی اشتراک «{account_name}» از سطل زباله"
+                    description=f"هزینه بازگردانی اشتراک «{account_name}» از سطل زباله",
+                    payment_source=payment_source,
+                    subscription_id=sub_id
                 )
                 if not deduct_res.get("success"):
                     return {"success": False, "error": deduct_res.get("error", "موجودی یا اعتبار کافی نیست.")}
+                chosen_source = deduct_res.get("payment_source", "wallet")
 
             # ساخت کوئری به‌روزرسانی با فیلدهای جدید
             update_sql = """
                 UPDATE subscriptions 
                 SET is_deleted = 0, deleted_at = NULL, delete_reason = NULL, deleted_by = NULL, disable_reason = NULL,
-                    purged_from_hiddify = 0, status = 'active', updated_at = ?
+                    purged_from_hiddify = 0, status = 'active', updated_at = ?, payment_source = COALESCE(?, payment_source)
             """
-            params = [now]
+            params = [now, chosen_source if (is_reseller and cost > 0) else None]
             if new_uuid:
                 update_sql += ", hidify_uuid = ?"
                 params.append(new_uuid)
@@ -7757,15 +7964,21 @@ class Database:
         finally:
             conn.close()
 
-    def update_accounting_record(self, record_id: int, **kwargs) -> dict:
-        """ویرایش سند حسابداری"""
+    def update_accounting_record(self, record_id: int, edited_by: str = None, **kwargs) -> dict:
+        """ویرایش سند حسابداری توسط مدیر ارشد با ثبت رهگیری کامل"""
         conn = self.get_connection()
         cursor = conn.cursor()
+        now_iso = get_now_iso()
         try:
             allowed = ["type", "category", "title", "amount", "description", "date"]
             updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
             if not updates:
                 return {"success": False, "error": "داده‌ای برای بروزرسانی ارسال نشده است."}
+
+            updates["is_edited"] = 1
+            if edited_by:
+                updates["edited_by"] = str(edited_by)
+            updates["edited_at"] = now_iso
 
             fields = ", ".join([f"{k}=?" for k in updates.keys()])
             values = list(updates.values()) + [record_id]
@@ -7777,6 +7990,33 @@ class Database:
                 pass
             return {"success": True}
         except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def update_admin_debt(self, debt_id: int, edited_by: str = None, **kwargs) -> dict:
+        """ویرایش سابقه تراز بدهی مدیر/شریک توسط مدیر ارشد با برچسب ویرایش"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now_iso = get_now_iso()
+        try:
+            allowed = ["total_amount", "share_amount", "debt_amount", "description", "customer_name", "plan_name"]
+            updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
+            if not updates:
+                return {"success": False, "error": "داده‌ای برای بروزرسانی ارسال نشده است."}
+
+            updates["is_edited"] = 1
+            if edited_by:
+                updates["edited_by"] = str(edited_by)
+            updates["edited_at"] = now_iso
+
+            fields = ", ".join([f"{k}=?" for k in updates.keys()])
+            values = list(updates.values()) + [debt_id]
+            cursor.execute(f"UPDATE admin_debts SET {fields} WHERE id=?", values)
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error updating admin debt {debt_id}: {e}")
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
@@ -7843,7 +8083,7 @@ class Database:
             conn.close()
 
     def get_accounting_summary(self) -> dict:
-        """محاسبه شاخص‌های جامع مالی، درآمد کل، مخارج، سود خالص و حاشیه سودآوری"""
+        """محاسبه شاخص‌های جامع مالی، حسابرسی مشتریان مدیریت، بسته‌های پیش‌خرید اعتباری و بدهی نمایندگان"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -7907,6 +8147,58 @@ class Database:
             """)
             monthly_trend = [dict(r) for r in cursor.fetchall()]
 
+            # ۹. حسابرسی اختصاصی مشتریان مستقیم مدیریت
+            cursor.execute("""
+                SELECT COALESCE(SUM(amount), 0) FROM transactions 
+                WHERE status IN ('approved', 'completed') 
+                  AND (gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
+                  AND (reseller_id IS NULL OR reseller_id = 0)
+            """)
+            admin_direct_income = cursor.fetchone()[0] or 0
+
+            cursor.execute("""
+                SELECT COALESCE(SUM(debt_amount), 0) FROM subscriptions 
+                WHERE (payment_status IN ('unpaid', 'debtor') OR debt_amount > 0)
+                  AND (is_deleted = 0 OR is_deleted IS NULL)
+                  AND (reseller_id IS NULL OR reseller_id = 0)
+            """)
+            admin_direct_debt = cursor.fetchone()[0] or 0
+
+            cursor.execute("""
+                SELECT COUNT(*) FROM subscriptions 
+                WHERE (is_deleted = 0 OR is_deleted IS NULL)
+                  AND (reseller_id IS NULL OR reseller_id = 0)
+            """)
+            admin_direct_customers_count = cursor.fetchone()[0] or 0
+
+            # ۱۰. بسته‌های پیش‌خرید اعتباری نمایندگان (Volume Bundles)
+            cursor.execute("""
+                SELECT COALESCE(SUM(amount), 0) FROM transactions 
+                WHERE status IN ('approved', 'completed') 
+                  AND (gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')
+            """)
+            reseller_bundles_income = cursor.fetchone()[0] or 0
+
+            cursor.execute("""
+                SELECT COUNT(*) FROM transactions 
+                WHERE status IN ('approved', 'completed') 
+                  AND (gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')
+            """)
+            reseller_bundles_count = cursor.fetchone()[0] or 0
+
+            # ۱۱. بدهی نمایندگانی که خرید اعتباری انجام داده‌اند
+            cursor.execute("SELECT COALESCE(SUM(credit_debt), 0) FROM resellers WHERE credit_debt > 0")
+            reseller_credit_debts_total = cursor.fetchone()[0] or 0
+
+            cursor.execute("SELECT COUNT(*) FROM resellers WHERE credit_debt > 0")
+            reseller_debtors_count = cursor.fetchone()[0] or 0
+
+            cursor.execute("SELECT COALESCE(SUM(credit_limit), 0) FROM resellers WHERE credit_enabled = 1")
+            reseller_credit_limits_total = cursor.fetchone()[0] or 0
+
+            cursor.execute("SELECT COALESCE(SUM(balance), 0) FROM resellers WHERE balance > 0")
+            reseller_wallets_total = cursor.fetchone()[0] or 0
+
             return {
                 "total_income": total_income,
                 "auto_tx_income": auto_tx_income,
@@ -7920,6 +8212,18 @@ class Database:
                 "month_net_profit": month_net_profit,
                 "expense_categories": expense_categories,
                 "monthly_trend": monthly_trend,
+                # حسابرسی مشتریان مدیریت
+                "admin_direct_income": admin_direct_income,
+                "admin_direct_debt": admin_direct_debt,
+                "admin_direct_customers_count": admin_direct_customers_count,
+                # بسته‌های پیش‌خرید اعتباری
+                "reseller_bundles_income": reseller_bundles_income,
+                "reseller_bundles_count": reseller_bundles_count,
+                # بدهی‌های اعتباری نمایندگان
+                "reseller_credit_debts_total": reseller_credit_debts_total,
+                "reseller_debtors_count": reseller_debtors_count,
+                "reseller_credit_limits_total": reseller_credit_limits_total,
+                "reseller_wallets_total": reseller_wallets_total
             }
         except Exception as e:
             logger.error(f"Error in get_accounting_summary: {e}")
@@ -7927,8 +8231,395 @@ class Database:
                 "total_income": 0, "auto_tx_income": 0, "auto_reseller_income": 0, "manual_income": 0,
                 "total_expense": 0, "net_profit": 0, "profit_margin": 0.0,
                 "month_total_income": 0, "month_total_expense": 0, "month_net_profit": 0,
-                "expense_categories": [], "monthly_trend": []
+                "expense_categories": [], "monthly_trend": [],
+                "admin_direct_income": 0, "admin_direct_debt": 0, "admin_direct_customers_count": 0,
+                "reseller_bundles_income": 0, "reseller_bundles_count": 0,
+                "reseller_credit_debts_total": 0, "reseller_debtors_count": 0,
+                "reseller_credit_limits_total": 0, "reseller_wallets_total": 0
             }
+        finally:
+            conn.close()
+
+    def get_partner_profits_summary(self, period: str = "all") -> dict:
+        """محاسبه سود شرکا در صورت وجود شرکا و سود کسب شده در دوره‌های مختلف"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT id, username, display_name, role, share_percent, debt_balance, telegram_id
+                FROM admin_users 
+                WHERE role = 'partner' OR share_percent > 0
+                ORDER BY id ASC
+            """)
+            partners = [dict(r) for r in cursor.fetchall()]
+
+            date_cond = ""
+            if period == "today":
+                date_cond = "AND created_at >= DATE('now')"
+            elif period == "week":
+                date_cond = "AND created_at >= DATE('now', '-7 days')"
+            elif period == "month":
+                date_cond = "AND created_at >= DATE('now', 'start of month')"
+            elif period == "year":
+                date_cond = "AND created_at >= DATE('now', 'start of year')"
+
+            partner_reports = []
+            total_partner_sales = 0
+            total_partner_profits = 0
+            total_mgmt_share = 0
+            total_partner_debt_balance = 0
+
+            for p in partners:
+                p_id = p["id"]
+                p_share_pct = p.get("share_percent") or 0
+
+                # فروش نقدی در بازه
+                cursor.execute(f"""
+                    SELECT COALESCE(SUM(total_amount), 0), COALESCE(SUM(share_amount), 0), COUNT(*)
+                    FROM admin_debts
+                    WHERE admin_id = ? AND type = 'cash_sale' {date_cond}
+                """, (p_id,))
+                sale_row = cursor.fetchone()
+                sales_amount = sale_row[0] or 0
+                profit_earned = sale_row[1] or 0
+                sales_count = sale_row[2] or 0
+
+                # کل تسویه‌شده در بازه
+                cursor.execute(f"""
+                    SELECT COALESCE(SUM(total_amount), 0)
+                    FROM admin_debts
+                    WHERE admin_id = ? AND type = 'settlement' {date_cond}
+                """, (p_id,))
+                settled_amount = cursor.fetchone()[0] or 0
+
+                mgmt_share = sales_amount - profit_earned
+                debt_balance = p.get("debt_balance") or 0
+
+                total_partner_sales += sales_amount
+                total_partner_profits += profit_earned
+                total_mgmt_share += mgmt_share
+                total_partner_debt_balance += debt_balance
+
+                partner_reports.append({
+                    "id": p_id,
+                    "username": p["username"],
+                    "display_name": p["display_name"],
+                    "role": p["role"],
+                    "share_percent": p_share_pct,
+                    "sales_count": sales_count,
+                    "sales_amount": sales_amount,
+                    "profit_earned": profit_earned,
+                    "mgmt_share": mgmt_share,
+                    "settled_amount": settled_amount,
+                    "debt_balance": debt_balance,
+                    "telegram_id": p.get("telegram_id")
+                })
+
+            return {
+                "has_partners": len(partners) > 0,
+                "period": period,
+                "partners": partner_reports,
+                "total_sales": total_partner_sales,
+                "total_profits": total_partner_profits,
+                "total_mgmt_share": total_mgmt_share,
+                "total_debt_balance": total_partner_debt_balance
+            }
+        except Exception as e:
+            logger.error(f"Error in get_partner_profits_summary: {e}")
+            return {"has_partners": False, "period": period, "partners": [], "total_sales": 0, "total_profits": 0, "total_mgmt_share": 0, "total_debt_balance": 0}
+        finally:
+            conn.close()
+
+    def search_all_customers(self, query: str = "", limit: int = 50) -> list:
+        """جستجوی جامع مشتریان فعال، منقضی و حذف‌شده در سطل زباله جهت انتساب رسید دستی"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            q_clean = query.strip()
+            q = f"%{q_clean}%" if q_clean else "%"
+            cursor.execute("""
+                SELECT s.id, s.account_name, s.phone_number, s.telegram_id, s.hidify_uuid,
+                       s.plan_id, s.plan_name, s.status, s.data_limit, s.duration,
+                       s.is_deleted, s.deleted_at, s.payment_status, s.debt_amount,
+                       s.cost_paid, s.reseller_id, s.created_at,
+                       r.name as reseller_name
+                FROM subscriptions s
+                LEFT JOIN resellers r ON s.reseller_id = r.id
+                WHERE (s.account_name LIKE ? OR s.phone_number LIKE ? OR CAST(s.telegram_id AS TEXT) LIKE ? OR s.hidify_uuid LIKE ?)
+                ORDER BY s.id DESC LIMIT ?
+            """, (q, q, q, q, limit))
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"Error in search_all_customers: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_financial_reports_data(self, period: str = "month") -> dict:
+        """گزارشات و تحلیل هوش مالی به تفکیک تب‌های همه، مشتریان مستقیم مدیریت، و نمایندگان با فیلتر زمانی"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            date_cond_tx = ""
+            date_cond_sub = ""
+            date_cond_rtx = ""
+            if period == "today":
+                date_cond_tx = "AND created_at >= DATE('now')"
+                date_cond_sub = "AND created_at >= DATE('now')"
+                date_cond_rtx = "AND created_at >= DATE('now')"
+            elif period == "week":
+                date_cond_tx = "AND created_at >= DATE('now', '-7 days')"
+                date_cond_sub = "AND created_at >= DATE('now', '-7 days')"
+                date_cond_rtx = "AND created_at >= DATE('now', '-7 days')"
+            elif period == "month":
+                date_cond_tx = "AND created_at >= DATE('now', 'start of month')"
+                date_cond_sub = "AND created_at >= DATE('now', 'start of month')"
+                date_cond_rtx = "AND created_at >= DATE('now', 'start of month')"
+            elif period == "year":
+                date_cond_tx = "AND created_at >= DATE('now', 'start of year')"
+                date_cond_sub = "AND created_at >= DATE('now', 'start of year')"
+                date_cond_rtx = "AND created_at >= DATE('now', 'start of year')"
+
+            # ۱. تب همه (All)
+            cursor.execute(f"SELECT COALESCE(SUM(amount), 0), COUNT(*) FROM transactions WHERE status IN ('approved', 'completed') {date_cond_tx}")
+            all_tx = cursor.fetchone()
+            period_revenue = all_tx[0] or 0
+            period_orders = all_tx[1] or 0
+
+            cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE status IN ('approved', 'completed')")
+            lifetime_revenue = cursor.fetchone()[0] or 0
+
+            cursor.execute("SELECT COUNT(*) FROM users")
+            total_users = cursor.fetchone()[0] or 0
+
+            cursor.execute("SELECT COUNT(*) FROM subscriptions WHERE (is_deleted = 0 OR is_deleted IS NULL) AND status = 'active'")
+            total_active_subs = cursor.fetchone()[0] or 0
+
+            cursor.execute("""
+                SELECT strftime('%Y-%m', created_at) as month, SUM(amount) as total, COUNT(*) as count
+                FROM transactions WHERE status IN ('approved', 'completed')
+                GROUP BY strftime('%Y-%m', created_at) ORDER BY month DESC LIMIT 12
+            """)
+            monthly_trend = [dict(r) for r in cursor.fetchall()]
+
+            # ۲. تب مشتریان مدیریت (Direct Admin Customers)
+            cursor.execute(f"""
+                SELECT COALESCE(SUM(amount), 0), COUNT(*)
+                FROM transactions
+                WHERE status IN ('approved', 'completed')
+                  AND ((reseller_id IS NULL OR reseller_id = 0) AND gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
+                  {date_cond_tx}
+            """)
+            admin_tx = cursor.fetchone()
+            admin_period_revenue = admin_tx[0] or 0
+            admin_period_orders = admin_tx[1] or 0
+
+            cursor.execute("""
+                SELECT COALESCE(SUM(amount), 0)
+                FROM transactions
+                WHERE status IN ('approved', 'completed')
+                  AND ((reseller_id IS NULL OR reseller_id = 0) AND gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
+            """)
+            admin_lifetime_revenue = cursor.fetchone()[0] or 0
+
+            cursor.execute("""
+                SELECT COUNT(*) FROM subscriptions 
+                WHERE (reseller_id IS NULL OR reseller_id = 0) AND (is_deleted = 0 OR is_deleted IS NULL) AND status = 'active'
+            """)
+            admin_active_subs = cursor.fetchone()[0] or 0
+
+            cursor.execute("""
+                SELECT COUNT(*), COALESCE(SUM(data_limit), 0) FROM subscriptions 
+                WHERE (reseller_id IS NULL OR reseller_id = 0) AND (is_deleted = 0 OR is_deleted IS NULL)
+            """)
+            admin_sub_stats = cursor.fetchone()
+            admin_total_subs = admin_sub_stats[0] or 0
+            admin_total_gb = admin_sub_stats[1] or 0
+
+            cursor.execute("""
+                SELECT COALESCE(SUM(debt_amount), 0), COUNT(*)
+                FROM subscriptions
+                WHERE (reseller_id IS NULL OR reseller_id = 0)
+                  AND payment_status IN ('unpaid', 'debtor')
+                  AND debt_amount > 0
+                  AND (is_deleted = 0 OR is_deleted IS NULL)
+            """)
+            admin_debt_row = cursor.fetchone()
+            admin_debt_total = admin_debt_row[0] or 0
+            admin_debt_count = admin_debt_row[1] or 0
+
+            cursor.execute("""
+                SELECT id, account_name, telegram_id, phone_number, plan_name, debt_amount, debt_notes, debt_created_at
+                FROM subscriptions
+                WHERE (reseller_id IS NULL OR reseller_id = 0)
+                  AND payment_status IN ('unpaid', 'debtor')
+                  AND debt_amount > 0
+                  AND (is_deleted = 0 OR is_deleted IS NULL)
+                ORDER BY debt_amount DESC LIMIT 50
+            """)
+            admin_debtors = [dict(r) for r in cursor.fetchall()]
+
+            cursor.execute("""
+                SELECT strftime('%Y-%m', created_at) as month, SUM(amount) as total, COUNT(*) as count
+                FROM transactions 
+                WHERE status IN ('approved', 'completed')
+                  AND ((reseller_id IS NULL OR reseller_id = 0) AND gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
+                GROUP BY strftime('%Y-%m', created_at) ORDER BY month DESC LIMIT 12
+            """)
+            admin_monthly_trend = [dict(r) for r in cursor.fetchall()]
+
+            # ۳. تب نمایندگان (Resellers)
+            cursor.execute(f"""
+                SELECT COALESCE(SUM(amount), 0), COUNT(*)
+                FROM reseller_transactions
+                WHERE type IN ('purchase', 'renewal', 'purchase_credit', 'renewal_credit')
+                  {date_cond_rtx}
+            """)
+            rtx_row = cursor.fetchone()
+            reseller_period_wholesale = rtx_row[0] or 0
+            reseller_period_purchases_count = rtx_row[1] or 0
+
+            cursor.execute("""
+                SELECT COALESCE(SUM(balance), 0), COALESCE(SUM(credit_limit), 0), COALESCE(SUM(credit_debt), 0), COUNT(*)
+                FROM resellers WHERE status != 'deleted'
+            """)
+            res_summary_row = cursor.fetchone()
+            resellers_wallets_total = res_summary_row[0] or 0
+            resellers_credit_limits_total = res_summary_row[1] or 0
+            resellers_credit_debts_total = res_summary_row[2] or 0
+            resellers_count = res_summary_row[3] or 0
+
+            cursor.execute("""
+                SELECT COUNT(*) FROM subscriptions 
+                WHERE reseller_id IS NOT NULL AND reseller_id > 0 AND (is_deleted = 0 OR is_deleted IS NULL) AND status = 'active'
+            """)
+            resellers_active_subs = cursor.fetchone()[0] or 0
+
+            cursor.execute("""
+                SELECT COUNT(*) FROM subscriptions 
+                WHERE reseller_id IS NOT NULL AND reseller_id > 0 AND (is_deleted = 0 OR is_deleted IS NULL)
+            """)
+            resellers_total_subs = cursor.fetchone()[0] or 0
+
+            cursor.execute("SELECT id, name, username, phone, balance, credit_limit, credit_debt, credit_enabled, discount_percent, status FROM resellers WHERE status != 'deleted' ORDER BY id ASC")
+            reseller_rows = [dict(r) for r in cursor.fetchall()]
+
+            resellers_detail = []
+            macro_estimated_retail = 0
+
+            for res in reseller_rows:
+                rid = res["id"]
+                disc = res.get("discount_percent") or 20
+
+                cursor.execute(f"""
+                    SELECT COALESCE(SUM(amount), 0), COUNT(*)
+                    FROM reseller_transactions
+                    WHERE reseller_id = ?
+                      AND type IN ('purchase', 'renewal', 'purchase_credit', 'renewal_credit')
+                      {date_cond_rtx}
+                """, (rid,))
+                p_row = cursor.fetchone()
+                wholesale_spent = p_row[0] or 0
+                purchases_count = p_row[1] or 0
+
+                cursor.execute("""
+                    SELECT 
+                        COUNT(*),
+                        COUNT(CASE WHEN status = 'active' AND (is_deleted = 0 OR is_deleted IS NULL) THEN 1 END),
+                        COALESCE(SUM(CASE WHEN (is_deleted = 0 OR is_deleted IS NULL) THEN data_limit ELSE 0 END), 0)
+                    FROM subscriptions
+                    WHERE reseller_id = ?
+                """, (rid,))
+                u_row = cursor.fetchone()
+                total_cust = u_row[0] or 0
+                active_cust = u_row[1] or 0
+                total_gb = u_row[2] or 0
+
+                if disc < 100:
+                    retail_val = int(wholesale_spent / ((100 - disc) / 100.0))
+                else:
+                    retail_val = wholesale_spent
+                est_profit = max(0, retail_val - wholesale_spent)
+                macro_estimated_retail += retail_val
+
+                cursor.execute("""
+                    SELECT COUNT(*), COALESCE(SUM(debt_amount), 0)
+                    FROM subscriptions
+                    WHERE reseller_id = ? AND payment_status IN ('unpaid', 'debtor') AND debt_amount > 0 AND (is_deleted = 0 OR is_deleted IS NULL)
+                """, (rid,))
+                d_row = cursor.fetchone()
+                cust_debtors_cnt = d_row[0] or 0
+                cust_debtors_amt = d_row[1] or 0
+
+                c_lim = res.get("credit_limit") or 0
+                c_debt = res.get("credit_debt") or 0
+                c_avail = max(0, c_lim - c_debt) if res.get("credit_enabled") else 0
+
+                resellers_detail.append({
+                    "id": rid,
+                    "name": res["name"],
+                    "username": res["username"],
+                    "phone": res.get("phone") or "-",
+                    "status": res.get("status", "active"),
+                    "balance": res.get("balance") or 0,
+                    "credit_enabled": bool(res.get("credit_enabled")),
+                    "credit_limit": c_lim,
+                    "credit_debt": c_debt,
+                    "available_credit": c_avail,
+                    "discount_percent": disc,
+                    "total_customers": total_cust,
+                    "active_customers": active_cust,
+                    "total_gb": total_gb,
+                    "period_wholesale": wholesale_spent,
+                    "period_purchases_count": purchases_count,
+                    "period_retail_est": retail_val,
+                    "period_profit_est": est_profit,
+                    "cust_debtors_count": cust_debtors_cnt,
+                    "cust_debtors_amount": cust_debtors_amt
+                })
+
+            macro_reseller_profit = max(0, macro_estimated_retail - reseller_period_wholesale)
+
+            return {
+                "period": period,
+                "all": {
+                    "period_revenue": period_revenue,
+                    "period_orders": period_orders,
+                    "lifetime_revenue": lifetime_revenue,
+                    "total_users": total_users,
+                    "total_active_subs": total_active_subs,
+                    "monthly_trend": monthly_trend
+                },
+                "admin": {
+                    "period_revenue": admin_period_revenue,
+                    "period_orders": admin_period_orders,
+                    "lifetime_revenue": admin_lifetime_revenue,
+                    "active_subs": admin_active_subs,
+                    "total_subs": admin_total_subs,
+                    "total_gb": admin_total_gb,
+                    "debt_total": admin_debt_total,
+                    "debt_count": admin_debt_count,
+                    "debtors": admin_debtors,
+                    "monthly_trend": admin_monthly_trend
+                },
+                "resellers": {
+                    "count": resellers_count,
+                    "period_wholesale": reseller_period_wholesale,
+                    "period_purchases_count": reseller_period_purchases_count,
+                    "period_retail_est": macro_estimated_retail,
+                    "period_profit_est": macro_reseller_profit,
+                    "wallets_total": resellers_wallets_total,
+                    "credit_limits_total": resellers_credit_limits_total,
+                    "credit_debts_total": resellers_credit_debts_total,
+                    "active_subs": resellers_active_subs,
+                    "total_subs": resellers_total_subs,
+                    "items": resellers_detail
+                }
+            }
+        except Exception as e:
+            logger.error(f"Error in get_financial_reports_data: {e}")
+            return {"period": period, "all": {}, "admin": {}, "resellers": {}}
         finally:
             conn.close()
 

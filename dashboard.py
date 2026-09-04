@@ -27,6 +27,7 @@ from flask import (
     Flask, render_template, request, redirect, url_for, session,
     jsonify, flash, Response, send_file, g
 )
+from werkzeug.utils import secure_filename
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -1805,6 +1806,14 @@ def inject_global_branding():
         r_data = db.get_reseller(active_reseller_id)
         if r_data:
             session["balance"] = r_data.get("balance", 0)
+            credit_enabled = bool(r_data.get("credit_enabled"))
+            credit_limit = int(r_data.get("credit_limit") or 0)
+            credit_debt = int(r_data.get("credit_debt") or 0)
+            available_credit = max(0, credit_limit - credit_debt) if credit_enabled else 0
+            session["credit_enabled"] = credit_enabled
+            session["credit_limit"] = credit_limit
+            session["credit_debt"] = credit_debt
+            session["available_credit"] = available_credit
             branding = {
                 "brand_title": r_data.get("brand_title") or r_data.get("name") or "پنل نمایندگی",
                 "logo_url": r_data.get("logo_url"),
@@ -2644,6 +2653,124 @@ def payments():
             "total": pending_count + approved_count + rejected_count + revoked_count
         }
     )
+
+
+@app.route("/api/customers/search")
+@admin_required
+def api_customers_search():
+    """جستجوی زنده مشتریان (شامل فعال، منقضی و سطل زباله) جهت انتساب رسید دستی"""
+    q = request.args.get("q", "").strip()
+    results = db.search_all_customers(query=q, limit=30)
+    return jsonify(results)
+
+
+@app.route("/admin/payment/manual-add", methods=["POST"])
+@admin_required
+def admin_payment_manual_add():
+    """ثبت رسید دستی پرداخت مشتری با قابلیت تسویه بدهی و آپلود تصویر فیش"""
+    amount_raw = request.form.get("amount", "0").replace(",", "").strip()
+    tracking_code = request.form.get("tracking_code", "").strip()
+    card_number = request.form.get("card_number", "").strip()
+    sub_id_raw = request.form.get("subscription_id", "").strip()
+    customer_name = request.form.get("customer_name", "").strip()
+    user_id_raw = request.form.get("user_id", "").strip()
+    notes = request.form.get("notes", "").strip()
+    date_str = request.form.get("payment_date", "").strip()
+    settle_debt = request.form.get("settle_debt") == "on"
+    p_status = request.form.get("status", "approved").strip()
+
+    try:
+        amount = int(amount_raw)
+    except Exception:
+        amount = 0
+
+    if amount <= 0:
+        flash("مبلغ پرداختی باید بزرگتر از صفر باشد.", "danger")
+        return redirect(url_for("payments"))
+
+    sub_id = int(sub_id_raw) if sub_id_raw.isdigit() else None
+    user_id = int(user_id_raw) if user_id_raw.isdigit() else 0
+    admin_name = session.get("admin_username") or session.get("username") or "مدیر"
+
+    now = get_now_iso()
+    created_at = date_str if date_str else now
+    order_id = f"MANUAL-{int(time.time())}"
+
+    # آپلود تصویر فیش
+    receipt_file = request.files.get("receipt_image")
+    receipt_image = None
+    receipt_type = "manual_entry"
+    if receipt_file and receipt_file.filename:
+        try:
+            sec_fn = secure_filename(receipt_file.filename)
+            ext = Path(sec_fn).suffix.lower() or ".jpg"
+            fn = f"receipt_{order_id}{ext}"
+            RECEIPTS_DIR.mkdir(parents=True, exist_ok=True)
+            save_path = RECEIPTS_DIR / fn
+            receipt_file.save(save_path)
+            receipt_image = fn
+            receipt_type = "web_upload"
+        except Exception as ex:
+            logger.warning(f"Error saving manual receipt image: {ex}")
+
+    plan_name = "ثبت دستی"
+    reseller_id = None
+    account_name = customer_name
+    if sub_id:
+        conn = db.get_connection()
+        s_row = conn.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,)).fetchone()
+        conn.close()
+        if s_row:
+            s_dict = dict(s_row)
+            plan_name = s_dict.get("plan_name") or plan_name
+            reseller_id = s_dict.get("reseller_id")
+            account_name = s_dict.get("account_name") or account_name
+            if not user_id:
+                user_id = s_dict.get("telegram_id") or 0
+
+            # تسویه بدهی اشتراک در صورت انتخاب
+            if settle_debt and p_status in ("approved", "completed"):
+                current_debt = s_dict.get("debt_amount") or 0
+                new_debt = max(0, current_debt - amount)
+                new_pstatus = "paid" if new_debt == 0 else "debtor"
+                db.set_subscription_debt(sub_id, new_pstatus, new_debt, f"تسویه دستی با رسید {order_id} ({amount:,} تومان)")
+
+    # ثبت در جدول transactions
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO transactions 
+        (order_id, user_id, username, plan_name, amount, gateway, tracking_code, status, 
+         receipt_image, receipt_photo_id, processed_by, processed_at, is_deleted, created_at, updated_at, reseller_id, account_name)
+        VALUES (?, ?, ?, ?, ?, 'admin_manual', ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+    """, (
+        order_id, user_id, account_name or str(user_id), plan_name, amount,
+        tracking_code or f"رسید دستی #{order_id}", p_status,
+        receipt_image or "", receipt_type,
+        admin_name, now if p_status in ('approved', 'completed') else None,
+        created_at, now, reseller_id, account_name
+    ))
+    tx_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+
+    # ثبت لاگ حسابرسی
+    db.log_transaction_audit(tx_id, "ثبت رسید دستی", admin_name, f"مبلغ: {amount:,} ت | اشتراک #{sub_id or '-'} | تسویه بدهی: {'بله' if settle_debt else 'خیر'}")
+
+    # ثبت سند در حسابداری
+    if p_status in ("approved", "completed"):
+        db.add_accounting_record(
+            type="income",
+            category="فروش اشتراک",
+            title=f"رسید دستی: {account_name} ({order_id})",
+            amount=amount,
+            source="manual",
+            description=f"ثبت دستی توسط {admin_name}. {notes}".strip(),
+            date=created_at[:10]
+        )
+
+    flash(f"رسید دستی با شناسه {order_id} به مبلغ {amount:,} تومان با موفقیت ثبت شد.", "success")
+    return redirect(url_for("payments"))
 
 
 def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: dict = None, processed_by: str = "درگاه آنلاین (خودکار)") -> dict:
@@ -4846,6 +4973,12 @@ def accounting():
     admin_debts_summary = db.get_admins_accounting_summary(admin_id=target_admin_id)
     admin_debts_logs = db.get_admin_debts(admin_id=target_admin_id, limit=100)
 
+    # سود و حسابرسی شرکای تجاری با فیلتر دوره
+    partner_period = request.args.get("partner_period", "month").strip()
+    if partner_period not in ("today", "week", "month", "year", "all"):
+        partner_period = "month"
+    partner_profits = db.get_partner_profits_summary(period=partner_period)
+
     categories = [
         "هزینه سرور",
         "هزینه ترافیک هیدیفای",
@@ -4871,7 +5004,9 @@ def accounting():
         selected_reseller_id=selected_reseller_id,
         selected_reseller=selected_reseller,
         admin_debts_summary=admin_debts_summary,
-        admin_debts_logs=admin_debts_logs
+        admin_debts_logs=admin_debts_logs,
+        partner_profits=partner_profits,
+        partner_period=partner_period
     )
 
 
@@ -4993,6 +5128,66 @@ def accounting_delete_record(record_id):
     """حذف سند حسابداری"""
     db.delete_accounting_record(record_id)
     flash("سند حسابداری با موفقیت حذف شد.", "success")
+    return redirect(url_for("accounting"))
+
+
+@app.route("/accounting/record/edit/<int:record_id>", methods=["POST"])
+@admin_required
+def accounting_edit_record(record_id):
+    """ویرایش سند حسابداری با درج تگ ویرایش شده و شخص ویرایش‌کننده"""
+    if session.get("admin_role") not in ("super_admin", "admin"):
+        flash("فقط مدیر ارشد دسترسی به ویرایش اسناد حسابداری دارد.", "danger")
+        return redirect(url_for("accounting"))
+
+    title = request.form.get("title", "").strip()
+    category = request.form.get("category", "").strip()
+    rec_type = request.form.get("type", "").strip()
+    amount_raw = request.form.get("amount", "").replace(",", "").strip()
+    description = request.form.get("description", "").strip()
+    date = request.form.get("date", "").strip()
+    amount = int(amount_raw) if amount_raw.isdigit() else None
+
+    editor = session.get("admin_username") or session.get("username") or "مدیر ارشد"
+    res = db.update_accounting_record(
+        record_id=record_id,
+        title=title or None,
+        category=category or None,
+        type=rec_type or None,
+        amount=amount,
+        description=description,
+        date=date or None,
+        edited_by=editor
+    )
+    if res.get("success"):
+        flash("سند حسابداری با موفقیت ویرایش شد.", "success")
+    else:
+        flash(f"خطا در ویرایش سند: {res.get('error')}", "danger")
+    return redirect(url_for("accounting"))
+
+
+@app.route("/admin/accounting/debt/edit/<int:debt_id>", methods=["POST"])
+@admin_required
+def admin_accounting_debt_edit(debt_id):
+    """ویرایش سابقه بدهی/تسویه مدیر یا نماینده توسط مدیر ارشد"""
+    if session.get("admin_role") not in ("super_admin", "admin"):
+        flash("فقط مدیر ارشد دسترسی به ویرایش دفاتر مالی دارد.", "danger")
+        return redirect(url_for("accounting"))
+
+    amount_raw = request.form.get("amount", "").replace(",", "").strip()
+    amount = int(amount_raw) if amount_raw.isdigit() else None
+    description = request.form.get("description", "").strip()
+
+    editor = session.get("admin_username") or session.get("username") or "مدیر ارشد"
+    res = db.update_admin_debt(
+        debt_id=debt_id,
+        amount=amount,
+        description=description,
+        edited_by=editor
+    )
+    if res.get("success"):
+        flash("سند بدهی/تسویه با موفقیت ویرایش شد.", "success")
+    else:
+        flash(f"خطا در ویرایش رکورد بدهی: {res.get('error')}", "danger")
     return redirect(url_for("accounting"))
 
 
@@ -6021,11 +6216,16 @@ def admin_discount_delete(code):
 @app.route("/reports")
 @permission_required("reports")
 def reports():
-    """گزارشات آماری و هوش مالی پیشرفته مدیر کل"""
+    """گزارشات آماری و هوش مالی پیشرفته مدیر کل با تفکیک ۳ تب: همه، مشتریان مدیریت و نمایندگان"""
+    active_tab = request.args.get("tab", "all").strip()
+    period = request.args.get("period", "month").strip()
+    if period not in ("today", "week", "month", "year", "all"):
+        period = "month"
+
     conn = db.get_connection()
     total_revenue = conn.execute("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE status IN ('approved', 'completed')").fetchone()[0]
     total_users = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-    active_subs = conn.execute("SELECT COUNT(*) FROM subscriptions WHERE status='active'").fetchone()[0]
+    active_subs = conn.execute("SELECT COUNT(*) FROM subscriptions WHERE (is_deleted = 0 OR is_deleted IS NULL) AND status='active'").fetchone()[0]
     monthly_revenue = conn.execute("""
         SELECT strftime('%Y-%m', created_at) as month, SUM(amount) as total, COUNT(*) as count
         FROM transactions WHERE status IN ('approved', 'completed')
@@ -6034,9 +6234,13 @@ def reports():
     conn.close()
 
     analytics = db.get_advanced_analytics()
+    financial_data = db.get_financial_reports_data(period=period)
 
     return render_template(
         "reports.html",
+        active_tab=active_tab,
+        period=period,
+        financial_data=financial_data,
         total_revenue=total_revenue,
         total_users=total_users,
         active_subs=active_subs,
@@ -6192,6 +6396,22 @@ def settings():
             db.save_vip_settings(vip_enabled, vip_threshold, vip_cashback)
             flash("تنظیمات باشگاه مشتریان پریمیوم (VIP) و کش‌بک با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
+        elif action == "save_refund_settings":
+            refund_enabled = request.form.get("refund_enabled") == "on"
+            rate_12h = int(request.form.get("refund_rate_before_12h", 100) or 100)
+            rate_24h = int(request.form.get("refund_rate_before_24h", 80) or 80)
+            calc_from_creation = request.form.get("refund_calc_from_creation") == "on"
+            disabled_resellers = request.form.getlist("refund_disabled_resellers")
+
+            db.save_refund_settings({
+                "refund_enabled": refund_enabled,
+                "refund_rate_before_12h": rate_12h,
+                "refund_rate_before_24h": rate_24h,
+                "refund_calc_from_creation": calc_from_creation,
+                "refund_disabled_resellers": disabled_resellers
+            })
+            flash("تنظیمات هوشمند استرداد وجه نمایندگان با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("settings"))
 
     conn = db.get_connection()
     settings_list = conn.execute("SELECT * FROM settings").fetchall()
@@ -6204,6 +6424,8 @@ def settings():
     troubleshoot_domain = db.get_setting("troubleshoot_domain", "")
     tutorial_title = db.get_setting("tutorial_title", "راهنما و آموزش اتصال")
     vip_settings = db.get_vip_settings()
+    refund_settings = db.get_refund_settings()
+    all_resellers = db.get_all_resellers()
     return render_template(
         "settings.html",
         settings=settings_list,
@@ -6214,7 +6436,9 @@ def settings():
         tutorial_domain=tutorial_domain,
         troubleshoot_domain=troubleshoot_domain,
         tutorial_title=tutorial_title,
-        vip_settings=vip_settings
+        vip_settings=vip_settings,
+        refund_settings=refund_settings,
+        all_resellers=all_resellers
     )
 
 
@@ -6348,6 +6572,7 @@ def reseller_create_user():
         payment_status = request.form.get("payment_status", "paid").strip()
         debt_amount_raw = request.form.get("debt_amount", "").strip()
         debt_notes = request.form.get("debt_notes", "").strip()
+        payment_source = request.form.get("payment_source", "auto").strip()
 
         if plan_key not in plans:
             flash("پلن انتخابی نامعتبر است.", "danger")
@@ -6357,7 +6582,7 @@ def reseller_create_user():
         original_price = plan.get("master_price") or plan.get("price") or 0
         final_price = plan.get("wholesale_price") if plan.get("wholesale_price") is not None else int(original_price * (100 - discount) / 100)
 
-        # بررسی موجودی نقدی + اعتبار مجاز برای خرید
+        # بررسی موجودی نقدی + اعتبار مجاز برای خرید با توجه به منبع انتخابی
         credit_enabled = bool(reseller.get("credit_enabled"))
         credit_limit = int(reseller.get("credit_limit") or 0)
         credit_debt = int(reseller.get("credit_debt") or 0)
@@ -6365,7 +6590,13 @@ def reseller_create_user():
         current_balance = stats.get("balance", 0)
         total_purchasing_power = current_balance + available_credit
 
-        if total_purchasing_power < final_price:
+        if payment_source == "wallet" and current_balance < final_price:
+            flash(f"موجودی کیف پول شما کافی نیست! موجودی کیف پول: {current_balance:,} ت | هزینه پلن: {final_price:,} ت", "danger")
+            return redirect(url_for("reseller_create_user"))
+        elif payment_source == "credit" and available_credit < final_price:
+            flash(f"اعتبار باقیمانده شما کافی نیست! اعتبار مجاز: {available_credit:,} ت | هزینه پلن: {final_price:,} ت", "danger")
+            return redirect(url_for("reseller_create_user"))
+        elif total_purchasing_power < final_price:
             flash(f"موجودی کیف پول و سقف اعتبار شما کافی نیست! موجودی: {current_balance:,} ت | اعتبار باقیمانده: {available_credit:,} ت | مبلغ مورد نیاز: {final_price:,} ت", "danger")
             return redirect(url_for("reseller_create_user"))
 
@@ -6403,7 +6634,7 @@ def reseller_create_user():
 
         # ۲. پس از تایید ۱۰۰٪ ساخت در هیدیفای، موجودی/اعتبار کسر و تراکنش خرید ثبت می‌گردد
         plan_title = plan.get("display_name") or plan.get("name") or plan.get("master_name", "")
-        deduct_res = db.deduct_reseller_balance(reseller_id, final_price, plan_title, account_name)
+        deduct_res = db.deduct_reseller_balance(reseller_id, final_price, plan_title, account_name, payment_source=payment_source)
         if not deduct_res.get("success"):
             logger.error(f"Failed to deduct balance after user creation: {deduct_res.get('error')}")
 
@@ -6416,22 +6647,27 @@ def reseller_create_user():
         debt_created = now if debt_amount > 0 else None
         is_credit_sub = 1 if deduct_res.get("is_credit") else 0
         credit_used_amount = deduct_res.get("credit_used", 0)
+        actual_payment_source = deduct_res.get("payment_source", "wallet")
 
-        # ۳. ثبت اشتراک با وضعیت بدهی، شناسه نماینده، شماره تلفن و هزینه در دیتابیس
+        # ۳. ثبت اشتراک با وضعیت بدهی، شناسه نماینده، شماره تلفن، هزینه و منبع پرداخت دقیق
         conn = db.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO subscriptions 
             (telegram_id, hidify_uuid, plan_id, plan_name, account_name, phone_number,
              data_limit, duration, status, reseller_id, user_limit, cost_paid,
-             payment_status, debt_amount, debt_notes, debt_created_at, is_credit, credit_debt_amount, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             payment_status, debt_amount, debt_notes, debt_created_at, is_credit, credit_debt_amount, payment_source, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             telegram_id, user_uuid, plan_key, plan_title, account_name, phone_number or None,
             data_limit_gb, duration_days, reseller_id, user_limit, final_price,
-            payment_status, debt_amount, debt_notes or None, debt_created, is_credit_sub, credit_used_amount, now, now
+            payment_status, debt_amount, debt_notes or None, debt_created, is_credit_sub, credit_used_amount,
+            actual_payment_source, now, now
         ))
         sub_id = cursor.lastrowid
+
+        if deduct_res.get("transaction_id"):
+            cursor.execute("UPDATE reseller_transactions SET subscription_id=? WHERE id=?", (sub_id, deduct_res["transaction_id"]))
 
         if telegram_id and telegram_id > 0:
             cursor.execute("SELECT * FROM users WHERE telegram_id=?", (telegram_id,))
@@ -6817,6 +7053,7 @@ def reseller_renew_user(sub_id: int):
         return redirect(url_for("reseller_users"))
 
     plan_key = request.form.get("plan_id")
+    payment_source = request.form.get("payment_source", "auto").strip()
     plans = get_plans_dict()
     if plan_key not in plans:
         flash("پلن انتخابی نامعتبر است.", "danger")
@@ -6844,7 +7081,7 @@ def reseller_renew_user(sub_id: int):
         except Exception as e:
             logger.error(f"Error in reseller renew Hiddify {sub.get('hidify_uuid')}: {e}")
 
-    # ۲. ثبت در دیتابیس (آنی با ریست یا رزرو در صف) و کسر هزینه
+    # ۲. ثبت در دیتابیس (آنی با ریست یا رزرو در صف) و کسر هزینه با توجه به منبع پرداخت
     renew_db = db.renew_reseller_subscription(
         reseller_id=reseller_id,
         sub_id=sub_id,
@@ -6854,7 +7091,8 @@ def reseller_renew_user(sub_id: int):
         data_limit=plan["data_limit"],
         duration=plan["duration"],
         instant_activate=instant_activate,
-        renewal_type=renewal_res.get("renewal_type", "reset_and_replaced")
+        renewal_type=renewal_res.get("renewal_type", "reset_and_replaced"),
+        payment_source=payment_source
     )
 
     if renew_db.get("success"):
@@ -6911,6 +7149,7 @@ def reseller_subscriptions_bulk_renew():
         return redirect(url_for("reseller_users"))
 
     plan_key = request.form.get("plan_id", "current").strip()
+    payment_source = request.form.get("payment_source", "auto").strip()
     instant_activate = bool(request.form.get("instant_activate"))
     plans = get_plans_dict()
     stats = db.get_reseller_stats(reseller_id)
@@ -6976,7 +7215,8 @@ def reseller_subscriptions_bulk_renew():
             cost=item["cost"],
             data_limit=item["data_limit"],
             duration=item["duration"],
-            instant_activate=instant_activate
+            instant_activate=instant_activate,
+            payment_source=payment_source
         )
         if renew_res.get("success"):
             if instant_activate and sub.get("hidify_uuid"):
@@ -7099,6 +7339,7 @@ def reseller_restore_user(sub_id: int):
     plans = get_plans_dict()
     plan_key = sub.get("plan_id")
     plan = plans.get(plan_key) if plan_key in plans else None
+    payment_source = request.form.get("payment_source", "auto").strip()
     stats = db.get_reseller_stats(reseller_id)
     discount = stats.get("discount_percent", 20)
     
@@ -7129,7 +7370,8 @@ def reseller_restore_user(sub_id: int):
         new_uuid=h_res.get("uuid"),
         new_start_date=h_res.get("new_start_date"),
         new_expire_date=h_res.get("new_expire_date"),
-        new_data_used=h_res.get("data_used")
+        new_data_used=h_res.get("data_used"),
+        payment_source=payment_source
     )
     if res.get("success"):
         r_after = db.get_reseller(reseller_id)
