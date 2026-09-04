@@ -79,6 +79,55 @@
     </div>
 </div>
 
+<!-- ردیف دوم کارت‌های حسابرسی اختصاصی: مشتریان مستقیم، بسته‌های پیش‌خرید اعتباری و بدهی نمایندگان -->
+<div class="row g-3 mb-4">
+    <div class="col-xl-4 col-md-6">
+        <div class="card h-100 border-start border-info border-4 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="text-muted fw-bold"><i class="fas fa-crown text-info me-1"></i> حسابرسی مشتریان مدیریت</span>
+                    <span class="badge bg-info-subtle text-info p-2 rounded-circle"><i class="fas fa-users"></i></span>
+                </div>
+                <h4 class="mb-1 fw-bold text-info">{{ "{:,}".format(summary.admin_direct_income) }} <small class="fs-6 text-muted">تومان درآمد</small></h4>
+                <div class="d-flex justify-content-between mt-2 pt-2 border-top small text-muted">
+                    <span>مشتریان فعال: <strong class="text-dark">{{ summary.admin_direct_customers_count }}</strong></span>
+                    <span>بدهی باز: <strong class="text-danger">{{ "{:,}".format(summary.admin_direct_debt) }} تومان</strong></span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-4 col-md-6">
+        <div class="card h-100 border-start border-primary border-4 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="text-muted fw-bold"><i class="fas fa-cubes text-primary me-1"></i> بسته‌های پیش‌خرید اعتباری نمایندگان</span>
+                    <span class="badge bg-primary-subtle text-primary p-2 rounded-circle"><i class="fas fa-box-open"></i></span>
+                </div>
+                <h4 class="mb-1 fw-bold text-primary">{{ "{:,}".format(summary.reseller_bundles_income) }} <small class="fs-6 text-muted">تومان</small></h4>
+                <div class="d-flex justify-content-between mt-2 pt-2 border-top small text-muted">
+                    <span>تعداد بسته‌های شارژ: <strong class="text-dark">{{ summary.reseller_bundles_count }} بسته</strong></span>
+                    <span>موجودی کل کیف‌پول‌ها: <strong class="text-success">{{ "{:,}".format(summary.reseller_wallets_total) }} ت</strong></span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-4 col-md-12">
+        <div class="card h-100 border-start border-danger border-4 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="text-muted fw-bold"><i class="fas fa-hand-holding-dollar text-danger me-1"></i> بدهی خریدهای اعتباری نمایندگان</span>
+                    <span class="badge bg-danger-subtle text-danger p-2 rounded-circle"><i class="fas fa-credit-card"></i></span>
+                </div>
+                <h4 class="mb-1 fw-bold text-danger">{{ "{:,}".format(summary.reseller_credit_debts_total) }} <small class="fs-6 text-muted">تومان بدهی جاری</small></h4>
+                <div class="d-flex justify-content-between mt-2 pt-2 border-top small text-muted">
+                    <span>نمایندگان بدهکار: <strong class="text-danger">{{ summary.reseller_debtors_count }} نفر</strong></span>
+                    <span>سقف کل خط اعتباری: <strong class="text-dark">{{ "{:,}".format(summary.reseller_credit_limits_total) }} ت</strong></span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- تب‌های ناوبری بخش حسابداری -->
 <ul class="nav nav-tabs mb-4 fw-bold" id="accountingTabs" role="tablist">
     <li class="nav-item" role="presentation">
@@ -220,7 +269,12 @@
                                     {% endif %}
                                 </td>
                                 <td data-value="{{ r['category'] or '' }}"><span class="badge bg-secondary-subtle text-dark border">{{ r['category'] }}</span></td>
-                                <td data-value="{{ r['title'] or '' }}"><strong>{{ r['title'] }}</strong></td>
+                                <td data-value="{{ r['title'] or '' }}">
+                                    <strong>{{ r['title'] }}</strong>
+                                    {% if r.get('is_edited') %}
+                                    <span class="badge bg-warning text-dark border border-warning ms-1" style="font-size: 0.72rem;" title="ویرایش شده توسط {{ r.get('edited_by') or 'مدیر' }} در {{ r.get('edited_at') or '' }}"><i class="fas fa-pencil me-1"></i>ویرایش شده</span>
+                                    {% endif %}
+                                </td>
                                 <td data-value="{{ r['amount'] or 0 }}">
                                     <strong class="{% if r['type'] == 'income' %}text-success{% else %}text-danger{% endif %} font-monospace">
                                         {% if r['type'] == 'income' %}+{% else %}-{% endif %}{{ "{:,}".format(r['amount'] or 0) }} تومان
@@ -235,14 +289,19 @@
                                 </td>
                                 <td data-value="{{ r['date'] or '' }}"><small class="font-monospace">{{ r['date'] }}</small></td>
                                 <td data-value="{{ r['description'] or '' }}"><small class="text-muted">{{ r['description'] or '-' }}</small></td>
-                                <td>
-                                    {% if r['source'] != 'auto' %}
-                                    <a href="{{ url_for('accounting_delete_record', record_id=r['id']) }}" class="btn btn-sm btn-outline-danger py-0 px-2" title="حذف سند" onclick="return confirm('آیا از حذف این سند حسابداری اطمینان دارید؟')">
-                                        <i class="fas fa-trash-can"></i>
-                                    </a>
-                                    {% else %}
-                                    <span class="text-muted small">-</span>
-                                    {% endif %}
+                                <td class="text-end pe-3">
+                                    <div class="d-inline-flex gap-1">
+                                        {% if session.get('admin_role') in ['super_admin', 'admin'] or session.get('role') == 'admin' %}
+                                        <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" data-bs-toggle="modal" data-bs-target="#editRecordModal{{ r['id'] }}" title="ویرایش سند حسابداری توسط مدیر ارشد">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        {% endif %}
+                                        {% if r['source'] != 'auto' %}
+                                        <a href="{{ url_for('accounting_delete_record', record_id=r['id']) }}" class="btn btn-sm btn-outline-danger py-0 px-2" title="حذف سند" onclick="return confirm('آیا از حذف این سند حسابداری اطمینان دارید؟')">
+                                            <i class="fas fa-trash-can"></i>
+                                        </a>
+                                        {% endif %}
+                                    </div>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -264,6 +323,52 @@
     <!-- تب ۲: تراز بدهی و سهم شراکت مدیران و شرکا -->
     <div class="tab-pane fade" id="partnerDebtsPane" role="tabpanel">
         
+        <!-- کارت جامع تحلیل و محاسبه سود شرکا در دوره‌های زمانی مختلف -->
+        <div class="card shadow-sm border-0 mb-4 bg-light">
+            <div class="card-body py-3 px-4">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                    <div>
+                        <h5 class="mb-1 fw-bold text-dark"><i class="fas fa-handshake text-purple me-2" style="color: #7c3aed;"></i>محاسبه و ارزیابی سود شرکا و سهامداران</h5>
+                        <p class="text-muted small mb-0">محاسبه درآمدهای حاصل از فروش نقدی شرکا، سهم سود کسب‌شده و سهم خالص سیستم در دوره انتخابی</p>
+                    </div>
+                    <div class="btn-group btn-group-sm">
+                        <a href="{{ url_for('accounting', partner_period='today') }}#partnerDebtsPane" class="btn {{ 'btn-primary' if partner_period == 'today' else 'btn-outline-secondary' }}">امروز</a>
+                        <a href="{{ url_for('accounting', partner_period='week') }}#partnerDebtsPane" class="btn {{ 'btn-primary' if partner_period == 'week' else 'btn-outline-secondary' }}">۷ روز اخیر</a>
+                        <a href="{{ url_for('accounting', partner_period='month') }}#partnerDebtsPane" class="btn {{ 'btn-primary' if partner_period == 'month' else 'btn-outline-secondary' }}">ماه جاری</a>
+                        <a href="{{ url_for('accounting', partner_period='year') }}#partnerDebtsPane" class="btn {{ 'btn-primary' if partner_period == 'year' else 'btn-outline-secondary' }}">سال جاری</a>
+                        <a href="{{ url_for('accounting', partner_period='all') }}#partnerDebtsPane" class="btn {{ 'btn-primary' if partner_period == 'all' else 'btn-outline-secondary' }}">کل سوابق</a>
+                    </div>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-3 col-sm-6">
+                        <div class="p-3 bg-white rounded border shadow-sm">
+                            <span class="text-muted small fw-bold">فروش کل شرکا در دوره</span>
+                            <h4 class="fw-bold my-1 text-primary font-monospace">{{ "{:,}".format(partner_profits.total_sales if partner_profits else 0) }} <small class="fs-6 text-muted">تومان</small></h4>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <div class="p-3 bg-white rounded border shadow-sm">
+                            <span class="text-muted small fw-bold">سود کسب‌شده شرکا</span>
+                            <h4 class="fw-bold my-1 text-success font-monospace">{{ "{:,}".format(partner_profits.total_profits if partner_profits else 0) }} <small class="fs-6 text-muted">تومان</small></h4>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <div class="p-3 bg-white rounded border shadow-sm">
+                            <span class="text-muted small fw-bold">سهم سیستم از فروش شرکا</span>
+                            <h4 class="fw-bold my-1 text-info font-monospace">{{ "{:,}".format(partner_profits.total_mgmt_share if partner_profits else 0) }} <small class="fs-6 text-muted">تومان</small></h4>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <div class="p-3 bg-white rounded border shadow-sm">
+                            <span class="text-muted small fw-bold">مانده کل بدهی تسویه‌نشده</span>
+                            <h4 class="fw-bold my-1 text-danger font-monospace">{{ "{:,}".format(partner_profits.total_debt_balance if partner_profits else 0) }} <small class="fs-6 text-muted">تومان</small></h4>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- جدول خلاصه وضعیت بدهی و فروش مدیران -->
         <div class="card shadow-sm border-0 mb-4">
             <div class="card-header bg-white py-3">
@@ -371,12 +476,18 @@
                                 <th>تغییر بدهی</th>
                                 <th>تاریخ و زمان</th>
                                 <th>توضیحات</th>
+                                <th class="text-end pe-3" style="width: 80px;">عملیات</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for d in admin_debts_logs %}
                             <tr>
-                                <td class="ps-3"><code>#{{ d['id'] }}</code></td>
+                                <td class="ps-3">
+                                    <code>#{{ d['id'] }}</code>
+                                    {% if d.get('is_edited') %}
+                                    <span class="badge bg-warning text-dark border border-warning ms-1" style="font-size: 0.7rem;" title="ویرایش شده توسط {{ d.get('edited_by') or 'مدیر' }} در {{ d.get('edited_at') or '' }}"><i class="fas fa-pencil me-1"></i>ویرایش شده</span>
+                                    {% endif %}
+                                </td>
                                 <td><strong>{{ d['admin_name'] or d['admin_username'] }}</strong></td>
                                 <td>
                                     {% if d['type'] == 'cash_sale' %}
@@ -408,11 +519,20 @@
                                 </td>
                                 <td><small class="text-muted">{{ d['created_at'][:19] if d['created_at'] else '-' }}</small></td>
                                 <td><small class="text-muted">{{ d['description'] or '-' }}</small></td>
+                                <td class="text-end pe-3">
+                                    {% if session.get('admin_role') in ['super_admin', 'admin'] or session.get('role') == 'admin' %}
+                                    <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" data-bs-toggle="modal" data-bs-target="#editDebtModal{{ d['id'] }}" title="ویرایش رکورد توسط مدیر ارشد">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    {% else %}
+                                    <span class="text-muted small">-</span>
+                                    {% endif %}
+                                </td>
                             </tr>
                             {% endfor %}
                             {% if not admin_debts_logs %}
                             <tr>
-                                <td colspan="9" class="text-center py-4 text-muted">
+                                <td colspan="10" class="text-center py-4 text-muted">
                                     هنوز هیچ تراکنش فروش نقدی یا تسویه‌حساب مدیریتی ثبت نشده است.
                                 </td>
                             </tr>
@@ -662,4 +782,104 @@
 </div>
 {% endif %}
 {% endfor %}
+
+<!-- مودال‌های ویرایش اسناد حسابداری توسط مدیر ارشد -->
+{% if session.get('admin_role') in ['super_admin', 'admin'] or session.get('role') == 'admin' %}
+{% for r in records %}
+<div class="modal fade text-start" id="editRecordModal{{ r['id'] }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <form method="POST" action="{{ url_for('accounting_edit_record', record_id=r['id']) }}">
+                <div class="modal-header bg-primary text-white py-3">
+                    <h5 class="modal-title fw-bold">
+                        <i class="fas fa-edit me-2"></i>ویرایش سند حسابداری #{{ r['id'] }}
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-info py-2 small mb-3">
+                        <i class="fas fa-info-circle me-1"></i>پس از ویرایش، نام شما و زمان ویرایش به عنوان تگ «ویرایش شده» در سامانه ثبت خواهد شد.
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">نوع سند:</label>
+                            <select name="type" class="form-select" required>
+                                <option value="income" {% if r['type'] == 'income' %}selected{% endif %}>درآمد (افزاینده سود)</option>
+                                <option value="expense" {% if r['type'] == 'expense' %}selected{% endif %}>هزینه / مخارج (کاهنده سود)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">دسته‌بندی:</label>
+                            <select name="category" class="form-select" required>
+                                {% for cat in categories %}
+                                <option value="{{ cat }}" {% if r['category'] == cat %}selected{% endif %}>{{ cat }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">عنوان سند:</label>
+                        <input type="text" name="title" class="form-control" value="{{ r['title'] }}" required>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">مبلغ (تومان):</label>
+                            <input type="number" name="amount" class="form-control font-monospace" value="{{ r['amount'] }}" min="1" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">تاریخ سند:</label>
+                            <input type="text" name="date" class="form-control font-monospace" value="{{ r['date'] or '' }}">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">توضیحات و جزئیات:</label>
+                        <textarea name="description" class="form-control" rows="2">{{ r['description'] or '' }}</textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary fw-bold px-4">ذخیره تغییرات سند</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<!-- مودال‌های ویرایش سوابق بدهی و تسویه مدیران -->
+{% for d in admin_debts_logs %}
+<div class="modal fade text-start" id="editDebtModal{{ d['id'] }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <form method="POST" action="{{ url_for('admin_accounting_debt_edit', debt_id=d['id']) }}">
+                <div class="modal-header bg-dark text-white py-3">
+                    <h5 class="modal-title fw-bold">
+                        <i class="fas fa-edit me-2"></i>ویرایش رکورد بدهی/تسویه #{{ d['id'] }}
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-warning py-2 small mb-3">
+                        مدیر: <strong>{{ d['admin_name'] or d['admin_username'] }}</strong> | نوع: <strong>{{ 'فروش نقدی' if d['type'] == 'cash_sale' else 'تسویه حساب' }}</strong>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">مبلغ کل (تومان):</label>
+                        <input type="number" name="amount" class="form-control font-monospace" value="{{ d['total_amount'] }}" min="1" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">توضیحات و یادداشت:</label>
+                        <textarea name="description" class="form-control" rows="2">{{ d['description'] or '' }}</textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary fw-bold px-4">ذخیره تغییرات بدهی</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+
 {% endblock %}

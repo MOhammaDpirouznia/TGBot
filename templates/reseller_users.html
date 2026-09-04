@@ -685,8 +685,41 @@
                     {% endif %}
 
                     <div class="alert alert-info py-2 small mb-3">
-                        <i class="fas fa-wallet me-1"></i> موجودی فعلی شما: <strong>{{ "{:,}".format(balance) }} تومان</strong> | تخفیف شما: <strong>{{ discount }}%</strong>
+                        <div class="d-flex justify-content-between flex-wrap gap-1">
+                            <span><i class="fas fa-wallet me-1"></i> کیف پول نقدی: <strong>{{ "{:,}".format(balance) }} ت</strong></span>
+                            {% if stats.get('credit_enabled') %}
+                            <span><i class="fas fa-credit-card me-1 text-primary"></i> اعتبار خرید: <strong>{{ "{:,}".format(available_credit) }} ت</strong></span>
+                            {% endif %}
+                        </div>
                     </div>
+
+                    {% if stats.get('credit_enabled') %}
+                    <div class="mb-3 p-2 border rounded bg-light">
+                        <label class="form-label fw-bold small text-dark mb-1">منبع کسر هزینه تمدید:</label>
+                        <div class="row g-2">
+                            <div class="col-4">
+                                <label class="border rounded p-2 text-center d-block bg-white cursor-pointer mb-0" style="cursor: pointer;">
+                                    <input type="radio" name="payment_source" value="wallet" class="form-check-input mb-1" {% if balance > 0 %}checked{% endif %}>
+                                    <div class="small fw-bold">کیف پول</div>
+                                </label>
+                            </div>
+                            <div class="col-4">
+                                <label class="border rounded p-2 text-center d-block bg-white cursor-pointer mb-0" style="cursor: pointer;">
+                                    <input type="radio" name="payment_source" value="credit" class="form-check-input mb-1" {% if balance <= 0 and available_credit > 0 %}checked{% endif %}>
+                                    <div class="small fw-bold">اعتبار خرید</div>
+                                </label>
+                            </div>
+                            <div class="col-4">
+                                <label class="border rounded p-2 text-center d-block bg-white cursor-pointer mb-0" style="cursor: pointer;">
+                                    <input type="radio" name="payment_source" value="auto" class="form-check-input mb-1">
+                                    <div class="small fw-bold">خودکار</div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <input type="hidden" name="payment_source" value="wallet">
+                    {% endif %}
 
                     <label class="form-label fw-bold">انتخاب پلن تمدید:</label>
                     <div class="d-flex flex-column gap-2 mb-3">
@@ -977,7 +1010,7 @@
                         </div>
                         <hr class="my-2">
                         <div class="d-flex justify-content-between fs-5 fw-bold {% if ref.get('refund_amount', 0) > 0 %}text-success{% else %}text-danger{% endif %}">
-                            <span>مبلغ برگشتی به کیف پول:</span>
+                            <span>مبلغ برگشتی به کیف پول / اعتبار:</span>
                             <span>{{ "{:,}".format(ref.get('refund_amount', 0)) }} تومان</span>
                         </div>
                     </div>
@@ -986,9 +1019,10 @@
                     <div class="alert alert-warning py-2 small mb-3">
                         <div class="fw-bold mb-1"><i class="fas fa-info-circle me-1"></i>قوانین استرداد هزینه خرید و تمدیدها:</div>
                         <ul class="mb-0 ps-3">
-                            <li><strong>تا ۱۲ ساعت پس از خرید یا تمدید:</strong> بازگشت <strong>۱۰۰٪</strong> مبلغ به کیف پول.</li>
-                            <li><strong>بین ۱۲ تا ۲۴ ساعت پس از خرید یا تمدید:</strong> بازگشت <strong>۸۰٪</strong> مبلغ به کیف پول (۲۰٪ کسر).</li>
-                            <li><strong>بیش از ۲۴ ساعت پس از هر اقدام:</strong> <strong>۰٪</strong> (عدم استرداد به آن اقدام).</li>
+                            <li>مبلغ استرداد دقیقاً بر مبنای هزینه عمده‌فروشی پرداختی شما محاسبه شده و به منبع پرداخت اولیه (کیف پول نقدی یا کسر از بدهی اعتباری) واریز می‌شود. بدهی ثبت‌شده مشتری تاثیری در استرداد ندارد.</li>
+                            <li><strong>تا ۱۲ ساعت پس از ثبت:</strong> عودت <strong>۱۰۰٪</strong> مبلغ خرید.</li>
+                            <li><strong>بین ۱۲ تا ۲۴ ساعت:</strong> عودت <strong>۸۰٪</strong> مبلغ خرید (۲۰٪ کسر).</li>
+                            <li><strong>بیش از ۲۴ ساعت:</strong> <strong>۰٪</strong> (عدم استرداد).</li>
                         </ul>
                     </div>
 
@@ -1182,9 +1216,42 @@
                 </div>
                 <div class="modal-body p-4">
                     <div class="alert alert-info py-2 px-3 small mb-3">
-                        <i class="fas fa-wallet me-1"></i> موجودی فعلی: <strong>{{ "{:,}".format(balance) }} تومان</strong> | تخفیف شما: <strong>{{ discount }}%</strong>
+                        <div class="d-flex justify-content-between flex-wrap gap-1">
+                            <span><i class="fas fa-wallet me-1"></i> کیف پول نقدی: <strong>{{ "{:,}".format(balance) }} ت</strong></span>
+                            {% if stats.get('credit_enabled') %}
+                            <span><i class="fas fa-credit-card me-1 text-primary"></i> اعتبار خرید: <strong>{{ "{:,}".format(available_credit) }} ت</strong></span>
+                            {% endif %}
+                        </div>
                         <div class="mt-1">تعداد <strong id="resellerBulkRenewCount">0</strong> مشتری برای تمدید انتخاب شده‌اند.</div>
                     </div>
+
+                    {% if stats.get('credit_enabled') %}
+                    <div class="mb-3 p-2 border rounded bg-light">
+                        <label class="form-label fw-bold small text-dark mb-1">منبع کسر هزینه تمدید گروهی:</label>
+                        <div class="row g-2">
+                            <div class="col-4">
+                                <label class="border rounded p-2 text-center d-block bg-white cursor-pointer mb-0" style="cursor: pointer;">
+                                    <input type="radio" name="payment_source" value="wallet" class="form-check-input mb-1" {% if balance > 0 %}checked{% endif %}>
+                                    <div class="small fw-bold">کیف پول</div>
+                                </label>
+                            </div>
+                            <div class="col-4">
+                                <label class="border rounded p-2 text-center d-block bg-white cursor-pointer mb-0" style="cursor: pointer;">
+                                    <input type="radio" name="payment_source" value="credit" class="form-check-input mb-1" {% if balance <= 0 and available_credit > 0 %}checked{% endif %}>
+                                    <div class="small fw-bold">اعتبار خرید</div>
+                                </label>
+                            </div>
+                            <div class="col-4">
+                                <label class="border rounded p-2 text-center d-block bg-white cursor-pointer mb-0" style="cursor: pointer;">
+                                    <input type="radio" name="payment_source" value="auto" class="form-check-input mb-1">
+                                    <div class="small fw-bold">خودکار</div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <input type="hidden" name="payment_source" value="wallet">
+                    {% endif %}
 
                     <label class="form-label fw-bold">انتخاب پلن تمدید:</label>
                     <div class="d-flex flex-column gap-2 mb-3">

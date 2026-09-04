@@ -7,8 +7,16 @@
         <h1 class="page-title"><i class="fas fa-user-plus text-primary"></i> ساخت اشتراک برای مشتری</h1>
         <p class="text-muted mb-0">انتخاب پلن، محاسبه خودکار تخفیف عمده‌فروشی و صدور آنی لینک اتصال</p>
     </div>
-    <div class="badge bg-primary fs-6 py-2 px-3">
-        موجودی کیف پول: {{ "{:,}".format(balance) }} تومان
+    <div class="d-flex gap-2 flex-wrap">
+        <div class="badge bg-primary fs-6 py-2 px-3">
+            <i class="fas fa-wallet me-1"></i> کیف پول نقدی: {{ "{:,}".format(balance) }} تومان
+        </div>
+        {% if credit_enabled %}
+        <div class="badge bg-info text-dark fs-6 py-2 px-3">
+            <i class="fas fa-credit-card me-1"></i> اعتبار خرید: {{ "{:,}".format(available_credit) }} تومان
+            <small class="text-muted ms-1">(بدهی: {{ "{:,}".format(credit_debt) }})</small>
+        </div>
+        {% endif %}
     </div>
 </div>
 
@@ -96,6 +104,40 @@
                         </div>
                     </div>
 
+                    <!-- انتخاب منبع کسر هزینه (کیف پول / اعتبار خرید) -->
+                    {% if credit_enabled %}
+                    <div class="p-3 bg-white rounded-3 border mb-4">
+                        <label class="form-label fw-bold text-dark mb-2">
+                            <i class="fas fa-money-bill-transfer text-primary me-1"></i> انتخاب منبع کسر هزینه اشتراک:
+                        </label>
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="card p-2 text-center h-100 border-2 cursor-pointer mb-0" style="cursor: pointer;">
+                                    <input type="radio" name="payment_source" value="wallet" class="form-check-input mx-auto mb-1" {% if balance > 0 %}checked{% endif %}>
+                                    <span class="small fw-bold">کیف پول نقدی</span>
+                                    <span class="text-success small fw-bold">{{ "{:,}".format(balance) }} تومان</span>
+                                </label>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="card p-2 text-center h-100 border-2 cursor-pointer mb-0" style="cursor: pointer;">
+                                    <input type="radio" name="payment_source" value="credit" class="form-check-input mx-auto mb-1" {% if balance <= 0 and available_credit > 0 %}checked{% endif %}>
+                                    <span class="small fw-bold">اعتبار خرید (نسیه)</span>
+                                    <span class="text-info small fw-bold">{{ "{:,}".format(available_credit) }} تومان</span>
+                                </label>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="card p-2 text-center h-100 border-2 cursor-pointer mb-0" style="cursor: pointer;">
+                                    <input type="radio" name="payment_source" value="auto" class="form-check-input mx-auto mb-1">
+                                    <span class="small fw-bold">خودکار (هوشمند)</span>
+                                    <span class="text-muted small">ابتدا کیف پول، سپس اعتبار</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <input type="hidden" name="payment_source" value="wallet">
+                    {% endif %}
+
                     <!-- خلاصه فاکتور و پرداخت -->
                     <div class="p-3 bg-light rounded-3 mb-4">
                         <div class="d-flex justify-content-between mb-2">
@@ -108,13 +150,13 @@
                         </div>
                         <hr class="my-2">
                         <div class="d-flex justify-content-between fs-5 fw-bold text-success">
-                            <span>مبلغ کسر از کیف پول شما:</span>
+                            <span>مبلغ نهایی پرداختی شما:</span>
                             <span id="finalPriceText">0 تومان</span>
                         </div>
                     </div>
 
-                    <button type="submit" class="btn btn-success w-100 py-3 fw-bold fs-5" onclick="return confirm('آیا از ساخت این اشتراک و کسر هزینه از کیف پول مطمئن هستید؟')">
-                        <i class="fas fa-bolt me-2"></i> پرداخت از کیف پول و صدور آنی اکانت
+                    <button type="submit" class="btn btn-success w-100 py-3 fw-bold fs-5" onclick="return confirm('آیا از ساخت این اشتراک و صدور اکانت مطمئن هستید؟')">
+                        <i class="fas fa-bolt me-2"></i> پرداخت هزینه و صدور آنی اکانت
                     </button>
                 </form>
             </div>

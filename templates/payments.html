@@ -9,6 +9,9 @@
         <p class="text-muted mb-0">بررسی، تایید، رد، ویرایش و ابطال فیش‌های واریزی و تراکنش‌های کاربران</p>
     </div>
     <div class="d-flex gap-2">
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addManualPaymentModal">
+            <i class="fas fa-plus-circle me-1"></i> افزودن رسید دستی
+        </button>
         <button type="button" class="btn btn-outline-primary" id="btnTestSound" onclick="playResellerReceiptChime(true)" title="تست صدای اعلان صوتی رسیدهای نمایندگان">
             <i class="fas fa-bell me-1"></i> تست صدای اعلان رسید نماینده
         </button>
@@ -754,6 +757,141 @@
     </div>
 </div>
 
+<!-- Modal افزودن رسید و پرداخت دستی جدید -->
+<div class="modal fade" id="addManualPaymentModal" tabindex="-1" aria-labelledby="addManualPaymentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-primary text-white py-3">
+                <h5 class="modal-title fw-bold" id="addManualPaymentModalLabel">
+                    <i class="fas fa-plus-circle me-2"></i> ثبت پرداخت دستی / تسویه بدهی مشتری
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{{ url_for('admin_add_manual_payment') }}" method="POST" enctype="multipart/form-data">
+                <div class="modal-body p-4">
+                    <!-- جستجوی زنده مشتری -->
+                    <div class="card bg-light border-0 shadow-sm p-3 mb-3">
+                        <label class="form-label fw-bold text-primary">
+                            <i class="fas fa-search me-1"></i> انتخاب اشتراک / مشتری هدف (جستجوی زنده از دیتابیس):
+                        </label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-white"><i class="fas fa-user text-muted"></i></span>
+                            <input type="text" id="custSearchInput" class="form-control" placeholder="نام مشتری، نام کاربری تلگرام، ایمیل، یا ریمارک را تایپ کنید..." autocomplete="off">
+                            <button type="button" class="btn btn-outline-secondary" onclick="searchCustomersAjax()">
+                                <i class="fas fa-search"></i> جستجو
+                            </button>
+                        </div>
+                        <div class="form-text text-muted">
+                            جستجو شامل مشتریان فعال، منقضی‌شده و حتی موارد سطل زباله (حذف نرم) می‌شود.
+                        </div>
+
+                        <!-- نتایج جستجو -->
+                        <div id="custSearchResults" class="mt-2 list-group shadow-sm" style="max-height: 220px; overflow-y: auto; display: none;"></div>
+
+                        <!-- کارت مشتری انتخاب شده -->
+                        <div id="selectedCustCard" class="mt-3 p-3 bg-white border rounded shadow-sm" style="display: none;">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="fw-bold text-dark mb-1" id="selectedCustName">نام مشتری</h6>
+                                    <div class="small text-muted" id="selectedCustMeta">مشخصات</div>
+                                </div>
+                                <div class="text-end">
+                                    <span class="badge bg-danger fs-6 mb-1" id="selectedCustDebt" style="display: none;">بدهی: ۰ تومان</span>
+                                    <div>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearSelectedCustomer()">
+                                            <i class="fas fa-times me-1"></i> لغو انتخاب
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- فیلدهای پنهان فرم برای ارسال -->
+                        <input type="hidden" name="subscription_id" id="manualSubId" value="">
+                        <input type="hidden" name="user_id" id="manualUserId" value="">
+                        <input type="hidden" name="customer_name" id="manualCustomerName" value="">
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">مبلغ پرداختی (تومان) <span class="text-danger">*</span>:</label>
+                            <div class="input-group">
+                                <input type="number" name="amount" id="manualAmount" class="form-control fw-bold" required min="1000" step="1000" placeholder="مثال: 150000">
+                                <span class="input-group-text">تومان</span>
+                            </div>
+                            <div id="fillDebtBtnWrapper" class="mt-1" style="display: none;">
+                                <button type="button" class="btn btn-sm btn-link p-0 text-danger" onclick="fillDebtAmount()">
+                                    <i class="fas fa-arrow-up me-1"></i> تنظیم مبلغ برابر با کل بدهی مشتری
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">وضعیت اولیه پرداخت:</label>
+                            <select name="status" class="form-select">
+                                <option value="approved" selected>تایید شده (Approved)</option>
+                                <option value="pending">در انتظار بررسی (Pending)</option>
+                            </select>
+                        </div>
+
+                        <!-- چک‌باکس تسویه بدهی -->
+                        <div class="col-12" id="settleDebtBox" style="display: none;">
+                            <div class="form-check form-switch p-3 rounded border bg-light">
+                                <input class="form-check-input ms-0 me-3" type="checkbox" name="settle_debt" id="manualSettleDebt" checked>
+                                <label class="form-check-label fw-bold text-danger" for="manualSettleDebt">
+                                    <i class="fas fa-hand-holding-dollar me-1"></i> کسر این واریزی از بدهی ثبت‌شده مشتری (تسویه بدهی)
+                                </label>
+                                <div class="form-text text-muted ps-4">
+                                    در صورت فعال بودن، مبلغ واریزی به اندازه ثبت شده از بدهی مشتری کسر شده و وضعیت بدهی بروز خواهد شد.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">روش واریز:</label>
+                            <select name="payment_method" class="form-select">
+                                <option value="کارت به کارت (دستی)" selected>کارت به کارت (دستی)</option>
+                                <option value="واریز پایا / ساتنا">واریز پایا / ساتنا</option>
+                                <option value="ارز دیجیتال / تتر">ارز دیجیتال / تتر (Crypto)</option>
+                                <option value="نقدی / حضوری">نقدی / حضوری</option>
+                                <option value="تسویه اعتبار">تسویه اعتبار</option>
+                                <option value="سایر">سایر</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">کد پیگیری بانکی / ترنزکشن:</label>
+                            <input type="text" name="tracking_code" class="form-control font-monospace" placeholder="مثال: 987654321" dir="ltr">
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">شماره کارت یا ۴ رقم آخر:</label>
+                            <input type="text" name="card_number" class="form-control font-monospace" placeholder="مثال: 603799..." dir="ltr">
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">تصویر فیش یا رسید واریزی:</label>
+                            <input type="file" name="receipt_image" class="form-control" accept="image/*">
+                            <div class="form-text text-muted">اختیاری - فایل تصویر فیش انتقال بانکی</div>
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label fw-bold">توضیحات و یادداشت مدیر:</label>
+                            <textarea name="notes" class="form-control" rows="2" placeholder="توضیحات اختیاری درباره واریزی، نحوه تسویه یا علت ثبت دستی..."></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary fw-bold px-4">
+                        <i class="fas fa-check-circle me-1"></i> ثبت پرداخت دستی
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
 function openReceiptPreview(imgUrl, username, orderId, userId) {
     document.getElementById('receiptModalImg').src = imgUrl;
@@ -835,6 +973,129 @@ function playResellerReceiptChime(manual = false) {
         }
     } catch (e) {
         console.warn('Web Audio error:', e);
+    }
+}
+
+// اسکریپت جستجوی زنده مشتری و مدیریت افزودن رسید دستی
+let currentCustomerDebt = 0;
+let searchTimer = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    const custSearchInput = document.getElementById('custSearchInput');
+    if (custSearchInput) {
+        custSearchInput.addEventListener('input', function() {
+            clearTimeout(searchTimer);
+            const q = this.value.trim();
+            if (q.length < 2) {
+                document.getElementById('custSearchResults').style.display = 'none';
+                return;
+            }
+            searchTimer = setTimeout(() => {
+                searchCustomersAjax(q);
+            }, 300);
+        });
+    }
+});
+
+function searchCustomersAjax(query) {
+    const custSearchInput = document.getElementById('custSearchInput');
+    const q = query || (custSearchInput ? custSearchInput.value.trim() : '');
+    if (!q) return;
+    const resultsBox = document.getElementById('custSearchResults');
+    resultsBox.style.display = 'block';
+    resultsBox.innerHTML = '<div class="p-3 text-center text-muted"><i class="fas fa-spinner fa-spin me-2"></i> در حال جستجو...</div>';
+
+    fetch('/api/customers/search?q=' + encodeURIComponent(q))
+        .then(res => res.json())
+        .then(data => {
+            if (!data.success || !data.customers || data.customers.length === 0) {
+                resultsBox.innerHTML = '<div class="p-3 text-center text-muted">مشتری یا اشتراکی با این مشخصات یافت نشد.</div>';
+                return;
+            }
+            let html = '';
+            data.customers.forEach(c => {
+                const isTrash = c.is_deleted == 1;
+                const statusBadge = isTrash ? '<span class="badge bg-danger ms-1">🗑️ سطل زباله</span>' : 
+                                   (c.status === 'expired' ? '<span class="badge bg-secondary ms-1">منقضی</span>' : '<span class="badge bg-success ms-1">فعال</span>');
+                const debtBadge = c.debt_amount > 0 ? `<span class="badge bg-danger ms-1">بدهی: ${Number(c.debt_amount).toLocaleString('fa-IR')} ت</span>` : '';
+                const resellerLabel = c.reseller_name ? `نماینده: ${c.reseller_name}` : 'مشتری مستقیم مدیریت';
+
+                const cJson = encodeURIComponent(JSON.stringify(c));
+                html += `
+                    <button type="button" class="list-group-item list-group-item-action py-2 px-3 text-start" onclick="selectCustomer('${cJson}')">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong class="text-dark">${c.account_name || 'بدون نام'}</strong>
+                                <span class="small text-muted ms-2">آیدی: ${c.telegram_id || '-'}</span>
+                                ${statusBadge}
+                                ${debtBadge}
+                            </div>
+                            <span class="small text-muted">${resellerLabel}</span>
+                        </div>
+                        <div class="small text-muted mt-1">
+                            پلن: ${c.plan_title || '-'} | انقضا: ${c.expire_date ? c.expire_date.substring(0, 10) : '-'}
+                        </div>
+                    </button>
+                `;
+            });
+            resultsBox.innerHTML = html;
+        })
+        .catch(err => {
+            resultsBox.innerHTML = '<div class="p-3 text-center text-danger">خطا در دریافت نتایج جستجو!</div>';
+        });
+}
+
+function selectCustomer(custJson) {
+    try {
+        const c = JSON.parse(decodeURIComponent(custJson));
+        document.getElementById('manualSubId').value = c.id || '';
+        document.getElementById('manualUserId').value = c.telegram_id || '';
+        document.getElementById('manualCustomerName').value = c.account_name || '';
+
+        document.getElementById('selectedCustName').textContent = (c.account_name || 'اشتراک #' + c.id) + (c.telegram_id ? ` (@${c.telegram_id})` : '');
+        const resellerLabel = c.reseller_name ? `نماینده: ${c.reseller_name}` : 'مشتری مستقیم مدیریت';
+        const trashLabel = c.is_deleted == 1 ? ' | در سطل زباله' : '';
+        document.getElementById('selectedCustMeta').textContent = `پلن: ${c.plan_title || '-'} | ${resellerLabel}${trashLabel}`;
+
+        currentCustomerDebt = Number(c.debt_amount || 0);
+        const debtBadge = document.getElementById('selectedCustDebt');
+        const settleDebtBox = document.getElementById('settleDebtBox');
+        const fillDebtBtn = document.getElementById('fillDebtBtnWrapper');
+
+        if (currentCustomerDebt > 0) {
+            debtBadge.textContent = `بدهی: ${currentCustomerDebt.toLocaleString('fa-IR')} تومان`;
+            debtBadge.style.display = 'inline-block';
+            settleDebtBox.style.display = 'block';
+            fillDebtBtn.style.display = 'block';
+            document.getElementById('manualSettleDebt').checked = true;
+            document.getElementById('manualAmount').value = currentCustomerDebt;
+        } else {
+            debtBadge.style.display = 'none';
+            settleDebtBox.style.display = 'none';
+            fillDebtBtn.style.display = 'none';
+            document.getElementById('manualSettleDebt').checked = false;
+        }
+
+        document.getElementById('selectedCustCard').style.display = 'block';
+        document.getElementById('custSearchResults').style.display = 'none';
+    } catch(e) {
+        console.error(e);
+    }
+}
+
+function clearSelectedCustomer() {
+    document.getElementById('manualSubId').value = '';
+    document.getElementById('manualUserId').value = '';
+    document.getElementById('manualCustomerName').value = '';
+    document.getElementById('selectedCustCard').style.display = 'none';
+    document.getElementById('settleDebtBox').style.display = 'none';
+    document.getElementById('fillDebtBtnWrapper').style.display = 'none';
+    currentCustomerDebt = 0;
+}
+
+function fillDebtAmount() {
+    if (currentCustomerDebt > 0) {
+        document.getElementById('manualAmount').value = currentCustomerDebt;
     }
 }
 </script>

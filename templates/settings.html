@@ -603,6 +603,101 @@ function sendTestSms() {
             </button>
         </form>
     </div>
+<!-- کارت تنظیمات استرداد وجه نمایندگان (Refund Settings) -->
+<div class="card shadow-sm mt-4 border-0">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h5 class="mb-0 text-danger fw-bold">
+            <i class="fas fa-undo-alt text-danger me-2"></i> تنظیمات استرداد وجه و مرجوعی نمایندگان (Refund Settings)
+        </h5>
+        <span class="badge bg-danger-subtle text-danger fs-6"><i class="fas fa-shield-alt me-1"></i>مدیریت مالی و قوانین عودت</span>
+    </div>
+    <div class="card-body p-4">
+        <p class="text-muted">
+            قوانین بازگشت وجه هنگام حذف یا لغو اشتراک‌های نمایندگان را مشخص کنید. در صورت فعال بودن، در هنگام حذف اشتراک، وجه اشتراک (دقیقاً بر مبنای هزینه عمده‌فروشی پرداختی) با توجه به زمان سپری‌شده به کیف پول یا اعتبار نماینده عودت داده می‌شود.
+        </p>
+
+        <form action="{{ url_for('settings') }}" method="POST">
+            <input type="hidden" name="action" value="save_refund_settings">
+            
+            <div class="row g-4 mb-4">
+                <div class="col-md-6">
+                    <div class="form-check form-switch p-3 rounded border bg-light">
+                        <input class="form-check-input ms-0 me-3" type="checkbox" name="refund_enabled" id="refund_enabled" {% if refund_settings.get('enabled') %}checked{% endif %}>
+                        <label class="form-check-label fw-bold text-dark" for="refund_enabled">
+                            <i class="fas fa-toggle-on text-success me-1"></i> فعال‌سازی سیستم استرداد وجه برای نمایندگان
+                        </label>
+                        <div class="form-text text-muted ps-4">
+                            در صورت غیرفعال بودن، حذف اکانت توسط نماینده هیچ وجهی را بازگشت نمی‌دهد.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="form-check form-switch p-3 rounded border bg-light">
+                        <input class="form-check-input ms-0 me-3" type="checkbox" name="refund_calc_from_creation" id="refund_calc_from_creation" {% if refund_settings.get('calc_from_creation') %}checked{% endif %}>
+                        <label class="form-check-label fw-bold text-dark" for="refund_calc_from_creation">
+                            <i class="fas fa-history text-primary me-1"></i> محاسبه زمان از لحظه ایجاد اشتراک (Created At)
+                        </label>
+                        <div class="form-text text-muted ps-4">
+                            در صورت فعال بودن، بازه زمانی ۱۲ یا ۲۴ ساعت از زمان ثبت اکانت سنجیده می‌شود (نه زمان شروع اولین اتصال).
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">درصد بازگشت وجه قبل از ۱۲ ساعت:</label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" name="refund_before_12h" 
+                               value="{{ refund_settings.get('before_12h_percent', 100) }}" placeholder="100" min="0" max="100" step="1">
+                        <span class="input-group-text bg-light fw-bold">% درصد</span>
+                    </div>
+                    <div class="form-text text-muted">اگر کاربر ظرف ۱۲ ساعت حذف شود، این درصد از هزینه خرید به نماینده بازگردانده می‌شود.</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">درصد بازگشت وجه بین ۱۲ تا ۲۴ ساعت:</label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" name="refund_before_24h" 
+                               value="{{ refund_settings.get('before_24h_percent', 80) }}" placeholder="80" min="0" max="100" step="1">
+                        <span class="input-group-text bg-light fw-bold">% درصد</span>
+                    </div>
+                    <div class="form-text text-muted">اگر کاربر بین ۱۲ تا ۲۴ ساعت حذف شود، این درصد به نماینده عودت داده می‌شود (بعد از ۲۴ ساعت استرداد صفر خواهد بود).</div>
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label fw-bold">
+                        <i class="fas fa-user-slash text-danger me-1"></i> نمایندگان مستثنی از سیستم استرداد وجه (غیرفعال برای این افراد):
+                    </label>
+                    <div class="p-3 rounded border bg-light" style="max-height: 200px; overflow-y: auto;">
+                        {% if all_resellers %}
+                            <div class="row g-2">
+                                {% for r in all_resellers %}
+                                <div class="col-md-4 col-sm-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="disabled_resellers" value="{{ r['id'] }}" id="reseller_dis_{{ r['id'] }}"
+                                               {% if r['id'] in refund_settings.get('disabled_reseller_ids', []) %}checked{% endif %}>
+                                        <label class="form-check-label small" for="reseller_dis_{{ r['id'] }}">
+                                            <strong>{{ r['name'] }}</strong>
+                                            {% if r.get('company_name') %}<span class="text-muted">({{ r['company_name'] }})</span>{% endif %}
+                                            <span class="badge bg-secondary-subtle text-secondary font-monospace ms-1">#{{ r['id'] }}</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <span class="text-muted small">هیچ نماینده‌ای یافت نشد.</span>
+                        {% endif %}
+                    </div>
+                    <div class="form-text text-muted">نمایندگانی که تیک خورده باشند، تحت هیچ شرایطی امکان استرداد وجه نخواهند داشت.</div>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-danger fw-bold px-4">
+                <i class="fas fa-save me-1"></i> ذخیره تنظیمات استرداد وجه
+            </button>
+        </form>
+    </div>
 </div>
 
 <div class="card shadow-sm mt-4">

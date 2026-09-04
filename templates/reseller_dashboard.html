@@ -26,9 +26,14 @@
     <div class="col-xl-3 col-md-6">
         <div class="card stat-card border-primary h-100">
             <div>
-                <span class="text-muted small fw-bold">موجودی کیف پول شما</span>
+                <span class="text-muted small fw-bold">کیف پول نقدی شما</span>
                 <h3 class="fw-bold my-1 text-primary">{{ "{:,}".format(stats['balance'] or 0) }} <span style="font-size: 1rem;">تومان</span></h3>
-                <span class="badge bg-primary bg-opacity-10 text-primary">تخفیف شما: {{ stats['discount_percent'] }}%</span>
+                <div class="d-flex align-items-center gap-1 mt-1 flex-wrap">
+                    <span class="badge bg-primary bg-opacity-10 text-primary">تخفیف: {{ stats['discount_percent'] }}%</span>
+                    {% if reseller.get('credit_enabled') %}
+                    <span class="badge bg-info bg-opacity-10 text-info fw-bold">اعتبار فعال</span>
+                    {% endif %}
+                </div>
             </div>
             <div class="stat-icon bg-primary bg-opacity-10 text-primary">
                 <i class="fas fa-wallet"></i>

@@ -3,17 +3,48 @@
 {% block title %}هوش مالی و گزارشات پیشرفته سیستم{% endblock %}
 
 {% block content %}
-<div class="page-header">
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
     <div>
-        <h1 class="page-title"><i class="fas fa-chart-line text-primary"></i> هوش مالی و گزارشات جامع</h1>
-        <p class="text-muted mb-0">تحلیل رفتار کاربران، محبوبیت پلن‌ها، تاریخچه مصرف دوره‌های گذشته و آمار درآمد</p>
+        <h1 class="page-title"><i class="fas fa-chart-line text-primary me-2"></i> هوش مالی و گزارشات جامع</h1>
+        <p class="text-muted mb-0">تحلیل هوشمند مالی، آمار فروش مشتریان مدیریت و نمایندگان، تراز اعتباری و عملکرد سامانه‌</p>
     </div>
-    <div class="d-flex align-items-center gap-2">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <!-- فیلتر دوره زمانی انتخاب‌شده -->
+        <div class="btn-group btn-group-sm shadow-sm">
+            <a href="{{ url_for('reports', tab=active_tab, period='today') }}" class="btn {{ 'btn-primary' if period == 'today' else 'btn-outline-secondary' }}">امروز</a>
+            <a href="{{ url_for('reports', tab=active_tab, period='week') }}" class="btn {{ 'btn-primary' if period == 'week' else 'btn-outline-secondary' }}">۷ روز اخیر</a>
+            <a href="{{ url_for('reports', tab=active_tab, period='month') }}" class="btn {{ 'btn-primary' if period == 'month' else 'btn-outline-secondary' }}">ماه جاری</a>
+            <a href="{{ url_for('reports', tab=active_tab, period='year') }}" class="btn {{ 'btn-primary' if period == 'year' else 'btn-outline-secondary' }}">امسال</a>
+            <a href="{{ url_for('reports', tab=active_tab, period='all') }}" class="btn {{ 'btn-primary' if period == 'all' else 'btn-outline-secondary' }}">کل سوابق</a>
+        </div>
         <a href="{{ url_for('export_transactions') }}" class="btn btn-success btn-sm">
-            <i class="fas fa-file-excel me-1"></i> دانلود گزارش اکسل (CSV)
+            <i class="fas fa-file-excel me-1"></i> دریافت اکسل (CSV)
         </a>
     </div>
 </div>
+
+<!-- تب‌های سه‌گانه اصلی تفکیک هوش مالی -->
+<ul class="nav nav-pills nav-fill bg-white p-2 rounded-3 shadow-sm border mb-4">
+    <li class="nav-item">
+        <a class="nav-link fw-bold py-2 {{ 'active' if active_tab == 'all' else '' }}" href="{{ url_for('reports', tab='all', period=period) }}">
+            <i class="fas fa-layer-group me-2"></i> همه (گزارش کل سامانه)
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link fw-bold py-2 {{ 'active' if active_tab == 'admin' else '' }}" href="{{ url_for('reports', tab='admin', period=period) }}">
+            <i class="fas fa-crown me-2 text-warning"></i> مشتریان مدیریت
+            <span class="badge {{ 'bg-white text-primary' if active_tab == 'admin' else 'bg-secondary' }} ms-1">{{ financial_data.admin.total_subs if financial_data else 0 }} اشتراک</span>
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link fw-bold py-2 {{ 'active' if active_tab == 'resellers' else '' }}" href="{{ url_for('reports', tab='resellers', period=period) }}">
+            <i class="fas fa-handshake me-2"></i> نمایندگان
+            <span class="badge {{ 'bg-white text-primary' if active_tab == 'resellers' else 'bg-secondary' }} ms-1">{{ financial_data.resellers.count if financial_data else 0 }} نماینده</span>
+        </a>
+    </li>
+</ul>
+
+{% if active_tab == 'all' %}
 
 <!-- ۴ کارت آماری کلیدی -->
 <div class="row g-3 mb-4">
@@ -445,4 +476,304 @@
         </div>
     </div>
 </div>
+
+{% elif active_tab == 'admin' %}
+{% set ad = financial_data.admin if financial_data else {} %}
+
+<!-- کارت‌های کلان مشتریان مدیریت -->
+<div class="row g-3 mb-4">
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card border-start border-primary border-4 shadow-sm">
+            <div>
+                <span class="text-muted small fw-bold">فروش دوره مشتریان مدیریت</span>
+                <h3 class="fw-bold my-1 text-primary font-monospace">{{ "{:,}".format(ad.get('period_revenue', 0)) }} <span class="fs-6 text-muted">تومان</span></h3>
+                <span class="text-muted small"><i class="fas fa-shopping-cart me-1"></i> {{ ad.get('period_orders', 0) }} سفارش در این دوره</span>
+            </div>
+            <div class="stat-icon bg-primary bg-opacity-10 text-primary">
+                <i class="fas fa-coins"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card border-start border-success border-4 shadow-sm">
+            <div>
+                <span class="text-muted small fw-bold">اشتراک‌های فعال مستقیم</span>
+                <h3 class="fw-bold my-1 text-success font-monospace">{{ ad.get('active_subs', 0) }} <span class="fs-6 text-muted">کاربر</span></h3>
+                <span class="text-muted small">از کل {{ ad.get('total_subs', 0) }} اشتراک مستقیم مدیریت</span>
+            </div>
+            <div class="stat-icon bg-success bg-opacity-10 text-success">
+                <i class="fas fa-user-check"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card border-start border-info border-4 shadow-sm">
+            <div>
+                <span class="text-muted small fw-bold">کل حجم واگذارشده مستقیم</span>
+                <h3 class="fw-bold my-1 text-info font-monospace">{{ "{:,.1f}".format(ad.get('total_gb', 0)) }} <span class="fs-6 text-muted">GB</span></h3>
+                <span class="text-muted small">کل درآمد تاریخچه: {{ "{:,}".format(ad.get('lifetime_revenue', 0)) }} ت</span>
+            </div>
+            <div class="stat-icon bg-info bg-opacity-10 text-info">
+                <i class="fas fa-hard-drive"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card border-start border-danger border-4 shadow-sm">
+            <div>
+                <span class="text-muted small fw-bold">مانده کل بدهی مشتریان مدیریت</span>
+                <h3 class="fw-bold my-1 text-danger font-monospace">{{ "{:,}".format(ad.get('debt_total', 0)) }} <span class="fs-6 text-muted">تومان</span></h3>
+                <span class="text-danger small"><i class="fas fa-exclamation-triangle me-1"></i> {{ ad.get('debt_count', 0) }} مشتری بدهکار ثبت‌شده</span>
+            </div>
+            <div class="stat-icon bg-danger bg-opacity-10 text-danger">
+                <i class="fas fa-hand-holding-dollar"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- جدول مشتریان بدهکار مستقیم مدیریت و روند فروش -->
+<div class="row g-4 mb-4">
+    <div class="col-lg-7">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-list-ol text-danger me-2"></i>فهرست مشتریان بدهکار مدیریت مستقیم</h5>
+                <span class="badge bg-danger">{{ ad.get('debtors', [])|length }} مشتری</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-3">نام اکانت</th>
+                                <th>تلگرام / تلفن</th>
+                                <th>پلن</th>
+                                <th>مبلغ بدهی</th>
+                                <th>توضیحات</th>
+                                <th>تاریخ ایجاد</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for d in ad.get('debtors', []) %}
+                            <tr>
+                                <td class="ps-3"><code>{{ d['account_name'] }}</code></td>
+                                <td>
+                                    <div><small class="fw-bold">{{ d['phone_number'] or '-' }}</small></div>
+                                    <small class="text-muted font-monospace">{{ d['telegram_id'] or '' }}</small>
+                                </td>
+                                <td><span class="badge bg-primary-subtle text-primary">{{ d['plan_name'] }}</span></td>
+                                <td><strong class="text-danger font-monospace">{{ "{:,}".format(d['debt_amount']) }} ت</strong></td>
+                                <td><small class="text-muted">{{ d['debt_notes'] or '-' }}</small></td>
+                                <td><small class="text-muted">{{ d['debt_created_at'][:10] if d['debt_created_at'] else '-' }}</small></td>
+                            </tr>
+                            {% endfor %}
+                            {% if not ad.get('debtors') %}
+                            <tr>
+                                <td colspan="6" class="text-center py-4 text-success">
+                                    <i class="fas fa-check-circle fa-2x mb-2 d-block"></i>
+                                    هیچ مشتری بدهکاری در بخش فروش مستقیم مدیریت ثبت نشده است.
+                                </td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-chart-bar text-primary me-2"></i>روند درآمد مستقیم مدیریت (۱۲ ماه)</h5>
+                <span class="badge bg-light text-dark">تراکنش‌های تایید شده</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-3">ماه</th>
+                                <th>تعداد سفارش</th>
+                                <th>درآمد فروش مستقیم</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for m in ad.get('monthly_trend', []) %}
+                            <tr>
+                                <td class="ps-3"><code>{{ m['month'] }}</code></td>
+                                <td><span class="badge bg-secondary font-monospace">{{ m['count'] }} خرید</span></td>
+                                <td><strong class="text-success font-monospace">{{ "{:,}".format(m['total']) }} تومان</strong></td>
+                            </tr>
+                            {% endfor %}
+                            {% if not ad.get('monthly_trend') %}
+                            <tr>
+                                <td colspan="3" class="text-center py-4 text-muted">هنوز آماری ثبت نشده است.</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% elif active_tab == 'resellers' %}
+{% set rd = financial_data.resellers if financial_data else {} %}
+
+<!-- کارت‌های شاخص‌های کلان نمایندگان -->
+<div class="row g-3 mb-4">
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card border-start border-primary border-4 shadow-sm">
+            <div>
+                <span class="text-muted small fw-bold">کل خرید نمایندگان در دوره</span>
+                <h3 class="fw-bold my-1 text-primary font-monospace">{{ "{:,}".format(rd.get('period_wholesale', 0)) }} <span class="fs-6 text-muted">تومان</span></h3>
+                <span class="text-muted small"><i class="fas fa-boxes-packing me-1"></i> {{ rd.get('period_purchases_count', 0) }} بار خرید و تمدید</span>
+            </div>
+            <div class="stat-icon bg-primary bg-opacity-10 text-primary">
+                <i class="fas fa-boxes-packing"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card border-start border-success border-4 shadow-sm">
+            <div>
+                <span class="text-muted small fw-bold">کل سود برآوردشده نمایندگان</span>
+                <h3 class="fw-bold my-1 text-success font-monospace">{{ "{:,}".format(rd.get('period_profit_est', 0)) }} <span class="fs-6 text-muted">تومان</span></h3>
+                <span class="text-success small"><i class="fas fa-arrow-trend-up me-1"></i> ارزش فروش: {{ "{:,}".format(rd.get('period_retail_est', 0)) }} ت</span>
+            </div>
+            <div class="stat-icon bg-success bg-opacity-10 text-success">
+                <i class="fas fa-chart-line"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card border-start border-warning border-4 shadow-sm">
+            <div>
+                <span class="text-muted small fw-bold">وضعیت اعتباری و بدهی نمایندگان</span>
+                <h3 class="fw-bold my-1 text-danger font-monospace">{{ "{:,}".format(rd.get('credit_debts_total', 0)) }} <span class="fs-6 text-muted">تومان بدهی</span></h3>
+                <span class="text-muted small">سقف کل اعتبار: {{ "{:,}".format(rd.get('credit_limits_total', 0)) }} ت</span>
+            </div>
+            <div class="stat-icon bg-warning bg-opacity-10 text-warning">
+                <i class="fas fa-credit-card"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card border-start border-info border-4 shadow-sm">
+            <div>
+                <span class="text-muted small fw-bold">کاربران فعال نمایندگان</span>
+                <h3 class="fw-bold my-1 text-info font-monospace">{{ rd.get('active_subs', 0) }} <span class="fs-6 text-muted">کاربر</span></h3>
+                <span class="text-muted small">موجودی کل کیف‌پول‌ها: {{ "{:,}".format(rd.get('wallets_total', 0)) }} ت</span>
+            </div>
+            <div class="stat-icon bg-info bg-opacity-10 text-info">
+                <i class="fas fa-users-gear"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- جدول تفصیلی عملکرد تک‌تک نمایندگان -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0 fw-bold"><i class="fas fa-table-list text-primary me-2"></i>گزارش عملکرد و وضعیت مالی تک‌تک نمایندگان</h5>
+            <span class="badge bg-secondary" data-table-count="resellersPerfTable">{{ rd.get('items', [])|length }} نماینده</span>
+        </div>
+        <div class="table-search-wrapper">
+            <i class="fas fa-search table-search-icon"></i>
+            <input type="text" class="form-control table-search-input" data-table="resellersPerfTable" placeholder="جستجوی نماینده...">
+            <button type="button" class="table-search-clear" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 sortable-table" id="resellersPerfTable">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3 sortable-th" data-column="0">نماینده</th>
+                        <th class="sortable-th" data-column="1">تخفیف</th>
+                        <th class="sortable-th" data-column="2">کیف پول</th>
+                        <th class="sortable-th" data-column="3">خط اعتبار / بدهی</th>
+                        <th class="sortable-th" data-column="4">تعداد کاربران</th>
+                        <th class="sortable-th" data-column="5">خرید عمده دوره</th>
+                        <th class="sortable-th" data-column="6">فروش خرده برآورد</th>
+                        <th class="sortable-th" data-column="7">سود تخمینی نماینده</th>
+                        <th class="sortable-th" data-column="8">بدهی مشتریان نماینده</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in rd.get('items', []) %}
+                    <tr>
+                        <td class="ps-3" data-value="{{ r['name'] }}">
+                            <div class="d-flex align-items-center gap-2">
+                                <img src="{{ avatar_url(r['username'] or r['name']) }}" class="rounded-circle border shadow-sm" style="width: 36px; height: 36px; object-fit: cover;">
+                                <div>
+                                    <div class="fw-bold">{{ r['name'] }}</div>
+                                    <small class="text-muted">@{{ r['username'] }}</small>
+                                    {% if r['status'] != 'active' %}
+                                    <span class="badge bg-danger small ms-1">معلق</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </td>
+                        <td data-value="{{ r['discount_percent'] }}">
+                            <span class="badge bg-primary bg-opacity-10 text-primary font-monospace">{{ r['discount_percent'] }}%</span>
+                        </td>
+                        <td data-value="{{ r['balance'] }}">
+                            <strong class="text-success font-monospace">{{ "{:,}".format(r['balance']) }} ت</strong>
+                        </td>
+                        <td data-value="{{ r['credit_debt'] }}">
+                            {% if r['credit_enabled'] %}
+                            <div><small class="text-muted">سقف: {{ "{:,}".format(r['credit_limit']) }} ت</small></div>
+                            <div>
+                                {% if r['credit_debt'] > 0 %}
+                                <span class="badge bg-danger-subtle text-danger border border-danger font-monospace">بدهی: {{ "{:,}".format(r['credit_debt']) }} ت</span>
+                                {% else %}
+                                <span class="badge bg-success-subtle text-success border border-success font-monospace">بدهی: صفر</span>
+                                {% endif %}
+                            </div>
+                            <small class="text-info">قابل استفاده: {{ "{:,}".format(r['available_credit']) }} ت</small>
+                            {% else %}
+                            <span class="badge bg-light text-muted border">غیرفعال</span>
+                            {% endif %}
+                        </td>
+                        <td data-value="{{ r['active_customers'] }}">
+                            <div><strong class="text-primary font-monospace">{{ r['active_customers'] }} فعال</strong> / {{ r['total_customers'] }} کل</div>
+                            <small class="text-muted font-monospace">{{ "{:,.1f}".format(r['total_gb']) }} GB حجم</small>
+                        </td>
+                        <td data-value="{{ r['period_wholesale'] }}">
+                            <strong class="font-monospace text-dark">{{ "{:,}".format(r['period_wholesale']) }} ت</strong>
+                            <div><small class="text-muted font-monospace">{{ r['period_purchases_count'] }} تراکنش</small></div>
+                        </td>
+                        <td data-value="{{ r['period_retail_est'] }}">
+                            <span class="font-monospace text-muted">{{ "{:,}".format(r['period_retail_est']) }} ت</span>
+                        </td>
+                        <td data-value="{{ r['period_profit_est'] }}">
+                            <strong class="font-monospace text-success">+{{ "{:,}".format(r['period_profit_est']) }} ت</strong>
+                        </td>
+                        <td data-value="{{ r['cust_debtors_amount'] }}">
+                            {% if r['cust_debtors_amount'] > 0 %}
+                            <strong class="text-danger font-monospace">{{ "{:,}".format(r['cust_debtors_amount']) }} ت</strong>
+                            <div><small class="text-danger">({{ r['cust_debtors_count'] }} مشتری بدهکار)</small></div>
+                            {% else %}
+                            <span class="text-muted small">بدون بدهی</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not rd.get('items') %}
+                    <tr>
+                        <td colspan="9" class="text-center py-4 text-muted">نماینده‌ای یافت نشد.</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+
 {% endblock %}
