@@ -1840,14 +1840,15 @@ def inject_global_branding():
         r_data = db.get_reseller(active_reseller_id)
         if r_data:
             session["balance"] = int(r_data.get("balance") or 0)
-            credit_enabled = bool(r_data.get("credit_enabled"))
             credit_limit = int(r_data.get("credit_limit") or 0)
             credit_debt = int(r_data.get("credit_debt") or 0)
+            credit_enabled = bool(r_data.get("credit_enabled")) or (credit_limit > 0)
             available_credit = max(0, credit_limit - credit_debt) if credit_enabled else 0
             session["credit_enabled"] = credit_enabled
             session["credit_limit"] = credit_limit
             session["credit_debt"] = credit_debt
             session["available_credit"] = available_credit
+            session["total_purchasing_power"] = session["balance"] + available_credit
             branding = {
                 "brand_title": r_data.get("brand_title") or r_data.get("name") or "پنل نمایندگی",
                 "logo_url": r_data.get("logo_url"),
@@ -1865,6 +1866,7 @@ def inject_global_branding():
             session["credit_limit"] = 0
             session["credit_debt"] = 0
             session["available_credit"] = 0
+            session["total_purchasing_power"] = 0
     elif getattr(g, "custom_reseller", None):
         r_data = g.custom_reseller
         branding = {
@@ -1887,10 +1889,26 @@ def inject_global_branding():
             "tutorial_domain": admin_tutorial_domain
         }
 
+    reseller_has_credit = False
+    reseller_available_credit = 0
+    reseller_credit_limit = 0
+    reseller_credit_debt = 0
+    if active_reseller_id:
+        reseller_has_credit = bool(session.get("credit_enabled")) or (session.get("credit_limit") or 0) > 0
+        reseller_available_credit = session.get("available_credit", 0)
+        reseller_credit_limit = session.get("credit_limit", 0)
+        reseller_credit_debt = session.get("credit_debt", 0)
+
     return dict(
         has_permission=has_permission,
         branding=branding,
-        sub_role=session.get("sub_role")
+        sub_role=session.get("sub_role"),
+        has_reseller_credit=reseller_has_credit,
+        has_credit=reseller_has_credit,
+        global_credit_enabled=reseller_has_credit,
+        global_available_credit=reseller_available_credit,
+        global_credit_limit=reseller_credit_limit,
+        global_credit_debt=reseller_credit_debt
     )
 
 
@@ -2068,6 +2086,15 @@ def login():
             session["username"] = reseller["username"]
             session["name"] = reseller["name"]
             session["balance"] = reseller["balance"]
+            credit_limit = int(reseller.get("credit_limit") or 0)
+            credit_debt = int(reseller.get("credit_debt") or 0)
+            credit_enabled = bool(reseller.get("credit_enabled")) or (credit_limit > 0)
+            available_credit = max(0, credit_limit - credit_debt) if credit_enabled else 0
+            session["credit_enabled"] = credit_enabled
+            session["credit_limit"] = credit_limit
+            session["credit_debt"] = credit_debt
+            session["available_credit"] = available_credit
+            session["total_purchasing_power"] = session["balance"] + available_credit
             session["telegram_id"] = reseller.get("telegram_id")
             session["phone"] = reseller.get("phone")
             session["session_token"] = session_token
@@ -4619,7 +4646,20 @@ def admin_resellers():
                 logger.warning(f"Failed to auto-create Hiddify admin: {h_admin.get('error')}")
                 flash(f"هشدار: ادمین هیدیفای خودکار ساخته نشد ({h_admin.get('error')})، اما حساب نماینده ایجاد گردید.", "warning")
 
-        res = db.create_reseller(username, password, name, telegram_id, discount_percent, initial_balance, hiddify_admin_uuid=hiddify_admin_uuid)
+        credit_limit = int(request.form.get("credit_limit", 0) or 0)
+        credit_enabled = 1 if (request.form.get("credit_enabled") or credit_limit > 0) else 0
+
+        res = db.create_reseller(
+            username=username,
+            password=password,
+            name=name,
+            telegram_id=telegram_id,
+            discount_percent=discount_percent,
+            initial_balance=initial_balance,
+            hiddify_admin_uuid=hiddify_admin_uuid,
+            credit_enabled=credit_enabled,
+            credit_limit=credit_limit
+        )
         if res.get("success"):
             flash(f"نماینده جدید «{name}» با موفقیت افزوده شد!", "success")
         else:
@@ -4755,8 +4795,8 @@ def admin_reseller_edit(reseller_id):
             hiddify_admin_uuid = h_admin["uuid"]
             flash(f"ادمین اختصاصی هیدیفای با شناسه {hiddify_admin_uuid[:8]}... برای نماینده ساخته شد.", "info")
 
-    credit_enabled = 1 if request.form.get("credit_enabled") else 0
     credit_limit = int(request.form.get("credit_limit", 0) or 0)
+    credit_enabled = 1 if (request.form.get("credit_enabled") or credit_limit > 0) else 0
 
     updates = {
         "name": name or r["name"],
@@ -6717,19 +6757,23 @@ def reseller_create_user():
         final_price = plan.get("wholesale_price") if plan.get("wholesale_price") is not None else int(original_price * (100 - discount) / 100)
 
         # بررسی موجودی نقدی + اعتبار مجاز برای خرید با توجه به منبع انتخابی
-        credit_enabled = bool(reseller.get("credit_enabled"))
-        credit_limit = int(reseller.get("credit_limit") or 0)
-        credit_debt = int(reseller.get("credit_debt") or 0)
+        credit_enabled = bool(reseller.get("credit_enabled")) or bool(stats.get("credit_enabled"))
+        credit_limit = int(reseller.get("credit_limit") or stats.get("credit_limit") or 0)
+        credit_debt = int(reseller.get("credit_debt") or stats.get("credit_debt") or 0)
         available_credit = max(0, credit_limit - credit_debt) if credit_enabled else 0
-        current_balance = stats.get("balance", 0)
+        current_balance = int(reseller.get("balance", stats.get("balance", 0)) or 0)
         total_purchasing_power = current_balance + available_credit
 
         if payment_source == "wallet" and current_balance < final_price:
-            flash(f"موجودی کیف پول شما کافی نیست! موجودی کیف پول: {current_balance:,} ت | هزینه پلن: {final_price:,} ت", "danger")
+            flash(f"موجودی کیف پول شما کافی نیست! موجودی کیف پول: {current_balance:,} ت | هزینه پلن: {final_price:,} ت (در صورت داشتن اعتبار، روش پرداخت را روی «اعتبار خرید» یا «خودکار» بگذارید)", "danger")
             return redirect(url_for("reseller_create_user"))
-        elif payment_source == "credit" and available_credit < final_price:
-            flash(f"اعتبار باقیمانده شما کافی نیست! اعتبار مجاز: {available_credit:,} ت | هزینه پلن: {final_price:,} ت", "danger")
-            return redirect(url_for("reseller_create_user"))
+        elif payment_source == "credit":
+            if not credit_enabled:
+                flash("اعتبار خرید برای شما فعال نشده است.", "danger")
+                return redirect(url_for("reseller_create_user"))
+            if available_credit < final_price:
+                flash(f"اعتبار باقیمانده شما کافی نیست! اعتبار مجاز: {available_credit:,} ت | هزینه پلن: {final_price:,} ت", "danger")
+                return redirect(url_for("reseller_create_user"))
         elif total_purchasing_power < final_price:
             flash(f"موجودی کیف پول و سقف اعتبار شما کافی نیست! موجودی: {current_balance:,} ت | اعتبار باقیمانده: {available_credit:,} ت | مبلغ مورد نیاز: {final_price:,} ت", "danger")
             return redirect(url_for("reseller_create_user"))
@@ -6776,6 +6820,12 @@ def reseller_create_user():
         r_after = db.get_reseller(reseller_id)
         current_reseller_balance = r_after.get("balance", 0) if r_after else 0
         session["balance"] = current_reseller_balance
+        if r_after:
+            c_debt = r_after.get("credit_debt", 0)
+            c_lim = r_after.get("credit_limit", 0)
+            session["credit_debt"] = c_debt
+            session["credit_limit"] = c_lim
+            session["available_credit"] = max(0, c_lim - c_debt)
 
         now = get_now_iso()
         debt_created = now if debt_amount > 0 else None
@@ -6848,7 +6898,14 @@ def reseller_create_user():
         single_url = format_single_link(single_link_template, uuid=user_uuid, name=account_name)
         
         debt_msg = f" (مشتری بدهکار ثبت شد: {debt_amount:,} تومان)" if debt_amount > 0 else ""
-        flash(f"اشتراک «{account_name}» با موفقیت ساخته شد و مبلغ {final_price:,} تومان از کیف پول شما کسر گردید.{debt_msg}", "success")
+        if actual_payment_source == "credit":
+            source_msg = f"مبلغ {final_price:,} تومان از اعتبار خرید (نسیه) شما کسر و به بدهی اعتباری افزوده شد."
+        elif actual_payment_source == "wallet":
+            source_msg = f"مبلغ {final_price:,} تومان از کیف پول نقدی شما کسر گردید."
+        else:
+            source_msg = f"مبلغ {final_price:,} تومان کسر گردید."
+
+        flash(f"اشتراک «{account_name}» با موفقیت ساخته شد و {source_msg}{debt_msg}", "success")
 
         return render_template(
             "reseller_created_success.html",
@@ -6858,10 +6915,32 @@ def reseller_create_user():
             sub_url=subscription_url,
             single_url=single_url,
             final_price=final_price,
-            current_reseller_balance=current_reseller_balance
+            current_reseller_balance=current_reseller_balance,
+            payment_source=actual_payment_source,
+            credit_used_amount=credit_used_amount,
+            is_credit=is_credit_sub
         )
 
-    return render_template("reseller_create_user.html", plans=plans, discount=discount, balance=stats.get("balance", 0))
+    credit_enabled = bool(reseller.get("credit_enabled")) or bool(stats.get("credit_enabled"))
+    credit_limit = int(reseller.get("credit_limit") or stats.get("credit_limit") or 0)
+    credit_debt = int(reseller.get("credit_debt") or stats.get("credit_debt") or 0)
+    available_credit = max(0, credit_limit - credit_debt) if credit_enabled else 0
+    balance = int(reseller.get("balance", stats.get("balance", 0)) or 0)
+    total_purchasing_power = balance + available_credit
+
+    return render_template(
+        "reseller_create_user.html",
+        plans=plans,
+        discount=discount,
+        balance=balance,
+        reseller=reseller,
+        stats=stats,
+        credit_enabled=credit_enabled,
+        credit_limit=credit_limit,
+        credit_debt=credit_debt,
+        available_credit=available_credit,
+        total_purchasing_power=total_purchasing_power
+    )
 
 
 @app.route("/reseller/users")
@@ -6946,6 +7025,9 @@ def reseller_users():
         debtor_count=debtor_count,
         balance=stats["balance"],
         available_credit=stats.get("available_credit", 0),
+        credit_enabled=stats.get("credit_enabled", False),
+        credit_limit=stats.get("credit_limit", 0),
+        credit_debt=stats.get("credit_debt", 0),
         total_purchasing_power=stats.get("total_purchasing_power", stats["balance"]),
         unpaid_debts_total=stats.get("unpaid_debts_total", 0),
         page=page,
@@ -7256,6 +7338,14 @@ def reseller_renew_user(sub_id: int):
         r_after = db.get_reseller(reseller_id)
         if r_after:
             session["balance"] = r_after.get("balance", 0)
+            c_lim = r_after.get("credit_limit", 0)
+            c_debt = r_after.get("credit_debt", 0)
+            c_en = bool(r_after.get("credit_enabled")) or (c_lim > 0)
+            session["credit_enabled"] = c_en
+            session["credit_limit"] = c_lim
+            session["credit_debt"] = c_debt
+            session["available_credit"] = max(0, c_lim - c_debt) if c_en else 0
+            session["total_purchasing_power"] = session["balance"] + session["available_credit"]
     else:
         flash(f"خطا در تمدید اشتراک: {renew_db.get('error')}", "danger")
 
@@ -7380,6 +7470,14 @@ def reseller_subscriptions_bulk_renew():
     r_after = db.get_reseller(reseller_id)
     if r_after:
         session["balance"] = r_after.get("balance", 0)
+        c_lim = r_after.get("credit_limit", 0)
+        c_debt = r_after.get("credit_debt", 0)
+        c_en = bool(r_after.get("credit_enabled")) or (c_lim > 0)
+        session["credit_enabled"] = c_en
+        session["credit_limit"] = c_lim
+        session["credit_debt"] = c_debt
+        session["available_credit"] = max(0, c_lim - c_debt) if c_en else 0
+        session["total_purchasing_power"] = session["balance"] + session["available_credit"]
 
     mode_text = "به صورت آنی تمدید و ریست شدند" if instant_activate else "در صف تمدید رزرو قرار گرفتند"
     flash(f"{success_count} اشتراک با موفقیت {mode_text} و مجموع مبلغ {total_cost_required:,} تومان کسر گردید.", "success")

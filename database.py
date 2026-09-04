@@ -902,6 +902,12 @@ class Database:
         except Exception:
             pass
 
+        # فعال‌سازی خودکار خرید اعتباری برای کلیه نمایندگانی که سقف اعتبار دارند
+        try:
+            cursor.execute("UPDATE resellers SET credit_enabled = 1 WHERE credit_limit > 0 AND (credit_enabled IS NULL OR credit_enabled = 0)")
+        except Exception:
+            pass
+
         # جدول تراکنش‌های پورسانت زیرمجموعه‌گیری نمایندگان
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS reseller_affiliate_commissions (
@@ -4997,8 +5003,9 @@ class Database:
     def create_reseller(self, username: str, password: str, name: str,
                         telegram_id: int = None, discount_percent: int = 20, initial_balance: int = 0,
                         hiddify_admin_uuid: str = None, parent_reseller_id: int = None,
-                        affiliate_commission_percent: float = None, referral_code: str = None) -> dict:
-        """ایجاد نماینده جدید با پشتیبانی از ادمین اختصاصی هیدیفای و انتساب نماینده معرف"""
+                        affiliate_commission_percent: float = None, referral_code: str = None,
+                        credit_enabled: int = 0, credit_limit: int = 0) -> dict:
+        """ایجاد نماینده جدید با پشتیبانی از ادمین اختصاصی هیدیفای، انتساب نماینده معرف و تنظیمات خرید اعتباری"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -5006,18 +5013,22 @@ class Database:
         cleaned_user = username.strip().lower()
         if not referral_code:
             referral_code = f"REF-{cleaned_user}"
+        if credit_limit > 0:
+            credit_enabled = 1
         try:
             cursor.execute("""
                 INSERT INTO resellers (
                     username, password_hash, name, telegram_id, balance, 
                     discount_percent, status, hiddify_admin_uuid, 
                     parent_reseller_id, affiliate_commission_percent, referral_code,
+                    credit_enabled, credit_limit, credit_debt,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, 0, ?, ?)
             """, (
                 cleaned_user, password_hash, name.strip(), telegram_id, initial_balance, 
                 discount_percent, (hiddify_admin_uuid.strip() if hiddify_admin_uuid else None),
                 parent_reseller_id, affiliate_commission_percent, referral_code,
+                credit_enabled, credit_limit,
                 now, now
             ))
             reseller_id = cursor.lastrowid
@@ -6045,6 +6056,9 @@ class Database:
         if "password" in kwargs and kwargs["password"]:
             kwargs["password_hash"] = self.hash_password(kwargs.pop("password"))
 
+        if "credit_limit" in kwargs and (kwargs["credit_limit"] or 0) > 0 and not kwargs.get("credit_enabled"):
+            kwargs["credit_enabled"] = 1
+
         fields = ", ".join([f"{k}=?" for k in kwargs.keys()])
         values = list(kwargs.values()) + [reseller_id]
         cursor.execute(f"UPDATE resellers SET {fields} WHERE id=?", values)
@@ -6125,7 +6139,7 @@ class Database:
             balance = row["balance"] or 0
             credit_limit = row["credit_limit"] or 0
             credit_debt = row["credit_debt"] or 0
-            credit_enabled = bool(row["credit_enabled"])
+            credit_enabled = bool(row["credit_enabled"]) or (credit_limit > 0)
             available_credit = max(0, credit_limit - credit_debt) if credit_enabled else 0
 
             chosen_source = str(payment_source).strip().lower() if payment_source else "auto"
@@ -6142,8 +6156,9 @@ class Database:
                     INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
                     VALUES (?, 'purchase', ?, ?, ?, ?, 'wallet', ?, ?)
                 """, (reseller_id, amount, plan_name, account_name, desc_text, subscription_id, now))
+                tx_id = cursor.lastrowid
                 conn.commit()
-                return {"success": True, "is_credit": False, "credit_used": 0, "payment_source": "wallet"}
+                return {"success": True, "transaction_id": tx_id, "is_credit": False, "credit_used": 0, "payment_source": "wallet"}
 
             elif chosen_source == "credit":
                 if not credit_enabled:
@@ -6159,8 +6174,9 @@ class Database:
                     INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
                     VALUES (?, 'purchase_credit', ?, ?, ?, ?, 'credit', ?, ?)
                 """, (reseller_id, amount, plan_name, account_name, desc_text, subscription_id, now))
+                tx_id = cursor.lastrowid
                 conn.commit()
-                return {"success": True, "is_credit": True, "credit_used": amount, "payment_source": "credit"}
+                return {"success": True, "transaction_id": tx_id, "is_credit": True, "credit_used": amount, "payment_source": "credit"}
 
             else:
                 # حالت هوشمند و خودکار (auto)
@@ -6177,8 +6193,9 @@ class Database:
                         INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
                         VALUES (?, 'purchase', ?, ?, ?, ?, 'wallet', ?, ?)
                     """, (reseller_id, amount, plan_name, account_name, description, subscription_id, now))
+                    tx_id = cursor.lastrowid
                     conn.commit()
-                    return {"success": True, "is_credit": False, "credit_used": 0, "payment_source": "wallet"}
+                    return {"success": True, "transaction_id": tx_id, "is_credit": False, "credit_used": 0, "payment_source": "wallet"}
                 else:
                     credit_used = amount - balance
                     cursor.execute("""
@@ -6194,8 +6211,9 @@ class Database:
                         INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
                         VALUES (?, 'purchase_credit', ?, ?, ?, ?, 'credit', ?, ?)
                     """, (reseller_id, amount, plan_name, account_name, desc_text, subscription_id, now))
+                    tx_id = cursor.lastrowid
                     conn.commit()
-                    return {"success": True, "is_credit": True, "credit_used": credit_used, "payment_source": "credit"}
+                    return {"success": True, "transaction_id": tx_id, "is_credit": True, "credit_used": credit_used, "payment_source": "credit"}
         except Exception as e:
             return {"success": False, "error": str(e)}
         finally:
@@ -6325,9 +6343,9 @@ class Database:
         res = cursor.fetchone()
         balance = res["balance"] if res else 0
         discount = res["discount_percent"] if res else 0
-        credit_enabled = bool(res["credit_enabled"]) if res and "credit_enabled" in res.keys() and res["credit_enabled"] else False
         credit_limit = (res["credit_limit"] or 0) if res and "credit_limit" in res.keys() else 0
         credit_debt = (res["credit_debt"] or 0) if res and "credit_debt" in res.keys() else 0
+        credit_enabled = bool(res["credit_enabled"]) if (res and "credit_enabled" in res.keys() and res["credit_enabled"]) else (credit_limit > 0)
         available_credit = max(0, credit_limit - credit_debt) if credit_enabled else 0
         total_purchasing_power = balance + available_credit
         
@@ -6549,9 +6567,9 @@ class Database:
                 return {"success": False, "error": "اطلاعات نماینده یافت نشد."}
 
             balance = res_row["balance"] or 0
-            credit_enabled = bool(res_row["credit_enabled"]) if "credit_enabled" in res_row.keys() and res_row["credit_enabled"] else False
             credit_limit = (res_row["credit_limit"] or 0) if "credit_limit" in res_row.keys() else 0
             credit_debt = (res_row["credit_debt"] or 0) if "credit_debt" in res_row.keys() else 0
+            credit_enabled = bool(res_row["credit_enabled"]) if ("credit_enabled" in res_row.keys() and res_row["credit_enabled"]) else (credit_limit > 0)
             available_credit = max(0, credit_limit - credit_debt) if credit_enabled else 0
 
             cursor.execute("SELECT * FROM subscriptions WHERE id=? AND reseller_id=?", (sub_id, reseller_id))
