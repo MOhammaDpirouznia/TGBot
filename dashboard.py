@@ -4834,7 +4834,7 @@ def admin_reseller_create_hiddify_admin(reseller_id):
 @app.route("/admin/reseller/<int:reseller_id>/sync-hiddify", methods=["POST"])
 @admin_required
 def admin_reseller_sync_hiddify(reseller_id):
-    """فراخوانی، همگام‌سازی و بازیابی اشتراک‌های این نماینده از هیدیفای"""
+    """فراخوانی، همگام‌سازی و بازیابی اشتراک‌های این نماینده از هیدیفای (بدون حذف مشتریان محلی)"""
     r = db.get_reseller(reseller_id)
     if not r:
         flash("نماینده یافت نشد.", "danger")
@@ -4853,10 +4853,55 @@ def admin_reseller_sync_hiddify(reseller_id):
     return redirect(url_for("admin_resellers"))
 
 
+@app.route("/admin/reseller/<int:reseller_id>/prune-sync-hiddify", methods=["POST"])
+@admin_required
+def admin_reseller_prune_sync_hiddify(reseller_id):
+    """همگام‌سازی قطعی با هیدیفای و حذف مشتریان اضافی که در پنل هیدیفای نماینده وجود ندارند"""
+    r = db.get_reseller(reseller_id)
+    if not r:
+        flash("نماینده یافت نشد.", "danger")
+        return redirect(url_for("admin_resellers"))
+
+    reseller_key = db.get_reseller_hiddify_key(reseller_id)
+    if not reseller_key:
+        flash(f"کلید اتصال به هیدیفای برای نماینده «{r['name']}» یافت نشد. لطفاً ابتدا ادمین اختصاصی برای این نماینده تعریف کنید.", "warning")
+        return redirect(url_for("admin_resellers"))
+
+    users_resp = hidify_sync_request("GET", "/admin/user/", api_key=reseller_key)
+    if not isinstance(users_resp, list):
+        err = users_resp.get("error") if isinstance(users_resp, dict) else "خطا در دریافت لیست کاربران از هیدیفای"
+        flash(f"خطا در ارتباط با هیدیفای: {err}", "danger")
+        return redirect(url_for("admin_resellers"))
+
+    sync_result = db.sync_and_prune_reseller_subscriptions(reseller_id, users_resp)
+    if sync_result.get("success"):
+        synced_count = sync_result.get("synced_count", 0)
+        purged_count = sync_result.get("purged_count", 0)
+        purged_names = sync_result.get("purged_names", [])
+
+        if purged_count > 0:
+            names_preview = "، ".join(purged_names[:5])
+            if len(purged_names) > 5:
+                names_preview += f" و {len(purged_names) - 5} اشتراک دیگر..."
+            flash(
+                f"همگام‌سازی کامل نماینده «{r['name']}» انجام شد: تعداد {synced_count} اشتراک موجود در هیدیفای بروزرسانی شدند و {purged_count} مشتری اضافی که در هیدیفای وجود نداشتند از پنل نماینده حذف گردیدند ({names_preview}).",
+                "warning"
+            )
+        else:
+            flash(
+                f"همگام‌سازی کامل نماینده «{r['name']}» انجام شد: تعداد {synced_count} اشتراک با هیدیفای همگام شدند. هیچ مشتری اضافی در پنل نماینده وجود نداشت و لیست کاربران کاملاً با هیدیفای یکسان است.",
+                "success"
+            )
+    else:
+        flash(f"خطا در همگام‌سازی و پاکسازی: {sync_result.get('error')}", "danger")
+
+    return redirect(url_for("admin_resellers"))
+
+
 @app.route("/admin/hiddify/bulk-restore-resellers", methods=["POST"])
 @admin_required
 def admin_hiddify_bulk_restore_resellers():
-    """بازیابی سراسری و تفکیک خودکار تمام اشتراک‌ها و اتصال ادمین‌های نمایندگان از سرور هیدیفای"""
+    """بازیابی سراسری و تفکیک خودکار تمام اشتراک‌ها و اتصال ادمین‌های نمایندگان از سرور هیدیفای با پشتیبانی از پاکسازی اختیاری"""
     # ۱. شناسایی و اتصال خودکار ادمین‌های موجود هیدیفای به نمایندگان متناظر
     try:
         admins_resp = hidify_sync_get_admins()
@@ -4881,9 +4926,32 @@ def admin_hiddify_bulk_restore_resellers():
     # ۲. بازیابی کاربران و اشتراک‌ها
     users_resp = hidify_sync_request("GET", "/admin/user/")
     if isinstance(users_resp, list):
+        purge_missing = bool(request.form.get("purge_missing"))
         restore_res = db.restore_subscriptions_from_hiddify(users_resp)
         count = restore_res.get("synced_count", 0)
-        flash(f"عملیات بازیابی سراسری انجام شد: {count} اشتراک در دیتابیس همگام‌سازی و بر اساس ادمین هر نماینده تفکیک شدند.", "success")
+
+        purged_total = 0
+        if purge_missing:
+            # پاکسازی مشترکین اضافی برای نمایندگانی که ادمین اختصاصی در هیدیفای دارند
+            resellers = db.get_all_resellers()
+            for r in resellers:
+                adm_uuid = str(r.get("hiddify_admin_uuid") or "").strip()
+                if adm_uuid:
+                    r_users = [
+                        u for u in users_resp 
+                        if isinstance(u, dict) and (
+                            str(u.get("added_by") or "").strip() == adm_uuid 
+                            or f"[RESELLER_ID: #{r['id']}]" in str(u.get("comment") or "")
+                            or f"[RESELLER_ID: {r['id']}]" in str(u.get("comment") or "")
+                        )
+                    ]
+                    p_res = db.sync_and_prune_reseller_subscriptions(r["id"], r_users)
+                    purged_total += p_res.get("purged_count", 0)
+
+        if purge_missing and purged_total > 0:
+            flash(f"عملیات همگام‌سازی و بازیابی سراسری انجام شد: {count} اشتراک در دیتابیس همگام شدند و مجموعاً {purged_total} مشتری اضافی از پنل نمایندگان پاکسازی گردیدند.", "warning")
+        else:
+            flash(f"عملیات بازیابی سراسری انجام شد: {count} اشتراک در دیتابیس همگام‌سازی و بر اساس ادمین هر نماینده تفکیک شدند.", "success")
     else:
         err = users_resp.get("error") if isinstance(users_resp, dict) else "خطا در دریافت لیست کاربران"
         flash(f"خطا در ارتباط با هیدیفای: {err}", "danger")

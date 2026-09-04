@@ -5682,7 +5682,7 @@ class Database:
                 if existing_sub:
                     cursor.execute("""
                         UPDATE subscriptions
-                        SET data_limit=?, data_used=?, duration=?, status=?,
+                        SET data_limit=?, data_used=?, duration=?, status=?, is_deleted=0,
                             reseller_id=COALESCE(?, reseller_id), updated_at=?
                         WHERE hidify_uuid=?
                     """, (usage_limit, current_usage, package_days, status, assigned_reseller_id, now, uuid_val))
@@ -5704,6 +5704,82 @@ class Database:
             conn.rollback()
             logger.error(f"Error restoring subscriptions from Hiddify: {e}")
             return {"success": False, "synced_count": synced_count, "error": str(e)}
+        finally:
+            conn.close()
+
+    def sync_and_prune_reseller_subscriptions(self, reseller_id: int, users_list: list) -> dict:
+        """
+        همگام‌سازی کامل اشتراک‌های نماینده با پنل هیدیفای:
+        ۱. بازیابی و بروزرسانی کلیه مشترکین موجود در هیدیفای به پنل نماینده
+        ۲. مقایسه و پاکسازی کلیه مشترکینی که در پنل نماینده هستند اما در هیدیفای وجود ندارند
+        """
+        if not reseller_id:
+            return {"success": False, "error": "شناسه نماینده نامعتبر است."}
+        if users_list is None or not isinstance(users_list, list):
+            return {"success": False, "error": "لیست کاربران هیدیفای نامعتبر است."}
+
+        # مرحله ۱: بازیابی و بروزرسانی مشترکین موجود در هیدیفای
+        restore_res = self.restore_subscriptions_from_hiddify(users_list, default_reseller_id=reseller_id)
+        synced_count = restore_res.get("synced_count", 0)
+
+        # مرحله ۲: استخراج تمام شناسه (UUID) های معتبر کاربران هیدیفای
+        hiddify_uuids = set()
+        for u in users_list:
+            if isinstance(u, dict) and u.get("uuid"):
+                hiddify_uuids.add(str(u["uuid"]).strip().lower())
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        purged_count = 0
+        purged_names = []
+
+        try:
+            # واکشی کلیه اشتراک‌های منتسب به این نماینده در دیتابیس
+            cursor.execute("""
+                SELECT id, hidify_uuid, account_name, telegram_id
+                FROM subscriptions
+                WHERE reseller_id = ?
+            """, (reseller_id,))
+            current_subs = cursor.fetchall()
+
+            extra_sub_ids = []
+            for sub in current_subs:
+                sub_uuid = str(sub["hidify_uuid"] or "").strip().lower()
+                # اگر کاربر UUID هیدیفای ندارد یا در لیست هیدیفای وجود ندارد -> کاربر اضافی است
+                if not sub_uuid or sub_uuid not in hiddify_uuids:
+                    extra_sub_ids.append(sub["id"])
+                    purged_names.append(sub["account_name"] or f"اشتراک #{sub['id']}")
+
+            if extra_sub_ids:
+                placeholders = ",".join("?" for _ in extra_sub_ids)
+                
+                # حفظ یکپارچگی ارجاعات جداول وابسته
+                cursor.execute(f"UPDATE transactions SET subscription_id = NULL WHERE subscription_id IN ({placeholders})", extra_sub_ids)
+                cursor.execute(f"DELETE FROM subscription_history WHERE subscription_id IN ({placeholders})", extra_sub_ids)
+                
+                # حذف کامل اشتراک‌های اضافی از پنل نماینده
+                cursor.execute(f"DELETE FROM subscriptions WHERE id IN ({placeholders})", extra_sub_ids)
+                purged_count = len(extra_sub_ids)
+
+                # پاکسازی کاربران شبیه‌سازی‌شده بدون اشتراک از جدول users
+                cursor.execute("""
+                    DELETE FROM users 
+                    WHERE telegram_id >= 900000000 
+                      AND telegram_id NOT IN (SELECT telegram_id FROM subscriptions)
+                """)
+
+            conn.commit()
+            logger.info(f"Sync & Prune for reseller #{reseller_id}: Synced {synced_count}, Purged {purged_count} extra customers.")
+            return {
+                "success": True,
+                "synced_count": synced_count,
+                "purged_count": purged_count,
+                "purged_names": purged_names
+            }
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Error in sync_and_prune_reseller_subscriptions for reseller #{reseller_id}: {e}")
+            return {"success": False, "error": str(e), "synced_count": synced_count, "purged_count": 0}
         finally:
             conn.close()
 
