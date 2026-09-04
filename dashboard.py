@@ -3888,6 +3888,7 @@ def subscriptions():
     tickets_map = db.get_customers_ticket_status_map()
     subscriptions_with_refund = []
     now_naive_val = get_now_naive()
+    restore_window = float(db.get_refund_settings().get("restore_window_days", 7))
     for s in sub_list:
         s_dict = enrich_subscription_details(s)
         s_dict["refund_info"] = db.calculate_customer_refund(s["id"])
@@ -3902,7 +3903,7 @@ def subscriptions():
                 except Exception:
                     days_passed = 0.0
             s_dict["days_passed"] = days_passed
-            s_dict["days_left"] = max(0.0, round(7.0 - days_passed, 1))
+            s_dict["days_left"] = max(0.0, round(restore_window - days_passed, 1))
         
         # وضعیت هوشمند تیکت مشتری
         tg_id = s_dict.get("telegram_id")
@@ -6398,19 +6399,43 @@ def settings():
             return redirect(url_for("settings"))
         elif action == "save_refund_settings":
             refund_enabled = request.form.get("refund_enabled") == "on"
-            rate_12h = int(request.form.get("refund_rate_before_12h", 100) or 100)
-            rate_24h = int(request.form.get("refund_rate_before_24h", 80) or 80)
+            rate_12h = int(request.form.get("refund_rate_before_12h") or request.form.get("refund_before_12h") or 100)
+            rate_24h = int(request.form.get("refund_rate_before_24h") or request.form.get("refund_before_24h") or 80)
             calc_from_creation = request.form.get("refund_calc_from_creation") == "on"
-            disabled_resellers = request.form.getlist("refund_disabled_resellers")
+            
+            raw_dis = request.form.getlist("refund_disabled_resellers") or request.form.getlist("disabled_resellers")
+            disabled_resellers = []
+            for d in raw_dis:
+                try:
+                    disabled_resellers.append(int(d))
+                except (ValueError, TypeError):
+                    pass
+
+            daily_restore_limit = int(request.form.get("daily_restore_limit") or 10)
+            restore_window_days = int(request.form.get("restore_window_days") or 7)
+
+            all_res = db.get_all_resellers()
+            reseller_daily_restore_limits = {}
+            for r in all_res:
+                r_id = str(r["id"])
+                val = request.form.get(f"reseller_restore_limit_{r_id}")
+                if val is not None and val.strip() != "":
+                    try:
+                        reseller_daily_restore_limits[r_id] = int(val.strip())
+                    except ValueError:
+                        pass
 
             db.save_refund_settings({
                 "refund_enabled": refund_enabled,
                 "refund_rate_before_12h": rate_12h,
                 "refund_rate_before_24h": rate_24h,
                 "refund_calc_from_creation": calc_from_creation,
-                "refund_disabled_resellers": disabled_resellers
+                "refund_disabled_resellers": disabled_resellers,
+                "daily_restore_limit": daily_restore_limit,
+                "restore_window_days": restore_window_days,
+                "reseller_daily_restore_limits": reseller_daily_restore_limits
             })
-            flash("تنظیمات هوشمند استرداد وجه نمایندگان با موفقیت ذخیره شد.", "success")
+            flash("تنظیمات هوشمند استرداد وجه و سطل زباله نمایندگان با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
 
     conn = db.get_connection()
@@ -7336,6 +7361,13 @@ def reseller_restore_user(sub_id: int):
         return redirect(url_for("reseller_users", status="deleted"))
 
     sub = dict(sub)
+
+    # بررسی سقف مجاز بازگردانی روزانه نماینده
+    can_restore, restore_err, restore_limit, current_count = db.can_reseller_restore(reseller_id, 1)
+    if not can_restore:
+        flash(restore_err, "danger")
+        return redirect(url_for("reseller_users", status="deleted"))
+
     plans = get_plans_dict()
     plan_key = sub.get("plan_id")
     plan = plans.get(plan_key) if plan_key in plans else None
@@ -7439,6 +7471,11 @@ def reseller_trash_bulk():
 
     success_count = 0
     if action == "restore":
+        can_restore, restore_err, restore_limit, current_count = db.can_reseller_restore(reseller_id, len(sub_ids))
+        if not can_restore:
+            flash(restore_err, "danger")
+            return redirect(url_for("reseller_users", status="deleted"))
+
         plans = get_plans_dict()
         stats = db.get_reseller_stats(reseller_id)
         discount = stats.get("discount_percent", 20)

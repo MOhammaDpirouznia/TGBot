@@ -2640,14 +2640,17 @@ class Database:
             conn.close()
 
     def get_refund_settings(self) -> dict:
-        """دریافت تنظیمات جامع قوانین استرداد وجه"""
+        """دریافت تنظیمات جامع قوانین استرداد وجه و سقف‌های بازگردانی"""
         raw = self.get_setting("refund_settings")
         defaults = {
             "refund_enabled": True,
             "disabled_resellers": [],
             "rate_before_12h": 100,
             "rate_before_24h": 80,
-            "calc_from_creation": True
+            "calc_from_creation": True,
+            "daily_restore_limit": 10,
+            "restore_window_days": 7,
+            "reseller_daily_restore_limits": {}
         }
         if isinstance(raw, dict):
             defaults.update(raw)
@@ -2656,12 +2659,21 @@ class Database:
         r12 = int(defaults.get("rate_before_12h", defaults.get("refund_rate_before_12h", defaults.get("before_12h_percent", 100))))
         r24 = int(defaults.get("rate_before_24h", defaults.get("refund_rate_before_24h", defaults.get("before_24h_percent", 80))))
         calc_creation = bool(defaults.get("calc_from_creation", defaults.get("refund_calc_from_creation", True)))
+        daily_restore_limit = int(defaults.get("daily_restore_limit", 10))
+        restore_window_days = int(defaults.get("restore_window_days", 7))
         
         raw_dis = defaults.get("disabled_resellers") or defaults.get("refund_disabled_resellers") or defaults.get("disabled_reseller_ids") or []
         if isinstance(raw_dis, list):
             dis_res = [int(x) for x in raw_dis if str(x).isdigit()]
         else:
             dis_res = []
+
+        raw_custom = defaults.get("reseller_daily_restore_limits") or {}
+        custom_limits = {}
+        if isinstance(raw_custom, dict):
+            for k, v in raw_custom.items():
+                if str(k).isdigit() and v is not None and str(v).isdigit():
+                    custom_limits[str(k)] = int(v)
 
         res = {
             "refund_enabled": enabled,
@@ -2676,7 +2688,10 @@ class Database:
             "refund_calc_from_creation": calc_creation,
             "disabled_resellers": dis_res,
             "disabled_reseller_ids": dis_res,
-            "refund_disabled_resellers": dis_res
+            "refund_disabled_resellers": dis_res,
+            "daily_restore_limit": daily_restore_limit,
+            "restore_window_days": restore_window_days,
+            "reseller_daily_restore_limits": custom_limits
         }
         return res
 
@@ -2689,6 +2704,54 @@ class Database:
         except Exception as e:
             logger.error(f"Error saving refund settings: {e}")
             return False
+
+    def get_reseller_daily_restore_count(self, reseller_id: int) -> int:
+        """تعداد دفعات بازگردانی اشتراک از سطل زباله توسط نماینده در تاریخ امروز"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            today_start = get_now_naive().strftime("%Y-%m-%d 00:00:00")
+            cursor.execute("""
+                SELECT COUNT(*) FROM reseller_transactions
+                WHERE reseller_id = ?
+                  AND type IN ('purchase', 'purchase_credit')
+                  AND (description LIKE '%بازگردانی%' OR description LIKE '%restore%')
+                  AND created_at >= ?
+            """, (reseller_id, today_start))
+            row = cursor.fetchone()
+            return int(row[0]) if row else 0
+        except Exception as e:
+            logger.error(f"Error getting reseller daily restore count: {e}")
+            return 0
+        finally:
+            conn.close()
+
+    def can_reseller_restore(self, reseller_id: int, count_to_restore: int = 1) -> tuple[bool, str, int, int]:
+        """
+        بررسی اینکه آیا نماینده مجاز به بازگردانی اشتراک‌های درخواستی در امروز هست یا خیر.
+        خروجی: (مجاز بودن, پیام خطا, سقف مجاز, تعداد انجام‌شده)
+        """
+        settings = self.get_refund_settings()
+        custom_limits = settings.get("reseller_daily_restore_limits", {})
+        default_limit = int(settings.get("daily_restore_limit", 10))
+
+        r_key = str(reseller_id)
+        if r_key in custom_limits and custom_limits[r_key] is not None:
+            limit = int(custom_limits[r_key])
+        else:
+            limit = default_limit
+
+        # عدد ۰ به معنای بدون محدودیت است
+        if limit <= 0:
+            return (True, "", 0, 0)
+
+        current_count = self.get_reseller_daily_restore_count(reseller_id)
+        if current_count + count_to_restore > limit:
+            remaining = max(0, limit - current_count)
+            err = f"سقف مجاز بازگردانی روزانه شما ({limit} بار در روز) تکمیل شده است. بازگردانی‌های امروز شما: {current_count} مورد | ظرفیت باقیمانده امروز: {remaining} مورد."
+            return (False, err, limit, current_count)
+
+        return (True, "", limit, current_count)
 
     # ═══════════════════════════════════════════════════════════════
     # مدیریت و چیدمان سفارشی دکمه‌ها و منوی ربات (Bot Menu Customizer)
@@ -6634,14 +6697,34 @@ class Database:
         sub_source = str(sub_dict.get("payment_source") or "").lower()
         is_credit_sub = bool(sub_dict.get("is_credit") or (sub_dict.get("credit_debt_amount") or 0) > 0 or sub_source == "credit")
 
-        # جستجوی تمام اقدامات مالی کسر شده از نماینده برای این اکانت (خرید اولیه + تمدیدها)
+        # جستجوی زمان آخرین استرداد ثبت‌شده برای این اشتراک (در صورت حذف و بازگردانی‌های قبلی)
         cursor.execute("""
-            SELECT * FROM reseller_transactions
-            WHERE reseller_id = ? 
-              AND (subscription_id = ? OR account_name = ? OR description LIKE ?)
-              AND type IN ('purchase', 'renewal', 'purchase_credit', 'renewal_credit')
-            ORDER BY created_at ASC
-        """, (reseller_id, sub_id, account_name, f"%{account_name}%"))
+            SELECT MAX(created_at) FROM reseller_transactions
+            WHERE reseller_id = ?
+              AND (subscription_id = ? OR account_name = ?)
+              AND type IN ('refund', 'refund_credit')
+        """, (reseller_id, sub_id, account_name))
+        latest_refund_row = cursor.fetchone()
+        latest_refund_time = latest_refund_row[0] if latest_refund_row and latest_refund_row[0] else None
+
+        # جستجوی تمام اقدامات مالی کسر شده از نماینده برای این اکانت (صرفاً اقدامات پس از آخرین استرداد)
+        if latest_refund_time:
+            cursor.execute("""
+                SELECT * FROM reseller_transactions
+                WHERE reseller_id = ? 
+                  AND (subscription_id = ? OR account_name = ?)
+                  AND created_at > ?
+                  AND type IN ('purchase', 'renewal', 'purchase_credit', 'renewal_credit')
+                ORDER BY created_at ASC
+            """, (reseller_id, sub_id, account_name, latest_refund_time))
+        else:
+            cursor.execute("""
+                SELECT * FROM reseller_transactions
+                WHERE reseller_id = ? 
+                  AND (subscription_id = ? OR account_name = ? OR description LIKE ?)
+                  AND type IN ('purchase', 'renewal', 'purchase_credit', 'renewal_credit')
+                ORDER BY created_at ASC
+            """, (reseller_id, sub_id, account_name, f"%{account_name}%"))
         tx_rows = cursor.fetchall()
         conn.close()
 
@@ -6666,8 +6749,10 @@ class Database:
             m = int((hours_val - h) * 60)
             return f"{h} ساعت و {m} دقیقه پیش" if h > 0 else f"{m} دقیقه پیش"
 
-        # محاسبه زمان بر اساس ساخت مشتری در صورت فعال بودن تنظیم
+        # محاسبه زمان بر اساس ساخت مشتری یا آخرین بازگردانی
         creation_dt_str = sub_dict.get("created_at") or get_now_iso()
+        if latest_refund_time and sub_dict.get("updated_at"):
+            creation_dt_str = sub_dict.get("updated_at")
         creation_elapsed_hours = _calc_elapsed(creation_dt_str)
         creation_time_passed_str = _format_time_passed(creation_elapsed_hours)
 
@@ -6754,8 +6839,12 @@ class Database:
                 percent = 0
                 rate = 0.0
 
-            # مبلغ پرداختی واقعی: صرفاً هزینه پلن پرداخت‌شده (cost_paid) نه بدهی مشتری
-            cost_paid = int(sub_dict.get("cost_paid") or 0)
+            # اگر قبلاً استرداد شده و تراکنش جدیدی ندارد، مبلغ پرداختی ۰ است
+            if latest_refund_time:
+                cost_paid = 0
+            else:
+                cost_paid = int(sub_dict.get("cost_paid") or 0)
+
             ref_amount = int(cost_paid * rate)
             total_paid = cost_paid
             total_refund = ref_amount
@@ -7099,6 +7188,7 @@ class Database:
             else:
                 cursor.execute(f"SELECT * FROM subscriptions WHERE is_deleted = 1 ORDER BY {order_clause}")
             rows = cursor.fetchall()
+            restore_window = float(self.get_refund_settings().get("restore_window_days", 7))
             result = []
             for r in rows:
                 item = dict(r)
@@ -7111,7 +7201,7 @@ class Database:
                     except Exception:
                         days_passed = 0.0
                 item["days_passed"] = days_passed
-                item["days_left"] = max(0.0, round(7.0 - days_passed, 1))
+                item["days_left"] = max(0.0, round(restore_window - days_passed, 1))
                 result.append(item)
 
             if sort_by == "days_left_asc":
@@ -7156,13 +7246,15 @@ class Database:
                     return {"success": False, "error": deduct_res.get("error", "موجودی یا اعتبار کافی نیست.")}
                 chosen_source = deduct_res.get("payment_source", "wallet")
 
-            # ساخت کوئری به‌روزرسانی با فیلدهای جدید
             update_sql = """
                 UPDATE subscriptions 
                 SET is_deleted = 0, deleted_at = NULL, delete_reason = NULL, deleted_by = NULL, disable_reason = NULL,
                     purged_from_hiddify = 0, status = 'active', updated_at = ?, payment_source = COALESCE(?, payment_source)
             """
             params = [now, chosen_source if (is_reseller and cost > 0) else None]
+            if is_reseller and cost > 0:
+                update_sql += ", cost_paid = ?"
+                params.append(cost)
             if new_uuid:
                 update_sql += ", hidify_uuid = ?"
                 params.append(new_uuid)
@@ -7227,6 +7319,7 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         now_dt = get_now_naive()
+        restore_window = float(self.get_refund_settings().get("restore_window_days", 7))
         purged_count = 0
         try:
             cursor.execute("SELECT id, hidify_uuid, account_name, deleted_at FROM subscriptions WHERE is_deleted = 1")
@@ -7240,7 +7333,7 @@ class Database:
                 except Exception:
                     continue
                 days_passed = (now_dt - del_dt).total_seconds() / 86400.0
-                if days_passed >= 7.0:
+                if days_passed >= restore_window:
                     uuid_val = r["hidify_uuid"]
                     if uuid_val and hiddify_purge_func:
                         try:
