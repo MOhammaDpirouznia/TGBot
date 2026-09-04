@@ -1839,7 +1839,7 @@ def inject_global_branding():
     if active_reseller_id:
         r_data = db.get_reseller(active_reseller_id)
         if r_data:
-            session["balance"] = r_data.get("balance", 0)
+            session["balance"] = int(r_data.get("balance") or 0)
             credit_enabled = bool(r_data.get("credit_enabled"))
             credit_limit = int(r_data.get("credit_limit") or 0)
             credit_debt = int(r_data.get("credit_debt") or 0)
@@ -1859,6 +1859,12 @@ def inject_global_branding():
                 "support_username": r_data.get("support_username"),
                 "bot_username": r_data.get("bot_username")
             }
+        else:
+            session["balance"] = 0
+            session["credit_enabled"] = False
+            session["credit_limit"] = 0
+            session["credit_debt"] = 0
+            session["available_credit"] = 0
     elif getattr(g, "custom_reseller", None):
         r_data = g.custom_reseller
         branding = {

@@ -21,23 +21,29 @@ logger = logging.getLogger(__name__)
 # Railway: اگر Volume دارید، DATA_DIR=/data تنظیم کنید
 # در غیر این صورت، دیتابیس در مسیر پروژه ذخیره میشه
 POSSIBLE_PATHS = []
-# ۱. اولویت اول: پوشه دیتای خود پروژه (به ویژه در ویندوز)
-if Path("data/bot_database.db").exists():
-    POSSIBLE_PATHS.append(Path("data"))
 
+# ۱. متغیر محیطی اختصاصی (بالاترین اولویت برای Railway Volume یا Docker Mount)
 data_dir_env = os.environ.get("DATA_DIR", "").strip()
 if data_dir_env:
-    # در ویندوز مسیر لینوکسی مثل /data نادیده گرفته می‌شود
     if not (os.name == "nt" and data_dir_env.startswith("/")):
         POSSIBLE_PATHS.append(Path(data_dir_env))
 
+# ۲. اگر دیتابیس در پوشه دیتای پروژه از قبل وجود دارد (ویندوز یا سرور لینوکس VPS)
+if Path("data/bot_database.db").exists():
+    POSSIBLE_PATHS.append(Path("data"))
+
+# ۳. اگر دیتابیس در مسیر پیش‌فرض Railway (/data/bot_database.db) وجود دارد
+if os.name != "nt" and Path("/data/bot_database.db").exists():
+    POSSIBLE_PATHS.append(Path("/data"))
+
+# ۴. پوشه پیش‌فرض دیتای پروژه
+POSSIBLE_PATHS.append(Path("data"))
+
+# ۵. سایر مسیرهای پایدار لینوکس و هوم دایرکتوری به عنوان فال‌بک
 if os.name != "nt":
     POSSIBLE_PATHS.append(Path("/data"))
 
-POSSIBLE_PATHS.extend([
-    Path("data"),  # Fallback to project directory
-    Path(os.path.expanduser("~/.vpn-bot/data")),  # Home directory
-])
+POSSIBLE_PATHS.append(Path(os.path.expanduser("~/.vpn-bot/data")))
 
 DB_DIR = None
 for path in POSSIBLE_PATHS:
