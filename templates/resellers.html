@@ -2,6 +2,103 @@
 {% block title %}مدیریت همکاران و نمایندگان فروش{% endblock %}
 
 {% block content %}
+<style>
+    /* استایل کارت و نام نماینده */
+    .reseller-row-card {
+        cursor: pointer;
+        padding: 4px 8px;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+        display: inline-flex;
+        align-items: center;
+        text-decoration: none !important;
+    }
+    .reseller-row-card:hover {
+        background-color: rgba(79, 70, 229, 0.07);
+    }
+    .reseller-row-card:hover .reseller-title {
+        color: var(--primary, #4f46e5) !important;
+    }
+    .reseller-row-card .manage-pill {
+        opacity: 0;
+        transform: translateX(-4px);
+        transition: all 0.2s ease;
+    }
+    .reseller-row-card:hover .manage-pill {
+        opacity: 1;
+        transform: translateX(0);
+    }
+
+    /* جلوگیری از بریده‌شدن منوی دراپ‌داون در جدول */
+    .table-responsive {
+        overflow-x: auto;
+        overflow-y: visible !important;
+        padding-bottom: 70px;
+        margin-bottom: -70px;
+    }
+
+    /* استایل دکمه سه‌نقطه و منوی عملیات */
+    .btn-action-more {
+        width: 32px;
+        height: 31px;
+        padding: 0 !important;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        transition: all 0.15s ease;
+        background-color: #fff;
+    }
+    .btn-action-more:hover, .btn-action-more:focus {
+        background-color: #f1f5f9;
+        border-color: #cbd5e1;
+    }
+    .btn-action-more::after {
+        display: none !important;
+    }
+    [data-bs-theme="dark"] .btn-action-more {
+        background-color: #1e293b;
+        border-color: #334155;
+        color: #f8fafc;
+    }
+    [data-bs-theme="dark"] .btn-action-more:hover {
+        background-color: #334155;
+    }
+    .action-dropdown-menu {
+        border-radius: 12px;
+        border: none;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08);
+        padding: 6px;
+        min-width: 210px;
+        z-index: 1055;
+    }
+    .action-dropdown-menu .dropdown-item {
+        border-radius: 8px;
+        padding: 7px 12px;
+        font-size: 0.83rem;
+        transition: all 0.15s ease;
+    }
+    .action-dropdown-menu .dropdown-item:hover {
+        background-color: rgba(79, 70, 229, 0.08);
+        color: #4f46e5;
+    }
+    .action-dropdown-menu .dropdown-item.text-danger:hover {
+        background-color: rgba(239, 68, 68, 0.1);
+        color: #dc2626 !important;
+    }
+
+    /* نوار ابزار عملیات بالای مودال نماینده */
+    .reseller-quick-toolbar {
+        background: linear-gradient(to left, rgba(79, 70, 229, 0.04), rgba(248, 250, 252, 0.9));
+        border: 1px solid rgba(79, 70, 229, 0.12);
+        border-radius: 12px;
+    }
+    [data-bs-theme="dark"] .reseller-quick-toolbar {
+        background: linear-gradient(to left, rgba(79, 70, 229, 0.12), rgba(30, 41, 59, 0.8));
+        border-color: rgba(79, 70, 229, 0.25);
+    }
+</style>
+
 <div class="page-header">
     <div>
         <h1 class="page-title"><i class="fas fa-handshake text-primary"></i> شبکه نمایندگان و همکاران فروش</h1>
@@ -63,30 +160,40 @@
                     {% for r in resellers %}
                     <tr>
                         <td class="ps-3" data-value="{{ (r['name'] or '')|striptags }}">
-                            <div class="d-flex align-items-center gap-2">
-                                <div class="position-relative" style="cursor: pointer;" data-bs-toggle="modal" data-bs-target="#resellerPaymentModal{{ r['id'] }}" title="مشاهده سوابق و جزئیات پرداخت‌های {{ r['name'] }}">
+                            <div class="reseller-row-card" 
+                                 data-bs-toggle="modal" 
+                                 data-bs-target="#resellerPaymentModal{{ r['id'] }}" 
+                                 title="کلیک برای مشاهده سوابق، جزئیات و مدیریت نماینده">
+                                <div class="position-relative flex-shrink-0">
                                     <img src="{{ avatar_url(r['telegram_id'] or r['username'] or 'Reseller') }}" 
                                          alt="{{ r['name'] }}" 
-                                         class="rounded-circle border shadow-sm flex-shrink-0" 
+                                         class="rounded-circle border shadow-sm" 
                                          style="width: 40px; height: 40px; object-fit: cover;" 
                                          loading="lazy">
                                     <span class="position-absolute bottom-0 start-0 translate-middle p-1 border border-white rounded-circle {{ 'bg-success' if r.get('is_online') else 'bg-secondary opacity-50' }}" 
                                           title="{{ 'آنلاین' if r.get('is_online') else 'آفلاین' }}" style="width: 12px; height: 12px;"></span>
                                 </div>
-                                <div>
+                                <div class="ms-2">
                                     <div class="d-flex align-items-center gap-1">
-                                        <a href="javascript:void(0)" class="fw-bold text-dark text-decoration-none hover-primary" data-bs-toggle="modal" data-bs-target="#resellerPaymentModal{{ r['id'] }}" title="مشاهده سوابق و جزئیات پرداخت‌ها">
-                                            {{ r['name'] }} <i class="fas fa-file-invoice-dollar text-primary ms-1" style="font-size: 0.8rem;"></i>
-                                        </a>
+                                        <span class="fw-bold text-dark reseller-title">
+                                            {{ r['name'] }}
+                                        </span>
                                         {% if r.get('is_online') %}
                                             <span class="badge bg-success-subtle text-success border border-success px-1 py-0" style="font-size: 0.65rem;"><i class="fas fa-circle me-1" style="font-size: 0.5rem;"></i>آنلاین</span>
                                         {% else %}
                                             <span class="badge bg-light text-muted border px-1 py-0" style="font-size: 0.65rem;">آفلاین</span>
                                         {% endif %}
                                     </div>
-                                    {% if r['telegram_id'] %}
-                                        <div class="text-muted small"><code>ID: {{ r['telegram_id'] }}</code></div>
-                                    {% endif %}
+                                    <div class="d-flex align-items-center gap-1 mt-1 text-muted small">
+                                        {% if r['telegram_id'] %}
+                                            <code>ID: {{ r['telegram_id'] }}</code>
+                                        {% else %}
+                                            <code class="text-secondary">@{{ r['username'] }}</code>
+                                        {% endif %}
+                                        <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-1 py-0 manage-pill" style="font-size: 0.6rem;">
+                                            <i class="fas fa-sliders me-1"></i>مدیریت
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         </td>
@@ -168,41 +275,99 @@
                                 <span class="badge badge-rejected">معلق</span>
                             {% endif %}
                         </td>
-                        <td>
-                            <div class="btn-group btn-group-sm">
-                                <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#resellerPaymentModal{{ r['id'] }}" title="مشاهده سوابق مالی و پرداخت‌ها">
-                                    <i class="fas fa-file-invoice-dollar me-1"></i> سابقه پرداخت‌ها
+                        <td class="text-end pe-3">
+                            <div class="d-flex align-items-center justify-content-end gap-1 flex-nowrap">
+                                <!-- ۱. دکمه شارژ کیف پول (عملیات پرکاربرد) -->
+                                <button type="button" 
+                                        class="btn btn-sm btn-outline-success d-inline-flex align-items-center gap-1 px-2.5 py-1 shadow-xs rounded-2" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#topupModal{{ r['id'] }}" 
+                                        title="شارژ سریع موجودی کیف پول">
+                                    <i class="fas fa-wallet"></i>
+                                    <span class="small fw-medium d-none d-lg-inline">شارژ</span>
                                 </button>
-                                <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#topupModal{{ r['id'] }}" title="شارژ کیف پول">
-                                    <i class="fas fa-wallet me-1"></i> شارژ
+
+                                <!-- ۲. دکمه سوابق و پروفایل -->
+                                <button type="button" 
+                                        class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 px-2.5 py-1 shadow-xs rounded-2" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#resellerPaymentModal{{ r['id'] }}" 
+                                        title="مشاهده سوابق مالی و جزئیات">
+                                    <i class="fas fa-file-invoice-dollar"></i>
+                                    <span class="small fw-medium d-none d-lg-inline">سوابق</span>
                                 </button>
-                                <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#addDebtModal{{ r['id'] }}" title="ثبت قبض بدهی جدید یا بدهی معوق قبلی">
-                                    <i class="fas fa-file-invoice-dollar me-1"></i> ثبت بدهی
-                                </button>
-                                {% if r.get('credit_enabled') or (r.get('credit_debt') or 0) > 0 %}
-                                <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#settleDebtModal{{ r['id'] }}" title="تسویه حساب و تسویه بدهی اعتباری">
-                                    <i class="fas fa-hand-holding-dollar"></i>
-                                </button>
-                                {% endif %}
-                                {% if r.get('bot_token') %}
-                                <form action="{{ url_for('admin_reseller_bot_toggle', reseller_id=r['id']) }}" method="POST" class="d-inline">
-                                    <button type="submit" class="btn {{ 'btn-outline-danger' if r.get('bot_status', {}).get('is_running') else 'btn-outline-success' }}" title="{{ 'توقف ربات اختصاصی' if r.get('bot_status', {}).get('is_running') else 'روشن کردن ربات اختصاصی' }}">
-                                        <i class="fas fa-robot"></i>
+
+                                <!-- ۳. منوی کشویی سه‌نقطه (عملیات فرعی، مدیریتی و حذف) -->
+                                <div class="dropdown d-inline-block">
+                                    <button class="btn btn-sm btn-light border btn-action-more shadow-xs" 
+                                            type="button" 
+                                            data-bs-toggle="dropdown" 
+                                            data-bs-boundary="window"
+                                            aria-expanded="false" 
+                                            title="سایر عملیات نماینده">
+                                        <i class="fas fa-ellipsis-vertical text-secondary"></i>
                                     </button>
-                                </form>
-                                {% endif %}
-                                <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#securityModal{{ r['id'] }}" title="مشاهده نشست‌ها و امنیت نماینده">
-                                    <i class="fas fa-shield-halved"></i>
-                                </button>
-                                <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editResellerModal{{ r['id'] }}" title="ویرایش اطلاعات">
-                                    <i class="fas fa-pen"></i>
-                                </button>
-                                <a href="{{ url_for('admin_reseller_toggle', reseller_id=r['id']) }}" class="btn btn-outline-warning" title="تغییر وضعیت فعال/غیرفعال" onclick="return confirm('آیا از تغییر وضعیت این نماینده مطمئن هستید؟')">
-                                    <i class="fas fa-power-off"></i>
-                                </a>
-                                <a href="{{ url_for('admin_reseller_delete', reseller_id=r['id']) }}" class="btn btn-outline-danger" title="حذف نماینده" onclick="return confirm('آیا از حذف کامل این نماینده و سوابق آن اطمینان دارید؟ این عمل غیرقابل بازگشت است.')">
-                                    <i class="fas fa-trash-can"></i>
-                                </a>
+                                    <ul class="dropdown-menu dropdown-menu-end action-dropdown-menu text-start">
+                                        <li class="dropdown-header text-muted py-1 px-2 small border-bottom mb-1">
+                                            <i class="fas fa-user-gear me-1"></i> مدیریت «{{ r['name'] }}»
+                                        </li>
+                                        <li>
+                                            <button type="button" class="dropdown-item d-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#resellerPaymentModal{{ r['id'] }}">
+                                                <i class="fas fa-id-card text-primary" style="width: 16px;"></i>
+                                                <span>مشاهده سوابق و پروفایل</span>
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button type="button" class="dropdown-item d-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#editResellerModal{{ r['id'] }}">
+                                                <i class="fas fa-pen text-secondary" style="width: 16px;"></i>
+                                                <span>ویرایش مشخصات</span>
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button type="button" class="dropdown-item d-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#securityModal{{ r['id'] }}">
+                                                <i class="fas fa-shield-halved text-info" style="width: 16px;"></i>
+                                                <span>امنیت و نشست‌ها</span>
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button type="button" class="dropdown-item d-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#addDebtModal{{ r['id'] }}">
+                                                <i class="fas fa-receipt text-warning" style="width: 16px;"></i>
+                                                <span>ثبت بدهی جدید</span>
+                                            </button>
+                                        </li>
+                                        {% if r.get('credit_enabled') or (r.get('credit_debt') or 0) > 0 %}
+                                        <li>
+                                            <button type="button" class="dropdown-item d-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#settleDebtModal{{ r['id'] }}">
+                                                <i class="fas fa-hand-holding-dollar text-danger" style="width: 16px;"></i>
+                                                <span>تسویه بدهی اعتباری</span>
+                                            </button>
+                                        </li>
+                                        {% endif %}
+                                        {% if r.get('bot_token') %}
+                                        <li>
+                                            <form action="{{ url_for('admin_reseller_bot_toggle', reseller_id=r['id']) }}" method="POST" class="m-0">
+                                                <button type="submit" class="dropdown-item d-flex align-items-center gap-2 w-100 text-start">
+                                                    <i class="fas fa-robot {{ 'text-danger' if r.get('bot_status', {}).get('is_running') else 'text-success' }}" style="width: 16px;"></i>
+                                                    <span>{{ 'توقف ربات اختصاصی' if r.get('bot_status', {}).get('is_running') else 'روشن کردن ربات اختصاصی' }}</span>
+                                                </button>
+                                            </form>
+                                        </li>
+                                        {% endif %}
+                                        <li>
+                                            <a class="dropdown-item d-flex align-items-center gap-2" href="{{ url_for('admin_reseller_toggle', reseller_id=r['id']) }}" onclick="return confirm('آیا از تغییر وضعیت این نماینده مطمئن هستید؟')">
+                                                <i class="fas fa-power-off {{ 'text-warning' if r['status'] == 'active' else 'text-success' }}" style="width: 16px;"></i>
+                                                <span>{{ 'معلق‌سازی حساب' if r['status'] == 'active' else 'فعال‌سازی حساب' }}</span>
+                                            </a>
+                                        </li>
+                                        <li><hr class="dropdown-divider my-1"></li>
+                                        <li>
+                                            <a class="dropdown-item d-flex align-items-center gap-2 text-danger" href="{{ url_for('admin_reseller_delete', reseller_id=r['id']) }}" onclick="return confirm('⚠️ آیا از حذف کامل این نماینده و سوابق آن اطمینان دارید؟ این عمل غیرقابل بازگشت است.')">
+                                                <i class="fas fa-trash-can" style="width: 16px;"></i>
+                                                <span class="fw-bold">حذف نماینده</span>
+                                            </a>
+                                        </li>
+                                    </ul>
+                                </div>
                             </div>
                         </td>
                     </tr>
@@ -228,23 +393,105 @@
         <div class="modal-content shadow-lg border-0 text-start">
             <div class="modal-header bg-primary text-white py-3">
                 <div class="d-flex align-items-center gap-2">
-                    <i class="fas fa-file-invoice-dollar fs-4"></i>
+                    <img src="{{ avatar_url(r['telegram_id'] or r['username'] or 'Reseller') }}" 
+                         alt="{{ r['name'] }}" 
+                         class="rounded-circle border border-2 border-white shadow-sm flex-shrink-0" 
+                         style="width: 44px; height: 44px; object-fit: cover;">
                     <div>
-                        <h5 class="modal-title fw-bold mb-0" id="resellerPaymentModalLabel{{ r['id'] }}">سوابق مالی و جزئیات پرداخت‌های «{{ r['name'] }}»</h5>
+                        <div class="d-flex align-items-center gap-2">
+                            <h5 class="modal-title fw-bold mb-0" id="resellerPaymentModalLabel{{ r['id'] }}">پروفایل و مدیریت نماینده: «{{ r['name'] }}»</h5>
+                            {% if r['status'] == 'active' %}
+                                <span class="badge bg-success" style="font-size: 0.7rem;">فعال</span>
+                            {% else %}
+                                <span class="badge bg-danger" style="font-size: 0.7rem;">معلق</span>
+                            {% endif %}
+                            {% if r.get('is_online') %}
+                                <span class="badge bg-success-subtle text-success border border-success" style="font-size: 0.65rem;"><i class="fas fa-circle me-1" style="font-size: 0.45rem;"></i>آنلاین</span>
+                            {% else %}
+                                <span class="badge bg-secondary-subtle text-secondary" style="font-size: 0.65rem;">آفلاین</span>
+                            {% endif %}
+                        </div>
                         <small class="opacity-75">نام کاربری: @{{ r['username'] }} {% if r['telegram_id'] %}| آیدی تلگرام: {{ r['telegram_id'] }}{% endif %}</small>
                     </div>
                 </div>
                 <div class="d-flex align-items-center gap-2">
-                    <a href="{{ url_for('admin_reseller_export_payments', reseller_id=r['id']) }}" class="btn btn-sm btn-light fw-bold">
+                    <a href="{{ url_for('admin_reseller_export_payments', reseller_id=r['id']) }}" class="btn btn-sm btn-light fw-bold" title="دانلود خروجی اکسل سوابق مالی">
                         <i class="fas fa-file-excel text-success me-1"></i> خروجی اکسل
                     </a>
-                    <a href="{{ url_for('admin_reseller_payments', reseller_id=r['id']) }}" class="btn btn-sm btn-outline-light">
+                    <a href="{{ url_for('admin_reseller_payments', reseller_id=r['id']) }}" class="btn btn-sm btn-outline-light" title="مشاهده صفحه اختصاصی گزارش پرداخت‌ها">
                         <i class="fas fa-arrow-up-right-from-square me-1"></i> صفحه اختصاصی
                     </a>
                     <button type="button" class="btn-close btn-close-white ms-2" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
             </div>
             <div class="modal-body p-4">
+                <!-- جعبه‌ابزار مدیریت و عملیات نماینده (دسترسی به تمام دکمه‌های کم‌استفاده و تنظیمات) -->
+                <div class="reseller-quick-toolbar p-3 mb-4 shadow-sm">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2 pb-2 border-bottom">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="fw-bold text-dark small">
+                                <i class="fas fa-sliders text-primary me-1"></i> عملیات و مدیریت «{{ r['name'] }}»
+                            </span>
+                            <span class="badge bg-secondary-subtle text-secondary border px-2 py-0.5" style="font-size: 0.7rem;">
+                                شناسه #{{ r['id'] }}
+                            </span>
+                        </div>
+                        <div class="small text-muted">
+                            درصد تخفیف: <strong class="text-primary">{{ r['discount_percent'] }}٪</strong> | 
+                            موجودی کیف پول: <strong class="text-success font-monospace">{{ "{:,}".format(r['balance'] or 0) }} ت</strong>
+                            {% if r.get('credit_enabled') %}
+                                | بدهی اعتباری: <strong class="text-danger font-monospace">{{ "{:,}".format(r.get('credit_debt') or 0) }} ت</strong>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <button type="button" class="btn btn-sm btn-success d-inline-flex align-items-center gap-1 shadow-xs px-3 py-1.5" data-bs-switch-modal="#topupModal{{ r['id'] }}">
+                            <i class="fas fa-wallet"></i>
+                            <span>شارژ کیف پول</span>
+                        </button>
+
+                        <button type="button" class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1 shadow-xs px-3 py-1.5" data-bs-switch-modal="#editResellerModal{{ r['id'] }}">
+                            <i class="fas fa-pen text-primary"></i>
+                            <span>ویرایش مشخصات</span>
+                        </button>
+
+                        <button type="button" class="btn btn-sm btn-outline-info d-inline-flex align-items-center gap-1 shadow-xs px-3 py-1.5" data-bs-switch-modal="#securityModal{{ r['id'] }}">
+                            <i class="fas fa-shield-halved"></i>
+                            <span>امنیت و نشست‌ها</span>
+                        </button>
+
+                        <button type="button" class="btn btn-sm btn-outline-warning text-dark d-inline-flex align-items-center gap-1 shadow-xs px-3 py-1.5" data-bs-switch-modal="#addDebtModal{{ r['id'] }}">
+                            <i class="fas fa-file-invoice-dollar text-warning"></i>
+                            <span>ثبت بدهی جدید</span>
+                        </button>
+
+                        {% if r.get('credit_enabled') or (r.get('credit_debt') or 0) > 0 %}
+                        <button type="button" class="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1 shadow-xs px-3 py-1.5" data-bs-switch-modal="#settleDebtModal{{ r['id'] }}">
+                            <i class="fas fa-hand-holding-dollar"></i>
+                            <span>تسویه بدهی اعتباری ({{ "{:,}".format(r.get('credit_debt') or 0) }} ت)</span>
+                        </button>
+                        {% endif %}
+
+                        {% if r.get('bot_token') %}
+                        <form action="{{ url_for('admin_reseller_bot_toggle', reseller_id=r['id']) }}" method="POST" class="d-inline m-0">
+                            <button type="submit" class="btn btn-sm {{ 'btn-outline-danger' if r.get('bot_status', {}).get('is_running') else 'btn-outline-success' }} d-inline-flex align-items-center gap-1 shadow-xs px-3 py-1.5">
+                                <i class="fas fa-robot"></i>
+                                <span>{{ 'توقف ربات' if r.get('bot_status', {}).get('is_running') else 'روشن کردن ربات' }}</span>
+                            </button>
+                        </form>
+                        {% endif %}
+
+                        <a href="{{ url_for('admin_reseller_toggle', reseller_id=r['id']) }}" class="btn btn-sm btn-outline-warning d-inline-flex align-items-center gap-1 shadow-xs px-3 py-1.5 ms-auto" onclick="return confirm('آیا از تغییر وضعیت این نماینده مطمئن هستید؟')">
+                            <i class="fas fa-power-off"></i>
+                            <span>{{ 'معلق‌سازی حساب' if r['status'] == 'active' else 'فعال‌سازی حساب' }}</span>
+                        </a>
+
+                        <a href="{{ url_for('admin_reseller_delete', reseller_id=r['id']) }}" class="btn btn-sm btn-danger d-inline-flex align-items-center gap-1 shadow-xs px-3 py-1.5" onclick="return confirm('⚠️ آیا از حذف کامل این نماینده و سوابق آن اطمینان دارید؟\n\nاین عمل غیرقابل بازگشت است و کلیه اطلاعات مالی، سوابق و دسترسی‌های این نماینده پاک خواهند شد.')">
+                            <i class="fas fa-trash-can"></i>
+                            <span>حذف نماینده</span>
+                        </a>
+                    </div>
+                </div>
                 {% set p_hist = r.get('payment_history', {}) %}
                 <!-- ۴ کارت آماری وضعیت مالی نماینده -->
                 <div class="row g-3 mb-4">
@@ -900,4 +1147,30 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // جابجایی نرم و بدون باگ بین پنجره‌های مودال نماینده
+    document.querySelectorAll('[data-bs-switch-modal]').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const targetModalId = this.getAttribute('data-bs-switch-modal');
+            const currentModalEl = this.closest('.modal');
+            if (currentModalEl) {
+                const currentModal = bootstrap.Modal.getInstance(currentModalEl);
+                if (currentModal) {
+                    currentModal.hide();
+                }
+                setTimeout(function() {
+                    const targetEl = document.querySelector(targetModalId);
+                    if (targetEl) {
+                        const targetModal = bootstrap.Modal.getOrCreateInstance(targetEl);
+                        targetModal.show();
+                    }
+                }, 350);
+            }
+        });
+    });
+});
+</script>
 {% endblock %}
