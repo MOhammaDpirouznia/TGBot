@@ -915,7 +915,7 @@
                     <div class="mb-3 border border-warning p-3 rounded bg-warning bg-opacity-10">
                         <label class="form-label fw-bold text-dark"><i class="fas fa-hand-holding-dollar text-warning me-1"></i> تنظیمات خرید اعتباری (پست‌پی / نسیه):</label>
                         <div class="form-check form-switch mb-2">
-                            <input class="form-check-input" type="checkbox" name="credit_enabled" id="creditEnabledEdit{{ r['id'] }}" {% if r.get('credit_enabled') %}checked{% endif %}>
+                            <input class="form-check-input" type="checkbox" name="credit_enabled" id="creditEnabledEdit{{ r['id'] }}" {% if r.get('credit_enabled') or (r.get('credit_limit') or 0) > 0 %}checked{% endif %}>
                             <label class="form-check-label fw-bold small text-dark" for="creditEnabledEdit{{ r['id'] }}">
                                 اجازه خرید اعتباری و ثبت اشتراک بدون پرداخت نقدی پیشاپیش
                             </label>

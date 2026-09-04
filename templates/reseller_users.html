@@ -2,6 +2,7 @@
 {% block title %}مدیریت مشتریان - پنل نمایندگی{% endblock %}
 
 {% block content %}
+{% set has_reseller_credit = has_reseller_credit or stats.get('credit_enabled') or (stats.get('credit_limit') or 0) > 0 or (available_credit or 0) > 0 or session.get('credit_enabled') or (session.get('credit_limit') or 0) > 0 or credit_enabled %}
 <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2">
     <div>
         <h1 class="page-title"><i class="fas fa-users text-primary"></i> مدیریت و لیست مشتریان شما</h1>
@@ -14,12 +15,12 @@
         <span class="badge bg-dark fs-6 py-2 px-3" title="موجودی نقد کیف پول">
             <i class="fas fa-wallet text-success me-1"></i> کیف پول: {{ "{:,}".format(balance) }} ت
         </span>
-        {% if stats.get('credit_enabled') %}
+        {% if has_reseller_credit %}
         <span class="badge bg-secondary fs-6 py-2 px-3" title="اعتبار خرید اختصاص‌یافته توسط مدیریت">
-            <i class="fas fa-credit-card text-info me-1"></i> اعتبار باقیمانده: {{ "{:,}".format(available_credit) }} ت
+            <i class="fas fa-credit-card text-info me-1"></i> اعتبار باقیمانده: {{ "{:,}".format(available_credit or session.get('available_credit') or 0) }} ت
         </span>
         <span class="badge bg-primary fs-6 py-2 px-3 shadow-sm" title="مجموع موجودی و اعتبار در دسترس برای خرید و تمدید">
-            <i class="fas fa-coins text-warning me-1"></i> کل توان خرید: {{ "{:,}".format(total_purchasing_power) }} ت
+            <i class="fas fa-coins text-warning me-1"></i> کل توان خرید: {{ "{:,}".format(total_purchasing_power or (balance + (available_credit or 0))) }} ت
         </span>
         {% endif %}
         {% if unpaid_debts_total > 0 %}
@@ -695,35 +696,41 @@
                     </div>
                     {% endif %}
 
+                    {% set has_reseller_credit = stats.get('credit_enabled') or (stats.get('credit_limit') or 0) > 0 or (available_credit or 0) > 0 or session.get('credit_enabled') or (session.get('credit_limit') or 0) > 0 %}
                     <div class="alert alert-info py-2 small mb-3">
                         <div class="d-flex justify-content-between flex-wrap gap-1">
                             <span><i class="fas fa-wallet me-1"></i> کیف پول نقدی: <strong>{{ "{:,}".format(balance) }} ت</strong></span>
-                            {% if stats.get('credit_enabled') %}
-                            <span><i class="fas fa-credit-card me-1 text-primary"></i> اعتبار خرید: <strong>{{ "{:,}".format(available_credit) }} ت</strong></span>
+                            {% if has_reseller_credit %}
+                            <span><i class="fas fa-credit-card me-1 text-primary"></i> اعتبار خرید: <strong>{{ "{:,}".format(available_credit or session.get('available_credit') or 0) }} ت</strong></span>
                             {% endif %}
                         </div>
                     </div>
 
-                    {% if stats.get('credit_enabled') %}
+                    {% if has_reseller_credit %}
                     <div class="mb-3 p-2 border rounded bg-light">
-                        <label class="form-label fw-bold small text-dark mb-1">منبع کسر هزینه تمدید:</label>
+                        <label class="form-label fw-bold small text-dark mb-1">
+                            <i class="fas fa-money-bill-transfer text-primary me-1"></i> منبع کسر هزینه تمدید:
+                        </label>
                         <div class="row g-2">
                             <div class="col-4">
-                                <label class="border rounded p-2 text-center d-block bg-white cursor-pointer mb-0" style="cursor: pointer;">
+                                <label class="border rounded p-2 text-center d-block bg-white cursor-pointer mb-0 h-100 shadow-sm" style="cursor: pointer;">
                                     <input type="radio" name="payment_source" value="wallet" class="form-check-input mb-1" {% if balance > 0 %}checked{% endif %}>
-                                    <div class="small fw-bold">کیف پول</div>
+                                    <div class="small fw-bold text-success"><i class="fas fa-wallet me-1"></i>کیف پول</div>
+                                    <div class="text-muted" style="font-size: 0.72rem;">{{ "{:,}".format(balance) }} ت</div>
                                 </label>
                             </div>
                             <div class="col-4">
-                                <label class="border rounded p-2 text-center d-block bg-white cursor-pointer mb-0" style="cursor: pointer;">
-                                    <input type="radio" name="payment_source" value="credit" class="form-check-input mb-1" {% if balance <= 0 and available_credit > 0 %}checked{% endif %}>
-                                    <div class="small fw-bold">اعتبار خرید</div>
+                                <label class="border rounded p-2 text-center d-block bg-white cursor-pointer mb-0 h-100 shadow-sm" style="cursor: pointer;">
+                                    <input type="radio" name="payment_source" value="credit" class="form-check-input mb-1" {% if balance <= 0 and (available_credit or session.get('available_credit') or 0) > 0 %}checked{% endif %}>
+                                    <div class="small fw-bold text-info"><i class="fas fa-credit-card me-1"></i>اعتبار خرید</div>
+                                    <div class="text-muted" style="font-size: 0.72rem;">{{ "{:,}".format(available_credit or session.get('available_credit') or 0) }} ت</div>
                                 </label>
                             </div>
                             <div class="col-4">
-                                <label class="border rounded p-2 text-center d-block bg-white cursor-pointer mb-0" style="cursor: pointer;">
-                                    <input type="radio" name="payment_source" value="auto" class="form-check-input mb-1">
-                                    <div class="small fw-bold">خودکار</div>
+                                <label class="border rounded p-2 text-center d-block bg-white cursor-pointer mb-0 h-100 shadow-sm" style="cursor: pointer;">
+                                    <input type="radio" name="payment_source" value="auto" class="form-check-input mb-1" {% if balance <= 0 and (available_credit or session.get('available_credit') or 0) <= 0 %}checked{% endif %}>
+                                    <div class="small fw-bold text-primary"><i class="fas fa-wand-magic-sparkles me-1"></i>خودکار</div>
+                                    <div class="text-muted" style="font-size: 0.72rem;">ترکیبی</div>
                                 </label>
                             </div>
                         </div>
@@ -1229,33 +1236,38 @@
                     <div class="alert alert-info py-2 px-3 small mb-3">
                         <div class="d-flex justify-content-between flex-wrap gap-1">
                             <span><i class="fas fa-wallet me-1"></i> کیف پول نقدی: <strong>{{ "{:,}".format(balance) }} ت</strong></span>
-                            {% if stats.get('credit_enabled') %}
-                            <span><i class="fas fa-credit-card me-1 text-primary"></i> اعتبار خرید: <strong>{{ "{:,}".format(available_credit) }} ت</strong></span>
+                            {% if has_reseller_credit %}
+                            <span><i class="fas fa-credit-card me-1 text-primary"></i> اعتبار خرید: <strong>{{ "{:,}".format(available_credit or session.get('available_credit') or 0) }} ت</strong></span>
                             {% endif %}
                         </div>
                         <div class="mt-1">تعداد <strong id="resellerBulkRenewCount">0</strong> مشتری برای تمدید انتخاب شده‌اند.</div>
                     </div>
 
-                    {% if stats.get('credit_enabled') %}
+                    {% if has_reseller_credit %}
                     <div class="mb-3 p-2 border rounded bg-light">
-                        <label class="form-label fw-bold small text-dark mb-1">منبع کسر هزینه تمدید گروهی:</label>
+                        <label class="form-label fw-bold small text-dark mb-1">
+                            <i class="fas fa-money-bill-transfer text-primary me-1"></i> منبع کسر هزینه تمدید گروهی:
+                        </label>
                         <div class="row g-2">
                             <div class="col-4">
-                                <label class="border rounded p-2 text-center d-block bg-white cursor-pointer mb-0" style="cursor: pointer;">
+                                <label class="border rounded p-2 text-center d-block bg-white cursor-pointer mb-0 h-100 shadow-sm" style="cursor: pointer;">
                                     <input type="radio" name="payment_source" value="wallet" class="form-check-input mb-1" {% if balance > 0 %}checked{% endif %}>
-                                    <div class="small fw-bold">کیف پول</div>
+                                    <div class="small fw-bold text-success"><i class="fas fa-wallet me-1"></i>کیف پول</div>
+                                    <div class="text-muted" style="font-size: 0.72rem;">{{ "{:,}".format(balance) }} ت</div>
                                 </label>
                             </div>
                             <div class="col-4">
-                                <label class="border rounded p-2 text-center d-block bg-white cursor-pointer mb-0" style="cursor: pointer;">
-                                    <input type="radio" name="payment_source" value="credit" class="form-check-input mb-1" {% if balance <= 0 and available_credit > 0 %}checked{% endif %}>
-                                    <div class="small fw-bold">اعتبار خرید</div>
+                                <label class="border rounded p-2 text-center d-block bg-white cursor-pointer mb-0 h-100 shadow-sm" style="cursor: pointer;">
+                                    <input type="radio" name="payment_source" value="credit" class="form-check-input mb-1" {% if balance <= 0 and (available_credit or session.get('available_credit') or 0) > 0 %}checked{% endif %}>
+                                    <div class="small fw-bold text-info"><i class="fas fa-credit-card me-1"></i>اعتبار خرید</div>
+                                    <div class="text-muted" style="font-size: 0.72rem;">{{ "{:,}".format(available_credit or session.get('available_credit') or 0) }} ت</div>
                                 </label>
                             </div>
                             <div class="col-4">
-                                <label class="border rounded p-2 text-center d-block bg-white cursor-pointer mb-0" style="cursor: pointer;">
-                                    <input type="radio" name="payment_source" value="auto" class="form-check-input mb-1">
-                                    <div class="small fw-bold">خودکار</div>
+                                <label class="border rounded p-2 text-center d-block bg-white cursor-pointer mb-0 h-100 shadow-sm" style="cursor: pointer;">
+                                    <input type="radio" name="payment_source" value="auto" class="form-check-input mb-1" {% if balance <= 0 and (available_credit or session.get('available_credit') or 0) <= 0 %}checked{% endif %}>
+                                    <div class="small fw-bold text-primary"><i class="fas fa-wand-magic-sparkles me-1"></i>خودکار</div>
+                                    <div class="text-muted" style="font-size: 0.72rem;">ترکیبی</div>
                                 </label>
                             </div>
                         </div>
