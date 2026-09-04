@@ -1,0 +1,697 @@
+{% extends "base.html" %}
+{% block title %}مدیریت بسته‌های همکاران و نمایندگان - پنل مدیریت{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">داشبورد</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('admin_resellers') }}">همکاران و نمایندگان</a></li>
+                <li class="breadcrumb-item active" aria-current="page">بسته‌های همکاران و نمایندگان</li>
+            </ol>
+        </nav>
+        <h1 class="page-title d-flex align-items-center gap-2">
+            <i class="fas fa-boxes-stacked text-primary"></i>
+            مدیریت بسته‌های همکاران و نمایندگان
+        </h1>
+        <p class="text-muted mb-0">تعریف و ویرایش بسته‌های پیش‌خرید اعتباری، تنظیم قیمت، درصد بونوس ویژه و شارژ هدیه نمایندگان</p>
+    </div>
+    <div class="d-flex align-items-center flex-wrap gap-2">
+        <a href="{{ url_for('admin_resellers') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-users me-1"></i> لیست نمایندگان
+        </a>
+        <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#resetDefaultsModal">
+            <i class="fas fa-rotate-left me-1"></i> بازنشانی به پیش‌فرض
+        </button>
+        <button type="button" class="btn btn-primary shadow-sm" data-bs-toggle="modal" data-bs-target="#addBundleModal">
+            <i class="fas fa-plus-circle me-1"></i> افزودن بسته جدید
+        </button>
+    </div>
+</div>
+
+<!-- ۴ کارت شاخص‌های آماری بسته‌ها -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-3 col-sm-6">
+        <div class="card border-0 shadow-sm p-3 h-100 bg-primary bg-opacity-10 border-start border-primary border-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-muted small d-block mb-1">کل بسته‌های تعریف‌شده</span>
+                    <h4 class="fw-bold text-primary font-monospace mb-0">{{ total_bundles }} بسته</h4>
+                </div>
+                <div class="bg-primary text-white rounded-circle p-3 d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                    <i class="fas fa-box-open fs-5"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-3 col-sm-6">
+        <div class="card border-0 shadow-sm p-3 h-100 bg-success bg-opacity-10 border-start border-success border-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-muted small d-block mb-1">بسته‌های فعال و قابل خرید</span>
+                    <h4 class="fw-bold text-success font-monospace mb-0">{{ active_bundles }} بسته فعال</h4>
+                </div>
+                <div class="bg-success text-white rounded-circle p-3 d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                    <i class="fas fa-check-circle fs-5"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-3 col-sm-6">
+        <div class="card border-0 shadow-sm p-3 h-100 bg-warning bg-opacity-10 border-start border-warning border-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-muted small d-block mb-1">بیشترین بونوس شارژ هدیه</span>
+                    <h4 class="fw-bold text-warning font-monospace mb-0">{{ max_bonus }}٪ هدیه</h4>
+                </div>
+                <div class="bg-warning text-dark rounded-circle p-3 d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                    <i class="fas fa-gift fs-5"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-3 col-sm-6">
+        <div class="card border-0 shadow-sm p-3 h-100 bg-info bg-opacity-10 border-start border-info border-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-muted small d-block mb-1">میانگین شارژ هدیه</span>
+                    <h4 class="fw-bold text-info font-monospace mb-0">{{ avg_bonus }}٪ بونوس</h4>
+                </div>
+                <div class="bg-info text-white rounded-circle p-3 d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                    <i class="fas fa-percent fs-5"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- راهنمای عملکرد بسته‌های همکاران -->
+<div class="alert alert-info border-0 shadow-sm d-flex align-items-center mb-4">
+    <i class="fas fa-lightbulb fs-3 me-3 text-info"></i>
+    <div>
+        <h6 class="fw-bold mb-1">راهنمای بسته‌های پیش‌خرید اعتباری همکاران:</h6>
+        <p class="mb-0 small text-muted">
+            نمایندگان می‌توانند این بسته‌ها را از منوی <b>بسته‌ها و شارژ اعتبار</b> در پنل نمایندگی خود خریداری کرده و با هر واریز عمده، شارژ هدیه (بونوس ویژه) دریافت نمایند. 
+            شما می‌توانید عنوان، مبلغ، درصد بونوس، برچسب‌های تشویقی و تم رنگی هر بسته را آزادانه تغییر داده و یا بسته جدید ایجاد کنید.
+        </p>
+    </div>
+</div>
+
+<!-- جدول لیست بسته‌های پیش‌خرید -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0 fw-bold text-primary"><i class="fas fa-list-check me-2"></i>لیست بسته‌های پیش‌خرید همکاران و نمایندگان</h5>
+            <span class="badge bg-secondary" data-table-count="bundlesTable">{{ bundles|length }} بسته</span>
+        </div>
+        <div class="table-search-wrapper">
+            <i class="fas fa-search table-search-icon"></i>
+            <input type="text" class="form-control table-search-input" data-table="bundlesTable" placeholder="جستجو در بسته‌ها، عنوان، برچسب...">
+            <button type="button" class="table-search-clear" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 sortable-table" id="bundlesTable">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3 sortable-th" data-column="0">ترتیب</th>
+                        <th class="sortable-th" data-column="1">نام بسته و شناسه</th>
+                        <th class="sortable-th" data-column="2">مبلغ پرداختی</th>
+                        <th class="sortable-th" data-column="3">بونوس ویژه (شارژ هدیه)</th>
+                        <th class="sortable-th" data-column="4">کل اعتبار واریزی</th>
+                        <th class="sortable-th" data-column="5">برچسب نمایشی</th>
+                        <th class="sortable-th" data-column="6">تم رنگی</th>
+                        <th class="sortable-th" data-column="7">وضعیت</th>
+                        <th class="text-end pe-3">عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for b in bundles %}
+                    {% set gift_amount = (b['credit'] or 0) - (b['price'] or 0) %}
+                    {% set color_class = b.get('color', 'primary') %}
+                    <tr>
+                        <td class="ps-3 font-monospace text-muted" data-value="{{ b.get('display_order', 0) }}">
+                            #{{ b.get('display_order', loop.index) }}
+                        </td>
+                        <td data-value="{{ b['title'] }}">
+                            <div class="fw-bold text-dark fs-6">{{ b['title'] }}</div>
+                            <code class="small text-muted font-monospace">{{ b['id'] }}</code>
+                            {% if b.get('description') %}
+                                <div class="small text-muted text-truncate" style="max-width: 250px;">{{ b['description'] }}</div>
+                            {% endif %}
+                        </td>
+                        <td data-value="{{ b['price'] or 0 }}">
+                            <span class="text-dark fw-bold font-monospace fs-6">{{ "{:,}".format(b['price']) }} تومان</span>
+                        </td>
+                        <td data-value="{{ b.get('bonus_percent', 0) }}">
+                            {% if b.get('bonus_percent', 0) > 0 %}
+                                <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fs-6">
+                                    <i class="fas fa-gift me-1 text-warning"></i> +{{ b.get('bonus_percent') }}٪ بونوس
+                                </span>
+                                {% if gift_amount > 0 %}
+                                    <div class="small text-success font-monospace mt-1">
+                                        +{{ "{:,}".format(gift_amount) }} ت هدیه
+                                    </div>
+                                {% endif %}
+                            {% else %}
+                                <span class="badge bg-secondary-subtle text-secondary font-monospace">بدون بونوس</span>
+                            {% endif %}
+                        </td>
+                        <td data-value="{{ b['credit'] or 0 }}">
+                            <span class="badge bg-success-subtle text-success border border-success font-monospace fs-6 py-2 px-3">
+                                <i class="fas fa-wallet me-1"></i> {{ "{:,}".format(b['credit']) }} تومان
+                            </span>
+                        </td>
+                        <td data-value="{{ b.get('badge', '') }}">
+                            <span class="badge bg-{{ color_class }}-subtle text-{{ color_class }} border border-{{ color_class }} py-2 px-3">
+                                {{ b.get('badge') or (b.get('bonus_percent', 0)|string + '٪ شارژ هدیه') }}
+                            </span>
+                        </td>
+                        <td data-value="{{ color_class }}">
+                            <span class="badge bg-{{ color_class }} px-2 py-1">
+                                {{ color_class }}
+                            </span>
+                        </td>
+                        <td data-value="{{ 1 if b.get('is_active', 1) else 0 }}">
+                            <form method="POST" action="{{ url_for('admin_reseller_bundles') }}" class="d-inline">
+                                <input type="hidden" name="action" value="toggle">
+                                <input type="hidden" name="bundle_id" value="{{ b['id'] }}">
+                                {% if b.get('is_active', 1) %}
+                                    <button type="submit" class="btn btn-sm btn-success py-0 px-2" title="کلیک کنید تا غیرفعال شود">
+                                        <i class="fas fa-check-circle me-1"></i> فعال
+                                    </button>
+                                {% else %}
+                                    <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2" title="کلیک کنید تا فعال شود">
+                                        <i class="fas fa-ban me-1"></i> غیرفعال
+                                    </button>
+                                {% endif %}
+                            </form>
+                        </td>
+                        <td class="text-end pe-3">
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editBundleModal{{ b['id'] }}" title="ویرایش مشخصات بسته">
+                                    <i class="fas fa-pencil me-1"></i> ویرایش
+                                </button>
+                                <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteBundleModal{{ b['id'] }}" title="حذف بسته">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ردیف کارت‌های پیش‌نمایش به سبک پنل نماینده -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white py-3">
+        <h5 class="mb-0 fw-bold text-secondary">
+            <i class="fas fa-eye me-2 text-primary"></i>پیش‌نمایش کارت‌ها (نحوه نمایش به نمایندگان در پنل فروش)
+        </h5>
+    </div>
+    <div class="card-body p-4">
+        <div class="row g-3">
+            {% for b in bundles %}
+            {% set color_class = b.get('color', 'primary') %}
+            <div class="col-lg-3 col-md-4 col-sm-6">
+                <div class="card border shadow-sm text-center p-3 h-100 position-relative {% if not b.get('is_active', 1) %}opacity-50 border-danger{% elif color_class == 'warning' %}border-warning{% endif %}">
+                    {% if not b.get('is_active', 1) %}
+                    <span class="position-absolute top-0 start-50 translate-middle badge bg-danger">
+                        غیرفعال در پنل
+                    </span>
+                    {% endif %}
+                    <span class="badge bg-{{ color_class }}-subtle text-{{ color_class }} border border-{{ color_class }} align-self-center mb-2 px-3 py-1">
+                        {{ b.get('badge') or (b.get('bonus_percent', 0)|string + '٪ شارژ هدیه') }}
+                    </span>
+                    <h6 class="fw-bold mb-1 text-dark">{{ b['title'] }}</h6>
+                    <div class="fs-5 fw-bold text-success font-monospace mb-1">{{ "{:,}".format(b['credit']) }} ت</div>
+                    <div class="small text-muted mb-3">مبلغ پرداختی: {{ "{:,}".format(b['price']) }} تومان</div>
+                    {% if b.get('description') %}
+                        <div class="small text-muted mb-2">{{ b.get('description') }}</div>
+                    {% endif %}
+                    <button type="button" class="btn btn-sm {% if color_class == 'warning' %}btn-warning text-dark{% else %}btn-outline-{{ color_class }}{% endif %} w-100 fw-bold mt-auto" disabled>
+                        <i class="fas fa-cart-shopping me-1"></i> خرید و شارژ بسته
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- مودال افزودن بسته جدید (با محاسبه‌گر زنده بونوس و پیش‌نمایش) -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="addBundleModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-primary text-white py-3">
+                <h5 class="modal-title fw-bold"><i class="fas fa-plus-circle me-2"></i>افزودن بسته پیش‌خرید جدید برای نمایندگان</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('admin_reseller_bundles') }}">
+                <input type="hidden" name="action" value="create">
+                <div class="modal-body p-4">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">عنوان بسته <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="title" id="add_title" placeholder="مثال: بسته طلایی ویژه" required oninput="updateAddPreview()">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">شناسه انگلیسی بسته (ID)</label>
+                            <input type="text" class="form-control font-monospace" name="bundle_id" id="add_id" placeholder="مثال: bundle_gold (خالی بگذارید تا خودکار ساخته شود)">
+                            <div class="form-text small text-muted">حروف و اعداد انگلیسی بدون فاصله</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">مبلغ پرداختی نماینده (تومان) <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="number" class="form-control font-monospace fs-6" name="price" id="add_price" placeholder="5000000" step="50000" min="10000" required oninput="calcAddBundle('price')">
+                                <span class="input-group-text small">تومان</span>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">بونوس ویژه / شارژ هدیه (درصد ٪)</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control font-monospace fs-6" name="bonus_percent" id="add_bonus" placeholder="10" min="0" max="100" step="1" oninput="calcAddBundle('bonus')">
+                                <span class="input-group-text small">درصد ٪</span>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">کل اعتبار دریافتی در کیف پول (تومان)</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control font-monospace fs-6 text-success fw-bold" name="credit" id="add_credit" placeholder="5500000" step="1000" oninput="calcAddBundle('credit')">
+                                <span class="input-group-text small">تومان</span>
+                            </div>
+                            <div class="form-text small text-muted" id="add_gift_hint">
+                                <i class="fas fa-gift text-warning me-1"></i> شارژ هدیه: ۰ تومان
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">برچسب نمایشی بسته (Badge)</label>
+                            <input type="text" class="form-control" name="badge" id="add_badge" placeholder="مثال: ۱۰٪ شارژ هدیه" oninput="updateAddPreview()">
+                            <div class="form-text small text-muted">در صورت خالی گذاشتن، خودکار بر مبنای بونوس تولید می‌شود.</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">تم و رنگ کارت</label>
+                            <select class="form-select" name="color" id="add_color" onchange="updateAddPreview()">
+                                <option value="primary" selected>آبی (Primary)</option>
+                                <option value="success">سبز (Success)</option>
+                                <option value="warning">طلایی / زرد (Warning)</option>
+                                <option value="info">فیروزه‌ای (Info)</option>
+                                <option value="danger">قرمز (Danger)</option>
+                                <option value="dark">تاریک / مشکی (Dark)</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">ترتیب نمایش</label>
+                            <input type="number" class="form-control font-monospace" name="display_order" value="{{ total_bundles + 1 }}" min="1">
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label fw-bold small">توضیحات تکمیلی (اختیاری)</label>
+                            <input type="text" class="form-control" name="description" id="add_desc" placeholder="توضیح کوتاه تشویقی درباره بسته برای نماینده..." oninput="updateAddPreview()">
+                        </div>
+
+                        <div class="col-12">
+                            <div class="form-check form-switch mt-2">
+                                <input class="form-check-input" type="checkbox" name="is_active" id="add_is_active" value="1" checked>
+                                <label class="form-check-label fw-bold user-select-none" for="add_is_active">
+                                    این بسته بلافاصله در پنل نمایندگی فعال و قابل خرید باشد
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- جعبه پیش‌نمایش زنده کارت -->
+                    <div class="mt-4 p-3 bg-light rounded border">
+                        <div class="small fw-bold text-muted mb-2"><i class="fas fa-mobile-screen me-1"></i> پیش‌نمایش زنده کارت در پنل نماینده:</div>
+                        <div class="d-flex justify-content-center">
+                            <div class="card border shadow-sm text-center p-3" style="width: 260px;" id="preview_card">
+                                <span class="badge bg-primary-subtle text-primary border border-primary align-self-center mb-2 px-3 py-1" id="preview_badge">
+                                    شارژ کیف پول
+                                </span>
+                                <h6 class="fw-bold mb-1 text-dark" id="preview_title">عنوان بسته</h6>
+                                <div class="fs-5 fw-bold text-success font-monospace mb-1" id="preview_credit">۰ ت</div>
+                                <div class="small text-muted mb-3" id="preview_price">مبلغ پرداختی: ۰ تومان</div>
+                                <div class="small text-muted mb-2 d-none" id="preview_desc"></div>
+                                <button type="button" class="btn btn-sm btn-outline-primary w-100 fw-bold" id="preview_btn" disabled>
+                                    <i class="fas fa-cart-shopping me-1"></i> خرید و شارژ بسته
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold">
+                        <i class="fas fa-check me-1"></i> ثبت و ایجاد بسته
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- مودال‌های ویرایش هر بسته -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+{% for b in bundles %}
+<div class="modal fade" id="editBundleModal{{ b['id'] }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-primary text-white py-3">
+                <h5 class="modal-title fw-bold"><i class="fas fa-pencil me-2"></i>ویرایش مشخصات {{ b['title'] }}</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('admin_reseller_bundles') }}">
+                <input type="hidden" name="action" value="edit">
+                <input type="hidden" name="bundle_id" value="{{ b['id'] }}">
+                <div class="modal-body p-4">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">عنوان بسته <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="title" id="edit_title_{{ b['id'] }}" value="{{ b['title'] }}" required oninput="updateEditPreview('{{ b['id'] }}')">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">شناسه بسته (غیرقابل تغییر)</label>
+                            <input type="text" class="form-control font-monospace bg-light" value="{{ b['id'] }}" readonly disabled>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">مبلغ پرداختی نماینده (تومان) <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="number" class="form-control font-monospace fs-6" name="price" id="edit_price_{{ b['id'] }}" value="{{ b['price'] }}" step="50000" min="10000" required oninput="calcEditBundle('{{ b['id'] }}', 'price')">
+                                <span class="input-group-text small">تومان</span>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">بونوس ویژه / شارژ هدیه (درصد ٪)</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control font-monospace fs-6" name="bonus_percent" id="edit_bonus_{{ b['id'] }}" value="{{ b.get('bonus_percent', 0) }}" min="0" max="100" step="1" oninput="calcEditBundle('{{ b['id'] }}', 'bonus')">
+                                <span class="input-group-text small">درصد ٪</span>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">کل اعتبار دریافتی در کیف پول (تومان)</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control font-monospace fs-6 text-success fw-bold" name="credit" id="edit_credit_{{ b['id'] }}" value="{{ b['credit'] }}" step="1000" oninput="calcEditBundle('{{ b['id'] }}', 'credit')">
+                                <span class="input-group-text small">تومان</span>
+                            </div>
+                            {% set cur_gift = (b['credit'] or 0) - (b['price'] or 0) %}
+                            <div class="form-text small text-muted" id="edit_gift_hint_{{ b['id'] }}">
+                                <i class="fas fa-gift text-warning me-1"></i> شارژ هدیه: {{ "{:,}".format(cur_gift if cur_gift > 0 else 0) }} تومان
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">برچسب نمایشی بسته (Badge)</label>
+                            <input type="text" class="form-control" name="badge" id="edit_badge_{{ b['id'] }}" value="{{ b.get('badge', '') }}" oninput="updateEditPreview('{{ b['id'] }}')">
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">تم و رنگ کارت</label>
+                            <select class="form-select" name="color" id="edit_color_{{ b['id'] }}" onchange="updateEditPreview('{{ b['id'] }}')">
+                                <option value="primary" {% if b.get('color') == 'primary' %}selected{% endif %}>آبی (Primary)</option>
+                                <option value="success" {% if b.get('color') == 'success' %}selected{% endif %}>سبز (Success)</option>
+                                <option value="warning" {% if b.get('color') == 'warning' %}selected{% endif %}>طلایی / زرد (Warning)</option>
+                                <option value="info" {% if b.get('color') == 'info' %}selected{% endif %}>فیروزه‌ای (Info)</option>
+                                <option value="danger" {% if b.get('color') == 'danger' %}selected{% endif %}>قرمز (Danger)</option>
+                                <option value="dark" {% if b.get('color') == 'dark' %}selected{% endif %}>تاریک / مشکی (Dark)</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">ترتیب نمایش</label>
+                            <input type="number" class="form-control font-monospace" name="display_order" value="{{ b.get('display_order', loop.index) }}" min="1">
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label fw-bold small">توضیحات تکمیلی (اختیاری)</label>
+                            <input type="text" class="form-control" name="description" id="edit_desc_{{ b['id'] }}" value="{{ b.get('description', '') }}" oninput="updateEditPreview('{{ b['id'] }}')">
+                        </div>
+
+                        <div class="col-12">
+                            <div class="form-check form-switch mt-2">
+                                <input class="form-check-input" type="checkbox" name="is_active" id="edit_active_{{ b['id'] }}" value="1" {% if b.get('is_active', 1) %}checked{% endif %}>
+                                <label class="form-check-label fw-bold user-select-none" for="edit_active_{{ b['id'] }}">
+                                    این بسته در پنل نمایندگان فعال و قابل مشاهده باشد
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- جعبه پیش‌نمایش زنده کارت ویرایش -->
+                    <div class="mt-4 p-3 bg-light rounded border">
+                        <div class="small fw-bold text-muted mb-2"><i class="fas fa-mobile-screen me-1"></i> پیش‌نمایش لحظه‌ای کارت:</div>
+                        <div class="d-flex justify-content-center">
+                            <div class="card border shadow-sm text-center p-3" style="width: 260px;" id="preview_card_{{ b['id'] }}">
+                                <span class="badge bg-{{ b.get('color', 'primary') }}-subtle text-{{ b.get('color', 'primary') }} border border-{{ b.get('color', 'primary') }} align-self-center mb-2 px-3 py-1" id="preview_badge_{{ b['id'] }}">
+                                    {{ b.get('badge') or (b.get('bonus_percent', 0)|string + '٪ شارژ هدیه') }}
+                                </span>
+                                <h6 class="fw-bold mb-1 text-dark" id="preview_title_{{ b['id'] }}">{{ b['title'] }}</h6>
+                                <div class="fs-5 fw-bold text-success font-monospace mb-1" id="preview_credit_{{ b['id'] }}">{{ "{:,}".format(b['credit']) }} ت</div>
+                                <div class="small text-muted mb-3" id="preview_price_{{ b['id'] }}">مبلغ پرداختی: {{ "{:,}".format(b['price']) }} تومان</div>
+                                <button type="button" class="btn btn-sm btn-outline-{{ b.get('color', 'primary') }} w-100 fw-bold" id="preview_btn_{{ b['id'] }}" disabled>
+                                    <i class="fas fa-cart-shopping me-1"></i> خرید و شارژ بسته
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold">
+                        <i class="fas fa-save me-1"></i> ذخیره تغییرات بسته
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- مودال حذف بسته -->
+<div class="modal fade" id="deleteBundleModal{{ b['id'] }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-danger text-white py-3">
+                <h5 class="modal-title fw-bold"><i class="fas fa-exclamation-triangle me-2"></i>تایید حذف بسته</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4 text-center">
+                <i class="fas fa-trash text-danger fs-1 mb-3"></i>
+                <h5>آیا از حذف بسته «<b>{{ b['title'] }}</b>» مطمئن هستید؟</h5>
+                <p class="text-muted small mb-0">این بسته از لیست بسته‌های قابل خرید همکاران حذف خواهد شد. سوابق خریدهای قبلی نمایندگان آسیبی نخواهد دید.</p>
+            </div>
+            <div class="modal-footer bg-light py-2">
+                <form method="POST" action="{{ url_for('admin_reseller_bundles') }}">
+                    <input type="hidden" name="action" value="delete">
+                    <input type="hidden" name="bundle_id" value="{{ b['id'] }}">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-danger px-4 fw-bold">
+                        <i class="fas fa-trash me-1"></i> بله، حذف شود
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- مودال بازنشانی به پیش‌فرض -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="resetDefaultsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-warning text-dark py-3">
+                <h5 class="modal-title fw-bold"><i class="fas fa-rotate-left me-2"></i>بازنشانی به بسته‌های پیش‌فرض</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4 text-center">
+                <i class="fas fa-triangle-exclamation text-warning fs-1 mb-3"></i>
+                <h5 class="fw-bold">آیا از بازنشانی کلیه بسته‌ها اطمینان دارید؟</h5>
+                <p class="text-muted small mb-0">با انجام این عملیات، لیست بسته‌ها مجدداً به ۴ بسته استاندارد سیستم (استارتر ۱م، نقره‌ای ۳م، طلایی ۵م، الماس VIP ۱۰م) برمی‌گردد.</p>
+            </div>
+            <div class="modal-footer bg-light py-2">
+                <form method="POST" action="{{ url_for('admin_reseller_bundles') }}">
+                    <input type="hidden" name="action" value="reset_defaults">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-warning px-4 fw-bold">
+                        <i class="fas fa-check me-1"></i> بله، بازنشانی شود
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- اسکریپت‌های محاسبه‌گر زنده و به‌روزرسانی پیش‌نمایش -->
+<script>
+function formatNumber(num) {
+    return (num || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+function calcAddBundle(triggerField) {
+    const priceInput = document.getElementById('add_price');
+    const bonusInput = document.getElementById('add_bonus');
+    const creditInput = document.getElementById('add_credit');
+    const badgeInput = document.getElementById('add_badge');
+    const giftHint = document.getElementById('add_gift_hint');
+
+    let price = parseInt(priceInput.value) || 0;
+    let bonus = parseInt(bonusInput.value) || 0;
+    let credit = parseInt(creditInput.value) || 0;
+
+    if (triggerField === 'price' || triggerField === 'bonus') {
+        if (price > 0 && bonus > 0) {
+            credit = Math.round(price + (price * bonus / 100));
+            creditInput.value = credit;
+        } else if (price > 0 && bonus === 0 && triggerField === 'bonus') {
+            credit = price;
+            creditInput.value = credit;
+        }
+    } else if (triggerField === 'credit') {
+        if (price > 0 && credit >= price) {
+            bonus = Math.round(((credit - price) / price) * 100);
+            bonusInput.value = bonus;
+        }
+    }
+
+    const gift = Math.max(0, credit - price);
+    if (giftHint) {
+        giftHint.innerHTML = `<i class="fas fa-gift text-warning me-1"></i> شارژ هدیه: <b>${formatNumber(gift)} تومان</b> (${bonus}٪)`;
+    }
+
+    if (!badgeInput.dataset.manualEdited || badgeInput.value.includes('شارژ هدیه') || badgeInput.value === '') {
+        if (bonus > 0) {
+            badgeInput.value = `${bonus}٪ شارژ هدیه`;
+        } else {
+            badgeInput.value = `شارژ کیف پول`;
+        }
+    }
+
+    updateAddPreview();
+}
+
+function updateAddPreview() {
+    const title = document.getElementById('add_title').value || 'عنوان بسته';
+    const price = parseInt(document.getElementById('add_price').value) || 0;
+    const credit = parseInt(document.getElementById('add_credit').value) || price;
+    const badge = document.getElementById('add_badge').value || 'شارژ کیف پول';
+    const color = document.getElementById('add_color').value || 'primary';
+    const desc = document.getElementById('add_desc').value;
+
+    document.getElementById('preview_title').innerText = title;
+    document.getElementById('preview_price').innerText = `مبلغ پرداختی: ${formatNumber(price)} تومان`;
+    document.getElementById('preview_credit').innerText = `${formatNumber(credit)} ت`;
+    
+    const badgeEl = document.getElementById('preview_badge');
+    badgeEl.innerText = badge;
+    badgeEl.className = `badge bg-${color}-subtle text-${color} border border-${color} align-self-center mb-2 px-3 py-1`;
+
+    const btnEl = document.getElementById('preview_btn');
+    btnEl.className = `btn btn-sm btn-outline-${color} w-100 fw-bold`;
+
+    const cardEl = document.getElementById('preview_card');
+    cardEl.className = `card border shadow-sm text-center p-3 ${color === 'warning' ? 'border-warning' : ''}`;
+
+    const descEl = document.getElementById('preview_desc');
+    if (desc) {
+        descEl.innerText = desc;
+        descEl.classList.remove('d-none');
+    } else {
+        descEl.classList.add('d-none');
+    }
+}
+
+function calcEditBundle(bundleId, triggerField) {
+    const priceInput = document.getElementById(`edit_price_${bundleId}`);
+    const bonusInput = document.getElementById(`edit_bonus_${bundleId}`);
+    const creditInput = document.getElementById(`edit_credit_${bundleId}`);
+    const badgeInput = document.getElementById(`edit_badge_${bundleId}`);
+    const giftHint = document.getElementById(`edit_gift_hint_${bundleId}`);
+
+    let price = parseInt(priceInput.value) || 0;
+    let bonus = parseInt(bonusInput.value) || 0;
+    let credit = parseInt(creditInput.value) || 0;
+
+    if (triggerField === 'price' || triggerField === 'bonus') {
+        if (price > 0 && bonus > 0) {
+            credit = Math.round(price + (price * bonus / 100));
+            creditInput.value = credit;
+        } else if (price > 0 && bonus === 0 && triggerField === 'bonus') {
+            credit = price;
+            creditInput.value = credit;
+        }
+    } else if (triggerField === 'credit') {
+        if (price > 0 && credit >= price) {
+            bonus = Math.round(((credit - price) / price) * 100);
+            bonusInput.value = bonus;
+        }
+    }
+
+    const gift = Math.max(0, credit - price);
+    if (giftHint) {
+        giftHint.innerHTML = `<i class="fas fa-gift text-warning me-1"></i> شارژ هدیه: <b>${formatNumber(gift)} تومان</b> (${bonus}٪)`;
+    }
+
+    if (badgeInput.value.includes('شارژ هدیه') || badgeInput.value === '') {
+        if (bonus > 0) {
+            badgeInput.value = `${bonus}٪ شارژ هدیه`;
+        }
+    }
+
+    updateEditPreview(bundleId);
+}
+
+function updateEditPreview(bundleId) {
+    const title = document.getElementById(`edit_title_${bundleId}`).value || 'عنوان بسته';
+    const price = parseInt(document.getElementById(`edit_price_${bundleId}`).value) || 0;
+    const credit = parseInt(document.getElementById(`edit_credit_${bundleId}`).value) || price;
+    const badge = document.getElementById(`edit_badge_${bundleId}`).value || 'شارژ کیف پول';
+    const color = document.getElementById(`edit_color_${bundleId}`).value || 'primary';
+
+    const pTitle = document.getElementById(`preview_title_${bundleId}`);
+    const pPrice = document.getElementById(`preview_price_${bundleId}`);
+    const pCredit = document.getElementById(`preview_credit_${bundleId}`);
+    const pBadge = document.getElementById(`preview_badge_${bundleId}`);
+    const pBtn = document.getElementById(`preview_btn_${bundleId}`);
+
+    if (pTitle) pTitle.innerText = title;
+    if (pPrice) pPrice.innerText = `مبلغ پرداختی: ${formatNumber(price)} تومان`;
+    if (pCredit) pCredit.innerText = `${formatNumber(credit)} ت`;
+    if (pBadge) {
+        pBadge.innerText = badge;
+        pBadge.className = `badge bg-${color}-subtle text-${color} border border-${color} align-self-center mb-2 px-3 py-1`;
+    }
+    if (pBtn) {
+        pBtn.className = `btn btn-sm btn-outline-${color} w-100 fw-bold`;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const badgeInput = document.getElementById('add_badge');
+    if (badgeInput) {
+        badgeInput.addEventListener('input', function() {
+            this.dataset.manualEdited = 'true';
+        });
+    }
+});
+</script>
+{% endblock %}

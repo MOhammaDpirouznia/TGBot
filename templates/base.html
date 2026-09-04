@@ -1022,6 +1022,9 @@
                 <a class="nav-link {% if request.endpoint == 'admin_resellers' %}active{% endif %}" href="{{ url_for('admin_resellers') }}">
                     <i class="fas fa-handshake" style="color: #8b5cf6;"></i> نمایندگان فروش (Resellers)
                 </a>
+                <a class="nav-link {% if request.endpoint == 'admin_reseller_bundles' %}active{% endif %}" href="{{ url_for('admin_reseller_bundles') }}">
+                    <i class="fas fa-boxes-stacked" style="color: #ec4899;"></i> بسته‌های همکاران و نمایندگان
+                </a>
                 <a class="nav-link {% if request.endpoint == 'admin_reseller_affiliates' %}active{% endif %}" href="{{ url_for('admin_reseller_affiliates') }}">
                     <i class="fas fa-network-wired text-warning"></i> زیرمجموعه‌گیری همکاران
                 </a>

@@ -36,15 +36,19 @@
     </div>
 
     {% for b in bundles %}
+    {% set b_color = b.get('color') or ('warning' if b['id'] == 'bundle_10m' else ('success' if b['id'] == 'bundle_5m' else ('primary' if b['id'] == 'bundle_3m' else 'info'))) %}
     <div class="col-md-3 col-sm-6">
-        <div class="card border-0 shadow-sm text-center p-3 h-100 {% if b['id'] == 'bundle_10m' %}border-warning border{% endif %}">
-            <span class="badge {% if b['id'] == 'bundle_10m' %}bg-warning text-dark{% elif b['id'] == 'bundle_5m' %}bg-success-subtle text-success border border-success{% elif b['id'] == 'bundle_3m' %}bg-primary-subtle text-primary border border-primary{% else %}bg-info-subtle text-info border border-info{% endif %} align-self-center mb-2 px-3 py-1">
+        <div class="card border-0 shadow-sm text-center p-3 h-100 {% if b_color == 'warning' %}border-warning border{% endif %}">
+            <span class="badge {% if b_color == 'warning' %}bg-warning text-dark{% else %}bg-{{ b_color }}-subtle text-{{ b_color }} border border-{{ b_color }}{% endif %} align-self-center mb-2 px-3 py-1">
                 {{ b['badge'] }}
             </span>
             <h6 class="fw-bold mb-1">{{ b['title'] }}</h6>
             <div class="fs-5 fw-bold text-dark font-monospace mb-1">{{ "{:,}".format(b['credit']) }} ت</div>
             <div class="small text-muted mb-3">مبلغ پرداختی: {{ "{:,}".format(b['price']) }} تومان</div>
-            <button type="button" class="btn btn-sm {% if b['id'] == 'bundle_10m' %}btn-warning{% elif b['id'] == 'bundle_5m' %}btn-outline-success{% elif b['id'] == 'bundle_3m' %}btn-outline-primary{% else %}btn-outline-info{% endif %} w-100 fw-bold" 
+            {% if b.get('description') %}
+            <div class="small text-muted mb-2">{{ b['description'] }}</div>
+            {% endif %}
+            <button type="button" class="btn btn-sm {% if b_color == 'warning' %}btn-warning text-dark{% else %}btn-outline-{{ b_color }}{% endif %} w-100 fw-bold mt-auto" 
                     data-bs-toggle="modal" data-bs-target="#buyBundleModal{{ b['id'] }}">
                 <i class="fas fa-cart-shopping me-1"></i> خرید و شارژ بسته
             </button>
