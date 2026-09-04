@@ -2701,10 +2701,11 @@ def api_customers_search():
     """جستجوی زنده مشتریان (شامل فعال، منقضی و سطل زباله) جهت انتساب رسید دستی"""
     q = request.args.get("q", "").strip()
     results = db.search_all_customers(query=q, limit=30)
-    return jsonify(results)
+    return jsonify({"success": True, "customers": results})
 
 
-@app.route("/admin/payment/manual-add", methods=["POST"])
+@app.route("/admin/payment/manual-add", methods=["POST"], endpoint="admin_payment_manual_add")
+@app.route("/admin/payment/manual-add", methods=["POST"], endpoint="admin_add_manual_payment")
 @admin_required
 def admin_payment_manual_add():
     """ثبت رسید دستی پرداخت مشتری با قابلیت تسویه بدهی و آپلود تصویر فیش"""
@@ -2726,7 +2727,7 @@ def admin_payment_manual_add():
 
     if amount <= 0:
         flash("مبلغ پرداختی باید بزرگتر از صفر باشد.", "danger")
-        return redirect(url_for("payments"))
+        return redirect(get_redirect_target(url_for("payments")))
 
     sub_id = int(sub_id_raw) if sub_id_raw.isdigit() else None
     user_id = int(user_id_raw) if user_id_raw.isdigit() else 0
@@ -2810,7 +2811,7 @@ def admin_payment_manual_add():
         )
 
     flash(f"رسید دستی با شناسه {order_id} به مبلغ {amount:,} تومان با موفقیت ثبت شد.", "success")
-    return redirect(url_for("payments"))
+    return redirect(get_redirect_target(url_for("payments")))
 
 
 def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: dict = None, processed_by: str = "درگاه آنلاین (خودکار)") -> dict:
