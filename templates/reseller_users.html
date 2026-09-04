@@ -94,67 +94,110 @@
     <div class="card-body p-0">
         <div class="table-responsive">
             {% if status_filter == 'deleted' %}
-            <!-- جدول اختصاصی سطل زباله و بازگردانی -->
-            <table class="table table-hover align-middle mb-0" id="resellerUsersTable">
-                <thead class="table-light">
+            <!-- نوار ابزار و مرتب‌سازی سطل زباله -->
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 p-3 bg-body-tertiary border-bottom">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-danger rounded-pill px-3 py-2 fs-6">
+                        <i class="fas fa-trash-can me-1"></i> سطل زباله مشتریان ({{ subscriptions|length }})
+                    </span>
+                    <small class="text-secondary d-none d-md-inline">
+                        <i class="fas fa-info-circle me-1 text-info"></i> اشتراک‌ها پس از ۷ روز به صورت خودکار و کامل از هیدیفای و سیستم پاکسازی می‌شوند.
+                    </small>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <label class="small text-secondary fw-bold text-nowrap"><i class="fas fa-arrow-down-wide-short me-1"></i> مرتب‌سازی:</label>
+                    <select class="form-select form-select-sm" style="width: auto; min-width: 175px;" onchange="location.href=this.value;">
+                        <option value="{{ url_for('reseller_users', status='deleted', sort='newest', per_page=per_page) }}" {% if sort_by == 'newest' or not sort_by %}selected{% endif %}>جدیدترین حذف‌شده</option>
+                        <option value="{{ url_for('reseller_users', status='deleted', sort='oldest', per_page=per_page) }}" {% if sort_by == 'oldest' %}selected{% endif %}>قدیمی‌ترین حذف‌شده</option>
+                        <option value="{{ url_for('reseller_users', status='deleted', sort='days_left_asc', per_page=per_page) }}" {% if sort_by == 'days_left_asc' %}selected{% endif %}>کمترین مهلت باقی‌مانده</option>
+                        <option value="{{ url_for('reseller_users', status='deleted', sort='usage_desc', per_page=per_page) }}" {% if sort_by == 'usage_desc' %}selected{% endif %}>بیشترین حجم مصرفی</option>
+                        <option value="{{ url_for('reseller_users', status='deleted', sort='limit_desc', per_page=per_page) }}" {% if sort_by == 'limit_desc' %}selected{% endif %}>بیشترین سقف حجم</option>
+                        <option value="{{ url_for('reseller_users', status='deleted', sort='name_asc', per_page=per_page) }}" {% if sort_by == 'name_asc' %}selected{% endif %}>نام مشتری (الفبا)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- جدول اختصاصی سطل زباله با قابلیت عملیات گروهی و تم رنگی آبی ملایم -->
+            <table class="table table-hover align-middle mb-0 bulk-table" id="resellerTrashTable" data-bulk-bar="resellerTrashBulkBar">
+                <thead class="trash-thead">
                     <tr>
-                        <th class="ps-3">مشتری / اکانت</th>
+                        <th class="text-center" style="width: 40px;">
+                            <input type="checkbox" class="form-check-input bulk-select-all" title="انتخاب همه">
+                        </th>
+                        <th class="ps-2">مشتری / اکانت</th>
                         <th>پلن منقضی/حذف‌شده</th>
+                        <th>حجم مصرفی</th>
                         <th>علت حذف</th>
                         <th>حذف‌کننده</th>
                         <th>تاریخ انتقال به سطل</th>
-                        <th>مهلت پاکسازی خودکار هیدیفای</th>
-                        <th class="text-end pe-3">عملیات بازگردانی</th>
+                        <th>مهلت پاکسازی هیدیفای</th>
+                        <th class="text-end pe-3">عملیات</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for sub in subscriptions %}
-                    <tr class="table-danger bg-opacity-10">
-                        <td class="ps-3">
+                    <tr class="trash-table-row">
+                        <td class="text-center">
+                            <input type="checkbox" class="form-check-input bulk-select-row" value="{{ sub['id'] }}">
+                        </td>
+                        <td class="ps-2">
                             <div class="d-flex align-items-center gap-2">
                                 <img src="{{ avatar_url(sub['phone_number'] or sub['account_name'] or 'Customer') }}" 
                                      alt="{{ sub['account_name'] }}" 
                                      class="rounded-circle border shadow-sm flex-shrink-0" 
                                      style="width: 38px; height: 38px; object-fit: cover;">
                                 <div>
-                                    <div class="fw-bold">{{ sub['account_name'] }}</div>
-                                    <small class="text-muted font-monospace">{{ sub['phone_number'] or '-' }}</small>
+                                    <div class="fw-bold text-body">{{ sub['account_name'] }}</div>
+                                    <small class="text-secondary font-monospace">{{ sub['phone_number'] or '-' }}</small>
                                 </div>
                             </div>
                         </td>
                         <td>
-                            <span class="badge bg-light text-dark border">{{ sub['plan_name'] or '-' }}</span>
+                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1">{{ sub['plan_name'] or '-' }}</span>
                         </td>
                         <td>
-                            <span class="badge bg-danger text-white">{{ sub['delete_reason'] or 'سایر' }}</span>
+                            <span class="font-monospace fw-bold text-body">{{ sub['data_used']|round(2) if sub.get('data_used') is not none else '0' }}</span>
+                            <span class="text-secondary small">/ {{ sub['data_limit'] }} GB</span>
                         </td>
                         <td>
-                            <span class="badge bg-secondary">{{ sub['deleted_by'] or 'نماینده' }}</span>
+                            <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle px-2 py-1">{{ sub['delete_reason'] or 'سایر' }}</span>
                         </td>
                         <td>
-                            <small class="text-muted font-monospace">{{ sub['deleted_at'][:16].replace('T', ' ') if sub['deleted_at'] else '-' }}</small>
+                            <span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">{{ sub['deleted_by'] or 'نماینده' }}</span>
+                        </td>
+                        <td>
+                            <span class="text-body font-monospace fw-semibold">{{ sub['deleted_at'][:16].replace('T', ' ') if sub['deleted_at'] else '-' }}</span>
                         </td>
                         <td>
                             {% if sub.get('purged_from_hiddify') %}
                             <span class="badge bg-dark">از هیدیفای پاکسازی شد</span>
                             {% else %}
-                            <span class="badge bg-warning text-dark">
+                            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle fw-bold px-2 py-1">
                                 <i class="fas fa-clock me-1"></i> {{ sub.get('days_left', 7) }} روز باقی‌مانده
                             </span>
                             {% endif %}
                         </td>
                         <td class="text-end pe-3">
-                            <form method="POST" action="{{ url_for('reseller_restore_user', sub_id=sub['id']) }}" class="d-inline" onsubmit="return confirm('آیا از بازگردانی اشتراک «{{ sub['account_name'] }}» از سطل زباله اطمینان دارید؟ در صورت تایید، هزینه پلن از کیف پول یا اعتبار شما کسر و اشتراک مجدداً فعال خواهد شد.')">
-                                <button type="submit" class="btn btn-sm btn-success fw-bold px-3">
-                                    <i class="fas fa-rotate-left me-1"></i> بازگردانی اشتراک
+                            <div class="d-inline-flex align-items-center gap-1">
+                                <!-- بازگردانی -->
+                                <form method="POST" action="{{ url_for('reseller_restore_user', sub_id=sub['id']) }}" class="d-inline" onsubmit="return confirm('آیا از بازگردانی اشتراک «{{ sub['account_name'] }}» از سطل زباله اطمینان دارید؟ در صورت تایید، هزینه پلن از کیف پول یا اعتبار شما کسر و اشتراک مجدداً فعال خواهد شد.')">
+                                    <button type="submit" class="btn btn-sm btn-success fw-bold px-2 py-1 d-inline-flex align-items-center gap-1 shadow-sm" title="بازگردانی به لیست فعال">
+                                        <i class="fas fa-rotate-left"></i>
+                                        <span>بازگردانی</span>
+                                    </button>
+                                </form>
+                                <!-- حذف دائمی -->
+                                <button type="button" class="btn btn-sm btn-outline-danger px-2 py-1 d-inline-flex align-items-center gap-1" data-bs-toggle="modal" data-bs-target="#permanentDeleteModal{{ sub['id'] }}" title="حذف دائمی از سطل زباله و سرور هیدیفای">
+                                    <i class="fas fa-trash-can"></i>
+                                    <span>حذف دائم</span>
                                 </button>
-                            </form>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
                     {% if not subscriptions %}
                     <tr>
-                        <td colspan="7" class="text-center py-5 text-muted">
+                        <td colspan="9" class="text-center py-5 text-muted">
                             <i class="fas fa-trash-can fs-2 d-block mb-2 opacity-50"></i>
                             سطل زباله خالی است. هیچ اشتراک حذف‌شده‌ای یافت نشد.
                         </td>
@@ -317,11 +360,17 @@
                         <td class="text-end pe-3">
                             <div class="d-inline-flex align-items-center gap-1">
                                 <!-- ۱. دکمه سریع تغییر وضعیت فعال/غیرفعال -->
-                                <form method="POST" action="{{ url_for('reseller_toggle_user', sub_id=sub['id']) }}" class="d-inline" onsubmit="return confirm('آیا از تغییر وضعیت این مشتری اطمینان دارید؟')">
-                                    <button type="submit" class="btn btn-sm {% if sub['status'] == 'active' %}btn-outline-secondary{% else %}btn-outline-success{% endif %} px-2" title="{% if sub['status'] == 'active' %}غیرفعال‌سازی سریع اکانت{% else %}فعال‌سازی سریع مجدد{% endif %}">
-                                        <i class="fas {% if sub['status'] == 'active' %}fa-user-slash{% else %}fa-user-check{% endif %}"></i>
+                                {% if sub['status'] == 'active' %}
+                                <button type="button" class="btn btn-sm btn-outline-secondary px-2" data-bs-toggle="modal" data-bs-target="#disableModal{{ sub['id'] }}" title="غیرفعال‌سازی سریع اکانت با ثبت علت">
+                                    <i class="fas fa-user-slash"></i>
+                                </button>
+                                {% else %}
+                                <form method="POST" action="{{ url_for('reseller_toggle_user', sub_id=sub['id']) }}" class="d-inline" onsubmit="return confirm('آیا از فعال‌سازی مجدد این مشتری اطمینان دارید؟')">
+                                    <button type="submit" class="btn btn-sm btn-outline-success px-2" title="فعال‌سازی سریع مجدد اکانت">
+                                        <i class="fas fa-user-check"></i>
                                     </button>
                                 </form>
+                                {% endif %}
 
                                 <!-- ۲. دکمه اصلی و جامع: مدیریت، بارکدها و لینک‌ها -->
                                 <button type="button" class="btn btn-sm btn-primary d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" data-bs-toggle="modal" data-bs-target="#customerDetailModal{{ sub['id'] }}" title="مشاهده بارکدها، لینک‌های اتصال و مدیریت کامل اشتراک">
@@ -393,7 +442,7 @@
         <button type="button" class="btn btn-sm btn-success fw-bold" onclick="openResellerBulkRenewModal()">
             <i class="fas fa-arrows-rotate me-1"></i> تمدید گروهی
         </button>
-        <button type="button" class="btn btn-sm btn-outline-light" onclick="submitBulkAction('resellerBulkForm', 'disable', 'آیا از غیرفعال‌سازی موقت اشتراک‌های انتخاب شده اطمینان دارید؟')">
+        <button type="button" class="btn btn-sm btn-outline-light" onclick="openBulkDisableModal()">
             <i class="fas fa-user-slash me-1"></i> غیرفعال‌سازی
         </button>
         <button type="button" class="btn btn-sm btn-outline-light" onclick="submitBulkAction('resellerBulkForm', 'enable', 'آیا از فعال‌سازی مجدد اشتراک‌های انتخاب شده اطمینان دارید؟')">
@@ -405,8 +454,28 @@
         <button type="button" class="btn btn-sm btn-outline-info" onclick="submitBulkAction('resellerBulkForm', 'send_reminder', 'آیا از ارسال پیام یادآوری بدهی به تلگرام مشتریان انتخاب شده اطمینان دارید؟')">
             <i class="fab fa-telegram me-1"></i> یادآوری تلگرام
         </button>
-        <button type="button" class="btn btn-sm btn-danger" onclick="submitBulkAction('resellerBulkForm', 'delete', 'هشدار: آیا از حذف کامل اشتراک‌های انتخاب شده و استرداد وجه طبق قوانین اطمینان دارید؟')">
+        <button type="button" class="btn btn-sm btn-danger" onclick="openBulkDeleteModal()">
             <i class="fas fa-trash-can me-1"></i> حذف گروهی
+        </button>
+    </form>
+</div>
+
+<!-- ─── نوار ابزار شناور مدیریت گروهی سطل زباله ─── -->
+<div class="bulk-actions-bar" id="resellerTrashBulkBar">
+    <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-danger rounded-pill fs-6 px-3 py-2">
+            <i class="fas fa-check-double me-1"></i> <span class="bulk-selected-count">0</span> مورد در سطل زباله انتخاب شد
+        </span>
+    </div>
+    <form id="resellerTrashBulkForm" method="POST" action="{{ url_for('reseller_trash_bulk') }}" class="d-flex align-items-center flex-wrap gap-2 m-0">
+        <input type="hidden" name="bulk_action" value="">
+        <input type="hidden" name="selected_ids_str" class="bulk-selected-ids-input" value="">
+        
+        <button type="button" class="btn btn-sm btn-success fw-bold" onclick="submitBulkAction('resellerTrashBulkForm', 'restore', 'آیا از بازگردانی گروهی تمام موارد انتخاب‌شده و فعال‌سازی مجدد آن‌ها در هیدیفای اطمینان دارید؟ (هزینه هر اشتراک از اعتبار شما کسر خواهد شد)')">
+            <i class="fas fa-rotate-left me-1"></i> بازگردانی گروهی
+        </button>
+        <button type="button" class="btn btn-sm btn-danger fw-bold" onclick="submitBulkAction('resellerTrashBulkForm', 'purge', 'هشدار بسیار مهم: آیا از حذف دائمی و غیرقابل بازگشت اشتراک‌های انتخاب شده از سطل زباله و سرور هیدیفای اطمینان دارید؟')">
+            <i class="fas fa-trash-can me-1"></i> حذف دائمی گروهی
         </button>
     </form>
 </div>
@@ -571,12 +640,17 @@
                     {% endif %}
                     {% endif %}
                     <!-- تغییر وضعیت فعال/غیرفعال -->
-                    <form method="POST" action="{{ url_for('reseller_toggle_user', sub_id=sub['id']) }}" class="d-inline flex-grow-1" onsubmit="return confirm('آیا از تغییر وضعیت این مشتری اطمینان دارید؟')">
-                        <button type="submit" class="btn {% if sub['status'] == 'active' %}btn-outline-secondary{% else %}btn-outline-success{% endif %} w-100 py-2">
-                            <i class="fas {% if sub['status'] == 'active' %}fa-user-slash{% else %}fa-user-check{% endif %} me-1"></i>
-                            {{ 'غیرفعال‌سازی اکانت' if sub['status'] == 'active' else 'فعال‌سازی مجدد' }}
+                    {% if sub['status'] == 'active' %}
+                    <button type="button" class="btn btn-outline-secondary flex-grow-1 py-2" data-bs-toggle="modal" data-bs-target="#disableModal{{ sub['id'] }}">
+                        <i class="fas fa-user-slash me-1"></i> غیرفعال‌سازی اکانت
+                    </button>
+                    {% else %}
+                    <form method="POST" action="{{ url_for('reseller_toggle_user', sub_id=sub['id']) }}" class="d-inline flex-grow-1" onsubmit="return confirm('آیا از فعال‌سازی مجدد این مشتری اطمینان دارید؟')">
+                        <button type="submit" class="btn btn-outline-success w-100 py-2">
+                            <i class="fas fa-user-check me-1"></i> فعال‌سازی مجدد
                         </button>
                     </form>
+                    {% endif %}
                     <!-- حذف -->
                     <button type="button" class="btn btn-outline-danger flex-grow-1 py-2" data-bs-toggle="modal" data-bs-target="#deleteModal{{ sub['id'] }}">
                         <i class="fas fa-trash-can me-1"></i> حذف و استرداد وجه
@@ -948,7 +1022,151 @@
         </div>
     </div>
 </div>
+
+<!-- ─── Modal اخذ علت غیرفعال‌سازی اشتراک ─── -->
+<div class="modal fade text-start" id="disableModal{{ sub['id'] }}" tabindex="-1" aria-labelledby="disableModalLabel{{ sub['id'] }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <form method="POST" action="{{ url_for('reseller_toggle_user', sub_id=sub['id']) }}">
+                <div class="modal-header bg-warning bg-opacity-10 border-warning py-3">
+                    <h5 class="modal-title fw-bold text-dark" id="disableModalLabel{{ sub['id'] }}">
+                        <i class="fas fa-user-slash text-warning me-2"></i>غیرفعال‌سازی مشتری «{{ sub['account_name'] }}»
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <p class="text-secondary small mb-3">
+                        <i class="fas fa-info-circle text-primary me-1"></i> با غیرفعال‌سازی، اتصال کاربر در سرور هیدیفای موقتاً قطع می‌شود اما حجم و روزهای اشتراک حفظ خواهد شد. لطفاً علت غیرفعال‌سازی را مشخص فرمایید:
+                    </p>
+                    <div class="p-3 bg-light rounded-3 border">
+                        <label class="form-label fw-bold small text-dark mb-1">
+                            <i class="fas fa-question-circle text-warning me-1"></i>علت غیرفعال‌سازی:
+                        </label>
+                        <select name="reason" class="form-select form-select-sm mb-2" required onchange="toggleCustomReason(this, 'resellerDisableCustomReason{{ sub['id'] }}')">
+                            <option value="درخواست مشتری / قطع موقت">درخواست مشتری / قطع موقت</option>
+                            <option value="عدم پرداخت / بدهی مشتری">عدم پرداخت / بدهی مشتری</option>
+                            <option value="مصرف غیرعادی یا مشکوک">مصرف غیرعادی یا مشکوک</option>
+                            <option value="تعلیق موقت توسط نماینده">تعلیق موقت توسط نماینده</option>
+                            <option value="custom">سایر دلایل (با توضیح دستی)...</option>
+                        </select>
+                        <div class="d-none" id="resellerDisableCustomReason{{ sub['id'] }}">
+                            <input type="text" name="custom_reason" class="form-control form-control-sm" placeholder="علت غیرفعال‌سازی را اینجا بنویسید...">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-warning fw-bold px-4">
+                        <i class="fas fa-user-slash me-1"></i> تایید و غیرفعال‌سازی
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Modal حذف دائمی از سطل زباله و سرور هیدیفای ─── -->
+<div class="modal fade text-start" id="permanentDeleteModal{{ sub['id'] }}" tabindex="-1" aria-labelledby="permDeleteLabel{{ sub['id'] }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-danger">
+            <div class="modal-header bg-danger text-white py-3">
+                <h5 class="modal-title fw-bold" id="permDeleteLabel{{ sub['id'] }}">
+                    <i class="fas fa-triangle-exclamation me-2"></i>حذف دائمی اشتراک «{{ sub['account_name'] }}»
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <p class="text-danger fw-bold fs-6 mb-2">آیا از حذف همیشگی و قطعی این مشتری اطمینان کامل دارید؟</p>
+                <div class="alert alert-warning small mb-0">
+                    <i class="fas fa-exclamation-circle me-1"></i> با این اقدام، کاربر به صورت قطعی از <strong>سرور هیدیفای</strong> و پایگاه داده حذف می‌گردد و لینک اتصال آن کاملاً باطل شده و به هیچ وجه قابل بازگردانی نخواهد بود.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                <form method="POST" action="{{ url_for('reseller_purge_user', sub_id=sub['id']) }}">
+                    <button type="submit" class="btn btn-danger fw-bold">
+                        <i class="fas fa-trash-can me-1"></i> بله، برای همیشه حذف شود
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
 {% endfor %}
+
+<!-- ─── Modal غیرفعال‌سازی گروهی ─── -->
+<div class="modal fade text-start" id="bulkDisableModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-warning bg-opacity-10 border-warning py-3">
+                <h5 class="modal-title fw-bold text-dark">
+                    <i class="fas fa-user-slash text-warning me-2"></i>غیرفعال‌سازی گروهی (<span id="bulkDisableCount">0</span> مشتری)
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <p class="text-secondary small mb-3">اشتراک‌های انتخاب شده در هیدیفای موقتاً قطع خواهند شد. لطفاً علت غیرفعال‌سازی دسته جمعی را مشخص فرمایید:</p>
+                <div class="p-3 bg-light rounded-3 border" id="bulkDisableForm">
+                    <label class="form-label fw-bold small text-dark mb-1">علت غیرفعال‌سازی گروهی:</label>
+                    <select name="reason" class="form-select form-select-sm mb-2" onchange="toggleCustomReason(this, 'bulkDisableCustomReason')">
+                        <option value="عدم پرداخت / تسویه بدهی">عدم پرداخت / تسویه بدهی</option>
+                        <option value="درخواست مشتریان / قطع موقت">درخواست مشتریان / قطع موقت</option>
+                        <option value="مصرف غیرعادی یا مشکوک">مصرف غیرعادی یا مشکوک</option>
+                        <option value="تعلیق توسط نماینده">تعلیق توسط نماینده</option>
+                        <option value="custom">سایر دلایل (با توضیح دستی)...</option>
+                    </select>
+                    <div class="d-none" id="bulkDisableCustomReason">
+                        <input type="text" name="custom_reason" class="form-control form-control-sm" placeholder="علت غیرفعال‌سازی را بنویسید...">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                <button type="button" class="btn btn-warning fw-bold px-4" onclick="submitBulkDisable()">
+                    <i class="fas fa-user-slash me-1"></i> تایید و غیرفعال‌سازی گروهی
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Modal حذف گروهی ─── -->
+<div class="modal fade text-start" id="bulkDeleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-danger bg-opacity-10 border-danger py-3">
+                <h5 class="modal-title fw-bold text-danger">
+                    <i class="fas fa-trash-can text-danger me-2"></i>حذف گروهی و انتقال به سطل زباله (<span id="bulkDeleteCount">0</span> مشتری)
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="alert alert-warning small mb-3">
+                    <i class="fas fa-triangle-exclamation me-1"></i> اشتراک‌های انتخاب شده به سطل زباله منتقل شده و در هیدیفای غیرفعال می‌شوند و استرداد وجه طبق قوانین (تا ۱۲ ساعت ۱۰۰٪، تا ۲۴ ساعت ۸۰٪) به کیف پول شما بازمی‌گردد.
+                </div>
+                <div class="p-3 bg-light rounded-3 border" id="bulkDeleteForm">
+                    <label class="form-label fw-bold small text-dark mb-1">علت حذف گروهی:</label>
+                    <select name="reason" class="form-select form-select-sm mb-2" onchange="toggleCustomReason(this, 'bulkDeleteCustomReason')">
+                        <option value="عدم تسویه حساب / بدهی مشتریان">عدم تسویه حساب / بدهی مشتریان</option>
+                        <option value="عدم رضایت یا انصراف">عدم رضایت یا انصراف</option>
+                        <option value="اتمام دوره و عدم تمدید">اتمام دوره و عدم تمدید</option>
+                        <option value="مشکل فنی یا تعویض سرور">مشکل فنی یا تعویض سرور</option>
+                        <option value="custom">سایر دلایل (با توضیح دستی)...</option>
+                    </select>
+                    <div class="d-none" id="bulkDeleteCustomReason">
+                        <input type="text" name="custom_reason" class="form-control form-control-sm" placeholder="علت حذف را بنویسید...">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                <button type="button" class="btn btn-danger fw-bold px-4" onclick="submitBulkDelete()">
+                    <i class="fas fa-trash-can me-1"></i> تایید و حذف گروهی
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- ─── ۶. Modal تمدید گروهی مشتریان نماینده ─── -->
 <div class="modal fade text-start" id="resellerBulkRenewModal" tabindex="-1" aria-labelledby="resellerBulkRenewModalLabel" aria-hidden="true">
@@ -1478,9 +1696,116 @@ function toggleCustomReason(selectEl, customBoxId) {
         box.classList.add('d-none');
     }
 }
+
+function openBulkDisableModal() {
+    const idsInput = document.querySelector('#resellerBulkForm .bulk-selected-ids-input');
+    if (!idsInput || !idsInput.value) {
+        alert('لطفاً ابتدا حداقل یک اشتراک را از جدول انتخاب کنید.');
+        return;
+    }
+    const count = idsInput.value.split(',').filter(x => x.trim()).length;
+    document.getElementById('bulkDisableCount').innerText = count;
+    const modal = new bootstrap.Modal(document.getElementById('bulkDisableModal'));
+    modal.show();
+}
+
+function openBulkDeleteModal() {
+    const idsInput = document.querySelector('#resellerBulkForm .bulk-selected-ids-input');
+    if (!idsInput || !idsInput.value) {
+        alert('لطفاً ابتدا حداقل یک اشتراک را از جدول انتخاب کنید.');
+        return;
+    }
+    const count = idsInput.value.split(',').filter(x => x.trim()).length;
+    document.getElementById('bulkDeleteCount').innerText = count;
+    const modal = new bootstrap.Modal(document.getElementById('bulkDeleteModal'));
+    modal.show();
+}
+
+function submitBulkDisable() {
+    const form = document.getElementById('resellerBulkForm');
+    const modalForm = document.getElementById('bulkDisableForm');
+    form.querySelector('input[name="bulk_action"]').value = 'disable';
+    
+    let reasonInput = form.querySelector('input[name="reason"]');
+    if (!reasonInput) {
+        reasonInput = document.createElement('input');
+        reasonInput.type = 'hidden';
+        reasonInput.name = 'reason';
+        form.appendChild(reasonInput);
+    }
+    reasonInput.value = modalForm.querySelector('select[name="reason"]').value;
+
+    let customReasonInput = form.querySelector('input[name="custom_reason"]');
+    if (!customReasonInput) {
+        customReasonInput = document.createElement('input');
+        customReasonInput.type = 'hidden';
+        customReasonInput.name = 'custom_reason';
+        form.appendChild(customReasonInput);
+    }
+    customReasonInput.value = modalForm.querySelector('input[name="custom_reason"]').value;
+
+    form.submit();
+}
+
+function submitBulkDelete() {
+    const form = document.getElementById('resellerBulkForm');
+    const modalForm = document.getElementById('bulkDeleteForm');
+    form.querySelector('input[name="bulk_action"]').value = 'delete';
+    
+    let reasonInput = form.querySelector('input[name="reason"]');
+    if (!reasonInput) {
+        reasonInput = document.createElement('input');
+        reasonInput.type = 'hidden';
+        reasonInput.name = 'reason';
+        form.appendChild(reasonInput);
+    }
+    reasonInput.value = modalForm.querySelector('select[name="reason"]').value;
+
+    let customReasonInput = form.querySelector('input[name="custom_reason"]');
+    if (!customReasonInput) {
+        customReasonInput = document.createElement('input');
+        customReasonInput.type = 'hidden';
+        customReasonInput.name = 'custom_reason';
+        form.appendChild(customReasonInput);
+    }
+    customReasonInput.value = modalForm.querySelector('input[name="custom_reason"]').value;
+
+    form.submit();
+}
 </script>
 
 <style>
+/* ─── استایل‌های مدرن و شیک سطل زباله (تم آبی ملایم و خوانایی بالا در دارک مود) ─── */
+.trash-table-row {
+    background-color: rgba(13, 202, 240, 0.05) !important;
+    transition: background-color 0.15s ease-in-out;
+}
+.trash-table-row:hover {
+    background-color: rgba(13, 202, 240, 0.12) !important;
+}
+[data-bs-theme="dark"] .trash-table-row,
+.dark-mode .trash-table-row {
+    background-color: rgba(14, 165, 233, 0.10) !important;
+}
+[data-bs-theme="dark"] .trash-table-row:hover,
+.dark-mode .trash-table-row:hover {
+    background-color: rgba(14, 165, 233, 0.18) !important;
+}
+.trash-thead {
+    background-color: rgba(13, 110, 253, 0.07);
+    color: var(--bs-body-color);
+}
+[data-bs-theme="dark"] .trash-thead,
+.dark-mode .trash-thead {
+    background-color: rgba(15, 23, 42, 0.85) !important;
+    color: #f1f5f9 !important;
+}
+[data-bs-theme="dark"] .trash-thead th,
+.dark-mode .trash-thead th {
+    color: #cbd5e1 !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
 .qr-box {
     width: 155px;
     height: 155px;
