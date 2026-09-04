@@ -6712,6 +6712,7 @@ def reseller_dashboard():
     analytics = db.get_advanced_analytics(reseller_id=reseller_id)
     bot_status = multibot_manager.get_bot_status(reseller_id)
     fin_summary = db.get_reseller_financial_summary(reseller_id)
+    revenue_7days = db.get_reseller_7days_revenue(reseller_id)
     return render_template(
         "reseller_dashboard.html",
         reseller=reseller,
@@ -6719,7 +6720,8 @@ def reseller_dashboard():
         recent_transactions=recent_transactions,
         analytics=analytics,
         bot_status=bot_status,
-        fin_summary=fin_summary
+        fin_summary=fin_summary,
+        revenue_7days=revenue_7days
     )
 
 

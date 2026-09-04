@@ -6425,6 +6425,154 @@ class Database:
             "open_tickets_count": open_tickets_count,
         }
 
+    def get_reseller_7days_revenue(self, reseller_id: int) -> dict:
+        """
+        محاسبه روند درآمد و فروش ۷ روز گذشته نماینده (شامل پرداخت‌های ربات و فروش مستقیم پنل)
+        به همراه تاریخ‌های شمسی، نام روز هفته، تعداد سفارشات، میانگین فروش و سود برآورد شده
+        """
+        import datetime
+        from utils import get_now_naive, gregorian_to_shamsi
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now_dt = get_now_naive()
+        today = now_dt.date()
+
+        PERSIAN_WEEKDAYS = {
+            0: "دوشنبه",
+            1: "سه‌شنبه",
+            2: "چهارشنبه",
+            3: "پنج‌شنبه",
+            4: "جمعه",
+            5: "شنبه",
+            6: "یکشنبه"
+        }
+
+        # درصد تخفیف نماینده جهت تخمین سود حاصله
+        discount_pct = 20
+        try:
+            cursor.execute("SELECT discount_percent FROM resellers WHERE id = ?", (reseller_id,))
+            r_row = cursor.fetchone()
+            if r_row and r_row["discount_percent"] is not None:
+                discount_pct = r_row["discount_percent"]
+        except Exception:
+            pass
+
+        days_data = []
+        total_revenue = 0
+        total_orders = 0
+        total_bot_revenue = 0
+        total_direct_revenue = 0
+
+        try:
+            # استخراج داده‌های ۷ روز اخیر (از ۶ روز قبل تا امروز به ترتیب زمانی)
+            for i in range(6, -1, -1):
+                cur_date = today - datetime.timedelta(days=i)
+                date_str = cur_date.strftime("%Y-%m-%d")
+                weekday_name = PERSIAN_WEEKDAYS[cur_date.weekday()]
+
+                if i == 0:
+                    day_label = f"امروز ({weekday_name})"
+                elif i == 1:
+                    day_label = f"دیروز ({weekday_name})"
+                else:
+                    day_label = weekday_name
+
+                jalali_str = gregorian_to_shamsi(date_str, fmt="%Y/%m/%d")
+
+                # ۱. پرداخت‌های تایید شده ربات تلگرام نماینده
+                cursor.execute("""
+                    SELECT COALESCE(SUM(amount), 0), COUNT(*)
+                    FROM transactions
+                    WHERE reseller_id = ? 
+                      AND status IN ('approved', 'completed')
+                      AND (is_deleted = 0 OR is_deleted IS NULL)
+                      AND (gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
+                      AND DATE(created_at) = ?
+                """, (reseller_id, date_str))
+                bot_row = cursor.fetchone()
+                bot_rev = int(bot_row[0] or 0)
+                bot_cnt = int(bot_row[1] or 0)
+
+                # ۲. خریدهای مستقیم ثبت شده در پنل وب توسط نماینده (جلوگیری از شمارش تکراری سفارشات ربات)
+                cursor.execute("""
+                    SELECT COALESCE(SUM(amount), 0), COUNT(*)
+                    FROM reseller_transactions
+                    WHERE reseller_id = ? 
+                      AND type = 'purchase'
+                      AND DATE(created_at) = ?
+                      AND (subscription_id IS NULL OR subscription_id NOT IN (
+                          SELECT subscription_id FROM transactions 
+                          WHERE reseller_id = ? AND subscription_id IS NOT NULL AND status IN ('approved', 'completed')
+                      ))
+                """, (reseller_id, date_str, reseller_id))
+                dir_row = cursor.fetchone()
+                dir_rev = int(dir_row[0] or 0)
+                dir_cnt = int(dir_row[1] or 0)
+
+                day_total = bot_rev + dir_rev
+                day_orders = bot_cnt + dir_cnt
+                day_profit = int(day_total * (discount_pct / 100.0))
+
+                total_revenue += day_total
+                total_orders += day_orders
+                total_bot_revenue += bot_rev
+                total_direct_revenue += dir_rev
+
+                days_data.append({
+                    "date": date_str,
+                    "jalali_date": jalali_str,
+                    "day_name": weekday_name,
+                    "day_label": day_label,
+                    "is_today": (i == 0),
+                    "is_yesterday": (i == 1),
+                    "orders_count": day_orders,
+                    "bot_revenue": bot_rev,
+                    "bot_count": bot_cnt,
+                    "direct_revenue": dir_rev,
+                    "direct_count": dir_cnt,
+                    "revenue": day_total,
+                    "estimated_profit": day_profit,
+                    "percentage": 0
+                })
+
+            max_day_rev = max([d["revenue"] for d in days_data], default=0)
+            for d in days_data:
+                if max_day_rev > 0:
+                    d["percentage"] = round((d["revenue"] / max_day_rev) * 100, 1)
+                else:
+                    d["percentage"] = 0
+
+            avg_daily_revenue = int(total_revenue / 7)
+            estimated_total_profit = int(total_revenue * (discount_pct / 100.0))
+
+            return {
+                "days": days_data,
+                "days_reversed": list(reversed(days_data)),
+                "total_revenue": total_revenue,
+                "total_orders": total_orders,
+                "total_bot_revenue": total_bot_revenue,
+                "total_direct_revenue": total_direct_revenue,
+                "avg_daily_revenue": avg_daily_revenue,
+                "estimated_total_profit": estimated_total_profit,
+                "discount_percent": discount_pct
+            }
+        except Exception as e:
+            logger.error(f"Error calculating reseller 7-day revenue: {e}")
+            return {
+                "days": [],
+                "days_reversed": [],
+                "total_revenue": 0,
+                "total_orders": 0,
+                "total_bot_revenue": 0,
+                "total_direct_revenue": 0,
+                "avg_daily_revenue": 0,
+                "estimated_total_profit": 0,
+                "discount_percent": discount_pct
+            }
+        finally:
+            conn.close()
+
     def get_reseller_subscription(self, reseller_id: int, sub_id: int):
         """دریافت اطلاعات یک اشتراک متعلق به نماینده"""
         conn = self.get_connection()
