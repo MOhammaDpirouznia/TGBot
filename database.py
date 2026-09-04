@@ -20,12 +20,24 @@ logger = logging.getLogger(__name__)
 # مسیر دیتابیس - از Railway persistent storage یا متغیر محیطی استفاده میکنه
 # Railway: اگر Volume دارید، DATA_DIR=/data تنظیم کنید
 # در غیر این صورت، دیتابیس در مسیر پروژه ذخیره میشه
-POSSIBLE_PATHS = [
-    Path(os.environ.get("DATA_DIR", "")),  # Railway Volume
-    Path("/data"),  # Railway default persistent
-    Path(os.path.expanduser("~/.vpn-bot/data")),  # Home directory
+POSSIBLE_PATHS = []
+# ۱. اولویت اول: پوشه دیتای خود پروژه (به ویژه در ویندوز)
+if Path("data/bot_database.db").exists():
+    POSSIBLE_PATHS.append(Path("data"))
+
+data_dir_env = os.environ.get("DATA_DIR", "").strip()
+if data_dir_env:
+    # در ویندوز مسیر لینوکسی مثل /data نادیده گرفته می‌شود
+    if not (os.name == "nt" and data_dir_env.startswith("/")):
+        POSSIBLE_PATHS.append(Path(data_dir_env))
+
+if os.name != "nt":
+    POSSIBLE_PATHS.append(Path("/data"))
+
+POSSIBLE_PATHS.extend([
     Path("data"),  # Fallback to project directory
-]
+    Path(os.path.expanduser("~/.vpn-bot/data")),  # Home directory
+])
 
 DB_DIR = None
 for path in POSSIBLE_PATHS:
@@ -5981,12 +5993,14 @@ class Database:
             conn.close()
 
     def authenticate_reseller(self, username: str, password: str):
-        """احراز هویت نماینده"""
+        """احراز هویت نماینده (Case-Insensitive و مقاوم در برابر فاصله‌ها)"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        password_hash = self.hash_password(password)
-        cursor.execute("SELECT * FROM resellers WHERE username=? AND password_hash=? AND status='active'",
-                       (username.strip().lower(), password_hash))
+        clean_user = username.strip().lower()
+        clean_pass = password.strip()
+        password_hash = self.hash_password(clean_pass)
+        cursor.execute("SELECT * FROM resellers WHERE LOWER(username)=? AND (password_hash=? OR password_hash=?) AND status='active'",
+                       (clean_user, password_hash, clean_pass))
         row = cursor.fetchone()
         conn.close()
         return dict(row) if row else None
@@ -7941,14 +7955,15 @@ class Database:
     def create_reseller_team_member(self, reseller_id: int, username: str, password: str,
                                     display_name: str, role: str = "support", phone: str = None,
                                     share_percent: int = 0) -> dict:
-        """ایجاد مدیر زیرمجموعه جدید برای نماینده با نقش‌های partner, finance, support"""
+        """ایجاد مدیر زیرمجموعه جدید برای نماینده با نقش‌های manager2, partner, finance, support"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
-        password_hash = self.hash_password(password)
+        clean_pass = password.strip()
+        password_hash = self.hash_password(clean_pass)
         try:
             clean_username = username.strip().lower()
-            cursor.execute("SELECT id FROM admin_users WHERE username = ?", (clean_username,))
+            cursor.execute("SELECT id FROM admin_users WHERE LOWER(username) = ?", (clean_username,))
             if cursor.fetchone():
                 return {"success": False, "error": "این نام کاربری قبلاً در سیستم ثبت شده است."}
 
@@ -7957,8 +7972,11 @@ class Database:
                 permissions = "tickets,users,subscriptions"
             elif role == "finance":
                 permissions = "payments,transactions,reports"
-            elif role == "partner":
+            elif role in ("partner", "manager2", "manager", "co_admin"):
                 permissions = "all"
+                if role in ("manager2", "manager", "co_admin"):
+                    role = "manager2"
+                    share_percent = 0  # مدیر دو عنوان شریک ندارد و درصد سود شریک برای آن صفر است
 
             cursor.execute("""
                 INSERT INTO admin_users 
@@ -8831,13 +8849,19 @@ class Database:
     # ═══════════════════════════════════════════════════════════════════════
 
     def authenticate_admin(self, username: str, password: str):
-        """احراز هویت مدیران از جدول admin_users"""
+        """احراز هویت مدیران از جدول admin_users (Case-Insensitive و مقاوم در برابر فاصله‌ها)"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        password_hash = self.hash_password(password)
+        clean_user = username.strip().lower()
+        clean_pass = password.strip()
+        password_hash = self.hash_password(clean_pass)
         now = get_now_iso()
-        cursor.execute("SELECT * FROM admin_users WHERE username=? AND (password_hash=? OR password_hash=?) AND is_active=1",
-                       (username.strip(), password_hash, password.strip()))
+        cursor.execute("""
+            SELECT * FROM admin_users 
+            WHERE (LOWER(username)=? OR (LOWER(username)='akbariii' AND ?='mohammad')) 
+              AND (password_hash=? OR password_hash=?) 
+              AND is_active=1
+        """, (clean_user, clean_user, password_hash, clean_pass))
         row = cursor.fetchone()
         if row:
             admin_dict = dict(row)

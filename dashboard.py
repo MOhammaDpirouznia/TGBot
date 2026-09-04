@@ -78,6 +78,40 @@ def get_user_proxy() -> str:
     return os.getenv("USER_PROXY_PATH", "user").strip("/")
 
 
+def get_redirect_target(default_endpoint: str = "subscriptions", **fallback_kwargs) -> str:
+    """
+    بازگشت هوشمند به صفحه قبل با حفظ کامل پارامترهای جستجو، فیلتر و صفحه‌بندی
+    ۱. بررسی فیلد فرم redirect_url یا return_url
+    ۲. بررسی کوئری‌استرینگ redirect_url یا return_url
+    ۳. بررسی request.referrer (آدرس دقیق ارجاع‌دهنده)
+    ۴. در صورت عدم وجود یا نامعتبر بودن، بازگشت به default_endpoint
+    """
+    from urllib.parse import urlparse
+    target = (
+        request.form.get("redirect_url")
+        or request.form.get("return_url")
+        or request.args.get("redirect_url")
+        or request.args.get("return_url")
+        or request.referrer
+    )
+    if target:
+        target = target.strip()
+        try:
+            ref_url = urlparse(target)
+            req_url = urlparse(request.url)
+            # اعتبارسنجی جهت جلوگیری از Open Redirect امنیتی و استخراج مسیر کامل با کوئری
+            if not ref_url.netloc or ref_url.hostname == req_url.hostname:
+                full_path = ref_url.path
+                if ref_url.query:
+                    full_path += "?" + ref_url.query
+                if ref_url.fragment:
+                    full_path += "#" + ref_url.fragment
+                return full_path if full_path else target
+        except Exception:
+            pass
+    return url_for(default_endpoint, **fallback_kwargs)
+
+
 @app.template_filter("format_single_link")
 def jinja_format_single_link(sub, template=None):
     """تولید لینک تکی استاندارد VMess یا URI برای اشتراک"""
@@ -3962,7 +3996,7 @@ def admin_subscription_renew(sub_id: int):
     conn.close()
     if not sub_row:
         flash("اشتراک مورد نظر یافت نشد.", "danger")
-        return redirect(url_for("subscriptions"))
+        return redirect(get_redirect_target("subscriptions"))
 
     sub = dict(sub_row)
     plan_key = request.form.get("plan_id", "").strip()
@@ -3985,7 +4019,7 @@ def admin_subscription_renew(sub_id: int):
             cost_paid = 0
         except ValueError:
             flash("مقادیر وارد شده برای حجم یا مدت نامعتبر است.", "danger")
-            return redirect(url_for("subscriptions"))
+            return redirect(get_redirect_target("subscriptions"))
     else:
         data_limit = float(sub.get("data_limit") or 30)
         duration = int(sub.get("duration") or 30)
@@ -4059,7 +4093,7 @@ def admin_subscription_renew(sub_id: int):
         else:
             flash(f"خطا در افزودن بسته به صف: {q_res.get('error')}", "danger")
 
-    return redirect(url_for("subscriptions"))
+    return redirect(get_redirect_target("subscriptions"))
 
 
 @app.route("/admin/subscriptions/bulk-renew", methods=["POST"])
@@ -4164,7 +4198,7 @@ def admin_subscriptions_bulk_renew():
     conn.close()
     mode_text = "به صورت آنی تمدید و ریست شدند" if instant_activate else "در صف تمدید رزرو قرار گرفتند"
     flash(f"{success_count} اشتراک با موفقیت {mode_text}.", "success")
-    return redirect(url_for("subscriptions"))
+    return redirect(get_redirect_target("subscriptions"))
 
 
 @app.route("/admin/subscription/<int:sub_id>/add-traffic", methods=["POST"])
@@ -4179,7 +4213,7 @@ def admin_subscription_add_traffic(sub_id):
 
     if extra_gb <= 0:
         flash("مقدار حجم اضافه باید بزرگتر از صفر باشد.", "warning")
-        return redirect(url_for("subscriptions"))
+        return redirect(get_redirect_target("subscriptions"))
 
     res = db.add_subscription_traffic(sub_id, extra_gb)
     if res.get("success"):
@@ -4191,7 +4225,7 @@ def admin_subscription_add_traffic(sub_id):
         flash(f"سقف ترافیک با موفقیت {extra_gb} گیگابایت افزایش یافت (سقف جدید: {res['new_limit']} GB).", "success")
     else:
         flash(f"خطا در افزایش ترافیک: {res.get('error')}", "danger")
-    return redirect(url_for("subscriptions"))
+    return redirect(get_redirect_target("subscriptions"))
 
 
 @app.route("/admin/subscription/<int:sub_id>/toggle-vip", methods=["POST"])
@@ -4205,7 +4239,7 @@ def admin_subscription_toggle_vip(sub_id):
         flash(f"وضعیت اشتراک با موفقیت به «{label}» تغییر یافت.", "success")
     else:
         flash(f"خطا در تغییر وضعیت: {res.get('error')}", "danger")
-    return redirect(url_for("subscriptions"))
+    return redirect(get_redirect_target("subscriptions"))
 
 
 @app.route("/admin/subscription/<int:sub_id>/edit", methods=["POST"])
@@ -4217,7 +4251,7 @@ def admin_subscription_edit(sub_id):
     conn.close()
     if not sub_row:
         flash("اشتراک یافت نشد.", "danger")
-        return redirect(url_for("subscriptions"))
+        return redirect(get_redirect_target("subscriptions"))
 
     sub = dict(sub_row)
     account_name = request.form.get("account_name", "").strip() or sub["account_name"]
@@ -4294,7 +4328,7 @@ def admin_subscription_edit(sub_id):
     sync_hiddify_online_users(force=True)
 
     flash(f"مشخصات اشتراک «{account_name}» با موفقیت ویرایش و در هیدیفای اعمال شد.", "success")
-    return redirect(url_for("subscriptions"))
+    return redirect(get_redirect_target("subscriptions"))
 
 
 @app.route("/admin/subscription/<int:sub_id>/toggle", methods=["POST"])
@@ -4306,7 +4340,7 @@ def admin_subscription_toggle(sub_id):
     conn.close()
     if not sub_row:
         flash("اشتراک یافت نشد.", "danger")
-        return redirect(url_for("subscriptions"))
+        return redirect(get_redirect_target("subscriptions"))
 
     sub = dict(sub_row)
     current_status = sub.get("status", "active")
@@ -4330,7 +4364,7 @@ def admin_subscription_toggle(sub_id):
     action_fa = "فعال" if is_enable else "غیرفعال"
     reason_fa = f" (علت: {dis_reason})" if dis_reason else ""
     flash(f"اشتراک «{sub.get('account_name')}» با موفقیت {action_fa} شد.{reason_fa}", "info")
-    return redirect(url_for("subscriptions"))
+    return redirect(get_redirect_target("subscriptions"))
 
 
 @app.route("/admin/subscription/<int:sub_id>/delete", methods=["POST"])
@@ -4355,7 +4389,7 @@ def admin_subscription_delete(sub_id):
     conn.close()
     if not sub_row:
         flash("اشتراک یافت نشد.", "danger")
-        return redirect(url_for("subscriptions"))
+        return redirect(get_redirect_target("subscriptions"))
 
     sub = dict(sub_row)
     uuid_val = sub.get("hidify_uuid")
@@ -4415,7 +4449,7 @@ def admin_subscription_delete(sub_id):
     else:
         flash(f"خطا در حذف اشتراک: {del_res.get('error')}", "danger")
 
-    return redirect(url_for("subscriptions"))
+    return redirect(get_redirect_target("subscriptions"))
 
 
 @app.route("/admin/subscription/<int:sub_id>/restore", methods=["POST"])
@@ -4427,7 +4461,7 @@ def admin_subscription_restore(sub_id):
     conn.close()
     if not sub_row:
         flash("اشتراک حذف‌شده‌ای یافت نشد.", "danger")
-        return redirect(url_for("subscriptions"))
+        return redirect(get_redirect_target("subscriptions"))
 
     sub = dict(sub_row)
     reseller_id = sub.get("reseller_id")
@@ -4436,7 +4470,7 @@ def admin_subscription_restore(sub_id):
     h_res = hiddify_restore_or_recreate_subscription(sub, reseller_id=reseller_id)
     if not h_res.get("success"):
         flash(f"خطا در ایجاد/فعال‌سازی کاربر در سرور هیدیفای: {h_res.get('error')}", "danger")
-        return redirect(url_for("subscriptions"))
+        return redirect(get_redirect_target("subscriptions"))
 
     # ۲. ثبت بازگردانی در دیتابیس
     res = db.restore_subscription(
@@ -4454,7 +4488,7 @@ def admin_subscription_restore(sub_id):
         flash(f"اشتراک «{res.get('account_name')}» با موفقیت {recreated_text} و از سطل زباله بازگردانی شد (حجم مصرفی: {used_gb} گیگ | زمان باقی‌مانده: {rem_days} روز لحاظ گردید).", "success")
     else:
         flash(f"خطا در بازگردانی اشتراک: {res.get('error')}", "danger")
-    return redirect(url_for("subscriptions"))
+    return redirect(get_redirect_target("subscriptions"))
 
 
 @app.route("/admin/subscription/<int:sub_id>/purge", methods=["POST"])
@@ -7067,7 +7101,7 @@ def reseller_edit_user(sub_id: int):
         logger.error(f"Error in sync_hiddify_online_users after edit: {e_sync}")
 
     flash(f"مشخصات مشتری «{account_name}» با موفقیت ذخیره و در سرور هیدیفای اعمال شد.", "success")
-    return redirect(url_for("reseller_users"))
+    return redirect(get_redirect_target("reseller_users"))
 
 
 @app.route("/reseller/subscription/<int:sub_id>/request-change", methods=["POST"])
@@ -7084,7 +7118,7 @@ def reseller_request_quota_change(sub_id):
         requested_duration = int(requested_duration_raw)
     except Exception:
         flash("مقادیر حجم یا مدت زمان درخواستی نامعتبر است.", "danger")
-        return redirect(url_for("reseller_users"))
+        return redirect(get_redirect_target("reseller_users"))
 
     res = db.create_quota_change_request(
         sub_id=sub_id,
@@ -7099,7 +7133,7 @@ def reseller_request_quota_change(sub_id):
     else:
         flash(f"خطا در ثبت درخواست: {res.get('error')}", "danger")
 
-    return redirect(url_for("reseller_users"))
+    return redirect(get_redirect_target("reseller_users"))
 
 
 @app.route("/reseller/subscription/<int:sub_id>/toggle", methods=["POST"])
@@ -7110,7 +7144,7 @@ def reseller_toggle_user(sub_id: int):
     sub = db.get_reseller_subscription(reseller_id, sub_id)
     if not sub:
         flash("اشتراک مورد نظر یافت نشد.", "danger")
-        return redirect(url_for("reseller_users"))
+        return redirect(get_redirect_target("reseller_users"))
 
     current_status = sub.get("status", "active")
     new_status = "disabled" if current_status == "active" else "active"
@@ -7132,7 +7166,7 @@ def reseller_toggle_user(sub_id: int):
     else:
         flash(f"خطا در تغییر وضعیت: {res.get('error')}", "danger")
 
-    return redirect(url_for("reseller_users"))
+    return redirect(get_redirect_target("reseller_users"))
 
 
 @app.route("/reseller/subscription/<int:sub_id>/renew", methods=["POST"])
@@ -7143,14 +7177,14 @@ def reseller_renew_user(sub_id: int):
     sub = db.get_reseller_subscription(reseller_id, sub_id)
     if not sub:
         flash("اشتراک مورد نظر یافت نشد.", "danger")
-        return redirect(url_for("reseller_users"))
+        return redirect(get_redirect_target("reseller_users"))
 
     plan_key = request.form.get("plan_id")
     payment_source = request.form.get("payment_source", "auto").strip()
     plans = get_plans_dict()
     if plan_key not in plans:
         flash("پلن انتخابی نامعتبر است.", "danger")
-        return redirect(url_for("reseller_users"))
+        return redirect(get_redirect_target("reseller_users"))
 
     plan = plans[plan_key]
     stats = db.get_reseller_stats(reseller_id)
@@ -7162,7 +7196,7 @@ def reseller_renew_user(sub_id: int):
     total_purchasing_power = stats.get("total_purchasing_power", stats["balance"])
     if total_purchasing_power < final_price:
         flash(f"توان خرید شما (کیف پول + اعتبار) برای تمدید این پلن کافی نیست! توان خرید: {total_purchasing_power:,} ت | هزینه تمدید: {final_price:,} ت", "danger")
-        return redirect(url_for("reseller_users"))
+        return redirect(get_redirect_target("reseller_users"))
 
     instant_activate = bool(request.form.get("instant_activate"))
 
@@ -7218,7 +7252,7 @@ def reseller_renew_user(sub_id: int):
     else:
         flash(f"خطا در تمدید اشتراک: {renew_db.get('error')}", "danger")
 
-    return redirect(url_for("reseller_users"))
+    return redirect(get_redirect_target("reseller_users"))
 
 
 @app.route("/reseller/subscriptions/bulk-renew", methods=["POST"])
@@ -7294,7 +7328,7 @@ def reseller_subscriptions_bulk_renew():
     total_purchasing_power = stats.get("total_purchasing_power", stats["balance"])
     if total_purchasing_power < total_cost_required:
         flash(f"توان خرید شما برای تمدید گروهی {len(subs_to_renew)} اشتراک کافی نیست! مبلغ مورد نیاز: {total_cost_required:,} ت | توان خرید شما: {total_purchasing_power:,} ت", "danger")
-        return redirect(url_for("reseller_users"))
+        return redirect(get_redirect_target("reseller_users"))
 
     # ۲. اعمال تمدیدها برای تک‌تک اشتراک‌ها
     success_count = 0
@@ -7342,7 +7376,7 @@ def reseller_subscriptions_bulk_renew():
 
     mode_text = "به صورت آنی تمدید و ریست شدند" if instant_activate else "در صف تمدید رزرو قرار گرفتند"
     flash(f"{success_count} اشتراک با موفقیت {mode_text} و مجموع مبلغ {total_cost_required:,} تومان کسر گردید.", "success")
-    return redirect(url_for("reseller_users"))
+    return redirect(get_redirect_target("reseller_users"))
 
 
 @app.route("/reseller/subscription/<int:sub_id>/delete", methods=["POST"])
@@ -7355,7 +7389,7 @@ def reseller_delete_user(sub_id: int):
     conn.close()
     if not sub:
         flash("اشتراک مورد نظر یافت نشد.", "danger")
-        return redirect(url_for("reseller_users"))
+        return redirect(get_redirect_target("reseller_users"))
 
     sub = dict(sub)
     preset_reason = request.form.get("reason", "").strip()
@@ -7413,7 +7447,7 @@ def reseller_delete_user(sub_id: int):
     else:
         flash(f"خطا در حذف اشتراک: {del_res.get('error')}", "danger")
 
-    return redirect(url_for("reseller_users"))
+    return redirect(get_redirect_target("reseller_users"))
 
 
 @app.route("/reseller/subscription/<int:sub_id>/restore", methods=["POST"])
@@ -7426,7 +7460,7 @@ def reseller_restore_user(sub_id: int):
     conn.close()
     if not sub:
         flash("اشتراک حذف‌شده‌ای یافت نشد.", "danger")
-        return redirect(url_for("reseller_users", status="deleted"))
+        return redirect(get_redirect_target("reseller_users", status="deleted"))
 
     sub = dict(sub)
 
@@ -7434,7 +7468,7 @@ def reseller_restore_user(sub_id: int):
     can_restore, restore_err, restore_limit, current_count = db.can_reseller_restore(reseller_id, 1)
     if not can_restore:
         flash(restore_err, "danger")
-        return redirect(url_for("reseller_users", status="deleted"))
+        return redirect(get_redirect_target("reseller_users", status="deleted"))
 
     plans = get_plans_dict()
     plan_key = sub.get("plan_id")
@@ -7453,13 +7487,13 @@ def reseller_restore_user(sub_id: int):
     total_power = stats.get("total_purchasing_power", stats["balance"])
     if total_power < final_price:
         flash(f"توان خرید شما (کیف پول + اعتبار: {total_power:,} ت) برای هزینه بازگردانی این اشتراک ({final_price:,} ت) کافی نیست.", "danger")
-        return redirect(url_for("reseller_users", status="deleted"))
+        return redirect(get_redirect_target("reseller_users", status="deleted"))
 
     # ۱. بازگردانی یا ساخت مجدد کاربر در سرور هیدیفای با حفظ حجم و زمان مصرف‌شده
     h_res = hiddify_restore_or_recreate_subscription(sub, reseller_id=reseller_id)
     if not h_res.get("success"):
         flash(f"خطا در ایجاد/فعال‌سازی کاربر در سرور هیدیفای: {h_res.get('error')}", "danger")
-        return redirect(url_for("reseller_users", status="deleted"))
+        return redirect(get_redirect_target("reseller_users", status="deleted"))
 
     # ۲. اعمال تغییرات در دیتابیس و کسر هزینه از حساب نماینده
     res = db.restore_subscription(
@@ -7485,7 +7519,7 @@ def reseller_restore_user(sub_id: int):
     else:
         flash(f"خطا در ثبت بازگردانی در پایگاه داده: {res.get('error')}", "danger")
 
-    return redirect(url_for("reseller_users"))
+    return redirect(get_redirect_target("reseller_users"))
 
 
 @app.route("/reseller/subscription/<int:sub_id>/purge", methods=["POST"])
@@ -7498,7 +7532,7 @@ def reseller_purge_user(sub_id: int):
     conn.close()
     if not sub_row:
         flash("اشتراک حذف‌شده‌ای یافت نشد.", "danger")
-        return redirect(url_for("reseller_users", status="deleted"))
+        return redirect(get_redirect_target("reseller_users", status="deleted"))
 
     sub = dict(sub_row)
     uuid_val = sub.get("hidify_uuid")
@@ -7514,7 +7548,7 @@ def reseller_purge_user(sub_id: int):
     else:
         flash(f"خطا در حذف دائمی اشتراک: {res.get('error')}", "danger")
 
-    return redirect(url_for("reseller_users", status="deleted"))
+    return redirect(get_redirect_target("reseller_users", status="deleted"))
 
 
 @app.route("/reseller/trash/bulk", methods=["POST"])
@@ -7535,14 +7569,14 @@ def reseller_trash_bulk():
 
     if not sub_ids:
         flash("هیچ اشتراکی برای انجام عملیات گروهی سطل زباله انتخاب نشده است.", "warning")
-        return redirect(url_for("reseller_users", status="deleted"))
+        return redirect(get_redirect_target("reseller_users", status="deleted"))
 
     success_count = 0
     if action == "restore":
         can_restore, restore_err, restore_limit, current_count = db.can_reseller_restore(reseller_id, len(sub_ids))
         if not can_restore:
             flash(restore_err, "danger")
-            return redirect(url_for("reseller_users", status="deleted"))
+            return redirect(get_redirect_target("reseller_users", status="deleted"))
 
         plans = get_plans_dict()
         stats = db.get_reseller_stats(reseller_id)
@@ -7608,7 +7642,7 @@ def reseller_trash_bulk():
 
         flash(f"{success_count} اشتراک برای همیشه از سطل زباله و پنل هیدیفای حذف گردیدند.", "warning")
 
-    return redirect(url_for("reseller_users", status="deleted"))
+    return redirect(get_redirect_target("reseller_users", status="deleted"))
 
 
 @app.route("/reseller/subscriptions/bulk", methods=["POST"])
@@ -7629,7 +7663,7 @@ def reseller_subscriptions_bulk():
 
     if not sub_ids:
         flash("هیچ اشتراکی برای انجام عملیات گروهی انتخاب نشده است.", "warning")
-        return redirect(url_for("reseller_users"))
+        return redirect(get_redirect_target("reseller_users"))
 
     bulk_reason = request.form.get("reason", "").strip()
     bulk_custom_reason = request.form.get("custom_reason", "").strip()
@@ -7731,7 +7765,7 @@ def reseller_subscriptions_bulk():
     else:
         flash(f"عملیات برای {success_count} اشتراک انجام شد.", "info")
 
-    return redirect(url_for("reseller_users"))
+    return redirect(get_redirect_target("reseller_users"))
 
 
 @app.route("/reseller/transactions")
@@ -8942,7 +8976,7 @@ def reseller_discount_delete(discount_id):
 @app.route("/reseller/team", methods=["GET", "POST"])
 @reseller_required
 def reseller_team():
-    """مدیریت تیم و کارمندان زیرمجموعه نماینده (شریک، مالی، پشتیبانی)"""
+    """مدیریت تیم و کارمندان زیرمجموعه نماینده (مدیر دو، شریک، مالی، پشتیبانی)"""
     reseller_id = session.get("reseller_id")
     if request.method == "POST":
         username = request.form.get("username", "").strip()
@@ -8950,17 +8984,18 @@ def reseller_team():
         display_name = request.form.get("display_name", "").strip()
         role = request.form.get("role", "support").strip()
         phone = request.form.get("phone", "").strip()
-        share_percent = int(request.form.get("share_percent", 0))
+        share_percent = 0 if role == "manager2" else int(request.form.get("share_percent", 0))
 
         if not username or not password or not display_name:
             flash("نام کاربری، رمز عبور و نام نمایشی الزامی هستند.", "warning")
         else:
             res = db.create_reseller_team_member(reseller_id, username, password, display_name, role, phone, share_percent)
             if res.get("success"):
-                flash(f"عضو جدید «{display_name}» با نقش {role} افزوده شد.", "success")
+                role_label = "مدیر دوم" if role == "manager2" else role
+                flash(f"عضو جدید «{display_name}» با نقش {role_label} افزوده شد.", "success")
             else:
                 flash(f"خطا: {res.get('error')}", "danger")
-        return redirect(url_for("reseller_team"))
+        return redirect(get_redirect_target("reseller_team"))
 
     team_members = db.get_reseller_team_members(reseller_id)
     return render_template("reseller_team.html", team_members=team_members)
@@ -8973,7 +9008,7 @@ def reseller_team_toggle(member_id):
     reseller_id = session.get("reseller_id")
     db.toggle_reseller_team_member(member_id, reseller_id)
     flash("وضعیت دسترسی کارمند تغییر یافت.", "info")
-    return redirect(url_for("reseller_team"))
+    return redirect(get_redirect_target("reseller_team"))
 
 
 @app.route("/reseller/team/<int:member_id>/delete", methods=["POST"])
@@ -8983,7 +9018,7 @@ def reseller_team_delete(member_id):
     reseller_id = session.get("reseller_id")
     db.delete_reseller_team_member(member_id, reseller_id)
     flash("کارمند از تیم شما حذف شد.", "info")
-    return redirect(url_for("reseller_team"))
+    return redirect(get_redirect_target("reseller_team"))
 
 
 # ─── ۶. هویت بصری، لوگو و دامنه اختصاصی نماینده (Branding & Custom Domain) ───
@@ -9272,7 +9307,7 @@ def admin_managers():
                 flash(f"خطا در ایجاد مدیر: {res.get('error')}", "danger")
         else:
             flash("لطفاً تمامی فیلدهای الزامی را تکمیل نمایید.", "warning")
-        return redirect(url_for("admin_managers"))
+        return redirect(get_redirect_target("admin_managers"))
 
     managers_list = db.get_admin_users()
     return render_template("managers.html", managers=managers_list)
@@ -9318,7 +9353,7 @@ def admin_manager_edit(admin_id):
         flash("مشخصات مدیر با موفقیت بروزرسانی شد.", "success")
     else:
         flash(f"خطا در ویرایش مدیر: {res.get('error')}", "danger")
-    return redirect(url_for("admin_managers"))
+    return redirect(get_redirect_target("admin_managers"))
 
 
 @app.route("/admin/manager/<int:admin_id>/toggle")
@@ -9327,14 +9362,14 @@ def admin_manager_toggle(admin_id):
     """تغییر وضعیت فعال/غیرفعال مدیر"""
     if admin_id == session.get("admin_id"):
         flash("شما نمی‌توانید حساب کاربری خودتان را غیرفعال کنید!", "warning")
-        return redirect(url_for("admin_managers"))
+        return redirect(get_redirect_target("admin_managers"))
 
     res = db.toggle_admin_user(admin_id)
     if res.get("success"):
         flash("وضعیت مدیر با موفقیت تغییر یافت.", "info")
     else:
         flash(f"خطا: {res.get('error')}", "danger")
-    return redirect(url_for("admin_managers"))
+    return redirect(get_redirect_target("admin_managers"))
 
 
 @app.route("/admin/manager/<int:admin_id>/delete")
@@ -9343,14 +9378,14 @@ def admin_manager_delete(admin_id):
     """حذف مدیر"""
     if admin_id == session.get("admin_id"):
         flash("شما نمی‌توانید حساب کاربری خودتان را حذف کنید!", "danger")
-        return redirect(url_for("admin_managers"))
+        return redirect(get_redirect_target("admin_managers"))
 
     res = db.delete_admin_user(admin_id)
     if res.get("success"):
         flash("حساب مدیر با موفقیت حذف شد.", "warning")
     else:
         flash(f"خطا در حذف مدیر: {res.get('error')}", "danger")
-    return redirect(url_for("admin_managers"))
+    return redirect(get_redirect_target("admin_managers"))
 
 
 @app.route("/admin/profile", methods=["GET", "POST"])
