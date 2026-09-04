@@ -396,6 +396,100 @@
             box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
         }
 
+        /* ─── زیرمنوهای کشویی و آکاردئونی سایدبار (Sidebar Dropdowns) ─── */
+        .sidebar .sidebar-dropdown-toggle {
+            width: 100% !important;
+            flex-shrink: 0 !important;
+            color: var(--sidebar-text);
+            padding: 8px 12px;
+            border-radius: 8px;
+            margin-bottom: 2px;
+            font-size: 0.88rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: transparent;
+            border: none;
+            outline: none;
+            transition: all 0.15s ease;
+            text-decoration: none;
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+            text-align: right;
+        }
+
+        .sidebar .sidebar-dropdown-toggle:hover {
+            color: var(--primary);
+            background: var(--sidebar-hover-bg);
+            transform: translateX(-3px);
+        }
+
+        .sidebar .sidebar-dropdown-toggle.has-active {
+            color: var(--primary);
+            font-weight: 700;
+            background: rgba(79, 70, 229, 0.08);
+        }
+
+        .sidebar .dropdown-chevron {
+            font-size: 0.72rem;
+            transition: transform 0.25s ease;
+            color: var(--sidebar-text-muted);
+        }
+
+        .sidebar .sidebar-dropdown-toggle[aria-expanded="true"] .dropdown-chevron {
+            transform: rotate(180deg);
+            color: var(--primary);
+        }
+
+        .sidebar .submenu-collapse {
+            width: 100%;
+        }
+
+        .sidebar .submenu-inner {
+            margin: 2px 8px 6px 14px;
+            padding-right: 12px;
+            border-right: 2px solid rgba(148, 163, 184, 0.25);
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .sidebar .submenu-item {
+            width: 100% !important;
+            font-size: 0.82rem !important;
+            font-weight: 500;
+            padding: 6px 10px !important;
+            border-radius: 6px !important;
+            color: var(--sidebar-text) !important;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+            transition: all 0.15s ease;
+        }
+
+        .sidebar .submenu-item i {
+            font-size: 0.88rem;
+            width: 18px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .sidebar .submenu-item:hover {
+            color: var(--primary) !important;
+            background: var(--sidebar-hover-bg) !important;
+            transform: translateX(-2px);
+        }
+
+        .sidebar .submenu-item.active {
+            color: #ffffff !important;
+            background: var(--primary) !important;
+            font-weight: 700;
+            box-shadow: 0 2px 8px rgba(79, 70, 229, 0.25);
+        }
+
         /* ─── کارت‌های آماری شاخص‌ها (Stat Cards) ─── */
         .stat-card {
             padding: 20px 22px !important;
@@ -913,48 +1007,24 @@
                 </div>
 
                 <a class="nav-link {% if request.endpoint == 'reseller_dashboard' %}active{% endif %}" href="{{ url_for('reseller_dashboard') }}">
-                    <i class="fas fa-chart-pie"></i> داشبورد نماینده
+                    <i class="fas fa-chart-pie" style="color: #6366f1;"></i> داشبورد نماینده
                 </a>
 
                 {% if not sub_role or sub_role in ['partner', 'finance', 'manager2'] %}
                 <a class="nav-link {% if request.endpoint == 'reseller_customer_payments' %}active{% endif %}" href="{{ url_for('reseller_customer_payments') }}">
-                    <i class="fas fa-receipt text-warning"></i> فیش‌ها و پرداخت‌های مشتریان
-                </a>
-                <a class="nav-link {% if request.endpoint == 'reseller_payments' %}active{% endif %}" href="{{ url_for('reseller_payments') }}">
-                    <i class="fas fa-file-invoice-dollar text-primary"></i> شارژ حساب و سوابق مالی
+                    <i class="fas fa-receipt text-warning"></i> پرداخت‌های ربات
                 </a>
                 {% endif %}
 
                 {% if not sub_role or sub_role in ['partner', 'support', 'manager2'] %}
                 <a class="nav-link {% if request.endpoint == 'reseller_create_user' %}active{% endif %}" href="{{ url_for('reseller_create_user') }}">
-                    <i class="fas fa-user-plus text-success"></i> ساخت اشتراک مشتری
+                    <i class="fas fa-user-plus text-success"></i> مشتری جدید
                 </a>
                 <a class="nav-link {% if request.endpoint == 'reseller_users' %}active{% endif %}" href="{{ url_for('reseller_users') }}">
-                    <i class="fas fa-users"></i> مشتریان من
+                    <i class="fas fa-users text-primary"></i> مشتریان
                 </a>
                 <a class="nav-link {% if request.endpoint == 'reseller_tickets' %}active{% endif %}" href="{{ url_for('reseller_tickets') }}">
                     <i class="fas fa-headset text-info"></i> تیکت‌ها و پشتیبانی
-                </a>
-                {% endif %}
-
-                {% if not sub_role or sub_role in ['partner', 'manager2'] %}
-                <a class="nav-link {% if request.endpoint == 'reseller_plans' %}active{% endif %}" href="{{ url_for('reseller_plans') }}">
-                    <i class="fas fa-layer-group text-info"></i> مدیریت پلن‌ها و قیمت‌ها
-                </a>
-                <a class="nav-link {% if request.endpoint == 'reseller_bot_settings' %}active{% endif %}" href="{{ url_for('reseller_bot_settings') }}">
-                    <i class="fas fa-robot text-primary"></i> ربات اختصاصی من
-                </a>
-                <a class="nav-link {% if request.endpoint == 'reseller_cards' %}active{% endif %}" href="{{ url_for('reseller_cards') }}">
-                    <i class="fas fa-credit-card text-success"></i> روش‌ها و تنظیمات پرداخت
-                </a>
-                <a class="nav-link {% if request.endpoint == 'reseller_discounts' %}active{% endif %}" href="{{ url_for('reseller_discounts') }}">
-                    <i class="fas fa-ticket text-danger"></i> کدهای تخفیف
-                </a>
-                <a class="nav-link {% if request.endpoint == 'reseller_team' %}active{% endif %}" href="{{ url_for('reseller_team') }}">
-                    <i class="fas fa-users-gear" style="color: #8b5cf6;"></i> مدیریت تیم و دسترسی‌ها
-                </a>
-                <a class="nav-link {% if request.endpoint == 'reseller_branding' %}active{% endif %}" href="{{ url_for('reseller_branding') }}">
-                    <i class="fas fa-palette text-warning"></i> هویت بصری و دامنه
                 </a>
                 {% endif %}
 
@@ -962,16 +1032,79 @@
                 <a class="nav-link {% if request.endpoint == 'reseller_transactions' %}active{% endif %}" href="{{ url_for('reseller_transactions') }}">
                     <i class="fas fa-wallet text-success"></i> بسته‌ها و شارژ اعتبار
                 </a>
-                <a class="nav-link {% if request.endpoint == 'reseller_reports' %}active{% endif %}" href="{{ url_for('reseller_reports') }}">
-                    <i class="fas fa-chart-line"></i> گزارشات و هوش مالی
-                </a>
-                <a class="nav-link {% if request.endpoint == 'reseller_affiliates' %}active{% endif %}" href="{{ url_for('reseller_affiliates') }}">
-                    <i class="fas fa-users-rays text-warning"></i> زیرمجموعه‌گیری و پورسانت
-                </a>
+
+                <!-- منوی کشویی امور مالی و گزارشات -->
+                {% set is_finance_active = request.endpoint in ['reseller_payments', 'reseller_discounts', 'reseller_reports', 'reseller_affiliates'] %}
+                <button class="sidebar-dropdown-toggle {% if is_finance_active %}has-active{% endif %}" 
+                        type="button" 
+                        data-bs-toggle="collapse" 
+                        data-bs-target="#resellerFinanceCollapse" 
+                        aria-expanded="{% if is_finance_active %}true{% else %}false{% endif %}" 
+                        aria-controls="resellerFinanceCollapse">
+                    <span class="d-flex align-items-center gap-2">
+                        <i class="fas fa-coins text-warning"></i>
+                        <span>امور مالی و گزارشات</span>
+                    </span>
+                    <i class="fas fa-chevron-down dropdown-chevron"></i>
+                </button>
+                <div class="collapse submenu-collapse {% if is_finance_active %}show{% endif %}" id="resellerFinanceCollapse">
+                    <div class="submenu-inner">
+                        <a class="submenu-item {% if request.endpoint == 'reseller_payments' %}active{% endif %}" href="{{ url_for('reseller_payments') }}">
+                            <i class="fas fa-file-invoice-dollar text-primary"></i> شارژ حساب و سوابق مالی
+                        </a>
+                        {% if not sub_role or sub_role in ['partner', 'manager2'] %}
+                        <a class="submenu-item {% if request.endpoint == 'reseller_discounts' %}active{% endif %}" href="{{ url_for('reseller_discounts') }}">
+                            <i class="fas fa-ticket text-danger"></i> کدهای تخفیف
+                        </a>
+                        {% endif %}
+                        <a class="submenu-item {% if request.endpoint == 'reseller_reports' %}active{% endif %}" href="{{ url_for('reseller_reports') }}">
+                            <i class="fas fa-chart-line text-success"></i> گزارشات و هوش مالی
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'reseller_affiliates' %}active{% endif %}" href="{{ url_for('reseller_affiliates') }}">
+                            <i class="fas fa-users-rays text-warning"></i> زیرمجموعه‌گیری و پورسانت
+                        </a>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- منوی کشویی تنظیمات -->
+                {% if not sub_role or sub_role in ['partner', 'manager2'] %}
+                {% set is_settings_active = request.endpoint in ['reseller_plans', 'reseller_bot_settings', 'reseller_cards', 'reseller_team', 'reseller_branding'] %}
+                <button class="sidebar-dropdown-toggle {% if is_settings_active %}has-active{% endif %}" 
+                        type="button" 
+                        data-bs-toggle="collapse" 
+                        data-bs-target="#resellerSettingsCollapse" 
+                        aria-expanded="{% if is_settings_active %}true{% else %}false{% endif %}" 
+                        aria-controls="resellerSettingsCollapse">
+                    <span class="d-flex align-items-center gap-2">
+                        <i class="fas fa-gear text-info"></i>
+                        <span>تنظیمات</span>
+                    </span>
+                    <i class="fas fa-chevron-down dropdown-chevron"></i>
+                </button>
+                <div class="collapse submenu-collapse {% if is_settings_active %}show{% endif %}" id="resellerSettingsCollapse">
+                    <div class="submenu-inner">
+                        <a class="submenu-item {% if request.endpoint == 'reseller_plans' %}active{% endif %}" href="{{ url_for('reseller_plans') }}">
+                            <i class="fas fa-layer-group text-info"></i> مدیریت بسته‌ها و پلن‌ها
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'reseller_bot_settings' %}active{% endif %}" href="{{ url_for('reseller_bot_settings') }}">
+                            <i class="fas fa-robot text-primary"></i> ربات تلگرام
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'reseller_cards' %}active{% endif %}" href="{{ url_for('reseller_cards') }}">
+                            <i class="fas fa-credit-card text-success"></i> تنظیمات پرداخت
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'reseller_team' %}active{% endif %}" href="{{ url_for('reseller_team') }}">
+                            <i class="fas fa-users-gear" style="color: #8b5cf6;"></i> مدیریت تیم و دسترسی‌ها
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'reseller_branding' %}active{% endif %}" href="{{ url_for('reseller_branding') }}">
+                            <i class="fas fa-palette text-warning"></i> هویت بصری و دامنه
+                        </a>
+                    </div>
+                </div>
                 {% endif %}
 
                 <a class="nav-link {% if request.endpoint == 'reseller_profile' %}active{% endif %}" href="{{ url_for('reseller_profile') }}">
-                    <i class="fas fa-user-gear"></i> حساب کاربری و مشخصات
+                    <i class="fas fa-user-gear" style="color: #64748b;"></i> حساب کاربری و مشخصات
                 </a>
             {% else %}
                 <!-- منوی مدیریت کل بر اساس سطح دسترسی (RBAC) -->

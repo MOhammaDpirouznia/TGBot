@@ -16,7 +16,7 @@
     </div>
     <div>
         <a href="{{ url_for('reseller_create_user') }}" class="btn btn-success py-2 px-3 fw-bold">
-            <i class="fas fa-user-plus me-1"></i> ساخت آنی اشتراک مشتری
+            <i class="fas fa-user-plus me-1"></i> مشتری جدید
         </a>
     </div>
 </div>
@@ -157,7 +157,7 @@
         </div>
         <div class="d-flex align-items-center gap-2">
             <a href="{{ url_for('reseller_bot_settings') }}" class="btn btn-primary btn-sm px-3 py-2 fw-bold">
-                <i class="fas fa-gear me-1"></i> تنظیمات ربات اختصاصی
+                <i class="fas fa-robot me-1"></i> تنظیمات ربات تلگرام
             </a>
             {% if bot_status.get('is_running') and bot_status.get('bot_username') %}
                 <a href="https://t.me/{{ bot_status.get('bot_username') }}" target="_blank" class="btn btn-outline-light btn-sm px-3 py-2">
@@ -184,6 +184,155 @@
     100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
 }
 </style>
+
+<!-- بخش روند درآمد ۷ روز گذشته نماینده (نمودار و جدول) -->
+{% set rev7 = revenue_7days or {} %}
+<div class="row g-4 mb-4">
+    <!-- نمودار خطی روند درآمد ۷ روز گذشته -->
+    <div class="col-lg-5">
+        <div class="card h-100 shadow-sm border-0 bg-white">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="p-2 bg-primary bg-opacity-10 text-primary rounded-3">
+                        <i class="fas fa-chart-area"></i>
+                    </div>
+                    <div>
+                        <h5 class="mb-0 fw-bold">نمودار درآمد ۷ روز گذشته</h5>
+                        <small class="text-muted">نوسان فروش و درآمد روزانه</small>
+                    </div>
+                </div>
+                <span class="badge bg-primary bg-opacity-10 text-primary border border-primary font-monospace">
+                    {{ "{:,}".format(rev7.get('total_revenue', 0)) }} ت
+                </span>
+            </div>
+            <div class="card-body d-flex flex-column justify-content-center">
+                <div style="position: relative; height: 260px; width: 100%;">
+                    <canvas id="resellerRevenueChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- جدول روند درآمد ۷ روز گذشته -->
+    <div class="col-lg-7">
+        <div class="card h-100 shadow-sm border-0 bg-white">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="p-2 bg-success bg-opacity-10 text-success rounded-3">
+                        <i class="fas fa-calendar-week"></i>
+                    </div>
+                    <div>
+                        <h5 class="mb-0 fw-bold"><i class="fas fa-table-list text-success me-1"></i> جدول روند درآمد ۷ روز گذشته</h5>
+                        <small class="text-muted">ریز سفارشات روزانه و درآمد ثبت شده</small>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-light text-dark border">
+                        <i class="fas fa-basket-shopping text-primary me-1"></i> کل: <strong class="text-primary">{{ rev7.get('total_orders', 0) }}</strong> سفارش
+                    </span>
+                    <a href="{{ url_for('reseller_reports') }}" class="btn btn-sm btn-outline-primary py-1 px-2">
+                        <i class="fas fa-chart-line me-1"></i> گزارشات کامل
+                    </a>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0 text-nowrap">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-3 py-3">روز و تاریخ</th>
+                                <th class="text-center py-3">تعداد فروش</th>
+                                <th class="py-3">درآمد روز (تومان)</th>
+                                <th class="py-3">سود برآورد شده</th>
+                                <th class="pe-3 py-3 text-center" style="width: 130px;">سهم از کل</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for day in rev7.get('days_reversed', []) %}
+                            <tr class="{% if day.is_today %}table-primary bg-opacity-10{% elif day.is_yesterday %}table-light{% endif %}">
+                                <td class="ps-3">
+                                    <div class="d-flex align-items-center gap-2">
+                                        {% if day.is_today %}
+                                            <span class="badge bg-primary rounded-pill px-2 py-1">امروز</span>
+                                            <span class="fw-bold text-primary">{{ day.day_name }}</span>
+                                        {% elif day.is_yesterday %}
+                                            <span class="badge bg-secondary rounded-pill px-2 py-1">دیروز</span>
+                                            <span class="fw-semibold text-secondary">{{ day.day_name }}</span>
+                                        {% else %}
+                                            <span class="fw-semibold text-dark">{{ day.day_name }}</span>
+                                        {% endif %}
+                                        <small class="text-muted font-monospace" style="font-size: 0.8rem;">({{ day.jalali_date }})</small>
+                                    </div>
+                                </td>
+                                <td class="text-center">
+                                    {% if day.orders_count > 0 %}
+                                        <span class="badge bg-success bg-opacity-10 text-success border border-success font-monospace px-2 py-1">
+                                            {{ day.orders_count }} سفارش
+                                        </span>
+                                    {% else %}
+                                        <span class="text-muted small">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if day.revenue > 0 %}
+                                        <strong class="text-primary font-monospace fs-6">{{ "{:,}".format(day.revenue) }}</strong>
+                                        <small class="text-muted">ت</small>
+                                    {% else %}
+                                        <span class="text-muted small">۰ ت</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if day.estimated_profit > 0 %}
+                                        <span class="text-success fw-bold font-monospace">+{{ "{:,}".format(day.estimated_profit) }}</span>
+                                        <small class="text-muted">ت</small>
+                                    {% else %}
+                                        <span class="text-muted small">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="pe-3">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="progress flex-grow-1" style="height: 6px; background-color: #f1f5f9;">
+                                            <div class="progress-bar bg-gradient bg-primary" role="progressbar" 
+                                                 style="width: {{ day.percentage }}%;" 
+                                                 aria-valuenow="{{ day.percentage }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                        </div>
+                                        <small class="text-muted font-monospace" style="font-size: 0.72rem; min-width: 32px;">{{ day.percentage }}%</small>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            {% if not rev7.get('days') %}
+                            <tr>
+                                <td colspan="5" class="text-center py-4 text-muted">اطلاعاتی برای ۷ روز گذشته ثبت نشده است.</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                        <tfoot class="table-light border-top">
+                            <tr class="fw-bold">
+                                <td class="ps-3">
+                                    <span class="text-dark">مجموع ۷ روز گذشته:</span>
+                                    <small class="text-muted fw-normal d-block">میانگین روزانه: {{ "{:,}".format(rev7.get('avg_daily_revenue', 0)) }} ت</small>
+                                </td>
+                                <td class="text-center text-success font-monospace">
+                                    {{ rev7.get('total_orders', 0) }} سفارش
+                                </td>
+                                <td>
+                                    <span class="text-primary fs-6 font-monospace">{{ "{:,}".format(rev7.get('total_revenue', 0)) }} ت</span>
+                                </td>
+                                <td>
+                                    <span class="text-success font-monospace">+{{ "{:,}".format(rev7.get('estimated_total_profit', 0)) }} ت</span>
+                                </td>
+                                <td class="pe-3 text-center">
+                                    <span class="badge bg-info bg-opacity-10 text-info border border-info" style="font-size: 0.72rem;">تخفیف {{ rev7.get('discount_percent', 20) }}%</span>
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- ردیف هوش مالی سریع داشبورد نماینده: برترین مشتریان ماه و سوابق تمدید -->
 <div class="row g-4 mb-4">
@@ -349,7 +498,7 @@
                     <strong class="text-primary fs-5">شارژ آنی توسط مدیریت</strong>
                 </div>
                 <a href="{{ url_for('reseller_create_user') }}" class="btn btn-primary w-100 py-2 mb-2">
-                    <i class="fas fa-plus-circle me-1"></i> ساخت اشتراک جدید
+                    <i class="fas fa-user-plus me-1"></i> مشتری جدید
                 </a>
                 <a href="{{ url_for('reseller_reports') }}" class="btn btn-outline-primary w-100 py-2">
                     <i class="fas fa-chart-line me-1"></i> هوش مالی و گزارشات
@@ -358,4 +507,72 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const revCanvas = document.getElementById('resellerRevenueChart');
+        if (revCanvas) {
+            const ctx = revCanvas.getContext('2d');
+            const labels = [{% for d in (revenue_7days or {}).get('days', []) %}'{{ d.day_name }} ({{ d.jalali_date[5:] }})',{% endfor %}];
+            const dataValues = [{% for d in (revenue_7days or {}).get('days', []) %}{{ d.revenue }},{% endfor %}];
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels.length ? labels : ['امروز'],
+                    datasets: [{
+                        label: 'درآمد روزانه (تومان)',
+                        data: dataValues.length ? dataValues : [0],
+                        borderColor: '#22c55e',
+                        backgroundColor: 'rgba(34, 197, 94, 0.12)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.35,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        pointBackgroundColor: '#22c55e',
+                        pointBorderColor: '#ffffff',
+                        pointBorderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.parsed.y.toLocaleString('fa-IR') + ' تومان';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    if (value >= 1000000) {
+                                        return (value / 1000000).toLocaleString('fa-IR') + ' م ت';
+                                    }
+                                    if (value >= 1000) {
+                                        return (value / 1000).toLocaleString('fa-IR') + ' ک ت';
+                                    }
+                                    return value.toLocaleString('fa-IR') + ' ت';
+                                }
+                            },
+                            grid: { color: 'rgba(0, 0, 0, 0.05)' }
+                        },
+                        x: {
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+        }
+    });
+</script>
 {% endblock %}
