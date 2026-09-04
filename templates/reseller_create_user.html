@@ -106,33 +106,58 @@
 
                     <!-- انتخاب منبع کسر هزینه (کیف پول / اعتبار خرید) -->
                     {% if credit_enabled %}
-                    <div class="p-3 bg-white rounded-3 border mb-4">
-                        <label class="form-label fw-bold text-dark mb-2">
-                            <i class="fas fa-money-bill-transfer text-primary me-1"></i> انتخاب منبع کسر هزینه اشتراک:
-                        </label>
+                    <div class="p-3 bg-white rounded-3 border mb-4 shadow-sm" id="paymentSourceContainer">
+                        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                            <label class="form-label fw-bold text-dark mb-0">
+                                <i class="fas fa-money-bill-transfer text-primary me-1"></i> انتخاب روش پرداخت هزینه اشتراک:
+                            </label>
+                            <span class="badge bg-light text-primary border px-2 py-1 small">
+                                <i class="fas fa-scale-balanced me-1"></i> توان کل خرید: {{ "{:,}".format(total_purchasing_power) }} تومان
+                            </span>
+                        </div>
                         <div class="row g-2">
+                            <!-- ۱. کیف پول نقدی -->
                             <div class="col-md-4">
-                                <label class="card p-2 text-center h-100 border-2 cursor-pointer mb-0" style="cursor: pointer;">
-                                    <input type="radio" name="payment_source" value="wallet" class="form-check-input mx-auto mb-1" {% if balance > 0 %}checked{% endif %}>
-                                    <span class="small fw-bold">کیف پول نقدی</span>
-                                    <span class="text-success small fw-bold">{{ "{:,}".format(balance) }} تومان</span>
+                                <label class="card p-3 text-center h-100 border-2 cursor-pointer mb-0 payment-source-card position-relative" id="cardWallet" style="cursor: pointer; border-radius: 12px; transition: all 0.2s ease;">
+                                    <input type="radio" name="payment_source" id="paySrcWallet" value="wallet" class="form-check-input mx-auto mb-2" {% if balance > 0 %}checked{% endif %} onchange="updatePaymentSourceUI()">
+                                    <div class="d-flex align-items-center justify-content-center gap-1 text-success mb-1">
+                                        <i class="fas fa-wallet fs-5"></i>
+                                        <span class="fw-bold">کیف پول نقدی</span>
+                                    </div>
+                                    <div class="fs-6 fw-bold text-dark font-monospace mb-1">{{ "{:,}".format(balance) }} <small class="text-muted">تومان</small></div>
+                                    <div class="small text-muted" style="font-size: 0.72rem;">کسر مستقیم بدون بدهی</div>
                                 </label>
                             </div>
+
+                            <!-- ۲. اعتبار خرید (نسیه) -->
                             <div class="col-md-4">
-                                <label class="card p-2 text-center h-100 border-2 cursor-pointer mb-0" style="cursor: pointer;">
-                                    <input type="radio" name="payment_source" value="credit" class="form-check-input mx-auto mb-1" {% if balance <= 0 and available_credit > 0 %}checked{% endif %}>
-                                    <span class="small fw-bold">اعتبار خرید (نسیه)</span>
-                                    <span class="text-info small fw-bold">{{ "{:,}".format(available_credit) }} تومان</span>
+                                <label class="card p-3 text-center h-100 border-2 cursor-pointer mb-0 payment-source-card position-relative" id="cardCredit" style="cursor: pointer; border-radius: 12px; transition: all 0.2s ease;">
+                                    <input type="radio" name="payment_source" id="paySrcCredit" value="credit" class="form-check-input mx-auto mb-2" {% if balance <= 0 and available_credit > 0 %}checked{% endif %} onchange="updatePaymentSourceUI()">
+                                    <div class="d-flex align-items-center justify-content-center gap-1 text-info mb-1">
+                                        <i class="fas fa-credit-card fs-5"></i>
+                                        <span class="fw-bold">اعتبار خرید (نسیه)</span>
+                                    </div>
+                                    <div class="fs-6 fw-bold text-dark font-monospace mb-1">{{ "{:,}".format(available_credit) }} <small class="text-muted">تومان</small></div>
+                                    <div class="small text-muted" style="font-size: 0.72rem;">سقف اعتبار: {{ "{:,}".format(credit_limit) }} ت</div>
                                 </label>
                             </div>
+
+                            <!-- ۳. خودکار / ترکیبی -->
                             <div class="col-md-4">
-                                <label class="card p-2 text-center h-100 border-2 cursor-pointer mb-0" style="cursor: pointer;">
-                                    <input type="radio" name="payment_source" value="auto" class="form-check-input mx-auto mb-1" {% if balance <= 0 and available_credit <= 0 %}checked{% endif %}>
-                                    <span class="small fw-bold">خودکار (هوشمند)</span>
-                                    <span class="text-muted small">ابتدا کیف پول، سپس اعتبار</span>
+                                <label class="card p-3 text-center h-100 border-2 cursor-pointer mb-0 payment-source-card position-relative" id="cardAuto" style="cursor: pointer; border-radius: 12px; transition: all 0.2s ease;">
+                                    <input type="radio" name="payment_source" id="paySrcAuto" value="auto" class="form-check-input mx-auto mb-2" {% if balance <= 0 and available_credit <= 0 %}checked{% endif %} onchange="updatePaymentSourceUI()">
+                                    <div class="d-flex align-items-center justify-content-center gap-1 text-primary mb-1">
+                                        <i class="fas fa-wand-magic-sparkles fs-5"></i>
+                                        <span class="fw-bold">پرداخت خودکار</span>
+                                    </div>
+                                    <div class="fs-6 fw-bold text-primary font-monospace mb-1">هوشمند ترکیبی</div>
+                                    <div class="small text-muted" style="font-size: 0.72rem;">ابتدا کیف پول، سپس اعتبار</div>
                                 </label>
                             </div>
                         </div>
+
+                        <!-- پیغام و بازخورد لحظه‌ای انتخاب روش پرداخت -->
+                        <div id="paymentSourceNotice" class="mt-3 p-2 rounded small" style="display: none;"></div>
                     </div>
                     {% else %}
                     <input type="hidden" name="payment_source" value="wallet">
@@ -155,7 +180,7 @@
                         </div>
                     </div>
 
-                    <button type="submit" class="btn btn-success w-100 py-3 fw-bold fs-5" onclick="return confirm('آیا از ساخت این اشتراک و صدور اکانت مطمئن هستید؟')">
+                    <button type="submit" id="submitCreateSubBtn" class="btn btn-success w-100 py-3 fw-bold fs-5" onclick="return confirm('آیا از ساخت این اشتراک و صدور اکانت مطمئن هستید؟')">
                         <i class="fas fa-bolt me-2"></i> پرداخت هزینه و صدور آنی اکانت
                     </button>
                 </form>
@@ -168,6 +193,9 @@
 {% block scripts %}
 <script>
     const discountPercent = {{ discount }};
+    const userBalance = {{ balance|default(0) }};
+    const userAvailableCredit = {{ available_credit|default(0) }};
+    const creditEnabled = {{ 'true' if credit_enabled else 'false' }};
     let currentFinalPrice = 0;
 
     function toggleResellerDebtor(sel) {
@@ -177,6 +205,88 @@
         const debtInput = document.getElementById('resellerDebtAmountInput');
         if (isDebtor && (!debtInput.value || debtInput.value === '0')) {
             debtInput.value = currentFinalPrice;
+        }
+    }
+
+    function updatePaymentSourceUI() {
+        if (!creditEnabled) return;
+        const payWallet = document.getElementById('paySrcWallet');
+        const payCredit = document.getElementById('paySrcCredit');
+        const payAuto = document.getElementById('paySrcAuto');
+        const cardWallet = document.getElementById('cardWallet');
+        const cardCredit = document.getElementById('cardCredit');
+        const cardAuto = document.getElementById('cardAuto');
+        const notice = document.getElementById('paymentSourceNotice');
+        const submitBtn = document.getElementById('submitCreateSubBtn');
+
+        // بازنشانی استایل کارت‌ها
+        [cardWallet, cardCredit, cardAuto].forEach(c => {
+            if (c) {
+                c.classList.remove('border-success', 'border-info', 'border-primary', 'bg-success', 'bg-info', 'bg-primary', 'bg-opacity-10', 'shadow');
+                c.style.borderColor = '#e2e8f0';
+            }
+        });
+
+        let selected = 'wallet';
+        if (payCredit && payCredit.checked) selected = 'credit';
+        else if (payAuto && payAuto.checked) selected = 'auto';
+
+        if (selected === 'wallet' && cardWallet) {
+            cardWallet.classList.add('border-success', 'bg-success', 'bg-opacity-10', 'shadow-sm');
+            cardWallet.style.borderColor = '#10b981';
+        } else if (selected === 'credit' && cardCredit) {
+            cardCredit.classList.add('border-info', 'bg-info', 'bg-opacity-10', 'shadow-sm');
+            cardCredit.style.borderColor = '#0284c7';
+        } else if (selected === 'auto' && cardAuto) {
+            cardAuto.classList.add('border-primary', 'bg-primary', 'bg-opacity-10', 'shadow-sm');
+            cardAuto.style.borderColor = '#6366f1';
+        }
+
+        if (!notice) return;
+
+        // بررسی موجودی برای پلن انتخاب شده
+        if (currentFinalPrice > 0) {
+            const totalPower = userBalance + userAvailableCredit;
+            if (totalPower < currentFinalPrice) {
+                notice.style.display = 'block';
+                notice.className = 'mt-3 p-2 rounded small alert alert-danger mb-0';
+                notice.innerHTML = `<i class="fas fa-circle-xmark me-1"></i> مجموع موجودی کیف پول و اعتبار شما (${totalPower.toLocaleString('fa-IR')} ت) برای خرید این پلن (${currentFinalPrice.toLocaleString('fa-IR')} ت) کافی نیست. لطفاً کیف پول خود را شارژ کنید.`;
+                if (submitBtn) submitBtn.disabled = true;
+                return;
+            } else {
+                if (submitBtn) submitBtn.disabled = false;
+            }
+
+            if (selected === 'wallet') {
+                if (userBalance < currentFinalPrice) {
+                    notice.style.display = 'block';
+                    notice.className = 'mt-3 p-2 rounded small alert alert-warning mb-0';
+                    notice.innerHTML = `<i class="fas fa-triangle-exclamation me-1"></i> موجودی نقدی شما (${userBalance.toLocaleString('fa-IR')} ت) کمتر از مبلغ پلن (${currentFinalPrice.toLocaleString('fa-IR')} ت) است. برای تکمیل خرید، روش را به <strong>«اعتبار خرید»</strong> یا <strong>«پرداخت خودکار»</strong> تغییر دهید.`;
+                } else {
+                    notice.style.display = 'block';
+                    notice.className = 'mt-3 p-2 rounded small alert alert-success mb-0';
+                    notice.innerHTML = `<i class="fas fa-circle-check me-1"></i> مبلغ <strong>${currentFinalPrice.toLocaleString('fa-IR')} تومان</strong> مستقیماً از کیف پول نقدی کسر می‌شود و هیچ‌گونه بدهی اعتباری ایجاد نخواهد شد.`;
+                }
+            } else if (selected === 'credit') {
+                if (userAvailableCredit < currentFinalPrice) {
+                    notice.style.display = 'block';
+                    notice.className = 'mt-3 p-2 rounded small alert alert-warning mb-0';
+                    notice.innerHTML = `<i class="fas fa-triangle-exclamation me-1"></i> سقف اعتبار در دسترس شما (${userAvailableCredit.toLocaleString('fa-IR')} ت) برای پرداخت کامل این پلن (${currentFinalPrice.toLocaleString('fa-IR')} ت) کافی نیست.`;
+                } else {
+                    notice.style.display = 'block';
+                    notice.className = 'mt-3 p-2 rounded small alert alert-info mb-0';
+                    notice.innerHTML = `<i class="fas fa-info-circle me-1"></i> مبلغ <strong>${currentFinalPrice.toLocaleString('fa-IR')} تومان</strong> از خط اعتباری شما کسر شده و به عنوان بدهی جاری شما ثبت می‌گردد.`;
+                }
+            } else if (selected === 'auto') {
+                notice.style.display = 'block';
+                notice.className = 'mt-3 p-2 rounded small alert alert-primary mb-0';
+                if (userBalance >= currentFinalPrice) {
+                    notice.innerHTML = `<i class="fas fa-wand-magic-sparkles me-1"></i> چون موجودی نقدی شما کافی است، کل مبلغ (${currentFinalPrice.toLocaleString('fa-IR')} ت) از کیف پول نقدی کسر می‌شود.`;
+                } else {
+                    const diff = currentFinalPrice - userBalance;
+                    notice.innerHTML = `<i class="fas fa-wand-magic-sparkles me-1"></i> ابتدا کل موجودی نقدی (${userBalance.toLocaleString('fa-IR')} ت) کسر شده و مابقی (${diff.toLocaleString('fa-IR')} ت) از اعتبار خرید کسر و به بدهی اضافه می‌گردد.`;
+                }
+            }
         }
     }
 
@@ -192,12 +302,25 @@
         if (debtInput && (!debtInput.value || debtInput.value === '0')) {
             debtInput.value = finalPrice;
         }
+
+        // هایلایت پلن فعال
+        document.querySelectorAll('.plan-option').forEach(card => {
+            const radio = card.querySelector('input[type="radio"]');
+            if (radio && radio.checked) {
+                card.classList.add('border-primary', 'bg-primary', 'bg-opacity-10');
+            } else {
+                card.classList.remove('border-primary', 'bg-primary', 'bg-opacity-10');
+            }
+        });
+
+        updatePaymentSourceUI();
     }
 
     // مقداردهی اولیه
     document.addEventListener('DOMContentLoaded', () => {
         const checked = document.querySelector('input[name="plan_id"]:checked');
         if (checked) checked.dispatchEvent(new Event('change'));
+        updatePaymentSourceUI();
     });
 </script>
 {% endblock %}

@@ -10,7 +10,11 @@
             </div>
             <div class="card-body p-4">
                 <div class="alert alert-success py-2 mb-4 d-inline-block px-4 rounded-3">
-                    مبلغ <strong>{{ "{:,}".format(final_price) }} تومان</strong> از کیف پول شما کسر گردید.
+                    {% if payment_source == 'credit' %}
+                        <i class="fas fa-credit-card me-1 text-primary"></i> مبلغ <strong>{{ "{:,}".format(final_price) }} تومان</strong> از <strong>اعتبار خرید (نسیه)</strong> شما کسر و به بدهی اعتباری افزوده گردید.
+                    {% else %}
+                        <i class="fas fa-wallet me-1 text-success"></i> مبلغ <strong>{{ "{:,}".format(final_price) }} تومان</strong> از <strong>کیف پول نقدی</strong> شما کسر گردید.
+                    {% endif %}
                 </div>
 
                 <div class="row text-start g-2 mb-4 p-3 bg-light rounded-3">
