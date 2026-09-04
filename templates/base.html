@@ -1112,13 +1112,13 @@
                     {% if session.get('role') == 'reseller' %}
                         <div class="d-flex flex-column gap-1">
                             <div style="font-size: 0.76rem; color: #10b981; font-weight: 600;">
-                                <i class="fas fa-wallet me-1"></i>کیف پول: <span id="sidebarResellerBalance">{{ "{:,}".format(session.get('balance', 0)) }}</span> ت
+                                <i class="fas fa-wallet me-1"></i>کیف پول: <span id="sidebarResellerBalance">{{ "{:,}".format((session.get('balance') or 0)|int) }}</span> ت
                             </div>
                             {% if session.get('credit_enabled') %}
-                            <div style="font-size: 0.74rem; color: #0284c7; font-weight: 600;" title="سقف اعتبار: {{ '{:,}'.format(session.get('credit_limit', 0)) }} ت | بدهی: {{ '{:,}'.format(session.get('credit_debt', 0)) }} ت">
-                                <i class="fas fa-credit-card me-1"></i>اعتبار خرید: <span id="sidebarResellerCredit">{{ "{:,}".format(session.get('available_credit', 0)) }}</span> ت
-                                {% if session.get('credit_debt', 0) > 0 %}
-                                <span class="badge bg-danger bg-opacity-10 text-danger border border-danger p-0 px-1 ms-1" style="font-size: 0.68rem;">بدهی: {{ "{:,}".format(session.get('credit_debt', 0)) }}</span>
+                            <div style="font-size: 0.74rem; color: #0284c7; font-weight: 600;" title="سقف اعتبار: {{ '{:,}'.format((session.get('credit_limit') or 0)|int) }} ت | بدهی: {{ '{:,}'.format((session.get('credit_debt') or 0)|int) }} ت">
+                                <i class="fas fa-credit-card me-1"></i>اعتبار خرید: <span id="sidebarResellerCredit">{{ "{:,}".format((session.get('available_credit') or 0)|int) }}</span> ت
+                                {% if (session.get('credit_debt') or 0)|int > 0 %}
+                                <span class="badge bg-danger bg-opacity-10 text-danger border border-danger p-0 px-1 ms-1" style="font-size: 0.68rem;">بدهی: {{ "{:,}".format((session.get('credit_debt') or 0)|int) }}</span>
                                 {% endif %}
                             </div>
                             {% endif %}
