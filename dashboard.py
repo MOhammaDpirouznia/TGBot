@@ -7637,7 +7637,7 @@ def reseller_transactions():
     tx_list = db.get_reseller_transactions(reseller_id)
     debts = db.get_reseller_debts(reseller_id)
     stats = db.get_reseller_stats(reseller_id)
-    bundles = db.get_reseller_credit_bundles()
+    bundles = db.get_reseller_credit_bundles(active_only=True)
     admin_cards = db.get_active_bank_cards()
     admin_gateway = db.get_admin_gateway()
     return render_template(
@@ -10071,6 +10071,132 @@ def admin_reseller_application_reject(ticket_id):
     else:
         flash(f"خطا در رد درخواست: {res.get('error')}", "danger")
     return redirect(request.referrer or url_for("admin_reseller_affiliates"))
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# بخش مدیریت بسته‌های پیش‌خرید همکاران و نمایندگان (Reseller Bundles - Admin)
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/admin/reseller-bundles", methods=["GET", "POST"])
+@admin_required
+def admin_reseller_bundles():
+    """مدیریت بسته‌های پیش‌خرید اعتباری با بونوس شارژ هدیه برای همکاران و نمایندگان"""
+    if request.method == "POST":
+        action = request.form.get("action", "").strip()
+        
+        if action in ("create", "edit"):
+            bundle_id = request.form.get("bundle_id", "").strip()
+            title = request.form.get("title", "").strip()
+            price_raw = request.form.get("price", "0").replace(",", "").strip()
+            credit_raw = request.form.get("credit", "0").replace(",", "").strip()
+            bonus_percent_raw = request.form.get("bonus_percent", "0").strip()
+            badge = request.form.get("badge", "").strip()
+            color = request.form.get("color", "primary").strip()
+            description = request.form.get("description", "").strip()
+            display_order_raw = request.form.get("display_order", "0").strip()
+            is_active = request.form.get("is_active") in ("on", "1", "true", True)
+
+            try:
+                price = int(price_raw)
+            except ValueError:
+                price = 0
+
+            try:
+                credit = int(credit_raw)
+            except ValueError:
+                credit = 0
+
+            try:
+                bonus_percent = int(bonus_percent_raw)
+            except ValueError:
+                bonus_percent = 0
+
+            try:
+                display_order = int(display_order_raw)
+            except ValueError:
+                display_order = 0
+
+            if not bundle_id and action == "create":
+                import time
+                bundle_id = f"bundle_{int(time.time())}"
+
+            if not bundle_id or not title or price <= 0:
+                flash("خطا: شناسه بسته، عنوان و قیمت معتبر الزامی هستند.", "danger")
+                return redirect(url_for("admin_reseller_bundles"))
+
+            # اگر کردیت داده نشده بود، بر مبنای بونوس درصد حساب شود
+            if credit <= 0:
+                credit = price + int(price * bonus_percent / 100)
+
+            # اگر درصد صفر بود ولی کردیت بیشتر از قیمت بود، درصد را حساب کنیم
+            if bonus_percent <= 0 and price > 0 and credit > price:
+                bonus_percent = round(((credit - price) / price) * 100)
+
+            if not badge:
+                badge = f"{bonus_percent}٪ شارژ هدیه" if bonus_percent > 0 else "شارژ کیف پول"
+
+            bundle_data = {
+                "id": bundle_id,
+                "title": title,
+                "price": price,
+                "credit": credit,
+                "bonus_percent": bonus_percent,
+                "badge": badge,
+                "color": color,
+                "description": description,
+                "display_order": display_order,
+                "is_active": is_active
+            }
+
+            res = db.save_reseller_credit_bundle(bundle_data)
+            if res.get("success"):
+                op_title = "ایجاد" if action == "create" else "ویرایش"
+                flash(f"بسته «{title}» با موفقیت {op_title} شد.", "success")
+            else:
+                flash(f"خطا در ذخیره بسته: {res.get('error')}", "danger")
+            return redirect(url_for("admin_reseller_bundles"))
+
+        elif action == "toggle":
+            bundle_id = request.form.get("bundle_id", "").strip()
+            res = db.toggle_reseller_credit_bundle(bundle_id)
+            if res.get("success"):
+                state_text = "فعال" if res.get("is_active") else "غیرفعال"
+                flash(f"وضعیت بسته با موفقیت به «{state_text}» تغییر یافت.", "info")
+            else:
+                flash(f"خطا در تغییر وضعیت بسته: {res.get('error')}", "danger")
+            return redirect(url_for("admin_reseller_bundles"))
+
+        elif action == "delete":
+            bundle_id = request.form.get("bundle_id", "").strip()
+            res = db.delete_reseller_credit_bundle(bundle_id)
+            if res.get("success"):
+                flash("بسته پیش‌خرید با موفقیت حذف شد.", "success")
+            else:
+                flash(f"خطا در حذف بسته: {res.get('error')}", "danger")
+            return redirect(url_for("admin_reseller_bundles"))
+
+        elif action == "reset_defaults":
+            res = db.reset_default_reseller_credit_bundles()
+            if res.get("success"):
+                flash("بسته‌های پیش‌خرید همکاران به ۴ بسته استاندارد سیستم بازنشانی شد.", "info")
+            else:
+                flash(f"خطا در بازنشانی بسته‌ها: {res.get('error')}", "danger")
+            return redirect(url_for("admin_reseller_bundles"))
+
+    bundles = db.get_reseller_credit_bundles(active_only=False)
+    total_bundles = len(bundles)
+    active_bundles = sum(1 for b in bundles if b.get("is_active", 1))
+    max_bonus = max([b.get("bonus_percent", 0) for b in bundles] or [0])
+    avg_bonus = round(sum(b.get("bonus_percent", 0) for b in bundles) / max(total_bundles, 1), 1)
+
+    return render_template(
+        "admin_reseller_bundles.html",
+        bundles=bundles,
+        total_bundles=total_bundles,
+        active_bundles=active_bundles,
+        max_bonus=max_bonus,
+        avg_bonus=avg_bonus
+    )
 
 
 @app.route("/reseller/affiliates", methods=["GET"])

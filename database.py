@@ -990,6 +990,40 @@ class Database:
             except Exception:
                 pass
 
+        # جدول بسته‌های پیش‌خرید اعتباری همکاران و نمایندگان (Reseller Credit Bundles)
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS reseller_bundles (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    price INTEGER NOT NULL,
+                    credit INTEGER NOT NULL,
+                    bonus_percent INTEGER DEFAULT 0,
+                    badge TEXT,
+                    color TEXT DEFAULT 'primary',
+                    description TEXT DEFAULT '',
+                    display_order INTEGER DEFAULT 0,
+                    is_active INTEGER DEFAULT 1,
+                    created_at TEXT,
+                    updated_at TEXT
+                )
+            """)
+            cursor.execute("SELECT COUNT(*) FROM reseller_bundles")
+            if cursor.fetchone()[0] == 0:
+                now_seed = get_now_iso()
+                default_bundles = [
+                    ("bundle_1m", "بسته استارتر", 1000000, 1050000, 5, "۵٪ شارژ هدیه", "info", "مناسب شروع همکاری و شارژ اولیه", 1, 1, now_seed, now_seed),
+                    ("bundle_3m", "بسته نقره‌ای", 3000000, 3210000, 7, "۷٪ شارژ هدیه", "primary", "بسته اقتصادی با بونوس شارژ تشویقی", 2, 1, now_seed, now_seed),
+                    ("bundle_5m", "بسته طلایی", 5000000, 5500000, 10, "۱۰٪ شارژ هدیه", "success", "بسته پرفروش همکاران با ۱۰٪ هدیه نقدی", 3, 1, now_seed, now_seed),
+                    ("bundle_10m", "بسته الماس VIP", 10000000, 11500000, 15, "۱۵٪ شارژ ویژه", "warning", "حداکثر اعتبار با بالاترین نرخ بونوس ویژه", 4, 1, now_seed, now_seed),
+                ]
+                cursor.executemany("""
+                    INSERT INTO reseller_bundles (id, title, price, credit, bonus_percent, badge, color, description, display_order, is_active, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, default_bundles)
+        except Exception as e:
+            logger.warning(f"Error initializing reseller_bundles table: {e}")
+
         conn.commit()
         conn.close()
         logger.info("Database initialized successfully")
@@ -1014,7 +1048,7 @@ class Database:
             "users", "subscriptions", "transactions", "resellers",
             "reseller_transactions", "bank_cards", "discount_codes",
             "settings", "support_tickets", "referrals", "subscription_history",
-            "accounting_records", "admin_users"
+            "accounting_records", "admin_users", "reseller_bundles"
         ]
         
         for table in tables:
@@ -9238,14 +9272,178 @@ class Database:
 
     # ─── بسته‌های پیش‌خرید اعتباری با بونوس شارژ رایگان برای نمایندگان (Volume Bundles) ───
 
-    def get_reseller_credit_bundles(self) -> list:
-        """لیست بسته‌های شارژ عمده با درصد بونوس هدیه برای نمایندگان"""
-        return [
-            {"id": "bundle_1m", "title": "بسته استارتر", "price": 1000000, "credit": 1050000, "bonus_percent": 5, "badge": "۵٪ شارژ هدیه", "color": "info"},
-            {"id": "bundle_3m", "title": "بسته نقره‌ای", "price": 3000000, "credit": 3210000, "bonus_percent": 7, "badge": "۷٪ شارژ هدیه", "color": "primary"},
-            {"id": "bundle_5m", "title": "بسته طلایی", "price": 5000000, "credit": 5500000, "bonus_percent": 10, "badge": "۱۰٪ شارژ هدیه", "color": "success"},
-            {"id": "bundle_10m", "title": "بسته الماس VIP", "price": 10000000, "credit": 11500000, "bonus_percent": 15, "badge": "۱۵٪ شارژ ویژه", "color": "warning"},
+    def get_reseller_credit_bundles(self, active_only: bool = False) -> list:
+        """لیست بسته‌های شارژ عمده با درصد بونوس هدیه برای نمایندگان از دیتابیس"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            query = "SELECT * FROM reseller_bundles"
+            if active_only:
+                query += " WHERE is_active = 1"
+            query += " ORDER BY display_order ASC, price ASC"
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            if rows:
+                return [dict(r) for r in rows]
+        except Exception as e:
+            logger.warning(f"Error fetching reseller_bundles: {e}")
+        finally:
+            conn.close()
+
+        # بازگشت به بسته‌های پیش‌فرض در صورت خالی بودن جدول یا بروز خطا
+        default_bundles = [
+            {"id": "bundle_1m", "title": "بسته استارتر", "price": 1000000, "credit": 1050000, "bonus_percent": 5, "badge": "۵٪ شارژ هدیه", "color": "info", "description": "مناسب شروع همکاری و شارژ اولیه", "display_order": 1, "is_active": 1},
+            {"id": "bundle_3m", "title": "بسته نقره‌ای", "price": 3000000, "credit": 3210000, "bonus_percent": 7, "badge": "۷٪ شارژ هدیه", "color": "primary", "description": "بسته اقتصادی با بونوس شارژ تشویقی", "display_order": 2, "is_active": 1},
+            {"id": "bundle_5m", "title": "بسته طلایی", "price": 5000000, "credit": 5500000, "bonus_percent": 10, "badge": "۱۰٪ شارژ هدیه", "color": "success", "description": "بسته پرفروش همکاران با ۱۰٪ هدیه نقدی", "display_order": 3, "is_active": 1},
+            {"id": "bundle_10m", "title": "بسته الماس VIP", "price": 10000000, "credit": 11500000, "bonus_percent": 15, "badge": "۱۵٪ شارژ ویژه", "color": "warning", "description": "حداکثر اعتبار با بالاترین نرخ بونوس ویژه", "display_order": 4, "is_active": 1},
         ]
+        if active_only:
+            return [b for b in default_bundles if b.get("is_active", 1)]
+        return default_bundles
+
+    def get_reseller_credit_bundle(self, bundle_id: str) -> dict:
+        """دریافت اطلاعات یک بسته پیش‌خرید نمایندگان بر اساس شناسه"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM reseller_bundles WHERE id = ?", (bundle_id,))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+        except Exception as e:
+            logger.error(f"Error getting bundle {bundle_id}: {e}")
+        finally:
+            conn.close()
+
+        for b in self.get_reseller_credit_bundles():
+            if b["id"] == bundle_id:
+                return b
+        return None
+
+    def save_reseller_credit_bundle(self, bundle_data: dict) -> dict:
+        """ذخیره یا ویرایش بسته پیش‌خرید نمایندگان در دیتابیس"""
+        bundle_id = str(bundle_data.get("id") or "").strip()
+        title = str(bundle_data.get("title") or "").strip()
+        try:
+            price = int(bundle_data.get("price", 0))
+        except (ValueError, TypeError):
+            price = 0
+
+        try:
+            bonus_percent = int(bundle_data.get("bonus_percent", 0))
+        except (ValueError, TypeError):
+            bonus_percent = 0
+
+        try:
+            credit = int(bundle_data.get("credit", 0))
+            if credit <= 0:
+                credit = price + int(price * bonus_percent / 100)
+        except (ValueError, TypeError):
+            credit = price + int(price * bonus_percent / 100)
+
+        if bonus_percent <= 0 and price > 0 and credit > price:
+            bonus_percent = round(((credit - price) / price) * 100)
+
+        badge = str(bundle_data.get("badge") or "").strip()
+        if not badge:
+            badge = f"{bonus_percent}٪ شارژ هدیه" if bonus_percent > 0 else "شارژ کیف پول"
+
+        color = str(bundle_data.get("color") or "primary").strip()
+        description = str(bundle_data.get("description") or "").strip()
+
+        try:
+            display_order = int(bundle_data.get("display_order", 0))
+        except (ValueError, TypeError):
+            display_order = 0
+
+        is_active = 1 if bundle_data.get("is_active") in (1, "1", True, "true", "on") else 0
+        now = get_now_iso()
+
+        if not bundle_id or not title or price <= 0:
+            return {"success": False, "error": "شناسه انگلیسی، عنوان بسته و قیمت معتبر الزامی هستند."}
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT id FROM reseller_bundles WHERE id = ?", (bundle_id,))
+            exists = cursor.fetchone()
+            if exists:
+                cursor.execute("""
+                    UPDATE reseller_bundles
+                    SET title = ?, price = ?, credit = ?, bonus_percent = ?, badge = ?, color = ?, description = ?, display_order = ?, is_active = ?, updated_at = ?
+                    WHERE id = ?
+                """, (title, price, credit, bonus_percent, badge, color, description, display_order, is_active, now, bundle_id))
+            else:
+                cursor.execute("""
+                    INSERT INTO reseller_bundles (id, title, price, credit, bonus_percent, badge, color, description, display_order, is_active, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (bundle_id, title, price, credit, bonus_percent, badge, color, description, display_order, is_active, now, now))
+            conn.commit()
+            return {"success": True, "bundle_id": bundle_id}
+        except Exception as e:
+            logger.error(f"Error saving reseller bundle {bundle_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def delete_reseller_credit_bundle(self, bundle_id: str) -> dict:
+        """حذف بسته پیش‌خرید نمایندگان از دیتابیس"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM reseller_bundles WHERE id = ?", (bundle_id,))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error deleting reseller bundle {bundle_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def toggle_reseller_credit_bundle(self, bundle_id: str) -> dict:
+        """تغییر وضعیت فعال/غیرفعال بسته پیش‌خرید"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT is_active FROM reseller_bundles WHERE id = ?", (bundle_id,))
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "error": "بسته یافت نشد."}
+            new_status = 0 if row["is_active"] else 1
+            cursor.execute("UPDATE reseller_bundles SET is_active = ?, updated_at = ? WHERE id = ?", (new_status, now, bundle_id))
+            conn.commit()
+            return {"success": True, "is_active": new_status}
+        except Exception as e:
+            logger.error(f"Error toggling reseller bundle {bundle_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def reset_default_reseller_credit_bundles(self) -> dict:
+        """بازنشانی بسته‌های پیش‌خرید به ۴ بسته استاندارد پیش‌فرض سیستم"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now_seed = get_now_iso()
+        default_bundles = [
+            ("bundle_1m", "بسته استارتر", 1000000, 1050000, 5, "۵٪ شارژ هدیه", "info", "مناسب شروع همکاری و شارژ اولیه", 1, 1, now_seed, now_seed),
+            ("bundle_3m", "بسته نقره‌ای", 3000000, 3210000, 7, "۷٪ شارژ هدیه", "primary", "بسته اقتصادی با بونوس شارژ تشویقی", 2, 1, now_seed, now_seed),
+            ("bundle_5m", "بسته طلایی", 5000000, 5500000, 10, "۱۰٪ شارژ هدیه", "success", "بسته پرفروش همکاران با ۱۰٪ هدیه نقدی", 3, 1, now_seed, now_seed),
+            ("bundle_10m", "بسته الماس VIP", 10000000, 11500000, 15, "۱۵٪ شارژ ویژه", "warning", "حداکثر اعتبار با بالاترین نرخ بونوس ویژه", 4, 1, now_seed, now_seed),
+        ]
+        try:
+            cursor.execute("DELETE FROM reseller_bundles")
+            cursor.executemany("""
+                INSERT INTO reseller_bundles (id, title, price, credit, bonus_percent, badge, color, description, display_order, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, default_bundles)
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error resetting reseller bundles: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
 
     def apply_reseller_bundle_purchase(self, reseller_id: int, bundle_id: str) -> dict:
         """اعمال شارژ بسته پیش‌خرید به همراه اعتبار هدیه به موجودی نماینده"""
