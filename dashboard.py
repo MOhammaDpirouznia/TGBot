@@ -429,15 +429,19 @@ def filter_last_connection_display(date_str):
     نمایش هوشمند وضعیت آخرین اتصال:
     - اگر متصل نشده باشد (null یا 0001-01-01): 'بدون اتصال'
     - اگر بیش از ۱ روز باشد: نمایش نسبی (مثلاً ۳ روز قبل یا ۱ روز قبل) + تاریخ و ساعت شمسی
-    - اگر امروز باشد: 'امروز HH:MM'
+    - اگر امروز باشد: 'امروز HH:MM' + تاریخ و ساعت شمسی
     """
-    if not date_str or str(date_str).strip() in ["", "None", "null", "-"] or str(date_str).startswith("0001"):
+    if not date_str or str(date_str).strip() in ["", "None", "null", "-", "0"] or str(date_str).startswith("0001"):
         return {
             "has_connected": False,
             "relative": "بدون اتصال",
+            "relative_text": "بدون اتصال",
             "shamsi_datetime": "-",
+            "shamsi_full": "بدون سابقه اتصال",
             "is_old": False,
+            "is_past": False,
             "days_ago": 0,
+            "time": "-",
             "badge_class": "bg-secondary-subtle text-secondary"
         }
     try:
@@ -452,32 +456,45 @@ def filter_last_connection_display(date_str):
         diff_days = (now_dt.date() - dt.date()).days
         if diff_days > 0 or diff_sec >= 86400:
             effective_days = max(1, diff_days if diff_days > 0 else days_ago)
+            rel_text = f"{effective_days} روز قبل"
             return {
                 "has_connected": True,
-                "relative": f"{effective_days} روز قبل",
+                "relative": rel_text,
+                "relative_text": rel_text,
                 "shamsi_datetime": shamsi_dt,
+                "shamsi_full": shamsi_dt,
                 "is_old": True,
+                "is_past": True,
                 "days_ago": effective_days,
                 "time": time_str,
                 "badge_class": "bg-danger-subtle text-danger border border-danger" if effective_days >= 3 else "bg-warning-subtle text-dark border border-warning"
             }
         else:
+            rel_text = f"امروز {time_str}"
             return {
                 "has_connected": True,
-                "relative": f"امروز {time_str}",
+                "relative": rel_text,
+                "relative_text": rel_text,
                 "shamsi_datetime": shamsi_dt,
+                "shamsi_full": shamsi_dt,
                 "is_old": False,
+                "is_past": False,
                 "days_ago": 0,
                 "time": time_str,
                 "badge_class": "bg-light text-secondary border"
             }
     except Exception:
+        clean_fallback = str(date_str)[:16].replace("T", " ")
         return {
             "has_connected": True,
-            "relative": str(date_str)[:16].replace("T", " "),
-            "shamsi_datetime": str(date_str)[:16],
+            "relative": clean_fallback,
+            "relative_text": clean_fallback,
+            "shamsi_datetime": clean_fallback,
+            "shamsi_full": clean_fallback,
             "is_old": False,
+            "is_past": False,
             "days_ago": 0,
+            "time": "",
             "badge_class": "bg-light text-secondary border"
         }
 
@@ -492,7 +509,7 @@ def get_hiddify_dashboard_traffic_stats(api_key: str = None, reseller_id: int = 
     cache_key = f"{api_key or 'admin'}_{reseller_id or 0}"
     now_ts = time.time()
     cached = _hiddify_traffic_cache.get(cache_key)
-    if cached and (now_ts - cached.get("ts", 0) < 20):
+    if cached and (now_ts - cached.get("ts", 0) < 20) and "today" in cached.get("data", {}):
         return cached.get("data", {})
 
     stats_db = db.get_online_users_stats(reseller_id=reseller_id)
@@ -583,6 +600,34 @@ def get_hiddify_dashboard_traffic_stats(api_key: str = None, reseller_id: int = 
         blocks["monthly_gb"] = total_used
         blocks["today_gb"] = round(total_used * 0.12, 1)
         blocks["yesterday_gb"] = round(total_used * 0.28, 1)
+
+    # ساختار متناظر برای تمپلیت‌های داشبورد اصلی و نماینده (dashboard.html & reseller_dashboard.html)
+    blocks["today"] = {
+        "usage_gb": float(blocks.get("today_gb", 0.0) or 0.0),
+        "online_users": int(blocks.get("today_online", 0) or 0),
+        "total_users": int(blocks.get("total_users", total_subs) or 0),
+        "percent": int(blocks.get("today_pct", 20) or 20)
+    }
+    blocks["yesterday"] = {
+        "usage_gb": float(blocks.get("yesterday_gb", 0.0) or 0.0),
+        "online_users": int(blocks.get("yesterday_online", 0) or 0),
+        "total_users": int(blocks.get("total_users", total_subs) or 0),
+        "percent": int(blocks.get("yesterday_pct", 40) or 40)
+    }
+    blocks["month"] = {
+        "usage_gb": float(blocks.get("monthly_gb", 0.0) or 0.0),
+        "online_users": int(blocks.get("monthly_online", 0) or 0),
+        "total_users": int(blocks.get("total_users", total_subs) or 0),
+        "percent": int(blocks.get("monthly_pct", 100) or 100)
+    }
+    try:
+        blocks["network_speed_down"] = float(blocks.get("net_down", 0) or 0.0)
+    except Exception:
+        blocks["network_speed_down"] = 0.0
+    try:
+        blocks["network_speed_up"] = float(blocks.get("net_up", 0) or 0.0)
+    except Exception:
+        blocks["network_speed_up"] = 0.0
 
     _hiddify_traffic_cache[cache_key] = {"ts": now_ts, "data": blocks}
     return blocks
