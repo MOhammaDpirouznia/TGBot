@@ -366,9 +366,19 @@
                         <td data-value="{{ sub.get('remaining_days', sub['duration'] or 0) }}">
                             {% if sub.get('is_started') %}
                                 <div>
-                                    <span class="badge {% if sub.get('remaining_days', 30) <= 3 %}bg-danger-subtle text-danger border border-danger{% else %}bg-success-subtle text-success border border-success{% endif %} font-monospace fs-6">
-                                        {{ sub.get('remaining_days', sub['duration']) }} روز دیگر
-                                    </span>
+                                    {% if sub.get('is_expired') or sub.get('remaining_days', 30) < 0 %}
+                                        <span class="badge bg-danger text-white border border-danger font-monospace fs-6" title="اشتراک منقضی شده است">
+                                            {{ sub.get('expiry_text') or (sub.get('expired_days', 1)|string + ' روز پیش') }}
+                                        </span>
+                                    {% elif sub.get('remaining_days', 30) == 0 %}
+                                        <span class="badge bg-danger-subtle text-danger border border-danger font-monospace fs-6">
+                                            {{ sub.get('expiry_text') or 'امروز منقضی شد' }}
+                                        </span>
+                                    {% else %}
+                                        <span class="badge {% if sub.get('remaining_days', 30) <= 3 %}bg-warning-subtle text-dark border border-warning{% else %}bg-success-subtle text-success border border-success{% endif %} font-monospace fs-6">
+                                            {{ sub.get('expiry_text') or (sub.get('remaining_days', sub['duration'])|string + ' روز دیگر') }}
+                                        </span>
+                                    {% endif %}
                                     <div class="text-muted small" style="font-size: 10px;">کل دوره: {{ sub['duration'] }} روز</div>
                                 </div>
                             {% else %}
@@ -696,7 +706,13 @@
                         </div>
                         <div class="col-sm-3 col-6">
                             <small class="text-muted d-block">اعتبار باقی‌مانده</small>
-                            <strong class="font-monospace">{{ sub.get('remaining_days', sub['duration']) }} روز</strong>
+                            {% if sub.get('is_expired') or sub.get('remaining_days', 30) < 0 %}
+                                <strong class="font-monospace text-danger">{{ sub.get('expiry_text') }}</strong>
+                            {% elif sub.get('remaining_days', 30) == 0 %}
+                                <strong class="font-monospace text-danger">{{ sub.get('expiry_text') or 'امروز' }}</strong>
+                            {% else %}
+                                <strong class="font-monospace text-success">{{ sub.get('remaining_days', sub['duration']) }} روز دیگر</strong>
+                            {% endif %}
                         </div>
                         <div class="col-sm-3 col-6">
                             <small class="text-muted d-block">وضعیت مالی</small>

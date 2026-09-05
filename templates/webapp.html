@@ -594,7 +594,13 @@
                         <div class="stat-box-label"><i class="fas fa-hourglass-half me-1"></i>مدت اعتبار</div>
                         <div class="stat-box-val">
                             {% if sub.get('is_started') %}
-                                {{ sub.get('remaining_days', sub['duration']) }} روز دیگر
+                                {% if sub.get('is_expired') or sub.get('remaining_days', 30) < 0 %}
+                                    <span class="text-danger">{{ sub.get('expiry_text') or 'منقضی شده' }}</span>
+                                {% elif sub.get('remaining_days', 30) == 0 %}
+                                    <span class="text-danger">{{ sub.get('expiry_text') or 'امروز' }}</span>
+                                {% else %}
+                                    {{ sub.get('remaining_days', sub['duration']) }} روز دیگر
+                                {% endif %}
                             {% else %}
                                 {{ sub['duration'] or 30 }} روز
                             {% endif %}
