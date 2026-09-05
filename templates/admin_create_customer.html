@@ -15,7 +15,7 @@
 </div>
 
 <div class="row justify-content-center">
-    <div class="col-lg-8 col-md-10">
+    <div class="col-lg-9 col-md-11">
         <div class="card shadow-sm border-0">
             <div class="card-header bg-primary text-white py-3">
                 <h5 class="mb-0 fw-bold"><i class="fas fa-id-card me-2"></i>مشخصات مشتری و اشتراک</h5>
@@ -65,18 +65,42 @@
                     <!-- انتخاب پلن و مشخصات سرویس -->
                     <h5 class="fw-bold mb-3 text-secondary"><i class="fas fa-cubes me-2 text-primary"></i>انتخاب پلن و مشخصات سرویس</h5>
 
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">پلن اشتراک:</label>
-                        <select name="plan_id" id="planSelect" class="form-select form-select-lg" onchange="handlePlanChange()">
-                            {% for pid, p in plans.items() %}
-                                {% if p.get('is_active', True) %}
-                                <option value="{{ pid }}" data-price="{{ p['price'] }}" data-data="{{ p['data_limit'] }}" data-days="{{ p['duration'] }}">
-                                    {% if p.get('is_exclusive_admin') %}👑 [اختصاصی مدیریت] {% endif %}{{ p['name'] }} — {{ p['data_limit'] }} گیگابایت ({{ p['duration'] }} روزه) — {{ "{:,}".format(p['price']) }} تومان
-                                </option>
-                                {% endif %}
-                            {% endfor %}
-                            <option value="custom">⚡ پلن دلخواه و سفارشی (تعیین دستی حجم و روز)</option>
-                        </select>
+                    <div class="row g-2 mb-3">
+                        {% for pid, p in plans.items() %}
+                            {% if p.get('is_active', True) %}
+                            <div class="col-md-6 col-12">
+                                <label class="p-3 border rounded-3 cursor-pointer d-flex justify-content-between align-items-center h-100 plan-select-card" style="cursor: pointer;">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <input type="radio" name="plan_id" value="{{ pid }}" data-price="{{ p['price'] }}" data-data="{{ p['data_limit'] }}" data-days="{{ p['duration'] }}" class="form-check-input mt-0 flex-shrink-0" {% if loop.first %}checked{% endif %} onchange="handlePlanChange()">
+                                        <div>
+                                            <div class="fw-bold text-dark">
+                                                {% if p.get('is_exclusive_admin') %}<span class="badge bg-warning text-dark me-1" style="font-size: 0.68rem;">👑 مدیریت</span>{% endif %}{{ p['name'] }}
+                                            </div>
+                                            <small class="text-muted">{{ p['data_limit'] }} گیگابایت | {{ p['duration'] }} روزه</small>
+                                        </div>
+                                    </div>
+                                    <div class="text-end ps-2 flex-shrink-0">
+                                        <strong class="text-primary">{{ "{:,}".format(p['price']) }} تومان</strong>
+                                    </div>
+                                </label>
+                            </div>
+                            {% endif %}
+                        {% endfor %}
+                        <!-- گزینه پلن دلخواه و سفارشی -->
+                        <div class="col-12">
+                            <label class="p-3 border rounded-3 cursor-pointer d-flex justify-content-between align-items-center plan-select-card" style="cursor: pointer;">
+                                <div class="d-flex align-items-center gap-2">
+                                    <input type="radio" name="plan_id" value="custom" class="form-check-input mt-0 flex-shrink-0" onchange="handlePlanChange()">
+                                    <div>
+                                        <div class="fw-bold text-dark"><i class="fas fa-sliders text-warning me-1"></i> پلن دلخواه و سفارشی</div>
+                                        <small class="text-muted">تعیین دستی و دلخواه حجم، مدت زمان و قیمت</small>
+                                    </div>
+                                </div>
+                                <div class="text-end ps-2 flex-shrink-0">
+                                    <span class="badge bg-secondary">سفارشی</span>
+                                </div>
+                            </label>
+                        </div>
                     </div>
 
                     <!-- بخش پلن سفارشی -->
@@ -94,6 +118,24 @@
                                 <label class="form-label fw-bold">قیمت پلن (تومان):</label>
                                 <input type="number" step="1000" name="custom_price" id="customPriceInput" class="form-control" value="100000" oninput="calculateDebt()">
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- بخش اهدای حجم هدیه رایگان به مشتری -->
+                    <div class="p-3 bg-success bg-opacity-10 border border-success rounded-3 mb-4">
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                            <label class="form-label fw-bold text-success mb-0">
+                                <i class="fas fa-gift me-1"></i> افزودن حجم هدیه رایگان به مشتری (GB):
+                            </label>
+                            <span class="badge bg-success text-white"><i class="fas fa-check-circle me-1"></i>هدیه مستقیم</span>
+                        </div>
+                        <div class="input-group">
+                            <span class="input-group-text bg-transparent text-success"><i class="fas fa-plus"></i></span>
+                            <input type="number" step="0.5" min="0" name="gift_traffic_gb" class="form-control font-monospace" placeholder="حجم هدیه اضافی به گیگابایت (اختیاری - مثلاً: 5)" value="0">
+                            <span class="input-group-text bg-transparent text-muted">گیگابایت</span>
+                        </div>
+                        <div class="form-text small text-muted mt-1">
+                            این حجم هدیه بدون تغییر در هزینه یا تراز مالی، مستقیماً به سقف حجم اولیه اشتراک مشتری اضافه می‌شود.
                         </div>
                     </div>
 
@@ -201,18 +243,27 @@
 </div>
 
 <style>
-.payment-method-card {
+.payment-method-card, .plan-select-card {
     transition: all 0.2s ease-in-out;
     border-radius: 12px !important;
 }
-.payment-method-card:hover {
+.payment-method-card:hover, .plan-select-card:hover {
     border-color: #0d6efd !important;
     transform: translateY(-2px);
 }
-.payment-method-card.active-method {
+.payment-method-card.active-method,
+.plan-select-card.active-plan,
+.plan-select-card:has(input:checked) {
     border-color: #0d6efd !important;
     background-color: rgba(13, 110, 253, 0.08) !important;
     box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.35) !important;
+}
+.plan-select-card {
+    background-color: var(--card-bg, #ffffff);
+    border: 1.5px solid var(--card-border, #dee2e6) !important;
+}
+[data-bs-theme="dark"] .plan-select-card .text-dark {
+    color: #f8fafc !important;
 }
 </style>
 
@@ -220,14 +271,30 @@
 const adminRole = "{{ admin_role }}";
 const partnerSharePercent = {{ share_percent or 0 }};
 
+function getSelectedPlanRadio() {
+    return document.querySelector('input[name="plan_id"]:checked');
+}
+
+function updatePlanCardsUI() {
+    document.querySelectorAll('.plan-select-card').forEach(c => {
+        const radio = c.querySelector('input[type="radio"]');
+        if (radio && radio.checked) {
+            c.classList.add('active-plan');
+        } else {
+            c.classList.remove('active-plan');
+        }
+    });
+}
+
 function handlePlanChange() {
-    const sel = document.getElementById('planSelect');
+    const selectedRadio = getSelectedPlanRadio();
     const customSec = document.getElementById('customPlanSection');
-    if (sel.value === 'custom') {
+    if (selectedRadio && selectedRadio.value === 'custom') {
         customSec.style.display = 'block';
     } else {
         customSec.style.display = 'none';
     }
+    updatePlanCardsUI();
     calculateDebt();
 }
 
@@ -259,20 +326,18 @@ function selectPaymentMethod(cardEl, method) {
 }
 
 function calculateDebt() {
-    const sel = document.getElementById('planSelect');
+    const selectedRadio = getSelectedPlanRadio();
     let price = 0;
-    if (sel.value === 'custom') {
+    if (selectedRadio && selectedRadio.value === 'custom') {
         price = parseInt(document.getElementById('customPriceInput').value || 0);
-    } else {
-        const opt = sel.options[sel.selectedIndex];
-        if (opt) {
-            price = parseInt(opt.getAttribute('data-price') || 0);
-        }
+    } else if (selectedRadio) {
+        price = parseInt(selectedRadio.getAttribute('data-price') || 0);
     }
 
     const debtInput = document.getElementById('debtAmountInput');
-    if (debtInput && !debtInput.value) {
+    if (debtInput && (!debtInput.value || debtInput.dataset.autoFilled === "true" || !debtInput.dataset.userEdited)) {
         debtInput.value = price;
+        debtInput.dataset.autoFilled = "true";
     }
 
     const priceEl = document.getElementById('displayTotalPrice');
@@ -292,6 +357,13 @@ function calculateDebt() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    const debtInput = document.getElementById('debtAmountInput');
+    if (debtInput) {
+        debtInput.addEventListener('input', () => {
+            debtInput.dataset.userEdited = "true";
+        });
+    }
+    updatePlanCardsUI();
     calculateDebt();
 });
 </script>

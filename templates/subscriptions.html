@@ -891,7 +891,7 @@
 
 <!-- ─── ۱. Modal تمدید اشتراک مدیریت ─── -->
 <div class="modal fade text-start" id="renewModal{{ sub['id'] }}" tabindex="-1" aria-labelledby="renewModalLabel{{ sub['id'] }}" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content shadow-lg border-0">
             <form method="POST" action="{{ url_for('admin_subscription_renew', sub_id=sub['id']) }}">
                 <div class="modal-header bg-success text-white py-3">
@@ -915,20 +915,22 @@
                     </div>
 
                     <label class="form-label fw-bold">انتخاب پلن تمدید:</label>
-                    <div class="d-flex flex-column gap-2 mb-3">
+                    <div class="row g-2 mb-3">
                         {% for p_key, p in plans.items() %}
-                        <label class="p-3 border rounded-3 cursor-pointer d-flex justify-content-between align-items-center">
-                            <div class="d-flex align-items-center gap-2">
-                                <input type="radio" name="plan_id" value="{{ p_key }}" class="form-check-input mt-0" {% if p_key == sub['plan_id'] or loop.first %}checked{% endif %}>
-                                <div>
-                                    <div class="fw-bold">{{ p['name'] }}</div>
-                                    <small class="text-muted">{{ p['data_limit'] }} گیگ | {{ p['duration'] }} روز</small>
+                        <div class="col-md-6 col-12">
+                            <label class="p-2 p-md-3 border rounded-3 cursor-pointer d-flex justify-content-between align-items-center h-100 plan-renew-option">
+                                <div class="d-flex align-items-center gap-2">
+                                    <input type="radio" name="plan_id" value="{{ p_key }}" class="form-check-input mt-0 flex-shrink-0" {% if p_key == sub['plan_id'] or loop.first %}checked{% endif %}>
+                                    <div>
+                                        <div class="fw-bold">{{ p['name'] }}</div>
+                                        <small class="text-muted">{{ p['data_limit'] }} گیگ | {{ p['duration'] }} روز</small>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="text-end">
-                                <strong class="text-success">{{ "{:,}".format(p['price']) }} ت</strong>
-                            </div>
-                        </label>
+                                <div class="text-end ps-1 flex-shrink-0">
+                                    <strong class="text-success">{{ "{:,}".format(p['price']) }} ت</strong>
+                                </div>
+                            </label>
+                        </div>
                         {% endfor %}
                     </div>
 
@@ -940,6 +942,25 @@
                             </div>
                             <div class="col-6">
                                 <input type="number" name="custom_duration" class="form-control form-control-sm font-monospace" placeholder="تعداد روز سفارشی">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="border-top pt-3">
+                        <div class="p-2 mb-3 bg-success bg-opacity-10 border border-success rounded-3">
+                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                <label class="form-label fw-bold text-success small mb-0">
+                                    <i class="fas fa-gift me-1"></i> افزودن حجم هدیه تمدید (گیگابایت):
+                                </label>
+                                <span class="badge bg-success text-white" style="font-size: 0.68rem;">هدیه رایگان</span>
+                            </div>
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text bg-transparent text-success"><i class="fas fa-plus"></i></span>
+                                <input type="number" step="0.5" min="0" name="gift_traffic_gb" class="form-control font-monospace" placeholder="حجم هدیه اضافی (اختیاری)" value="0">
+                                <span class="input-group-text bg-transparent text-muted">گیگابایت</span>
+                            </div>
+                            <div class="form-text text-muted mt-1" style="font-size: 0.72rem;">
+                                این مقدار به عنوان هدیه رایگان، بدون تغییر در هزینه به سقف حجم اشتراک افزوده می‌شود.
                             </div>
                         </div>
                     </div>
@@ -1869,6 +1890,21 @@
 }
 .text-decoration-underline-hover:hover {
     text-decoration: underline;
+}
+.plan-renew-option {
+    transition: all 0.2s ease-in-out;
+    background-color: var(--card-bg, #ffffff);
+    border: 1px solid var(--card-border, #dee2e6) !important;
+}
+.plan-renew-option:hover {
+    border-color: #198754 !important;
+    background-color: rgba(25, 135, 84, 0.05) !important;
+    transform: translateY(-1px);
+}
+.plan-renew-option:has(input:checked) {
+    border-color: #198754 !important;
+    background-color: rgba(25, 135, 84, 0.1) !important;
+    box-shadow: 0 0 0 2px rgba(25, 135, 84, 0.3) !important;
 }
 </style>
 
