@@ -445,6 +445,12 @@ class Database:
 
         # مایگریشن خودکار ستون‌های جدید
         try:
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_login_logs_token ON login_logs(session_token)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_login_logs_user_active ON login_logs(user_type, user_id, is_active)")
+        except Exception:
+            pass
+
+        try:
             cursor.execute("ALTER TABLE transactions ADD COLUMN is_deleted INTEGER DEFAULT 0")
         except Exception:
             pass
@@ -2674,25 +2680,24 @@ class Database:
         finally:
             conn.close()
 
-    def is_reseller_online(self, reseller_id: int, threshold_minutes: int = 15) -> bool:
-        """بررسی آنلاین بودن نماینده بر اساس آخرین فعالیت در چند دقیقه گذشته"""
+    def is_user_online(self, user_type: str, user_id: int, threshold_minutes: int = 15) -> bool:
+        """بررسی آنلاین بودن کاربر، نماینده یا زیرمدیر بر اساس آخرین فعالیت در چند دقیقه گذشته"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute("""
                 SELECT last_active_at, login_at, is_active FROM login_logs
-                WHERE user_type = 'reseller' AND user_id = ? AND is_active = 1
+                WHERE user_type = ? AND user_id = ? AND is_active = 1
                 ORDER BY id DESC LIMIT 1
-            """, (reseller_id,))
+            """, (user_type, user_id))
             row = cursor.fetchone()
-            if not row:
+            if not row or not row["is_active"]:
                 return False
 
             last_time_str = row["last_active_at"] or row["login_at"]
             if not last_time_str:
                 return False
 
-            # محاسبه اختلاف زمانی با در نظر گرفتن منطقه زمانی تهران
             try:
                 last_time = datetime.fromisoformat(last_time_str)
                 now_tehran = datetime.now(TEHRAN_TZ)
@@ -2701,12 +2706,105 @@ class Database:
                 diff_seconds = abs((now_tehran - last_time).total_seconds())
                 return (diff_seconds / 60) <= threshold_minutes
             except Exception as ex:
-                logger.error(f"Error calculating reseller online diff: {ex}")
+                logger.error(f"Error calculating online diff for {user_type} #{user_id}: {ex}")
                 return False
         except Exception as e:
             return False
         finally:
             conn.close()
+
+    def is_reseller_online(self, reseller_id: int, threshold_minutes: int = 15) -> bool:
+        """بررسی آنلاین بودن نماینده فروش"""
+        return self.is_user_online("reseller", reseller_id, threshold_minutes)
+
+    def is_subadmin_online(self, admin_id: int, threshold_minutes: int = 15) -> bool:
+        """بررسی آنلاین بودن مدیر کمکی یا پشتیبان زیرمجموعه نماینده"""
+        return self.is_user_online("reseller_subadmin", admin_id, threshold_minutes)
+
+    def is_session_active(self, session_token: str) -> bool:
+        """بررسی فعال بودن نشست بر اساس توکن نشست در لاگ‌ها"""
+        if not session_token:
+            return False
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT is_active FROM login_logs WHERE session_token = ? ORDER BY id DESC LIMIT 1", (session_token,))
+            row = cursor.fetchone()
+            if not row:
+                return True  # در صورت عدم وجود لاگ قدیمی جهت جلوگیری از خروج ناگهانی
+            return bool(row["is_active"])
+        except Exception:
+            return True
+        finally:
+            conn.close()
+
+    def terminate_session(self, session_id: int) -> bool:
+        """خاتمه و قطع فوری یک نشست فعال بر اساس شناسه لاگ"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                UPDATE login_logs
+                SET is_active = 0, logout_at = ?, last_active_at = ?
+                WHERE id = ? AND is_active = 1
+            """, (now, now, session_id))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Error terminating session {session_id}: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def terminate_session_by_token(self, session_token: str) -> bool:
+        """خاتمه نشست فعال بر اساس توکن"""
+        if not session_token:
+            return False
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                UPDATE login_logs
+                SET is_active = 0, logout_at = ?, last_active_at = ?
+                WHERE session_token = ? AND is_active = 1
+            """, (now, now, session_token))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Error terminating session by token: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def terminate_all_user_sessions(self, user_type: str, user_id: int, except_token: str = None) -> int:
+        """خاتمه تمام نشست‌های فعال یک کاربر، نماینده یا زیرمدیر (با امکان مستثنی کردن نشست فعلی)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            query = "UPDATE login_logs SET is_active = 0, logout_at = ?, last_active_at = ? WHERE user_type = ? AND user_id = ? AND is_active = 1"
+            params = [now, now, user_type, user_id]
+            if except_token:
+                query += " AND session_token != ?"
+                params.append(except_token)
+            cursor.execute(query, tuple(params))
+            conn.commit()
+            return cursor.rowcount
+        except Exception as e:
+            logger.error(f"Error terminating all sessions for {user_type} #{user_id}: {e}")
+            return 0
+        finally:
+            conn.close()
+
+    def terminate_reseller_and_team_sessions(self, reseller_id: int) -> int:
+        """خاتمه کلیه نشست‌های فعال یک نماینده و تمامی اعضای تیم زیرمجموعه وی"""
+        count = self.terminate_all_user_sessions("reseller", reseller_id)
+        team_members = self.get_reseller_team_members(reseller_id)
+        for m in team_members:
+            count += self.terminate_all_user_sessions("reseller_subadmin", m["id"])
+        return count
 
     def get_all_failed_login_logs(self, limit: int = 50) -> list:
         """دریافت تمام تلاش‌های ناموفق ورود به سیستم برای مانیتورینگ امنیتی مدیر کل"""
@@ -6783,6 +6881,159 @@ class Database:
             "open_tickets_count": open_tickets_count,
         }
 
+    def get_reseller_usage_summary(self, reseller_id: int) -> dict:
+        """محاسبه خلاصه جامع وضعیت استفاده و عملکرد نماینده (امروز، دیروز، ماهانه، میانگین روزانه و ترافیک)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now_tehran = datetime.now(TEHRAN_TZ)
+        today_date = now_tehran.strftime("%Y-%m-%d")
+        yesterday_date = (now_tehran - timedelta(days=1)).strftime("%Y-%m-%d")
+        month_ago_date = (now_tehran - timedelta(days=30)).strftime("%Y-%m-%d")
+
+        try:
+            # ۱. اطلاعات پایه و مالی نماینده
+            cursor.execute("""
+                SELECT balance, discount_percent, credit_enabled, credit_limit, credit_debt, can_gift_traffic
+                FROM resellers WHERE id = ?
+            """, (reseller_id,))
+            res_row = cursor.fetchone()
+            balance = res_row["balance"] if res_row else 0
+            discount_percent = res_row["discount_percent"] if res_row else 0
+            credit_limit = int(res_row["credit_limit"] or 0) if (res_row and "credit_limit" in res_row.keys()) else 0
+            credit_debt = int(res_row["credit_debt"] or 0) if (res_row and "credit_debt" in res_row.keys()) else 0
+            credit_enabled = bool(res_row["credit_enabled"]) if (res_row and "credit_enabled" in res_row.keys()) else (credit_limit > 0)
+            available_credit = max(0, credit_limit - credit_debt) if credit_enabled else 0
+            total_purchasing_power = balance + available_credit
+
+            # ۲. استفاده امروز (Today's Usage)
+            cursor.execute("""
+                SELECT COALESCE(SUM(amount), 0), COUNT(*)
+                FROM reseller_transactions
+                WHERE reseller_id = ? 
+                  AND type IN ('purchase', 'purchase_credit', 'renewal')
+                  AND (created_at LIKE ? || '%')
+            """, (reseller_id, today_date))
+            today_row = cursor.fetchone()
+            today_spent = int(today_row[0] or 0)
+            today_orders = int(today_row[1] or 0)
+
+            # ۳. استفاده دیروز (Yesterday's Usage)
+            cursor.execute("""
+                SELECT COALESCE(SUM(amount), 0), COUNT(*)
+                FROM reseller_transactions
+                WHERE reseller_id = ? 
+                  AND type IN ('purchase', 'purchase_credit', 'renewal')
+                  AND (created_at LIKE ? || '%')
+            """, (reseller_id, yesterday_date))
+            yesterday_row = cursor.fetchone()
+            yesterday_spent = int(yesterday_row[0] or 0)
+            yesterday_orders = int(yesterday_row[1] or 0)
+
+            # ۴. استفاده ماهانه (۳۰ روز اخیر / Monthly Usage)
+            cursor.execute("""
+                SELECT COALESCE(SUM(amount), 0), COUNT(*)
+                FROM reseller_transactions
+                WHERE reseller_id = ? 
+                  AND type IN ('purchase', 'purchase_credit', 'renewal')
+                  AND created_at >= ?
+            """, (reseller_id, month_ago_date))
+            month_row = cursor.fetchone()
+            month_spent = int(month_row[0] or 0)
+            month_orders = int(month_row[1] or 0)
+
+            # میانگین مصرف روزانه (بر مبنای ۳۰ روز)
+            daily_average = int(month_spent / 30) if month_spent > 0 else 0
+
+            # ۵. وضعیت ترافیک مصرفی مشترکین (Traffic stats)
+            cursor.execute("""
+                SELECT COALESCE(SUM(data_used), 0), COALESCE(SUM(data_limit), 0)
+                FROM subscriptions
+                WHERE reseller_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)
+            """, (reseller_id,))
+            traffic_row = cursor.fetchone()
+            total_used_gb = round(float(traffic_row[0] or 0), 2)
+            total_limit_gb = round(float(traffic_row[1] or 0), 2)
+            usage_percent = round((total_used_gb / total_limit_gb * 100), 1) if total_limit_gb > 0 else 0
+
+            # ۶. آمار وضعیت کاربران
+            cursor.execute("""
+                SELECT 
+                    COUNT(*),
+                    COALESCE(SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN is_online = 1 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN status = 'expired' THEN 1 ELSE 0 END), 0)
+                FROM subscriptions
+                WHERE reseller_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)
+            """, (reseller_id,))
+            u_row = cursor.fetchone()
+            total_users = int(u_row[0] or 0)
+            active_users = int(u_row[1] or 0)
+            online_users = int(u_row[2] or 0)
+            expired_users = int(u_row[3] or 0)
+
+            # ۷. آمار اعضای تیم زیرمجموعه
+            team_members = self.get_reseller_team_with_sessions(reseller_id)
+            team_total = len(team_members)
+            team_online = sum(1 for m in team_members if m.get("is_online"))
+
+            return {
+                "today": {
+                    "spent": today_spent,
+                    "orders": today_orders,
+                    "date": today_date
+                },
+                "yesterday": {
+                    "spent": yesterday_spent,
+                    "orders": yesterday_orders,
+                    "date": yesterday_date
+                },
+                "month": {
+                    "spent": month_spent,
+                    "orders": month_orders,
+                    "date_from": month_ago_date
+                },
+                "daily_average": daily_average,
+                "traffic": {
+                    "used_gb": total_used_gb,
+                    "limit_gb": total_limit_gb,
+                    "percent": usage_percent
+                },
+                "users": {
+                    "total": total_users,
+                    "active": active_users,
+                    "online": online_users,
+                    "expired": expired_users
+                },
+                "team": {
+                    "total": team_total,
+                    "online": team_online,
+                    "members": team_members
+                },
+                "financial": {
+                    "balance": balance,
+                    "discount_percent": discount_percent,
+                    "credit_enabled": credit_enabled,
+                    "credit_limit": credit_limit,
+                    "credit_debt": credit_debt,
+                    "available_credit": available_credit,
+                    "total_purchasing_power": total_purchasing_power
+                }
+            }
+        except Exception as e:
+            logger.error(f"Error calculating reseller usage summary for {reseller_id}: {e}")
+            return {
+                "today": {"spent": 0, "orders": 0, "date": today_date},
+                "yesterday": {"spent": 0, "orders": 0, "date": yesterday_date},
+                "month": {"spent": 0, "orders": 0, "date_from": month_ago_date},
+                "daily_average": 0,
+                "traffic": {"used_gb": 0, "limit_gb": 0, "percent": 0},
+                "users": {"total": 0, "active": 0, "online": 0, "expired": 0},
+                "team": {"total": 0, "online": 0, "members": []},
+                "financial": {"balance": 0, "discount_percent": 0, "credit_enabled": False, "credit_limit": 0, "credit_debt": 0, "available_credit": 0, "total_purchasing_power": 0}
+            }
+        finally:
+            conn.close()
+
     def get_reseller_7days_revenue(self, reseller_id: int) -> dict:
         """
         محاسبه روند درآمد و فروش ۷ روز گذشته نماینده (شامل پرداخت‌های ربات و فروش مستقیم پنل)
@@ -8221,7 +8472,7 @@ class Database:
             # ۱. مجموع خریدهای عمده نماینده
             cursor.execute("""
                 SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions 
-                WHERE reseller_id = ? AND type = 'purchase'
+                WHERE reseller_id = ? AND type IN ('purchase', 'purchase_credit', 'renewal', 'renew', 'renew_credit')
             """, (reseller_id,))
             total_wholesale_cost = cursor.fetchone()[0] or 0
 
@@ -8233,26 +8484,48 @@ class Database:
             total_deposited = cursor.fetchone()[0] or 0
 
             # ۳. تخفیف و موجودی نماینده
-            cursor.execute("SELECT discount_percent, balance, name FROM resellers WHERE id = ?", (reseller_id,))
+            cursor.execute("SELECT discount_percent, balance, name, username FROM resellers WHERE id = ?", (reseller_id,))
             r_info = cursor.fetchone()
             discount_pct = r_info["discount_percent"] if (r_info and r_info["discount_percent"] is not None) else 20
             current_balance = r_info["balance"] if r_info else 0
             reseller_name = r_info["name"] if r_info else "همکار"
+            reseller_uname = r_info["username"] if r_info else None
 
             # ۴. محاسبه سود و ارزش ریالی فروش (بر اساس حاشیه سود ثبت‌شده یا تخمین تخفیف)
             cursor.execute("""
                 SELECT COALESCE(SUM(profit_margin), 0), COALESCE(SUM(selling_price), 0)
                 FROM reseller_transactions
-                WHERE reseller_id = ? AND type IN ('purchase', 'purchase_credit', 'renew', 'renew_credit')
+                WHERE reseller_id = ? AND type IN ('purchase', 'purchase_credit', 'renewal', 'renew', 'renew_credit')
             """, (reseller_id,))
             p_row = cursor.fetchone()
             actual_profit = p_row[0] if p_row else 0
             actual_selling = p_row[1] if p_row else 0
 
+            if total_wholesale_cost == 0:
+                cursor.execute("""
+                    SELECT COALESCE(SUM(cost_paid), 0) FROM subscriptions 
+                    WHERE reseller_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)
+                """, (reseller_id,))
+                sub_cost = cursor.fetchone()[0] or 0
+                if sub_cost > 0:
+                    total_wholesale_cost = sub_cost
+
+            if actual_selling == 0:
+                cursor.execute("""
+                    SELECT COALESCE(SUM(amount), 0) FROM transactions 
+                    WHERE (reseller_id = ? OR (reseller_id IS NULL AND username = ?))
+                      AND (is_deleted = 0 OR is_deleted IS NULL)
+                      AND status IN ('approved', 'completed')
+                      AND (gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
+                """, (reseller_id, reseller_uname))
+                tx_selling = cursor.fetchone()[0] or 0
+                if tx_selling > 0:
+                    actual_selling = tx_selling
+
             if actual_profit > 0 or actual_selling > 0:
-                estimated_profit = actual_profit
+                estimated_profit = actual_profit if actual_profit > 0 else max(0, actual_selling - total_wholesale_cost)
                 estimated_retail_value = actual_selling if actual_selling > 0 else (total_wholesale_cost + actual_profit)
-            elif discount_pct < 100 and discount_pct > 0:
+            elif discount_pct < 100 and discount_pct > 0 and total_wholesale_cost > 0:
                 estimated_retail_value = int(total_wholesale_cost / (1.0 - (discount_pct / 100.0)))
                 estimated_profit = max(0, estimated_retail_value - total_wholesale_cost)
             else:
@@ -8281,8 +8554,6 @@ class Database:
             }
         finally:
             conn.close()
-
-    # ─── مدیریت دامنه و برندینگ نماینده (Custom Domain & Branding) ───
 
     def get_reseller_by_domain(self, domain: str):
         """یافتن نماینده بر اساس دامنه اختصاصی پنل یا دامنه اختصاصی آموزش‌ها"""
@@ -8546,6 +8817,53 @@ class Database:
             return [dict(r) for r in cursor.fetchall()]
         except Exception as e:
             logger.error(f"Error getting reseller team members: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_reseller_team_with_sessions(self, reseller_id: int) -> list:
+        """لیست کادر و زیرمدیران نماینده به همراه وضعیت آنلاین، آخرین ورود و نشست‌های فعال"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM admin_users WHERE reseller_id = ? ORDER BY id ASC", (reseller_id,))
+            members = [dict(r) for r in cursor.fetchall()]
+            
+            for m in members:
+                m_id = m["id"]
+                # وضعیت زنده آنلاین بودن
+                m["is_online"] = self.is_user_online("reseller_subadmin", m_id)
+                
+                # دریافت سوابق ورود و نشست‌های این کاربر
+                cursor.execute("""
+                    SELECT * FROM login_logs 
+                    WHERE user_type = 'reseller_subadmin' AND user_id = ? 
+                    ORDER BY id DESC LIMIT 15
+                """, (m_id,))
+                logs = [dict(r) for r in cursor.fetchall()]
+                m["login_logs"] = logs
+                
+                # تفکیک نشست‌های فعال جاری
+                m["active_sessions"] = [l for l in logs if l.get("is_active")]
+                m["active_sessions_count"] = len(m["active_sessions"])
+                
+                # اطلاعات آخرین نشست / فعالیت
+                if logs:
+                    m["last_login"] = logs[0].get("login_at")
+                    m["last_active"] = logs[0].get("last_active_at")
+                    m["last_ip"] = logs[0].get("ip_address")
+                    m["last_device"] = logs[0].get("device_os")
+                    m["last_browser"] = logs[0].get("browser")
+                else:
+                    m["last_login"] = None
+                    m["last_active"] = None
+                    m["last_ip"] = None
+                    m["last_device"] = None
+                    m["last_browser"] = None
+                    
+            return members
+        except Exception as e:
+            logger.error(f"Error getting reseller team with sessions for reseller {reseller_id}: {e}")
             return []
         finally:
             conn.close()
@@ -10784,11 +11102,13 @@ class Database:
         ترافیک واگذار شده، تعداد اشتراک‌ها و ریز تراکنش‌ها به همراه خروجی تفکیکی
         """
         from datetime import datetime, timedelta
+        from utils import get_now_naive, gregorian_to_shamsi
         conn = self.get_connection()
         cursor = conn.cursor()
         now_dt = get_now_naive()
         start_dt = now_dt - timedelta(days=days)
         start_iso = start_dt.strftime("%Y-%m-%d %H:%M:%S")
+        start_date_str = start_dt.strftime("%Y-%m-%d")
 
         audit = {
             "days": days,
@@ -10805,29 +11125,60 @@ class Database:
             "renew_subs_count": 0,
             "total_outstanding_debt": 0,
             "transactions": [],
-            "daily_turnover": {}
+            "daily_turnover": {},
+            "daily_stats": [],
+            "summary": {}
         }
 
+        daily_map = {}
+
+        def get_or_init_day(date_key):
+            clean_date = str(date_key or now_dt.strftime("%Y-%m-%d"))[:10]
+            if clean_date not in daily_map:
+                try:
+                    j_date = gregorian_to_shamsi(clean_date)
+                except Exception:
+                    j_date = clean_date
+                daily_map[clean_date] = {
+                    "date": clean_date,
+                    "jalali_date": j_date,
+                    "sub_count": 0,
+                    "data_gb": 0.0,
+                    "cash_income": 0,
+                    "credit_income": 0,
+                    "expense": 0,
+                    "total_income": 0,
+                    "income": 0,
+                    "count": 0
+                }
+            return daily_map[clean_date]
+
         try:
+            res_row = self.get_reseller(reseller_id) if reseller_id else None
+            discount = res_row.get("discount_percent") if (res_row and res_row.get("discount_percent") is not None) else 20
+            res_username = res_row.get("username") if res_row else None
+            accounted_sub_ids = set()
+
             # ۱. استخراج تراکنش‌های تایید شده در بازه زمانی
             if reseller_id:
                 cursor.execute("""
                     SELECT * FROM transactions 
-                    WHERE reseller_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)
+                    WHERE (reseller_id = ? OR (reseller_id IS NULL AND username = ?))
+                      AND (is_deleted = 0 OR is_deleted IS NULL)
                       AND status IN ('approved', 'completed')
                       AND (gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
-                      AND created_at >= ?
+                      AND (date(replace(created_at, 'T', ' ')) >= date(?) OR created_at >= ?)
                     ORDER BY created_at DESC
-                """, (reseller_id, start_iso))
+                """, (reseller_id, res_username, start_date_str, start_iso))
             else:
                 cursor.execute("""
                     SELECT * FROM transactions 
                     WHERE (is_deleted = 0 OR is_deleted IS NULL)
                       AND status IN ('approved', 'completed')
                       AND ((reseller_id IS NULL OR reseller_id = 0) OR (reseller_id > 0 AND (gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')))
-                      AND created_at >= ?
+                      AND (date(replace(created_at, 'T', ' ')) >= date(?) OR created_at >= ?)
                     ORDER BY created_at DESC
-                """, (start_iso,))
+                """, (start_date_str, start_iso))
             
             tx_rows = cursor.fetchall()
             for r in tx_rows:
@@ -10836,22 +11187,27 @@ class Database:
                 audit["total_revenue"] += amount
                 
                 is_credit_tx = bool(r_dict.get("gateway") == "credit" or "credit" in str(r_dict.get("order_id", "")).lower() or "اعتباری" in str(r_dict.get("tracking_code", "")))
+                c_date = str(r_dict.get("created_at", ""))[:10]
+                day_entry = get_or_init_day(c_date)
+
                 if is_credit_tx:
                     audit["credit_revenue"] += amount
+                    day_entry["credit_income"] += amount
                 else:
                     audit["cash_revenue"] += amount
+                    day_entry["cash_income"] += amount
+
+                day_entry["total_income"] += amount
+                day_entry["income"] += amount
+                day_entry["count"] += 1
 
                 if r_dict.get("is_renewal"):
                     audit["renew_subs_count"] += 1
                 else:
                     audit["new_subs_count"] += 1
 
-                c_date = str(r_dict.get("created_at", ""))[:10]
-                if c_date:
-                    if c_date not in audit["daily_turnover"]:
-                        audit["daily_turnover"][c_date] = {"date": c_date, "income": 0, "expense": 0, "count": 0}
-                    audit["daily_turnover"][c_date]["income"] += amount
-                    audit["daily_turnover"][c_date]["count"] += 1
+                if r_dict.get("subscription_id"):
+                    accounted_sub_ids.add(r_dict["subscription_id"])
 
                 audit["transactions"].append(r_dict)
 
@@ -10860,17 +11216,15 @@ class Database:
                 cursor.execute("""
                     SELECT * FROM reseller_transactions 
                     WHERE reseller_id = ? 
-                      AND type IN ('purchase', 'purchase_credit', 'renewal')
-                      AND created_at >= ?
+                      AND type IN ('purchase', 'purchase_credit', 'renewal', 'renew', 'renew_credit')
+                      AND (date(replace(created_at, 'T', ' ')) >= date(?) OR created_at >= ?)
                       AND (subscription_id IS NULL OR subscription_id NOT IN (
                           SELECT subscription_id FROM transactions 
                           WHERE reseller_id = ? AND subscription_id IS NOT NULL AND status IN ('approved', 'completed')
                       ))
                     ORDER BY created_at DESC
-                """, (reseller_id, start_iso, reseller_id))
+                """, (reseller_id, start_date_str, start_iso, reseller_id))
                 res_tx_rows = cursor.fetchall()
-                res_row = self.get_reseller(reseller_id)
-                discount = res_row.get("discount_percent") if (res_row and res_row.get("discount_percent") is not None) else 20
                 for rx in res_tx_rows:
                     rx_dict = dict(rx)
                     wholesale = int(rx_dict.get("amount") or 0)
@@ -10878,51 +11232,103 @@ class Database:
                     profit = int(rx_dict.get("profit_margin") or 0)
                     if selling <= 0 and wholesale > 0:
                         selling = int(wholesale * 100 / (100 - discount)) if discount < 100 else wholesale
-                        profit = selling - wholesale
+                        profit = max(0, selling - wholesale)
 
                     audit["total_revenue"] += selling
                     audit["total_expenses"] += wholesale
                     audit["net_profit"] += profit
 
-                    is_credit_rx = rx_dict.get("payment_source") == "credit" or rx_dict.get("type") == "purchase_credit"
+                    rx_date = str(rx_dict.get("created_at", ""))[:10]
+                    day_entry = get_or_init_day(rx_date)
+
+                    is_credit_rx = rx_dict.get("payment_source") == "credit" or rx_dict.get("type") in ("purchase_credit", "renew_credit")
                     if is_credit_rx:
                         audit["credit_revenue"] += selling
+                        day_entry["credit_income"] += selling
                     else:
                         audit["cash_revenue"] += selling
+                        day_entry["cash_income"] += selling
 
-                    if rx_dict.get("type") == "renewal":
+                    day_entry["total_income"] += selling
+                    day_entry["income"] += selling
+                    day_entry["expense"] += wholesale
+                    day_entry["count"] += 1
+
+                    if rx_dict.get("type") in ("renewal", "renew", "renew_credit"):
                         audit["renew_subs_count"] += 1
                     else:
                         audit["new_subs_count"] += 1
 
-                    rx_date = str(rx_dict.get("created_at", ""))[:10]
-                    if rx_date:
-                        if rx_date not in audit["daily_turnover"]:
-                            audit["daily_turnover"][rx_date] = {"date": rx_date, "income": 0, "expense": 0, "count": 0}
-                        audit["daily_turnover"][rx_date]["income"] += selling
-                        audit["daily_turnover"][rx_date]["expense"] += wholesale
-                        audit["daily_turnover"][rx_date]["count"] += 1
+                    if rx_dict.get("subscription_id"):
+                        accounted_sub_ids.add(rx_dict["subscription_id"])
 
-                    audit["transactions"].append(rx_dict)
+                    norm_tx = dict(rx_dict)
+                    if not norm_tx.get("username"):
+                        norm_tx["username"] = norm_tx.get("account_name") or ""
+                    if not norm_tx.get("gateway"):
+                        norm_tx["gateway"] = "کیف پول" if norm_tx.get("payment_source") == "wallet" else "اعتبار خرید"
+                    audit["transactions"].append(norm_tx)
 
-            # ۲. اشتراک‌های ایجاد شده در بازه زمانی جهت محاسبه حجم کل GB
+            # ۲. اشتراک‌های ایجاد شده در بازه زمانی جهت محاسبه حجم کل GB و تفکیک روزشمار
             if reseller_id:
                 cursor.execute("""
-                    SELECT data_limit, cost_paid, is_credit, created_at 
+                    SELECT id, account_name, telegram_id, data_limit, cost_paid, is_credit, payment_source, debt_amount, created_at, plan_name 
                     FROM subscriptions 
-                    WHERE reseller_id = ? AND created_at >= ?
-                """, (reseller_id, start_iso))
+                    WHERE reseller_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)
+                      AND (date(replace(created_at, 'T', ' ')) >= date(?) OR created_at >= ?)
+                    ORDER BY created_at DESC
+                """, (reseller_id, start_date_str, start_iso))
             else:
                 cursor.execute("""
-                    SELECT data_limit, cost_paid, is_credit, created_at 
+                    SELECT id, account_name, telegram_id, data_limit, cost_paid, is_credit, payment_source, debt_amount, created_at, plan_name 
                     FROM subscriptions 
-                    WHERE created_at >= ?
-                """, (start_iso,))
+                    WHERE (is_deleted = 0 OR is_deleted IS NULL)
+                      AND (date(replace(created_at, 'T', ' ')) >= date(?) OR created_at >= ?)
+                    ORDER BY created_at DESC
+                """, (start_date_str, start_iso))
             
             sub_rows = cursor.fetchall()
             audit["total_subs_count"] = len(sub_rows)
             for s in sub_rows:
-                audit["total_gb_sold"] += float(s["data_limit"] or 0)
+                s_dict = dict(s)
+                gb_val = float(s_dict.get("data_limit") or 0)
+                audit["total_gb_sold"] += gb_val
+                s_date = str(s_dict.get("created_at") or "")[:10]
+                day_entry = get_or_init_day(s_date)
+                day_entry["sub_count"] += 1
+                day_entry["data_gb"] += gb_val
+
+                s_id = s_dict.get("id")
+                if s_id not in accounted_sub_ids:
+                    c_paid = int(s_dict.get("cost_paid") or 0)
+                    debt_amt = int(s_dict.get("debt_amount") or 0)
+                    if c_paid > 0:
+                        audit["total_revenue"] += c_paid
+                        if s_dict.get("is_credit") or s_dict.get("payment_source") == "credit":
+                            audit["credit_revenue"] += c_paid
+                            day_entry["credit_income"] += c_paid
+                        else:
+                            audit["cash_revenue"] += c_paid
+                            day_entry["cash_income"] += c_paid
+                        day_entry["total_income"] += c_paid
+                        day_entry["income"] += c_paid
+                    elif debt_amt > 0:
+                        audit["total_revenue"] += debt_amt
+                        audit["credit_revenue"] += debt_amt
+                        day_entry["credit_income"] += debt_amt
+                        day_entry["total_income"] += debt_amt
+
+                    gw = "اعتبار خرید" if (s_dict.get("is_credit") or s_dict.get("payment_source") == "credit") else ("کیف پول" if c_paid > 0 else "سفارش مستقیم")
+                    audit["transactions"].append({
+                        "id": s_id,
+                        "order_id": f"SUB-{s_id}",
+                        "username": s_dict.get("account_name") or (f"TG-{s_dict.get('telegram_id')}" if s_dict.get('telegram_id') else ""),
+                        "plan_name": s_dict.get("plan_name") or "",
+                        "amount": c_paid if c_paid > 0 else debt_amt,
+                        "gateway": gw,
+                        "tracking_code": "-",
+                        "created_at": s_dict.get("created_at") or ""
+                    })
 
             # ۳. محاسبه هزینه‌ها و بدهی‌ها
             if not reseller_id:
@@ -10933,18 +11339,50 @@ class Database:
                 exp_row = cursor.fetchone()
                 audit["total_expenses"] = exp_row[0] if (exp_row and exp_row[0]) else 0
                 
+                cursor.execute("""
+                    SELECT date, SUM(amount) FROM accounting_records
+                    WHERE type = 'expense' AND (date >= ? OR created_at >= ?)
+                    GROUP BY date
+                """, (start_iso[:10], start_iso))
+                for exp_d, exp_sum in cursor.fetchall():
+                    if exp_d:
+                        d_ent = get_or_init_day(str(exp_d)[:10])
+                        d_ent["expense"] = int(exp_sum or 0)
+
                 cursor.execute("SELECT SUM(credit_debt) FROM resellers WHERE credit_debt > 0")
                 debt_row = cursor.fetchone()
                 audit["total_outstanding_debt"] = debt_row[0] if (debt_row and debt_row[0]) else 0
                 audit["net_profit"] = max(0, audit["total_revenue"] - audit["total_expenses"])
             else:
-                res_row = self.get_reseller(reseller_id)
                 if res_row:
                     audit["total_outstanding_debt"] = res_row.get("credit_debt", 0)
                 if audit["total_expenses"] == 0 and audit["total_revenue"] > 0:
                     discount = res_row.get("discount_percent") if (res_row and res_row.get("discount_percent") is not None) else 20
                     audit["total_expenses"] = int(audit["total_revenue"] * (100 - discount) / 100)
-                    audit["net_profit"] = max(0, audit["total_revenue"] - audit["total_expenses"])
+                audit["net_profit"] = max(0, audit["total_revenue"] - audit["total_expenses"])
+
+            # ۴. مرتب‌سازی روزشمار ۳۰ روزه بر اساس تاریخ به صورت نزولی
+            sorted_daily = []
+            for d_key in sorted(daily_map.keys(), reverse=True):
+                sorted_daily.append(daily_map[d_key])
+
+            audit["daily_stats"] = sorted_daily
+            audit["daily_turnover"] = daily_map
+
+            # ۵. دیکشنری summary هماهنگ با قالب‌های jinja2
+            audit["summary"] = {
+                "total_revenue": audit["total_revenue"],
+                "cash_revenue": audit["cash_revenue"],
+                "credit_revenue": audit["credit_revenue"],
+                "total_expenses": audit["total_expenses"],
+                "net_profit": audit["net_profit"],
+                "estimated_profit": audit["net_profit"],
+                "sub_count": audit["total_subs_count"],
+                "total_subs_count": audit["total_subs_count"],
+                "total_data_gb": audit["total_gb_sold"],
+                "total_gb_sold": audit["total_gb_sold"],
+                "total_outstanding_debt": audit["total_outstanding_debt"]
+            }
         except Exception as e:
             logger.error(f"Error calculating monthly accounting audit: {e}")
         finally:
