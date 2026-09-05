@@ -450,7 +450,13 @@
                                 </form>
                                 {% endif %}
 
-                                <!-- ۲. دکمه اصلی و جامع: مدیریت، بارکدها و لینک‌ها -->
+                                <!-- ۲. دکمه سریع تمدید اشتراک -->
+                                <button type="button" class="btn btn-sm btn-success d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" data-bs-toggle="modal" data-bs-target="#renewModal{{ sub['id'] }}" title="تمدید سریع اشتراک">
+                                    <i class="fas fa-arrows-rotate"></i>
+                                    <span class="d-none d-md-inline">تمدید</span>
+                                </button>
+
+                                <!-- ۳. دکمه اصلی و جامع: مدیریت، بارکدها و لینک‌ها -->
                                 <button type="button" class="btn btn-sm btn-primary d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" data-bs-toggle="modal" data-bs-target="#customerDetailModal{{ sub['id'] }}" title="مشاهده بارکدها، لینک‌های اتصال و مدیریت کامل اشتراک">
                                     <i class="fas fa-qrcode"></i>
                                     <span class="d-none d-md-inline">مدیریت و اتصال</span>
