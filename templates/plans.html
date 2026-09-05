@@ -73,6 +73,13 @@
                             {{ p.name }}
                             {% if p.is_exclusive_admin %}
                                 <span class="badge bg-warning text-dark border border-warning ms-1" style="font-size: 0.72rem;"><i class="fas fa-crown me-1"></i>اختصاصی مدیریت</span>
+                            {% elif p.allowed_resellers or p.is_exclusive_reseller %}
+                                {% set r_count = p.allowed_resellers|length if p.allowed_resellers else 0 %}
+                                <span class="badge text-white ms-1" style="font-size: 0.72rem; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);" title="فقط برای {{ r_count }} نماینده منتخب فعال است">
+                                    <i class="fas fa-user-lock me-1"></i>اختصاصی ({{ r_count }} نماینده)
+                                </span>
+                            {% else %}
+                                <span class="badge bg-light text-secondary border ms-1" style="font-size: 0.72rem;"><i class="fas fa-globe me-1"></i>عمومی</span>
                             {% endif %}
                         </td>
                         <td data-value="{{ p.price or 0 }}"><span class="badge bg-success-subtle text-success fs-6 font-monospace">{{ "{:,}".format(p.price) }} تومان</span></td>
@@ -106,7 +113,7 @@
                             <a href="{{ url_for('admin_plan_toggle', plan_id=pid) }}" class="btn btn-sm btn-outline-secondary me-1" title="تغییر وضعیت">
                                 <i class="bi bi-power"></i>
                             </a>
-                            <a href="{{ url_for('admin_plan_delete', plan_id=pid) }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('آیا از حذف این پلن مطمئن هستید؟');" title="حذف پلن">
+                            <a href="{{ url_for('admin_plan_delete', plan_id=pid, tab='admin') }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('آیا از حذف این پلن مطمئن هستید؟');" title="حذف پلن">
                                 <i class="bi bi-trash"></i>
                             </a>
                         </td>
@@ -176,7 +183,12 @@
         <h5 class="mb-0 fw-bold text-success">
             <i class="fas fa-sliders text-success me-2"></i>پلن‌های شخصی‌سازی شده برای: {{ selected_reseller['name'] }}
         </h5>
-        <span class="badge bg-success-subtle text-success border border-success">{{ selected_reseller_plans|length }} پلن فعال در ربات نماینده</span>
+        <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-sm btn-success fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#addDedicatedPlanModal">
+                <i class="fas fa-plus-circle me-1"></i> افزودن پلن اختصاصی برای {{ selected_reseller['name'] }}
+            </button>
+            <span class="badge bg-success-subtle text-success border border-success">{{ selected_reseller_plans|length }} پلن فعال در ربات نماینده</span>
+        </div>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -196,7 +208,7 @@
                 <tbody>
                     {% for p in selected_reseller_plans %}
                     {% set has_override = (p.custom_name or p.custom_price or (p.custom_data_limit is not none) or p.custom_duration) %}
-                    <tr class="{% if has_override %}table-warning bg-opacity-25 border-start border-warning border-3{% endif %}">
+                    <tr class="{% if p.is_dedicated %}table-primary bg-opacity-10 border-start border-primary border-4{% elif has_override %}table-warning bg-opacity-25 border-start border-warning border-3{% endif %}">
                         <td class="ps-3"><code class="font-monospace text-primary">{{ p.plan_id }}</code></td>
                         <td>
                             {% set icon_info = get_plan_icon(p) %}
@@ -204,8 +216,12 @@
                                 <i class="{{ icon_info.icon }}"></i>
                             </span>
                             <strong>{{ p.display_name }}</strong>
-                            {% if p.custom_name %}
-                                <span class="badge bg-warning-subtle text-dark border border-warning ms-1 small">سفارشی</span>
+                            {% if p.is_dedicated %}
+                                <span class="badge text-white ms-1 small" style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);">
+                                    <i class="fas fa-gem me-1"></i>اختصاصی نماینده
+                                </span>
+                            {% elif p.custom_name %}
+                                <span class="badge bg-warning-subtle text-dark border border-warning ms-1 small">شخصی‌سازی‌شده</span>
                             {% endif %}
                         </td>
                         <td>
@@ -237,7 +253,11 @@
                             <button class="btn btn-sm btn-outline-primary me-1" data-bs-toggle="modal" data-bs-target="#editResellerPlanModal{{ p.plan_id }}">
                                 <i class="fas fa-pen me-1"></i> تنظیم اختصاصی
                             </button>
-                            {% if has_override %}
+                            {% if p.is_dedicated %}
+                            <a href="{{ url_for('admin_plan_delete', plan_id=p.plan_id, tab='resellers', reseller_id=selected_reseller['id']) }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('آیا از حذف کامل این پلن اختصاصی اطمینان دارید؟ این پلن از ربات این نماینده حذف خواهد شد.');" title="حذف این پلن اختصاصی">
+                                <i class="fas fa-trash"></i>
+                            </a>
+                            {% elif has_override %}
                             <form action="{{ url_for('admin_reseller_plan_reset') }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از بازنشانی این پلن به تنظیمات پیش‌فرض اطمینان دارید؟');">
                                 <input type="hidden" name="reseller_id" value="{{ selected_reseller['id'] }}">
                                 <input type="hidden" name="plan_id" value="{{ p.plan_id }}">
@@ -251,6 +271,78 @@
                     {% endfor %}
                 </tbody>
             </table>
+        </div>
+    </div>
+</div>
+
+<!-- مودال ایجاد پلن اختصاصی برای نماینده انتخاب‌شده -->
+<div class="modal fade text-start" id="addDedicatedPlanModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header text-white py-3" style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);">
+                <h5 class="modal-title fw-bold"><i class="fas fa-gem me-2"></i>افزودن پلن اختصاصی جدید برای {{ selected_reseller['name'] }}</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('admin_reseller_add_dedicated_plan') }}">
+                <input type="hidden" name="reseller_id" value="{{ selected_reseller['id'] }}">
+                <div class="modal-body p-4">
+                    <div class="alert alert-primary bg-opacity-10 border-primary border small mb-3">
+                        <i class="fas fa-shield-halved text-primary me-1"></i>
+                        این پلن مستقیماً به <strong>{{ selected_reseller['name'] }}</strong> تخصیص می‌یابد و ربات اصلی و سایر نمایندگان سیستم آن را مشاهده نخواهند کرد.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">نام پلن اختصاصی</label>
+                        <input type="text" name="name" class="form-control" placeholder="مثال: پلن اختصاصی ۶۰ روزه ۱۲۰ گیگابایت" required>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">قیمت فروش به مشتری (تومان)</label>
+                            <input type="number" name="price" class="form-control font-monospace" placeholder="مثال: 350000" required min="0">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">حجم به گیگابایت (0 = نامحدود)</label>
+                            <input type="number" name="data_limit" class="form-control font-monospace" placeholder="مثال: 120" required min="0">
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">مدت زمان (روز)</label>
+                            <input type="number" name="duration" class="form-control font-monospace" placeholder="مثال: 60" value="30" required min="1">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">آیکون دلخواه (اختیاری):</label>
+                            <input type="text" name="plan_icon" class="form-control font-monospace" placeholder="مثلاً: fas fa-crown">
+                        </div>
+                    </div>
+
+                    {% if resellers_list|length > 1 %}
+                    <div class="p-3 border rounded bg-light mt-3">
+                        <div class="fw-semibold small text-dark mb-2">
+                            <i class="fas fa-users-viewfinder text-primary me-1"></i>
+                            تخصیص همزمان به سایر نمایندگان (اختیاری):
+                        </div>
+                        <div style="max-height: 120px; overflow-y: auto;">
+                            {% for r in resellers_list %}
+                            {% if r['id'] != selected_reseller['id'] %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="additional_resellers" value="{{ r['id'] }}" id="addOtherReseller_{{ r['id'] }}">
+                                <label class="form-check-label small" for="addOtherReseller_{{ r['id'] }}">
+                                    {{ r['name'] }} (@{{ r['username'] }})
+                                </label>
+                            </div>
+                            {% endif %}
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-success px-4 fw-bold shadow-sm">
+                        <i class="fas fa-check me-1"></i> ایجاد و فعال‌سازی پلن اختصاصی
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -312,6 +404,82 @@
 {% endfor %}
 
 {% else %}
+<!-- کارت لیست پلن‌های اختصاصی تعریف‌شده برای نمایندگان -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h5 class="mb-0 fw-bold" style="color: #6366f1;">
+            <i class="fas fa-user-lock me-2"></i>پلن‌های اختصاصی نمایندگان ({{ dedicated_reseller_plans|length }} پلن)
+        </h5>
+        <span class="badge text-white" style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);">ایزوله و محرمانه</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">شناسه پلن</th>
+                        <th>نام پلن</th>
+                        <th>قیمت (تومان)</th>
+                        <th>حجم (GB)</th>
+                        <th>مدت (روز)</th>
+                        <th>نمایندگان دارای دسترسی اختصاصی</th>
+                        <th>وضعیت</th>
+                        <th class="text-end pe-3">عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for dp in dedicated_reseller_plans %}
+                    <tr>
+                        <td class="ps-3"><code class="font-monospace text-primary">{{ dp.plan_id }}</code></td>
+                        <td class="fw-bold">
+                            {% set icon_info = get_plan_icon(dp) %}
+                            <span class="d-inline-flex align-items-center justify-content-center me-2 rounded-circle" style="width: 28px; height: 28px; background-color: {{ icon_info.color }}22; color: {{ icon_info.color }};">
+                                <i class="{{ icon_info.icon }}"></i>
+                            </span>
+                            {{ dp.name }}
+                        </td>
+                        <td><span class="badge bg-success-subtle text-success fs-6 font-monospace">{{ "{:,}".format(dp.price) }} تومان</span></td>
+                        <td><span class="badge bg-light text-dark font-monospace">{{ dp.data_limit }} گیگابایت</span></td>
+                        <td><span class="font-monospace">{{ dp.duration }} روز</span></td>
+                        <td>
+                            {% for rid in dp.allowed_resellers %}
+                                {% set r_info = resellers_map.get(rid) %}
+                                <a href="{{ url_for('admin_plans_page', tab='resellers', reseller_id=rid) }}" class="badge bg-primary-subtle text-primary border border-primary text-decoration-none me-1 mb-1" title="مشاهده پنل این نماینده">
+                                    <i class="fas fa-user me-1"></i>{{ r_info.name if r_info else 'نماینده #' ~ rid }}
+                                </a>
+                            {% else %}
+                                <span class="badge bg-secondary-subtle text-secondary">بدون نماینده مجاز</span>
+                            {% endfor %}
+                        </td>
+                        <td>
+                            {% if dp.is_active %}
+                                <span class="badge bg-success">فعال</span>
+                            {% else %}
+                                <span class="badge bg-danger">غیرفعال</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end pe-3">
+                            <button class="btn btn-sm btn-outline-primary me-1" data-bs-toggle="modal" data-bs-target="#editModal{{ dp.plan_id }}" title="ویرایش">
+                                <i class="fas fa-pen"></i>
+                            </button>
+                            <a href="{{ url_for('admin_plan_delete', plan_id=dp.plan_id, tab='resellers') }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('آیا از حذف این پلن اختصاصی مطمئن هستید؟');" title="حذف">
+                                <i class="fas fa-trash"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="text-center py-4 text-muted">
+                            <i class="fas fa-info-circle me-1"></i> هنوز هیچ پلن اختصاصی تعریف نشده است. با انتخاب یک نماینده از منوی بالا می‌توانید پلن اختصاصی تعریف فرمایید.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <!-- جدول پلن‌های پیش‌فرض نمایندگان (Default Reseller Plans) -->
 <div class="card shadow-sm border-0 mb-4">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -418,17 +586,56 @@
                             <option value="0" {% if not p.is_active %}selected{% endif %}>🔴 غیرفعال</option>
                         </select>
                     </div>
-                    <div class="mb-3 p-3 border rounded bg-warning bg-opacity-10 border-warning">
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" role="switch" name="is_exclusive_admin" id="editExclusive{{ pid }}" value="1" {% if p.is_exclusive_admin %}checked{% endif %}>
-                            <label class="form-check-label fw-bold text-dark" for="editExclusive{{ pid }}">
-                                👑 پلن اختصاصی مدیریت ارشد (مخفی از تمام نمایندگان و ربات)
+                    <div class="mb-3 p-3 border rounded bg-light">
+                        <label class="form-label fw-bold text-dark mb-2">
+                            <i class="fas fa-shield-halved text-primary me-1"></i> سطح دسترسی و نمایش پلن:
+                        </label>
+                        
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="radio" name="target_type" id="targetAll_{{ pid }}" value="all" 
+                                   {% if not p.is_exclusive_admin and not p.allowed_resellers and not p.is_exclusive_reseller %}checked{% endif %}
+                                   onchange="toggleResellerSelect('{{ pid }}')">
+                            <label class="form-check-label fw-semibold" for="targetAll_{{ pid }}">
+                                🌐 <strong>پلن عمومی</strong> (نمایش در ربات اصلی و برای تمام همکاران و نمایندگان)
                             </label>
                         </div>
-                        <div class="form-text text-muted small">این پلن فقط در پنل مدیریت مستقیم برای تعریف مشتریان ویژه قابل استفاده است و نمایندگان یا اعضای ربات عمومی به آن دسترسی ندارند.</div>
+
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="radio" name="target_type" id="targetAdmin_{{ pid }}" value="admin" 
+                                   {% if p.is_exclusive_admin %}checked{% endif %}
+                                   onchange="toggleResellerSelect('{{ pid }}')">
+                            <label class="form-check-label fw-semibold text-warning-emphasis" for="targetAdmin_{{ pid }}">
+                                👑 <strong>پلن اختصاصی مدیریت ارشد</strong> (مخفی از ربات اصلی و تمام نمایندگان - فقط پنل مدیر)
+                            </label>
+                        </div>
+
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="radio" name="target_type" id="targetResellers_{{ pid }}" value="resellers" 
+                                   {% if p.allowed_resellers or p.is_exclusive_reseller %}checked{% endif %}
+                                   onchange="toggleResellerSelect('{{ pid }}')">
+                            <label class="form-check-label fw-semibold" for="targetResellers_{{ pid }}" style="color: #6366f1;">
+                                👥 <strong>پلن اختصاصی نمایندگان منتخب</strong> (مخفی از ربات اصلی و سایر نمایندگان - فعال فقط برای موارد انتخابی)
+                            </label>
+                        </div>
+
+                        <!-- لیست انتخاب نمایندگان مجاز -->
+                        <div id="resellerSelectBox_{{ pid }}" class="mt-3 p-2 bg-white rounded border" style="{% if not p.allowed_resellers and not p.is_exclusive_reseller %}display: none;{% endif %} max-height: 180px; overflow-y: auto;">
+                            <div class="small fw-bold text-muted mb-2"><i class="fas fa-check-double me-1"></i>نمایندگان مجاز را انتخاب فرمایید:</div>
+                            {% for r in resellers_list %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="allowed_resellers" value="{{ r['id'] }}" id="reseller_{{ pid }}_{{ r['id'] }}" 
+                                       {% if p.allowed_resellers and r['id'] in p.allowed_resellers %}checked{% endif %}>
+                                <label class="form-check-label small" for="reseller_{{ pid }}_{{ r['id'] }}">
+                                    <strong>{{ r['name'] }}</strong> (@{{ r['username'] }})
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
+                    <input type="hidden" name="return_tab" value="{{ current_tab }}">
+                    <input type="hidden" name="reseller_id" value="{{ selected_reseller_id or '' }}">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
                     <button type="submit" class="btn btn-primary px-4 fw-bold">ذخیره تغییرات</button>
                 </div>
@@ -453,31 +660,65 @@
                         <label class="form-label fw-semibold">نام پلن</label>
                         <input type="text" name="name" class="form-control" placeholder="مثال: ۱ ماهه ۵۰ گیگابایت پرو" required>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">قیمت (تومان)</label>
-                        <input type="number" name="price" class="form-control font-monospace" placeholder="مثال: 150000" required min="0">
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">قیمت (تومان)</label>
+                            <input type="number" name="price" class="form-control font-monospace" placeholder="مثال: 150000" required min="0">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">حجم به گیگابایت (0 = نامحدود)</label>
+                            <input type="number" name="data_limit" class="form-control font-monospace" placeholder="مثال: 50" required min="0">
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">حجم به گیگابایت (0 = نامحدود)</label>
-                        <input type="number" name="data_limit" class="form-control font-monospace" placeholder="مثال: 50" required min="0">
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">مدت زمان (روز)</label>
+                            <input type="number" name="duration" class="form-control font-monospace" placeholder="مثال: 30" value="30" required min="1">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">آیکون دلخواه (اختیاری):</label>
+                            <input type="text" name="plan_icon" class="form-control font-monospace" placeholder="مثلاً: fas fa-gem">
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">مدت زمان (روز)</label>
-                        <input type="number" name="duration" class="form-control font-monospace" placeholder="مثال: 30" value="30" required min="1">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">آیکون دلخواه (اختیاری):</label>
-                        <input type="text" name="plan_icon" class="form-control font-monospace" placeholder="مثلاً: fas fa-gem یا fas fa-crown (خالی = هوشمند)">
-                        <small class="text-muted">در صورت خالی بودن، آیکون به صورت هوشمند طبق نام و حجم پلن انتخاب می‌شود.</small>
-                    </div>
-                    <div class="mb-3 p-3 border rounded bg-warning bg-opacity-10 border-warning">
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" role="switch" name="is_exclusive_admin" id="addExclusiveSwitch" value="1">
-                            <label class="form-check-label fw-bold text-dark" for="addExclusiveSwitch">
-                                👑 پلن اختصاصی مدیریت ارشد (مخفی از تمام نمایندگان و ربات)
+
+                    <div class="mb-3 p-3 border rounded bg-light">
+                        <label class="form-label fw-bold text-dark mb-2">
+                            <i class="fas fa-shield-halved text-primary me-1"></i> سطح دسترسی و نمایش پلن:
+                        </label>
+                        
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="radio" name="target_type" id="addTargetAll" value="all" checked onchange="toggleAddResellerSelect()">
+                            <label class="form-check-label fw-semibold" for="addTargetAll">
+                                🌐 <strong>پلن عمومی</strong> (قابل مشاهده در ربات اصلی و برای تمام همکاران و نمایندگان)
                             </label>
                         </div>
-                        <div class="form-text text-muted small">در صورت تیک زدن، این پلن به نمایندگان و ربات عمومی اضافه نمی‌شود و منحصراً در پنل مدیریت قابل استفاده است.</div>
+
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="radio" name="target_type" id="addTargetAdmin" value="admin" onchange="toggleAddResellerSelect()">
+                            <label class="form-check-label fw-semibold text-warning-emphasis" for="addTargetAdmin">
+                                👑 <strong>پلن اختصاصی مدیریت ارشد</strong> (کاملاً مخفی از تمام ربات‌ها و تمام نمایندگان)
+                            </label>
+                        </div>
+
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="radio" name="target_type" id="addTargetResellers" value="resellers" onchange="toggleAddResellerSelect()">
+                            <label class="form-check-label fw-semibold" for="addTargetResellers" style="color: #6366f1;">
+                                👥 <strong>پلن اختصاصی نمایندگان منتخب</strong> (مخفی از ربات اصلی و سایر نمایندگان - فقط نمایندگان تیک‌خورده)
+                            </label>
+                        </div>
+
+                        <!-- لیست انتخاب نمایندگان مجاز -->
+                        <div id="addResellerSelectBox" class="mt-3 p-2 bg-white rounded border" style="display: none; max-height: 180px; overflow-y: auto;">
+                            <div class="small fw-bold text-muted mb-2"><i class="fas fa-check-double me-1"></i>تیک نمایندگان مجاز را بزنید:</div>
+                            {% for r in resellers_list %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="allowed_resellers" value="{{ r['id'] }}" id="addReseller_{{ r['id'] }}">
+                                <label class="form-check-label small" for="addReseller_{{ r['id'] }}">
+                                    <strong>{{ r['name'] }}</strong> (@{{ r['username'] }})
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -488,4 +729,21 @@
         </div>
     </div>
 </div>
+
+<script>
+function toggleResellerSelect(pid) {
+    const radio = document.getElementById('targetResellers_' + pid);
+    const box = document.getElementById('resellerSelectBox_' + pid);
+    if (radio && box) {
+        box.style.display = radio.checked ? 'block' : 'none';
+    }
+}
+function toggleAddResellerSelect() {
+    const radio = document.getElementById('addTargetResellers');
+    const box = document.getElementById('addResellerSelectBox');
+    if (radio && box) {
+        box.style.display = radio.checked ? 'block' : 'none';
+    }
+}
+</script>
 {% endblock %}
