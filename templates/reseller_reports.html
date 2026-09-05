@@ -26,7 +26,7 @@
 
 <!-- بخش گردش حسابرسی ۳۰ روزه (ماه اخیر) نماینده -->
 {% set ma = monthly_audit or {} %}
-{% set masum = ma.get('summary', {}) %}
+{% set masum = ma.get('summary') or ma %}
 <div class="card shadow-sm border-0 mb-4 bg-white">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2 border-bottom">
         <div>
@@ -80,7 +80,7 @@
             <div class="col-md-4 col-sm-6">
                 <div class="p-3 bg-light rounded-3 border-start border-success border-4 shadow-sm">
                     <span class="text-muted small fw-bold">سود همکاری برآورد شده</span>
-                    <h4 class="fw-bold text-success font-monospace my-1">+ {{ "{:,}".format(fin_summary.get('estimated_profit', 0)) }} <small class="fs-6 text-muted">تومان</small></h4>
+                    <h4 class="fw-bold text-success font-monospace my-1">+ {{ "{:,}".format(masum.get('net_profit') or fin_summary.get('estimated_profit', 0)) }} <small class="fs-6 text-muted">تومان</small></h4>
                     <span class="badge bg-success text-white small">مارجین سود حاصل از تخفیف شما</span>
                 </div>
             </div>
