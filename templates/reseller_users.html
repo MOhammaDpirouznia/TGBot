@@ -232,6 +232,7 @@
                         <th class="sortable-th" data-column="5">مدت اعتبار</th>
                         <th class="sortable-th" data-column="6">وضعیت اتصال</th>
                         <th class="sortable-th" data-column="7">تاریخ صدور</th>
+                        <th class="sortable-th" data-column="8">صادر کننده</th>
                         <th class="text-end pe-3">عملیات و مدیریت</th>
                     </tr>
                 </thead>
@@ -400,6 +401,39 @@
                                 </div>
                             {% else %}
                                 <span class="text-muted small font-monospace">-</span>
+                            {% endif %}
+                        </td>
+                        <td data-value="{{ sub.get('issuer_info', {}).get('text') or sub.get('created_by') or '' }}">
+                            {% set issuer = sub.get('issuer_info') %}
+                            {% if issuer %}
+                                {% if issuer.get('is_bot') %}
+                                    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle font-monospace px-2 py-1 shadow-sm d-inline-flex align-items-center gap-1" title="{{ issuer.get('title') or 'ربات نماینده' }}">
+                                        <i class="fas fa-robot text-primary"></i>
+                                        <span>ربات</span>
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-light text-dark border font-monospace px-2 py-1 shadow-sm d-inline-flex align-items-center gap-1" title="{{ issuer.get('title') or 'صادرکننده' }}">
+                                        <i class="fas fa-user-tie text-primary"></i>
+                                        <span>{{ issuer.get('text') or issuer.get('username') }}</span>
+                                    </span>
+                                {% endif %}
+                            {% elif sub.get('created_by') %}
+                                {% if 'bot' in (sub.get('created_by')|string|lower) or 'ربات' in (sub.get('created_by')|string) %}
+                                    <span class="badge bg-secondary-subtle text-secondary border font-monospace px-2 py-1 shadow-sm d-inline-flex align-items-center gap-1">
+                                        <i class="fas fa-robot text-primary"></i>
+                                        <span>ربات</span>
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-light text-dark border font-monospace px-2 py-1 shadow-sm d-inline-flex align-items-center gap-1">
+                                        <i class="fas fa-user-tie text-primary"></i>
+                                        <span>{{ sub['created_by'] }}</span>
+                                    </span>
+                                {% endif %}
+                            {% else %}
+                                <span class="badge bg-light text-secondary border font-monospace px-2 py-1 shadow-sm d-inline-flex align-items-center gap-1">
+                                    <i class="fas fa-user-tie text-muted"></i>
+                                    <span>{{ session.get('username') or 'پنل' }}</span>
+                                </span>
                             {% endif %}
                         </td>
                         <td class="text-end pe-3">
@@ -630,11 +664,11 @@
                 <!-- بخش مشخصات فنی و تراز مصرف -->
                 <div class="card bg-light border-0 rounded-3 p-3 mb-4">
                     <div class="row g-3 text-center">
-                        <div class="col-sm-3 col-6">
+                        <div class="col-md col-6">
                             <small class="text-muted d-block">حجم مصرفی</small>
                             <strong class="font-monospace text-primary" dir="ltr">{{ "%.2f"|format(sub['data_used']|float or 0) }} / {{ "%.1f"|format(sub['data_limit']|float or 0) }} GB</strong>
                         </div>
-                        <div class="col-sm-3 col-6">
+                        <div class="col-md col-6">
                             <small class="text-muted d-block">اعتبار باقی‌مانده</small>
                             {% if sub.get('is_expired') or sub.get('remaining_days', 30) < 0 %}
                                 <strong class="font-monospace text-danger">{{ sub.get('expiry_text') }}</strong>
@@ -644,7 +678,7 @@
                                 <strong class="font-monospace text-success">{{ sub.get('remaining_days', sub['duration']) }} روز دیگر</strong>
                             {% endif %}
                         </div>
-                        <div class="col-sm-3 col-6">
+                        <div class="col-md col-6">
                             <small class="text-muted d-block">وضعیت مالی</small>
                             {% if is_debtor %}
                                 <strong class="text-danger font-monospace">{{ "{:,}".format(sub.get('debt_amount')|int) }} ت بدهی</strong>
@@ -652,7 +686,26 @@
                                 <strong class="text-success">تسویه شده</strong>
                             {% endif %}
                         </div>
-                        <div class="col-sm-3 col-6">
+                        <div class="col-md col-6">
+                            <small class="text-muted d-block mb-1">صادر کننده</small>
+                            {% set issuer = sub.get('issuer_info') %}
+                            {% if issuer %}
+                                {% if issuer.get('is_bot') %}
+                                    <span class="badge bg-secondary-subtle text-secondary border font-monospace"><i class="fas fa-robot text-primary me-1"></i>ربات</span>
+                                {% else %}
+                                    <span class="badge bg-light text-dark border font-monospace"><i class="fas fa-user-tie text-primary me-1"></i>{{ issuer.get('text') or issuer.get('username') }}</span>
+                                {% endif %}
+                            {% elif sub.get('created_by') %}
+                                {% if 'bot' in (sub.get('created_by')|string|lower) or 'ربات' in (sub.get('created_by')|string) %}
+                                    <span class="badge bg-secondary-subtle text-secondary border font-monospace"><i class="fas fa-robot text-primary me-1"></i>ربات</span>
+                                {% else %}
+                                    <span class="badge bg-light text-dark border font-monospace"><i class="fas fa-user-tie text-primary me-1"></i>{{ sub['created_by'] }}</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="badge bg-light text-secondary border font-monospace"><i class="fas fa-user-tie text-muted me-1"></i>{{ session.get('username') or 'پنل' }}</span>
+                            {% endif %}
+                        </div>
+                        <div class="col-md col-6">
                             <small class="text-muted d-block">تاریخ ایجاد</small>
                             <strong class="font-monospace text-muted">{{ sub['created_at'][:10] if sub['created_at'] else '-' }}</strong>
                         </div>

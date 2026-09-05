@@ -420,66 +420,283 @@
     </div>
 </div>
 
-<!-- ردیف سوم: تایم‌لاین آخرین مشتریان، تاریخ ساخت و بروزرسانی -->
+<!-- ردیف سوم: تایم‌لاین جامع آخرین فعالیت‌های نماینده (فروش، تمدید، شارژ، ربات و دستی) -->
 <div class="card shadow-sm border-0">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="d-flex align-items-center gap-2">
-            <h5 class="mb-0 fw-bold"><i class="fas fa-timeline text-primary me-2"></i> تایم‌لاین مشتریان (تاریخ ساخت، تمدید و وضعیت)</h5>
+            <h5 class="mb-0 fw-bold"><i class="fas fa-timeline text-primary me-2"></i> تایم‌لاین فعالیت‌های اخیر نماینده (خرید ربات، تمدید، دستی و شارژ)</h5>
             <span class="badge bg-secondary" data-table-count="resellerTimelineTable">{{ timeline_subscriptions|length }} مورد</span>
         </div>
         <div class="table-search-wrapper">
             <i class="fas fa-search table-search-icon"></i>
-            <input type="text" class="form-control table-search-input" data-table="resellerTimelineTable" placeholder="جستجو در تایم‌لاین مشتریان...">
+            <input type="text" class="form-control table-search-input" id="resellerTimelineSearch" data-table="resellerTimelineTable" placeholder="جستجو در فعالیت‌ها، نام مشتری، پلن، صادرکننده...">
             <button type="button" class="table-search-clear" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
         </div>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0" id="resellerTimelineTable">
-                <thead>
+                <thead class="table-light">
                     <tr>
-                        <th>نام مشتری</th>
-                        <th>پلن فعال</th>
-                        <th>سقف ترافیک</th>
-                        <th>وضعیت</th>
-                        <th>تاریخ ساخت</th>
-                        <th>آخرین بروزرسانی / تمدید</th>
+                        <th class="ps-3">مشتری / اکانت</th>
+                        <th>نوع فعالیت</th>
+                        <th>پلن و مشخصات</th>
+                        <th>صادر کننده</th>
+                        <th>مبلغ تراکنش</th>
+                        <th>تاریخ و زمان</th>
+                        <th class="text-end pe-3">وضعیت</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="resellerTimelineTbody">
                     {% for s in timeline_subscriptions %}
-                    <tr>
-                        <td>
+                    <tr class="timeline-row">
+                        <td class="ps-3">
                             <div class="d-flex align-items-center gap-2">
-                                <img src="{{ avatar_url(s['account_name'] or 'Customer') }}" 
-                                     alt="{{ s['account_name'] }}" 
-                                     class="rounded-circle border shadow-sm flex-shrink-0" 
-                                     style="width: 32px; height: 32px; object-fit: cover;" 
-                                     loading="lazy">
-                                <strong><code>{{ s['account_name'] }}</code></strong>
+                                {% if s['account_name'] and s['account_name'] != '-' %}
+                                    <img src="{{ avatar_url(s['account_name']) }}" 
+                                         alt="{{ s['account_name'] }}" 
+                                         class="rounded-circle border shadow-sm flex-shrink-0" 
+                                         style="width: 32px; height: 32px; object-fit: cover;" 
+                                         loading="lazy">
+                                    <strong class="font-monospace"><code>{{ s['account_name'] }}</code></strong>
+                                {% else %}
+                                    <div class="rounded-circle bg-light border d-flex align-items-center justify-content-center text-primary shadow-sm flex-shrink-0" style="width: 32px; height: 32px;">
+                                        <i class="fas {{ 'fa-wallet' if s.get('activity_type') == 'deposit' else 'fa-receipt' }}"></i>
+                                    </div>
+                                    <span class="text-muted small">{{ s.get('description') or 'کیف پول نماینده' }}</span>
+                                {% endif %}
                             </div>
                         </td>
-                        <td><span class="badge bg-primary bg-opacity-10 text-primary">{{ s['plan_name'] }}</span></td>
-                        <td>{{ s['data_limit'] }} گیگابایت ({{ s['duration'] }} روز)</td>
                         <td>
-                            {% if s['status'] == 'active' %}
-                                <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i> فعال</span>
+                            <span class="badge bg-{{ s.get('badge_class', 'primary') }}-subtle text-{{ s.get('badge_class', 'primary') }} border border-{{ s.get('badge_class', 'primary') }} font-monospace px-2 py-1">
+                                {% if s.get('activity_type') == 'renewal' %}
+                                    <i class="fas fa-arrows-rotate me-1"></i>
+                                {% elif s.get('activity_type') == 'new_sale' %}
+                                    <i class="fas fa-user-plus me-1"></i>
+                                {% elif s.get('activity_type') == 'deposit' %}
+                                    <i class="fas fa-arrow-down me-1"></i>
+                                {% else %}
+                                    <i class="fas fa-circle-dot me-1"></i>
+                                {% endif %}
+                                {{ s.get('activity_title') or 'فعالیت' }}
+                            </span>
+                        </td>
+                        <td>
+                            <div>
+                                {% if s.get('plan_name') and s['plan_name'] != '-' %}
+                                    <span class="badge bg-light text-dark border mb-1">{{ s['plan_name'] }}</span>
+                                    {% if s.get('data_limit') %}
+                                        <div class="small text-muted font-monospace">{{ s['data_limit'] }} GB ({{ s.get('duration', 30) }} روز)</div>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted small">{{ s.get('description') or '-' }}</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td>
+                            {% if s.get('issuer') == 'ربات' or s.get('issuer_type') == 'bot' or 'bot' in (s.get('issuer')|string|lower) or 'ربات' in (s.get('issuer')|string) %}
+                                <span class="badge bg-secondary-subtle text-secondary border font-monospace px-2 py-1 shadow-sm d-inline-flex align-items-center gap-1">
+                                    <i class="fas fa-robot text-primary"></i>
+                                    <span>ربات</span>
+                                </span>
+                            {% elif s.get('issuer') %}
+                                <span class="badge bg-light text-dark border font-monospace px-2 py-1 shadow-sm d-inline-flex align-items-center gap-1">
+                                    <i class="fas fa-user-tie text-primary"></i>
+                                    <span>{{ s['issuer'] }}</span>
+                                </span>
                             {% else %}
-                                <span class="badge bg-danger">منقضی</span>
+                                <span class="text-muted small">-</span>
                             {% endif %}
                         </td>
-                        <td><small>{{ s['created_at'][:16].replace('T', ' ') if s['created_at'] else '-' }}</small></td>
-                        <td><small class="text-primary">{{ s['updated_at'][:16].replace('T', ' ') if s['updated_at'] else '-' }}</small></td>
+                        <td>
+                            {% if s.get('amount') and s['amount'] > 0 %}
+                                <strong class="font-monospace {{ 'text-success' if s.get('activity_type') in ['deposit', 'refund'] else 'text-dark' }}">
+                                    {{ '+' if s.get('activity_type') in ['deposit', 'refund'] else '' }}{{ "{:,}".format(s['amount']) }} ت
+                                </strong>
+                            {% else %}
+                                <span class="text-muted small">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if s.get('created_at') %}
+                                <div class="font-monospace text-nowrap" style="font-size: 11px;">
+                                    <div class="text-primary fw-semibold">{{ s['created_at'][:16].replace('T', ' ') }}</div>
+                                </div>
+                            {% else %}
+                                <span class="text-muted small font-monospace">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end pe-3">
+                            {% if s.get('status') == 'active' %}
+                                <span class="badge bg-success-subtle text-success border border-success">
+                                    <i class="fas fa-check-circle me-1"></i> فعال
+                                </span>
+                            {% elif s.get('status') == 'expired' or s.get('status') == 'disabled' %}
+                                <span class="badge bg-danger-subtle text-danger border border-danger">
+                                    {{ 'غیرفعال' if s.get('status') == 'disabled' else 'منقضی' }}
+                                </span>
+                            {% else %}
+                                <span class="badge bg-info-subtle text-info border border-info">ثبت شده</span>
+                            {% endif %}
+                        </td>
                     </tr>
                     {% endfor %}
                     {% if not timeline_subscriptions %}
-                    <tr>
-                        <td colspan="6" class="text-center py-4 text-muted">هنوز اشتراکی ایجاد نشده است.</td>
+                    <tr id="timelineEmptyRow">
+                        <td colspan="7" class="text-center py-4 text-muted">هنوز فعالیتی ثبت نشده است.</td>
                     </tr>
                     {% endif %}
                 </tbody>
             </table>
         </div>
     </div>
+    {% if timeline_subscriptions and timeline_subscriptions|length > 0 %}
+    <div class="card-footer bg-white py-2 d-flex justify-content-between align-items-center flex-wrap gap-2" id="timelinePaginationCard">
+        <div class="small text-muted" id="timelinePaginationInfo">
+            نمایش <span id="timelineStartItem" class="fw-bold text-dark">1</span> تا <span id="timelineEndItem" class="fw-bold text-dark">10</span> از مجموع <span id="timelineTotalItems" class="fw-bold text-primary">{{ timeline_subscriptions|length }}</span> فعالیت اخیر
+        </div>
+        <nav aria-label="صفحه‌بندی تایم‌لاین">
+            <ul class="pagination pagination-sm mb-0 gap-1 align-items-center" id="timelinePaginationList">
+                <li class="page-item" id="timelinePrevItem">
+                    <button class="page-link rounded px-3 fw-bold" type="button" id="timelinePrevBtn" onclick="changeTimelinePage(-1)">
+                        <i class="fas fa-chevron-right me-1"></i> صفحه قبلی
+                    </button>
+                </li>
+                <div class="d-flex gap-1" id="timelinePageNumbers"></div>
+                <li class="page-item" id="timelineNextItem">
+                    <button class="page-link rounded px-3 fw-bold" type="button" id="timelineNextBtn" onclick="changeTimelinePage(1)">
+                        صفحه بعدی <i class="fas fa-chevron-left ms-1"></i>
+                    </button>
+                </li>
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
 </div>
+
+<script>
+(function() {
+    let currentTimelinePage = 1;
+    const timelinePageSize = 10;
+
+    function getMatchedRows() {
+        const input = document.getElementById('resellerTimelineSearch');
+        const query = input ? input.value.trim().toLowerCase() : '';
+        const words = query.split(/\s+/).filter(w => w.length > 0);
+        const tbody = document.getElementById('resellerTimelineTbody');
+        if (!tbody) return [];
+        const rows = Array.from(tbody.querySelectorAll('tr.timeline-row'));
+
+        if (words.length === 0) return rows;
+
+        return rows.filter(row => {
+            const text = row.textContent.toLowerCase().replace(/\s+/g, ' ');
+            return words.every(w => text.includes(w));
+        });
+    }
+
+    function renderTimelinePagination() {
+        const tbody = document.getElementById('resellerTimelineTbody');
+        if (!tbody) return;
+
+        const allRows = Array.from(tbody.querySelectorAll('tr.timeline-row'));
+        const matchedRows = getMatchedRows();
+        const totalItems = matchedRows.length;
+        const totalPages = Math.max(1, Math.ceil(totalItems / timelinePageSize));
+
+        if (currentTimelinePage > totalPages) currentTimelinePage = totalPages;
+        if (currentTimelinePage < 1) currentTimelinePage = 1;
+
+        const startIdx = (currentTimelinePage - 1) * timelinePageSize;
+        const endIdx = startIdx + timelinePageSize;
+
+        allRows.forEach(r => {
+            r.style.display = 'none';
+        });
+
+        matchedRows.forEach((r, idx) => {
+            if (idx >= startIdx && idx < endIdx) {
+                r.style.display = '';
+            } else {
+                r.style.display = 'none';
+            }
+        });
+
+        const startItemEl = document.getElementById('timelineStartItem');
+        const endItemEl = document.getElementById('timelineEndItem');
+        const totalItemsEl = document.getElementById('timelineTotalItems');
+        if (startItemEl) startItemEl.textContent = totalItems === 0 ? '0' : (startIdx + 1);
+        if (endItemEl) endItemEl.textContent = Math.min(endIdx, totalItems);
+        if (totalItemsEl) totalItemsEl.textContent = totalItems;
+
+        const prevBtn = document.getElementById('timelinePrevBtn');
+        const nextBtn = document.getElementById('timelineNextBtn');
+        const prevItem = document.getElementById('timelinePrevItem');
+        const nextItem = document.getElementById('timelineNextItem');
+
+        if (prevBtn && prevItem) {
+            if (currentTimelinePage <= 1) {
+                prevItem.classList.add('disabled');
+                prevBtn.disabled = true;
+            } else {
+                prevItem.classList.remove('disabled');
+                prevBtn.disabled = false;
+            }
+        }
+
+        if (nextBtn && nextItem) {
+            if (currentTimelinePage >= totalPages) {
+                nextItem.classList.add('disabled');
+                nextBtn.disabled = true;
+            } else {
+                nextItem.classList.remove('disabled');
+                nextBtn.disabled = false;
+            }
+        }
+
+        const pageNumbersContainer = document.getElementById('timelinePageNumbers');
+        if (pageNumbersContainer) {
+            pageNumbersContainer.innerHTML = '';
+            for (let p = 1; p <= totalPages; p++) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = `btn btn-sm ${p === currentTimelinePage ? 'btn-primary' : 'btn-outline-secondary'} px-2 py-0 fw-bold font-monospace`;
+                btn.textContent = p;
+                btn.onclick = () => {
+                    currentTimelinePage = p;
+                    renderTimelinePagination();
+                };
+                pageNumbersContainer.appendChild(btn);
+            }
+        }
+    }
+
+    window.changeTimelinePage = function(delta) {
+        currentTimelinePage += delta;
+        renderTimelinePagination();
+    };
+
+    const searchInput = document.getElementById('resellerTimelineSearch');
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            currentTimelinePage = 1;
+            setTimeout(renderTimelinePagination, 20);
+        });
+        const clearBtn = searchInput.parentElement ? searchInput.parentElement.querySelector('.table-search-clear') : null;
+        if (clearBtn) {
+            clearBtn.addEventListener('click', function() {
+                currentTimelinePage = 1;
+                setTimeout(renderTimelinePagination, 50);
+            });
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        renderTimelinePagination();
+    });
+    if (document.readyState !== 'loading') {
+        renderTimelinePagination();
+    }
+})();
+</script>
 {% endblock %}

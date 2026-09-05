@@ -260,11 +260,12 @@
                         <th class="ps-3 sortable-th" data-column="0">شناسه</th>
                         <th class="sortable-th" data-column="1">نوع تراکنش</th>
                         <th class="sortable-th" data-column="2">خرید عمده (تراکنش)</th>
-                        <th class="sortable-th" data-column="3">فروش به مشتری</th>
+                        <th class="sortable-th" data-column="3">نوع فروش</th>
                         <th class="sortable-th" data-column="4">حاشیه سود</th>
                         <th class="sortable-th" data-column="5">پلن / نام کاربری مشتری</th>
-                        <th class="sortable-th" data-column="6">توضیحات</th>
-                        <th class="sortable-th" data-column="7">تاریخ و زمان</th>
+                        <th class="sortable-th" data-column="6">صادر کننده</th>
+                        <th class="sortable-th" data-column="7">توضیحات</th>
+                        <th class="sortable-th" data-column="8">تاریخ و زمان</th>
                         <th class="text-end pe-3">جزئیات</th>
                     </tr>
                 </thead>
@@ -290,9 +291,11 @@
                                 {{ '+' if (tx['type'] in ['deposit', 'refund']) else '-' }}{{ "{:,}".format(tx['amount'] or 0) }} تومان
                             </strong>
                         </td>
-                        <td data-value="{{ tx.get('selling_price') or 0 }}">
-                            {% if tx.get('selling_price') and tx['selling_price'] > 0 %}
-                                <span class="text-dark fw-bold font-monospace">{{ "{:,}".format(tx['selling_price']) }} ت</span>
+                        <td data-value="{{ tx.get('sale_type_title') or '' }}">
+                            {% if tx.get('sale_type_title') and tx['sale_type_title'] != '-' %}
+                                <span class="badge bg-{{ tx.get('sale_type_class', 'primary') }}-subtle text-{{ tx.get('sale_type_class', 'primary') }} border border-{{ tx.get('sale_type_class', 'primary') }} font-monospace">
+                                    {{ tx['sale_type_title'] }}
+                                </span>
                             {% else %}
                                 <span class="text-muted small">-</span>
                             {% endif %}
@@ -307,6 +310,21 @@
                             {% endif %}
                         </td>
                         <td data-value="{{ tx['plan_name'] or '' }}">{{ tx['plan_name'] or '-' }} {% if tx['account_name'] %}<code class="ms-1">{{ tx['account_name'] }}</code>{% endif %}</td>
+                        <td data-value="{{ tx.get('issuer') or '' }}">
+                            {% if tx.get('is_bot') %}
+                                <span class="badge bg-secondary-subtle text-secondary border font-monospace px-2 py-1 shadow-sm d-inline-flex align-items-center gap-1">
+                                    <i class="fas fa-robot text-primary"></i>
+                                    <span>ربات</span>
+                                </span>
+                            {% elif tx.get('issuer') %}
+                                <span class="badge bg-light text-dark border font-monospace px-2 py-1 shadow-sm d-inline-flex align-items-center gap-1">
+                                    <i class="fas fa-user-tie text-primary"></i>
+                                    <span>{{ tx['issuer'] }}</span>
+                                </span>
+                            {% else %}
+                                <span class="text-muted small">-</span>
+                            {% endif %}
+                        </td>
                         <td data-value="{{ tx['description'] or '' }}"><small class="text-muted">{{ tx['description'] or '-' }}</small></td>
                         <td data-value="{{ tx['created_at'] or '' }}"><small class="text-muted font-monospace">{{ tx['created_at'][:16].replace('T', ' ') if tx['created_at'] else '-' }}</small></td>
                         <td class="text-end pe-3">
@@ -318,7 +336,7 @@
                     {% endfor %}
                     {% if not transactions %}
                     <tr>
-                        <td colspan="9" class="text-center py-4 text-muted">تراکنشی ثبت نشده است.</td>
+                        <td colspan="10" class="text-center py-4 text-muted">تراکنشی ثبت نشده است.</td>
                     </tr>
                     {% endif %}
                 </tbody>
@@ -355,6 +373,30 @@
                                 <span class="badge bg-secondary">خرید اعتباری</span>
                             {% else %}
                                 <span class="badge bg-danger">خرید اشتراک</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span class="text-muted">نوع فروش:</span>
+                        <div>
+                            {% if tx.get('sale_type_title') and tx['sale_type_title'] != '-' %}
+                                <span class="badge bg-{{ tx.get('sale_type_class', 'primary') }}-subtle text-{{ tx.get('sale_type_class', 'primary') }} border border-{{ tx.get('sale_type_class', 'primary') }} font-monospace">
+                                    {{ tx['sale_type_title'] }}
+                                </span>
+                            {% else %}
+                                <span class="text-muted small">-</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span class="text-muted">صادر کننده:</span>
+                        <div>
+                            {% if tx.get('is_bot') %}
+                                <span class="badge bg-secondary-subtle text-secondary border font-monospace"><i class="fas fa-robot text-primary me-1"></i>ربات</span>
+                            {% elif tx.get('issuer') %}
+                                <span class="badge bg-light text-dark border font-monospace"><i class="fas fa-user-tie text-primary me-1"></i>{{ tx['issuer'] }}</span>
+                            {% else %}
+                                <span class="text-muted small">-</span>
                             {% endif %}
                         </div>
                     </div>
