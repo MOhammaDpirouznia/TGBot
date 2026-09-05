@@ -10119,7 +10119,8 @@ class Database:
                 FROM reseller_plans WHERE reseller_id = ?
             """, (reseller_id,))
             for row in cursor.fetchall():
-                overrides[row["plan_id"]] = {
+                pid_key = str(row["plan_id"])
+                overrides[pid_key] = {
                     "custom_name": row["custom_name"],
                     "custom_price": row["custom_price"],
                     "custom_data_limit": row["custom_data_limit"],
@@ -10132,8 +10133,11 @@ class Database:
             conn.close()
 
         result = []
+        seen_pids = set()
         for pid, p in master_plans.items():
-            ov = overrides.get(pid, {})
+            pid_str = str(pid)
+            seen_pids.add(pid_str)
+            ov = overrides.get(pid_str) or overrides.get(pid, {})
             custom_name = ov.get("custom_name") or ""
             custom_price = ov.get("custom_price")
             custom_data_limit = ov.get("custom_data_limit")
@@ -10157,7 +10161,7 @@ class Database:
             wholesale_price = int(base_calc_price * (100 - discount_pct) / 100)
 
             result.append({
-                "plan_id": pid,
+                "plan_id": pid_str,
                 "name": display_name,
                 "price": display_price,
                 "master_name": p.get("name", "پلن"),
@@ -10180,7 +10184,45 @@ class Database:
                 "master_is_active": p.get("is_active", True)
             })
 
+        for pid_key, ov in overrides.items():
+            pid_str = str(pid_key)
+            if pid_str not in seen_pids:
+                custom_name = ov.get("custom_name") or pid_str
+                custom_price = ov.get("custom_price") or 0
+                custom_data_limit = ov.get("custom_data_limit") if ov.get("custom_data_limit") is not None else 30
+                custom_duration = ov.get("custom_duration") or 30
+                is_active = ov.get("is_active", True)
+                wholesale_price = int(custom_price * (100 - discount_pct) / 100)
+                result.append({
+                    "plan_id": pid_str,
+                    "name": custom_name,
+                    "price": custom_price,
+                    "master_name": custom_name,
+                    "display_name": custom_name,
+                    "custom_name": custom_name,
+                    "master_price": custom_price,
+                    "display_price": custom_price,
+                    "custom_price": custom_price,
+                    "wholesale_price": wholesale_price,
+                    "master_data_limit": custom_data_limit,
+                    "display_data_limit": custom_data_limit,
+                    "data_limit": custom_data_limit,
+                    "custom_data_limit": custom_data_limit,
+                    "master_duration": custom_duration,
+                    "display_duration": custom_duration,
+                    "duration": custom_duration,
+                    "custom_duration": custom_duration,
+                    "description": "",
+                    "is_active": is_active,
+                    "master_is_active": True
+                })
+
         return result
+
+    def get_reseller_plans_dict(self, reseller_id: int) -> Dict[str, dict]:
+        """دریافت دیکشنری پلن‌های اختصاصی نماینده بر اساس plan_id با تمام شخصی‌سازی‌ها"""
+        plans = self.get_reseller_plans(reseller_id)
+        return {str(p["plan_id"]): p for p in plans}
 
     def get_reseller_active_plans(self, reseller_id: int) -> List[dict]:
         """دریافت فقط پلن‌های فعال برای نمایش به مشتریان ربات تلگرام نماینده"""
@@ -10191,37 +10233,60 @@ class Database:
         """دریافت مشخصات کامل یک پلن خاص برای نماینده"""
         plans = self.get_reseller_plans(reseller_id)
         for p in plans:
-            if p["plan_id"] == plan_id:
+            if str(p["plan_id"]) == str(plan_id):
                 return p
         return None
 
-    def update_reseller_plan_override(self, reseller_id: int, plan_id: str, custom_name: str = None, custom_price: int = None, custom_data_limit: float = None, custom_duration: int = None, is_active: bool = True) -> dict:
+    def update_reseller_plan_override(self, reseller_id: int, plan_id: str, custom_name: str = None, custom_price: int = None, custom_data_limit: float = None, custom_duration: int = None, is_active: bool = True, preserve_specs: bool = False) -> dict:
         """بروزرسانی یا ثبت تنظیمات اختصاصی نماینده برای یک پلن (نام، قیمت، حجم، مدت، وضعیت)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
-            cursor.execute("""
-                INSERT INTO reseller_plans (reseller_id, plan_id, custom_name, custom_price, custom_data_limit, custom_duration, is_active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(reseller_id, plan_id) DO UPDATE SET
-                    custom_name = excluded.custom_name,
-                    custom_price = excluded.custom_price,
-                    custom_data_limit = excluded.custom_data_limit,
-                    custom_duration = excluded.custom_duration,
-                    is_active = excluded.is_active,
-                    updated_at = excluded.updated_at
-            """, (
-                reseller_id, 
-                plan_id, 
-                custom_name.strip() if custom_name else None, 
-                custom_price if (custom_price is not None and custom_price > 0) else None, 
-                custom_data_limit if (custom_data_limit is not None and custom_data_limit >= 0) else None,
-                custom_duration if (custom_duration is not None and custom_duration > 0) else None,
-                1 if is_active else 0, 
-                now, 
-                now
-            ))
+            if preserve_specs:
+                cursor.execute("""
+                    INSERT INTO reseller_plans (reseller_id, plan_id, custom_name, custom_price, custom_data_limit, custom_duration, is_active, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(reseller_id, plan_id) DO UPDATE SET
+                        custom_name = excluded.custom_name,
+                        custom_price = excluded.custom_price,
+                        custom_data_limit = COALESCE(excluded.custom_data_limit, reseller_plans.custom_data_limit),
+                        custom_duration = COALESCE(excluded.custom_duration, reseller_plans.custom_duration),
+                        is_active = excluded.is_active,
+                        updated_at = excluded.updated_at
+                """, (
+                    reseller_id, 
+                    str(plan_id), 
+                    custom_name.strip() if custom_name else None, 
+                    custom_price if (custom_price is not None and custom_price > 0) else None, 
+                    custom_data_limit if (custom_data_limit is not None and custom_data_limit >= 0) else None,
+                    custom_duration if (custom_duration is not None and custom_duration > 0) else None,
+                    1 if is_active else 0, 
+                    now, 
+                    now
+                ))
+            else:
+                cursor.execute("""
+                    INSERT INTO reseller_plans (reseller_id, plan_id, custom_name, custom_price, custom_data_limit, custom_duration, is_active, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(reseller_id, plan_id) DO UPDATE SET
+                        custom_name = excluded.custom_name,
+                        custom_price = excluded.custom_price,
+                        custom_data_limit = excluded.custom_data_limit,
+                        custom_duration = excluded.custom_duration,
+                        is_active = excluded.is_active,
+                        updated_at = excluded.updated_at
+                """, (
+                    reseller_id, 
+                    str(plan_id), 
+                    custom_name.strip() if custom_name else None, 
+                    custom_price if (custom_price is not None and custom_price > 0) else None, 
+                    custom_data_limit if (custom_data_limit is not None and custom_data_limit >= 0) else None,
+                    custom_duration if (custom_duration is not None and custom_duration > 0) else None,
+                    1 if is_active else 0, 
+                    now, 
+                    now
+                ))
             conn.commit()
             return {"success": True}
         except Exception as e:

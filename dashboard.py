@@ -1637,6 +1637,16 @@ def get_plans_dict():
     }
 
 
+def get_reseller_plans_dict(reseller_id: int) -> dict:
+    """دریافت دیکشنری پلن‌های اختصاصی نماینده شامل تمام شخصی‌سازی‌های نام، قیمت، حجم و مدت اعمال‌شده توسط مدیریت"""
+    try:
+        return db.get_reseller_plans_dict(reseller_id)
+    except Exception as e:
+        logger.error(f"Error loading reseller plans dict for reseller {reseller_id}: {e}")
+        return get_plans_dict()
+
+
+
 # ─── دکوریتورهای احراز هویت (Auth Decorators) ───
 
 @app.before_request
@@ -6735,8 +6745,7 @@ def reseller_create_user():
     discount = stats.get("discount_percent", 20)
     
     # بارگذاری پلن‌های اختصاصی و فعال این نماینده
-    reseller_plans_list = db.get_reseller_plans(reseller_id)
-    plans = {p["plan_id"]: p for p in reseller_plans_list}
+    plans = get_reseller_plans_dict(reseller_id)
 
     if request.method == "POST":
         plan_key = request.form.get("plan_id")
@@ -6755,7 +6764,7 @@ def reseller_create_user():
             return redirect(url_for("reseller_create_user"))
 
         plan = plans[plan_key]
-        original_price = plan.get("master_price") or plan.get("price") or 0
+        original_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or 0
         final_price = plan.get("wholesale_price") if plan.get("wholesale_price") is not None else int(original_price * (100 - discount) / 100)
 
         # بررسی موجودی نقدی + اعتبار مجاز برای خرید با توجه به منبع انتخابی
@@ -6785,7 +6794,7 @@ def reseller_create_user():
 
         telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else 0
         if payment_status in ("unpaid", "debtor"):
-            debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else plan.get("display_price", plan.get("price", 0))
+            debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else original_price
         else:
             debt_amount = 0
 
@@ -6796,8 +6805,8 @@ def reseller_create_user():
             user_comment += f" | TG: {telegram_id}"
 
         # ۱. ابتدا ساخت کاربر در سرور هیدیفای انجام می‌شود
-        data_limit_gb = plan.get("data_limit", 30)
-        duration_days = plan.get("duration", 30)
+        data_limit_gb = plan.get("display_data_limit") if plan.get("display_data_limit") is not None else plan.get("data_limit", 30)
+        duration_days = plan.get("display_duration") if plan.get("display_duration") is not None else plan.get("duration", 30)
         h_res = hidify_sync_create_user(
             name=account_name,
             usage_limit_gb=data_limit_gb,
@@ -6953,7 +6962,7 @@ def reseller_users():
     reseller_id = session.get("reseller_id")
     stats = db.get_reseller_stats(reseller_id)
     discount = stats["discount_percent"]
-    plans = get_plans_dict()
+    plans = get_reseller_plans_dict(reseller_id)
     status_filter = request.args.get("status", "all")
     search_query = request.args.get("search", "").strip().lower()
     debtor_count = db.get_debtor_count(reseller_id)
@@ -7272,17 +7281,16 @@ def reseller_renew_user(sub_id: int):
 
     plan_key = request.form.get("plan_id")
     payment_source = request.form.get("payment_source", "auto").strip()
-    plans = get_plans_dict()
+    plans = get_reseller_plans_dict(reseller_id)
     if plan_key not in plans:
         flash("پلن انتخابی نامعتبر است.", "danger")
         return redirect(get_redirect_target("reseller_users"))
 
     plan = plans[plan_key]
     stats = db.get_reseller_stats(reseller_id)
-    discount = stats["discount_percent"]
-    original_price = plan["price"]
-    discount_amount = int((original_price * discount) / 100)
-    final_price = original_price - discount_amount
+    discount = stats.get("discount_percent", 20)
+    original_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or 0
+    final_price = plan.get("wholesale_price") if plan.get("wholesale_price") is not None else int(original_price * (100 - discount) / 100)
 
     total_purchasing_power = stats.get("total_purchasing_power", stats["balance"])
     if total_purchasing_power < final_price:
@@ -7290,12 +7298,15 @@ def reseller_renew_user(sub_id: int):
         return redirect(get_redirect_target("reseller_users"))
 
     instant_activate = bool(request.form.get("instant_activate"))
+    plan_title = plan.get("display_name") or plan.get("name") or plan.get("master_name", "")
+    data_limit_gb = plan.get("display_data_limit") if plan.get("display_data_limit") is not None else plan.get("data_limit", 30)
+    duration_days = plan.get("display_duration") if plan.get("display_duration") is not None else plan.get("duration", 30)
 
     # ۱. در صورت فعال‌سازی آنی، هیدیفای بلافاصله ریست می‌شود
     renewal_res = {"renewal_type": "reset_and_replaced"}
     if instant_activate and sub.get("hidify_uuid"):
         try:
-            renewal_res = hidify_sync_renew_user(sub["hidify_uuid"], plan["data_limit"], plan["duration"], force_instant=True)
+            renewal_res = hidify_sync_renew_user(sub["hidify_uuid"], data_limit_gb, duration_days, force_instant=True)
         except Exception as e:
             logger.error(f"Error in reseller renew Hiddify {sub.get('hidify_uuid')}: {e}")
 
@@ -7304,10 +7315,10 @@ def reseller_renew_user(sub_id: int):
         reseller_id=reseller_id,
         sub_id=sub_id,
         plan_id=plan_key,
-        plan_name=plan["name"],
+        plan_name=plan_title,
         cost=final_price,
-        data_limit=plan["data_limit"],
-        duration=plan["duration"],
+        data_limit=data_limit_gb,
+        duration=duration_days,
         instant_activate=instant_activate,
         renewal_type=renewal_res.get("renewal_type", "reset_and_replaced"),
         payment_source=payment_source
@@ -7322,10 +7333,10 @@ def reseller_renew_user(sub_id: int):
                     telegram_id=sub.get("telegram_id") or 0,
                     hidify_uuid=sub.get("hidify_uuid") or "",
                     account_name=sub["account_name"],
-                    plan_name=plan["name"],
+                    plan_name=plan_title,
                     previous_usage_gb=sub.get("data_used") or 0,
                     previous_limit_gb=sub.get("data_limit") or 0,
-                    period_days=plan["duration"],
+                    period_days=duration_days,
                     renewal_type="reset_and_replaced",
                     reseller_id=reseller_id,
                     cost_paid=final_price
@@ -7333,9 +7344,9 @@ def reseller_renew_user(sub_id: int):
             except Exception as e:
                 logger.warning(f"Failed to log subscription history on reseller renew: {e}")
 
-            flash(f"اشتراک «{sub['account_name']}» با پلن «{plan['name']}» به صورت آنی تمدید شد، حجم و روز آن ریست گردید و مبلغ {final_price:,} تومان از حساب/اعتبار شما کسر شد.", "success")
+            flash(f"اشتراک «{sub['account_name']}» با پلن «{plan_title}» به صورت آنی تمدید شد، حجم و روز آن ریست گردید و مبلغ {final_price:,} تومان از حساب/اعتبار شما کسر شد.", "success")
         else:
-            flash(f"بسته تمدیدی «{plan['name']}» برای اشتراک «{sub['account_name']}» در صف رزرو قرار گرفت و مبلغ {final_price:,} تومان کسر شد. پس از مصرف ۹۹٪ یا در روز پایانی اشتراک به صورت خودکار فعال خواهد شد.", "info")
+            flash(f"بسته تمدیدی «{plan_title}» برای اشتراک «{sub['account_name']}» در صف رزرو قرار گرفت و مبلغ {final_price:,} تومان کسر شد. پس از مصرف ۹۹٪ یا در روز پایانی اشتراک به صورت خودکار فعال خواهد شد.", "info")
 
         r_after = db.get_reseller(reseller_id)
         if r_after:
@@ -7377,9 +7388,9 @@ def reseller_subscriptions_bulk_renew():
     plan_key = request.form.get("plan_id", "current").strip()
     payment_source = request.form.get("payment_source", "auto").strip()
     instant_activate = bool(request.form.get("instant_activate"))
-    plans = get_plans_dict()
+    plans = get_reseller_plans_dict(reseller_id)
     stats = db.get_reseller_stats(reseller_id)
-    discount = stats["discount_percent"]
+    discount = stats.get("discount_percent", 20)
 
     # ۱. محاسبه کل هزینه مورد نیاز و اعتبارسنجی توان خرید
     subs_to_renew = []
@@ -7391,28 +7402,29 @@ def reseller_subscriptions_bulk_renew():
             continue
 
         if plan_key == "current" or plan_key not in plans:
-            p_key = sub.get("plan_id") or "custom"
+            p_key = str(sub.get("plan_id") or "custom")
             if p_key in plans:
                 p_item = plans[p_key]
-                p_name = p_item["name"]
-                p_limit = float(p_item["data_limit"])
-                p_dur = int(p_item["duration"])
-                orig_price = p_item["price"]
+                p_name = p_item.get("display_name") or p_item.get("name") or p_item.get("master_name", "")
+                p_limit = float(p_item.get("display_data_limit") if p_item.get("display_data_limit") is not None else p_item.get("data_limit", 30))
+                p_dur = int(p_item.get("display_duration") if p_item.get("display_duration") is not None else p_item.get("duration", 30))
+                orig_price = p_item.get("display_price") or p_item.get("price") or p_item.get("master_price") or 0
+                final_price = p_item.get("wholesale_price") if p_item.get("wholesale_price") is not None else int(orig_price * (100 - discount) / 100)
             else:
                 p_limit = float(sub.get("data_limit") or 30)
                 p_dur = int(sub.get("duration") or 30)
                 p_name = sub.get("plan_name") or f"{p_limit} گیگ"
                 orig_price = int(sub.get("cost_paid") or 0)
+                final_price = orig_price
         else:
             p_item = plans[plan_key]
             p_key = plan_key
-            p_name = p_item["name"]
-            p_limit = float(p_item["data_limit"])
-            p_dur = int(p_item["duration"])
-            orig_price = p_item["price"]
+            p_name = p_item.get("display_name") or p_item.get("name") or p_item.get("master_name", "")
+            p_limit = float(p_item.get("display_data_limit") if p_item.get("display_data_limit") is not None else p_item.get("data_limit", 30))
+            p_dur = int(p_item.get("display_duration") if p_item.get("display_duration") is not None else p_item.get("duration", 30))
+            orig_price = p_item.get("display_price") or p_item.get("price") or p_item.get("master_price") or 0
+            final_price = p_item.get("wholesale_price") if p_item.get("wholesale_price") is not None else int(orig_price * (100 - discount) / 100)
 
-        disc_amount = int((orig_price * discount) / 100)
-        final_price = orig_price - disc_amount
         total_cost_required += final_price
 
         subs_to_renew.append({
@@ -7577,17 +7589,16 @@ def reseller_restore_user(sub_id: int):
         flash(restore_err, "danger")
         return redirect(get_redirect_target("reseller_users", status="deleted"))
 
-    plans = get_plans_dict()
-    plan_key = sub.get("plan_id")
+    plans = get_reseller_plans_dict(reseller_id)
+    plan_key = str(sub.get("plan_id"))
     plan = plans.get(plan_key) if plan_key in plans else None
     payment_source = request.form.get("payment_source", "auto").strip()
     stats = db.get_reseller_stats(reseller_id)
     discount = stats.get("discount_percent", 20)
     
     if plan:
-        original_price = plan.get("master_price") or plan.get("price") or 0
-        discount_amount = int((original_price * discount) / 100)
-        final_price = original_price - discount_amount
+        original_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or 0
+        final_price = plan.get("wholesale_price") if plan.get("wholesale_price") is not None else int(original_price * (100 - discount) / 100)
     else:
         final_price = sub.get("cost_paid") or 0
 
@@ -7685,7 +7696,7 @@ def reseller_trash_bulk():
             flash(restore_err, "danger")
             return redirect(get_redirect_target("reseller_users", status="deleted"))
 
-        plans = get_plans_dict()
+        plans = get_reseller_plans_dict(reseller_id)
         stats = db.get_reseller_stats(reseller_id)
         discount = stats.get("discount_percent", 20)
 
@@ -7696,12 +7707,11 @@ def reseller_trash_bulk():
             if not sub_row:
                 continue
             sub = dict(sub_row)
-            plan_key = sub.get("plan_id")
+            plan_key = str(sub.get("plan_id"))
             plan = plans.get(plan_key) if plan_key in plans else None
             if plan:
-                original_price = plan.get("master_price") or plan.get("price") or 0
-                discount_amount = int((original_price * discount) / 100)
-                final_price = original_price - discount_amount
+                original_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or 0
+                final_price = plan.get("wholesale_price") if plan.get("wholesale_price") is not None else int(original_price * (100 - discount) / 100)
             else:
                 final_price = sub.get("cost_paid") or 0
 
@@ -7925,7 +7935,8 @@ def reseller_plans():
                 plan_id=plan_id,
                 custom_name=custom_name,
                 custom_price=custom_price,
-                is_active=is_active
+                is_active=is_active,
+                preserve_specs=True
             )
             if res.get("success"):
                 flash("تنظیمات پلن با موفقیت ذخیره شد.", "success")
@@ -8554,20 +8565,19 @@ def reseller_payment_approve(payment_id):
 
     user_id = tx["user_id"]
     plan_name = tx["plan_name"]
-    plans = get_plans_dict()
-    selected_plan = next((p for p in plans.values() if p["name"] == plan_name), None)
+    plans = get_reseller_plans_dict(reseller_id)
+    selected_plan = next((p for p in plans.values() if p.get("name") == plan_name or p.get("display_name") == plan_name or p.get("master_name") == plan_name or str(p.get("plan_id")) == str(tx.get("plan_id"))), None)
     if not selected_plan and plans:
         selected_plan = list(plans.values())[0]
 
-    data_limit = selected_plan["data_limit"] if selected_plan else 30
-    duration = selected_plan["duration"] if selected_plan else 30
-    original_price = selected_plan["price"] if selected_plan else tx.get("amount", 0)
+    data_limit = selected_plan.get("display_data_limit") if selected_plan and selected_plan.get("display_data_limit") is not None else (selected_plan.get("data_limit") if selected_plan else 30)
+    duration = selected_plan.get("display_duration") if selected_plan and selected_plan.get("display_duration") is not None else (selected_plan.get("duration") if selected_plan else 30)
+    original_price = selected_plan.get("display_price") or selected_plan.get("price") if selected_plan else tx.get("amount", 0)
 
     # محاسبه هزینه خرید عمده نماینده با تخفیف
     stats = db.get_reseller_stats(reseller_id)
-    discount = stats["discount_percent"]
-    discount_amount = int((original_price * discount) / 100)
-    wholesale_price = original_price - discount_amount
+    discount = stats.get("discount_percent", 20)
+    wholesale_price = selected_plan.get("wholesale_price") if selected_plan and selected_plan.get("wholesale_price") is not None else (original_price - int((original_price * discount) / 100))
 
     if stats["balance"] < wholesale_price:
         flash(f"موجودی کیف پول شما کافی نیست! موجودی: {stats['balance']:,} ت | مبلغ کسر: {wholesale_price:,} ت", "danger")

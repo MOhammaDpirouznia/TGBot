@@ -836,9 +836,13 @@ class ResellerBotInstance:
             except Exception as e:
                 logger.warning(f"Could not download receipt photo for order {order_id}: {e}")
 
-            plans = load_plans()
-            plan = plans.get(plan_id, {})
-            pname = plan.get("name", "پلن انتخابی")
+            r_plan = db.get_reseller_plan(r_id, plan_id)
+            if r_plan:
+                pname = r_plan.get("display_name") or r_plan.get("name") or r_plan.get("master_name", "پلن انتخابی")
+            else:
+                plans = load_plans()
+                plan = plans.get(plan_id, {})
+                pname = plan.get("name", "پلن انتخابی")
 
             db.save_transaction(
                 order_id=order_id,
