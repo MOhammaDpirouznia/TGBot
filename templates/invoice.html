@@ -151,7 +151,8 @@
                 <tbody>
                     <tr>
                         <td class="fw-bold text-start ps-3">
-                            <i class="fas fa-bolt text-warning me-2"></i> {{ sub.plan_name or 'سرویس اختصاصی اینترنت پرو' }}
+                            {% set plan_ico = get_plan_icon(sub, sub.plan_id) %}
+                            <i class="{{ plan_ico.icon }} me-2" style="color: {{ plan_ico.color_hex }};"></i> {{ sub.plan_name or 'سرویس اختصاصی اینترنت پرو' }}
                             <div class="small text-muted mt-1 font-monospace">شناسه اتصال: {{ (sub.hidify_uuid[:12] + '...') if sub.hidify_uuid else 'اختصاصی' }}</div>
                         </td>
                         <td><span class="badge bg-primary fs-6 font-monospace">{{ sub.data_limit or sub.traffic_limit or 0 }} گیگابایت</span></td>

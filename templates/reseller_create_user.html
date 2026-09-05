@@ -93,8 +93,8 @@
                                 <label class="card p-3 h-100 cursor-pointer border-2 plan-option" style="cursor: pointer;">
                                     <div class="d-flex align-items-start gap-2">
                                         <input type="radio" name="plan_id" value="{{ p_key }}" class="form-check-input mt-1" required onchange="calculatePrice({{ p_orig_price|default(0) }}, {{ p_wholesale_price|default(0) }})" {% if loop.first %}checked{% endif %}>
-                                        {% set icon_info = get_plan_icon(p) %}
-                                        <span class="d-inline-flex align-items-center justify-content-center rounded-circle shadow-sm flex-shrink-0 mt-1" style="width: 32px; height: 32px; background-color: {{ icon_info.color }}22; color: {{ icon_info.color }};">
+                                        {% set icon_info = get_plan_icon(p, p_key) %}
+                                        <span class="d-inline-flex align-items-center justify-content-center rounded-circle shadow-sm flex-shrink-0 mt-1 {{ icon_info.bg_class }}" style="width: 32px; height: 32px; background-color: {{ icon_info.bg_color }}; color: {{ icon_info.color_hex }}; border: 1px solid {{ icon_info.border_color }}; font-size: 0.9rem;">
                                             <i class="{{ icon_info.icon }}"></i>
                                         </span>
                                         <div class="flex-grow-1">

@@ -50,8 +50,8 @@
                     <tr>
                         <td class="ps-3" data-value="{{ p['master_name'] }}">
                             <div class="d-flex align-items-center gap-2">
-                                {% set icon_info = get_plan_icon(p) %}
-                                <span class="d-inline-flex align-items-center justify-content-center rounded-circle shadow-sm flex-shrink-0" style="width: 32px; height: 32px; background-color: {{ icon_info.color }}22; color: {{ icon_info.color }};">
+                                {% set icon_info = get_plan_icon(p, p['plan_id']) %}
+                                <span class="d-inline-flex align-items-center justify-content-center rounded-circle shadow-sm flex-shrink-0 {{ icon_info.bg_class }}" style="width: 32px; height: 32px; background-color: {{ icon_info.bg_color }}; color: {{ icon_info.color_hex }}; border: 1px solid {{ icon_info.border_color }}; font-size: 0.9rem;">
                                     <i class="{{ icon_info.icon }}"></i>
                                 </span>
                                 <div>

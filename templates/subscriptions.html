@@ -956,7 +956,7 @@
                             <label class="p-2 p-md-3 border rounded-3 cursor-pointer d-flex justify-content-between align-items-center h-100 plan-renew-option">
                                 <div class="d-flex align-items-center gap-2">
                                     <input type="radio" name="plan_id" value="{{ p_key }}" class="form-check-input mt-0 flex-shrink-0" {% if p_key == sub['plan_id'] or loop.first %}checked{% endif %}>
-                                    <span class="d-inline-flex align-items-center justify-content-center rounded-circle shadow-sm flex-shrink-0 {{ icon_info.bg_class }}" style="width: 32px; height: 32px; font-size: 0.88rem;">
+                                    <span class="d-inline-flex align-items-center justify-content-center rounded-circle shadow-sm flex-shrink-0 {{ icon_info.bg_class }}" style="width: 32px; height: 32px; background-color: {{ icon_info.bg_color }}; color: {{ icon_info.color_hex }}; border: 1px solid {{ icon_info.border_color }}; font-size: 0.88rem;">
                                         <i class="{{ icon_info.icon }}"></i>
                                     </span>
                                     <div>
@@ -1705,6 +1705,10 @@
                         <label class="p-2 border rounded-3 cursor-pointer d-flex justify-content-between align-items-center">
                             <div class="d-flex align-items-center gap-2">
                                 <input type="radio" name="plan_id" value="{{ p_key }}" class="form-check-input mt-0">
+                                {% set icon_info = get_plan_icon(p, p_key) %}
+                                <span class="d-inline-flex align-items-center justify-content-center rounded-circle shadow-sm flex-shrink-0 {{ icon_info.bg_class }}" style="width: 30px; height: 30px; background-color: {{ icon_info.bg_color }}; color: {{ icon_info.color_hex }}; border: 1px solid {{ icon_info.border_color }}; font-size: 0.85rem;">
+                                    <i class="{{ icon_info.icon }}"></i>
+                                </span>
                                 <div>
                                     <div class="fw-bold fs-6">{{ p['name'] }}</div>
                                     <small class="text-muted">{{ p['data_limit'] }} گیگ | {{ p['duration'] }} روز</small>

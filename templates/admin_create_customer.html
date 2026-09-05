@@ -73,7 +73,7 @@
                                 <label class="p-3 border rounded-3 cursor-pointer d-flex justify-content-between align-items-center h-100 plan-select-card" style="cursor: pointer;">
                                     <div class="d-flex align-items-center gap-2">
                                         <input type="radio" name="plan_id" value="{{ pid }}" data-price="{{ p['price'] }}" data-data="{{ p['data_limit'] }}" data-days="{{ p['duration'] }}" class="form-check-input mt-0 flex-shrink-0" {% if loop.first %}checked{% endif %} onchange="handlePlanChange()">
-                                        <span class="d-inline-flex align-items-center justify-content-center rounded-circle shadow-sm flex-shrink-0 {{ icon_info.bg_class }}" style="width: 34px; height: 34px; font-size: 0.95rem;">
+                                        <span class="d-inline-flex align-items-center justify-content-center rounded-circle shadow-sm flex-shrink-0 {{ icon_info.bg_class }}" style="width: 34px; height: 34px; background-color: {{ icon_info.bg_color }}; color: {{ icon_info.color_hex }}; border: 1px solid {{ icon_info.border_color }}; font-size: 0.95rem;">
                                             <i class="{{ icon_info.icon }}"></i>
                                         </span>
                                         <div>

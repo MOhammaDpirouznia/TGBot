@@ -66,8 +66,8 @@
                     <tr>
                         <td class="ps-3" data-value="{{ pid }}"><code class="text-primary font-monospace">{{ pid }}</code></td>
                         <td data-value="{{ p.name }}" class="fw-bold">
-                            {% set icon_info = get_plan_icon(p) %}
-                            <span class="d-inline-flex align-items-center justify-content-center me-2 rounded-circle shadow-sm" style="width: 32px; height: 32px; background-color: {{ icon_info.color }}22; color: {{ icon_info.color }};">
+                            {% set icon_info = get_plan_icon(p, pid) %}
+                            <span class="d-inline-flex align-items-center justify-content-center me-2 rounded-circle shadow-sm flex-shrink-0 {{ icon_info.bg_class }}" style="width: 32px; height: 32px; background-color: {{ icon_info.bg_color }}; color: {{ icon_info.color_hex }}; border: 1px solid {{ icon_info.border_color }}; font-size: 0.9rem;">
                                 <i class="{{ icon_info.icon }}"></i>
                             </span>
                             {{ p.name }}
@@ -211,8 +211,8 @@
                     <tr class="{% if p.is_dedicated %}table-primary bg-opacity-10 border-start border-primary border-4{% elif has_override %}table-warning bg-opacity-25 border-start border-warning border-3{% endif %}">
                         <td class="ps-3"><code class="font-monospace text-primary">{{ p.plan_id }}</code></td>
                         <td>
-                            {% set icon_info = get_plan_icon(p) %}
-                            <span class="d-inline-flex align-items-center justify-content-center me-2 rounded-circle" style="width: 28px; height: 28px; background-color: {{ icon_info.color }}22; color: {{ icon_info.color }};">
+                            {% set icon_info = get_plan_icon(p, p.plan_id) %}
+                            <span class="d-inline-flex align-items-center justify-content-center me-2 rounded-circle shadow-sm flex-shrink-0 {{ icon_info.bg_class }}" style="width: 28px; height: 28px; background-color: {{ icon_info.bg_color }}; color: {{ icon_info.color_hex }}; border: 1px solid {{ icon_info.border_color }}; font-size: 0.85rem;">
                                 <i class="{{ icon_info.icon }}"></i>
                             </span>
                             <strong>{{ p.display_name }}</strong>
@@ -432,8 +432,8 @@
                     <tr>
                         <td class="ps-3"><code class="font-monospace text-primary">{{ dp.plan_id }}</code></td>
                         <td class="fw-bold">
-                            {% set icon_info = get_plan_icon(dp) %}
-                            <span class="d-inline-flex align-items-center justify-content-center me-2 rounded-circle" style="width: 28px; height: 28px; background-color: {{ icon_info.color }}22; color: {{ icon_info.color }};">
+                            {% set icon_info = get_plan_icon(dp, dp.plan_id) %}
+                            <span class="d-inline-flex align-items-center justify-content-center me-2 rounded-circle shadow-sm flex-shrink-0 {{ icon_info.bg_class }}" style="width: 28px; height: 28px; background-color: {{ icon_info.bg_color }}; color: {{ icon_info.color_hex }}; border: 1px solid {{ icon_info.border_color }}; font-size: 0.85rem;">
                                 <i class="{{ icon_info.icon }}"></i>
                             </span>
                             {{ dp.name }}
@@ -508,8 +508,8 @@
                     <tr>
                         <td class="ps-3"><code class="font-monospace text-primary">{{ p.plan_id }}</code></td>
                         <td class="fw-bold">
-                            {% set icon_info = get_plan_icon(p) %}
-                            <span class="d-inline-flex align-items-center justify-content-center me-2 rounded-circle" style="width: 28px; height: 28px; background-color: {{ icon_info.color }}22; color: {{ icon_info.color }};">
+                            {% set icon_info = get_plan_icon(p, p.plan_id) %}
+                            <span class="d-inline-flex align-items-center justify-content-center me-2 rounded-circle shadow-sm flex-shrink-0 {{ icon_info.bg_class }}" style="width: 28px; height: 28px; background-color: {{ icon_info.bg_color }}; color: {{ icon_info.color_hex }}; border: 1px solid {{ icon_info.border_color }}; font-size: 0.85rem;">
                                 <i class="{{ icon_info.icon }}"></i>
                             </span>
                             {{ p.name }}
