@@ -295,109 +295,233 @@ def save_plans(plans: dict):
         pass
 
 
-def get_plan_icon(plan: dict, plan_id: str = None) -> dict:
-    """
-    تحلیل هوشمند رتبه پلن و ارائه آیکون شیک و متناسب با لول پلن.
-    پلن‌های بالاتر دارای زیباترین و لوکس‌ترین استایل و آیکون‌ها هستند.
-    """
-    if not plan:
-        return {
-            "icon": "fas fa-cube",
-            "color": "secondary",
-            "bg_class": "bg-secondary-subtle text-secondary border-secondary",
-            "badge_style": "background-color: #f1f5f9; color: #475569;",
-            "rank_title": "پایه",
-            "tier": 1
-        }
+# نگاشت آیکون‌های فونت‌آوسام به ایموجی‌های شکیل تلگرام
+ICON_TO_TELEGRAM_EMOJI = {
+    "crown": "👑",
+    "gem": "💎",
+    "diamond": "💎",
+    "trophy": "🏆",
+    "award": "🥇",
+    "medal": "🥇",
+    "star": "⭐",
+    "fire": "🔥",
+    "flame": "🔥",
+    "shield": "🛡️",
+    "cube": "📦",
+    "cubes": "📦",
+    "box": "📦",
+    "box-open": "📦",
+    "rocket": "🚀",
+    "bolt": "⚡",
+    "zap": "⚡",
+    "apple": "🍏",
+    "apple-whole": "🍏",
+    "heart": "❤️",
+    "globe": "🌐",
+    "cloud": "☁️",
+    "wifi": "📶",
+    "check": "✅",
+    "circle-check": "✅",
+    "leaf": "🍃",
+    "lock": "🔒",
+    "key": "🔑",
+    "gift": "🎁",
+    "sparkles": "✨",
+    "infinity": "♾️",
+    "cart": "🛒",
+    "bag": "🛍️",
+}
 
-    custom_icon = plan.get("plan_icon") or plan.get("icon")
+TIER_COLOR_CONFIG = {
+    "primary": {
+        "hex": "#6366f1",
+        "bg": "rgba(99, 102, 241, 0.15)",
+        "border": "rgba(99, 102, 241, 0.35)",
+        "class": "bg-primary-subtle text-primary border border-primary border-opacity-50 shadow-sm",
+    },
+    "warning": {
+        "hex": "#f59e0b",
+        "bg": "rgba(245, 158, 11, 0.15)",
+        "border": "rgba(245, 158, 11, 0.35)",
+        "class": "bg-warning-subtle text-warning border border-warning shadow-sm",
+    },
+    "danger": {
+        "hex": "#ef4444",
+        "bg": "rgba(239, 68, 68, 0.15)",
+        "border": "rgba(239, 68, 68, 0.35)",
+        "class": "bg-danger-subtle text-danger border border-danger shadow-sm",
+    },
+    "info": {
+        "hex": "#0284c7",
+        "bg": "rgba(2, 132, 199, 0.15)",
+        "border": "rgba(2, 132, 199, 0.35)",
+        "class": "bg-info-subtle text-info border border-info shadow-sm",
+    },
+    "secondary": {
+        "hex": "#64748b",
+        "bg": "rgba(100, 116, 139, 0.15)",
+        "border": "rgba(100, 116, 139, 0.35)",
+        "class": "bg-secondary-subtle text-secondary border border-secondary",
+    },
+    "success": {
+        "hex": "#10b981",
+        "bg": "rgba(16, 185, 129, 0.15)",
+        "border": "rgba(16, 185, 129, 0.35)",
+        "class": "bg-success-subtle text-success border border-success",
+    },
+}
+
+
+def get_plan_icon(plan: dict = None, plan_id: str = None) -> dict:
+    """
+    تحلیل هوشمند رتبه پلن و ارائه آیکون و استایل شیک و یکپارچه در تمامی بخش‌های سیستم
+    (پنل مدیریت، پنل نمایندگان، لینک تمدید/پرداخت مشتری، و ربات تلگرام).
+    تمامی بخش‌ها مستقیماً از آیکون و مشخصات پلن مادر در پنل مدیریت الگوبرداری می‌کنند.
+    """
+    plan_dict = plan if isinstance(plan, dict) else {}
+    pid = str(plan_id or plan_dict.get("plan_id") or plan_dict.get("id") or "").strip()
+
+    # دریافت اطلاعات پلن مادر از پنل مدیریت (مرجع قطعی اطلاعات)
+    master_plan = {}
+    if pid:
+        try:
+            all_masters = load_plans() or {}
+            master_plan = all_masters.get(pid) or {}
+        except Exception:
+            pass
+
+    # استخراج آیکون سفارشی تعریف شده توسط مدیریت
+    custom_icon = (
+        master_plan.get("plan_icon")
+        or master_plan.get("icon")
+        or plan_dict.get("plan_icon")
+        or plan_dict.get("icon")
+    )
+    detected_emoji = None
+
     if custom_icon:
         custom_icon = str(custom_icon).strip()
-        if not custom_icon.startswith("fa"):
-            custom_icon = f"fas fa-{custom_icon}"
-        elif custom_icon.startswith("fa-") and not any(custom_icon.startswith(p) for p in ["fas ", "far ", "fab ", "fa-solid ", "fa-regular ", "fa-light "]):
-            custom_icon = f"fas {custom_icon}"
+        # بررسی اگر ایموجی تلگرام مستقیماً وارد شده باشد
+        if any(ord(c) > 127 for c in custom_icon) and not any(p in custom_icon for p in ["fa-", "fas", "far", "fab"]):
+            detected_emoji = custom_icon
+            for kw, em in ICON_TO_TELEGRAM_EMOJI.items():
+                if em in custom_icon:
+                    custom_icon = f"fas fa-{kw}"
+                    break
+        else:
+            if not custom_icon.startswith("fa"):
+                custom_icon = f"fas fa-{custom_icon}"
+            elif custom_icon.startswith("fa-") and not any(custom_icon.startswith(p) for p in ["fas ", "far ", "fab ", "fa-solid ", "fa-regular ", "fa-light "]):
+                custom_icon = f"fas {custom_icon}"
 
-    name = (plan.get("name") or plan.get("master_name") or "").strip().lower()
-    data_limit = float(plan.get("data_limit") or plan.get("display_data_limit") or 0)
-    price = int(plan.get("price") or plan.get("display_price") or plan.get("master_price") or 0)
-    pid = str(plan_id or plan.get("plan_id") or plan.get("id") or "").lower()
+    # مشخصات پلن: اولویت کامل با پلن مادر مدیریت جهت حفظ هماهنگی ۱۰۰٪
+    name = (master_plan.get("name") or plan_dict.get("master_name") or plan_dict.get("name") or "").strip().lower()
+    data_limit = float(master_plan.get("data_limit") if master_plan.get("data_limit") is not None else (plan_dict.get("master_data_limit") or plan_dict.get("data_limit") or plan_dict.get("display_data_limit") or 0))
+    price = int(master_plan.get("price") if master_plan.get("price") is not None else (plan_dict.get("master_price") or plan_dict.get("price") or plan_dict.get("display_price") or 0))
+    pid_lower = pid.lower()
 
     # رتبه ۷: الماس / اپل پلاس / VIP ارشد / ماکسیمم حجم یا قیمت
-    if any(k in name or k in pid for k in ["اپل", "apple", "الماس", "gem", "diamond", "royal", "vip"]) or data_limit >= 250 or price >= 1500000:
-        return {
-            "icon": custom_icon or "fas fa-gem",
-            "color": "primary",
-            "bg_class": "bg-primary-subtle text-primary border border-primary border-opacity-50 shadow-sm",
-            "badge_style": "background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); color: white;",
-            "rank_title": "الماس VIP",
-            "tier": 7
-        }
+    if any(k in name or k in pid_lower for k in ["اپل", "apple", "الماس", "gem", "diamond", "royal", "vip"]) or data_limit >= 250 or price >= 1500000:
+        c_name = "primary"
+        fallback_icon = "fas fa-gem"
+        badge_style = "background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); color: white;"
+        rank_title = "الماس VIP"
+        tier = 7
+        fallback_emoji = "💎"
 
     # رتبه ۶: پرومکس پلاس / اولترا
-    if any(k in name or k in pid for k in ["پرومکس پلاس", "promaxplus", "promax+", "ultra"]) or data_limit >= 180 or price >= 1100000:
-        return {
-            "icon": custom_icon or "fas fa-crown",
-            "color": "warning",
-            "bg_class": "bg-warning-subtle text-warning-emphasis border border-warning shadow-sm",
-            "badge_style": "background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%); color: white;",
-            "rank_title": "پرومکس پلاس",
-            "tier": 6
-        }
+    elif any(k in name or k in pid_lower for k in ["پرومکس پلاس", "promaxplus", "promax+", "ultra"]) or data_limit >= 180 or price >= 1100000:
+        c_name = "warning"
+        fallback_icon = "fas fa-crown"
+        badge_style = "background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%); color: white;"
+        rank_title = "پرومکس پلاس"
+        tier = 6
+        fallback_emoji = "👑"
 
     # رتبه ۵: پرومکس / پلاتینیوم
-    if any(k in name or k in pid for k in ["پرومکس", "promax", "platinum"]) or data_limit >= 100 or price >= 800000:
-        return {
-            "icon": custom_icon or "fas fa-trophy",
-            "color": "warning",
-            "bg_class": "bg-warning-subtle text-warning border border-warning",
-            "badge_style": "background-color: #fef3c7; color: #b45309;",
-            "rank_title": "پرومکس",
-            "tier": 5
-        }
+    elif any(k in name or k in pid_lower for k in ["پرومکس", "promax", "platinum"]) or data_limit >= 100 or price >= 800000:
+        c_name = "warning"
+        fallback_icon = "fas fa-trophy"
+        badge_style = "background-color: #fef3c7; color: #b45309;"
+        rank_title = "پرومکس"
+        tier = 5
+        fallback_emoji = "🏆"
 
     # رتبه ۴: پرو پلاس
-    if any(k in name or k in pid for k in ["پرو پلاس", "proplus", "pro+"]) or data_limit >= 80:
-        return {
-            "icon": custom_icon or "fas fa-fire-flame-curved",
-            "color": "danger",
-            "bg_class": "bg-danger-subtle text-danger border border-danger",
-            "badge_style": "background-color: #fee2e2; color: #b91c1c;",
-            "rank_title": "پرو پلاس",
-            "tier": 4
-        }
+    elif any(k in name or k in pid_lower for k in ["پرو پلاس", "proplus", "pro+"]) or data_limit >= 80:
+        c_name = "danger"
+        fallback_icon = "fas fa-fire-flame-curved"
+        badge_style = "background-color: #fee2e2; color: #b91c1c;"
+        rank_title = "پرو پلاس"
+        tier = 4
+        fallback_emoji = "🔥"
 
     # رتبه ۳: پرو / طلایی
-    if any(k in name or k in pid for k in ["پرو", "pro", "طلا", "gold"]) or data_limit >= 60 or price >= 500000:
-        return {
-            "icon": custom_icon or "fas fa-star",
-            "color": "warning",
-            "bg_class": "bg-warning-subtle text-warning border border-warning",
-            "badge_style": "background-color: #fef9c3; color: #854d0e;",
-            "rank_title": "پرو",
-            "tier": 3
-        }
+    elif any(k in name or k in pid_lower for k in ["پرو", "pro", "طلا", "gold"]) or data_limit >= 60 or price >= 500000:
+        c_name = "warning"
+        fallback_icon = "fas fa-star"
+        badge_style = "background-color: #fef9c3; color: #854d0e;"
+        rank_title = "پرو"
+        tier = 3
+        fallback_emoji = "⭐"
 
     # رتبه ۲: استاندارد / نقره‌ای
-    if any(k in name or k in pid for k in ["استاندارد", "standard", "نقره", "silver", "medium"]) or data_limit >= 40:
-        return {
-            "icon": custom_icon or "fas fa-shield-halved",
-            "color": "info",
-            "bg_class": "bg-info-subtle text-info border border-info",
-            "badge_style": "background-color: #e0f2fe; color: #0369a1;",
-            "rank_title": "استاندارد",
-            "tier": 2
-        }
+    elif any(k in name or k in pid_lower for k in ["استاندارد", "standard", "نقره", "silver", "medium"]) or data_limit >= 40:
+        c_name = "info"
+        fallback_icon = "fas fa-shield-halved"
+        badge_style = "background-color: #e0f2fe; color: #0369a1;"
+        rank_title = "استاندارد"
+        tier = 2
+        fallback_emoji = "🛡️"
 
     # رتبه ۱: پایه / استارتر / برنز
+    else:
+        c_name = "secondary"
+        fallback_icon = "fas fa-cube"
+        badge_style = "background-color: #f1f5f9; color: #475569;"
+        rank_title = "پایه"
+        tier = 1
+        fallback_emoji = "📦"
+
+    final_icon = custom_icon or fallback_icon
+
+    # تخصیص ایموجی متناظر تلگرام
+    if detected_emoji:
+        emoji = detected_emoji
+    else:
+        emoji = fallback_emoji
+        if custom_icon:
+            c_icon_lower = str(custom_icon).lower()
+            for kw, em in ICON_TO_TELEGRAM_EMOJI.items():
+                if kw in c_icon_lower:
+                    emoji = em
+                    break
+
+    # تنظیم رنگ و کلاس‌ها بر اساس کانفیگ رنگ
+    color_info = TIER_COLOR_CONFIG.get(c_name, TIER_COLOR_CONFIG["secondary"])
+
     return {
-        "icon": custom_icon or "fas fa-cube",
-        "color": "secondary",
-        "bg_class": "bg-secondary-subtle text-secondary border border-secondary",
-        "badge_style": "background-color: #f1f5f9; color: #475569;",
-        "rank_title": "پایه",
-        "tier": 1
+        "icon": final_icon,
+        "color": color_info["hex"],  # مقدار هگز جهت حل مشکل استایل‌های inline قبلی
+        "color_hex": color_info["hex"],
+        "color_name": c_name,
+        "bg_color": color_info["bg"],
+        "border_color": color_info["border"],
+        "bg_class": color_info["class"],
+        "badge_style": badge_style,
+        "rank_title": rank_title,
+        "tier": tier,
+        "emoji": emoji,
     }
+
+
+def get_plan_telegram_emoji(plan: dict = None, plan_id: str = None) -> str:
+    """دریافت ایموجی متناظر و همسان با پلن پنل مدیریت جهت استفاده در دکمه‌ها و پیام‌های ربات تلگرام"""
+    try:
+        info = get_plan_icon(plan, plan_id)
+        return info.get("emoji", "📦")
+    except Exception:
+        return "📦"
 
 
 def get_bundle_icon(bundle: dict) -> dict:

@@ -29,6 +29,7 @@ from utils import (
 from admin_manager import (
     load_cards, add_card, update_card, delete_card, get_active_card, get_all_cards,
     load_plans, add_plan, update_plan, delete_plan, get_active_plans, get_all_plans, get_plan,
+    get_plan_icon, get_plan_telegram_emoji,
 )
 from database import db
 from backup import BackupManager, AutoBackupScheduler, send_backup_to_admin
@@ -790,8 +791,9 @@ async def back_to_confirm_purchase(update: Update, context: ContextTypes.DEFAULT
     
     plan = plans[plan_id]
     price_formatted = f"{plan['price']:,}".replace(",", "،")
+    emoji = get_plan_telegram_emoji(plan, plan_id)
     text = f"""
-📋 **انتخاب پلن:** {plan['name']}
+{emoji} **انتخاب پلن:** {plan['name']}
 
 • حجم: {plan['data_limit'] if plan['data_limit'] > 0 else 'نامحدود'} گیگابایت
 • مدت: {plan['duration']} روز
@@ -822,10 +824,11 @@ async def back_to_select_payment(update: Update, context: ContextTypes.DEFAULT_T
     
     plan = plans[plan_id]
     price_formatted = f"{plan['price']:,}".replace(",", "،")
+    emoji = get_plan_telegram_emoji(plan, plan_id)
     text = f"""
 💳 **انتخاب روش پرداخت**
 
-📋 پلن: {plan['name']}
+{emoji} پلن: {plan['name']}
 💰 مبلغ: {price_formatted} تومان
 
 لطفاً روش پرداخت را انتخاب کنید:
@@ -994,9 +997,10 @@ async def show_plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = []
     for plan_id, plan in plans.items():
         price_formatted = f"{plan['price']:,}".replace(",", "،")
+        emoji = get_plan_telegram_emoji(plan, plan_id)
         keyboard.append([
             InlineKeyboardButton(
-                f"{plan['name']} - {plan['description']} - {price_formatted} تومان",
+                f"{emoji} {plan['name']} - {plan['description']} - {price_formatted} تومان",
                 callback_data=f"plan_{plan_id}",
             )
         ])
@@ -1042,8 +1046,9 @@ async def plan_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["selected_plan"] = plan_id
 
     price_formatted = f"{plan['price']:,}".replace(",", "،")
+    emoji = get_plan_telegram_emoji(plan, plan_id)
     text = (
-        f"📋 پلن انتخاب شده: {plan['name']}\n\n"
+        f"{emoji} پلن انتخاب شده: {plan['name']}\n\n"
         f"• حجم: {plan['data_limit'] if plan['data_limit'] > 0 else 'نامحدود'} گیگابایت\n"
         f"• مدت: {plan['duration']} روز\n"
         f"• قیمت: {price_formatted} تومان\n\n"
@@ -2484,9 +2489,10 @@ async def renew_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE)
         plans = get_plans()
         for plan_id, plan in plans.items():
             price_formatted = f"{plan['price']:,}".replace(",", "،")
+            emoji = get_plan_telegram_emoji(plan, plan_id)
             keyboard.append([
                 InlineKeyboardButton(
-                    f"🔄 {plan['name']} - {plan['description']} - {price_formatted} تومان",
+                    f"{emoji} {plan['name']} - {plan['description']} - {price_formatted} تومان",
                     callback_data=f"renew_plan_{plan_id}",
                 )
             ])
@@ -2580,9 +2586,10 @@ async def handle_renew(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = []
         for plan_id, plan in plans.items():
             price_formatted = f"{plan['price']:,}".replace(",", "،")
+            emoji = get_plan_telegram_emoji(plan, plan_id)
             keyboard.append([
                 InlineKeyboardButton(
-                    f"🔄 {plan['name']} - {plan['description']} - {price_formatted} تومان",
+                    f"{emoji} {plan['name']} - {plan['description']} - {price_formatted} تومان",
                     callback_data=f"renew_plan_{plan_id}",
                 )
             ])
@@ -2631,12 +2638,13 @@ async def handle_renew(update: Update, context: ContextTypes.DEFAULT_TYPE):
     price_formatted = f"{plan['price']:,}".replace(",", "،")
     data_text = f"{plan['data_limit']} گیگابایت" if plan['data_limit'] > 0 else "نامحدود"
     account_title = target_sub.get("account_name", f"tg_{user.id}") if target_sub else f"tg_{user.id}"
+    emoji = get_plan_telegram_emoji(plan, plan_id)
 
     text = f"""
 🔄 **پیش‌فاکتور تمدید اشتراک**
 
 👤 اکانت: `{account_title}`
-📋 پلن تمدید: **{plan['name']}**
+{emoji} پلن تمدید: **{plan['name']}**
 📊 حجم: **{data_text}**
 ⏰ مدت: **{plan['duration']} روز**
 💰 مبلغ: **{price_formatted} تومان**
@@ -4446,10 +4454,11 @@ async def show_plans_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         text = "📦 **مدیریت پلن‌ها**\n\n"
         for plan_id, plan in plans.items():
+            emoji = get_plan_telegram_emoji(plan, plan_id)
             status = "🟢" if plan.get("is_active") else "🔴"
             price_formatted = f"{plan['price']:,}".replace(",", "،")
             text += f"{status} `{plan_id}`\n"
-            text += f"  📋 {plan['name']}\n"
+            text += f"  {emoji} {plan['name']}\n"
             text += f"  💰 {price_formatted} تومان\n"
             text += f"  📊 {plan.get('description', '')}\n\n"
 

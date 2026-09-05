@@ -39,7 +39,7 @@ from utils import (
 )
 from admin_manager import (
     get_all_plans, add_plan, update_plan, delete_plan, move_plan_up, move_plan_down,
-    get_plan_icon, get_bundle_icon
+    get_plan_icon, get_bundle_icon, get_plan_telegram_emoji
 )
 from sms_service import send_auth_sms_notification, send_sms, get_sms_config, format_iranian_phone
 from payment import CryptoPaymentGateway
@@ -2549,6 +2549,7 @@ def inject_global_branding():
         branding=branding,
         store_version=store_version,
         get_plan_icon=get_plan_icon,
+        get_plan_telegram_emoji=get_plan_telegram_emoji,
         get_bundle_icon=get_bundle_icon,
         sub_role=session.get("sub_role"),
         has_reseller_credit=reseller_has_credit,
@@ -12029,16 +12030,20 @@ def customer_portal(token: str):
         plans = []
         for rp in raw_plans:
             plans.append({
-                "id": rp["plan_id"],
+                "id": str(rp["plan_id"]),
+                "plan_id": str(rp["plan_id"]),
                 "name": rp.get("custom_name") or rp.get("name") or rp["plan_id"],
                 "price": rp.get("custom_price") or rp.get("price") or 0,
                 "data_limit": rp.get("data_limit", 30),
-                "duration": rp.get("duration", 30)
+                "duration": rp.get("duration", 30),
+                "plan_icon": rp.get("plan_icon", "")
             })
         if not plans:
-            plans = list(get_plans_dict().values())
+            raw = get_plans_dict()
+            plans = [{"id": str(k), "plan_id": str(k), **v} for k, v in raw.items() if v.get("is_active", True)]
     else:
-        plans = list(get_plans_dict().values())
+        raw = get_plans_dict()
+        plans = [{"id": str(k), "plan_id": str(k), **v} for k, v in raw.items() if v.get("is_active", True)]
 
     # دریافت آخرین فاکتور فعال معلق برای این اشتراک (در صورت وجود)
     now_str = get_now_naive().isoformat()

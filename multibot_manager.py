@@ -29,7 +29,7 @@ from utils import (
     get_now_iso, get_now_naive, get_single_link_template, format_single_link,
     generate_qr_code_bytes, gregorian_to_shamsi, days_remaining_shamsi
 )
-from admin_manager import load_plans, get_all_plans
+from admin_manager import load_plans, get_all_plans, get_plan_telegram_emoji
 from hidify import HidifyClient
 from i18n import (
     get_language_keyboard, get_contact_keyboard, get_main_keyboard, t, SUPPORTED_LANGUAGES
@@ -320,8 +320,9 @@ class ResellerBotInstance:
                     vol = p.get("data_limit", 0)
                     days = p.get("duration", 30)
                     vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
+                    emoji = get_plan_telegram_emoji(p, pid)
 
-                    btn_text = f"⚡ {pname} | {vol_str} - {days} روز ({price:,} تومان)"
+                    btn_text = f"{emoji} {pname} | {vol_str} - {days} روز ({price:,} تومان)"
                     buttons.append([InlineKeyboardButton(btn_text, callback_data=f"r_buy_{pid}")])
 
                 kb = InlineKeyboardMarkup(buttons)
@@ -1268,8 +1269,9 @@ class ResellerBotInstance:
                     vol = p.get("data_limit", 0)
                     days = p.get("duration", 30)
                     vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
+                    emoji = get_plan_telegram_emoji(p, pid)
 
-                    btn_text = f"⚡ {pname} | {vol_str} - {days} روز ({price:,} تومان)"
+                    btn_text = f"{emoji} {pname} | {vol_str} - {days} روز ({price:,} تومان)"
                     buttons.append([InlineKeyboardButton(btn_text, callback_data=f"r_conf_{pid}")])
 
                 buttons.append([InlineKeyboardButton("◀️ انصراف", callback_data="r_cancel_buy")])
