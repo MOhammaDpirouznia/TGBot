@@ -83,16 +83,19 @@
                         <label class="form-label fw-bold">انتخاب پلن مورد نظر:</label>
                         <div class="row g-3">
                             {% for p_key, p in plans.items() %}
-                            {% set p_orig_price = p.get('master_price') or p.get('price') or p.get('display_price') or 0 %}
+                            {% if p.get('is_active', True) and p.get('master_is_active', True) %}
+                            {% set p_orig_price = p.get('display_price') or p.get('price') or p.get('master_price') or 0 %}
                             {% set p_wholesale_price = p.get('wholesale_price') if p.get('wholesale_price') is not none else ((p_orig_price * (100 - discount) / 100)|int) %}
                             {% set p_name = p.get('display_name') or p.get('name') or p.get('master_name') or 'پلن' %}
+                            {% set p_limit = p.get('display_data_limit') if p.get('display_data_limit') is not none else p.get('data_limit', 0) %}
+                            {% set p_duration = p.get('display_duration') if p.get('display_duration') is not none else p.get('duration', 30) %}
                             <div class="col-md-6">
                                 <label class="card p-3 h-100 cursor-pointer border-2 plan-option" style="cursor: pointer;">
                                     <div class="d-flex align-items-start gap-2">
                                         <input type="radio" name="plan_id" value="{{ p_key }}" class="form-check-input mt-1" required onchange="calculatePrice({{ p_orig_price|default(0) }}, {{ p_wholesale_price|default(0) }})" {% if loop.first %}checked{% endif %}>
                                         <div class="flex-grow-1">
                                             <div class="fw-bold">{{ p_name }}</div>
-                                            <div class="text-muted small">حجم: {{ p.get('data_limit', 0) }} گیگ | مدت: {{ p.get('duration', 30) }} روز</div>
+                                            <div class="text-muted small">حجم: {{ p_limit }} گیگ | مدت: {{ p_duration }} روز</div>
                                             <div class="mt-2">
                                                 <span class="text-decoration-line-through text-muted small">{{ "{:,}".format(p_orig_price) }} ت</span>
                                                 <strong class="text-success ms-1">{{ "{:,}".format(p_wholesale_price) }} تومان</strong>
@@ -101,6 +104,7 @@
                                     </div>
                                 </label>
                             </div>
+                            {% endif %}
                             {% endfor %}
                         </div>
                     </div>

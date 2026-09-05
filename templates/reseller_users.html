@@ -742,20 +742,26 @@
                     <label class="form-label fw-bold">انتخاب پلن تمدید:</label>
                     <div class="d-flex flex-column gap-2 mb-3">
                         {% for p_key, p in plans.items() %}
-                        {% set p_final = (p['price'] * (100 - discount) / 100)|int %}
+                        {% if p.get('is_active', True) and p.get('master_is_active', True) or p_key == sub['plan_id'] %}
+                        {% set p_orig_price = p.get('display_price') or p.get('price') or p.get('master_price') or 0 %}
+                        {% set p_final = p.get('wholesale_price') if p.get('wholesale_price') is not none else ((p_orig_price * (100 - discount) / 100)|int) %}
+                        {% set p_name = p.get('display_name') or p.get('name') or p.get('master_name') or 'پلن' %}
+                        {% set p_limit = p.get('display_data_limit') if p.get('display_data_limit') is not none else p.get('data_limit', 0) %}
+                        {% set p_duration = p.get('display_duration') if p.get('display_duration') is not none else p.get('duration', 30) %}
                         <label class="p-3 border rounded-3 cursor-pointer d-flex justify-content-between align-items-center">
                             <div class="d-flex align-items-center gap-2">
                                 <input type="radio" name="plan_id" value="{{ p_key }}" class="form-check-input mt-0" required {% if p_key == sub['plan_id'] or loop.first %}checked{% endif %}>
                                 <div>
-                                    <div class="fw-bold">{{ p['name'] }}</div>
-                                    <small class="text-muted">{{ p['data_limit'] }} گیگ | {{ p['duration'] }} روز</small>
+                                    <div class="fw-bold">{{ p_name }}</div>
+                                    <small class="text-muted">{{ p_limit }} گیگ | {{ p_duration }} روز</small>
                                 </div>
                             </div>
                             <div class="text-end">
                                 <strong class="text-success">{{ "{:,}".format(p_final) }} ت</strong>
-                                <div class="text-muted small text-decoration-line-through">{{ "{:,}".format(p['price']) }} ت</div>
+                                <div class="text-muted small text-decoration-line-through">{{ "{:,}".format(p_orig_price) }} ت</div>
                             </div>
                         </label>
+                        {% endif %}
                         {% endfor %}
                     </div>
 
@@ -1288,20 +1294,26 @@
                             </div>
                         </label>
                         {% for p_key, p in plans.items() %}
-                        {% set p_final = (p['price'] * (100 - discount) / 100)|int %}
+                        {% if p.get('is_active', True) and p.get('master_is_active', True) %}
+                        {% set p_orig_price = p.get('display_price') or p.get('price') or p.get('master_price') or 0 %}
+                        {% set p_final = p.get('wholesale_price') if p.get('wholesale_price') is not none else ((p_orig_price * (100 - discount) / 100)|int) %}
+                        {% set p_name = p.get('display_name') or p.get('name') or p.get('master_name') or 'پلن' %}
+                        {% set p_limit = p.get('display_data_limit') if p.get('display_data_limit') is not none else p.get('data_limit', 0) %}
+                        {% set p_duration = p.get('display_duration') if p.get('display_duration') is not none else p.get('duration', 30) %}
                         <label class="p-2 border rounded-3 cursor-pointer d-flex justify-content-between align-items-center">
                             <div class="d-flex align-items-center gap-2">
                                 <input type="radio" name="plan_id" value="{{ p_key }}" class="form-check-input mt-0">
                                 <div>
-                                    <div class="fw-bold fs-6">{{ p['name'] }}</div>
-                                    <small class="text-muted">{{ p['data_limit'] }} گیگ | {{ p['duration'] }} روز</small>
+                                    <div class="fw-bold fs-6">{{ p_name }}</div>
+                                    <small class="text-muted">{{ p_limit }} گیگ | {{ p_duration }} روز</small>
                                 </div>
                             </div>
                             <div class="text-end">
                                 <strong class="text-success small">{{ "{:,}".format(p_final) }} ت</strong>
-                                <div class="text-muted small text-decoration-line-through" style="font-size: 0.75rem;">{{ "{:,}".format(p['price']) }} ت</div>
+                                <div class="text-muted small text-decoration-line-through" style="font-size: 0.75rem;">{{ "{:,}".format(p_orig_price) }} ت</div>
                             </div>
                         </label>
+                        {% endif %}
                         {% endfor %}
                     </div>
 
