@@ -11982,6 +11982,7 @@ def bank_sms_webhook():
 # مسیرهای پورتال دائمی و صفحه تمدید اختصاصی مشتریان
 # ═══════════════════════════════════════════════════════════════════════
 
+@app.route("/user/<token>", methods=["GET"])
 @app.route("/sub/<token>", methods=["GET"])
 @app.route("/renew/<token>", methods=["GET"])
 def customer_portal(token: str):
@@ -12166,6 +12167,131 @@ def api_invoice_status(order_id: str):
         "status": inv["status"],
         "paid_at": inv.get("paid_at")
     })
+
+
+@app.route("/admin/subscription/<int:sub_id>/send_renewal_link", methods=["POST"])
+@admin_required
+def admin_send_renewal_link(sub_id: int):
+    """ارسال لینک پورتال دائمی و تمدید اختصاصی به تلگرام و پیامک مشتری توسط مدیریت"""
+    sub = db.get_subscription(sub_id)
+    if not sub:
+        flash("اشتراک مورد نظر یافت نشد.", "danger")
+        return redirect(request.referrer or url_for("subscriptions"))
+
+    token = sub.get("hidify_uuid") or str(sub["id"])
+    portal_url = url_for("customer_portal", token=token, _external=True)
+    account_name = sub.get("account_name") or "کاربر گرامی"
+
+    sent_channels = []
+
+    # ارسال از طریق تلگرام
+    tg_id = None
+    try:
+        if sub.get("telegram_id"):
+            tg_id = int(sub["telegram_id"])
+    except (ValueError, TypeError):
+        tg_id = None
+
+    if tg_id:
+        tg_text = (
+            f"سلام <b>{account_name}</b> عزیز 🌸\n\n"
+            f"🔗 <b>لینک اختصاصی و دائمی اشتراک شما:</b>\n"
+            f"<code>{portal_url}</code>\n\n"
+            f"📊 از طریق این صفحه اختصاصی می‌توانید در هر لحظه وضعیت حجم مصرفی، روزهای باقی‌مانده، لینک‌ها و بارکدهای اتصال و همچنین تمدید آنلاین خودکار سرویس را مشاهده فرمایید."
+        )
+        markup = {
+            "inline_keyboard": [
+                [{"text": "🌐 ورود به پورتال و تمدید آنلاین", "url": portal_url}]
+            ]
+        }
+        if send_telegram_msg(tg_id, tg_text, reply_markup=markup):
+            sent_channels.append("تلگرام")
+
+    # ارسال از طریق پیامک
+    phone = sub.get("phone_number")
+    if phone:
+        sms_text = (
+            f"کاربر گرامی {account_name}\n"
+            f"جهت مشاهده وضعیت اشتراک، لینک‌های اتصال و تمدید آنلاین به لینک زیر مراجعه فرمایید:\n"
+            f"{portal_url}"
+        )
+        ok, _ = send_sms(receptor=phone, message=sms_text, db_instance=db)
+        if ok:
+            sent_channels.append("پیامک")
+
+    if sent_channels:
+        flash(f"✅ لینک پورتال اختصاصی با موفقیت از طریق {' و '.join(sent_channels)} برای {account_name} ارسال شد.", "success")
+    else:
+        flash(f"⚠️ برای مشتری «{account_name}» شماره موبایل یا آیدی تلگرام فعالی ثبت نشده است. لطفاً لینک را دستی کپی نمایید.", "warning")
+
+    return redirect(request.referrer or url_for("subscriptions"))
+
+
+@app.route("/reseller/subscription/<int:sub_id>/send_renewal_link", methods=["POST"])
+@reseller_required
+def reseller_send_renewal_link(sub_id: int):
+    """ارسال لینک پورتال دائمی و تمدید اختصاصی به تلگرام و پیامک مشتری توسط نماینده"""
+    reseller_id = session.get("reseller_id")
+    sub = db.get_reseller_subscription(reseller_id, sub_id)
+    if not sub:
+        flash("اشتراک مورد نظر یافت نشد یا متعلق به شما نیست.", "danger")
+        return redirect(request.referrer or url_for("reseller_users"))
+
+    r_info = db.get_reseller(reseller_id) or {}
+    brand_title = r_info.get("brand_title") or r_info.get("name") or "پشتیبانی اینترنت"
+    custom_domain = r_info.get("domain")
+
+    token = sub.get("hidify_uuid") or str(sub["id"])
+    if custom_domain:
+        portal_url = f"https://{custom_domain}/user/{token}"
+    else:
+        portal_url = url_for("customer_portal", token=token, _external=True)
+
+    account_name = sub.get("account_name") or "کاربر گرامی"
+    sent_channels = []
+
+    # ارسال تلگرام با ربات اختصاصی نماینده
+    tg_id = None
+    try:
+        if sub.get("telegram_id"):
+            tg_id = int(sub["telegram_id"])
+    except (ValueError, TypeError):
+        tg_id = None
+
+    if tg_id:
+        bot_token = r_info.get("bot_token")
+        tg_text = (
+            f"سلام <b>{account_name}</b> عزیز 🌸\n\n"
+            f"🔗 <b>لینک اختصاصی و دائمی اشتراک شما ({brand_title}):</b>\n"
+            f"<code>{portal_url}</code>\n\n"
+            f"📊 از طریق این صفحه اختصاصی می‌توانید در هر لحظه وضعیت مصرف، روزهای باقی‌مانده و تمدید آنلاین سرویس خود را مدیریت نمایید."
+        )
+        markup = {
+            "inline_keyboard": [
+                [{"text": "🌐 ورود به پورتال و تمدید آنلاین", "url": portal_url}]
+            ]
+        }
+        if send_telegram_msg(tg_id, tg_text, reply_markup=markup, bot_token=bot_token):
+            sent_channels.append("تلگرام")
+
+    # ارسال پیامک
+    phone = sub.get("phone_number")
+    if phone:
+        sms_text = (
+            f"کاربر گرامی {account_name} ({brand_title})\n"
+            f"جهت استعلام وضعیت و تمدید آنلاین اشتراک به لینک اختصاصی زیر مراجعه فرمایید:\n"
+            f"{portal_url}"
+        )
+        ok, _ = send_sms(receptor=phone, message=sms_text, db_instance=db)
+        if ok:
+            sent_channels.append("پیامک")
+
+    if sent_channels:
+        flash(f"✅ لینک پورتال با موفقیت از طریق {' و '.join(sent_channels)} برای {account_name} ارسال شد.", "success")
+    else:
+        flash(f"⚠️ برای مشتری «{account_name}» شماره موبایل یا آیدی تلگرام ثبت نشده است. لطفاً لینک را دستی کپی نمایید.", "warning")
+
+    return redirect(request.referrer or url_for("reseller_users"))
 
 
 # ─── راه‌اندازی سرور وب ───

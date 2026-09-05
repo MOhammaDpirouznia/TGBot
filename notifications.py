@@ -126,7 +126,24 @@ class NotificationScheduler:
             logger.info("Notifications checked successfully")
         except Exception as e:
             logger.error(f"Error checking notifications: {e}")
-    
+
+    def _build_portal_url(self, subscription: dict) -> str:
+        """ساخت آدرس پورتال دائمی و اختصاصی مشتری بر اساس UUID یا شناسه اشتراک"""
+        reseller_id = subscription.get("reseller_id")
+        domain = ""
+        if reseller_id:
+            try:
+                r_info = db.get_reseller(reseller_id) or {}
+                domain = r_info.get("domain")
+            except Exception:
+                domain = ""
+        if not domain:
+            domain = db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "")
+        token = subscription.get("hidify_uuid") or subscription.get("id")
+        if domain and token:
+            return f"https://{domain}/user/{token}"
+        return ""
+
     async def _check_expiration(self, telegram_id, subscription):
         """بررسی منقضی شدن اشتراک بر اساس تاریخ دقیق انقضا"""
         try:
@@ -178,9 +195,7 @@ class NotificationScheduler:
 
 💡 <i>جهت جلوگیری از قطع اتصال اینترنت، لطفاً پیش از موعد نسبت به تمدید اقدام فرمایید.</i>
 """
-                    domain = db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "")
-                    sub_token = subscription.get("hidify_uuid") or sub_id
-                    portal_url = f"https://{domain}/sub/{sub_token}" if domain else ""
+                    portal_url = self._build_portal_url(subscription)
 
                     buttons = [
                         [InlineKeyboardButton("🔄 تمدید سریع در ربات", callback_data=f"renew_{sub_id}")],
@@ -212,9 +227,9 @@ class NotificationScheduler:
                     if user_phone:
                         try:
                             if portal_url:
-                                sms_text = f"سلام، اشتراک شما ({plan_name}) {days_left} روز دیگر منقضی می‌شود. جهت تمدید آنلاین:\n{portal_url}"
+                                sms_text = f"کاربر گرامی، کمتر از {days_left} روز از مهلت اشتراک شما باقی مانده است. جهت تمدید آنلاین اشتراک به لینک زیر مراجعه فرمایید:\n{portal_url}"
                             else:
-                                sms_text = f"سلام، اشتراک شما ({plan_name}) {days_left} روز دیگر منقضی می‌شود. جهت تمدید به ربات مراجعه نمایید."
+                                sms_text = f"کاربر گرامی، کمتر از {days_left} روز از مهلت اشتراک شما باقی مانده است. جهت تمدید به ربات مراجعه نمایید."
                             send_sms(user_phone, sms_text, db_instance=db)
                         except Exception as e:
                             logger.error(f"Error sending expiration SMS: {e}")
@@ -226,9 +241,7 @@ class NotificationScheduler:
                 
                 if not db.was_notification_sent(telegram_id, notif_type, sub_id):
                     plan_name = subscription.get("plan_name", "نامشخص")
-                    domain = db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "")
-                    sub_token = subscription.get("hidify_uuid") or sub_id
-                    portal_url = f"https://{domain}/sub/{sub_token}" if domain else ""
+                    portal_url = self._build_portal_url(subscription)
                     
                     text = f"""
 🔴 <b>اشتراک شما منقضی شد!</b>
@@ -290,10 +303,7 @@ class NotificationScheduler:
             sub_id = subscription.get("id")
             plan_name = subscription.get("plan_name", "نامشخص")
             remaining = data_limit - data_used
-
-            domain = db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "")
-            sub_token = subscription.get("hidify_uuid") or sub_id
-            portal_url = f"https://{domain}/sub/{sub_token}" if domain else ""
+            portal_url = self._build_portal_url(subscription)
 
             # اعلان ۹۵٪ مصرف (هشدار اضطراری)
             if usage_percent >= 95:
@@ -376,7 +386,10 @@ class NotificationScheduler:
                             user_phone = user_obj.get("phone_number")
                     if user_phone:
                         try:
-                            sms_text = f"هشدار: بیش از ۸۰٪ حجم اشتراک ({plan_name}) شما مصرف شده است. جهت تمدید آنلاین:\n{portal_url}" if portal_url else f"هشدار: بیش از ۸۰٪ حجم اشتراک شما مصرف شده است."
+                            if portal_url:
+                                sms_text = f"کاربر گرامی، کمتر از ۲۰٪ از حجم بسته شما باقی مانده است. جهت تمدید آنلاین اشتراک به لینک زیر مراجعه فرمایید:\n{portal_url}"
+                            else:
+                                sms_text = f"کاربر گرامی، کمتر از ۲۰٪ از حجم بسته شما باقی مانده است. جهت تمدید به ربات مراجعه نمایید."
                             send_sms(user_phone, sms_text, db_instance=db)
                         except Exception as e:
                             logger.error(f"Error sending 80% usage SMS: {e}")
@@ -393,9 +406,7 @@ class NotificationScheduler:
 
             sub_id = subscription.get("id")
             plan_name = subscription.get("plan_name", "اشتراک")
-            domain = db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "")
-            sub_token = subscription.get("hidify_uuid") or sub_id
-            portal_url = f"https://{domain}/sub/{sub_token}" if domain else ""
+            portal_url = self._build_portal_url(subscription)
 
             # ۱. بررسی تاریخ انقضا (۳ روز مانده)
             expire_date_str = subscription.get("expire_date")
@@ -406,7 +417,7 @@ class NotificationScheduler:
                     if 0 < days_left <= 3:
                         notif_type = f"offline_expiring_{sub_id}_{days_left}d"
                         if not db.was_notification_sent(0, notif_type, sub_id):
-                            sms_text = f"کاربر گرامی، کمتر از {days_left} روز از مهلت اشتراک ({plan_name}) شما باقی مانده است. تمدید آنلاین:\n{portal_url}"
+                            sms_text = f"کاربر گرامی، کمتر از {days_left} روز از مهلت اشتراک شما باقی مانده است. جهت تمدید آنلاین اشتراک به لینک زیر مراجعه فرمایید:\n{portal_url}"
                             send_sms(phone, sms_text, db_instance=db)
                             db.save_notification(0, notif_type, sub_id)
                             logger.info(f"Offline expiration SMS ({days_left}d) sent to {phone}")
@@ -421,7 +432,7 @@ class NotificationScheduler:
                 if usage_percent >= 80:
                     notif_type = f"offline_usage_80_{sub_id}"
                     if not db.was_notification_sent(0, notif_type, sub_id):
-                        sms_text = f"کاربر گرامی، بیش از ۸۰٪ از حجم اشتراک ({plan_name}) شما مصرف شده است. جهت تمدید آنلاین:\n{portal_url}"
+                        sms_text = f"کاربر گرامی، کمتر از ۲۰٪ از حجم بسته شما باقی مانده است. جهت تمدید آنلاین اشتراک به لینک زیر مراجعه فرمایید:\n{portal_url}"
                         send_sms(phone, sms_text, db_instance=db)
                         db.save_notification(0, notif_type, sub_id)
                         logger.info(f"Offline usage 80% SMS sent to {phone}")
