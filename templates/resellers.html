@@ -97,6 +97,78 @@
         background: linear-gradient(to left, rgba(79, 70, 229, 0.12), rgba(30, 41, 59, 0.8));
         border-color: rgba(79, 70, 229, 0.25);
     }
+
+    /* استایل سطر زیرمجموعه و کادر همکاران */
+    .btn-subteam-toggle {
+        font-size: 0.72rem;
+        background-color: rgba(79, 70, 229, 0.06);
+        border: 1px solid rgba(79, 70, 229, 0.2);
+        color: #4f46e5;
+        transition: all 0.2s ease;
+    }
+    .btn-subteam-toggle:hover {
+        background-color: #4f46e5;
+        color: #fff;
+    }
+    .btn-subteam-toggle[aria-expanded="true"] .subteam-chevron {
+        transform: rotate(180deg);
+    }
+    .subteam-chevron {
+        transition: transform 0.2s ease;
+    }
+    .bg-subteam-collapse {
+        background-color: rgba(248, 250, 252, 0.6) !important;
+    }
+    [data-bs-theme="dark"] .bg-subteam-collapse {
+        background-color: rgba(15, 23, 42, 0.5) !important;
+    }
+    .subteam-container {
+        background: linear-gradient(135deg, rgba(79, 70, 229, 0.03) 0%, rgba(255, 255, 255, 0.95) 100%);
+        border: 1px dashed rgba(79, 70, 229, 0.25);
+        border-right: 4px solid #4f46e5;
+    }
+    [data-bs-theme="dark"] .subteam-container {
+        background: linear-gradient(135deg, rgba(79, 70, 229, 0.08) 0%, rgba(30, 41, 59, 0.9) 100%);
+        border-color: rgba(79, 70, 229, 0.35);
+        border-right: 4px solid #6366f1;
+    }
+    .subteam-table th {
+        font-size: 0.75rem;
+        color: #64748b;
+        font-weight: 600;
+    }
+    .subteam-table td {
+        font-size: 0.8rem;
+    }
+
+    /* استایل مودال مدرن پروفایل و مدیریت نماینده */
+    .reseller-hero-avatar {
+        width: 54px;
+        height: 54px;
+        object-fit: cover;
+        border: 2.5px solid rgba(255, 255, 255, 0.85);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+    }
+    .reseller-kpi-card {
+        border-radius: 12px;
+        padding: 14px 16px;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        position: relative;
+        overflow: hidden;
+        border: 1px solid rgba(0, 0, 0, 0.05);
+    }
+    .reseller-kpi-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+    }
+    .reseller-kpi-card .kpi-icon-bg {
+        position: absolute;
+        left: -8px;
+        bottom: -8px;
+        font-size: 3.5rem;
+        opacity: 0.08;
+        pointer-events: none;
+    }
 </style>
 
 <div class="page-header">
@@ -187,7 +259,7 @@
                                             <span class="badge bg-success-subtle text-success border border-success px-1 py-0" style="font-size: 0.65rem;" title="مجاز به اهدای حجم هدیه به مشتریان"><i class="fas fa-gift me-1"></i>حجم هدیه</span>
                                         {% endif %}
                                     </div>
-                                    <div class="d-flex align-items-center gap-1 mt-1 text-muted small">
+                                    <div class="d-flex align-items-center gap-1 mt-1 text-muted small flex-wrap">
                                         {% if r['telegram_id'] %}
                                             <code>ID: {{ r['telegram_id'] }}</code>
                                         {% else %}
@@ -196,6 +268,25 @@
                                         <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-1 py-0 manage-pill" style="font-size: 0.6rem;">
                                             <i class="fas fa-sliders me-1"></i>مدیریت
                                         </span>
+                                        {% if r.get('team_members') and r['team_members']|length > 0 %}
+                                            <button type="button" 
+                                                    class="btn btn-xs btn-subteam-toggle rounded-pill px-2 py-0.5 d-inline-flex align-items-center gap-1 shadow-xs" 
+                                                    data-bs-toggle="collapse" 
+                                                    data-bs-target="#team-subrow-{{ r['id'] }}" 
+                                                    aria-expanded="false" 
+                                                    title="مشاهده کادر، پشتیبانان و مدیران زیرمجموعه">
+                                                <i class="fas fa-users-gear text-primary"></i>
+                                                <span class="fw-bold">{{ r['team_members']|length }} کادر</span>
+                                                {% if r.get('online_team_count', 0) > 0 %}
+                                                    <span class="badge bg-success text-white rounded-pill px-1.5 py-0" style="font-size: 0.6rem;">
+                                                        <i class="fas fa-circle me-0.5" style="font-size: 0.4rem;"></i>{{ r['online_team_count'] }} آنلاین
+                                                    </span>
+                                                {% else %}
+                                                    <span class="badge bg-secondary-subtle text-secondary rounded-pill px-1 py-0" style="font-size: 0.6rem;">آفلاین</span>
+                                                {% endif %}
+                                                <i class="fas fa-chevron-down ms-0.5 subteam-chevron"></i>
+                                            </button>
+                                        {% endif %}
                                     </div>
                                 </div>
                             </div>
@@ -378,8 +469,134 @@
                                     </ul>
                                 </div>
                             </div>
+                    </tr>
+                    {% if r.get('team_members') and r['team_members']|length > 0 %}
+                    <!-- سطر زیرمجموعه: کادر و همکاران نماینده -->
+                    <tr class="collapse bg-subteam-collapse border-0" id="team-subrow-{{ r['id'] }}">
+                        <td colspan="11" class="p-0 border-0">
+                            <div class="p-3 mx-3 my-2 rounded-3 subteam-container shadow-xs">
+                                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2 pb-2 border-bottom border-light-subtle">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1 fw-bold">
+                                            <i class="fas fa-sitemap me-1"></i> زیرمجموعه و کادر همکاران «{{ r['name'] }}»
+                                        </span>
+                                        <span class="text-muted small">
+                                            کل کادر: <strong>{{ r['team_members']|length }} نفر</strong>
+                                            {% if r.get('online_team_count', 0) > 0 %}
+                                                | <strong class="text-success"><i class="fas fa-circle me-1" style="font-size: 0.5rem;"></i>{{ r['online_team_count'] }} آنلاین هم‌اکنون</strong>
+                                            {% else %}
+                                                | <span class="text-muted">همه آفلاین</span>
+                                            {% endif %}
+                                        </span>
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <button type="button" class="btn btn-xs btn-outline-info d-inline-flex align-items-center gap-1" data-bs-toggle="modal" data-bs-target="#securityModal{{ r['id'] }}">
+                                            <i class="fas fa-shield-halved"></i>
+                                            <span>سوابق امنیت و نشست‌ها</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="table-responsive" style="overflow-y: hidden !important; padding-bottom: 0; margin-bottom: 0;">
+                                    <table class="table table-sm table-hover align-middle mb-0 subteam-table">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th class="ps-2">نام و عنوان همکار</th>
+                                                <th>نام کاربری</th>
+                                                <th>نقش و دسترسی</th>
+                                                <th>وضعیت آنلاین</th>
+                                                <th>آخرین ورود</th>
+                                                <th>آخرین فعالیت / دستگاه</th>
+                                                <th>نشست‌های فعال</th>
+                                                <th class="text-end pe-2">عملیات نشست</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for m in r['team_members'] %}
+                                            <tr>
+                                                <td class="ps-2">
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <div class="position-relative flex-shrink-0">
+                                                            <div class="rounded-circle bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center fw-bold" style="width: 32px; height: 32px; font-size: 0.8rem;">
+                                                                <i class="fas fa-user-tie"></i>
+                                                            </div>
+                                                            <span class="position-absolute bottom-0 start-0 translate-middle p-1 border border-white rounded-circle {{ 'bg-success' if m.get('is_online') else 'bg-secondary opacity-50' }}" style="width: 10px; height: 10px;"></span>
+                                                        </div>
+                                                        <div>
+                                                            <strong class="d-block small text-dark">{{ m.get('display_name') }}</strong>
+                                                            {% if m.get('phone') %}<small class="text-muted font-monospace" style="font-size: 0.68rem;">{{ m.get('phone') }}</small>{% endif %}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td><code class="font-monospace small">{{ m.get('username') }}</code></td>
+                                                <td>
+                                                    {% if m.get('role') == 'manager2' %}
+                                                        <span class="badge bg-primary bg-opacity-10 text-primary border border-primary px-1.5 py-0.5" style="font-size: 0.68rem;"><i class="fas fa-crown me-1"></i> مدیر دوم</span>
+                                                    {% elif m.get('role') == 'partner' %}
+                                                        <span class="badge bg-purple-subtle text-purple border border-purple px-1.5 py-0.5" style="font-size: 0.68rem; color: #7c3aed !important; border-color: #7c3aed !important;"><i class="fas fa-handshake me-1"></i> شریک تجاری ({{ m.get('share_percent', 0) }}%)</span>
+                                                    {% elif m.get('role') == 'finance' %}
+                                                        <span class="badge bg-success bg-opacity-10 text-success border border-success px-1.5 py-0.5" style="font-size: 0.68rem;"><i class="fas fa-coins me-1"></i> امور مالی</span>
+                                                    {% elif m.get('role') == 'support' %}
+                                                        <span class="badge bg-info bg-opacity-10 text-info border border-info px-1.5 py-0.5" style="font-size: 0.68rem;"><i class="fas fa-headset me-1"></i> کارشناس پشتیبانی</span>
+                                                    {% else %}
+                                                        <span class="badge bg-secondary" style="font-size: 0.68rem;">{{ m.get('role') }}</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    {% if m.get('is_online') %}
+                                                        <span class="badge bg-success-subtle text-success border border-success d-inline-flex align-items-center gap-1 px-1.5 py-0.5" style="font-size: 0.68rem;">
+                                                            <span class="pulse-indicator"></span> آنلاین
+                                                        </span>
+                                                    {% else %}
+                                                        <span class="badge bg-light text-muted border px-1.5 py-0.5" style="font-size: 0.68rem;">آفلاین</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    {% if m.get('last_login') %}
+                                                        <small class="text-muted font-monospace" style="font-size: 0.72rem;">{{ m['last_login'][:16].replace('T', ' ') }}</small>
+                                                    {% else %}
+                                                        <span class="text-muted small">-</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    {% if m.get('last_active') %}
+                                                        <div class="d-flex flex-column">
+                                                            <small class="text-muted font-monospace" style="font-size: 0.7rem;"><i class="fas fa-clock me-1"></i>{{ m['last_active'][:16].replace('T', ' ') }}</small>
+                                                            <small class="text-secondary" style="font-size: 0.68rem;">{{ m.get('last_device') or '' }} {{ m.get('last_browser') or '' }} ({{ m.get('last_ip') or '-' }})</small>
+                                                        </div>
+                                                    {% else %}
+                                                        <span class="text-muted small">بدون سابقه</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    {% if m.get('active_sessions_count', 0) > 0 %}
+                                                        <span class="badge bg-success text-white px-2 py-0.5 font-monospace" style="font-size: 0.68rem;">
+                                                            {{ m['active_sessions_count'] }} نشست فعال
+                                                        </span>
+                                                    {% else %}
+                                                        <span class="badge bg-light text-muted border px-1.5 py-0.5" style="font-size: 0.68rem;">۰ فعال</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td class="text-end pe-2">
+                                                    {% if m.get('active_sessions_count', 0) > 0 %}
+                                                        <form action="{{ url_for('admin_terminate_team_member_sessions', member_id=m['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('⚠️ آیا از قطع فوری کلیه نشست‌های فعال کاربر «{{ m.get('display_name') }}» اطمینان دارید؟\n\nاین کاربر فوراً از پنل خارج خواهد شد.');">
+                                                            <button type="submit" class="btn btn-xs btn-outline-danger d-inline-flex align-items-center gap-1 px-2 py-1 shadow-xs" title="خاتمه فوری کلیه نشست‌های فعال این کاربر">
+                                                                <i class="fas fa-power-off"></i>
+                                                                <span style="font-size: 0.72rem;">خاتمه نشست‌ها</span>
+                                                            </button>
+                                                        </form>
+                                                    {% else %}
+                                                        <span class="badge bg-light text-muted border" style="font-size: 0.68rem;">نشست فعال ندارد</span>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </td>
                     </tr>
+                    {% endif %}
                     {% endfor %}
                     {% if not resellers %}
                     <tr>
@@ -400,31 +617,46 @@
 <div class="modal fade text-start" id="resellerPaymentModal{{ r['id'] }}" tabindex="-1" aria-labelledby="resellerPaymentModalLabel{{ r['id'] }}" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content shadow-lg border-0 text-start">
-            <div class="modal-header bg-primary text-white py-3">
-                <div class="d-flex align-items-center gap-2">
-                    <img src="{{ avatar_url(r['telegram_id'] or r['username'] or 'Reseller') }}" 
-                         alt="{{ r['name'] }}" 
-                         class="rounded-circle border border-2 border-white shadow-sm flex-shrink-0" 
-                         style="width: 44px; height: 44px; object-fit: cover;">
+            <div class="modal-header reseller-modal-header py-3 px-4">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="position-relative flex-shrink-0">
+                        <img src="{{ avatar_url(r['telegram_id'] or r['username'] or 'Reseller') }}" 
+                             alt="{{ r['name'] }}" 
+                             class="rounded-circle reseller-hero-avatar">
+                        <span class="position-absolute bottom-0 start-0 translate-middle p-1.5 border border-2 border-white rounded-circle {{ 'bg-success' if r.get('is_online') else 'bg-secondary opacity-75' }}" 
+                              title="{{ 'آنلاین' if r.get('is_online') else 'آفلاین' }}" style="width: 14px; height: 14px;"></span>
+                    </div>
                     <div>
-                        <div class="d-flex align-items-center gap-2">
-                            <h5 class="modal-title fw-bold mb-0" id="resellerPaymentModalLabel{{ r['id'] }}">پروفایل و مدیریت نماینده: «{{ r['name'] }}»</h5>
+                        <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                            <h5 class="modal-title fw-bold text-white mb-0" id="resellerPaymentModalLabel{{ r['id'] }}">پروفایل و مدیریت نماینده: «{{ r['name'] }}»</h5>
                             {% if r['status'] == 'active' %}
-                                <span class="badge bg-success" style="font-size: 0.7rem;">فعال</span>
+                                <span class="badge bg-success rounded-pill px-2" style="font-size: 0.7rem;">فعال</span>
                             {% else %}
-                                <span class="badge bg-danger" style="font-size: 0.7rem;">معلق</span>
+                                <span class="badge bg-danger rounded-pill px-2" style="font-size: 0.7rem;">معلق</span>
                             {% endif %}
                             {% if r.get('is_online') %}
-                                <span class="badge bg-success-subtle text-success border border-success" style="font-size: 0.65rem;"><i class="fas fa-circle me-1" style="font-size: 0.45rem;"></i>آنلاین</span>
+                                <span class="badge bg-success-subtle text-success border border-success rounded-pill px-2 py-0.5" style="font-size: 0.65rem;"><i class="fas fa-circle me-1" style="font-size: 0.45rem;"></i>آنلاین اکنون</span>
                             {% else %}
-                                <span class="badge bg-secondary-subtle text-secondary" style="font-size: 0.65rem;">آفلاین</span>
+                                <span class="badge bg-secondary-subtle text-secondary rounded-pill px-2 py-0.5" style="font-size: 0.65rem;">آفلاین</span>
+                            {% endif %}
+                            {% if r.get('can_gift_traffic') %}
+                                <span class="badge bg-warning text-dark rounded-pill px-2" style="font-size: 0.65rem;" title="مجاز به اهدای حجم هدیه"><i class="fas fa-gift me-1"></i>حجم هدیه فعال</span>
                             {% endif %}
                         </div>
-                        <small class="opacity-75">نام کاربری: @{{ r['username'] }} {% if r['telegram_id'] %}| آیدی تلگرام: {{ r['telegram_id'] }}{% endif %}</small>
+                        <div class="d-flex align-items-center gap-2 text-white-50 small flex-wrap" style="font-size: 0.78rem;">
+                            <span><i class="fas fa-user-tag me-1 text-info"></i>نام کاربری: <code>@{{ r['username'] }}</code></span>
+                            {% if r['telegram_id'] %}
+                                <span>| <i class="fab fa-telegram me-1 text-primary"></i>آیدی عددی: <code>{{ r['telegram_id'] }}</code></span>
+                            {% endif %}
+                            {% if r.get('active_hiddify_key') %}
+                                <span class="badge bg-success bg-opacity-25 text-success border border-success border-opacity-50 px-1.5 py-0"><i class="fas fa-server me-1"></i>هیدیفای متصل</span>
+                            {% endif %}
+                            <span class="badge bg-light bg-opacity-10 text-white-50 border border-white border-opacity-25 px-1.5 py-0">شناسه #{{ r['id'] }}</span>
+                        </div>
                     </div>
                 </div>
                 <div class="d-flex align-items-center gap-2">
-                    <a href="{{ url_for('admin_reseller_export_payments', reseller_id=r['id']) }}" class="btn btn-sm btn-light fw-bold" title="دانلود خروجی اکسل سوابق مالی">
+                    <a href="{{ url_for('admin_reseller_export_payments', reseller_id=r['id']) }}" class="btn btn-sm btn-light fw-bold shadow-sm" title="دانلود خروجی اکسل سوابق مالی">
                         <i class="fas fa-file-excel text-success me-1"></i> خروجی اکسل
                     </a>
                     <a href="{{ url_for('admin_reseller_payments', reseller_id=r['id']) }}" class="btn btn-sm btn-outline-light" title="مشاهده صفحه اختصاصی گزارش پرداخت‌ها">
@@ -501,36 +733,161 @@
                         </a>
                     </div>
                 </div>
+
+                {% set u_sum = r.get('usage_summary', {}) %}
                 {% set p_hist = r.get('payment_history', {}) %}
-                <!-- ۴ کارت آماری وضعیت مالی نماینده -->
-                <div class="row g-3 mb-4">
-                    <div class="col-md-3 col-sm-6">
-                        <div class="card border-0 shadow-sm p-3 bg-success bg-opacity-10 border-start border-success border-4">
-                            <span class="text-muted small">موجودی کیف پول فعلی</span>
-                            <h5 class="fw-bold text-success font-monospace mb-0 mt-1">{{ "{:,}".format(r['balance'] or 0) }} تومان</h5>
+
+                <!-- ─── بخش خلاصه وضعیت استفاده و هوش عملکرد نماینده ─── -->
+                <div class="mb-4">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <h6 class="fw-bold text-dark mb-0 d-flex align-items-center gap-2">
+                            <i class="fas fa-chart-pie text-primary"></i>
+                            <span>خلاصه جامع وضعیت استفاده و عملکرد نماینده</span>
+                        </h6>
+                        <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1" style="font-size: 0.72rem;">
+                            <i class="fas fa-bolt me-1"></i> پایش هوشمند مصرف
+                        </span>
+                    </div>
+
+                    <!-- ردیف کارت‌های استفاده امروز، دیروز، ماهانه و میانگین روزانه -->
+                    <div class="row g-3 mb-3">
+                        <!-- ۱. استفاده امروز -->
+                        <div class="col-lg-3 col-sm-6">
+                            <div class="card border-0 shadow-sm p-3 h-100 bg-primary bg-opacity-10 border-start border-primary border-4 reseller-kpi-card">
+                                <i class="fas fa-calendar-day kpi-icon-bg text-primary"></i>
+                                <div class="d-flex align-items-center justify-content-between mb-1">
+                                    <span class="text-muted small fw-medium">استفاده امروز</span>
+                                    <span class="badge bg-primary text-white rounded-pill px-2 py-0.5" style="font-size: 0.65rem;">امروز</span>
+                                </div>
+                                <h5 class="fw-bold text-primary font-monospace mb-1">{{ "{:,}".format(u_sum.get('today', {}).get('spent', 0)) }} <span class="small fs-6 fw-normal">تومان</span></h5>
+                                <div class="small text-muted d-flex align-items-center gap-1">
+                                    <i class="fas fa-bag-shopping text-primary"></i>
+                                    <span>{{ u_sum.get('today', {}).get('orders', 0) }} سفارش و خرید</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ۲. استفاده دیروز -->
+                        <div class="col-lg-3 col-sm-6">
+                            <div class="card border-0 shadow-sm p-3 h-100 bg-info bg-opacity-10 border-start border-info border-4 reseller-kpi-card">
+                                <i class="fas fa-clock-rotate-left kpi-icon-bg text-info"></i>
+                                <div class="d-flex align-items-center justify-content-between mb-1">
+                                    <span class="text-muted small fw-medium">استفاده دیروز</span>
+                                    <span class="badge bg-info-subtle text-info-emphasis border border-info rounded-pill px-2 py-0.5" style="font-size: 0.65rem;">دیروز</span>
+                                </div>
+                                <h5 class="fw-bold text-info-emphasis font-monospace mb-1">{{ "{:,}".format(u_sum.get('yesterday', {}).get('spent', 0)) }} <span class="small fs-6 fw-normal">تومان</span></h5>
+                                <div class="small text-muted d-flex align-items-center gap-1">
+                                    <i class="fas fa-receipt text-info"></i>
+                                    <span>{{ u_sum.get('yesterday', {}).get('orders', 0) }} سفارش و خرید</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ۳. استفاده ماهانه (۳۰ روز اخیر) -->
+                        <div class="col-lg-3 col-sm-6">
+                            <div class="card border-0 shadow-sm p-3 h-100 border-start border-4 reseller-kpi-card" style="background-color: rgba(124, 58, 237, 0.08); border-color: #7c3aed !important;">
+                                <i class="fas fa-chart-line kpi-icon-bg" style="color: #7c3aed;"></i>
+                                <div class="d-flex align-items-center justify-content-between mb-1">
+                                    <span class="text-muted small fw-medium">استفاده ماهانه (۳۰ روز)</span>
+                                    <span class="badge text-white rounded-pill px-2 py-0.5" style="background-color: #7c3aed; font-size: 0.65rem;">۳۰ روز اخیر</span>
+                                </div>
+                                <h5 class="fw-bold font-monospace mb-1" style="color: #7c3aed;">{{ "{:,}".format(u_sum.get('month', {}).get('spent', 0)) }} <span class="small fs-6 fw-normal">تومان</span></h5>
+                                <div class="small text-muted d-flex align-items-center gap-1">
+                                    <i class="fas fa-cubes" style="color: #7c3aed;"></i>
+                                    <span>{{ u_sum.get('month', {}).get('orders', 0) }} سفارش و خرید</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ۴. میانگین مصرف روزانه -->
+                        <div class="col-lg-3 col-sm-6">
+                            <div class="card border-0 shadow-sm p-3 h-100 bg-warning bg-opacity-10 border-start border-warning border-4 reseller-kpi-card">
+                                <i class="fas fa-calculator kpi-icon-bg text-warning"></i>
+                                <div class="d-flex align-items-center justify-content-between mb-1">
+                                    <span class="text-muted small fw-medium">میانگین مصرف روزانه</span>
+                                    <span class="badge bg-warning-subtle text-dark border border-warning rounded-pill px-2 py-0.5" style="font-size: 0.65rem;">نرخ روزانه</span>
+                                </div>
+                                <h5 class="fw-bold text-dark font-monospace mb-1">{{ "{:,}".format(u_sum.get('daily_average', 0)) }} <span class="small fs-6 fw-normal">تومان/روز</span></h5>
+                                <div class="small text-muted d-flex align-items-center gap-1">
+                                    <i class="fas fa-scale-balanced text-warning"></i>
+                                    <span>تخمین گردش روزمره</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div class="col-md-3 col-sm-6">
-                        <div class="card border-0 shadow-sm p-3 bg-primary bg-opacity-10 border-start border-primary border-4">
-                            <span class="text-muted small">مجموع کل شارژها و واریزی‌ها</span>
-                            <h5 class="fw-bold text-primary font-monospace mb-0 mt-1">{{ "{:,}".format(p_hist.get('total_deposited', 0)) }} تومان</h5>
+
+                    <!-- ردیف کارت‌های تکمیلی: کیف پول و اعتبار، ترافیک، و کاربران -->
+                    <div class="row g-3">
+                        <!-- ۵. وضعیت کیف پول و اعتبار -->
+                        <div class="col-md-4">
+                            <div class="card border-0 shadow-sm p-3 h-100 bg-success bg-opacity-10 border-start border-success border-4 reseller-kpi-card">
+                                <i class="fas fa-wallet kpi-icon-bg text-success"></i>
+                                <div class="d-flex align-items-center justify-content-between mb-1">
+                                    <span class="text-muted small fw-medium">موجودی کیف پول نقد</span>
+                                    <span class="badge bg-success text-white rounded-pill px-2 py-0.5" style="font-size: 0.65rem;">{{ r['discount_percent'] }}٪ تخفیف</span>
+                                </div>
+                                <h5 class="fw-bold text-success font-monospace mb-1">{{ "{:,}".format(r['balance'] or 0) }} <span class="small fs-6 fw-normal">تومان</span></h5>
+                                {% if r.get('credit_enabled') %}
+                                    <div class="small text-muted mt-1">
+                                        <span>سقف اعتبار: <strong class="font-monospace text-dark">{{ "{:,}".format(r.get('credit_limit') or 0) }} ت</strong></span>
+                                        {% if (r.get('credit_debt') or 0) > 0 %}
+                                            <span class="text-danger ms-1">| بدهی: <strong class="font-monospace">{{ "{:,}".format(r.get('credit_debt') or 0) }} ت</strong></span>
+                                        {% endif %}
+                                    </div>
+                                {% else %}
+                                    <div class="small text-muted mt-1">
+                                        <span>کل واریزی‌ها: <strong class="font-monospace text-dark">{{ "{:,}".format(p_hist.get('total_deposited', 0)) }} ت</strong></span>
+                                    </div>
+                                {% endif %}
+                            </div>
                         </div>
-                    </div>
-                    <div class="col-md-3 col-sm-6">
-                        <div class="card border-0 shadow-sm p-3 bg-danger bg-opacity-10 border-start border-danger border-4">
-                            <span class="text-muted small">مجموع خریدها و تمدیدها</span>
-                            <h5 class="fw-bold text-danger font-monospace mb-0 mt-1">{{ "{:,}".format(p_hist.get('total_spent', 0)) }} تومان</h5>
+
+                        <!-- ۶. ترافیک مصرفی مشترکین -->
+                        <div class="col-md-4">
+                            <div class="card border-0 shadow-sm p-3 h-100 bg-light border-start border-secondary border-4 reseller-kpi-card">
+                                <i class="fas fa-network-wired kpi-icon-bg text-secondary"></i>
+                                <div class="d-flex align-items-center justify-content-between mb-1">
+                                    <span class="text-muted small fw-medium">ترافیک مصرفی مشترکین</span>
+                                    <span class="badge bg-secondary text-white rounded-pill px-2 py-0.5 font-monospace" style="font-size: 0.65rem;">{{ u_sum.get('traffic', {}).get('percent', 0) }}%</span>
+                                </div>
+                                <h5 class="fw-bold text-dark font-monospace mb-1">{{ u_sum.get('traffic', {}).get('used_gb', 0) }} <span class="small fs-6 fw-normal">گیگابایت</span></h5>
+                                <div class="small text-muted mt-1">
+                                    <span>از مجموع <strong class="font-monospace text-dark">{{ u_sum.get('traffic', {}).get('limit_gb', 0) }} گیگ</strong> ترافیک کل پلن‌ها</span>
+                                </div>
+                                <div class="progress mt-2" style="height: 6px;">
+                                    <div class="progress-bar bg-primary" role="progressbar" style="width: {{ [u_sum.get('traffic', {}).get('percent', 0), 100]|min }}%;" aria-valuenow="{{ u_sum.get('traffic', {}).get('percent', 0) }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="col-md-3 col-sm-6">
-                        <div class="card border-0 shadow-sm p-3 bg-info bg-opacity-10 border-start border-info border-4">
-                            <span class="text-muted small">تخفیف همکاری و بونوس‌ها</span>
-                            <h5 class="fw-bold text-info font-monospace mb-0 mt-1">{{ r['discount_percent'] }}٪ تخفیف</h5>
+
+                        <!-- ۷. مشترکین و اعضای تیم -->
+                        <div class="col-md-4">
+                            <div class="card border-0 shadow-sm p-3 h-100 bg-light border-start border-info border-4 reseller-kpi-card">
+                                <i class="fas fa-users kpi-icon-bg text-info"></i>
+                                <div class="d-flex align-items-center justify-content-between mb-1">
+                                    <span class="text-muted small fw-medium">مشترکین و کادر نماینده</span>
+                                    <span class="badge bg-info text-white rounded-pill px-2 py-0.5" style="font-size: 0.65rem;">{{ u_sum.get('users', {}).get('active', 0) }} فعال</span>
+                                </div>
+                                <div class="d-flex align-items-center justify-content-between mt-1">
+                                    <div>
+                                        <span class="text-muted small d-block">مشترکین:</span>
+                                        <strong class="font-monospace text-dark">{{ u_sum.get('users', {}).get('total', 0) }} نفر</strong>
+                                        <span class="badge bg-success-subtle text-success border border-success rounded-pill px-1.5 py-0 ms-1 font-monospace" style="font-size: 0.65rem;">{{ u_sum.get('users', {}).get('online', 0) }} آنلاین</span>
+                                    </div>
+                                    <div class="border-start ps-3">
+                                        <span class="text-muted small d-block">کادر و همکاران:</span>
+                                        <strong class="font-monospace text-primary">{{ r.get('team_members', [])|length }} نفر</strong>
+                                        {% if r.get('online_team_count', 0) > 0 %}
+                                            <span class="badge bg-success text-white rounded-pill px-1.5 py-0 ms-1 font-monospace" style="font-size: 0.65rem;">{{ r['online_team_count'] }} آنلاین</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- تب‌های تراکنش‌های کیف پول و فیش‌های بانکی -->
+                <!-- تب‌های تراکنش‌های کیف پول، فیش‌های بانکی و کادر همکاران -->
                 <ul class="nav nav-pills mb-3" id="modalPaymentTab{{ r['id'] }}" role="tablist">
                     <li class="nav-item" role="presentation">
                         <button class="nav-link active fw-bold btn-sm py-2 px-3" id="modal-wallet-tab{{ r['id'] }}" data-bs-toggle="pill" data-bs-target="#modal-wallet-content{{ r['id'] }}" type="button" role="tab">
@@ -540,6 +897,11 @@
                     <li class="nav-item" role="presentation">
                         <button class="nav-link fw-bold btn-sm py-2 px-3" id="modal-receipt-tab{{ r['id'] }}" data-bs-toggle="pill" data-bs-target="#modal-receipt-content{{ r['id'] }}" type="button" role="tab">
                             <i class="fas fa-receipt me-1 text-warning"></i> بسته‌ها و فیش‌های ثبت‌شده ({{ p_hist.get('receipt_transactions', [])|length }})
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link fw-bold btn-sm py-2 px-3" id="modal-subteam-tab{{ r['id'] }}" data-bs-toggle="pill" data-bs-target="#modal-subteam-content{{ r['id'] }}" type="button" role="tab">
+                            <i class="fas fa-users-gear me-1 text-info"></i> کادر و همکاران زیرمجموعه ({{ r.get('team_members', [])|length }})
                         </button>
                     </li>
                 </ul>
@@ -658,6 +1020,123 @@
                             </table>
                         </div>
                     </div>
+
+                    <!-- تب ۳: کادر و همکاران زیرمجموعه نماینده -->
+                    <div class="tab-pane fade" id="modal-subteam-content{{ r['id'] }}" role="tabpanel">
+                        <div class="d-flex align-items-center justify-content-between mb-3 bg-light p-2.5 rounded border flex-wrap gap-2">
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="fw-bold text-dark small"><i class="fas fa-users-gear text-primary me-1"></i> ساختار پرسنلی و دسترسی‌های «{{ r['name'] }}»</span>
+                                <span class="badge bg-secondary rounded-pill font-monospace" style="font-size: 0.72rem;">{{ r.get('team_members', [])|length }} کاربر</span>
+                            </div>
+                            <div>
+                                {% if r.get('online_team_count', 0) > 0 %}
+                                    <span class="badge bg-success-subtle text-success border border-success d-inline-flex align-items-center gap-1 px-2 py-1">
+                                        <span class="pulse-indicator"></span> {{ r['online_team_count'] }} نفر آنلاین اکنون
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-light text-muted border px-2 py-1">هیچ کاربری هم‌اکنون آنلاین نیست</span>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="table-responsive border rounded">
+                            <table class="table table-sm table-hover align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="ps-3">نام و مشخصات کاربر</th>
+                                        <th>نام کاربری</th>
+                                        <th>نقش سازمانی</th>
+                                        <th>وضعیت اتصال</th>
+                                        <th>آخرین فعالیت</th>
+                                        <th>نشست‌های فعال</th>
+                                        <th class="text-end pe-3">مدیریت نشست‌ها</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for m in r.get('team_members', []) %}
+                                    <tr>
+                                        <td class="ps-3">
+                                            <div class="d-flex align-items-center gap-2">
+                                                <div class="position-relative">
+                                                    <div class="stat-icon bg-light text-primary rounded-circle border p-1" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">
+                                                        <i class="fas fa-user-tie"></i>
+                                                    </div>
+                                                    <span class="position-absolute bottom-0 start-0 translate-middle p-1 border border-white rounded-circle {{ 'bg-success' if m.get('is_online') else 'bg-secondary opacity-50' }}" style="width: 9px; height: 9px;"></span>
+                                                </div>
+                                                <div>
+                                                    <strong class="d-block text-dark small">{{ m.get('display_name') }}</strong>
+                                                    {% if m.get('phone') %}<small class="text-muted font-monospace" style="font-size: 0.68rem;">{{ m.get('phone') }}</small>{% endif %}
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td><code class="font-monospace small">{{ m.get('username') }}</code></td>
+                                        <td>
+                                            {% if m.get('role') == 'manager2' %}
+                                                <span class="badge bg-primary bg-opacity-10 text-primary border border-primary px-1.5 py-0.5" style="font-size: 0.68rem;"><i class="fas fa-crown me-1"></i> مدیر دوم</span>
+                                            {% elif m.get('role') == 'partner' %}
+                                                <span class="badge bg-purple-subtle text-purple border border-purple px-1.5 py-0.5" style="font-size: 0.68rem; color: #7c3aed !important; border-color: #7c3aed !important;"><i class="fas fa-handshake me-1"></i> شریک ({{ m.get('share_percent', 0) }}%)</span>
+                                            {% elif m.get('role') == 'finance' %}
+                                                <span class="badge bg-success bg-opacity-10 text-success border border-success px-1.5 py-0.5" style="font-size: 0.68rem;"><i class="fas fa-coins me-1"></i> امور مالی</span>
+                                            {% elif m.get('role') == 'support' %}
+                                                <span class="badge bg-info bg-opacity-10 text-info border border-info px-1.5 py-0.5" style="font-size: 0.68rem;"><i class="fas fa-headset me-1"></i> کارشناس پشتیبانی</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary" style="font-size: 0.68rem;">{{ m.get('role') }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if m.get('is_online') %}
+                                                <span class="badge bg-success-subtle text-success border border-success d-inline-flex align-items-center gap-1 px-1.5 py-0.5" style="font-size: 0.68rem;">
+                                                    <span class="pulse-indicator"></span> آنلاین
+                                                </span>
+                                            {% else %}
+                                                <span class="badge bg-light text-muted border px-1.5 py-0.5" style="font-size: 0.68rem;">آفلاین</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if m.get('last_active') %}
+                                                <div class="d-flex flex-column">
+                                                    <small class="text-muted font-monospace" style="font-size: 0.7rem;">{{ m['last_active'][:16].replace('T', ' ') }}</small>
+                                                    <small class="text-secondary" style="font-size: 0.66rem;">{{ m.get('last_device') or '' }} {{ m.get('last_browser') or '' }} ({{ m.get('last_ip') or '-' }})</small>
+                                                </div>
+                                            {% else %}
+                                                <span class="text-muted small">-</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if m.get('active_sessions_count', 0) > 0 %}
+                                                <span class="badge bg-success text-white px-2 py-0.5 font-monospace" style="font-size: 0.68rem;">
+                                                    {{ m['active_sessions_count'] }} نشست فعال
+                                                </span>
+                                            {% else %}
+                                                <span class="badge bg-light text-muted border px-1.5 py-0.5" style="font-size: 0.68rem;">۰ فعال</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-end pe-3">
+                                            {% if m.get('active_sessions_count', 0) > 0 %}
+                                                <form action="{{ url_for('admin_terminate_team_member_sessions', member_id=m['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('⚠️ آیا از خاتمه فوری کلیه نشست‌های فعال «{{ m.get('display_name') }}» مطمئن هستید؟');">
+                                                    <button type="submit" class="btn btn-xs btn-outline-danger d-inline-flex align-items-center gap-1 px-2 py-1 shadow-xs" title="خاتمه فوری کلیه نشست‌های فعال">
+                                                        <i class="fas fa-power-off"></i>
+                                                        <span style="font-size: 0.72rem;">قطع نشست‌ها</span>
+                                                    </button>
+                                                </form>
+                                            {% else %}
+                                                <span class="badge bg-light text-muted border" style="font-size: 0.68rem;">نشست فعال ندارد</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                    {% if not r.get('team_members') %}
+                                    <tr>
+                                        <td colspan="7" class="text-center py-4 text-muted">
+                                            <i class="fas fa-users-slash fs-3 text-secondary opacity-50 d-block mb-1"></i>
+                                            این نماینده هنوز هیچ مدیر، شریک یا پشتیبانی در پنل خود اضافه نکرده است.
+                                        </td>
+                                    </tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer d-flex justify-content-between bg-light py-2">
@@ -672,12 +1151,20 @@
 
 <!-- ۲. Modal مشاهده نشست‌ها و امنیت نماینده -->
 <div class="modal fade text-start" id="securityModal{{ r['id'] }}" tabindex="-1" aria-labelledby="securityModalLabel{{ r['id'] }}" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content shadow-lg border-0 text-start">
             <div class="modal-header bg-info bg-opacity-10 py-3">
-                <h5 class="modal-title fw-bold text-info-emphasis" id="securityModalLabel{{ r['id'] }}">
-                    <i class="fas fa-shield-halved me-2"></i> پایش امنیت و نشست‌های «{{ r['name'] }}»
-                </h5>
+                <div class="d-flex align-items-center justify-content-between w-100 pe-2">
+                    <h5 class="modal-title fw-bold text-info-emphasis mb-0" id="securityModalLabel{{ r['id'] }}">
+                        <i class="fas fa-shield-halved me-2"></i> پایش امنیت، نشست‌ها و کادر «{{ r['name'] }}»
+                    </h5>
+                    <form action="{{ url_for('admin_terminate_all_reseller_sessions', reseller_id=r['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('⚠️ اخطار امنیتی!\n\nآیا از خاتمه فوری تمام نشست‌های فعال این نماینده و کلیه پرسنل زیرمجموعه‌اش اطمینان دارید؟\nهمه افراد متصل بلافاصله از سیستم خارج خواهند شد.');">
+                        <button type="submit" class="btn btn-sm btn-danger shadow-sm d-inline-flex align-items-center gap-1.5 px-3 py-1">
+                            <i class="fas fa-power-off"></i>
+                            <span>خاتمه تمامی نشست‌های فعال نماینده و تیم</span>
+                        </button>
+                    </form>
+                </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-3">
@@ -688,51 +1175,65 @@
                         {% if r['telegram_id'] %}
                             | <span class="text-muted small">آیدی تلگرام:</span> <code>{{ r['telegram_id'] }}</code>
                         {% endif %}
+                        | <span class="text-muted small">تعداد کادر زیرمجموعه:</span> <strong class="text-primary">{{ r.get('team_members', [])|length }} نفر</strong>
                     </div>
-                    <div>
-                        <span class="text-muted small me-2">وضعیت زنده:</span>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="text-muted small">وضعیت زنده:</span>
                         {% if r.get('is_online') %}
-                            <span class="badge bg-success"><i class="fas fa-circle me-1" style="font-size: 0.5rem;"></i>آنلاین (فعال در ۱۵ دقیقه اخیر)</span>
+                            <span class="badge bg-success-subtle text-success border border-success d-inline-flex align-items-center gap-1 px-2 py-1">
+                                <span class="pulse-indicator"></span> آنلاین (نماینده اصلی)
+                            </span>
                         {% else %}
-                            <span class="badge bg-secondary">آفلاین</span>
+                            <span class="badge bg-secondary-subtle text-secondary px-2 py-1">آفلاین</span>
+                        {% endif %}
+                        {% if r.get('online_team_count', 0) > 0 %}
+                            <span class="badge bg-info-subtle text-info border border-info px-2 py-1 font-monospace">
+                                {{ r['online_team_count'] }} نفر از تیم آنلاین
+                            </span>
                         {% endif %}
                     </div>
                 </div>
 
-                <!-- تب‌های نشست‌های موفق و ورودهای ناموفق -->
+                <!-- تب‌های نشست‌های موفق، نشست‌های کادر و ورودهای ناموفق -->
                 <ul class="nav nav-pills mb-3" id="securityTab{{ r['id'] }}" role="tablist">
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link active btn-sm py-1 px-3" id="sessions-tab{{ r['id'] }}" data-bs-toggle="pill" data-bs-target="#sessions-content{{ r['id'] }}" type="button" role="tab">
-                            <i class="fas fa-circle-check me-1 text-success"></i> نشست‌های ورود موفق ({{ r['security_logs']['sessions']|length if r.get('security_logs') else 0 }})
+                        <button class="nav-link active btn-sm py-1.5 px-3 fw-bold" id="sessions-tab{{ r['id'] }}" data-bs-toggle="pill" data-bs-target="#sessions-content{{ r['id'] }}" type="button" role="tab">
+                            <i class="fas fa-circle-check me-1 text-success"></i> نشست‌های نماینده اصلی ({{ r['security_logs']['sessions']|length if r.get('security_logs') else 0 }})
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link btn-sm py-1 px-3" id="failed-tab{{ r['id'] }}" data-bs-toggle="pill" data-bs-target="#failed-content{{ r['id'] }}" type="button" role="tab">
+                        <button class="nav-link btn-sm py-1.5 px-3 fw-bold" id="team-sessions-tab{{ r['id'] }}" data-bs-toggle="pill" data-bs-target="#team-sessions-content{{ r['id'] }}" type="button" role="tab">
+                            <i class="fas fa-users-gear me-1 text-info"></i> نشست‌های پرسنل و مدیران زیرمجموعه ({{ r.get('team_members', [])|length }})
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link btn-sm py-1.5 px-3 fw-bold" id="failed-tab{{ r['id'] }}" data-bs-toggle="pill" data-bs-target="#failed-content{{ r['id'] }}" type="button" role="tab">
                             <i class="fas fa-circle-xmark me-1 text-danger"></i> تلاش‌های ورود ناموفق ({{ r['security_logs']['failed_attempts']|length if r.get('security_logs') else 0 }})
                         </button>
                     </li>
                 </ul>
 
                 <div class="tab-content" id="securityTabContent{{ r['id'] }}">
-                    <!-- تب نشست‌های موفق -->
+                    <!-- تب ۱: نشست‌های موفق نماینده اصلی -->
                     <div class="tab-pane fade show active" id="sessions-content{{ r['id'] }}" role="tabpanel">
                         <div class="table-responsive border rounded">
                             <table class="table table-sm table-hover align-middle mb-0">
                                 <thead class="table-light">
                                     <tr>
-                                        <th>دستگاه و سیستم‌عامل</th>
+                                        <th class="ps-3">دستگاه و سیستم‌عامل</th>
                                         <th>مرورگر</th>
                                         <th>آدرس آی‌پی</th>
                                         <th>زمان ورود</th>
                                         <th>آخرین فعالیت / خروج</th>
                                         <th>وضعیت</th>
+                                        <th class="text-end pe-3">عملیات</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% if r.get('security_logs') and r['security_logs']['sessions'] %}
                                         {% for s in r['security_logs']['sessions'] %}
                                         <tr>
-                                            <td><small><strong>{{ s['device_os'] or '💻 نامشخص' }}</strong></small></td>
+                                            <td class="ps-3"><small><strong>{{ s['device_os'] or '💻 نامشخص' }}</strong></small></td>
                                             <td><small>{{ s['browser'] or '🌐 نامشخص' }}</small></td>
                                             <td><code class="font-monospace small">{{ s['ip_address'] }}</code></td>
                                             <td><small class="text-muted">{{ s['login_at'][:16].replace('T', ' ') if s['login_at'] else '-' }}</small></td>
@@ -747,16 +1248,27 @@
                                             </td>
                                             <td>
                                                 {% if s['is_active'] %}
-                                                    <span class="badge bg-success" style="font-size: 0.65rem;">نشست فعال</span>
+                                                    <span class="badge bg-success" style="font-size: 0.65rem;"><i class="fas fa-signal me-1"></i>نشست فعال</span>
                                                 {% else %}
                                                     <span class="badge bg-light text-muted border" style="font-size: 0.65rem;">خارج شده</span>
+                                                {% endif %}
+                                            </td>
+                                            <td class="text-end pe-3">
+                                                {% if s['is_active'] %}
+                                                    <form action="{{ url_for('admin_terminate_session', session_id=s['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از قطع فوری این نشست مطمئن هستید؟');">
+                                                        <button type="submit" class="btn btn-xs btn-outline-danger py-0 px-2 shadow-xs" title="قطع این نشست">
+                                                            <i class="fas fa-power-off"></i> قطع نشست
+                                                        </button>
+                                                    </form>
+                                                {% else %}
+                                                    <span class="text-muted small">-</span>
                                                 {% endif %}
                                             </td>
                                         </tr>
                                         {% endfor %}
                                     {% else %}
                                         <tr>
-                                            <td colspan="6" class="text-center py-3 text-muted small">نشست ورودی برای این نماینده ثبت نشده است.</td>
+                                            <td colspan="7" class="text-center py-3 text-muted small">نشست ورودی برای این نماینده ثبت نشده است.</td>
                                         </tr>
                                     {% endif %}
                                 </tbody>
@@ -764,7 +1276,67 @@
                         </div>
                     </div>
 
-                    <!-- تب تلاش‌های ناموفق -->
+                    <!-- تب ۲: نشست‌های کادر و همکاران زیرمجموعه -->
+                    <div class="tab-pane fade" id="team-sessions-content{{ r['id'] }}" role="tabpanel">
+                        <div class="table-responsive border rounded">
+                            <table class="table table-sm table-hover align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="ps-3">نام و نقش کاربر</th>
+                                        <th>دستگاه و سیستم‌عامل</th>
+                                        <th>مرورگر</th>
+                                        <th>آدرس آی‌پی</th>
+                                        <th>زمان ورود</th>
+                                        <th>آخرین فعالیت</th>
+                                        <th>وضعیت</th>
+                                        <th class="text-end pe-3">عملیات</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% set team_sessions_found = namespace(value=0) %}
+                                    {% for m in r.get('team_members', []) %}
+                                        {% for s in m.get('active_sessions', []) %}
+                                            {% set team_sessions_found.value = team_sessions_found.value + 1 %}
+                                            <tr>
+                                                <td class="ps-3">
+                                                    <div class="d-flex align-items-center gap-1.5">
+                                                        <strong class="text-dark small">{{ m.get('display_name') }}</strong>
+                                                        <small class="text-muted font-monospace">(@{{ m.get('username') }})</small>
+                                                        <span class="badge bg-secondary-subtle text-secondary border px-1 py-0" style="font-size: 0.65rem;">{{ m.get('role') }}</span>
+                                                    </div>
+                                                </td>
+                                                <td><small>{{ s['device_os'] or '💻 نامشخص' }}</small></td>
+                                                <td><small>{{ s['browser'] or '🌐 نامشخص' }}</small></td>
+                                                <td><code class="font-monospace small">{{ s['ip_address'] }}</code></td>
+                                                <td><small class="text-muted">{{ s['login_at'][:16].replace('T', ' ') if s['login_at'] else '-' }}</small></td>
+                                                <td><small class="text-muted"><i class="fas fa-bolt me-1 text-warning"></i>{{ s['last_active_at'][:16].replace('T', ' ') if s['last_active_at'] else '-' }}</small></td>
+                                                <td>
+                                                    <span class="badge bg-success" style="font-size: 0.65rem;">نشست فعال</span>
+                                                </td>
+                                                <td class="text-end pe-3">
+                                                    <form action="{{ url_for('admin_terminate_session', session_id=s['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از خاتمه این نشست مطمئن هستید؟');">
+                                                        <button type="submit" class="btn btn-xs btn-outline-danger py-0 px-2 shadow-xs" title="خاتمه فوری این نشست">
+                                                            <i class="fas fa-power-off"></i> قطع نشست
+                                                        </button>
+                                                    </form>
+                                                </td>
+                                            </tr>
+                                        {% endfor %}
+                                    {% endfor %}
+                                    {% if team_sessions_found.value == 0 %}
+                                        <tr>
+                                            <td colspan="8" class="text-center py-4 text-muted small">
+                                                <i class="fas fa-shield-check fs-3 text-success opacity-50 d-block mb-1"></i>
+                                                هیچ نشست فعالی برای کادر و کارمندان این نماینده وجود ندارد.
+                                            </td>
+                                        </tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- تب ۳: تلاش‌های ناموفق -->
                     <div class="tab-pane fade" id="failed-content{{ r['id'] }}" role="tabpanel">
                         <div class="table-responsive border rounded">
                             <table class="table table-sm table-hover align-middle mb-0">

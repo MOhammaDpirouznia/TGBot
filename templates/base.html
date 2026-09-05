@@ -254,8 +254,16 @@
             max-width: 520px;
             margin: 1.5rem auto;
         }
+        .modal-dialog.modal-lg {
+            max-width: 860px;
+        }
+        .modal-dialog.modal-xl {
+            max-width: 1200px;
+        }
         @media (max-width: 576px) {
-            .modal-dialog {
+            .modal-dialog,
+            .modal-dialog.modal-lg,
+            .modal-dialog.modal-xl {
                 margin: 0.75rem auto;
                 max-width: calc(100vw - 1.5rem);
             }

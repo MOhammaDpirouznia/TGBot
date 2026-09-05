@@ -25,12 +25,13 @@
                 <thead class="table-light">
                     <tr>
                         <th class="ps-3 sortable-th" data-column="0">نام و نام خانوادگی</th>
-                        <th class="sortable-th" data-column="1">نام کاربری ورود</th>
+                        <th class="sortable-th" data-column="1">نام کاربری</th>
                         <th class="sortable-th" data-column="2">نقش و دسترسی</th>
                         <th class="sortable-th" data-column="3">درصد شراکت</th>
                         <th class="sortable-th" data-column="4">شماره تماس</th>
-                        <th class="sortable-th" data-column="5">وضعیت</th>
-                        <th class="sortable-th" data-column="6">تاریخ عضویت</th>
+                        <th class="sortable-th" data-column="5">وضعیت آنلاین و نشست‌ها</th>
+                        <th class="sortable-th" data-column="6">وضعیت حساب</th>
+                        <th class="sortable-th" data-column="7">تاریخ عضویت</th>
                         <th class="text-end pe-3">عملیات</th>
                     </tr>
                 </thead>
@@ -39,10 +40,16 @@
                     <tr>
                         <td class="ps-3" data-value="{{ m.get('display_name') or '' }}">
                             <div class="d-flex align-items-center gap-2">
-                                <div class="stat-icon bg-primary bg-opacity-10 text-primary rounded-circle p-2" style="width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;">
-                                    <i class="fas fa-user"></i>
+                                <div class="position-relative">
+                                    <div class="stat-icon bg-primary bg-opacity-10 text-primary rounded-circle p-2" style="width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;">
+                                        <i class="fas fa-user-tie"></i>
+                                    </div>
+                                    <span class="position-absolute bottom-0 start-0 translate-middle p-1 border border-white rounded-circle {{ 'bg-success' if m.get('is_online') else 'bg-secondary opacity-50' }}" style="width: 10px; height: 10px;"></span>
                                 </div>
-                                <strong>{{ m.get('display_name') }}</strong>
+                                <div>
+                                    <strong class="d-block">{{ m.get('display_name') }}</strong>
+                                    {% if m.get('phone') %}<small class="text-muted font-monospace" style="font-size: 0.72rem;">{{ m.get('phone') }}</small>{% endif %}
+                                </div>
                             </div>
                         </td>
                         <td data-value="{{ m.get('username') or '' }}"><code class="font-monospace">{{ m.get('username') }}</code></td>
@@ -50,9 +57,9 @@
                             {% if m.get('role') == 'manager2' %}
                                 <span class="badge bg-primary bg-opacity-10 text-primary border border-primary fw-bold"><i class="fas fa-crown me-1"></i> مدیر دوم (کامل)</span>
                             {% elif m.get('role') == 'partner' %}
-                                <span class="badge bg-purple bg-opacity-10 text-purple border border-purple" style="color: #7c3aed; border-color: #7c3aed !important;"><i class="fas fa-handshake me-1"></i> شریک نماینده</span>
+                                <span class="badge bg-purple bg-opacity-10 text-purple border border-purple" style="color: #7c3aed; border-color: #7c3aed !important;"><i class="fas fa-handshake me-1"></i> شریک ({{ m.get('share_percent', 0) }}%)</span>
                             {% elif m.get('role') == 'finance' %}
-                                <span class="badge bg-success bg-opacity-10 text-success border border-success"><i class="fas fa-coins me-1"></i> امور مالی و فیش‌ها</span>
+                                <span class="badge bg-success bg-opacity-10 text-success border border-success"><i class="fas fa-coins me-1"></i> امور مالی</span>
                             {% elif m.get('role') == 'support' %}
                                 <span class="badge bg-info bg-opacity-10 text-info border border-info"><i class="fas fa-headset me-1"></i> کارشناس پشتیبانی</span>
                             {% else %}
@@ -67,6 +74,32 @@
                             {% endif %}
                         </td>
                         <td data-value="{{ m.get('phone') or '' }}"><small class="font-monospace">{{ m.get('phone') or '-' }}</small></td>
+                        <td>
+                            <div class="d-flex flex-column gap-1">
+                                <div class="d-flex align-items-center gap-1.5 flex-wrap">
+                                    {% if m.get('is_online') %}
+                                        <span class="badge bg-success-subtle text-success border border-success d-inline-flex align-items-center gap-1 px-2 py-0.5" style="font-size: 0.68rem;">
+                                            <span class="pulse-indicator"></span> آنلاین
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-light text-muted border px-2 py-0.5" style="font-size: 0.68rem;">آفلاین</span>
+                                    {% endif %}
+
+                                    {% if m.get('active_sessions_count', 0) > 0 %}
+                                        <span class="badge bg-success text-white px-2 py-0.5 font-monospace" style="font-size: 0.68rem;">
+                                            {{ m['active_sessions_count'] }} نشست فعال
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-light text-muted border px-1.5 py-0.5" style="font-size: 0.68rem;">۰ نشست فعال</span>
+                                    {% endif %}
+                                </div>
+                                {% if m.get('last_active') %}
+                                    <small class="text-muted font-monospace" style="font-size: 0.68rem;">
+                                        <i class="fas fa-clock me-1"></i>{{ m['last_active'][:16].replace('T', ' ') }}
+                                    </small>
+                                {% endif %}
+                            </div>
+                        </td>
                         <td data-value="{{ 1 if m.get('is_active') else 0 }}">
                             {% if m.get('is_active') %}
                                 <span class="badge bg-success bg-opacity-10 text-success border border-success">فعال</span>
@@ -75,15 +108,28 @@
                             {% endif %}
                         </td>
                         <td data-value="{{ m.get('created_at') or '' }}"><small class="text-muted font-monospace">{{ m.get('created_at')[:10] if m.get('created_at') else '-' }}</small></td>
-                        <td>
-                            <div class="btn-group btn-group-sm">
-                                <form action="{{ url_for('reseller_team_toggle', member_id=m['id']) }}" method="POST" class="d-inline">
-                                    <button type="submit" class="btn {{ 'btn-outline-warning' if m.get('is_active') else 'btn-outline-success' }}" title="تغییر وضعیت فعال/معلق">
-                                        <i class="fas fa-power-off"></i>
+                        <td class="text-end pe-3">
+                            <div class="d-flex align-items-center justify-content-end gap-1">
+                                {% if is_main_reseller and m.get('active_sessions_count', 0) > 0 %}
+                                    <!-- مشاهده و قطع تک‌تک نشست‌ها -->
+                                    <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#memberSessionsModal{{ m['id'] }}" title="مشاهده نشست‌های فعال و قطع تکی">
+                                        <i class="fas fa-desktop"></i>
+                                    </button>
+                                    <!-- قطع یکجای تمامی نشست‌های فعال این کاربر -->
+                                    <form action="{{ url_for('reseller_terminate_member_sessions', member_id=m['id']) }}" method="POST" class="d-inline m-0" onsubmit="return confirm('⚠️ آیا از خاتمه فوری کلیه نشست‌های فعال «{{ m.get('display_name') }}» اطمینان دارید؟\n\nاین کاربر فوراً از پنل خارج خواهد شد.');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="خاتمه فوری تمامی نشست‌های فعال">
+                                            <i class="fas fa-power-off"></i>
+                                        </button>
+                                    </form>
+                                {% endif %}
+
+                                <form action="{{ url_for('reseller_team_toggle', member_id=m['id']) }}" method="POST" class="d-inline m-0">
+                                    <button type="submit" class="btn btn-sm {{ 'btn-outline-warning' if m.get('is_active') else 'btn-outline-success' }}" title="تغییر وضعیت فعال/معلق">
+                                        <i class="fas fa-ban" style="font-size: 0.8rem;"></i>
                                     </button>
                                 </form>
-                                <form action="{{ url_for('reseller_team_delete', member_id=m['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از حذف این عضو اطمینان دارید؟');">
-                                    <button type="submit" class="btn btn-outline-danger" title="حذف کاربر">
+                                <form action="{{ url_for('reseller_team_delete', member_id=m['id']) }}" method="POST" class="d-inline m-0" onsubmit="return confirm('آیا از حذف این عضو اطمینان دارید؟');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="حذف کاربر">
                                         <i class="fas fa-trash-can"></i>
                                     </button>
                                 </form>
@@ -94,7 +140,7 @@
 
                     {% if not team_members %}
                     <tr>
-                        <td colspan="8" class="text-center py-5 text-muted">
+                        <td colspan="9" class="text-center py-5 text-muted">
                             <i class="fas fa-users-slash fs-1 d-block mb-2 text-secondary opacity-50"></i>
                             هنوز کارمند یا شریکی به تیم خود اضافه نکرده‌اید.
                         </td>
@@ -105,6 +151,74 @@
         </div>
     </div>
 </div>
+
+<!-- مودال‌های مشاهده و مدیریت نشست‌های تک‌تک اعضای تیم -->
+{% if is_main_reseller %}
+{% for m in team_members %}
+{% if m.get('active_sessions_count', 0) > 0 %}
+<div class="modal fade text-start" id="memberSessionsModal{{ m['id'] }}" tabindex="-1" aria-labelledby="memberSessionsModalLabel{{ m['id'] }}" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content shadow border-0">
+            <div class="modal-header bg-light py-3">
+                <h5 class="modal-title fw-bold" id="memberSessionsModalLabel{{ m['id'] }}">
+                    <i class="fas fa-desktop text-primary me-2"></i>نشست‌های فعال «{{ m.get('display_name') }}»
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-3">
+                <div class="p-2.5 bg-light rounded border mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div>
+                        <span class="text-muted small">نام کاربری:</span> <strong><code>{{ m.get('username') }}</code></strong>
+                        | <span class="text-muted small">نقش:</span> <strong>{{ m.get('role') }}</strong>
+                    </div>
+                    <form action="{{ url_for('reseller_terminate_member_sessions', member_id=m['id']) }}" method="POST" class="d-inline m-0" onsubmit="return confirm('⚠️ آیا از خاتمه تمام نشست‌های فعال این کاربر اطمینان دارید؟');">
+                        <button type="submit" class="btn btn-sm btn-danger shadow-xs">
+                            <i class="fas fa-power-off me-1"></i> خاتمه تمامی نشست‌های این کاربر
+                        </button>
+                    </form>
+                </div>
+                <div class="table-responsive border rounded">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-3">دستگاه و سیستم‌عامل</th>
+                                <th>مرورگر</th>
+                                <th>آدرس آی‌پی</th>
+                                <th>زمان ورود</th>
+                                <th>آخرین فعالیت</th>
+                                <th class="text-end pe-3">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for s in m.get('active_sessions', []) %}
+                            <tr>
+                                <td class="ps-3"><small><strong>{{ s['device_os'] or '💻 نامشخص' }}</strong></small></td>
+                                <td><small>{{ s['browser'] or '🌐 نامشخص' }}</small></td>
+                                <td><code class="font-monospace small">{{ s['ip_address'] }}</code></td>
+                                <td><small class="text-muted">{{ s['login_at'][:16].replace('T', ' ') if s['login_at'] else '-' }}</small></td>
+                                <td><small class="text-muted"><i class="fas fa-bolt me-1 text-warning"></i>{{ s['last_active_at'][:16].replace('T', ' ') if s['last_active_at'] else '-' }}</small></td>
+                                <td class="text-end pe-3">
+                                    <form action="{{ url_for('reseller_terminate_session', session_id=s['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از خاتمه این نشست مطمئن هستید؟');">
+                                        <button type="submit" class="btn btn-xs btn-outline-danger py-0 px-2" title="قطع این نشست">
+                                            <i class="fas fa-power-off"></i> قطع نشست
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">بستن</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+{% endif %}
 
 <!-- مدال افزودن عضو جدید -->
 <div class="modal fade" id="addMemberModal" tabindex="-1" aria-hidden="true">
@@ -174,4 +288,19 @@ function toggleSharePercent() {
     }
 }
 </script>
+<style>
+.pulse-indicator {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background-color: #10b981;
+    display: inline-block;
+    animation: pulse-dot 1.8s infinite;
+}
+@keyframes pulse-dot {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+    70% { transform: scale(1); box-shadow: 0 0 0 5px rgba(16, 185, 129, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+</style>
 {% endblock %}

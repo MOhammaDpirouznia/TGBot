@@ -143,32 +143,162 @@
         </div>
     </div>
 
-    <!-- بخش نشست‌های فعال و سوابق ورود اخیر نماینده -->
+    <!-- بخش خلاصه عملکرد و هوش مصرف نماینده -->
+    {% set u_sum = usage_summary or {} %}
     <div class="col-12 mt-4">
         <div class="card shadow-sm border-0">
             <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <h5 class="mb-0 fw-bold">
-                    <i class="fas fa-shield-halved text-success me-2"></i> نشست‌های فعال و سوابق ورود اخیر
+                    <i class="fas fa-chart-pie text-primary me-2"></i> خلاصه وضعیت استفاده و شاخص‌های عملکرد شما
                 </h5>
-                <span class="badge bg-light text-dark border">امنیت حساب نمایندگی</span>
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2.5 py-1">
+                    <i class="fas fa-bolt me-1"></i> پایش هوشمند مصرف
+                </span>
+            </div>
+            <div class="card-body p-3">
+                <div class="row g-3">
+                    <!-- ۱. مصرف امروز -->
+                    <div class="col-md-3 col-sm-6">
+                        <div class="card border-0 shadow-sm p-3 h-100 bg-light border-start border-primary border-4 reseller-kpi-card">
+                            <i class="fas fa-calendar-day kpi-icon-bg text-primary"></i>
+                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                <span class="text-muted small fw-medium">مصرف و سفارشات امروز</span>
+                                <span class="badge bg-primary text-white rounded-pill px-2 py-0.5 font-monospace" style="font-size: 0.65rem;">امروز</span>
+                            </div>
+                            <h5 class="fw-bold text-primary font-monospace mb-1">{{ "{:,}".format(u_sum.get('today', {}).get('spent', 0)) }} <span class="small fs-6 fw-normal text-muted">تومان</span></h5>
+                            <div class="small text-muted mt-1">
+                                <span>تعداد سفارش‌ها: <strong class="font-monospace text-dark">{{ u_sum.get('today', {}).get('orders', 0) }}</strong></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ۲. مصرف دیروز -->
+                    <div class="col-md-3 col-sm-6">
+                        <div class="card border-0 shadow-sm p-3 h-100 bg-light border-start border-warning border-4 reseller-kpi-card">
+                            <i class="fas fa-clock-rotate-left kpi-icon-bg text-warning"></i>
+                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                <span class="text-muted small fw-medium">مصرف و سفارشات دیروز</span>
+                                <span class="badge bg-warning text-dark rounded-pill px-2 py-0.5 font-monospace" style="font-size: 0.65rem;">دیروز</span>
+                            </div>
+                            <h5 class="fw-bold text-dark font-monospace mb-1">{{ "{:,}".format(u_sum.get('yesterday', {}).get('spent', 0)) }} <span class="small fs-6 fw-normal text-muted">تومان</span></h5>
+                            <div class="small text-muted mt-1">
+                                <span>تعداد سفارش‌ها: <strong class="font-monospace text-dark">{{ u_sum.get('yesterday', {}).get('orders', 0) }}</strong></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ۳. مصرف ماهانه -->
+                    <div class="col-md-3 col-sm-6">
+                        <div class="card border-0 shadow-sm p-3 h-100 bg-light border-start border-success border-4 reseller-kpi-card">
+                            <i class="fas fa-calendar-check kpi-icon-bg text-success"></i>
+                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                <span class="text-muted small fw-medium">مصرف ۳۰ روز اخیر</span>
+                                <span class="badge bg-success text-white rounded-pill px-2 py-0.5 font-monospace" style="font-size: 0.65rem;">۳۰ روز</span>
+                            </div>
+                            <h5 class="fw-bold text-success font-monospace mb-1">{{ "{:,}".format(u_sum.get('month', {}).get('spent', 0)) }} <span class="small fs-6 fw-normal text-muted">تومان</span></h5>
+                            <div class="small text-muted mt-1">
+                                <span>مجموع سفارش‌ها: <strong class="font-monospace text-dark">{{ u_sum.get('month', {}).get('orders', 0) }}</strong></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ۴. میانگین روزانه -->
+                    <div class="col-md-3 col-sm-6">
+                        <div class="card border-0 shadow-sm p-3 h-100 bg-light border-start border-purple border-4 reseller-kpi-card" style="border-color: #7c3aed !important;">
+                            <i class="fas fa-chart-line kpi-icon-bg text-purple" style="color: #7c3aed;"></i>
+                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                <span class="text-muted small fw-medium">میانگین گردش روزانه</span>
+                                <span class="badge bg-purple-subtle rounded-pill px-2 py-0.5 font-monospace" style="color: #7c3aed; font-size: 0.65rem;">روزانه</span>
+                            </div>
+                            <h5 class="fw-bold font-monospace mb-1" style="color: #7c3aed;">{{ "{:,}".format(u_sum.get('daily_average', 0)) }} <span class="small fs-6 fw-normal text-muted">تومان</span></h5>
+                            <div class="small text-muted mt-1">
+                                <span>مبنای محاسبه: ۳۰ روز اخیر</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ۵. ترافیک کل مصرفی -->
+                    <div class="col-md-6">
+                        <div class="card border-0 shadow-sm p-3 h-100 bg-light border-start border-info border-4 reseller-kpi-card">
+                            <i class="fas fa-network-wired kpi-icon-bg text-info"></i>
+                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                <span class="text-muted small fw-medium">ترافیک مصرفی کل مشترکین شما</span>
+                                <span class="badge bg-info text-white rounded-pill px-2 py-0.5 font-monospace" style="font-size: 0.65rem;">{{ u_sum.get('traffic', {}).get('percent', 0) }}%</span>
+                            </div>
+                            <h5 class="fw-bold text-dark font-monospace mb-1">{{ u_sum.get('traffic', {}).get('used_gb', 0) }} <span class="small fs-6 fw-normal">گیگابایت</span></h5>
+                            <div class="small text-muted mt-1">
+                                <span>از مجموع <strong class="font-monospace text-dark">{{ u_sum.get('traffic', {}).get('limit_gb', 0) }} گیگابایت</strong> ترافیک اختصاص‌یافته پلن‌ها</span>
+                            </div>
+                            <div class="progress mt-2" style="height: 6px;">
+                                <div class="progress-bar bg-info" role="progressbar" style="width: {{ [u_sum.get('traffic', {}).get('percent', 0), 100]|min }}%;" aria-valuenow="{{ u_sum.get('traffic', {}).get('percent', 0) }}" aria-valuemin="0" aria-valuemax="100"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ۶. آمار مشترکین -->
+                    <div class="col-md-6">
+                        <div class="card border-0 shadow-sm p-3 h-100 bg-light border-start border-secondary border-4 reseller-kpi-card">
+                            <i class="fas fa-users kpi-icon-bg text-secondary"></i>
+                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                <span class="text-muted small fw-medium">وضعیت مشترکین شما</span>
+                                <span class="badge bg-success text-white rounded-pill px-2 py-0.5 font-monospace" style="font-size: 0.65rem;">{{ u_sum.get('users', {}).get('active', 0) }} کاربر فعال</span>
+                            </div>
+                            <div class="d-flex align-items-center justify-content-between mt-2">
+                                <div>
+                                    <span class="text-muted small d-block">کل مشترکین:</span>
+                                    <strong class="font-monospace text-dark fs-5">{{ u_sum.get('users', {}).get('total', 0) }} نفر</strong>
+                                </div>
+                                <div class="border-start ps-4">
+                                    <span class="text-muted small d-block">مشترکین آنلاین:</span>
+                                    <span class="badge bg-success-subtle text-success border border-success rounded-pill px-2.5 py-1 font-monospace fs-6">
+                                        <i class="fas fa-circle me-1" style="font-size: 0.5rem;"></i>{{ u_sum.get('users', {}).get('online', 0) }} آنلاین
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- بخش نشست‌های فعال و سوابق ورود اخیر نماینده -->
+    <div class="col-12 mt-4">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-2">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="fas fa-shield-halved text-success me-2"></i> نشست‌های فعال و سوابق ورود اخیر
+                    </h5>
+                    <span class="badge bg-light text-dark border">امنیت حساب نمایندگی</span>
+                </div>
+                {% if is_main_reseller %}
+                <form action="{{ url_for('reseller_terminate_other_sessions') }}" method="POST" class="d-inline m-0" onsubmit="return confirm('⚠️ آیا از خاتمه تمام نشست‌های فعال دیگر خود اطمینان دارید؟\n\nفقط نشست فعلی شما باز خواهد ماند.');">
+                    <button type="submit" class="btn btn-sm btn-outline-danger shadow-xs d-inline-flex align-items-center gap-1.5 px-3 py-1.5">
+                        <i class="fas fa-power-off"></i>
+                        <span>خاتمه سایر نشست‌های فعال من</span>
+                    </button>
+                </form>
+                {% endif %}
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
                     <table class="table table-hover align-middle mb-0">
                         <thead class="table-light">
                             <tr>
-                                <th>دستگاه و سیستم‌عامل</th>
+                                <th class="ps-3">دستگاه و سیستم‌عامل</th>
                                 <th>مرورگر</th>
                                 <th>آدرس آی‌پی (IP)</th>
                                 <th>زمان ورود</th>
                                 <th>آخرین فعالیت / خروج</th>
                                 <th>وضعیت نشست</th>
+                                <th class="text-end pe-3">عملیات</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for log in login_history %}
                             <tr>
-                                <td><strong>{{ log['device_os'] or '💻 نامشخص' }}</strong></td>
+                                <td class="ps-3"><strong>{{ log['device_os'] or '💻 نامشخص' }}</strong></td>
                                 <td>{{ log['browser'] or '🌐 نامشخص' }}</td>
                                 <td><code class="font-monospace fw-bold">{{ log['ip_address'] }}</code></td>
                                 <td><small class="text-muted">{{ log['login_at'][:16].replace('T', ' ') if log['login_at'] else '-' }}</small></td>
@@ -185,18 +315,31 @@
                                     {% if log['status'] == 'failed' %}
                                         <span class="badge bg-danger"><i class="fas fa-circle-xmark me-1"></i>ورود ناموفق</span>
                                     {% elif current_token and log['session_token'] == current_token %}
-                                        <span class="badge bg-success"><i class="fas fa-circle-dot me-1"></i>نشست فعلی (آنلاین)</span>
+                                        <span class="badge bg-success-subtle text-success border border-success px-2 py-1"><i class="fas fa-circle-dot me-1"></i>همین نشست (آنلاین)</span>
                                     {% elif log['is_active'] %}
-                                        <span class="badge bg-info text-dark"><i class="fas fa-signal me-1"></i>فعال</span>
+                                        <span class="badge bg-info text-dark"><i class="fas fa-signal me-1"></i>نشست فعال</span>
                                     {% else %}
                                         <span class="badge bg-light text-dark border">پایان یافته</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end pe-3">
+                                    {% if current_token and log['session_token'] == current_token %}
+                                        <span class="badge bg-success-subtle text-success border border-success" style="font-size: 0.68rem;">همین دستگاه</span>
+                                    {% elif log['is_active'] and is_main_reseller %}
+                                        <form action="{{ url_for('reseller_terminate_session', session_id=log['id']) }}" method="POST" class="d-inline m-0" onsubmit="return confirm('آیا از خاتمه فوری این نشست مطمئن هستید؟');">
+                                            <button type="submit" class="btn btn-xs btn-outline-danger py-0 px-2 shadow-xs" title="خاتمه فوری این نشست">
+                                                <i class="fas fa-power-off"></i> قطع نشست
+                                            </button>
+                                        </form>
+                                    {% else %}
+                                        <span class="text-muted small">-</span>
                                     {% endif %}
                                 </td>
                             </tr>
                             {% endfor %}
                             {% if not login_history %}
                             <tr>
-                                <td colspan="6" class="text-center py-4 text-muted">سابقه ورودی برای این حساب یافت نشد.</td>
+                                <td colspan="7" class="text-center py-4 text-muted">سابقه ورودی برای این حساب یافت نشد.</td>
                             </tr>
                             {% endif %}
                         </tbody>
@@ -207,8 +350,29 @@
     </div>
 </div>
 
-<!-- استایل‌های اختصاصی انتخاب کارت آواتار نماینده -->
+<!-- استایل‌های اختصاصی آواتار و کارت‌های خلاصه مصرف -->
 <style>
+.reseller-kpi-card {
+    border-radius: 12px !important;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.2s ease-in-out;
+}
+.reseller-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+}
+.kpi-icon-bg {
+    position: absolute;
+    left: 12px;
+    bottom: 10px;
+    font-size: 2.8rem;
+    opacity: 0.08;
+    pointer-events: none;
+}
+[data-bs-theme="dark"] .reseller-kpi-card {
+    background-color: #1e293b !important;
+}
 .avatar-preset-card {
     transition: all 0.2s ease-in-out;
     border: 2px solid rgba(0,0,0,0.08) !important;
