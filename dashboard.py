@@ -1854,7 +1854,7 @@ def get_subscription_issuer_info(sub: dict, resellers_map: dict = None, admins_m
         r_name = reseller.get("name") or reseller.get("brand_name") or r_username
 
         is_reseller_bot = False
-        if created_by.startswith("bot_reseller_") or created_by.startswith("bot:"):
+        if created_by in ("bot", "robot", "ربات") or created_by.startswith("bot_reseller_") or created_by.startswith("bot:"):
             is_reseller_bot = True
         elif any(k in comment.lower() for k in ["wallet purchase", "direct issue", "multibot"]):
             is_reseller_bot = True
@@ -1863,22 +1863,23 @@ def get_subscription_issuer_info(sub: dict, resellers_map: dict = None, admins_m
 
         if is_reseller_bot:
             return {
-                "text": f"ربات {r_name}",
-                "username": r_username,
+                "text": "ربات",
+                "username": "bot",
                 "is_bot": True,
-                "badge_class": "bg-info-subtle text-info-emphasis border border-info-subtle shadow-sm",
+                "badge_class": "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle shadow-sm font-monospace",
                 "icon": "fa-robot",
                 "title": f"صادر شده توسط ربات نماینده {r_name} (@{r_username})"
             }
         else:
-            # صادر شده توسط شخص نماینده در وب‌پنل
+            # صادر شده توسط شخص مدیر/کاربر نماینده در وب‌پنل
+            issuer_user = created_by if (created_by and not created_by.startswith("reseller_")) else r_username
             return {
-                "text": r_username,
-                "username": r_username,
+                "text": issuer_user,
+                "username": issuer_user,
                 "is_bot": False,
-                "badge_class": "bg-info text-dark shadow-sm font-monospace",
+                "badge_class": "bg-light text-dark border font-monospace shadow-sm",
                 "icon": "fa-user-tie",
-                "title": f"نماینده فروش: {r_name} ({r_username})"
+                "title": f"صادرکننده: {issuer_user}"
             }
 
     # ۲. اشتراک مربوط به مدیریت است
@@ -7353,11 +7354,13 @@ def reseller_create_user():
         # ۲. پس از تایید ۱۰۰٪ ساخت در هیدیفای، موجودی/اعتبار کسر و تراکنش خرید ثبت می‌گردد
         plan_title = plan.get("display_name") or plan.get("name") or plan.get("master_name", "")
         profit_margin = max(0, original_price - final_price)
+        reseller_creator = session.get("username") or reseller.get("username") or f"reseller_{reseller_id}"
         deduct_res = db.deduct_reseller_balance(
             reseller_id, final_price, plan_title, account_name,
             payment_source=payment_source,
             selling_price=original_price,
-            profit_margin=profit_margin
+            profit_margin=profit_margin,
+            created_by=reseller_creator
         )
         if not deduct_res.get("success"):
             logger.error(f"Failed to deduct balance after user creation: {deduct_res.get('error')}")
@@ -7847,6 +7850,7 @@ def reseller_renew_user(sub_id: int):
             logger.error(f"Error in reseller renew Hiddify {sub.get('hidify_uuid')}: {e}")
 
     # ۲. ثبت در دیتابیس (آنی با ریست یا رزرو در صف) و کسر هزینه با توجه به منبع پرداخت
+    creator_user = session.get("username") or f"reseller_{reseller_id}"
     profit_margin = max(0, original_price - final_price)
     renew_db = db.renew_reseller_subscription(
         reseller_id=reseller_id,
@@ -7860,7 +7864,8 @@ def reseller_renew_user(sub_id: int):
         renewal_type=renewal_res.get("renewal_type", "reset_and_replaced"),
         payment_source=payment_source,
         selling_price=original_price,
-        profit_margin=profit_margin
+        profit_margin=profit_margin,
+        created_by=creator_user
     )
 
     if renew_db.get("success"):
@@ -7878,7 +7883,8 @@ def reseller_renew_user(sub_id: int):
                     period_days=duration_days,
                     renewal_type="reset_and_replaced",
                     reseller_id=reseller_id,
-                    cost_paid=final_price
+                    cost_paid=final_price,
+                    created_by=creator_user
                 )
             except Exception as e:
                 logger.warning(f"Failed to log subscription history on reseller renew: {e}")
@@ -7983,6 +7989,7 @@ def reseller_subscriptions_bulk_renew():
         return redirect(get_redirect_target("reseller_users"))
 
     # ۲. اعمال تمدیدها برای تک‌تک اشتراک‌ها
+    creator_user = session.get("username") or f"reseller_{reseller_id}"
     success_count = 0
     for item in subs_to_renew:
         sub = item["sub"]
@@ -7997,7 +8004,8 @@ def reseller_subscriptions_bulk_renew():
             instant_activate=instant_activate,
             payment_source=payment_source,
             selling_price=item.get("selling_price", 0),
-            profit_margin=item.get("profit_margin", 0)
+            profit_margin=item.get("profit_margin", 0),
+            created_by=creator_user
         )
         if renew_res.get("success"):
             if instant_activate and sub.get("hidify_uuid"):
@@ -8018,7 +8026,8 @@ def reseller_subscriptions_bulk_renew():
                         period_days=item["duration"],
                         renewal_type="reset_and_replaced",
                         reseller_id=reseller_id,
-                        cost_paid=item["cost"]
+                        cost_paid=item["cost"],
+                        created_by=creator_user
                     )
                 except Exception:
                     pass
@@ -9145,8 +9154,9 @@ def reseller_payment_approve(payment_id):
         sub_link = f"https://vpn.service/sub/{account_name}"
 
     # کسر از کیف پول نماینده
+    approver_user = session.get("username") or f"reseller_{reseller_id}"
     res_profit = max(0, original_price - wholesale_price)
-    db.deduct_reseller_balance(reseller_id, wholesale_price, plan_name, account_name, selling_price=original_price, profit_margin=res_profit)
+    db.deduct_reseller_balance(reseller_id, wholesale_price, plan_name, account_name, selling_price=original_price, profit_margin=res_profit, created_by=approver_user)
     r_after = db.get_reseller(reseller_id)
     if r_after:
         session["balance"] = r_after.get("balance", 0)
@@ -9164,7 +9174,8 @@ def reseller_payment_approve(payment_id):
         status="active",
         account_name=account_name,
         account_comment=user_comment,
-        reseller_id=reseller_id
+        reseller_id=reseller_id,
+        created_by=approver_user
     )
 
     # واریز پورسانت زیرمجموعه‌گیری به بالادستی

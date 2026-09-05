@@ -684,7 +684,11 @@ class ResellerBotInstance:
             days = plan.get("duration", 30)
             account_name = context.user_data.get("buying_account_name") or f"r{r_id}_u{user.id}_{int(datetime.now().timestamp()) % 10000}"
 
-            db.deduct_reseller_balance(r_id, wholesale_cost, pname, account_name)
+            bot_profit = max(0, price - wholesale_cost)
+            db.deduct_reseller_balance(
+                r_id, wholesale_cost, pname, account_name,
+                selling_price=price, profit_margin=bot_profit, created_by="bot"
+            )
 
             await query.edit_message_text("⏳ در حال ساخت و فعال‌سازی آنی اشتراک شما...")
 
@@ -711,7 +715,7 @@ class ResellerBotInstance:
                 account_name=account_name,
                 account_comment=f"Wallet Purchase | Reseller #{r_id}",
                 reseller_id=r_id,
-                created_by=f"bot_reseller_{r_id}"
+                created_by="bot"
             )
 
             brand = self.reseller_data.get("brand_name") or "ما"
@@ -962,7 +966,7 @@ class ResellerBotInstance:
                     account_name=account_name,
                     account_comment=f"Reseller #{r_id} Bot",
                     reseller_id=r_id,
-                    created_by=f"bot_reseller_{r_id}"
+                    created_by="bot"
                 )
 
                 db.update_transaction(order_id, status="approved")

@@ -1019,6 +1019,8 @@ class Database:
             "ALTER TABLE reseller_transactions ADD COLUMN subscription_id INTEGER",
             "ALTER TABLE reseller_transactions ADD COLUMN selling_price INTEGER DEFAULT 0",
             "ALTER TABLE reseller_transactions ADD COLUMN profit_margin INTEGER DEFAULT 0",
+            "ALTER TABLE reseller_transactions ADD COLUMN created_by TEXT",
+            "ALTER TABLE subscriptions ADD COLUMN last_renewed_by TEXT",
             "ALTER TABLE accounting_records ADD COLUMN is_edited INTEGER DEFAULT 0",
             "ALTER TABLE accounting_records ADD COLUMN edited_by TEXT",
             "ALTER TABLE accounting_records ADD COLUMN edited_at TEXT",
@@ -4777,23 +4779,17 @@ class Database:
                 """)
             res["usage_history"] = [dict(r) for r in cursor.fetchall()]
 
-            # ۶. آخرین تمدیدها و خریدها به همراه تاریخ عضویت و آخرین بروزرسانی
+            # ۶. آخرین تمدیدها و خریدها به همراه تاریخ عضویت و آخرین بروزرسانی (تایم‌لاین رویدادهای زنده ۳۰ تایی)
             if reseller_id:
-                cursor.execute("""
-                    SELECT s.*, r.name as reseller_name
-                    FROM subscriptions s
-                    LEFT JOIN resellers r ON s.reseller_id = r.id
-                    WHERE s.reseller_id = ?
-                    ORDER BY s.updated_at DESC LIMIT 10
-                """, (reseller_id,))
+                res["timeline_subscriptions"] = self.get_reseller_activity_timeline(reseller_id, limit=30)
             else:
                 cursor.execute("""
                     SELECT s.*, u.created_at as user_registered_at, u.username
                     FROM subscriptions s
                     LEFT JOIN users u ON s.telegram_id = u.telegram_id
-                    ORDER BY s.updated_at DESC LIMIT 10
+                    ORDER BY s.updated_at DESC LIMIT 30
                 """)
-            res["timeline_subscriptions"] = [dict(r) for r in cursor.fetchall()]
+                res["timeline_subscriptions"] = [dict(r) for r in cursor.fetchall()]
 
             return res
         except Exception as e:
@@ -6264,13 +6260,14 @@ class Database:
 
     def deduct_reseller_balance(self, reseller_id: int, amount: int, plan_name: str, account_name: str,
                                 description: str = "خرید اشتراک برای مشتری", payment_source: str = "auto",
-                                subscription_id: int = None, selling_price: int = None, profit_margin: int = None):
-        """کسر هزینه با پشتیبانی از انتخاب دقیق مبدأ پرداخت (کیف پول نقدی یا اعتبار خرید) و ثبت حاشیه سود"""
+                                subscription_id: int = None, selling_price: int = None, profit_margin: int = None,
+                                created_by: str = None):
+        """کسر هزینه با پشتیبانی از انتخاب دقیق مبدأ پرداخت (کیف پول نقدی یا اعتبار خرید)، ثبت صادرکننده و ثبت حاشیه سود"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
-            cursor.execute("SELECT balance, credit_limit, credit_debt, credit_enabled FROM resellers WHERE id=?", (reseller_id,))
+            cursor.execute("SELECT balance, credit_limit, credit_debt, credit_enabled, discount_percent FROM resellers WHERE id=?", (reseller_id,))
             row = cursor.fetchone()
             if not row:
                 return {"success": False, "error": "نماینده یافت نشد."}
@@ -6280,10 +6277,15 @@ class Database:
             credit_debt = row["credit_debt"] or 0
             credit_enabled = bool(row["credit_enabled"]) or (credit_limit > 0)
             available_credit = max(0, credit_limit - credit_debt) if credit_enabled else 0
+            discount_pct = row["discount_percent"] if ("discount_percent" in row.keys() and row["discount_percent"] is not None) else 20
 
             chosen_source = str(payment_source).strip().lower() if payment_source else "auto"
-            selling_val = int(selling_price) if selling_price is not None else int(amount)
+            if selling_price is not None and int(selling_price) > 0:
+                selling_val = int(selling_price)
+            else:
+                selling_val = int(amount * 100 / (100 - discount_pct)) if discount_pct < 100 else int(amount)
             profit_val = int(profit_margin) if profit_margin is not None else max(0, selling_val - int(amount))
+            creator_val = str(created_by).strip() if created_by else None
 
             if chosen_source == "wallet":
                 if balance < amount:
@@ -6294,9 +6296,9 @@ class Database:
                 cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (amount, now, reseller_id))
                 desc_text = f"{description} (کسر از کیف پول نقدی)"
                 cursor.execute("""
-                    INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_at)
-                    VALUES (?, 'purchase', ?, ?, ?, ?, ?, ?, 'wallet', ?, ?)
-                """, (reseller_id, amount, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, now))
+                    INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
+                    VALUES (?, 'purchase', ?, ?, ?, ?, ?, ?, 'wallet', ?, ?, ?)
+                """, (reseller_id, amount, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, creator_val, now))
                 tx_id = cursor.lastrowid
                 conn.commit()
                 return {"success": True, "transaction_id": tx_id, "is_credit": False, "credit_used": 0, "payment_source": "wallet"}
@@ -6312,9 +6314,9 @@ class Database:
                 cursor.execute("UPDATE resellers SET credit_debt = credit_debt + ?, updated_at=? WHERE id=?", (amount, now, reseller_id))
                 desc_text = f"{description} (کسر از اعتبار خرید: {amount:,} ت بدهی)"
                 cursor.execute("""
-                    INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_at)
-                    VALUES (?, 'purchase_credit', ?, ?, ?, ?, ?, ?, 'credit', ?, ?)
-                """, (reseller_id, amount, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, now))
+                    INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
+                    VALUES (?, 'purchase_credit', ?, ?, ?, ?, ?, ?, 'credit', ?, ?, ?)
+                """, (reseller_id, amount, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, creator_val, now))
                 tx_id = cursor.lastrowid
                 conn.commit()
                 return {"success": True, "transaction_id": tx_id, "is_credit": True, "credit_used": amount, "payment_source": "credit"}
@@ -6331,9 +6333,9 @@ class Database:
                 if balance >= amount:
                     cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (amount, now, reseller_id))
                     cursor.execute("""
-                        INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_at)
-                        VALUES (?, 'purchase', ?, ?, ?, ?, ?, ?, 'wallet', ?, ?)
-                    """, (reseller_id, amount, selling_val, profit_val, plan_name, account_name, description, subscription_id, now))
+                        INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
+                        VALUES (?, 'purchase', ?, ?, ?, ?, ?, ?, 'wallet', ?, ?, ?)
+                    """, (reseller_id, amount, selling_val, profit_val, plan_name, account_name, description, subscription_id, creator_val, now))
                     tx_id = cursor.lastrowid
                     conn.commit()
                     return {"success": True, "transaction_id": tx_id, "is_credit": False, "credit_used": 0, "payment_source": "wallet"}
@@ -6349,9 +6351,9 @@ class Database:
 
                     desc_text = f"{description} (خرید اعتباری: {credit_used:,} تومان بدهی)"
                     cursor.execute("""
-                        INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_at)
-                        VALUES (?, 'purchase_credit', ?, ?, ?, ?, ?, ?, 'credit', ?, ?)
-                    """, (reseller_id, amount, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, now))
+                        INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
+                        VALUES (?, 'purchase_credit', ?, ?, ?, ?, ?, ?, 'credit', ?, ?, ?)
+                    """, (reseller_id, amount, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, creator_val, now))
                     tx_id = cursor.lastrowid
                     conn.commit()
                     return {"success": True, "transaction_id": tx_id, "is_credit": True, "credit_used": credit_used, "payment_source": "credit"}
@@ -6406,13 +6408,224 @@ class Database:
             conn.close()
 
     def get_reseller_transactions(self, reseller_id: int, limit: int = 100):
-        """لیست تراکنش‌های یک نماینده"""
+        """لیست تراکنش‌های یک نماینده به همراه صادرکننده، نوع فروش و حاشیه سود دقیق"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM reseller_transactions WHERE reseller_id=? ORDER BY created_at DESC LIMIT ?", (reseller_id, limit))
+        res_info = self.get_reseller(reseller_id) or {}
+        reseller_uname = res_info.get("username") or f"reseller_{reseller_id}"
+        discount_pct = res_info.get("discount_percent", 20) or 20
+
+        cursor.execute("""
+            SELECT rt.*, s.created_by as sub_creator, s.account_comment as sub_comment
+            FROM reseller_transactions rt
+            LEFT JOIN subscriptions s ON (rt.subscription_id = s.id OR (rt.subscription_id IS NULL AND rt.account_name IS NOT NULL AND rt.account_name != '' AND rt.account_name = s.account_name))
+            WHERE rt.reseller_id = ?
+            ORDER BY rt.created_at DESC
+            LIMIT ?
+        """, (reseller_id, limit))
         rows = cursor.fetchall()
         conn.close()
-        return [dict(r) for r in rows]
+
+        result = []
+        for r in rows:
+            tx = dict(r)
+            ttype = tx.get("type", "")
+            amount = int(tx.get("amount") or 0)
+            selling = int(tx.get("selling_price") or 0)
+            profit = int(tx.get("profit_margin") or 0)
+
+            # محاسبه پشتیبان حاشیه سود و قیمت فروش در صورت ثبت نشدن در سوابق
+            if profit <= 0 and selling <= 0 and amount > 0 and ttype in ("purchase", "purchase_credit", "renewal", "renew"):
+                selling = int(amount * 100 / (100 - discount_pct)) if discount_pct < 100 else amount
+                profit = max(0, selling - amount)
+            elif profit <= 0 and selling > amount:
+                profit = max(0, selling - amount)
+
+            tx["selling_price"] = selling
+            tx["profit_margin"] = profit
+
+            # تعیین عنوان فارسی نوع فروش
+            if ttype in ("purchase", "purchase_credit"):
+                tx["sale_type_title"] = "فروش جدید"
+                tx["sale_type_class"] = "primary"
+            elif ttype in ("renewal", "renew", "renew_credit"):
+                tx["sale_type_title"] = "تمدید"
+                tx["sale_type_class"] = "warning"
+            elif ttype == "deposit":
+                tx["sale_type_title"] = "شارژ کیف پول"
+                tx["sale_type_class"] = "success"
+            elif ttype == "refund":
+                tx["sale_type_title"] = "استرداد وجه"
+                tx["sale_type_class"] = "info"
+            else:
+                tx["sale_type_title"] = "-"
+                tx["sale_type_class"] = "secondary"
+
+            # صادرکننده
+            raw_c = tx.get("created_by") or tx.get("sub_creator") or ""
+            comment = tx.get("sub_comment") or tx.get("description") or ""
+            if raw_c in ("bot", "robot", "ربات") or "bot" in str(raw_c).lower() or "bot" in str(comment).lower() or "ربات" in str(comment):
+                tx["issuer"] = "ربات"
+                tx["is_bot"] = True
+            elif raw_c:
+                tx["issuer"] = raw_c
+                tx["is_bot"] = False
+            else:
+                tx["issuer"] = reseller_uname
+                tx["is_bot"] = False
+
+            result.append(tx)
+        return result
+
+    def get_reseller_activity_timeline(self, reseller_id: int, limit: int = 30) -> list:
+        """
+        تایم‌لاین هوشمند و جامع رویدادهای زنده فعالیت نماینده:
+        - مرتب‌سازی نزولی بر اساس زمان آخرین فعالیت (جدیدترین در صدر لیست)
+        - تفکیک کامل فعالیت‌ها: خرید ربات، تمدید اشتراک‌ها، ساخت مشتری دستی توسط مدیران و شارژ کیف پول
+        - ثبت صادرکننده (نام کاربری مدیر یا عنوان 'ربات')
+        - برگرداندن ۳۰ رویداد اخیر با قابلیت صفحه‌بندی
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        res_info = self.get_reseller(reseller_id) or {}
+        reseller_uname = res_info.get("username") or f"reseller_{reseller_id}"
+        discount_pct = res_info.get("discount_percent", 20) or 20
+
+        activities = []
+
+        # ۱. استخراج تراکنش‌های نماینده (خرید، تمدید، شارژ و ...)
+        try:
+            cursor.execute("""
+                SELECT rt.*, s.data_limit as sub_data_limit, s.duration as sub_duration,
+                       s.status as sub_status, s.created_by as sub_created_by, s.account_comment
+                FROM reseller_transactions rt
+                LEFT JOIN subscriptions s ON (rt.subscription_id = s.id OR (rt.subscription_id IS NULL AND rt.account_name IS NOT NULL AND rt.account_name != '' AND rt.account_name = s.account_name))
+                WHERE rt.reseller_id = ?
+                ORDER BY rt.created_at DESC
+                LIMIT ?
+            """, (reseller_id, limit * 2))
+            tx_rows = cursor.fetchall()
+            for r in tx_rows:
+                rd = dict(r)
+                ttype = rd.get("type", "")
+                raw_creator = rd.get("created_by") or rd.get("sub_created_by") or ""
+                comment = rd.get("account_comment") or rd.get("description") or ""
+
+                # تشخیص صادرکننده
+                if raw_creator in ("bot", "robot", "ربات") or "bot" in str(raw_creator).lower() or "bot" in str(comment).lower() or "ربات" in str(comment):
+                    issuer = "ربات"
+                    issuer_type = "bot"
+                elif raw_creator:
+                    issuer = raw_creator
+                    issuer_type = "user"
+                else:
+                    issuer = reseller_uname
+                    issuer_type = "reseller"
+
+                # تعیین نوع فعالیت
+                if ttype in ("renewal", "renew", "renew_credit"):
+                    act_type = "renewal"
+                    act_title = "تمدید اشتراک"
+                    badge_class = "warning"
+                elif ttype in ("purchase", "purchase_credit"):
+                    act_type = "new_sale"
+                    act_title = "فروش جدید (ساخت مشتری)"
+                    badge_class = "primary"
+                elif ttype == "deposit":
+                    act_type = "deposit"
+                    act_title = "شارژ کیف پول"
+                    badge_class = "success"
+                elif ttype == "refund":
+                    act_type = "refund"
+                    act_title = "استرداد وجه"
+                    badge_class = "info"
+                else:
+                    act_type = "activity"
+                    act_title = "تراکنش"
+                    badge_class = "secondary"
+
+                amount = int(rd.get("amount") or 0)
+                selling = int(rd.get("selling_price") or 0)
+                profit = int(rd.get("profit_margin") or 0)
+                if selling <= 0 and amount > 0 and ttype in ("purchase", "purchase_credit", "renewal"):
+                    selling = int(amount * 100 / (100 - discount_pct)) if discount_pct < 100 else amount
+                    profit = max(0, selling - amount)
+
+                activities.append({
+                    "id": f"tx_{rd['id']}",
+                    "account_name": rd.get("account_name") or "-",
+                    "plan_name": rd.get("plan_name") or "-",
+                    "activity_type": act_type,
+                    "activity_title": act_title,
+                    "badge_class": badge_class,
+                    "data_limit": rd.get("sub_data_limit") or 0,
+                    "duration": rd.get("sub_duration") or 30,
+                    "status": rd.get("sub_status") or "active",
+                    "issuer": issuer,
+                    "issuer_type": issuer_type,
+                    "amount": amount,
+                    "selling_price": selling,
+                    "profit_margin": profit,
+                    "created_at": rd.get("created_at") or "",
+                    "description": rd.get("description") or ""
+                })
+        except Exception as e_tx:
+            logger.error(f"Error fetching timeline transactions: {e_tx}")
+
+        # ۲. اضافه کردن اشتراک‌هایی که احیاناً در reseller_transactions ثبت نشده‌اند
+        try:
+            cursor.execute("""
+                SELECT s.* FROM subscriptions s
+                WHERE s.reseller_id = ?
+                  AND (s.is_deleted = 0 OR s.is_deleted IS NULL)
+                  AND s.id NOT IN (SELECT subscription_id FROM reseller_transactions WHERE reseller_id = ? AND subscription_id IS NOT NULL)
+                ORDER BY COALESCE(s.updated_at, s.created_at) DESC
+                LIMIT ?
+            """, (reseller_id, reseller_id, limit))
+            sub_rows = cursor.fetchall()
+            for s in sub_rows:
+                sd = dict(s)
+                raw_creator = sd.get("created_by") or ""
+                comment = sd.get("account_comment") or ""
+                if raw_creator in ("bot", "robot", "ربات") or "bot" in str(raw_creator).lower() or "bot" in str(comment).lower():
+                    issuer = "ربات"
+                    issuer_type = "bot"
+                elif raw_creator:
+                    issuer = raw_creator
+                    issuer_type = "user"
+                else:
+                    issuer = reseller_uname
+                    issuer_type = "reseller"
+
+                is_renewed = sd.get("updated_at") and sd.get("created_at") and sd["updated_at"] > sd["created_at"]
+                act_time = sd.get("updated_at") or sd.get("created_at") or ""
+
+                activities.append({
+                    "id": f"sub_{sd['id']}",
+                    "account_name": sd.get("account_name") or "-",
+                    "plan_name": sd.get("plan_name") or "-",
+                    "activity_type": "renewal" if is_renewed else "new_sale",
+                    "activity_title": "تمدید اشتراک" if is_renewed else "فروش جدید (ساخت مشتری)",
+                    "badge_class": "warning" if is_renewed else "primary",
+                    "data_limit": sd.get("data_limit") or 0,
+                    "duration": sd.get("duration") or 30,
+                    "status": sd.get("status") or "active",
+                    "issuer": issuer,
+                    "issuer_type": issuer_type,
+                    "amount": int(sd.get("cost_paid") or 0),
+                    "selling_price": 0,
+                    "profit_margin": 0,
+                    "created_at": act_time,
+                    "description": sd.get("account_comment") or ""
+                })
+        except Exception as e_sub:
+            logger.error(f"Error fetching timeline subscriptions: {e_sub}")
+
+        conn.close()
+
+        # ۳. مرتب‌سازی نزولی بر اساس زمان دقیق (جدیدترین فعالیت در صدر لیست)
+        activities.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+        return activities[:limit]
 
     def get_reseller_full_payment_history(self, reseller_id: int) -> dict:
         """دریافت سابقه کامل پرداختی‌ها، شارژها، بسته‌های اعتباری و ریز تراکنش‌های نماینده"""
@@ -6848,14 +7061,15 @@ class Database:
     def renew_reseller_subscription(self, reseller_id: int, sub_id: int, plan_id: str, plan_name: str,
                                     cost: int, data_limit: float, duration: int,
                                     instant_activate: bool = True, renewal_type: str = "reset_and_replaced",
-                                    payment_source: str = "auto", selling_price: int = None, profit_margin: int = None):
-        """تمدید اشتراک مشتری توسط نماینده با انتخاب دقیق مبدأ پرداخت و ثبت حاشیه سود"""
+                                    payment_source: str = "auto", selling_price: int = None, profit_margin: int = None,
+                                    created_by: str = None):
+        """تمدید اشتراک مشتری توسط نماینده با انتخاب دقیق مبدأ پرداخت، ثبت صادرکننده و ثبت حاشیه سود"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
             # بررسی موجودی کیف پول و سقف اعتبار
-            cursor.execute("SELECT balance, credit_enabled, credit_limit, credit_debt FROM resellers WHERE id=?", (reseller_id,))
+            cursor.execute("SELECT balance, credit_enabled, credit_limit, credit_debt, discount_percent FROM resellers WHERE id=?", (reseller_id,))
             res_row = cursor.fetchone()
             if not res_row:
                 return {"success": False, "error": "اطلاعات نماینده یافت نشد."}
@@ -6865,6 +7079,7 @@ class Database:
             credit_debt = (res_row["credit_debt"] or 0) if "credit_debt" in res_row.keys() else 0
             credit_enabled = bool(res_row["credit_enabled"]) if ("credit_enabled" in res_row.keys() and res_row["credit_enabled"]) else (credit_limit > 0)
             available_credit = max(0, credit_limit - credit_debt) if credit_enabled else 0
+            discount_pct = res_row["discount_percent"] if ("discount_percent" in res_row.keys() and res_row["discount_percent"] is not None) else 20
 
             cursor.execute("SELECT * FROM subscriptions WHERE id=? AND reseller_id=?", (sub_id, reseller_id))
             sub = cursor.fetchone()
@@ -6875,8 +7090,12 @@ class Database:
             mode_title = "فعال‌سازی آنی" if instant_activate else "رزرو در صف تمدید"
             actual_source = "wallet"
 
-            selling_val = int(selling_price) if selling_price is not None else int(cost)
+            if selling_price is not None and int(selling_price) > 0:
+                selling_val = int(selling_price)
+            else:
+                selling_val = int(cost * 100 / (100 - discount_pct)) if discount_pct < 100 else int(cost)
             profit_val = int(profit_margin) if profit_margin is not None else max(0, selling_val - int(cost))
+            creator_val = str(created_by).strip() if created_by else None
 
             if chosen_source == "wallet":
                 if balance < cost:
@@ -6912,11 +7131,11 @@ class Database:
                     tx_desc = f"تمدید اشتراک «{sub['account_name']}» با پلن {plan_name} ({mode_title} - کسر {balance:,} ت از کیف پول و {from_credit:,} ت از اعتبار)"
                     actual_source = "credit"
 
-            # ثبت تراکنش تمدید با مشخص بودن مبدأ پرداخت و حاشیه سود
+            # ثبت تراکنش تمدید با مشخص بودن مبدأ پرداخت، صادرکننده و حاشیه سود
             cursor.execute("""
-                INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_at)
-                VALUES (?, 'renewal', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (reseller_id, cost, selling_val, profit_val, plan_name, sub["account_name"], tx_desc, actual_source, sub_id, now))
+                INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
+                VALUES (?, 'renewal', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (reseller_id, cost, selling_val, profit_val, plan_name, sub["account_name"], tx_desc, actual_source, sub_id, creator_val, now))
 
             if instant_activate:
                 # ۳. به‌روزرسانی آنی مشخصات اشتراک، ریست حجم مصرفی و ریست تاریخ شروع و انقضا
@@ -6926,9 +7145,9 @@ class Database:
                 cursor.execute("""
                     UPDATE subscriptions
                     SET plan_id=?, plan_name=?, data_limit=?, data_used=0, duration=?, status='active',
-                        start_date=?, expire_date=?, updated_at=?, cost_paid=?, payment_source=?
+                        start_date=?, expire_date=?, updated_at=?, cost_paid=?, payment_source=?, last_renewed_by=?
                     WHERE id=? AND reseller_id=?
-                """, (plan_id, plan_name, data_limit, duration, new_start_date, new_expire_date, now, cost, actual_source, sub_id, reseller_id))
+                """, (plan_id, plan_name, data_limit, duration, new_start_date, new_expire_date, now, cost, actual_source, creator_val, sub_id, reseller_id))
                 conn.commit()
                 return {"success": True, "mode": "instant", "payment_source": actual_source}
             else:
