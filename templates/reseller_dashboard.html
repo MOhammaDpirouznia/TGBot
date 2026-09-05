@@ -191,37 +191,37 @@
 
 <!-- بخش وضعیت اعتبار و خرید اعتباری (در صورت فعال بودن یا داشتن بدهی) -->
 {% if reseller.get('credit_enabled') or (reseller.get('credit_debt') or 0) > 0 %}
-<div class="card shadow-sm border-0 mb-4" style="background: linear-gradient(135deg, #fef3c7, #fffbeb); border-right: 5px solid #f59e0b !important;">
+<div class="card shadow-sm border-0 mb-4 reseller-credit-banner">
     <div class="card-body p-3 p-md-4">
         <div class="row align-items-center g-3">
             <div class="col-md-6">
                 <div class="d-flex align-items-center gap-3">
-                    <div class="p-3 bg-warning text-dark rounded-circle shadow-sm">
+                    <div class="p-3 credit-banner-icon rounded-circle shadow-sm">
                         <i class="fas fa-hand-holding-dollar fs-4"></i>
                     </div>
                     <div>
-                        <h5 class="fw-bold text-dark mb-1">سیستم خرید اعتباری اختصاصی (Post-paid)</h5>
-                        <p class="text-muted small mb-0">شما می‌توانید بدون واریز اولیه، تا سقف اعتبار مجاز خود برای مشتریان اشتراک صادر کنید.</p>
+                        <h5 class="fw-bold credit-banner-title mb-1">سیستم خرید اعتباری اختصاصی (Post-paid)</h5>
+                        <p class="credit-banner-desc small mb-0">شما می‌توانید بدون واریز اولیه، تا سقف اعتبار مجاز خود برای مشتریان اشتراک صادر کنید.</p>
                     </div>
                 </div>
             </div>
             <div class="col-md-6">
                 <div class="row text-center g-2">
                     <div class="col-4">
-                        <div class="p-2 bg-white rounded-3 shadow-sm border">
+                        <div class="p-2 rounded-3 shadow-sm border credit-stat-pill">
                             <small class="text-muted d-block">سقف اعتبار:</small>
-                            <strong class="text-dark font-monospace">{{ "{:,}".format(reseller.get('credit_limit') or 0) }} ت</strong>
+                            <strong class="font-monospace credit-stat-val">{{ "{:,}".format(reseller.get('credit_limit') or 0) }} ت</strong>
                         </div>
                     </div>
                     <div class="col-4">
-                        <div class="p-2 bg-white rounded-3 shadow-sm border border-danger">
+                        <div class="p-2 rounded-3 shadow-sm border border-danger credit-stat-pill">
                             <small class="text-danger d-block fw-bold">بدهی فعلی:</small>
                             <strong class="text-danger font-monospace">{{ "{:,}".format(reseller.get('credit_debt') or 0) }} ت</strong>
                         </div>
                     </div>
                     <div class="col-4">
                         {% set avail_cred = (reseller.get('credit_limit') or 0) - (reseller.get('credit_debt') or 0) %}
-                        <div class="p-2 bg-white rounded-3 shadow-sm border border-success">
+                        <div class="p-2 rounded-3 shadow-sm border border-success credit-stat-pill">
                             <small class="text-success d-block fw-bold">اعتبار در دسترس:</small>
                             <strong class="text-success font-monospace">{{ "{:,}".format(avail_cred if avail_cred > 0 else 0) }} ت</strong>
                         </div>
@@ -290,6 +290,134 @@
     70% { transform: scale(1.15); box-shadow: 0 0 0 7px rgba(34, 197, 94, 0); }
     100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
 }
+
+/* ─── استایل بنر وضعیت خرید اعتباری نماینده (سازگار با تم تیره و روشن) ─── */
+.reseller-credit-banner {
+    background: linear-gradient(135deg, #fef3c7, #fffbeb);
+    border-right: 5px solid #f59e0b !important;
+    border-radius: 12px;
+}
+.reseller-credit-banner .credit-banner-icon {
+    background-color: #f59e0b;
+    color: #1e293b;
+}
+.reseller-credit-banner .credit-banner-title {
+    color: #78350f;
+}
+.reseller-credit-banner .credit-banner-desc {
+    color: #92400e;
+}
+.reseller-credit-banner .credit-stat-pill {
+    background-color: #ffffff;
+    border-color: #fde68a !important;
+}
+.reseller-credit-banner .credit-stat-val {
+    color: #1e293b;
+}
+
+[data-bs-theme="dark"] .reseller-credit-banner {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(217, 119, 6, 0.03)) !important;
+    border: 1px solid rgba(245, 158, 11, 0.25) !important;
+    border-right: 5px solid #f59e0b !important;
+}
+[data-bs-theme="dark"] .reseller-credit-banner .credit-banner-icon {
+    background-color: rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+}
+[data-bs-theme="dark"] .reseller-credit-banner .credit-banner-title {
+    color: #f8fafc !important;
+}
+[data-bs-theme="dark"] .reseller-credit-banner .credit-banner-desc {
+    color: #94a3b8 !important;
+}
+[data-bs-theme="dark"] .reseller-credit-banner .credit-stat-pill {
+    background-color: rgba(15, 23, 42, 0.65) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+}
+[data-bs-theme="dark"] .reseller-credit-banner .credit-stat-pill.border-danger {
+    border-color: rgba(239, 68, 68, 0.35) !important;
+}
+[data-bs-theme="dark"] .reseller-credit-banner .credit-stat-pill.border-success {
+    border-color: rgba(34, 197, 94, 0.35) !important;
+}
+[data-bs-theme="dark"] .reseller-credit-banner .credit-stat-val {
+    color: #f8fafc !important;
+}
+
+/* ─── استایل جدول روند درآمد ۷ روز گذشته (سازگار با تم تیره و روشن) ─── */
+.rev-row-today > td, tr.rev-row-today > td {
+    background-color: rgba(59, 130, 246, 0.08) !important;
+    --bs-table-bg: rgba(59, 130, 246, 0.08) !important;
+}
+.rev-row-today:hover > td {
+    background-color: rgba(59, 130, 246, 0.14) !important;
+    --bs-table-hover-bg: rgba(59, 130, 246, 0.14) !important;
+}
+.rev-row-yesterday > td, tr.rev-row-yesterday > td {
+    background-color: rgba(100, 116, 139, 0.05) !important;
+    --bs-table-bg: rgba(100, 116, 139, 0.05) !important;
+}
+.rev-row-yesterday:hover > td {
+    background-color: rgba(100, 116, 139, 0.09) !important;
+    --bs-table-hover-bg: rgba(100, 116, 139, 0.09) !important;
+}
+.rev-table-footer > tr > td {
+    background-color: #f8fafc;
+    --bs-table-bg: #f8fafc;
+}
+.rev-progress-track {
+    background-color: #f1f5f9;
+}
+
+[data-bs-theme="dark"] .rev-row-today > td,
+[data-bs-theme="dark"] tr.rev-row-today > td {
+    background-color: rgba(59, 130, 246, 0.14) !important;
+    --bs-table-bg: rgba(59, 130, 246, 0.14) !important;
+    color: var(--text-main) !important;
+}
+[data-bs-theme="dark"] .rev-row-today:hover > td {
+    background-color: rgba(59, 130, 246, 0.2) !important;
+    --bs-table-hover-bg: rgba(59, 130, 246, 0.2) !important;
+}
+[data-bs-theme="dark"] .rev-row-yesterday > td,
+[data-bs-theme="dark"] tr.rev-row-yesterday > td {
+    background-color: rgba(255, 255, 255, 0.03) !important;
+    --bs-table-bg: rgba(255, 255, 255, 0.03) !important;
+    color: var(--text-main) !important;
+}
+[data-bs-theme="dark"] .rev-row-yesterday:hover > td {
+    background-color: rgba(255, 255, 255, 0.06) !important;
+    --bs-table-hover-bg: rgba(255, 255, 255, 0.06) !important;
+}
+[data-bs-theme="dark"] .rev-table-footer > tr > td {
+    background-color: rgba(255, 255, 255, 0.03) !important;
+    --bs-table-bg: rgba(255, 255, 255, 0.03) !important;
+    color: var(--text-main) !important;
+    border-color: var(--card-border) !important;
+}
+[data-bs-theme="dark"] .rev-progress-track {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* جلوگیری از سفید شدن جدول‌ها در حالت تیره */
+[data-bs-theme="dark"] thead.table-light > tr > th,
+[data-bs-theme="dark"] .table-light {
+    --bs-table-bg: rgba(255, 255, 255, 0.02) !important;
+    --bs-table-color: #94a3b8 !important;
+    color: #94a3b8 !important;
+    border-color: var(--card-border) !important;
+}
+
+/* ─── سوابق تمدید دستی (سازگار با تم تیره و روشن) ─── */
+.rev-row-manual > td, tr.rev-row-manual > td {
+    background-color: rgba(245, 158, 11, 0.07) !important;
+    --bs-table-bg: rgba(245, 158, 11, 0.07) !important;
+}
+[data-bs-theme="dark"] .rev-row-manual > td,
+[data-bs-theme="dark"] tr.rev-row-manual > td {
+    background-color: rgba(245, 158, 11, 0.11) !important;
+    --bs-table-bg: rgba(245, 158, 11, 0.11) !important;
+}
 </style>
 
 <!-- بخش روند درآمد ۷ روز گذشته نماینده (نمودار و جدول) -->
@@ -297,8 +425,8 @@
 <div class="row g-4 mb-4">
     <!-- نمودار خطی روند درآمد ۷ روز گذشته -->
     <div class="col-lg-5">
-        <div class="card h-100 shadow-sm border-0 bg-white">
-            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <div class="d-flex align-items-center gap-2">
                     <div class="p-2 bg-primary bg-opacity-10 text-primary rounded-3">
                         <i class="fas fa-chart-area"></i>
@@ -322,8 +450,8 @@
 
     <!-- جدول روند درآمد ۷ روز گذشته -->
     <div class="col-lg-7">
-        <div class="card h-100 shadow-sm border-0 bg-white">
-            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <div class="d-flex align-items-center gap-2">
                     <div class="p-2 bg-success bg-opacity-10 text-success rounded-3">
                         <i class="fas fa-calendar-week"></i>
@@ -356,17 +484,17 @@
                         </thead>
                         <tbody>
                             {% for day in rev7.get('days_reversed', []) %}
-                            <tr class="{% if day.is_today %}table-primary bg-opacity-10{% elif day.is_yesterday %}table-light{% endif %}">
+                            <tr class="{% if day.is_today %}rev-row-today{% elif day.is_yesterday %}rev-row-yesterday{% endif %}">
                                 <td class="ps-3">
                                     <div class="d-flex align-items-center gap-2">
                                         {% if day.is_today %}
-                                            <span class="badge bg-primary rounded-pill px-2 py-1">امروز</span>
+                                             <span class="badge bg-primary rounded-pill px-2 py-1">امروز</span>
                                             <span class="fw-bold text-primary">{{ day.day_name }}</span>
                                         {% elif day.is_yesterday %}
                                             <span class="badge bg-secondary rounded-pill px-2 py-1">دیروز</span>
                                             <span class="fw-semibold text-secondary">{{ day.day_name }}</span>
                                         {% else %}
-                                            <span class="fw-semibold text-dark">{{ day.day_name }}</span>
+                                            <span class="fw-semibold">{{ day.day_name }}</span>
                                         {% endif %}
                                         <small class="text-muted font-monospace" style="font-size: 0.8rem;">({{ day.jalali_date }})</small>
                                     </div>
@@ -398,7 +526,7 @@
                                 </td>
                                 <td class="pe-3">
                                     <div class="d-flex align-items-center gap-2">
-                                        <div class="progress flex-grow-1" style="height: 6px; background-color: #f1f5f9;">
+                                        <div class="progress flex-grow-1 rev-progress-track" style="height: 6px;">
                                             <div class="progress-bar bg-gradient bg-primary" role="progressbar" 
                                                  style="width: {{ day.percentage }}%;" 
                                                  aria-valuenow="{{ day.percentage }}" aria-valuemin="0" aria-valuemax="100"></div>
@@ -414,10 +542,10 @@
                             </tr>
                             {% endif %}
                         </tbody>
-                        <tfoot class="table-light border-top">
+                        <tfoot class="border-top rev-table-footer">
                             <tr class="fw-bold">
                                 <td class="ps-3">
-                                    <span class="text-dark">مجموع ۷ روز گذشته:</span>
+                                    <span>مجموع ۷ روز گذشته:</span>
                                     <small class="text-muted fw-normal d-block">میانگین روزانه: {{ "{:,}".format(rev7.get('avg_daily_revenue', 0)) }} ت</small>
                                 </td>
                                 <td class="text-center text-success font-monospace">
@@ -506,7 +634,7 @@
                         <tbody>
                             {% for h in analytics.get('usage_history', [])[:5] %}
                             {% set is_manual = (h.get('is_manual') == 1 or h.get('renewal_type') == 'manual') %}
-                            <tr class="{% if is_manual %}table-warning bg-opacity-10{% endif %}">
+                            <tr class="{% if is_manual %}rev-row-manual{% endif %}">
                                 <td>
                                     <strong><code>{{ h['account_name'] }}</code></strong>
                                     {% if is_manual %}
@@ -625,7 +753,17 @@
             const labels = [{% for d in (revenue_7days or {}).get('days', []) %}'{{ d.day_name }} ({{ d.jalali_date[5:] }})',{% endfor %}];
             const dataValues = [{% for d in (revenue_7days or {}).get('days', []) %}{{ d.revenue }},{% endfor %}];
 
-            new Chart(ctx, {
+            const getThemeColors = () => {
+                const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+                return {
+                    text: isDark ? '#94a3b8' : '#64748b',
+                    grid: isDark ? 'rgba(255, 255, 255, 0.07)' : 'rgba(0, 0, 0, 0.05)'
+                };
+            };
+
+            const colors = getThemeColors();
+
+            const chart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: labels.length ? labels : ['امروز'],
@@ -661,6 +799,7 @@
                         y: {
                             beginAtZero: true,
                             ticks: {
+                                color: colors.text,
                                 callback: function(value) {
                                     if (value >= 1000000) {
                                         return (value / 1000000).toLocaleString('fa-IR') + ' م ت';
@@ -671,14 +810,29 @@
                                     return value.toLocaleString('fa-IR') + ' ت';
                                 }
                             },
-                            grid: { color: 'rgba(0, 0, 0, 0.05)' }
+                            grid: { color: colors.grid }
                         },
                         x: {
+                            ticks: { color: colors.text },
                             grid: { display: false }
                         }
                     }
                 }
             });
+
+            // بروزرسانی داینامیک رنگ‌های نمودار در صورت تغییر تم توسط کاربر
+            const themeObserver = new MutationObserver(function() {
+                const c = getThemeColors();
+                if (chart.options.scales.x && chart.options.scales.x.ticks) {
+                    chart.options.scales.x.ticks.color = c.text;
+                }
+                if (chart.options.scales.y) {
+                    if (chart.options.scales.y.ticks) chart.options.scales.y.ticks.color = c.text;
+                    if (chart.options.scales.y.grid) chart.options.scales.y.grid.color = c.grid;
+                }
+                chart.update();
+            });
+            themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-bs-theme'] });
         }
     });
 </script>
