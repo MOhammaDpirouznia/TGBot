@@ -289,6 +289,152 @@
     </div>
 </div>
 
+<!-- ردیف ۴: سیستم تایید خودکار کارت به کارت با پیامک بانک -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <div class="avatar-sm rounded-circle bg-success-subtle text-success d-flex align-items-center justify-content-center" style="width: 38px; height: 38px;">
+                <i class="fas fa-robot fs-5"></i>
+            </div>
+            <div>
+                <h5 class="mb-0 fw-bold"><i class="fas fa-sms text-success me-1"></i>سیستم هوشمند تایید خودکار کارت به کارت با پیامک بانک (ارقام تصادفی)</h5>
+                <small class="text-muted">تایید آنی و اتوماتیک واریزی‌ها از طریق فوروارد پیامک واریز از گوشی متصل به حساب بانکی به سرور</small>
+            </div>
+        </div>
+        <span class="badge {% if admin_bank_sms.get('enabled') %}bg-success-subtle text-success border border-success{% else %}bg-secondary-subtle text-secondary border{% endif %} px-3 py-2 fs-6">
+            {{ '🟢 تایید خودکار فعال' if admin_bank_sms.get('enabled') else '⚪ غیرفعال' }}
+        </span>
+    </div>
+    <div class="card-body p-4">
+        <form method="POST" action="{{ url_for('cards') }}">
+            <input type="hidden" name="action" value="save_admin_bank_sms">
+
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" name="bank_sms_enabled" id="admBankSmsEnabled" {% if admin_bank_sms.get('enabled') %}checked{% endif %}>
+                <label class="form-check-label fw-bold text-dark" for="admBankSmsEnabled">فعال‌سازی سیستم تایید خودکار کارت به کارت با پیامک بانک برای مدیریت</label>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-lg-6">
+                    <label class="form-label fw-semibold">🔗 آدرس اختصاصی وب‌هوک فورواردر پیامک (Webhook URL):</label>
+                    <div class="input-group">
+                        <input type="text" id="adminBankSmsWebhook" class="form-control font-monospace text-primary fw-bold" readonly value="{{ bank_sms_webhook_url }}" dir="ltr">
+                        <button type="button" class="btn btn-primary" onclick="copyFieldValue('adminBankSmsWebhook', 'آدرس وب‌هوک پیامک')">
+                            <i class="fas fa-copy me-1"></i> کپی آدرس
+                        </button>
+                    </div>
+                    <small class="text-muted mt-1 d-block">این آدرس را در اپلیکیشن فورواردر گوشی مقصد ثبت نمایید. هر پیامک واریزی به این آدرس ارسال شود، خودکار بررسی می‌شود.</small>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold">⏱️ مهلت پرداخت فاکتور:</label>
+                    <div class="input-group">
+                        <input type="number" class="form-control font-monospace text-center" name="bank_sms_timeout" min="5" max="60" value="{{ admin_bank_sms.get('timeout', 15) }}">
+                        <span class="input-group-text">دقیقه</span>
+                    </div>
+                    <small class="text-muted mt-1 d-block">مدت اعتبار مبلغ تصادفی برای مشتری (پیش‌فرض: ۱۵ دقیقه)</small>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold">🔢 تعداد ارقام تصادفی خرد:</label>
+                    <select class="form-select" name="bank_sms_digits">
+                        <option value="3" {% if admin_bank_sms.get('digits') == 3 %}selected{% endif %}>۳ رقمی (۱۰۰ تا ۹۹۹ تومان) - تا ۹۰۰ فاکتور همزمان</option>
+                        <option value="4" {% if admin_bank_sms.get('digits') == 4 %}selected{% endif %}>۴ رقمی (۱۰۰۰ تا ۹۹۹۹ تومان) - تا ۹۰۰۰ فاکتور همزمان</option>
+                    </select>
+                    <small class="text-muted mt-1 d-block">مبلغ پرداختی مشتری با این ارقام رندوم می‌شود تا هر تراکنش کاملاً یکتا باشد.</small>
+                </div>
+            </div>
+
+            <div class="d-flex flex-wrap gap-2 mb-4">
+                <button type="submit" class="btn btn-success fw-bold px-4">
+                    <i class="fas fa-save me-1"></i> ذخیره تنظیمات پیامک بانک
+                </button>
+                <button type="submit" name="regenerate_token" value="1" class="btn btn-outline-danger btn-sm" onclick="return confirm('با تغییر توکن، باید آدرس جدید را در اپلیکیشن فورواردر گوشی هم به‌روز کنید. ادامه می‌دهید؟');">
+                    <i class="fas fa-rotate me-1"></i> تولید مجدد توکن محرمانه وب‌هوک
+                </button>
+                <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="collapse" data-bs-target="#bankSmsGuide">
+                    <i class="fas fa-book-open me-1"></i> مشاهده راهنمای گام‌به‌گام راه‌اندازی اپلیکیشن اندروید
+                </button>
+            </div>
+        </form>
+
+        <!-- باکس راهنما -->
+        <div class="collapse mb-4" id="bankSmsGuide">
+            <div class="p-4 bg-light rounded-3 border border-success border-opacity-25">
+                <h6 class="fw-bold text-success mb-3"><i class="fas fa-graduation-cap me-2"></i>راهنمای سریع راه‌اندازی اپلیکیشن فورواردر پیامک روی گوشی همراه:</h6>
+                <ol class="small text-secondary mb-3 pe-3 lh-lg">
+                    <li>اپلیکیشن رایگان و متن‌باز <strong>SMS Forwarder</strong> (یا نرم‌افزار <strong>MacroDroid</strong>) را روی همان گوشی اندرویدی که سیم‌کارت متصل به کارت‌های بانکی روی آن فعال است نصب کنید.</li>
+                    <li>داخل برنامه یک دستور ارسال (Rule) با مشخصات زیر بسازید:
+                        <ul>
+                            <li><strong>نوع ارسال (Sender Type):</strong> Webhook / HTTP Post</li>
+                            <li><strong>فیلتر شماره فرستنده:</strong> سرشماره پیامک بانک‌ها (مانند ملی، ملت، سامان، بلوبانک، سپه، پاسارگاد و...).</li>
+                            <li><strong>آدرس مقصد (Target URL):</strong> دقیقاً آدرس وب‌هوک اختصاصی بالا.</li>
+                            <li><strong>فرمت بدنه (Request Body):</strong> ارسال پیامک به صورت JSON یا فرم معمولی با پارامتر <code>message</code> حاوی متن پیامک و <code>sender</code> حاوی شماره فرستنده.</li>
+                        </ul>
+                    </li>
+                    <li><strong>تنظیم مهم باتری:</strong> در تنظیمات گوشی، گزینه «بهینه‌سازی باتری (Battery Saver)» را برای این برنامه غیرفعال نمایید تا سیستم‌عامل در حالت قفل بودن صفحه، برنامه را متوقف نکند.</li>
+                    <li>اکنون هر واریزی که به کارت بانکی انجام شود، در کسری از ثانیه توسط سرور پردازش، تایید و بسته تمدید می‌شود!</li>
+                </ol>
+            </div>
+        </div>
+
+        <!-- جدول آخرین لاگ‌های دریافتی -->
+        <div class="border rounded-3 overflow-hidden">
+            <div class="bg-light px-3 py-2 border-bottom d-flex justify-content-between align-items-center">
+                <span class="small fw-bold text-dark"><i class="fas fa-clock-rotate-left me-1"></i>آخرین پیامک‌های بانکی دریافتی از فورواردر گوشی شما</span>
+                <span class="badge bg-secondary">{{ bank_sms_logs|length }} پیامک اخیر</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover table-sm align-middle mb-0" style="font-size: 0.85rem;">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-3" style="width: 130px;">زمان دریافت</th>
+                            <th style="width: 120px;">سرشماره / بانک</th>
+                            <th>متن پیامک</th>
+                            <th style="width: 140px;" class="text-center">مبلغ تشخیص‌داده‌شده</th>
+                            <th style="width: 140px;" class="text-center">شناسه سفارش</th>
+                            <th style="width: 120px;" class="text-center">وضعیت</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in bank_sms_logs %}
+                        <tr>
+                            <td class="ps-3 font-monospace small text-muted">{{ log['created_at'][:16].replace('T', ' ') }}</td>
+                            <td><span class="badge bg-light text-dark border">{{ log['sender_number'] or 'بانک' }}</span></td>
+                            <td><div class="text-truncate" style="max-width: 350px;" title="{{ log['raw_message'] }}">{{ log['raw_message'] }}</div></td>
+                            <td class="text-center">
+                                {% if log['extracted_amount'] %}
+                                    <strong class="text-success font-monospace">{{ "{:,}".format(log['extracted_amount']) }} تومان</strong>
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center font-monospace">{{ log['matched_order_id'] or '-' }}</td>
+                            <td class="text-center">
+                                {% if log['status'] == 'matched' %}
+                                    <span class="badge bg-success-subtle text-success border border-success px-2">✅ تایید خودکار</span>
+                                {% elif log['status'] == 'unmatched' %}
+                                    <span class="badge bg-warning-subtle text-warning border border-warning px-2">⚠️ بدون فاکتور باز</span>
+                                {% elif log['status'] == 'ignored' %}
+                                    <span class="badge bg-secondary-subtle text-secondary border px-2">⚪ برداشت / نامرتبط</span>
+                                {% else %}
+                                    <span class="badge bg-light text-dark border px-2">{{ log['status'] }}</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% if not bank_sms_logs %}
+                        <tr>
+                            <td colspan="6" class="text-center py-3 text-muted">هنوز پیامکی از فورواردر گوشی به این وب‌هوک ارسال نشده است. پس از نصب اپلیکیشن و اولین واریزی، پیامک‌ها در اینجا نمایش داده خواهند شد.</td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Modal افزودن کارت بانکی -->
 <div class="modal fade" id="addCardModal" tabindex="-1">
     <div class="modal-dialog">
