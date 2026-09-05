@@ -108,6 +108,20 @@ class NotificationScheduler:
                 expired_subs = db.get_user_subscriptions(telegram_id, status="expired")
                 if expired_subs:
                     await self._send_renewal_reminder(telegram_id)
+
+            # ۳. بررسی اشتراک‌های حضوری و فاقد تلگرام (ارسال پیامک با لینک اختصاصی تمدید)
+            try:
+                conn = db.get_connection()
+                offline_subs = conn.execute("""
+                    SELECT * FROM subscriptions 
+                    WHERE status='active' AND (telegram_id IS NULL OR telegram_id=0) AND phone_number IS NOT NULL AND phone_number != ''
+                """).fetchall()
+                conn.close()
+
+                for o_sub in offline_subs:
+                    await self._check_offline_subscription(dict(o_sub))
+            except Exception as e_off:
+                logger.error(f"Error checking offline subscriptions: {e_off}")
             
             logger.info("Notifications checked successfully")
         except Exception as e:
@@ -164,10 +178,19 @@ class NotificationScheduler:
 
 💡 <i>جهت جلوگیری از قطع اتصال اینترنت، لطفاً پیش از موعد نسبت به تمدید اقدام فرمایید.</i>
 """
-                    reply_markup = InlineKeyboardMarkup([
-                        [InlineKeyboardButton("🔄 تمدید سریع اشتراک", callback_data=f"renew_{sub_id}")],
-                        [InlineKeyboardButton("📱 باز کردن پنل هوشمند (Mini App)", callback_data=f"open_sub_{sub_id}")],
-                    ])
+                    domain = db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "")
+                    sub_token = subscription.get("hidify_uuid") or sub_id
+                    portal_url = f"https://{domain}/sub/{sub_token}" if domain else ""
+
+                    buttons = [
+                        [InlineKeyboardButton("🔄 تمدید سریع در ربات", callback_data=f"renew_{sub_id}")],
+                    ]
+                    if portal_url:
+                        buttons.append([InlineKeyboardButton("🌐 پورتال تمدید آنلاین (بدون فیلتر)", url=portal_url)])
+                    else:
+                        buttons.append([InlineKeyboardButton("📱 باز کردن پنل هوشمند (Mini App)", callback_data=f"open_sub_{sub_id}")])
+
+                    reply_markup = InlineKeyboardMarkup(buttons)
                     try:
                         await self.bot.send_message(
                             chat_id=telegram_id,
@@ -188,7 +211,10 @@ class NotificationScheduler:
                             user_phone = user_obj.get("phone_number")
                     if user_phone:
                         try:
-                            sms_text = f"سلام، اشتراک شما ({plan_name}) {days_left} روز دیگر منقضی می‌شود. جهت تمدید به ربات مراجعه نمایید."
+                            if portal_url:
+                                sms_text = f"سلام، اشتراک شما ({plan_name}) {days_left} روز دیگر منقضی می‌شود. جهت تمدید آنلاین:\n{portal_url}"
+                            else:
+                                sms_text = f"سلام، اشتراک شما ({plan_name}) {days_left} روز دیگر منقضی می‌شود. جهت تمدید به ربات مراجعه نمایید."
                             send_sms(user_phone, sms_text, db_instance=db)
                         except Exception as e:
                             logger.error(f"Error sending expiration SMS: {e}")
@@ -200,6 +226,9 @@ class NotificationScheduler:
                 
                 if not db.was_notification_sent(telegram_id, notif_type, sub_id):
                     plan_name = subscription.get("plan_name", "نامشخص")
+                    domain = db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "")
+                    sub_token = subscription.get("hidify_uuid") or sub_id
+                    portal_url = f"https://{domain}/sub/{sub_token}" if domain else ""
                     
                     text = f"""
 🔴 <b>اشتراک شما منقضی شد!</b>
@@ -210,9 +239,12 @@ class NotificationScheduler:
 ⚠️ سرویس اتصال شما موقتاً قطع شده است.
 🔄 با تمدید یا خرید اشتراک جدید، اتصال شما بلافاصله برقرار خواهد شد.
 """
-                    reply_markup = InlineKeyboardMarkup([
-                        [InlineKeyboardButton("🔄 تمدید آنی اشتراک", callback_data=f"renew_{sub_id}")],
-                    ])
+                    exp_buttons = [
+                        [InlineKeyboardButton("🔄 تمدید آنی در ربات", callback_data=f"renew_{sub_id}")],
+                    ]
+                    if portal_url:
+                        exp_buttons.append([InlineKeyboardButton("🌐 تمدید آنلاین از پورتال", url=portal_url)])
+                    reply_markup = InlineKeyboardMarkup(exp_buttons)
                     try:
                         await self.bot.send_message(
                             chat_id=telegram_id,
@@ -234,7 +266,10 @@ class NotificationScheduler:
                             user_phone = user_obj.get("phone_number")
                     if user_phone:
                         try:
-                            sms_text = f"اشتراک شما ({plan_name}) منقضی شد. جهت تمدید و اتصال مجدد به ربات مراجعه کنید."
+                            if portal_url:
+                                sms_text = f"اشتراک شما ({plan_name}) منقضی شد. جهت تمدید آنلاین:\n{portal_url}"
+                            else:
+                                sms_text = f"اشتراک شما ({plan_name}) منقضی شد. جهت تمدید و اتصال مجدد به ربات مراجعه کنید."
                             send_sms(user_phone, sms_text, db_instance=db)
                         except Exception as e:
                             logger.error(f"Error sending expired SMS: {e}")
@@ -256,6 +291,10 @@ class NotificationScheduler:
             plan_name = subscription.get("plan_name", "نامشخص")
             remaining = data_limit - data_used
 
+            domain = db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "")
+            sub_token = subscription.get("hidify_uuid") or sub_id
+            portal_url = f"https://{domain}/sub/{sub_token}" if domain else ""
+
             # اعلان ۹۵٪ مصرف (هشدار اضطراری)
             if usage_percent >= 95:
                 notif_type = f"usage_95_{sub_id}"
@@ -269,9 +308,12 @@ class NotificationScheduler:
 
 ⛔ <i>تنها ۵٪ از ترافیک اشتراک شما باقی مانده است. جهت تداوم اتصال تمدید فرمایید.</i>
 """
-                    reply_markup = InlineKeyboardMarkup([
-                        [InlineKeyboardButton("⚡ تمدید فوری اشتراک", callback_data=f"renew_{sub_id}")],
-                    ])
+                    u_buttons = [
+                        [InlineKeyboardButton("⚡ تمدید فوری در ربات", callback_data=f"renew_{sub_id}")],
+                    ]
+                    if portal_url:
+                        u_buttons.append([InlineKeyboardButton("🌐 تمدید آنلاین از پورتال", url=portal_url)])
+                    reply_markup = InlineKeyboardMarkup(u_buttons)
                     try:
                         await self.bot.send_message(
                             chat_id=telegram_id,
@@ -291,7 +333,7 @@ class NotificationScheduler:
                             user_phone = user_obj.get("phone_number")
                     if user_phone:
                         try:
-                            sms_text = f"هشدار! بیش از ۹۵٪ از حجم اشتراک شما مصرف شده و رو به اتمام است. جهت تمدید به ربات مراجعه کنید."
+                            sms_text = f"هشدار! بیش از ۹۵٪ از حجم اشتراک ({plan_name}) مصرف شده است. تمدید آنلاین:\n{portal_url}" if portal_url else f"هشدار! بیش از ۹۵٪ از حجم اشتراک شما مصرف شده است."
                             send_sms(user_phone, sms_text, db_instance=db)
                         except Exception as e:
                             logger.error(f"Error sending 95% usage SMS: {e}")
@@ -309,9 +351,12 @@ class NotificationScheduler:
 
 💡 <i>بیش از ۸۰٪ حجم اشتراک شما مصرف شده است.</i>
 """
-                    reply_markup = InlineKeyboardMarkup([
-                        [InlineKeyboardButton("🔄 تمدید اشتراک", callback_data=f"renew_{sub_id}")],
-                    ])
+                    u_buttons = [
+                        [InlineKeyboardButton("🔄 تمدید اشتراک در ربات", callback_data=f"renew_{sub_id}")],
+                    ]
+                    if portal_url:
+                        u_buttons.append([InlineKeyboardButton("🌐 تمدید آنلاین از پورتال", url=portal_url)])
+                    reply_markup = InlineKeyboardMarkup(u_buttons)
                     try:
                         await self.bot.send_message(
                             chat_id=telegram_id,
@@ -323,9 +368,65 @@ class NotificationScheduler:
                         logger.info(f"Usage 80% notification sent to {telegram_id}")
                     except Exception as e:
                         logger.error(f"Error sending usage notification: {e}")
+
+                    user_phone = subscription.get("phone_number")
+                    if not user_phone:
+                        user_obj = db.get_user(telegram_id)
+                        if user_obj:
+                            user_phone = user_obj.get("phone_number")
+                    if user_phone:
+                        try:
+                            sms_text = f"هشدار: بیش از ۸۰٪ حجم اشتراک ({plan_name}) شما مصرف شده است. جهت تمدید آنلاین:\n{portal_url}" if portal_url else f"هشدار: بیش از ۸۰٪ حجم اشتراک شما مصرف شده است."
+                            send_sms(user_phone, sms_text, db_instance=db)
+                        except Exception as e:
+                            logger.error(f"Error sending 80% usage SMS: {e}")
         
         except Exception as e:
             logger.error(f"Error in _check_usage: {e}")
+
+    async def _check_offline_subscription(self, subscription):
+        """بررسی اشتراک‌های حضوری و فاقد تلگرام و ارسال پیامک تمدید با لینک اختصاصی"""
+        try:
+            phone = subscription.get("phone_number")
+            if not phone:
+                return
+
+            sub_id = subscription.get("id")
+            plan_name = subscription.get("plan_name", "اشتراک")
+            domain = db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "")
+            sub_token = subscription.get("hidify_uuid") or sub_id
+            portal_url = f"https://{domain}/sub/{sub_token}" if domain else ""
+
+            # ۱. بررسی تاریخ انقضا (۳ روز مانده)
+            expire_date_str = subscription.get("expire_date")
+            if expire_date_str:
+                try:
+                    exp_dt = datetime.fromisoformat(expire_date_str)
+                    days_left = max(0, (exp_dt.date() - get_now_naive().date()).days)
+                    if 0 < days_left <= 3:
+                        notif_type = f"offline_expiring_{sub_id}_{days_left}d"
+                        if not db.was_notification_sent(0, notif_type, sub_id):
+                            sms_text = f"کاربر گرامی، کمتر از {days_left} روز از مهلت اشتراک ({plan_name}) شما باقی مانده است. تمدید آنلاین:\n{portal_url}"
+                            send_sms(phone, sms_text, db_instance=db)
+                            db.save_notification(0, notif_type, sub_id)
+                            logger.info(f"Offline expiration SMS ({days_left}d) sent to {phone}")
+                except Exception as e:
+                    logger.debug(f"Error parsing offline expire date: {e}")
+
+            # ۲. بررسی مصرف حجم (۸۰٪ مصرف)
+            data_limit = float(subscription.get("data_limit") or 0)
+            data_used = float(subscription.get("data_used") or 0)
+            if data_limit > 0:
+                usage_percent = (data_used / data_limit) * 100
+                if usage_percent >= 80:
+                    notif_type = f"offline_usage_80_{sub_id}"
+                    if not db.was_notification_sent(0, notif_type, sub_id):
+                        sms_text = f"کاربر گرامی، بیش از ۸۰٪ از حجم اشتراک ({plan_name}) شما مصرف شده است. جهت تمدید آنلاین:\n{portal_url}"
+                        send_sms(phone, sms_text, db_instance=db)
+                        db.save_notification(0, notif_type, sub_id)
+                        logger.info(f"Offline usage 80% SMS sent to {phone}")
+        except Exception as ex:
+            logger.error(f"Error in _check_offline_subscription: {ex}")
     
     async def _send_renewal_reminder(self, telegram_id):
         """ارسال یادآوری تمدید"""

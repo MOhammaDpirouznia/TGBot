@@ -8,6 +8,9 @@ import json
 import os
 import re
 import copy
+import uuid
+import secrets
+import random
 import logging
 from typing import Optional, Dict, List, Any, Tuple, Union
 from datetime import datetime, timedelta, timezone
@@ -675,7 +678,11 @@ class Database:
             "gateway_type TEXT DEFAULT 'zarinpal'",
             "gateway_key TEXT",
             "gateway_sandbox INTEGER DEFAULT 0",
-            "hiddify_admin_uuid TEXT"
+            "hiddify_admin_uuid TEXT",
+            "bank_sms_enabled INTEGER DEFAULT 0",
+            "bank_sms_token TEXT",
+            "bank_sms_digits INTEGER DEFAULT 3",
+            "bank_sms_timeout INTEGER DEFAULT 15"
         ]:
             try:
                 cursor.execute(f"ALTER TABLE resellers ADD COLUMN {col_def}")
@@ -743,6 +750,54 @@ class Database:
                     FOREIGN KEY (reseller_id) REFERENCES resellers(id)
                 )
             """)
+        except Exception:
+            pass
+
+        # جدول لاگ پیامک‌های واریزی بانک
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS bank_sms_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    owner_type TEXT NOT NULL,
+                    owner_id INTEGER DEFAULT 0,
+                    sender_number TEXT,
+                    raw_message TEXT,
+                    extracted_amount INTEGER,
+                    matched_order_id TEXT,
+                    status TEXT DEFAULT 'pending',
+                    created_at TEXT NOT NULL
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_bank_sms_owner ON bank_sms_logs(owner_type, owner_id)")
+        except Exception:
+            pass
+
+        # جدول فاکتورهای هوشمند با ارقام تصادفی خرد جهت تایید خودکار کارت به کارت
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS smart_invoices (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_id TEXT UNIQUE NOT NULL,
+                    sub_id INTEGER,
+                    plan_id TEXT,
+                    reseller_id INTEGER DEFAULT 0,
+                    base_amount INTEGER NOT NULL,
+                    random_suffix INTEGER NOT NULL,
+                    final_amount INTEGER NOT NULL,
+                    target_card_id INTEGER,
+                    card_number TEXT,
+                    card_holder TEXT,
+                    bank_name TEXT,
+                    status TEXT DEFAULT 'pending',
+                    token TEXT UNIQUE NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    paid_at TEXT,
+                    tracking_code TEXT
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_smart_invoices_token ON smart_invoices(token)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_smart_invoices_match ON smart_invoices(reseller_id, final_amount, status)")
         except Exception:
             pass
 
@@ -10769,6 +10824,304 @@ class Database:
         except Exception as e:
             logger.error(f"Error updating admin gateway: {e}")
             return {"success": False, "error": str(e)}
+
+    # ─── تنظیمات تایید خودکار کارت به کارت با پیامک بانک (Smart Bank SMS) ───
+
+    def get_admin_bank_sms_config(self) -> dict:
+        """دریافت تنظیمات تایید خودکار با پیامک بانک برای مدیریت اصلی"""
+        enabled = str(self.get_setting("admin_bank_sms_enabled", "0")).lower() in ("1", "true")
+        token = self.get_setting("admin_bank_sms_token")
+        if not token:
+            token = secrets.token_hex(16)
+            self.set_setting("admin_bank_sms_token", token)
+        digits = int(self.get_setting("admin_bank_sms_digits", 3))
+        timeout = int(self.get_setting("admin_bank_sms_timeout", 15))
+        return {
+            "enabled": enabled,
+            "token": token,
+            "digits": digits,
+            "timeout": timeout
+        }
+
+    def save_admin_bank_sms_config(self, enabled: bool, digits: int = 3, timeout: int = 15, regenerate_token: bool = False) -> dict:
+        """ذخیره تنظیمات تایید خودکار با پیامک بانک برای مدیریت اصلی"""
+        try:
+            self.set_setting("admin_bank_sms_enabled", "1" if enabled else "0")
+            self.set_setting("admin_bank_sms_digits", str(max(3, min(4, int(digits)))))
+            self.set_setting("admin_bank_sms_timeout", str(max(5, min(60, int(timeout)))))
+            if regenerate_token:
+                new_token = secrets.token_hex(16)
+                self.set_setting("admin_bank_sms_token", new_token)
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error saving admin bank sms config: {e}")
+            return {"success": False, "error": str(e)}
+
+    def get_reseller_bank_sms_config(self, reseller_id: int) -> dict:
+        """دریافت تنظیمات تایید خودکار با پیامک بانک نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT bank_sms_enabled, bank_sms_token, bank_sms_digits, bank_sms_timeout FROM resellers WHERE id=?", (reseller_id,))
+            row = cursor.fetchone()
+            if not row:
+                return {"enabled": False, "token": "", "digits": 3, "timeout": 15}
+            r_dict = dict(row)
+            token = r_dict.get("bank_sms_token")
+            if not token:
+                token = f"r{reseller_id}_{secrets.token_hex(12)}"
+                cursor.execute("UPDATE resellers SET bank_sms_token=? WHERE id=?", (token, reseller_id))
+                conn.commit()
+            return {
+                "enabled": bool(r_dict.get("bank_sms_enabled")),
+                "token": token,
+                "digits": int(r_dict.get("bank_sms_digits") or 3),
+                "timeout": int(r_dict.get("bank_sms_timeout") or 15)
+            }
+        except Exception as e:
+            logger.error(f"Error getting reseller bank sms config: {e}")
+            return {"enabled": False, "token": "", "digits": 3, "timeout": 15}
+        finally:
+            conn.close()
+
+    def save_reseller_bank_sms_config(self, reseller_id: int, enabled: bool, digits: int = 3, timeout: int = 15, regenerate_token: bool = False) -> dict:
+        """ذخیره تنظیمات تایید خودکار با پیامک بانک نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            digits_val = max(3, min(4, int(digits)))
+            timeout_val = max(5, min(60, int(timeout)))
+            if regenerate_token:
+                new_token = f"r{reseller_id}_{secrets.token_hex(12)}"
+                cursor.execute("""
+                    UPDATE resellers 
+                    SET bank_sms_enabled=?, bank_sms_digits=?, bank_sms_timeout=?, bank_sms_token=?, updated_at=?
+                    WHERE id=?
+                """, (1 if enabled else 0, digits_val, timeout_val, new_token, get_now_iso(), reseller_id))
+            else:
+                cursor.execute("""
+                    UPDATE resellers 
+                    SET bank_sms_enabled=?, bank_sms_digits=?, bank_sms_timeout=?, updated_at=?
+                    WHERE id=?
+                """, (1 if enabled else 0, digits_val, timeout_val, get_now_iso(), reseller_id))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error saving reseller bank sms config: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def find_bank_sms_owner_by_token(self, token: str) -> Optional[dict]:
+        """پیدا کردن صاحب توکن وب‌هوک (ادمین یا نماینده)"""
+        if not token:
+            return None
+        token = str(token).strip()
+        # بررسی ادمین
+        admin_token = self.get_setting("admin_bank_sms_token")
+        if admin_token and admin_token == token:
+            return {"type": "admin", "id": 0}
+        
+        # بررسی نمایندگان
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT id, name FROM resellers WHERE bank_sms_token=?", (token,))
+            row = cursor.fetchone()
+            if row:
+                return {"type": "reseller", "id": row["id"], "name": row["name"]}
+            return None
+        finally:
+            conn.close()
+
+    def log_bank_sms(self, owner_type: str, owner_id: int, sender_number: str, raw_message: str, extracted_amount: int = None, matched_order_id: str = None, status: str = "pending") -> int:
+        """ثبت لاگ پیامک دریافتی از فورواردر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                INSERT INTO bank_sms_logs (owner_type, owner_id, sender_number, raw_message, extracted_amount, matched_order_id, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (owner_type, owner_id, str(sender_number or "")[:50], str(raw_message or ""), extracted_amount, matched_order_id, status, now))
+            log_id = cursor.lastrowid
+            conn.commit()
+            return log_id
+        except Exception as e:
+            logger.error(f"Error logging bank sms: {e}")
+            return 0
+        finally:
+            conn.close()
+
+    def get_bank_sms_logs(self, owner_type: str, owner_id: int = 0, limit: int = 15) -> list:
+        """دریافت آخرین لاگ‌های پیامک بانکی"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT * FROM bank_sms_logs 
+                WHERE owner_type=? AND owner_id=?
+                ORDER BY id DESC LIMIT ?
+            """, (owner_type, owner_id, limit))
+            return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error getting bank sms logs: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def create_smart_invoice(self, sub_id: int, plan_id: str, reseller_id: int, base_amount: int, target_card: dict = None, digits: int = 3, timeout_minutes: int = 15) -> dict:
+        """
+        تولید فاکتور تمدید هوشمند با ارقام تصادفی خرد جهت تایید اتوماتیک با پیامک بانک
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now_dt = get_now_naive()
+        now_str = now_dt.isoformat()
+        expires_dt = now_dt + timedelta(minutes=max(5, timeout_minutes))
+        expires_str = expires_dt.isoformat()
+
+        # ارقام خرد تصادفی
+        min_suffix = 100 if digits == 3 else 1000
+        max_suffix = 999 if digits == 3 else 9999
+
+        # رند کردن بیس به هزارگان
+        base_clean = (int(base_amount) // 1000) * 1000
+
+        # پیدا کردن مبالغ در حال استفاده در فاکتورهای معلق این نماینده/ادمین برای جلوگیری از تداخل
+        cursor.execute("""
+            SELECT final_amount FROM smart_invoices 
+            WHERE reseller_id=? AND status='pending' AND expires_at > ?
+        """, (reseller_id, now_str))
+        active_amounts = {r["final_amount"] for r in cursor.fetchall()}
+
+        # انتخاب یک عدد رندوم که تداخل نداشته باشد
+        final_amount = None
+        chosen_suffix = None
+        for _ in range(50):
+            suffix = random.randint(min_suffix, max_suffix)
+            candidate = base_clean + suffix
+            if candidate not in active_amounts:
+                final_amount = candidate
+                chosen_suffix = suffix
+                break
+
+        if not final_amount:
+            suffix = random.randint(min_suffix, max_suffix)
+            final_amount = base_clean + suffix
+            chosen_suffix = suffix
+
+        order_id = f"INV{int(now_dt.timestamp())}{random.randint(100, 999)}"
+        token = f"{uuid.uuid4().hex[:20]}"
+
+        card_id = target_card.get("id") if target_card else None
+        c_num = target_card.get("card_number") if target_card else ""
+        c_holder = target_card.get("card_holder") if target_card else ""
+        b_name = target_card.get("bank_name") if target_card else ""
+
+        cursor.execute("""
+            INSERT INTO smart_invoices (
+                order_id, sub_id, plan_id, reseller_id, base_amount, random_suffix, 
+                final_amount, target_card_id, card_number, card_holder, bank_name, 
+                status, token, expires_at, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+        """, (order_id, sub_id, plan_id, reseller_id, base_amount, chosen_suffix, final_amount, card_id, c_num, c_holder, b_name, token, expires_str, now_str))
+        conn.commit()
+        conn.close()
+
+        return {
+            "order_id": order_id,
+            "sub_id": sub_id,
+            "plan_id": plan_id,
+            "reseller_id": reseller_id,
+            "base_amount": base_amount,
+            "random_suffix": chosen_suffix,
+            "final_amount": final_amount,
+            "card_number": c_num,
+            "card_holder": c_holder,
+            "bank_name": b_name,
+            "status": "pending",
+            "token": token,
+            "expires_at": expires_str,
+            "created_at": now_str
+        }
+
+    def get_smart_invoice_by_token(self, token: str) -> Optional[dict]:
+        """دریافت فاکتور با توکن امن"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM smart_invoices WHERE token=?", (token,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def get_smart_invoice_by_order_id(self, order_id: str) -> Optional[dict]:
+        """دریافت فاکتور با شناسه سفارش"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM smart_invoices WHERE order_id=?", (order_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def match_smart_invoice_by_amount(self, amount_toman: int, owner_type: str, owner_id: int = 0) -> Optional[dict]:
+        """
+        تطبیق مبلغ پیامک بانکی با فاکتورهای باز در انتظار پرداخت
+        """
+        if not amount_toman or amount_toman <= 0:
+            return None
+
+        reseller_id = owner_id if owner_type == "reseller" else 0
+        now_str = get_now_naive().isoformat()
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            # جستجوی فاکتور معلق منقضی‌نشده با این مبلغ دقیق
+            cursor.execute("""
+                SELECT * FROM smart_invoices 
+                WHERE reseller_id=? AND final_amount=? AND status='pending' AND expires_at >= ?
+                ORDER BY id DESC LIMIT 1
+            """, (reseller_id, amount_toman, now_str))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+
+            # اگر با مهلت تعیین شده پیدا نشد، بررسی تا ۶۰ دقیقه قبل برای مشتریانی که کمی با تاخیر واریز کردند
+            grace_dt = (get_now_naive() - timedelta(minutes=60)).isoformat()
+            cursor.execute("""
+                SELECT * FROM smart_invoices 
+                WHERE reseller_id=? AND final_amount=? AND status='pending' AND created_at >= ?
+                ORDER BY id DESC LIMIT 1
+            """, (reseller_id, amount_toman, grace_dt))
+            row2 = cursor.fetchone()
+            return dict(row2) if row2 else None
+        finally:
+            conn.close()
+
+    def mark_smart_invoice_paid(self, order_id: str, tracking_code: str = None) -> bool:
+        """ثبت وضعیت پرداخت موفق برای فاکتور هوشمند"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now_str = get_now_iso()
+        try:
+            cursor.execute("""
+                UPDATE smart_invoices 
+                SET status='paid', paid_at=?, tracking_code=?
+                WHERE order_id=? AND status='pending'
+            """, (now_str, str(tracking_code or ""), order_id))
+            affected = cursor.rowcount
+            conn.commit()
+            return affected > 0
+        except Exception as e:
+            logger.error(f"Error marking smart invoice paid: {e}")
+            return False
+        finally:
+            conn.close()
 
     # ═══════════════════════════════════════════════════════════════
     # مدیریت اولویت و چیدمان روش‌های پرداخت (Payment Methods Ordering)

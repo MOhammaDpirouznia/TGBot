@@ -6944,7 +6944,13 @@ def cards():
                 usdt_rate=usdt_rate,
                 db_instance=db
             )
-            flash("تنظیمات درگاه کریپتو / تتر با موفقیت بروزرسانی شد.", "success")
+        elif action == "save_admin_bank_sms":
+            enabled = bool(request.form.get("bank_sms_enabled"))
+            digits = int(request.form.get("bank_sms_digits", 3))
+            timeout = int(request.form.get("bank_sms_timeout", 15))
+            regenerate = bool(request.form.get("regenerate_token"))
+            db.save_admin_bank_sms_config(enabled=enabled, digits=digits, timeout=timeout, regenerate_token=regenerate)
+            flash("تنظیمات تایید خودکار کارت به کارت با پیامک بانک برای مدیریت با موفقیت ذخیره شد.", "success")
 
         return redirect(url_for("cards"))
 
@@ -6959,6 +6965,10 @@ def cards():
     blupal_webhook_url = f"{str(domain).rstrip('/')}/payment/blupal/webhook"
     blupal_callback_url = f"{str(domain).rstrip('/')}/payment/blupal/callback"
 
+    admin_bank_sms = db.get_admin_bank_sms_config()
+    bank_sms_webhook_url = f"{str(domain).rstrip('/')}/api/bank-sms/webhook?token={admin_bank_sms['token']}"
+    bank_sms_logs = db.get_bank_sms_logs(owner_type="admin", limit=15)
+
     return render_template(
         "cards.html",
         cards=cards_list,
@@ -6966,7 +6976,10 @@ def cards():
         admin_gateway=admin_gateway,
         crypto_config=crypto_config,
         blupal_webhook_url=blupal_webhook_url,
-        blupal_callback_url=blupal_callback_url
+        blupal_callback_url=blupal_callback_url,
+        admin_bank_sms=admin_bank_sms,
+        bank_sms_webhook_url=bank_sms_webhook_url,
+        bank_sms_logs=bank_sms_logs
     )
 
 
@@ -9956,6 +9969,13 @@ def reseller_cards():
             sandbox = bool(request.form.get("gateway_sandbox"))
             db.update_reseller_gateway(reseller_id, enabled, gw_type, gw_key, sandbox)
             flash("تنظیمات درگاه آنلاین اختصاصی نماینده با موفقیت ذخیره شد.", "success")
+        elif action == "save_reseller_bank_sms":
+            enabled = bool(request.form.get("bank_sms_enabled"))
+            digits = int(request.form.get("bank_sms_digits", 3))
+            timeout = int(request.form.get("bank_sms_timeout", 15))
+            regenerate = bool(request.form.get("regenerate_token"))
+            db.save_reseller_bank_sms_config(reseller_id, enabled=enabled, digits=digits, timeout=timeout, regenerate_token=regenerate)
+            flash("تنظیمات تایید خودکار با پیامک بانک برای پنل شما با موفقیت ذخیره شد.", "success")
 
         return redirect(url_for("reseller_cards"))
 
@@ -9970,13 +9990,20 @@ def reseller_cards():
     blupal_webhook_url = f"{str(domain).rstrip('/')}/payment/blupal/webhook"
     blupal_callback_url = f"{str(domain).rstrip('/')}/payment/blupal/callback"
 
+    reseller_bank_sms = db.get_reseller_bank_sms_config(reseller_id)
+    bank_sms_webhook_url = f"{str(domain).rstrip('/')}/api/bank-sms/webhook?token={reseller_bank_sms['token']}"
+    bank_sms_logs = db.get_bank_sms_logs(owner_type="reseller", owner_id=reseller_id, limit=15)
+
     return render_template(
         "reseller_cards.html",
         cards=cards,
         payment_methods=payment_methods,
         reseller_gateway=reseller_gateway,
         blupal_webhook_url=blupal_webhook_url,
-        blupal_callback_url=blupal_callback_url
+        blupal_callback_url=blupal_callback_url,
+        reseller_bank_sms=reseller_bank_sms,
+        bank_sms_webhook_url=bank_sms_webhook_url,
+        bank_sms_logs=bank_sms_logs
     )
 
 
@@ -11808,6 +11835,337 @@ def reseller_apply():
         aff_settings=aff_settings,
         submitted=False
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# مسیر اختصاصی وب‌هوک دریافت پیامک‌های بانک (Smart Bank SMS Webhook)
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/api/bank-sms/webhook", methods=["GET", "POST"])
+def bank_sms_webhook():
+    """
+    دریافت اعلان خودکار پیامک بانک از اپلیکیشن فورواردر گوشی (SMS Forwarder / MacroDroid)
+    پشتیبانی از توکن اختصاصی برای ادمین و نمایندگان
+    """
+    token = request.args.get("token") or request.headers.get("X-Bank-SMS-Token") or request.headers.get("Authorization")
+    if token and str(token).startswith("Bearer "):
+        token = str(token)[7:].strip()
+
+    # خواندن از JSON یا فرم
+    payload = request.get_json(silent=True) or {}
+    if not token and payload:
+        token = payload.get("token")
+    if not token and request.form:
+        token = request.form.get("token")
+
+    if not token:
+        return jsonify({"error": "Unauthorized: Missing webhook token"}), 401
+
+    owner = db.find_bank_sms_owner_by_token(token)
+    if not owner:
+        return jsonify({"error": "Unauthorized: Invalid webhook token"}), 403
+
+    owner_type = owner["type"]
+    owner_id = owner["id"]
+
+    if request.method == "GET":
+        return jsonify({
+            "status": "ok",
+            "message": "Bank SMS Webhook is active and connected.",
+            "owner": owner
+        })
+
+    # استخراج متن و فرستنده پیامک
+    raw_message = (
+        payload.get("message") or payload.get("text") or payload.get("sms") or 
+        payload.get("content") or payload.get("body") or request.form.get("message") or 
+        request.form.get("text") or request.form.get("sms") or ""
+    )
+    sender = (
+        payload.get("sender") or payload.get("from") or payload.get("phone") or 
+        request.form.get("sender") or request.form.get("from") or ""
+    )
+
+    if not raw_message:
+        return jsonify({"error": "Empty message body"}), 400
+
+    logger.info(f"Received Bank SMS for {owner_type} #{owner_id} from {sender}: {raw_message}")
+
+    from bank_sms_parser import parse_bank_sms
+    parsed = parse_bank_sms(raw_message, sender=sender)
+
+    if not parsed or not parsed.get("is_deposit"):
+        db.log_bank_sms(
+            owner_type=owner_type,
+            owner_id=owner_id,
+            sender_number=sender,
+            raw_message=raw_message,
+            status="ignored"
+        )
+        return jsonify({"status": "ignored", "reason": "Not a deposit SMS"}), 200
+
+    amount_toman = parsed.get("amount_toman")
+    if not amount_toman or amount_toman <= 0:
+        db.log_bank_sms(
+            owner_type=owner_type,
+            owner_id=owner_id,
+            sender_number=sender,
+            raw_message=raw_message,
+            status="unmatched"
+        )
+        return jsonify({"status": "unmatched", "reason": "Could not extract deposit amount"}), 200
+
+    # تطبیق با فاکتورهای معلق باز
+    matched_invoice = db.match_smart_invoice_by_amount(amount_toman, owner_type=owner_type, owner_id=owner_id)
+
+    if not matched_invoice:
+        db.log_bank_sms(
+            owner_type=owner_type,
+            owner_id=owner_id,
+            sender_number=sender,
+            raw_message=raw_message,
+            extracted_amount=amount_toman,
+            status="unmatched"
+        )
+        return jsonify({
+            "status": "unmatched",
+            "amount_toman": amount_toman,
+            "bank": parsed.get("bank_name"),
+            "message": "No pending invoice matched this amount"
+        }), 200
+
+    order_id = matched_invoice["order_id"]
+    sub_id = matched_invoice.get("sub_id")
+    tracking = parsed.get("tracking_code") or f"SMS-{int(get_now_naive().timestamp())}"
+
+    # ثبت پرداخت فاکتور هوشمند
+    db.mark_smart_invoice_paid(order_id, tracking_code=tracking)
+
+    # ثبت لاگ موفقیت‌آمیز
+    db.log_bank_sms(
+        owner_type=owner_type,
+        owner_id=owner_id,
+        sender_number=sender,
+        raw_message=raw_message,
+        extracted_amount=amount_toman,
+        matched_order_id=order_id,
+        status="matched"
+    )
+
+    # تحویل و تمدید خودکار اشتراک
+    processed_by = f"پیامک بانک ({parsed.get('bank_name', 'شتاب')})"
+    fulfill_res = fulfill_approved_transaction(order_id, ref_id=tracking, processed_by=processed_by)
+    logger.info(f"Smart Invoice {order_id} fulfilled via Bank SMS: {fulfill_res}")
+
+    # ارسال پیامک تایید به مشتری (در صورت وجود شماره)
+    try:
+        if sub_id:
+            sub = db.get_subscription(sub_id)
+            if sub and sub.get("phone_number"):
+                from sms_service import send_sms
+                sms_body = f"کاربر گرامی، پرداخت {amount_toman:,} تومانی شما تایید و اشتراک «{sub.get('account_name')}» تمدید شد."
+                send_sms(sub["phone_number"], sms_body, db_instance=db)
+    except Exception as e_sms:
+        logger.warning(f"Failed to send confirmation SMS to customer: {e_sms}")
+
+    return jsonify({
+        "status": "success",
+        "matched_order_id": order_id,
+        "amount_toman": amount_toman,
+        "bank": parsed.get("bank_name"),
+        "tracking_code": tracking,
+        "fulfill": fulfill_res
+    }), 200
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# مسیرهای پورتال دائمی و صفحه تمدید اختصاصی مشتریان
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/sub/<token>", methods=["GET"])
+@app.route("/renew/<token>", methods=["GET"])
+def customer_portal(token: str):
+    """
+    پورتال دائمی و صفحه استعلام وضعیت و تمدید اشتراک مشتری (بدون نیاز به لاگین)
+    token می‌تواند hidify_uuid یا شناسه اشتراک باشد.
+    """
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+
+    if not sub_row:
+        return render_template("troubleshoot_wizard.html", error="اشتراک مورد نظر یافت نشد یا حذف شده است."), 404
+
+    sub = dict(sub_row)
+    sub_id = sub["id"]
+    reseller_id = sub.get("reseller_id") or 0
+
+    # بررسی برندینگ و نماینده
+    brand_title = "فروشگاه اینترنت آزاد"
+    logo_url = None
+    support_username = None
+    if reseller_id:
+        r_info = db.get_reseller(reseller_id) or {}
+        brand_title = r_info.get("brand_title") or r_info.get("brand_name") or r_info.get("name") or brand_title
+        logo_url = r_info.get("logo_url")
+        support_username = r_info.get("support_username")
+    else:
+        support_username = db.get_setting("support_username")
+
+    # محاسبه روزهای مانده
+    days_left = 0
+    expire_date_str = sub.get("expire_date")
+    if expire_date_str:
+        try:
+            exp_dt = datetime.fromisoformat(expire_date_str)
+            days_left = max(0, (exp_dt.date() - get_now_naive().date()).days)
+        except Exception:
+            days_left = sub.get("duration", 30)
+
+    # دریافت پلن‌های مجاز
+    if reseller_id:
+        raw_plans = db.get_reseller_active_plans(reseller_id)
+        plans = []
+        for rp in raw_plans:
+            plans.append({
+                "id": rp["plan_id"],
+                "name": rp.get("custom_name") or rp.get("name") or rp["plan_id"],
+                "price": rp.get("custom_price") or rp.get("price") or 0,
+                "data_limit": rp.get("data_limit", 30),
+                "duration": rp.get("duration", 30)
+            })
+        if not plans:
+            plans = list(get_plans_dict().values())
+    else:
+        plans = list(get_plans_dict().values())
+
+    # دریافت آخرین فاکتور فعال معلق برای این اشتراک (در صورت وجود)
+    now_str = get_now_naive().isoformat()
+    conn = db.get_connection()
+    inv_row = conn.execute("""
+        SELECT * FROM smart_invoices 
+        WHERE sub_id=? AND status='pending' AND expires_at > ?
+        ORDER BY id DESC LIMIT 1
+    """, (sub_id, now_str)).fetchone()
+    conn.close()
+    invoice = dict(inv_row) if inv_row else None
+
+    # لینک اشتراک هیدیفای
+    domain = db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "")
+    sub_link = f"https://{domain}/sub/{sub.get('hidify_uuid')}" if domain else ""
+
+    return render_template(
+        "customer_portal.html",
+        sub=sub,
+        token=token,
+        brand_title=brand_title,
+        logo_url=logo_url,
+        support_username=support_username,
+        days_left=days_left,
+        plans=plans,
+        invoice=invoice,
+        sub_link=sub_link
+    )
+
+
+@app.route("/renew/create-invoice/<token>", methods=["POST"])
+def customer_create_invoice(token: str):
+    """ایجاد فاکتور تمدید هوشمند با ارقام خرد برای مشتری"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+
+    if not sub_row:
+        flash("اشتراک یافت نشد.", "danger")
+        return redirect(url_for("customer_portal", token=token))
+
+    sub = dict(sub_row)
+    sub_id = sub["id"]
+    reseller_id = sub.get("reseller_id") or 0
+    plan_id = request.form.get("plan_id")
+
+    # استخراج مشخصات پلن انتخابی
+    price = 0
+    plan_name = "بسته تمدید"
+    if reseller_id:
+        r_plan = db.get_reseller_plan(reseller_id, plan_id)
+        if r_plan:
+            price = r_plan.get("custom_price") or r_plan.get("price") or 0
+            plan_name = r_plan.get("custom_name") or r_plan.get("name") or plan_id
+    if not price:
+        g_plan = get_plans_dict().get(plan_id)
+        if g_plan:
+            price = g_plan.get("price", 0)
+            plan_name = g_plan.get("name", plan_id)
+
+    if not price:
+        price = 100000
+
+    # انتخاب کارت بانکی مقصد (اگر نماینده است، کارت نماینده، در غیر این صورت کارت ادمین)
+    target_card = None
+    if reseller_id:
+        r_cards = db.get_reseller_cards(reseller_id)
+        active_r_cards = [c for c in r_cards if c.get("is_active")]
+        if active_r_cards:
+            target_card = random.choice(active_r_cards)
+        sms_cfg = db.get_reseller_bank_sms_config(reseller_id)
+    else:
+        adm_cards = db.get_all_bank_cards()
+        active_adm_cards = [c for c in adm_cards if c.get("is_active")]
+        if active_adm_cards:
+            target_card = random.choice(active_adm_cards)
+        sms_cfg = db.get_admin_bank_sms_config()
+
+    if not target_card:
+        flash("هیچ کارت بانکی فعالی در سامانه تعریف نشده است. لطفاً به پشتیبانی پیام دهید.", "warning")
+        return redirect(url_for("customer_portal", token=token))
+
+    digits = sms_cfg.get("digits", 3)
+    timeout = sms_cfg.get("timeout", 15)
+
+    invoice = db.create_smart_invoice(
+        sub_id=sub_id,
+        plan_id=plan_id,
+        reseller_id=reseller_id,
+        base_amount=price,
+        target_card=target_card,
+        digits=digits,
+        timeout_minutes=timeout
+    )
+
+    # ایجاد همزمان تراکنش در جدول transactions با وضعیت معلق
+    now_iso = get_now_iso()
+    user_id = sub.get("telegram_id") or 0
+    conn = db.get_connection()
+    conn.execute("""
+        INSERT OR REPLACE INTO transactions (
+            order_id, user_id, plan_name, amount, status, gateway, 
+            tracking_code, reseller_id, is_renewal, renew_sub_id, 
+            account_name, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 'pending', 'bank_sms', ?, ?, 1, ?, ?, ?, ?)
+    """, (
+        invoice["order_id"], user_id, plan_name, invoice["final_amount"],
+        f"کارت {target_card.get('card_number', '')}", reseller_id, sub_id,
+        sub.get("account_name"), now_iso, now_iso
+    ))
+    conn.commit()
+    conn.close()
+
+    flash(f"فاکتور تمدید برای «{plan_name}» صادر شد. لطفاً دقیقاً مبلغ مشخص شده را واریز نمایید.", "info")
+    return redirect(url_for("customer_portal", token=token))
+
+
+@app.route("/api/invoice/status/<order_id>", methods=["GET"])
+def api_invoice_status(order_id: str):
+    """بررسی زنده وضعیت فاکتور توسط صفحه مرورگر مشتری"""
+    inv = db.get_smart_invoice_by_order_id(order_id)
+    if not inv:
+        return jsonify({"status": "not_found"}), 404
+    return jsonify({
+        "order_id": inv["order_id"],
+        "status": inv["status"],
+        "paid_at": inv.get("paid_at")
+    })
 
 
 # ─── راه‌اندازی سرور وب ───
