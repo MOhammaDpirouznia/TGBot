@@ -68,10 +68,14 @@
                     <div class="row g-2 mb-3">
                         {% for pid, p in plans.items() %}
                             {% if p.get('is_active', True) %}
+                            {% set icon_info = get_plan_icon(p, pid) %}
                             <div class="col-md-6 col-12">
                                 <label class="p-3 border rounded-3 cursor-pointer d-flex justify-content-between align-items-center h-100 plan-select-card" style="cursor: pointer;">
                                     <div class="d-flex align-items-center gap-2">
                                         <input type="radio" name="plan_id" value="{{ pid }}" data-price="{{ p['price'] }}" data-data="{{ p['data_limit'] }}" data-days="{{ p['duration'] }}" class="form-check-input mt-0 flex-shrink-0" {% if loop.first %}checked{% endif %} onchange="handlePlanChange()">
+                                        <span class="d-inline-flex align-items-center justify-content-center rounded-circle shadow-sm flex-shrink-0 {{ icon_info.bg_class }}" style="width: 34px; height: 34px; font-size: 0.95rem;">
+                                            <i class="{{ icon_info.icon }}"></i>
+                                        </span>
                                         <div>
                                             <div class="fw-bold text-dark">
                                                 {% if p.get('is_exclusive_admin') %}<span class="badge bg-warning text-dark me-1" style="font-size: 0.68rem;">👑 مدیریت</span>{% endif %}{{ p['name'] }}
@@ -91,8 +95,11 @@
                             <label class="p-3 border rounded-3 cursor-pointer d-flex justify-content-between align-items-center plan-select-card" style="cursor: pointer;">
                                 <div class="d-flex align-items-center gap-2">
                                     <input type="radio" name="plan_id" value="custom" class="form-check-input mt-0 flex-shrink-0" onchange="handlePlanChange()">
+                                    <span class="d-inline-flex align-items-center justify-content-center rounded-circle shadow-sm flex-shrink-0 bg-warning-subtle text-warning border border-warning" style="width: 34px; height: 34px; font-size: 0.95rem;">
+                                        <i class="fas fa-sliders"></i>
+                                    </span>
                                     <div>
-                                        <div class="fw-bold text-dark"><i class="fas fa-sliders text-warning me-1"></i> پلن دلخواه و سفارشی</div>
+                                        <div class="fw-bold text-dark">پلن دلخواه و سفارشی</div>
                                         <small class="text-muted">تعیین دستی و دلخواه حجم، مدت زمان و قیمت</small>
                                     </div>
                                 </div>

@@ -491,7 +491,13 @@
                                 </button>
                                 {% endif %}
 
-                                <!-- ۳. دکمه اصلی و جامع: مدیریت، بارکدها و لینک‌ها -->
+                                <!-- ۳. دکمه سریع کپی لینک دائمی پورتال مشتری -->
+                                <button type="button" class="btn btn-sm btn-outline-info d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" onclick="copyLink('{{ url_for('customer_portal', token=sub.get('hidify_uuid') or sub['id'], _external=True) }}', 'لینک اختصاصی و تمدید')" title="کپی لینک اختصاصی و تمدید مشتری">
+                                    <i class="fas fa-link"></i>
+                                    <span class="d-none d-lg-inline">لینک تمدید</span>
+                                </button>
+
+                                <!-- ۴. دکمه اصلی و جامع: مدیریت، بارکدها و لینک‌ها -->
                                 <button type="button" class="btn btn-sm btn-primary d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" data-bs-toggle="modal" data-bs-target="#customerDetailModal{{ sub['id'] }}" title="مشاهده بارکدها، لینک‌های اتصال و مدیریت کامل اشتراک">
                                     <i class="fas fa-qrcode"></i>
                                     <span class="d-none d-md-inline">مدیریت و اتصال</span>
@@ -771,10 +777,38 @@
                 </div>
 
                 <!-- دکمه ویژه صدور فاکتور دیجیتال رسمی -->
-                <div class="mb-4 text-center">
+                <div class="mb-3 text-center">
                     <a href="{{ url_for('view_invoice', sub_id=sub['id']) }}" target="_blank" class="btn btn-success btn-lg w-100 fw-bold shadow-sm py-2">
                         <i class="fas fa-file-invoice-dollar me-2"></i> صدور و مشاهده فاکتور رسمی دیجیتال برای این مشتری
                     </a>
+                </div>
+
+                <!-- بخش پورتال دائمی و لینک تمدید آنلاین اختصاصی مشتری -->
+                {% set portal_url = url_for('customer_portal', token=sub.get('hidify_uuid') or sub['id'], _external=True) %}
+                <div class="card border-primary border-opacity-25 bg-primary bg-opacity-10 shadow-sm mb-4">
+                    <div class="card-body p-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="fw-bold text-primary">
+                                <i class="fas fa-globe me-1"></i> پورتال دائمی و لینک تمدید اختصاصی مشتری
+                            </span>
+                            <span class="badge bg-primary text-white">لینک دائم و هوشمند</span>
+                        </div>
+                        <p class="small text-muted mb-2">
+                            این لینک آدرس دائمی و اختصاصی این مشتری است. مشتری با باز کردن آن، تراز لحظه‌ای حجم، روزهای باقی‌مانده، لینک‌ها و بارکدهای اتصال و امکان تمدید خودکار کارت‌به‌کارت را مشاهده خواهد کرد.
+                        </p>
+                        <div class="input-group input-group-sm mb-2">
+                            <input type="text" class="form-control text-center font-monospace" value="{{ portal_url }}" readonly id="portalUrl{{ sub['id'] }}" style="direction: ltr; font-size: 11px;">
+                            <button class="btn btn-primary" onclick="copyLink('{{ portal_url }}', 'لینک پورتال مشتری')" title="کپی لینک اختصاصی"><i class="fas fa-copy me-1"></i> کپی لینک</button>
+                            <a href="{{ portal_url }}" target="_blank" class="btn btn-outline-primary" title="مشاهده پورتال"><i class="fas fa-external-link-alt"></i></a>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 justify-content-end">
+                            <form method="POST" action="{{ url_for('admin_send_renewal_link', sub_id=sub['id']) }}" class="m-0" onsubmit="return confirm('آیا می‌خواهید پیامک و پیام تلگرام حاوی لینک تمدید برای مشتری «{{ sub['account_name'] }}» ارسال شود؟');">
+                                <button type="submit" class="btn btn-sm btn-success fw-bold shadow-sm">
+                                    <i class="fas fa-paper-plane me-1"></i> ارسال لینک تمدید به مشتری (پیامک / تلگرام)
+                                </button>
+                            </form>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- بخش مشخصات فنی و تراز مصرف -->
@@ -917,10 +951,14 @@
                     <label class="form-label fw-bold">انتخاب پلن تمدید:</label>
                     <div class="row g-2 mb-3">
                         {% for p_key, p in plans.items() %}
+                        {% set icon_info = get_plan_icon(p, p_key) %}
                         <div class="col-md-6 col-12">
                             <label class="p-2 p-md-3 border rounded-3 cursor-pointer d-flex justify-content-between align-items-center h-100 plan-renew-option">
                                 <div class="d-flex align-items-center gap-2">
                                     <input type="radio" name="plan_id" value="{{ p_key }}" class="form-check-input mt-0 flex-shrink-0" {% if p_key == sub['plan_id'] or loop.first %}checked{% endif %}>
+                                    <span class="d-inline-flex align-items-center justify-content-center rounded-circle shadow-sm flex-shrink-0 {{ icon_info.bg_class }}" style="width: 32px; height: 32px; font-size: 0.88rem;">
+                                        <i class="{{ icon_info.icon }}"></i>
+                                    </span>
                                     <div>
                                         <div class="fw-bold">{{ p['name'] }}</div>
                                         <small class="text-muted">{{ p['data_limit'] }} گیگ | {{ p['duration'] }} روز</small>
