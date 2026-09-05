@@ -79,6 +79,99 @@
             border-color: var(--card-border);
         }
 
+        /* ─── استایل هوشمند و ملایم برای ردیف‌های مشتریان (VIP، تیکت‌دار و بدهکار) ─── */
+        /* حالت روشن (Light Mode) */
+        .table > tbody > tr.customer-row-vip > td,
+        .table > tbody > tr.customer-row-vip > th,
+        tr.customer-row-vip > td,
+        tr.customer-row-vip > th,
+        tr.customer-row-vip {
+            background-color: rgba(245, 158, 11, 0.07) !important;
+            --bs-table-bg: rgba(245, 158, 11, 0.07) !important;
+        }
+        .table-hover > tbody > tr.customer-row-vip:hover > td,
+        .table-hover > tbody > tr.customer-row-vip:hover > th,
+        tr.customer-row-vip:hover > td {
+            background-color: rgba(245, 158, 11, 0.13) !important;
+            --bs-table-hover-bg: rgba(245, 158, 11, 0.13) !important;
+        }
+
+        .table > tbody > tr.customer-row-ticket > td,
+        .table > tbody > tr.customer-row-ticket > th,
+        tr.customer-row-ticket > td,
+        tr.customer-row-ticket > th,
+        tr.customer-row-ticket {
+            background-color: rgba(14, 165, 233, 0.07) !important;
+            --bs-table-bg: rgba(14, 165, 233, 0.07) !important;
+        }
+        .table-hover > tbody > tr.customer-row-ticket:hover > td,
+        .table-hover > tbody > tr.customer-row-ticket:hover > th,
+        tr.customer-row-ticket:hover > td {
+            background-color: rgba(14, 165, 233, 0.13) !important;
+            --bs-table-hover-bg: rgba(14, 165, 233, 0.13) !important;
+        }
+
+        .table > tbody > tr.customer-row-debtor > td,
+        .table > tbody > tr.customer-row-debtor > th,
+        tr.customer-row-debtor > td,
+        tr.customer-row-debtor > th,
+        tr.customer-row-debtor {
+            background-color: rgba(239, 68, 68, 0.07) !important;
+            --bs-table-bg: rgba(239, 68, 68, 0.07) !important;
+        }
+        .table-hover > tbody > tr.customer-row-debtor:hover > td,
+        .table-hover > tbody > tr.customer-row-debtor:hover > th,
+        tr.customer-row-debtor:hover > td {
+            background-color: rgba(239, 68, 68, 0.13) !important;
+            --bs-table-hover-bg: rgba(239, 68, 68, 0.13) !important;
+        }
+
+        /* حالت تاریک (Dark Mode) - ملایم، کم‌رنگ و سازگار با تم تیره بدون خیره‌کنندگی */
+        [data-bs-theme="dark"] .table > tbody > tr.customer-row-vip > td,
+        [data-bs-theme="dark"] .table > tbody > tr.customer-row-vip > th,
+        [data-bs-theme="dark"] tr.customer-row-vip > td,
+        [data-bs-theme="dark"] tr.customer-row-vip > th,
+        [data-bs-theme="dark"] tr.customer-row-vip {
+            background-color: rgba(245, 158, 11, 0.11) !important;
+            --bs-table-bg: rgba(245, 158, 11, 0.11) !important;
+        }
+        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-vip:hover > td,
+        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-vip:hover > th,
+        [data-bs-theme="dark"] tr.customer-row-vip:hover > td {
+            background-color: rgba(245, 158, 11, 0.18) !important;
+            --bs-table-hover-bg: rgba(245, 158, 11, 0.18) !important;
+        }
+
+        [data-bs-theme="dark"] .table > tbody > tr.customer-row-ticket > td,
+        [data-bs-theme="dark"] .table > tbody > tr.customer-row-ticket > th,
+        [data-bs-theme="dark"] tr.customer-row-ticket > td,
+        [data-bs-theme="dark"] tr.customer-row-ticket > th,
+        [data-bs-theme="dark"] tr.customer-row-ticket {
+            background-color: rgba(14, 165, 233, 0.11) !important;
+            --bs-table-bg: rgba(14, 165, 233, 0.11) !important;
+        }
+        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-ticket:hover > td,
+        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-ticket:hover > th,
+        [data-bs-theme="dark"] tr.customer-row-ticket:hover > td {
+            background-color: rgba(14, 165, 233, 0.18) !important;
+            --bs-table-hover-bg: rgba(14, 165, 233, 0.18) !important;
+        }
+
+        [data-bs-theme="dark"] .table > tbody > tr.customer-row-debtor > td,
+        [data-bs-theme="dark"] .table > tbody > tr.customer-row-debtor > th,
+        [data-bs-theme="dark"] tr.customer-row-debtor > td,
+        [data-bs-theme="dark"] tr.customer-row-debtor > th,
+        [data-bs-theme="dark"] tr.customer-row-debtor {
+            background-color: rgba(239, 68, 68, 0.11) !important;
+            --bs-table-bg: rgba(239, 68, 68, 0.11) !important;
+        }
+        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-debtor:hover > td,
+        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-debtor:hover > th,
+        [data-bs-theme="dark"] tr.customer-row-debtor:hover > td {
+            background-color: rgba(239, 68, 68, 0.18) !important;
+            --bs-table-hover-bg: rgba(239, 68, 68, 0.18) !important;
+        }
+
         [data-bs-theme="dark"] .table th {
             color: #94a3b8;
             background-color: rgba(255, 255, 255, 0.02);

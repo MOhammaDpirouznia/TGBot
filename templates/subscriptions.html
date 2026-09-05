@@ -267,7 +267,9 @@
                     {% set sub_url = (panel_url + '/' + user_proxy + '/' + sub['hidify_uuid'] + '/') if sub['hidify_uuid'] else '' %}
                     {% set single_url = sub|format_single_link(single_link_template) if sub['hidify_uuid'] else '' %}
                     {% set is_debtor = (sub.get('payment_status') in ('unpaid', 'debtor') or (sub.get('debt_amount')|int or 0) > 0) %}
-                    <tr class="{% if is_debtor %}table-danger bg-opacity-10 border-start border-danger border-3{% elif sub.get('is_vip') %}table-warning bg-opacity-10{% endif %}">
+                    {% set tinfo = sub.get('ticket_info') %}
+                    {% set has_ticket = tinfo and ((tinfo.get('open_count', 0) > 0) or tinfo.get('has_open') or (tinfo.get('in_progress_count', 0) > 0) or tinfo.get('has_pending')) %}
+                    <tr class="{% if is_debtor %}customer-row-debtor border-start border-danger border-3{% elif sub.get('is_vip') and has_ticket %}customer-row-vip customer-row-ticket border-start border-warning border-3{% elif sub.get('is_vip') %}customer-row-vip border-start border-warning border-3{% elif has_ticket %}customer-row-ticket border-start border-info border-3{% endif %}">
                         <td class="text-center">
                             <input type="checkbox" class="form-check-input bulk-select-row" value="{{ sub['id'] }}">
                         </td>
@@ -387,20 +389,18 @@
                                 {% else %}
                                     <span class="badge bg-danger-subtle text-danger border border-danger font-monospace">غیرفعال</span>
                                 {% endif %}
-                                {% if sub.get('last_online') %}
-                                    {% set c_info = sub['last_online']|last_connection_display %}
-                                    {% if c_info.is_past %}
-                                        <div class="small fw-semibold text-warning-emphasis mt-1" style="font-size: 11px;">
-                                            <i class="far fa-clock me-1"></i>{{ c_info.relative_text }}
-                                        </div>
-                                        <div class="text-muted font-monospace" style="font-size: 10px;" title="تاریخ و ساعت شمسی">
-                                            {{ c_info.shamsi_full }}
-                                        </div>
-                                    {% else %}
-                                        <div class="text-muted small mt-1 font-monospace" style="font-size: 11px;" title="{{ c_info.shamsi_full }}">
-                                            <i class="far fa-clock me-1"></i>{{ c_info.relative_text }}
-                                        </div>
-                                    {% endif %}
+                                {% set c_info = sub.get('last_online')|last_connection_display %}
+                                {% if c_info.has_connected %}
+                                    <div class="fw-semibold mt-1 font-monospace text-nowrap" style="font-size: 11px; color: #f59e0b;" title="آخرین زمان آنلاین بودن">
+                                        <i class="far fa-clock me-1"></i>{{ c_info.relative_text or c_info.relative }}
+                                    </div>
+                                    <div class="font-monospace text-nowrap" style="font-size: 10px; color: var(--text-muted, #94a3b8);" title="تاریخ و ساعت شمسی آخرین اتصال">
+                                        {{ c_info.shamsi_full or c_info.shamsi_datetime }}
+                                    </div>
+                                {% else %}
+                                    <div class="text-muted small mt-1 font-monospace text-nowrap" style="font-size: 10.5px;">
+                                        <i class="fas fa-plug-circle-xmark me-1 opacity-75"></i>بدون اتصال
+                                    </div>
                                 {% endif %}
                             {% endif %}
                         </td>

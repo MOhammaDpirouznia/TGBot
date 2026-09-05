@@ -71,7 +71,7 @@
                     {% for user in users %}
                     {% set sub_url = (panel_url + '/' + user_proxy + '/' + user['hidify_uuid'] + '/') if user['hidify_uuid'] else '' %}
                     {% set single_url = user|format_single_link(single_link_template) if user['hidify_uuid'] else '' %}
-                    <tr class="{% if user['is_vip'] %}table-warning bg-opacity-10{% endif %}">
+                    <tr class="{% if user['is_vip'] %}customer-row-vip border-start border-warning border-3{% endif %}">
                         <td class="ps-3" data-value="{{ (user['username'] or user['telegram_id'] or '')|striptags }}">
                             <div class="d-flex align-items-center gap-2">
                                 <img src="{{ avatar_url(user['telegram_id'] or user['username'] or 'User') }}" 
