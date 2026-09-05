@@ -580,9 +580,11 @@
                                 </div>
                                 <div class="d-flex flex-wrap gap-1 justify-content-center">
                                     {% if sub_url %}
+                                    <button type="button" class="btn btn-sm btn-outline-info py-1 px-2 font-monospace" style="font-size: 11px;" onclick="shareConnectionLink('{{ sub_url }}', 'لینک اتصال {{ sub['account_name'] }}')"><i class="fas fa-share-nodes me-1"></i> اشتراک‌گذاری</button>
                                     <a href="hiddify://install-sub?url={{ sub_url|urlencode }}" class="btn btn-sm btn-outline-primary py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-rocket me-1"></i> Hiddify</a>
                                     <a href="streisand://import/{{ sub_url|urlencode }}" class="btn btn-sm btn-outline-info py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-bolt me-1"></i> Streisand</a>
                                     <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2 font-monospace" style="font-size: 11px;" onclick="downloadQrCode('subQr{{ sub['id'] }}', 'Sub_{{ sub['account_name'] }}.png')"><i class="fas fa-download me-1"></i> دانلود QR</button>
+                                    <a href="{{ sub_url }}" target="_blank" class="btn btn-sm btn-outline-secondary py-1 px-2 font-monospace" style="font-size: 11px;" title="باز کردن در مرورگر"><i class="fas fa-external-link-alt"></i></a>
                                     {% endif %}
                                 </div>
                             </div>
@@ -606,6 +608,7 @@
                                 </div>
                                 <div class="d-flex flex-wrap gap-1 justify-content-center">
                                     {% if single_url %}
+                                    <button type="button" class="btn btn-sm btn-outline-info py-1 px-2 font-monospace" style="font-size: 11px;" onclick="shareConnectionLink('{{ single_url }}', 'کانفیگ تکی {{ sub['account_name'] }}')"><i class="fas fa-share-nodes me-1"></i> اشتراک‌گذاری</button>
                                     <button type="button" class="btn btn-sm btn-outline-warning py-1 px-2 font-monospace" style="font-size: 11px;" onclick="copyLink('{{ single_url }}', 'لینک مستقیم تکی')"><i class="fas fa-copy me-1"></i> کپی کانفیگ</button>
                                     <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2 font-monospace" style="font-size: 11px;" onclick="downloadQrCode('singleQr{{ sub['id'] }}', 'Single_{{ sub['account_name'] }}.png')"><i class="fas fa-download me-1"></i> دانلود QR</button>
                                     {% else %}
@@ -1773,15 +1776,46 @@ function downloadQrCode(elementId, filename) {
     }
 }
 
+async function shareConnectionLink(url, title) {
+    if (!url) return;
+    if (navigator.share) {
+        try {
+            await navigator.share({
+                title: title || 'لینک اتصال VPN',
+                text: `${title || 'لینک اتصال شما'}:\n${url}`,
+                url: url
+            });
+            return;
+        } catch (err) {
+            if (err.name !== 'AbortError') {
+                console.warn('Web Share API error:', err);
+            } else {
+                return;
+            }
+        }
+    }
+    // فال‌بک: کپی لینک در حافظه و باز کردن پنجره اشتراک تلگرام
+    copyLink(url, title || 'لینک اتصال');
+    try {
+        const tgShareUrl = 'https://t.me/share/url?url=' + encodeURIComponent(url) + '&text=' + encodeURIComponent(title || '');
+        window.open(tgShareUrl, '_blank');
+    } catch(e) {}
+}
+
 function renderQrCodeSafely(container, text, size) {
     if (!container || !text) return;
     container.innerHTML = '';
     const qrSize = size || 135;
+    let renderedSuccessfully = false;
+
     try {
         if (typeof QRCode !== 'undefined') {
-            const correctLvl = (typeof QRCode.CorrectLevel !== 'undefined' && QRCode.CorrectLevel.M !== undefined) 
-                ? QRCode.CorrectLevel.M 
-                : 0;
+            // برای کانفیگ‌های طولانی تک (مانند vmess) حتماً از سطح L استفاده می‌کنیم تا خطای طول رشته ندهد
+            const isLong = text.length > 180;
+            const correctLvl = (typeof QRCode.CorrectLevel !== 'undefined')
+                ? (isLong ? QRCode.CorrectLevel.L : (QRCode.CorrectLevel.M || QRCode.CorrectLevel.L))
+                : 1;
+
             new QRCode(container, {
                 text: text,
                 width: qrSize,
@@ -1790,40 +1824,57 @@ function renderQrCodeSafely(container, text, size) {
                 colorLight: "#ffffff",
                 correctLevel: correctLvl
             });
+
             setTimeout(() => {
                 const canvas = container.querySelector('canvas');
                 const img = container.querySelector('img');
-                if (canvas && img && img.src) {
-                    canvas.style.display = 'none';
+                if (canvas && (!img || !img.src || img.src === '')) {
+                    canvas.style.display = 'block';
+                    canvas.style.margin = '0 auto';
+                    if (img) img.style.display = 'none';
+                } else if (img && img.src && img.src !== '') {
                     img.style.display = 'block';
                     img.style.margin = '0 auto';
+                    if (canvas) canvas.style.display = 'none';
                 }
             }, 30);
-            return;
+            renderedSuccessfully = true;
         }
     } catch (e) {
-        console.warn('QRCode generation exception:', e);
+        console.warn('QRCode generation exception, using internal server endpoint:', e);
+        renderedSuccessfully = false;
     }
-    // Fallback if QRCode library is not loaded or throws error
-    container.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=${qrSize}x${qrSize}&data=${encodeURIComponent(text)}" alt="QR Code" style="width: ${qrSize}px; height: ${qrSize}px; max-width: 100%; display: block; margin: 0 auto; border-radius: 6px;">`;
+
+    // اگر کتابخانه جاوااسکریپت لود نشده بود یا با ارور متوقف شد، فوراً از روت محلی و مستقل سرور خودمان تصویر می‌گیریم
+    if (!renderedSuccessfully || (!container.querySelector('canvas') && !container.querySelector('img'))) {
+        const localQrUrl = '/api/qr-image?text=' + encodeURIComponent(text);
+        container.innerHTML = `<img src="${localQrUrl}" alt="QR Code" style="width: ${qrSize}px; height: ${qrSize}px; max-width: 100%; display: block; margin: 0 auto; border-radius: 6px;">`;
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    const initModalQr = (modalEl) => {
+        const subId = modalEl.getAttribute('data-sub-id');
+        const subUrl = modalEl.getAttribute('data-sub-url');
+        const singleUrl = modalEl.getAttribute('data-single-url');
+
+        const subContainer = document.getElementById('subQr' + subId);
+        if (subContainer && subUrl && (!subContainer.querySelector('canvas') && !subContainer.querySelector('img'))) {
+            renderQrCodeSafely(subContainer, subUrl, 135);
+        }
+
+        const singleContainer = document.getElementById('singleQr' + subId);
+        if (singleContainer && singleUrl && (!singleContainer.querySelector('canvas') && !singleContainer.querySelector('img'))) {
+            renderQrCodeSafely(singleContainer, singleUrl, 135);
+        }
+    };
+
     document.querySelectorAll('.customer-manage-modal').forEach(modalEl => {
+        modalEl.addEventListener('show.bs.modal', function () {
+            initModalQr(this);
+        });
         modalEl.addEventListener('shown.bs.modal', function () {
-            const subId = this.getAttribute('data-sub-id');
-            const subUrl = this.getAttribute('data-sub-url');
-            const singleUrl = this.getAttribute('data-single-url');
-
-            const subContainer = document.getElementById('subQr' + subId);
-            if (subContainer && subUrl && (!subContainer.querySelector('canvas') && !subContainer.querySelector('img'))) {
-                renderQrCodeSafely(subContainer, subUrl, 135);
-            }
-
-            const singleContainer = document.getElementById('singleQr' + subId);
-            if (singleContainer && singleUrl && (!singleContainer.querySelector('canvas') && !singleContainer.querySelector('img'))) {
-                renderQrCodeSafely(singleContainer, singleUrl, 135);
-            }
+            initModalQr(this);
         });
     });
 });
@@ -1974,21 +2025,14 @@ function submitBulkDelete() {
     overflow: hidden;
     margin: 0 auto;
 }
-.qr-target canvas {
-    display: none;
-    max-width: 100%;
-    height: auto;
-}
-.qr-target canvas:only-child {
-    display: block !important;
-    margin: 0 auto;
-}
+.qr-target canvas,
 .qr-target img {
-    max-width: 100%;
-    height: auto;
+    max-width: 100% !important;
+    height: auto !important;
     aspect-ratio: 1 / 1;
-    display: block;
-    margin: 0 auto;
+    display: block !important;
+    margin: 0 auto !important;
+    border-radius: 4px;
 }
 @media (max-width: 576px) {
     .qr-box {
