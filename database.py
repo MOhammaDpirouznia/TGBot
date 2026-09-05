@@ -7226,23 +7226,64 @@ class Database:
         finally:
             conn.close()
 
-    def get_all_pending_queue_items(self) -> list:
-        """دریافت تمام بسته‌های در صف به همراه اطلاعات اشتراک مربوطه برای پردازش خودکار"""
+    def get_all_pending_queue_items(self, reseller_id: int = None) -> list:
+        """دریافت تمام بسته‌های در صف به همراه اطلاعات اشتراک مربوطه برای پردازش خودکار و نمایش در پنل"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            sql = """
+                SELECT q.*, s.account_name, s.data_used as curr_used, s.data_limit as curr_limit,
+                       s.duration as curr_duration, s.start_date as curr_start_date,
+                       s.expire_date as curr_expire_date, s.status as sub_status, s.telegram_id as sub_tg_id,
+                       s.phone_number, r.name as reseller_name
+                FROM subscription_queue q
+                JOIN subscriptions s ON q.subscription_id = s.id
+                LEFT JOIN resellers r ON q.reseller_id = r.id
+                WHERE q.status = 'pending'
+            """
+            params = []
+            if reseller_id is not None:
+                sql += " AND q.reseller_id = ?"
+                params.append(reseller_id)
+            sql += " ORDER BY q.id ASC"
+            cursor.execute(sql, params)
+            return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error getting all pending queue items: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_pending_queue_count(self, reseller_id: int = None) -> int:
+        """دریافت تعداد کل بسته‌های در انتظار صف تمدید"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if reseller_id is not None:
+                cursor.execute("SELECT COUNT(*) FROM subscription_queue WHERE status = 'pending' AND reseller_id = ?", (reseller_id,))
+            else:
+                cursor.execute("SELECT COUNT(*) FROM subscription_queue WHERE status = 'pending'")
+            row = cursor.fetchone()
+            return row[0] if row else 0
+        except Exception as e:
+            logger.error(f"Error getting pending queue count: {e}")
+            return 0
+        finally:
+            conn.close()
+
+    def get_subscription_queue_items(self, subscription_id: int, limit: int = 10) -> list:
+        """دریافت تاریخچه و وضعیت بسته‌های در صف یک اشتراک خاص"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute("""
-                SELECT q.*, s.account_name, s.data_used as curr_used, s.data_limit as curr_limit,
-                       s.duration as curr_duration, s.start_date as curr_start_date,
-                       s.expire_date as curr_expire_date, s.status as sub_status, s.telegram_id as sub_tg_id
-                FROM subscription_queue q
-                JOIN subscriptions s ON q.subscription_id = s.id
-                WHERE q.status = 'pending'
-                ORDER BY q.id ASC
-            """)
+                SELECT * FROM subscription_queue
+                WHERE subscription_id = ?
+                ORDER BY id DESC LIMIT ?
+            """, (subscription_id, limit))
             return [dict(r) for r in cursor.fetchall()]
         except Exception as e:
-            logger.error(f"Error getting all pending queue items: {e}")
+            logger.error(f"Error getting queue items for sub {subscription_id}: {e}")
             return []
         finally:
             conn.close()

@@ -1569,6 +1569,103 @@ def process_subscription_queue() -> dict:
         return {"processed": 0, "activated": 0, "error": str(e)}
 
 
+def activate_single_queue_item(queue_id: int, triggered_by: str = "مدیریت") -> dict:
+    """
+    فعال‌سازی آنی و دستی یک بسته در صف تمدید:
+    - ریست کامل مصرف در هیدیفای به صفر و جایگزینی حجم و مدت جدید
+    - به‌روزرسانی وضعیت اشتراک در دیتابیس لوکال و ریست تاریخ شروع و انقضا
+    - ثبت در سوابق دوره‌های مصرف
+    - علامت‌گذاری به عنوان فعال‌شده در subscription_queue
+    - ارسال پیام به تلگرام کاربر در صورت وجود
+    """
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT * FROM subscription_queue WHERE id=? AND status='pending'", (queue_id,))
+        item = cursor.fetchone()
+        if not item:
+            return {"success": False, "error": "بسته مورد نظر در صف یافت نشد یا قبلاً فعال/لغو شده است."}
+        item = dict(item)
+
+        sub_id = item["subscription_id"]
+        cursor.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,))
+        sub_row = cursor.fetchone()
+        if not sub_row:
+            return {"success": False, "error": "اشتراک مربوط به این بسته یافت نشد."}
+        sub = dict(sub_row)
+
+        uuid = item.get("hidify_uuid") or sub.get("hidify_uuid")
+        new_limit = float(item.get("data_limit") or 0)
+        new_duration = int(item.get("duration") or 30)
+        plan_name = item.get("plan_name") or f"{new_limit} گیگ"
+        plan_id = item.get("plan_id") or "custom"
+
+        # ۱. فعال‌سازی در هیدیفای با ریست کامل حجم و روز
+        if uuid:
+            try:
+                hidify_sync_renew_user(uuid, new_limit, new_duration, force_instant=True)
+            except Exception as e:
+                logger.error(f"Hiddify manual queue activation error for {uuid}: {e}")
+
+        # ۲. به‌روزرسانی اشتراک در دیتابیس لوکال
+        now = get_now_naive()
+        now_str = get_now_iso()
+        new_start_str = now.strftime("%Y-%m-%d")
+        new_expire_str = (now + timedelta(days=new_duration)).isoformat()
+
+        cursor.execute("""
+            UPDATE subscriptions
+            SET plan_id=?, plan_name=?, data_limit=?, data_used=0, duration=?, status='active',
+                start_date=?, expire_date=?, updated_at=?, last_renewed_by=?
+            WHERE id=?
+        """, (plan_id, plan_name, new_limit, new_duration, new_start_str, new_expire_str, now_str, triggered_by, sub_id))
+        conn.commit()
+
+        # ۳. ثبت در سوابق مصرف
+        try:
+            db.log_subscription_history(
+                subscription_id=sub_id,
+                telegram_id=item.get("telegram_id") or sub.get("telegram_id") or 0,
+                hidify_uuid=uuid or "",
+                account_name=sub.get("account_name") or "",
+                plan_name=plan_name,
+                previous_usage_gb=sub.get("data_used") or 0,
+                previous_limit_gb=sub.get("data_limit") or 0,
+                period_days=new_duration,
+                renewal_type="queued_manual_activated",
+                reseller_id=item.get("reseller_id"),
+                cost_paid=item.get("cost") or 0,
+                note=f"فعال‌سازی دستی از صف رزرو توسط {triggered_by}"
+            )
+        except Exception as ex:
+            logger.warning(f"Error logging history for manual queue activation: {ex}")
+
+        # ۴. علامت‌گذاری در جدول صف
+        db.mark_queue_item_activated(queue_id)
+
+        # ۵. ارسال نوتیفیکیشن تلگرام
+        tg_id = item.get("telegram_id") or sub.get("telegram_id")
+        if tg_id and int(tg_id) > 0:
+            try:
+                send_telegram_msg(
+                    int(tg_id),
+                    f"🎉 <b>اشتراک شما با موفقیت تمدید و فعال شد!</b>\n\n"
+                    f"بسته رزرو شده «{plan_name}» هم‌اکنون برای اشتراک <b>{sub.get('account_name')}</b> فعال گردید.\n\n"
+                    f"📊 حجم جدید: <b>{new_limit} گیگابایت</b>\n"
+                    f"⏱ مدت اعتبار: <b>{new_duration} روز</b>\n"
+                    f"🔄 وضعیت: حجم مصرفی صفر شد و سرویس شما فعال است."
+                )
+            except Exception as ex:
+                logger.debug(f"Could not send telegram alert for manual queue activation: {ex}")
+
+        return {"success": True, "account_name": sub.get("account_name"), "plan_name": plan_name}
+    except Exception as e:
+        logger.error(f"Error in activate_single_queue_item: {e}")
+        return {"success": False, "error": str(e)}
+    finally:
+        conn.close()
+
+
 def hidify_sync_delete_user(uuid: str) -> dict:
     """حذف کاربر از سرور هیدیفای"""
     if not uuid:
@@ -4409,6 +4506,9 @@ def subscriptions():
 
     if status_filter == "deleted":
         base_conditions.append("is_deleted = 1")
+    elif status_filter == "queue":
+        base_conditions.append("(is_deleted = 0 OR is_deleted IS NULL)")
+        base_conditions.append("id IN (SELECT subscription_id FROM subscription_queue WHERE status = 'pending')")
     else:
         base_conditions.append("(is_deleted = 0 OR is_deleted IS NULL)")
 
@@ -4551,6 +4651,9 @@ def subscriptions():
     except Exception:
         pass
 
+    queue_count = db.get_pending_queue_count()
+    all_pending_queue = db.get_all_pending_queue_items()
+
     return render_template(
         "subscriptions.html",
         subscriptions=subscriptions_with_refund,
@@ -4571,6 +4674,8 @@ def subscriptions():
         online_stats=online_stats,
         debtor_count=debtor_count,
         deleted_count=deleted_count,
+        queue_count=queue_count,
+        all_pending_queue=all_pending_queue,
         panel_url=get_hiddify_url(),
         user_proxy=get_user_proxy(),
         single_link_template=single_link_template
@@ -4937,6 +5042,43 @@ def admin_subscription_add_traffic(sub_id):
         flash(f"سقف ترافیک با موفقیت {extra_gb} گیگابایت افزایش یافت (سقف جدید: {res['new_limit']} GB).", "success")
     else:
         flash(f"خطا در افزایش ترافیک: {res.get('error')}", "danger")
+    return redirect(get_redirect_target("subscriptions"))
+
+
+@app.route("/admin/queue/<int:queue_id>/activate", methods=["POST"])
+@permission_required("sub_manage")
+def admin_queue_activate(queue_id: int):
+    """فعال‌سازی آنی بسته در صف تمدید توسط مدیریت"""
+    username = session.get("username") or "مدیریت"
+    res = activate_single_queue_item(queue_id, triggered_by=username)
+    if res.get("success"):
+        flash(f"بسته «{res.get('plan_name')}» برای اشتراک «{res.get('account_name')}» با موفقیت فعال شد و حجم و تاریخ آن ریست گردید.", "success")
+    else:
+        flash(f"خطا در فعال‌سازی بسته: {res.get('error')}", "danger")
+    return redirect(get_redirect_target("subscriptions"))
+
+
+@app.route("/admin/queue/<int:queue_id>/cancel", methods=["POST"])
+@permission_required("sub_manage")
+def admin_queue_cancel(queue_id: int):
+    """لغو بسته در صف تمدید توسط مدیریت و استرداد وجه در صورت نیاز"""
+    res = db.cancel_queue_item(queue_id)
+    if res.get("success"):
+        refund_txt = f" و مبلغ {res.get('refunded_amount'):,} تومان به حساب نماینده بازگردانده شد" if res.get('refunded_amount') else ""
+        flash(f"بسته رزرو شده با موفقیت از صف تمدید لغو شد{refund_txt}.", "info")
+    else:
+        flash(f"خطا در لغو بسته: {res.get('error')}", "danger")
+    return redirect(get_redirect_target("subscriptions"))
+
+
+@app.route("/admin/queue/process-now", methods=["POST"])
+@permission_required("sub_manage")
+def admin_queue_process_now():
+    """پردازش فوری و بررسی شرایط فعال‌سازی بسته‌های صف تمدید"""
+    res = process_subscription_queue()
+    activated = res.get("activated", 0)
+    processed = res.get("processed", 0)
+    flash(f"پردازش صف تمدید انجام شد: تعداد {processed} بسته بررسی و {activated} بسته واجد شرایط (۹۹٪ مصرف یا روز پایانی) فعال شدند.", "info")
     return redirect(get_redirect_target("subscriptions"))
 
 
@@ -7878,6 +8020,8 @@ def reseller_users():
                 continue
             elif status_filter == "debtors" and not (item.get("payment_status") in ("unpaid", "debtor") or (item.get("debt_amount") or 0) > 0):
                 continue
+            elif status_filter == "queue" and not item.get("has_queue"):
+                continue
 
             if search_query:
                 acc_name = (item.get("account_name") or "").lower()
@@ -7899,6 +8043,8 @@ def reseller_users():
     end_idx = min(start_idx + per_page, total_count)
     paginated_subs = subs[start_idx:end_idx]
 
+    queue_count = db.get_pending_queue_count(reseller_id=reseller_id)
+    all_pending_queue = db.get_all_pending_queue_items(reseller_id=reseller_id)
     single_link_template = get_single_link_template(db)
     return render_template(
         "reseller_users.html",
@@ -7908,6 +8054,8 @@ def reseller_users():
         discount=discount,
         stats=stats,
         debtor_count=debtor_count,
+        queue_count=queue_count,
+        all_pending_queue=all_pending_queue,
         balance=stats["balance"],
         available_credit=stats.get("available_credit", 0),
         credit_enabled=stats.get("credit_enabled", False),
@@ -8394,6 +8542,41 @@ def reseller_subscriptions_bulk_renew():
 
     mode_text = "به صورت آنی تمدید و ریست شدند" if instant_activate else "در صف تمدید رزرو قرار گرفتند"
     flash(f"{success_count} اشتراک با موفقیت {mode_text} و مجموع مبلغ {total_cost_required:,} تومان کسر گردید.", "success")
+    return redirect(get_redirect_target("reseller_users"))
+
+
+@app.route("/reseller/queue/<int:queue_id>/activate", methods=["POST"])
+@reseller_required
+def reseller_queue_activate(queue_id: int):
+    """فعال‌سازی آنی بسته در صف تمدید توسط نماینده"""
+    reseller_id = session.get("reseller_id")
+    conn = db.get_connection()
+    q_item = conn.execute("SELECT * FROM subscription_queue WHERE id=? AND reseller_id=?", (queue_id, reseller_id)).fetchone()
+    conn.close()
+    if not q_item:
+        flash("بسته مورد نظر یافت نشد یا متعلق به شما نیست.", "danger")
+        return redirect(get_redirect_target("reseller_users"))
+
+    username = session.get("username") or f"نماینده #{reseller_id}"
+    res = activate_single_queue_item(queue_id, triggered_by=username)
+    if res.get("success"):
+        flash(f"بسته «{res.get('plan_name')}» برای اشتراک «{res.get('account_name')}» با موفقیت فعال شد و حجم و تاریخ آن ریست گردید.", "success")
+    else:
+        flash(f"خطا در فعال‌سازی بسته: {res.get('error')}", "danger")
+    return redirect(get_redirect_target("reseller_users"))
+
+
+@app.route("/reseller/queue/<int:queue_id>/cancel", methods=["POST"])
+@reseller_required
+def reseller_queue_cancel(queue_id: int):
+    """لغو بسته در صف تمدید توسط نماینده و استرداد وجه به کیف‌پول"""
+    reseller_id = session.get("reseller_id")
+    res = db.cancel_queue_item(queue_id, reseller_id=reseller_id)
+    if res.get("success"):
+        refund_txt = f" و مبلغ {res.get('refunded_amount'):,} تومان به کیف‌پول شما استرداد گردید" if res.get('refunded_amount') else ""
+        flash(f"بسته رزرو شده با موفقیت از صف تمدید لغو شد{refund_txt}.", "success")
+    else:
+        flash(f"خطا در لغو بسته: {res.get('error')}", "danger")
     return redirect(get_redirect_target("reseller_users"))
 
 
