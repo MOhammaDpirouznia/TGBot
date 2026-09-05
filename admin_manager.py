@@ -295,7 +295,7 @@ def save_plans(plans: dict):
         pass
 
 
-def get_plan_icon(plan: dict) -> dict:
+def get_plan_icon(plan: dict, plan_id: str = None) -> dict:
     """
     تحلیل هوشمند رتبه پلن و ارائه آیکون شیک و متناسب با لول پلن.
     پلن‌های بالاتر دارای زیباترین و لوکس‌ترین استایل و آیکون‌ها هستند.
@@ -310,11 +310,18 @@ def get_plan_icon(plan: dict) -> dict:
             "tier": 1
         }
 
-    custom_icon = plan.get("plan_icon")
+    custom_icon = plan.get("plan_icon") or plan.get("icon")
+    if custom_icon:
+        custom_icon = str(custom_icon).strip()
+        if not custom_icon.startswith("fa"):
+            custom_icon = f"fas fa-{custom_icon}"
+        elif custom_icon.startswith("fa-") and not any(custom_icon.startswith(p) for p in ["fas ", "far ", "fab ", "fa-solid ", "fa-regular ", "fa-light "]):
+            custom_icon = f"fas {custom_icon}"
+
     name = (plan.get("name") or plan.get("master_name") or "").strip().lower()
     data_limit = float(plan.get("data_limit") or plan.get("display_data_limit") or 0)
     price = int(plan.get("price") or plan.get("display_price") or plan.get("master_price") or 0)
-    pid = str(plan.get("plan_id") or "").lower()
+    pid = str(plan_id or plan.get("plan_id") or plan.get("id") or "").lower()
 
     # رتبه ۷: الماس / اپل پلاس / VIP ارشد / ماکسیمم حجم یا قیمت
     if any(k in name or k in pid for k in ["اپل", "apple", "الماس", "gem", "diamond", "royal", "vip"]) or data_limit >= 250 or price >= 1500000:
