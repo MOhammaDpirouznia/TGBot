@@ -4706,13 +4706,7 @@ def admin_subscription_renew(sub_id: int):
     custom_duration_raw = request.form.get("custom_duration", "").strip()
 
     plans = get_plans_dict()
-    if plan_key and plan_key in plans:
-        plan = plans[plan_key]
-        plan_name = plan.get("name", "تمدید اشتراک")
-        data_limit = float(plan.get("data_limit", 30))
-        duration = int(plan.get("duration", 30))
-        cost_paid = int(plan.get("price", 0))
-    elif custom_limit_raw and custom_duration_raw:
+    if custom_limit_raw and custom_duration_raw:
         try:
             data_limit = float(custom_limit_raw)
             duration = int(custom_duration_raw)
@@ -4722,12 +4716,29 @@ def admin_subscription_renew(sub_id: int):
         except ValueError:
             flash("مقادیر وارد شده برای حجم یا مدت نامعتبر است.", "danger")
             return redirect(get_redirect_target("subscriptions"))
+    elif plan_key and plan_key in plans:
+        plan = plans[plan_key]
+        plan_name = plan.get("name", "تمدید اشتراک")
+        data_limit = float(plan.get("data_limit", 30))
+        duration = int(plan.get("duration", 30))
+        cost_paid = int(plan.get("price", 0))
     else:
         data_limit = float(sub.get("data_limit") or 30)
         duration = int(sub.get("duration") or 30)
         plan_name = sub.get("plan_name") or f"{data_limit} گیگ {duration} روزه"
         plan_key = sub.get("plan_id") or "custom"
         cost_paid = 0
+
+    # دریافت و افزودن حجم هدیه (Gift Traffic)
+    gift_traffic = 0.0
+    try:
+        gift_traffic = max(0.0, float(request.form.get("gift_traffic_gb", 0) or 0))
+    except (ValueError, TypeError):
+        gift_traffic = 0.0
+
+    if gift_traffic > 0:
+        data_limit += gift_traffic
+        plan_name += f" (+{gift_traffic}GB هدیه)"
 
     is_free = request.form.get("is_free") in ("on", "1", "true")
     if is_free:
@@ -10434,6 +10445,17 @@ def admin_create_customer():
                 flash("اطلاعات پلن یا قیمت نامعتبر است.", "danger")
                 return redirect(url_for("admin_create_customer"))
 
+        # دریافت و اعمال حجم هدیه (Gift Traffic)
+        gift_traffic = 0.0
+        try:
+            gift_traffic = max(0.0, float(request.form.get("gift_traffic_gb", 0) or 0))
+        except (ValueError, TypeError):
+            gift_traffic = 0.0
+
+        if gift_traffic > 0:
+            data_limit += gift_traffic
+            plan_name += f" (+{gift_traffic}GB هدیه)"
+
         telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else None
 
         # بررسی موجودی کیف پول در صورت پرداخت از کیف پول
@@ -10446,6 +10468,8 @@ def admin_create_customer():
 
         # ایجاد کاربر در سرور هیدیفای
         h_comment = f"Admin:{session.get('username')}|{telegram_id or ''}"
+        if gift_traffic > 0:
+            h_comment += f" | +{gift_traffic}GB Gift"
         h_res = hidify_sync_create_user(name=account_name, usage_limit_gb=data_limit, package_days=duration, comment=h_comment)
         user_uuid = h_res.get("uuid", "")
         if not user_uuid:
