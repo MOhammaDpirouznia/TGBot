@@ -4617,6 +4617,10 @@ def admin_subscription_renew(sub_id: int):
         plan_key = sub.get("plan_id") or "custom"
         cost_paid = 0
 
+    is_free = request.form.get("is_free") in ("on", "1", "true")
+    if is_free:
+        cost_paid = 0
+
     instant_activate = bool(request.form.get("instant_activate"))
 
     if instant_activate:
@@ -4652,7 +4656,7 @@ def admin_subscription_renew(sub_id: int):
                 telegram_id=sub.get("telegram_id") or 0,
                 hidify_uuid=sub.get("hidify_uuid") or "",
                 account_name=sub.get("account_name") or "",
-                plan_name=plan_name,
+                plan_name=f"{plan_name} (تمدید رایگان)" if is_free else plan_name,
                 previous_usage_gb=sub.get("data_used") or 0,
                 previous_limit_gb=sub.get("data_limit") or 0,
                 period_days=duration,
@@ -4663,23 +4667,25 @@ def admin_subscription_renew(sub_id: int):
         except Exception as ex:
             logger.error(f"Error logging subscription history in admin renew: {ex}")
 
-        flash(f"اشتراک «{sub.get('account_name')}» با موفقیت به صورت آنی تمدید شد ({data_limit} GB - {duration} روز) و حجم و روز آن ریست گردید.", "success")
+        free_tag = " (تمدید رایگان با مبلغ ۰ تومان)" if is_free else ""
+        flash(f"اشتراک «{sub.get('account_name')}» با موفقیت به صورت آنی تمدید شد ({data_limit} GB - {duration} روز){free_tag} و حجم و روز آن ریست گردید.", "success")
     else:
         # ۴. قرار دادن در صف تمدید هوشمند (رزرو برای پس از اتمام بسته)
         q_res = db.add_to_subscription_queue(
             subscription_id=sub_id,
             plan_id=plan_key,
-            plan_name=plan_name,
+            plan_name=f"{plan_name} (رایگان)" if is_free else plan_name,
             data_limit=data_limit,
             duration=duration,
             cost=cost_paid,
             reseller_id=sub.get("reseller_id"),
             telegram_id=sub.get("telegram_id") or 0,
             hidify_uuid=sub.get("hidify_uuid") or "",
-            note="تمدید در صف توسط مدیریت"
+            note="تمدید رایگان در صف توسط مدیریت" if is_free else "تمدید در صف توسط مدیریت"
         )
         if q_res.get("success"):
-            flash(f"بسته تمدیدی «{plan_name}» برای اشتراک «{sub.get('account_name')}» در صف رزرو قرار گرفت و پس از مصرف ۹۹٪ یا رسیدن به روز پایانی به صورت خودکار فعال خواهد شد.", "info")
+            free_tag = " (رایگان با مبلغ ۰ تومان)" if is_free else ""
+            flash(f"بسته تمدیدی «{plan_name}» برای اشتراک «{sub.get('account_name')}»{free_tag} در صف رزرو قرار گرفت و پس از مصرف ۹۹٪ یا رسیدن به روز پایانی به صورت خودکار فعال خواهد شد.", "info")
         else:
             flash(f"خطا در افزودن بسته به صف: {q_res.get('error')}", "danger")
 
@@ -4710,6 +4716,33 @@ def admin_subscription_renew(sub_id: int):
             )
         except Exception as e_rev:
             logger.error(f"Error recording revenue for admin renew: {e_rev}")
+    elif is_free:
+        try:
+            r_order_id = f"RNW_FREE_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
+            db.save_transaction(
+                order_id=r_order_id,
+                user_id=sub.get("telegram_id") or 0,
+                username=sub.get("account_name") or "",
+                plan_name=f"{plan_name} (تمدید رایگان)",
+                amount=0,
+                gateway="free_admin",
+                tracking_code=f"FREE_{session.get('username') or 'admin'}",
+                status="approved",
+                account_name=sub.get("account_name") or ""
+            )
+            db.add_accounting_record(
+                type="income",
+                category="تمدید رایگان اشتراک",
+                title=f"تمدید رایگان اشتراک {sub.get('account_name')} ({plan_name})",
+                amount=0,
+                source="admin_panel",
+                ref_type="subscription",
+                ref_id=str(sub_id),
+                description=f"تمدید رایگان توسط مدیریت ارشد ({session.get('username') or 'admin'})",
+                date=get_now_iso()[:10]
+            )
+        except Exception as e_rev:
+            logger.error(f"Error recording free renewal: {e_rev}")
 
     return redirect(get_redirect_target("subscriptions"))
 
@@ -4735,6 +4768,7 @@ def admin_subscriptions_bulk_renew():
 
     plan_key = request.form.get("plan_id", "current").strip()
     instant_activate = bool(request.form.get("instant_activate"))
+    is_free = request.form.get("is_free") in ("on", "1", "true")
     plans = get_plans_dict()
 
     success_count = 0
@@ -4761,6 +4795,10 @@ def admin_subscriptions_bulk_renew():
             p_dur = int(plan.get("duration", 30))
             p_name = plan.get("name", f"{p_limit} گیگ")
             p_cost = int(plan.get("price", 0))
+
+        if is_free:
+            p_cost = 0
+            p_name = f"{p_name} (رایگان)"
 
         if instant_activate:
             if sub.get("hidify_uuid"):
@@ -4808,7 +4846,7 @@ def admin_subscriptions_bulk_renew():
                 reseller_id=sub.get("reseller_id"),
                 telegram_id=sub.get("telegram_id") or 0,
                 hidify_uuid=sub.get("hidify_uuid") or "",
-                note="تمدید گروهی در صف"
+                note="تمدید گروهی رایگان در صف" if is_free else "تمدید گروهی در صف"
             )
             if q_res.get("success"):
                 success_count += 1
@@ -4840,10 +4878,38 @@ def admin_subscriptions_bulk_renew():
                 )
             except Exception as e_prev:
                 logger.error(f"Error recording revenue for bulk renew: {e_prev}")
+        elif is_free:
+            try:
+                b_order_id = f"RNW_FREE_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
+                db.save_transaction(
+                    order_id=b_order_id,
+                    user_id=sub.get("telegram_id") or 0,
+                    username=sub.get("account_name") or "",
+                    plan_name=p_name,
+                    amount=0,
+                    gateway="free_admin",
+                    tracking_code=f"BULK_FREE_{session.get('username') or 'admin'}",
+                    status="approved",
+                    account_name=sub.get("account_name") or ""
+                )
+                db.add_accounting_record(
+                    type="income",
+                    category="تمدید رایگان اشتراک",
+                    title=f"تمدید گروهی رایگان {sub.get('account_name')} ({p_name})",
+                    amount=0,
+                    source="admin_panel",
+                    ref_type="subscription",
+                    ref_id=str(s_id),
+                    description=f"تمدید گروهی رایگان توسط مدیریت ارشد ({session.get('username') or 'admin'})",
+                    date=now[:10]
+                )
+            except Exception as e_prev:
+                logger.error(f"Error recording free revenue for bulk renew: {e_prev}")
 
     conn.close()
     mode_text = "به صورت آنی تمدید و ریست شدند" if instant_activate else "در صف تمدید رزرو قرار گرفتند"
-    flash(f"{success_count} اشتراک با موفقیت {mode_text}.", "success")
+    free_mode_text = " (به صورت رایگان با مبلغ ۰ تومان)" if is_free else ""
+    flash(f"{success_count} اشتراک با موفقیت {mode_text}{free_mode_text}.", "success")
     return redirect(get_redirect_target("subscriptions"))
 
 
@@ -5239,7 +5305,8 @@ def admin_resellers():
         password = request.form.get("password")
         name = request.form.get("name")
         telegram_id = int(request.form.get("telegram_id")) if request.form.get("telegram_id") else None
-        discount_percent = int(request.form.get("discount_percent", 20))
+        disc_raw = request.form.get("discount_percent")
+        discount_percent = int(disc_raw) if (disc_raw is not None and str(disc_raw).strip() != "") else 20
         initial_balance = int(request.form.get("initial_balance", 0))
         auto_hiddify = bool(request.form.get("auto_create_hiddify_admin"))
         hiddify_admin_uuid = request.form.get("hiddify_admin_uuid", "").strip()
@@ -5393,7 +5460,8 @@ def admin_reseller_edit(reseller_id):
     name = request.form.get("name", "").strip()
     username = request.form.get("username", "").strip().lower()
     telegram_id = int(request.form.get("telegram_id")) if request.form.get("telegram_id") else None
-    discount_percent = int(request.form.get("discount_percent", 20))
+    disc_raw = request.form.get("discount_percent")
+    discount_percent = int(disc_raw) if (disc_raw is not None and str(disc_raw).strip() != "") else 20
     status = request.form.get("status", "active")
     new_password = request.form.get("new_password", "").strip()
     hiddify_admin_uuid = request.form.get("hiddify_admin_uuid", "").strip()

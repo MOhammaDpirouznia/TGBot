@@ -6415,7 +6415,7 @@ class Database:
         cursor = conn.cursor()
         res_info = self.get_reseller(reseller_id) or {}
         reseller_uname = res_info.get("username") or f"reseller_{reseller_id}"
-        discount_pct = res_info.get("discount_percent", 20) or 20
+        discount_pct = res_info.get("discount_percent") if res_info.get("discount_percent") is not None else 20
 
         cursor.execute("""
             SELECT rt.*, s.created_by as sub_creator, s.account_comment as sub_comment
@@ -6491,7 +6491,7 @@ class Database:
         cursor = conn.cursor()
         res_info = self.get_reseller(reseller_id) or {}
         reseller_uname = res_info.get("username") or f"reseller_{reseller_id}"
-        discount_pct = res_info.get("discount_percent", 20) or 20
+        discount_pct = res_info.get("discount_percent") if res_info.get("discount_percent") is not None else 20
 
         activities = []
 
@@ -6678,7 +6678,7 @@ class Database:
             "total_refunded": total_refunded,
             "total_bundle_orders": total_bundle_orders,
             "balance": reseller.get("balance", 0),
-            "discount_percent": reseller.get("discount_percent", 20)
+            "discount_percent": reseller.get("discount_percent") if reseller.get("discount_percent") is not None else 20
         }
 
     def get_reseller_subscriptions(self, reseller_id: int):
@@ -8194,7 +8194,7 @@ class Database:
             # ۳. تخفیف و موجودی نماینده
             cursor.execute("SELECT discount_percent, balance, name FROM resellers WHERE id = ?", (reseller_id,))
             r_info = cursor.fetchone()
-            discount_pct = r_info["discount_percent"] if r_info else 20
+            discount_pct = r_info["discount_percent"] if (r_info and r_info["discount_percent"] is not None) else 20
             current_balance = r_info["balance"] if r_info else 0
             reseller_name = r_info["name"] if r_info else "همکار"
 
@@ -9288,7 +9288,7 @@ class Database:
 
             for res in reseller_rows:
                 rid = res["id"]
-                disc = res.get("discount_percent") or 20
+                disc = res.get("discount_percent") if res.get("discount_percent") is not None else 20
 
                 cursor.execute(f"""
                     SELECT COALESCE(SUM(amount), 0), COUNT(*)
@@ -10514,7 +10514,7 @@ class Database:
                 master_plans[pid] = p
 
         reseller = self.get_reseller(reseller_id) or {}
-        discount_pct = reseller.get("discount_percent", 20)
+        discount_pct = reseller.get("discount_percent") if reseller.get("discount_percent") is not None else 20
 
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -10829,7 +10829,7 @@ class Database:
                 """, (reseller_id, start_iso, reseller_id))
                 res_tx_rows = cursor.fetchall()
                 res_row = self.get_reseller(reseller_id)
-                discount = res_row.get("discount_percent", 20) if res_row else 20
+                discount = res_row.get("discount_percent") if (res_row and res_row.get("discount_percent") is not None) else 20
                 for rx in res_tx_rows:
                     rx_dict = dict(rx)
                     wholesale = int(rx_dict.get("amount") or 0)
@@ -10901,7 +10901,7 @@ class Database:
                 if res_row:
                     audit["total_outstanding_debt"] = res_row.get("credit_debt", 0)
                 if audit["total_expenses"] == 0 and audit["total_revenue"] > 0:
-                    discount = res_row.get("discount_percent", 20) if res_row else 20
+                    discount = res_row.get("discount_percent") if (res_row and res_row.get("discount_percent") is not None) else 20
                     audit["total_expenses"] = int(audit["total_revenue"] * (100 - discount) / 100)
                     audit["net_profit"] = max(0, audit["total_revenue"] - audit["total_expenses"])
         except Exception as e:
