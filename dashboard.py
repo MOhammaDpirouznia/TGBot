@@ -732,6 +732,29 @@ def api_webapp_user_data():
     })
 
 
+@app.route("/api/qr-image", methods=["GET"])
+def api_qr_image():
+    """تولید تصویر بارکد QR به صورت کاملاً محلی و بدون وابستگی به اینترنت بین‌الملل"""
+    text = request.args.get("text", "").strip()
+    if not text:
+        return "پارامتر متن بارکد الزامی است", 400
+    try:
+        qr_bytes = generate_qr_code_bytes(text)
+        if not qr_bytes:
+            return "خطا در تولید بارکد", 500
+        return Response(
+            qr_bytes,
+            mimetype="image/png",
+            headers={
+                "Cache-Control": "public, max-age=86400",
+                "Content-Disposition": "inline; filename=qr.png"
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error in api_qr_image: {e}")
+        return "خطای سرور", 500
+
+
 @app.route("/sub/<sub_uuid>", defaults={"sub_path": ""}, strict_slashes=False, methods=["GET"])
 @app.route("/sub/<sub_uuid>/<path:sub_path>", strict_slashes=False, methods=["GET"])
 def smart_subscription_proxy(sub_uuid: str, sub_path: str = ""):
@@ -1780,9 +1803,151 @@ def sync_hiddify_online_users(force: bool = False):
         logger.error(f"Error in sync_hiddify_online_users: {e}")
 
 
-def enrich_subscription_details(sub: dict) -> dict:
+def get_subscription_issuer_info(sub: dict, resellers_map: dict = None, admins_map: dict = None) -> dict:
     """
-    محاسبه شاخص‌های زنده اشتراک: روزهای مانده یا گذشته از انقضا، وضعیت شروع، درصد مصرف
+    تشخیص دقیق صادرکننده اشتراک:
+    - برای شخص صادرکننده: نام‌کاربری (username) صادرکننده
+    - برای ربات نماینده: نام و عنوان نماینده + ربات (مثلاً: ربات صابر رحمانی)
+    - برای ربات مدیریت: ربات مدیریت
+    """
+    if not isinstance(sub, dict):
+        return {
+            "text": "مدیریت",
+            "username": "admin",
+            "is_bot": False,
+            "badge_class": "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle shadow-sm font-monospace",
+            "icon": "fa-user-shield",
+            "title": "مدیریت"
+        }
+
+    if resellers_map is None:
+        try:
+            resellers_map = {r["id"]: r for r in db.get_all_resellers()}
+        except Exception:
+            resellers_map = {}
+    if admins_map is None:
+        try:
+            admins_map = {a["username"].lower(): a for a in db.get_admin_users() if a.get("username")}
+        except Exception:
+            admins_map = {}
+
+    created_by = str(sub.get("created_by") or "").strip()
+    r_id = sub.get("reseller_id")
+    comment = str(sub.get("account_comment") or "").strip()
+    acct_name = str(sub.get("account_name") or "").strip()
+    tg_id = sub.get("telegram_id") or 0
+
+    # در صورتی که r_id خالی باشد اما در کامنت تگ نماینده وجود داشته باشد
+    if not r_id and ("[RESELLER_ID:" in comment or "Reseller #" in comment):
+        try:
+            import re
+            m = re.search(r"\[RESELLER_ID:\s*#?(\d+)\]", comment) or re.search(r"Reseller\s*#(\d+)", comment)
+            if m:
+                r_id = int(m.group(1))
+        except Exception:
+            pass
+
+    # ۱. اشتراک مربوط به یک نماینده است
+    if r_id:
+        reseller = resellers_map.get(int(r_id)) or {}
+        r_username = reseller.get("username") or f"reseller_{r_id}"
+        r_name = reseller.get("name") or reseller.get("brand_name") or r_username
+
+        is_reseller_bot = False
+        if created_by.startswith("bot_reseller_") or created_by.startswith("bot:"):
+            is_reseller_bot = True
+        elif any(k in comment.lower() for k in ["wallet purchase", "direct issue", "multibot"]):
+            is_reseller_bot = True
+        elif "[reseller_id:" in comment.lower() and ("user " in comment.lower() or "tg:" in comment.lower()):
+            is_reseller_bot = True
+
+        if is_reseller_bot:
+            return {
+                "text": f"ربات {r_name}",
+                "username": r_username,
+                "is_bot": True,
+                "badge_class": "bg-info-subtle text-info-emphasis border border-info-subtle shadow-sm",
+                "icon": "fa-robot",
+                "title": f"صادر شده توسط ربات نماینده {r_name} (@{r_username})"
+            }
+        else:
+            # صادر شده توسط شخص نماینده در وب‌پنل
+            return {
+                "text": r_username,
+                "username": r_username,
+                "is_bot": False,
+                "badge_class": "bg-info text-dark shadow-sm font-monospace",
+                "icon": "fa-user-tie",
+                "title": f"نماینده فروش: {r_name} ({r_username})"
+            }
+
+    # ۲. اشتراک مربوط به مدیریت است
+    # الف) صادر شده توسط ربات مدیریت اصلی
+    if created_by == "admin_bot":
+        return {
+            "text": "ربات مدیریت",
+            "username": "bot",
+            "is_bot": True,
+            "badge_class": "bg-primary-subtle text-primary border border-primary-subtle shadow-sm",
+            "icon": "fa-robot",
+            "title": "صادر شده توسط ربات تلگرام مدیریت"
+        }
+
+    # کاربر تلگرام خریداری کرده و پیشوند Admin: در کامنت ندارد
+    if tg_id and int(tg_id) > 0 and not comment.startswith("Admin:") and (not comment or comment.isdigit() or acct_name.startswith("tg_")):
+        return {
+            "text": "ربات مدیریت",
+            "username": "bot",
+            "is_bot": True,
+            "badge_class": "bg-primary-subtle text-primary border border-primary-subtle shadow-sm",
+            "icon": "fa-robot",
+            "title": "صادر شده توسط ربات تلگرام مدیریت"
+        }
+
+    # ب) صادر شده توسط شخص مدیر در پنل
+    if "Admin:" in comment:
+        try:
+            admin_user_tag = comment.split("Admin:")[1].split("|")[0].strip()
+            if admin_user_tag:
+                a_obj = admins_map.get(admin_user_tag.lower())
+                disp_title = a_obj.get("display_name", "") if a_obj else "مدیر"
+                return {
+                    "text": admin_user_tag,
+                    "username": admin_user_tag,
+                    "is_bot": False,
+                    "badge_class": "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle shadow-sm font-monospace",
+                    "icon": "fa-user-shield",
+                    "title": f"مدیر سیستم: {disp_title} ({admin_user_tag})"
+                }
+        except Exception:
+            pass
+
+    if created_by and created_by.lower() in admins_map:
+        a_obj = admins_map.get(created_by.lower())
+        disp_title = a_obj.get("display_name", "") if a_obj else "مدیر"
+        return {
+            "text": created_by,
+            "username": created_by,
+            "is_bot": False,
+            "badge_class": "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle shadow-sm font-monospace",
+            "icon": "fa-user-shield",
+            "title": f"مدیر سیستم: {disp_title} ({created_by})"
+        }
+
+    first_admin = next((a["username"] for a in admins_map.values() if a.get("role") == "super_admin"), "hECTOR")
+    return {
+        "text": first_admin,
+        "username": first_admin,
+        "is_bot": False,
+        "badge_class": "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle shadow-sm font-monospace",
+        "icon": "fa-user-shield",
+        "title": f"مدیر سیستم: {first_admin}"
+    }
+
+
+def enrich_subscription_details(sub: dict, resellers_map: dict = None, admins_map: dict = None) -> dict:
+    """
+    محاسبه شاخص‌های زنده اشتراک: روزهای مانده یا گذشته از انقضا، وضعیت شروع، درصد مصرف و تشخیص صادرکننده
     نکته مهم: در هیدیفای زمان تمامی اشتراک‌ها پس از اولین اتصال کاربر محاسبه و آغاز می‌شود.
     """
     item = dict(sub)
@@ -1906,6 +2071,7 @@ def enrich_subscription_details(sub: dict) -> dict:
     item["remaining_days"] = remaining_days
     item["remaining_gb"] = round(remaining_gb, 2)
     item["usage_pct"] = min(100, usage_pct)
+    item["issuer_info"] = get_subscription_issuer_info(item, resellers_map=resellers_map, admins_map=admins_map)
 
     return item
 
@@ -4265,8 +4431,12 @@ def subscriptions():
     subscriptions_with_refund = []
     now_naive_val = get_now_naive()
     restore_window = float(db.get_refund_settings().get("restore_window_days", 7))
+    resellers_list = db.get_all_resellers()
+    resellers_map = {r["id"]: r for r in resellers_list}
+    admins_map = {a["username"].lower(): a for a in db.get_admin_users() if a.get("username")}
+
     for s in sub_list:
-        s_dict = enrich_subscription_details(s)
+        s_dict = enrich_subscription_details(s, resellers_map=resellers_map, admins_map=admins_map)
         s_dict["refund_info"] = db.calculate_customer_refund(s["id"])
 
         if status_filter == "deleted":
@@ -4288,7 +4458,6 @@ def subscriptions():
     
     online_stats = db.get_online_users_stats()
     debtor_count = db.get_debtor_count()
-    resellers_list = db.get_all_resellers()
     plans = get_plans_dict()
     single_link_template = get_single_link_template(db)
 
@@ -7211,19 +7380,20 @@ def reseller_create_user():
         actual_payment_source = deduct_res.get("payment_source", "wallet")
 
         # ۳. ثبت اشتراک با وضعیت بدهی، شناسه نماینده، شماره تلفن، هزینه و منبع پرداخت دقیق
+        reseller_creator = session.get("username") or f"reseller_{reseller_id}"
         conn = db.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO subscriptions 
             (telegram_id, hidify_uuid, plan_id, plan_name, account_name, phone_number,
              data_limit, duration, status, reseller_id, user_limit, cost_paid,
-             payment_status, debt_amount, debt_notes, debt_created_at, is_credit, credit_debt_amount, payment_source, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             payment_status, debt_amount, debt_notes, debt_created_at, is_credit, credit_debt_amount, payment_source, created_by, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             telegram_id, user_uuid, plan_key, plan_title, account_name, phone_number or None,
             data_limit_gb, duration_days, reseller_id, user_limit, final_price,
             payment_status, debt_amount, debt_notes or None, debt_created, is_credit_sub, credit_used_amount,
-            actual_payment_source, now, now
+            actual_payment_source, reseller_creator, now, now
         ))
         sub_id = cursor.lastrowid
 
@@ -9638,6 +9808,7 @@ def admin_create_customer():
         debt_created = now if debt_amount > 0 else None
 
         # ذخیره در دیتابیس
+        admin_creator = session.get("username") or "admin"
         sub_res = db.save_subscription(
             telegram_id=telegram_id or 0,
             hidify_uuid=user_uuid,
@@ -9647,7 +9818,8 @@ def admin_create_customer():
             duration=duration,
             status="active",
             account_name=account_name,
-            user_limit=user_limit
+            user_limit=user_limit,
+            created_by=admin_creator
         )
         sub_id = sub_res.get("subscription_id") if isinstance(sub_res, dict) else sub_res
 
@@ -9655,9 +9827,9 @@ def admin_create_customer():
         conn = db.get_connection()
         conn.execute("""
             UPDATE subscriptions 
-            SET phone_number = ?, account_comment = ?, payment_status = ?, debt_amount = ?, debt_notes = ?, debt_created_at = ?
+            SET phone_number = ?, account_comment = ?, payment_status = ?, debt_amount = ?, debt_notes = ?, debt_created_at = ?, created_by = COALESCE(created_by, ?)
             WHERE id = ?
-        """, (phone_number or None, comment or None, payment_status, debt_amount, debt_notes or None, debt_created, sub_id))
+        """, (phone_number or None, comment or None, payment_status, debt_amount, debt_notes or None, debt_created, admin_creator, sub_id))
         conn.commit()
         conn.close()
 

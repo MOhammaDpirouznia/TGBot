@@ -943,12 +943,27 @@ class Database:
             ("delete_reason", "TEXT"),
             ("deleted_by", "TEXT"),
             ("purged_from_hiddify", "INTEGER DEFAULT 0"),
-            ("disable_reason", "TEXT")
+            ("disable_reason", "TEXT"),
+            ("created_by", "TEXT")
         ]:
             try:
                 cursor.execute(f"ALTER TABLE subscriptions ADD COLUMN {col_def[0]} {col_def[1]}")
             except Exception:
                 pass
+
+        # تصحیح خودکار شناسه نماینده برای اشتراک‌های قدیمی که تگ نماینده در کامنت دارند اما reseller_id آن‌ها خالی است
+        try:
+            import re
+            c_fix = conn.cursor()
+            rows_to_fix = c_fix.execute("SELECT id, account_comment FROM subscriptions WHERE reseller_id IS NULL AND (account_comment LIKE '%[RESELLER_ID:%' OR account_comment LIKE '%Reseller #%')").fetchall()
+            for r_fix in rows_to_fix:
+                c_txt = str(r_fix["account_comment"] or "")
+                m = re.search(r"\[RESELLER_ID:\s*#?(\d+)\]", c_txt) or re.search(r"Reseller\s*#(\d+)", c_txt)
+                if m:
+                    r_id_found = int(m.group(1))
+                    c_fix.execute("UPDATE subscriptions SET reseller_id = ? WHERE id = ?", (r_id_found, r_fix["id"]))
+        except Exception as e:
+            logger.warning(f"Error auto-fixing legacy reseller_ids: {e}")
 
         # جدول قبوض بدهی قبلی/جدید نماینده (Reseller Debts & Invoices)
         try:
@@ -1364,6 +1379,16 @@ class Database:
                     plan_id = "custom"
 
                 name_clean = str(name).strip() if (name and str(name).strip()) else None
+                extracted_reseller_id = None
+                if "[RESELLER_ID:" in comment or "Reseller #" in comment:
+                    try:
+                        import re
+                        m_res = re.search(r"\[RESELLER_ID:\s*#?(\d+)\]", comment) or re.search(r"Reseller\s*#(\d+)", comment)
+                        if m_res:
+                            extracted_reseller_id = int(m_res.group(1))
+                    except Exception:
+                        pass
+
                 if existing_sub:
                     # بروزرسانی مصرف، سقف حجم، تعداد روزها (duration / package_days)، تاریخ‌ها و وضعیت
                     cursor.execute("""
@@ -1375,23 +1400,24 @@ class Database:
                             expire_date = ?,
                             status = ?,
                             account_name = COALESCE(?, account_name),
+                            reseller_id = COALESCE(reseller_id, ?),
                             is_online = ?,
                             last_online = COALESCE(?, last_online),
                             updated_at = ?
                         WHERE hidify_uuid = ?
-                    """, (current_usage, usage_limit, package_days, start_date, expiry_time, status, name_clean, is_online_val, last_online_val, now, uuid))
+                    """, (current_usage, usage_limit, package_days, start_date, expiry_time, status, name_clean, extracted_reseller_id, is_online_val, last_online_val, now, uuid))
                 else:
                     # درج اشتراک جدید بازیابی شده
                     cursor.execute("""
                         INSERT INTO subscriptions (
                             telegram_id, hidify_uuid, plan_id, plan_name, account_name,
                             account_comment, data_limit, data_used, duration, start_date,
-                            expire_date, status, is_online, last_online, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            expire_date, status, reseller_id, is_online, last_online, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         telegram_id, uuid, plan_id, plan_name, name,
                         comment, usage_limit, current_usage, package_days, start_date,
-                        expiry_time, status, is_online_val, last_online_val, now, now
+                        expiry_time, status, extracted_reseller_id, is_online_val, last_online_val, now, now
                     ))
                     restored_subs += 1
 
@@ -2075,22 +2101,23 @@ class Database:
     # مدیریت اشتراک‌ها
     # ═══════════════════════════════════════════════════════════════
 
-    def save_subscription(self, telegram_id, hidify_uuid, plan_id, plan_name, data_limit, duration, data_used=0, status="active", account_name=None, account_comment=None, reseller_id=None, user_limit=1, cost_paid=0, **kwargs):
+    def save_subscription(self, telegram_id, hidify_uuid, plan_id, plan_name, data_limit, duration, data_used=0, status="active", account_name=None, account_comment=None, reseller_id=None, user_limit=1, cost_paid=0, created_by=None, **kwargs):
         """ذخیره اشتراک جدید"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         expire_date = (get_now_naive() + timedelta(days=duration)).isoformat()
+        creator = created_by or kwargs.get("created_by")
 
         try:
             cursor.execute("""
                 INSERT INTO subscriptions
-                (telegram_id, hidify_uuid, plan_id, plan_name, account_name, account_comment, data_limit, data_used, duration, start_date, expire_date, status, reseller_id, user_limit, cost_paid, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (telegram_id, hidify_uuid, plan_id, plan_name, account_name, account_comment, data_limit, data_used, duration, now, expire_date, status, reseller_id, int(user_limit or 1), int(cost_paid or 0), now, now))
+                (telegram_id, hidify_uuid, plan_id, plan_name, account_name, account_comment, data_limit, data_used, duration, start_date, expire_date, status, reseller_id, user_limit, cost_paid, created_by, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (telegram_id, hidify_uuid, plan_id, plan_name, account_name, account_comment, data_limit, data_used, duration, now, expire_date, status, reseller_id, int(user_limit or 1), int(cost_paid or 0), creator, now, now))
             conn.commit()
             subscription_id = cursor.lastrowid
-            logger.info(f"Subscription {subscription_id} saved for user {telegram_id} (reseller_id={reseller_id}, user_limit={user_limit})")
+            logger.info(f"Subscription {subscription_id} saved for user {telegram_id} (reseller_id={reseller_id}, created_by={creator}, user_limit={user_limit})")
             return {"success": True, "subscription_id": subscription_id}
         except Exception as e:
             logger.error(f"Error saving subscription: {e}")

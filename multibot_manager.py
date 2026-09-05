@@ -710,7 +710,8 @@ class ResellerBotInstance:
                 status="active",
                 account_name=account_name,
                 account_comment=f"Wallet Purchase | Reseller #{r_id}",
-                reseller_id=r_id
+                reseller_id=r_id,
+                created_by=f"bot_reseller_{r_id}"
             )
 
             brand = self.reseller_data.get("brand_name") or "ما"
@@ -960,7 +961,8 @@ class ResellerBotInstance:
                     status="active",
                     account_name=account_name,
                     account_comment=f"Reseller #{r_id} Bot",
-                    reseller_id=r_id
+                    reseller_id=r_id,
+                    created_by=f"bot_reseller_{r_id}"
                 )
 
                 db.update_transaction(order_id, status="approved")

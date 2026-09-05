@@ -1382,6 +1382,7 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
                 status="active",
                 account_name=username,
                 account_comment=str(user.id),
+                created_by="admin_bot",
             )
 
             # اطلاع به ادمین
@@ -2772,6 +2773,7 @@ async def verify_payment_callback(update: Update, context: ContextTypes.DEFAULT_
             status="active",
             account_name=username,
             account_comment=account_comment,
+            created_by="admin_bot",
         )
         logger.info(f"User data and subscription saved: {user.id} -> {user_uuid}")
     except Exception as e:
@@ -2894,6 +2896,7 @@ async def handle_test_subscription(update: Update, context: ContextTypes.DEFAULT
         status="active",
         account_name=username,
         account_comment=str(user.id),
+        created_by="admin_bot",
     )
 
     # ذخیره اطلاعات کاربر
@@ -3832,6 +3835,7 @@ async def admin_approve_payment(update: Update, context: ContextTypes.DEFAULT_TY
             status="active",
             account_name=username,
             account_comment=account_comment,
+            created_by="admin_bot",
         )
 
         # بروزرسانی وضعیت تراکنش به approved
@@ -4066,6 +4070,7 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
             status="active",
             account_name=target_sub.get("account_name") if target_sub else f"tg_{user_id}",
             account_comment=target_sub.get("account_comment") if target_sub else None,
+            created_by="admin_bot",
         )
 
     # ۴. بروزرسانی وضعیت تراکنش
