@@ -2208,8 +2208,15 @@ def get_reseller_plans_dict(reseller_id: int) -> dict:
 @app.before_request
 def update_user_session_activity():
     if session.get("logged_in") and session.get("session_token"):
+        token = session.get("session_token")
+        # بررسی اینکه آیا نشست توسط مدیر یا کاربر خاتمه داده شده است
+        if not request.path.startswith("/static") and request.path not in ("/login", "/logout"):
+            if not db.is_session_active(token):
+                session.clear()
+                flash("نشست کاربری شما پایان یافته است. لطفاً مجدداً وارد شوید.", "warning")
+                return redirect(url_for("login"))
         try:
-            db.update_session_activity(session.get("session_token"))
+            db.update_session_activity(token)
         except Exception:
             pass
 
@@ -5498,10 +5505,43 @@ def admin_resellers():
         r_dict["bot_status"] = multibot_manager.get_bot_status(r["id"])
         r_dict["payment_history"] = db.get_reseller_full_payment_history(r["id"])
         r_dict["active_hiddify_key"] = db.get_reseller_hiddify_key(r["id"])
+        r_dict["team_members"] = db.get_reseller_team_with_sessions(r["id"])
+        r_dict["online_team_count"] = sum(1 for m in r_dict["team_members"] if m.get("is_online"))
+        r_dict["usage_summary"] = db.get_reseller_usage_summary(r["id"])
         reseller_list.append(r_dict)
 
     all_failed_logins = db.get_all_failed_login_logs(limit=50)
     return render_template("resellers.html", resellers=reseller_list, all_failed_logins=all_failed_logins)
+
+
+@app.route("/admin/session/<int:session_id>/terminate", methods=["POST"])
+@admin_required
+def admin_terminate_session(session_id):
+    """خاتمه فوری یک نشست فعال توسط مدیر ارشد"""
+    success = db.terminate_session(session_id)
+    if success:
+        flash("نشست فعال با موفقیت خاتمه یافت و دسترسی کاربر فوراً قطع شد.", "success")
+    else:
+        flash("خطا در خاتمه نشست یا این نشست از قبل غیرفعال بوده است.", "warning")
+    return redirect(request.referrer or url_for("admin_resellers"))
+
+
+@app.route("/admin/reseller/<int:reseller_id>/terminate-all-sessions", methods=["POST"])
+@admin_required
+def admin_terminate_all_reseller_sessions(reseller_id):
+    """خاتمه تمامی نشست‌های فعال نماینده و کادر زیرمجموعه وی توسط مدیر کل"""
+    count = db.terminate_reseller_and_team_sessions(reseller_id)
+    flash(f"تعداد {count} نشست فعال مربوط به این نماینده و کادر وی خاتمه یافت.", "success")
+    return redirect(request.referrer or url_for("admin_resellers"))
+
+
+@app.route("/admin/team-member/<int:member_id>/terminate-sessions", methods=["POST"])
+@admin_required
+def admin_terminate_team_member_sessions(member_id):
+    """خاتمه تمام نشست‌های فعال یک عضو تیم زیرمجموعه توسط مدیر کل"""
+    count = db.terminate_all_user_sessions("reseller_subadmin", member_id)
+    flash(f"تعداد {count} نشست فعال این عضو تیم با موفقیت خاتمه یافت.", "success")
+    return redirect(request.referrer or url_for("admin_resellers"))
 
 
 @app.route("/admin/reseller/<int:reseller_id>/payments")
@@ -10199,8 +10239,9 @@ def reseller_team():
                 flash(f"خطا: {res.get('error')}", "danger")
         return redirect(get_redirect_target("reseller_team"))
 
-    team_members = db.get_reseller_team_members(reseller_id)
-    return render_template("reseller_team.html", team_members=team_members)
+    team_members = db.get_reseller_team_with_sessions(reseller_id)
+    is_main_reseller = (session.get("role") == "reseller" and not session.get("sub_role"))
+    return render_template("reseller_team.html", team_members=team_members, is_main_reseller=is_main_reseller)
 
 
 @app.route("/reseller/team/<int:member_id>/toggle", methods=["POST"])
@@ -10221,6 +10262,82 @@ def reseller_team_delete(member_id):
     db.delete_reseller_team_member(member_id, reseller_id)
     flash("کارمند از تیم شما حذف شد.", "info")
     return redirect(get_redirect_target("reseller_team"))
+
+
+@app.route("/reseller/session/<int:session_id>/terminate", methods=["POST"])
+@reseller_required
+def reseller_terminate_session(session_id):
+    """خاتمه نشست فعال توسط مدیر اصلی نماینده"""
+    if session.get("sub_role"):
+        flash("فقط مدیر اصلی حساب نمایندگی مجاز به خاتمه نشست‌ها می‌باشد.", "danger")
+        return redirect(request.referrer or url_for("reseller_dashboard"))
+
+    reseller_id = session.get("reseller_id")
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_type, user_id FROM login_logs WHERE id = ?", (session_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        flash("نشست مورد نظر یافت نشد.", "warning")
+        return redirect(request.referrer or url_for("reseller_dashboard"))
+
+    u_type = row["user_type"]
+    u_id = row["user_id"]
+
+    allowed = False
+    if u_type == "reseller" and u_id == reseller_id:
+        allowed = True
+    elif u_type == "reseller_subadmin":
+        team = db.get_reseller_team_members(reseller_id)
+        if any(m["id"] == u_id for m in team):
+            allowed = True
+
+    if not allowed:
+        flash("شما مجاز به خاتمه دادن به این نشست نیستید.", "danger")
+        return redirect(request.referrer or url_for("reseller_dashboard"))
+
+    success = db.terminate_session(session_id)
+    if success:
+        flash("نشست مورد نظر با موفقیت خاتمه یافت و کاربر مربوطه خارج شد.", "success")
+    else:
+        flash("خطا در خاتمه نشست یا نشست از قبل غیرفعال بوده است.", "warning")
+    return redirect(request.referrer or url_for("reseller_team"))
+
+
+@app.route("/reseller/team/<int:member_id>/terminate-sessions", methods=["POST"])
+@reseller_required
+def reseller_terminate_member_sessions(member_id):
+    """خاتمه تمام نشست‌های فعال یک عضو تیم توسط مدیر اصلی نماینده"""
+    if session.get("sub_role"):
+        flash("فقط مدیر اصلی حساب نمایندگی مجاز به خاتمه نشست‌ها می‌باشد.", "danger")
+        return redirect(request.referrer or url_for("reseller_team"))
+
+    reseller_id = session.get("reseller_id")
+    team = db.get_reseller_team_members(reseller_id)
+    if not any(m["id"] == member_id for m in team):
+        flash("این عضو متعلق به تیم شما نیست.", "danger")
+        return redirect(request.referrer or url_for("reseller_team"))
+
+    count = db.terminate_all_user_sessions("reseller_subadmin", member_id)
+    flash(f"تعداد {count} نشست فعال این عضو تیم با موفقیت خاتمه یافت.", "success")
+    return redirect(request.referrer or url_for("reseller_team"))
+
+
+@app.route("/reseller/terminate-other-sessions", methods=["POST"])
+@reseller_required
+def reseller_terminate_other_sessions():
+    """خاتمه تمام نشست‌های دیگر حساب خود نماینده به جز نشست فعلی"""
+    if session.get("sub_role"):
+        flash("فقط مدیر اصلی حساب نمایندگی مجاز به این عملیات است.", "danger")
+        return redirect(request.referrer or url_for("reseller_profile"))
+
+    reseller_id = session.get("reseller_id")
+    current_token = session.get("session_token")
+    count = db.terminate_all_user_sessions("reseller", reseller_id, except_token=current_token)
+    flash(f"تعداد {count} نشست فعال دیگر حساب شما با موفقیت خاتمه یافتند.", "success")
+    return redirect(request.referrer or url_for("reseller_profile"))
 
 
 # ─── ۶. هویت بصری، لوگو و دامنه اختصاصی نماینده (Branding & Custom Domain) ───
@@ -10743,7 +10860,16 @@ def reseller_profile():
 
     login_history = db.get_user_login_history("reseller", reseller_id, limit=20)
     current_token = session.get("session_token", "")
-    return render_template("reseller_profile.html", reseller=reseller, login_history=login_history, current_token=current_token)
+    usage_summary = db.get_reseller_usage_summary(reseller_id)
+    is_main_reseller = (session.get("role") == "reseller" and not session.get("sub_role"))
+    return render_template(
+        "reseller_profile.html",
+        reseller=reseller,
+        login_history=login_history,
+        current_token=current_token,
+        usage_summary=usage_summary,
+        is_main_reseller=is_main_reseller
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════
