@@ -937,6 +937,27 @@
                 font-size: 0.8rem;
             }
         }
+
+        /* نوار پیشرفت مصرف حجم واضح و باکیفیت در هر دو حالت روشن و تاریک */
+        .custom-usage-progress {
+            height: 8px !important;
+            border-radius: 999px !important;
+            background-color: #cbd5e1 !important; /* رنگ مشخص، پررنگ و شیک در تم روشن */
+            border: 1px solid rgba(0, 0, 0, 0.15) !important;
+            overflow: hidden !important;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.12) !important;
+            min-width: 90px;
+        }
+        [data-bs-theme="dark"] .custom-usage-progress {
+            background-color: #1e293b !important;
+            border-color: rgba(255, 255, 255, 0.15) !important;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.4) !important;
+        }
+        .custom-usage-progress .progress-bar {
+            min-width: 4px;
+            border-radius: 999px !important;
+            transition: width 0.4s ease;
+        }
     </style>
     {% block extra_head %}{% endblock %}
 </head>
@@ -1007,12 +1028,12 @@
                 </div>
 
                 <a class="nav-link {% if request.endpoint == 'reseller_dashboard' %}active{% endif %}" href="{{ url_for('reseller_dashboard') }}">
-                    <i class="fas fa-chart-pie" style="color: #6366f1;"></i> داشبورد نماینده
+                    <i class="fas fa-chart-pie" style="color: #6366f1;"></i> داشبورد
                 </a>
 
                 {% if not sub_role or sub_role in ['partner', 'finance', 'manager2'] %}
                 <a class="nav-link {% if request.endpoint == 'reseller_customer_payments' %}active{% endif %}" href="{{ url_for('reseller_customer_payments') }}">
-                    <i class="fas fa-receipt text-warning"></i> پرداخت‌های ربات
+                    <i class="fas fa-receipt text-warning"></i> پرداخت‌های آنلاین مشتری
                 </a>
                 {% endif %}
 
@@ -1030,7 +1051,7 @@
 
                 {% if not sub_role or sub_role in ['partner', 'finance', 'manager2'] %}
                 <a class="nav-link {% if request.endpoint == 'reseller_transactions' %}active{% endif %}" href="{{ url_for('reseller_transactions') }}">
-                    <i class="fas fa-wallet text-success"></i> بسته‌ها و شارژ اعتبار
+                    <i class="fas fa-wallet text-success"></i> کیف پول
                 </a>
 
                 <!-- منوی کشویی امور مالی و گزارشات -->
@@ -1050,7 +1071,7 @@
                 <div class="collapse submenu-collapse {% if is_finance_active %}show{% endif %}" id="resellerFinanceCollapse">
                     <div class="submenu-inner">
                         <a class="submenu-item {% if request.endpoint == 'reseller_payments' %}active{% endif %}" href="{{ url_for('reseller_payments') }}">
-                            <i class="fas fa-file-invoice-dollar text-primary"></i> شارژ حساب و سوابق مالی
+                            <i class="fas fa-file-invoice-dollar text-primary"></i> سوابق مالی
                         </a>
                         {% if not sub_role or sub_role in ['partner', 'manager2'] %}
                         <a class="submenu-item {% if request.endpoint == 'reseller_discounts' %}active{% endif %}" href="{{ url_for('reseller_discounts') }}">

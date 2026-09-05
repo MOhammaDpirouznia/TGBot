@@ -1,24 +1,24 @@
 {% extends "base.html" %}
-{% block title %}مدیریت فیش‌های پرداخت مشتریان - پنل نماینده{% endblock %}
+{% block title %}پرداخت‌های آنلاین مشتری - پنل نماینده{% endblock %}
 
 {% block content %}
 <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
     <div>
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb mb-1">
-                <li class="breadcrumb-item"><a href="{{ url_for('reseller_dashboard') }}">پنل نماینده</a></li>
-                <li class="breadcrumb-item active" aria-current="page">فیش‌های مشتریان</li>
+                <li class="breadcrumb-item"><a href="{{ url_for('reseller_dashboard') }}">داشبورد</a></li>
+                <li class="breadcrumb-item active" aria-current="page">پرداخت‌های آنلاین مشتری</li>
             </ol>
         </nav>
         <h1 class="page-title d-flex align-items-center gap-2">
             <i class="fas fa-receipt text-warning"></i>
-            مدیریت و تایید فیش‌های واریزی مشتریان
+            پرداخت‌های آنلاین مشتری
         </h1>
-        <p class="text-muted mb-0">بررسی، تایید و صدور خودکار اشتراک‌های VPN پس از تایید فیش واریز کارت به کارت مشتریان ربات شما</p>
+        <p class="text-muted mb-0">بررسی، تایید و صدور خودکار اشتراک‌های VPN پس از تایید پرداخت‌ها و فیش‌های واریزی مشتریان ربات شما</p>
     </div>
     <div class="d-flex align-items-center gap-2">
         <a href="{{ url_for('reseller_payments') }}" class="btn btn-outline-primary">
-            <i class="fas fa-file-invoice-dollar me-1"></i> شارژ حساب و سوابق مالی
+            <i class="fas fa-file-invoice-dollar me-1"></i> سوابق مالی
         </a>
     </div>
 </div>

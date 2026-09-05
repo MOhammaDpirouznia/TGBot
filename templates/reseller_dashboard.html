@@ -10,7 +10,7 @@
              style="width: 52px; height: 52px; object-fit: cover;" 
              loading="lazy">
         <div>
-            <h1 class="page-title mb-0"><i class="fas fa-chart-pie text-primary"></i> داشبورد نماینده فروش</h1>
+            <h1 class="page-title mb-0"><i class="fas fa-chart-pie text-primary"></i> داشبورد</h1>
             <p class="text-muted mb-0">خوش آمدید {{ session.get('name') }}! خلاصه وضعیت مشتریان و موجودی کیف پول شما</p>
         </div>
     </div>
@@ -23,11 +23,11 @@
 
 <!-- کارت‌های آماری نماینده -->
 <div class="row g-3 mb-4">
-    <div class="col-xl-3 col-md-6">
+    <div class="col-xl col-md-6">
         <div class="card stat-card border-primary h-100">
             <div>
                 <span class="text-muted small fw-bold">کیف پول نقدی شما</span>
-                <h3 class="fw-bold my-1 text-primary">{{ "{:,}".format(stats['balance'] or 0) }} <span style="font-size: 1rem;">تومان</span></h3>
+                <h3 class="fw-bold my-1 text-primary">{{ "{:,}".format(stats['balance'] or 0) }} <span style="font-size: 0.9rem;">تومان</span></h3>
                 <div class="d-flex align-items-center gap-1 mt-1 flex-wrap">
                     <span class="badge bg-primary bg-opacity-10 text-primary">تخفیف: {{ stats['discount_percent'] }}%</span>
                     {% if reseller.get('credit_enabled') %}
@@ -40,14 +40,14 @@
             </div>
         </div>
     </div>
-    <div class="col-xl-3 col-md-6">
+    <div class="col-xl col-md-6">
         <a href="{{ url_for('reseller_users', status='online') }}" class="text-decoration-none">
             <div class="card stat-card border-start border-success border-4 h-100 shadow-sm" style="transition: transform 0.2s;">
                 <div>
                     <span class="text-muted small fw-bold d-flex align-items-center gap-1">
                         <span class="pulse-indicator"></span> مشتریان آنلاین شما
                     </span>
-                    <h3 class="fw-bold my-1 text-success">{{ stats.get('online_users', 0) }} <span style="font-size: 1rem; color:#64748b;">از {{ stats['total_users'] }}</span></h3>
+                    <h3 class="fw-bold my-1 text-success">{{ stats.get('online_users', 0) }} <span style="font-size: 0.9rem; color:#64748b;">از {{ stats['total_users'] }}</span></h3>
                     <span class="text-success small"><i class="fas fa-signal me-1"></i> مشاهده متصلین زنده</span>
                 </div>
                 <div class="stat-icon bg-success bg-opacity-10 text-success">
@@ -56,11 +56,11 @@
             </div>
         </a>
     </div>
-    <div class="col-xl-3 col-md-6">
+    <div class="col-xl col-md-6">
         <div class="card stat-card h-100">
             <div>
                 <span class="text-muted small fw-bold">مجموع حجم مصرفی</span>
-                <h3 class="fw-bold my-1 text-info">{{ stats['total_used_gb'] }} <span style="font-size: 1rem;">GB</span></h3>
+                <h3 class="fw-bold my-1 text-info">{{ stats['total_used_gb'] }} <span style="font-size: 0.9rem;">GB</span></h3>
                 <span class="text-muted small">از کل سقف {{ stats['total_limit_gb'] }} GB</span>
             </div>
             <div class="stat-icon bg-info bg-opacity-10 text-info">
@@ -68,19 +68,126 @@
             </div>
         </div>
     </div>
-    <div class="col-xl-3 col-md-6">
+    <div class="col-xl col-md-6">
         <div class="card stat-card h-100">
             <div>
-                <span class="text-muted small fw-bold">مجموع خریدها</span>
-                <h3 class="fw-bold my-1 text-warning">{{ "{:,}".format(stats['total_purchases'] or 0) }} <span style="font-size: 1rem;">تومان</span></h3>
-                <span class="text-muted small">با احتساب تخفیف عمده</span>
+                <span class="text-muted small fw-bold">مجموع خریدها (عمده)</span>
+                <h3 class="fw-bold my-1 text-warning">{{ "{:,}".format(stats['total_purchases'] or 0) }} <span style="font-size: 0.9rem;">تومان</span></h3>
+                <span class="text-muted small">با احتساب تخفیف همکاری</span>
             </div>
             <div class="stat-icon bg-warning bg-opacity-10 text-warning">
                 <i class="fas fa-bag-shopping"></i>
             </div>
         </div>
     </div>
+    <div class="col-xl col-md-12">
+        <div class="card stat-card h-100 border-success-subtle">
+            <div>
+                <span class="text-muted small fw-bold">حاشیه سود همکاری</span>
+                <h3 class="fw-bold my-1 text-success">{{ "{:,}".format(fin_summary.get('estimated_profit', 0)) }} <span style="font-size: 0.9rem;">تومان</span></h3>
+                <span class="text-success small"><i class="fas fa-arrow-trend-up me-1"></i> سود کل حاصل از فروش</span>
+            </div>
+            <div class="stat-icon bg-success bg-opacity-10 text-success">
+                <i class="fas fa-hand-holding-dollar"></i>
+            </div>
+        </div>
+    </div>
 </div>
+
+<!-- ردیف بلوک‌های رنگی هوشمند مصرف ترافیک (Hiddify Traffic Blocks) -->
+{% if traffic_blocks %}
+<div class="row g-3 mb-4">
+    <!-- ۱. استفاده امروز -->
+    <div class="col-lg-4 col-md-6">
+        <div class="card h-100 border-0 shadow-sm overflow-hidden" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(37, 99, 235, 0.02) 100%); border-right: 4px solid #3b82f6 !important;">
+            <div class="card-body p-3 d-flex flex-column justify-content-between">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <span class="text-primary fw-bold small d-flex align-items-center gap-1">
+                            <i class="fas fa-calendar-day"></i> استفاده امروز
+                        </span>
+                        <h3 class="fw-bold my-1 text-primary font-monospace">{{ "%.2f"|format(traffic_blocks.today.usage_gb) }} <small class="fs-6 fw-normal">GB</small></h3>
+                    </div>
+                    <div class="p-2 rounded-3 bg-primary bg-opacity-10 text-primary">
+                        <i class="fas fa-cloud-arrow-down fa-lg"></i>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex justify-content-between text-muted small mb-1" style="font-size: 11px;">
+                        <span><i class="fas fa-users me-1"></i> آنلاین: <strong class="text-primary font-monospace">{{ traffic_blocks.today.online_users }}</strong> از {{ traffic_blocks.today.total_users }}</span>
+                        {% if traffic_blocks.online_5m is defined %}
+                        <span class="text-success"><i class="fas fa-bolt me-1"></i> {{ traffic_blocks.online_5m }} آنلاین ۵ دقیقه</span>
+                        {% endif %}
+                    </div>
+                    <div class="progress custom-usage-progress w-100" style="height: 6px;">
+                        <div class="progress-bar bg-primary" style="width: {{ traffic_blocks.today.percent }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ۲. استفاده دیروز -->
+    <div class="col-lg-4 col-md-6">
+        <div class="card h-100 border-0 shadow-sm overflow-hidden" style="background: linear-gradient(135deg, rgba(168, 85, 247, 0.08) 0%, rgba(147, 51, 234, 0.02) 100%); border-right: 4px solid #a855f7 !important;">
+            <div class="card-body p-3 d-flex flex-column justify-content-between">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <span class="fw-bold small d-flex align-items-center gap-1" style="color: #9333ea;">
+                            <i class="fas fa-clock-rotate-left"></i> استفاده دیروز
+                        </span>
+                        <h3 class="fw-bold my-1 font-monospace" style="color: #9333ea;">{{ "%.2f"|format(traffic_blocks.yesterday.usage_gb) }} <small class="fs-6 fw-normal">GB</small></h3>
+                    </div>
+                    <div class="p-2 rounded-3" style="background-color: rgba(147, 51, 234, 0.12); color: #9333ea !important;">
+                        <i class="fas fa-chart-simple fa-lg"></i>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex justify-content-between text-muted small mb-1" style="font-size: 11px;">
+                        <span><i class="fas fa-users me-1"></i> متصلین دیروز: <strong class="font-monospace" style="color: #9333ea;">{{ traffic_blocks.yesterday.online_users }}</strong> کاربر</span>
+                        <span class="text-muted font-monospace">۲۴ ساعت گذشته</span>
+                    </div>
+                    <div class="progress custom-usage-progress w-100" style="height: 6px;">
+                        <div class="progress-bar" style="width: {{ traffic_blocks.yesterday.percent }}%; background-color: #9333ea;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ۳. استفاده ماهانه -->
+    <div class="col-lg-4 col-md-12">
+        <div class="card h-100 border-0 shadow-sm overflow-hidden" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.02) 100%); border-right: 4px solid #10b981 !important;">
+            <div class="card-body p-3 d-flex flex-column justify-content-between">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <span class="text-success fw-bold small d-flex align-items-center gap-1">
+                            <i class="fas fa-calendar-check"></i> استفاده ماهانه
+                        </span>
+                        <h3 class="fw-bold my-1 text-success font-monospace">{{ "%.2f"|format(traffic_blocks.month.usage_gb) }} <small class="fs-6 fw-normal">GB</small></h3>
+                    </div>
+                    <div class="p-2 rounded-3 bg-success bg-opacity-10 text-success">
+                        <i class="fas fa-database fa-lg"></i>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex justify-content-between text-muted small mb-1" style="font-size: 11px;">
+                        <span><i class="fas fa-users me-1"></i> کاربران فعال ماه: <strong class="text-success font-monospace">{{ traffic_blocks.month.online_users }}</strong> از {{ traffic_blocks.month.total_users }}</span>
+                        {% if traffic_blocks.network_speed_down is defined and traffic_blocks.network_speed_down > 0 %}
+                        <span class="text-info font-monospace"><i class="fas fa-gauge-high me-1"></i> ↓{{ "%.1f"|format(traffic_blocks.network_speed_down) }} / ↑{{ "%.1f"|format(traffic_blocks.network_speed_up) }} MB/s</span>
+                        {% else %}
+                        <span class="text-muted font-monospace">۳۰ روز اخیر</span>
+                        {% endif %}
+                    </div>
+                    <div class="progress custom-usage-progress w-100" style="height: 6px;">
+                        <div class="progress-bar bg-success" style="width: {{ traffic_blocks.month.percent }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <!-- بخش وضعیت اعتبار و خرید اعتباری (در صورت فعال بودن یا داشتن بدهی) -->
 {% if reseller.get('credit_enabled') or (reseller.get('credit_debt') or 0) > 0 %}

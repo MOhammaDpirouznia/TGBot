@@ -329,7 +329,7 @@
                             <div>
                                 <span class="badge bg-primary bg-opacity-10 text-primary mb-1">{{ sub['plan_name'] or '-' }}</span>
                                 <div class="small fw-bold font-monospace text-nowrap" dir="ltr">{{ "%.2f"|format(sub['data_used']|float or 0) }} / {{ "%.1f"|format(sub['data_limit']|float or 0) }} GB</div>
-                                <div class="progress mt-1" style="height: 5px; width: 90px;">
+                                <div class="progress mt-1 custom-usage-progress" style="width: 100px;">
                                     {% set pct = (((sub['data_used']|float or 0) / (sub['data_limit']|float or 1)) * 100)|int %}
                                     <div class="progress-bar {{ 'bg-danger' if pct > 90 else ('bg-warning' if pct > 70 else 'bg-success') }}" style="width: {{ pct if pct <= 100 else 100 }}%"></div>
                                 </div>
@@ -362,13 +362,36 @@
                                     <span class="badge bg-danger-subtle text-danger border border-danger font-monospace">غیرفعال</span>
                                 {% endif %}
                                 {% if sub.get('last_online') %}
-                                    <div class="text-muted small" style="font-size: 11px;" title="آخرین اتصال: {{ sub['last_online'] }}">
-                                        {{ sub['last_online'][11:16] }}
-                                    </div>
+                                    {% set c_info = sub['last_online']|last_connection_display %}
+                                    {% if c_info.is_past %}
+                                        <div class="small fw-semibold text-warning-emphasis mt-1" style="font-size: 11px;">
+                                            <i class="far fa-clock me-1"></i>{{ c_info.relative_text }}
+                                        </div>
+                                        <div class="text-muted font-monospace" style="font-size: 10px;" title="تاریخ و ساعت شمسی">
+                                            {{ c_info.shamsi_full }}
+                                        </div>
+                                    {% else %}
+                                        <div class="text-muted small mt-1 font-monospace" style="font-size: 11px;" title="{{ c_info.shamsi_full }}">
+                                            <i class="far fa-clock me-1"></i>{{ c_info.relative_text }}
+                                        </div>
+                                    {% endif %}
                                 {% endif %}
                             {% endif %}
                         </td>
-                        <td data-value="{{ sub['created_at'] or '' }}"><small class="text-muted font-monospace">{{ sub['created_at'][:10] if sub['created_at'] else '-' }}</small></td>
+                        <td data-value="{{ sub['created_at'] or '' }}">
+                            {% if sub.get('created_at') %}
+                                <div class="d-flex flex-column text-nowrap">
+                                    <span class="fw-semibold text-primary font-monospace" style="font-size: 11px;">
+                                        {{ sub['created_at']|shamsi_date }}
+                                    </span>
+                                    <span class="text-secondary opacity-75 font-monospace" style="font-size: 10px;">
+                                        {{ sub['created_at']|gregorian_clean }}
+                                    </span>
+                                </div>
+                            {% else %}
+                                <span class="text-muted small font-monospace">-</span>
+                            {% endif %}
+                        </td>
                         <td class="text-end pe-3">
                             <div class="d-inline-flex align-items-center gap-1">
                                 <!-- ۱. دکمه سریع تغییر وضعیت فعال/غیرفعال -->

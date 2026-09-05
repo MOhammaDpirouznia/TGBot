@@ -133,23 +133,23 @@
         <div class="row g-3">
             <div class="col-md-4">
                 <div class="p-3 bg-white rounded border shadow-sm">
-                    <span class="text-muted small">هزینه عمده خریدها (کسر شده از کیف پول)</span>
-                    <h4 class="fw-bold text-primary my-1">{{ "{:,}".format(fin_summary.get('total_wholesale_cost', 0)) }} <span class="fs-6">تومان</span></h4>
-                    <span class="text-muted small">مجموع خریدهای ثبت شده</span>
+                    <span class="text-muted small">هزینه خرید عمده همکاری (کسر شده)</span>
+                    <h4 class="fw-bold text-primary my-1 font-monospace">{{ "{:,}".format(fin_summary.get('total_wholesale_cost', 0)) }} <span class="fs-6">تومان</span></h4>
+                    <span class="text-muted small">مجموع فاکتورهای عمده پرداخت‌شده</span>
                 </div>
             </div>
             <div class="col-md-4">
                 <div class="p-3 bg-white rounded border shadow-sm">
-                    <span class="text-muted small">ارزش فروش خرده به مشتریان</span>
-                    <h4 class="fw-bold text-info my-1">{{ "{:,}".format(fin_summary.get('estimated_retail_value', 0)) }} <span class="fs-6">تومان</span></h4>
-                    <span class="text-muted small">بر مبنای قیمت پایه پلن‌ها</span>
+                    <span class="text-muted small">ارزش فروش به مشتریان (خرده‌فروشی)</span>
+                    <h4 class="fw-bold text-info my-1 font-monospace">{{ "{:,}".format(fin_summary.get('estimated_retail_value', 0)) }} <span class="fs-6">تومان</span></h4>
+                    <span class="text-muted small">مجموع مبالغ دریافتی از مشتریان</span>
                 </div>
             </div>
             <div class="col-md-4">
                 <div class="p-3 bg-white rounded border border-success border-2 shadow-sm">
-                    <span class="text-muted small">سود ناخالص تخمینی شما</span>
-                    <h4 class="fw-bold text-success my-1">+ {{ "{:,}".format(fin_summary.get('estimated_profit', 0)) }} <span class="fs-6">تومان</span></h4>
-                    <span class="badge bg-success text-white small">مارجین سود حاصل از تخفیف</span>
+                    <span class="text-muted small">حاشیه سود همکاری شما (خالص)</span>
+                    <h4 class="fw-bold text-success my-1 font-monospace">+ {{ "{:,}".format(fin_summary.get('estimated_profit', 0)) }} <span class="fs-6">تومان</span></h4>
+                    <span class="badge bg-success text-white small">مارجین سود حاصل از تخفیف همکاری</span>
                 </div>
             </div>
         </div>

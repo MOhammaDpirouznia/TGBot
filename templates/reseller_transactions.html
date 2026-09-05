@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}گزارش تراکنش‌ها و شارژ کیف پول - پنل نمایندگی{% endblock %}
+{% block title %}کیف پول و بسته‌های اعتباری - پنل نمایندگی{% endblock %}
 
 {% block content %}
 <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
     <div>
-        <h1 class="page-title"><i class="fas fa-wallet text-primary me-2"></i>تاریخچه مالی و شارژ اعتبار کیف پول</h1>
-        <p class="text-muted mb-0">گزارش تمام واریزی‌ها، تمدیدها، خریدهای اشتراک و پیش‌خرید بسته‌های اعتباری با بونوس</p>
+        <h1 class="page-title"><i class="fas fa-wallet text-primary me-2"></i>کیف پول</h1>
+        <p class="text-muted mb-0">مدیریت موجودی، خرید بسته‌های اعتباری با بونوس، و تاریخچه خریدهای عمده و حاشیه سود</p>
     </div>
     <div class="d-flex align-items-center gap-2 flex-wrap">
         <span class="badge bg-dark fs-6 py-2 px-3">
@@ -259,10 +259,12 @@
                     <tr>
                         <th class="ps-3 sortable-th" data-column="0">شناسه</th>
                         <th class="sortable-th" data-column="1">نوع تراکنش</th>
-                        <th class="sortable-th" data-column="2">مبلغ</th>
-                        <th class="sortable-th" data-column="3">پلن / نام کاربری مشتری</th>
-                        <th class="sortable-th" data-column="4">توضیحات</th>
-                        <th class="sortable-th" data-column="5">تاریخ و زمان</th>
+                        <th class="sortable-th" data-column="2">خرید عمده (تراکنش)</th>
+                        <th class="sortable-th" data-column="3">فروش به مشتری</th>
+                        <th class="sortable-th" data-column="4">حاشیه سود</th>
+                        <th class="sortable-th" data-column="5">پلن / نام کاربری مشتری</th>
+                        <th class="sortable-th" data-column="6">توضیحات</th>
+                        <th class="sortable-th" data-column="7">تاریخ و زمان</th>
                         <th class="text-end pe-3">جزئیات</th>
                     </tr>
                 </thead>
@@ -275,20 +277,38 @@
                                 <span class="badge bg-success"><i class="fas fa-arrow-down me-1"></i> شارژ کیف پول</span>
                             {% elif tx['type'] == 'refund' %}
                                 <span class="badge bg-info text-dark"><i class="fas fa-rotate-left me-1"></i> استرداد وجه</span>
-                            {% elif tx['type'] == 'renewal' %}
+                            {% elif tx['type'] in ['renewal', 'renew', 'renew_credit'] %}
                                 <span class="badge bg-warning text-dark"><i class="fas fa-arrows-rotate me-1"></i> تمدید اشتراک</span>
+                            {% elif tx['type'] == 'purchase_credit' %}
+                                <span class="badge bg-secondary"><i class="fas fa-credit-card me-1"></i> خرید اعتباری</span>
                             {% else %}
                                 <span class="badge bg-danger"><i class="fas fa-arrow-up me-1"></i> خرید اشتراک</span>
                             {% endif %}
                         </td>
                         <td data-value="{{ tx['amount'] or 0 }}">
-                            <strong class="{{ 'text-success' if (tx['type'] in ['deposit', 'refund']) else 'text-danger' }}">
+                            <strong class="{{ 'text-success' if (tx['type'] in ['deposit', 'refund']) else 'text-danger' }} font-monospace">
                                 {{ '+' if (tx['type'] in ['deposit', 'refund']) else '-' }}{{ "{:,}".format(tx['amount'] or 0) }} تومان
                             </strong>
                         </td>
+                        <td data-value="{{ tx.get('selling_price') or 0 }}">
+                            {% if tx.get('selling_price') and tx['selling_price'] > 0 %}
+                                <span class="text-dark fw-bold font-monospace">{{ "{:,}".format(tx['selling_price']) }} ت</span>
+                            {% else %}
+                                <span class="text-muted small">-</span>
+                            {% endif %}
+                        </td>
+                        <td data-value="{{ tx.get('profit_margin') or 0 }}">
+                            {% if tx.get('profit_margin') and tx['profit_margin'] > 0 %}
+                                <span class="badge bg-success-subtle text-success border border-success font-monospace">
+                                    +{{ "{:,}".format(tx['profit_margin']) }} ت
+                                </span>
+                            {% else %}
+                                <span class="text-muted small">-</span>
+                            {% endif %}
+                        </td>
                         <td data-value="{{ tx['plan_name'] or '' }}">{{ tx['plan_name'] or '-' }} {% if tx['account_name'] %}<code class="ms-1">{{ tx['account_name'] }}</code>{% endif %}</td>
                         <td data-value="{{ tx['description'] or '' }}"><small class="text-muted">{{ tx['description'] or '-' }}</small></td>
-                        <td data-value="{{ tx['created_at'] or '' }}"><small class="text-muted">{{ tx['created_at'][:16].replace('T', ' ') if tx['created_at'] else '-' }}</small></td>
+                        <td data-value="{{ tx['created_at'] or '' }}"><small class="text-muted font-monospace">{{ tx['created_at'][:16].replace('T', ' ') if tx['created_at'] else '-' }}</small></td>
                         <td class="text-end pe-3">
                             <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#resellerTxDetail{{ tx['id'] }}" title="مشاهده جزئیات کامل">
                                 <i class="fas fa-eye me-1"></i> مشاهده
@@ -298,7 +318,7 @@
                     {% endfor %}
                     {% if not transactions %}
                     <tr>
-                        <td colspan="7" class="text-center py-4 text-muted">تراکنشی ثبت نشده است.</td>
+                        <td colspan="9" class="text-center py-4 text-muted">تراکنشی ثبت نشده است.</td>
                     </tr>
                     {% endif %}
                 </tbody>
@@ -329,26 +349,40 @@
                                 <span class="badge bg-success">شارژ کیف پول</span>
                             {% elif tx['type'] == 'refund' %}
                                 <span class="badge bg-info text-dark">استرداد وجه</span>
-                            {% elif tx['type'] == 'renewal' %}
+                            {% elif tx['type'] in ['renewal', 'renew', 'renew_credit'] %}
                                 <span class="badge bg-warning text-dark">تمدید اشتراک</span>
+                            {% elif tx['type'] == 'purchase_credit' %}
+                                <span class="badge bg-secondary">خرید اعتباری</span>
                             {% else %}
                                 <span class="badge bg-danger">خرید اشتراک</span>
                             {% endif %}
                         </div>
                     </div>
                     <div class="list-group-item d-flex justify-content-between align-items-center">
-                        <span class="text-muted">مبلغ تراکنش:</span>
+                        <span class="text-muted">مبلغ تراکنش (خرید عمده):</span>
                         <strong class="{{ 'text-success' if (tx['type'] in ['deposit', 'refund']) else 'text-danger' }}">
                             {{ '+' if (tx['type'] in ['deposit', 'refund']) else '-' }}{{ "{:,}".format(tx['amount'] or 0) }} تومان
                         </strong>
                     </div>
+                    {% if tx.get('selling_price') and tx['selling_price'] > 0 %}
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span class="text-muted">قیمت فروش به مشتری (خرده‌فروشی):</span>
+                        <strong class="text-dark font-monospace">{{ "{:,}".format(tx['selling_price']) }} تومان</strong>
+                    </div>
+                    {% endif %}
+                    {% if tx.get('profit_margin') and tx['profit_margin'] > 0 %}
+                    <div class="list-group-item d-flex justify-content-between align-items-center bg-success bg-opacity-10">
+                        <span class="text-success fw-bold">حاشیه سود همکاری:</span>
+                        <strong class="text-success font-monospace">+{{ "{:,}".format(tx['profit_margin']) }} تومان</strong>
+                    </div>
+                    {% endif %}
                     <div class="list-group-item d-flex justify-content-between align-items-center">
                         <span class="text-muted">پلن / اکانت هیدیفای:</span>
                         <span>{{ tx['plan_name'] or '-' }} {% if tx['account_name'] %}<code>{{ tx['account_name'] }}</code>{% endif %}</span>
                     </div>
                     <div class="list-group-item d-flex justify-content-between align-items-center">
                         <span class="text-muted">تاریخ و زمان:</span>
-                        <small class="text-muted">{{ tx['created_at'] or '-' }}</small>
+                        <small class="text-muted font-monospace">{{ tx['created_at'] or '-' }}</small>
                     </div>
                     {% if tx['description'] %}
                     <div class="list-group-item">

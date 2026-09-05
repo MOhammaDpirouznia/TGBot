@@ -30,13 +30,13 @@
     </li>
     <li class="nav-item">
         <a class="nav-link fw-bold py-2 {{ 'active' if source_tab == 'resellers' else '' }}" href="{{ url_for('payments', source='resellers', status=status_filter, reseller_id=reseller_filter_id or '') }}">
-            <i class="fas fa-handshake me-2"></i> پرداخت‌ها و رسیدهای نمایندگان
+            <i class="fas fa-handshake me-2"></i> پرداخت‌ها و رسیدهای نمایندگان (کیف پول)
             <span class="badge {{ 'bg-white text-primary' if source_tab == 'resellers' else 'bg-secondary' }} ms-1">{{ resellers_list|length }} نماینده</span>
         </a>
     </li>
     <li class="nav-item">
         <a class="nav-link fw-bold py-2 {{ 'active' if source_tab == 'all' else '' }}" href="{{ url_for('payments', source='all', status=status_filter) }}">
-            <i class="fas fa-layer-group me-2"></i> همه پرداخت‌های سامانه
+            <i class="fas fa-layer-group me-2"></i> همه (مستقیم + کیف پول نمایندگان)
         </a>
     </li>
 </ul>
@@ -195,7 +195,7 @@
                             {% elif tx.get('reseller_id') %}
                                 <div>
                                     <a href="{{ url_for('admin_reseller_payments', reseller_id=tx.get('reseller_id')) }}" class="badge mb-1 text-decoration-none" style="background: #f5f3ff; color: #7c3aed; border: 1px solid #ddd6fe; font-size: 0.72rem;" title="مشاهده سوابق و جزئیات پرداخت‌های این نماینده">
-                                        <i class="fas fa-robot me-1"></i> ربات نماینده #{{ tx['reseller_id'] }} <i class="fas fa-arrow-up-right-from-square ms-1" style="font-size: 0.6rem;"></i>
+                                        <i class="fas fa-handshake me-1"></i> نماینده #{{ tx['reseller_id'] }} <i class="fas fa-arrow-up-right-from-square ms-1" style="font-size: 0.6rem;"></i>
                                     </a>
                                 </div>
                                 <div class="fw-bold">{{ tx['plan_name'] or '-' }}</div>
