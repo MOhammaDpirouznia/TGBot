@@ -7,6 +7,7 @@ import os
 import json
 from pathlib import Path
 from datetime import datetime
+from typing import Optional, List, Dict
 from utils import get_now_iso
 
 # تشخیص مسیر پویا بر اساس متغیرهای محیطی یا مسیرهای پیش‌فرض
@@ -459,8 +460,8 @@ def get_bundle_icon(bundle: dict) -> dict:
         }
 
 
-def add_plan(name: str, price: int, data_limit: int, duration: int, is_exclusive_admin: bool = False, plan_icon: str = "") -> dict:
-    """افزودن پلن جدید"""
+def add_plan(name: str, price: int, data_limit: int, duration: int, is_exclusive_admin: bool = False, plan_icon: str = "", allowed_resellers: list = None, is_exclusive_reseller: bool = False) -> dict:
+    """افزودن پلن جدید با امکان تعیین دسترسی اختصاصی برای نمایندگان منتخب"""
     plans = load_plans()
     
     # ساخت آیدی یکتا
@@ -472,6 +473,10 @@ def add_plan(name: str, price: int, data_limit: int, duration: int, is_exclusive
     data_text = f"{data_limit} گیگ" if data_limit > 0 else "نامحدود"
     description = f"{data_text} | {duration} روز"
     
+    clean_resellers = [int(x) for x in allowed_resellers if str(x).isdigit() or isinstance(x, int)] if allowed_resellers else []
+    is_reseller_excl = bool(clean_resellers) or bool(is_exclusive_reseller)
+    is_admin_excl = bool(is_exclusive_admin) and not is_reseller_excl
+    
     plans[plan_id] = {
         "name": name,
         "price": price,
@@ -479,7 +484,9 @@ def add_plan(name: str, price: int, data_limit: int, duration: int, is_exclusive
         "duration": duration,
         "description": description,
         "is_active": True,
-        "is_exclusive_admin": bool(is_exclusive_admin),
+        "is_exclusive_admin": is_admin_excl,
+        "is_exclusive_reseller": is_reseller_excl,
+        "allowed_resellers": clean_resellers,
         "plan_icon": plan_icon.strip() if plan_icon else "",
         "created_at": get_now_iso(),
     }
@@ -489,7 +496,7 @@ def add_plan(name: str, price: int, data_limit: int, duration: int, is_exclusive
 
 
 def update_plan(plan_id: str, **kwargs) -> dict:
-    """بروزرسانی پلن و امکان تغییر شناسه پلن"""
+    """بروزرسانی پلن و امکان تغییر شناسه و سطح دسترسی پلن"""
     plans = load_plans()
     
     if plan_id not in plans:
@@ -506,8 +513,16 @@ def update_plan(plan_id: str, **kwargs) -> dict:
         current_id = new_plan_id
 
     for key, value in kwargs.items():
-        if key in ["name", "price", "data_limit", "duration", "is_active", "is_exclusive_admin", "plan_icon"]:
+        if key in ["name", "price", "data_limit", "duration", "is_active", "is_exclusive_admin", "plan_icon", "allowed_resellers", "is_exclusive_reseller"]:
             if key == "is_exclusive_admin":
+                plans[current_id][key] = bool(value)
+            elif key == "allowed_resellers":
+                clean_resellers = [int(x) for x in value if str(x).isdigit() or isinstance(x, int)] if value else []
+                plans[current_id]["allowed_resellers"] = clean_resellers
+                plans[current_id]["is_exclusive_reseller"] = bool(clean_resellers)
+                if clean_resellers:
+                    plans[current_id]["is_exclusive_admin"] = False
+            elif key == "is_exclusive_reseller":
                 plans[current_id][key] = bool(value)
             else:
                 plans[current_id][key] = value
@@ -535,13 +550,28 @@ def delete_plan(plan_id: str) -> dict:
     return {"success": True}
 
 
-def get_active_plans(include_exclusive_admin: bool = False) -> dict:
-    """دریافت پلن‌های فعال (به صورت پیش‌فرض پلن‌های اختصاصی مدیریت ارشد مخفی هستند)"""
+def get_active_plans(include_exclusive_admin: bool = False, reseller_id: Optional[int] = None) -> dict:
+    """دریافت پلن‌های فعال (پلن‌های اختصاصی مدیریت و پلن‌های اختصاصی نمایندگان از ربات عمومی مخفی هستند)"""
     plans = load_plans()
-    return {
-        pid: p for pid, p in plans.items() 
-        if p.get("is_active", False) and (include_exclusive_admin or not p.get("is_exclusive_admin"))
-    }
+    result = {}
+    for pid, p in plans.items():
+        if not p.get("is_active", False):
+            continue
+        if p.get("is_exclusive_admin") and not include_exclusive_admin:
+            continue
+        allowed = p.get("allowed_resellers") or []
+        if allowed:
+            # پلن اختصاصی نمایندگان منتخب
+            if reseller_id is not None and int(reseller_id) in [int(x) for x in allowed]:
+                result[pid] = p
+        else:
+            # اگر پلن فقط اختصاصی نماینده است اما بدون لیست مشخص، مخفی بماند مگر اینکه شناسه داده شود
+            if p.get("is_exclusive_reseller") and reseller_id is None:
+                continue
+            # پلن عمومی یا ادمین
+            if reseller_id is None or not p.get("is_exclusive_admin"):
+                result[pid] = p
+    return result
 
 
 def get_all_plans() -> dict:

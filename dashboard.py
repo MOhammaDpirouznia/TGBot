@@ -6766,24 +6766,49 @@ def admin_plans_page():
             price = int(request.form.get("price", 0))
             data_limit = int(request.form.get("data_limit", 0))
             duration = int(request.form.get("duration", 30))
-            is_exclusive_admin = request.form.get("is_exclusive_admin") in ("on", "1", "true")
             plan_icon = request.form.get("plan_icon", "").strip()
-            res = add_plan(name, price, data_limit, duration, is_exclusive_admin=is_exclusive_admin, plan_icon=plan_icon)
+
+            target_type = request.form.get("target_type", "all")
+            allowed_resellers = []
+            is_exclusive_admin = False
+            is_exclusive_reseller = False
+
+            if target_type == "admin":
+                is_exclusive_admin = True
+            elif target_type == "resellers":
+                allowed_resellers = [int(x) for x in request.form.getlist("allowed_resellers") if str(x).isdigit()]
+                is_exclusive_reseller = True
+            else:
+                # اگر سوییچ قدیمی فرستاده شده باشد
+                if request.form.get("is_exclusive_admin") in ("on", "1", "true"):
+                    is_exclusive_admin = True
+
+            res = add_plan(
+                name=name,
+                price=price,
+                data_limit=data_limit,
+                duration=duration,
+                is_exclusive_admin=is_exclusive_admin,
+                plan_icon=plan_icon,
+                allowed_resellers=allowed_resellers,
+                is_exclusive_reseller=is_exclusive_reseller
+            )
             if res.get("success"):
                 flash("پلن جدید با موفقیت افزوده شد.", "success")
             else:
                 flash(f"خطا در افزودن پلن: {res.get('error')}", "danger")
-        return redirect(url_for("admin_plans_page", tab=current_tab, reseller_id=reseller_id_param))
+        return redirect(url_for("admin_plans_page", tab=current_tab, reseller_id=reseller_id_param if reseller_id_param else None))
 
     plans = get_all_plans()
     resellers_list = db.get_all_resellers()
+    resellers_map = {r["id"]: r for r in resellers_list}
     selected_reseller = db.get_reseller(selected_reseller_id) if selected_reseller_id else None
     selected_reseller_plans = db.get_reseller_plans(selected_reseller_id) if selected_reseller_id else []
 
-    # محاسبه پلن‌های پیش‌فرض نمایندگان با تخفیف پایه ۲۰ درصد (پلن‌های اختصاصی مدیریت مخفی می‌شوند)
+    # محاسبه پلن‌های پیش‌فرض نمایندگان با تخفیف پایه ۲۰ درصد (پلن‌های اختصاصی مدیریت و پلن‌های اختصاصی نمایندگان خاص حذف می‌شوند)
     default_reseller_plans = []
     for pid, p in plans.items():
-        if p.get("is_exclusive_admin"):
+        if p.get("is_exclusive_admin") or p.get("allowed_resellers") or p.get("is_exclusive_reseller"):
             continue
         base_price = p.get("price", 0)
         default_reseller_plans.append({
@@ -6797,15 +6822,35 @@ def admin_plans_page():
             "is_active": p.get("is_active", True)
         })
 
+    # پلن‌های اختصاصی تعریف‌شده در کل سیستم برای نمایش در نمای کلی تب همکاران
+    dedicated_reseller_plans = []
+    for pid, p in plans.items():
+        allowed = p.get("allowed_resellers") or []
+        if allowed or p.get("is_exclusive_reseller"):
+            r_names = [resellers_map.get(r_id, {}).get("name", f"نماینده #{r_id}") for r_id in allowed]
+            dedicated_reseller_plans.append({
+                "plan_id": pid,
+                "name": p.get("name", "پلن"),
+                "price": p.get("price", 0),
+                "data_limit": p.get("data_limit", 0),
+                "duration": p.get("duration", 30),
+                "plan_icon": p.get("plan_icon", ""),
+                "is_active": p.get("is_active", True),
+                "allowed_resellers": allowed,
+                "reseller_names": r_names
+            })
+
     return render_template(
         "plans.html",
         plans=plans,
         current_tab=current_tab,
         resellers_list=resellers_list,
+        resellers_map=resellers_map,
         selected_reseller_id=selected_reseller_id,
         selected_reseller=selected_reseller,
         selected_reseller_plans=selected_reseller_plans,
-        default_reseller_plans=default_reseller_plans
+        default_reseller_plans=default_reseller_plans,
+        dedicated_reseller_plans=dedicated_reseller_plans
     )
 
 
@@ -6858,18 +6903,79 @@ def admin_reseller_plan_reset():
     return redirect(url_for("admin_plans_page", tab="resellers", reseller_id=reseller_id))
 
 
+@app.route("/admin/reseller/plan/add_dedicated", methods=["POST"])
+@permission_required("plans_manage")
+def admin_reseller_add_dedicated_plan():
+    """افزودن مستقیم پلن اختصاصی برای یک نماینده از تب مدیریت پلن‌های نمایندگان"""
+    primary_reseller_id = int(request.form.get("reseller_id", 0))
+    name = request.form.get("name", "").strip()
+    price = int(request.form.get("price", 0))
+    data_limit = int(request.form.get("data_limit", 0))
+    duration = int(request.form.get("duration", 30))
+    plan_icon = request.form.get("plan_icon", "").strip()
+    
+    additional_resellers = request.form.getlist("additional_resellers")
+    selected_resellers = set()
+    if primary_reseller_id > 0:
+        selected_resellers.add(primary_reseller_id)
+    for r in additional_resellers:
+        if str(r).isdigit() and int(r) > 0:
+            selected_resellers.add(int(r))
+
+    if not selected_resellers or not name or price < 0:
+        flash("اطلاعات پلن اختصاصی نامعتبر است.", "danger")
+        return redirect(url_for("admin_plans_page", tab="resellers", reseller_id=primary_reseller_id if primary_reseller_id else None))
+
+    res = add_plan(
+        name=name,
+        price=price,
+        data_limit=data_limit,
+        duration=duration,
+        is_exclusive_admin=False,
+        plan_icon=plan_icon,
+        allowed_resellers=list(selected_resellers),
+        is_exclusive_reseller=True
+    )
+    if res.get("success"):
+        flash("پلن اختصاصی جدید با موفقیت برای نماینده تعریف شد و از سایرین کاملاً مخفی خواهد بود.", "success")
+    else:
+        flash(f"خطا در ایجاد پلن اختصاصی: {res.get('error')}", "danger")
+
+    return redirect(url_for("admin_plans_page", tab="resellers", reseller_id=primary_reseller_id if primary_reseller_id else None))
+
+
 @app.route("/plans/edit/<plan_id>", methods=["POST"])
 @permission_required("plans_manage")
 def admin_plan_edit(plan_id):
-    """ویرایش کامل مشخصات پلن و تغییر شناسه"""
+    """ویرایش کامل مشخصات پلن و تغییر شناسه و سطح دسترسی"""
     new_plan_id = request.form.get("new_plan_id", "").strip().lower().replace(" ", "_")
     name = request.form.get("name", "").strip()
     price = int(request.form.get("price", 0))
     data_limit = int(request.form.get("data_limit", 0))
     duration = int(request.form.get("duration", 30))
     is_active = request.form.get("is_active") == "1"
-    is_exclusive_admin = request.form.get("is_exclusive_admin") in ("on", "1", "true")
     plan_icon = request.form.get("plan_icon", "").strip()
+
+    target_type = request.form.get("target_type")
+    is_exclusive_admin = False
+    allowed_resellers = None
+    is_exclusive_reseller = False
+
+    if target_type == "admin":
+        is_exclusive_admin = True
+        allowed_resellers = []
+        is_exclusive_reseller = False
+    elif target_type == "resellers":
+        is_exclusive_admin = False
+        allowed_resellers = [int(x) for x in request.form.getlist("allowed_resellers") if str(x).isdigit()]
+        is_exclusive_reseller = True
+    elif target_type == "all":
+        is_exclusive_admin = False
+        allowed_resellers = []
+        is_exclusive_reseller = False
+    else:
+        is_exclusive_admin = request.form.get("is_exclusive_admin") in ("on", "1", "true")
+        allowed_resellers = None
 
     update_kwargs = {
         "name": name,
@@ -6880,6 +6986,10 @@ def admin_plan_edit(plan_id):
         "is_exclusive_admin": is_exclusive_admin,
         "plan_icon": plan_icon,
     }
+    if allowed_resellers is not None:
+        update_kwargs["allowed_resellers"] = allowed_resellers
+        update_kwargs["is_exclusive_reseller"] = is_exclusive_reseller
+
     if new_plan_id and new_plan_id != plan_id:
         update_kwargs["new_plan_id"] = new_plan_id
 
@@ -6888,7 +6998,10 @@ def admin_plan_edit(plan_id):
         flash("پلن با موفقیت بروزرسانی شد.", "success")
     else:
         flash(f"خطا در ویرایش پلن: {res.get('error')}", "danger")
-    return redirect(url_for("admin_plans_page"))
+
+    return_tab = request.form.get("return_tab") or request.args.get("tab", "admin")
+    reseller_id_param = request.form.get("reseller_id") or request.args.get("reseller_id", "")
+    return redirect(url_for("admin_plans_page", tab=return_tab, reseller_id=reseller_id_param if reseller_id_param else None))
 
 
 @app.route("/plans/toggle/<plan_id>")
@@ -6907,12 +7020,14 @@ def admin_plan_toggle(plan_id):
 @permission_required("plans_manage")
 def admin_plan_delete(plan_id):
     """حذف پلن"""
+    tab = request.args.get("tab", "admin")
+    reseller_id = request.args.get("reseller_id", "")
     res = delete_plan(plan_id)
     if res.get("success"):
         flash("پلن حذف شد.", "warning")
     else:
         flash(f"خطا در حذف پلن: {res.get('error')}", "danger")
-    return redirect(url_for("admin_plans_page"))
+    return redirect(url_for("admin_plans_page", tab=tab, reseller_id=reseller_id if reseller_id else None))
 
 
 @app.route("/plans/move-up/<plan_id>")

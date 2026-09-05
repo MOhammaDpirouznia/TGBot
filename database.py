@@ -10489,11 +10489,30 @@ class Database:
     # ─── مدیریت پلن‌های اختصاصی نمایندگان (Reseller Custom Plans) ───
 
     def get_reseller_plans(self, reseller_id: int) -> List[dict]:
-        """دریافت لیست تمام پلن‌های مادر با اعمال شخصی‌سازی‌ها، حجم، مدت و قیمت‌های سفارشی نماینده"""
+        """دریافت لیست تمام پلن‌های مادر با اعمال شخصی‌سازی‌ها، حجم، مدت و قیمت‌های سفارشی نماینده (با فیلتر قطعی پلن‌های اختصاصی)"""
         from admin_manager import load_plans
-        master_plans = load_plans()
-        # فیلتر پلن‌های اختصاصی مدیریت ارشد - این پلن‌ها کاملاً از نمایندگان و ربات‌ها مخفی هستند
-        master_plans = {pid: p for pid, p in master_plans.items() if not p.get("is_exclusive_admin")}
+        raw_master_plans = load_plans()
+        
+        # فیلتر هوشمند پلن‌ها:
+        # ۱. پلن‌های اختصاصی مدیریت ارشد کاملاً مخفی هستند
+        # ۲. پلن‌های اختصاصی نمایندگان (دارای allowed_resellers) فقط به نمایندگان مجاز تخصیص داده می‌شوند
+        # ۳. سایر نمایندگان یا کاربران عادی به هیچ عنوان پلن‌های اختصاصی را دریافت نخواهند کرد
+        master_plans = {}
+        for pid, p in raw_master_plans.items():
+            if p.get("is_exclusive_admin"):
+                continue
+            allowed = p.get("allowed_resellers") or []
+            if allowed:
+                try:
+                    if int(reseller_id) in [int(x) for x in allowed]:
+                        master_plans[pid] = p
+                except (ValueError, TypeError):
+                    pass
+            elif p.get("is_exclusive_reseller"):
+                continue
+            else:
+                master_plans[pid] = p
+
         reseller = self.get_reseller(reseller_id) or {}
         discount_pct = reseller.get("discount_percent", 20)
 
@@ -10547,6 +10566,8 @@ class Database:
             base_calc_price = custom_price if (custom_price is not None and custom_price > 0) else master_price
             wholesale_price = int(base_calc_price * (100 - discount_pct) / 100)
 
+            is_dedicated = bool(p.get("allowed_resellers")) or bool(p.get("is_exclusive_reseller"))
+
             result.append({
                 "plan_id": pid_str,
                 "name": display_name,
@@ -10569,21 +10590,34 @@ class Database:
                 "description": p.get("description", ""),
                 "plan_icon": p.get("plan_icon", ""),
                 "is_active": is_active,
-                "master_is_active": p.get("is_active", True)
+                "master_is_active": p.get("is_active", True),
+                "is_dedicated": is_dedicated,
+                "allowed_resellers": p.get("allowed_resellers", [])
             })
 
-        all_master_plans = load_plans()
         for pid_key, ov in overrides.items():
             pid_str = str(pid_key)
             if pid_str not in seen_pids:
-                if all_master_plans.get(pid_str, {}).get("is_exclusive_admin"):
+                p_meta = raw_master_plans.get(pid_str, {})
+                if p_meta.get("is_exclusive_admin"):
                     continue
+                allowed = p_meta.get("allowed_resellers") or []
+                if allowed:
+                    try:
+                        if int(reseller_id) not in [int(x) for x in allowed]:
+                            continue
+                    except (ValueError, TypeError):
+                        continue
+                elif p_meta.get("is_exclusive_reseller"):
+                    continue
+
                 custom_name = ov.get("custom_name") or pid_str
                 custom_price = ov.get("custom_price") or 0
                 custom_data_limit = ov.get("custom_data_limit") if ov.get("custom_data_limit") is not None else 30
                 custom_duration = ov.get("custom_duration") or 30
                 is_active = ov.get("is_active", True)
                 wholesale_price = int(custom_price * (100 - discount_pct) / 100)
+                is_dedicated = bool(allowed) or bool(p_meta.get("is_exclusive_reseller"))
                 result.append({
                     "plan_id": pid_str,
                     "name": custom_name,
@@ -10604,9 +10638,11 @@ class Database:
                     "duration": custom_duration,
                     "custom_duration": custom_duration,
                     "description": "",
-                    "plan_icon": all_master_plans.get(pid_str, {}).get("plan_icon", ""),
+                    "plan_icon": p_meta.get("plan_icon", ""),
                     "is_active": is_active,
-                    "master_is_active": True
+                    "master_is_active": True,
+                    "is_dedicated": is_dedicated,
+                    "allowed_resellers": allowed
                 })
 
         return result
