@@ -8148,6 +8148,7 @@ def reseller_toggle_user(sub_id: int):
 def reseller_renew_user(sub_id: int):
     """تمدید اشتراک مشتری با کسر اعتبار تخفیف‌دار نماینده"""
     reseller_id = session.get("reseller_id")
+    reseller = db.get_reseller(reseller_id) or {}
     sub = db.get_reseller_subscription(reseller_id, sub_id)
     if not sub:
         flash("اشتراک مورد نظر یافت نشد.", "danger")
@@ -8161,12 +8162,12 @@ def reseller_renew_user(sub_id: int):
         return redirect(get_redirect_target("reseller_users"))
 
     plan = plans[plan_key]
-    stats = db.get_reseller_stats(reseller_id)
-    discount = stats.get("discount_percent", 20)
+    stats = db.get_reseller_stats(reseller_id) or {}
+    discount = stats.get("discount_percent", reseller.get("discount_percent", 20))
     original_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or 0
     final_price = plan.get("wholesale_price") if plan.get("wholesale_price") is not None else int(original_price * (100 - discount) / 100)
 
-    total_purchasing_power = stats.get("total_purchasing_power", stats["balance"])
+    total_purchasing_power = stats.get("total_purchasing_power", stats.get("balance", reseller.get("balance", 0)))
     if total_purchasing_power < final_price:
         flash(f"توان خرید شما (کیف پول + اعتبار) برای تمدید این پلن کافی نیست! توان خرید: {total_purchasing_power:,} ت | هزینه تمدید: {final_price:,} ت", "danger")
         return redirect(get_redirect_target("reseller_users"))
