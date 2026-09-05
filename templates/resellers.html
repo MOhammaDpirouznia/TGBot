@@ -230,7 +230,13 @@
                                 </div>
                             {% endif %}
                         </td>
-                        <td data-value="{{ r['discount_percent'] or 0 }}"><span class="badge bg-primary fs-6">{{ r['discount_percent'] }}%</span></td>
+                        <td data-value="{{ r['discount_percent'] if r['discount_percent'] is not none else 0 }}">
+                            {% if r['discount_percent'] == 0 %}
+                                <span class="badge bg-secondary fs-6">۰٪ (بدون تخفیف)</span>
+                            {% else %}
+                                <span class="badge bg-primary fs-6">{{ r['discount_percent'] }}%</span>
+                            {% endif %}
+                        </td>
                         <td data-value="{{ r['balance'] or 0 }}">
                             <strong class="text-success font-monospace">{{ "{:,}".format(r['balance'] or 0) }} تومان</strong>
                             {% if r.get('credit_enabled') %}
@@ -440,7 +446,7 @@
                             </span>
                         </div>
                         <div class="small text-muted">
-                            درصد تخفیف: <strong class="text-primary">{{ r['discount_percent'] }}٪</strong> | 
+                            درصد تخفیف: <strong class="text-primary">{{ r['discount_percent'] }}٪{% if r['discount_percent'] == 0 %} (بدون تخفیف){% endif %}</strong> | 
                             موجودی کیف پول: <strong class="text-success font-monospace">{{ "{:,}".format(r['balance'] or 0) }} ت</strong>
                             {% if r.get('credit_enabled') %}
                                 | بدهی اعتباری: <strong class="text-danger font-monospace">{{ "{:,}".format(r.get('credit_debt') or 0) }} ت</strong>
@@ -899,7 +905,7 @@
                     <div class="row g-2 mb-3">
                         <div class="col-md-6">
                             <label class="form-label fw-bold">درصد تخفیف همکاری (%):</label>
-                            <input type="number" name="discount_percent" class="form-control font-monospace" value="{{ r['discount_percent'] }}" min="1" max="99" required>
+                            <input type="number" name="discount_percent" class="form-control font-monospace" value="{{ r['discount_percent'] if r['discount_percent'] is not none else 0 }}" min="0" max="100" required>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-bold">وضعیت حساب:</label>
@@ -1029,7 +1035,7 @@
                     <div class="row g-2 mb-3">
                         <div class="col-md-6">
                             <label class="form-label">درصد تخفیف همکاری (%):</label>
-                            <input type="number" name="discount_percent" class="form-control" value="25" min="1" max="99" required>
+                            <input type="number" name="discount_percent" class="form-control" value="25" min="0" max="100" required>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">شارژ اولیه کیف پول (تومان):</label>

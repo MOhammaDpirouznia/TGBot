@@ -874,6 +874,18 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="border-top pt-3">
+                        <div class="form-check form-switch p-2 bg-success bg-opacity-10 rounded-3 border border-success">
+                            <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" name="is_free" id="adminIsFree{{ sub['id'] }}" value="1">
+                            <label class="form-check-label fw-bold text-success cursor-pointer" for="adminIsFree{{ sub['id'] }}">
+                                🎁 تمدید رایگان (مبلغ ۰ تومان در سیستم حسابداری و تراکنش‌ها)
+                            </label>
+                            <div class="text-muted small mt-1 ps-4" style="font-size: 0.78rem;">
+                                با فعال‌سازی این گزینه، هزینه این تمدید ۰ تومان محاسبه شده و در تراکنش‌ها و سیستم حسابداری مبلغ صفر ثبت می‌گردد.
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
@@ -1354,6 +1366,18 @@
                             <div class="text-muted small mt-1 ps-4" style="font-size: 0.78rem;">
                                 <div><i class="fas fa-check-circle text-success me-1"></i> <strong>اگر فعال باشد:</strong> مصرف فعلی در هیدیفای صفر شده و بسته جدید بلافاصله جایگزین می‌شود.</div>
                                 <div class="mt-1"><i class="fas fa-clock text-primary me-1"></i> <strong>اگر خاموش باشد:</strong> بسته‌ها به عنوان <strong>رزرو در صف تمدید</strong> قرار می‌گیرند و پس از مصرف ۹۹٪ یا در روز پایانی اشتراک، خودکار و بدون قطعی فعال خواهند شد.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="border-top pt-3">
+                        <div class="form-check form-switch p-2 bg-success bg-opacity-10 rounded-3 border border-success">
+                            <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" name="is_free" id="adminBulkIsFree" value="1">
+                            <label class="form-check-label fw-bold text-success cursor-pointer" for="adminBulkIsFree">
+                                🎁 تمدید رایگان گروهی (مبلغ ۰ تومان در سیستم حسابداری و تراکنش‌ها)
+                            </label>
+                            <div class="text-muted small mt-1 ps-4" style="font-size: 0.78rem;">
+                                با فعال‌سازی این گزینه، هزینه تمدید تمامی اشتراک‌های انتخابی ۰ تومان محاسبه شده و در حسابداری و تراکنش‌ها رایگان (۰ تومان) ثبت می‌گردد.
                             </div>
                         </div>
                     </div>
