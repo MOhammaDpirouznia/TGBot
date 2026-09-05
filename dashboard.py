@@ -1739,7 +1739,7 @@ def sync_hiddify_online_users(force: bool = False):
     """
     همگام‌سازی بلادرنگ وضعیت آنلاین بودن و اطلاعات اشتراک‌ها از API هیدیفای
     دارای محافظ نرخ درخواست و کش هوشمند (حداقل فاصله ۵ ثانیه)
-    همراه با پردازش هوشمند صف تمدید خودکار
+    همراه با پردازش هوشمند صف تمدید خودکار و اصلاح وضعیت‌های منقضی
     """
     global _last_online_sync_time
     now = time.time()
@@ -1755,6 +1755,24 @@ def sync_hiddify_online_users(force: bool = False):
         users = hidify_sync_request("GET", "/admin/user/")
         if isinstance(users, list) and users:
             db.sync_from_hidify(users)
+
+        # همگام‌سازی کاربران نمایندگانی که کلید اختصاصی دارند
+        try:
+            resellers = db.get_all_resellers()
+            for r in resellers:
+                r_uuid = r.get("hiddify_admin_uuid")
+                if r_uuid and str(r_uuid).strip():
+                    try:
+                        r_users = hidify_sync_request("GET", "/admin/user/", api_key=str(r_uuid).strip())
+                        if isinstance(r_users, list) and r_users:
+                            db.sync_from_hidify(r_users)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        # تصحیح و بروزرسانی بلادرنگ اشتراک‌های منقضی و رفع پرچم آنلاین کاذب
+        db.refresh_subscriptions_expiry_and_online()
         
         # بررسی و فعال‌سازی خودکار بسته‌های در صف رزرو
         process_subscription_queue()
@@ -1764,7 +1782,7 @@ def sync_hiddify_online_users(force: bool = False):
 
 def enrich_subscription_details(sub: dict) -> dict:
     """
-    محاسبه شاخص‌های زنده اشتراک: روزهای مانده، وضعیت شروع، درصد مصرف
+    محاسبه شاخص‌های زنده اشتراک: روزهای مانده یا گذشته از انقضا، وضعیت شروع، درصد مصرف
     نکته مهم: در هیدیفای زمان تمامی اشتراک‌ها پس از اولین اتصال کاربر محاسبه و آغاز می‌شود.
     """
     item = dict(sub)
@@ -1777,34 +1795,91 @@ def enrich_subscription_details(sub: dict) -> dict:
 
     now_dt = get_now_naive()
     is_started = False
+    is_expired = False
     remaining_days = duration
+    expired_days = 0
+    expiry_text = ""
+    exp_dt = None
 
     if expire_date_str and str(expire_date_str).strip() not in ["None", "null", ""]:
         try:
             clean_exp = str(expire_date_str).strip().replace("Z", "")
-            exp_dt = datetime.fromisoformat(clean_exp)
+            if len(clean_exp) == 10:
+                exp_dt = datetime.strptime(clean_exp, "%Y-%m-%d")
+            else:
+                exp_dt = datetime.fromisoformat(clean_exp)
             if exp_dt.tzinfo is not None:
                 exp_dt = exp_dt.astimezone(TEHRAN_TZ).replace(tzinfo=None)
-            diff_seconds = (exp_dt - now_dt).total_seconds()
-            remaining_days = max(0, int(math.ceil(diff_seconds / 86400.0)))
             is_started = True
         except Exception:
             pass
     elif start_date_str and str(start_date_str).strip() not in ["None", "null", ""]:
         try:
             clean_start = str(start_date_str).strip().replace("Z", "")
-            start_dt = datetime.fromisoformat(clean_start)
+            if len(clean_start) == 10:
+                start_dt = datetime.strptime(clean_start, "%Y-%m-%d")
+            else:
+                start_dt = datetime.fromisoformat(clean_start)
             if start_dt.tzinfo is not None:
                 start_dt = start_dt.astimezone(TEHRAN_TZ).replace(tzinfo=None)
             exp_dt = start_dt + timedelta(days=duration)
-            diff_seconds = (exp_dt - now_dt).total_seconds()
-            remaining_days = max(0, int(math.ceil(diff_seconds / 86400.0)))
             is_started = True
         except Exception:
             pass
 
+    if is_started and exp_dt:
+        # تاریخ انقضا بر اساس روز تقویمی (دقیقاً مشابه پنل هیدیفای)
+        diff_days = (exp_dt.date() - now_dt.date()).days
+        diff_seconds = (exp_dt - now_dt).total_seconds()
+        
+        if diff_days < 0 or diff_seconds < 0:
+            is_expired = True
+            expired_days = max(1, abs(diff_days))
+            remaining_days = -expired_days
+            expiry_text = f"{expired_days} روز پیش"
+        elif diff_days == 0:
+            if diff_seconds <= 0:
+                is_expired = True
+                expired_days = 0
+                remaining_days = 0
+                expiry_text = "امروز منقضی شد"
+            else:
+                remaining_days = 0
+                expiry_text = "امروز به پایان می‌رسد"
+        else:
+            remaining_days = diff_days
+            expiry_text = f"{diff_days} روز دیگر"
+    else:
+        is_started = False
+        remaining_days = duration
+        expiry_text = f"{duration} روز"
+
     usage_pct = int((data_used / data_limit * 100)) if data_limit > 0 else 0
     remaining_gb = max(0.0, data_limit - data_used) if data_limit > 0 else 0.0
+    is_traffic_expired = (data_limit > 0 and data_used >= data_limit)
+
+    # اگر اشتراک منقضی شده، حجمش تمام شده یا غیرفعال باشد، آنلاین نخواهد بود
+    if is_expired or is_traffic_expired:
+        item["is_online"] = 0
+        if item.get("status") == "active":
+            item["status"] = "expired"
+
+    if item.get("status") in ("expired", "disabled", "inactive"):
+        item["is_online"] = 0
+
+    # اعتبارسنجی مجدد زمان آخرین اتصال (اگر بیش از ۵ دقیقه قبل بوده، آفلاین است)
+    last_online_val = item.get("last_online")
+    if last_online_val and str(last_online_val).strip() not in ["", "None", "null", "-"] and not str(last_online_val).startswith("0001"):
+        try:
+            clean_lo = str(last_online_val).replace("T", " ").split(".")[0].split("+")[0].strip()
+            lo_dt = datetime.strptime(clean_lo[:19], "%Y-%m-%d %H:%M:%S")
+            now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+            diff_lo = (now_dt - lo_dt).total_seconds()
+            diff_lo_utc = (now_utc - lo_dt).total_seconds()
+            if not ((0 <= diff_lo <= 300) or (0 <= diff_lo_utc <= 300)):
+                item["is_online"] = 0
+        except Exception:
+            pass
 
     tg_id = item.get("telegram_id")
     if tg_id:
@@ -1825,6 +1900,9 @@ def enrich_subscription_details(sub: dict) -> dict:
 
     item["duration"] = duration
     item["is_started"] = is_started
+    item["is_expired"] = is_expired
+    item["expired_days"] = expired_days
+    item["expiry_text"] = expiry_text
     item["remaining_days"] = remaining_days
     item["remaining_gb"] = round(remaining_gb, 2)
     item["usage_pct"] = min(100, usage_pct)

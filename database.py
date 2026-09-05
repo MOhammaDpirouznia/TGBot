@@ -10,7 +10,7 @@ import re
 import copy
 import logging
 from typing import Optional, Dict, List, Any, Tuple, Union
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from utils import get_now_naive, get_now_iso, TEHRAN_TZ
 from pathlib import Path
 from session_analyzer import parse_user_agent_details
@@ -1240,28 +1240,34 @@ class Database:
         if not u or not isinstance(u, dict):
             return 0, None
 
-        is_online = 0
-        if u.get("is_online") in (True, 1, "true", "True") or u.get("online") in (True, 1, "true", "True"):
-            is_online = 1
+        # اگر کاربر در هیدیفای غیرفعال یا منقضی باشد، به هیچ وجه آنلاین نیست
+        if not u.get("is_active", True) or not u.get("enable", True):
+            last_raw = u.get("last_online") or u.get("last_online_time") or u.get("last_connected")
+            clean_str = None
+            if last_raw:
+                clean_str = str(last_raw).replace("T", " ").split(".")[0].split("+")[0].strip()
+            return 0, clean_str
 
         last_online_raw = u.get("last_online") or u.get("last_online_time") or u.get("last_connected")
         last_online_str = None
+        is_online = 0
 
         if last_online_raw:
             try:
                 clean_str = str(last_online_raw).replace("T", " ").split(".")[0].split("+")[0].strip()
                 last_online_str = clean_str
-                # بررسی فاصله زمانی آخرین اتصال
-                dt = datetime.strptime(clean_str, "%Y-%m-%d %H:%M:%S")
-                # مقایسه همزمان با ساعت تهران و UTC جهت رفع کامل خطای اختلاف منطقه زمانی سرور
+                # بررسی فاصله زمانی آخرین اتصال (سرور هیدیفای بر پایه UTC است)
+                dt = datetime.strptime(clean_str[:19], "%Y-%m-%d %H:%M:%S")
+                now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
                 now_tehran = get_now_naive()
-                now_utc = datetime.utcnow()
-                diff_tehran = abs((now_tehran - dt).total_seconds())
-                diff_utc = abs((now_utc - dt).total_seconds())
-                min_diff = min(diff_tehran, diff_utc)
-                # استاندارد پنل هیدیفای: اتصال در ۱۵ دقیقه (۹۰۰ ثانیه) اخیر = آنلاین
-                if min_diff <= 900:
+                diff_utc = (now_utc - dt).total_seconds()
+                diff_tehran = (now_tehran - dt).total_seconds()
+                
+                # کاربر فقط در صورتی آنلاین است که اتصال واقعی در ۵ دقیقه (۳۰۰ ثانیه) اخیر رخ داده باشد
+                if (0 <= diff_utc <= 300) or (0 <= diff_tehran <= 300):
                     is_online = 1
+                else:
+                    is_online = 0
             except Exception:
                 last_online_str = str(last_online_raw)
 
@@ -1404,8 +1410,112 @@ class Database:
         finally:
             conn.close()
 
+    def refresh_subscriptions_expiry_and_online(self) -> dict:
+        """
+        بروزرسانی و تصحیح هوشمند و دوره‌ای وضعیت اشتراک‌ها:
+        ۱. صفر کردن آنلاین بودن برای اشتراک‌هایی که اتصال اخیر (بیش از ۱۰ دقیقه) نداشته‌اند
+        ۲. بروزرسانی وضعیت اشتراک‌های منقضی‌شده بر اساس تاریخ انقضا یا حجم مصرفی
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        updated_online = 0
+        updated_expired = 0
+        now_dt = get_now_naive()
+        now_iso = get_now_iso()
+
+        try:
+            # ۱. بازیابی کلیه اشتراک‌های دارای وضعیت آنلاین جهت اعتبارسنجی مجدد
+            cursor.execute("SELECT id, last_online, expire_date, start_date, duration, data_limit, data_used, status FROM subscriptions WHERE is_online = 1")
+            online_rows = cursor.fetchall()
+            now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+
+            for r in online_rows:
+                sub_id = r["id"]
+                last_online = r["last_online"]
+                is_still_online = False
+
+                if last_online and str(last_online).strip() not in ["", "None", "null", "-"] and not str(last_online).startswith("0001"):
+                    try:
+                        clean_lo = str(last_online).replace("T", " ").split(".")[0].split("+")[0].strip()
+                        lo_dt = datetime.strptime(clean_lo[:19], "%Y-%m-%d %H:%M:%S")
+                        diff_tehran = (now_dt - lo_dt).total_seconds()
+                        diff_utc = (now_utc - lo_dt).total_seconds()
+                        if (0 <= diff_tehran <= 600) or (0 <= diff_utc <= 600):
+                            is_still_online = True
+                    except Exception:
+                        pass
+
+                # اگر وضعیت فعال نیست، به هیچ وجه آنلاین نیست
+                if r["status"] in ("expired", "disabled", "inactive"):
+                    is_still_online = False
+
+                # اگر حجم به پایان رسیده، آنلاین نیست
+                d_limit = float(r["data_limit"] or 0)
+                d_used = float(r["data_used"] or 0)
+                if d_limit > 0 and d_used >= d_limit:
+                    is_still_online = False
+
+                if not is_still_online:
+                    cursor.execute("UPDATE subscriptions SET is_online = 0, updated_at = ? WHERE id = ?", (now_iso, sub_id))
+                    updated_online += 1
+
+            # ۲. بروزرسانی خودکار اشتراک‌هایی که موعد انقضای آن‌ها سپری شده اما هنوز active هستند
+            cursor.execute("SELECT id, start_date, duration, expire_date, data_limit, data_used FROM subscriptions WHERE status = 'active' AND (is_deleted = 0 OR is_deleted IS NULL)")
+            active_rows = cursor.fetchall()
+
+            for r in active_rows:
+                sub_id = r["id"]
+                exp_dt = None
+                exp_str = r["expire_date"]
+                start_str = r["start_date"]
+                dur = int(r["duration"] or 30)
+
+                if exp_str and str(exp_str).strip() not in ["", "None", "null"]:
+                    try:
+                        clean_exp = str(exp_str).replace("Z", "")
+                        if len(clean_exp) == 10:
+                            exp_dt = datetime.strptime(clean_exp, "%Y-%m-%d")
+                        else:
+                            exp_dt = datetime.fromisoformat(clean_exp)
+                        if exp_dt.tzinfo is not None:
+                            exp_dt = exp_dt.astimezone(TEHRAN_TZ).replace(tzinfo=None)
+                    except Exception:
+                        pass
+                elif start_str and str(start_str).strip() not in ["", "None", "null"]:
+                    try:
+                        clean_start = str(start_str)[:10]
+                        s_dt = datetime.strptime(clean_start, "%Y-%m-%d")
+                        if s_dt.tzinfo is not None:
+                            s_dt = s_dt.astimezone(TEHRAN_TZ).replace(tzinfo=None)
+                        exp_dt = s_dt + timedelta(days=dur)
+                    except Exception:
+                        pass
+
+                is_exp = False
+                if exp_dt:
+                    if (exp_dt.date() - now_dt.date()).days < 0 or (exp_dt - now_dt).total_seconds() < 0:
+                        is_exp = True
+
+                d_limit = float(r["data_limit"] or 0)
+                d_used = float(r["data_used"] or 0)
+                if d_limit > 0 and d_used >= d_limit:
+                    is_exp = True
+
+                if is_exp:
+                    cursor.execute("UPDATE subscriptions SET status = 'expired', is_online = 0, updated_at = ? WHERE id = ?", (now_iso, sub_id))
+                    updated_expired += 1
+
+            conn.commit()
+            return {"updated_online": updated_online, "updated_expired": updated_expired}
+        except Exception as e:
+            logger.error(f"Error in refresh_subscriptions_expiry_and_online: {e}")
+            return {"updated_online": 0, "updated_expired": 0}
+        finally:
+            conn.close()
+
     def get_online_users_stats(self, reseller_id: int = None) -> dict:
         """آمار تعداد کل کاربران و مشتریان آنلاین برای ادمین یا نماینده"""
+        self.refresh_subscriptions_expiry_and_online()
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
