@@ -869,7 +869,9 @@ class Database:
             "referral_code TEXT",
             "credit_enabled INTEGER DEFAULT 0",
             "credit_limit INTEGER DEFAULT 0",
-            "credit_debt INTEGER DEFAULT 0"
+            "credit_debt INTEGER DEFAULT 0",
+            "can_gift_traffic INTEGER DEFAULT 0",
+            "max_gift_traffic_gb REAL DEFAULT 0"
         ]:
             try:
                 cursor.execute(f"ALTER TABLE resellers ADD COLUMN {col_def}")
@@ -5139,7 +5141,7 @@ class Database:
                         telegram_id: int = None, discount_percent: int = 20, initial_balance: int = 0,
                         hiddify_admin_uuid: str = None, parent_reseller_id: int = None,
                         affiliate_commission_percent: float = None, referral_code: str = None,
-                        credit_enabled: int = 0, credit_limit: int = 0) -> dict:
+                        credit_enabled: int = 0, credit_limit: int = 0, can_gift_traffic: int = 0) -> dict:
         """ایجاد نماینده جدید با پشتیبانی از ادمین اختصاصی هیدیفای، انتساب نماینده معرف و تنظیمات خرید اعتباری"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -5156,14 +5158,14 @@ class Database:
                     username, password_hash, name, telegram_id, balance, 
                     discount_percent, status, hiddify_admin_uuid, 
                     parent_reseller_id, affiliate_commission_percent, referral_code,
-                    credit_enabled, credit_limit, credit_debt,
+                    credit_enabled, credit_limit, credit_debt, can_gift_traffic,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, 0, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
             """, (
                 cleaned_user, password_hash, name.strip(), telegram_id, initial_balance, 
                 discount_percent, (hiddify_admin_uuid.strip() if hiddify_admin_uuid else None),
                 parent_reseller_id, affiliate_commission_percent, referral_code,
-                credit_enabled, credit_limit,
+                credit_enabled, credit_limit, can_gift_traffic,
                 now, now
             ))
             reseller_id = cursor.lastrowid
@@ -6693,13 +6695,14 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("SELECT balance, discount_percent, credit_enabled, credit_limit, credit_debt FROM resellers WHERE id=?", (reseller_id,))
+        cursor.execute("SELECT balance, discount_percent, credit_enabled, credit_limit, credit_debt, can_gift_traffic, max_gift_traffic_gb FROM resellers WHERE id=?", (reseller_id,))
         res = cursor.fetchone()
         balance = res["balance"] if res else 0
         discount = res["discount_percent"] if res else 0
         credit_limit = (res["credit_limit"] or 0) if res and "credit_limit" in res.keys() else 0
         credit_debt = (res["credit_debt"] or 0) if res and "credit_debt" in res.keys() else 0
         credit_enabled = bool(res["credit_enabled"]) if (res and "credit_enabled" in res.keys() and res["credit_enabled"]) else (credit_limit > 0)
+        can_gift_traffic = bool(res["can_gift_traffic"]) if (res and "can_gift_traffic" in res.keys() and res["can_gift_traffic"]) else False
         available_credit = max(0, credit_limit - credit_debt) if credit_enabled else 0
         total_purchasing_power = balance + available_credit
         
@@ -6764,6 +6767,7 @@ class Database:
             "credit_enabled": credit_enabled,
             "credit_limit": credit_limit,
             "credit_debt": credit_debt,
+            "can_gift_traffic": can_gift_traffic,
             "available_credit": available_credit,
             "total_purchasing_power": total_purchasing_power,
             "unpaid_debts_total": unpaid_debts_total,
@@ -10488,6 +10492,8 @@ class Database:
         """دریافت لیست تمام پلن‌های مادر با اعمال شخصی‌سازی‌ها، حجم، مدت و قیمت‌های سفارشی نماینده"""
         from admin_manager import load_plans
         master_plans = load_plans()
+        # فیلتر پلن‌های اختصاصی مدیریت ارشد - این پلن‌ها کاملاً از نمایندگان و ربات‌ها مخفی هستند
+        master_plans = {pid: p for pid, p in master_plans.items() if not p.get("is_exclusive_admin")}
         reseller = self.get_reseller(reseller_id) or {}
         discount_pct = reseller.get("discount_percent", 20)
 
@@ -10561,13 +10567,17 @@ class Database:
                 "duration": display_duration,
                 "custom_duration": custom_duration,
                 "description": p.get("description", ""),
+                "plan_icon": p.get("plan_icon", ""),
                 "is_active": is_active,
                 "master_is_active": p.get("is_active", True)
             })
 
+        all_master_plans = load_plans()
         for pid_key, ov in overrides.items():
             pid_str = str(pid_key)
             if pid_str not in seen_pids:
+                if all_master_plans.get(pid_str, {}).get("is_exclusive_admin"):
+                    continue
                 custom_name = ov.get("custom_name") or pid_str
                 custom_price = ov.get("custom_price") or 0
                 custom_data_limit = ov.get("custom_data_limit") if ov.get("custom_data_limit") is not None else 30
@@ -10594,6 +10604,7 @@ class Database:
                     "duration": custom_duration,
                     "custom_duration": custom_duration,
                     "description": "",
+                    "plan_icon": all_master_plans.get(pid_str, {}).get("plan_icon", ""),
                     "is_active": is_active,
                     "master_is_active": True
                 })

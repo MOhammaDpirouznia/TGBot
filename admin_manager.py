@@ -294,7 +294,172 @@ def save_plans(plans: dict):
         pass
 
 
-def add_plan(name: str, price: int, data_limit: int, duration: int) -> dict:
+def get_plan_icon(plan: dict) -> dict:
+    """
+    تحلیل هوشمند رتبه پلن و ارائه آیکون شیک و متناسب با لول پلن.
+    پلن‌های بالاتر دارای زیباترین و لوکس‌ترین استایل و آیکون‌ها هستند.
+    """
+    if not plan:
+        return {
+            "icon": "fas fa-cube",
+            "color": "secondary",
+            "bg_class": "bg-secondary-subtle text-secondary border-secondary",
+            "badge_style": "background-color: #f1f5f9; color: #475569;",
+            "rank_title": "پایه",
+            "tier": 1
+        }
+
+    custom_icon = plan.get("plan_icon")
+    name = (plan.get("name") or plan.get("master_name") or "").strip().lower()
+    data_limit = float(plan.get("data_limit") or plan.get("display_data_limit") or 0)
+    price = int(plan.get("price") or plan.get("display_price") or plan.get("master_price") or 0)
+    pid = str(plan.get("plan_id") or "").lower()
+
+    # رتبه ۷: الماس / اپل پلاس / VIP ارشد / ماکسیمم حجم یا قیمت
+    if any(k in name or k in pid for k in ["اپل", "apple", "الماس", "gem", "diamond", "royal", "vip"]) or data_limit >= 250 or price >= 1500000:
+        return {
+            "icon": custom_icon or "fas fa-gem",
+            "color": "primary",
+            "bg_class": "bg-primary-subtle text-primary border border-primary border-opacity-50 shadow-sm",
+            "badge_style": "background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); color: white;",
+            "rank_title": "الماس VIP",
+            "tier": 7
+        }
+
+    # رتبه ۶: پرومکس پلاس / اولترا
+    if any(k in name or k in pid for k in ["پرومکس پلاس", "promaxplus", "promax+", "ultra"]) or data_limit >= 180 or price >= 1100000:
+        return {
+            "icon": custom_icon or "fas fa-crown",
+            "color": "warning",
+            "bg_class": "bg-warning-subtle text-warning-emphasis border border-warning shadow-sm",
+            "badge_style": "background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%); color: white;",
+            "rank_title": "پرومکس پلاس",
+            "tier": 6
+        }
+
+    # رتبه ۵: پرومکس / پلاتینیوم
+    if any(k in name or k in pid for k in ["پرومکس", "promax", "platinum"]) or data_limit >= 100 or price >= 800000:
+        return {
+            "icon": custom_icon or "fas fa-trophy",
+            "color": "warning",
+            "bg_class": "bg-warning-subtle text-warning border border-warning",
+            "badge_style": "background-color: #fef3c7; color: #b45309;",
+            "rank_title": "پرومکس",
+            "tier": 5
+        }
+
+    # رتبه ۴: پرو پلاس
+    if any(k in name or k in pid for k in ["پرو پلاس", "proplus", "pro+"]) or data_limit >= 80:
+        return {
+            "icon": custom_icon or "fas fa-fire-flame-curved",
+            "color": "danger",
+            "bg_class": "bg-danger-subtle text-danger border border-danger",
+            "badge_style": "background-color: #fee2e2; color: #b91c1c;",
+            "rank_title": "پرو پلاس",
+            "tier": 4
+        }
+
+    # رتبه ۳: پرو / طلایی
+    if any(k in name or k in pid for k in ["پرو", "pro", "طلا", "gold"]) or data_limit >= 60 or price >= 500000:
+        return {
+            "icon": custom_icon or "fas fa-star",
+            "color": "warning",
+            "bg_class": "bg-warning-subtle text-warning border border-warning",
+            "badge_style": "background-color: #fef9c3; color: #854d0e;",
+            "rank_title": "پرو",
+            "tier": 3
+        }
+
+    # رتبه ۲: استاندارد / نقره‌ای
+    if any(k in name or k in pid for k in ["استاندارد", "standard", "نقره", "silver", "medium"]) or data_limit >= 40:
+        return {
+            "icon": custom_icon or "fas fa-shield-halved",
+            "color": "info",
+            "bg_class": "bg-info-subtle text-info border border-info",
+            "badge_style": "background-color: #e0f2fe; color: #0369a1;",
+            "rank_title": "استاندارد",
+            "tier": 2
+        }
+
+    # رتبه ۱: پایه / استارتر / برنز
+    return {
+        "icon": custom_icon or "fas fa-cube",
+        "color": "secondary",
+        "bg_class": "bg-secondary-subtle text-secondary border border-secondary",
+        "badge_style": "background-color: #f1f5f9; color: #475569;",
+        "rank_title": "پایه",
+        "tier": 1
+    }
+
+
+def get_bundle_icon(bundle: dict) -> dict:
+    """
+    آیکون‌های شیک و جذاب برای بسته‌های پیش‌خرید شارژ کیف پول نماینده
+    """
+    bid = str(bundle.get("id") or "").lower()
+    title = str(bundle.get("title") or "").lower()
+    price = int(bundle.get("price") or 0)
+    bonus = int(bundle.get("bonus_percent") or 0)
+
+    # بالاترین بسته: الماس VIP (۱۰ میلیون یا بونوس >= ۱۵٪ یا نام الماس/VIP)
+    if "10m" in bid or "الماس" in title or "vip" in title or price >= 10000000 or bonus >= 15:
+        c = "#8b5cf6"
+        return {
+            "icon": "fas fa-gem",
+            "badge_color": "warning",
+            "container_class": "bundle-icon-diamond",
+            "icon_color": c,
+            "color": c,
+            "bg": f"{c}18",
+            "gradient": "linear-gradient(135deg, #a855f7 0%, #6366f1 100%)",
+            "title": "الماس VIP",
+            "tier": 4
+        }
+    # بسته طلایی (۵ میلیون یا بونوس >= ۱۰٪)
+    elif "5m" in bid or "طلا" in title or "gold" in title or price >= 5000000 or bonus >= 10:
+        c = "#d97706"
+        return {
+            "icon": "fas fa-crown",
+            "badge_color": "warning",
+            "container_class": "bundle-icon-gold",
+            "icon_color": c,
+            "color": c,
+            "bg": f"{c}18",
+            "gradient": "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+            "title": "بسته طلایی",
+            "tier": 3
+        }
+    # بسته نقره‌ای (۳ میلیون یا بونوس >= ۷٪)
+    elif "3m" in bid or "نقره" in title or "silver" in title or price >= 3000000 or bonus >= 7:
+        c = "#0284c7"
+        return {
+            "icon": "fas fa-medal",
+            "badge_color": "primary",
+            "container_class": "bundle-icon-silver",
+            "icon_color": c,
+            "color": c,
+            "bg": f"{c}18",
+            "gradient": "linear-gradient(135deg, #0284c7 0%, #2563eb 100%)",
+            "title": "بسته نقره‌ای",
+            "tier": 2
+        }
+    # بسته استارتر (۱ میلیون یا سایر)
+    else:
+        c = "#059669"
+        return {
+            "icon": "fas fa-rocket",
+            "badge_color": "info",
+            "container_class": "bundle-icon-starter",
+            "icon_color": c,
+            "color": c,
+            "bg": f"{c}18",
+            "gradient": "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+            "title": "بسته استارتر",
+            "tier": 1
+        }
+
+
+def add_plan(name: str, price: int, data_limit: int, duration: int, is_exclusive_admin: bool = False, plan_icon: str = "") -> dict:
     """افزودن پلن جدید"""
     plans = load_plans()
     
@@ -314,6 +479,8 @@ def add_plan(name: str, price: int, data_limit: int, duration: int) -> dict:
         "duration": duration,
         "description": description,
         "is_active": True,
+        "is_exclusive_admin": bool(is_exclusive_admin),
+        "plan_icon": plan_icon.strip() if plan_icon else "",
         "created_at": get_now_iso(),
     }
     
@@ -339,8 +506,11 @@ def update_plan(plan_id: str, **kwargs) -> dict:
         current_id = new_plan_id
 
     for key, value in kwargs.items():
-        if key in ["name", "price", "data_limit", "duration", "is_active"]:
-            plans[current_id][key] = value
+        if key in ["name", "price", "data_limit", "duration", "is_active", "is_exclusive_admin", "plan_icon"]:
+            if key == "is_exclusive_admin":
+                plans[current_id][key] = bool(value)
+            else:
+                plans[current_id][key] = value
     
     # بروزرسانی توضیحات
     data_limit = plans[current_id].get("data_limit", 0)
@@ -365,10 +535,13 @@ def delete_plan(plan_id: str) -> dict:
     return {"success": True}
 
 
-def get_active_plans() -> dict:
-    """دریافت پلن‌های فعال"""
+def get_active_plans(include_exclusive_admin: bool = False) -> dict:
+    """دریافت پلن‌های فعال (به صورت پیش‌فرض پلن‌های اختصاصی مدیریت ارشد مخفی هستند)"""
     plans = load_plans()
-    return {pid: p for pid, p in plans.items() if p.get("is_active", False)}
+    return {
+        pid: p for pid, p in plans.items() 
+        if p.get("is_active", False) and (include_exclusive_admin or not p.get("is_exclusive_admin"))
+    }
 
 
 def get_all_plans() -> dict:

@@ -37,7 +37,10 @@ from utils import (
     generate_qr_code_bytes, get_now_iso, get_now_naive, get_single_link_template, 
     format_single_link, gregorian_to_shamsi, gregorian_to_shamsi_full, get_now_shamsi, TEHRAN_TZ
 )
-from admin_manager import get_all_plans, add_plan, update_plan, delete_plan, move_plan_up, move_plan_down
+from admin_manager import (
+    get_all_plans, add_plan, update_plan, delete_plan, move_plan_up, move_plan_down,
+    get_plan_icon, get_bundle_icon
+)
 from sms_service import send_auth_sms_notification, send_sms, get_sms_config, format_iranian_phone
 from payment import CryptoPaymentGateway
 import avatar_generator
@@ -2297,10 +2300,72 @@ def check_custom_domain():
         g.bot_username = None
 
 
+# ─── مدیریت نسخه هوشمند فروشگاه (Store Version) ───
+_store_version_cache = {"version": None, "timestamp": 0}
+
+def get_store_version() -> str:
+    """دریافت نسخه فروشگاه به صورت دستی یا هوشمند از گیت‌هاب"""
+    source = db.get_setting("store_version_source", "manual")
+    manual_version = db.get_setting("store_version", "v0.0.1 Beta") or "v0.0.1 Beta"
+    if source != "github":
+        return manual_version
+
+    now = time.time()
+    if _store_version_cache.get("version") and (now - _store_version_cache.get("timestamp", 0) < 900):
+        return _store_version_cache["version"]
+
+    repo = (db.get_setting("store_github_repo", "") or "").strip()
+    if not repo:
+        return manual_version
+
+    if "github.com/" in repo:
+        repo = repo.split("github.com/")[-1].strip("/")
+
+    try:
+        import urllib.request
+        url = f"https://api.github.com/repos/{repo}/releases/latest"
+        req = urllib.request.Request(url, headers={"User-Agent": "HiddiBot-System"})
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            tag = data.get("tag_name") or data.get("name")
+            if tag:
+                _store_version_cache["version"] = tag
+                _store_version_cache["timestamp"] = now
+                return tag
+    except Exception as e:
+        logger.debug(f"Could not fetch github latest release for {repo}: {e}")
+
+    try:
+        import urllib.request
+        url = f"https://api.github.com/repos/{repo}/tags"
+        req = urllib.request.Request(url, headers={"User-Agent": "HiddiBot-System"})
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            if data and isinstance(data, list) and len(data) > 0:
+                tag = data[0].get("name")
+                if tag:
+                    _store_version_cache["version"] = tag
+                    _store_version_cache["timestamp"] = now
+                    return tag
+    except Exception:
+        pass
+
+    return manual_version
+
+
 @app.context_processor
 def inject_global_branding():
-    """تزریق متغیرهای هویت بصری، برندینگ، دامنه اختصاصی و دسترسی‌ها به قالب‌های Jinja"""
+    """تزریق متغیرهای هویت بصری، برندینگ، دامنه اختصاصی، نسخه و دسترسی‌ها به قالب‌های Jinja"""
     active_reseller_id = session.get("reseller_id")
+    
+    # تنظیمات کلی سیستم و فروشگاه
+    system_store_name = db.get_setting("store_name", "سامانه هوشمند اینترنت پرو")
+    system_store_logo = db.get_setting("store_logo", "")
+    system_store_favicon = db.get_setting("store_favicon", "")
+    system_copyright = db.get_setting("store_copyright", "تمامی حقوق برای این سامانه محفوظ است © 2026")
+    system_primary_color = db.get_setting("store_primary_color", "#4f46e5")
+    store_version = get_store_version()
+
     branding = {}
     if active_reseller_id:
         r_data = db.get_reseller(active_reseller_id)
@@ -2316,11 +2381,13 @@ def inject_global_branding():
             session["available_credit"] = available_credit
             session["total_purchasing_power"] = session["balance"] + available_credit
             branding = {
-                "brand_title": r_data.get("brand_title") or r_data.get("name") or "پنل نمایندگی",
-                "logo_url": r_data.get("logo_url"),
-                "favicon_url": r_data.get("favicon_url"),
-                "primary_color": r_data.get("primary_color"),
-                "footer_text": r_data.get("footer_text"),
+                "brand_title": r_data.get("brand_title") or r_data.get("name") or system_store_name,
+                "logo_url": r_data.get("logo_url") or system_store_logo,
+                "favicon_url": r_data.get("favicon_url") or system_store_favicon,
+                "primary_color": r_data.get("primary_color") or system_primary_color,
+                "footer_text": r_data.get("footer_text") or system_copyright,
+                "store_version": store_version,
+                "system_version": store_version,
                 "custom_domain": r_data.get("custom_domain"),
                 "tutorial_domain": r_data.get("tutorial_domain"),
                 "support_username": r_data.get("support_username"),
@@ -2336,22 +2403,30 @@ def inject_global_branding():
     elif getattr(g, "custom_reseller", None):
         r_data = g.custom_reseller
         branding = {
-            "brand_title": r_data.get("brand_title") or r_data.get("name"),
-            "logo_url": r_data.get("logo_url"),
-            "favicon_url": r_data.get("favicon_url"),
-            "primary_color": r_data.get("primary_color"),
-            "footer_text": r_data.get("footer_text"),
+            "brand_title": r_data.get("brand_title") or r_data.get("name") or system_store_name,
+            "logo_url": r_data.get("logo_url") or system_store_logo,
+            "favicon_url": r_data.get("favicon_url") or system_store_favicon,
+            "primary_color": r_data.get("primary_color") or system_primary_color,
+            "footer_text": r_data.get("footer_text") or system_copyright,
+            "store_version": store_version,
+            "system_version": store_version,
             "custom_domain": r_data.get("custom_domain"),
             "tutorial_domain": r_data.get("tutorial_domain"),
             "support_username": r_data.get("support_username"),
             "bot_username": r_data.get("bot_username")
         }
     else:
-        # تنظیمات برند پیش‌فرض سیستم برای ادمین
+        # تنظیمات برند پیش‌فرض سیستم برای ادمین و صفحات عمومی
         admin_tutorial_title = db.get_setting("tutorial_title", "راهنما و آموزش اتصال")
         admin_tutorial_domain = db.get_setting("tutorial_domain", "")
         branding = {
-            "brand_title": admin_tutorial_title,
+            "brand_title": system_store_name,
+            "logo_url": system_store_logo,
+            "favicon_url": system_store_favicon,
+            "primary_color": system_primary_color,
+            "footer_text": system_copyright,
+            "store_version": store_version,
+            "system_version": store_version,
             "tutorial_domain": admin_tutorial_domain
         }
 
@@ -2368,6 +2443,9 @@ def inject_global_branding():
     return dict(
         has_permission=has_permission,
         branding=branding,
+        store_version=store_version,
+        get_plan_icon=get_plan_icon,
+        get_bundle_icon=get_bundle_icon,
         sub_role=session.get("sub_role"),
         has_reseller_credit=reseller_has_credit,
         has_credit=reseller_has_credit,
@@ -5182,6 +5260,7 @@ def admin_resellers():
 
         credit_limit = int(request.form.get("credit_limit", 0) or 0)
         credit_enabled = 1 if (request.form.get("credit_enabled") or credit_limit > 0) else 0
+        can_gift_traffic = 1 if request.form.get("can_gift_traffic") in ("on", "1", "true") else 0
 
         res = db.create_reseller(
             username=username,
@@ -5192,7 +5271,8 @@ def admin_resellers():
             initial_balance=initial_balance,
             hiddify_admin_uuid=hiddify_admin_uuid,
             credit_enabled=credit_enabled,
-            credit_limit=credit_limit
+            credit_limit=credit_limit,
+            can_gift_traffic=can_gift_traffic
         )
         if res.get("success"):
             flash(f"نماینده جدید «{name}» با موفقیت افزوده شد!", "success")
@@ -5331,6 +5411,7 @@ def admin_reseller_edit(reseller_id):
 
     credit_limit = int(request.form.get("credit_limit", 0) or 0)
     credit_enabled = 1 if (request.form.get("credit_enabled") or credit_limit > 0) else 0
+    can_gift_traffic = 1 if request.form.get("can_gift_traffic") in ("on", "1", "true") else 0
 
     updates = {
         "name": name or r["name"],
@@ -5340,7 +5421,8 @@ def admin_reseller_edit(reseller_id):
         "status": status,
         "hiddify_admin_uuid": hiddify_admin_uuid or None,
         "credit_enabled": credit_enabled,
-        "credit_limit": credit_limit
+        "credit_limit": credit_limit,
+        "can_gift_traffic": can_gift_traffic
     }
     if new_password:
         updates["password"] = new_password
@@ -6684,7 +6766,9 @@ def admin_plans_page():
             price = int(request.form.get("price", 0))
             data_limit = int(request.form.get("data_limit", 0))
             duration = int(request.form.get("duration", 30))
-            res = add_plan(name, price, data_limit, duration)
+            is_exclusive_admin = request.form.get("is_exclusive_admin") in ("on", "1", "true")
+            plan_icon = request.form.get("plan_icon", "").strip()
+            res = add_plan(name, price, data_limit, duration, is_exclusive_admin=is_exclusive_admin, plan_icon=plan_icon)
             if res.get("success"):
                 flash("پلن جدید با موفقیت افزوده شد.", "success")
             else:
@@ -6696,9 +6780,11 @@ def admin_plans_page():
     selected_reseller = db.get_reseller(selected_reseller_id) if selected_reseller_id else None
     selected_reseller_plans = db.get_reseller_plans(selected_reseller_id) if selected_reseller_id else []
 
-    # محاسبه پلن‌های پیش‌فرض نمایندگان با تخفیف پایه ۲۰ درصد
+    # محاسبه پلن‌های پیش‌فرض نمایندگان با تخفیف پایه ۲۰ درصد (پلن‌های اختصاصی مدیریت مخفی می‌شوند)
     default_reseller_plans = []
     for pid, p in plans.items():
+        if p.get("is_exclusive_admin"):
+            continue
         base_price = p.get("price", 0)
         default_reseller_plans.append({
             "plan_id": pid,
@@ -6707,6 +6793,7 @@ def admin_plans_page():
             "wholesale_price": int(base_price * 0.8),
             "data_limit": p.get("data_limit", 0),
             "duration": p.get("duration", 30),
+            "plan_icon": p.get("plan_icon", ""),
             "is_active": p.get("is_active", True)
         })
 
@@ -6781,6 +6868,8 @@ def admin_plan_edit(plan_id):
     data_limit = int(request.form.get("data_limit", 0))
     duration = int(request.form.get("duration", 30))
     is_active = request.form.get("is_active") == "1"
+    is_exclusive_admin = request.form.get("is_exclusive_admin") in ("on", "1", "true")
+    plan_icon = request.form.get("plan_icon", "").strip()
 
     update_kwargs = {
         "name": name,
@@ -6788,6 +6877,8 @@ def admin_plan_edit(plan_id):
         "data_limit": data_limit,
         "duration": duration,
         "is_active": is_active,
+        "is_exclusive_admin": is_exclusive_admin,
+        "plan_icon": plan_icon,
     }
     if new_plan_id and new_plan_id != plan_id:
         update_kwargs["new_plan_id"] = new_plan_id
@@ -7121,6 +7212,42 @@ def settings():
             })
             flash("تنظیمات هوشمند استرداد وجه و سطل زباله نمایندگان با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
+        elif action == "save_store_branding":
+            store_name = request.form.get("store_name", "").strip()
+            store_version = request.form.get("store_version", "").strip()
+            store_version_source = request.form.get("store_version_source", "manual").strip()
+            store_github_repo = request.form.get("store_github_repo", "").strip()
+            store_copyright = request.form.get("store_copyright", "").strip()
+            store_primary_color = request.form.get("store_primary_color", "#4f46e5").strip()
+            store_logo_url = request.form.get("store_logo_url", "").strip()
+
+            if "store_logo_file" in request.files:
+                file = request.files["store_logo_file"]
+                if file and file.filename:
+                    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "png"
+                    fn = f"system_store_logo_{int(time.time())}.{ext}"
+                    fp = AVATAR_CACHE_DIR / fn
+                    file.save(fp)
+                    store_logo_url = url_for("telegram_avatar", identifier=fn)
+
+            if store_name:
+                db.save_setting("store_name", store_name)
+            if store_version:
+                db.save_setting("store_version", store_version)
+            db.save_setting("store_version_source", store_version_source)
+            db.save_setting("store_github_repo", store_github_repo)
+            if store_copyright:
+                db.save_setting("store_copyright", store_copyright)
+            if store_primary_color:
+                db.save_setting("store_primary_color", store_primary_color)
+            if store_logo_url:
+                db.save_setting("store_logo", store_logo_url)
+
+            _store_version_cache["version"] = None
+            _store_version_cache["timestamp"] = 0
+
+            flash("تنظیمات نام فروشگاه، نسخه، لوگو و کپی‌رایت با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("settings"))
 
     conn = db.get_connection()
     settings_list = conn.execute("SELECT * FROM settings").fetchall()
@@ -7135,6 +7262,16 @@ def settings():
     vip_settings = db.get_vip_settings()
     refund_settings = db.get_refund_settings()
     all_resellers = db.get_all_resellers()
+    store_branding_config = {
+        "store_name": db.get_setting("store_name", "سامانه هوشمند اینترنت پرو"),
+        "store_version": db.get_setting("store_version", "v0.0.1 Beta"),
+        "store_version_source": db.get_setting("store_version_source", "manual"),
+        "store_github_repo": db.get_setting("store_github_repo", ""),
+        "store_copyright": db.get_setting("store_copyright", "تمامی حقوق برای این سامانه محفوظ است © 2026"),
+        "store_primary_color": db.get_setting("store_primary_color", "#4f46e5"),
+        "store_logo": db.get_setting("store_logo", ""),
+        "current_active_version": get_store_version()
+    }
     return render_template(
         "settings.html",
         settings=settings_list,
@@ -7147,7 +7284,8 @@ def settings():
         tutorial_title=tutorial_title,
         vip_settings=vip_settings,
         refund_settings=refund_settings,
-        all_resellers=all_resellers
+        all_resellers=all_resellers,
+        store_branding_config=store_branding_config
     )
 
 
@@ -7337,9 +7475,22 @@ def reseller_create_user():
         # ۱. ابتدا ساخت کاربر در سرور هیدیفای انجام می‌شود
         data_limit_gb = plan.get("display_data_limit") if plan.get("display_data_limit") is not None else plan.get("data_limit", 30)
         duration_days = plan.get("display_duration") if plan.get("display_duration") is not None else plan.get("duration", 30)
+
+        can_gift = bool(reseller.get("can_gift_traffic"))
+        gift_traffic = 0.0
+        if can_gift:
+            try:
+                gift_traffic = max(0.0, float(request.form.get("gift_traffic_gb", 0) or 0))
+            except (ValueError, TypeError):
+                gift_traffic = 0.0
+
+        effective_limit_gb = data_limit_gb + gift_traffic
+        if gift_traffic > 0:
+            user_comment += f" | +{gift_traffic}GB Gift"
+
         h_res = hidify_sync_create_user(
             name=account_name,
-            usage_limit_gb=data_limit_gb,
+            usage_limit_gb=effective_limit_gb,
             package_days=duration_days,
             comment=user_comment,
             reseller_id=reseller_id
@@ -7352,7 +7503,8 @@ def reseller_create_user():
             return redirect(url_for("reseller_create_user"))
 
         # ۲. پس از تایید ۱۰۰٪ ساخت در هیدیفای، موجودی/اعتبار کسر و تراکنش خرید ثبت می‌گردد
-        plan_title = plan.get("display_name") or plan.get("name") or plan.get("master_name", "")
+        base_plan_title = plan.get("display_name") or plan.get("name") or plan.get("master_name", "")
+        plan_title = base_plan_title + (f" (+{gift_traffic}GB هدیه)" if gift_traffic > 0 else "")
         profit_margin = max(0, original_price - final_price)
         reseller_creator = session.get("username") or reseller.get("username") or f"reseller_{reseller_id}"
         deduct_res = db.deduct_reseller_balance(
@@ -7394,7 +7546,7 @@ def reseller_create_user():
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             telegram_id, user_uuid, plan_key, plan_title, account_name, phone_number or None,
-            data_limit_gb, duration_days, reseller_id, user_limit, final_price,
+            effective_limit_gb, duration_days, reseller_id, user_limit, final_price,
             payment_status, debt_amount, debt_notes or None, debt_created, is_credit_sub, credit_used_amount,
             actual_payment_source, reseller_creator, now, now
         ))
@@ -7837,15 +7989,26 @@ def reseller_renew_user(sub_id: int):
         return redirect(get_redirect_target("reseller_users"))
 
     instant_activate = bool(request.form.get("instant_activate"))
-    plan_title = plan.get("display_name") or plan.get("name") or plan.get("master_name", "")
+    base_plan_title = plan.get("display_name") or plan.get("name") or plan.get("master_name", "")
     data_limit_gb = plan.get("display_data_limit") if plan.get("display_data_limit") is not None else plan.get("data_limit", 30)
     duration_days = plan.get("display_duration") if plan.get("display_duration") is not None else plan.get("duration", 30)
+
+    can_gift = bool(reseller.get("can_gift_traffic"))
+    gift_traffic = 0.0
+    if can_gift:
+        try:
+            gift_traffic = max(0.0, float(request.form.get("gift_traffic_gb", 0) or 0))
+        except (ValueError, TypeError):
+            gift_traffic = 0.0
+
+    effective_limit_gb = data_limit_gb + gift_traffic
+    plan_title = base_plan_title + (f" (+{gift_traffic}GB هدیه)" if gift_traffic > 0 else "")
 
     # ۱. در صورت فعال‌سازی آنی، هیدیفای بلافاصله ریست می‌شود
     renewal_res = {"renewal_type": "reset_and_replaced"}
     if instant_activate and sub.get("hidify_uuid"):
         try:
-            renewal_res = hidify_sync_renew_user(sub["hidify_uuid"], data_limit_gb, duration_days, force_instant=True)
+            renewal_res = hidify_sync_renew_user(sub["hidify_uuid"], effective_limit_gb, duration_days, force_instant=True)
         except Exception as e:
             logger.error(f"Error in reseller renew Hiddify {sub.get('hidify_uuid')}: {e}")
 
@@ -7858,7 +8021,7 @@ def reseller_renew_user(sub_id: int):
         plan_id=plan_key,
         plan_name=plan_title,
         cost=final_price,
-        data_limit=data_limit_gb,
+        data_limit=effective_limit_gb,
         duration=duration_days,
         instant_activate=instant_activate,
         renewal_type=renewal_res.get("renewal_type", "reset_and_replaced"),
