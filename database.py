@@ -1002,6 +1002,8 @@ class Database:
             "ALTER TABLE subscriptions ADD COLUMN payment_source TEXT DEFAULT 'wallet'",
             "ALTER TABLE reseller_transactions ADD COLUMN payment_source TEXT DEFAULT 'wallet'",
             "ALTER TABLE reseller_transactions ADD COLUMN subscription_id INTEGER",
+            "ALTER TABLE reseller_transactions ADD COLUMN selling_price INTEGER DEFAULT 0",
+            "ALTER TABLE reseller_transactions ADD COLUMN profit_margin INTEGER DEFAULT 0",
             "ALTER TABLE accounting_records ADD COLUMN is_edited INTEGER DEFAULT 0",
             "ALTER TABLE accounting_records ADD COLUMN edited_by TEXT",
             "ALTER TABLE accounting_records ADD COLUMN edited_at TEXT",
@@ -6125,8 +6127,8 @@ class Database:
 
     def deduct_reseller_balance(self, reseller_id: int, amount: int, plan_name: str, account_name: str,
                                 description: str = "خرید اشتراک برای مشتری", payment_source: str = "auto",
-                                subscription_id: int = None):
-        """کسر هزینه با پشتیبانی از انتخاب دقیق مبدأ پرداخت (کیف پول نقدی یا اعتبار خرید)"""
+                                subscription_id: int = None, selling_price: int = None, profit_margin: int = None):
+        """کسر هزینه با پشتیبانی از انتخاب دقیق مبدأ پرداخت (کیف پول نقدی یا اعتبار خرید) و ثبت حاشیه سود"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -6143,6 +6145,8 @@ class Database:
             available_credit = max(0, credit_limit - credit_debt) if credit_enabled else 0
 
             chosen_source = str(payment_source).strip().lower() if payment_source else "auto"
+            selling_val = int(selling_price) if selling_price is not None else int(amount)
+            profit_val = int(profit_margin) if profit_margin is not None else max(0, selling_val - int(amount))
 
             if chosen_source == "wallet":
                 if balance < amount:
@@ -6153,9 +6157,9 @@ class Database:
                 cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (amount, now, reseller_id))
                 desc_text = f"{description} (کسر از کیف پول نقدی)"
                 cursor.execute("""
-                    INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
-                    VALUES (?, 'purchase', ?, ?, ?, ?, 'wallet', ?, ?)
-                """, (reseller_id, amount, plan_name, account_name, desc_text, subscription_id, now))
+                    INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_at)
+                    VALUES (?, 'purchase', ?, ?, ?, ?, ?, ?, 'wallet', ?, ?)
+                """, (reseller_id, amount, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, now))
                 tx_id = cursor.lastrowid
                 conn.commit()
                 return {"success": True, "transaction_id": tx_id, "is_credit": False, "credit_used": 0, "payment_source": "wallet"}
@@ -6171,9 +6175,9 @@ class Database:
                 cursor.execute("UPDATE resellers SET credit_debt = credit_debt + ?, updated_at=? WHERE id=?", (amount, now, reseller_id))
                 desc_text = f"{description} (کسر از اعتبار خرید: {amount:,} ت بدهی)"
                 cursor.execute("""
-                    INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
-                    VALUES (?, 'purchase_credit', ?, ?, ?, ?, 'credit', ?, ?)
-                """, (reseller_id, amount, plan_name, account_name, desc_text, subscription_id, now))
+                    INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_at)
+                    VALUES (?, 'purchase_credit', ?, ?, ?, ?, ?, ?, 'credit', ?, ?)
+                """, (reseller_id, amount, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, now))
                 tx_id = cursor.lastrowid
                 conn.commit()
                 return {"success": True, "transaction_id": tx_id, "is_credit": True, "credit_used": amount, "payment_source": "credit"}
@@ -6190,9 +6194,9 @@ class Database:
                 if balance >= amount:
                     cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (amount, now, reseller_id))
                     cursor.execute("""
-                        INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
-                        VALUES (?, 'purchase', ?, ?, ?, ?, 'wallet', ?, ?)
-                    """, (reseller_id, amount, plan_name, account_name, description, subscription_id, now))
+                        INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_at)
+                        VALUES (?, 'purchase', ?, ?, ?, ?, ?, ?, 'wallet', ?, ?)
+                    """, (reseller_id, amount, selling_val, profit_val, plan_name, account_name, description, subscription_id, now))
                     tx_id = cursor.lastrowid
                     conn.commit()
                     return {"success": True, "transaction_id": tx_id, "is_credit": False, "credit_used": 0, "payment_source": "wallet"}
@@ -6208,9 +6212,9 @@ class Database:
 
                     desc_text = f"{description} (خرید اعتباری: {credit_used:,} تومان بدهی)"
                     cursor.execute("""
-                        INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
-                        VALUES (?, 'purchase_credit', ?, ?, ?, ?, 'credit', ?, ?)
-                    """, (reseller_id, amount, plan_name, account_name, desc_text, subscription_id, now))
+                        INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_at)
+                        VALUES (?, 'purchase_credit', ?, ?, ?, ?, ?, ?, 'credit', ?, ?)
+                    """, (reseller_id, amount, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, now))
                     tx_id = cursor.lastrowid
                     conn.commit()
                     return {"success": True, "transaction_id": tx_id, "is_credit": True, "credit_used": credit_used, "payment_source": "credit"}
@@ -6494,12 +6498,14 @@ class Database:
                 bot_rev = int(bot_row[0] or 0)
                 bot_cnt = int(bot_row[1] or 0)
 
-                # ۲. خریدهای مستقیم ثبت شده در پنل وب توسط نماینده (جلوگیری از شمارش تکراری سفارشات ربات)
+                # ۲. خریدهای مستقیم و تمدیدهای ثبت شده در پنل وب توسط نماینده (محاسبه به عنوان درآمد با قیمت فروش و سود)
                 cursor.execute("""
-                    SELECT COALESCE(SUM(amount), 0), COUNT(*)
+                    SELECT COALESCE(SUM(COALESCE(NULLIF(selling_price, 0), amount)), 0), 
+                           COUNT(*),
+                           COALESCE(SUM(profit_margin), 0)
                     FROM reseller_transactions
                     WHERE reseller_id = ? 
-                      AND type = 'purchase'
+                      AND type IN ('purchase', 'purchase_credit', 'renewal')
                       AND DATE(created_at) = ?
                       AND (subscription_id IS NULL OR subscription_id NOT IN (
                           SELECT subscription_id FROM transactions 
@@ -6509,10 +6515,13 @@ class Database:
                 dir_row = cursor.fetchone()
                 dir_rev = int(dir_row[0] or 0)
                 dir_cnt = int(dir_row[1] or 0)
+                dir_prof = int(dir_row[2] or 0)
+                if dir_prof <= 0 and dir_rev > 0:
+                    dir_prof = int(dir_rev * (discount_pct / 100.0))
 
                 day_total = bot_rev + dir_rev
                 day_orders = bot_cnt + dir_cnt
-                day_profit = int(day_total * (discount_pct / 100.0))
+                day_profit = dir_prof + int(bot_rev * (discount_pct / 100.0))
 
                 total_revenue += day_total
                 total_orders += day_orders
@@ -6702,8 +6711,8 @@ class Database:
     def renew_reseller_subscription(self, reseller_id: int, sub_id: int, plan_id: str, plan_name: str,
                                     cost: int, data_limit: float, duration: int,
                                     instant_activate: bool = True, renewal_type: str = "reset_and_replaced",
-                                    payment_source: str = "auto"):
-        """تمدید اشتراک مشتری توسط نماینده با انتخاب دقیق مبدأ پرداخت (کیف پول نقدی یا اعتبار خرید)"""
+                                    payment_source: str = "auto", selling_price: int = None, profit_margin: int = None):
+        """تمدید اشتراک مشتری توسط نماینده با انتخاب دقیق مبدأ پرداخت و ثبت حاشیه سود"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -6728,6 +6737,9 @@ class Database:
             chosen_source = str(payment_source).strip().lower() if payment_source else "auto"
             mode_title = "فعال‌سازی آنی" if instant_activate else "رزرو در صف تمدید"
             actual_source = "wallet"
+
+            selling_val = int(selling_price) if selling_price is not None else int(cost)
+            profit_val = int(profit_margin) if profit_margin is not None else max(0, selling_val - int(cost))
 
             if chosen_source == "wallet":
                 if balance < cost:
@@ -6763,11 +6775,11 @@ class Database:
                     tx_desc = f"تمدید اشتراک «{sub['account_name']}» با پلن {plan_name} ({mode_title} - کسر {balance:,} ت از کیف پول و {from_credit:,} ت از اعتبار)"
                     actual_source = "credit"
 
-            # ثبت تراکنش تمدید با مشخص بودن مبدأ پرداخت
+            # ثبت تراکنش تمدید با مشخص بودن مبدأ پرداخت و حاشیه سود
             cursor.execute("""
-                INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
-                VALUES (?, 'renewal', ?, ?, ?, ?, ?, ?, ?)
-            """, (reseller_id, cost, plan_name, sub["account_name"], tx_desc, actual_source, sub_id, now))
+                INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_at)
+                VALUES (?, 'renewal', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (reseller_id, cost, selling_val, profit_val, plan_name, sub["account_name"], tx_desc, actual_source, sub_id, now))
 
             if instant_activate:
                 # ۳. به‌روزرسانی آنی مشخصات اشتراک، ریست حجم مصرفی و ریست تاریخ شروع و انقضا
@@ -7826,12 +7838,25 @@ class Database:
             current_balance = r_info["balance"] if r_info else 0
             reseller_name = r_info["name"] if r_info else "همکار"
 
-            # ۴. تخمین ارزش ریالی قیمت خرده‌فروشی
-            if discount_pct < 100 and discount_pct > 0:
+            # ۴. محاسبه سود و ارزش ریالی فروش (بر اساس حاشیه سود ثبت‌شده یا تخمین تخفیف)
+            cursor.execute("""
+                SELECT COALESCE(SUM(profit_margin), 0), COALESCE(SUM(selling_price), 0)
+                FROM reseller_transactions
+                WHERE reseller_id = ? AND type IN ('purchase', 'purchase_credit', 'renew', 'renew_credit')
+            """, (reseller_id,))
+            p_row = cursor.fetchone()
+            actual_profit = p_row[0] if p_row else 0
+            actual_selling = p_row[1] if p_row else 0
+
+            if actual_profit > 0 or actual_selling > 0:
+                estimated_profit = actual_profit
+                estimated_retail_value = actual_selling if actual_selling > 0 else (total_wholesale_cost + actual_profit)
+            elif discount_pct < 100 and discount_pct > 0:
                 estimated_retail_value = int(total_wholesale_cost / (1.0 - (discount_pct / 100.0)))
+                estimated_profit = max(0, estimated_retail_value - total_wholesale_cost)
             else:
                 estimated_retail_value = total_wholesale_cost
-            estimated_profit = max(0, estimated_retail_value - total_wholesale_cost)
+                estimated_profit = 0
 
             return {
                 "reseller_name": reseller_name,
@@ -10346,6 +10371,7 @@ class Database:
                     SELECT * FROM transactions 
                     WHERE reseller_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)
                       AND status IN ('approved', 'completed')
+                      AND (gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
                       AND created_at >= ?
                     ORDER BY created_at DESC
                 """, (reseller_id, start_iso))
@@ -10354,6 +10380,7 @@ class Database:
                     SELECT * FROM transactions 
                     WHERE (is_deleted = 0 OR is_deleted IS NULL)
                       AND status IN ('approved', 'completed')
+                      AND ((reseller_id IS NULL OR reseller_id = 0) OR (reseller_id > 0 AND (gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')))
                       AND created_at >= ?
                     ORDER BY created_at DESC
                 """, (start_iso,))
@@ -10383,6 +10410,56 @@ class Database:
                     audit["daily_turnover"][c_date]["count"] += 1
 
                 audit["transactions"].append(r_dict)
+
+            # ۱.۲. اضافه کردن خریدهای مستقیم و تمدیدهای پنل نماینده به عنوان درآمد و سود
+            if reseller_id:
+                cursor.execute("""
+                    SELECT * FROM reseller_transactions 
+                    WHERE reseller_id = ? 
+                      AND type IN ('purchase', 'purchase_credit', 'renewal')
+                      AND created_at >= ?
+                      AND (subscription_id IS NULL OR subscription_id NOT IN (
+                          SELECT subscription_id FROM transactions 
+                          WHERE reseller_id = ? AND subscription_id IS NOT NULL AND status IN ('approved', 'completed')
+                      ))
+                    ORDER BY created_at DESC
+                """, (reseller_id, start_iso, reseller_id))
+                res_tx_rows = cursor.fetchall()
+                res_row = self.get_reseller(reseller_id)
+                discount = res_row.get("discount_percent", 20) if res_row else 20
+                for rx in res_tx_rows:
+                    rx_dict = dict(rx)
+                    wholesale = int(rx_dict.get("amount") or 0)
+                    selling = int(rx_dict.get("selling_price") or 0)
+                    profit = int(rx_dict.get("profit_margin") or 0)
+                    if selling <= 0 and wholesale > 0:
+                        selling = int(wholesale * 100 / (100 - discount)) if discount < 100 else wholesale
+                        profit = selling - wholesale
+
+                    audit["total_revenue"] += selling
+                    audit["total_expenses"] += wholesale
+                    audit["net_profit"] += profit
+
+                    is_credit_rx = rx_dict.get("payment_source") == "credit" or rx_dict.get("type") == "purchase_credit"
+                    if is_credit_rx:
+                        audit["credit_revenue"] += selling
+                    else:
+                        audit["cash_revenue"] += selling
+
+                    if rx_dict.get("type") == "renewal":
+                        audit["renew_subs_count"] += 1
+                    else:
+                        audit["new_subs_count"] += 1
+
+                    rx_date = str(rx_dict.get("created_at", ""))[:10]
+                    if rx_date:
+                        if rx_date not in audit["daily_turnover"]:
+                            audit["daily_turnover"][rx_date] = {"date": rx_date, "income": 0, "expense": 0, "count": 0}
+                        audit["daily_turnover"][rx_date]["income"] += selling
+                        audit["daily_turnover"][rx_date]["expense"] += wholesale
+                        audit["daily_turnover"][rx_date]["count"] += 1
+
+                    audit["transactions"].append(rx_dict)
 
             # ۲. اشتراک‌های ایجاد شده در بازه زمانی جهت محاسبه حجم کل GB
             if reseller_id:
@@ -10415,14 +10492,15 @@ class Database:
                 cursor.execute("SELECT SUM(credit_debt) FROM resellers WHERE credit_debt > 0")
                 debt_row = cursor.fetchone()
                 audit["total_outstanding_debt"] = debt_row[0] if (debt_row and debt_row[0]) else 0
+                audit["net_profit"] = max(0, audit["total_revenue"] - audit["total_expenses"])
             else:
                 res_row = self.get_reseller(reseller_id)
                 if res_row:
                     audit["total_outstanding_debt"] = res_row.get("credit_debt", 0)
-                    discount = res_row.get("discount_percent", 20)
+                if audit["total_expenses"] == 0 and audit["total_revenue"] > 0:
+                    discount = res_row.get("discount_percent", 20) if res_row else 20
                     audit["total_expenses"] = int(audit["total_revenue"] * (100 - discount) / 100)
-
-            audit["net_profit"] = max(0, audit["total_revenue"] - audit["total_expenses"])
+                    audit["net_profit"] = max(0, audit["total_revenue"] - audit["total_expenses"])
         except Exception as e:
             logger.error(f"Error calculating monthly accounting audit: {e}")
         finally:
