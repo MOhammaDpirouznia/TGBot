@@ -71,7 +71,7 @@
                             {% for pid, p in plans.items() %}
                                 {% if p.get('is_active', True) %}
                                 <option value="{{ pid }}" data-price="{{ p['price'] }}" data-data="{{ p['data_limit'] }}" data-days="{{ p['duration'] }}">
-                                    {{ p['name'] }} — {{ p['data_limit'] }} گیگابایت ({{ p['duration'] }} روزه) — {{ "{:,}".format(p['price']) }} تومان
+                                    {% if p.get('is_exclusive_admin') %}👑 [اختصاصی مدیریت] {% endif %}{{ p['name'] }} — {{ p['data_limit'] }} گیگابایت ({{ p['duration'] }} روزه) — {{ "{:,}".format(p['price']) }} تومان
                                 </option>
                                 {% endif %}
                             {% endfor %}

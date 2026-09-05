@@ -7,6 +7,131 @@
     <h4><i class="fas fa-cog"></i> تنظیمات</h4>
 </div>
 
+<!-- کارت تنظیمات هویت بصری، نام فروشگاه، نسخه و کپی‌رایت -->
+<div class="card shadow-sm mb-4 border-0">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 text-primary fw-bold">
+            <i class="fas fa-palette text-primary me-2"></i> تنظیمات هویت بصری، نام فروشگاه، نسخه و کپی‌رایت
+        </h5>
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2">
+            <i class="fas fa-code-branch me-1"></i>نسخه فعال: {{ store_branding_config.store_version }}
+        </span>
+    </div>
+    <div class="card-body p-4">
+        <form action="{{ url_for('settings') }}" method="POST" enctype="multipart/form-data">
+            <input type="hidden" name="action" value="save_store_branding">
+            
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold small">
+                        <i class="fas fa-store me-1 text-primary"></i> نام کلی فروشگاه و سامانه:
+                    </label>
+                    <input type="text" name="store_name" class="form-control" value="{{ store_branding_config.store_name }}" placeholder="مثلاً: HiddiBot یا نوین‌نت" required>
+                    <div class="form-text small">این نام در بالای سایدبار، هدر موبایل، صفحه لاگین و عنوان صفحات نمایش داده می‌شود.</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold small">
+                        <i class="fas fa-eye-dropper me-1 text-primary"></i> رنگ سازمانی پنل (Primary Color):
+                    </label>
+                    <div class="d-flex align-items-center gap-2">
+                        <input type="color" name="store_primary_color" id="primaryColorPicker" class="form-control form-control-color" value="{{ store_branding_config.primary_color or '#4f46e5' }}" title="انتخاب رنگ سازمانی">
+                        <input type="text" class="form-control font-monospace" id="primaryColorHex" value="{{ store_branding_config.primary_color or '#4f46e5' }}">
+                    </div>
+                    <div class="form-text small">رنگ دکمه‌ها، آیکون‌ها و المان‌های شاخص پنل مدیریت و همکاران.</div>
+                </div>
+
+                <!-- تنظیمات ورژن -->
+                <div class="col-md-12">
+                    <div class="p-3 border rounded-3 bg-light">
+                        <label class="form-label fw-bold small d-block mb-2">
+                            <i class="fas fa-code-branch me-1 text-primary"></i> نحوه تعیین نسخه پنل (زیر لوگو و فوتر):
+                        </label>
+                        <div class="row g-3 align-items-center">
+                            <div class="col-md-4">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="radio" name="store_version_source" id="versionSourceManual" value="manual" {% if store_branding_config.store_version_source != 'github' %}checked{% endif %} onchange="toggleVersionInputs()">
+                                    <label class="form-check-label fw-semibold small" for="versionSourceManual">
+                                        تعیین دستی نسخه
+                                    </label>
+                                </div>
+                                <input type="text" name="store_version" id="manualVersionInput" class="form-control font-monospace" value="{{ store_branding_config.store_version }}" placeholder="مثلاً: v1.2.0 Beta">
+                            </div>
+                            <div class="col-md-8">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="radio" name="store_version_source" id="versionSourceGithub" value="github" {% if store_branding_config.store_version_source == 'github' %}checked{% endif %} onchange="toggleVersionInputs()">
+                                    <label class="form-check-label fw-semibold small" for="versionSourceGithub">
+                                        دریافت هوشمند آخرین نسخه از مخزن گیت‌هاب (GitHub Releases / Tags)
+                                    </label>
+                                </div>
+                                <div class="input-group">
+                                    <span class="input-group-text small bg-white text-muted">https://github.com/</span>
+                                    <input type="text" name="store_github_repo" id="githubRepoInput" class="form-control font-monospace" value="{{ store_branding_config.store_github_repo }}" placeholder="owner/repo (مثلاً: username/hiddibot)">
+                                </div>
+                                <div class="form-text small">در صورت فعال بودن، نسخه جدیدترین Release یا Tag ریپازیتوری به صورت خودکار زیر لوگو و در فوتر نمایش داده می‌شود.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- تنظیمات لوگو -->
+                <div class="col-md-6">
+                    <label class="form-label fw-bold small">
+                        <i class="fas fa-image me-1 text-primary"></i> لوگوی فروشگاه:
+                    </label>
+                    <div class="d-flex align-items-center gap-3 mb-2">
+                        {% if store_branding_config.logo_url %}
+                            <img src="{{ store_branding_config.logo_url }}" alt="لوگو" class="rounded border p-1 shadow-sm" style="width: 50px; height: 50px; object-fit: contain; background: #fff;">
+                        {% endif %}
+                        <div class="flex-grow-1">
+                            <input type="file" name="store_logo_file" class="form-control" accept="image/png,image/jpeg,image/webp,image/svg+xml">
+                            <div class="form-text small">آپلود تصویر جدید (PNG, JPG, SVG, WebP)</div>
+                        </div>
+                    </div>
+                    <div class="input-group mt-2">
+                        <span class="input-group-text small bg-white text-muted"><i class="fas fa-link"></i> یا لینک لوگو:</span>
+                        <input type="url" name="store_logo_url" class="form-control font-monospace" value="{{ store_branding_config.logo_url }}" placeholder="https://example.com/logo.png">
+                    </div>
+                </div>
+
+                <!-- تنظیمات کپی‌رایت -->
+                <div class="col-md-6">
+                    <label class="form-label fw-bold small">
+                        <i class="fas fa-copyright me-1 text-primary"></i> متن کپی‌رایت (نمایش در فوتر پنل نماینده و لاگین):
+                    </label>
+                    <textarea name="store_copyright" class="form-control" rows="3" placeholder="مثلاً: تمامی حقوق محفوظ است. قدرت گرفته از HiddiBot">{{ store_branding_config.footer_text }}</textarea>
+                    <div class="form-text small">این متن همراه با شماره نسخه در فوتر پنل همکاران و صفحه ورود نشان داده می‌شود.</div>
+                </div>
+            </div>
+
+            <div class="mt-4 text-end">
+                <button type="submit" class="btn btn-primary px-4 fw-bold">
+                    <i class="fas fa-floppy-disk me-1"></i> ذخیره تنظیمات هویت بصری و نسخه
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function toggleVersionInputs() {
+    const isGithub = document.getElementById('versionSourceGithub')?.checked;
+    const manualInput = document.getElementById('manualVersionInput');
+    const githubInput = document.getElementById('githubRepoInput');
+    if (manualInput) manualInput.disabled = isGithub;
+    if (githubInput) githubInput.disabled = !isGithub;
+}
+document.addEventListener('DOMContentLoaded', function() {
+    const picker = document.getElementById('primaryColorPicker');
+    const hex = document.getElementById('primaryColorHex');
+    if (picker && hex) {
+        picker.addEventListener('input', function() { hex.value = picker.value; });
+        hex.addEventListener('input', function() { picker.value = hex.value; });
+    }
+    toggleVersionInputs();
+});
+</script>
+
 <div class="row g-4">
     <div class="col-lg-6">
         <div class="card shadow-sm h-100">

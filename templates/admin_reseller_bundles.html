@@ -139,11 +139,19 @@
                             #{{ b.get('display_order', loop.index) }}
                         </td>
                         <td data-value="{{ b['title'] }}">
-                            <div class="fw-bold text-dark fs-6">{{ b['title'] }}</div>
-                            <code class="small text-muted font-monospace">{{ b['id'] }}</code>
-                            {% if b.get('description') %}
-                                <div class="small text-muted text-truncate" style="max-width: 250px;">{{ b['description'] }}</div>
-                            {% endif %}
+                            <div class="d-flex align-items-center gap-2">
+                                {% set bundle_icon = get_bundle_icon(b) %}
+                                <span class="d-inline-flex align-items-center justify-content-center rounded-circle shadow-sm flex-shrink-0" style="width: 36px; height: 36px; background: {{ bundle_icon.bg }}; color: {{ bundle_icon.color }};">
+                                    <i class="{{ bundle_icon.icon }}"></i>
+                                </span>
+                                <div>
+                                    <div class="fw-bold text-dark fs-6">{{ b['title'] }}</div>
+                                    <code class="small text-muted font-monospace">{{ b['id'] }}</code>
+                                    {% if b.get('description') %}
+                                        <div class="small text-muted text-truncate" style="max-width: 250px;">{{ b['description'] }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
                         </td>
                         <td data-value="{{ b['price'] or 0 }}">
                             <span class="text-dark fw-bold font-monospace fs-6">{{ "{:,}".format(b['price']) }} تومان</span>

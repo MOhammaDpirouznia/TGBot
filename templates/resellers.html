@@ -183,6 +183,9 @@
                                         {% else %}
                                             <span class="badge bg-light text-muted border px-1 py-0" style="font-size: 0.65rem;">آفلاین</span>
                                         {% endif %}
+                                        {% if r.get('can_gift_traffic') %}
+                                            <span class="badge bg-success-subtle text-success border border-success px-1 py-0" style="font-size: 0.65rem;" title="مجاز به اهدای حجم هدیه به مشتریان"><i class="fas fa-gift me-1"></i>حجم هدیه</span>
+                                        {% endif %}
                                     </div>
                                     <div class="d-flex align-items-center gap-1 mt-1 text-muted small">
                                         {% if r['telegram_id'] %}
@@ -929,6 +932,20 @@
                         </small>
                     </div>
 
+                    <!-- بخش دسترسی اهدای حجم هدیه به مشتری -->
+                    <div class="mb-3 border border-success p-3 rounded bg-success bg-opacity-10">
+                        <label class="form-label fw-bold text-success"><i class="fas fa-gift me-1"></i> دسترسی حجم هدیه رایگان به مشتریان:</label>
+                        <div class="form-check form-switch mb-1">
+                            <input class="form-check-input" type="checkbox" name="can_gift_traffic" id="canGiftTrafficEdit{{ r['id'] }}" value="1" {% if r.get('can_gift_traffic') %}checked{% endif %}>
+                            <label class="form-check-label fw-bold small text-dark" for="canGiftTrafficEdit{{ r['id'] }}">
+                                مجاز بودن نماینده برای اهدای حجم هدیه رایگان (GB) به مشتری در هنگام ساخت یا تمدید
+                            </label>
+                        </div>
+                        <div class="small text-muted" style="font-size: 0.75rem;">
+                            در صورت فعال بودن، نماینده می‌تواند هنگام ساخت کاربر یا تمدید، حجم دلخواهی به صورت هدیه اضافه کند بدون اینکه هزینه‌ای از موجودی کیف پول نماینده کسر شود.
+                        </div>
+                    </div>
+
                     <div class="mb-3 border p-3 rounded bg-light">
                         <label class="form-label fw-bold small text-primary"><i class="fas fa-server me-1"></i> تنظیمات ادمین اختصاصی در هیدیفای:</label>
                         <div class="input-group input-group-sm mb-2">
@@ -1032,6 +1049,19 @@
                             <label class="form-label small text-muted mb-1">سقف اولیه اعتبار خرید (تومان):</label>
                             <input type="number" step="10000" name="credit_limit" class="form-control form-control-sm font-monospace" value="0" placeholder="مثال: 1000000">
                         </div>
+                    </div>
+
+                    <!-- بخش دسترسی اهدای حجم هدیه به مشتری -->
+                    <div class="mb-3 border border-success p-2 rounded bg-success bg-opacity-10">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="can_gift_traffic" id="canGiftTrafficAdd" value="1">
+                            <label class="form-check-label fw-bold small text-dark" for="canGiftTrafficAdd">
+                                <i class="fas fa-gift text-success me-1"></i> دسترسی اهدای حجم هدیه به مشتریان (هنگام ساخت یا تمدید)
+                            </label>
+                        </div>
+                        <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">
+                            بدون کسر هزینه پلن از کیف پول نماینده.
+                        </small>
                     </div>
 
                     <div class="mb-3">

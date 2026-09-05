@@ -65,7 +65,16 @@
                     {% for pid, p in plans.items() %}
                     <tr>
                         <td class="ps-3" data-value="{{ pid }}"><code class="text-primary font-monospace">{{ pid }}</code></td>
-                        <td data-value="{{ p.name }}" class="fw-bold">{{ p.name }}</td>
+                        <td data-value="{{ p.name }}" class="fw-bold">
+                            {% set icon_info = get_plan_icon(p) %}
+                            <span class="d-inline-flex align-items-center justify-content-center me-2 rounded-circle shadow-sm" style="width: 32px; height: 32px; background-color: {{ icon_info.color }}22; color: {{ icon_info.color }};">
+                                <i class="{{ icon_info.icon }}"></i>
+                            </span>
+                            {{ p.name }}
+                            {% if p.is_exclusive_admin %}
+                                <span class="badge bg-warning text-dark border border-warning ms-1" style="font-size: 0.72rem;"><i class="fas fa-crown me-1"></i>اختصاصی مدیریت</span>
+                            {% endif %}
+                        </td>
                         <td data-value="{{ p.price or 0 }}"><span class="badge bg-success-subtle text-success fs-6 font-monospace">{{ "{:,}".format(p.price) }} تومان</span></td>
                         <td data-value="{{ p.data_limit or 0 }}">
                             {% if p.data_limit and p.data_limit > 0 %}
@@ -190,6 +199,10 @@
                     <tr class="{% if has_override %}table-warning bg-opacity-25 border-start border-warning border-3{% endif %}">
                         <td class="ps-3"><code class="font-monospace text-primary">{{ p.plan_id }}</code></td>
                         <td>
+                            {% set icon_info = get_plan_icon(p) %}
+                            <span class="d-inline-flex align-items-center justify-content-center me-2 rounded-circle" style="width: 28px; height: 28px; background-color: {{ icon_info.color }}22; color: {{ icon_info.color }};">
+                                <i class="{{ icon_info.icon }}"></i>
+                            </span>
                             <strong>{{ p.display_name }}</strong>
                             {% if p.custom_name %}
                                 <span class="badge bg-warning-subtle text-dark border border-warning ms-1 small">سفارشی</span>
@@ -326,7 +339,13 @@
                     {% for p in default_reseller_plans %}
                     <tr>
                         <td class="ps-3"><code class="font-monospace text-primary">{{ p.plan_id }}</code></td>
-                        <td class="fw-bold">{{ p.name }}</td>
+                        <td class="fw-bold">
+                            {% set icon_info = get_plan_icon(p) %}
+                            <span class="d-inline-flex align-items-center justify-content-center me-2 rounded-circle" style="width: 28px; height: 28px; background-color: {{ icon_info.color }}22; color: {{ icon_info.color }};">
+                                <i class="{{ icon_info.icon }}"></i>
+                            </span>
+                            {{ p.name }}
+                        </td>
                         <td><span class="badge bg-success-subtle text-success fs-6 font-monospace">{{ "{:,}".format(p.price) }} تومان</span></td>
                         <td><span class="badge bg-info-subtle text-info fs-6 font-monospace">{{ "{:,}".format(p.wholesale_price) }} تومان</span></td>
                         <td><span class="badge bg-light text-dark font-monospace">{{ p.data_limit }} گیگابایت</span></td>
@@ -385,11 +404,28 @@
                         <input type="number" name="duration" class="form-control font-monospace" value="{{ p.duration or 30 }}" required min="1">
                     </div>
                     <div class="mb-3">
+                        <label class="form-label fw-semibold">آیکون دلخواه (اختیاری):</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="{{ p.plan_icon or 'fas fa-shield-halved' }}"></i></span>
+                            <input type="text" name="plan_icon" class="form-control font-monospace" value="{{ p.plan_icon or '' }}" placeholder="مثلاً: fas fa-gem یا fas fa-crown (خالی = هوشمند)">
+                        </div>
+                        <small class="text-muted">در صورت خالی بودن، آیکون هوشمند بر اساس نوع و سطح پلن تخصیص داده می‌شود.</small>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label fw-semibold">وضعیت فروش</label>
                         <select name="is_active" class="form-select">
                             <option value="1" {% if p.is_active %}selected{% endif %}>🟢 فعال</option>
                             <option value="0" {% if not p.is_active %}selected{% endif %}>🔴 غیرفعال</option>
                         </select>
+                    </div>
+                    <div class="mb-3 p-3 border rounded bg-warning bg-opacity-10 border-warning">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" role="switch" name="is_exclusive_admin" id="editExclusive{{ pid }}" value="1" {% if p.is_exclusive_admin %}checked{% endif %}>
+                            <label class="form-check-label fw-bold text-dark" for="editExclusive{{ pid }}">
+                                👑 پلن اختصاصی مدیریت ارشد (مخفی از تمام نمایندگان و ربات)
+                            </label>
+                        </div>
+                        <div class="form-text text-muted small">این پلن فقط در پنل مدیریت مستقیم برای تعریف مشتریان ویژه قابل استفاده است و نمایندگان یا اعضای ربات عمومی به آن دسترسی ندارند.</div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -428,6 +464,20 @@
                     <div class="mb-3">
                         <label class="form-label fw-semibold">مدت زمان (روز)</label>
                         <input type="number" name="duration" class="form-control font-monospace" placeholder="مثال: 30" value="30" required min="1">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">آیکون دلخواه (اختیاری):</label>
+                        <input type="text" name="plan_icon" class="form-control font-monospace" placeholder="مثلاً: fas fa-gem یا fas fa-crown (خالی = هوشمند)">
+                        <small class="text-muted">در صورت خالی بودن، آیکون به صورت هوشمند طبق نام و حجم پلن انتخاب می‌شود.</small>
+                    </div>
+                    <div class="mb-3 p-3 border rounded bg-warning bg-opacity-10 border-warning">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" role="switch" name="is_exclusive_admin" id="addExclusiveSwitch" value="1">
+                            <label class="form-check-label fw-bold text-dark" for="addExclusiveSwitch">
+                                👑 پلن اختصاصی مدیریت ارشد (مخفی از تمام نمایندگان و ربات)
+                            </label>
+                        </div>
+                        <div class="form-text text-muted small">در صورت تیک زدن، این پلن به نمایندگان و ربات عمومی اضافه نمی‌شود و منحصراً در پنل مدیریت قابل استفاده است.</div>
                     </div>
                 </div>
                 <div class="modal-footer">

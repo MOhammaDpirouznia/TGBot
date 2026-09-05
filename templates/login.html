@@ -1,16 +1,25 @@
 {% extends "base.html" %}
 
-{% block title %}ورود به سامانه مدیریت و نمایندگی VPN{% endblock %}
+{% block title %}ورود به {{ branding.get('brand_title') or 'سامانه مدیریت و نمایندگی VPN' }}{% endblock %}
 
 {% block login_content %}
 <div class="container">
     <div class="row justify-content-center align-items-center" style="min-height: 100vh; padding: 20px 0;">
         <div class="col-md-5 col-lg-4">
             <div class="card shadow-lg border-0" style="border-radius: 20px; overflow: hidden;">
-                <div class="card-header text-center py-4" style="background: linear-gradient(135deg, #4f46e5 0%, #0ea5e9 100%); color: white;">
-                    <i class="fas fa-shield-halved fa-3x mb-2"></i>
-                    <h3 class="fw-bold mb-1">سامانه هوشمند VPN</h3>
-                    <p class="small mb-0 opacity-75">ورود مدیران و همکاران فروش</p>
+                <div class="card-header text-center py-4" style="background: linear-gradient(135deg, var(--primary, #4f46e5) 0%, #0ea5e9 100%); color: white;">
+                    {% if branding.get('logo_url') %}
+                        <div class="d-flex justify-content-center mb-2">
+                            <img src="{{ branding.get('logo_url') }}" alt="لوگو" class="shadow-sm" style="max-height: 64px; max-width: 64px; object-fit: contain; border-radius: 12px; background: rgba(255,255,255,0.15); padding: 4px;">
+                        </div>
+                    {% else %}
+                        <i class="fas fa-shield-halved fa-3x mb-2"></i>
+                    {% endif %}
+                    <h4 class="fw-bold mb-1">{{ branding.get('brand_title') or 'سامانه هوشمند VPN' }}</h4>
+                    <p class="small mb-2 opacity-75">ورود مدیران و همکاران فروش</p>
+                    <span class="badge bg-white bg-opacity-25 text-white border border-white border-opacity-25 font-monospace" style="font-size: 0.72rem;">
+                        <i class="fas fa-code-branch me-1"></i>نسخه {{ branding.get('store_version') or 'v0.0.1 Beta' }}
+                    </span>
                 </div>
                 <div class="card-body p-4">
                     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -57,7 +66,8 @@
                     </form>
                 </div>
                 <div class="card-footer bg-light text-center py-3">
-                    <small class="text-muted"><i class="fas fa-lock me-1"></i> ارتباط امن و رمزنگاری شده</small>
+                    <div class="small text-muted mb-1">{{ branding.get('footer_text') or 'تمامی حقوق برای مدیریت محفوظ است.' }}</div>
+                    <small class="text-muted opacity-75"><i class="fas fa-lock me-1"></i> ارتباط امن و رمزنگاری شده</small>
                 </div>
             </div>
         </div>
