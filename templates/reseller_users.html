@@ -55,9 +55,15 @@
     <a href="{{ url_for('reseller_users', status='expired', per_page=per_page) }}" class="btn btn-sm {{ 'btn-secondary' if status_filter == 'expired' else 'btn-outline-secondary' }}">
         غیرفعال / منقضی
     </a>
+    <a href="{{ url_for('reseller_users', status='queue', per_page=per_page) }}" class="btn btn-sm {{ 'btn-info text-dark fw-bold shadow-sm' if status_filter == 'queue' else 'btn-outline-info' }}" title="مشاهده مشتریانی که بسته رزرو در صف تمدید دارند">
+        <i class="fas fa-layer-group me-1"></i> ⏳ صف تمدید ({{ queue_count or 0 }})
+    </a>
     <a href="{{ url_for('reseller_users', status='deleted', per_page=per_page) }}" class="btn btn-sm {{ 'btn-danger text-white fw-bold shadow-sm' if status_filter == 'deleted' else 'btn-outline-danger' }}">
         <i class="fas fa-trash-can me-1"></i> سطل زباله ({{ stats.get('deleted_users_count', 0) }})
     </a>
+    <button type="button" class="btn btn-sm btn-outline-info fw-bold shadow-sm ms-auto" data-bs-toggle="modal" data-bs-target="#resellerAllQueueModal" title="مشاهده یکجای همه صف‌های تمدید">
+        <i class="fas fa-layer-group me-1"></i> همه صف‌های تمدید ({{ queue_count or 0 }})
+    </button>
 </div>
 
 <div class="card shadow-sm border-0">
@@ -73,6 +79,8 @@
                 <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-wifi me-1"></i>فیلتر: فقط متصلین آنلاین</span>
             {% elif status_filter == 'deleted' %}
                 <span class="badge bg-danger text-white"><i class="fas fa-trash-can me-1"></i>حالت: سطل زباله (مهلت بازگردانی ۷ روز)</span>
+            {% elif status_filter == 'queue' %}
+                <span class="badge bg-info text-dark shadow-sm"><i class="fas fa-layer-group me-1"></i>فیلتر: مشتریان دارای بسته در صف تمدید ({{ total_count }})</span>
             {% endif %}
         </div>
         <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -104,6 +112,18 @@
         </div>
     </div>
     <div class="card-body p-0">
+        {% if status_filter == 'queue' %}
+        <div class="p-3 bg-info bg-opacity-10 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div>
+                <span class="badge bg-info text-dark rounded-pill px-3 py-2 fs-6">
+                    <i class="fas fa-layer-group me-1"></i> صف تمدید هوشمند مشتریان شما ({{ total_count }} مشتری)
+                </span>
+                <small class="text-secondary ms-2 d-none d-md-inline">
+                    <i class="fas fa-info-circle me-1 text-info"></i> بسته‌ها پس از اتمام ۹۹٪ حجم یا در روز پایانی، بدون قطعی به طور خودکار فعال خواهند شد.
+                </small>
+            </div>
+        </div>
+        {% endif %}
         <div class="table-responsive">
             {% if status_filter == 'deleted' %}
             <!-- نوار ابزار و مرتب‌سازی سطل زباله -->
@@ -267,7 +287,7 @@
                                              <span class="badge bg-warning text-dark py-0 px-1" title="مشتری طلایی (VIP)"><i class="fas fa-crown"></i> VIP</span>
                                         {% endif %}
                                         {% if sub.get('has_queue') %}
-                                            <span class="badge bg-info text-dark py-0 px-2 shadow-sm" style="font-size: 0.7rem;" title="دارای بسته رزرو در صف: {{ sub['pending_queue']['plan_name'] }}">
+                                            <span class="badge bg-info text-dark py-0 px-2 shadow-sm cursor-pointer" role="button" data-bs-toggle="modal" data-bs-target="#customerQueueModal{{ sub['id'] }}" style="font-size: 0.7rem;" title="مشاهده و مدیریت بسته در صف: {{ sub['pending_queue']['plan_name'] }}">
                                                 <i class="fas fa-layer-group me-1"></i> بسته در صف: {{ sub['pending_queue']['plan_name'] }}
                                             </span>
                                         {% endif %}
@@ -457,6 +477,14 @@
                                     <span class="d-none d-md-inline">تمدید</span>
                                 </button>
 
+                                {% if sub.get('has_queue') %}
+                                <!-- دکمه سریع مشاهده صف تمدید -->
+                                <button type="button" class="btn btn-sm btn-info text-dark d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" data-bs-toggle="modal" data-bs-target="#customerQueueModal{{ sub['id'] }}" title="مشاهده بسته در صف تمدید">
+                                    <i class="fas fa-layer-group"></i>
+                                    <span class="d-none d-md-inline">صف</span>
+                                </button>
+                                {% endif %}
+
                                 <!-- ۳. دکمه اصلی و جامع: مدیریت، بارکدها و لینک‌ها -->
                                 <button type="button" class="btn btn-sm btn-primary d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" data-bs-toggle="modal" data-bs-target="#customerDetailModal{{ sub['id'] }}" title="مشاهده بارکدها، لینک‌های اتصال و مدیریت کامل اشتراک">
                                     <i class="fas fa-qrcode"></i>
@@ -601,6 +629,43 @@
                 </div>
             </div>
             <div class="modal-body p-4">
+                {% if sub.get('has_queue') %}
+                {% set q = sub['pending_queue'] %}
+                <!-- نوار برجسته بسته در صف تمدید -->
+                <div class="card border-info bg-info bg-opacity-10 shadow-sm mb-4">
+                    <div class="card-body p-3">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <div>
+                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                    <span class="badge bg-info text-dark fs-6"><i class="fas fa-layer-group me-1"></i> بسته رزرو در صف تمدید</span>
+                                    <strong class="text-dark fs-6">{{ q['plan_name'] }}</strong>
+                                    <span class="badge bg-primary">{{ q['data_limit'] }} گیگ - {{ q['duration'] }} روز</span>
+                                </div>
+                                <div class="small text-muted mt-1">
+                                    <span><i class="fas fa-money-bill-wave me-1"></i>هزینه کسر شده: <strong>{{ "{:,}".format(q['cost']) if q['cost'] else 'رایگان' }} ت</strong></span> |
+                                    <span><i class="fas fa-clock me-1"></i>ثبت در صف: <strong>{{ q['created_at']|gregorian_clean }}</strong></span>
+                                </div>
+                                <div class="small text-primary mt-1">
+                                    <i class="fas fa-circle-info me-1"></i><strong>فعال‌سازی خودکار:</strong> پس از مصرف ۹۹٪ حجم بسته فعلی یا در روز پایانی اشتراک
+                                </div>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <form method="POST" action="{{ url_for('reseller_queue_activate', queue_id=q['id']) }}" class="m-0" onsubmit="return confirm('آیا می‌خواهید این بسته هم‌اکنون به صورت آنی فعال و ریست شود؟');">
+                                    <button type="submit" class="btn btn-success btn-sm fw-bold shadow-sm">
+                                        <i class="fas fa-bolt me-1"></i> فعال‌سازی آنی
+                                    </button>
+                                </form>
+                                <form method="POST" action="{{ url_for('reseller_queue_cancel', queue_id=q['id']) }}" class="m-0" onsubmit="return confirm('آیا از لغو این بسته از صف تمدید و بازگشت هزینه به کیف‌پول اطمینان دارید؟');">
+                                    <button type="submit" class="btn btn-outline-danger btn-sm" title="لغو رزرو و استرداد وجه">
+                                        <i class="fas fa-times me-1"></i> لغو و استرداد
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
                 <!-- بخش بارکدها و لینک‌های اتصال -->
                 <div class="row g-3 mb-4">
                     <!-- ۱. لینک سابسکریپشن -->
@@ -724,6 +789,10 @@
                     <!-- دکمه تمدید -->
                     <button type="button" class="btn btn-outline-success flex-grow-1 py-2" data-bs-toggle="modal" data-bs-target="#renewModal{{ sub['id'] }}">
                         <i class="fas fa-arrows-rotate me-1"></i> تمدید اشتراک
+                    </button>
+                    <!-- دکمه صف تمدید -->
+                    <button type="button" class="btn {% if sub.get('has_queue') %}btn-info text-dark fw-bold shadow-sm{% else %}btn-outline-info{% endif %} flex-grow-1 py-2" data-bs-toggle="modal" data-bs-target="#customerQueueModal{{ sub['id'] }}">
+                        <i class="fas fa-layer-group me-1"></i> صف تمدید {% if sub.get('has_queue') %}<span class="badge bg-danger text-white ms-1">۱ بسته</span>{% endif %}
                     </button>
                     <!-- دکمه ویرایش -->
                     <button type="button" class="btn btn-outline-primary flex-grow-1 py-2" data-bs-toggle="modal" data-bs-target="#editModal{{ sub['id'] }}">
@@ -907,6 +976,94 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Modal اختصاصی صف تمدید مشتری ─── -->
+<div class="modal fade text-start" id="customerQueueModal{{ sub['id'] }}" tabindex="-1" aria-labelledby="customerQueueModalLabel{{ sub['id'] }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-info bg-opacity-25 py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <img src="{{ avatar_url(sub['phone_number'] or sub['account_name'] or 'Customer') }}" class="rounded-circle border shadow-sm" style="width: 38px; height: 38px; object-fit: cover;">
+                    <div>
+                        <h5 class="modal-title fw-bold text-dark mb-0" id="customerQueueModalLabel{{ sub['id'] }}">
+                            <i class="fas fa-layer-group text-primary me-1"></i> صف تمدید: {{ sub['account_name'] }}
+                        </h5>
+                        <small class="text-muted font-monospace">شناسه: #{{ sub['id'] }} | پلن فعلی: {{ sub['plan_name'] }}</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                {% if sub.get('has_queue') %}
+                {% set q = sub['pending_queue'] %}
+                <div class="card border-primary border-opacity-50 shadow-sm mb-3">
+                    <div class="card-header bg-primary bg-opacity-10 py-2 d-flex justify-content-between align-items-center">
+                        <span class="fw-bold text-primary small"><i class="fas fa-box-archive me-1"></i> بسته رزرو شده در انتظار فعال‌سازی</span>
+                        <span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i>در صف رزرو</span>
+                    </div>
+                    <div class="card-body p-3">
+                        <div class="text-center mb-3">
+                            <h5 class="fw-bold text-dark mb-1">{{ q['plan_name'] }}</h5>
+                            <span class="badge bg-primary fs-6 px-3 py-1">{{ q['data_limit'] }} گیگابایت - {{ q['duration'] }} روز</span>
+                        </div>
+                        <ul class="list-group list-group-flush small mb-3">
+                            <li class="list-group-item d-flex justify-content-between px-0 py-2">
+                                <span class="text-muted"><i class="fas fa-money-bill-wave me-1"></i>هزینه کسر شده:</span>
+                                <strong>{{ "{:,}".format(q['cost']) if q['cost'] else 'رایگان' }} تومان</strong>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between px-0 py-2">
+                                <span class="text-muted"><i class="fas fa-calendar-plus me-1"></i>زمان ثبت در صف:</span>
+                                <strong class="font-monospace" dir="ltr">{{ q['created_at']|gregorian_clean }}</strong>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between px-0 py-2">
+                                <span class="text-muted"><i class="fas fa-hashtag me-1"></i>شناسه پلن:</span>
+                                <span class="font-monospace text-secondary">{{ q['plan_id'] }}</span>
+                            </li>
+                            {% if q.get('note') %}
+                            <li class="list-group-item d-flex justify-content-between px-0 py-2">
+                                <span class="text-muted"><i class="fas fa-note-sticky me-1"></i>توضیحات:</span>
+                                <span>{{ q['note'] }}</span>
+                            </li>
+                            {% endif %}
+                        </ul>
+
+                        <div class="alert alert-info py-2 px-3 small mb-0">
+                            <div class="fw-bold mb-1"><i class="fas fa-bolt text-warning me-1"></i> شرایط فعال‌سازی هوشمند خودکار:</div>
+                            این بسته به محض مصرف <strong>۹۹٪ حجم اشتراک فعلی</strong> یا رسیدن به <strong>روز پایانی اعتبار</strong> به صورت کاملاً خودکار، بدون قطعی و با صفر شدن حجم مصرفی فعال می‌گردد.
+                        </div>
+                    </div>
+                    <div class="card-footer bg-light p-3 d-flex gap-2">
+                        <form method="POST" action="{{ url_for('reseller_queue_activate', queue_id=q['id']) }}" class="flex-grow-1 m-0" onsubmit="return confirm('آیا از فعال‌سازی آنی این بسته همین حالا اطمینان دارید؟ مصرف صفر شده و بسته بلافاصله جایگزین خواهد شد.');">
+                            <button type="submit" class="btn btn-success w-100 fw-bold py-2 shadow-sm">
+                                <i class="fas fa-bolt me-1"></i> فعال‌سازی آنی
+                            </button>
+                        </form>
+                        <form method="POST" action="{{ url_for('reseller_queue_cancel', queue_id=q['id']) }}" class="m-0" onsubmit="return confirm('آیا از لغو این بسته از صف تمدید اطمینان دارید؟ مبلغ به کیف‌پول شما بازگردانده خواهد شد.');">
+                            <button type="submit" class="btn btn-outline-danger py-2" title="لغو رزرو و استرداد وجه به کیف‌پول">
+                                <i class="fas fa-trash-can me-1"></i> لغو و استرداد
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <div class="bg-light rounded-circle mx-auto d-flex align-items-center justify-content-center mb-3 text-muted" style="width: 64px; height: 64px;">
+                        <i class="fas fa-layer-group fs-2"></i>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">صف تمدید این اشتراک خالی است</h6>
+                    <p class="text-muted small mb-3">در حال حاضر هیچ بسته تمدیدی در صف رزرو خودکار این اشتراک قرار ندارد.</p>
+                    <button type="button" class="btn btn-primary btn-sm px-3" data-bs-dismiss="modal" data-bs-toggle="modal" data-bs-target="#renewModal{{ sub['id'] }}">
+                        <i class="fas fa-plus me-1"></i> رزرو بسته جدید در صف تمدید
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+            <div class="modal-footer py-2 bg-light">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">بستن</button>
+            </div>
         </div>
     </div>
 </div>
@@ -1273,6 +1430,120 @@
     </div>
 </div>
 {% endfor %}
+
+<!-- ─── Modal جامع مشاهده و مدیریت همه صف‌های تمدید نماینده ─── -->
+<div class="modal fade text-start" id="resellerAllQueueModal" tabindex="-1" aria-labelledby="resellerAllQueueModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-dark text-white py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-info text-dark fs-6"><i class="fas fa-layer-group me-1"></i></span>
+                    <h5 class="modal-title fw-bold mb-0" id="resellerAllQueueModalLabel">
+                        لیست صف‌های تمدید مشتریان شما
+                    </h5>
+                    <span class="badge bg-primary rounded-pill px-2">{{ all_pending_queue|length if all_pending_queue else 0 }} بسته در صف</span>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <!-- نوار ابزار بالای مودال صف -->
+                <div class="p-3 bg-light border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="input-group input-group-sm" style="min-width: 260px;">
+                            <span class="input-group-text bg-white"><i class="fas fa-search text-muted"></i></span>
+                            <input type="text" id="resellerQueueModalSearchInput" class="form-control" placeholder="فیلتر سریع در صف (نام، پلن...)" onkeyup="filterResellerQueueModalTable(this.value)">
+                        </div>
+                    </div>
+                </div>
+
+                {% if all_pending_queue %}
+                <div class="table-responsive" style="max-height: 520px; overflow-y: auto;">
+                    <table class="table table-hover align-middle mb-0" id="resellerAllQueueModalTable">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th style="width: 40px;" class="text-center">#</th>
+                                <th>مشتری / اکانت</th>
+                                <th>وضعیت فعلی اشتراک</th>
+                                <th>بسته رزرو در صف تمدید</th>
+                                <th>زمان ثبت در صف</th>
+                                <th class="text-end pe-3">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in all_pending_queue %}
+                            <tr class="reseller-queue-modal-row" data-search="{{ (item['account_name'] or '') ~ ' ' ~ (item['plan_name'] or '') ~ ' ' ~ (item['phone_number'] or '') }}">
+                                <td class="text-center text-muted font-monospace small">{{ loop.index }}</td>
+                                <td>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <img src="{{ avatar_url(item['phone_number'] or item['account_name'] or 'Customer') }}" 
+                                             class="rounded-circle border shadow-sm flex-shrink-0" 
+                                             style="width: 34px; height: 34px; object-fit: cover;">
+                                        <div>
+                                            <strong class="text-primary d-block">{{ item['account_name'] or 'بدون نام' }}</strong>
+                                            <small class="text-muted font-monospace">شناسه: #{{ item['subscription_id'] }}</small>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="small">
+                                        <div>مصرف: <strong class="font-monospace text-dark" dir="ltr">{{ "%.1f"|format(item['curr_used'] or 0) }} / {{ item['curr_limit'] or 0 }} GB</strong></div>
+                                        {% if item.get('curr_expire_date') %}
+                                            <span class="text-muted font-monospace" style="font-size: 11px;">انقضا: {{ item['curr_expire_date'][:10] }}</span>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                                <td>
+                                    <div>
+                                        <strong class="text-success d-block"><i class="fas fa-layer-group me-1 text-primary"></i>{{ item['plan_name'] }}</strong>
+                                        <div class="small text-muted">
+                                            <span>{{ item['data_limit'] }} گیگ</span> |
+                                            <span>{{ item['duration'] }} روز</span> |
+                                            <span>{{ "{:,}".format(item['cost']) if item['cost'] else 'رایگان' }} ت</span>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="font-monospace small text-muted" dir="ltr">{{ item['created_at']|gregorian_clean }}</span>
+                                </td>
+                                <td class="text-end pe-3">
+                                    <div class="d-inline-flex gap-1">
+                                        <form method="POST" action="{{ url_for('reseller_queue_activate', queue_id=item['id']) }}" class="m-0" onsubmit="return confirm('آیا از فعال‌سازی آنی این بسته برای «{{ item['account_name'] }}» اطمینان دارید؟');">
+                                            <button type="submit" class="btn btn-sm btn-success fw-bold px-2 py-1" title="فعال‌سازی آنی بسته و ریست مصرف">
+                                                <i class="fas fa-bolt me-1"></i> فعال‌سازی آنی
+                                            </button>
+                                        </form>
+                                        <form method="POST" action="{{ url_for('reseller_queue_cancel', queue_id=item['id']) }}" class="m-0" onsubmit="return confirm('آیا از لغو این بسته از صف تمدید اطمینان دارید؟ هزینه کسر شده به کیف‌پول شما مسترد خواهد شد.');">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger px-2 py-1" title="لغو بسته و استرداد وجه">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </form>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary px-2 py-1" data-bs-dismiss="modal" data-bs-toggle="modal" data-bs-target="#customerDetailModal{{ item['subscription_id'] }}" title="مشاهده مشخصات مشتری">
+                                            <i class="fas fa-user-gear"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-5">
+                    <div class="bg-light rounded-circle mx-auto d-flex align-items-center justify-content-center mb-3 text-muted" style="width: 72px; height: 72px;">
+                        <i class="fas fa-layer-group fs-1 opacity-50"></i>
+                    </div>
+                    <h5 class="fw-bold text-dark mb-1">هیچ بسته‌ای در صف تمدید نیست</h5>
+                    <p class="text-muted small mb-0">در حال حاضر هیچ بسته رزروی در صف انتظار مشتریان شما قرار ندارد.</p>
+                </div>
+                {% endif %}
+            </div>
+            <div class="modal-footer py-2 bg-light d-flex justify-content-between">
+                <small class="text-muted"><i class="fas fa-info-circle me-1"></i> بسته‌های رزرو در صف تمدید پس از مصرف ۹۹٪ حجم یا در روز پایانی اشتراک، به صورت خودکار فعال خواهند شد.</small>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">بستن</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- ─── Modal غیرفعال‌سازی گروهی ─── -->
 <div class="modal fade text-start" id="bulkDisableModal" tabindex="-1" aria-hidden="true">
@@ -2045,6 +2316,14 @@ function submitBulkDelete() {
     customReasonInput.value = modalForm.querySelector('input[name="custom_reason"]').value;
 
     form.submit();
+}
+
+function filterResellerQueueModalTable(val) {
+    val = (val || '').toLowerCase().trim();
+    document.querySelectorAll('#resellerAllQueueModalTable .reseller-queue-modal-row').forEach(function(row) {
+        var text = (row.getAttribute('data-search') || '').toLowerCase();
+        row.style.display = (!val || text.indexOf(val) !== -1) ? '' : 'none';
+    });
 }
 </script>
 
