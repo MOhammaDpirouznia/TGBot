@@ -188,6 +188,101 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         </div>
     </div>
+
+<!-- کارت تنظیمات پورتال اختصاصی مشتری و پروکسی پچ -->
+<div class="card shadow-sm mb-4 border-0">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 text-primary fw-bold">
+            <i class="fas fa-user-shield text-info me-2"></i> تنظیمات پورتال اختصاصی مشتری و پروکسی پچ
+        </h5>
+        <span class="badge bg-info-subtle text-info border border-info-subtle px-3 py-2">
+            <i class="fas fa-globe me-1"></i>پورتال دائمی هوشمند
+        </span>
+    </div>
+    <div class="card-body p-4">
+        <p class="text-muted">
+            هر مشتری دارای یک صفحه اختصاصی دائمی به آدرس <code>https://domain/ProxyPatch/UUID</code> است که از طریق آن می‌تواند وضعیت اشتراک (حجم باقیمانده، روزهای باقیمانده، وضعیت اتصال)، دریافت لینک ساب و کانفیگ تکی، و تمدید هوشمند حساب خود را انجام دهد. در این بخش می‌توانید تنظیمات این پورتال را سفارشی‌سازی کنید.
+        </p>
+
+        <form action="{{ url_for('settings') }}" method="POST">
+            <input type="hidden" name="action" value="save_customer_portal_settings">
+            
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold small">
+                        <i class="fas fa-route me-1 text-primary"></i> پروکسی پچ اختصاصی مشتری (Proxy Path):
+                    </label>
+                    <div class="input-group">
+                        <span class="input-group-text font-monospace small" style="direction: ltr;">https://domain/</span>
+                        <input type="text" name="user_proxy_path" class="form-control font-monospace" value="{{ customer_portal_config.user_proxy_path }}" placeholder="user یا sub یا client" required style="direction: ltr;">
+                        <span class="input-group-text font-monospace small" style="direction: ltr;">/{uuid}</span>
+                    </div>
+                    <div class="form-text small">
+                        مسیر پیش‌فرض معمولاً <code>user</code> است. تغییر این مسیر، آدرس اشتراک ساب و پورتال مشتریان مستقیم ادمین را مطابق ساختار سرور تغییر می‌دهد.
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold small">
+                        <i class="fas fa-heading me-1 text-primary"></i> عنوان بالای پورتال مشتری:
+                    </label>
+                    <input type="text" name="portal_title" class="form-control" value="{{ customer_portal_config.portal_title }}" placeholder="مثلاً: فروشگاه اینترنت آزاد یا VIP VPN">
+                    <div class="form-text small">این عنوان در سربرگ و هدر صفحه پورتال اختصاصی مشتریان ادمین درج می‌شود.</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold small">
+                        <i class="fas fa-align-right me-1 text-primary"></i> زیرعنوان و شعار پورتال:
+                    </label>
+                    <input type="text" name="portal_subtitle" class="form-control" value="{{ customer_portal_config.portal_subtitle }}" placeholder="مثلاً: پورتال اختصاصی استعلام وضعیت و تمدید اشتراک">
+                    <div class="form-text small">توضیح یا شعاری که زیر عنوان پورتال نمایش داده می‌شود.</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold small">
+                        <i class="fas fa-phone-alt me-1 text-success"></i> شماره تماس پشتیبانی (پاورقی پورتال):
+                    </label>
+                    <input type="text" name="support_phone" class="form-control" style="direction: ltr; text-align: right;" value="{{ customer_portal_config.support_phone }}" placeholder="مثلاً: 09123456789">
+                    <div class="form-text small">شماره تماسی که در بخش تماس با ما و پاورقی پورتال برای مشتریان ادمین قرار می‌گیرد.</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold small">
+                        <i class="fab fa-telegram me-1 text-info"></i> آیدی تلگرام پشتیبانی (بدون @):
+                    </label>
+                    <div class="input-group">
+                        <span class="input-group-text">@</span>
+                        <input type="text" name="support_username" class="form-control font-monospace" value="{{ customer_portal_config.support_username }}" placeholder="support_username" style="direction: ltr;">
+                    </div>
+                    <div class="form-text small">دکمه چت با پشتیبانی در تلگرام در انتهای پورتال مشتری تعبیه خواهد شد.</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold small d-block">
+                        <i class="fas fa-sliders-h me-1 text-warning"></i> امکانات و دسترسی‌های پورتال:
+                    </label>
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" name="portal_enable_renewal" id="portalEnableRenewal" value="1" {% if customer_portal_config.portal_enable_renewal %}checked{% endif %}>
+                        <label class="form-check-label fw-semibold small" for="portalEnableRenewal">
+                            امکان تمدید هوشمند آنلاین در پورتال (کارت‌به‌کارت / درگاه)
+                        </label>
+                    </div>
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" name="portal_show_troubleshoot" id="portalShowTroubleshoot" value="1" {% if customer_portal_config.portal_show_troubleshoot %}checked{% endif %}>
+                        <label class="form-check-label fw-semibold small" for="portalShowTroubleshoot">
+                            نمایش دکمه و لینک راهنما و عیب‌یابی اتصال در بالای پورتال
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-4 pt-3 border-top text-end">
+                <button type="submit" class="btn btn-primary px-4">
+                    <i class="fas fa-save me-1"></i> ذخیره تنظیمات پورتال مشتری
+                </button>
+            </div>
+        </form>
+    </div>
 </div>
 
 <!-- کارت ساخت و تنظیم قالب لینک اتصال تکی (پروتکل VMess JSON) -->

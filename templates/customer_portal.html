@@ -83,25 +83,71 @@
 
     <!-- کارت وضعیت اشتراک -->
     <div class="glass-card p-4 mb-4">
-        <div class="d-flex justify-content-between align-items-center mb-3">
+        <!-- سربرگ نام مشتری و دکمه‌های فشرده دسترسی سریع -->
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-3 border-bottom border-secondary border-opacity-25">
             <div>
-                <span class="text-secondary small d-block">نام اشتراک:</span>
-                <h5 class="fw-bold mb-0 text-white font-monospace">{{ sub.get('account_name') or 'کاربر گرامی' }}</h5>
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <h5 class="fw-bold mb-0 text-white font-monospace">{{ sub.get('account_name') or 'کاربر گرامی' }}</h5>
+                    {% if sub.get('status') == 'active' %}
+                        <span class="badge bg-success-subtle text-success border border-success px-2 py-1 rounded-pill small">
+                            <i class="fas fa-circle-check me-1"></i> فعال
+                        </span>
+                    {% elif sub.get('status') == 'expired' %}
+                        <span class="badge bg-danger-subtle text-danger border border-danger px-2 py-1 rounded-pill small">
+                            <i class="fas fa-triangle-exclamation me-1"></i> منقضی شده
+                        </span>
+                    {% else %}
+                        <span class="badge bg-secondary px-2 py-1 rounded-pill small">{{ sub.get('status') }}</span>
+                    {% endif %}
+                </div>
+                <span class="text-secondary small">پورتال هوشمند و اختصاصی اشتراک</span>
             </div>
-            <div>
-                {% if sub.get('status') == 'active' %}
-                    <span class="badge bg-success-subtle text-success border border-success px-3 py-2 rounded-pill">
-                        <i class="fas fa-circle-check me-1"></i> فعال
-                    </span>
-                {% elif sub.get('status') == 'expired' %}
-                    <span class="badge bg-danger-subtle text-danger border border-danger px-3 py-2 rounded-pill">
-                        <i class="fas fa-triangle-exclamation me-1"></i> منقضی شده
-                    </span>
-                {% else %}
-                    <span class="badge bg-secondary px-3 py-2 rounded-pill">{{ sub.get('status') }}</span>
+
+            <!-- دکمه‌های فشرده کنار نام مشتری -->
+            <div class="d-flex flex-wrap gap-1 align-items-center">
+                {% if sub_url %}
+                <button type="button" class="btn btn-sm btn-outline-light py-1 px-2" style="font-size: 0.8rem;" onclick="copyText('{{ sub_url }}', 'لینک اشتراک')" title="کپی لینک ساب">
+                    <i class="fas fa-link me-1 text-primary"></i>کپی ساب
+                </button>
+                {% endif %}
+
+                {% if single_url %}
+                <button type="button" class="btn btn-sm btn-outline-light py-1 px-2" style="font-size: 0.8rem;" onclick="copyText('{{ single_url }}', 'کانفیگ تکی')" title="کپی کانفیگ تکی">
+                    <i class="fas fa-bolt me-1 text-warning"></i>کانفیگ تکی
+                </button>
+                {% endif %}
+
+                {% if sub_url %}
+                <button type="button" class="btn btn-sm btn-outline-light py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#qrCodeModal" title="مشاهده بارکد QR">
+                    <i class="fas fa-qrcode me-1 text-info"></i>بارکد QR
+                </button>
+                {% endif %}
+
+                {% if portal_show_troubleshoot and troubleshoot_url %}
+                <a href="{{ troubleshoot_url }}" target="_blank" class="btn btn-sm btn-outline-warning py-1 px-2" style="font-size: 0.8rem;" title="آموزش و رفع مشکل اتصال">
+                    <i class="fas fa-circle-question me-1"></i>راهنما و رفع مشکل
+                </a>
                 {% endif %}
             </div>
         </div>
+
+        <!-- اعلان بسته رزرو در صف در صورت وجود -->
+        {% if pending_queue %}
+        <div class="p-3 mb-3 rounded-3 border border-info border-opacity-50" style="background: rgba(6, 182, 212, 0.1);">
+            <div class="d-flex align-items-start gap-2">
+                <i class="fas fa-boxes-stacked text-info fs-4 mt-1"></i>
+                <div>
+                    <div class="fw-bold text-info small">بسته رزرو در صف انتظار دارید:</div>
+                    <div class="text-white small mt-1">
+                        بسته <strong>«{{ pending_queue.get('plan_name') or 'بسته رزرو' }}»</strong> با ظرفیت <strong>{{ pending_queue.get('data_limit') }} گیگابایت</strong> و <strong>{{ pending_queue.get('duration') }} روز</strong> زمان.
+                    </div>
+                    <div class="text-secondary small mt-1" style="font-size: 0.75rem;">
+                        <i class="fas fa-info-circle me-1"></i> به محض اتمام حجم یا پایان مهلت انقضای بسته فعلی، این بسته به صورت کاملاً خودکار برای شما فعال خواهد شد.
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
 
         <!-- نوار پیشرفت مصرف حجم -->
         {% set used_gb = sub.get('data_used', 0) | float %}
@@ -136,31 +182,44 @@
             </div>
         </div>
 
-        <!-- دکمه‌های اتصال و QR Code -->
-        {% if sub_link %}
+        <!-- دکمه‌های اتصال سریع به نرم‌افزارها -->
+        {% set actual_sub_url = sub_url or sub_link %}
+        {% if actual_sub_url %}
         <div class="mt-3 pt-3 border-top border-secondary border-opacity-25">
-            <div class="d-flex gap-2 mb-2">
-                <button class="btn btn-outline-light flex-grow-1 copy-btn" onclick="copyText('{{ sub_link }}', 'لینک اشتراک')">
-                    <i class="fas fa-copy me-1"></i> کپی لینک اتصال
-                </button>
-                <button class="btn btn-outline-info" type="button" data-bs-toggle="collapse" data-bs-target="#qrCodeCollapse">
-                    <i class="fas fa-qrcode me-1"></i> بارکد QR
-                </button>
-            </div>
-            
-            <div class="collapse text-center p-3 rounded bg-black bg-opacity-40 mb-2" id="qrCodeCollapse">
-                <p class="small text-secondary mb-2">برای اتصال سریع، بارکد زیر را با اپلیکیشن فیلترشکن خود (v2rayNG / Streisand / Happ / Nekoray) اسکن کنید:</p>
-                <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={{ sub_link|urlencode }}" alt="QR Code" class="img-fluid rounded border border-secondary shadow" style="max-width: 180px;">
-            </div>
-
-            <div class="d-flex flex-wrap gap-1 justify-content-center pt-1">
-                <a href="hiddify://install-sub?url={{ sub_link|urlencode }}" class="btn btn-sm btn-outline-primary py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-rocket me-1"></i> اتصال به Hiddify</a>
-                <a href="streisand://import/{{ sub_link|urlencode }}" class="btn btn-sm btn-outline-info py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-bolt me-1"></i> اتصال به Streisand</a>
-                <a href="v2rayng://install-sub?url={{ sub_link|urlencode }}" class="btn btn-sm btn-outline-success py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-paper-plane me-1"></i> اتصال به v2rayNG</a>
+            <div class="d-flex flex-wrap gap-1 justify-content-center">
+                <a href="hiddify://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-primary py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-rocket me-1"></i> اتصال به Hiddify</a>
+                <a href="streisand://import/{{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-info py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-bolt me-1"></i> اتصال به Streisand</a>
+                <a href="v2rayng://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-success py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-paper-plane me-1"></i> اتصال به v2rayNG</a>
             </div>
         </div>
         {% endif %}
     </div>
+
+    <!-- مودال نمایش بارکد QR -->
+    {% if actual_sub_url %}
+    <div class="modal fade" id="qrCodeModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content glass-card border-0 text-white p-3">
+                <div class="modal-header border-0 pb-0">
+                    <h6 class="modal-title fw-bold"><i class="fas fa-qrcode text-info me-1"></i> بارکد اتصال سریع</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-center pt-3">
+                    <p class="small text-secondary mb-3">با دوربین نرم‌افزار فیلترشکن خود اسکن نمایید:</p>
+                    <div class="p-2 bg-white rounded-3 d-inline-block shadow mb-2">
+                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={{ actual_sub_url|urlencode }}" alt="QR Code" class="img-fluid" style="width: 200px; height: 200px;">
+                    </div>
+                    <div class="small text-muted font-monospace mt-1 text-truncate" style="max-width: 220px; margin: 0 auto;">
+                        {{ sub.get('account_name') }}
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0 justify-content-center">
+                    <button type="button" class="btn btn-sm btn-secondary rounded-pill px-4" data-bs-dismiss="modal">بستن</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- بخش فاکتور پرداخت هوشمند (در صورت وجود فاکتور معلق) -->
     {% if invoice and invoice.get('status') == 'pending' %}
@@ -209,6 +268,7 @@
     {% endif %}
 
     <!-- بخش انتخاب پلن تمدید -->
+    {% if portal_enable_renewal %}
     <div class="glass-card p-4 mb-4">
         <h5 class="fw-bold mb-3"><i class="fas fa-cart-shopping text-primary me-2"></i>تمدید یا ارتقای اشتراک</h5>
         <p class="text-secondary small">یک بسته را انتخاب کنید تا فاکتور واریز اختصاصی صادر شود:</p>
@@ -240,20 +300,44 @@
                 {% endfor %}
             </div>
 
+            <!-- گزینه فعال‌سازی آنی یا رزرو در صف -->
+            <div class="p-3 rounded-3 bg-black bg-opacity-25 border border-secondary border-opacity-25 mb-4">
+                <div class="form-check form-switch d-flex align-items-center gap-2 mb-0">
+                    <input class="form-check-input" type="checkbox" name="instant_activation" id="instantActivation" value="1" checked style="cursor: pointer; width: 2.5em; height: 1.3em;">
+                    <label class="form-check-label fw-bold text-white small" for="instantActivation" style="cursor: pointer;">
+                        <i class="fas fa-bolt text-warning me-1"></i> فعال‌سازی آنی بسته جدید (در لحظه تایید پرداخت)
+                    </label>
+                </div>
+                <div class="text-secondary small mt-1 ps-4" style="font-size: 0.8rem; margin-right: 2.8rem;">
+                    با غیرفعال کردن این گزینه، بسته خریداری‌شده در صف رزرو قرار می‌گیرد و پس از پایان حجم یا انقضای بسته فعلی به طور خودکار فعال می‌شود.
+                </div>
+            </div>
+
             <button type="submit" class="btn btn-primary w-100 py-3 fw-bold rounded-pill shadow">
                 <i class="fas fa-credit-card me-2"></i> صدور فاکتور و تمدید اشتراک
             </button>
         </form>
     </div>
+    {% endif %}
 
-    <!-- پشتیبانی -->
-    <div class="text-center text-secondary small">
-        {% if support_username %}
-            <span>نیاز به راهنمایی دارید؟</span>
-            <a href="https://t.me/{{ support_username.lstrip('@') }}" target="_blank" class="text-info text-decoration-none fw-bold ms-1">
-                <i class="fab fa-telegram me-1"></i>ارتباط با پشتیبانی
+    <!-- بخش پشتیبانی و تماس در پاورقی -->
+    <div class="glass-card p-3 mb-4 text-center">
+        <div class="text-secondary small mb-2"><i class="fas fa-headset text-info me-1"></i> نیاز به پشتیبانی یا راهنمایی دارید؟</div>
+        <div class="d-flex flex-wrap justify-content-center gap-2">
+            {% if support_phone %}
+            <a href="tel:{{ support_phone }}" class="btn btn-sm btn-outline-success rounded-pill px-3 py-1">
+                <i class="fas fa-phone-alt me-1"></i> تماس: <span dir="ltr">{{ support_phone }}</span>
             </a>
-        {% endif %}
+            {% endif %}
+            {% if support_username %}
+            <a href="https://t.me/{{ support_username.lstrip('@') }}" target="_blank" class="btn btn-sm btn-outline-info rounded-pill px-3 py-1">
+                <i class="fab fa-telegram me-1"></i> تلگرام: @{{ support_username.lstrip('@') }}
+            </a>
+            {% endif %}
+            {% if not support_phone and not support_username %}
+            <span class="text-secondary small">پشتیبانی آنلاین از طریق درگاه‌های ارتباطی سامانه</span>
+            {% endif %}
+        </div>
     </div>
 
 </div>

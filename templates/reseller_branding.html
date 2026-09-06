@@ -19,34 +19,65 @@
             <div class="card-body p-4">
                 <form action="{{ url_for('reseller_branding') }}" method="POST" enctype="multipart/form-data">
                     
-                    <!-- دامنه‌های اختصاصی پنل و آموزش‌ها -->
-                    <div class="row g-3 mb-4">
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">دامنه اختصاصی پنل مدیریت شما</label>
-                            <div class="input-group">
-                                <span class="input-group-text bg-light"><i class="fas fa-globe text-muted"></i></span>
-                                <input type="text" class="form-control font-monospace" name="custom_domain" 
-                                       value="{{ reseller.get('custom_domain') or '' }}" 
-                                       placeholder="مثال: panel.mybrand.com" dir="ltr">
+                    <!-- دامنه‌های اختصاصی پنل و آموزش‌ها (موقتاً مخفی شده بر اساس درخواست سیستم) -->
+                    <input type="hidden" name="custom_domain" value="{{ reseller.get('custom_domain') or '' }}">
+                    <input type="hidden" name="tutorial_domain" value="{{ reseller.get('tutorial_domain') or '' }}">
+
+                    <!-- تنظیمات اختصاصی پورتال مشتریان نماینده -->
+                    <div class="p-3 mb-4 rounded-3 border" style="background: rgba(79, 70, 229, 0.04); border-color: rgba(79, 70, 229, 0.15) !important;">
+                        <h6 class="fw-bold text-primary mb-2">
+                            <i class="fas fa-user-shield me-1"></i> تنظیمات پورتال اختصاصی مشتریان شما (Customer Portal)
+                        </h6>
+                        <p class="small text-muted mb-3">
+                            مشتریان شما می‌توانند با لینک اختصاصی خود وضعیت اشتراک، حجم باقیمانده، روزهای مانده، لینک ساب و کانفیگ تکی را مشاهده کرده و مستقیماً با کارت‌های بانکی شما تمدید کنند. اطلاعات زیر در صفحه اختصاصی آنها نمایش داده می‌شود.
+                        </p>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small">عنوان سربرگ پورتال مشتریان شما</label>
+                                <input type="text" class="form-control" name="portal_title" 
+                                       value="{{ reseller.get('portal_title') or '' }}" 
+                                       placeholder="مثال: اینترنت پرسرعت {{ reseller.get('name') or '' }}">
+                                <div class="form-text small">در بالای صفحه استعلام و تمدید اشتراک به مشتری نمایش داده می‌شود.</div>
                             </div>
-                            <div class="form-text text-muted">جهت ورود مستقیم خود و همکارانتان به پنل.</div>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">دامنه/ساب‌دامنه اختصاصی آموزش‌ها (Tutorials)</label>
-                            <div class="input-group">
-                                <span class="input-group-text bg-light"><i class="fas fa-graduation-cap text-muted"></i></span>
-                                <input type="text" class="form-control font-monospace" name="tutorial_domain" 
-                                       value="{{ reseller.get('tutorial_domain') or '' }}" 
-                                       placeholder="مثال: help.mybrand.com" dir="ltr">
+
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small">زیرعنوان و شعار پورتال</label>
+                                <input type="text" class="form-control" name="portal_subtitle" 
+                                       value="{{ reseller.get('portal_subtitle') or '' }}" 
+                                       placeholder="مثال: پورتال اختصاصی استعلام وضعیت و تمدید اشتراک">
+                                <div class="form-text small">توضیحات کوتاه زیر نام برند شما در صفحه مشتری.</div>
                             </div>
-                            <div class="form-text text-muted">جهت نمایش پورتال آموزش‌ها با برند و لوگوی شما.</div>
+
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small">
+                                    <i class="fas fa-phone-alt me-1 text-success"></i> شماره تماس پشتیبانی شما:
+                                </label>
+                                <input type="text" class="form-control" name="support_phone" style="direction: ltr; text-align: right;"
+                                       value="{{ reseller.get('support_phone') or '' }}" 
+                                       placeholder="مثال: 09123456789">
+                                <div class="form-text small">شماره تماسی که در بخش پشتیبانی انتهای پورتال مشتری قرار می‌گیرد.</div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small">
+                                    <i class="fab fa-telegram me-1 text-info"></i> آیدی تلگرام پشتیبانی شما (بدون @):
+                                </label>
+                                <div class="input-group">
+                                    <span class="input-group-text font-monospace">@</span>
+                                    <input type="text" class="form-control font-monospace" name="support_username" 
+                                           value="{{ reseller.get('support_username') or '' }}" 
+                                           placeholder="username" dir="ltr">
+                                </div>
+                                <div class="form-text small">دکمه پیام به پشتیبانی در تلگرام در صفحه پورتال به این آیدی هدایت خواهد شد.</div>
+                            </div>
                         </div>
                     </div>
 
                     <!-- عنوان فروشگاه و تب مرورگر -->
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">
-                            <label class="form-label fw-bold">عنوان فروشگاه / عنوان پنل</label>
+                            <label class="form-label fw-bold">عنوان برند / عنوان پنل همکار</label>
                             <input type="text" class="form-control" name="brand_title" 
                                    value="{{ reseller.get('brand_title') or reseller.get('name') or '' }}" 
                                    placeholder="مثال: توربو نت | TurboNet">
@@ -64,7 +95,7 @@
                     <!-- لوگو و فاویکون -->
                     <div class="row g-3 mb-4">
                         <div class="col-md-6">
-                            <label class="form-label fw-bold">فایل لوگوی اختصاصی</label>
+                            <label class="form-label fw-bold">فایل لوگوی اختصاصی نماینده</label>
                             <input type="file" class="form-control" name="logo_file" accept="image/*">
                             {% if reseller.get('logo_url') %}
                                 <div class="mt-2 d-flex align-items-center gap-2">
@@ -72,6 +103,7 @@
                                     <img src="{{ reseller.get('logo_url') }}" alt="لوگو" style="max-height: 36px;" class="border rounded p-1">
                                 </div>
                             {% endif %}
+                            <div class="form-text small">این لوگو هم در پنل همکار و هم در پورتال مشتریان شما نمایش داده می‌شود.</div>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-bold">آدرس مستقیم آیکون تب مرورگر (Favicon URL)</label>
@@ -85,7 +117,7 @@
                         <label class="form-label fw-bold">متن پاورقی و کپی‌رایت پنل (Footer Text)</label>
                         <input type="text" class="form-control" name="footer_text" 
                                value="{{ reseller.get('footer_text') or '' }}" 
-                               placeholder="مثال: کلیه حقوق برای برند توربو نت محفوظ است © 2026">
+                               placeholder="مثال: کلیه حقوق برای برند {{ reseller.get('name') or '' }} محفوظ است © 2026">
                     </div>
 
                     <div class="d-flex justify-content-end">
@@ -98,28 +130,29 @@
         </div>
     </div>
 
-    <!-- راهنمای اتصال دامنه -->
+    <!-- راهنمای پورتال مشتری و هویت بصری -->
     <div class="col-lg-4">
         <div class="card shadow-sm border-0 mb-4 bg-light">
             <div class="card-header bg-white py-3">
-                <h6 class="mb-0 fw-bold"><i class="fas fa-book-open text-primary me-2"></i> راهنمای اتصال دامنه به پنل</h6>
+                <h6 class="mb-0 fw-bold"><i class="fas fa-magic text-primary me-2"></i> پورتال دائمی مشتریان شما</h6>
             </div>
             <div class="card-body">
-                <ol class="small text-muted ps-3 mb-0" style="line-height: 1.9;">
-                    <li>وارد پنل مدیریت دامنه یا کلودفلر (Cloudflare) خود شوید.</li>
-                    <li>یک زیردامنه دلخواه (مثلاً <code>panel</code>) بسازید.</li>
-                    <li>یک رکورد <strong>A Record</strong> یا <strong>CNAME</strong> به سمت آی‌پی سرور اصلی ثبت کنید.</li>
-                    <li>دامنه کامل (مثلاً <code>panel.yourbrand.com</code>) را در کادر روبرو وارد نمایید.</li>
-                    <li>دکمه ذخیره را بزنید؛ از این پس با باز کردن دامنه خود، پنل اختصاصی شما بارگذاری خواهد شد!</li>
-                </ol>
+                <p class="small text-muted mb-3" style="line-height: 1.8;">
+                    با تنظیم نام، لوگو و راه‌های تماس، پورتال اختصاصی کاربران شما با برند شما شخصی‌سازی می‌شود.
+                </p>
+                <ul class="small text-muted ps-3 mb-0" style="line-height: 1.9;">
+                    <li>مشتری حجم و روزهای باقیمانده اشتراک را با برند شما می‌بیند.</li>
+                    <li>در صورت تمایل به تمدید، شماره کارت‌های تعریف شده در منوی <strong>روش‌های پرداخت</strong> شما نمایش داده می‌شود.</li>
+                    <li>مشتریان مستقیم شما از طریق شماره تماس و تلگرام شما پشتیبانی می‌شوند.</li>
+                </ul>
             </div>
         </div>
 
-        <div class="card shadow-sm border-0 border-start border-info border-4">
+        <div class="card shadow-sm border-0 border-start border-success border-4">
             <div class="card-body p-3">
-                <h6 class="fw-bold text-info mb-2"><i class="fas fa-shield-halved me-1"></i> حفظ کامل حریم خصوصی:</h6>
+                <h6 class="fw-bold text-success mb-2"><i class="fas fa-shield-halved me-1"></i> استقلال مالی و ارتباطی:</h6>
                 <p class="small text-muted mb-0">
-                    با ست کردن دامنه اختصاصی، مشتریان و همکاران شما آدرس سرور اصلی را مشاهده نخواهند کرد و با اطمینان کامل به برند شما متصل خواهند بود.
+                    تمامی وجوه واریزی مستقیماً به حساب شما واریز شده و تمامی فاکتورها در پنل مدیریت همکار برای تایید نهایی در دسترس شما خواهد بود.
                 </p>
             </div>
         </div>
