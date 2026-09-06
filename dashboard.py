@@ -3355,14 +3355,54 @@ def payments():
     revoked_count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='revoked' AND {scope_cond}").fetchone()[0]
     deleted_count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE is_deleted=1 AND {scope_cond}").fetchone()[0]
 
-    # اضافه کردن لاگ‌های حسابرسی برای هر تراکنش
+    # اضافه کردن لاگ‌های حسابرسی و غنی‌سازی مبدأ و نام مشتری برای هر تراکنش
     payment_list = []
     for p in raw_payment_list:
         p_dict = dict(p)
         p_dict["audit_logs"] = db.get_transaction_audit_logs(p["id"])
+
+        src = str(p_dict.get("source") or "").lower()
+        order_id = str(p_dict.get("order_id") or "")
+        gateway = str(p_dict.get("gateway") or "")
+        user_id = p_dict.get("user_id") or 0
+        renew_sub_id = p_dict.get("renew_sub_id")
+
+        if gateway == "bundle_reseller" or order_id.startswith("R_BUNDLE"):
+            origin = "bundle"
+        elif src in ("portal", "web", "customer_portal"):
+            origin = "portal"
+        elif src in ("telegram", "bot"):
+            origin = "telegram"
+        elif order_id.startswith("INV") or gateway == "bank_sms" or (renew_sub_id and renew_sub_id > 0 and user_id == 0):
+            origin = "portal"
+        elif user_id > 0 and not order_id.startswith("INV"):
+            origin = "telegram"
+        else:
+            origin = "portal" if p_dict.get("account_name") else "telegram"
+
+        p_dict["source"] = origin
+
+        # استخراج نام و عنوان مشتری جهت نمایش
+        if origin == "bundle":
+            p_dict["customer_name"] = f"نماینده #{p_dict.get('reseller_id') or '-'}"
+        elif origin == "portal":
+            cust_name = p_dict.get("account_name") or p_dict.get("username")
+            if not cust_name or cust_name in ("None", "null", "", "کاربر"):
+                cust_name = f"مشتری پرتال #{renew_sub_id or p_dict['id']}"
+            p_dict["customer_name"] = cust_name
+        else:
+            cust_name = p_dict.get("username")
+            if not cust_name or cust_name in ("None", "null", "", "کاربر"):
+                cust_name = f"کاربر {user_id}" if user_id else "کاربر تلگرام"
+            p_dict["customer_name"] = cust_name
+
         payment_list.append(p_dict)
 
     conn.close()
+
+    portal_count = sum(1 for p in payment_list if p.get("source") == "portal")
+    telegram_count = sum(1 for p in payment_list if p.get("source") == "telegram")
+    bundle_count = sum(1 for p in payment_list if p.get("source") == "bundle")
 
     resellers_list = db.get_all_resellers()
     cards = db.get_active_bank_cards()
@@ -3375,6 +3415,9 @@ def payments():
         resellers_list=resellers_list,
         search=search,
         cards=cards,
+        portal_count=portal_count,
+        telegram_count=telegram_count,
+        bundle_count=bundle_count,
         counts={
             "pending": pending_count,
             "approved": approved_count,
@@ -3820,17 +3863,21 @@ def approve_payment(payment_id):
     data_limit = selected_plan["data_limit"] if selected_plan else 30
     duration = selected_plan["duration"] if selected_plan else 30
 
-    account_name = tx["account_name"] or f"tg_{user_id}"
+    account_name = tx["account_name"] or (f"tg_{user_id}" if user_id else f"web_{payment_id}")
     user_uuid = ""
+    target_sub = None
 
     if is_renewal and renew_sub_id:
-        user_subs = db.get_user_subscriptions(user_id)
-        target_sub = next((s for s in user_subs if s["id"] == renew_sub_id), None)
+        target_sub = db.get_subscription(renew_sub_id)
+        if not target_sub and user_id:
+            user_subs = db.get_user_subscriptions(user_id)
+            target_sub = next((s for s in user_subs if s["id"] == renew_sub_id), None)
         if target_sub:
             user_uuid = target_sub.get("hidify_uuid", "")
             old_limit = float(target_sub.get("data_limit") or 0)
             old_used = float(target_sub.get("data_used") or 0)
             old_plan_name = target_sub.get("plan_name") or ""
+            target_account_name = target_sub.get("account_name") or tx.get("account_name") or account_name
 
             # تمدید هوشمند هیدیفای با رعایت ۲ حالت منقضی یا فعال
             renew_res = hidify_sync_renew_user(user_uuid, float(data_limit), int(duration))
@@ -3849,9 +3896,9 @@ def approve_payment(payment_id):
             # ثبت مصرف دوره گذشته در تاریخچه
             db.save_subscription_history(
                 subscription_id=renew_sub_id,
-                telegram_id=user_id,
+                telegram_id=user_id or target_sub.get("telegram_id") or 0,
                 hidify_uuid=user_uuid,
-                account_name=target_sub.get("account_name") or account_name,
+                account_name=target_account_name,
                 plan_name=old_plan_name or plan_name,
                 previous_usage_gb=old_used,
                 previous_limit_gb=old_limit,
@@ -3870,11 +3917,12 @@ def approve_payment(payment_id):
             )
     else:
         # خرید جدید
-        res = hidify_sync_create_user(name=account_name, usage_limit_gb=data_limit, package_days=duration, comment=str(user_id))
+        account_name = tx["account_name"] or (f"tg_{user_id}" if user_id else f"web_{payment_id}")
+        res = hidify_sync_create_user(name=account_name, usage_limit_gb=data_limit, package_days=duration, comment=str(user_id or f"WEB:{payment_id}"))
         user_uuid = res.get("uuid", "")
         if user_uuid:
             db.save_subscription(
-                telegram_id=user_id,
+                telegram_id=user_id or 0,
                 hidify_uuid=user_uuid,
                 plan_id="custom",
                 plan_name=plan_name,
@@ -3883,6 +3931,14 @@ def approve_payment(payment_id):
                 status="active",
                 account_name=account_name
             )
+
+    # اگر فیش مربوط به پیش‌فاکتور هوشمند پرتال بود، وضعیت پیش‌فاکتور را پرداخت‌شده کنیم
+    order_id = str(tx.get("order_id") or "")
+    if order_id.startswith("INV"):
+        try:
+            db.mark_smart_invoice_paid(order_id, tracking_code=str(payment_id))
+        except Exception as e_inv:
+            logger.error(f"Error marking invoice {order_id} paid: {e_inv}")
 
     # بروزرسانی وضعیت تراکنش در دیتابیس
     admin_name = session.get("name") or session.get("username") or "مدیر ارشد"
@@ -3909,67 +3965,71 @@ def approve_payment(payment_id):
         reason=f"تایید فیش پرداخت و صدور اشتراک {plan_name}"
     )
 
-    # پاداش رفرال
-    db.complete_referral(user_id)
+    # پاداش رفرال و کش‌بک تنها برای کاربران دارای اکانت تلگرام (user_id > 0)
+    if user_id and int(user_id) > 0:
+        db.complete_referral(user_id)
 
-    # پردازش و واریز کش‌بک کاربران VIP
-    try:
-        vip_info = db.get_user_vip_info(user_id)
-        if vip_info.get("is_vip") and vip_info.get("cashback_percent", 0) > 0:
-            paid_amount = int(tx.get("amount") or 0)
-            cb_rate = vip_info.get("cashback_percent", 10)
-            cashback_val = int((paid_amount * cb_rate) / 100)
-            if cashback_val > 0:
-                cb_res = db.add_wallet_balance(
-                    user_id,
-                    cashback_val,
-                    f"هدیه کش‌بک خرید ویژه VIP ({cb_rate}%)",
-                    ref_id=str(tx.get("order_id") or payment_id),
-                    tx_type="cashback"
-                )
-                new_w_bal = cb_res.get("new_balance", 0)
-                cb_msg = (
-                    f"🎁 <b>هدیه کش‌بک VIP واریز شد!</b>\n\n"
-                    f"💎 به عنوان کاربر ویژه، <b>{cb_rate}٪</b> از مبلغ خرید شما معادل <b>{cashback_val:,} تومان</b> به کیف پول شما بازگشت داده شد.\n"
-                    f"💰 <b>موجودی جدید کیف پول:</b> {new_w_bal:,} تومان"
+        # پردازش و واریز کش‌بک کاربران VIP
+        try:
+            vip_info = db.get_user_vip_info(user_id)
+            if vip_info.get("is_vip") and vip_info.get("cashback_percent", 0) > 0:
+                paid_amount = int(tx.get("amount") or 0)
+                cb_rate = vip_info.get("cashback_percent", 10)
+                cashback_val = int((paid_amount * cb_rate) / 100)
+                if cashback_val > 0:
+                    cb_res = db.add_wallet_balance(
+                        user_id,
+                        cashback_val,
+                        f"هدیه کش‌بک خرید ویژه VIP ({cb_rate}%)",
+                        ref_id=str(tx.get("order_id") or payment_id),
+                        tx_type="cashback"
+                    )
+                    new_w_bal = cb_res.get("new_balance", 0)
+                    cb_msg = (
+                        f"🎁 <b>هدیه کش‌بک VIP واریز شد!</b>\n\n"
+                        f"💎 به عنوان کاربر ویژه، <b>{cb_rate}٪</b> از مبلغ خرید شما معادل <b>{cashback_val:,} تومان</b> به کیف پول شما بازگشت داده شد.\n"
+                        f"💰 <b>موجودی جدید کیف پول:</b> {new_w_bal:,} تومان"
+                    )
+                    try:
+                        send_telegram_msg(user_id, cb_msg)
+                    except Exception as e_tg:
+                        logger.error(f"Error sending cashback msg to {user_id}: {e_tg}")
+        except Exception as e_cb:
+            logger.error(f"Error processing VIP cashback for {user_id}: {e_cb}")
+
+        # بررسی ارتقای خودکار کاربر به VIP بر اساس مجموع خریدهای تایید شده
+        try:
+            upgrade_res = db.check_and_upgrade_user_vip(user_id)
+            if upgrade_res.get("upgraded"):
+                t_spent = upgrade_res.get("total_spent", 0)
+                cb_percent = upgrade_res.get("cashback_percent", 10)
+                upgrade_msg = (
+                    f"🎉 <b>تبریک! شما به کاربر طلایی (⭐️ VIP) ارتقا یافتید!</b>\n\n"
+                    f"✨ با رسیدن مجموع خریدهای شما به <b>{t_spent:,} تومان</b>، سطح حساب شما ارتقا یافت.\n\n"
+                    f"👑 <b>مزایای اختصاصی شما:</b>\n"
+                    f"• 💰 <b>{cb_percent}٪ کش‌بک نقدی</b> در تمام خریدهای بعدی\n"
+                    f"• 🎧 <b>اولویت اول</b> در صف پاسخگویی تیکت‌های پشتیبانی\n"
+                    f"• 💎 <b>نشان طلایی VIP</b> در پروفایل ربات\n\n"
+                    f"از همراهی و اعتماد شما بی‌نهایت سپاسگزاریم! 🌹"
                 )
                 try:
-                    send_telegram_msg(user_id, cb_msg)
-                except Exception as e_tg:
-                    logger.error(f"Error sending cashback msg to {user_id}: {e_tg}")
-    except Exception as e_cb:
-        logger.error(f"Error processing VIP cashback for {user_id}: {e_cb}")
+                    send_telegram_msg(user_id, upgrade_msg)
+                except Exception as e_ug:
+                    logger.error(f"Error sending VIP upgrade msg to {user_id}: {e_ug}")
+        except Exception as e_up:
+            logger.error(f"Error checking VIP auto-upgrade for {user_id}: {e_up}")
 
-    # بررسی ارتقای خودکار کاربر به VIP بر اساس مجموع خریدهای تایید شده
-    try:
-        upgrade_res = db.check_and_upgrade_user_vip(user_id)
-        if upgrade_res.get("upgraded"):
-            t_spent = upgrade_res.get("total_spent", 0)
-            cb_percent = upgrade_res.get("cashback_percent", 10)
-            upgrade_msg = (
-                f"🎉 <b>تبریک! شما به کاربر طلایی (⭐️ VIP) ارتقا یافتید!</b>\n\n"
-                f"✨ با رسیدن مجموع خریدهای شما به <b>{t_spent:,} تومان</b>، سطح حساب شما ارتقا یافت.\n\n"
-                f"👑 <b>مزایای اختصاصی شما:</b>\n"
-                f"• 💰 <b>{cb_percent}٪ کش‌بک نقدی</b> در تمام خریدهای بعدی\n"
-                f"• 🎧 <b>اولویت اول</b> در صف پاسخگویی تیکت‌های پشتیبانی\n"
-                f"• 💎 <b>نشان طلایی VIP</b> در پروفایل ربات\n\n"
-                f"از همراهی و اعتماد شما بی‌نهایت سپاسگزاریم! 🌹"
-            )
+        # ارسال کارت و بارکد به تلگرام مشتری
+        h_url = get_hiddify_url()
+        u_proxy = get_user_proxy()
+        if user_uuid and h_url:
+            sub_url = f"{h_url}/{u_proxy}/{user_uuid}/"
+            card_title = "🎉 **اشتراک شما تایید و فعال شد!**" if not is_renewal else "🔄 **اشتراک شما با موفقیت تمدید شد!**"
+            card_details = f"📋 پلن: **{plan_name}**\n📊 حجم: **{data_limit} گیگابایت**\n⏰ مدت: **{duration} روز**"
             try:
-                send_telegram_msg(user_id, upgrade_msg)
-            except Exception as e_ug:
-                logger.error(f"Error sending VIP upgrade msg to {user_id}: {e_ug}")
-    except Exception as e_up:
-        logger.error(f"Error checking VIP auto-upgrade for {user_id}: {e_up}")
-
-    # ارسال کارت و بارکد به تلگرام مشتری
-    h_url = get_hiddify_url()
-    u_proxy = get_user_proxy()
-    if user_uuid and h_url:
-        sub_url = f"{h_url}/{u_proxy}/{user_uuid}/"
-        card_title = "🎉 **اشتراک شما تایید و فعال شد!**" if not is_renewal else "🔄 **اشتراک شما با موفقیت تمدید شد!**"
-        card_details = f"📋 پلن: **{plan_name}**\n📊 حجم: **{data_limit} گیگابایت**\n⏰ مدت: **{duration} روز**"
-        send_subscription_card_sync(user_id, sub_url, card_title, card_details)
+                send_subscription_card_sync(user_id, sub_url, card_title, card_details)
+            except Exception as e_card:
+                logger.error(f"Error sending subscription card to {user_id}: {e_card}")
 
     flash(f"پرداخت #{payment_id} تایید شد و اشتراک در هیدیفای فعال گردید!", "success")
     return redirect(url_for("payments"))
@@ -4007,6 +4067,14 @@ def reject_payment(payment_id):
             reason=reason
         )
 
+        # اگر فیش مربوط به پیش‌فاکتور هوشمند پرتال بود، وضعیت پیش‌فاکتور را رد شده کنیم
+        order_id = str(tx.get("order_id") or "")
+        if order_id.startswith("INV"):
+            try:
+                db.mark_smart_invoice_rejected(order_id, reason=reason)
+            except Exception as e_inv:
+                logger.error(f"Error marking invoice {order_id} rejected: {e_inv}")
+
         # اگر تراکنش مربوط به نماینده است:
         r_id = tx.get("reseller_id")
         if r_id or tx.get("gateway") == "bundle_reseller":
@@ -4035,9 +4103,9 @@ def reject_payment(payment_id):
                 except Exception as e:
                     logger.error(f"Error sending telegram reject msg to reseller {r_id}: {e}")
         else:
-            # ارسال پیام رد به کاربر عادی
+            # ارسال پیام رد به کاربر عادی تلگرام
             user_id = tx.get("user_id")
-            if user_id:
+            if user_id and int(user_id) > 0:
                 msg = f"❌ <b>پرداخت شما تایید نشد.</b>\n\n📝 <b>علت رد:</b> {reason}\n\nدر صورت وجود سوال، با بخش «💬 پشتیبانی» تماس بگیرید."
                 try:
                     send_telegram_msg(user_id, msg)
@@ -4123,9 +4191,10 @@ def admin_payments_bulk():
                 conn.close()
                 if tx_row and tx_row["status"] == "pending":
                     tx = dict(tx_row)
-                    user_id = tx["user_id"]
+                    user_id = tx["user_id"] or 0
                     plan_name = tx["plan_name"]
                     is_renewal = bool(tx.get("is_renewal"))
+                    renew_sub_id = tx.get("renew_sub_id")
                     plans = get_plans_dict()
                     selected_plan = next((p for p in plans.values() if p["name"] == plan_name), None)
                     if not selected_plan and plans:
@@ -4136,16 +4205,40 @@ def admin_payments_bulk():
 
                     user_uuid = None
                     if is_renewal:
-                        conn = db.get_connection()
-                        sub_row = conn.execute("SELECT * FROM subscriptions WHERE user_id=? AND status='active' ORDER BY id DESC LIMIT 1", (user_id,)).fetchone()
-                        conn.close()
-                        if sub_row and sub_row["hidify_uuid"]:
-                            user_uuid = sub_row["hidify_uuid"]
+                        target_sub = db.get_subscription(renew_sub_id) if renew_sub_id else None
+                        if not target_sub and user_id:
+                            conn = db.get_connection()
+                            sub_row = conn.execute("SELECT * FROM subscriptions WHERE user_id=? AND status='active' ORDER BY id DESC LIMIT 1", (user_id,)).fetchone()
+                            conn.close()
+                            if sub_row:
+                                target_sub = dict(sub_row)
+                        if target_sub and target_sub.get("hidify_uuid"):
+                            user_uuid = target_sub["hidify_uuid"]
                             hidify_sync_renew_user(user_uuid, data_limit, duration)
+                            db.update_subscription(target_sub["id"], status="active")
                     else:
-                        account_name = f"user_{user_id}_{int(time.time()) % 10000}"
-                        h_res = hidify_sync_create_user(name=account_name, usage_limit_gb=data_limit, package_days=duration, comment=f"TG: {user_id}")
+                        account_name = tx.get("account_name") or (f"user_{user_id}_{int(time.time()) % 10000}" if user_id else f"web_{pid}")
+                        h_res = hidify_sync_create_user(name=account_name, usage_limit_gb=data_limit, package_days=duration, comment=f"TG: {user_id}" if user_id else f"WEB:{pid}")
                         user_uuid = h_res.get("uuid") if h_res else None
+                        if user_uuid:
+                            db.save_subscription(
+                                telegram_id=user_id,
+                                hidify_uuid=user_uuid,
+                                plan_id="custom",
+                                plan_name=plan_name,
+                                data_limit=data_limit,
+                                duration=duration,
+                                status="active",
+                                account_name=account_name
+                            )
+
+                    # اگر پیش‌فاکتور هوشمند پرتال بود
+                    order_id = str(tx.get("order_id") or "")
+                    if order_id.startswith("INV"):
+                        try:
+                            db.mark_smart_invoice_paid(order_id, tracking_code=str(pid))
+                        except Exception:
+                            pass
 
                     now_iso = get_now_iso()
                     conn = db.get_connection()
@@ -4153,16 +4246,7 @@ def admin_payments_bulk():
                     conn.commit()
                     conn.close()
 
-                    if user_uuid:
-                        db.add_subscription(
-                            user_id=user_id,
-                            hidify_uuid=user_uuid,
-                            plan_name=plan_name,
-                            data_limit=data_limit,
-                            duration=duration,
-                            account_name=f"user_{user_id}",
-                            cost_paid=int(tx.get("amount") or 0)
-                        )
+                    if user_uuid and user_id and int(user_id) > 0:
                         h_url = get_hiddify_url()
                         u_proxy = get_user_proxy()
                         if h_url:
@@ -4179,6 +4263,12 @@ def admin_payments_bulk():
         elif action == "reject":
             try:
                 conn = db.get_connection()
+                tx_row = conn.execute("SELECT * FROM transactions WHERE id=?", (pid,)).fetchone()
+                if tx_row and str(tx_row["order_id"] or "").startswith("INV"):
+                    try:
+                        db.mark_smart_invoice_rejected(str(tx_row["order_id"]), reason="رد توسط مدیریت در عملیات گروهی")
+                    except Exception:
+                        pass
                 now_iso = get_now_iso()
                 conn.execute("UPDATE transactions SET status='rejected', rejection_reason='رد توسط مدیریت در عملیات گروهی', processed_by=?, processed_at=?, updated_at=? WHERE id=?", (admin_name, now_iso, now_iso, pid))
                 conn.commit()
