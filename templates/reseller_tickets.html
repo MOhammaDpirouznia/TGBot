@@ -193,7 +193,7 @@
                 </thead>
                 <tbody>
                     {% for ticket in tickets %}
-                    {% set is_admin_ticket = (ticket.get('ticket_type') in ('reseller_to_admin', 'quota_change', 'reseller_application') or (ticket.get('target_role') == 'admin')) %}
+                    {% set is_admin_ticket = (ticket.get('ticket_type') in ('reseller_to_admin', 'quota_change', 'reseller_application')) %}
                     <tr class="{% if ticket.get('status') == 'open' %}ticket-row-open{% elif ticket.get('status') == 'in_progress' %}ticket-row-inprogress{% elif ticket.get('status') == 'replied' %}ticket-row-replied{% else %}ticket-row-closed{% endif %}"
                         style="cursor: pointer;"
                         onclick="if(!event.target.closest('button') && !event.target.closest('a') && !event.target.closest('form') && !event.target.closest('input')) { new bootstrap.Modal(document.getElementById('ticketChatModal{{ ticket['id'] }}')).show(); }">
@@ -208,7 +208,7 @@
                                 <span class="badge bg-warning text-dark d-block mt-1"><i class="fas fa-crown"></i> VIP</span>
                             {% endif %}
                         </td>
-                        <td data-value="{{ ('مدیریت سامانه' if is_admin_ticket else (ticket.get('username') or ticket.get('first_name') or ticket.get('user_id') or ticket.get('telegram_id') or ''))|striptags }}">
+                        <td data-value="{{ ('مدیریت سامانه' if is_admin_ticket else (ticket.get('customer_name') or ticket.get('username') or ticket.get('first_name') or ticket.get('user_id') or ticket.get('telegram_id') or ''))|striptags }}">
                             {% if is_admin_ticket %}
                                 <div class="d-flex align-items-center gap-2">
                                     <div class="rounded-circle bg-warning bg-opacity-25 border border-warning d-flex align-items-center justify-content-center text-warning flex-shrink-0" style="width: 38px; height: 38px;">
@@ -221,19 +221,28 @@
                                 </div>
                             {% else %}
                                 <div class="d-flex align-items-center gap-2">
-                                    <img src="{{ avatar_url(ticket.get('user_id') or ticket.get('telegram_id') or ticket.get('username') or 'User') }}" 
+                                    <img src="{{ avatar_url(ticket.get('customer_name') or ticket.get('user_id') or ticket.get('telegram_id') or ticket.get('username') or 'User') }}" 
                                          alt="Avatar" 
                                          class="rounded-circle border shadow-sm flex-shrink-0" 
                                          style="width: 38px; height: 38px; object-fit: cover;" 
                                          loading="lazy">
                                     <div>
                                         <div class="d-flex align-items-center gap-1">
-                                            <strong class="ticket-user-title">{{ ticket.get('username') or ticket.get('first_name') or 'مشتری' }}</strong>
+                                            <strong class="ticket-user-title">{{ ticket.get('customer_name') or ticket.get('username') or ticket.get('first_name') or 'مشتری' }}</strong>
+                                            {% if ticket.get('subscription_id') %}
+                                                <span class="badge bg-info-subtle text-info border border-info ms-1"><i class="fas fa-globe me-1"></i>پورتال #{{ ticket.get('subscription_id') }}</span>
+                                            {% endif %}
                                             {% if ticket.get('is_vip') %}
                                                 <i class="fas fa-star text-warning" title="مشتری ویژه (VIP)"></i>
                                             {% endif %}
                                         </div>
-                                        <div class="text-muted small"><code>{{ ticket.get('user_id') or ticket.get('telegram_id') }}</code></div>
+                                        <div class="text-muted small">
+                                            {% if ticket.get('customer_phone') %}
+                                                <span class="text-success"><i class="fas fa-phone-alt me-1"></i>{{ ticket.get('customer_phone') }}</span>
+                                            {% else %}
+                                                <code>{{ ticket.get('user_id') or ticket.get('telegram_id') }}</code>
+                                            {% endif %}
+                                        </div>
                                     </div>
                                 </div>
                             {% endif %}
@@ -276,7 +285,7 @@
                                 <span class="badge bg-secondary text-white px-2 py-1"><i class="fas fa-check-double me-1"></i> بسته شده</span>
                             {% endif %}
                         </td>
-                        <td data-value="{{ ticket.get('created_at') or '' }}"><small class="text-muted font-monospace">{{ ticket.get('created_at')[:16].replace('T', ' ') if ticket.get('created_at') else '-' }}</small></td>
+                        <td data-value="{{ ticket.get('created_at') or '' }}"><small class="text-muted font-monospace">{{ ticket.get('created_at') | shamsi_date }}</small></td>
                         <td class="text-end pe-3">
                             <div class="btn-group btn-group-sm">
                                 <button type="button" class="btn btn-primary fw-bold" data-bs-toggle="modal" data-bs-target="#ticketChatModal{{ ticket['id'] }}" title="مشاهده گفتگو و پاسخ">
@@ -412,7 +421,7 @@
 
 <!-- مودال‌های گفتگوی جامع و تعاملی تیکت‌های نماینده (خارج از ساختار جدول) -->
 {% for ticket in tickets %}
-{% set is_admin_ticket = (ticket.get('ticket_type') in ('reseller_to_admin', 'quota_change', 'reseller_application') or category_filter == 'admin') %}
+{% set is_admin_ticket = (ticket.get('ticket_type') in ('reseller_to_admin', 'quota_change', 'reseller_application')) %}
 <div class="modal fade text-start" id="ticketChatModal{{ ticket['id'] }}" tabindex="-1" aria-labelledby="ticketChatModalLabel{{ ticket['id'] }}" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
         <div class="modal-content border-0 shadow-lg text-start">
@@ -461,16 +470,23 @@
                         </div>
                     {% else %}
                         <div class="d-flex align-items-center gap-3">
-                            <img src="{{ avatar_url(ticket.get('user_id') or ticket.get('telegram_id') or ticket.get('username') or 'User') }}" 
+                            <img src="{{ avatar_url(ticket.get('customer_name') or ticket.get('user_id') or ticket.get('telegram_id') or ticket.get('username') or 'User') }}" 
                                  alt="Avatar" class="rounded-circle border shadow-sm" style="width: 44px; height: 44px; object-fit: cover;">
                             <div>
-                                <div class="fw-bold ticket-user-title fs-6">{{ ticket.get('username') or ticket.get('first_name') or 'مشتری' }}</div>
+                                <div class="fw-bold ticket-user-title fs-6">
+                                    {{ ticket.get('customer_name') or ticket.get('username') or ticket.get('first_name') or 'مشتری' }}
+                                    {% if ticket.get('subscription_id') %}
+                                        <span class="badge bg-info-subtle text-info border border-info ms-1"><i class="fas fa-globe me-1"></i>پورتال #{{ ticket.get('subscription_id') }}</span>
+                                    {% endif %}
+                                </div>
                                 <div class="text-muted small">
                                     <span class="me-2">🆔 <code>{{ ticket.get('user_id') or ticket.get('telegram_id') }}</code></span>
                                     {% if ticket.get('username') and not ticket.get('username').startswith('tg_') and ticket.get('username') != 'مشتری' %}
                                         <span class="me-2">💬 @{{ ticket.get('username') }}</span>
                                     {% endif %}
-                                    {% if ticket.get('phone_number') %}
+                                    {% if ticket.get('customer_phone') %}
+                                        <span class="text-success"><i class="fas fa-phone-alt me-1"></i>📱 {{ ticket.get('customer_phone') }}</span>
+                                    {% elif ticket.get('phone_number') %}
                                         <span>📱 {{ ticket.phone_number }}</span>
                                     {% endif %}
                                 </div>
@@ -542,7 +558,7 @@
                                         <span class="badge bg-secondary-subtle text-secondary border">
                                             {% if is_admin_ticket %}پیام شما{% else %}{{ msg.get('sender_name') or 'مشتری' }}{% endif %}
                                         </span>
-                                        <small class="text-muted" style="font-size: 0.75rem;">{{ msg.get('created_at')[:16].replace('T', ' ') if msg.get('created_at') else '' }}</small>
+                                        <small class="text-muted" style="font-size: 0.75rem;">{{ msg.get('created_at') | shamsi_date if msg.get('created_at') else '' }}</small>
                                     </div>
                                     <div class="p-3 shadow-sm ticket-msg-user" style="max-width: 85%;">
                                         <p class="mb-0" style="white-space: pre-line; word-break: break-word;">{{ msg.get('message') }}</p>
@@ -552,7 +568,7 @@
                                 <!-- پیام پاسخ (پاسخ مدیریت یا پاسخ نماینده به مشتری) -->
                                 <div class="d-flex flex-column align-items-end mb-3">
                                     <div class="d-flex align-items-center gap-2 mb-1">
-                                        <small class="text-muted" style="font-size: 0.75rem;">{{ msg.get('created_at')[:16].replace('T', ' ') if msg.get('created_at') else '' }}</small>
+                                        <small class="text-muted" style="font-size: 0.75rem;">{{ msg.get('created_at') | shamsi_date if msg.get('created_at') else '' }}</small>
                                         <span class="badge bg-primary text-white">
                                             <i class="fas fa-headset me-1"></i> 
                                             {% if is_admin_ticket %}پاسخ مدیریت{% else %}{{ msg.get('sender_name') or 'پشتیبانی نماینده' }}{% endif %}
@@ -568,7 +584,7 @@
                         <div class="d-flex flex-column align-items-start mb-3">
                             <div class="d-flex align-items-center gap-2 mb-1">
                                 <span class="badge bg-secondary-subtle text-secondary border">پیام اولیه</span>
-                                <small class="text-muted" style="font-size: 0.75rem;">{{ ticket.get('created_at')[:16] if ticket.get('created_at') else '' }}</small>
+                                <small class="text-muted" style="font-size: 0.75rem;">{{ ticket.get('created_at') | shamsi_date if ticket.get('created_at') else '' }}</small>
                             </div>
                             <div class="p-3 shadow-sm ticket-msg-user" style="max-width: 85%;">
                                 <p class="mb-0">{{ ticket.get('message') }}</p>

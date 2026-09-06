@@ -1657,6 +1657,22 @@
         window.playResellerAdminTicketSound = playResellerAdminTicketSound;
 
         // درخواست مجوز اعلان‌های مرورگر
+        function showDesktopNotification(title, body) {
+            if ("Notification" in window) {
+                if (Notification.permission === "granted") {
+                    try {
+                        new Notification(title, {
+                            body: body,
+                            icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%230d6efd"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>',
+                            tag: 'hiddibot-live-alert'
+                        });
+                    } catch (e) {}
+                } else if (Notification.permission === "default") {
+                    Notification.requestPermission();
+                }
+            }
+        }
+
         if ("Notification" in window && Notification.permission === "default") {
             document.addEventListener('click', function reqNotif() {
                 Notification.requestPermission();
@@ -1697,10 +1713,13 @@
                 // ۱. اگر تیکت جدید از نمایندگان آمده باشد -> صدای اختصاصی نمایندگان
                 if (lastAdminResellerTicketsCount !== -1 && data.open_reseller_tickets_count > lastAdminResellerTicketsCount) {
                     playResellerAdminTicketSound();
+                    const title = '👑 تیکت / درخواست جدید از نماینده!';
+                    const msg = `یک تیکت یا درخواست تغییر مشخصات جدید از نمایندگان دریافت شد.`;
+                    showDesktopNotification(title, msg);
                     const toastEl = document.getElementById('liveAlertToast');
                     if (toastEl) {
-                        document.getElementById('liveAlertToastTitle').textContent = '👑 تیکت / درخواست جدید از نماینده!';
-                        document.getElementById('liveAlertToastMsg').textContent = `یک تیکت یا درخواست تغییر مشخصات جدید از نمایندگان دریافت شد.`;
+                        document.getElementById('liveAlertToastTitle').textContent = title;
+                        document.getElementById('liveAlertToastMsg').textContent = msg;
                         const toast = new bootstrap.Toast(toastEl, { delay: 9000 });
                         toast.show();
                     }
@@ -1708,10 +1727,13 @@
                 // ۲. اگر تیکت جدید از مشتریان آمده باشد -> صدای مشتری
                 else if (lastAdminCustomerTicketsCount !== -1 && data.open_customer_tickets_count > lastAdminCustomerTicketsCount) {
                     playCustomerTicketSound();
+                    const title = '💬 تیکت پشتیبانی مشتری جدید!';
+                    const msg = `یک پیام پشتیبانی جدید از کاربران دریافت شد.`;
+                    showDesktopNotification(title, msg);
                     const toastEl = document.getElementById('liveAlertToast');
                     if (toastEl) {
-                        document.getElementById('liveAlertToastTitle').textContent = '💬 تیکت پشتیبانی مشتری جدید!';
-                        document.getElementById('liveAlertToastMsg').textContent = `یک پیام پشتیبانی جدید از کاربران دریافت شد.`;
+                        document.getElementById('liveAlertToastTitle').textContent = title;
+                        document.getElementById('liveAlertToastMsg').textContent = msg;
                         const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
                         toast.show();
                     }
@@ -1720,10 +1742,13 @@
                 // ۳. اگر پرداخت جدید آمده باشد
                 if (lastAdminPendingCount !== -1 && data.pending_payments_count > lastAdminPendingCount) {
                     playCustomerTicketSound();
+                    const title = '💳 پرداخت کارت به کارت جدید!';
+                    const msg = `یک فیش واریزی جدید نیازمند تایید است. (کل: ${data.pending_payments_count})`;
+                    showDesktopNotification(title, msg);
                     const toastEl = document.getElementById('liveAlertToast');
                     if (toastEl) {
-                        document.getElementById('liveAlertToastTitle').textContent = '💳 پرداخت کارت به کارت جدید!';
-                        document.getElementById('liveAlertToastMsg').textContent = `یک فیش واریزی جدید نیازمند تایید است. (کل: ${data.pending_payments_count})`;
+                        document.getElementById('liveAlertToastTitle').textContent = title;
+                        document.getElementById('liveAlertToastMsg').textContent = msg;
                         const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
                         toast.show();
                     }
@@ -1813,10 +1838,13 @@
                 // ۱. اگر پاسخ یا تیکت جدیدی از مدیریت دریافت شده باشد -> صدای مدیریتی
                 if (lastResellerAdminRepliesCount !== -1 && (data.admin_replied_tickets_count || 0) > lastResellerAdminRepliesCount) {
                     playResellerAdminTicketSound();
+                    const title = '🏢 پیام جدید از پنل مدیریت!';
+                    const msg = `مدیریت به تیکت یا درخواست شما پاسخ داد.`;
+                    showDesktopNotification(title, msg);
                     const toastEl = document.getElementById('liveAlertToast');
                     if (toastEl) {
-                        document.getElementById('liveAlertToastTitle').textContent = '🏢 پیام جدید از پنل مدیریت!';
-                        document.getElementById('liveAlertToastMsg').textContent = `مدیریت به تیکت یا درخواست شما پاسخ داد.`;
+                        document.getElementById('liveAlertToastTitle').textContent = title;
+                        document.getElementById('liveAlertToastMsg').textContent = msg;
                         const toast = new bootstrap.Toast(toastEl, { delay: 9000 });
                         toast.show();
                     }
@@ -1824,10 +1852,13 @@
                 // ۲. اگر تیکت جدید از مشتری آمده باشد -> صدای مشتری
                 else if (lastResellerCustomerTicketsCount !== -1 && (data.open_customer_tickets_count || 0) > lastResellerCustomerTicketsCount) {
                     playCustomerTicketSound();
+                    const title = '💬 تیکت مشتری جدید!';
+                    const msg = `یک مشتری تیکت پشتیبانی جدید ارسال کرده است.`;
+                    showDesktopNotification(title, msg);
                     const toastEl = document.getElementById('liveAlertToast');
                     if (toastEl) {
-                        document.getElementById('liveAlertToastTitle').textContent = '💬 تیکت مشتری جدید!';
-                        document.getElementById('liveAlertToastMsg').textContent = `یک مشتری تیکت پشتیبانی جدید ارسال کرده است.`;
+                        document.getElementById('liveAlertToastTitle').textContent = title;
+                        document.getElementById('liveAlertToastMsg').textContent = msg;
                         const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
                         toast.show();
                     }
@@ -1836,6 +1867,16 @@
                 // ۳. اگر فیش جدید مشتری آمده باشد
                 if (lastResellerReceiptsCount !== -1 && data.pending_customer_receipts_count > lastResellerReceiptsCount) {
                     playCustomerTicketSound();
+                    const title = '💳 فیش واریزی جدید مشتری!';
+                    const msg = `یک فیش جدید از مشتریان دریافت شد و نیازمند بررسی است.`;
+                    showDesktopNotification(title, msg);
+                    const toastEl = document.getElementById('liveAlertToast');
+                    if (toastEl) {
+                        document.getElementById('liveAlertToastTitle').textContent = title;
+                        document.getElementById('liveAlertToastMsg').textContent = msg;
+                        const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
+                        toast.show();
+                    }
                 }
 
                 lastResellerReceiptsCount = data.pending_customer_receipts_count;
@@ -1857,13 +1898,57 @@
             }
         };
 
-        // اجرای پایش هر ۱۲ ثانیه برای مدیر و نماینده
+        // ─── سیستم پایش زنده پس‌زمینه بدون فریز با وب‌ورکر (Background Active Pulse) ───
+        let bgWorker = null;
+        try {
+            const workerCode = `
+                let timer = null;
+                self.onmessage = function(e) {
+                    if (e.data === 'start') {
+                        if (timer) clearInterval(timer);
+                        timer = setInterval(() => self.postMessage('tick'), 5000);
+                    } else if (e.data === 'stop') {
+                        if (timer) clearInterval(timer);
+                        timer = null;
+                    }
+                };
+            `;
+            const blob = new Blob([workerCode], { type: 'application/javascript' });
+            bgWorker = new Worker(URL.createObjectURL(blob));
+        } catch (e_worker) {
+            console.debug("Web Worker background pulse fallback:", e_worker);
+        }
+
+        function initBackgroundAlertPolling(pollCallback) {
+            // فراخوانی اولیه
+            setTimeout(pollCallback, 1500);
+
+            if (bgWorker) {
+                bgWorker.onmessage = function(ev) {
+                    if (ev.data === 'tick') {
+                        pollCallback();
+                    }
+                };
+                bgWorker.postMessage('start');
+            } else {
+                setInterval(pollCallback, 6000);
+            }
+
+            // فراخوانی آنی هنگام بازگشت کاربر به صفحه (Focus / VisibilityChange)
+            document.addEventListener('visibilitychange', function() {
+                if (!document.hidden) {
+                    pollCallback();
+                }
+            });
+            window.addEventListener('focus', function() {
+                pollCallback();
+            });
+        }
+
         {% if session.get('role') == 'admin' %}
-        setInterval(pollAdminNotifications, 12000);
-        setTimeout(pollAdminNotifications, 1500);
+        initBackgroundAlertPolling(pollAdminNotifications);
         {% elif session.get('role') == 'reseller' %}
-        setInterval(pollResellerNotifications, 12000);
-        setTimeout(pollResellerNotifications, 1500);
+        initBackgroundAlertPolling(pollResellerNotifications);
         {% endif %}
 
         // ─── موتور جستجوی زنده سراسری جداول با ماندگاری وضعیت (Universal Instant Table Search with Session Persistence) ───

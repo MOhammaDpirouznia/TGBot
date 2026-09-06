@@ -298,7 +298,7 @@
                                 <span class="badge bg-secondary text-white px-2 py-1"><i class="fas fa-check-double me-1"></i> بسته شده</span>
                             {% endif %}
                         </td>
-                        <td data-value="{{ t.get('created_at') or '' }}"><small class="text-muted font-monospace">{{ t.get('created_at')[:16].replace('T', ' ') if t.get('created_at') else '-' }}</small></td>
+                        <td data-value="{{ t.get('created_at') or '' }}"><small class="text-muted font-monospace">{{ t.get('created_at') | shamsi_date }}</small></td>
                         <td class="text-end pe-3">
                             <div class="btn-group btn-group-sm">
                                 <button type="button" class="btn btn-primary fw-bold" data-bs-toggle="modal" data-bs-target="#ticketChatModal{{ t['id'] }}" title="مشاهده گفتگو و پاسخ">
@@ -591,7 +591,7 @@
                                         {% else %}
                                             <span class="badge bg-secondary-subtle text-secondary border">{{ msg.get('sender_name') or 'کاربر' }}</span>
                                         {% endif %}
-                                        <small class="text-muted" style="font-size: 0.75rem;">{{ msg.get('created_at')[:16].replace('T', ' ') if msg.get('created_at') else '' }}</small>
+                                        <small class="text-muted" style="font-size: 0.75rem;">{{ msg.get('created_at') | shamsi_date if msg.get('created_at') else '' }}</small>
                                     </div>
                                     <div class="p-3 shadow-sm ticket-msg-user" style="max-width: 85%;">
                                         <p class="mb-0" style="white-space: pre-line; word-break: break-word;">{{ msg.get('message') }}</p>
@@ -601,7 +601,7 @@
                                 <!-- پیام مدیریت -->
                                 <div class="d-flex flex-column align-items-end mb-3">
                                     <div class="d-flex align-items-center gap-2 mb-1">
-                                        <small class="text-muted" style="font-size: 0.75rem;">{{ msg.get('created_at')[:16].replace('T', ' ') if msg.get('created_at') else '' }}</small>
+                                        <small class="text-muted" style="font-size: 0.75rem;">{{ msg.get('created_at') | shamsi_date if msg.get('created_at') else '' }}</small>
                                         <span class="badge bg-primary text-white"><i class="fas fa-headset me-1"></i> {{ msg.get('sender_name') or 'مدیریت' }}</span>
                                     </div>
                                     <div class="p-3 shadow-sm ticket-msg-support" style="max-width: 85%;">
@@ -614,7 +614,7 @@
                         <div class="d-flex flex-column align-items-start mb-3">
                             <div class="d-flex align-items-center gap-2 mb-1">
                                 <span class="badge bg-secondary-subtle text-secondary border">پیام اولیه</span>
-                                <small class="text-muted" style="font-size: 0.75rem;">{{ t.get('created_at')[:16] if t.get('created_at') else '' }}</small>
+                                <small class="text-muted" style="font-size: 0.75rem;">{{ t.get('created_at') | shamsi_date if t.get('created_at') else '' }}</small>
                             </div>
                             <div class="p-3 shadow-sm ticket-msg-user" style="max-width: 85%;">
                                 <p class="mb-0">{{ t.get('message') }}</p>

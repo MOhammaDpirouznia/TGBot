@@ -1310,13 +1310,47 @@ function renderActiveTicket(ticket, messages) {
     scrollChatToBottom();
 }
 
+// توابع فرمت‌بندی تاریخ و زمان شمسی برای گفتگوی آنلاین
+function formatPersianChatTime(dateInput) {
+    if (!dateInput) return 'الآن';
+    try {
+        const d = new Date(dateInput);
+        if (isNaN(d.getTime())) return String(dateInput).substring(11, 16) || 'الآن';
+        return new Intl.DateTimeFormat('fa-IR-u-ca-persian', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        }).format(d);
+    } catch (e) {
+        return String(dateInput).substring(11, 16) || 'الآن';
+    }
+}
+
+function formatPersianChatDate(dateInput) {
+    if (!dateInput) return '-';
+    try {
+        const d = new Date(dateInput);
+        if (isNaN(d.getTime())) return String(dateInput).substring(0, 10);
+        return new Intl.DateTimeFormat('fa-IR-u-ca-persian', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        }).format(d);
+    } catch (e) {
+        return String(dateInput).substring(0, 16).replace('T', ' ');
+    }
+}
+
 // درج حباب پیام در جریان چت
 function appendChatMessageBubble(msg) {
     const stream = document.getElementById("chatMessagesContainer");
     if (!stream) return;
 
     const isUser = (msg.sender_type === 'user');
-    const timeStr = (msg.created_at || '').substring(11, 16) || 'الآن';
+    const timeStr = formatPersianChatTime(msg.created_at);
 
     const row = document.createElement("div");
     row.className = 'chat-msg-row ' + (isUser ? 'user' : 'support');
@@ -1625,7 +1659,7 @@ function fetchChatHistory() {
                 if (t.status === 'replied') statusBadge = '<span class="badge bg-success">پاسخ داده شده</span>';
                 if (t.status === 'closed') statusBadge = '<span class="badge bg-secondary">بسته شده</span>';
 
-                const time = (t.updated_at || t.created_at || '').substring(0, 10);
+                const time = formatPersianChatDate(t.updated_at || t.created_at);
                 const lastSnippet = t.last_message_text || t.message || 'بدون متن';
 
                 card.innerHTML = `
