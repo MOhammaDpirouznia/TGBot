@@ -12469,9 +12469,96 @@ def api_invoice_status(order_id: str):
     })
 
 
-@app.route("/api/portal/<token>/support-message", methods=["POST"])
-def api_portal_support_message(token: str):
-    """ثبت پیام یا تیکت آنلاین مشتری از درون صفحه پرتال به همراه ارسال نوتیفیکیشن تلگرام"""
+@app.route("/api/portal/<token>/chat/init", methods=["GET"])
+def api_portal_chat_init(token: str):
+    """دریافت اطلاعات اولیه گفتگوی آنلاین، آخرین گفتگوی فعال و تاریخچه برای پورتال مشتری"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+
+    if not sub_row:
+        return jsonify({"success": False, "error": "اشتراک مورد نظر یافت نشد."}), 404
+
+    sub = dict(sub_row)
+    sub_id = sub["id"]
+    tg_id = sub.get("telegram_id")
+
+    history = db.get_portal_chat_history(sub_id, telegram_id=tg_id, portal_token=token)
+
+    active_ticket = None
+    active_messages = []
+    for t in history:
+        if t.get("status") in ("open", "in_progress", "replied"):
+            active_ticket = t
+            active_messages = db.get_ticket_messages(t["id"])
+            break
+
+    if not active_ticket and history:
+        active_ticket = history[0]
+        active_messages = db.get_ticket_messages(active_ticket["id"])
+
+    default_name = sub.get("account_name") or ""
+    if default_name.startswith("user_") or default_name.startswith("sub_"):
+        default_name = ""
+    default_phone = sub.get("phone_number") or ""
+
+    return jsonify({
+        "success": True,
+        "subscription_id": sub_id,
+        "customer_name": default_name,
+        "customer_phone": default_phone,
+        "active_ticket": active_ticket,
+        "messages": active_messages,
+        "history_count": len(history),
+        "history": history,
+        "support_status": "online"
+    })
+
+
+@app.route("/api/portal/<token>/chat/history", methods=["GET"])
+def api_portal_chat_history(token: str):
+    """دریافت لیست تمامی گفتگوهای گذشته مشتری"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+
+    if not sub_row:
+        return jsonify({"success": False, "error": "اشتراک مورد نظر یافت نشد."}), 404
+
+    sub = dict(sub_row)
+    history = db.get_portal_chat_history(sub["id"], telegram_id=sub.get("telegram_id"), portal_token=token)
+    return jsonify({
+        "success": True,
+        "history": history
+    })
+
+
+@app.route("/api/portal/<token>/chat/messages/<int:ticket_id>", methods=["GET"])
+def api_portal_chat_messages(token: str, ticket_id: int):
+    """دریافت پیام‌های یک گفتگوی مشخص"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+
+    if not sub_row:
+        return jsonify({"success": False, "error": "اشتراک مورد نظر یافت نشد."}), 404
+
+    sub = dict(sub_row)
+    ticket = db.get_portal_ticket(ticket_id, subscription_id=sub["id"], portal_token=token)
+    if not ticket:
+        return jsonify({"success": False, "error": "گفتگوی مورد نظر یافت نشد."}), 404
+
+    messages = db.get_ticket_messages(ticket_id)
+    return jsonify({
+        "success": True,
+        "ticket": ticket,
+        "messages": messages
+    })
+
+
+@app.route("/api/portal/<token>/chat/start", methods=["POST"])
+def api_portal_chat_start(token: str):
+    """شروع گفتگوی جدید آنلاین توسط مشتری با انتخاب موضوع، نام و شماره تماس"""
     conn = db.get_connection()
     sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
     conn.close()
@@ -12481,68 +12568,187 @@ def api_portal_support_message(token: str):
 
     sub = dict(sub_row)
     data = request.get_json(silent=True) or request.form.to_dict() or {}
-    message_text = (data.get("message") or "").strip()
-    contact = (data.get("contact") or "").strip()
     subject = (data.get("subject") or "پیام آنلاین مشتری از پرتال").strip()
+    name = (data.get("name") or sub.get("account_name") or f"مشتری #{sub['id']}").strip()
+    phone = (data.get("phone") or sub.get("phone_number") or "").strip()
+    message_text = (data.get("message") or "").strip()
 
     if not message_text:
-        return jsonify({"success": False, "error": "لطفاً متن پیام خود را بنویسید."}), 400
+        return jsonify({"success": False, "error": "لطفاً متن پیام خود را وارد نمایید."}), 400
 
     sub_id = sub["id"]
-    account_name = sub.get("account_name") or f"مشتری #{sub_id}"
-    tg_id = sub.get("telegram_id") or sub_id
     reseller_id = sub.get("reseller_id") or 0
+    tg_id = sub.get("telegram_id") or sub_id
 
-    full_message = f"💬 پیام ارسالی از پورتال اشتراک «{account_name}» (شناسه #{sub_id}):\n{message_text}"
-    if contact:
-        full_message += f"\n\n📞 اطلاعات تماس اعلامی مشتری: {contact}"
+    if phone and not sub.get("phone_number"):
+        try:
+            conn = db.get_connection()
+            conn.execute("UPDATE subscriptions SET phone_number=? WHERE id=?", (phone, sub_id))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
 
-    res = db.create_ticket(
-        telegram_id=tg_id,
-        subject=f"{subject} - {account_name}",
-        message=full_message,
+    res = db.create_portal_chat_ticket(
+        subscription_id=sub_id,
+        customer_name=name,
+        customer_phone=phone,
+        subject=subject,
+        initial_message=message_text,
+        portal_token=token,
         reseller_id=reseller_id,
-        user_id=tg_id,
-        username=account_name
+        telegram_id=tg_id
     )
-    ticket_id = res.get("ticket_id") if isinstance(res, dict) else None
 
-    # ارسال نوتیفیکیشن تلگرام به نماینده یا ادمین
+    if not res.get("success"):
+        return jsonify({"success": False, "error": res.get("error", "خطا در ایجاد گفتگو")}), 500
+
+    ticket_id = res["ticket_id"]
+
     try:
+        notif_msg = (
+            f"💬 <b>گفتگوی آنلاین جدید در پورتال مشتری!</b>\n\n"
+            f"🎫 شماره تیکت: <b>#{ticket_id}</b>\n"
+            f"👤 مشتری: <b>{name}</b> (اشتراک #{sub_id})\n"
+            f"🔖 موضوع: <b>{subject}</b>\n"
+            + (f"📱 شماره تماس: <code>{phone}</code>\n" if phone else "")
+            + f"📝 پیام مشتری:\n{message_text}\n"
+            f"⏰ زمان: {get_now_shamsi()}\n\n"
+            f"💡 پاسخگویی از طریق میز کار وب یا دستور <code>/reply_ticket {ticket_id} متن پاسخ</code>"
+        )
         if reseller_id:
             r_info = db.get_reseller(reseller_id) or {}
             r_tg = r_info.get("telegram_id")
             if r_tg:
                 r_bot_token = r_info.get("bot_token")
-                notif = (
-                    f"📬 <b>پیام جدید از پورتال مشتری!</b>\n\n"
-                    f"👤 مشتری: <b>{account_name}</b> (شناسه #{sub_id})\n"
-                    f"🔖 موضوع: {subject}\n"
-                    f"📝 متن پیام:\n{message_text}\n"
-                    + (f"📞 تماس: <code>{contact}</code>\n" if contact else "")
-                    + f"⏰ زمان: {get_now_shamsi()}"
-                )
-                send_telegram_msg(r_tg, notif, bot_token=r_bot_token)
+                send_telegram_msg(r_tg, notif_msg, bot_token=r_bot_token)
         else:
             admin_tg = db.get_setting("admin_telegram_id") or get_admin_id()
             if admin_tg:
-                notif = (
-                    f"📬 <b>پیام جدید از پورتال مشتری!</b>\n\n"
-                    f"👤 مشتری: <b>{account_name}</b> (شناسه #{sub_id})\n"
-                    f"🔖 موضوع: {subject}\n"
-                    f"📝 متن پیام:\n{message_text}\n"
-                    + (f"📞 تماس: <code>{contact}</code>\n" if contact else "")
-                    + f"⏰ زمان: {get_now_shamsi()}"
-                )
-                send_telegram_msg(int(admin_tg), notif)
+                send_telegram_msg(int(admin_tg), notif_msg)
     except Exception as e_notif:
-        logger.warning(f"Failed to notify of portal support message: {e_notif}")
+        logger.warning(f"Failed to notify of new portal chat: {e_notif}")
+
+    ticket = db.get_portal_ticket(ticket_id, subscription_id=sub_id, portal_token=token)
+    messages = db.get_ticket_messages(ticket_id)
 
     return jsonify({
         "success": True,
         "ticket_id": ticket_id,
-        "message": "پیام شما با موفقیت برای تیم پشتیبانی ارسال شد و به زودی بررسی خواهد شد."
+        "ticket": ticket,
+        "messages": messages,
+        "message": "گفتگوی شما با موفقیت ثبت شد و کارشناس پشتیبانی به زودی پاسخ خواهد داد."
     })
+
+
+@app.route("/api/portal/<token>/chat/send", methods=["POST"])
+def api_portal_chat_send(token: str):
+    """ارسال پیام بعدی توسط مشتری در گفتگوی جاری"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+
+    if not sub_row:
+        return jsonify({"success": False, "error": "اشتراک مورد نظر یافت نشد."}), 404
+
+    sub = dict(sub_row)
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    ticket_id = data.get("ticket_id")
+    message_text = (data.get("message") or "").strip()
+    name = (data.get("name") or sub.get("account_name") or "مشتری").strip()
+
+    if not ticket_id:
+        return jsonify({"success": False, "error": "شناسه گفتگو الزامی است."}), 400
+    if not message_text:
+        return jsonify({"success": False, "error": "متن پیام نمی‌تواند خالی باشد."}), 400
+
+    try:
+        ticket_id = int(ticket_id)
+    except ValueError:
+        return jsonify({"success": False, "error": "شناسه گفتگو نامعتبر است."}), 400
+
+    sub_id = sub["id"]
+    res = db.add_portal_user_message(
+        ticket_id=ticket_id,
+        subscription_id=sub_id,
+        message=message_text,
+        customer_name=name
+    )
+
+    if not res.get("success"):
+        return jsonify({"success": False, "error": res.get("error", "خطا در ارسال پیام")}), 400
+
+    try:
+        reseller_id = sub.get("reseller_id") or 0
+        notif_msg = (
+            f"📩 <b>پیام جدید مشتری در گفتگوی آنلاین #{ticket_id}</b>\n\n"
+            f"👤 از طرف: <b>{name}</b> (اشتراک #{sub_id})\n"
+            f"💬 متن پیام:\n{message_text}\n"
+            f"⏰ {get_now_shamsi()}\n\n"
+            f"💡 پاسخ سریع با: <code>/reply_ticket {ticket_id} متن پاسخ</code>"
+        )
+        if reseller_id:
+            r_info = db.get_reseller(reseller_id) or {}
+            r_tg = r_info.get("telegram_id")
+            if r_tg:
+                r_bot_token = r_info.get("bot_token")
+                send_telegram_msg(r_tg, notif_msg, bot_token=r_bot_token)
+        else:
+            admin_tg = db.get_setting("admin_telegram_id") or get_admin_id()
+            if admin_tg:
+                send_telegram_msg(int(admin_tg), notif_msg)
+    except Exception as e_notif:
+        logger.warning(f"Failed to notify of chat user message: {e_notif}")
+
+    return jsonify({
+        "success": True,
+        "message_id": res.get("message_id"),
+        "ticket_id": ticket_id
+    })
+
+
+@app.route("/api/portal/<token>/chat/poll", methods=["GET"])
+def api_portal_chat_poll(token: str):
+    """بررسی دوره‌ای پیام‌های جدید دریافتی از پشتیبان برای هشدار صوتی و نوتیفیکیشن"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+
+    if not sub_row:
+        return jsonify({"success": False, "error": "اشتراک مورد نظر یافت نشد."}), 404
+
+    sub = dict(sub_row)
+    sub_id = sub["id"]
+
+    raw_ticket_id = request.args.get("ticket_id")
+    raw_last_msg_id = request.args.get("last_msg_id", 0)
+
+    try:
+        ticket_id = int(raw_ticket_id) if raw_ticket_id else None
+    except ValueError:
+        ticket_id = None
+
+    try:
+        last_msg_id = int(raw_last_msg_id)
+    except ValueError:
+        last_msg_id = 0
+
+    poll_result = db.poll_portal_ticket_updates(
+        subscription_id=sub_id,
+        ticket_id=ticket_id,
+        last_msg_id=last_msg_id
+    )
+
+    return jsonify({
+        "success": True,
+        **poll_result
+    })
+
+
+@app.route("/api/portal/<token>/support-message", methods=["POST"])
+def api_portal_support_message(token: str):
+    """سازگاری با ای‌پی‌آی قدیمی ثبت پیام با ارجاع به شروع گفتگوی آنلاین"""
+    return api_portal_chat_start(token)
 
 
 @app.route("/admin/subscription/<int:sub_id>/send_renewal_link", methods=["POST"])

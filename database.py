@@ -950,13 +950,17 @@ class Database:
             except Exception:
                 pass
 
-        # ستون‌های تیکت‌های درخواست تغییر حجم و مدت نماینده
+        # ستون‌های تیکت‌های درخواست تغییر حجم و مدت نماینده و چت پورتال مشتری
         for col_def in [
             "reseller_id INTEGER DEFAULT 0",
             "ticket_type TEXT DEFAULT 'general'",
             "target_role TEXT DEFAULT 'admin'",
             "request_data TEXT",
-            "request_status TEXT DEFAULT 'pending'"
+            "request_status TEXT DEFAULT 'pending'",
+            "subscription_id INTEGER DEFAULT NULL",
+            "customer_name TEXT DEFAULT NULL",
+            "customer_phone TEXT DEFAULT NULL",
+            "portal_token TEXT DEFAULT NULL"
         ]:
             try:
                 cursor.execute(f"ALTER TABLE support_tickets ADD COLUMN {col_def}")
@@ -3946,6 +3950,172 @@ class Database:
         finally:
             conn.close()
 
+    def create_portal_chat_ticket(self, subscription_id: int, customer_name: str, customer_phone: str, subject: str, initial_message: str, portal_token: str = None, reseller_id: int = None, telegram_id: int = None):
+        """ایجاد تیکت گفتگوی آنلاین مشتری از پورتال وب با ثبت مشخصات و پیام اولیه"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        tg_id = telegram_id or subscription_id
+        try:
+            cursor.execute("""
+                INSERT INTO support_tickets (
+                    telegram_id, subscription_id, customer_name, customer_phone, portal_token,
+                    subject, message, status, reseller_id, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)
+            """, (tg_id, subscription_id, customer_name, customer_phone, portal_token, subject, initial_message, reseller_id, now, now))
+            ticket_id = cursor.lastrowid
+
+            if initial_message:
+                cursor.execute("""
+                    INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, sender_name, message, created_at)
+                    VALUES (?, 'user', ?, ?, ?, ?)
+                """, (ticket_id, tg_id, customer_name or "مشتری", initial_message, now))
+
+            conn.commit()
+            return {"success": True, "ticket_id": ticket_id}
+        except Exception as e:
+            logger.error(f"Error creating portal chat ticket: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_portal_chat_history(self, subscription_id: int, telegram_id: int = None, portal_token: str = None):
+        """دریافت سوابق تمامی گفتگوهای آنلاین مرتبط با این اشتراک"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            conds = ["subscription_id = ?"]
+            params = [subscription_id]
+            if portal_token:
+                conds.append("portal_token = ?")
+                params.append(portal_token)
+            if telegram_id and telegram_id > 0 and telegram_id != subscription_id:
+                conds.append("telegram_id = ?")
+                params.append(telegram_id)
+
+            where_sql = " OR ".join(conds)
+            cursor.execute(f"""
+                SELECT id, subscription_id, customer_name, customer_phone, subject, message,
+                       status, admin_reply, created_at, updated_at, reseller_id,
+                       (SELECT COUNT(*) FROM ticket_messages WHERE ticket_id = support_tickets.id) as messages_count,
+                       (SELECT message FROM ticket_messages WHERE ticket_id = support_tickets.id ORDER BY id DESC LIMIT 1) as last_message_text,
+                       (SELECT created_at FROM ticket_messages WHERE ticket_id = support_tickets.id ORDER BY id DESC LIMIT 1) as last_message_time,
+                       (SELECT sender_type FROM ticket_messages WHERE ticket_id = support_tickets.id ORDER BY id DESC LIMIT 1) as last_sender_type
+                FROM support_tickets
+                WHERE ({where_sql})
+                  AND (ticket_type NOT IN ('reseller_to_admin', 'quota_change', 'reseller_application') OR ticket_type IS NULL)
+                ORDER BY updated_at DESC, created_at DESC
+            """, params)
+            return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error getting portal chat history: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_portal_ticket(self, ticket_id: int, subscription_id: int = None, portal_token: str = None):
+        """بررسی مجاز بودن و دریافت اطلاعات تیکت پورتال"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM support_tickets WHERE id = ?", (ticket_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            t = dict(row)
+            if subscription_id is not None and t.get("subscription_id") and t.get("subscription_id") != subscription_id:
+                if portal_token and t.get("portal_token") == portal_token:
+                    pass
+                else:
+                    return None
+            return t
+        except Exception as e:
+            logger.error(f"Error getting portal ticket: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def add_portal_user_message(self, ticket_id: int, subscription_id: int, message: str, customer_name: str = None):
+        """افزودن پیام جدید مشتری به گفتگوی آنلاین و تغییر وضعیت تیکت به open"""
+        t = self.get_portal_ticket(ticket_id, subscription_id=subscription_id)
+        if not t:
+            return {"success": False, "error": "گفتگوی مورد نظر یافت نشد یا دسترسی نامعتبر است."}
+
+        sender_name = customer_name or t.get("customer_name") or "مشتری"
+        now = get_now_iso()
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, sender_name, message, created_at)
+                VALUES (?, 'user', ?, ?, ?, ?)
+            """, (ticket_id, subscription_id, sender_name, message, now))
+            msg_id = cursor.lastrowid
+
+            cursor.execute("""
+                UPDATE support_tickets 
+                SET status = 'open', updated_at = ?
+                WHERE id = ?
+            """, (now, ticket_id))
+            conn.commit()
+            return {"success": True, "message_id": msg_id, "ticket": t}
+        except Exception as e:
+            logger.error(f"Error adding portal user message: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def poll_portal_ticket_updates(self, subscription_id: int, ticket_id: int = None, last_msg_id: int = 0):
+        """بررسی پیام‌های جدید دریافتی از سمت پشتیبانی و وضعیت خوانده‌نشده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            target_ticket_id = ticket_id
+            if not target_ticket_id:
+                cursor.execute("""
+                    SELECT id FROM support_tickets 
+                    WHERE subscription_id = ? 
+                    ORDER BY updated_at DESC, id DESC LIMIT 1
+                """, (subscription_id,))
+                row = cursor.fetchone()
+                if row:
+                    target_ticket_id = row[0]
+
+            new_messages = []
+            ticket_info = None
+            if target_ticket_id:
+                cursor.execute("SELECT id, subject, status, updated_at FROM support_tickets WHERE id = ?", (target_ticket_id,))
+                t_row = cursor.fetchone()
+                if t_row:
+                    ticket_info = dict(t_row)
+
+                cursor.execute("""
+                    SELECT * FROM ticket_messages 
+                    WHERE ticket_id = ? AND id > ?
+                    ORDER BY id ASC
+                """, (target_ticket_id, last_msg_id))
+                new_messages = [dict(m) for m in cursor.fetchall()]
+
+            cursor.execute("""
+                SELECT COUNT(*) FROM ticket_messages m
+                JOIN support_tickets t ON m.ticket_id = t.id
+                WHERE t.subscription_id = ? AND m.sender_type IN ('admin', 'reseller') AND m.id > ?
+            """, (subscription_id, last_msg_id))
+            unread_count = cursor.fetchone()[0]
+
+            return {
+                "ticket_id": target_ticket_id,
+                "ticket_info": ticket_info,
+                "new_messages": new_messages,
+                "unread_count": unread_count
+            }
+        except Exception as e:
+            logger.error(f"Error polling portal ticket updates: {e}")
+            return {"new_messages": [], "unread_count": 0}
+        finally:
+            conn.close()
+
     def get_all_tickets(self, status=None, reseller_id=None, search=None, vip_only=False, category=None):
         """دریافت تمام تیکت‌ها با فیلتر وضعیت، جستجو، نماینده و تفکیک دسته‌بندی مشتریان و نمایندگان"""
         conn = self.get_connection()
@@ -4005,8 +4175,8 @@ class Database:
                     query += " AND u.is_vip = 1 AND t.status != 'closed'"
 
             if search:
-                query += " AND (t.id LIKE ? OR t.message LIKE ? OR t.admin_reply LIKE ? OR t.subject LIKE ? OR u.username LIKE ? OR u.phone_number LIKE ? OR t.telegram_id LIKE ? OR r.name LIKE ? OR r.username LIKE ?)"
-                params.extend([f"%{search}%"] * 9)
+                query += " AND (t.id LIKE ? OR t.message LIKE ? OR t.admin_reply LIKE ? OR t.subject LIKE ? OR u.username LIKE ? OR u.phone_number LIKE ? OR t.telegram_id LIKE ? OR r.name LIKE ? OR r.username LIKE ? OR t.customer_name LIKE ? OR t.customer_phone LIKE ?)"
+                params.extend([f"%{search}%"] * 11)
 
             query += " ORDER BY COALESCE(u.is_vip, 0) DESC, CASE WHEN t.status = 'open' THEN 1 WHEN t.status = 'in_progress' THEN 2 WHEN t.status = 'replied' THEN 3 ELSE 4 END, t.created_at DESC"
             cursor.execute(query, params)
