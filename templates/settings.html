@@ -514,6 +514,65 @@ function sendTestSms() {
         resultBox.innerHTML = '<div class="alert alert-danger py-2 mb-0"><i class="fas fa-triangle-exclamation me-1"></i> خطای ارتباط: ' + err + '</div>';
     });
 }
+
+function toggleSmsApiKeyVisibility() {
+    const input = document.getElementById('smsApiKeyInput');
+    const icon = document.getElementById('smsApiKeyToggleIcon');
+    if (!input) return;
+    if (input.type === 'password') {
+        input.type = 'text';
+        if (icon) {
+            icon.classList.remove('fa-eye');
+            icon.classList.add('fa-eye-slash');
+        }
+    } else {
+        input.type = 'password';
+        if (icon) {
+            icon.classList.remove('fa-eye-slash');
+            icon.classList.add('fa-eye');
+        }
+    }
+}
+
+function updateSmsFields() {
+    const select = document.getElementById('smsProviderSelect');
+    if (!select) return;
+    const provider = select.value;
+    const urlInput = document.getElementById('smsUrlInput');
+    const urlHelp = document.getElementById('smsUrlHelp');
+    const urlLabel = document.getElementById('smsUrlLabel');
+    if (!urlInput || !urlHelp) return;
+
+    if (provider === 'generic') {
+        urlInput.placeholder = 'https://api.my-gateway.com/send?token={api_key}&to={phone}&text={message}';
+        urlHelp.innerHTML = '<span class="text-danger fw-bold"><i class="fas fa-exclamation-triangle me-1"></i>آدرس وب‌هوک در حالت درگاه دلخواه الزامی است.</span> متغیرهای مجاز: <code>{api_key}</code>, <code>{phone}</code>, <code>{message}</code>, <code>{sender}</code>';
+        if (urlLabel) urlLabel.classList.add('text-danger');
+    } else if (provider === 'smsir') {
+        urlInput.placeholder = 'https://api.sms.ir (پیش‌فرض سامانه sms.ir)';
+        urlHelp.innerHTML = 'آدرس پیش‌فرض وب‌سرویس: <code>https://api.sms.ir</code> (نیاز به تغییر ندارد مگر آدرس اختصاصی). شناسه قالب (TemplateId) عددی پنل sms.ir را در کدهای پترن زیر ثبت فرمایید.';
+        if (urlLabel) urlLabel.classList.remove('text-danger');
+    } else if (provider === 'kavenegar') {
+        urlInput.placeholder = 'https://api.kavenegar.com (پیش‌فرض)';
+        urlHelp.innerHTML = 'آدرس پیش‌فرض وب‌سرویس: <code>https://api.kavenegar.com</code> (نیاز به تغییر ندارد مگر آدرس اختصاصی).';
+        if (urlLabel) urlLabel.classList.remove('text-danger');
+    } else if (provider === 'melipayamak') {
+        urlInput.placeholder = 'https://rest.melipayamak.com (پیش‌فرض)';
+        urlHelp.innerHTML = 'آدرس پیش‌فرض وب‌سرویس: <code>https://rest.melipayamak.com</code> (نیاز به تغییر ندارد مگر آدرس اختصاصی).';
+        if (urlLabel) urlLabel.classList.remove('text-danger');
+    } else if (provider === 'ghasedak') {
+        urlInput.placeholder = 'https://api.ghasedak.me (پیش‌فرض)';
+        urlHelp.innerHTML = 'آدرس پیش‌فرض وب‌سرویس: <code>https://api.ghasedak.me</code> (نیاز به تغییر ندارد مگر آدرس اختصاصی).';
+        if (urlLabel) urlLabel.classList.remove('text-danger');
+    } else {
+        urlInput.placeholder = 'http://rest.ippanel.com (پیش‌فرض)';
+        urlHelp.innerHTML = 'آدرس پیش‌فرض وب‌سرویس: <code>http://rest.ippanel.com</code> (نیاز به تغییر ندارد مگر آدرس اختصاصی).';
+        if (urlLabel) urlLabel.classList.remove('text-danger');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    updateSmsFields();
+});
 </script>
 
 <!-- کارت تنظیمات درگاه پیامک (SMS Gateway) -->
@@ -544,8 +603,9 @@ function sendTestSms() {
             <div class="row g-3 mb-3">
                 <div class="col-md-6">
                     <label class="form-label fw-bold">ارائه‌دهنده وب‌سرویس پیامک (Provider):</label>
-                    <select name="sms_provider" class="form-select">
+                    <select name="sms_provider" id="smsProviderSelect" class="form-select" onchange="updateSmsFields()">
                         <option value="ippanel" {% if sms_config and sms_config.get('provider') == 'ippanel' %}selected{% endif %}>فراز اس‌ام‌اس / IPPanel / MaxSMS (پیش‌فرض)</option>
+                        <option value="smsir" {% if sms_config and sms_config.get('provider') in ('smsir', 'sms.ir') %}selected{% endif %}>سامانه پیامک SMS.ir (وب‌سرویس جدید سریع و پترن)</option>
                         <option value="kavenegar" {% if sms_config and sms_config.get('provider') == 'kavenegar' %}selected{% endif %}>کاوه‌نگار (Kavenegar)</option>
                         <option value="melipayamak" {% if sms_config and sms_config.get('provider') == 'melipayamak' %}selected{% endif %}>ملی پیامک (MeliPayamak)</option>
                         <option value="ghasedak" {% if sms_config and sms_config.get('provider') == 'ghasedak' %}selected{% endif %}>قاصدک (Ghasedak)</option>
@@ -554,11 +614,25 @@ function sendTestSms() {
                 </div>
                 <div class="col-md-6">
                     <label class="form-label fw-bold">شماره اختصاصی / خط ارسال‌کننده (Sender):</label>
-                    <input type="text" name="sms_originator" class="form-control font-monospace" placeholder="مثال: +983000505 یا 5000..." value="{{ sms_config.get('originator', '') if sms_config else '' }}">
+                    <input type="text" name="sms_originator" id="smsOriginatorInput" class="form-control font-monospace" placeholder="مثال: +983000505 یا 3000... (در حالت ارسال با پترن اختیاری)" value="{{ sms_config.get('originator', '') if sms_config else '' }}">
                 </div>
-                <div class="col-md-12">
+                <div class="col-md-6">
                     <label class="form-label fw-bold">کلید دسترسی وب‌سرویس / توکن API (API Key):</label>
-                    <input type="password" name="sms_api_key" class="form-control font-monospace" placeholder="کلید API خود را وارد کنید" value="{{ sms_config.get('api_key', '') if sms_config else '' }}">
+                    <div class="input-group">
+                        <input type="password" name="sms_api_key" id="smsApiKeyInput" class="form-control font-monospace" placeholder="کلید API خود را وارد کنید" value="{{ sms_config.get('api_key', '') if sms_config else '' }}">
+                        <button class="btn btn-outline-secondary" type="button" onclick="toggleSmsApiKeyVisibility()" title="نمایش/پنهان‌سازی کلید">
+                            <i class="fas fa-eye" id="smsApiKeyToggleIcon"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold" id="smsUrlLabel">
+                        <i class="fas fa-link me-1 text-primary"></i> آدرس URL وب‌سرویس / درگاه وب‌هوک (API / Webhook URL):
+                    </label>
+                    <input type="text" name="sms_url" id="smsUrlInput" class="form-control font-monospace" style="direction: ltr;" placeholder="https://api.sms.ir یا URL درگاه وب‌هوک" value="{{ sms_config.get('url', '') if sms_config else '' }}">
+                    <div class="form-text small" id="smsUrlHelp">
+                        برای وب‌هوک دلخواه الزامی است (متغیرها: <code>{api_key}</code>، <code>{phone}</code>، <code>{message}</code>، <code>{sender}</code>). برای سایر پنل‌ها در صورت تمایل به تغییر آدرس پیش‌فرض استفاده می‌شود.
+                    </div>
                 </div>
             </div>
 
