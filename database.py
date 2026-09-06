@@ -1174,6 +1174,16 @@ class Database:
         except Exception as e:
             logger.warning(f"Error initializing reseller_bundles table: {e}")
 
+        # اصلاح دسته‌بندی تیکت‌های مشتریان نماینده به target_role='reseller'
+        try:
+            cursor.execute("""
+                UPDATE support_tickets 
+                SET target_role = 'reseller' 
+                WHERE reseller_id > 0 AND (ticket_type NOT IN ('reseller_to_admin', 'quota_change', 'reseller_application') OR ticket_type IS NULL)
+            """)
+        except Exception as e:
+            logger.warning(f"Error updating support_tickets target_role: {e}")
+
         conn.commit()
         conn.close()
         logger.info("Database initialized successfully")
@@ -3783,10 +3793,12 @@ class Database:
         if not tg_id:
             return {"success": False, "error": "شناسه کاربر الزامی است."}
         try:
+            target_role = kwargs.get("target_role") or ('reseller' if reseller_id and int(reseller_id) > 0 else 'admin')
+            ticket_type = kwargs.get("ticket_type") or "general"
             cursor.execute("""
-                INSERT INTO support_tickets (telegram_id, subject, message, status, reseller_id, created_at, updated_at)
-                VALUES (?, ?, ?, 'open', ?, ?, ?)
-            """, (tg_id, subject, message, reseller_id, now, now))
+                INSERT INTO support_tickets (telegram_id, subject, message, status, reseller_id, target_role, ticket_type, created_at, updated_at)
+                VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?)
+            """, (tg_id, subject, message, reseller_id, target_role, ticket_type, now, now))
             ticket_id = cursor.lastrowid
 
             if message:
@@ -3957,13 +3969,14 @@ class Database:
         now = get_now_iso()
         tg_id = telegram_id or subscription_id
         try:
+            target_role = 'reseller' if reseller_id and int(reseller_id) > 0 else 'admin'
             cursor.execute("""
                 INSERT INTO support_tickets (
                     telegram_id, subscription_id, customer_name, customer_phone, portal_token,
-                    subject, message, status, reseller_id, created_at, updated_at
+                    subject, message, status, reseller_id, target_role, ticket_type, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)
-            """, (tg_id, subscription_id, customer_name, customer_phone, portal_token, subject, initial_message, reseller_id, now, now))
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, 'portal_chat', ?, ?)
+            """, (tg_id, subscription_id, customer_name, customer_phone, portal_token, subject, initial_message, reseller_id, target_role, now, now))
             ticket_id = cursor.lastrowid
 
             if initial_message:
@@ -4143,10 +4156,10 @@ class Database:
             if reseller_id is not None:
                 # پنل نماینده
                 if category == "admin":
-                    query += " AND t.reseller_id = ? AND (t.ticket_type IN ('reseller_to_admin', 'quota_change', 'reseller_application') OR t.target_role = 'admin')"
+                    query += " AND t.reseller_id = ? AND t.ticket_type IN ('reseller_to_admin', 'quota_change', 'reseller_application')"
                     params.append(reseller_id)
                 elif category == "customers":
-                    query += " AND t.reseller_id = ? AND (t.ticket_type NOT IN ('reseller_to_admin', 'quota_change', 'reseller_application') OR t.ticket_type IS NULL) AND (t.target_role IS NULL OR t.target_role != 'admin')"
+                    query += " AND t.reseller_id = ? AND (t.ticket_type NOT IN ('reseller_to_admin', 'quota_change', 'reseller_application') OR t.ticket_type IS NULL)"
                     params.append(reseller_id)
                 else:
                     query += " AND t.reseller_id = ?"
@@ -4154,7 +4167,7 @@ class Database:
             else:
                 # پنل مدیریت
                 if category == "resellers":
-                    query += " AND (t.ticket_type IN ('reseller_to_admin', 'quota_change', 'reseller_application') OR (t.reseller_id > 0 AND (t.ticket_type IS NOT NULL OR t.target_role = 'admin')))"
+                    query += " AND t.ticket_type IN ('reseller_to_admin', 'quota_change', 'reseller_application')"
                 elif category == "customers":
                     query += " AND (t.reseller_id IS NULL OR t.reseller_id = 0) AND (t.ticket_type NOT IN ('reseller_to_admin', 'quota_change', 'reseller_application') OR t.ticket_type IS NULL)"
                 # اگر category == 'all' یا نامشخص بود، همه را برمی‌گرداند
@@ -4256,7 +4269,7 @@ class Database:
             if reseller_id is None:
                 # پنل مدیریت
                 cust_stats = _calc_stats("WHERE (t.reseller_id IS NULL OR t.reseller_id = 0) AND (t.ticket_type NOT IN ('reseller_to_admin', 'quota_change', 'reseller_application') OR t.ticket_type IS NULL)", [])
-                res_stats = _calc_stats("WHERE t.ticket_type IN ('reseller_to_admin', 'quota_change', 'reseller_application') OR (t.reseller_id > 0 AND (t.ticket_type IS NOT NULL OR t.target_role = 'admin'))", [])
+                res_stats = _calc_stats("WHERE t.ticket_type IN ('reseller_to_admin', 'quota_change', 'reseller_application')", [])
                 all_stats = _calc_stats("WHERE 1=1", [])
                 
                 return {
@@ -4271,8 +4284,8 @@ class Database:
                 }
             else:
                 # پنل نماینده
-                cust_stats = _calc_stats("WHERE t.reseller_id = ? AND (t.ticket_type NOT IN ('reseller_to_admin', 'quota_change', 'reseller_application') OR t.ticket_type IS NULL) AND (t.target_role IS NULL OR t.target_role != 'admin')", [reseller_id])
-                admin_stats = _calc_stats("WHERE t.reseller_id = ? AND (t.ticket_type IN ('reseller_to_admin', 'quota_change', 'reseller_application') OR t.target_role = 'admin')", [reseller_id])
+                cust_stats = _calc_stats("WHERE t.reseller_id = ? AND (t.ticket_type NOT IN ('reseller_to_admin', 'quota_change', 'reseller_application') OR t.ticket_type IS NULL)", [reseller_id])
+                admin_stats = _calc_stats("WHERE t.reseller_id = ? AND t.ticket_type IN ('reseller_to_admin', 'quota_change', 'reseller_application')", [reseller_id])
                 all_stats = _calc_stats("WHERE t.reseller_id = ?", [reseller_id])
 
                 return {

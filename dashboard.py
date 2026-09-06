@@ -8488,6 +8488,35 @@ def reseller_request_quota_change(sub_id):
     )
 
     if res.get("success"):
+        ticket_id = res.get("ticket_id")
+        try:
+            admin_tg = db.get_setting("admin_telegram_id") or get_admin_id()
+            if admin_tg:
+                r_info = db.get_reseller(reseller_id) or {}
+                r_name = r_info.get("name") or session.get("name") or f"نماینده #{reseller_id}"
+                sub_info = db.get_subscription(sub_id) or {}
+                acc_name = sub_info.get("account_name") or f"user_{sub_id}"
+                quota_notif = (
+                    f"⚖️ <b>درخواست تغییر مشخصات اشتراک از سمت نماینده!</b>\n\n"
+                    f"🎫 شماره تیکت: <b>#{ticket_id}</b>\n"
+                    f"👤 نماینده: <b>{r_name}</b> (کد #{reseller_id})\n"
+                    f"📦 اشتراک: <code>{acc_name}</code> (شناسه #{sub_id})\n"
+                    f"📊 حجم درخواستی: <b>{requested_limit} GB</b>\n"
+                    f"⏳ مدت درخواستی: <b>{requested_duration} روز</b>\n"
+                    + (f"📝 علت درخواست: {reason}\n" if reason else "")
+                    + f"⏰ زمان: {get_now_shamsi()}"
+                )
+                adm_kb = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "✅ تایید و اعمال مستقیم", "callback_data": f"adm_quota_app_{ticket_id}"},
+                            {"text": "❌ رد درخواست", "callback_data": f"adm_quota_rej_{ticket_id}"}
+                        ]
+                    ]
+                }
+                send_telegram_msg(int(admin_tg), quota_notif, reply_markup=adm_kb)
+        except Exception as e_tg:
+            logger.warning(f"Failed to notify admin of quota change request: {e_tg}")
         flash(f"✅ درخواست تغییر حجم به {requested_limit} گیگابایت و {requested_duration} روز با موفقیت برای مدیریت ارسال شد و در تیکت #{res.get('ticket_id')} ثبت گردید.", "success")
     else:
         flash(f"خطا در ثبت درخواست: {res.get('error')}", "danger")
@@ -9325,6 +9354,31 @@ def reseller_bundles_submit_receipt():
         notes=notes,
         reseller_id=reseller_id
     )
+
+    try:
+        admin_tg = db.get_setting("admin_telegram_id") or get_admin_id()
+        if admin_tg:
+            bundle_notif = (
+                f"📦 <b>رسید خرید بسته اعتباری نماینده!</b>\n\n"
+                f"👤 نماینده: <b>{username}</b> (کد #{reseller_id})\n"
+                f"📋 بسته: <b>{bundle['title']}</b>\n"
+                f"💰 مبلغ پرداختی: <b>{bundle['price']:,} تومان</b>\n"
+                f"🎁 اعتبار شارژ: <b>{bundle['credit']:,} تومان</b>\n"
+                f"🔢 کد رهگیری: <code>{tracking_code or 'ثبت شده با عکس فیش'}</code>\n"
+                f"🆔 کد سفارش: <code>{order_id}</code>\n"
+                f"⏰ زمان: {get_now_shamsi()}"
+            )
+            adm_bundle_kb = {
+                "inline_keyboard": [
+                    [
+                        {"text": "✅ تایید فیش و شارژ کیف پول", "callback_data": f"adm_pay_app_{order_id}"},
+                        {"text": "❌ رد فیش", "callback_data": f"adm_pay_rej_{order_id}"}
+                    ]
+                ]
+            }
+            send_telegram_msg(int(admin_tg), bundle_notif, reply_markup=adm_bundle_kb)
+    except Exception as e_b_tg:
+        logger.warning(f"Failed to notify admin of bundle receipt: {e_b_tg}")
 
     flash(f"✅ رسید پرداخت برای «{bundle['title']}» با موفقیت ثبت شد. پس از بررسی و تایید مدیریت، مبلغ {bundle['credit']:,} تومان (با {bundle['badge']}) به کیف پول شما اضافه خواهد شد.", "success")
     return redirect(url_for("reseller_transactions"))
@@ -10396,6 +10450,35 @@ def reseller_create_ticket_to_admin():
     full_subject = f"[{category_type}] {subject}" if category_type and category_type != "عمومی" else subject
     res = db.create_reseller_to_admin_ticket(reseller_id=reseller_id, subject=full_subject, message=message)
     if res.get("success"):
+        ticket_id = res.get("ticket_id")
+        try:
+            admin_tg = db.get_setting("admin_telegram_id") or get_admin_id()
+            if admin_tg:
+                r_info = db.get_reseller(reseller_id) or {}
+                r_name = r_info.get("name") or session.get("name") or f"نماینده #{reseller_id}"
+                adm_notif = (
+                    f"🎫 <b>تیکت جدید از نماینده برای مدیریت!</b>\n\n"
+                    f"🆔 شماره تیکت: <b>#{ticket_id}</b>\n"
+                    f"👤 نماینده: <b>{r_name}</b> (کد #{reseller_id})\n"
+                    f"🔖 موضوع: <b>{full_subject}</b>\n"
+                    f"📝 متن پیام:\n{message}\n"
+                    f"⏰ زمان: {get_now_shamsi()}\n\n"
+                    f"💡 پاسخگویی از دکمه‌های زیر یا دستور <code>/reply_ticket {ticket_id} متن پاسخ</code>"
+                )
+                adm_kb = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "✍️ پاسخ متنی", "callback_data": f"adm_reply_tkt_{ticket_id}"},
+                            {"text": "⚡ پاسخ‌های آماده", "callback_data": f"adm_canned_tkt_{ticket_id}"}
+                        ],
+                        [
+                            {"text": "🔒 بستن تیکت", "callback_data": f"adm_close_tkt_{ticket_id}"}
+                        ]
+                    ]
+                }
+                send_telegram_msg(int(admin_tg), adm_notif, reply_markup=adm_kb)
+        except Exception as e_tg:
+            logger.warning(f"Failed to notify admin of reseller ticket: {e_tg}")
         flash("✅ تیکت شما با موفقیت برای مدیریت ارسال شد و در اسرع وقت پاسخ داده می‌شود.", "success")
     else:
         flash(f"خطا در ارسال تیکت: {res.get('error')}", "danger")
@@ -10414,6 +10497,33 @@ def reseller_ticket_reply_to_admin(ticket_id):
 
     res = db.add_reseller_admin_ticket_reply(ticket_id=ticket_id, reseller_id=reseller_id, message=reply_msg)
     if res.get("success"):
+        try:
+            admin_tg = db.get_setting("admin_telegram_id") or get_admin_id()
+            if admin_tg:
+                r_info = db.get_reseller(reseller_id) or {}
+                r_name = r_info.get("name") or session.get("name") or f"نماینده #{reseller_id}"
+                adm_notif = (
+                    f"💬 <b>پیام جدید در تیکت مکاتبه با نماینده!</b>\n\n"
+                    f"🆔 شماره تیکت: <b>#{ticket_id}</b>\n"
+                    f"👤 فرستنده: <b>{r_name}</b> (نماینده #{reseller_id})\n"
+                    f"📝 متن پیام:\n{reply_msg}\n"
+                    f"⏰ زمان: {get_now_shamsi()}\n\n"
+                    f"💡 پاسخگویی از دکمه‌های زیر یا دستور <code>/reply_ticket {ticket_id} متن پاسخ</code>"
+                )
+                adm_kb = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "✍️ پاسخ متنی", "callback_data": f"adm_reply_tkt_{ticket_id}"},
+                            {"text": "⚡ پاسخ‌های آماده", "callback_data": f"adm_canned_tkt_{ticket_id}"}
+                        ],
+                        [
+                            {"text": "🔒 بستن تیکت", "callback_data": f"adm_close_tkt_{ticket_id}"}
+                        ]
+                    ]
+                }
+                send_telegram_msg(int(admin_tg), adm_notif, reply_markup=adm_kb)
+        except Exception as e_tg:
+            logger.warning(f"Failed to notify admin of reseller ticket reply: {e_tg}")
         flash("✅ پیام شما برای مدیریت ارسال شد.", "success")
     else:
         flash(f"خطا در ثبت پیام: {res.get('error')}", "danger")
@@ -12526,6 +12636,53 @@ def customer_create_invoice(token: str):
     conn.commit()
     conn.close()
 
+    # ارسال اعلان تلگرام برای نماینده یا مدیریت با دکمه‌های تایید و رد آنی
+    order_id = invoice["order_id"]
+    final_amount = invoice["final_amount"]
+    card_info = target_card.get("card_number", "")
+    card_holder = target_card.get("card_holder", "")
+    pay_notif = (
+        f"💳 <b>صدور پیش‌فاکتور تمدید جدید در پرتال مشتری!</b>\n\n"
+        f"🆔 شناسه سفارش: <code>{order_id}</code>\n"
+        f"👤 مشتری: <b>{account_name}</b> (اشتراک #{sub_id})\n"
+        f"📦 بسته انتخابی: <b>{plan_name}</b>\n"
+        f"💰 مبلغ واریزی: <b>{final_amount:,} تومان</b>\n"
+        f"💳 کارت مقصد: <code>{card_info}</code> ({card_holder})\n"
+        f"⏰ زمان: {get_now_shamsi()}"
+    )
+    if reseller_id:
+        try:
+            r_info = db.get_reseller(reseller_id) or {}
+            r_tg = r_info.get("telegram_id")
+            if r_tg:
+                r_bot_token = r_info.get("bot_token")
+                r_pay_kb = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "✅ تایید پرداخت و تمدید", "callback_data": f"res_pay_app_{order_id}"},
+                            {"text": "❌ رد پرداخت", "callback_data": f"res_pay_rej_{order_id}"}
+                        ]
+                    ]
+                }
+                send_telegram_msg(r_tg, pay_notif, reply_markup=r_pay_kb, bot_token=r_bot_token)
+        except Exception as e_res_tg:
+            logger.warning(f"Failed to notify reseller of invoice: {e_res_tg}")
+    else:
+        try:
+            admin_tg = db.get_setting("admin_telegram_id") or get_admin_id()
+            if admin_tg:
+                adm_pay_kb = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "✅ تایید پرداخت و تمدید", "callback_data": f"adm_pay_app_{order_id}"},
+                            {"text": "❌ رد پرداخت", "callback_data": f"adm_pay_rej_{order_id}"}
+                        ]
+                    ]
+                }
+                send_telegram_msg(int(admin_tg), pay_notif, reply_markup=adm_pay_kb)
+        except Exception as e_adm_tg:
+            logger.warning(f"Failed to notify admin of invoice: {e_adm_tg}")
+
     flash(f"فاکتور تمدید برای «{plan_name}» صادر شد. لطفاً دقیقاً مبلغ مشخص شده را واریز نمایید.", "info")
     return redirect(url_for("customer_portal", token=token))
 
@@ -12711,11 +12868,33 @@ def api_portal_chat_start(token: str):
             r_tg = r_info.get("telegram_id")
             if r_tg:
                 r_bot_token = r_info.get("bot_token")
-                send_telegram_msg(r_tg, notif_msg, bot_token=r_bot_token)
+                r_kb = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "✍️ پاسخ متنی", "callback_data": f"res_reply_tkt_{ticket_id}"},
+                            {"text": "⚡ پاسخ‌های آماده", "callback_data": f"res_canned_tkt_{ticket_id}"}
+                        ],
+                        [
+                            {"text": "🔒 بستن تیکت", "callback_data": f"res_close_tkt_{ticket_id}"}
+                        ]
+                    ]
+                }
+                send_telegram_msg(r_tg, notif_msg, reply_markup=r_kb, bot_token=r_bot_token)
         else:
             admin_tg = db.get_setting("admin_telegram_id") or get_admin_id()
             if admin_tg:
-                send_telegram_msg(int(admin_tg), notif_msg)
+                adm_kb = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "✍️ پاسخ متنی", "callback_data": f"adm_reply_tkt_{ticket_id}"},
+                            {"text": "⚡ پاسخ‌های آماده", "callback_data": f"adm_canned_tkt_{ticket_id}"}
+                        ],
+                        [
+                            {"text": "🔒 بستن تیکت", "callback_data": f"adm_close_tkt_{ticket_id}"}
+                        ]
+                    ]
+                }
+                send_telegram_msg(int(admin_tg), notif_msg, reply_markup=adm_kb)
     except Exception as e_notif:
         logger.warning(f"Failed to notify of new portal chat: {e_notif}")
 
@@ -12782,11 +12961,33 @@ def api_portal_chat_send(token: str):
             r_tg = r_info.get("telegram_id")
             if r_tg:
                 r_bot_token = r_info.get("bot_token")
-                send_telegram_msg(r_tg, notif_msg, bot_token=r_bot_token)
+                r_kb = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "✍️ پاسخ متنی", "callback_data": f"res_reply_tkt_{ticket_id}"},
+                            {"text": "⚡ پاسخ‌های آماده", "callback_data": f"res_canned_tkt_{ticket_id}"}
+                        ],
+                        [
+                            {"text": "🔒 بستن تیکت", "callback_data": f"res_close_tkt_{ticket_id}"}
+                        ]
+                    ]
+                }
+                send_telegram_msg(r_tg, notif_msg, reply_markup=r_kb, bot_token=r_bot_token)
         else:
             admin_tg = db.get_setting("admin_telegram_id") or get_admin_id()
             if admin_tg:
-                send_telegram_msg(int(admin_tg), notif_msg)
+                adm_kb = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "✍️ پاسخ متنی", "callback_data": f"adm_reply_tkt_{ticket_id}"},
+                            {"text": "⚡ پاسخ‌های آماده", "callback_data": f"adm_canned_tkt_{ticket_id}"}
+                        ],
+                        [
+                            {"text": "🔒 بستن تیکت", "callback_data": f"adm_close_tkt_{ticket_id}"}
+                        ]
+                    ]
+                }
+                send_telegram_msg(int(admin_tg), notif_msg, reply_markup=adm_kb)
     except Exception as e_notif:
         logger.warning(f"Failed to notify of chat user message: {e_notif}")
 

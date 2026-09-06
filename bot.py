@@ -3318,7 +3318,7 @@ async def admin_send_ticket_reply(update: Update, context: ContextTypes.DEFAULT_
 
     db.reply_ticket(ticket_id, reply_text)
 
-    user_id = ticket["telegram_id"]
+    user_id = ticket.get("telegram_id") or ticket.get("user_id")
     try:
         user_msg = (
             f"🔔 <b>پاسخ پشتیبانی به تیکت #{ticket_id}:</b>\n\n"
@@ -3326,13 +3326,441 @@ async def admin_send_ticket_reply(update: Update, context: ContextTypes.DEFAULT_
             f"──────────────\n"
             f"در صورت نیاز به پیام مجدد، از دکمه «💬 پشتیبانی» استفاده کنید."
         )
-        await context.bot.send_message(chat_id=user_id, text=user_msg, parse_mode="HTML")
-        await update.message.reply_text(f"✅ پاسخ با موفقیت برای کاربر {user_id} ارسال شد.")
+        if user_id and int(user_id) > 0:
+            await context.bot.send_message(chat_id=int(user_id), text=user_msg, parse_mode="HTML")
+        await update.message.reply_text(f"✅ پاسخ با موفقیت برای تیکت #{ticket_id} ثبت و ارسال شد.")
     except Exception as e:
         logger.error(f"Error sending ticket reply to user {user_id}: {e}")
-        await update.message.reply_text(f"⚠️ پاسخ در دیتابیس ثبت شد اما ارسال به تلگرام کاربر با خطا مواجه شد: {e}")
+        await update.message.reply_text(f"⚠️ پاسخ در دیتابیس ثبت شد اما ارسال به تلگرام با خطا مواجه شد: {e}")
 
     return CHOOSING
+
+
+async def admin_ticket_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """مدیریت پاسخ متنی، پاسخ‌های آماده و بستن تیکت از تلگرام برای مدیریت و نماینده"""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    user = update.effective_user
+    is_admin = (user.id == ADMIN_ID or str(user.id) == str(db.get_setting("admin_telegram_id")))
+    reseller = db.get_reseller_by_telegram_id(user.id)
+    if not is_admin and not reseller:
+        await query.answer("⛔ شما دسترسی لازم برای این عملیات را ندارید.", show_alert=True)
+        return
+
+    if data.startswith("adm_reply_tkt_") or data.startswith("res_reply_tkt_"):
+        prefix = "adm_reply_tkt_" if data.startswith("adm_reply_tkt_") else "res_reply_tkt_"
+        ticket_id = int(data.replace(prefix, ""))
+        context.user_data["replying_ticket_id"] = ticket_id
+        await query.message.reply_text(
+            f"✍️ لطفاً متن پاسخ خود برای تیکت <b>#{ticket_id}</b> را ارسال کنید:\n"
+            f"(برای انصراف /cancel یا از دستور <code>/reply_ticket {ticket_id} متن پاسخ</code> استفاده نمایید)",
+            parse_mode="HTML"
+        )
+        return ADMIN_REPLYING_TICKET
+
+    elif data.startswith("adm_canned_tkt_") or data.startswith("res_canned_tkt_"):
+        is_adm = data.startswith("adm_canned_tkt_")
+        prefix = "adm_canned_tkt_" if is_adm else "res_canned_tkt_"
+        ticket_id = int(data.replace(prefix, ""))
+        
+        if is_adm:
+            canned_options = [
+                (1, "✅ درخواست شما بررسی و تایید شد."),
+                (2, "🔄 تغییرات مدنظر بر روی سرورها اعمال گردید."),
+                (3, "ℹ️ لطفاً جزئیات و اطلاعات بیشتری ارسال فرمایید."),
+                (4, "🛠 اختلال گزارش‌شده در دست بررسی تیم فنی است."),
+                (5, "💳 واریزی شما تایید و اعمال گردید.")
+            ]
+            send_prefix = f"adm_canned_send_{ticket_id}_"
+            cancel_cb = f"adm_canned_cancel_{ticket_id}"
+        else:
+            canned_options = [
+                (1, "✅ مشکل شما بررسی و رفع شد."),
+                (2, "💳 واریز تمدید شما تایید و اشتراک فعال گردید."),
+                (3, "🔄 لطفاً نرم‌افزار را بروز کرده و کانفیگ را آپدیت نمایید."),
+                (4, "📊 اشتراک شما بررسی شد و فعال و معتبر است."),
+                (5, "⏳ پیام شما در دست بررسی است، به زودی رفع می‌شود.")
+            ]
+            send_prefix = f"res_canned_send_{ticket_id}_"
+            cancel_cb = f"res_canned_cancel_{ticket_id}"
+
+        kb_rows = []
+        for idx, text in canned_options:
+            kb_rows.append([InlineKeyboardButton(text, callback_data=f"{send_prefix}{idx}")])
+        kb_rows.append([InlineKeyboardButton("◀️ انصراف", callback_data=cancel_cb)])
+        await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(kb_rows))
+
+    elif data.startswith("adm_canned_send_") or data.startswith("res_canned_send_"):
+        is_adm = data.startswith("adm_canned_send_")
+        parts = data.split("_")
+        ticket_id = int(parts[3])
+        idx = int(parts[4])
+
+        if is_adm:
+            canned_map = {
+                1: "✅ درخواست شما بررسی و تایید شد.",
+                2: "🔄 تغییرات مدنظر بر روی سرورها اعمال گردید.",
+                3: "ℹ️ لطفاً جزئیات و اطلاعات بیشتری ارسال فرمایید.",
+                4: "🛠 اختلال گزارش‌شده در دست بررسی تیم فنی است.",
+                5: "💳 واریزی شما تایید و اعمال گردید."
+            }
+            sender_type = "admin"
+            sender_name = "مدیریت"
+            sender_id = 0
+        else:
+            canned_map = {
+                1: "✅ مشکل شما بررسی و رفع شد.",
+                2: "💳 واریز تمدید شما تایید و اشتراک فعال گردید.",
+                3: "🔄 لطفاً نرم‌افزار را بروز کرده و کانفیگ را آپدیت نمایید.",
+                4: "📊 اشتراک شما بررسی شد و فعال و معتبر است.",
+                5: "⏳ پیام شما در دست بررسی است، به زودی رفع می‌شود."
+            }
+            sender_type = "reseller"
+            sender_name = (reseller.get("name") if reseller else "پشتیبانی")
+            sender_id = (reseller.get("id") if reseller else 0)
+
+        chosen_text = canned_map.get(idx, "پیام بررسی شد.")
+        db.add_ticket_message(
+            ticket_id=ticket_id,
+            sender_type=sender_type,
+            message=chosen_text,
+            sender_id=sender_id,
+            sender_name=sender_name,
+            new_status="replied"
+        )
+        ticket = db.get_ticket(ticket_id)
+        cust_tg = ticket.get("telegram_id") or ticket.get("user_id") if ticket else None
+        if cust_tg and int(cust_tg) > 0:
+            try:
+                notif = (
+                    f"🔔 <b>پاسخ {sender_name} به تیکت #{ticket_id}:</b>\n\n"
+                    f"{chosen_text}\n\n"
+                    f"──────────────\n"
+                    f"در صورت نیاز به پیام مجدد از بخش پشتیبانی استفاده نمایید."
+                )
+                await context.bot.send_message(chat_id=int(cust_tg), text=notif, parse_mode="HTML")
+            except Exception as e_s:
+                logger.error(f"Error sending canned reply: {e_s}")
+
+        orig_text = query.message.text_html or query.message.caption_html or query.message.text or ""
+        done_text = f"{orig_text}\n\n✅ <b>پاسخ آماده ارسال شد:</b>\n«{chosen_text}»"
+        await edit_admin_message_safe(query, done_text, reply_markup=None, parse_mode="HTML")
+
+    elif data.startswith("adm_canned_cancel_") or data.startswith("res_canned_cancel_"):
+        is_adm = data.startswith("adm_canned_cancel_")
+        ticket_id = int(data.replace("adm_canned_cancel_" if is_adm else "res_canned_cancel_", ""))
+        prefix = "adm" if is_adm else "res"
+        orig_kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("✍️ پاسخ متنی", callback_data=f"{prefix}_reply_tkt_{ticket_id}"),
+                InlineKeyboardButton("⚡ پاسخ‌های آماده", callback_data=f"{prefix}_canned_tkt_{ticket_id}")
+            ],
+            [
+                InlineKeyboardButton("🔒 بستن تیکت", callback_data=f"{prefix}_close_tkt_{ticket_id}")
+            ]
+        ])
+        await query.edit_message_reply_markup(reply_markup=orig_kb)
+
+    elif data.startswith("adm_close_tkt_") or data.startswith("res_close_tkt_"):
+        is_adm = data.startswith("adm_close_tkt_")
+        ticket_id = int(data.replace("adm_close_tkt_" if is_adm else "res_close_tkt_", ""))
+        db.close_ticket(ticket_id)
+        orig_text = query.message.text_html or query.message.caption_html or query.message.text or ""
+        done_text = f"{orig_text}\n\n🔒 <b>این تیکت با موفقیت بسته شد.</b>"
+        await edit_admin_message_safe(query, done_text, reply_markup=None, parse_mode="HTML")
+
+
+async def admin_quota_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تایید یا رد درخواست تغییر سهمیه اشتراک نماینده توسط مدیریت کل در تلگرام"""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    user = update.effective_user
+    if user.id != ADMIN_ID and str(user.id) != str(db.get_setting("admin_telegram_id")):
+        await query.answer("❌ شما دسترسی ادمین ندارید!", show_alert=True)
+        return
+
+    orig_text = query.message.text_html or query.message.caption_html or query.message.text or ""
+
+    if data.startswith("adm_quota_app_"):
+        ticket_id = int(data.replace("adm_quota_app_", ""))
+        res = db.approve_quota_change_request(ticket_id, admin_name="مدیریت (تلگرام)")
+        if not res.get("success"):
+            await query.answer(f"خطا: {res.get('error', 'درخواست قبلاً بررسی شده')}", show_alert=True)
+            return
+
+        req_data = res.get("data", {})
+        sub_id = res.get("sub_id")
+        req_limit = req_data.get("requested_limit")
+        req_duration = req_data.get("requested_duration")
+        acc_name = req_data.get("account_name", f"user_{sub_id}")
+        h_uuid = req_data.get("hidify_uuid")
+
+        if h_uuid:
+            try:
+                await hidify.update_user(
+                    uuid=h_uuid,
+                    usage_limit_gb=float(req_limit) if req_limit else None,
+                    package_days=int(req_duration) if req_duration else None
+                )
+            except Exception as e_h:
+                logger.error(f"Error updating Hiddify in quota approve callback: {e_h}")
+
+        done_text = f"{orig_text}\n\n✅ <b>درخواست تغییر مشخصات تایید و روی هیدیفای اعمال شد.</b>"
+        await edit_admin_message_safe(query, done_text, reply_markup=None, parse_mode="HTML")
+
+        # ارسال پیام به تلگرام نماینده
+        ticket = db.get_ticket(ticket_id)
+        if ticket and ticket.get("reseller_id"):
+            r_info = db.get_reseller(ticket["reseller_id"])
+            if r_info and r_info.get("telegram_id"):
+                try:
+                    await context.bot.send_message(
+                        chat_id=r_info["telegram_id"],
+                        text=f"✅ <b>درخواست تغییر مشخصات اشتراک شما تایید شد!</b>\n\n"
+                             f"📦 اکانت: <code>{acc_name}</code>\n"
+                             f"📊 حجم جدید: <b>{req_limit} GB</b>\n"
+                             f"⏳ مدت جدید: <b>{req_duration} روز</b>\n"
+                             f"🎫 تیکت پیگیری: #{ticket_id}",
+                        parse_mode="HTML"
+                    )
+                except Exception as e_r:
+                    logger.error(f"Failed to notify reseller of quota approval: {e_r}")
+
+    elif data.startswith("adm_quota_rej_"):
+        ticket_id = int(data.replace("adm_quota_rej_", ""))
+        res = db.reject_quota_change_request(ticket_id, reason="رد شده توسط مدیریت از طریق تلگرام", admin_name="مدیریت (تلگرام)")
+        done_text = f"{orig_text}\n\n❌ <b>درخواست تغییر مشخصات اشتراک رد شد.</b>"
+        await edit_admin_message_safe(query, done_text, reply_markup=None, parse_mode="HTML")
+
+        ticket = db.get_ticket(ticket_id)
+        if ticket and ticket.get("reseller_id"):
+            r_info = db.get_reseller(ticket["reseller_id"])
+            if r_info and r_info.get("telegram_id"):
+                try:
+                    await context.bot.send_message(
+                        chat_id=r_info["telegram_id"],
+                        text=f"❌ <b>درخواست تغییر مشخصات اشتراک رد شد.</b>\n\n"
+                             f"🎫 تیکت پیگیری: #{ticket_id}\n"
+                             f"علت: رد شده توسط مدیریت",
+                        parse_mode="HTML"
+                    )
+                except Exception as e_r:
+                    logger.error(f"Failed to notify reseller of quota rejection: {e_r}")
+
+
+async def admin_order_pay_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تایید یا رد آنی پرداخت‌های هوشمند، فیش‌های واریزی و بسته‌های اعتباری توسط مدیریت یا نماینده"""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    user = update.effective_user
+    is_admin = (user.id == ADMIN_ID or str(user.id) == str(db.get_setting("admin_telegram_id")))
+    reseller = db.get_reseller_by_telegram_id(user.id)
+
+    if not is_admin and not reseller:
+        await query.answer("❌ شما دسترسی لازم برای این عملیات را ندارید!", show_alert=True)
+        return
+
+    orig_text = query.message.text_html or query.message.caption_html or query.message.text or ""
+
+    if data.startswith("adm_pay_app_") or data.startswith("res_pay_app_"):
+        is_adm = data.startswith("adm_pay_app_")
+        order_id = data.replace("adm_pay_app_" if is_adm else "res_pay_app_", "")
+
+        conn = db.get_connection()
+        tx_row = conn.execute("SELECT * FROM transactions WHERE order_id=? OR id=?", (order_id, order_id)).fetchone()
+        conn.close()
+
+        if not tx_row:
+            await query.answer("❌ تراکنش یافت نشد.", show_alert=True)
+            return
+
+        tx = dict(tx_row)
+        if tx.get("status") == "approved":
+            await query.answer("⚠️ این تراکنش قبلاً تایید شده است.", show_alert=True)
+            done_text = f"{orig_text}\n\n✅ <b>این تراکنش قبلاً تایید و فعال شده است.</b>"
+            await edit_admin_message_safe(query, done_text, reply_markup=None, parse_mode="HTML")
+            return
+
+        # ۱. تایید بسته اعتباری نماینده (مخصوص مدیریت)
+        if tx.get("gateway") == "bundle_reseller" or str(order_id).startswith("R_BUNDLE"):
+            r_id = tx.get("reseller_id")
+            amount = tx.get("amount", 0)
+            pname = tx.get("plan_name", "بسته اعتباری")
+            res_b = db.apply_reseller_bundle_credit(r_id, amount, pname, tx.get("id"))
+            db.update_transaction(order_id, status="approved")
+
+            credit_added = res_b.get("credit_added", amount) if isinstance(res_b, dict) else amount
+            new_balance = res_b.get("new_balance", 0) if isinstance(res_b, dict) else 0
+
+            if r_id:
+                db.add_reseller_notification(
+                    reseller_id=r_id,
+                    title="تایید رسید خرید بسته اعتباری",
+                    message=f"رسید پرداخت شما برای «{pname}» تایید شد و مبلغ {credit_added:,} تومان به کیف پول شما واریز گردید.",
+                    type="success"
+                )
+                r_info = db.get_reseller(r_id)
+                if r_info and r_info.get("telegram_id"):
+                    try:
+                        await context.bot.send_message(
+                            chat_id=r_info["telegram_id"],
+                            text=(
+                                f"✅ <b>فیش واریزی شما تایید شد!</b>\n\n"
+                                f"📦 بسته: {pname}\n"
+                                f"💳 مبلغ: {amount:,} تومان\n"
+                                f"🎁 شارژ شده با بونوس: {credit_added:,} تومان\n"
+                                f"💰 موجودی جدید: {new_balance:,} تومان"
+                            ),
+                            parse_mode="HTML"
+                        )
+                    except Exception as e_tg:
+                        logger.error(f"Error sending msg to reseller {r_id}: {e_tg}")
+
+            done_text = f"{orig_text}\n\n✅ <b>بسته اعتباری نماینده تایید و کیف پول شارژ شد.</b>"
+            await edit_admin_message_safe(query, done_text, reply_markup=None, parse_mode="HTML")
+            return
+
+        # ۲. تایید خرید یا تمدید اشتراک عادی
+        user_id = tx.get("user_id") or 0
+        is_renewal = bool(tx.get("is_renewal"))
+        renew_sub_id = tx.get("renew_sub_id")
+        plan_name = tx.get("plan_name", "پلن")
+        plans = get_plans()
+        selected_plan = next((p for p in plans.values() if p.get("name") == plan_name), None)
+        data_limit = selected_plan.get("data_limit", 30) if selected_plan else 30
+        duration = selected_plan.get("duration", 30) if selected_plan else 30
+
+        account_name = tx.get("account_name") or (f"tg_{user_id}" if user_id else f"order_{order_id}")
+        sub_url = ""
+
+        # اگر نماینده است، هزینه عمده از کیف پولش کسر شود
+        r_id = tx.get("reseller_id")
+        if r_id and not is_adm:
+            r_stats = db.get_reseller_stats(r_id)
+            r_plans = db.get_reseller_plans(r_id)
+            r_sel_plan = next((p for p in r_plans if p.get("name") == plan_name or p.get("display_name") == plan_name), None)
+            orig_p = r_sel_plan.get("display_price") or tx.get("amount", 0) if r_sel_plan else tx.get("amount", 0)
+            wh_p = r_sel_plan.get("wholesale_price") if r_sel_plan and r_sel_plan.get("wholesale_price") else int(orig_p * 0.8)
+            if r_stats["balance"] < wh_p:
+                await query.answer(f"❌ موجودی کیف پول کافی نیست! نیاز: {wh_p:,} تومان", show_alert=True)
+                return
+            db.deduct_reseller_balance(r_id, wh_p, plan_name, account_name, selling_price=orig_p, profit_margin=max(0, orig_p - wh_p), created_by="Telegram Bot")
+
+        if is_renewal and renew_sub_id:
+            target_sub = db.get_subscription(renew_sub_id)
+            if target_sub:
+                user_uuid = target_sub.get("hidify_uuid", "")
+                old_limit = float(target_sub.get("data_limit") or 0)
+                old_used = float(target_sub.get("data_used") or 0)
+                try:
+                    await hidify.update_user(
+                        uuid=user_uuid,
+                        usage_limit_gb=float(data_limit),
+                        package_days=int(duration),
+                        enable=True
+                    )
+                except Exception as e_ren:
+                    logger.error(f"Error renewing user in Hiddify: {e_ren}")
+
+                db.save_subscription_history(
+                    subscription_id=renew_sub_id,
+                    telegram_id=user_id or target_sub.get("telegram_id") or 0,
+                    hidify_uuid=user_uuid,
+                    account_name=account_name,
+                    plan_name=plan_name,
+                    previous_usage_gb=old_used,
+                    previous_limit_gb=old_limit,
+                    period_days=duration,
+                    renewal_type="direct",
+                    reseller_id=target_sub.get("reseller_id")
+                )
+                db.update_subscription(
+                    renew_sub_id,
+                    plan_name=plan_name,
+                    data_limit=data_limit,
+                    duration=duration,
+                    data_used=0,
+                    status="active"
+                )
+                if user_uuid:
+                    h_url = db.get_setting("hiddify_url") or ""
+                    u_proxy = db.get_setting("user_proxy_path") or ""
+                    sub_url = f"{h_url}/{u_proxy}/{user_uuid}/"
+        else:
+            try:
+                res_create = await hidify.create_user(
+                    name=account_name,
+                    usage_limit_gb=float(data_limit) if data_limit > 0 else None,
+                    package_days=int(duration),
+                    enable=True,
+                    comment=str(user_id or f"TG:{order_id}")
+                )
+                user_uuid = res_create.get("uuid", "")
+                sub_url = res_create.get("subscription_url", "")
+                if user_uuid:
+                    db.save_subscription(
+                        telegram_id=user_id,
+                        hidify_uuid=user_uuid,
+                        plan_id="custom",
+                        plan_name=plan_name,
+                        data_limit=data_limit,
+                        duration=duration,
+                        status="active",
+                        account_name=account_name,
+                        reseller_id=r_id
+                    )
+            except Exception as e_cr:
+                logger.error(f"Error creating user in Hiddify: {e_cr}")
+
+        now_iso = get_now_iso()
+        proc_title = "مدیریت (تلگرام)" if is_adm else f"نماینده #{r_id} (تلگرام)"
+        conn = db.get_connection()
+        conn.execute(
+            "UPDATE transactions SET status='approved', processed_by=?, processed_at=?, updated_at=? WHERE order_id=? OR id=?",
+            (proc_title, now_iso, now_iso, order_id, order_id)
+        )
+        conn.commit()
+        conn.close()
+
+        if str(order_id).startswith("INV"):
+            try:
+                db.mark_smart_invoice_paid(order_id, tracking_code=str(tx.get("tracking_code") or order_id))
+            except Exception:
+                pass
+
+        if user_id and int(user_id) > 0:
+            try:
+                c_msg = (
+                    f"🎉 <b>پرداخت شما تایید شد و اشتراک فعال گردید!</b>\n\n"
+                    f"📦 پلن: <b>{plan_name}</b>\n"
+                    f"📊 حجم: <b>{data_limit} گیگابایت</b> | ⏳ مدت: <b>{duration} روز</b>\n"
+                    + (f"🔗 لینک اشتراک شما:\n<code>{sub_url}</code>\n" if sub_url else "")
+                )
+                await context.bot.send_message(chat_id=int(user_id), text=c_msg, parse_mode="HTML")
+            except Exception as e_not:
+                logger.error(f"Failed to notify user of payment approval: {e_not}")
+
+        done_text = f"{orig_text}\n\n✅ <b>پرداخت سفارش {order_id} تایید و اشتراک فعال شد.</b>"
+        await edit_admin_message_safe(query, done_text, reply_markup=None, parse_mode="HTML")
+
+    elif data.startswith("adm_pay_rej_") or data.startswith("res_pay_rej_"):
+        is_adm = data.startswith("adm_pay_rej_")
+        order_id = data.replace("adm_pay_rej_" if is_adm else "res_pay_rej_", "")
+        now_iso = get_now_iso()
+        proc_title = "مدیریت (تلگرام)" if is_adm else "نماینده (تلگرام)"
+        conn = db.get_connection()
+        conn.execute(
+            "UPDATE transactions SET status='rejected', processed_by=?, processed_at=?, updated_at=? WHERE order_id=? OR id=?",
+            (proc_title, now_iso, now_iso, order_id, order_id)
+        )
+        conn.commit()
+        conn.close()
+
+        done_text = f"{orig_text}\n\n❌ <b>پرداخت سفارش {order_id} رد شد.</b>"
+        await edit_admin_message_safe(query, done_text, reply_markup=None, parse_mode="HTML")
 
 
 # ─── دستورات ادمین برای کدهای تخفیف ───
@@ -5423,8 +5851,10 @@ def main():
             CallbackQueryHandler(ticket_list, pattern="^ticket_list$"),
             CallbackQueryHandler(import_sub_start, pattern="^btn_import_sub$"),
             CallbackQueryHandler(handle_renew, pattern="^renew_"),
-            CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"),
             CallbackQueryHandler(admin_reply_ticket_callback, pattern="^admin_reply_ticket_"),
+            CallbackQueryHandler(admin_ticket_action_callback, pattern="^(adm_reply_tkt_|adm_canned_tkt_|adm_canned_send_|adm_canned_cancel_|adm_close_tkt_|res_reply_tkt_|res_canned_tkt_|res_canned_send_|res_canned_cancel_|res_close_tkt_)"),
+            CallbackQueryHandler(admin_quota_action_callback, pattern="^(adm_quota_app_|adm_quota_rej_)"),
+            CallbackQueryHandler(admin_order_pay_action_callback, pattern="^(adm_pay_app_|adm_pay_rej_|res_pay_app_|res_pay_rej_)"),
         ] + main_menu_handlers,
         states={
             CHOOSING: [
@@ -5436,6 +5866,9 @@ def main():
                 CallbackQueryHandler(handle_renew, pattern="^renew_"),
                 CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"),
                 CallbackQueryHandler(admin_reply_ticket_callback, pattern="^admin_reply_ticket_"),
+                CallbackQueryHandler(admin_ticket_action_callback, pattern="^(adm_reply_tkt_|adm_canned_tkt_|adm_canned_send_|adm_canned_cancel_|adm_close_tkt_|res_reply_tkt_|res_canned_tkt_|res_canned_send_|res_canned_cancel_|res_close_tkt_)"),
+                CallbackQueryHandler(admin_quota_action_callback, pattern="^(adm_quota_app_|adm_quota_rej_)"),
+                CallbackQueryHandler(admin_order_pay_action_callback, pattern="^(adm_pay_app_|adm_pay_rej_|res_pay_app_|res_pay_rej_)"),
                 CallbackQueryHandler(copy_link_callback, pattern="^copy_link$"),
             ] + main_menu_handlers,
             SELECTING_PLAN: [
@@ -5641,6 +6074,9 @@ def main():
     application.add_handler(CallbackQueryHandler(ticket_new_prompt, pattern="^ticket_new$"))
     application.add_handler(CallbackQueryHandler(ticket_list, pattern="^ticket_list$"))
     application.add_handler(CallbackQueryHandler(admin_reply_ticket_callback, pattern="^admin_reply_ticket_"))
+    application.add_handler(CallbackQueryHandler(admin_ticket_action_callback, pattern="^(adm_reply_tkt_|adm_canned_tkt_|adm_canned_send_|adm_canned_cancel_|adm_close_tkt_|res_reply_tkt_|res_canned_tkt_|res_canned_send_|res_canned_cancel_|res_close_tkt_)"))
+    application.add_handler(CallbackQueryHandler(admin_quota_action_callback, pattern="^(adm_quota_app_|adm_quota_rej_)"))
+    application.add_handler(CallbackQueryHandler(admin_order_pay_action_callback, pattern="^(adm_pay_app_|adm_pay_rej_|res_pay_app_|res_pay_rej_)"))
 
     # هندلرهای تایید و رد پرداخت ادمین
     application.add_handler(CallbackQueryHandler(admin_approve_renew, pattern="^admin_approve_renew_"))
