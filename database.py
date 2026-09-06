@@ -547,6 +547,28 @@ class Database:
             pass
 
         try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN source TEXT DEFAULT 'telegram'")
+        except Exception:
+            pass
+
+        # تصحیح و همگام‌سازی خودکار مبدأ و نام مشتری برای تراکنش‌های پیشین
+        try:
+            cursor.execute("""
+                UPDATE transactions 
+                SET source = 'portal' 
+                WHERE (order_id LIKE 'INV%' OR gateway = 'bank_sms' OR (renew_sub_id IS NOT NULL AND renew_sub_id > 0))
+                  AND (source IS NULL OR source = '' OR source = 'telegram')
+            """)
+            cursor.execute("""
+                UPDATE transactions 
+                SET username = account_name 
+                WHERE (username IS NULL OR username = '' OR username = 'کاربر') 
+                  AND account_name IS NOT NULL AND account_name != ''
+            """)
+        except Exception:
+            pass
+
+        try:
             cursor.execute("ALTER TABLE subscriptions ADD COLUMN reseller_id INTEGER")
         except Exception:
             pass
@@ -2315,7 +2337,7 @@ class Database:
     # مدیریت تراکنش‌ها
     # ═══════════════════════════════════════════════════════════════
 
-    def save_transaction(self, order_id, user_id, username, plan_name, amount, gateway, tracking_code, status="pending", account_name=None, account_comment=None, is_renewal=0, renew_sub_id=None, discount_code=None, receipt_image=None, receipt_file_type=None, reseller_id=None, notes=None, **kwargs):
+    def save_transaction(self, order_id, user_id, username, plan_name, amount, gateway, tracking_code, status="pending", account_name=None, account_comment=None, is_renewal=0, renew_sub_id=None, discount_code=None, receipt_image=None, receipt_file_type=None, reseller_id=None, notes=None, source="telegram", **kwargs):
         """ذخیره تراکنش"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -2324,14 +2346,17 @@ class Database:
         if notes and not account_comment:
             account_comment = notes
 
+        if not source:
+            source = "portal" if (str(order_id).startswith("INV") or gateway == "bank_sms" or renew_sub_id) else "telegram"
+
         try:
             cursor.execute("""
                 INSERT OR REPLACE INTO transactions
-                (order_id, user_id, username, plan_name, amount, gateway, tracking_code, account_name, account_comment, status, is_renewal, renew_sub_id, discount_code, receipt_image, receipt_photo_id, receipt_file_type, reseller_id, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (order_id, user_id, username, plan_name, amount, gateway, tracking_code, account_name, account_comment, status, 1 if is_renewal else 0, renew_sub_id, discount_code, receipt_image, receipt_image, receipt_file_type, reseller_id, now, now))
+                (order_id, user_id, username, plan_name, amount, gateway, tracking_code, account_name, account_comment, status, is_renewal, renew_sub_id, discount_code, receipt_image, receipt_photo_id, receipt_file_type, reseller_id, source, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (order_id, user_id, username, plan_name, amount, gateway, tracking_code, account_name, account_comment, status, 1 if is_renewal else 0, renew_sub_id, discount_code, receipt_image, receipt_image, receipt_file_type, reseller_id, source, now, now))
             conn.commit()
-            logger.info(f"Transaction {order_id} saved (is_renewal={is_renewal}, reseller_id={reseller_id})")
+            logger.info(f"Transaction {order_id} saved (is_renewal={is_renewal}, reseller_id={reseller_id}, source={source})")
             
             # ذخیره بک‌آپ فوری
             try:
