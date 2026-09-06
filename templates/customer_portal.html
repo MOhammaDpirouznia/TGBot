@@ -121,6 +121,190 @@
             background-color: #3b82f6;
             color: #ffffff;
         }
+
+        /* ─── استایل‌های گفتگوی آنلاین پیام‌رسان، نوتیفیکیشن و بج هشدار ─── */
+        @keyframes chat-alert-pulse {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.85), 0 8px 25px rgba(239, 68, 68, 0.6); }
+            70% { box-shadow: 0 0 0 20px rgba(239, 68, 68, 0), 0 8px 25px rgba(239, 68, 68, 0.6); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0), 0 8px 25px rgba(239, 68, 68, 0.6); }
+        }
+        .chat-pulse-alert {
+            animation: chat-alert-pulse 1.4s infinite !important;
+            border-color: #ef4444 !important;
+            background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%) !important;
+        }
+        .chat-unread-badge {
+            position: absolute;
+            top: -6px;
+            left: -6px;
+            background: #ef4444;
+            color: #ffffff;
+            border-radius: 50%;
+            min-width: 24px;
+            height: 24px;
+            padding: 0 6px;
+            font-size: 0.75rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid #0f172a;
+            box-shadow: 0 0 12px rgba(239, 68, 68, 0.9);
+            animation: badge-bounce 0.8s infinite alternate ease-in-out;
+        }
+        @keyframes badge-bounce {
+            0% { transform: scale(1); }
+            100% { transform: scale(1.2); }
+        }
+
+        /* باکس شناور نوتیفیکیشن پاسخ پشتیبانی بالای صفحه */
+        .portal-chat-toast {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1080;
+            width: 92%;
+            max-width: 500px;
+            background: rgba(15, 23, 42, 0.96);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(59, 130, 246, 0.5);
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 25px rgba(59, 130, 246, 0.35);
+            border-radius: 18px;
+            overflow: hidden;
+            animation: toast-slide-down 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes toast-slide-down {
+            from { opacity: 0; transform: translate(-50%, -35px) scale(0.95); }
+            to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+        }
+        .toast-progress-track {
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            width: 100%;
+        }
+        .toast-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #10b981);
+            width: 100%;
+        }
+        .toast-avatar-ring {
+            width: 44px;
+            height: 44px;
+            background: rgba(59, 130, 246, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid #3b82f6;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
+        }
+
+        /* صفحه چت پیام‌رسان */
+        .chat-messages-stream {
+            height: 370px;
+            max-height: 52vh;
+            overflow-y: auto;
+            padding: 14px;
+            background: rgba(10, 15, 29, 0.65);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+        }
+        .chat-msg-row {
+            display: flex;
+            width: 100%;
+        }
+        .chat-msg-row.user {
+            justify-content: flex-start;
+        }
+        .chat-msg-row.support {
+            justify-content: flex-end;
+        }
+        .chat-msg-bubble {
+            max-width: 82%;
+            padding: 10px 14px;
+            font-size: 0.88rem;
+            line-height: 1.5;
+            word-break: break-word;
+            white-space: pre-line;
+        }
+        .chat-msg-bubble.user {
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            color: #ffffff;
+            border-radius: 18px 18px 4px 18px;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+        }
+        .chat-msg-bubble.support {
+            background: rgba(30, 41, 59, 0.95);
+            color: #f1f5f9;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 18px 18px 18px 4px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        }
+        .chat-msg-bubble.system {
+            background: rgba(59, 130, 246, 0.12);
+            border: 1px dashed rgba(59, 130, 246, 0.35);
+            color: #93c5fd;
+            border-radius: 14px;
+            font-size: 0.8rem;
+            width: 96%;
+            margin: 0 auto;
+            text-align: center;
+        }
+        .chat-msg-time {
+            font-size: 0.68rem;
+            opacity: 0.75;
+            margin-top: 4px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .chat-quick-chips-wrapper {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding: 8px 2px 2px;
+            scrollbar-width: none;
+        }
+        .chat-quick-chips-wrapper::-webkit-scrollbar {
+            display: none;
+        }
+        .chat-quick-chip {
+            background: rgba(255, 255, 255, 0.08);
+            color: #cbd5e1;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 20px;
+            padding: 5px 13px;
+            font-size: 0.78rem;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            flex-shrink: 0;
+        }
+        .chat-quick-chip:hover {
+            background: rgba(59, 130, 246, 0.25);
+            border-color: #3b82f6;
+            color: #ffffff;
+            transform: translateY(-2px);
+        }
+        .chat-history-card {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 14px;
+            padding: 12px 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .chat-history-card:hover {
+            background: rgba(59, 130, 246, 0.15);
+            border-color: #3b82f6;
+            transform: translateY(-2px);
+        }
     </style>
 </head>
 <body class="py-4">
@@ -591,75 +775,247 @@
     </div>
 </div>
 
-<!-- دکمه شناور گفتگوی آنلاین با پشتیبانی (سمت راست پایین) -->
-<button type="button" class="floating-chat-btn" data-bs-toggle="modal" data-bs-target="#supportChatModal" title="گفتگوی آنلاین با پشتیبانی">
-    <span class="chat-status-dot"></span>
+<!-- باکس اعلان شناور پیام جدید پشتیبانی در بالای صفحه (با محوشوندگی خودکار ۱۵ ثانیه‌ای یا بستن دستی) -->
+<div id="portalChatToast" class="portal-chat-toast d-none" role="alert">
+    <div class="d-flex align-items-center gap-3 p-3">
+        <div class="toast-avatar-ring flex-shrink-0">
+            <i class="fas fa-headset text-primary fs-4"></i>
+        </div>
+        <div class="flex-grow-1 overflow-hidden" onclick="openPortalChatModal()" style="cursor: pointer;">
+            <div class="d-flex align-items-center gap-2 mb-1">
+                <span class="badge bg-danger rounded-pill pulse" style="font-size: 0.72rem;">💬 پیام جدید</span>
+                <strong class="text-white small">پاسخ پشتیبانی دریافت شد!</strong>
+            </div>
+            <div class="text-light small text-truncate" id="portalToastPreview" style="opacity: 0.9;">کارشناس پشتیبانی به پیام شما پاسخ داد.</div>
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-shrink-0">
+            <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 py-1 shadow-sm fw-bold" onclick="openPortalChatModal()">
+                مشاهده
+            </button>
+            <button type="button" class="btn-close btn-close-white" onclick="dismissChatToast()" aria-label="بستن"></button>
+        </div>
+    </div>
+    <div class="toast-progress-track">
+        <div class="toast-progress-bar" id="toastProgressBar"></div>
+    </div>
+</div>
+
+<!-- دکمه شناور گفتگوی آنلاین با پشتیبانی (سمت راست پایین با نشانگر وضعیت و پیام جدید) -->
+<button type="button" class="floating-chat-btn position-relative" id="floatingChatBtn" onclick="openPortalChatModal()" title="گفتگوی آنلاین با پشتیبانی">
+    <span class="chat-status-dot" id="chatStatusDot"></span>
     <i class="fas fa-comments fs-5"></i>
     <span class="chat-badge-text">گفتگوی آنلاین</span>
+    <span class="chat-unread-badge d-none" id="chatUnreadBadge">0</span>
 </button>
 
-<!-- مودال گفتگوی آنلاین و پشتیبانی -->
-<div class="modal fade" id="supportChatModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content glass-card border-primary border-opacity-50 text-white p-3 shadow-lg">
-            <div class="modal-header border-secondary border-opacity-25 pb-3">
-                <div class="d-flex align-items-center gap-2">
-                    <div class="avatar-sm bg-primary bg-opacity-25 rounded-circle d-flex align-items-center justify-content-center text-primary p-2" style="width: 42px; height: 42px;">
-                        <i class="fas fa-headset fs-5"></i>
+<!-- مودال جامع و زنده گفتگوی آنلاین پیام‌رسانی با پشتیبانی -->
+<div class="modal fade" id="supportChatModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content glass-card border-primary border-opacity-50 text-white p-3 shadow-lg position-relative overflow-hidden">
+            <!-- هدر مودال چت -->
+            <div class="modal-header border-secondary border-opacity-25 pb-3 d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="position-relative">
+                        <div class="avatar-sm bg-primary bg-opacity-25 rounded-circle d-flex align-items-center justify-content-center text-primary p-2 shadow-sm" style="width: 44px; height: 44px;">
+                            <i class="fas fa-headset fs-5"></i>
+                        </div>
+                        <span class="position-absolute bottom-0 start-0 translate-middle p-1 bg-success border border-dark rounded-circle" style="width: 12px; height: 12px;" title="پشتیبانی آنلاین"></span>
                     </div>
                     <div>
-                        <h5 class="modal-title fw-bold mb-0">گفتگوی آنلاین با پشتیبانی</h5>
-                        <small class="text-secondary">پاسخگویی سریع و پیگیری امور اشتراک و تمدید</small>
+                        <div class="d-flex align-items-center gap-2">
+                            <h5 class="modal-title fw-bold mb-0 fs-6">گفتگوی آنلاین با پشتیبانی</h5>
+                            <span class="badge bg-success bg-opacity-25 text-success border border-success border-opacity-25 py-1 px-2" style="font-size: 0.72rem;">آنلاین و فعال</span>
+                        </div>
+                        <small class="text-secondary d-block" id="chatHeaderSubtitle">پاسخگویی سریع و پیگیری امور اشتراک و تمدید</small>
                     </div>
                 </div>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+
+                <div class="d-flex align-items-center gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-info rounded-pill px-2 py-1" id="chatHistoryBtn" onclick="showChatHistoryView()" title="مشاهده سوابق گفتگوهای قبلی">
+                        <i class="fas fa-history me-1"></i> <span class="d-none d-sm-inline">سوابق</span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-2 py-1" id="chatNewTopicBtn" onclick="showPreFormView()" title="شروع گفتگوی جدید با موضوع دیگر">
+                        <i class="fas fa-plus me-1"></i> <span class="d-none d-sm-inline">گفتگوی جدید</span>
+                    </button>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close" onclick="onCloseChatModal()"></button>
+                </div>
             </div>
 
-            <div class="modal-body py-3">
-                <!-- راه‌های ارتباط فوری -->
-                <div class="mb-3">
-                    <span class="text-secondary small d-block mb-2"><i class="fas fa-bolt text-warning me-1"></i>ارتباط مستقیم و فوری:</span>
-                    <div class="d-flex flex-wrap gap-2">
-                        {% if support_username %}
-                        <a href="https://t.me/{{ support_username.lstrip('@') }}" target="_blank" class="btn btn-sm btn-outline-info rounded-pill px-3 py-2 flex-grow-1">
-                            <i class="fab fa-telegram me-1"></i> تلگرام پشتیبان: @{{ support_username.lstrip('@') }}
-                        </a>
-                        {% endif %}
-                        {% if support_phone %}
-                        <a href="tel:{{ support_phone }}" class="btn btn-sm btn-outline-success rounded-pill px-3 py-2 flex-grow-1">
-                            <i class="fas fa-phone-alt me-1"></i> تماس: <span dir="ltr">{{ support_phone }}</span>
-                        </a>
-                        {% endif %}
-                    </div>
-                </div>
+            <!-- بدنه مودال: ۳ نمای متفاوت (فرم شروع، چت زنده، تاریخچه سوابق) -->
+            <div class="modal-body py-3 px-1 px-md-3">
 
-                <div class="p-3 rounded-3 bg-black bg-opacity-30 border border-secondary border-opacity-25">
-                    <div class="fw-bold small text-white mb-2"><i class="fas fa-paper-plane text-primary me-1"></i>یا پیام خود را ارسال نمایید:</div>
-                    <form id="portalSupportForm" onsubmit="submitSupportMessage(event)">
-                        <div class="mb-2">
-                            <select class="form-select form-select-sm bg-dark text-white border-secondary" id="supportSubject">
-                                <option value="پیگیری و تکمیل تمدید">پیگیری و تکمیل تمدید</option>
-                                <option value="مشکل در اتصال یا قطعی سرویس">مشکل در اتصال یا قطعی سرویس</option>
-                                <option value="سوال در مورد حجم و روزهای باقیمانده">سوال در مورد حجم و روزهای باقیمانده</option>
-                                <option value="سایر موارد">سایر موارد</option>
-                            </select>
+                <!-- ════ نمای ۱: فرم پیش‌گفتگو (انتخاب موضوع، نام، شماره و پیام اولیه) ════ -->
+                <div id="chatPreFormView">
+                    <!-- راه‌های ارتباط فوری تلگرام و تلفن -->
+                    <div class="mb-3">
+                        <span class="text-secondary small d-block mb-2"><i class="fas fa-bolt text-warning me-1"></i>ارتباط مستقیم و فوری:</span>
+                        <div class="d-flex flex-wrap gap-2">
+                            {% if support_username %}
+                            <a href="https://t.me/{{ support_username.lstrip('@') }}" target="_blank" class="btn btn-sm btn-outline-info rounded-pill px-3 py-2 flex-grow-1">
+                                <i class="fab fa-telegram me-1"></i> تلگرام پشتیبان: @{{ support_username.lstrip('@') }}
+                            </a>
+                            {% endif %}
+                            {% if support_phone %}
+                            <a href="tel:{{ support_phone }}" class="btn btn-sm btn-outline-success rounded-pill px-3 py-2 flex-grow-1">
+                                <i class="fas fa-phone-alt me-1"></i> تماس مستقیم: <span dir="ltr">{{ support_phone }}</span>
+                            </a>
+                            {% endif %}
                         </div>
-                        <div class="mb-2">
-                            <input type="text" class="form-control form-control-sm bg-dark text-white border-secondary" id="supportContact" placeholder="شماره تماس یا آیدی تلگرام شما (جهت پیگیری)" value="{{ sub.get('phone_number') or '' }}">
+                    </div>
+
+                    <div class="p-3 rounded-3 bg-black bg-opacity-30 border border-secondary border-opacity-25 shadow-sm">
+                        <div class="fw-bold small text-white mb-2 d-flex align-items-center gap-2">
+                            <i class="fas fa-paper-plane text-primary"></i>
+                            <span>یا مشخصات خود را وارد کرده و وارد گفتگوی آنلاین شوید:</span>
                         </div>
-                        <div class="mb-3">
-                            <textarea class="form-control form-control-sm bg-dark text-white border-secondary" id="supportMessageText" rows="3" placeholder="توضیحات خود را بنویسید..." required></textarea>
-                        </div>
-                        <div id="supportFeedback" class="mb-2 d-none"></div>
-                        <button type="submit" class="btn btn-sm btn-primary w-100 rounded-pill py-2 fw-bold" id="supportSubmitBtn">
-                            <i class="fas fa-paper-plane me-1"></i> ارسال پیام به پشتیبانی
+
+                        <form id="portalStartChatForm" onsubmit="startNewPortalChat(event)">
+                            <div class="row g-2 mb-2">
+                                <div class="col-md-12">
+                                    <label class="form-label text-secondary small mb-1">موضوع گفتگوی شما:</label>
+                                    <select class="form-select form-select-sm bg-dark text-white border-secondary" id="portalChatSubject" required>
+                                        <option value="پیگیری و تکمیل تمدید اشتراک" selected>⚡ پیگیری و تکمیل تمدید اشتراک</option>
+                                        <option value="مشکل در اتصال یا قطعی سرور">📡 مشکل در اتصال یا قطعی سرور</option>
+                                        <option value="سوال در مورد حجم و روزهای باقیمانده">📊 سوال در مورد حجم و روزهای باقیمانده</option>
+                                        <option value="راهنمایی در تنظیم کانفیگ و نرم‌افزار">⚙️ راهنمایی در تنظیم کانفیگ و نرم‌افزار</option>
+                                        <option value="پیگیری واریز وجه و امور مالی">💳 پیگیری واریز وجه و امور مالی</option>
+                                        <option value="سایر موارد و پیشنهادات">💬 سایر موارد و پیشنهادات</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label text-secondary small mb-1">نام شما:</label>
+                                    <input type="text" class="form-control form-control-sm bg-dark text-white border-secondary" id="portalChatName" placeholder="نام یا نام‌خانوادگی شما" value="{{ sub.get('account_name') or '' }}" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label text-secondary small mb-1">شماره تماس یا آیدی تلگرام:</label>
+                                    <input type="text" class="form-control form-control-sm bg-dark text-white border-secondary" id="portalChatContact" placeholder="09xxxxxxxxx یا آیدی تلگرام" value="{{ sub.get('phone_number') or '' }}" required>
+                                </div>
+                            </div>
+
+                            <div class="mb-2">
+                                <label class="form-label text-secondary small mb-1">متن پیام یا سوال شما:</label>
+                                <textarea class="form-control form-control-sm bg-dark text-white border-secondary" id="portalChatMessage" rows="3" placeholder="توضیحات خود را بنویسید..." required></textarea>
+                            </div>
+
+                            <!-- پاسخ‌های آماده برای شروع گفتگو -->
+                            <div class="mb-3">
+                                <span class="text-secondary small d-block mb-1" style="font-size: 0.75rem;"><i class="fas fa-lightbulb text-warning me-1"></i>پیشنهادات سریع متن پیام:</span>
+                                <div class="chat-quick-chips-wrapper">
+                                    <span class="chat-quick-chip" onclick="fillPreFormMessage('سلام، واریز تمدید اشتراک را انجام دادم. لطفاً بررسی و فعال فرمایید.')">💳 واریز تمدید انجام دادم</span>
+                                    <span class="chat-quick-chip" onclick="fillPreFormMessage('سلام، سرورها برای من وصل نمی‌شن و اتصال قطع است. لطفاً راهنمایی بفرمایید.')">❌ قطعی سرور دارم</span>
+                                    <span class="chat-quick-chip" onclick="fillPreFormMessage('سلام، لطفاً لینک یا کانفیگ جدید برای اتصال برای من ارسال کنید.')">🔄 درخواست کانفیگ جدید</span>
+                                    <span class="chat-quick-chip" onclick="fillPreFormMessage('سلام، استعلام حجم و مدت باقیمانده اشتراکم رو می‌خواستم.')">📊 سوال درباره حجم اشتراک</span>
+                                </div>
+                            </div>
+
+                            <div id="portalChatFeedback" class="mb-2 d-none"></div>
+
+                            <button type="submit" class="btn btn-primary w-100 rounded-pill py-2 fw-bold shadow" id="portalStartChatBtn">
+                                <i class="fas fa-comments me-1"></i> ورود به گفتگوی آنلاین و ارسال پیام
+                            </button>
+                        </form>
+                    </div>
+
+                    <div id="preFormPastChatsLink" class="text-center mt-3 d-none">
+                        <button type="button" class="btn btn-link text-info text-decoration-none small" onclick="showChatHistoryView()">
+                            <i class="fas fa-folder-open me-1"></i> مشاهده سوابق گفتگوهای قبلی شما (<span id="preFormHistoryCount">0</span> گفتگو)
                         </button>
-                    </form>
+                    </div>
                 </div>
+
+                <!-- ════ نمای ۲: صفحه گفتگوی زنده شبیه پیام‌رسان (Messenger Live Chat View) ════ -->
+                <div id="chatMessengerView" class="d-none">
+                    <!-- نوار اطلاعات موضوع فعال و وضعیت تیکت -->
+                    <div class="d-flex justify-content-between align-items-center bg-black bg-opacity-30 border border-secondary border-opacity-25 rounded-3 px-3 py-2 mb-2">
+                        <div class="d-flex align-items-center gap-2 overflow-hidden">
+                            <span class="badge bg-primary bg-opacity-25 text-primary border border-primary border-opacity-25 flex-shrink-0" id="chatActiveTopicBadge">تمدید اشتراک</span>
+                            <span class="text-secondary small font-monospace flex-shrink-0" id="chatActiveTicketId">#--</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-warning text-dark py-1 px-2 font-sans" id="chatActiveStatusBadge" style="font-size: 0.75rem;">در انتظار پاسخ</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 rounded-pill" onclick="refreshCurrentChat(true)" title="بروزرسانی پیام‌ها">
+                                <i class="fas fa-sync-alt" id="chatRefreshIcon"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- جریان پیام‌های پیام‌رسان (Chat Stream) -->
+                    <div class="chat-messages-stream" id="chatMessagesContainer">
+                        <!-- پیام سیستم -->
+                        <div class="chat-msg-row justify-content-center">
+                            <div class="chat-msg-bubble system">
+                                <i class="fas fa-info-circle me-1"></i> به پشتیبانی آنلاین خوش آمدید. کارشناسان ما به زودی پاسخ شما را ارسال خواهند کرد.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- چیپ‌های پاسخ‌های آماده برای مشتری (Quick Canned Replies) -->
+                    <div class="py-1">
+                        <div class="chat-quick-chips-wrapper" id="chatCustomerQuickChips">
+                            <span class="chat-quick-chip" onclick="sendCustomerQuickReply('فیش پرداخت را ارسال کردم، لطفاً تایید فرمایید.')">💳 رسید رو واریز کردم</span>
+                            <span class="chat-quick-chip" onclick="sendCustomerQuickReply('لطفاً اشتراک من را مجدداً تمدید و فعال کنید.')">🔄 تمدید اشتراک</span>
+                            <span class="chat-quick-chip" onclick="sendCustomerQuickReply('سرورها هنوز قطع هستند و متصل نمی‌شوم.')">❌ هنوز وصل نشدم</span>
+                            <span class="chat-quick-chip" onclick="sendCustomerQuickReply('کانفیگ جدید برای من ارسال می‌کنید؟')">📲 ارسال کانفیگ جدید</span>
+                            <span class="chat-quick-chip" onclick="sendCustomerQuickReply('لطفاً وضعیت را سریع‌تر بررسی فرمایید.')">⏳ لطفاً سریع‌تر بررسی کنید</span>
+                            <span class="chat-quick-chip" onclick="sendCustomerQuickReply('ممنون از شما، مشکل کاملاً حل شد. ✅')">✅ ممنون مشکل حل شد</span>
+                        </div>
+                    </div>
+
+                    <!-- کادر ورودی و ارسال پیام پیام‌رسان -->
+                    <div class="pt-2">
+                        <form id="portalSendMsgForm" onsubmit="sendPortalChatMessage(event)">
+                            <div class="input-group">
+                                <textarea class="form-control form-control-sm bg-dark text-white border-secondary rounded-end-4" 
+                                          id="portalChatMessageInput" 
+                                          rows="1" 
+                                          placeholder="پیام خود را بنویسید... (Enter برای ارسال)" 
+                                          onkeydown="handleChatInputKey(event)" 
+                                          required></textarea>
+                                <button type="submit" class="btn btn-primary rounded-start-4 px-3 shadow" id="portalChatSendBtn" title="ارسال پیام">
+                                    <i class="fas fa-paper-plane" id="portalSendIcon"></i>
+                                </button>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center mt-1 px-2">
+                                <small class="text-secondary" style="font-size: 0.7rem;">
+                                    <i class="fas fa-bell text-warning me-1"></i>پاسخ پشتیبانی به همراه هشدار صوتی و پنجره اعلان اعلام می‌شود.
+                                </small>
+                                <small class="text-secondary" style="font-size: 0.7rem;">Shift+Enter برای خط جدید</small>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- ════ نمای ۳: سوابق و تاریخچه تمامی گفتگوهای قبلی ════ -->
+                <div id="chatHistoryView" class="d-none">
+                    <div class="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom border-secondary border-opacity-25">
+                        <div class="d-flex align-items-center gap-2">
+                            <button type="button" class="btn btn-sm btn-outline-light rounded-pill px-2 py-1" onclick="backToActiveChatOrForm()">
+                                <i class="fas fa-arrow-right me-1"></i> بازگشت
+                            </button>
+                            <h6 class="fw-bold mb-0 text-white"><i class="fas fa-list-check text-info me-1"></i>سوابق گفتگوهای شما</h6>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 py-1" onclick="showPreFormView()">
+                            <i class="fas fa-plus me-1"></i> گفتگوی جدید
+                        </button>
+                    </div>
+
+                    <div id="chatHistoryListContainer" class="d-flex flex-column gap-2" style="max-height: 420px; overflow-y: auto;">
+                        <div class="text-center py-4 text-secondary">
+                            <i class="fas fa-spinner fa-spin fs-4 mb-2"></i>
+                            <div>در حال دریافت سوابق...</div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
 
-            <div class="modal-footer border-secondary border-opacity-25 pt-2 justify-content-center">
-                <button type="button" class="btn btn-sm btn-secondary rounded-pill px-4" data-bs-dismiss="modal">بستن</button>
+            <!-- فوتر مودال -->
+            <div class="modal-footer border-secondary border-opacity-25 pt-2 justify-content-between">
+                <div class="text-secondary small d-flex align-items-center gap-2">
+                    <i class="fas fa-shield-halved text-success"></i>
+                    <span>پشتیبانی امن و اختصاصی {{ brand_title }}</span>
+                </div>
+                <button type="button" class="btn btn-sm btn-secondary rounded-pill px-4" data-bs-dismiss="modal" onclick="onCloseChatModal()">بستن</button>
             </div>
         </div>
     </div>
@@ -719,29 +1075,42 @@ document.querySelectorAll('.plan-card').forEach(card => {
     });
 });
 
-// تابع تولید و پخش صدای نوتیفیکیشن خوشایند (Web Audio API)
-function playNotificationSound() {
+// ═══════════════════════════════════════════════════════════════════════
+// سیستم جامع گفتگوی آنلاین پیام‌رسانی پورتال (Live Messenger Support Chat)
+// ═══════════════════════════════════════════════════════════════════════
+
+const PORTAL_TOKEN = "{{ token }}";
+let chatActiveTicket = null;
+let chatLastMessageId = 0;
+let chatIsModalOpen = false;
+let chatUnreadCount = 0;
+let chatPollTimer = null;
+let toastDismissTimeout = null;
+let toastProgressInterval = null;
+let chatHistoryCache = [];
+
+// پخش صدای نوتیفیکیشن اختصاصی زنگ دوصدایی/سه‌صدایی دلنشین (Web Audio API)
+function playChatNotificationSound() {
     try {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         if (!AudioContext) return;
         const ctx = new AudioContext();
-        if (ctx.state === 'suspended') {
-            ctx.resume();
-        }
-        // آکورد پیروزی و نوتیف ۴ نغمه‌ای دلنشین: C5 -> E5 -> G5 -> C6
+        if (ctx.state === 'suspended') ctx.resume();
+
+        // آکورد جذاب ناقوس پیام: G5 -> C6 -> E6
         const notes = [
-            { f: 523.25, start: 0, dur: 0.22 },
-            { f: 659.25, start: 0.11, dur: 0.22 },
-            { f: 783.99, start: 0.22, dur: 0.30 },
-            { f: 1046.50, start: 0.33, dur: 0.55 }
+            { f: 783.99, start: 0, dur: 0.18, vol: 0.22 },
+            { f: 1046.50, start: 0.10, dur: 0.24, vol: 0.28 },
+            { f: 1318.51, start: 0.22, dur: 0.45, vol: 0.32 }
         ];
+
         notes.forEach(n => {
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
-            osc.type = 'sine';
+            osc.type = 'triangle';
             osc.frequency.setValueAtTime(n.f, ctx.currentTime + n.start);
             gain.gain.setValueAtTime(0.0001, ctx.currentTime + n.start);
-            gain.gain.linearRampToValueAtTime(0.28, ctx.currentTime + n.start + 0.03);
+            gain.gain.linearRampToValueAtTime(n.vol, ctx.currentTime + n.start + 0.02);
             gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + n.start + n.dur);
             osc.connect(gain);
             gain.connect(ctx.destination);
@@ -749,65 +1118,580 @@ function playNotificationSound() {
             osc.stop(ctx.currentTime + n.start + n.dur + 0.05);
         });
     } catch (e) {
-        console.warn("Audio playback error:", e);
+        console.warn("Audio chime error:", e);
     }
 }
 
-// باز کردن چت پشتیبانی با پیام پیش‌فرض
-function openSupportChat(presetSubject) {
+// تابع پخش صدا جهت سازگاری با سیستم فاکتور و پرداخت
+function playNotificationSound() {
+    playChatNotificationSound();
+}
+
+// باز کردن مودال گفتگوی آنلاین
+function openPortalChatModal(presetSubject) {
+    dismissChatToast();
+    clearChatUnreadAlert();
+
     if (presetSubject) {
-        const msgEl = document.getElementById("supportMessageText");
-        if (msgEl) {
-            msgEl.value = presetSubject;
+        showPreFormView(presetSubject);
+    } else if (!chatActiveTicket) {
+        if (chatHistoryCache && chatHistoryCache.length > 0) {
+            loadChatTicket(chatHistoryCache[0].id);
+        } else {
+            showPreFormView();
         }
+    } else {
+        showMessengerView();
     }
+
     const modalEl = document.getElementById("supportChatModal");
     if (modalEl) {
-        const modal = new bootstrap.Modal(modalEl);
+        chatIsModalOpen = true;
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
         modal.show();
+        scrollChatToBottom();
     }
 }
 
-// ثبت پیام آنلاین در پشتیبانی
-function submitSupportMessage(e) {
-    e.preventDefault();
-    const submitBtn = document.getElementById("supportSubmitBtn");
-    const feedback = document.getElementById("supportFeedback");
-    const message = document.getElementById("supportMessageText").value.trim();
-    const contact = document.getElementById("supportContact").value.trim();
-    const subject = document.getElementById("supportSubject").value;
+// سازگاری با دکمه‌های قدیمی
+function openSupportChat(presetSubject) {
+    openPortalChatModal(presetSubject);
+}
+
+function onCloseChatModal() {
+    chatIsModalOpen = false;
+    clearChatUnreadAlert();
+}
+
+// سوییچ بین نماهای فرم، چت و تاریخچه
+function showPreFormView(presetMessage) {
+    const preForm = document.getElementById("chatPreFormView");
+    const messenger = document.getElementById("chatMessengerView");
+    const historyView = document.getElementById("chatHistoryView");
+    if (preForm) preForm.classList.remove("d-none");
+    if (messenger) messenger.classList.add("d-none");
+    if (historyView) historyView.classList.add("d-none");
+
+    if (presetMessage) {
+        const msgEl = document.getElementById("portalChatMessage");
+        if (msgEl) {
+            msgEl.value = presetMessage;
+            msgEl.focus();
+        }
+    }
+
+    if (chatHistoryCache && chatHistoryCache.length > 0) {
+        const link = document.getElementById("preFormPastChatsLink");
+        if (link) link.classList.remove("d-none");
+        const count = document.getElementById("preFormHistoryCount");
+        if (count) count.innerText = chatHistoryCache.length;
+    }
+}
+
+function showMessengerView() {
+    const preForm = document.getElementById("chatPreFormView");
+    const messenger = document.getElementById("chatMessengerView");
+    const historyView = document.getElementById("chatHistoryView");
+    if (preForm) preForm.classList.add("d-none");
+    if (messenger) messenger.classList.remove("d-none");
+    if (historyView) historyView.classList.add("d-none");
+    scrollChatToBottom();
+}
+
+function showChatHistoryView() {
+    const preForm = document.getElementById("chatPreFormView");
+    const messenger = document.getElementById("chatMessengerView");
+    const historyView = document.getElementById("chatHistoryView");
+    if (preForm) preForm.classList.add("d-none");
+    if (messenger) messenger.classList.add("d-none");
+    if (historyView) historyView.classList.remove("d-none");
+    fetchChatHistory();
+}
+
+function backToActiveChatOrForm() {
+    if (chatActiveTicket) {
+        showMessengerView();
+    } else {
+        showPreFormView();
+    }
+}
+
+// تکمیل متن پیام با چیپ‌های پیشنهادی
+function fillPreFormMessage(text) {
+    const msgEl = document.getElementById("portalChatMessage");
+    if (msgEl) {
+        msgEl.value = text;
+        msgEl.focus();
+    }
+}
+
+function sendCustomerQuickReply(text) {
+    const input = document.getElementById("portalChatMessageInput");
+    if (input) {
+        input.value = text;
+        sendPortalChatMessage();
+    }
+}
+
+// مقداردهی اولیه سیستم چت در لود صفحه
+function initPortalChatSystem() {
+    fetch('/api/portal/' + PORTAL_TOKEN + '/chat/init')
+        .then(res => res.json())
+        .then(data => {
+            if (!data.success) return;
+
+            if (data.customer_name) {
+                const nameInput = document.getElementById("portalChatName");
+                if (nameInput && !nameInput.value) nameInput.value = data.customer_name;
+            }
+            if (data.customer_phone) {
+                const phoneInput = document.getElementById("portalChatContact");
+                if (phoneInput && !phoneInput.value) phoneInput.value = data.customer_phone;
+            }
+
+            chatHistoryCache = data.history || [];
+            if (chatHistoryCache.length > 0) {
+                const link = document.getElementById("preFormPastChatsLink");
+                if (link) link.classList.remove("d-none");
+                const count = document.getElementById("preFormHistoryCount");
+                if (count) count.innerText = chatHistoryCache.length;
+            }
+
+            if (data.active_ticket) {
+                renderActiveTicket(data.active_ticket, data.messages || []);
+            }
+
+            startChatPolling();
+        })
+        .catch(err => console.warn("Chat init error:", err));
+}
+
+// رندر تیکت فعال و پیام‌ها در محیط پیام‌رسان
+function renderActiveTicket(ticket, messages) {
+    chatActiveTicket = ticket;
+    const topicBadge = document.getElementById("chatActiveTopicBadge");
+    const ticketIdBadge = document.getElementById("chatActiveTicketId");
+    if (topicBadge) topicBadge.innerText = ticket.subject || 'گفتگوی عمومی';
+    if (ticketIdBadge) ticketIdBadge.innerText = '#' + ticket.id;
+
+    const statusBadge = document.getElementById("chatActiveStatusBadge");
+    if (statusBadge) {
+        if (ticket.status === 'open') {
+            statusBadge.className = 'badge bg-warning text-dark py-1 px-2 font-sans';
+            statusBadge.innerText = 'در انتظار پاسخ';
+        } else if (ticket.status === 'replied') {
+            statusBadge.className = 'badge bg-success py-1 px-2 font-sans';
+            statusBadge.innerText = 'پاسخ داده شده';
+        } else if (ticket.status === 'closed') {
+            statusBadge.className = 'badge bg-secondary py-1 px-2 font-sans';
+            statusBadge.innerText = 'بسته شده';
+        } else {
+            statusBadge.className = 'badge bg-info py-1 px-2 font-sans';
+            statusBadge.innerText = 'در حال بررسی';
+        }
+    }
+
+    const stream = document.getElementById("chatMessagesContainer");
+    if (stream) {
+        stream.innerHTML = `
+            <div class="chat-msg-row justify-content-center">
+                <div class="chat-msg-bubble system">
+                    <i class="fas fa-headset me-1"></i> گفتگوی «${escapeHtml(ticket.subject || 'پشتیبانی')}» (#${ticket.id}) فعال شد. پاسخ کارشناسان پشتیبانی به صورت زنده همین‌جا ظاهر خواهد شد.
+                </div>
+            </div>
+        `;
+
+        if (messages && messages.length > 0) {
+            messages.forEach(m => appendChatMessageBubble(m));
+            chatLastMessageId = Math.max(...messages.map(m => m.id || 0));
+        }
+    }
+
+    scrollChatToBottom();
+}
+
+// درج حباب پیام در جریان چت
+function appendChatMessageBubble(msg) {
+    const stream = document.getElementById("chatMessagesContainer");
+    if (!stream) return;
+
+    const isUser = (msg.sender_type === 'user');
+    const timeStr = (msg.created_at || '').substring(11, 16) || 'الآن';
+
+    const row = document.createElement("div");
+    row.className = 'chat-msg-row ' + (isUser ? 'user' : 'support');
+
+    if (isUser) {
+        row.innerHTML = `
+            <div class="chat-msg-bubble user">
+                <div class="fw-bold small opacity-75 mb-1" style="font-size: 0.72rem;">${escapeHtml(msg.sender_name || 'شما')}</div>
+                <div>${escapeHtml(msg.message)}</div>
+                <div class="chat-msg-time justify-content-end text-light">
+                    <span>${timeStr}</span>
+                    <i class="fas fa-check-double text-info" style="font-size: 0.65rem;"></i>
+                </div>
+            </div>
+        `;
+    } else {
+        row.innerHTML = `
+            <div class="chat-msg-bubble support">
+                <div class="d-flex align-items-center gap-1 fw-bold text-info small mb-1" style="font-size: 0.72rem;">
+                    <i class="fas fa-user-shield me-1"></i>
+                    <span>${escapeHtml(msg.sender_name || 'پشتیبانی')}</span>
+                </div>
+                <div>${escapeHtml(msg.message)}</div>
+                <div class="chat-msg-time justify-content-start text-secondary">
+                    <span>${timeStr}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    stream.appendChild(row);
+    if (msg.id && msg.id > chatLastMessageId) {
+        chatLastMessageId = msg.id;
+    }
+}
+
+function scrollChatToBottom() {
+    const stream = document.getElementById("chatMessagesContainer");
+    if (stream) {
+        setTimeout(() => {
+            stream.scrollTop = stream.scrollHeight;
+        }, 50);
+    }
+}
+
+// ثبت و شروع تیکت جدید از فرم
+function startNewPortalChat(e) {
+    if (e) e.preventDefault();
+    const btn = document.getElementById("portalStartChatBtn");
+    const feedback = document.getElementById("portalChatFeedback");
+    const subject = document.getElementById("portalChatSubject").value;
+    const name = document.getElementById("portalChatName").value.trim();
+    const phone = document.getElementById("portalChatContact").value.trim();
+    const message = document.getElementById("portalChatMessage").value.trim();
 
     if (!message) return;
 
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال ارسال...';
-    feedback.className = "mb-2 d-none";
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال ایجاد گفتگو...';
+    if (feedback) feedback.className = "d-none";
 
-    fetch('/api/portal/{{ token }}/support-message', {
+    fetch('/api/portal/' + PORTAL_TOKEN + '/chat/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: message, contact: contact, subject: subject })
+        body: JSON.stringify({ subject: subject, name: name, phone: phone, message: message })
     })
     .then(res => res.json())
     .then(data => {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = '<i class="fas fa-paper-plane me-1"></i> ارسال پیام به پشتیبانی';
-        if (data.success) {
-            feedback.className = "alert alert-success py-2 small mb-2";
-            feedback.innerHTML = '<i class="fas fa-check-circle me-1"></i> ' + (data.message || 'پیام شما با موفقیت ثبت و ارسال شد.');
-            document.getElementById("supportMessageText").value = '';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-comments me-1"></i> ورود به گفتگوی آنلاین و ارسال پیام';
+
+        if (data.success && data.ticket) {
+            document.getElementById("portalChatMessage").value = '';
+            renderActiveTicket(data.ticket, data.messages);
+            showMessengerView();
+            fetchChatHistory();
         } else {
-            feedback.className = "alert alert-danger py-2 small mb-2";
-            feedback.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i> ' + (data.error || 'خطا در ارسال پیام.');
+            if (feedback) {
+                feedback.className = "alert alert-danger py-2 small mb-2";
+                feedback.innerText = data.error || 'خطا در ایجاد گفتگو.';
+            }
         }
     })
     .catch(err => {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = '<i class="fas fa-paper-plane me-1"></i> ارسال پیام به پشتیبانی';
-        feedback.className = "alert alert-danger py-2 small mb-2";
-        feedback.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i> خطا در برقراری ارتباط با سرور.';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-comments me-1"></i> ورود به گفتگوی آنلاین و ارسال پیام';
+        if (feedback) {
+            feedback.className = "alert alert-danger py-2 small mb-2";
+            feedback.innerText = 'خطا در برقراری ارتباط با سرور.';
+        }
     });
 }
+
+// کلید Enter برای ارسال سریع و Shift+Enter برای خط جدید
+function handleChatInputKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendPortalChatMessage();
+    }
+}
+
+// ارسال پیام در گفتگوی در حال انجام
+function sendPortalChatMessage(e) {
+    if (e) e.preventDefault();
+    if (!chatActiveTicket) return;
+
+    const input = document.getElementById("portalChatMessageInput");
+    const sendBtn = document.getElementById("portalChatSendBtn");
+    const sendIcon = document.getElementById("portalSendIcon");
+    const text = (input.value || '').trim();
+
+    if (!text) return;
+
+    input.value = '';
+    sendBtn.disabled = true;
+    if (sendIcon) sendIcon.className = "fas fa-spinner fa-spin";
+
+    // پیش‌رندر پیام کاربر برای پاسخگویی آنی UI
+    const tempMsg = {
+        id: chatLastMessageId + 1,
+        sender_type: 'user',
+        sender_name: document.getElementById("portalChatName").value || 'شما',
+        message: text,
+        created_at: new Date().toISOString()
+    };
+    appendChatMessageBubble(tempMsg);
+    scrollChatToBottom();
+
+    fetch('/api/portal/' + PORTAL_TOKEN + '/chat/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            ticket_id: chatActiveTicket.id,
+            message: text,
+            name: document.getElementById("portalChatName").value || ''
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        sendBtn.disabled = false;
+        if (sendIcon) sendIcon.className = "fas fa-paper-plane";
+        if (data.success && data.message_id) {
+            chatLastMessageId = Math.max(chatLastMessageId, data.message_id);
+        }
+    })
+    .catch(err => {
+        sendBtn.disabled = false;
+        if (sendIcon) sendIcon.className = "fas fa-paper-plane";
+        console.warn("Send message error:", err);
+    });
+}
+
+// پولینگ زنده پیام‌های جدید هر ۳.۵ ثانیه
+function startChatPolling() {
+    if (chatPollTimer) clearInterval(chatPollTimer);
+    chatPollTimer = setInterval(() => {
+        const ticketId = chatActiveTicket ? chatActiveTicket.id : '';
+        fetch(`/api/portal/${PORTAL_TOKEN}/chat/poll?ticket_id=${ticketId}&last_msg_id=${chatLastMessageId}`)
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) return;
+
+                if (data.new_messages && data.new_messages.length > 0) {
+                    let hasSupportReply = false;
+                    let lastSupportText = '';
+
+                    data.new_messages.forEach(m => {
+                        if (m.id > chatLastMessageId) {
+                            appendChatMessageBubble(m);
+                            chatLastMessageId = m.id;
+                            if (m.sender_type !== 'user') {
+                                hasSupportReply = true;
+                                lastSupportText = m.message;
+                            }
+                        }
+                    });
+
+                    if (hasSupportReply) {
+                        playChatNotificationSound();
+
+                        if (!chatIsModalOpen) {
+                            triggerChatUnreadAlert(data.unread_count || 1);
+                            showChatToast(lastSupportText);
+                        } else {
+                            scrollChatToBottom();
+                        }
+                    }
+                }
+
+                if (data.ticket_info && chatActiveTicket && chatActiveTicket.id === data.ticket_info.id) {
+                    chatActiveTicket.status = data.ticket_info.status;
+                    const statusBadge = document.getElementById("chatActiveStatusBadge");
+                    if (statusBadge) {
+                        if (data.ticket_info.status === 'replied') {
+                            statusBadge.className = 'badge bg-success py-1 px-2 font-sans';
+                            statusBadge.innerText = 'پاسخ داده شده';
+                        } else if (data.ticket_info.status === 'closed') {
+                            statusBadge.className = 'badge bg-secondary py-1 px-2 font-sans';
+                            statusBadge.innerText = 'بسته شده';
+                        }
+                    }
+                }
+            })
+            .catch(err => console.debug("Chat poll sync:", err));
+    }, 3500);
+}
+
+// نمایش بنر شناور بالای صفحه با تایمر محوشوندگی ۱۵ ثانیه
+function showChatToast(messagePreview) {
+    const toast = document.getElementById("portalChatToast");
+    const previewEl = document.getElementById("portalToastPreview");
+    const bar = document.getElementById("toastProgressBar");
+    if (!toast) return;
+
+    if (previewEl) {
+        previewEl.innerText = messagePreview || 'کارشناس پشتیبانی به پیام شما پاسخ داد.';
+    }
+
+    toast.classList.remove("d-none");
+
+    if (toastDismissTimeout) clearTimeout(toastDismissTimeout);
+    if (toastProgressInterval) clearInterval(toastProgressInterval);
+
+    const totalDuration = 15000;
+    const intervalTime = 100;
+    let elapsed = 0;
+
+    if (bar) bar.style.width = '100%';
+
+    toastProgressInterval = setInterval(() => {
+        elapsed += intervalTime;
+        const remainingPercent = Math.max(0, 100 - (elapsed / totalDuration) * 100);
+        if (bar) bar.style.width = remainingPercent + '%';
+        if (elapsed >= totalDuration) {
+            clearInterval(toastProgressInterval);
+        }
+    }, intervalTime);
+
+    toastDismissTimeout = setTimeout(() => {
+        dismissChatToast();
+    }, totalDuration);
+}
+
+function dismissChatToast() {
+    const toast = document.getElementById("portalChatToast");
+    if (toast) toast.classList.add("d-none");
+    if (toastDismissTimeout) clearTimeout(toastDismissTimeout);
+    if (toastProgressInterval) clearInterval(toastProgressInterval);
+}
+
+// علامت قرمز جلب‌توجه روی دکمه شناور چت
+function triggerChatUnreadAlert(count) {
+    const btn = document.getElementById("floatingChatBtn");
+    const badge = document.getElementById("chatUnreadBadge");
+    if (btn) btn.classList.add("chat-pulse-alert");
+    if (badge) {
+        badge.innerText = count || 1;
+        badge.classList.remove("d-none");
+    }
+}
+
+function clearChatUnreadAlert() {
+    const btn = document.getElementById("floatingChatBtn");
+    const badge = document.getElementById("chatUnreadBadge");
+    if (btn) btn.classList.remove("chat-pulse-alert");
+    if (badge) badge.classList.add("d-none");
+}
+
+// بارگذاری سوابق گفتگوها
+function fetchChatHistory() {
+    const container = document.getElementById("chatHistoryListContainer");
+    if (!container) return;
+
+    container.innerHTML = `
+        <div class="text-center py-4 text-secondary">
+            <i class="fas fa-spinner fa-spin fs-4 mb-2"></i>
+            <div>در حال بارگذاری سوابق...</div>
+        </div>
+    `;
+
+    fetch('/api/portal/' + PORTAL_TOKEN + '/chat/history')
+        .then(res => res.json())
+        .then(data => {
+            if (!data.success || !data.history || data.history.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-4 text-secondary">
+                        <i class="fas fa-comments fs-2 mb-2 opacity-50"></i>
+                        <p class="mb-2">هنوز هیچ سابقه گفتگویی برای این اشتراک ثبت نشده است.</p>
+                        <button type="button" class="btn btn-sm btn-primary rounded-pill px-3" onclick="showPreFormView()">
+                            <i class="fas fa-plus me-1"></i> شروع اولین گفتگو
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            chatHistoryCache = data.history;
+            container.innerHTML = '';
+
+            data.history.forEach(t => {
+                const isCurrent = (chatActiveTicket && chatActiveTicket.id === t.id);
+                const card = document.createElement("div");
+                card.className = "chat-history-card " + (isCurrent ? "border-primary bg-primary bg-opacity-10" : "");
+
+                let statusBadge = '<span class="badge bg-warning text-dark">در انتظار</span>';
+                if (t.status === 'replied') statusBadge = '<span class="badge bg-success">پاسخ داده شده</span>';
+                if (t.status === 'closed') statusBadge = '<span class="badge bg-secondary">بسته شده</span>';
+
+                const time = (t.updated_at || t.created_at || '').substring(0, 10);
+                const lastSnippet = t.last_message_text || t.message || 'بدون متن';
+
+                card.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <div class="d-flex align-items-center gap-2 overflow-hidden">
+                            <strong class="text-white small text-truncate">${escapeHtml(t.subject || 'گفتگوی عمومی')}</strong>
+                            <code class="text-info small">#${t.id}</code>
+                        </div>
+                        <div>${statusBadge}</div>
+                    </div>
+                    <div class="text-secondary small text-truncate mb-2" style="font-size: 0.78rem;">
+                        <i class="fas fa-comment-dots me-1 opacity-75"></i>${escapeHtml(lastSnippet)}
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center" style="font-size: 0.72rem;">
+                        <span class="text-muted"><i class="fas fa-calendar-alt me-1"></i>${time}</span>
+                        <button type="button" class="btn btn-sm btn-outline-info rounded-pill py-0 px-2" onclick="loadChatTicket(${t.id})">
+                            ${isCurrent ? 'ادامه گفتگو ➔' : 'مشاهده و ادامه ➔'}
+                        </button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        })
+        .catch(err => {
+            container.innerHTML = `<div class="alert alert-danger py-2 small">خطا در بارگذاری سوابق گفتگو.</div>`;
+        });
+}
+
+// بارگذاری یک تیکت مشخص
+function loadChatTicket(ticketId) {
+    const icon = document.getElementById("chatRefreshIcon");
+    if (icon) icon.className = "fas fa-spinner fa-spin";
+
+    fetch(`/api/portal/${PORTAL_TOKEN}/chat/messages/${ticketId}`)
+        .then(res => res.json())
+        .then(data => {
+            if (icon) icon.className = "fas fa-sync-alt";
+            if (data.success && data.ticket) {
+                renderActiveTicket(data.ticket, data.messages);
+                showMessengerView();
+            }
+        })
+        .catch(err => {
+            if (icon) icon.className = "fas fa-sync-alt";
+            console.warn("Load ticket error:", err);
+        });
+}
+
+function refreshCurrentChat(showSpin) {
+    if (chatActiveTicket) {
+        loadChatTicket(chatActiveTicket.id);
+    }
+}
+
+// فرار امن کاراکترهای HTML
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.innerText = text;
+    return div.innerHTML;
+}
+
+// راه‌اندازی سیستم چت در لود صفحه
+document.addEventListener('DOMContentLoaded', () => {
+    initPortalChatSystem();
+});
 
 // تایمر معکوس فاکتور و بررسی زنده وضعیت پرداخت
 {% if invoice and invoice.get('status') == 'pending' %}

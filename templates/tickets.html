@@ -233,12 +233,20 @@
                                          loading="lazy">
                                     <div>
                                         <div class="d-flex align-items-center gap-1">
-                                            <strong class="ticket-user-title">{{ t.get('user_first_name') or t.get('user_username') or 'کاربر تلگرام' }}</strong>
+                                            <strong class="ticket-user-title">{{ t.get('customer_name') or t.get('user_first_name') or t.get('user_username') or 'کاربر' }}</strong>
+                                            {% if t.get('subscription_id') %}
+                                                <span class="badge bg-info-subtle text-info border border-info py-0" style="font-size: 0.7rem;"><i class="fas fa-globe me-1"></i>پورتال #{{ t.get('subscription_id') }}</span>
+                                            {% endif %}
                                             {% if t.get('is_vip') %}
                                                 <i class="fas fa-star text-warning" title="کاربر ویژه (VIP)"></i>
                                             {% endif %}
                                         </div>
-                                        <div class="text-muted small"><code>{{ t.get('telegram_id') }}</code></div>
+                                        <div class="text-muted small">
+                                            {% if t.get('customer_phone') %}
+                                                <span class="text-success font-monospace me-2"><i class="fas fa-phone-alt me-1"></i>{{ t.get('customer_phone') }}</span>
+                                            {% endif %}
+                                            <code>{{ t.get('telegram_id') }}</code>
+                                        </div>
                                     </div>
                                 </div>
                             {% endif %}
@@ -408,18 +416,23 @@
                         <div class="d-flex align-items-center gap-3">
                             <img src="{{ avatar_url(t.get('telegram_id') or t.get('user_username') or 'User') }}" 
                                  alt="Avatar" class="rounded-circle border shadow-sm" style="width: 44px; height: 44px; object-fit: cover;">
-                            <div>
-                                <div class="fw-bold ticket-user-title fs-6">{{ t.get('user_first_name') or t.get('user_username') or 'کاربر تلگرام' }}</div>
+                                <div class="fw-bold ticket-user-title fs-6">
+                                    {{ t.get('customer_name') or t.get('user_first_name') or t.get('user_username') or 'کاربر' }}
+                                    {% if t.get('subscription_id') %}
+                                        <span class="badge bg-info-subtle text-info border border-info ms-1"><i class="fas fa-globe me-1"></i>پورتال اشتراک #{{ t.get('subscription_id') }}</span>
+                                    {% endif %}
+                                </div>
                                 <div class="text-muted small">
+                                    {% if t.get('customer_phone') %}
+                                        <span class="me-2 text-success"><i class="fas fa-phone-alt me-1"></i>📱 {{ t.get('customer_phone') }}</span>
+                                    {% elif t.get('user_phone') %}
+                                        <span class="me-2">📱 {{ t.get('user_phone') }}</span>
+                                    {% endif %}
                                     <span class="me-2">🆔 <code>{{ t.get('telegram_id') }}</code></span>
                                     {% if t.get('user_username') and not t.get('user_username').startswith('tg_') %}
                                         <span class="me-2">💬 @{{ t.get('user_username') }}</span>
                                     {% endif %}
-                                    {% if t.get('user_phone') %}
-                                        <span>📱 {{ t.get('user_phone') }}</span>
-                                    {% endif %}
                                 </div>
-                            </div>
                         </div>
                         <div class="d-flex align-items-center gap-2">
                             <span class="badge ticket-info-pill py-2 px-3">
