@@ -121,6 +121,13 @@ function toggleVersionInputs() {
     if (manualInput) manualInput.disabled = isGithub;
     if (githubInput) githubInput.disabled = !isGithub;
 }
+function toggleServerStatusManualBox() {
+    const isManual = document.getElementById('statusModeManual')?.checked;
+    const box = document.getElementById('serverStatusManualBox');
+    if (box) {
+        box.style.opacity = isManual ? '1' : '0.6';
+    }
+}
 document.addEventListener('DOMContentLoaded', function() {
     const picker = document.getElementById('primaryColorPicker');
     const hex = document.getElementById('primaryColorHex');
@@ -129,6 +136,7 @@ document.addEventListener('DOMContentLoaded', function() {
         hex.addEventListener('input', function() { picker.value = hex.value; });
     }
     toggleVersionInputs();
+    toggleServerStatusManualBox();
 });
 </script>
 
@@ -272,6 +280,59 @@ document.addEventListener('DOMContentLoaded', function() {
                         <label class="form-check-label fw-semibold small" for="portalShowTroubleshoot">
                             نمایش دکمه و لینک راهنما و عیب‌یابی اتصال در بالای پورتال
                         </label>
+                    </div>
+                </div>
+
+                <!-- بخش تنظیمات وضعیت سرور در پورتال مشتری -->
+                <div class="col-12 mt-3">
+                    <div class="p-3 border rounded-3 bg-light">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label class="form-label fw-bold mb-0">
+                                <i class="fas fa-server text-success me-1"></i> تنظیمات نمایش وضعیت سرور در پورتال مشتری:
+                            </label>
+                            <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
+                                پایش هوشمند یا دستی
+                            </span>
+                        </div>
+                        <p class="text-muted small mb-3">
+                            در این بخش می‌توانید مشخص کنید که وضعیت سرورها در پورتال مشتریان به صورت اتوماتیک (هوشمند) بر اساس ارتباط با هیدیفای پایش شود، یا به صورت دستی و با پیام دلخواه توسط شما تنظیم گردد.
+                        </p>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small">نحوه پایش و نمایش وضعیت:</label>
+                                <div class="d-flex flex-column gap-2 mt-1">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="server_status_mode" id="statusModeSmart" value="smart" {% if customer_portal_config.server_status_mode != 'manual' %}checked{% endif %} onchange="toggleServerStatusManualBox()">
+                                        <label class="form-check-label small fw-semibold" for="statusModeSmart">
+                                            🤖 <strong>هوشمند (اتوماتیک)</strong>: بررسی خودکار اتصال و پینگ سرور (پینگ‌های بالای ۱۸۰ms پنهان می‌شوند)
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="server_status_mode" id="statusModeManual" value="manual" {% if customer_portal_config.server_status_mode == 'manual' %}checked{% endif %} onchange="toggleServerStatusManualBox()">
+                                        <label class="form-check-label small fw-semibold" for="statusModeManual">
+                                            🛠️ <strong>دستی (سفارشی)</strong>: وضعیت و پیام توسط مدیریت تعیین می‌شود
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6" id="serverStatusManualBox" style="{% if customer_portal_config.server_status_mode != 'manual' %}opacity: 0.6;{% endif %}">
+                                <label class="form-label fw-bold small">وضعیت سرور در حالت دستی:</label>
+                                <select class="form-select small" name="server_status_manual_state">
+                                    <option value="operational" {% if customer_portal_config.server_status_manual_state == 'operational' %}selected{% endif %}>🟢 متصل و عملیاتی (سبز)</option>
+                                    <option value="disruption" {% if customer_portal_config.server_status_manual_state == 'disruption' %}selected{% endif %}>🟠 اختلال در سرورها (نارنجی)</option>
+                                    <option value="disconnected" {% if customer_portal_config.server_status_manual_state == 'disconnected' %}selected{% endif %}>🔴 سرورها قطع میباشند (قرمز)</option>
+                                </select>
+                                <div class="form-text small">این وضعیت با نماد دایره رنگی مربوطه در بالای پورتال مشتری درج می‌شود.</div>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label fw-bold small">متن دلخواه یا اطلاعیه مدیریت زیر وضعیت سرور (اختیاری):</label>
+                                <input type="text" name="server_status_custom_text" class="form-control form-control-sm" value="{{ customer_portal_config.server_status_custom_text }}" placeholder="مثلاً: سرورها در حال بهینه‌سازی شبکه هستند یا تمامی سرویس‌ها با نهایت سرعت فعال‌اند">
+                                <div class="form-text small">در صورت وارد کردن، این متن در پورتال مشتری زیر نشانگر وضعیت سرورها نمایش داده می‌شود.</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

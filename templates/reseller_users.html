@@ -485,10 +485,10 @@
                                 </button>
                                 {% endif %}
 
-                                <!-- ۳. دکمه سریع کپی لینک پورتال و تمدید مشتری -->
-                                <button type="button" class="btn btn-sm btn-outline-info d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" onclick="copyLink('{{ url_for('customer_portal', token=sub.get('hidify_uuid') or sub['id'], _external=True) }}', 'لینک اختصاصی و تمدید')" title="کپی لینک اختصاصی و تمدید مشتری">
+                                <!-- ۳. دکمه سریع کپی لینک پورتال و پروفایل مشتری -->
+                                <button type="button" class="btn btn-sm btn-outline-info d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" onclick="copyLink('{{ url_for('customer_portal', token=sub.get('hidify_uuid') or sub['id'], _external=True) }}', 'لینک پروفایل مشتری')" title="کپی لینک پروفایل مشتری">
                                     <i class="fas fa-link"></i>
-                                    <span class="d-none d-lg-inline">لینک تمدید</span>
+                                    <span class="d-none d-lg-inline">پروفایل مشتری</span>
                                 </button>
 
                                 <!-- ۴. دکمه اصلی و جامع: مدیریت، بارکدها و لینک‌ها -->
@@ -1314,7 +1314,7 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
                     <button type="submit" class="btn btn-primary fw-bold px-4">
-                        <i class="fas fa-save me-1"></i> ذخیره تغییرات و اعمال در هیدیفای
+                        <i class="fas fa-save me-1"></i> ذخیره
                     </button>
                 </div>
             </form>

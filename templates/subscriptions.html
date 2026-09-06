@@ -492,9 +492,9 @@
                                 {% endif %}
 
                                 <!-- ۳. دکمه سریع کپی لینک دائمی پورتال مشتری -->
-                                <button type="button" class="btn btn-sm btn-outline-info d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" onclick="copyLink('{{ url_for('customer_portal', token=sub.get('hidify_uuid') or sub['id'], _external=True) }}', 'لینک اختصاصی و تمدید')" title="کپی لینک اختصاصی و تمدید مشتری">
+                                <button type="button" class="btn btn-sm btn-outline-info d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" onclick="copyLink('{{ url_for('customer_portal', token=sub.get('hidify_uuid') or sub['id'], _external=True) }}', 'لینک پروفایل مشتری')" title="کپی لینک پروفایل مشتری">
                                     <i class="fas fa-link"></i>
-                                    <span class="d-none d-lg-inline">لینک تمدید</span>
+                                    <span class="d-none d-lg-inline">پروفایل مشتری</span>
                                 </button>
 
                                 <!-- ۴. دکمه اصلی و جامع: مدیریت، بارکدها و لینک‌ها -->
@@ -1220,6 +1220,23 @@
                                 <option value="expired" {% if sub['status'] == 'expired' %}selected{% endif %}>⚫️ منقضی (Expired)</option>
                             </select>
                         </div>
+                        <div class="col-12">
+                            <label class="form-label fw-bold d-flex justify-content-between align-items-center">
+                                <span><i class="fas fa-fingerprint text-primary me-1"></i> شناسه اختصاصی در هیدیفای (UUID):</span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="generateNewUuid('adminSubUuidInput_{{ sub[\'id\'] }}')" title="تولید خودکار UUID جدید">
+                                    <i class="fas fa-arrows-rotate me-1 text-success"></i> ساخت UUID جدید
+                                </button>
+                            </label>
+                            <div class="input-group">
+                                <input type="text" class="form-control font-monospace" name="hidify_uuid" id="adminSubUuidInput_{{ sub['id'] }}" value="{{ sub.get('hidify_uuid') or '' }}" placeholder="مثلاً: 3fa85f64-5717-4562-b3fc-2c963f66afa6" dir="ltr">
+                                <button type="button" class="btn btn-outline-primary" onclick="generateNewUuid('adminSubUuidInput_{{ sub[\'id\'] }}')" title="تولید خودکار UUID جدید">
+                                    <i class="fas fa-wand-magic-sparkles me-1"></i> تولید خودکار
+                                </button>
+                            </div>
+                            <div class="form-text small text-muted">
+                                <i class="fas fa-info-circle text-info me-1"></i> شناسه فعلی مشتری در پنل هیدیفای. در صورت نیاز به باطل کردن لینک قبلی مشتری (مثلاً اشتراک‌گذاری با دیگران)، با کلیک روی «ساخت UUID جدید» یک شناسه جدید تولید کنید. این تغییر به طور مستقیم در پنل هیدیفای اعمال خواهد شد.
+                            </div>
+                        </div>
                     </div>
 
                     <!-- بخش مدیریت وضعیت بدهی و تسویه حساب -->
@@ -1265,7 +1282,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">انصراف</button>
-                    <button type="submit" class="btn btn-primary px-4 fw-bold">ذخیره تغییرات در هیدیفای</button>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold"><i class="fas fa-save me-1"></i> ذخیره</button>
                 </div>
             </form>
         </div>
@@ -1976,6 +1993,27 @@
 </style>
 
 <script>
+function generateNewUuid(elementId) {
+    let newUuid = '';
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        newUuid = crypto.randomUUID();
+    } else {
+        newUuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+    const el = document.getElementById(elementId);
+    if (el) {
+        el.value = newUuid;
+        el.classList.add('bg-warning', 'bg-opacity-25');
+        setTimeout(() => el.classList.remove('bg-warning', 'bg-opacity-25'), 1200);
+        if (typeof showToast === 'function') {
+            showToast('UUID جدید با موفقیت تولید و جایگذاری شد. برای اعمال، دکمه ذخیره را بزنید.', 'info');
+        }
+    }
+}
+
 function toggleAdminRenewDebtor(subId) {
     const sel = document.getElementById('adminRenewPaymentStatus' + subId);
     const box = document.getElementById('adminRenewDebtAmountBox' + subId);

@@ -72,6 +72,57 @@
             70% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); }
             100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
         }
+        /* نشانگر وضعیت سرورها */
+        .server-status-card {
+            background: rgba(15, 23, 42, 0.75);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+        .server-status-circle {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.35rem;
+            transition: all 0.3s ease;
+        }
+        .server-status-circle.operational {
+            background: rgba(16, 185, 129, 0.18);
+            color: #10b981;
+            border: 2.5px solid #10b981;
+            box-shadow: 0 0 16px rgba(16, 185, 129, 0.45);
+            animation: pulse-green 2.5s infinite;
+        }
+        .server-status-circle.disruption {
+            background: rgba(245, 158, 11, 0.18);
+            color: #f59e0b;
+            border: 2.5px solid #f59e0b;
+            box-shadow: 0 0 16px rgba(245, 158, 11, 0.45);
+            animation: pulse-orange 2.5s infinite;
+        }
+        .server-status-circle.disconnected {
+            background: rgba(239, 68, 68, 0.18);
+            color: #ef4444;
+            border: 2.5px solid #ef4444;
+            box-shadow: 0 0 16px rgba(239, 68, 68, 0.45);
+            animation: pulse-red 2.5s infinite;
+        }
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6); }
+            70% { box-shadow: 0 0 0 12px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+        @keyframes pulse-orange {
+            0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.6); }
+            70% { box-shadow: 0 0 0 12px rgba(245, 158, 11, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+        }
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); }
+            70% { box-shadow: 0 0 0 12px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
         /* دکمه شناور گفتگوی آنلاین */
         .floating-chat-btn {
             position: fixed;
@@ -323,6 +374,48 @@
         <p class="text-secondary small">پورتال اختصاصی استعلام وضعیت و تمدید اشتراک</p>
     </div>
 
+    <!-- ویجت اختصاصی وضعیت سرورها -->
+    {% if server_status %}
+    <div class="glass-card p-3 mb-4 text-center server-status-card shadow-sm">
+        <div class="d-inline-flex align-items-center justify-content-center mb-2">
+            {% if server_status.state == 'operational' %}
+                <div class="server-status-circle operational" title="متصل و عملیاتی">
+                    <i class="fas fa-check"></i>
+                </div>
+            {% elif server_status.state == 'disruption' %}
+                <div class="server-status-circle disruption" title="اختلال در سرورها">
+                    <i class="fas fa-triangle-exclamation"></i>
+                </div>
+            {% else %}
+                <div class="server-status-circle disconnected" title="سرورها قطع میباشند">
+                    <i class="fas fa-xmark"></i>
+                </div>
+            {% endif %}
+        </div>
+        <div class="d-flex align-items-center justify-content-center flex-wrap gap-2">
+            <span class="text-white-50 small">وضعیت سرورها:</span>
+            {% if server_status.state == 'operational' %}
+                <strong class="fs-6 text-success">{{ server_status.status_title }}</strong>
+            {% elif server_status.state == 'disruption' %}
+                <strong class="fs-6 text-warning">{{ server_status.status_title }}</strong>
+            {% else %}
+                <strong class="fs-6 text-danger">{{ server_status.status_title }}</strong>
+            {% endif %}
+
+            {% if server_status.show_ping and server_status.latency > 0 %}
+                <span class="badge bg-black bg-opacity-50 border border-success border-opacity-50 text-success font-monospace px-2 py-1" style="font-size: 0.75rem;">
+                    <i class="fas fa-bolt text-warning me-1"></i>{{ server_status.latency }}ms
+                </span>
+            {% endif %}
+        </div>
+        {% if server_status.custom_text %}
+            <div class="mt-2 text-secondary small px-3 py-1 bg-black bg-opacity-30 rounded-pill d-inline-block border border-secondary border-opacity-25" style="font-size: 0.8rem;">
+                <i class="fas fa-bullhorn text-info me-1"></i>{{ server_status.custom_text }}
+            </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
     <!-- فلش پیام‌ها -->
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -543,7 +636,7 @@
                 {% for p in plans %}
                 <div class="col-12 col-md-6 d-flex">
                     <label class="w-100 d-flex flex-column mb-0">
-                        <input type="radio" name="plan_id" value="{{ p['id'] }}" class="d-none plan-radio" {% if loop.first %}checked{% endif %}>
+                        <input type="radio" name="plan_id" value="{{ p['id'] }}" data-price="{{ p['price'] }}" class="d-none plan-radio" {% if loop.first %}checked{% endif %}>
                         <div class="plan-card p-3 d-flex justify-content-between align-items-center w-100 h-100 {% if loop.first %}selected{% endif %}">
                             <div class="d-flex align-items-center gap-3">
                                 {% set icon_info = get_plan_icon(p, p['id']) %}
@@ -563,6 +656,39 @@
                     </label>
                 </div>
                 {% endfor %}
+            </div>
+
+            <!-- کادر ورود و اعمال کد تخفیف اختصاصی -->
+            <div class="p-3 rounded-3 bg-black bg-opacity-25 border border-secondary border-opacity-25 mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <label class="form-label fw-bold text-white small mb-0">
+                        <i class="fas fa-ticket text-warning me-1"></i> کد تخفیف دارید؟
+                    </label>
+                    <span id="discountStatusBadge" class="badge bg-secondary small" style="display: none;"></span>
+                </div>
+                <div class="input-group">
+                    <input type="text" name="discount_code" id="portalDiscountInput" class="form-control text-uppercase font-monospace text-center" placeholder="کد تخفیف را اینجا وارد کنید..." style="letter-spacing: 2px;">
+                    <button type="button" class="btn btn-outline-warning fw-bold px-3" id="applyDiscountBtn" onclick="applyPortalDiscount()">
+                        <i class="fas fa-tag me-1"></i> اعمال کد
+                    </button>
+                </div>
+                <div id="discountFeedback" class="small mt-2" style="display: none;"></div>
+
+                <!-- باکس محاسبه لحظه‌ای مبلغ و تخفیف -->
+                <div id="pricingSummaryBox" class="mt-3 pt-2 border-top border-secondary border-opacity-25">
+                    <div class="d-flex justify-content-between align-items-center small text-secondary mb-1">
+                        <span>مبلغ بسته انتخابی:</span>
+                        <span class="font-monospace text-white" id="summaryOriginalPrice">۰ تومان</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center small text-success mb-2" id="summaryDiscountRow" style="display: none;">
+                        <span>مقدار تخفیف کسر شده:</span>
+                        <span class="font-monospace fw-bold text-success" id="summaryDiscountAmount">- ۰ تومان</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center fw-bold fs-6 text-white pt-2 border-top border-secondary border-opacity-25">
+                        <span>مبلغ نهایی قابل پرداخت:</span>
+                        <span class="font-monospace text-success fs-5" id="summaryFinalPrice">۰ تومان</span>
+                    </div>
+                </div>
             </div>
 
             <!-- گزینه فعال‌سازی آنی یا رزرو در صف -->
@@ -1073,13 +1199,137 @@ function copyText(text, label) {
     });
 }
 
-// انتخاب پلن‌ها با کلیک
+let currentDiscountData = null;
+
+function formatMoney(num) {
+    return Number(num || 0).toLocaleString('fa-IR');
+}
+
+function getSelectedPlan() {
+    const checked = document.querySelector('input.plan-radio:checked');
+    if (!checked) return { id: '', price: 0 };
+    return {
+        id: checked.value,
+        price: parseInt(checked.getAttribute('data-price') || '0', 10)
+    };
+}
+
+function updatePricingDisplay() {
+    const plan = getSelectedPlan();
+    const summaryBox = document.getElementById('pricingSummaryBox');
+    const origSpan = document.getElementById('summaryOriginalPrice');
+    const discRow = document.getElementById('summaryDiscountRow');
+    const discAmtSpan = document.getElementById('summaryDiscountAmount');
+    const finalSpan = document.getElementById('summaryFinalPrice');
+
+    if (!summaryBox || !origSpan || !finalSpan) return;
+
+    summaryBox.style.display = 'block';
+    origSpan.innerText = formatMoney(plan.price) + ' تومان';
+
+    if (currentDiscountData && currentDiscountData.valid) {
+        let discAmt = currentDiscountData.discount_amount || 0;
+        let finalAmt = Math.max(0, plan.price - discAmt);
+        if (discRow) discRow.style.display = 'flex';
+        if (discAmtSpan) discAmtSpan.innerText = '- ' + formatMoney(discAmt) + ' تومان';
+        finalSpan.innerText = formatMoney(finalAmt) + ' تومان';
+    } else {
+        if (discRow) discRow.style.display = 'none';
+        finalSpan.innerText = formatMoney(plan.price) + ' تومان';
+    }
+}
+
+function applyPortalDiscount() {
+    const input = document.getElementById('portalDiscountInput');
+    const feedback = document.getElementById('discountFeedback');
+    const badge = document.getElementById('discountStatusBadge');
+    const btn = document.getElementById('applyDiscountBtn');
+    const code = (input ? input.value : '').trim();
+    const plan = getSelectedPlan();
+
+    if (!code) {
+        if (feedback) {
+            feedback.style.display = 'block';
+            feedback.className = 'small mt-2 text-warning';
+            feedback.innerText = 'لطفاً کد تخفیف را وارد فرمایید.';
+        }
+        return;
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال بررسی...';
+    }
+
+    fetch('{{ url_for("customer_check_discount", token=token) }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: code, plan_id: plan.id })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-tag me-1"></i> اعمال کد';
+        }
+        if (data.valid) {
+            currentDiscountData = data;
+            if (feedback) {
+                feedback.style.display = 'block';
+                feedback.className = 'small mt-2 text-success fw-bold';
+                feedback.innerHTML = '<i class="fas fa-check-circle me-1"></i> ' + (data.message || 'کد تخفیف با موفقیت اعمال شد.');
+            }
+            if (badge) {
+                badge.style.display = 'inline-block';
+                badge.className = 'badge bg-success small';
+                badge.innerText = 'تخفیف فعال: ' + formatMoney(data.discount_amount) + ' ت';
+            }
+            updatePricingDisplay();
+        } else {
+            currentDiscountData = null;
+            if (feedback) {
+                feedback.style.display = 'block';
+                feedback.className = 'small mt-2 text-danger';
+                feedback.innerHTML = '<i class="fas fa-times-circle me-1"></i> ' + (data.error || 'کد تخفیف نامعتبر است.');
+            }
+            if (badge) {
+                badge.style.display = 'none';
+            }
+            updatePricingDisplay();
+        }
+    })
+    .catch(err => {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-tag me-1"></i> اعمال کد';
+        }
+        if (feedback) {
+            feedback.style.display = 'block';
+            feedback.className = 'small mt-2 text-danger';
+            feedback.innerText = 'خطا در برقراری ارتباط با سرور.';
+        }
+    });
+}
+
+// انتخاب پلن‌ها با کلیک و محاسبه قیمت
 document.querySelectorAll('.plan-card').forEach(card => {
     card.addEventListener('click', function() {
         document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
         this.classList.add('selected');
-        this.closest('label').querySelector('input[type="radio"]').checked = true;
+        const radio = this.closest('label').querySelector('input[type="radio"]');
+        if (radio) {
+            radio.checked = true;
+            if (currentDiscountData && currentDiscountData.valid) {
+                applyPortalDiscount();
+            } else {
+                updatePricingDisplay();
+            }
+        }
     });
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    updatePricingDisplay();
 });
 
 // ═══════════════════════════════════════════════════════════════════════
