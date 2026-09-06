@@ -493,13 +493,20 @@
 
         <!-- کادر مبلغ دقیق -->
         <div class="bg-black bg-opacity-40 p-3 rounded-3 text-center mb-3 border border-warning border-opacity-50">
-            <span class="text-secondary small d-block mb-1">دقیقاً مبلغ واریزی:</span>
-            <div class="d-flex justify-content-center align-items-center gap-2">
-                <span class="fs-2 fw-bold text-success font-monospace" id="amountVal">{{ "{:,}".format(invoice['final_amount']) }}</span>
-                <span class="text-white">تومان</span>
-                <button class="btn btn-sm btn-success copy-btn ms-2" onclick="copyText('{{ invoice['final_amount'] }}', 'مبلغ')">
-                    <i class="fas fa-copy me-1"></i> کپی مبلغ
+            <span class="text-secondary small d-block mb-1">دقیقاً مبلغ واریزی (به ریال):</span>
+            <div class="d-flex justify-content-center align-items-center gap-2 flex-wrap">
+                <span class="fs-2 fw-bold text-success font-monospace" id="amountVal">{{ "{:,}".format(invoice['final_amount'] * 10) }}</span>
+                <span class="text-white fs-5 fw-bold">ریال</span>
+                <button class="btn btn-sm btn-success copy-btn ms-2" onclick="copyText('{{ invoice['final_amount'] * 10 }}', 'مبلغ به ریال')">
+                    <i class="fas fa-copy me-1"></i> کپی مبلغ (به ریال)
                 </button>
+            </div>
+            <div class="text-secondary small mt-1">
+                معادل: <strong class="text-white">{{ "{:,}".format(invoice['final_amount']) }} تومان</strong>
+            </div>
+            <div class="alert alert-warning py-2 px-3 mt-3 mb-0 text-start small border-0 bg-opacity-25" style="font-size: 0.82rem;">
+                <i class="fas fa-lightbulb text-warning me-1"></i>
+                <strong>راهنمای کپی مبلغ:</strong> به دلیل وجود ارقام خرد در مبلغ (جهت فعال‌سازی خودکار و آنی)، لطفاً مبلغ را با دکمه <b>«کپی مبلغ (به ریال)»</b> بردارید و در همراه بانک پیست نمایید تا از هرگونه اشتباه تایپی جلوگیری شود.
             </div>
         </div>
 
