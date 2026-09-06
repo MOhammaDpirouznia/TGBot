@@ -14,7 +14,7 @@
             <i class="fas fa-receipt text-warning"></i>
             پرداخت‌های آنلاین مشتری
         </h1>
-        <p class="text-muted mb-0">بررسی، تایید و صدور خودکار اشتراک‌های VPN پس از تایید پرداخت‌ها و فیش‌های واریزی مشتریان ربات شما</p>
+        <p class="text-muted mb-0">بررسی، تایید و صدور خودکار اشتراک‌های VPN پس از تایید پرداخت‌ها و فیش‌های واریزی مشتریان شما (ربات تلگرام و پرتال مشتری)</p>
     </div>
     <div class="d-flex align-items-center gap-2">
         <a href="{{ url_for('reseller_payments') }}" class="btn btn-outline-primary">
@@ -25,9 +25,21 @@
 
 <div class="card shadow-sm border-0">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div class="d-flex align-items-center gap-2">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
             <h5 class="mb-0 fw-bold"><i class="fas fa-list-check text-primary me-2"></i>لیست فیش‌های مشتریان</h5>
-            <span class="badge bg-secondary" data-table-count="customerPaymentsTable">{{ transactions|length }} مورد</span>
+            <span class="badge bg-secondary" id="paymentRowsCount" data-table-count="customerPaymentsTable">{{ transactions|length }} مورد</span>
+            
+            <div class="btn-group btn-group-sm ms-2" role="group" id="sourceFilterBtnGroup">
+                <button type="button" class="btn btn-primary active" data-source-filter="all">
+                    همه ({{ transactions|length }})
+                </button>
+                <button type="button" class="btn btn-outline-info" data-source-filter="portal">
+                    <i class="fas fa-globe me-1"></i>پرتال مشتری ({{ portal_count }})
+                </button>
+                <button type="button" class="btn btn-outline-primary" data-source-filter="telegram">
+                    <i class="fab fa-telegram me-1"></i>ربات تلگرام ({{ telegram_count }})
+                </button>
+            </div>
         </div>
         <div class="table-search-wrapper">
             <i class="fas fa-search table-search-icon"></i>
@@ -44,18 +56,13 @@
                             <input type="checkbox" class="form-check-input bulk-select-all" title="انتخاب همه">
                         </th>
                         <th class="ps-2 sortable-th" data-column="1">سفارش</th>
-                        <th class="sortable-th" data-column="2">کاربر تلگرام</th>
-                        <th class="sortable-th" data-column="3">پلن درخواستی</th>
-                        <th class="sortable-th" data-column="4">مبلغ</th>
-                        <th class="sortable-th" data-column="5">روش پرداخت</th>
-                        <th class="sortable-th" data-column="6">وضعیت</th>
-                        <th class="sortable-th" data-column="7">تاریخ ثبت</th>
-                        <th class="text-end pe-3" style="min-width: 170px;">عملیات و جزئیات</th>
-                    </tr>
-                </thead>
-                <tbody>
+                        <th class="sortable-th" data-column="2">مشتری</th>
+                        <th class="sortable-th text-center" data-column="3">مبدأ</th>
+                        <th class="sortable-th" data-column="4">پلن درخواستی</th>
+                        <th class="sortable-th" data-column="5">مبلغ</th>
+                        <th class="sortable-th" data-column="6">روش پرداخ�                <tbody>
                     {% for tx in transactions %}
-                    <tr>
+                    <tr class="customer-payment-row" data-source="{{ tx['source'] }}">
                         <td class="text-center">
                             <input type="checkbox" class="form-check-input bulk-select-row" value="{{ tx['id'] }}">
                         </td>
@@ -65,20 +72,66 @@
                                 <div class="text-muted small font-monospace" style="font-size: 0.72rem;">{{ tx['order_id'] }}</div>
                             {% endif %}
                         </td>
-                        <td data-value="{{ (tx['username'] or tx['user_id'] or '')|striptags }}">
-                            <div class="d-flex align-items-center gap-2">
-                                <img src="{{ avatar_url(tx['user_id'] or tx['username'] or 'User') }}" 
-                                     alt="User" class="rounded-circle border shadow-sm flex-shrink-0" style="width: 36px; height: 36px; object-fit: cover;">
-                                <div>
-                                    <strong class="text-dark">{{ tx['username'] or 'کاربر' }}</strong>
-                                    <div class="text-muted small"><code>{{ tx['user_id'] }}</code></div>
+                        <td data-value="{{ (tx['customer_name'] or tx['account_name'] or tx['username'] or tx['user_id'] or '')|striptags }}">
+                            {% if tx['source'] == 'portal' %}
+                                <div class="d-flex align-items-center gap-2">
+                                    <img src="{{ avatar_url(tx['account_name'] or tx['customer_name'] or 'Customer') }}" 
+                                         alt="User" class="rounded-circle border shadow-sm flex-shrink-0" style="width: 36px; height: 36px; object-fit: cover;">
+                                    <div>
+                                        <div class="d-flex align-items-center gap-1">
+                                            <strong class="text-dark">{{ tx['customer_name'] }}</strong>
+                                            <span class="badge bg-info-subtle text-info border border-info" style="font-size: 0.65rem;" title="مشتری ثبت‌شده در پرتال وب">
+                                                <i class="fas fa-globe"></i> وب
+                                            </span>
+                                        </div>
+                                        <div class="text-muted small">
+                                            {% if tx.get('renew_sub_id') %}
+                                                <a href="{{ url_for('reseller_users') }}?search={{ tx['account_name'] or tx['renew_sub_id'] }}" class="text-decoration-none font-monospace text-muted" title="مشاهده اشتراک در لیست مشتریان">
+                                                    <i class="fas fa-id-card me-1 text-secondary"></i>اشتراک #{{ tx['renew_sub_id'] }}
+                                                </a>
+                                            {% elif tx.get('account_name') %}
+                                                <code>{{ tx['account_name'] }}</code>
+                                            {% else %}
+                                                <span class="text-muted small">پرتال مشتری</span>
+                                            {% endif %}
+                                            {% if tx.get('customer_phone') %}
+                                                <span class="text-secondary ms-1 font-monospace" style="font-size: 10px;">({{ tx['customer_phone'] }})</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
                                 </div>
-                                {% if tx['username'] and not tx['username'].startswith('tg_') and tx['username'] != 'کاربر' %}
-                                    <a href="https://t.me/{{ tx['username'].replace('@', '') }}" target="_blank" class="btn btn-sm btn-outline-primary py-0 px-2 ms-auto" title="چت تلگرام">
-                                        <i class="fab fa-telegram"></i>
-                                    </a>
-                                {% endif %}
-                            </div>
+                            {% else %}
+                                <div class="d-flex align-items-center gap-2">
+                                    <img src="{{ avatar_url(tx['user_id'] or tx['username'] or 'User') }}" 
+                                         alt="User" class="rounded-circle border shadow-sm flex-shrink-0" style="width: 36px; height: 36px; object-fit: cover;">
+                                    <div>
+                                        <div class="d-flex align-items-center gap-1">
+                                            <strong class="text-dark">{{ tx['customer_name'] }}</strong>
+                                            <span class="badge bg-primary-subtle text-primary border border-primary" style="font-size: 0.65rem;" title="کاربر ربات تلگرام">
+                                                <i class="fab fa-telegram"></i> ربات
+                                            </span>
+                                        </div>
+                                        <div class="text-muted small"><code>{{ tx['user_id'] }}</code></div>
+                                    </div>
+                                    {% if tx['username'] and not tx['username'].startswith('tg_') and tx['username'] != 'کاربر' and tx['username'] != 'کاربر تلگرام' %}
+                                        <a href="https://t.me/{{ tx['username'].replace('@', '') }}" target="_blank" class="btn btn-sm btn-outline-primary py-0 px-2 ms-auto" title="چت تلگرام">
+                                            <i class="fab fa-telegram"></i>
+                                        </a>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+                        </td>
+                        <!-- ستون مبدأ فیش -->
+                        <td class="text-center" data-value="{{ tx['source'] }}">
+                            {% if tx['source'] == 'portal' %}
+                                <span class="badge bg-info-subtle text-info border border-info px-2 py-1 shadow-sm" style="font-size: 0.78rem;">
+                                    <i class="fas fa-globe me-1"></i> پرتال مشتری
+                                </span>
+                            {% else %}
+                                <span class="badge bg-primary-subtle text-primary border border-primary px-2 py-1 shadow-sm" style="font-size: 0.78rem;">
+                                    <i class="fab fa-telegram me-1"></i> ربات تلگرام
+                                </span>
+                            {% endif %}
                         </td>
                         <td data-value="{{ tx['plan_name'] or '' }}"><span class="badge bg-primary-subtle text-primary border border-primary px-2 py-1">{{ tx['plan_name'] }}</span></td>
                         <td data-value="{{ tx['amount'] or 0 }}"><strong class="text-primary fs-6">{{ "{:,}".format(tx['amount'] or 0) }} تومان</strong></td>
@@ -108,8 +161,8 @@
                                     <i class="fas fa-eye me-1"></i> مشاهده
                                 </button>
                                 {% if tx['status'] == 'pending' %}
-                                    <form action="{{ url_for('reseller_payment_approve', payment_id=tx['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از تایید این فیش و صدور آنی اشتراک برای مشتری اطمینان دارید؟');">
-                                        <button type="submit" class="btn btn-success" title="تایید و صدور اشتراک">
+                                    <form action="{{ url_for('reseller_payment_approve', payment_id=tx['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از تایید این فیش و صدور یا تمدید آنی اشتراک برای مشتری اطمینان دارید؟');">
+                                        <button type="submit" class="btn btn-success" title="تایید و صدور/تمدید اشتراک">
                                             <i class="fas fa-check"></i>
                                         </button>
                                     </form>
@@ -121,6 +174,15 @@
                         </td>
                     </tr>
                     {% endfor %}
+                    {% if not transactions %}
+                    <tr>
+                        <td colspan="10" class="text-center py-5 text-muted">
+                            <i class="fas fa-receipt fs-1 text-secondary opacity-50 mb-3 d-block"></i>
+                            <h6 class="fw-bold">فیش پرداختی از سمت مشتریان ثبت نشده است.</h6>
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>         {% endfor %}
                     {% if not transactions %}
                     <tr>
                         <td colspan="9" class="text-center py-5 text-muted">
