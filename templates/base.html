@@ -1592,7 +1592,7 @@
             <div class="modal-content shadow-lg border-0">
                 <div class="modal-header bg-primary text-white py-3">
                     <h5 class="modal-title fw-bold" id="qrModalTitle">
-                        <i class="fas fa-qrcode me-2"></i> بارکد و لینک اتصال
+                        <i class="fas fa-qrcode me-2"></i> بارکد و پورتال مشتری
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -1601,19 +1601,24 @@
                         <div id="qrCodeContainer" class="d-flex justify-content-center p-2" style="background-color: #ffffff !important;"></div>
                     </div>
                     <div class="mb-3 text-start">
-                        <label class="form-label small text-muted fw-bold">لینک اتصال مستقیم:</label>
+                        <label class="form-label small text-muted fw-bold" id="qrModalLabel">لینک پورتال مشتری:</label>
                         <div class="input-group">
                             <input type="text" id="qrModalLinkInput" class="form-control text-center font-monospace small" readonly style="direction: ltr;">
                             <button class="btn btn-primary" onclick="copyModalLink()"><i class="fas fa-copy me-1"></i> کپی</button>
                         </div>
                     </div>
                     <div class="d-flex flex-wrap gap-2 justify-content-center mt-3">
-                        <a id="hiddifyDirectBtn" href="#" class="btn btn-sm btn-outline-primary"><i class="fas fa-rocket me-1"></i> اتصال Hiddify</a>
-                        <a id="streisandDirectBtn" href="#" class="btn btn-sm btn-outline-info"><i class="fas fa-bolt me-1"></i> اتصال Streisand</a>
+                        <a id="qrModalOpenBtn" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-primary px-3 py-2 fw-bold shadow-sm d-inline-flex align-items-center gap-2">
+                            <span>بازکردن در مرورگر</span>
+                            <span style="font-size: 1.1rem; line-height: 1;">↗️</span>
+                        </a>
                     </div>
                 </div>
-                <div class="modal-footer py-2 bg-light d-flex justify-content-between">
-                    <span class="small text-muted"><i class="fas fa-shield-halved me-1"></i> لینک اختصاصی پرسرعت</span>
+                <div class="modal-footer py-2 bg-light d-flex justify-content-between align-items-center">
+                    <div class="small text-muted text-start pe-2" style="font-size: 0.82rem; line-height: 1.6;">
+                        <i class="fas fa-circle-info text-primary me-1"></i>
+                        <strong>راهنمای پورتال مشتری:</strong> این صفحه اختصاصی مشتری است که مشتری با باز کردن آن در مرورگر می‌تواند مشخصات اکانت، حجم مصرفی و باقیمانده، روزهای اشتراک، لینک‌ها و برنامه‌های اتصال را دریافت کرده و اشتراک خود را تمدید نماید.
+                    </div>
                     <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">بستن</button>
                 </div>
             </div>
@@ -1656,17 +1661,14 @@
 
             const modalTitle = document.getElementById('qrModalTitle');
             if (modalTitle) {
-                modalTitle.innerHTML = `<i class="fas fa-qrcode me-2"></i> ${title || 'بارکد و لینک اتصال'}`;
+                modalTitle.innerHTML = `<i class="fas fa-qrcode me-2"></i> ${title || 'بارکد و پورتال مشتری'}`;
             }
 
             const input = document.getElementById('qrModalLinkInput');
             if (input) input.value = url;
 
-            const hBtn = document.getElementById('hiddifyDirectBtn');
-            if (hBtn) hBtn.href = 'hiddify://install-sub?url=' + encodeURIComponent(url);
-
-            const sBtn = document.getElementById('streisandDirectBtn');
-            if (sBtn) sBtn.href = 'streisand://import/' + encodeURIComponent(url);
+            const openBtn = document.getElementById('qrModalOpenBtn');
+            if (openBtn) openBtn.href = url;
 
             try {
                 if (typeof QRCode !== 'undefined') {

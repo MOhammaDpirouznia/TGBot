@@ -486,9 +486,9 @@
                                 {% endif %}
 
                                 <!-- ۳. دکمه سریع کپی لینک پورتال و پروفایل مشتری -->
-                                <button type="button" class="btn btn-sm btn-outline-info d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" onclick="copyLink('{{ url_for('customer_portal', token=sub.get('hidify_uuid') or sub['id'], _external=True) }}', 'لینک پروفایل مشتری')" title="کپی لینک پروفایل مشتری">
+                                <button type="button" class="btn btn-sm btn-outline-info d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" onclick="copyLink('{{ url_for('customer_portal', token=sub.get('hidify_uuid') or sub['id'], _external=True) }}', 'لینک پورتال مشتری')" title="مشاهده و کپی لینک پورتال مشتری">
                                     <i class="fas fa-link"></i>
-                                    <span class="d-none d-lg-inline">پروفایل مشتری</span>
+                                    <span class="d-none d-lg-inline">پورتال مشتری</span>
                                 </button>
 
                                 <!-- ۴. دکمه اصلی و جامع: مدیریت، بارکدها و لینک‌ها -->

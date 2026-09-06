@@ -492,9 +492,9 @@
                                 {% endif %}
 
                                 <!-- ۳. دکمه سریع کپی لینک دائمی پورتال مشتری -->
-                                <button type="button" class="btn btn-sm btn-outline-info d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" onclick="copyLink('{{ url_for('customer_portal', token=sub.get('hidify_uuid') or sub['id'], _external=True) }}', 'لینک پروفایل مشتری')" title="کپی لینک پروفایل مشتری">
+                                <button type="button" class="btn btn-sm btn-outline-info d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" onclick="copyLink('{{ url_for('customer_portal', token=sub.get('hidify_uuid') or sub['id'], _external=True) }}', 'لینک پورتال مشتری')" title="مشاهده و کپی لینک پورتال مشتری">
                                     <i class="fas fa-link"></i>
-                                    <span class="d-none d-lg-inline">پروفایل مشتری</span>
+                                    <span class="d-none d-lg-inline">پورتال مشتری</span>
                                 </button>
 
                                 <!-- ۴. دکمه اصلی و جامع: مدیریت، بارکدها و لینک‌ها -->
@@ -1223,13 +1223,13 @@
                         <div class="col-12">
                             <label class="form-label fw-bold d-flex justify-content-between align-items-center">
                                 <span><i class="fas fa-fingerprint text-primary me-1"></i> شناسه اختصاصی در هیدیفای (UUID):</span>
-                                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="generateNewUuid('adminSubUuidInput_{{ sub[\'id\'] }}')" title="تولید خودکار UUID جدید">
+                                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="generateNewUuid('adminSubUuidInput_{{ sub['id'] }}')" title="تولید خودکار UUID جدید">
                                     <i class="fas fa-arrows-rotate me-1 text-success"></i> ساخت UUID جدید
                                 </button>
                             </label>
                             <div class="input-group">
                                 <input type="text" class="form-control font-monospace" name="hidify_uuid" id="adminSubUuidInput_{{ sub['id'] }}" value="{{ sub.get('hidify_uuid') or '' }}" placeholder="مثلاً: 3fa85f64-5717-4562-b3fc-2c963f66afa6" dir="ltr">
-                                <button type="button" class="btn btn-outline-primary" onclick="generateNewUuid('adminSubUuidInput_{{ sub[\'id\'] }}')" title="تولید خودکار UUID جدید">
+                                <button type="button" class="btn btn-outline-primary" onclick="generateNewUuid('adminSubUuidInput_{{ sub['id'] }}')" title="تولید خودکار UUID جدید">
                                     <i class="fas fa-wand-magic-sparkles me-1"></i> تولید خودکار
                                 </button>
                             </div>
