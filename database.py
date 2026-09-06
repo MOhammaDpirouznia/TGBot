@@ -7952,7 +7952,7 @@ class Database:
             conn.close()
 
     def cancel_queue_item(self, queue_id: int, reseller_id: int = None) -> dict:
-        """لغو بسته در صف و استرداد وجه به کیف‌پول نماینده در صورت پرداخت هزینه"""
+        """لغو بسته در صف و استرداد وجه به کیف‌پول نماینده یا کاربر در صورت پرداخت هزینه"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -7965,19 +7965,69 @@ class Database:
             item_dict = dict(item)
             cost = item_dict.get("cost") or 0
             r_id = item_dict.get("reseller_id")
+            sub_id = item_dict.get("subscription_id")
 
             if reseller_id and r_id and r_id != reseller_id:
                 return {"success": False, "error": "شما به این بسته دسترسی ندارید."}
 
+            cursor.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,))
+            sub_row = cursor.fetchone()
+            sub_dict = dict(sub_row) if sub_row else {}
+            account_name = sub_dict.get("account_name") or f"user_{sub_id}"
+
             # استرداد وجه به نماینده
             if r_id and cost > 0:
-                cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at=? WHERE id=?", (cost, now, r_id))
+                # بررسی منبع پرداخت تمدید و علامت‌گذاری تراکنش تمدید به لغو شده
                 cursor.execute("""
-                    INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
-                    VALUES (?, 'refund', ?, ?, ?, ?, ?)
-                """, (r_id, cost, item_dict.get("plan_name", ""), f"sub_{item_dict['subscription_id']}", f"استرداد وجه لغو بسته رزرو در صف", now))
+                    SELECT id, payment_source FROM reseller_transactions
+                    WHERE reseller_id = ? AND (subscription_id = ? OR account_name = ?)
+                      AND type IN ('renewal', 'renewal_credit')
+                    ORDER BY id DESC LIMIT 1
+                """, (r_id, sub_id, account_name))
+                last_renew_tx = cursor.fetchone()
+                renew_source = "wallet"
+                if last_renew_tx:
+                    renew_tx_id = last_renew_tx[0]
+                    renew_source = last_renew_tx[1] or "wallet"
+                    cursor.execute("""
+                        UPDATE reseller_transactions
+                        SET type = 'renewal_cancelled', description = description || ' [لغو شده از صف تمدید]'
+                        WHERE id = ?
+                    """, (renew_tx_id,))
 
-            cursor.execute("UPDATE subscription_queue SET status='cancelled' WHERE id=?", (queue_id,))
+                if renew_source == "credit":
+                    cursor.execute("UPDATE resellers SET credit_debt = MAX(0, credit_debt - ?), updated_at=? WHERE id=?", (cost, now, r_id))
+                    cursor.execute("""
+                        INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
+                        VALUES (?, 'refund_credit', ?, ?, ?, ?, 'credit', ?, ?)
+                    """, (r_id, cost, item_dict.get("plan_name", ""), account_name, "استرداد وجه لغو بسته رزرو در صف (کاهش بدهی اعتبار)", sub_id, now))
+                else:
+                    cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at=? WHERE id=?", (cost, now, r_id))
+                    cursor.execute("""
+                        INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
+                        VALUES (?, 'refund', ?, ?, ?, ?, 'wallet', ?, ?)
+                    """, (r_id, cost, item_dict.get("plan_name", ""), account_name, "استرداد وجه لغو بسته رزرو در صف (واریز به کیف پول)", sub_id, now))
+            elif not r_id and cost > 0:
+                # استرداد وجه برای مشتریان مستقیم ادمین
+                tg_id = item_dict.get("telegram_id") or sub_dict.get("telegram_id")
+                if tg_id:
+                    try:
+                        self.add_wallet_balance(
+                            tg_id,
+                            cost,
+                            f"استرداد وجه بابت لغو بسته در صف تمدید برای اشتراک «{account_name}»",
+                            tx_type="refund"
+                        )
+                    except Exception as we:
+                        logger.error(f"Error refunding wallet to user {tg_id}: {we}")
+                cursor.execute("""
+                    UPDATE transactions
+                    SET status = 'cancelled', is_deleted = 1
+                    WHERE renew_sub_id = ? AND status IN ('approved', 'completed') AND (is_deleted = 0 OR is_deleted IS NULL)
+                    ORDER BY id DESC LIMIT 1
+                """, (sub_id,))
+
+            cursor.execute("UPDATE subscription_queue SET status='cancelled', note='لغو توسط کاربر/مدیر و استرداد وجه' WHERE id=?", (queue_id,))
             conn.commit()
             return {"success": True, "refunded_amount": cost}
         except Exception as e:
@@ -8020,17 +8070,18 @@ class Database:
         sub_source = str(sub_dict.get("payment_source") or "").lower()
         is_credit_sub = bool(sub_dict.get("is_credit") or (sub_dict.get("credit_debt_amount") or 0) > 0 or sub_source == "credit")
 
-        # جستجوی زمان آخرین استرداد ثبت‌شده برای این اشتراک (در صورت حذف و بازگردانی‌های قبلی)
+        # جستجوی زمان آخرین استرداد ثبت‌شده برای این اشتراک در سطل زباله (جهت تفکیک حذف و بازگردانی‌های قبلی از لغو صف)
         cursor.execute("""
             SELECT MAX(created_at) FROM reseller_transactions
             WHERE reseller_id = ?
               AND (subscription_id = ? OR account_name = ?)
               AND type IN ('refund', 'refund_credit')
+              AND (description LIKE '%سطل زباله%' OR description LIKE '%حذف اشتراک%')
         """, (reseller_id, sub_id, account_name))
         latest_refund_row = cursor.fetchone()
         latest_refund_time = latest_refund_row[0] if latest_refund_row and latest_refund_row[0] else None
 
-        # جستجوی تمام اقدامات مالی کسر شده از نماینده برای این اکانت (صرفاً اقدامات پس از آخرین استرداد)
+        # جستجوی تمام اقدامات مالی کسر شده از نماینده برای این اکانت (صرفاً اقدامات پس از آخرین استرداد سطل زباله)
         if latest_refund_time:
             cursor.execute("""
                 SELECT * FROM reseller_transactions
@@ -8038,6 +8089,7 @@ class Database:
                   AND (subscription_id = ? OR account_name = ?)
                   AND created_at > ?
                   AND type IN ('purchase', 'renewal', 'purchase_credit', 'renewal_credit')
+                  AND type NOT IN ('renewal_cancelled', 'cancelled')
                 ORDER BY created_at ASC
             """, (reseller_id, sub_id, account_name, latest_refund_time))
         else:
@@ -8046,6 +8098,7 @@ class Database:
                 WHERE reseller_id = ? 
                   AND (subscription_id = ? OR account_name = ? OR description LIKE ?)
                   AND type IN ('purchase', 'renewal', 'purchase_credit', 'renewal_credit')
+                  AND type NOT IN ('renewal_cancelled', 'cancelled')
                 ORDER BY created_at ASC
             """, (reseller_id, sub_id, account_name, f"%{account_name}%"))
         tx_rows = cursor.fetchall()
@@ -8098,8 +8151,9 @@ class Database:
                 else:
                     has_wallet_tx = True
 
-                # تعیین زمان مبنا
-                if calc_from_creation:
+                # تعیین زمان مبنا: برای خرید اولیه طبق تنظیمات، اما برای تمدیدها حتماً بر اساس زمان خود اقدام تمدید
+                is_purchase_action = "purchase" in str(tx_d.get("type", "")).lower()
+                if is_purchase_action and calc_from_creation:
                     elapsed_hours = creation_elapsed_hours
                     time_passed_str = creation_time_passed_str
                 else:
@@ -8251,7 +8305,14 @@ class Database:
                         VALUES (?, 'refund', ?, 'استرداد وجه', ?, ?, 'wallet', ?, ?)
                     """, (reseller_id, refund_amount, account_name, desc_text, sub_id, now))
 
-            # ۲. حذف نرم اشتراک از جدول (انتقال به سطل زباله)
+            # ۲. لغو خودکار بسته‌های معلق در صف تمدید این اشتراک تا در صف معلق نمانند و پس از بازگردانی دوبله استرداد نشوند
+            cursor.execute("""
+                UPDATE subscription_queue 
+                SET status = 'cancelled', note = 'لغو به علت حذف اشتراک و انتقال به سطل زباله'
+                WHERE subscription_id = ? AND status = 'pending'
+            """, (sub_id,))
+
+            # ۳. حذف نرم اشتراک از جدول (انتقال به سطل زباله)
             by_user = deleted_by or f"reseller_{reseller_id}"
             cursor.execute("""
                 UPDATE subscriptions 
@@ -8462,7 +8523,14 @@ class Database:
                 except Exception as ex:
                     logger.error(f"Error adding refund to wallet for user {user_id}: {ex}")
 
-            # ۲. حذف نرم اشتراک از دیتابیس (انتقال به سطل زباله)
+            # ۲. لغو خودکار بسته‌های معلق در صف تمدید این اشتراک
+            cursor.execute("""
+                UPDATE subscription_queue 
+                SET status = 'cancelled', note = 'لغو به علت حذف اشتراک و انتقال به سطل زباله'
+                WHERE subscription_id = ? AND status = 'pending'
+            """, (sub_id,))
+
+            # ۳. حذف نرم اشتراک از دیتابیس (انتقال به سطل زباله)
             cursor.execute("""
                 UPDATE subscriptions 
                 SET is_deleted = 1, deleted_at = ?, delete_reason = ?, deleted_by = ?, status = 'deleted', updated_at = ?

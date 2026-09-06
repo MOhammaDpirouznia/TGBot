@@ -10879,9 +10879,21 @@ def reseller_discounts():
     reseller_id = session.get("reseller_id")
     if request.method == "POST":
         code = request.form.get("code", "").strip()
-        discount_percent = int(request.form.get("discount_percent", 0))
-        discount_amount = int(request.form.get("discount_amount", 0))
-        max_uses = int(request.form.get("max_uses", 0))
+        try:
+            discount_percent = int(request.form.get("discount_percent") or 0)
+        except (ValueError, TypeError):
+            discount_percent = 0
+
+        try:
+            discount_amount = int(request.form.get("discount_amount") or 0)
+        except (ValueError, TypeError):
+            discount_amount = 0
+
+        try:
+            max_uses = int(request.form.get("max_uses") or 0)
+        except (ValueError, TypeError):
+            max_uses = 0
+
         valid_until = request.form.get("valid_until", "").strip() or None
 
         if not code:
