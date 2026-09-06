@@ -4,6 +4,7 @@
 """
 
 import os
+import re
 import json
 import html
 import logging
@@ -44,6 +45,7 @@ from telegram import (
     ReplyKeyboardMarkup,
     KeyboardButton,
     WebAppInfo,
+    CopyTextButton,
 )
 from telegram.ext import (
     Application,
@@ -1585,27 +1587,70 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
             pass
 
         try:
-            # دریافت هوشمند کارت فعال از دیتابیس با فال‌بک کامل
+            # دریافت هوشمند کارت فعال مستقیماً از تنظیمات دیتابیس پنل مدیریت
             active_card = get_active_card() or {}
-            raw_card = active_card.get("card_number") or CARD_NUMBER or ""
-            card_holder = html.escape(str(active_card.get("card_holder") or CARD_HOLDER or ""))
-            bank_name = html.escape(str(active_card.get("bank_name") or BANK_NAME or ""))
+            raw_card = active_card.get("card_number") or ""
+            card_holder = html.escape(str(active_card.get("card_holder") or ""))
+            bank_name = html.escape(str(active_card.get("bank_name") or ""))
             card_number = re.sub(r"\D", "", str(raw_card))
-            
+
+            if not card_number:
+                await query.edit_message_text("❌ شماره کارت فعالی در تنظیمات مدیریت سامانه ثبت نشده است. لطفاً به پشتیبانی پیام دهید.")
+                return SELECTING_PAYMENT
+
             pname = html.escape(str(plan.get('name', 'نامشخص')))
-            rial_amount = price * 10
+
+            # استفاده از سیستم خودکار کارت به کارت (Smart Invoice با ارقام خرد یکتا)
+            sms_cfg = db.get_admin_bank_sms_config() if hasattr(db, "get_admin_bank_sms_config") else {}
+            digits = sms_cfg.get("digits", 3) if isinstance(sms_cfg, dict) else 3
+            timeout = sms_cfg.get("timeout", 15) if isinstance(sms_cfg, dict) else 15
+            sub_id = context.user_data.get("renew_sub_id") or 0
+
+            invoice = db.create_smart_invoice(
+                sub_id=sub_id,
+                plan_id=plan_id,
+                reseller_id=0,
+                base_amount=price,
+                target_card=active_card,
+                digits=digits,
+                timeout_minutes=timeout,
+                instant_activation=True
+            )
+            final_amount_toman = invoice["final_amount"]
+            rial_amount = final_amount_toman * 10
             rial_fmt = f"{rial_amount:,}"
+            toman_fmt = f"{final_amount_toman:,}"
+
+            context.user_data["pending_order_id"] = invoice["order_id"]
+            context.user_data["smart_final_amount"] = final_amount_toman
+
+            # ایجاد تراکنش معلق در جدول transactions
+            now_iso = get_now_iso()
+            user_id = update.effective_user.id
+            username = update.effective_user.username or update.effective_user.first_name or f"tg_{user_id}"
+            acc_name = context.user_data.get("account_name") or username
+            conn = db.get_connection()
+            conn.execute("""
+                INSERT OR REPLACE INTO transactions (
+                    order_id, user_id, username, plan_name, amount, status, gateway,
+                    tracking_code, reseller_id, is_renewal, renew_sub_id, account_name, source, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 'pending', 'bank_sms', ?, 0, ?, ?, ?, 'telegram_bot', ?, ?)
+            """, (
+                invoice["order_id"], user_id, username, plan.get("name", "پلن"),
+                final_amount_toman, f"کارت {card_number}",
+                1 if sub_id else 0, sub_id, acc_name, now_iso, now_iso
+            ))
+            conn.commit()
+            conn.close()
 
             text = f"""
-💵 <b>پرداخت کارت به کارت</b>
+💳 <b>پرداخت خودکار کارت به کارت</b>
 
-📋 پلن: <b>{pname}</b>
+📋 پلن انتخابی: <b>{pname}</b>
 
-💰 <b>مبلغ قابل واریز:</b>
-• به ریال (جهت همراه بانک / عابربانک):
+💰 <b>مبلغ دقیق قابل واریز (به ریال):</b>
 <code>{rial_amount}</code> ریال (<b>{rial_fmt} ریال</b>)
-• به تومان:
-<code>{price}</code> تومان (<b>{price_formatted} تومان</b>)
+<i>معادل: {toman_fmt} تومان</i>
 
 📌 <b>اطلاعات کارت بانکی مقصد:</b>
 💳 شماره کارت:
@@ -1618,14 +1663,14 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
 
             text += f"""
 
-⚠️ <b>نکات مهم:</b>
-• برای کپی با یک لمس، روی <b>شماره کارت</b> یا <b>مبلغ به ریال</b> بالا یا دکمه‌های زیر بزنید.
-• پس از واریز، شماره پیگیری یا اسکرین‌شات رسید را ارسال نمایید.
+⚠️ <b>نکته بسیار مهم درباره مبلغ و کپی:</b>
+سیستم مجهز به <b>تایید و فعال‌سازی خودکار با پیامک بانکی</b> است. به دلیل وجود <b>ارقام خرد تصادفی</b> در مبلغ جهت شناسایی خودکار واریزی شما، لطفاً مبلغ را دقیقاً با دکمه <b>«کپی مبلغ به ریال»</b> بردارید و در همراه بانک پیست نمایید تا اشتباهی در انتقال رخ ندهد و اشتراک شما فوراً تایید گردد.
+
+⚡ پس از واریز، تایید خودکار انجام خواهد شد؛ همچنین می‌توانید در صورت تمایل شماره پیگیری یا تصویر فیش را ارسال فرمایید.
 """
             keyboard = [
-                [InlineKeyboardButton("📋 کپی شماره کارت", callback_data=f"copy_card_{card_number}")],
-                [InlineKeyboardButton(f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)", callback_data=f"copy_rial_{rial_amount}")],
-                [InlineKeyboardButton(f"💵 کپی مبلغ به تومان ({price_formatted} ت)", callback_data=f"copy_amount_{price}")],
+                [InlineKeyboardButton("📋 کپی شماره کارت", copy_text=CopyTextButton(card_number))],
+                [InlineKeyboardButton(f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)", copy_text=CopyTextButton(str(rial_amount)))],
                 [InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_select_payment"), InlineKeyboardButton("❌ انصراف", callback_data="cancel")],
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)

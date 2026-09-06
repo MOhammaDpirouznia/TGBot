@@ -168,7 +168,24 @@ def get_active_cards() -> dict:
 
 
 def get_active_card() -> dict:
-    """دریافت کارت فعال برای پرداخت"""
+    """دریافت کارت فعال برای پرداخت با اولویت دیتابیس پنل مدیریت"""
+    try:
+        from database import db
+        # ۱. بررسی جدول bank_cards
+        db_cards = db.get_active_bank_cards()
+        if db_cards:
+            c = db_cards[0]
+            return {
+                "card_id": f"card_{c['id']}",
+                "card_number": c["card_number"],
+                "card_holder": c.get("card_holder") or "",
+                "bank_name": c.get("bank_name") or "",
+                "is_active": True,
+                **c
+            }
+    except Exception:
+        pass
+
     cards = load_cards()
     for card_id, card in cards.items():
         if card.get("is_active", False):
@@ -177,6 +194,7 @@ def get_active_card() -> dict:
         first_card_id = next(iter(cards))
         return {"card_id": first_card_id, **cards[first_card_id]}
     return {}
+
 
 
 def get_all_cards() -> dict:

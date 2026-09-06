@@ -4866,6 +4866,17 @@ def admin_subscription_renew(sub_id: int):
     if is_free:
         cost_paid = 0
 
+    payment_status = request.form.get("payment_status", "paid").strip()
+    debt_amount_raw = request.form.get("debt_amount", "").strip()
+    renewal_notes = request.form.get("renewal_notes", "").strip()
+
+    if payment_status in ("unpaid", "debtor"):
+        debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else cost_paid
+        debt_status = "unpaid"
+    else:
+        debt_amount = 0
+        debt_status = "paid"
+
     instant_activate = bool(request.form.get("instant_activate"))
 
     if instant_activate:
@@ -4877,20 +4888,26 @@ def admin_subscription_renew(sub_id: int):
             except Exception as e:
                 logger.error(f"Admin renew Hiddify error: {e}")
 
-        # ۲. به‌روزرسانی آنی در دیتابیس (صفر کردن مصرف و تنظیم تاریخ‌های جدید)
+        # ۲. به‌روزرسانی آنی در دیتابیس (صفر کردن مصرف، تنظیم تاریخ‌ها و وضعیت مالی بدهی/تسویه)
         now = get_now_iso()
         now_naive = get_now_naive()
         new_start_date = now_naive.strftime("%Y-%m-%d")
         new_expire_date = (now_naive + timedelta(days=duration)).isoformat()
+        debt_created = now if debt_status == "unpaid" else None
 
         conn = db.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
             UPDATE subscriptions
             SET plan_id=?, plan_name=?, data_limit=?, data_used=0, duration=?,
-                start_date=?, expire_date=?, status='active', updated_at=?, cost_paid=?
+                start_date=?, expire_date=?, status='active', updated_at=?, cost_paid=?,
+                payment_status=?, debt_amount=?, debt_notes=?,
+                debt_created_at = CASE WHEN ? = 'unpaid' THEN COALESCE(debt_created_at, ?) ELSE NULL END
             WHERE id=?
-        """, (plan_key, plan_name, data_limit, duration, new_start_date, new_expire_date, now, cost_paid, sub_id))
+        """, (plan_key, plan_name, data_limit, duration, new_start_date, new_expire_date, now, cost_paid,
+              debt_status, debt_amount, renewal_notes or None, debt_status, debt_created, sub_id))
+        if debt_status == "paid":
+            cursor.execute("UPDATE subscriptions SET debt_amount=0 WHERE id=?", (sub_id,))
         conn.commit()
         conn.close()
 
@@ -4913,9 +4930,19 @@ def admin_subscription_renew(sub_id: int):
             logger.error(f"Error logging subscription history in admin renew: {ex}")
 
         free_tag = " (تمدید رایگان با مبلغ ۰ تومان)" if is_free else ""
-        flash(f"اشتراک «{sub.get('account_name')}» با موفقیت به صورت آنی تمدید شد ({data_limit} GB - {duration} روز){free_tag} و حجم و روز آن ریست گردید.", "success")
+        debt_tag = f" (مشتری بدهکار ثبت شد: {debt_amount:,} تومان)" if debt_status == "unpaid" else " (وضعیت مالی: تسویه شده)"
+        flash(f"اشتراک «{sub.get('account_name')}» با موفقیت به صورت آنی تمدید شد ({data_limit} GB - {duration} روز){free_tag}{debt_tag} و حجم و روز آن ریست گردید.", "success")
     else:
         # ۴. قرار دادن در صف تمدید هوشمند (رزرو برای پس از اتمام بسته)
+        if debt_status == "unpaid":
+            db.set_subscription_debt(sub_id, payment_status="unpaid", debt_amount=debt_amount, debt_notes=renewal_notes or None)
+        else:
+            db.clear_subscription_debt(sub_id)
+            if renewal_notes:
+                conn = db.get_connection()
+                conn.execute("UPDATE subscriptions SET debt_notes=? WHERE id=?", (renewal_notes, sub_id))
+                conn.commit()
+                conn.close()
         q_res = db.add_to_subscription_queue(
             subscription_id=sub_id,
             plan_id=plan_key,
@@ -8610,6 +8637,18 @@ def reseller_renew_user(sub_id: int):
         except Exception as e:
             logger.error(f"Error in reseller renew Hiddify {sub.get('hidify_uuid')}: {e}")
 
+    # دریافت وضعیت مالی مشتری (تسویه یا بدهکار) و یادداشت تمدید
+    payment_status = request.form.get("payment_status", "paid").strip()
+    debt_amount_raw = request.form.get("debt_amount", "").strip()
+    renewal_notes = request.form.get("renewal_notes", "").strip()
+
+    if payment_status in ("unpaid", "debtor"):
+        debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else original_price
+        debt_status = "unpaid"
+    else:
+        debt_amount = 0
+        debt_status = "paid"
+
     # ۲. ثبت در دیتابیس (آنی با ریست یا رزرو در صف) و کسر هزینه با توجه به منبع پرداخت
     creator_user = session.get("username") or f"reseller_{reseller_id}"
     profit_margin = max(0, original_price - final_price)
@@ -8630,6 +8669,19 @@ def reseller_renew_user(sub_id: int):
     )
 
     if renew_db.get("success"):
+        # تنظیم یا تسویه وضعیت مالی و بدهی مشتری
+        if debt_status == "unpaid":
+            db.set_subscription_debt(sub_id, payment_status="unpaid", debt_amount=debt_amount, debt_notes=renewal_notes or None, reseller_id=reseller_id)
+        else:
+            db.clear_subscription_debt(sub_id, reseller_id=reseller_id)
+            if renewal_notes:
+                conn = db.get_connection()
+                conn.execute("UPDATE subscriptions SET debt_notes=? WHERE id=? AND reseller_id=?", (renewal_notes, sub_id, reseller_id))
+                conn.commit()
+                conn.close()
+
+        debt_tag = f" (مشتری بدهکار ثبت شد: {debt_amount:,} تومان)" if debt_status == "unpaid" else " (وضعیت مالی مشتری: تسویه شده)"
+
         if instant_activate:
             # ثبت در تاریخچه سوابق مصرف دوره‌های گذشته
             try:
@@ -8650,9 +8702,9 @@ def reseller_renew_user(sub_id: int):
             except Exception as e:
                 logger.warning(f"Failed to log subscription history on reseller renew: {e}")
 
-            flash(f"اشتراک «{sub['account_name']}» با پلن «{plan_title}» به صورت آنی تمدید شد، حجم و روز آن ریست گردید و مبلغ {final_price:,} تومان از حساب/اعتبار شما کسر شد.", "success")
+            flash(f"اشتراک «{sub['account_name']}» با پلن «{plan_title}» به صورت آنی تمدید شد، حجم و روز آن ریست گردید و مبلغ {final_price:,} تومان از حساب/اعتبار شما کسر شد.{debt_tag}", "success")
         else:
-            flash(f"بسته تمدیدی «{plan_title}» برای اشتراک «{sub['account_name']}» در صف رزرو قرار گرفت و مبلغ {final_price:,} تومان کسر شد. پس از مصرف ۹۹٪ یا در روز پایانی اشتراک به صورت خودکار فعال خواهد شد.", "info")
+            flash(f"بسته تمدیدی «{plan_title}» برای اشتراک «{sub['account_name']}» در صف رزرو قرار گرفت و مبلغ {final_price:,} تومان کسر شد.{debt_tag} پس از مصرف ۹۹٪ یا در روز پایانی اشتراک به صورت خودکار فعال خواهد شد.", "info")
 
         r_after = db.get_reseller(reseller_id)
         if r_after:
@@ -9382,6 +9434,72 @@ def reseller_bundles_submit_receipt():
 
     flash(f"✅ رسید پرداخت برای «{bundle['title']}» با موفقیت ثبت شد. پس از بررسی و تایید مدیریت، مبلغ {bundle['credit']:,} تومان (با {bundle['badge']}) به کیف پول شما اضافه خواهد شد.", "success")
     return redirect(url_for("reseller_transactions"))
+
+
+@app.route("/api/reseller/bundles/create-smart-invoice", methods=["POST"])
+@reseller_required
+def reseller_bundles_create_smart_invoice():
+    """صدور فاکتور هوشمند کارت‌به‌کارت با ارقام خرد برای خرید بسته اعتباری همکار"""
+    reseller_id = session.get("reseller_id")
+    bundle_id = request.form.get("bundle_id") or (request.json.get("bundle_id") if request.is_json else None)
+    bundles = {b["id"]: b for b in db.get_reseller_credit_bundles()}
+    bundle = bundles.get(bundle_id)
+    if not bundle:
+        return jsonify({"success": False, "error": "بسته اعتباری مورد نظر یافت نشد."}), 404
+
+    admin_cards = db.get_active_bank_cards()
+    if not admin_cards:
+        return jsonify({"success": False, "error": "شماره کارت فعالی برای مدیریت در سیستم تعریف نشده است."}), 400
+
+    target_card = admin_cards[0]
+    price = bundle["price"]
+
+    sms_cfg = db.get_admin_bank_sms_config()
+    digits = sms_cfg.get("digits", 3) if isinstance(sms_cfg, dict) else 3
+    timeout = sms_cfg.get("timeout", 20) if isinstance(sms_cfg, dict) else 20
+
+    invoice = db.create_smart_invoice(
+        sub_id=0,
+        plan_id=bundle_id,
+        reseller_id=0,  # واریز به حساب مدیریت برای تایید پیامک بانک
+        base_amount=price,
+        target_card=target_card,
+        digits=digits,
+        timeout_minutes=timeout,
+        instant_activation=True
+    )
+
+    now_iso = get_now_iso()
+    reseller = db.get_reseller(reseller_id) or {}
+    username = reseller.get("username", f"reseller_{reseller_id}")
+
+    # ذخیره تراکنش معلق
+    conn = db.get_connection()
+    conn.execute("""
+        INSERT OR REPLACE INTO transactions (
+            order_id, user_id, username, plan_name, amount, status, gateway,
+            tracking_code, reseller_id, is_renewal, account_name, source, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, 'pending', 'bundle_reseller', ?, ?, 0, ?, 'reseller_panel', ?, ?)
+    """, (
+        invoice["order_id"], reseller.get("telegram_id") or reseller_id, username,
+        f"بسته {bundle['title']}", invoice["final_amount"],
+        f"کارت {target_card.get('card_number', '')}", reseller_id,
+        username, now_iso, now_iso
+    ))
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "success": True,
+        "order_id": invoice["order_id"],
+        "token": invoice["token"],
+        "final_amount_toman": invoice["final_amount"],
+        "final_amount_rial": invoice["final_amount"] * 10,
+        "card_number": target_card.get("card_number"),
+        "card_holder": target_card.get("card_holder"),
+        "bank_name": target_card.get("bank_name"),
+        "expires_at": invoice["expires_at"]
+    })
 
 
 @app.route("/reseller/bundles/online_pay/<bundle_id>")

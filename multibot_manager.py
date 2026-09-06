@@ -41,7 +41,8 @@ from telegram import (
     InlineKeyboardMarkup,
     ReplyKeyboardMarkup,
     KeyboardButton,
-    Bot
+    Bot,
+    CopyTextButton
 )
 from telegram.ext import (
     Application,
@@ -535,53 +536,96 @@ class ResellerBotInstance:
                 account_name = context.user_data.get("buying_account_name") or f"tg_{update.effective_user.id}"
 
                 active_card = db.get_active_reseller_card(r_id)
+                if not active_card:
+                    all_rcards = db.get_reseller_cards(r_id)
+                    if all_rcards:
+                        active_card = all_rcards[0]
+
                 if active_card:
                     raw_card = active_card.get("card_number") or ""
                     card_holder = html.escape(str(active_card.get("card_holder") or ""))
                     bank_name = html.escape(str(active_card.get("bank_name") or ""))
                 else:
-                    raw_card = self.reseller_data.get("card_number") or ""
+                    raw_card = self.reseller_data.get("card_number") or self.reseller_data.get("bank_card") or ""
                     card_holder = html.escape(str(self.reseller_data.get("card_holder") or ""))
                     bank_name = html.escape(str(self.reseller_data.get("bank_name") or ""))
 
                 card_num = re.sub(r"\D", "", str(raw_card))
-                rial_price = price * 10
+
+                if not card_num:
+                    msg = "💳 جهت پرداخت و دریافت شماره کارت، با پشتیبانی تماس حاصل فرمایید."
+                    buttons = [
+                        [InlineKeyboardButton("◀️ بازگشت", callback_data=f"r_conf_{plan_id}"), InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy")]
+                    ]
+                    kb = InlineKeyboardMarkup(buttons)
+                    await query.edit_message_text(msg, reply_markup=kb, parse_mode="HTML")
+                    return
+
+                # صدور فاکتور هوشمند با ارقام خرد یکتا برای تایید آنی با پیامک بانک نماینده
+                digits = self.reseller_data.get("bank_sms_digits") or 3
+                timeout = self.reseller_data.get("bank_sms_timeout") or 15
+                target_c = active_card or {"card_number": card_num, "card_holder": card_holder, "bank_name": bank_name}
+                
+                invoice = db.create_smart_invoice(
+                    sub_id=0,
+                    plan_id=plan_id,
+                    reseller_id=r_id,
+                    base_amount=price,
+                    target_card=target_c,
+                    digits=digits,
+                    timeout_minutes=timeout,
+                    instant_activation=True
+                )
+                final_amount_toman = invoice["final_amount"]
+                rial_price = final_amount_toman * 10
                 rial_fmt = f"{rial_price:,}"
-                toman_fmt = f"{price:,}"
+                toman_fmt = f"{final_amount_toman:,}"
 
                 context.user_data["buying_plan_id"] = plan_id
-                context.user_data["buying_price"] = price
+                context.user_data["buying_price"] = final_amount_toman
+                context.user_data["buying_order_id"] = invoice["order_id"]
 
-                msg = f"💵 <b>پرداخت کارت به کارت</b>\n\n"
+                # ایجاد تراکنش معلق در جدول transactions
+                now_iso = get_now_iso()
+                u_id = update.effective_user.id
+                u_name = update.effective_user.username or update.effective_user.first_name or f"tg_{u_id}"
+                conn = db.get_connection()
+                conn.execute("""
+                    INSERT OR REPLACE INTO transactions (
+                        order_id, user_id, username, plan_name, amount, status, gateway,
+                        tracking_code, reseller_id, is_renewal, account_name, source, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, 'pending', 'bank_sms', ?, ?, 0, ?, 'reseller_bot', ?, ?)
+                """, (
+                    invoice["order_id"], u_id, u_name, pname,
+                    final_amount_toman, f"کارت {card_num}", r_id,
+                    account_name, now_iso, now_iso
+                ))
+                conn.commit()
+                conn.close()
+
+                msg = f"💳 <b>پرداخت خودکار کارت به کارت</b>\n\n"
                 msg += f"📦 پلن: <b>{pname}</b>\n"
                 msg += f"👤 نام اکانت: <code>{html.escape(account_name)}</code>\n"
                 msg += f"📊 حجم: <b>{vol_str}</b> | ⏳ مدت: <b>{days} روز</b>\n\n"
-                msg += f"💰 <b>مبلغ قابل واریز:</b>\n"
-                msg += f"• به ریال (جهت همراه بانک / عابربانک):\n<code>{rial_price}</code> ریال (<b>{rial_fmt} ریال</b>)\n"
-                msg += f"• به تومان:\n<code>{price}</code> تومان (<b>{toman_fmt} تومان</b>)\n\n"
+                msg += f"💰 <b>مبلغ دقیق قابل واریز (به ریال):</b>\n"
+                msg += f"<code>{rial_price}</code> ریال (<b>{rial_fmt} ریال</b>)\n"
+                msg += f"<i>معادل: {toman_fmt} تومان</i>\n\n"
 
-                if card_num:
-                    msg += "💳 <b>اطلاعات کارت جهت واریز:</b>\n"
-                    msg += f"شماره کارت:\n<code>{card_num}</code>\n"
-                    if card_holder:
-                        msg += f"به نام: <b>{card_holder}</b>\n"
-                    if bank_name:
-                        msg += f"بانک: <b>{bank_name}</b>\n"
-                    msg += "\n⚠️ <b>نکات مهم:</b>\n"
-                    msg += "• برای کپی با یک لمس، روی <b>شماره کارت</b> یا <b>مبلغ به ریال</b> بالا یا دکمه‌های زیر بزنید.\n"
-                    msg += "• پس از واریز، <b>عکس فیش واریزی</b> خود را در همین گفتگو ارسال فرمایید."
+                msg += "💳 <b>اطلاعات کارت جهت واریز:</b>\n"
+                msg += f"شماره کارت:\n<code>{card_num}</code>\n"
+                if card_holder:
+                    msg += f"به نام: <b>{card_holder}</b>\n"
+                if bank_name:
+                    msg += f"بانک: <b>{bank_name}</b>\n"
+                msg += "\n⚠️ <b>نکته بسیار مهم درباره مبلغ و کپی:</b>\n"
+                msg += "سیستم مجهز به <b>تایید خودکار با پیامک بانکی</b> است. به دلیل وجود <b>ارقام خرد تصادفی</b> در مبلغ جهت شناسایی واریزی شما، لطفاً مبلغ را دقیقاً با دکمه <b>«کپی مبلغ به ریال»</b> بردارید و در همراه بانک پیست فرمایید تا اشتباهی رخ ندهد.\n\n"
+                msg += "⚡ پس از واریز، تایید خودکار انجام خواهد شد؛ همچنین می‌توانید در صورت تمایل تصویر فیش را ارسال نمایید."
 
-                    buttons = [
-                        [InlineKeyboardButton("📋 کپی شماره کارت", callback_data=f"r_copy_card_{card_num}")],
-                        [InlineKeyboardButton(f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)", callback_data=f"r_copy_rial_{rial_price}")],
-                        [InlineKeyboardButton(f"💵 کپی مبلغ به تومان ({toman_fmt} ت)", callback_data=f"r_copy_amt_{price}")],
-                        [InlineKeyboardButton("◀️ بازگشت", callback_data=f"r_conf_{plan_id}"), InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy")]
-                    ]
-                else:
-                    msg += "💳 جهت پرداخت و دریافت شماره کارت، با پشتیبانی تماس حاصل فرمایید."
-                    buttons = [
-                        [InlineKeyboardButton("◀️ بازگشت", callback_data=f"r_conf_{plan_id}"), InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy")]
-                    ]
+                buttons = [
+                    [InlineKeyboardButton("📋 کپی شماره کارت", copy_text=CopyTextButton(card_num))],
+                    [InlineKeyboardButton(f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)", copy_text=CopyTextButton(str(rial_price)))],
+                    [InlineKeyboardButton("◀️ بازگشت", callback_data=f"r_conf_{plan_id}"), InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy")]
+                ]
 
                 kb = InlineKeyboardMarkup(buttons)
                 await query.edit_message_text(msg, reply_markup=kb, parse_mode="HTML")
