@@ -29,6 +29,7 @@
             <h5 class="mb-0 fw-bold"><i class="fas fa-list-check text-primary me-2"></i>لیست فیش‌های مشتریان</h5>
             <span class="badge bg-secondary" id="paymentRowsCount" data-table-count="customerPaymentsTable">{{ transactions|length }} مورد</span>
             
+            <!-- دکمه‌های فیلتر سریع بر اساس مبدأ سفارش -->
             <div class="btn-group btn-group-sm ms-2" role="group" id="sourceFilterBtnGroup">
                 <button type="button" class="btn btn-primary active" data-source-filter="all">
                     همه ({{ transactions|length }})
@@ -60,7 +61,13 @@
                         <th class="sortable-th text-center" data-column="3">مبدأ</th>
                         <th class="sortable-th" data-column="4">پلن درخواستی</th>
                         <th class="sortable-th" data-column="5">مبلغ</th>
-                        <th class="sortable-th" data-column="6">روش پرداخ�                <tbody>
+                        <th class="sortable-th" data-column="6">روش پرداخت</th>
+                        <th class="sortable-th" data-column="7">وضعیت</th>
+                        <th class="sortable-th" data-column="8">تاریخ ثبت</th>
+                        <th class="text-end pe-3" style="min-width: 170px;">عملیات و جزئیات</th>
+                    </tr>
+                </thead>
+                <tbody>
                     {% for tx in transactions %}
                     <tr class="customer-payment-row" data-source="{{ tx['source'] }}">
                         <td class="text-center">
@@ -74,9 +81,10 @@
                         </td>
                         <td data-value="{{ (tx['customer_name'] or tx['account_name'] or tx['username'] or tx['user_id'] or '')|striptags }}">
                             {% if tx['source'] == 'portal' %}
+                                <!-- مشتری پرتال وب -->
                                 <div class="d-flex align-items-center gap-2">
                                     <img src="{{ avatar_url(tx['account_name'] or tx['customer_name'] or 'Customer') }}" 
-                                         alt="User" class="rounded-circle border shadow-sm flex-shrink-0" style="width: 36px; height: 36px; object-fit: cover;">
+                                         alt="Customer" class="rounded-circle border shadow-sm flex-shrink-0" style="width: 36px; height: 36px; object-fit: cover;">
                                     <div>
                                         <div class="d-flex align-items-center gap-1">
                                             <strong class="text-dark">{{ tx['customer_name'] }}</strong>
@@ -101,6 +109,7 @@
                                     </div>
                                 </div>
                             {% else %}
+                                <!-- کاربر ربات تلگرام -->
                                 <div class="d-flex align-items-center gap-2">
                                     <img src="{{ avatar_url(tx['user_id'] or tx['username'] or 'User') }}" 
                                          alt="User" class="rounded-circle border shadow-sm flex-shrink-0" style="width: 36px; height: 36px; object-fit: cover;">
@@ -182,15 +191,6 @@
                         </td>
                     </tr>
                     {% endif %}
-                </tbody>         {% endfor %}
-                    {% if not transactions %}
-                    <tr>
-                        <td colspan="9" class="text-center py-5 text-muted">
-                            <i class="fas fa-receipt fs-1 text-secondary opacity-50 mb-3 d-block"></i>
-                            <h6 class="fw-bold">فیش پرداختی از سمت مشتریان ثبت نشده است.</h6>
-                        </td>
-                    </tr>
-                    {% endif %}
                 </tbody>
             </table>
         </div>
@@ -242,8 +242,31 @@
                             <div class="list-group-item d-flex justify-content-between align-items-center">
                                 <span class="text-muted">مشتری:</span>
                                 <div>
-                                    <strong>{{ tx['username'] or 'کاربر' }}</strong>
-                                    <small class="text-muted d-block"><code>{{ tx['user_id'] }}</code></small>
+                                    <strong>{{ tx['customer_name'] }}</strong>
+                                    {% if tx['source'] == 'portal' %}
+                                        {% if tx.get('account_name') %}
+                                            <small class="text-muted d-block font-monospace">نام اکانت: {{ tx['account_name'] }}</small>
+                                        {% endif %}
+                                        {% if tx.get('renew_sub_id') %}
+                                            <small class="text-info d-block">شناسه اشتراک: #{{ tx['renew_sub_id'] }}</small>
+                                        {% endif %}
+                                    {% else %}
+                                        <small class="text-muted d-block"><code>{{ tx['user_id'] }}</code></small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="text-muted">مبدأ فیش:</span>
+                                <div>
+                                    {% if tx['source'] == 'portal' %}
+                                        <span class="badge bg-info-subtle text-info border border-info px-2 py-1">
+                                            <i class="fas fa-globe me-1"></i> پرتال مشتری (وب)
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-primary-subtle text-primary border border-primary px-2 py-1">
+                                            <i class="fab fa-telegram me-1"></i> ربات تلگرام
+                                        </span>
+                                    {% endif %}
                                 </div>
                             </div>
                             <div class="list-group-item d-flex justify-content-between align-items-center">
@@ -335,11 +358,11 @@
                              alt="فیش واریزی" 
                              class="img-fluid rounded" 
                              style="max-height: 330px; object-fit: contain; cursor: pointer;"
-                             onclick="openReceiptPreview('{{ url_for('admin_payment_receipt', payment_id=tx['id']) }}', '{{ tx['username'] }}', '{{ tx['id'] }}', '{{ tx['user_id'] }}')">
+                             onclick="openReceiptPreview('{{ url_for('admin_payment_receipt', payment_id=tx['id']) }}', '{{ tx['customer_name'] }}', '{{ tx['id'] }}', '{{ tx['user_id'] }}')">
                     </div>
                     <div class="mt-2">
                         <button type="button" class="btn btn-sm btn-outline-primary"
-                                onclick="openReceiptPreview('{{ url_for('admin_payment_receipt', payment_id=tx['id']) }}', '{{ tx['username'] }}', '{{ tx['id'] }}', '{{ tx['user_id'] }}')">
+                                onclick="openReceiptPreview('{{ url_for('admin_payment_receipt', payment_id=tx['id']) }}', '{{ tx['customer_name'] }}', '{{ tx['id'] }}', '{{ tx['user_id'] }}')">
                             <i class="fas fa-magnifying-glass-plus me-1"></i> مشاهده بزرگنمایی کامل تصویر
                         </button>
                     </div>
@@ -350,9 +373,9 @@
                     <div></div>
                     <div class="d-flex gap-2">
                         {% if tx['status'] == 'pending' %}
-                            <form action="{{ url_for('reseller_payment_approve', payment_id=tx['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از تایید این فیش و صدور آنی اشتراک برای مشتری اطمینان دارید؟');">
+                            <form action="{{ url_for('reseller_payment_approve', payment_id=tx['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از تایید این فیش و صدور یا تمدید آنی اشتراک برای مشتری اطمینان دارید؟');">
                                 <button type="submit" class="btn btn-success fw-bold">
-                                    <i class="fas fa-check me-1"></i> تایید و صدور اشتراک
+                                    <i class="fas fa-check me-1"></i> تایید و صدور/تمدید اشتراک
                                 </button>
                             </form>
                             <button type="button" class="btn btn-outline-danger fw-bold" data-bs-toggle="modal" data-bs-target="#rejectModal{{ tx['id'] }}">
@@ -377,7 +400,7 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body p-4">
-                    <label class="form-label fw-bold">علت رد فیش (برای مشتری در تلگرام ارسال می‌شود):</label>
+                    <label class="form-label fw-bold">علت رد فیش ({% if tx['source'] == 'portal' %}در صفحه پرتال به مشتری نمایش داده می‌شود{% else %}برای مشتری در تلگرام ارسال می‌شود{% endif %}):</label>
                     <textarea class="form-control" name="reason" rows="3" required placeholder="مثال: فیش ارسالی ناخوانا است یا مبلغ واریزی مغایرت دارد..."></textarea>
                 </div>
                 <div class="modal-footer">
@@ -423,5 +446,51 @@ function openReceiptPreview(imgUrl, username, orderId, userId) {
     const modal = new bootstrap.Modal(document.getElementById('receiptPreviewModal'));
     modal.show();
 }
+
+// فیلتر سریع بر اساس مبدأ سفارش (همه / پرتال مشتری / ربات تلگرام)
+document.addEventListener('DOMContentLoaded', function() {
+    const filterBtns = document.querySelectorAll('#sourceFilterBtnGroup [data-source-filter]');
+    const rows = document.querySelectorAll('#customerPaymentsTable tbody tr.customer-payment-row');
+    const counterBadge = document.getElementById('paymentRowsCount');
+
+    filterBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            const filter = this.getAttribute('data-source-filter');
+
+            filterBtns.forEach(b => {
+                b.classList.remove('active', 'btn-primary', 'btn-info');
+                if (b.getAttribute('data-source-filter') === 'portal') {
+                    b.classList.add('btn-outline-info');
+                } else {
+                    b.classList.add('btn-outline-primary');
+                }
+            });
+
+            this.classList.add('active');
+            if (filter === 'portal') {
+                this.classList.remove('btn-outline-info');
+                this.classList.add('btn-info', 'text-white');
+            } else {
+                this.classList.remove('btn-outline-primary');
+                this.classList.add('btn-primary');
+            }
+
+            let visibleCount = 0;
+            rows.forEach(row => {
+                const rowSource = row.getAttribute('data-source');
+                if (filter === 'all' || rowSource === filter) {
+                    row.style.display = '';
+                    visibleCount++;
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+
+            if (counterBadge) {
+                counterBadge.textContent = visibleCount + ' مورد';
+            }
+        });
+    });
+});
 </script>
 {% endblock %}
