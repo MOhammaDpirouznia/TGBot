@@ -3628,7 +3628,9 @@ def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: 
                     previous_limit_gb=old_limit,
                     period_days=target_sub.get("duration") or duration,
                     renewal_type=renewal_type,
-                    reseller_id=target_sub.get("reseller_id")
+                    reseller_id=target_sub.get("reseller_id"),
+                    plan_price=amount,
+                    cost_paid=amount
                 )
 
                 db.update_subscription(
@@ -7535,6 +7537,7 @@ def settings():
             sms_provider = request.form.get("sms_provider", "ippanel").strip().lower()
             sms_api_key = request.form.get("sms_api_key", "").strip()
             sms_originator = request.form.get("sms_originator", "").strip()
+            sms_url = request.form.get("sms_url", "").strip()
             sms_pattern_login = request.form.get("sms_pattern_login", "").strip()
             sms_pattern_failed = request.form.get("sms_pattern_failed", "").strip()
             sms_pattern_logout = request.form.get("sms_pattern_logout", "").strip()
@@ -7544,6 +7547,8 @@ def settings():
             if sms_api_key:
                 db.save_setting("sms_api_key", sms_api_key)
             db.save_setting("sms_originator", sms_originator)
+            db.save_setting("sms_url", sms_url)
+            db.save_setting("sms_generic_url", sms_url)
             db.save_setting("sms_pattern_login", sms_pattern_login)
             db.save_setting("sms_pattern_failed", sms_pattern_failed)
             db.save_setting("sms_pattern_logout", sms_pattern_logout)
@@ -7744,11 +7749,31 @@ def admin_sms_test():
     if not test_phone:
         return jsonify({"success": False, "error": "لطفاً شماره تلفن همراه را وارد نمایید."})
 
-    success, msg = send_sms(
-        receptor=test_phone,
-        message="✅ تست اتصال به درگاه پیامکی سامانه HiddiBot با موفقیت انجام شد.",
-        db_instance=db
-    )
+    cfg = get_sms_config(db)
+    pattern = cfg.get("pattern_login")
+
+    # چنانچه شماره خط اختصاصی تعریف نشده ولی پترن ورود تعریف شده، تست با پترن ارسال شود
+    if not cfg.get("originator") and pattern and cfg.get("provider") in ("smsir", "sms.ir", "ippanel", "farazsms", "maxsms", "kavenegar"):
+        pattern_data = {
+            "name": "مدیر سیستم",
+            "code": "123456",
+            "ip": request.remote_addr or "127.0.0.1",
+            "time": "اکنون"
+        }
+        success, msg = send_sms(
+            receptor=test_phone,
+            message="✅ تست اتصال به درگاه پیامکی سامانه HiddiBot با موفقیت انجام شد.",
+            pattern_code=pattern,
+            pattern_data=pattern_data,
+            db_instance=db
+        )
+    else:
+        success, msg = send_sms(
+            receptor=test_phone,
+            message="✅ تست اتصال به درگاه پیامکی سامانه HiddiBot با موفقیت انجام شد.",
+            db_instance=db
+        )
+
     if success:
         return jsonify({"success": True, "message": f"پیامک آزمایشی با موفقیت به شماره {test_phone} ارسال شد."})
     else:
@@ -12136,6 +12161,32 @@ def customer_portal(token: str):
     portal_show_troubleshoot = str(db.get_setting("portal_show_troubleshoot", "1")).lower() in ("1", "true")
     pending_queue = db.get_pending_queue_item(sub_id)
 
+    # دریافت سوابق دوره‌ها و تمدیدهای گذشته و تراکنش‌های پرداخت این اشتراک
+    conn = db.get_connection()
+    sub_hist_rows = conn.execute("""
+        SELECT * FROM subscription_history 
+        WHERE subscription_id = ? OR (hidify_uuid = ? AND hidify_uuid IS NOT NULL AND hidify_uuid != '')
+        ORDER BY 
+            CASE 
+                WHEN period_offset IS NOT NULL AND period_offset > 0 THEN period_offset 
+                ELSE 9999 
+            END ASC,
+            renewed_at DESC, id DESC
+    """, (sub_id, sub.get("hidify_uuid") or "")).fetchall()
+
+    tx_rows = conn.execute("""
+        SELECT * FROM transactions 
+        WHERE (renew_sub_id = ? OR (account_name IS NOT NULL AND account_name != '' AND account_name = ?) OR (user_id = ? AND user_id > 0))
+          AND (is_deleted = 0 OR is_deleted IS NULL)
+          AND (gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
+        ORDER BY created_at DESC LIMIT 40
+    """, (sub_id, acc_name, sub.get("telegram_id") or 0)).fetchall()
+    conn.close()
+
+    sub_history = [dict(r) for r in sub_hist_rows]
+    tx_history = [dict(r) for r in tx_rows]
+    total_paid = sum(int(t.get("amount") or 0) for t in tx_history if t.get("status") in ("approved", "completed", "paid"))
+
     return render_template(
         "customer_portal.html",
         sub=sub,
@@ -12153,7 +12204,10 @@ def customer_portal(token: str):
         troubleshoot_url=troubleshoot_url,
         portal_enable_renewal=portal_enable_renewal,
         portal_show_troubleshoot=portal_show_troubleshoot,
-        pending_queue=pending_queue
+        pending_queue=pending_queue,
+        sub_history=sub_history,
+        tx_history=tx_history,
+        total_paid=total_paid
     )
 
 
@@ -12261,10 +12315,102 @@ def api_invoice_status(order_id: str):
     inv = db.get_smart_invoice_by_order_id(order_id)
     if not inv:
         return jsonify({"status": "not_found"}), 404
+
+    status = inv.get("status", "pending")
+    is_expired = False
+    if status == "pending" and inv.get("expires_at"):
+        try:
+            exp_clean = str(inv["expires_at"]).strip().replace("Z", "")
+            exp_dt = datetime.fromisoformat(exp_clean)
+            if get_now_naive() > exp_dt:
+                is_expired = True
+        except Exception:
+            pass
+
     return jsonify({
         "order_id": inv["order_id"],
-        "status": inv["status"],
-        "paid_at": inv.get("paid_at")
+        "status": status,
+        "is_expired": is_expired,
+        "paid_at": inv.get("paid_at"),
+        "tracking_code": inv.get("tracking_code"),
+        "final_amount": inv.get("final_amount"),
+        "expires_at": inv.get("expires_at")
+    })
+
+
+@app.route("/api/portal/<token>/support-message", methods=["POST"])
+def api_portal_support_message(token: str):
+    """ثبت پیام یا تیکت آنلاین مشتری از درون صفحه پرتال به همراه ارسال نوتیفیکیشن تلگرام"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+
+    if not sub_row:
+        return jsonify({"success": False, "error": "اشتراک مورد نظر یافت نشد."}), 404
+
+    sub = dict(sub_row)
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    message_text = (data.get("message") or "").strip()
+    contact = (data.get("contact") or "").strip()
+    subject = (data.get("subject") or "پیام آنلاین مشتری از پرتال").strip()
+
+    if not message_text:
+        return jsonify({"success": False, "error": "لطفاً متن پیام خود را بنویسید."}), 400
+
+    sub_id = sub["id"]
+    account_name = sub.get("account_name") or f"مشتری #{sub_id}"
+    tg_id = sub.get("telegram_id") or sub_id
+    reseller_id = sub.get("reseller_id") or 0
+
+    full_message = f"💬 پیام ارسالی از پورتال اشتراک «{account_name}» (شناسه #{sub_id}):\n{message_text}"
+    if contact:
+        full_message += f"\n\n📞 اطلاعات تماس اعلامی مشتری: {contact}"
+
+    res = db.create_ticket(
+        telegram_id=tg_id,
+        subject=f"{subject} - {account_name}",
+        message=full_message,
+        reseller_id=reseller_id,
+        user_id=tg_id,
+        username=account_name
+    )
+    ticket_id = res.get("ticket_id") if isinstance(res, dict) else None
+
+    # ارسال نوتیفیکیشن تلگرام به نماینده یا ادمین
+    try:
+        if reseller_id:
+            r_info = db.get_reseller(reseller_id) or {}
+            r_tg = r_info.get("telegram_id")
+            if r_tg:
+                r_bot_token = r_info.get("bot_token")
+                notif = (
+                    f"📬 <b>پیام جدید از پورتال مشتری!</b>\n\n"
+                    f"👤 مشتری: <b>{account_name}</b> (شناسه #{sub_id})\n"
+                    f"🔖 موضوع: {subject}\n"
+                    f"📝 متن پیام:\n{message_text}\n"
+                    + (f"📞 تماس: <code>{contact}</code>\n" if contact else "")
+                    + f"⏰ زمان: {get_now_shamsi()}"
+                )
+                send_telegram_msg(r_tg, notif, bot_token=r_bot_token)
+        else:
+            admin_tg = db.get_setting("admin_telegram_id") or get_admin_id()
+            if admin_tg:
+                notif = (
+                    f"📬 <b>پیام جدید از پورتال مشتری!</b>\n\n"
+                    f"👤 مشتری: <b>{account_name}</b> (شناسه #{sub_id})\n"
+                    f"🔖 موضوع: {subject}\n"
+                    f"📝 متن پیام:\n{message_text}\n"
+                    + (f"📞 تماس: <code>{contact}</code>\n" if contact else "")
+                    + f"⏰ زمان: {get_now_shamsi()}"
+                )
+                send_telegram_msg(int(admin_tg), notif)
+    except Exception as e_notif:
+        logger.warning(f"Failed to notify of portal support message: {e_notif}")
+
+    return jsonify({
+        "success": True,
+        "ticket_id": ticket_id,
+        "message": "پیام شما با موفقیت برای تیم پشتیبانی ارسال شد و به زودی بررسی خواهد شد."
     })
 
 
