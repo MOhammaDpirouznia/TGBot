@@ -15,6 +15,10 @@
     <link rel="icon" href="{{ branding.get('logo_url') }}">
     {% endif %}
     <style>
+        {% if palette_css %}
+        {{ palette_css|safe }}
+        {% endif %}
+
         :root {
             {% if branding.get('primary_color') %}
             --primary: {{ branding.get('primary_color') }};
@@ -22,25 +26,27 @@
             --bs-primary: {{ branding.get('primary_color') }};
             --sidebar-brand: {{ branding.get('primary_color') }};
             {% else %}
-            --primary: #4f46e5;
-            --primary-hover: #4338ca;
+            --primary: var(--palette-primary, #2563eb);
+            --primary-hover: var(--palette-primary-hover, #1d4ed8);
+            --bs-primary: var(--palette-primary, #2563eb);
+            --sidebar-brand: var(--palette-primary, #2563eb);
             {% endif %}
-            --secondary: #0ea5e9;
+            --secondary: var(--palette-accent, #0ea5e9);
             --success: #10b981;
             --warning: #f59e0b;
             --danger: #ef4444;
             --dark: #0f172a;
             --dark-card: #1e293b;
-            --sidebar-bg: #eaeff5; /* رنگ متمایز و ملایم منو در حالت روشن */
-            --sidebar-border: #dbe4ee;
+            --sidebar-bg: rgba(241, 245, 249, 0.85);
+            --sidebar-border: var(--palette-card-border-subtle, #dbe4ee);
             --sidebar-text: #334155;
             --sidebar-text-muted: #64748b;
-            --sidebar-hover-bg: #dbe4ee;
-            --body-bg: #f8fafc;
-            --card-bg: #ffffff;
-            --card-border: rgba(0,0,0,0.06);
-            --text-main: #1e293b;
-            --text-muted: #64748b;
+            --sidebar-hover-bg: rgba(219, 228, 238, 0.7);
+            --body-bg: var(--palette-body-bg, #f8fafc);
+            --card-bg: var(--palette-card-bg, rgba(255, 255, 255, 0.78));
+            --card-border: var(--palette-card-border, rgba(255, 255, 255, 0.85));
+            --text-main: var(--palette-text-main, #0f172a);
+            --text-muted: var(--palette-text-muted, #64748b);
         }
 
         .btn-primary {
@@ -60,17 +66,17 @@
         }
 
         [data-bs-theme="dark"] {
-            --body-bg: #0b0f19;
-            --card-bg: #151e2e;
-            --card-border: #1e293b;
-            --sidebar-bg: #090d16;
-            --sidebar-border: rgba(255,255,255,0.08);
+            --body-bg: var(--palette-body-bg, #070b14);
+            --card-bg: var(--palette-card-bg, rgba(15, 23, 42, 0.74));
+            --card-border: var(--palette-card-border, rgba(255, 255, 255, 0.09));
+            --sidebar-bg: rgba(9, 13, 22, 0.85);
+            --sidebar-border: rgba(255, 255, 255, 0.08);
             --sidebar-text: #94a3b8;
             --sidebar-text-muted: #64748b;
-            --sidebar-hover-bg: rgba(255,255,255,0.06);
+            --sidebar-hover-bg: rgba(255, 255, 255, 0.06);
             --sidebar-brand: #ffffff;
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
+            --text-main: var(--palette-text-main, #f8fafc);
+            --text-muted: var(--palette-text-muted, #94a3b8);
         }
 
         html, body {
@@ -86,10 +92,106 @@
             transition: background-color 0.25s ease, color 0.25s ease;
         }
 
-        [data-bs-theme="dark"] .card {
-            background-color: var(--card-bg);
-            border-color: var(--card-border);
-            color: var(--text-main);
+        /* ─── هاله‌های نوری شناور پس‌زمینه (Aura Mesh Glowing Blobs) ─── */
+        .aura-mesh-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            pointer-events: none;
+            z-index: 0;
+            opacity: var(--aura-opacity, 1);
+            transition: opacity 0.5s ease;
+        }
+
+        .aura-blob {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(var(--aura-blur, 85px));
+            -webkit-filter: blur(var(--aura-blur, 85px));
+            will-change: transform;
+            mix-blend-mode: var(--aura-blend, normal);
+            pointer-events: none;
+        }
+
+        .aura-blob-1 {
+            top: -120px;
+            right: -80px;
+            width: 540px;
+            height: 540px;
+            background: radial-gradient(circle, var(--aura-blob-1, rgba(0,210,255,0.35)) 0%, rgba(255,255,255,0) 70%);
+            animation: auraAnim1 22s ease-in-out infinite alternate;
+        }
+
+        .aura-blob-2 {
+            bottom: -160px;
+            left: -80px;
+            width: 660px;
+            height: 660px;
+            background: radial-gradient(circle, var(--aura-blob-2, rgba(217,70,239,0.3)) 0%, rgba(255,255,255,0) 70%);
+            animation: auraAnim2 26s ease-in-out infinite alternate;
+        }
+
+        .aura-blob-3 {
+            top: 35%;
+            left: 40%;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, var(--aura-blob-3, rgba(59,130,246,0.25)) 0%, rgba(255,255,255,0) 70%);
+            animation: auraAnim3 30s ease-in-out infinite alternate;
+        }
+
+        @keyframes auraAnim1 {
+            0% { transform: translate3d(0, 0, 0) scale(1); }
+            50% { transform: translate3d(-50px, 40px, 0) scale(1.08); }
+            100% { transform: translate3d(35px, -25px, 0) scale(0.94); }
+        }
+
+        @keyframes auraAnim2 {
+            0% { transform: translate3d(0, 0, 0) scale(1); }
+            50% { transform: translate3d(60px, -50px, 0) scale(1.12); }
+            100% { transform: translate3d(-40px, 30px, 0) scale(0.92); }
+        }
+
+        @keyframes auraAnim3 {
+            0% { transform: translate3d(0, 0, 0) scale(1); }
+            50% { transform: translate3d(-35px, -45px, 0) scale(1.15); }
+            100% { transform: translate3d(45px, 35px, 0) scale(0.9); }
+        }
+
+        {% if palette_config and palette_config.animation == 'static' %}
+        .aura-blob { animation: none !important; }
+        {% elif palette_config and (palette_config.animation == 'off' or palette_config.intensity == 'off') %}
+        .aura-mesh-container { display: none !important; }
+        {% endif %}
+
+        /* ─── کارت‌های شیشه‌ای مات مدرن (Frosted Glassmorphism Cards) ─── */
+        .card {
+            background-color: var(--card-bg) !important;
+            backdrop-filter: blur(var(--glass-blur, 16px)) saturate(180%);
+            -webkit-backdrop-filter: blur(var(--glass-blur, 16px)) saturate(180%);
+            border: 1px solid var(--card-border) !important;
+            box-shadow: var(--palette-card-shadow, 0 10px 25px -5px rgba(0,0,0,0.05)) !important;
+            border-radius: 18px;
+            transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+            position: relative;
+            z-index: 1;
+        }
+
+        .main-content {
+            position: relative;
+            z-index: 1;
+        }
+
+        .sidebar {
+            backdrop-filter: blur(20px) saturate(160%);
+            -webkit-backdrop-filter: blur(20px) saturate(160%);
+            border-left: 1px solid var(--sidebar-border);
+            z-index: 1020;
         }
 
         [data-bs-theme="dark"] .card-header,
@@ -99,11 +201,24 @@
             color: var(--text-main);
         }
 
+        [data-bs-theme="light"] .card-header,
+        [data-bs-theme="light"] .card-footer {
+            background-color: rgba(255, 255, 255, 0.4) !important;
+            border-color: var(--palette-card-border-subtle, rgba(0,0,0,0.06)) !important;
+        }
+
         [data-bs-theme="dark"] .table {
             color: var(--text-main);
-            --bs-table-bg: var(--card-bg);
-            --bs-table-hover-bg: #1e293b;
+            --bs-table-bg: transparent;
+            --bs-table-hover-bg: rgba(255, 255, 255, 0.04);
             border-color: var(--card-border);
+        }
+
+        [data-bs-theme="light"] .table {
+            color: var(--text-main);
+            --bs-table-bg: transparent;
+            --bs-table-hover-bg: rgba(0, 0, 0, 0.025);
+            border-color: var(--palette-card-border-subtle, rgba(0,0,0,0.06));
         }
 
         /* ─── استایل هوشمند و ملایم برای ردیف‌های مشتریان (VIP، تیکت‌دار و بدهکار) ─── */
@@ -1092,6 +1207,13 @@
     {% block extra_head %}{% endblock %}
 </head>
 <body>
+    <!-- کانتینر هاله‌های نوری پس‌زمینه (Aura Mesh Background) -->
+    <div class="aura-mesh-container" aria-hidden="true">
+        <div class="aura-blob aura-blob-1"></div>
+        <div class="aura-blob aura-blob-2"></div>
+        <div class="aura-blob aura-blob-3"></div>
+    </div>
+
     {% if session.get('logged_in') %}
     <!-- Mobile Top Header Bar -->
     <div class="mobile-top-bar d-lg-none d-flex align-items-center justify-content-between px-3 py-2 border-bottom">

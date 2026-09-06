@@ -8,17 +8,123 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/Vazirmatn-FD-font-face.css" rel="stylesheet" type="text/css" />
     <style>
+        {% if palette_css %}
+        {{ palette_css|safe }}
+        {% endif %}
+
+        :root {
+            --primary: var(--palette-primary, #2563eb);
+            --primary-hover: var(--palette-primary-hover, #1d4ed8);
+            --bs-primary: var(--palette-primary, #2563eb);
+            --body-bg: var(--palette-body-bg, #f8fafc);
+            --card-bg: var(--palette-card-bg, rgba(255, 255, 255, 0.78));
+            --card-border: var(--palette-card-border, rgba(255, 255, 255, 0.85));
+            --text-main: var(--palette-text-main, #0f172a);
+            --text-muted: var(--palette-text-muted, #64748b);
+        }
+
+        [data-bs-theme="dark"] {
+            --body-bg: var(--palette-body-bg, #070b14);
+            --card-bg: var(--palette-card-bg, rgba(15, 23, 42, 0.74));
+            --card-border: var(--palette-card-border, rgba(255, 255, 255, 0.09));
+            --text-main: var(--palette-text-main, #f8fafc);
+            --text-muted: var(--palette-text-muted, #94a3b8);
+        }
+
         body {
             font-family: 'Vazirmatn FD', Tahoma, sans-serif;
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            background-color: var(--body-bg);
+            color: var(--text-main);
             min-height: 100vh;
-            color: #f8fafc;
+            position: relative;
+            overflow-x: hidden;
+            transition: background-color 0.25s ease, color 0.25s ease;
         }
+
+        /* ─── هاله‌های نوری شناور پس‌زمینه (Aura Mesh Glowing Blobs) ─── */
+        .aura-mesh-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            pointer-events: none;
+            z-index: 0;
+            opacity: var(--aura-opacity, 1);
+            transition: opacity 0.5s ease;
+        }
+
+        .aura-blob {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(var(--aura-blur, 85px));
+            -webkit-filter: blur(var(--aura-blur, 85px));
+            will-change: transform;
+            mix-blend-mode: var(--aura-blend, normal);
+            pointer-events: none;
+        }
+
+        .aura-blob-1 {
+            top: -100px;
+            right: -60px;
+            width: 520px;
+            height: 520px;
+            background: radial-gradient(circle, var(--aura-blob-1, rgba(0,210,255,0.35)) 0%, rgba(255,255,255,0) 70%);
+            animation: portalAura1 20s ease-in-out infinite alternate;
+        }
+
+        .aura-blob-2 {
+            bottom: -150px;
+            left: -80px;
+            width: 620px;
+            height: 620px;
+            background: radial-gradient(circle, var(--aura-blob-2, rgba(217,70,239,0.3)) 0%, rgba(255,255,255,0) 70%);
+            animation: portalAura2 24s ease-in-out infinite alternate;
+        }
+
+        .aura-blob-3 {
+            top: 40%;
+            left: 35%;
+            width: 480px;
+            height: 480px;
+            background: radial-gradient(circle, var(--aura-blob-3, rgba(59,130,246,0.25)) 0%, rgba(255,255,255,0) 70%);
+            animation: portalAura3 28s ease-in-out infinite alternate;
+        }
+
+        @keyframes portalAura1 {
+            0% { transform: translate3d(0, 0, 0) scale(1); }
+            50% { transform: translate3d(-40px, 35px, 0) scale(1.08); }
+            100% { transform: translate3d(30px, -20px, 0) scale(0.95); }
+        }
+
+        @keyframes portalAura2 {
+            0% { transform: translate3d(0, 0, 0) scale(1); }
+            50% { transform: translate3d(50px, -45px, 0) scale(1.12); }
+            100% { transform: translate3d(-35px, 25px, 0) scale(0.92); }
+        }
+
+        @keyframes portalAura3 {
+            0% { transform: translate3d(0, 0, 0) scale(1); }
+            50% { transform: translate3d(-30px, -40px, 0) scale(1.15); }
+            100% { transform: translate3d(40px, 30px, 0) scale(0.9); }
+        }
+
+        {% if palette_config and palette_config.animation == 'static' %}
+        .aura-blob { animation: none !important; }
+        {% elif palette_config and (palette_config.animation == 'off' or palette_config.intensity == 'off') %}
+        .aura-mesh-container { display: none !important; }
+        {% endif %}
+
         .portal-container {
             max-width: 680px;
             margin-left: auto;
             margin-right: auto;
             transition: max-width 0.3s ease;
+            position: relative;
+            z-index: 1;
         }
         @media (min-width: 768px) {
             .portal-container {
@@ -35,12 +141,70 @@
                 max-width: 980px;
             }
         }
+
+        /* ─── کارت مات شیشه‌ای پورتال (Frosted Glass Card) ─── */
         .glass-card {
-            background: rgba(30, 41, 59, 0.7);
-            backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 20px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            background: var(--card-bg);
+            backdrop-filter: blur(var(--glass-blur, 18px)) saturate(180%);
+            -webkit-backdrop-filter: blur(var(--glass-blur, 18px)) saturate(180%);
+            border: 1px solid var(--card-border);
+            border-radius: 22px;
+            box-shadow: var(--palette-card-shadow, 0 10px 30px rgba(0, 0, 0, 0.3));
+            position: relative;
+            z-index: 1;
+        }
+
+        /* استایل‌های اختصاصی حالت روشن (Light Mode Overrides) */
+        [data-bs-theme="light"] .text-white {
+            color: var(--text-main) !important;
+        }
+        [data-bs-theme="light"] .text-white-50 {
+            color: var(--text-muted) !important;
+        }
+        [data-bs-theme="light"] .text-secondary {
+            color: var(--text-muted) !important;
+        }
+        [data-bs-theme="light"] .btn-outline-light {
+            color: #1e293b !important;
+            background: rgba(255, 255, 255, 0.72) !important;
+            border-color: rgba(0, 0, 0, 0.12) !important;
+        }
+        [data-bs-theme="light"] .btn-outline-light:hover {
+            background: #ffffff !important;
+            color: var(--primary) !important;
+            border-color: var(--primary) !important;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        [data-bs-theme="light"] .border-secondary {
+            border-color: rgba(0, 0, 0, 0.08) !important;
+        }
+        [data-bs-theme="light"] .server-status-card {
+            background: rgba(255, 255, 255, 0.76) !important;
+            border-color: rgba(255, 255, 255, 0.88) !important;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05) !important;
+        }
+        [data-bs-theme="light"] .plan-card {
+            background: rgba(255, 255, 255, 0.65) !important;
+            border-color: rgba(0, 0, 0, 0.08) !important;
+            color: #0f172a !important;
+        }
+        [data-bs-theme="light"] .plan-card:hover {
+            background: rgba(255, 255, 255, 0.95) !important;
+            border-color: var(--primary) !important;
+            box-shadow: 0 8px 20px rgba(37, 99, 235, 0.12) !important;
+        }
+        [data-bs-theme="light"] .plan-card.selected {
+            border-color: #10b981 !important;
+            background: rgba(16, 185, 129, 0.12) !important;
+        }
+        [data-bs-theme="light"] .modal-content {
+            background: rgba(255, 255, 255, 0.92) !important;
+            border-color: rgba(255, 255, 255, 0.9) !important;
+            color: #0f172a !important;
+        }
+        [data-bs-theme="light"] .bg-black.bg-opacity-30,
+        [data-bs-theme="light"] .bg-black.bg-opacity-50 {
+            background-color: rgba(0, 0, 0, 0.04) !important;
         }
         .progress-glow {
             box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
@@ -359,20 +523,48 @@
     </style>
 </head>
 <body class="py-4">
-<div class="container portal-container">
-
-    <!-- هدر برندینگ -->
-    <div class="text-center mb-4">
-        {% if logo_url %}
-            <img src="{{ logo_url }}" alt="Logo" class="rounded-circle mb-2 shadow" style="width: 72px; height: 72px; object-fit: cover;">
-        {% else %}
-            <div class="avatar-lg bg-primary rounded-circle d-inline-flex align-items-center justify-content-center shadow mb-2" style="width: 64px; height: 64px;">
-                <i class="fas fa-shield-halved fs-2 text-white"></i>
-            </div>
-        {% endif %}
-        <h3 class="fw-bold mb-1">{{ brand_title }}</h3>
-        <p class="text-secondary small">پورتال اختصاصی استعلام وضعیت و تمدید اشتراک</p>
+    <!-- کانتینر هاله‌های نوری پس‌زمینه (Aura Mesh Background) -->
+    <div class="aura-mesh-container" aria-hidden="true">
+        <div class="aura-blob aura-blob-1"></div>
+        <div class="aura-blob aura-blob-2"></div>
+        <div class="aura-blob aura-blob-3"></div>
     </div>
+
+    <div class="container portal-container">
+        <!-- نوار بالایی هدر: لوگوی برند، وضعیت آنلاین و دکمه تغییر تم روشن و تیره -->
+        <div class="d-flex justify-content-between align-items-center mb-4 px-1">
+            <div class="d-flex align-items-center gap-2">
+                <div class="px-3 py-1 rounded-pill d-inline-flex align-items-center gap-2 shadow-sm" style="background: var(--palette-chip-bg, rgba(255,255,255,0.7)); border: 1px solid var(--palette-chip-border, rgba(255,255,255,0.2)); font-size: 0.82rem; font-weight: 600;">
+                    <span class="chat-status-dot"></span>
+                    <span>{{ brand_title }}</span>
+                </div>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                {% if support_username %}
+                <a href="https://t.me/{{ support_username }}" target="_blank" class="btn btn-sm btn-outline-light rounded-pill px-3 py-1 shadow-sm d-inline-flex align-items-center gap-1" style="font-size: 0.8rem;">
+                    <i class="fab fa-telegram text-info"></i>
+                    <span>پشتیبانی</span>
+                </a>
+                {% endif %}
+                <button type="button" class="btn btn-sm btn-outline-light rounded-pill px-3 py-1 shadow-sm d-inline-flex align-items-center gap-2" id="portalThemeToggleBtn" onclick="togglePortalTheme()" aria-label="تغییر حالت تیره و روشن">
+                    <i id="portalThemeIcon" class="fas fa-moon text-info"></i>
+                    <span id="portalThemeLabel" class="small fw-semibold">حالت تیره</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- هدر برندینگ مرکزی -->
+        <div class="text-center mb-4">
+            {% if logo_url %}
+                <img src="{{ logo_url }}" alt="Logo" class="rounded-circle mb-2 shadow" style="width: 72px; height: 72px; object-fit: cover; border: 3px solid rgba(255,255,255,0.2);">
+            {% else %}
+                <div class="avatar-lg bg-primary rounded-circle d-inline-flex align-items-center justify-content-center shadow mb-2" style="width: 64px; height: 64px; box-shadow: 0 0 20px rgba(37, 99, 235, 0.4);">
+                    <i class="fas fa-shield-halved fs-2 text-white"></i>
+                </div>
+            {% endif %}
+            <h3 class="fw-bold mb-1">{{ brand_title }}</h3>
+            <p class="text-secondary small">{{ portal_subtitle }}</p>
+        </div>
 
     <!-- ویجت اختصاصی وضعیت سرورها -->
     {% if server_status %}
@@ -2096,6 +2288,48 @@ const pollInterval = setInterval(() => {
         .catch(err => console.log(err));
 }, 3000);
 {% endif %}
+</script>
+
+<script>
+// ─── سیستم تغییر تم تیره / روشن پورتال مشتری (Dark/Light Mode) ───
+function applyPortalTheme(theme) {
+    document.documentElement.setAttribute('data-bs-theme', theme);
+    try {
+        localStorage.setItem('portal_theme', theme);
+    } catch(e) {}
+    const icon = document.getElementById('portalThemeIcon');
+    const label = document.getElementById('portalThemeLabel');
+    if (icon && label) {
+        if (theme === 'dark') {
+            icon.className = 'fas fa-sun text-warning';
+            label.textContent = 'حالت روشن';
+        } else {
+            icon.className = 'fas fa-moon text-info';
+            label.textContent = 'حالت تیره';
+        }
+    }
+}
+
+function togglePortalTheme() {
+    const current = document.documentElement.getAttribute('data-bs-theme') || 'dark';
+    const next = current === 'dark' ? 'light' : 'dark';
+    applyPortalTheme(next);
+}
+
+// مقداردهی اولیه تم بر اساس ترجیح کاربر
+(function() {
+    try {
+        const saved = localStorage.getItem('portal_theme');
+        if (saved) {
+            applyPortalTheme(saved);
+        } else {
+            const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            applyPortalTheme(prefersDark ? 'dark' : 'light');
+        }
+    } catch(e) {
+        applyPortalTheme('light');
+    }
+})();
 </script>
 </body>
 </html>

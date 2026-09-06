@@ -140,6 +140,163 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
+<!-- کارت اختصاصی تنظیمات پالت و پس‌زمینه مات (Aura Mesh & Glassmorphism Palettes) -->
+<div class="card shadow-sm mb-4 border-0">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h5 class="mb-0 text-primary fw-bold">
+            <i class="fas fa-wand-magic-sparkles text-primary me-2"></i> تنظیمات پالت‌های رنگی و پس‌زمینه مات (پالت)
+        </h5>
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 rounded-pill">
+            <i class="fas fa-palette me-1"></i>پالت فعال: {{ available_palettes.get(palette_settings.active_palette, {}).get('name', 'وی‌پی‌اس اورورا') }}
+        </span>
+    </div>
+    <div class="card-body p-4">
+        <p class="text-muted small mb-4">
+            با انتخاب هر پالت، هاله‌های نوری شناور پس‌زمینه (Aura Blobs) و کارت‌های مات شیشه‌ای (Glassmorphism) به صورت زنده و کاملاً هماهنگ در هر دو <strong>حالت روشن (Light)</strong> و <strong>حالت تیره (Dark)</strong> برای پنل مدیریت، پنل همکاران و خصوصاً <strong>پورتال مشتری</strong> اعمال می‌گردند.
+        </p>
+
+        <form action="{{ url_for('settings') }}" method="POST">
+            <input type="hidden" name="action" value="save_palette_settings">
+
+            <label class="form-label fw-bold small mb-3">
+                <i class="fas fa-swatchbook me-1 text-primary"></i> انتخاب سبک پالت مورد نظر:
+            </label>
+
+            <div class="row g-3 mb-4">
+                {% for pid, pal in available_palettes.items() %}
+                <div class="col-md-6 col-xl-4">
+                    <div class="palette-select-card p-3 rounded-4 border h-100 position-relative {% if palette_settings.active_palette == pid %}selected border-primary shadow{% else %}border-secondary border-opacity-25{% endif %}" 
+                         onclick="selectPalette('{{ pid }}')" id="palCard_{{ pid }}" style="cursor: pointer; transition: all 0.25s ease;">
+                        
+                        <!-- پیش‌نمایش هاله‌های نوری پالت -->
+                        <div class="palette-preview-box rounded-3 mb-3 p-3 position-relative overflow-hidden" 
+                             style="height: 100px; background: {{ pal.light.body_bg }}; border: 1px solid rgba(0,0,0,0.06);">
+                            
+                            <!-- شبیه‌ساز هاله‌ها -->
+                            <div class="position-absolute rounded-circle" style="width: 70px; height: 70px; top: -15px; right: -10px; background: {{ pal.preview.blob1 }}; filter: blur(16px); opacity: 0.85;"></div>
+                            <div class="position-absolute rounded-circle" style="width: 80px; height: 80px; bottom: -20px; left: -10px; background: {{ pal.preview.blob2 }}; filter: blur(18px); opacity: 0.75;"></div>
+                            <div class="position-absolute rounded-circle" style="width: 50px; height: 50px; top: 25px; left: 35px; background: {{ pal.preview.blob3 }}; filter: blur(14px); opacity: 0.65;"></div>
+                            
+                            <!-- کارت مینیاتوری شیشه‌ای روی هاله‌ها -->
+                            <div class="position-relative p-2 rounded-3 text-center shadow-sm" 
+                                 style="background: {{ pal.light.card_bg }}; backdrop-filter: blur(8px); border: 1px solid {{ pal.light.card_border }}; z-index: 2;">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <span class="badge rounded-pill px-2 py-0" style="background: {{ pal.primary_color }}; color: #fff; font-size: 0.68rem;">
+                                        {{ pal.name.split(' ')[0] }}
+                                    </span>
+                                    <div class="d-flex gap-1">
+                                        <span class="rounded-circle" style="width: 8px; height: 8px; background: {{ pal.preview.blob1 }};"></span>
+                                        <span class="rounded-circle" style="width: 8px; height: 8px; background: {{ pal.preview.blob2 }};"></span>
+                                        <span class="rounded-circle" style="width: 8px; height: 8px; background: {{ pal.preview.blob3 }};"></span>
+                                    </div>
+                                </div>
+                                <div class="small fw-bold mt-1 text-truncate" style="color: {{ pal.light.text_main }}; font-size: 0.75rem;">
+                                    نمونه کارت مات شیشه‌ای
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- رادیوباتن و عنوان پالت -->
+                        <div class="d-flex align-items-start gap-2">
+                            <input class="form-check-input mt-1" type="radio" name="active_palette" id="radio_{{ pid }}" value="{{ pid }}" {% if palette_settings.active_palette == pid %}checked{% endif %}>
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <label class="form-check-label fw-bold small text-body mb-0" for="radio_{{ pid }}">
+                                        {{ pal.name }}
+                                    </label>
+                                    {% if pal.is_default %}
+                                    <span class="badge bg-primary text-white rounded-pill px-2 py-0" style="font-size: 0.65rem;">الگوی اصلی</span>
+                                    {% endif %}
+                                </div>
+                                <div class="text-muted small mt-1" style="font-size: 0.75rem; line-height: 1.5;">
+                                    {{ pal.subtitle }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- گزینه‌های تکمیلی پالت -->
+            <div class="p-3 border rounded-4 bg-light mb-4">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small">
+                            <i class="fas fa-sun-plant-wilt me-1 text-primary"></i> شدت افکت بلور و درخشش هاله نوری:
+                        </label>
+                        <select name="palette_intensity" class="form-select form-select-sm">
+                            <option value="high" {% if palette_settings.palette_intensity == 'high' %}selected{% endif %}>درخشان و پررنگ (High Glow)</option>
+                            <option value="normal" {% if palette_settings.palette_intensity == 'normal' %}selected{% endif %}>استاندارد و متعادل (پیش‌فرض)</option>
+                            <option value="subtle" {% if palette_settings.palette_intensity == 'subtle' %}selected{% endif %}>ملایم و لطیف (Subtle Glow)</option>
+                            <option value="off" {% if palette_settings.palette_intensity == 'off' %}selected{% endif %}>خاموش (فقط کارت مات بدون هاله)</option>
+                        </select>
+                        <div class="form-text small">میزان بلور و میزان تیرگی/روشنی هاله‌ها در پس‌زمینه.</div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small">
+                            <i class="fas fa-wind me-1 text-primary"></i> انیمیشن حرکت هاله‌های نوری:
+                        </label>
+                        <select name="palette_animation" class="form-select form-select-sm">
+                            <option value="float" {% if palette_settings.palette_animation == 'float' %}selected{% endif %}>شناور و تنفس متحرک ملایم (پیش‌فرض)</option>
+                            <option value="static" {% if palette_settings.palette_animation == 'static' %}selected{% endif %}>هاله نوری ثابت و بدون حرکت</option>
+                            <option value="off" {% if palette_settings.palette_animation == 'off' %}selected{% endif %}>غیرفعال کامل انیمیشن</option>
+                        </select>
+                        <div class="form-text small">تنظیم حرکت شناور ارگانیک نورها در پس‌زمینه.</div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small">
+                            <i class="fas fa-mobile-screen-button me-1 text-primary"></i> پالت اختصاصی پورتال مشتری:
+                        </label>
+                        <select name="portal_palette" class="form-select form-select-sm">
+                            <option value="inherit" {% if palette_settings.portal_palette == 'inherit' %}selected{% endif %}>هماهنگ با پنل مدیریت (پیش‌فرض)</option>
+                            {% for pid, pal in available_palettes.items() %}
+                            <option value="{{ pid }}" {% if palette_settings.portal_palette == pid %}selected{% endif %}>اختصاصی: {{ pal.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text small">می‌توانید پورتال مشتری را هماهنگ یا با پالت مجزا اجرا کنید.</div>
+                    </div>
+
+                    <div class="col-12 mt-2">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="sync_primary_color" id="syncPrimaryColor" value="1" checked>
+                            <label class="form-check-label small fw-semibold" for="syncPrimaryColor">
+                                همگام‌سازی خودکار رنگ سازمانی پنل (Primary Color) متناسب با پالت انتخابی جدید
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-end">
+                <button type="submit" class="btn btn-primary px-4 py-2 shadow-sm rounded-3">
+                    <i class="fas fa-floppy-disk me-1"></i> ذخیره تغییرات پالت و سبک مات
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function selectPalette(pid) {
+    const radio = document.getElementById('radio_' + pid);
+    if (radio) {
+        radio.checked = true;
+    }
+    document.querySelectorAll('.palette-select-card').forEach(card => {
+        card.classList.remove('selected', 'border-primary', 'shadow');
+        card.classList.add('border-secondary', 'border-opacity-25');
+    });
+    const currentCard = document.getElementById('palCard_' + pid);
+    if (currentCard) {
+        currentCard.classList.add('selected', 'border-primary', 'shadow');
+        currentCard.classList.remove('border-secondary', 'border-opacity-25');
+    }
+}
+</script>
+
 <div class="row g-4">
     <div class="col-lg-6">
         <div class="card shadow-sm h-100">
