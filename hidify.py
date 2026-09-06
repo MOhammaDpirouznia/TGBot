@@ -228,6 +228,40 @@ class HidifyClient:
         """حذف کاربر"""
         return await self._request("DELETE", f"/admin/user/{uuid}/")
 
+    async def change_user_uuid(self, old_uuid: str, new_uuid: str) -> dict:
+        """تغییر شناسه اختصاصی (UUID) کاربر در هیدیفای با مکانیزم Fallback خودکار"""
+        clean_old = str(old_uuid).strip().strip("/")
+        clean_new = str(new_uuid).strip().strip("/")
+        if clean_old == clean_new:
+            return {"success": True, "uuid": clean_new}
+
+        # ۱. ابتدا تلاش با متد PATCH
+        for ep in (f"/admin/user/{clean_old}/", f"/admin/user/{clean_old}"):
+            res = await self._request("PATCH", ep, {"uuid": clean_new})
+            if isinstance(res, dict) and "error" not in res:
+                check = await self.get_user(clean_new)
+                if isinstance(check, dict) and check.get("name"):
+                    logger.info(f"User UUID changed from {clean_old} to {clean_new} via PATCH")
+                    return check
+
+        # ۲. روش دوم (Fallback): استخراج کاربر قبلی، ثبت با UUID جدید و سپس حذف کاربر قدیمی
+        old_user = await self.get_user(clean_old)
+        if isinstance(old_user, dict) and "error" not in old_user and old_user.get("name"):
+            allowed_fields = {
+                "name", "usage_limit_GB", "current_usage_GB", "package_days", "comment", "mode",
+                "start_date", "expire_date", "enable", "is_active", "lang",
+                "added_by", "wg_pk", "wg_pub", "wg_psk", "telegram_id"
+            }
+            payload = {k: v for k, v in old_user.items() if k in allowed_fields and v is not None}
+            payload["uuid"] = clean_new
+            create_res = await self._request("POST", "/admin/user/", payload)
+            if isinstance(create_res, dict) and "error" not in create_res:
+                logger.info(f"User recreated with new UUID {clean_new}, deleting old user {clean_old}")
+                await self.delete_user(clean_old)
+                return create_res
+            return create_res
+        return {"error": "اطلاعات کاربر قبلی در هیدیفای یافت نشد"}
+
     # ─── Admin / Reseller Sub-Account Management ───
 
     async def get_admins(self) -> list:

@@ -840,6 +840,14 @@ class Database:
             cursor.execute("ALTER TABLE smart_invoices ADD COLUMN instant_activation INTEGER DEFAULT 1")
         except Exception:
             pass
+        try:
+            cursor.execute("ALTER TABLE smart_invoices ADD COLUMN discount_code TEXT")
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE smart_invoices ADD COLUMN discount_amount INTEGER DEFAULT 0")
+        except Exception:
+            pass
 
         try:
             cursor.execute("""
@@ -3687,6 +3695,114 @@ class Database:
         except Exception as e:
             logger.error(f"Error using discount code: {e}")
             return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def validate_admin_discount_code(self, code: str, order_amount: int = 0) -> dict:
+        """اعتبارسنجی و محاسبه تخفیف کدهای ادمین (بدون افزایش تعداد مصرف)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM discount_codes WHERE code = ? AND is_active = 1", (code.strip().upper(),))
+            row = cursor.fetchone()
+            if not row:
+                return {"valid": False, "error": "کد تخفیف نامعتبر است."}
+            
+            d = dict(row)
+            if d.get("max_uses", 0) > 0 and d.get("used_count", 0) >= d.get("max_uses"):
+                return {"valid": False, "error": "ظرفیت استفاده از این کد تخفیف به پایان رسیده است."}
+
+            if d.get("valid_until"):
+                try:
+                    exp = datetime.fromisoformat(d["valid_until"])
+                    if get_now_naive() > exp:
+                        return {"valid": False, "error": "مهلت استفاده از این کد تخفیف منقضی شده است."}
+                except Exception:
+                    pass
+
+            pct = d.get("discount_percent", 0)
+            fix_amt = d.get("discount_amount", 0)
+            calculated_discount = 0
+            if pct > 0:
+                calculated_discount = int((order_amount * pct) / 100)
+            elif fix_amt > 0:
+                calculated_discount = min(order_amount, fix_amt)
+
+            return {
+                "valid": True,
+                "discount_code": d["code"],
+                "discount_amount": calculated_discount,
+                "final_amount": max(0, order_amount - calculated_discount)
+            }
+        except Exception as e:
+            logger.error(f"Error validating admin discount code: {e}")
+            return {"valid": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def validate_customer_discount(self, sub_row_or_id, code: str, order_amount: int = 0) -> dict:
+        """
+        اعتبارسنجی ایزوله کد تخفیف مشتری:
+        - اگر مشتری متعلق به نماینده باشد: صرفاً کدهای همان نماینده معتبر است (کدهای ادمین و سایر نمایندگان نامعتبرند).
+        - اگر مشتری مستقیم ادمین باشد: صرفاً کدهای ادمین معتبر است (کدهای هیچ نماینده‌ای معتبر نیست).
+        """
+        if not code:
+            return {"valid": False, "error": "لطفاً کد تخفیف را وارد کنید."}
+
+        reseller_id = 0
+        if isinstance(sub_row_or_id, dict):
+            reseller_id = sub_row_or_id.get("reseller_id") or 0
+        elif isinstance(sub_row_or_id, (int, str)):
+            conn = self.get_connection()
+            r = conn.execute("SELECT reseller_id FROM subscriptions WHERE id=? OR hidify_uuid=?", (str(sub_row_or_id), str(sub_row_or_id))).fetchone()
+            conn.close()
+            if r:
+                reseller_id = r["reseller_id"] or 0
+
+        if reseller_id and reseller_id > 0:
+            # فقط و فقط کدهای این نماینده خاص
+            return self.validate_reseller_discount_code(reseller_id, code, order_amount)
+        else:
+            # فقط و فقط کدهای مدیریت
+            return self.validate_admin_discount_code(code, order_amount)
+
+    def apply_customer_discount(self, sub_row_or_id, code: str) -> bool:
+        """افزایش شمارنده استفاده از کد تخفیف در جدول مربوطه بر اساس ایزولاسیون نماینده یا ادمین"""
+        if not code:
+            return False
+
+        reseller_id = 0
+        if isinstance(sub_row_or_id, dict):
+            reseller_id = sub_row_or_id.get("reseller_id") or 0
+        elif isinstance(sub_row_or_id, (int, str)):
+            conn = self.get_connection()
+            r = conn.execute("SELECT reseller_id FROM subscriptions WHERE id=? OR hidify_uuid=?", (str(sub_row_or_id), str(sub_row_or_id))).fetchone()
+            conn.close()
+            if r:
+                reseller_id = r["reseller_id"] or 0
+
+        clean_code = code.strip().upper()
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            if reseller_id and reseller_id > 0:
+                cursor.execute("""
+                    UPDATE reseller_discount_codes 
+                    SET used_count = used_count + 1 
+                    WHERE reseller_id = ? AND code = ?
+                """, (reseller_id, clean_code))
+            else:
+                cursor.execute("""
+                    UPDATE discount_codes 
+                    SET used_count = used_count + 1, updated_at = ? 
+                    WHERE code = ?
+                """, (now, clean_code))
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error applying customer discount: {e}")
+            return False
         finally:
             conn.close()
 
@@ -11196,7 +11312,7 @@ class Database:
         finally:
             conn.close()
 
-    def create_smart_invoice(self, sub_id: int, plan_id: str, reseller_id: int, base_amount: int, target_card: dict = None, digits: int = 3, timeout_minutes: int = 15, instant_activation: bool = True) -> dict:
+    def create_smart_invoice(self, sub_id: int, plan_id: str, reseller_id: int, base_amount: int, target_card: dict = None, digits: int = 3, timeout_minutes: int = 15, instant_activation: bool = True, discount_code: str = None, discount_amount: int = 0) -> dict:
         """
         تولید فاکتور تمدید هوشمند با ارقام تصادفی خرد جهت تایید اتوماتیک با پیامک بانک
         """
@@ -11245,14 +11361,17 @@ class Database:
         c_holder = target_card.get("card_holder") if target_card else ""
         b_name = target_card.get("bank_name") if target_card else ""
         inst_act_val = 1 if instant_activation else 0
+        disc_code_clean = (discount_code or "").strip().upper() or None
+        disc_amt_clean = int(discount_amount or 0)
 
         cursor.execute("""
             INSERT INTO smart_invoices (
                 order_id, sub_id, plan_id, reseller_id, base_amount, random_suffix, 
                 final_amount, target_card_id, card_number, card_holder, bank_name, 
-                status, token, expires_at, created_at, instant_activation
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
-        """, (order_id, sub_id, plan_id, reseller_id, base_amount, chosen_suffix, final_amount, card_id, c_num, c_holder, b_name, token, expires_str, now_str, inst_act_val))
+                status, token, expires_at, created_at, instant_activation,
+                discount_code, discount_amount
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
+        """, (order_id, sub_id, plan_id, reseller_id, base_amount, chosen_suffix, final_amount, card_id, c_num, c_holder, b_name, token, expires_str, now_str, inst_act_val, disc_code_clean, disc_amt_clean))
         conn.commit()
         conn.close()
 
@@ -11271,7 +11390,9 @@ class Database:
             "token": token,
             "expires_at": expires_str,
             "created_at": now_str,
-            "instant_activation": inst_act_val
+            "instant_activation": inst_act_val,
+            "discount_code": disc_code_clean,
+            "discount_amount": disc_amt_clean
         }
 
     def get_smart_invoice_by_token(self, token: str) -> Optional[dict]:

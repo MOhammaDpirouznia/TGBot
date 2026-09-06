@@ -1363,6 +1363,71 @@ def hidify_sync_update_user(uuid: str, api_key: str = None, reseller_id: int = N
     return last_res
 
 
+def hidify_sync_change_user_uuid(old_uuid: str, new_uuid: str, sub_fallback_data: dict = None) -> dict:
+    """تغییر مطمئن شناسه UUID مشتری در پنل هیدیفای با پشتیبانی از PATCH و ساخت مجدد Fallback"""
+    clean_old = str(old_uuid).strip().strip("/") if old_uuid else ""
+    clean_new = str(new_uuid).strip().strip("/")
+    if not clean_new:
+        return {"error": "شناسه جدید نامعتبر است"}
+    if clean_old == clean_new:
+        return {"success": True, "uuid": clean_new}
+
+    # کلیدهای معتبر برای اتصال
+    active_key = session.get("reseller_uuid") if "reseller_uuid" in session else None
+    main_admin_key = get_active_hiddify_admin_key()
+    keys_to_try = []
+    if active_key:
+        keys_to_try.append(active_key)
+    if main_admin_key and main_admin_key not in keys_to_try:
+        keys_to_try.append(main_admin_key)
+
+    for k_val in keys_to_try:
+        # ۱. ابتدا تلاش با متد PATCH
+        if clean_old:
+            for ep in (f"/admin/user/{clean_old}/", f"/admin/user/{clean_old}"):
+                res = hidify_sync_request("PATCH", ep, {"uuid": clean_new}, api_key=k_val)
+                if isinstance(res, dict) and "error" not in res:
+                    check = hidify_sync_request("GET", f"/admin/user/{clean_new}/", api_key=k_val)
+                    if isinstance(check, dict) and check.get("name"):
+                        logger.info(f"Successfully changed user UUID from {clean_old} to {clean_new} via PATCH")
+                        return check
+
+        # ۲. در صورت عدم تغییر با PATCH، استخراج مشخصات و ثبت مجدد با UUID جدید
+        old_user = {}
+        if clean_old:
+            for ep_get in (f"/admin/user/{clean_old}/", f"/admin/user/{clean_old}"):
+                resp = hidify_sync_request("GET", ep_get, api_key=k_val)
+                if isinstance(resp, dict) and "error" not in resp and resp.get("name"):
+                    old_user = resp
+                    break
+
+        # ساخت پیلود کاربر
+        allowed_fields = {
+            "name", "usage_limit_GB", "current_usage_GB", "package_days", "comment", "mode",
+            "start_date", "expire_date", "enable", "is_active", "lang",
+            "added_by", "wg_pk", "wg_pub", "wg_psk", "telegram_id"
+        }
+        payload = {k: v for k, v in old_user.items() if k in allowed_fields and v is not None}
+        payload["uuid"] = clean_new
+
+        # اگر اطلاعاتی از سرور هیدیفای برنگشت، از اطلاعات دیتابیس لوکال اشتراک استفاده می‌کنیم
+        if not payload.get("name") and sub_fallback_data:
+            payload["name"] = sub_fallback_data.get("account_name") or f"user_{clean_new[:8]}"
+            payload["usage_limit_GB"] = float(sub_fallback_data.get("data_limit") or 30)
+            payload["package_days"] = int(sub_fallback_data.get("duration") or 30)
+            payload["enable"] = (sub_fallback_data.get("status") != "disabled")
+            payload["is_active"] = True
+
+        create_res = hidify_sync_request("POST", "/admin/user/", payload, api_key=k_val)
+        if isinstance(create_res, dict) and "error" not in create_res:
+            logger.info(f"User recreated with new UUID {clean_new}. Deleting old user {clean_old}...")
+            if clean_old:
+                hidify_sync_request("DELETE", f"/admin/user/{clean_old}/", api_key=k_val)
+            return create_res
+
+    return {"error": "خطا در برقراری ارتباط با سرور هیدیفای جهت تغییر UUID"}
+
+
 def hidify_sync_renew_user(uuid: str, new_limit_gb: float, new_duration_days: int, force_instant: bool = True) -> dict:
     """
     تمدید هوشمند کاربر در هیدیفای با ریست کامل حجم و تاریخ شروع در حالت فعال‌سازی فوری:
@@ -5293,8 +5358,29 @@ def admin_subscription_edit(sub_id):
     now = get_now_iso()
     debt_created = now if (payment_status in ('unpaid', 'debtor') and not sub.get("debt_created_at")) else sub.get("debt_created_at")
 
+    # بررسی و تغییر شناسه اختصاصی (UUID) در صورت تغییر
+    form_uuid = request.form.get("hidify_uuid", "").strip().lower()
+    old_uuid = (sub.get("hidify_uuid") or "").strip().lower()
+    final_uuid = old_uuid
+    uuid_changed = False
+
+    if form_uuid and form_uuid != old_uuid:
+        try:
+            val_uuid = str(uuid.UUID(form_uuid))
+        except ValueError:
+            flash("شناسه UUID وارد شده نامعتبر است. لطفاً فرمت استاندارد UUID را رعایت فرمایید.", "danger")
+            return redirect(get_redirect_target("subscriptions"))
+
+        change_res = hidify_sync_change_user_uuid(old_uuid, val_uuid, sub_fallback_data=sub)
+        if isinstance(change_res, dict) and "error" in change_res:
+            flash(f"خطا در تغییر شناسه UUID در پنل هیدیفای: {change_res.get('error')}", "danger")
+            return redirect(get_redirect_target("subscriptions"))
+
+        final_uuid = val_uuid
+        uuid_changed = True
+
     # بروزرسانی در سرور هیدیفای
-    if sub.get("hidify_uuid"):
+    if final_uuid:
         h_update = {
             "name": account_name,
             "usage_limit_GB": data_limit,
@@ -5307,7 +5393,7 @@ def admin_subscription_edit(sub_id):
             h_update["enable"] = True
             h_update["is_active"] = True
 
-        hidify_sync_update_user(sub["hidify_uuid"], **h_update)
+        hidify_sync_update_user(final_uuid, **h_update)
 
     # بروزرسانی در پایگاه‌داده
     conn = db.get_connection()
@@ -5315,6 +5401,7 @@ def admin_subscription_edit(sub_id):
     cursor.execute("""
         UPDATE subscriptions 
         SET account_name = ?,
+            hidify_uuid = ?,
             data_limit = ?,
             duration = ?,
             status = ?,
@@ -5328,19 +5415,19 @@ def admin_subscription_edit(sub_id):
             updated_at = ?
         WHERE id = ?
     """, (
-        account_name, data_limit, duration, status,
+        account_name, final_uuid, data_limit, duration, status,
         telegram_id, phone_number or None, comment or None,
         payment_status, debt_amount, debt_notes or None,
         debt_created, now, sub_id
     ))
 
-    # اگر کاربر در جدول users باشد، بروزرسانی نام و شماره تلفن
+    # اگر کاربر در جدول users باشد، بروزرسانی نام، شماره تلفن و UUID
     if telegram_id and telegram_id > 0:
         cursor.execute("SELECT * FROM users WHERE telegram_id=?", (telegram_id,))
         if cursor.fetchone():
-            cursor.execute("UPDATE users SET phone_number=COALESCE(?, phone_number), username=COALESCE(?, username), updated_at=? WHERE telegram_id=?", (phone_number or None, account_name, now, telegram_id))
+            cursor.execute("UPDATE users SET phone_number=COALESCE(?, phone_number), username=COALESCE(?, username), hidify_uuid=COALESCE(?, hidify_uuid), updated_at=? WHERE telegram_id=?", (phone_number or None, account_name, final_uuid, now, telegram_id))
         else:
-            cursor.execute("INSERT INTO users (telegram_id, username, phone_number, is_verified, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)", (telegram_id, account_name, phone_number or None, now, now))
+            cursor.execute("INSERT INTO users (telegram_id, username, phone_number, hidify_uuid, is_verified, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)", (telegram_id, account_name, phone_number or None, final_uuid, now, now))
 
     conn.commit()
     conn.close()
@@ -5348,7 +5435,10 @@ def admin_subscription_edit(sub_id):
     # همگام‌سازی فوری
     sync_hiddify_online_users(force=True)
 
-    flash(f"مشخصات اشتراک «{account_name}» با موفقیت ویرایش و در هیدیفای اعمال شد.", "success")
+    if uuid_changed:
+        flash(f"مشخصات اشتراک «{account_name}» و شناسه هیدیفای (UUID) با موفقیت در سیستم و پنل هیدیفای تغییر یافت. لینک‌های قبلی مشتری باطل گردیدند.", "success")
+    else:
+        flash(f"مشخصات اشتراک «{account_name}» با موفقیت ویرایش و در هیدیفای اعمال شد.", "success")
     return redirect(get_redirect_target("subscriptions"))
 
 
@@ -7806,7 +7896,15 @@ def settings():
             db.save_setting("portal_enable_renewal", portal_enable_renewal)
             db.save_setting("portal_show_troubleshoot", portal_show_troubleshoot)
 
-            flash("تنظیمات پورتال اختصاصی مشتری و پروکسی پچ با موفقیت ذخیره شد.", "success")
+            server_status_mode = request.form.get("server_status_mode", "smart").strip().lower()
+            server_status_manual_state = request.form.get("server_status_manual_state", "operational").strip().lower()
+            server_status_custom_text = request.form.get("server_status_custom_text", "").strip()
+
+            db.save_setting("server_status_mode", server_status_mode)
+            db.save_setting("server_status_manual_state", server_status_manual_state)
+            db.save_setting("server_status_custom_text", server_status_custom_text)
+
+            flash("تنظیمات پورتال اختصاصی مشتری، پروکسی پچ و وضعیت سرورها با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
 
     conn = db.get_connection()
@@ -7838,7 +7936,10 @@ def settings():
         "portal_subtitle": db.get_setting("portal_subtitle", "پورتال اختصاصی استعلام وضعیت و تمدید اشتراک"),
         "support_phone": db.get_setting("support_phone", ""),
         "portal_enable_renewal": str(db.get_setting("portal_enable_renewal", "1")).lower() in ("1", "true"),
-        "portal_show_troubleshoot": str(db.get_setting("portal_show_troubleshoot", "1")).lower() in ("1", "true")
+        "portal_show_troubleshoot": str(db.get_setting("portal_show_troubleshoot", "1")).lower() in ("1", "true"),
+        "server_status_mode": db.get_setting("server_status_mode", "smart"),
+        "server_status_manual_state": db.get_setting("server_status_manual_state", "operational"),
+        "server_status_custom_text": db.get_setting("server_status_custom_text", "")
     }
     return render_template(
         "settings.html",
@@ -12521,6 +12622,150 @@ def bank_sms_webhook():
 # مسیرهای پورتال دائمی و صفحه تمدید اختصاصی مشتریان
 # ═══════════════════════════════════════════════════════════════════════
 
+def get_customer_portal_server_status() -> dict:
+    """دریافت وضعیت نمایشی سرورها برای پورتال مشتری بر اساس تنظیمات هوشمند یا دستی پنل مدیریت"""
+    mode = db.get_setting("server_status_mode", "smart")  # "smart" or "manual"
+    custom_text = db.get_setting("server_status_custom_text", "").strip()
+
+    if mode == "manual":
+        state = db.get_setting("server_status_manual_state", "operational")
+        if state == "operational":
+            return {
+                "mode": "manual",
+                "state": "operational",
+                "status_title": "متصل و عملیاتی",
+                "color_name": "success",
+                "color_code": "#10b981",
+                "bg_class": "bg-success",
+                "icon": "fa-check",
+                "show_ping": False,
+                "latency": 0,
+                "custom_text": custom_text
+            }
+        elif state == "disruption":
+            return {
+                "mode": "manual",
+                "state": "disruption",
+                "status_title": "اختلال در سرورها",
+                "color_name": "warning",
+                "color_code": "#f59e0b",
+                "bg_class": "bg-warning",
+                "icon": "fa-triangle-exclamation",
+                "show_ping": False,
+                "latency": 0,
+                "custom_text": custom_text
+            }
+        else:  # disconnected
+            return {
+                "mode": "manual",
+                "state": "disconnected",
+                "status_title": "سرورها قطع میباشند",
+                "color_name": "danger",
+                "color_code": "#ef4444",
+                "bg_class": "bg-danger",
+                "icon": "fa-xmark",
+                "show_ping": False,
+                "latency": 0,
+                "custom_text": custom_text
+            }
+    else:
+        # حالت هوشمند: تست زنده سرور هیدیفای
+        health = hidify_sync_ping()
+        if health.get("online"):
+            lat = int(health.get("latency") or 0)
+            # نکته درخواستی: اگر پینگ سرور بالاتر از ۱۸۰ بود پینگ نمایش داده نشود
+            show_ping = (lat > 0 and lat <= 180)
+            return {
+                "mode": "smart",
+                "state": "operational",
+                "status_title": "متصل و عملیاتی",
+                "color_name": "success",
+                "color_code": "#10b981",
+                "bg_class": "bg-success",
+                "icon": "fa-check",
+                "show_ping": show_ping,
+                "latency": lat,
+                "custom_text": custom_text
+            }
+        else:
+            return {
+                "mode": "smart",
+                "state": "disconnected",
+                "status_title": "سرورها قطع میباشند",
+                "color_name": "danger",
+                "color_code": "#ef4444",
+                "bg_class": "bg-danger",
+                "icon": "fa-xmark",
+                "show_ping": False,
+                "latency": 0,
+                "custom_text": custom_text
+            }
+
+
+@app.route("/api/server-status", methods=["GET"])
+def api_server_status():
+    """استعلام وضعیت سرور برای پورتال مشتریان"""
+    return jsonify(get_customer_portal_server_status())
+
+
+@app.route("/renew/check-discount/<token>", methods=["POST"])
+def customer_check_discount(token: str):
+    """بررسی و اعتبارسنجی بلادرنگ کد تخفیف برای مشتری با تفکیک کامل نماینده و مدیریت"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+
+    if not sub_row:
+        return jsonify({"valid": False, "error": "اشتراک یافت نشد"}), 404
+
+    sub = dict(sub_row)
+    data = request.get_json(silent=True) or request.form
+    code = (data.get("code") or "").strip().upper()
+    plan_id = str(data.get("plan_id") or "").strip()
+
+    if not code:
+        return jsonify({"valid": False, "error": "لطفاً کد تخفیف را وارد کنید."})
+
+    reseller_id = sub.get("reseller_id") or 0
+    price = 0
+    if reseller_id:
+        r_plan = db.get_reseller_plan(reseller_id, plan_id)
+        if r_plan:
+            price = r_plan.get("custom_price") or r_plan.get("price") or 0
+    if not price:
+        g_plan = get_plans_dict().get(plan_id)
+        if g_plan:
+            price = g_plan.get("price", 0)
+
+    if not price:
+        if reseller_id:
+            raw_plans = db.get_reseller_active_plans(reseller_id)
+            if raw_plans:
+                price = raw_plans[0].get("custom_price") or raw_plans[0].get("price") or 0
+        if not price:
+            all_p = get_plans_dict()
+            if all_p:
+                price = next(iter(all_p.values())).get("price", 100000)
+            else:
+                price = 100000
+
+    res = db.validate_customer_discount(sub, code, price)
+    if res.get("valid"):
+        return jsonify({
+            "valid": True,
+            "discount_code": res["discount_code"],
+            "discount_amount": res["discount_amount"],
+            "original_amount": price,
+            "final_amount": res["final_amount"],
+            "message": f"کد تخفیف اعمال شد: {res['discount_amount']:,} تومان تخفیف"
+        })
+    else:
+        return jsonify({
+            "valid": False,
+            "error": res.get("error", "این کد تخفیف برای شما معتبر نمی‌باشد.")
+        })
+
+
 @app.route("/user/<token>", methods=["GET"])
 @app.route("/sub/<token>", methods=["GET"])
 @app.route("/renew/<token>", methods=["GET"])
@@ -12635,6 +12880,8 @@ def customer_portal(token: str):
     tx_history = [dict(r) for r in tx_rows]
     total_paid = sum(int(t.get("amount") or 0) for t in tx_history if t.get("status") in ("approved", "completed", "paid"))
 
+    server_status = get_customer_portal_server_status()
+
     return render_template(
         "customer_portal.html",
         sub=sub,
@@ -12655,13 +12902,14 @@ def customer_portal(token: str):
         pending_queue=pending_queue,
         sub_history=sub_history,
         tx_history=tx_history,
-        total_paid=total_paid
+        total_paid=total_paid,
+        server_status=server_status
     )
 
 
 @app.route("/renew/create-invoice/<token>", methods=["POST"])
 def customer_create_invoice(token: str):
-    """ایجاد فاکتور تمدید هوشمند با ارقام خرد برای مشتری"""
+    """ایجاد فاکتور تمدید هوشمند با ارقام خرد برای مشتری با پشتیبانی از کدهای تخفیف ایزوله"""
     conn = db.get_connection()
     sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
     conn.close()
@@ -12692,6 +12940,21 @@ def customer_create_invoice(token: str):
 
     if not price:
         price = 100000
+
+    # پردازش و اعتبارسنجی کد تخفیف (کاملاً تفکیک‌شده: کدهای نماینده فقط برای مشتری خود، و کدهای ادمین فقط برای مشتری ادمین)
+    raw_discount_code = request.form.get("discount_code", "").strip().upper()
+    discount_val = 0
+    valid_discount_code = None
+
+    if raw_discount_code:
+        chk_res = db.validate_customer_discount(sub, raw_discount_code, price)
+        if chk_res.get("valid"):
+            discount_val = int(chk_res.get("discount_amount") or 0)
+            valid_discount_code = raw_discount_code
+            price = max(0, price - discount_val)
+            db.apply_customer_discount(sub, raw_discount_code)
+        else:
+            flash(f"کد تخفیف نامعتبر: {chk_res.get('error', 'این کد تخفیف برای شما معتبر نیست.')}", "warning")
 
     # انتخاب کارت بانکی مقصد (با فال‌بک هوشمند به کارت مدیریت در صورت نبود کارت نماینده)
     target_card = None
@@ -12732,7 +12995,9 @@ def customer_create_invoice(token: str):
         target_card=target_card,
         digits=digits,
         timeout_minutes=timeout,
-        instant_activation=instant_activation
+        instant_activation=instant_activation,
+        discount_code=valid_discount_code,
+        discount_amount=discount_val
     )
 
     # ایجاد همزمان تراکنش در جدول transactions با وضعیت معلق
@@ -12768,6 +13033,8 @@ def customer_create_invoice(token: str):
         f"💳 کارت مقصد: <code>{card_info}</code> ({card_holder})\n"
         f"⏰ زمان: {get_now_shamsi()}"
     )
+    if discount_val > 0 and valid_discount_code:
+        pay_notif += f"\n🎟️ کد تخفیف اعمال‌شده: <code>{valid_discount_code}</code> ({discount_val:,} تومان)"
     if reseller_id:
         try:
             r_info = db.get_reseller(reseller_id) or {}
