@@ -78,6 +78,12 @@ def get_hiddify_proxy() -> str:
     return os.getenv("HIDIFY_PROXY_PATH", "").strip("/")
 
 def get_user_proxy() -> str:
+    try:
+        db_proxy = db.get_setting("user_proxy_path") or db.get_setting("customer_proxy_path")
+        if db_proxy and str(db_proxy).strip():
+            return str(db_proxy).strip("/").strip()
+    except Exception:
+        pass
     return os.getenv("USER_PROXY_PATH", "user").strip("/")
 
 
@@ -3572,44 +3578,67 @@ def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: 
     duration = selected_plan["duration"] if selected_plan else 30
     account_name = tx.get("account_name") or f"tg_{user_id}"
     user_uuid = ""
+    smart_inv = db.get_smart_invoice_by_order_id(order_id)
+    instant_activation = True
+    if smart_inv and smart_inv.get("instant_activation") is not None:
+        instant_activation = bool(smart_inv["instant_activation"])
 
     if is_renewal and renew_sub_id:
-        user_subs = db.get_user_subscriptions(user_id)
-        target_sub = next((s for s in user_subs if s["id"] == renew_sub_id), None)
+        target_sub = db.get_subscription(renew_sub_id)
+        if not target_sub and user_id:
+            user_subs = db.get_user_subscriptions(user_id)
+            target_sub = next((s for s in user_subs if s["id"] == renew_sub_id), None)
+
         if target_sub:
             user_uuid = target_sub.get("hidify_uuid", "")
             old_limit = float(target_sub.get("data_limit") or 0)
             old_used = float(target_sub.get("data_used") or 0)
             old_plan_name = target_sub.get("plan_name") or ""
 
-            renew_res = hidify_sync_renew_user(user_uuid, float(data_limit), int(duration))
-            final_limit = renew_res.get("new_limit", data_limit)
-            final_days = renew_res.get("new_days", duration)
-            renewal_type = renew_res.get("renewal_type", "fallback")
-            final_plan_name = pname if renewal_type == "reset_and_replaced" else (old_plan_name if old_limit > float(data_limit) else pname)
-            final_used = 0 if renewal_type == "reset_and_replaced" else old_used
+            if not instant_activation:
+                # بسته به صف رزرو اضافه می‌شود تا پس از اتمام بسته فعلی فعال شود
+                db.add_to_subscription_queue(
+                    subscription_id=renew_sub_id,
+                    plan_id="renewal_plan",
+                    plan_name=pname,
+                    data_limit=float(data_limit),
+                    duration=int(duration),
+                    cost=amount,
+                    reseller_id=target_sub.get("reseller_id") or r_id,
+                    telegram_id=user_id or target_sub.get("telegram_id") or 0,
+                    hidify_uuid=user_uuid,
+                    note=f"رزرو شده از طریق پورتال تمدید مشتری (سفارش {order_id})"
+                )
+                logger.info(f"Subscription {renew_sub_id} renewal queued successfully (instant_activation=False).")
+            else:
+                renew_res = hidify_sync_renew_user(user_uuid, float(data_limit), int(duration))
+                final_limit = renew_res.get("new_limit", data_limit)
+                final_days = renew_res.get("new_days", duration)
+                renewal_type = renew_res.get("renewal_type", "fallback")
+                final_plan_name = pname if renewal_type == "reset_and_replaced" else (old_plan_name if old_limit > float(data_limit) else pname)
+                final_used = 0 if renewal_type == "reset_and_replaced" else old_used
 
-            db.save_subscription_history(
-                subscription_id=renew_sub_id,
-                telegram_id=user_id,
-                hidify_uuid=user_uuid,
-                account_name=target_sub.get("account_name") or account_name,
-                plan_name=old_plan_name or pname,
-                previous_usage_gb=old_used,
-                previous_limit_gb=old_limit,
-                period_days=target_sub.get("duration") or duration,
-                renewal_type=renewal_type,
-                reseller_id=target_sub.get("reseller_id")
-            )
+                db.save_subscription_history(
+                    subscription_id=renew_sub_id,
+                    telegram_id=user_id or target_sub.get("telegram_id") or 0,
+                    hidify_uuid=user_uuid,
+                    account_name=target_sub.get("account_name") or account_name,
+                    plan_name=old_plan_name or pname,
+                    previous_usage_gb=old_used,
+                    previous_limit_gb=old_limit,
+                    period_days=target_sub.get("duration") or duration,
+                    renewal_type=renewal_type,
+                    reseller_id=target_sub.get("reseller_id")
+                )
 
-            db.update_subscription(
-                renew_sub_id,
-                plan_name=final_plan_name,
-                data_limit=final_limit,
-                duration=final_days,
-                data_used=final_used,
-                status="active"
-            )
+                db.update_subscription(
+                    renew_sub_id,
+                    plan_name=final_plan_name,
+                    data_limit=final_limit,
+                    duration=final_days,
+                    data_used=final_used,
+                    status="active"
+                )
     else:
         # ساخت اشتراک جدید
         res = hidify_sync_create_user(name=account_name, usage_limit_gb=data_limit, package_days=duration, comment=str(user_id))
@@ -7638,6 +7667,25 @@ def settings():
 
             flash("تنظیمات نام فروشگاه، نسخه، لوگو و کپی‌رایت با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
+        elif action == "save_customer_portal_settings":
+            user_proxy_path = request.form.get("user_proxy_path", "").strip("/").strip()
+            portal_title = request.form.get("portal_title", "").strip()
+            portal_subtitle = request.form.get("portal_subtitle", "").strip()
+            support_phone = request.form.get("support_phone", "").strip()
+            support_username = request.form.get("support_username", "").strip().lstrip("@")
+            portal_enable_renewal = "1" if request.form.get("portal_enable_renewal") else "0"
+            portal_show_troubleshoot = "1" if request.form.get("portal_show_troubleshoot") else "0"
+
+            db.save_setting("user_proxy_path", user_proxy_path)
+            db.save_setting("portal_title", portal_title)
+            db.save_setting("portal_subtitle", portal_subtitle)
+            db.save_setting("support_phone", support_phone)
+            db.save_setting("support_username", support_username)
+            db.save_setting("portal_enable_renewal", portal_enable_renewal)
+            db.save_setting("portal_show_troubleshoot", portal_show_troubleshoot)
+
+            flash("تنظیمات پورتال اختصاصی مشتری و پروکسی پچ با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("settings"))
 
     conn = db.get_connection()
     settings_list = conn.execute("SELECT * FROM settings").fetchall()
@@ -7662,6 +7710,14 @@ def settings():
         "store_logo": db.get_setting("store_logo", ""),
         "current_active_version": get_store_version()
     }
+    customer_portal_config = {
+        "user_proxy_path": db.get_setting("user_proxy_path") or os.getenv("USER_PROXY_PATH", "user").strip("/"),
+        "portal_title": db.get_setting("portal_title", "فروشگاه اینترنت آزاد"),
+        "portal_subtitle": db.get_setting("portal_subtitle", "پورتال اختصاصی استعلام وضعیت و تمدید اشتراک"),
+        "support_phone": db.get_setting("support_phone", ""),
+        "portal_enable_renewal": str(db.get_setting("portal_enable_renewal", "1")).lower() in ("1", "true"),
+        "portal_show_troubleshoot": str(db.get_setting("portal_show_troubleshoot", "1")).lower() in ("1", "true")
+    }
     return render_template(
         "settings.html",
         settings=settings_list,
@@ -7675,7 +7731,8 @@ def settings():
         vip_settings=vip_settings,
         refund_settings=refund_settings,
         all_resellers=all_resellers,
-        store_branding_config=store_branding_config
+        store_branding_config=store_branding_config,
+        customer_portal_config=customer_portal_config
     )
 
 
@@ -10386,7 +10443,7 @@ def reseller_terminate_other_sessions():
 def reseller_branding():
     """تنظیمات هویت بصری، لوگو، رنگ‌بندی، عنوان و دامنه اختصاصی نماینده"""
     reseller_id = session.get("reseller_id")
-    reseller = db.get_reseller(reseller_id)
+    reseller = db.get_reseller(reseller_id) or {}
 
     if request.method == "POST":
         custom_domain = request.form.get("custom_domain", "").strip().lower()
@@ -10396,6 +10453,10 @@ def reseller_branding():
         favicon_url = request.form.get("favicon_url", "").strip()
         primary_color = request.form.get("primary_color", "").strip()
         footer_text = request.form.get("footer_text", "").strip()
+        portal_title = request.form.get("portal_title", "").strip()
+        portal_subtitle = request.form.get("portal_subtitle", "").strip()
+        support_phone = request.form.get("support_phone", "").strip()
+        support_username = request.form.get("support_username", "").strip().lstrip("@")
 
         # بررسی آپلود مستقیم لوگو در صورت ارسال فایل
         if "logo_file" in request.files:
@@ -10415,6 +10476,10 @@ def reseller_branding():
             custom_domain=custom_domain,
             tutorial_domain=tutorial_domain,
             brand_title=brand_title,
+            portal_title=portal_title,
+            portal_subtitle=portal_subtitle,
+            support_phone=support_phone,
+            support_username=support_username,
             logo_url=logo_url,
             favicon_url=favicon_url,
             primary_color=primary_color,
@@ -11999,30 +12064,29 @@ def customer_portal(token: str):
         return render_template("troubleshoot_wizard.html", error="اشتراک مورد نظر یافت نشد یا حذف شده است."), 404
 
     sub = dict(sub_row)
+    sub = enrich_subscription_details(sub)
     sub_id = sub["id"]
     reseller_id = sub.get("reseller_id") or 0
 
     # بررسی برندینگ و نماینده
-    brand_title = "فروشگاه اینترنت آزاد"
-    logo_url = None
-    support_username = None
+    brand_title = db.get_setting("portal_title") or db.get_setting("store_name") or "فروشگاه اینترنت آزاد"
+    portal_subtitle = db.get_setting("portal_subtitle") or "پورتال اختصاصی استعلام وضعیت و تمدید اشتراک"
+    logo_url = db.get_setting("store_logo")
+    support_username = db.get_setting("support_username")
+    support_phone = db.get_setting("support_phone")
+
     if reseller_id:
         r_info = db.get_reseller(reseller_id) or {}
-        brand_title = r_info.get("brand_title") or r_info.get("brand_name") or r_info.get("name") or brand_title
-        logo_url = r_info.get("logo_url")
-        support_username = r_info.get("support_username")
-    else:
-        support_username = db.get_setting("support_username")
+        brand_title = r_info.get("portal_title") or r_info.get("brand_title") or r_info.get("brand_name") or r_info.get("name") or brand_title
+        portal_subtitle = r_info.get("portal_subtitle") or portal_subtitle
+        logo_url = r_info.get("logo_url") or logo_url
+        support_username = r_info.get("support_username") or support_username
+        support_phone = r_info.get("support_phone") or r_info.get("phone") or support_phone
 
-    # محاسبه روزهای مانده
-    days_left = 0
-    expire_date_str = sub.get("expire_date")
-    if expire_date_str:
-        try:
-            exp_dt = datetime.fromisoformat(expire_date_str)
-            days_left = max(0, (exp_dt.date() - get_now_naive().date()).days)
-        except Exception:
-            days_left = sub.get("duration", 30)
+    # روزهای مانده از تابع غنی‌ساز هیدیفای
+    days_left = sub.get("remaining_days", sub.get("duration", 30))
+    if sub.get("is_expired") and days_left < 0:
+        days_left = 0
 
     # دریافت پلن‌های مجاز
     if reseller_id:
@@ -12056,21 +12120,40 @@ def customer_portal(token: str):
     conn.close()
     invoice = dict(inv_row) if inv_row else None
 
-    # لینک اشتراک هیدیفای
-    domain = db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "")
-    sub_link = f"https://{domain}/sub/{sub.get('hidify_uuid')}" if domain else ""
+    # لینک‌های اشتراک و کانفیگ تکی
+    user_uuid = sub.get("hidify_uuid") or str(sub_id)
+    acc_name = sub.get("account_name") or ""
+    panel_url = get_hiddify_url()
+    user_proxy = get_user_proxy()
+    sub_url = f"{panel_url}/{user_proxy}/{user_uuid}/" if (panel_url and user_uuid) else ""
+    single_link_template = db.get_setting("single_link_template")
+    single_url = format_single_link(single_link_template, uuid=user_uuid, name=acc_name) if (single_link_template and user_uuid) else ""
+
+    # لینک آموزش‌ها و عیب‌یابی اتصال
+    troubleshoot_url = url_for("troubleshoot_wizard", _external=True)
+
+    portal_enable_renewal = str(db.get_setting("portal_enable_renewal", "1")).lower() in ("1", "true")
+    portal_show_troubleshoot = str(db.get_setting("portal_show_troubleshoot", "1")).lower() in ("1", "true")
+    pending_queue = db.get_pending_queue_item(sub_id)
 
     return render_template(
         "customer_portal.html",
         sub=sub,
         token=token,
         brand_title=brand_title,
+        portal_subtitle=portal_subtitle,
         logo_url=logo_url,
         support_username=support_username,
+        support_phone=support_phone,
         days_left=days_left,
         plans=plans,
         invoice=invoice,
-        sub_link=sub_link
+        sub_url=sub_url,
+        single_url=single_url,
+        troubleshoot_url=troubleshoot_url,
+        portal_enable_renewal=portal_enable_renewal,
+        portal_show_troubleshoot=portal_show_troubleshoot,
+        pending_queue=pending_queue
     )
 
 
@@ -12089,6 +12172,7 @@ def customer_create_invoice(token: str):
     sub_id = sub["id"]
     reseller_id = sub.get("reseller_id") or 0
     plan_id = request.form.get("plan_id")
+    instant_activation = (request.form.get("instant_activation") == "1")
 
     # استخراج مشخصات پلن انتخابی
     price = 0
@@ -12107,27 +12191,36 @@ def customer_create_invoice(token: str):
     if not price:
         price = 100000
 
-    # انتخاب کارت بانکی مقصد (اگر نماینده است، کارت نماینده، در غیر این صورت کارت ادمین)
+    # انتخاب کارت بانکی مقصد (با فال‌بک هوشمند به کارت مدیریت در صورت نبود کارت نماینده)
     target_card = None
+    sms_cfg = {}
     if reseller_id:
         r_cards = db.get_reseller_cards(reseller_id)
         active_r_cards = [c for c in r_cards if c.get("is_active")]
         if active_r_cards:
             target_card = random.choice(active_r_cards)
-        sms_cfg = db.get_reseller_bank_sms_config(reseller_id)
+            sms_cfg = db.get_reseller_bank_sms_config(reseller_id)
+        else:
+            # نماینده هنوز کارتی ثبت نکرده است؛ جهت عدم توقف خرید مشتری، از کارت مدیریت استفاده می‌شود
+            adm_cards = db.get_all_bank_cards()
+            active_adm_cards = [c for c in adm_cards if c.get("is_active")]
+            if active_adm_cards:
+                target_card = random.choice(active_adm_cards)
+                sms_cfg = db.get_admin_bank_sms_config()
+                logger.warning(f"Reseller {reseller_id} has no active bank cards. Falling back to admin cards for sub {sub_id}.")
     else:
         adm_cards = db.get_all_bank_cards()
         active_adm_cards = [c for c in adm_cards if c.get("is_active")]
         if active_adm_cards:
             target_card = random.choice(active_adm_cards)
-        sms_cfg = db.get_admin_bank_sms_config()
+            sms_cfg = db.get_admin_bank_sms_config()
 
     if not target_card:
         flash("هیچ کارت بانکی فعالی در سامانه تعریف نشده است. لطفاً به پشتیبانی پیام دهید.", "warning")
         return redirect(url_for("customer_portal", token=token))
 
-    digits = sms_cfg.get("digits", 3)
-    timeout = sms_cfg.get("timeout", 15)
+    digits = sms_cfg.get("digits", 3) if isinstance(sms_cfg, dict) else 3
+    timeout = sms_cfg.get("timeout", 15) if isinstance(sms_cfg, dict) else 15
 
     invoice = db.create_smart_invoice(
         sub_id=sub_id,
@@ -12136,7 +12229,8 @@ def customer_create_invoice(token: str):
         base_amount=price,
         target_card=target_card,
         digits=digits,
-        timeout_minutes=timeout
+        timeout_minutes=timeout,
+        instant_activation=instant_activation
     )
 
     # ایجاد همزمان تراکنش در جدول transactions با وضعیت معلق

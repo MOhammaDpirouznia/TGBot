@@ -801,6 +801,24 @@ class Database:
         except Exception:
             pass
 
+        # مایگریشن ستون‌های پورتال مشتری برای نمایندگان و فاکتورها
+        try:
+            cursor.execute("ALTER TABLE resellers ADD COLUMN portal_title TEXT")
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE resellers ADD COLUMN portal_subtitle TEXT")
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE resellers ADD COLUMN support_phone TEXT")
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE smart_invoices ADD COLUMN instant_activation INTEGER DEFAULT 1")
+        except Exception:
+            pass
+
         try:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS wallet_transactions (
@@ -8637,7 +8655,7 @@ class Database:
         now = get_now_iso()
         kwargs["updated_at"] = now
         try:
-            allowed = ["custom_domain", "tutorial_domain", "logo_url", "favicon_url", "brand_title", "primary_color", "footer_text", "updated_at"]
+            allowed = ["custom_domain", "tutorial_domain", "logo_url", "favicon_url", "brand_title", "portal_title", "portal_subtitle", "support_phone", "support_username", "primary_color", "footer_text", "updated_at"]
             fields = []
             params = []
             for k, v in kwargs.items():
@@ -10970,7 +10988,7 @@ class Database:
         finally:
             conn.close()
 
-    def create_smart_invoice(self, sub_id: int, plan_id: str, reseller_id: int, base_amount: int, target_card: dict = None, digits: int = 3, timeout_minutes: int = 15) -> dict:
+    def create_smart_invoice(self, sub_id: int, plan_id: str, reseller_id: int, base_amount: int, target_card: dict = None, digits: int = 3, timeout_minutes: int = 15, instant_activation: bool = True) -> dict:
         """
         تولید فاکتور تمدید هوشمند با ارقام تصادفی خرد جهت تایید اتوماتیک با پیامک بانک
         """
@@ -11018,14 +11036,15 @@ class Database:
         c_num = target_card.get("card_number") if target_card else ""
         c_holder = target_card.get("card_holder") if target_card else ""
         b_name = target_card.get("bank_name") if target_card else ""
+        inst_act_val = 1 if instant_activation else 0
 
         cursor.execute("""
             INSERT INTO smart_invoices (
                 order_id, sub_id, plan_id, reseller_id, base_amount, random_suffix, 
                 final_amount, target_card_id, card_number, card_holder, bank_name, 
-                status, token, expires_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
-        """, (order_id, sub_id, plan_id, reseller_id, base_amount, chosen_suffix, final_amount, card_id, c_num, c_holder, b_name, token, expires_str, now_str))
+                status, token, expires_at, created_at, instant_activation
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+        """, (order_id, sub_id, plan_id, reseller_id, base_amount, chosen_suffix, final_amount, card_id, c_num, c_holder, b_name, token, expires_str, now_str, inst_act_val))
         conn.commit()
         conn.close()
 
@@ -11043,7 +11062,8 @@ class Database:
             "status": "pending",
             "token": token,
             "expires_at": expires_str,
-            "created_at": now_str
+            "created_at": now_str,
+            "instant_activation": inst_act_val
         }
 
     def get_smart_invoice_by_token(self, token: str) -> Optional[dict]:
