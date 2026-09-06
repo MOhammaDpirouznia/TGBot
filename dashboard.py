@@ -46,6 +46,9 @@ from payment import CryptoPaymentGateway
 import avatar_generator
 from multibot_manager import multibot_manager, ResellerBotInstance
 from tutorials_data import PLATFORMS, TUTORIALS, TROUBLESHOOTING_GUIDES
+from palette_manager import (
+    get_all_palettes, get_palette, get_active_palette_config, generate_palette_css
+)
 
 logger = logging.getLogger(__name__)
 
@@ -2615,6 +2618,10 @@ def inject_global_branding():
         reseller_credit_limit = session.get("credit_limit", 0)
         reseller_credit_debt = session.get("credit_debt", 0)
 
+    # پالت اختصاصی و استایل‌های شیشه‌ای مات
+    palette_config = get_active_palette_config(db, context="system")
+    palette_css = generate_palette_css(palette_config)
+
     return dict(
         has_permission=has_permission,
         branding=branding,
@@ -2628,7 +2635,10 @@ def inject_global_branding():
         global_credit_enabled=reseller_has_credit,
         global_available_credit=reseller_available_credit,
         global_credit_limit=reseller_credit_limit,
-        global_credit_debt=reseller_credit_debt
+        global_credit_debt=reseller_credit_debt,
+        palette_config=palette_config,
+        palette_css=palette_css,
+        available_palettes=get_all_palettes()
     )
 
 
@@ -7906,6 +7916,25 @@ def settings():
 
             flash("تنظیمات پورتال اختصاصی مشتری، پروکسی پچ و وضعیت سرورها با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
+        elif action == "save_palette_settings":
+            active_palette = request.form.get("active_palette", "vps_aurora").strip()
+            palette_intensity = request.form.get("palette_intensity", "normal").strip()
+            palette_animation = request.form.get("palette_animation", "float").strip()
+            portal_palette = request.form.get("portal_palette", "inherit").strip()
+
+            db.save_setting("active_palette", active_palette)
+            db.save_setting("palette_intensity", palette_intensity)
+            db.save_setting("palette_animation", palette_animation)
+            db.save_setting("portal_palette", portal_palette)
+
+            # در صورت تیک زدن همگام‌سازی رنگ سازمانی، رنگ شاخص نیز مطابق پالت تنظیم شود
+            sync_primary = request.form.get("sync_primary_color")
+            if sync_primary:
+                pal_data = get_palette(active_palette)
+                db.save_setting("store_primary_color", pal_data["primary_color"])
+
+            flash("تنظیمات پالت‌های رنگی، هاله‌های نوری و افکت شیشه‌ای مات با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("settings"))
 
     conn = db.get_connection()
     settings_list = conn.execute("SELECT * FROM settings").fetchall()
@@ -7941,6 +7970,12 @@ def settings():
         "server_status_manual_state": db.get_setting("server_status_manual_state", "operational"),
         "server_status_custom_text": db.get_setting("server_status_custom_text", "")
     }
+    palette_settings = {
+        "active_palette": db.get_setting("active_palette", "vps_aurora"),
+        "palette_intensity": db.get_setting("palette_intensity", "normal"),
+        "palette_animation": db.get_setting("palette_animation", "float"),
+        "portal_palette": db.get_setting("portal_palette", "inherit")
+    }
     return render_template(
         "settings.html",
         settings=settings_list,
@@ -7955,7 +7990,9 @@ def settings():
         refund_settings=refund_settings,
         all_resellers=all_resellers,
         store_branding_config=store_branding_config,
-        customer_portal_config=customer_portal_config
+        customer_portal_config=customer_portal_config,
+        palette_settings=palette_settings,
+        available_palettes=get_all_palettes()
     )
 
 
@@ -12881,6 +12918,8 @@ def customer_portal(token: str):
     total_paid = sum(int(t.get("amount") or 0) for t in tx_history if t.get("status") in ("approved", "completed", "paid"))
 
     server_status = get_customer_portal_server_status()
+    portal_palette_config = get_active_palette_config(db, context="portal")
+    portal_palette_css = generate_palette_css(portal_palette_config)
 
     return render_template(
         "customer_portal.html",
@@ -12903,7 +12942,9 @@ def customer_portal(token: str):
         sub_history=sub_history,
         tx_history=tx_history,
         total_paid=total_paid,
-        server_status=server_status
+        server_status=server_status,
+        palette_config=portal_palette_config,
+        palette_css=portal_palette_css
     )
 
 
