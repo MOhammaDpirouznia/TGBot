@@ -14,6 +14,27 @@
             min-height: 100vh;
             color: #f8fafc;
         }
+        .portal-container {
+            max-width: 680px;
+            margin-left: auto;
+            margin-right: auto;
+            transition: max-width 0.3s ease;
+        }
+        @media (min-width: 768px) {
+            .portal-container {
+                max-width: 860px;
+            }
+        }
+        @media (min-width: 992px) {
+            .portal-container {
+                max-width: 940px;
+            }
+        }
+        @media (min-width: 1200px) {
+            .portal-container {
+                max-width: 980px;
+            }
+        }
         .glass-card {
             background: rgba(30, 41, 59, 0.7);
             backdrop-filter: blur(16px);
@@ -51,10 +72,59 @@
             70% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); }
             100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
         }
+        /* دکمه شناور گفتگوی آنلاین */
+        .floating-chat-btn {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 1040;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            color: #ffffff;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50px;
+            padding: 12px 20px;
+            box-shadow: 0 8px 25px rgba(37, 99, 235, 0.5);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: bold;
+            font-size: 0.9rem;
+            text-decoration: none;
+        }
+        .floating-chat-btn:hover {
+            transform: translateY(-4px) scale(1.03);
+            box-shadow: 0 12px 30px rgba(37, 99, 235, 0.65);
+            color: #ffffff;
+        }
+        .chat-status-dot {
+            width: 10px;
+            height: 10px;
+            background-color: #10b981;
+            border-radius: 50%;
+            display: inline-block;
+            box-shadow: 0 0 8px #10b981;
+            animation: chat-pulse 1.8s infinite;
+        }
+        @keyframes chat-pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { transform: scale(1.1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+        .nav-pills .nav-link {
+            color: #94a3b8;
+            border-radius: 12px;
+            transition: all 0.2s;
+        }
+        .nav-pills .nav-link.active {
+            background-color: #3b82f6;
+            color: #ffffff;
+        }
     </style>
 </head>
 <body class="py-4">
-<div class="container" style="max-width: 680px;">
+<div class="container portal-container">
 
     <!-- هدر برندینگ -->
     <div class="text-center mb-4">
@@ -105,6 +175,10 @@
 
             <!-- دکمه‌های فشرده کنار نام مشتری -->
             <div class="d-flex flex-wrap gap-1 align-items-center">
+                <button type="button" class="btn btn-sm btn-outline-info py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#historyModal" title="مشاهده سوابق دوره‌ها و پرداخت‌ها">
+                    <i class="fas fa-clock-rotate-left me-1"></i>سوابق تمدید و پرداخت
+                </button>
+
                 {% if sub_url %}
                 <button type="button" class="btn btn-sm btn-outline-light py-1 px-2" style="font-size: 0.8rem;" onclick="copyText('{{ sub_url }}', 'لینک اشتراک')" title="کپی لینک ساب">
                     <i class="fas fa-link me-1 text-primary"></i>کپی ساب
@@ -276,10 +350,10 @@
         <form action="{{ url_for('customer_create_invoice', token=token) }}" method="POST">
             <div class="row g-3 mb-3">
                 {% for p in plans %}
-                <div class="col-12">
-                    <label class="w-100">
+                <div class="col-12 col-md-6 d-flex">
+                    <label class="w-100 d-flex flex-column mb-0">
                         <input type="radio" name="plan_id" value="{{ p['id'] }}" class="d-none plan-radio" {% if loop.first %}checked{% endif %}>
-                        <div class="plan-card p-3 d-flex justify-content-between align-items-center {% if loop.first %}selected{% endif %}">
+                        <div class="plan-card p-3 d-flex justify-content-between align-items-center w-100 h-100 {% if loop.first %}selected{% endif %}">
                             <div class="d-flex align-items-center gap-3">
                                 {% set icon_info = get_plan_icon(p, p['id']) %}
                                 <div class="avatar-sm rounded-circle d-flex align-items-center justify-content-center shadow-sm flex-shrink-0 {{ icon_info.bg_class }}" style="width: 44px; height: 44px; font-size: 1.25rem; background-color: {{ icon_info.bg_color }}; color: {{ icon_info.color_hex }}; border: 1px solid {{ icon_info.border_color }};">
@@ -290,7 +364,7 @@
                                     <small class="text-secondary">{{ p['data_limit'] }} گیگابایت • {{ p['duration'] }} روزه</small>
                                 </div>
                             </div>
-                            <div class="text-end">
+                            <div class="text-end flex-shrink-0">
                                 <strong class="text-success fs-5 font-monospace">{{ "{:,}".format(p['price']) }}</strong>
                                 <small class="text-secondary d-block">تومان</small>
                             </div>
@@ -342,6 +416,289 @@
 
 </div>
 
+<!-- مودال یکپارچه سوابق دوره‌ها، تمدیدها و پرداخت‌ها -->
+<div class="modal fade" id="historyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content glass-card border-0 text-white p-2 p-md-3">
+            <div class="modal-header border-secondary border-opacity-25 pb-3">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="avatar-sm bg-info bg-opacity-25 rounded-circle d-flex align-items-center justify-content-center text-info p-2" style="width: 42px; height: 42px;">
+                        <i class="fas fa-clock-rotate-left fs-5"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0">سوابق تمدید، دوره‌ها و پرداخت‌ها</h5>
+                        <small class="text-secondary">تاریخچه جامع اشتراک «{{ sub.get('account_name') }}»</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body py-3">
+                <!-- خلاصه آمار -->
+                <div class="row g-2 mb-4 text-center">
+                    <div class="col-4">
+                        <div class="p-2 rounded bg-black bg-opacity-30 border border-secondary border-opacity-25">
+                            <span class="text-secondary small d-block mb-1">تعداد دوره‌ها</span>
+                            <strong class="text-info fs-5">{{ sub_history|length if sub_history else 1 }}</strong> <small>دوره</small>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="p-2 rounded bg-black bg-opacity-30 border border-secondary border-opacity-25">
+                            <span class="text-secondary small d-block mb-1">کل پرداختی‌ها</span>
+                            <strong class="text-success fs-5 font-monospace">{{ "{:,}".format(total_paid) }}</strong> <small>تومان</small>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="p-2 rounded bg-black bg-opacity-30 border border-secondary border-opacity-25">
+                            <span class="text-secondary small d-block mb-1">وضعیت کنونی</span>
+                            {% if sub.get('status') == 'active' %}
+                                <span class="text-success fw-bold small"><i class="fas fa-circle-check me-1"></i>فعال</span>
+                            {% else %}
+                                <span class="text-danger fw-bold small"><i class="fas fa-triangle-exclamation me-1"></i>منقضی</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- تب‌های انتخاب بین سوابق دوره‌ها و تراکنش‌ها -->
+                <ul class="nav nav-pills nav-fill bg-black bg-opacity-25 p-1 rounded-pill mb-3" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active py-2 rounded-pill small fw-bold" id="pills-periods-tab" data-bs-toggle="pill" data-bs-target="#pills-periods" type="button" role="tab">
+                            <i class="fas fa-boxes-stacked me-1"></i> سوابق دوره‌ها و مصرف ({{ sub_history|length }})
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link py-2 rounded-pill small fw-bold" id="pills-payments-tab" data-bs-toggle="pill" data-bs-target="#pills-payments" type="button" role="tab">
+                            <i class="fas fa-receipt me-1"></i> تراکنش‌ها و پرداخت‌ها ({{ tx_history|length }})
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                    <!-- تب سوابق دوره‌ها -->
+                    <div class="tab-pane fade show active" id="pills-periods" role="tabpanel">
+                        {% if sub_history %}
+                            <div class="d-flex flex-column gap-2">
+                                {% for h in sub_history %}
+                                <div class="p-3 rounded-3 bg-black bg-opacity-30 border border-secondary border-opacity-25">
+                                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="badge bg-primary-subtle text-primary border border-primary px-2 py-1 rounded-pill small font-monospace">
+                                                {{ h.get('period_label') or ('دوره ' ~ (h.get('period_offset') or loop.index)) }}
+                                            </span>
+                                            <strong class="text-white small">{{ h.get('plan_name') or 'بسته اشتراک' }}</strong>
+                                        </div>
+                                        <span class="text-secondary small font-monospace">
+                                            <i class="fas fa-calendar-day me-1"></i>{{ format_shamsi_date(h.get('renewed_at') or h.get('start_date')) }}
+                                        </span>
+                                    </div>
+
+                                    {% set p_used = h.get('previous_usage_gb', 0) | float %}
+                                    {% set p_limit = h.get('previous_limit_gb', 0) | float %}
+                                    {% set p_pct = (p_used / p_limit * 100)|round(1) if p_limit > 0 else 0 %}
+
+                                    <div class="row g-2 text-secondary small align-items-center mb-2">
+                                        <div class="col-sm-6">
+                                            <span><i class="fas fa-chart-pie me-1 text-info"></i>مصرف دوره:</span>
+                                            <strong class="text-info font-monospace">{{ "%.2f"|format(p_used) }}</strong> از <strong class="text-white font-monospace">{{ p_limit }}</strong> گیگ
+                                            <span class="badge bg-secondary font-monospace ms-1">{{ p_pct }}٪</span>
+                                        </div>
+                                        <div class="col-sm-3">
+                                            <span><i class="fas fa-hourglass-half me-1 text-warning"></i>مدت:</span>
+                                            <strong class="text-white font-monospace">{{ h.get('period_days') or 30 }}</strong> روز
+                                        </div>
+                                        <div class="col-sm-3 text-sm-end">
+                                            {% set price_val = h.get('cost_paid') or h.get('plan_price') or 0 %}
+                                            {% if price_val > 0 %}
+                                                <strong class="text-success font-monospace">{{ "{:,}".format(price_val) }}</strong> <small>تومان</small>
+                                            {% else %}
+                                                <span class="text-muted small">ثبت سیستمی</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+
+                                    <div class="progress" style="height: 6px; background: rgba(255,255,255,0.08); border-radius: 6px;">
+                                        <div class="progress-bar {% if p_pct > 90 %}bg-danger{% elif p_pct > 75 %}bg-warning{% else %}bg-info{% endif %}" 
+                                             style="width: {{ [p_pct, 100]|min }}%; border-radius: 6px;"></div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <div class="text-center py-4 text-secondary">
+                                <i class="fas fa-folder-open fs-2 mb-2 d-block opacity-50"></i>
+                                <span>هنوز سابقه‌ای از دوره‌های قبل برای این اشتراک ثبت نشده است.</span>
+                                <p class="small text-muted mt-1">با اولین تمدید، اطلاعات بسته‌ها و میزان مصرف هر دوره در اینجا آرشیو می‌شود.</p>
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- تب تراکنش‌ها و رسیدها -->
+                    <div class="tab-pane fade" id="pills-payments" role="tabpanel">
+                        {% if tx_history %}
+                            <div class="d-flex flex-column gap-2">
+                                {% for tx in tx_history %}
+                                <div class="p-3 rounded-3 bg-black bg-opacity-30 border border-secondary border-opacity-25">
+                                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <strong class="text-white small">{{ tx.get('plan_name') or 'تمدید اشتراک' }}</strong>
+                                            {% if tx.get('status') in ('approved', 'completed') %}
+                                                <span class="badge bg-success-subtle text-success border border-success px-2 py-0 rounded-pill small" style="font-size: 0.75rem;">
+                                                    <i class="fas fa-check-circle me-1"></i>تایید شده
+                                                </span>
+                                            {% elif tx.get('status') == 'pending' %}
+                                                <span class="badge bg-warning-subtle text-warning border border-warning px-2 py-0 rounded-pill small" style="font-size: 0.75rem;">
+                                                    <i class="fas fa-clock me-1"></i>معلق
+                                                </span>
+                                            {% else %}
+                                                <span class="badge bg-secondary px-2 py-0 rounded-pill small" style="font-size: 0.75rem;">{{ tx.get('status') }}</span>
+                                            {% endif %}
+                                        </div>
+                                        <div class="text-end">
+                                            <strong class="text-success font-monospace fs-6">{{ "{:,}".format(tx.get('amount') or 0) }}</strong>
+                                            <small class="text-secondary">تومان</small>
+                                        </div>
+                                    </div>
+
+                                    <div class="d-flex flex-wrap justify-content-between text-secondary small font-monospace">
+                                        <span>
+                                            <i class="fas fa-barcode me-1 text-info"></i>سفارش: <span class="text-white">{{ tx.get('order_id') }}</span>
+                                        </span>
+                                        <span>
+                                            <i class="fas fa-credit-card me-1 text-warning"></i>روش: {{ tx.get('gateway') or 'کارت به کارت' }}
+                                        </span>
+                                        <span>
+                                            <i class="fas fa-calendar-day me-1"></i>{{ format_shamsi_date(tx.get('created_at')) }}
+                                        </span>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <div class="text-center py-4 text-secondary">
+                                <i class="fas fa-receipt fs-2 mb-2 d-block opacity-50"></i>
+                                <span>هیچ تراکنش پرداختی برای این اشتراک یافت نشد.</span>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer border-secondary border-opacity-25 pt-2 justify-content-center">
+                <button type="button" class="btn btn-sm btn-secondary rounded-pill px-4" data-bs-dismiss="modal">بستن</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- دکمه شناور گفتگوی آنلاین با پشتیبانی (سمت راست پایین) -->
+<button type="button" class="floating-chat-btn" data-bs-toggle="modal" data-bs-target="#supportChatModal" title="گفتگوی آنلاین با پشتیبانی">
+    <span class="chat-status-dot"></span>
+    <i class="fas fa-comments fs-5"></i>
+    <span class="chat-badge-text">گفتگوی آنلاین</span>
+</button>
+
+<!-- مودال گفتگوی آنلاین و پشتیبانی -->
+<div class="modal fade" id="supportChatModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content glass-card border-primary border-opacity-50 text-white p-3 shadow-lg">
+            <div class="modal-header border-secondary border-opacity-25 pb-3">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="avatar-sm bg-primary bg-opacity-25 rounded-circle d-flex align-items-center justify-content-center text-primary p-2" style="width: 42px; height: 42px;">
+                        <i class="fas fa-headset fs-5"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0">گفتگوی آنلاین با پشتیبانی</h5>
+                        <small class="text-secondary">پاسخگویی سریع و پیگیری امور اشتراک و تمدید</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body py-3">
+                <!-- راه‌های ارتباط فوری -->
+                <div class="mb-3">
+                    <span class="text-secondary small d-block mb-2"><i class="fas fa-bolt text-warning me-1"></i>ارتباط مستقیم و فوری:</span>
+                    <div class="d-flex flex-wrap gap-2">
+                        {% if support_username %}
+                        <a href="https://t.me/{{ support_username.lstrip('@') }}" target="_blank" class="btn btn-sm btn-outline-info rounded-pill px-3 py-2 flex-grow-1">
+                            <i class="fab fa-telegram me-1"></i> تلگرام پشتیبان: @{{ support_username.lstrip('@') }}
+                        </a>
+                        {% endif %}
+                        {% if support_phone %}
+                        <a href="tel:{{ support_phone }}" class="btn btn-sm btn-outline-success rounded-pill px-3 py-2 flex-grow-1">
+                            <i class="fas fa-phone-alt me-1"></i> تماس: <span dir="ltr">{{ support_phone }}</span>
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="p-3 rounded-3 bg-black bg-opacity-30 border border-secondary border-opacity-25">
+                    <div class="fw-bold small text-white mb-2"><i class="fas fa-paper-plane text-primary me-1"></i>یا پیام خود را ارسال نمایید:</div>
+                    <form id="portalSupportForm" onsubmit="submitSupportMessage(event)">
+                        <div class="mb-2">
+                            <select class="form-select form-select-sm bg-dark text-white border-secondary" id="supportSubject">
+                                <option value="پیگیری و تکمیل تمدید">پیگیری و تکمیل تمدید</option>
+                                <option value="مشکل در اتصال یا قطعی سرویس">مشکل در اتصال یا قطعی سرویس</option>
+                                <option value="سوال در مورد حجم و روزهای باقیمانده">سوال در مورد حجم و روزهای باقیمانده</option>
+                                <option value="سایر موارد">سایر موارد</option>
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <input type="text" class="form-control form-control-sm bg-dark text-white border-secondary" id="supportContact" placeholder="شماره تماس یا آیدی تلگرام شما (جهت پیگیری)" value="{{ sub.get('phone_number') or '' }}">
+                        </div>
+                        <div class="mb-3">
+                            <textarea class="form-control form-control-sm bg-dark text-white border-secondary" id="supportMessageText" rows="3" placeholder="توضیحات خود را بنویسید..." required></textarea>
+                        </div>
+                        <div id="supportFeedback" class="mb-2 d-none"></div>
+                        <button type="submit" class="btn btn-sm btn-primary w-100 rounded-pill py-2 fw-bold" id="supportSubmitBtn">
+                            <i class="fas fa-paper-plane me-1"></i> ارسال پیام به پشتیبانی
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="modal-footer border-secondary border-opacity-25 pt-2 justify-content-center">
+                <button type="button" class="btn btn-sm btn-secondary rounded-pill px-4" data-bs-dismiss="modal">بستن</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- مودال جشن تایید خودکار پرداخت رسید و تمدید -->
+<div class="modal fade" id="paymentSuccessModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content glass-card border-success border-2 text-white p-4 shadow-lg text-center position-relative overflow-hidden">
+            <div class="mb-3">
+                <div class="d-inline-flex align-items-center justify-content-center bg-success bg-opacity-25 rounded-circle p-3 text-success shadow" style="width: 84px; height: 84px;">
+                    <i class="fas fa-check-double fs-1"></i>
+                </div>
+            </div>
+            <h4 class="fw-bold text-success mb-2">🎉 رسید شما به صورت خودکار تایید شد!</h4>
+            <p class="text-light small mb-3">
+                واریزی شما از طریق پیامک بانک شناسایی گردید و اشتراک شما با موفقیت تمدید شد.
+            </p>
+            <div class="bg-black bg-opacity-40 rounded-3 p-3 mb-4 text-start font-monospace small border border-success border-opacity-25">
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-secondary font-sans">کد پیگیری / ارجاع:</span>
+                    <span class="text-info fw-bold" id="successTrackingCode">-</span>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-secondary font-sans">مبلغ تایید شده:</span>
+                    <span class="text-success fw-bold" id="successAmount">- تومان</span>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span class="text-secondary font-sans">وضعیت سرویس:</span>
+                    <span class="text-success fw-bold">تمدید خودکار موفق و فعال ✅</span>
+                </div>
+            </div>
+            <button type="button" class="btn btn-success w-100 py-2 fw-bold rounded-pill shadow" onclick="window.location.reload();">
+                <i class="fas fa-rotate me-1"></i> مشاهده اطلاعات به‌روزرسانی‌شده اشتراک
+            </button>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 function copyText(text, label) {
@@ -362,17 +719,150 @@ document.querySelectorAll('.plan-card').forEach(card => {
     });
 });
 
+// تابع تولید و پخش صدای نوتیفیکیشن خوشایند (Web Audio API)
+function playNotificationSound() {
+    try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+        if (ctx.state === 'suspended') {
+            ctx.resume();
+        }
+        // آکورد پیروزی و نوتیف ۴ نغمه‌ای دلنشین: C5 -> E5 -> G5 -> C6
+        const notes = [
+            { f: 523.25, start: 0, dur: 0.22 },
+            { f: 659.25, start: 0.11, dur: 0.22 },
+            { f: 783.99, start: 0.22, dur: 0.30 },
+            { f: 1046.50, start: 0.33, dur: 0.55 }
+        ];
+        notes.forEach(n => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(n.f, ctx.currentTime + n.start);
+            gain.gain.setValueAtTime(0.0001, ctx.currentTime + n.start);
+            gain.gain.linearRampToValueAtTime(0.28, ctx.currentTime + n.start + 0.03);
+            gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + n.start + n.dur);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(ctx.currentTime + n.start);
+            osc.stop(ctx.currentTime + n.start + n.dur + 0.05);
+        });
+    } catch (e) {
+        console.warn("Audio playback error:", e);
+    }
+}
+
+// باز کردن چت پشتیبانی با پیام پیش‌فرض
+function openSupportChat(presetSubject) {
+    if (presetSubject) {
+        const msgEl = document.getElementById("supportMessageText");
+        if (msgEl) {
+            msgEl.value = presetSubject;
+        }
+    }
+    const modalEl = document.getElementById("supportChatModal");
+    if (modalEl) {
+        const modal = new bootstrap.Modal(modalEl);
+        modal.show();
+    }
+}
+
+// ثبت پیام آنلاین در پشتیبانی
+function submitSupportMessage(e) {
+    e.preventDefault();
+    const submitBtn = document.getElementById("supportSubmitBtn");
+    const feedback = document.getElementById("supportFeedback");
+    const message = document.getElementById("supportMessageText").value.trim();
+    const contact = document.getElementById("supportContact").value.trim();
+    const subject = document.getElementById("supportSubject").value;
+
+    if (!message) return;
+
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال ارسال...';
+    feedback.className = "mb-2 d-none";
+
+    fetch('/api/portal/{{ token }}/support-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: message, contact: contact, subject: subject })
+    })
+    .then(res => res.json())
+    .then(data => {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fas fa-paper-plane me-1"></i> ارسال پیام به پشتیبانی';
+        if (data.success) {
+            feedback.className = "alert alert-success py-2 small mb-2";
+            feedback.innerHTML = '<i class="fas fa-check-circle me-1"></i> ' + (data.message || 'پیام شما با موفقیت ثبت و ارسال شد.');
+            document.getElementById("supportMessageText").value = '';
+        } else {
+            feedback.className = "alert alert-danger py-2 small mb-2";
+            feedback.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i> ' + (data.error || 'خطا در ارسال پیام.');
+        }
+    })
+    .catch(err => {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fas fa-paper-plane me-1"></i> ارسال پیام به پشتیبانی';
+        feedback.className = "alert alert-danger py-2 small mb-2";
+        feedback.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i> خطا در برقراری ارتباط با سرور.';
+    });
+}
+
 // تایمر معکوس فاکتور و بررسی زنده وضعیت پرداخت
 {% if invoice and invoice.get('status') == 'pending' %}
 const expiresAt = new Date("{{ invoice['expires_at'] }}").getTime();
 const timerEl = document.getElementById("countdownTimer");
 const orderId = "{{ invoice['order_id'] }}";
+let isExpiredHandled = false;
+
+function showInvoiceExpired() {
+    if (isExpiredHandled) return;
+    isExpiredHandled = true;
+    if (typeof pollInterval !== 'undefined') clearInterval(pollInterval);
+
+    const invSection = document.getElementById("invoiceSection");
+    if (!invSection) return;
+
+    invSection.classList.remove("pulse", "border-warning");
+    invSection.classList.add("border-danger");
+    invSection.innerHTML = `
+        <div class="d-flex align-items-center gap-2 mb-2 text-danger">
+            <i class="fas fa-clock-rotate-left fs-3"></i>
+            <h5 class="fw-bold mb-0">مهلت پرداخت به پایان رسید (عدم تایید خودکار)</h5>
+        </div>
+        <p class="text-white small mb-3">
+            مهلت زمان واریز این فاکتور به پایان رسید و تایید خودکار صورت نگرفت. در صورتی که مبلغ را واریز کرده‌اید، نگران نباشید؛ لطفاً جهت تکمیل و ثبت تمدید با پشتیبانی تماس بگیرید یا در گفتگوی آنلاین پیام دهید:
+        </p>
+        <div class="d-flex flex-wrap gap-2 mb-3">
+            {% if support_phone %}
+            <a href="tel:{{ support_phone }}" class="btn btn-sm btn-outline-success rounded-pill px-3 py-2">
+                <i class="fas fa-phone-alt me-1"></i> تماس با پشتیبان: <span dir="ltr">{{ support_phone }}</span>
+            </a>
+            {% endif %}
+            {% if support_username %}
+            <a href="https://t.me/{{ support_username.lstrip('@') }}" target="_blank" class="btn btn-sm btn-outline-info rounded-pill px-3 py-2">
+                <i class="fab fa-telegram me-1"></i> تلگرام پشتیبان: @{{ support_username.lstrip('@') }}
+            </a>
+            {% endif %}
+            <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-2" onclick="openSupportChat('پیگیری واریز فاکتور منقضی شده شماره ' + orderId)">
+                <i class="fas fa-comments me-1"></i> گفتگوی آنلاین با پشتیبانی
+            </button>
+        </div>
+        <div class="pt-2 border-top border-secondary border-opacity-25 text-end">
+            <a href="{{ url_for('customer_portal', token=token) }}" class="btn btn-sm btn-secondary rounded-pill px-3">
+                <i class="fas fa-redo me-1"></i> صدور فاکتور جدید
+            </a>
+        </div>
+    `;
+}
 
 function updateTimer() {
     const now = new Date().getTime();
     const diff = expiresAt - now;
     if (diff <= 0) {
         if (timerEl) timerEl.innerText = "منقضی شد";
+        showInvoiceExpired();
         return;
     }
     const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -391,20 +881,41 @@ const pollInterval = setInterval(() => {
         .then(data => {
             if (data.status === 'paid') {
                 clearInterval(pollInterval);
+                playNotificationSound();
+
+                // بروزرسانی اطلاعات مودال تایید پرداخت
+                const codeEl = document.getElementById("successTrackingCode");
+                const amtEl = document.getElementById("successAmount");
+                if (codeEl) codeEl.innerText = data.tracking_code || data.order_id || 'تایید خودکار بانک';
+                if (amtEl && data.final_amount) {
+                    amtEl.innerText = Number(data.final_amount).toLocaleString('fa-IR') + ' تومان';
+                }
+
+                // باز کردن مودال تایید خودکار
+                const successModalEl = document.getElementById("paymentSuccessModal");
+                if (successModalEl) {
+                    const modal = new bootstrap.Modal(successModalEl);
+                    modal.show();
+                }
+
+                // بروزرسانی بنر فاکتور در صفحه
                 const invSection = document.getElementById("invoiceSection");
                 if (invSection) {
                     invSection.className = "glass-card p-4 mb-4 border-success border-2";
                     invSection.innerHTML = `
                         <div class="text-center py-4">
                             <i class="fas fa-circle-check text-success fs-1 mb-3"></i>
-                            <h4 class="text-success fw-bold">پرداخت شما با موفقیت تایید شد!</h4>
-                            <p class="text-secondary">اشتراک شما با موفقیت تمدید گردید. صفحه در حال بارگذاری مجدد است...</p>
+                            <h4 class="text-success fw-bold">رسید شما به صورت خودکار تایید و پرداخت شد!</h4>
+                            <p class="text-secondary">اشتراک شما با موفقیت تمدید گردید. اطلاعات در حال بروزرسانی است...</p>
                         </div>
                     `;
                 }
+
                 setTimeout(() => {
                     window.location.reload();
-                }, 2500);
+                }, 5000);
+            } else if (data.is_expired) {
+                showInvoiceExpired();
             }
         })
         .catch(err => console.log(err));
