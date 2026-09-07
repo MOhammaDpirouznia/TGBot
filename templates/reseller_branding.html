@@ -71,6 +71,35 @@
                                 </div>
                                 <div class="form-text small">دکمه پیام به پشتیبانی در تلگرام در صفحه پورتال به این آیدی هدایت خواهد شد.</div>
                             </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small">
+                                    <i class="fas fa-layer-group me-1 text-primary"></i> قالب و طرح‌بندی ظاهری پورتال مشتری:
+                                </label>
+                                <select class="form-select" name="portal_layout">
+                                    <option value="" {% if not reseller.get('portal_layout') %}selected{% endif %}>⚙️ ارث‌بری از تنظیمات پیش‌فرض سامانه</option>
+                                    <option value="classic" {% if reseller.get('portal_layout') == 'classic' %}selected{% endif %}>📜 کلاسیک آبشاری (تک‌ستونه روان)</option>
+                                    <option value="split_dashboard" {% if reseller.get('portal_layout') == 'split_dashboard' %}selected{% endif %}>📊 داشبورد دو ستونه مدرن (سایدبار اطلاعات + تمدید)</option>
+                                    <option value="minimal_tabbed" {% if reseller.get('portal_layout') == 'minimal_tabbed' %}selected{% endif %}>📑 تب‌بندی مینیمال و متمرکز (۴ تب مرتب بدون اسکرول)</option>
+                                    <option value="bento_grid" {% if reseller.get('portal_layout') == 'bento_grid' %}selected{% endif %}>🍱 بنتو گرید ماژولار (طراحی تایل‌های مدرن 2026)</option>
+                                </select>
+                                <div class="form-text small">چیدمان صفحات استعلام و تمدید اشتراک برای مشتریان شما.</div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small">
+                                    <i class="fas fa-cubes me-1 text-info"></i> استایل دکمه‌ها و کارت‌های پلن‌ها:
+                                </label>
+                                <select class="form-select" name="portal_plan_style">
+                                    <option value="" {% if not reseller.get('portal_plan_style') %}selected{% endif %}>⚙️ ارث‌بری از تنظیمات پیش‌فرض سامانه</option>
+                                    <option value="glass_classic" {% if reseller.get('portal_plan_style') == 'glass_classic' %}selected{% endif %}>💎 شیشه‌ای استاندارد (نرم و شفاف)</option>
+                                    <option value="tactile_3d" {% if reseller.get('portal_plan_style') == 'tactile_3d' %}selected{% endif %}>🧊 سه‌بعدی لمسی (3D کلیکی با فشرده شدن دکمه)</option>
+                                    <option value="cyber_neon_outline" {% if reseller.get('portal_plan_style') == 'cyber_neon_outline' %}selected{% endif %}>⚡ سایبری و مینیمال خطی (کادر تکنو با گوشه‌های مهندسی)</option>
+                                    <option value="floating_elevation" {% if reseller.get('portal_plan_style') == 'floating_elevation' %}selected{% endif %}>☁️ کارت معلق پرمیوم (شناور با سایه عمیق لوکس)</option>
+                                    <option value="compact_row" {% if reseller.get('portal_plan_style') == 'compact_row' %}selected{% endif %}>📏 فشرده نواری مدرن (کم‌جا و خطی)</option>
+                                </select>
+                                <div class="form-text small">شکل و فیدبک کلیک دکمه‌های بسته‌ها در پورتال مشتریان شما.</div>
+                            </div>
                         </div>
                     </div>
 

@@ -143,6 +143,18 @@
                 max-width: 980px;
             }
         }
+        @media (min-width: 992px) {
+            body.portal-layout-split_dashboard .portal-container,
+            body.portal-layout-bento_grid .portal-container {
+                max-width: 1120px !important;
+            }
+        }
+        @media (min-width: 1200px) {
+            body.portal-layout-split_dashboard .portal-container,
+            body.portal-layout-bento_grid .portal-container {
+                max-width: 1200px !important;
+            }
+        }
 
         /* ─── کارت مات شیشه‌ای پورتال (Frosted Glass Card) ─── */
         .glass-card {
@@ -231,21 +243,286 @@
         .progress-glow {
             box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
         }
+        /* ─── استایل پایه دکمه‌های پلن (Base Plan Card) ─── */
         .plan-card {
             background: rgba(255, 255, 255, 0.05);
             border: 2px solid transparent;
             border-radius: 16px;
-            transition: all 0.3s ease;
+            transition: all 0.25s ease;
             cursor: pointer;
+            position: relative;
         }
-        .plan-card:hover {
-            border-color: #3b82f6;
-            background: rgba(59, 130, 246, 0.1);
+
+        /* ۱. استایل شیشه‌ای استاندارد (Glass Classic) */
+        .plan-style-glass_classic .plan-card {
+            background: var(--card-bg, rgba(255, 255, 255, 0.05));
+            border: 2px solid var(--card-border, rgba(255, 255, 255, 0.12));
+            border-radius: 18px;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        .plan-style-glass_classic .plan-card:hover {
+            border-color: var(--primary);
+            background: rgba(255, 255, 255, 0.1);
             transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
         }
-        .plan-card.selected {
-            border-color: #10b981;
-            background: rgba(16, 185, 129, 0.15);
+        .plan-style-glass_classic .plan-card.selected {
+            border-color: #10b981 !important;
+            background: rgba(16, 185, 129, 0.16) !important;
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.28);
+        }
+        [data-bs-theme="light"] .plan-style-glass_classic .plan-card {
+            background: rgba(255, 255, 255, 0.7);
+            border-color: rgba(0, 0, 0, 0.08);
+        }
+        [data-bs-theme="light"] .plan-style-glass_classic .plan-card:hover {
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 10px 25px rgba(37, 99, 235, 0.12);
+        }
+        [data-bs-theme="light"] .plan-style-glass_classic .plan-card.selected {
+            border-color: #10b981 !important;
+            background: rgba(16, 185, 129, 0.12) !important;
+        }
+
+        /* ۲. استایل سه‌بعدی لمسی (3D Tactile Push-Button) */
+        .plan-style-tactile_3d .plan-card {
+            background: var(--card-bg, rgba(30, 41, 59, 0.85));
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-bottom: 5px solid rgba(0, 0, 0, 0.45);
+            border-radius: 18px;
+            box-shadow: 0 6px 0 rgba(0, 0, 0, 0.35), 0 10px 20px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            transition: all 0.15s cubic-bezier(0.2, 0.8, 0.4, 1);
+            position: relative;
+            top: 0;
+        }
+        .plan-style-tactile_3d .plan-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 0 rgba(0, 0, 0, 0.35), 0 14px 25px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+        .plan-style-tactile_3d .plan-card:active {
+            top: 4px;
+            border-bottom-width: 2px !important;
+            box-shadow: 0 2px 0 rgba(0, 0, 0, 0.4), 0 4px 10px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+        .plan-style-tactile_3d .plan-card.selected {
+            border-color: #10b981 !important;
+            border-bottom: 5px solid #059669 !important;
+            background: rgba(16, 185, 129, 0.15) !important;
+            box-shadow: 0 6px 0 #047857, 0 10px 25px rgba(16, 185, 129, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+        }
+        .plan-style-tactile_3d .plan-card.selected:active {
+            top: 4px;
+            border-bottom-width: 2px !important;
+            box-shadow: 0 2px 0 #047857, 0 4px 10px rgba(16, 185, 129, 0.3) !important;
+        }
+        [data-bs-theme="light"] .plan-style-tactile_3d .plan-card {
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-bottom: 5px solid rgba(148, 163, 184, 0.65);
+            box-shadow: 0 6px 0 rgba(148, 163, 184, 0.5), 0 10px 20px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+        }
+        [data-bs-theme="light"] .plan-style-tactile_3d .plan-card:hover {
+            box-shadow: 0 8px 0 rgba(148, 163, 184, 0.6), 0 14px 25px rgba(0, 0, 0, 0.09);
+        }
+        [data-bs-theme="light"] .plan-style-tactile_3d .plan-card.selected {
+            border-color: #10b981 !important;
+            border-bottom: 5px solid #059669 !important;
+            background: rgba(16, 185, 129, 0.12) !important;
+            box-shadow: 0 6px 0 #047857, 0 10px 20px rgba(16, 185, 129, 0.25) !important;
+        }
+
+        /* ۳. استایل سایبری و مینیمال خطی (Cyber Neon Outline) */
+        .plan-style-cyber_neon_outline .plan-card {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1.5px solid rgba(255, 255, 255, 0.14);
+            border-radius: 12px;
+            position: relative;
+            transition: all 0.25s ease;
+        }
+        .plan-style-cyber_neon_outline .plan-card::before {
+            content: "";
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 6px;
+            height: 6px;
+            border-top: 2px solid rgba(255, 255, 255, 0.35);
+            border-right: 2px solid rgba(255, 255, 255, 0.35);
+            transition: all 0.25s ease;
+        }
+        .plan-style-cyber_neon_outline .plan-card::after {
+            content: "";
+            position: absolute;
+            bottom: 4px;
+            left: 4px;
+            width: 6px;
+            height: 6px;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.35);
+            border-left: 2px solid rgba(255, 255, 255, 0.35);
+            transition: all 0.25s ease;
+        }
+        .plan-style-cyber_neon_outline .plan-card:hover {
+            border-color: var(--primary);
+            background: rgba(255, 255, 255, 0.04);
+            box-shadow: 0 0 16px var(--primary);
+        }
+        .plan-style-cyber_neon_outline .plan-card:hover::before,
+        .plan-style-cyber_neon_outline .plan-card:hover::after {
+            border-color: var(--primary);
+        }
+        .plan-style-cyber_neon_outline .plan-card.selected {
+            border-color: #10b981 !important;
+            background: rgba(16, 185, 129, 0.1) !important;
+            box-shadow: 0 0 22px rgba(16, 185, 129, 0.45) !important;
+        }
+        .plan-style-cyber_neon_outline .plan-card.selected::before,
+        .plan-style-cyber_neon_outline .plan-card.selected::after {
+            border-color: #10b981 !important;
+            width: 10px;
+            height: 10px;
+        }
+        [data-bs-theme="light"] .plan-style-cyber_neon_outline .plan-card {
+            background: #ffffff;
+            border: 1.5px solid rgba(0, 0, 0, 0.12);
+        }
+
+        /* ۴. استایل کارت معلق پرمیوم (Floating Elevation) */
+        .plan-style-floating_elevation .plan-card {
+            background: var(--card-bg, rgba(255, 255, 255, 0.06));
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 20px;
+            box-shadow: 0 12px 30px -6px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            overflow: hidden;
+        }
+        .plan-style-floating_elevation .plan-card:hover {
+            transform: translateY(-6px);
+            box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.45);
+            border-color: rgba(255, 255, 255, 0.28);
+        }
+        .plan-style-floating_elevation .plan-card.selected {
+            border-color: #10b981 !important;
+            transform: translateY(-4px);
+            box-shadow: 0 18px 36px -8px rgba(16, 185, 129, 0.35) !important;
+            background: rgba(16, 185, 129, 0.14) !important;
+        }
+        [data-bs-theme="light"] .plan-style-floating_elevation .plan-card {
+            background: #ffffff;
+            border-color: rgba(0, 0, 0, 0.06);
+            box-shadow: 0 10px 25px -4px rgba(0, 0, 0, 0.07);
+        }
+        [data-bs-theme="light"] .plan-style-floating_elevation .plan-card:hover {
+            box-shadow: 0 20px 35px -8px rgba(0, 0, 0, 0.12);
+        }
+
+        /* ۵. استایل فشرده نواری مدرن (Compact Row) */
+        .plan-style-compact_row .plan-card {
+            background: var(--card-bg, rgba(255, 255, 255, 0.04));
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 10px 14px !important;
+            transition: all 0.2s ease;
+        }
+        .plan-style-compact_row .col-12.col-md-6 {
+            width: 100% !important;
+        }
+        .plan-style-compact_row .plan-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--primary);
+            transform: translateX(-3px);
+        }
+        .plan-style-compact_row .plan-card.selected {
+            border-color: #10b981 !important;
+            border-right: 4px solid #10b981 !important;
+            background: rgba(16, 185, 129, 0.12) !important;
+        }
+        [data-bs-theme="light"] .plan-style-compact_row .plan-card {
+            background: #ffffff;
+            border-color: rgba(0, 0, 0, 0.08);
+        }
+        [data-bs-theme="light"] .plan-style-compact_row .plan-card:hover {
+            background: #f8fafc;
+            border-color: var(--primary);
+        }
+
+        /* ─── استایل‌های اختصاصی طرح‌بندی‌ها (Layout Specifics) ─── */
+        /* الف) بنتو گرید ماژولار (Bento Grid) */
+        .bento-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(var(--glass-blur, 18px)) saturate(180%);
+            -webkit-backdrop-filter: blur(var(--glass-blur, 18px)) saturate(180%);
+            border: 1px solid var(--card-border);
+            border-radius: 22px;
+            padding: 1.4rem;
+            box-shadow: var(--palette-card-shadow, 0 10px 30px rgba(0, 0, 0, 0.3));
+            height: 100%;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .bento-card:hover {
+            box-shadow: 0 14px 35px rgba(0, 0, 0, 0.35);
+        }
+
+        /* ب) تب‌بندی مینیمال و متمرکز (Minimal Tabbed) */
+        .portal-tab-nav {
+            display: flex;
+            background: var(--card-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--card-border);
+            border-radius: 18px;
+            padding: 6px;
+            gap: 6px;
+            margin-bottom: 1.5rem;
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+        .portal-tab-nav::-webkit-scrollbar {
+            display: none;
+        }
+        .portal-tab-btn {
+            flex: 1;
+            min-width: 110px;
+            padding: 10px 14px;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.86rem;
+            border-radius: 14px;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            white-space: nowrap;
+            text-align: center;
+        }
+        .portal-tab-btn:hover {
+            color: var(--text-main);
+            background: rgba(255, 255, 255, 0.06);
+        }
+        .portal-tab-btn.active {
+            background: var(--primary);
+            color: #ffffff !important;
+            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.35);
+        }
+        .portal-tab-pane {
+            display: none;
+            animation: fadeInTab 0.3s ease;
+        }
+        .portal-tab-pane.active {
+            display: block;
+        }
+        @keyframes fadeInTab {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ج) سایدبار چسبان داشبورد دو ستونه (Split Dashboard Sticky) */
+        @media (min-width: 992px) {
+            .portal-sticky-sidebar {
+                position: sticky;
+                top: 24px;
+            }
         }
         .copy-btn:active {
             transform: scale(0.95);
@@ -648,7 +925,7 @@
         }
     </style>
 </head>
-<body class="py-4">
+<body class="py-4 portal-layout-{{ portal_layout or 'classic' }}">
     <!-- کانتینر هاله‌های نوری پس‌زمینه (Aura Mesh Background) -->
     <div class="aura-mesh-container" aria-hidden="true">
         <div class="aura-blob aura-blob-1"></div>
@@ -657,26 +934,18 @@
     </div>
 
     <div class="container portal-container">
-        <!-- نوار بالایی هدر: لوگوی برند، وضعیت آنلاین و دکمه تغییر تم روشن و تیره -->
-        <div class="d-flex justify-content-between align-items-center mb-4 px-1">
-            <div class="d-flex align-items-center gap-2">
-                <div class="px-3 py-1 rounded-pill d-inline-flex align-items-center gap-2 shadow-sm" style="background: var(--palette-chip-bg, rgba(255,255,255,0.7)); border: 1px solid var(--palette-chip-border, rgba(255,255,255,0.2)); font-size: 0.82rem; font-weight: 600;">
-                    <span class="chat-status-dot"></span>
-                    <span>{{ brand_title }}</span>
-                </div>
-            </div>
-            <div class="d-flex align-items-center gap-2">
-                {% if support_username %}
-                <a href="https://t.me/{{ support_username }}" target="_blank" class="btn btn-sm btn-outline-light rounded-pill px-3 py-1 shadow-sm d-inline-flex align-items-center gap-1" style="font-size: 0.8rem;">
-                    <i class="fab fa-telegram text-info"></i>
-                    <span>پشتیبانی</span>
-                </a>
-                {% endif %}
-                <button type="button" class="btn btn-sm btn-outline-light rounded-pill px-3 py-1 shadow-sm d-inline-flex align-items-center gap-2" id="portalThemeToggleBtn" onclick="togglePortalTheme()" aria-label="تغییر حالت تیره و روشن">
-                    <i id="portalThemeIcon" class="fas fa-moon text-info"></i>
-                    <span id="portalThemeLabel" class="small fw-semibold">حالت تیره</span>
-                </button>
-            </div>
+        <!-- نوار بالایی هدر: دکمه‌های تم و پشتیبانی (عنوان سربرگ سمت راست حذف شد) -->
+        <div class="d-flex justify-content-end align-items-center mb-4 px-1 gap-2">
+            {% if support_username %}
+            <a href="https://t.me/{{ support_username.lstrip('@') }}" target="_blank" class="btn btn-sm btn-outline-light rounded-pill px-3 py-1 shadow-sm d-inline-flex align-items-center gap-1" style="font-size: 0.8rem;">
+                <i class="fab fa-telegram text-info"></i>
+                <span>پشتیبانی</span>
+            </a>
+            {% endif %}
+            <button type="button" class="btn btn-sm btn-outline-light rounded-pill px-3 py-1 shadow-sm d-inline-flex align-items-center gap-2" id="portalThemeToggleBtn" onclick="togglePortalTheme()" aria-label="تغییر حالت تیره و روشن">
+                <i id="portalThemeIcon" class="fas fa-moon text-info"></i>
+                <span id="portalThemeLabel" class="small fw-semibold">حالت تیره</span>
+            </button>
         </div>
 
         <!-- هدر برندینگ مرکزی -->
@@ -692,7 +961,13 @@
             <p class="text-secondary small">{{ portal_subtitle }}</p>
         </div>
 
-    <!-- ویجت اختصاصی وضعیت سرورها -->
+    {% set actual_sub_url = sub_url or sub_link %}
+
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <!-- ماکروهای ساختاری پورتال مشتری (Reusable Portal Structural Macros) -->
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+    {% macro macro_server_status() %}
     {% if server_status %}
     <div class="glass-card p-3 mb-4 text-center server-status-card shadow-sm">
         <div class="d-inline-flex align-items-center justify-content-center mb-2">
@@ -733,20 +1008,9 @@
         {% endif %}
     </div>
     {% endif %}
+    {% endmacro %}
 
-    <!-- فلش پیام‌ها -->
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            {% for category, msg in messages %}
-                <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show rounded-3" role="alert">
-                    {{ msg }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            {% endfor %}
-        {% endif %}
-    {% endwith %}
-
-    <!-- کارت وضعیت اشتراک -->
+    {% macro macro_sub_card() %}
     <div class="glass-card p-4 mb-4">
         <!-- سربرگ نام مشتری و دکمه‌های فشرده دسترسی سریع -->
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-3 border-bottom border-secondary border-opacity-25">
@@ -786,7 +1050,7 @@
                 </button>
                 {% endif %}
 
-                {% if sub_url %}
+                {% if actual_sub_url %}
                 <button type="button" class="btn btn-sm btn-outline-light py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#qrCodeModal" title="مشاهده بارکد QR">
                     <i class="fas fa-qrcode me-1 text-info"></i>بارکد QR
                 </button>
@@ -852,7 +1116,6 @@
         </div>
 
         <!-- دکمه‌های اتصال سریع به نرم‌افزارها -->
-        {% set actual_sub_url = sub_url or sub_link %}
         {% if actual_sub_url %}
         <div class="mt-3 pt-3 border-top border-secondary border-opacity-25">
             <div class="d-flex flex-wrap gap-1 justify-content-center">
@@ -863,33 +1126,9 @@
         </div>
         {% endif %}
     </div>
+    {% endmacro %}
 
-    <!-- مودال نمایش بارکد QR -->
-    {% if actual_sub_url %}
-    <div class="modal fade" id="qrCodeModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-sm">
-            <div class="modal-content glass-card border-0 text-white p-3">
-                <div class="modal-header border-0 pb-0">
-                    <h6 class="modal-title fw-bold"><i class="fas fa-qrcode text-info me-1"></i> بارکد اتصال سریع</h6>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body text-center pt-3">
-                    <p class="small text-secondary mb-3">با دوربین نرم‌افزار فیلترشکن خود اسکن نمایید:</p>
-                    <div class="p-2 bg-white rounded-3 d-inline-block shadow mb-2">
-                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={{ actual_sub_url|urlencode }}" alt="QR Code" class="img-fluid" style="width: 200px; height: 200px;">
-                    </div>
-                    <div class="small text-muted font-monospace mt-1 text-truncate" style="max-width: 220px; margin: 0 auto;">
-                        {{ sub.get('account_name') }}
-                    </div>
-                </div>
-                <div class="modal-footer border-0 pt-0 justify-content-center">
-                    <button type="button" class="btn btn-sm btn-secondary rounded-pill px-4" data-bs-dismiss="modal">بستن</button>
-                </div>
-            </div>
-        </div>
-    </div>
-    {% endif %}
-
+    {% macro macro_invoice_card() %}
     <!-- بخش فاکتور پرداخت هوشمند (در صورت وجود فاکتور معلق) -->
     {% if invoice and invoice.get('status') == 'pending' %}
     <div class="glass-card p-4 mb-4 border-warning border-2 pulse" id="invoiceSection">
@@ -942,7 +1181,9 @@
         </div>
     </div>
     {% endif %}
+    {% endmacro %}
 
+    {% macro macro_renewal_card() %}
     <!-- بخش انتخاب پلن تمدید -->
     {% if portal_enable_renewal %}
     <div class="glass-card p-4 mb-4">
@@ -950,30 +1191,32 @@
         <p class="text-secondary small">یک بسته را انتخاب کنید تا فاکتور واریز اختصاصی صادر شود:</p>
 
         <form action="{{ url_for('customer_create_invoice', token=token) }}" method="POST">
-            <div class="row g-3 mb-3">
-                {% for p in plans %}
-                <div class="col-12 col-md-6 d-flex">
-                    <label class="w-100 d-flex flex-column mb-0">
-                        <input type="radio" name="plan_id" value="{{ p['id'] }}" data-price="{{ p['price'] }}" class="d-none plan-radio" {% if loop.first %}checked{% endif %}>
-                        <div class="plan-card p-3 d-flex justify-content-between align-items-center w-100 h-100 {% if loop.first %}selected{% endif %}">
-                            <div class="d-flex align-items-center gap-3">
-                                {% set icon_info = get_plan_icon(p, p['id']) %}
-                                <div class="avatar-sm rounded-circle d-flex align-items-center justify-content-center shadow-sm flex-shrink-0 {{ icon_info.bg_class }}" style="width: 44px; height: 44px; font-size: 1.25rem; background-color: {{ icon_info.bg_color }}; color: {{ icon_info.color_hex }}; border: 1px solid {{ icon_info.border_color }};">
-                                    <i class="{{ icon_info.icon }}"></i>
+            <div class="portal-plans-wrapper plan-style-{{ portal_plan_style or 'glass_classic' }}">
+                <div class="row g-3 mb-3">
+                    {% for p in plans %}
+                    <div class="col-12 col-md-6 d-flex">
+                        <label class="w-100 d-flex flex-column mb-0">
+                            <input type="radio" name="plan_id" value="{{ p['id'] }}" data-price="{{ p['price'] }}" class="d-none plan-radio" {% if loop.first %}checked{% endif %}>
+                            <div class="plan-card p-3 d-flex justify-content-between align-items-center w-100 h-100 {% if loop.first %}selected{% endif %}">
+                                <div class="d-flex align-items-center gap-3">
+                                    {% set icon_info = get_plan_icon(p, p['id']) %}
+                                    <div class="avatar-sm rounded-circle d-flex align-items-center justify-content-center shadow-sm flex-shrink-0 {{ icon_info.bg_class }}" style="width: 44px; height: 44px; font-size: 1.25rem; background-color: {{ icon_info.bg_color }}; color: {{ icon_info.color_hex }}; border: 1px solid {{ icon_info.border_color }};">
+                                        <i class="{{ icon_info.icon }}"></i>
+                                    </div>
+                                    <div>
+                                        <strong class="text-white d-block">{{ p['name'] }}</strong>
+                                        <small class="text-secondary">{{ p['data_limit'] }} گیگابایت • {{ p['duration'] }} روزه</small>
+                                    </div>
                                 </div>
-                                <div>
-                                    <strong class="text-white d-block">{{ p['name'] }}</strong>
-                                    <small class="text-secondary">{{ p['data_limit'] }} گیگابایت • {{ p['duration'] }} روزه</small>
+                                <div class="text-end flex-shrink-0">
+                                    <strong class="text-success fs-5 font-monospace">{{ "{:,}".format(p['price']) }}</strong>
+                                    <small class="text-secondary d-block">تومان</small>
                                 </div>
                             </div>
-                            <div class="text-end flex-shrink-0">
-                                <strong class="text-success fs-5 font-monospace">{{ "{:,}".format(p['price']) }}</strong>
-                                <small class="text-secondary d-block">تومان</small>
-                            </div>
-                        </div>
-                    </label>
+                        </label>
+                    </div>
+                    {% endfor %}
                 </div>
-                {% endfor %}
             </div>
 
             <!-- کادر ورود و اعمال کد تخفیف اختصاصی -->
@@ -1028,7 +1271,9 @@
         </form>
     </div>
     {% endif %}
+    {% endmacro %}
 
+    {% macro macro_support_card() %}
     <!-- بخش پشتیبانی و تماس در پاورقی -->
     <div class="glass-card p-3 mb-4 text-center">
         <div class="text-secondary small mb-2"><i class="fas fa-headset text-info me-1"></i> نیاز به پشتیبانی یا راهنمایی دارید؟</div>
@@ -1040,7 +1285,7 @@
             {% endif %}
             {% if support_username %}
             <a href="https://t.me/{{ support_username.lstrip('@') }}" target="_blank" class="btn btn-sm btn-outline-info rounded-pill px-3 py-1">
-                <i class="fab fa-telegram me-1"></i> تلگرام: @{{ support_username.lstrip('@') }}
+                <i class="fab fa-telegram me-1"></i> تلگرام: <span dir="ltr">@{{ support_username.lstrip('@') }}</span>
             </a>
             {% endif %}
             {% if not support_phone and not support_username %}
@@ -1048,6 +1293,297 @@
             {% endif %}
         </div>
     </div>
+    {% endmacro %}
+
+    {% macro macro_inline_history() %}
+    <div class="glass-card p-4 mb-4">
+        <h6 class="fw-bold mb-3 text-white"><i class="fas fa-history text-info me-2"></i>سوابق دوره‌ها و تمدیدهای گذشته</h6>
+        {% if sub_history %}
+        <div class="table-responsive mb-4">
+            <table class="table table-sm table-dark table-hover mb-0 align-middle small" style="background: transparent;">
+                <thead>
+                    <tr class="text-secondary border-bottom border-secondary border-opacity-25">
+                        <th>دوره</th>
+                        <th>بسته</th>
+                        <th>حجم</th>
+                        <th>مدت</th>
+                        <th>وضعیت</th>
+                        <th>تاریخ ثبت</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for h in sub_history %}
+                    <tr class="border-bottom border-secondary border-opacity-10">
+                        <td class="font-monospace">دوره {{ h.get('period_offset') or loop.index }}</td>
+                        <td class="fw-bold">{{ h.get('plan_name') or 'بسته اشتراک' }}</td>
+                        <td>{{ h.get('data_limit') or '-' }} گیگ</td>
+                        <td>{{ h.get('duration') or '-' }} روز</td>
+                        <td>
+                            {% if h.get('status') == 'active' %}
+                            <span class="badge bg-success small">جاری</span>
+                            {% elif h.get('status') == 'completed' %}
+                            <span class="badge bg-secondary small">پایان یافته</span>
+                            {% else %}
+                            <span class="badge bg-info small">{{ h.get('status') }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="small text-secondary font-monospace">{{ (h.get('renewed_at') or h.get('created_at') or '')[:10] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-secondary small py-3">سابقه دوره‌ای برای این اشتراک ثبت نشده است.</div>
+        {% endif %}
+
+        <h6 class="fw-bold mb-3 text-white pt-3 border-top border-secondary border-opacity-25"><i class="fas fa-receipt text-success me-2"></i>تراکنش‌ها و پرداخت‌ها</h6>
+        {% if tx_history %}
+        <div class="table-responsive">
+            <table class="table table-sm table-dark table-hover mb-0 align-middle small" style="background: transparent;">
+                <thead>
+                    <tr class="text-secondary border-bottom border-secondary border-opacity-25">
+                        <th>شناسه</th>
+                        <th>مبلغ (تومان)</th>
+                        <th>درگاه</th>
+                        <th>وضعیت</th>
+                        <th>تاریخ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tx in tx_history %}
+                    <tr class="border-bottom border-secondary border-opacity-10">
+                        <td class="font-monospace">{{ tx.get('order_id') or tx.get('id') }}</td>
+                        <td class="font-monospace text-success fw-bold">{{ "{:,}".format(tx.get('amount') or 0) }}</td>
+                        <td>{{ tx.get('gateway') or 'کارت به کارت' }}</td>
+                        <td>
+                            {% if tx.get('status') in ('approved', 'completed', 'paid') %}
+                            <span class="badge bg-success small">موفق</span>
+                            {% elif tx.get('status') == 'pending' %}
+                            <span class="badge bg-warning text-dark small">معلق</span>
+                            {% else %}
+                            <span class="badge bg-danger small">ناموفق</span>
+                            {% endif %}
+                        </td>
+                        <td class="small text-secondary font-monospace">{{ (tx.get('created_at') or '')[:16] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-secondary small py-3">تراکنشی برای این اشتراک ثبت نشده است.</div>
+        {% endif %}
+    </div>
+    {% endmacro %}
+
+    <!-- فلش پیام‌ها -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, msg in messages %}
+                <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show rounded-3" role="alert">
+                    {{ msg }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <!-- رندر طرح‌بندی‌های اختصاصی پورتال مشتری بر اساس تنظیمات (Portal Layouts) -->
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+    {% if portal_layout == 'split_dashboard' %}
+        <!-- ═══════════ قالب ۲: داشبورد دو ستونه مدرن (Split Dashboard) ═══════════ -->
+        <div class="row g-4">
+            <!-- ستون سایدبار مشخصات اشتراک، وضعیت سرور و پشتیبانی -->
+            <div class="col-lg-5">
+                <div class="portal-sticky-sidebar d-flex flex-column gap-3">
+                    {{ macro_sub_card() }}
+                    {{ macro_server_status() }}
+                    {{ macro_support_card() }}
+                </div>
+            </div>
+            <!-- ستون عملیات: فاکتور تمدید، انتخاب پلن‌ها و پرداخت -->
+            <div class="col-lg-7">
+                {{ macro_invoice_card() }}
+                {{ macro_renewal_card() }}
+            </div>
+        </div>
+
+    {% elif portal_layout == 'minimal_tabbed' %}
+        <!-- ═══════════ قالب ۳: تب‌بندی مینیمال و متمرکز (Minimal Tabbed) ═══════════ -->
+        <div class="portal-tabbed-wrapper">
+            <div class="portal-tab-nav mb-4">
+                <button type="button" class="portal-tab-btn {% if not (invoice and invoice.get('status') == 'pending') %}active{% endif %}" onclick="switchPortalTab('tabSubStatus', this)">
+                    <i class="fas fa-gauge-high me-1"></i> وضعیت اشتراک
+                </button>
+                <button type="button" class="portal-tab-btn {% if invoice and invoice.get('status') == 'pending' %}active{% endif %}" onclick="switchPortalTab('tabRenewPlans', this)">
+                    <i class="fas fa-cart-shopping me-1"></i> تمدید و خرید بسته
+                    {% if invoice and invoice.get('status') == 'pending' %}
+                    <span class="badge bg-warning text-dark ms-1">فاکتور فعال</span>
+                    {% endif %}
+                </button>
+                <button type="button" class="portal-tab-btn" onclick="switchPortalTab('tabHistory', this)">
+                    <i class="fas fa-clock-rotate-left me-1"></i> سوابق و تراکنش‌ها
+                </button>
+                <button type="button" class="portal-tab-btn" onclick="switchPortalTab('tabSupport', this)">
+                    <i class="fas fa-headset me-1"></i> پشتیبانی و سرورها
+                </button>
+            </div>
+
+            <div id="tabSubStatus" class="portal-tab-pane {% if not (invoice and invoice.get('status') == 'pending') %}active{% endif %}">
+                {{ macro_sub_card() }}
+            </div>
+
+            <div id="tabRenewPlans" class="portal-tab-pane {% if invoice and invoice.get('status') == 'pending' %}active{% endif %}">
+                {{ macro_invoice_card() }}
+                {{ macro_renewal_card() }}
+            </div>
+
+            <div id="tabHistory" class="portal-tab-pane">
+                {{ macro_inline_history() }}
+            </div>
+
+            <div id="tabSupport" class="portal-tab-pane">
+                {{ macro_server_status() }}
+                {{ macro_support_card() }}
+            </div>
+        </div>
+
+    {% elif portal_layout == 'bento_grid' %}
+        <!-- ═══════════ قالب ۴: بنتو گرید ماژولار (Bento Grid) ═══════════ -->
+        <div class="bento-grid-wrapper">
+            {{ macro_invoice_card() }}
+
+            <!-- ردیف ۱ بنتو: تایل مصرف حجم + تایل شمارنده روزها -->
+            <div class="row g-3 mb-3">
+                <div class="col-md-7">
+                    <div class="bento-card">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div class="d-flex align-items-center gap-2">
+                                <h5 class="fw-bold mb-0 text-white font-monospace">{{ sub.get('account_name') or 'کاربر گرامی' }}</h5>
+                                {% if sub.get('status') == 'active' %}
+                                    <span class="badge bg-success-subtle text-success border border-success px-2 py-1 rounded-pill small">فعال</span>
+                                {% elif sub.get('status') == 'expired' %}
+                                    <span class="badge bg-danger-subtle text-danger border border-danger px-2 py-1 rounded-pill small">منقضی</span>
+                                {% endif %}
+                            </div>
+                            <span class="text-secondary small"><i class="fas fa-chart-pie me-1 text-info"></i>مصرف دوره</span>
+                        </div>
+
+                        {% set used_gb = sub.get('data_used', 0) | float %}
+                        {% set total_gb = sub.get('data_limit', 0) | float %}
+                        {% set percent = (used_gb / total_gb * 100) | round(1) if total_gb > 0 else 0 %}
+                        {% set remain_gb = (total_gb - used_gb) | round(2) if total_gb >= used_gb else 0 %}
+
+                        <div class="d-flex justify-content-between text-secondary small mb-2">
+                            <span>{{ "%.2f"|format(used_gb) }} گیگابایت مصرف‌شده</span>
+                            <strong class="text-white">{{ percent }}٪</strong>
+                        </div>
+                        <div class="progress mb-3" style="height: 12px; background: rgba(255,255,255,0.1); border-radius: 12px;">
+                            <div class="progress-bar {% if percent > 90 %}bg-danger{% elif percent > 75 %}bg-warning{% else %}bg-primary{% endif %} progress-glow" style="width: {{ [percent, 100]|min }}%; border-radius: 12px;"></div>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center pt-2 border-top border-secondary border-opacity-25">
+                            <span class="text-secondary small">کل سقف حجم بسته:</span>
+                            <strong class="text-info fs-5">{{ total_gb }} <small class="fs-6">GB</small></strong>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-5">
+                    <div class="bento-card text-center d-flex flex-column justify-content-between">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="text-secondary small"><i class="fas fa-hourglass-half me-1 text-warning"></i>مهلت انقضا</span>
+                            {% if server_status and server_status.state == 'operational' %}
+                            <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1 small">🟢 سرور متصل</span>
+                            {% else %}
+                            <span class="badge bg-secondary px-2 py-1 small">وضعیت سرور</span>
+                            {% endif %}
+                        </div>
+                        <div class="my-3">
+                            <span class="fs-1 fw-bold text-warning font-monospace">{{ days_left }}</span>
+                            <span class="text-white d-block small">روز باقی‌مانده</span>
+                        </div>
+                        <div class="p-2 rounded bg-black bg-opacity-25 text-center">
+                            <span class="text-secondary small">حجم مانده: </span>
+                            <strong class="text-success font-monospace">{{ "%.2f"|format(remain_gb) }} GB</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ردیف ۲ بنتو: بارانداز اتصال سریع به نرم‌افزارها و ابزارها -->
+            <div class="bento-card p-3 mb-3">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <span class="fw-bold small text-white"><i class="fas fa-plug text-primary me-1"></i> اتصال و ابزارهای سریع:</span>
+                    <div class="d-flex flex-wrap gap-1 align-items-center">
+                        {% if actual_sub_url %}
+                        <a href="hiddify://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-primary py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-rocket me-1"></i>Hiddify</a>
+                        <a href="streisand://import/{{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-info py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-bolt me-1"></i>Streisand</a>
+                        <a href="v2rayng://install-sub?url={{ actual_sub_url|urlencode }}" class="btn btn-sm btn-outline-success py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-paper-plane me-1"></i>v2rayNG</a>
+                        <button type="button" class="btn btn-sm btn-outline-light py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#qrCodeModal"><i class="fas fa-qrcode text-info me-1"></i>QR</button>
+                        <button type="button" class="btn btn-sm btn-outline-light py-1 px-2" style="font-size: 0.8rem;" onclick="copyText('{{ actual_sub_url }}', 'لینک اشتراک')"><i class="fas fa-link text-primary me-1"></i>کپی ساب</button>
+                        {% endif %}
+                        {% if single_url %}
+                        <button type="button" class="btn btn-sm btn-outline-light py-1 px-2" style="font-size: 0.8rem;" onclick="copyText('{{ single_url }}', 'کانفیگ تکی')"><i class="fas fa-bolt text-warning me-1"></i>تکی</button>
+                        {% endif %}
+                        <button type="button" class="btn btn-sm btn-outline-info py-1 px-2" style="font-size: 0.8rem;" data-bs-toggle="modal" data-bs-target="#historyModal"><i class="fas fa-clock-rotate-left me-1"></i>سوابق</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ردیف ۳ بنتو: تمدید و انتخاب پلن‌ها -->
+            <div class="mb-3">
+                {{ macro_renewal_card() }}
+            </div>
+
+            <!-- ردیف ۴ بنتو: پشتیبانی و وضعیت سرور -->
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    {{ macro_server_status() }}
+                </div>
+                <div class="col-md-6">
+                    {{ macro_support_card() }}
+                </div>
+            </div>
+        </div>
+
+    {% else %}
+        <!-- ═══════════ قالب ۱: کلاسیک آبشاری (پیش‌فرض) ═══════════ -->
+        {{ macro_server_status() }}
+        {{ macro_sub_card() }}
+        {{ macro_invoice_card() }}
+        {{ macro_renewal_card() }}
+        {{ macro_support_card() }}
+
+    {% endif %}
+
+    <!-- مودال نمایش بارکد QR (همواره در دسترس کلیه قالب‌ها) -->
+    {% if actual_sub_url %}
+    <div class="modal fade" id="qrCodeModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content glass-card border-0 text-white p-3">
+                <div class="modal-header border-0 pb-0">
+                    <h6 class="modal-title fw-bold"><i class="fas fa-qrcode text-info me-1"></i> بارکد اتصال سریع</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-center pt-3">
+                    <p class="small text-secondary mb-3">با دوربین نرم‌افزار فیلترشکن خود اسکن نمایید:</p>
+                    <div class="p-2 bg-white rounded-3 d-inline-block shadow mb-2">
+                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={{ actual_sub_url|urlencode }}" alt="QR Code" class="img-fluid" style="width: 200px; height: 200px;">
+                    </div>
+                    <div class="small text-muted font-monospace mt-1 text-truncate" style="max-width: 220px; margin: 0 auto;">
+                        {{ sub.get('account_name') }}
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0 justify-content-center">
+                    <button type="button" class="btn btn-sm btn-secondary rounded-pill px-4" data-bs-dismiss="modal">بستن</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
 </div>
 
@@ -1303,7 +1839,7 @@
                         <div class="d-flex flex-wrap gap-2">
                             {% if support_username %}
                             <a href="https://t.me/{{ support_username.lstrip('@') }}" target="_blank" class="btn btn-sm btn-outline-info rounded-pill px-3 py-2 flex-grow-1">
-                                <i class="fab fa-telegram me-1"></i> تلگرام پشتیبان: @{{ support_username.lstrip('@') }}
+                                <i class="fab fa-telegram me-1"></i> تلگرام پشتیبان: <span dir="ltr">@{{ support_username.lstrip('@') }}</span>
                             </a>
                             {% endif %}
                             {% if support_phone %}
@@ -1508,6 +2044,14 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+function switchPortalTab(tabId, btn) {
+    document.querySelectorAll('.portal-tab-pane').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.portal-tab-btn').forEach(b => b.classList.remove('active'));
+    const target = document.getElementById(tabId);
+    if (target) target.classList.add('active');
+    if (btn) btn.classList.add('active');
+}
+
 function copyText(text, label) {
     if (!text) return;
     navigator.clipboard.writeText(text).then(() => {
@@ -2410,7 +2954,7 @@ function showInvoiceExpired() {
             {% endif %}
             {% if support_username %}
             <a href="https://t.me/{{ support_username.lstrip('@') }}" target="_blank" class="btn btn-sm btn-outline-info rounded-pill px-3 py-2">
-                <i class="fab fa-telegram me-1"></i> تلگرام پشتیبان: @{{ support_username.lstrip('@') }}
+                <i class="fab fa-telegram me-1"></i> تلگرام پشتیبان: <span dir="ltr">@{{ support_username.lstrip('@') }}</span>
             </a>
             {% endif %}
             <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-2" onclick="openSupportChat('پیگیری واریز فاکتور منقضی شده شماره ' + orderId)">

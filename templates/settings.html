@@ -128,6 +128,32 @@ function toggleServerStatusManualBox() {
         box.style.opacity = isManual ? '1' : '0.6';
     }
 }
+function updateLayoutCards(input) {
+    document.querySelectorAll('.portal-layout-card').forEach(card => {
+        card.classList.remove('border-primary', 'shadow-sm', 'bg-white');
+        card.classList.add('bg-light', 'opacity-75');
+    });
+    if (input && input.checked) {
+        const parentCard = input.closest('.portal-layout-card');
+        if (parentCard) {
+            parentCard.classList.remove('bg-light', 'opacity-75');
+            parentCard.classList.add('border-primary', 'shadow-sm', 'bg-white');
+        }
+    }
+}
+function updateStyleCards(input) {
+    document.querySelectorAll('.plan-style-card').forEach(card => {
+        card.classList.remove('border-primary', 'shadow-sm', 'bg-white');
+        card.classList.add('bg-light', 'opacity-75');
+    });
+    if (input && input.checked) {
+        const parentCard = input.closest('.plan-style-card');
+        if (parentCard) {
+            parentCard.classList.remove('bg-light', 'opacity-75');
+            parentCard.classList.add('border-primary', 'shadow-sm', 'bg-white');
+        }
+    }
+}
 document.addEventListener('DOMContentLoaded', function() {
     const picker = document.getElementById('primaryColorPicker');
     const hex = document.getElementById('primaryColorHex');
@@ -437,6 +463,192 @@ function selectPalette(pid) {
                         <label class="form-check-label fw-semibold small" for="portalShowTroubleshoot">
                             نمایش دکمه و لینک راهنما و عیب‌یابی اتصال در بالای پورتال
                         </label>
+                    </div>
+                </div>
+
+                <!-- ۱. انتخاب قالب و طرح‌بندی ظاهری پورتال مشتری -->
+                <div class="col-12 mt-4">
+                    <div class="p-3 border rounded-3 bg-light">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label class="form-label fw-bold mb-0">
+                                <i class="fas fa-layer-group text-primary me-1"></i> انتخاب قالب و طرح‌بندی ظاهری پورتال مشتری (Portal Layout):
+                            </label>
+                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1">
+                                ساختار ظاهری (سازگار با همه پالت‌ها)
+                            </span>
+                        </div>
+                        <p class="text-muted small mb-3">
+                            طرح‌بندی ساختاری مورد نظر خود را برای پورتال مشتریان انتخاب کنید. کلیه قالب‌ها بدون وابستگی به رنگ ثابت طراحی شده‌اند و با تغییر پالت‌های رنگی یا حالت روز/شب کاملاً هماهنگ می‌مانند.
+                        </p>
+
+                        <div class="row g-3">
+                            <!-- قالب ۱: کلاسیک آبشاری -->
+                            <div class="col-md-6 col-lg-3">
+                                <label class="card h-100 border p-3 cursor-pointer portal-layout-card {% if customer_portal_config.portal_layout == 'classic' or not customer_portal_config.portal_layout %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="cursor: pointer; transition: all 0.2s ease;">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <i class="fas fa-stream text-primary fs-5"></i>
+                                            <strong class="small text-dark">کلاسیک آبشاری</strong>
+                                        </div>
+                                        <input class="form-check-input mt-0" type="radio" name="portal_layout" value="classic" {% if customer_portal_config.portal_layout == 'classic' or not customer_portal_config.portal_layout %}checked{% endif %} onchange="updateLayoutCards(this)">
+                                    </div>
+                                    <span class="badge bg-secondary-subtle text-secondary small align-self-start mb-2">پیش‌فرض سیستم</span>
+                                    <p class="small text-muted mb-0" style="font-size: 0.8rem; line-height: 1.5;">
+                                        چیدمان عمودی و تک‌ستونه استاندارد با نمایش پشت‌سر‌هم وضعیت اشتراک، مصرف، پلن‌ها و فاکتور.
+                                    </p>
+                                </label>
+                            </div>
+
+                            <!-- قالب ۲: داشبورد دو ستونه مدرن -->
+                            <div class="col-md-6 col-lg-3">
+                                <label class="card h-100 border p-3 cursor-pointer portal-layout-card {% if customer_portal_config.portal_layout == 'split_dashboard' %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="cursor: pointer; transition: all 0.2s ease;">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <i class="fas fa-columns text-info fs-5"></i>
+                                            <strong class="small text-dark">داشبورد دو ستونه</strong>
+                                        </div>
+                                        <input class="form-check-input mt-0" type="radio" name="portal_layout" value="split_dashboard" {% if customer_portal_config.portal_layout == 'split_dashboard' %}checked{% endif %} onchange="updateLayoutCards(this)">
+                                    </div>
+                                    <span class="badge bg-info-subtle text-info small align-self-start mb-2">داشبورد پیشرفته</span>
+                                    <p class="small text-muted mb-0" style="font-size: 0.8rem; line-height: 1.5;">
+                                        سایدبار ثابت مشخصات و حجم باقیمانده در کنار ستون انتخاب پلن و فاکتور (دو ستونه در دسکتاپ).
+                                    </p>
+                                </label>
+                            </div>
+
+                            <!-- قالب ۳: تب‌بندی مینیمال و متمرکز -->
+                            <div class="col-md-6 col-lg-3">
+                                <label class="card h-100 border p-3 cursor-pointer portal-layout-card {% if customer_portal_config.portal_layout == 'minimal_tabbed' %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="cursor: pointer; transition: all 0.2s ease;">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <i class="fas fa-folder-tree text-success fs-5"></i>
+                                            <strong class="small text-dark">تب‌بندی مینیمال</strong>
+                                        </div>
+                                        <input class="form-check-input mt-0" type="radio" name="portal_layout" value="minimal_tabbed" {% if customer_portal_config.portal_layout == 'minimal_tabbed' %}checked{% endif %} onchange="updateLayoutCards(this)">
+                                    </div>
+                                    <span class="badge bg-success-subtle text-success small align-self-start mb-2">تفکیک بدون اسکرول</span>
+                                    <p class="small text-muted mb-0" style="font-size: 0.8rem; line-height: 1.5;">
+                                        ۴ تب مجزا (اشتراک، تمدید و پلن‌ها، سوابق و پرداخت‌ها، پشتیبانی) جهت دسترسی فوق‌سریع و مرتب.
+                                    </p>
+                                </label>
+                            </div>
+
+                            <!-- قالب ۴: بنتو گرید ماژولار -->
+                            <div class="col-md-6 col-lg-3">
+                                <label class="card h-100 border p-3 cursor-pointer portal-layout-card {% if customer_portal_config.portal_layout == 'bento_grid' %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="cursor: pointer; transition: all 0.2s ease;">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <i class="fas fa-table-cells-large text-warning fs-5"></i>
+                                            <strong class="small text-dark">بنتو گرید ماژولار</strong>
+                                        </div>
+                                        <input class="form-check-input mt-0" type="radio" name="portal_layout" value="bento_grid" {% if customer_portal_config.portal_layout == 'bento_grid' %}checked{% endif %} onchange="updateLayoutCards(this)">
+                                    </div>
+                                    <span class="badge bg-warning-subtle text-warning small align-self-start mb-2">ترند مدرن 2026</span>
+                                    <p class="small text-muted mb-0" style="font-size: 0.8rem; line-height: 1.5;">
+                                        طراحی شبکه‌ای الهام‌گرفته از Bento Box با تایل‌های مصرف حجم، روزشمار و بارانداز اپلیکیشن‌ها.
+                                    </p>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ۲. انتخاب استایل دکمه‌های پلن‌ها -->
+                <div class="col-12 mt-3">
+                    <div class="p-3 border rounded-3 bg-light">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label class="form-label fw-bold mb-0">
+                                <i class="fas fa-cubes text-info me-1"></i> انتخاب استایل دکمه‌ها و کارت‌های پلن‌ها (Plan Button Style):
+                            </label>
+                            <span class="badge bg-info-subtle text-info border border-info-subtle px-2 py-1">
+                                استایل کلیکی و سه‌بعدی
+                            </span>
+                        </div>
+                        <p class="text-muted small mb-3">
+                            شکل ظاهری و نحوه تعامل و کلیک دکمه‌های بسته‌ها را سفارشی کنید. این استایل‌ها با تمام قالب‌ها و پالت‌ها سازگارند و استایل سه‌بعدی دارای انیمیشن پرس فیزیکی است.
+                        </p>
+
+                        <div class="row g-3">
+                            <!-- استایل ۱: شیشه‌ای استاندارد -->
+                            <div class="col-md-6 col-lg">
+                                <label class="card h-100 border p-3 cursor-pointer plan-style-card {% if customer_portal_config.portal_plan_style == 'glass_classic' or not customer_portal_config.portal_plan_style %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="cursor: pointer; transition: all 0.2s ease;">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <span class="fw-bold small text-dark">شیشه‌ای استاندارد</span>
+                                        <input class="form-check-input mt-0" type="radio" name="portal_plan_style" value="glass_classic" {% if customer_portal_config.portal_plan_style == 'glass_classic' or not customer_portal_config.portal_plan_style %}checked{% endif %} onchange="updateStyleCards(this)">
+                                    </div>
+                                    <div class="p-2 rounded mb-2 text-center small border" style="background: rgba(0,0,0,0.03);">
+                                        <i class="fas fa-gem text-primary me-1"></i> کارت شفاف نرم
+                                    </div>
+                                    <p class="small text-muted mb-0" style="font-size: 0.76rem; line-height: 1.4;">
+                                        استایل پیش‌فرض با گوشه‌های نرم و هایلایت شیشه‌ای ملایم هنگام انتخاب.
+                                    </p>
+                                </label>
+                            </div>
+
+                            <!-- استایل ۲: سه‌بعدی لمسی (3D Tactile) -->
+                            <div class="col-md-6 col-lg">
+                                <label class="card h-100 border p-3 cursor-pointer plan-style-card {% if customer_portal_config.portal_plan_style == 'tactile_3d' %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="cursor: pointer; transition: all 0.2s ease;">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <span class="fw-bold small text-dark">سه‌بعدی لمسی (3D)</span>
+                                        <input class="form-check-input mt-0" type="radio" name="portal_plan_style" value="tactile_3d" {% if customer_portal_config.portal_plan_style == 'tactile_3d' %}checked{% endif %} onchange="updateStyleCards(this)">
+                                    </div>
+                                    <div class="p-2 rounded mb-2 text-center small border text-white fw-bold shadow-sm" style="background: #3b82f6; box-shadow: 0 4px 0 #1d4ed8 !important;">
+                                        <i class="fas fa-cube text-white me-1"></i> دکمه فیزیکی 3D
+                                    </div>
+                                    <p class="small text-muted mb-0" style="font-size: 0.76rem; line-height: 1.4;">
+                                        برجسته با لبه نوری بالا، سایه ضخیم زیرین و فشرده شدن دکمه با کلیک.
+                                    </p>
+                                </label>
+                            </div>
+
+                            <!-- استایل ۳: مینیمال خطی و سایبری -->
+                            <div class="col-md-6 col-lg">
+                                <label class="card h-100 border p-3 cursor-pointer plan-style-card {% if customer_portal_config.portal_plan_style == 'cyber_neon_outline' %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="cursor: pointer; transition: all 0.2s ease;">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <span class="fw-bold small text-dark">سایبری خطی</span>
+                                        <input class="form-check-input mt-0" type="radio" name="portal_plan_style" value="cyber_neon_outline" {% if customer_portal_config.portal_plan_style == 'cyber_neon_outline' %}checked{% endif %} onchange="updateStyleCards(this)">
+                                    </div>
+                                    <div class="p-2 rounded mb-2 text-center small border border-2 border-primary fw-bold" style="background: rgba(59,130,246,0.05);">
+                                        <i class="fas fa-microchip text-primary me-1"></i> فریم تکنو نئون
+                                    </div>
+                                    <p class="small text-muted mb-0" style="font-size: 0.76rem; line-height: 1.4;">
+                                        کادر دقیق ۲ پیکسلی مدرن با گوشه‌های معماری و تیک انتخابی مهندسی.
+                                    </p>
+                                </label>
+                            </div>
+
+                            <!-- استایل ۴: کارت معلق پرمیوم -->
+                            <div class="col-md-6 col-lg">
+                                <label class="card h-100 border p-3 cursor-pointer plan-style-card {% if customer_portal_config.portal_plan_style == 'floating_elevation' %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="cursor: pointer; transition: all 0.2s ease;">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <span class="fw-bold small text-dark">کارت معلق پرمیوم</span>
+                                        <input class="form-check-input mt-0" type="radio" name="portal_plan_style" value="floating_elevation" {% if customer_portal_config.portal_plan_style == 'floating_elevation' %}checked{% endif %} onchange="updateStyleCards(this)">
+                                    </div>
+                                    <div class="p-2 rounded mb-2 text-center small border shadow-sm" style="background: #ffffff;">
+                                        <i class="fas fa-cloud-arrow-up text-warning me-1"></i> شناور با سایه عمیق
+                                    </div>
+                                    <p class="small text-muted mb-0" style="font-size: 0.76rem; line-height: 1.4;">
+                                        شناور شدن ۵ پیکسل به بالا با هاور و سایه چندلایه لوکس به سبک SaaS.
+                                    </p>
+                                </label>
+                            </div>
+
+                            <!-- استایل ۵: فشرده نواری مدرن -->
+                            <div class="col-md-6 col-lg">
+                                <label class="card h-100 border p-3 cursor-pointer plan-style-card {% if customer_portal_config.portal_plan_style == 'compact_row' %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="cursor: pointer; transition: all 0.2s ease;">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <span class="fw-bold small text-dark">فشرده نواری</span>
+                                        <input class="form-check-input mt-0" type="radio" name="portal_plan_style" value="compact_row" {% if customer_portal_config.portal_plan_style == 'compact_row' %}checked{% endif %} onchange="updateStyleCards(this)">
+                                    </div>
+                                    <div class="p-2 rounded mb-2 text-center small border" style="background: rgba(0,0,0,0.03);">
+                                        <i class="fas fa-bars text-secondary me-1"></i> نوار تک‌خطی کم‌جا
+                                    </div>
+                                    <p class="small text-muted mb-0" style="font-size: 0.76rem; line-height: 1.4;">
+                                        ردیف باریک و سریع؛ ایده‌آل برای صفحات موبایل و فروشگاه‌های دارای بیش از ۵ پلن.
+                                    </p>
+                                </label>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
