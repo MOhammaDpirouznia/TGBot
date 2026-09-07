@@ -4193,9 +4193,235 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await help_command(update, context)
     elif text == "🧪 اشتراک تست":
         return await handle_test_subscription(update, context)
-    elif text == "🔧 پنل مدیریت" and update.effective_user.id == ADMIN_ID:
+    elif text == "🔧 پنل مدیریت" and (update.effective_user.id == ADMIN_ID or str(update.effective_user.id) == str(db.get_setting("admin_telegram_id")) or db.get_reseller_by_telegram_id(update.effective_user.id)):
         return await admin_panel(update, context)
     
+    # پردازش عملیات متنی نمایندگان (تمدید با جستجو، ساخت نام مشتری، کد تخفیف، پیام همگانی و فیش شارژ)
+    reseller = db.get_reseller_by_telegram_id(user.id)
+    if reseller:
+        r_id = reseller["id"]
+        # ۱. جستجوی مشتری جهت تمدید
+        if context.user_data.get("waiting_reseller_search_sub"):
+            context.user_data["waiting_reseller_search_sub"] = False
+            from reseller_bot_admin import search_reseller_subscriptions
+            subs = search_reseller_subscriptions(r_id, text)
+            if not subs:
+                kb = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔍 جستجوی مجدد", callback_data="res_adm_renew_user")],
+                    [InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="res_adm_menu")]
+                ])
+                await update.message.reply_text(f"❌ هیچ اشتراکی با عبارت «{text}» در پنل شما یافت نشد.", reply_markup=kb)
+                return ADMIN_MENU
+            
+            p_msg = f"🔍 **نتایج جستجو برای «{text}» ({len(subs)} مورد):**\n\nجهت انتخاب اشتراک و تمدید روی آن کلیک فرمایید:\n"
+            buttons = []
+            for s in subs:
+                s_id = s["id"]
+                s_name = s.get("account_name") or f"sub_{s_id}"
+                st_icon = "🟢" if s.get("status") == "active" else "🔴"
+                u_gb = round(s.get("data_used", 0), 1)
+                l_gb = round(s.get("data_limit", 0), 1)
+                btn_t = f"{st_icon} {s_name} ({u_gb}/{l_gb}GB)"
+                buttons.append([InlineKeyboardButton(btn_t, callback_data=f"res_adm_rsub_{s_id}")])
+            buttons.append([InlineKeyboardButton("🔙 بازگشت به پنل", callback_data="res_adm_menu")])
+            await update.message.reply_text(p_msg, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown")
+            return ADMIN_MENU
+
+        # ۲. نام دلخواه برای مشتری جدید
+        if context.user_data.get("res_create_plan_id"):
+            plan_id = context.user_data.pop("res_create_plan_id")
+            chosen_name = text.strip()
+            if chosen_name.lower() == "auto":
+                chosen_name = f"r{r_id}_u{int(datetime.now().timestamp()) % 10000}"
+            clean_name = re.sub(r"[^a-zA-Z0-9_\-]", "", chosen_name)
+            if not clean_name:
+                clean_name = f"r{r_id}_user_{int(datetime.now().timestamp()) % 10000}"
+            
+            plans_dict = db.get_reseller_plans_dict(r_id)
+            plan = plans_dict.get(plan_id)
+            if not plan:
+                await update.message.reply_text("❌ پلن یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_create_user")]]))
+                return ADMIN_MENU
+
+            wholesale_cost = plan.get("wholesale_price", 0)
+            r_stats = db.get_reseller_stats(r_id) or {}
+            power = r_stats.get("total_purchasing_power", 0)
+            if power < wholesale_cost:
+                await update.message.reply_text(
+                    f"❌ موجودی و توان خرید شما کافی نیست!\n"
+                    f"مبلغ مورد نیاز: {wholesale_cost:,} تومان | توان خرید شما: {power:,} تومان\n"
+                    f"لطفاً ابتدا پنل خود را شارژ فرمایید.",
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💰 خرید شارژ پنل", callback_data="res_adm_bundles")]])
+                )
+                return ADMIN_MENU
+
+            # کسر هزینه و صدور در هیدیفای
+            pname = plan.get("display_name") or plan.get("master_name", "اشتراک")
+            vol = plan.get("data_limit", 30)
+            days = plan.get("duration", 30)
+            
+            db.deduct_reseller_balance(r_id, wholesale_cost, pname, clean_name)
+            
+            # ساخت در هیدیفای
+            uuid_val = None
+            try:
+                from multibot_manager import get_reseller_hidify_client
+                r_client = get_reseller_hidify_client(r_id)
+                h_res = await r_client.create_user(name=clean_name, package_days=int(days), usage_limit_gb=float(vol) if vol > 0 else None, comment=f"[RESELLER_ID: #{r_id}] {clean_name}")
+                uuid_val = h_res.get("uuid") if h_res else None
+            except Exception as e_h:
+                logger.error(f"Error creating user in hidify for reseller: {e_h}")
+                
+            sub_url = f"{HIDIFY_PANEL_URL}/{HIDIFY_PROXY_PATH}/{uuid_val}/" if uuid_val else f"https://vpn.service/sub/{clean_name}"
+            sub_id = db.save_subscription(
+                telegram_id=0,
+                hidify_uuid=uuid_val,
+                plan_id=plan_id,
+                plan_name=pname,
+                data_limit=float(vol),
+                duration=int(days),
+                status="active",
+                account_name=clean_name,
+                account_comment=f"Reseller #{r_id}",
+                reseller_id=r_id,
+                created_by="bot_admin"
+            )
+            
+            qr_bytes = generate_qr_code_bytes(sub_url)
+            success_caption = (
+                f"🎉 **اشتراک مشتری با موفقیت صادر شد!**\n\n"
+                f"👤 نام اکانت: `{clean_name}`\n"
+                f"📦 پلن: **{pname}**\n"
+                f"📊 حجم: **{vol} گیگابایت** | ⏳ مدت: **{days} روز**\n"
+                f"💰 هزینه کسر شده از کیف پول شما: **{wholesale_cost:,} تومان**\n\n"
+                f"🔗 **لینک اتصال مشتری (جهت کپی لمس کنید):**\n"
+                f"`{sub_url}`"
+            )
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("📋 کپی لینک اتصال", copy_text=CopyTextButton(sub_url))],
+                [InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="res_adm_menu")]
+            ])
+            if qr_bytes:
+                await update.message.reply_photo(photo=qr_bytes, caption=success_caption, reply_markup=kb, parse_mode="Markdown")
+            else:
+                await update.message.reply_text(success_caption, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        # ۳. ایجاد کد تخفیف جدید
+        if context.user_data.get("waiting_reseller_new_discount_code"):
+            context.user_data["waiting_reseller_new_discount_code"] = False
+            code_text = re.sub(r"[^a-zA-Z0-9_\-]", "", text).upper()
+            if not code_text:
+                await update.message.reply_text("❌ کد تخفیف باید انگلیسی باشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_discounts")]]))
+                return ADMIN_MENU
+            context.user_data["res_new_discount_name"] = code_text
+            context.user_data["waiting_reseller_new_discount_pct"] = True
+            await update.message.reply_text(
+                f"🎁 کد: `{code_text}`\n\n"
+                f"لطفاً **درصد تخفیف** را به عدد وارد فرمایید (مثلاً `20` برای ۲۰٪):\n"
+                f"(برای انصراف /cancel ارسال کنید)",
+                parse_mode="Markdown"
+            )
+            return ADMIN_MENU
+
+        if context.user_data.get("waiting_reseller_new_discount_pct"):
+            context.user_data["waiting_reseller_new_discount_pct"] = False
+            code_name = context.user_data.pop("res_new_discount_name", "OFF")
+            try:
+                pct = int(re.sub(r"\D", "", text))
+            except Exception:
+                pct = 10
+            pct = max(1, min(100, pct))
+            db.create_reseller_discount_code(r_id, code_name, discount_percent=pct, max_uses=0)
+            await update.message.reply_text(
+                f"✅ **کد تخفیف «{code_name}» با {pct}٪ تخفیف با موفقیت ایجاد و فعال شد.**",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به کدهای تخفیف", callback_data="res_adm_discounts")]]),
+                parse_mode="Markdown"
+            )
+            return ADMIN_MENU
+
+        # ۴. پیام همگانی به کاربران
+        if context.user_data.get("waiting_reseller_broadcast"):
+            context.user_data["waiting_reseller_broadcast"] = False
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT DISTINCT telegram_id FROM users WHERE reseller_id = ? AND telegram_id > 0", (r_id,))
+            user_rows = cursor.fetchall()
+            conn.close()
+            
+            sent_cnt = 0
+            fail_cnt = 0
+            for row in user_rows:
+                tg_id = row[0]
+                try:
+                    await context.bot.send_message(chat_id=tg_id, text=text, parse_mode="HTML")
+                    sent_cnt += 1
+                except Exception:
+                    fail_cnt += 1
+            await update.message.reply_text(
+                f"📢 **نتیجه ارسال پیام همگانی:**\n\n"
+                f"✅ ارسال موفق به: **{sent_cnt} نفر**\n"
+                f"❌ ناموفق (بلاک یا خطا): **{fail_cnt} نفر**",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به پنل", callback_data="res_adm_menu")]]),
+                parse_mode="Markdown"
+            )
+            return ADMIN_MENU
+
+        # ۵. ارسال فیش شارژ پنل
+        if context.user_data.get("waiting_reseller_bundle_receipt"):
+            bundle_id = context.user_data.pop("waiting_reseller_bundle_receipt")
+            bundle = db.get_reseller_credit_bundle(bundle_id) or {}
+            pname = bundle.get("title", "بسته اعتباری")
+            amount = bundle.get("price", 0)
+            credit = bundle.get("credit", amount)
+            import random
+            order_id = f"R_BUNDLE_CARD_{r_id}_{int(datetime.now().timestamp())}_{random.randint(100, 999)}"
+            now_iso = get_now_iso()
+            
+            conn = db.get_connection()
+            conn.execute("""
+                INSERT OR REPLACE INTO transactions (
+                    order_id, user_id, username, plan_name, amount, status, gateway,
+                    tracking_code, reseller_id, is_renewal, account_name, source, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 'pending', 'bundle_reseller', ?, ?, 0, ?, 'reseller_panel_topup', ?, ?)
+            """, (
+                order_id, user.id, user.username or str(user.id), f"بسته {pname}",
+                amount, text[:50], r_id, f"شارژ {credit:,} تومان", now_iso, now_iso
+            ))
+            conn.commit()
+            conn.close()
+            
+            # اطلاع‌رسانی به ادمین کل
+            admin_tg = db.get_setting("admin_telegram_id") or ADMIN_ID
+            if admin_tg:
+                adm_kb = InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton("✅ تایید و شارژ کیف پول", callback_data=f"adm_pay_app_{order_id}"),
+                        InlineKeyboardButton("❌ رد فیش", callback_data=f"adm_pay_rej_{order_id}")
+                    ]
+                ])
+                adm_msg = (
+                    f"📦 **درخواست شارژ پنل نماینده (کارت به کارت)**\n\n"
+                    f"👤 نماینده: **{reseller.get('name') or user.first_name}** (کد #{r_id})\n"
+                    f"📋 بسته: **{pname}**\n"
+                    f"💰 مبلغ پرداختی: **{amount:,} تومان**\n"
+                    f"🎁 اعتبار شارژ: **{credit:,} تومان**\n"
+                    f"🔢 فیش / متن: `{text}`\n"
+                    f"🆔 کد سفارش: `{order_id}`"
+                )
+                try:
+                    await context.bot.send_message(chat_id=int(admin_tg), text=adm_msg, reply_markup=adm_kb, parse_mode="Markdown")
+                except Exception as e_adm:
+                    logger.error(f"Failed to notify admin of reseller bundle receipt: {e_adm}")
+
+            await update.message.reply_text(
+                f"✅ **رسید پرداخت شما برای بسته «{pname}» با موفقیت ثبت شد.**\n"
+                f"پس از بررسی و تایید مدیریت، کیف پول پنل شما به مبلغ **{credit:,} تومان** شارژ خواهد شد.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="res_adm_menu")]]),
+                parse_mode="Markdown"
+            )
+            return ADMIN_MENU
+
     # اگر کاربر در حال ارسال پیام پشتیبانی است
     if context.user_data.get("is_waiting_ticket"):
         return await enter_ticket_message(update, context)
@@ -4674,55 +4900,365 @@ async def admin_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """پنل مدیریت ادمین"""
+    """پنل مدیریت ادمین کل و نماینده فروش"""
     user = update.effective_user
+    is_super_admin = (user.id == ADMIN_ID or str(user.id) == str(db.get_setting("admin_telegram_id")))
+    reseller = db.get_reseller_by_telegram_id(user.id)
 
-    if user.id != ADMIN_ID:
-        await update.message.reply_text("❌ شما ادمین نیستید!")
-        return
+    if not is_super_admin and not reseller:
+        if update.callback_query:
+            await update.callback_query.answer("❌ شما دسترسی ادمین یا نمایندگی ندارید!", show_alert=True)
+        else:
+            await update.message.reply_text("❌ شما دسترسی ادمین یا نمایندگی ندارید!")
+        return ConversationHandler.END
 
-    text = """
-🔧 **پنل مدیریت**
+    if is_super_admin:
+        text = """
+🔧 **پنل مدیریت ارشد سامانه**
 
-از منوی زیر می‌توانید تنظیمات ربات را مدیریت کنید:
+از منوی زیر می‌توانید تنظیمات ربات و سرور را مدیریت کنید:
 """
+        keyboard = [
+            [InlineKeyboardButton("💳 مدیریت کارت‌ها", callback_data="admin_cards")],
+            [InlineKeyboardButton("📦 مدیریت پلن‌ها", callback_data="admin_plans")],
+            [InlineKeyboardButton("📊 آمار ربات", callback_data="admin_stats_btn")],
+            [InlineKeyboardButton("🔒 پشتیبان‌گیری", callback_data="admin_backup")],
+            [InlineKeyboardButton("🔄 بازیابی پشتیبان", callback_data="admin_restore")],
+            [InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")],
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        if update.callback_query:
+            await update.callback_query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+        else:
+            await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+        return ADMIN_MENU
 
-    keyboard = [
-        [InlineKeyboardButton("💳 مدیریت کارت‌ها", callback_data="admin_cards")],
-        [InlineKeyboardButton("📦 مدیریت پلن‌ها", callback_data="admin_plans")],
-        [InlineKeyboardButton("📊 آمار ربات", callback_data="admin_stats_btn")],
-        [InlineKeyboardButton("🔒 پشتیبان‌گیری", callback_data="admin_backup")],
-        [InlineKeyboardButton("🔄 بازیابی پشتیبان", callback_data="admin_restore")],
-        [InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")],
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+    # ─── پنل اختصاصی مدیریت ربات نماینده (Reseller Admin) ───
+    # دکمه‌های پشتیبان‌گیری، بازیابی، مدیریت کارت‌ها و پلن‌ها حذف شده‌اند
+    from reseller_bot_admin import get_reseller_admin_keyboard
+    r_id = reseller["id"]
+    r_name = reseller.get("name") or reseller.get("username") or f"نماینده #{r_id}"
+    text = f"""🏢 **پنل مدیریت ربات اختصاصی نماینده**
+👤 نماینده: **{r_name}** (شناسه: `{r_id}`)
+
+از منوی زیر می‌توانید کلیه امور مدیریتی، مالی و پشتیبانی ربات خود را مدیریت فرمایید:
+"""
+    reply_markup = get_reseller_admin_keyboard(is_multibot=False)
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+    else:
+        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
     return ADMIN_MENU
 
 
 async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """پردازش منوی ادمین"""
+    """پردازش منوی ادمین و پنل اختصاصی نماینده"""
     query = update.callback_query
     await query.answer()
+    data = query.data
+    user = update.effective_user
+    is_super_admin = (user.id == ADMIN_ID or str(user.id) == str(db.get_setting("admin_telegram_id")))
+    reseller = db.get_reseller_by_telegram_id(user.id)
 
-    if query.data == "admin_back":
+    if data == "admin_back":
         await query.edit_message_text("❌ پنل مدیریت بسته شد.")
         return ConversationHandler.END
 
-    if query.data == "admin_cards":
+    if data in ("admin_back_menu", "res_adm_menu"):
+        return await admin_panel(update, context)
+
+    # ─── بررسی دسترسی امنیتی دکمه‌های غیرفعال برای نمایندگان ───
+    if data in ("admin_cards", "admin_plans", "admin_backup", "admin_restore"):
+        if not is_super_admin:
+            await query.answer("⛔ این بخش فقط برای مدیریت کل سامانه در دسترس است. تنظیمات کارت‌ها و پلن‌های شما در پنل وب انجام می‌شود.", show_alert=True)
+            return ADMIN_MENU
+
+    if data == "admin_cards":
         return await show_cards_menu(update, context)
 
-    if query.data == "admin_plans":
+    if data == "admin_plans":
         return await show_plans_menu(update, context)
 
-    if query.data == "admin_stats_btn":
+    if data in ("admin_stats_btn", "res_adm_stats"):
         return await admin_stats(update, context)
 
-    if query.data == "admin_backup":
+    if data == "admin_backup":
         return await admin_backup_handler(update, context)
 
-    if query.data == "admin_restore":
+    if data == "admin_restore":
         return await admin_restore_handler(update, context)
+
+    # ─── هندلرهای اختصاصی ابزارهای نماینده در ربات ───
+    if reseller:
+        r_id = reseller["id"]
+        from reseller_bot_admin import (
+            get_reseller_bundles_payload,
+            get_bundle_payment_details_payload,
+            get_reseller_tickets_payload,
+            get_reseller_ticket_detail_payload,
+            get_reseller_payments_payload,
+            get_reseller_create_user_plans_payload,
+            get_reseller_discounts_payload,
+            get_reseller_reports_payload,
+            get_reseller_settings_payload,
+        )
+
+        if data == "res_adm_bundles":
+            txt, kb = get_reseller_bundles_payload(r_id)
+            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data.startswith("res_adm_bdl_"):
+            bundle_id = data.replace("res_adm_bdl_", "")
+            txt, kb = get_bundle_payment_details_payload(bundle_id, r_id)
+            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data.startswith("res_adm_send_rcpt_"):
+            bundle_id = data.replace("res_adm_send_rcpt_", "")
+            context.user_data["waiting_reseller_bundle_receipt"] = bundle_id
+            await query.edit_message_text(
+                "📸 **ارسال فیش واریزی شارژ پنل**\n\n"
+                "لطفاً تصویر فیش یا متن حاوی کد پیگیری واریز خود را ارسال فرمایید تا جهت تایید برای مدیریت ارشد ارسال گردد:\n"
+                "(برای انصراف /cancel ارسال کنید)",
+                parse_mode="Markdown"
+            )
+            return ADMIN_MENU
+
+        elif data == "res_adm_tickets":
+            txt, kb = get_reseller_tickets_payload(r_id)
+            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data.startswith("res_adm_tkt_"):
+            t_id = int(data.replace("res_adm_tkt_", ""))
+            txt, kb = get_reseller_ticket_detail_payload(t_id, r_id)
+            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data == "res_adm_payments":
+            txt, kb = get_reseller_payments_payload(r_id)
+            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data.startswith("res_adm_pdetail_"):
+            order_id = data.replace("res_adm_pdetail_", "")
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM transactions WHERE order_id=? OR id=?", (order_id, order_id))
+            tx_row = cursor.fetchone()
+            conn.close()
+            if not tx_row:
+                await query.answer("❌ سفارش یافت نشد.", show_alert=True)
+                return ADMIN_MENU
+            tx = dict(tx_row)
+            p_text = f"🧾 **جزئیات پرداخت سفارش #{tx.get('id')}**\n\n"
+            p_text += f"👤 مشتری: `{tx.get('user_id')}` (@{tx.get('username') or 'ندارد'})\n"
+            p_text += f"📦 پلن: **{tx.get('plan_name')}**\n"
+            p_text += f"💰 مبلغ: **{tx.get('amount', 0):,} تومان**\n"
+            p_text += f"🔢 کد پیگیری/فیش: `{tx.get('tracking_code') or 'ثبت فیش'}`\n"
+            p_text += f"📅 تاریخ: {tx.get('created_at', '')[:16].replace('T', ' ')}\n"
+            t_uid = tx.get("user_id") or 0
+            p_id = tx.get("plan_id") or "plan"
+            o_id = tx.get("order_id")
+            kb = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("✅ تایید فیش و فعال‌سازی", callback_data=f"res_pay_app_{o_id}"),
+                    InlineKeyboardButton("❌ رد فیش پرداخت", callback_data=f"res_pay_rej_{o_id}"),
+                ],
+                [InlineKeyboardButton("🔙 بازگشت به پرداخت‌ها", callback_data="res_adm_payments")]
+            ])
+            await query.edit_message_text(p_text, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data == "res_adm_create_user":
+            txt, kb = get_reseller_create_user_plans_payload(r_id)
+            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data.startswith("res_adm_cplan_"):
+            plan_id = data.replace("res_adm_cplan_", "")
+            context.user_data["res_create_plan_id"] = plan_id
+            await query.edit_message_text(
+                f"👤 **تنظیم نام اکانت مشتری جدید**\n\n"
+                f"لطفاً نام انگلیسی دلخواه برای اکانت مشتری (حروف و اعداد انگلیسی، بدون فاصله) را ارسال فرمایید:\n"
+                f"مثال: `user_ahmad`\n\n"
+                f"(برای تولید خودکار نام، عبارت `auto` را ارسال کنید یا /cancel برای انصراف)",
+                parse_mode="Markdown"
+            )
+            return ADMIN_MENU
+
+        elif data == "res_adm_renew_user":
+            context.user_data["waiting_reseller_search_sub"] = True
+            await query.edit_message_text(
+                "🔍 **تمدید اشتراک با جستجوی مشتری**\n\n"
+                "لطفاً نام اکانت (Account Name)، شماره تلفن یا آیدی تلگرام مشتری را ارسال فرمایید:\n"
+                "(برای انصراف /cancel ارسال نمایید)",
+                parse_mode="Markdown"
+            )
+            return ADMIN_MENU
+
+        elif data == "res_adm_discounts":
+            txt, kb = get_reseller_discounts_payload(r_id)
+            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data.startswith("res_adm_disctog_"):
+            d_id = int(data.replace("res_adm_disctog_", ""))
+            db.toggle_reseller_discount_code(d_id, r_id)
+            txt, kb = get_reseller_discounts_payload(r_id)
+            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data.startswith("res_adm_discdel_"):
+            d_id = int(data.replace("res_adm_discdel_", ""))
+            db.delete_reseller_discount_code(d_id, r_id)
+            txt, kb = get_reseller_discounts_payload(r_id)
+            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data == "res_adm_disc_new":
+            context.user_data["waiting_reseller_new_discount_code"] = True
+            await query.edit_message_text(
+                "🎁 **ایجاد کد تخفیف جدید**\n\n"
+                "لطفاً متن کد تخفیف مدنظر خود را به حروف انگلیسی ارسال فرمایید (مثال: `OFF20`):\n"
+                "(برای انصراف /cancel ارسال کنید)",
+                parse_mode="Markdown"
+            )
+            return ADMIN_MENU
+
+        elif data == "res_adm_reports":
+            txt, kb = get_reseller_reports_payload(r_id, "menu")
+            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data == "res_adm_rep_sales":
+            txt, kb = get_reseller_reports_payload(r_id, "sales")
+            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data == "res_adm_rep_expiring":
+            txt, kb = get_reseller_reports_payload(r_id, "expiring")
+            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data == "res_adm_rep_top":
+            txt, kb = get_reseller_reports_payload(r_id, "top")
+            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data == "res_adm_settings":
+            txt, kb = get_reseller_settings_payload(r_id)
+            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data.startswith("res_adm_rsub_"):
+            sub_id = int(data.replace("res_adm_rsub_", ""))
+            sub = db.get_subscription(sub_id)
+            if not sub or int(sub.get("reseller_id") or 0) != int(r_id):
+                await query.answer("❌ اشتراک یافت نشد یا متعلق به شما نیست.", show_alert=True)
+                return ADMIN_MENU
+            
+            plans = db.get_reseller_plans(r_id)
+            r_name = sub.get("account_name") or f"sub_{sub_id}"
+            u_gb = round(sub.get("data_used", 0), 1)
+            l_gb = round(sub.get("data_limit", 0), 1)
+            
+            p_text = f"🔄 **تمدید اشتراک «{r_name}»**\n\n"
+            p_text += f"📊 مصرف فعلی: **{u_gb}GB** از **{l_gb}GB**\n"
+            p_text += f"⏰ مدت فعلی: **{sub.get('duration', 30)} روز**\n\n"
+            p_text += "لطفاً پلن مورد نظر برای تمدید را انتخاب فرمایید:"
+            
+            buttons = []
+            for p in plans:
+                pid = p["plan_id"]
+                pname = p.get("display_name") or p.get("master_name", "پلن")
+                vol = p.get("data_limit", 30)
+                days = p.get("duration", 30)
+                w_price = p.get("wholesale_price", 0)
+                vol_str = f"{vol}GB" if vol > 0 else "نامحدود"
+                btn_txt = f"📦 {pname} ({vol_str} - {days}روز) | 💰 {w_price:,} ت"
+                buttons.append([InlineKeyboardButton(btn_txt, callback_data=f"res_adm_cfren_{sub_id}_{pid}")])
+            buttons.append([InlineKeyboardButton("🔙 بازگشت به منوی مدیریت", callback_data="res_adm_menu")])
+            await query.edit_message_text(p_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data.startswith("res_adm_cfren_"):
+            parts = data.replace("res_adm_cfren_", "").split("_")
+            sub_id = int(parts[0])
+            plan_id = parts[1]
+            sub = db.get_subscription(sub_id)
+            if not sub or int(sub.get("reseller_id") or 0) != int(r_id):
+                await query.answer("❌ اشتراک نامعتبر است.", show_alert=True)
+                return ADMIN_MENU
+
+            plans_dict = db.get_reseller_plans_dict(r_id)
+            plan = plans_dict.get(plan_id)
+            if not plan:
+                await query.answer("❌ پلن یافت نشد.", show_alert=True)
+                return ADMIN_MENU
+
+            wholesale_cost = plan.get("wholesale_price", 0)
+            r_stats = db.get_reseller_stats(r_id) or {}
+            power = r_stats.get("total_purchasing_power", 0)
+            if power < wholesale_cost:
+                await query.answer(f"❌ توان خرید کافی نیست! مورد نیاز: {wholesale_cost:,} ت", show_alert=True)
+                return ADMIN_MENU
+
+            # کسر هزینه و تمدید در هیدیفای
+            vol = plan.get("data_limit", 30)
+            days = plan.get("duration", 30)
+            pname = plan.get("display_name") or plan.get("master_name", "اشتراک")
+            acct_name = sub.get("account_name") or f"sub_{sub_id}"
+            
+            db.deduct_reseller_balance(r_id, wholesale_cost, pname, acct_name)
+            
+            if sub.get("hidify_uuid"):
+                try:
+                    from multibot_manager import get_reseller_hidify_client
+                    r_client = get_reseller_hidify_client(r_id)
+                    await r_client.update_user(
+                        uuid=sub["hidify_uuid"],
+                        package_days=int(days),
+                        usage_limit_gb=float(vol) if vol > 0 else None,
+                        reset_usage=True
+                    )
+                except Exception as e_ren:
+                    logger.error(f"Error renewing sub in hidify: {e_ren}")
+
+            db.update_subscription(
+                sub_id,
+                plan_id=plan_id,
+                plan_name=pname,
+                data_limit=float(vol),
+                duration=int(days),
+                data_used=0.0,
+                status="active"
+            )
+
+            # اطلاع‌رسانی به مشتری اگر تلگرام دارد
+            if sub.get("telegram_id") and int(sub["telegram_id"]) > 0:
+                try:
+                    cust_msg = (
+                        f"🎉 **اشتراک شما با موفقیت تمدید شد!**\n\n"
+                        f"📦 پلن جدید: **{pname}**\n"
+                        f"📊 حجم تمدید شده: **{vol} گیگابایت**\n"
+                        f"⏰ اعتبار زمانی: **{days} روز**\n\n"
+                        f"اتصال شما مجدداً فعال گردید. سپاس از همراهی شما! 🌹"
+                    )
+                    await context.bot.send_message(chat_id=int(sub["telegram_id"]), text=cust_msg, parse_mode="Markdown")
+                except Exception:
+                    pass
+
+            await query.edit_message_text(
+                f"✅ **اشتراک «{acct_name}» با موفقیت تمدید شد!**\n\n"
+                f"📦 پلن: **{pname}** ({vol}GB - {days} روز)\n"
+                f"💰 هزینه کسر شده از موجودی پنل: **{wholesale_cost:,} تومان**\n"
+                f"🔄 ترافیک مصرفی ریست شد و اعتبار جدید اعمال گردید.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="res_adm_menu")]]),
+                parse_mode="Markdown"
+            )
+            return ADMIN_MENU
 
     return ADMIN_MENU
 
@@ -5339,17 +5875,31 @@ async def add_plan_duration(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """آمار ربات برای ادمین"""
+    """آمار ربات برای ادمین کل و نماینده"""
     user = update.effective_user
+    is_super_admin = (user.id == ADMIN_ID or str(user.id) == str(db.get_setting("admin_telegram_id")))
+    reseller = db.get_reseller_by_telegram_id(user.id)
 
-    if user.id != ADMIN_ID:
+    if not is_super_admin and not reseller:
         if update.callback_query:
-            await update.callback_query.answer("❌ شما ادمین نیستید!", show_alert=True)
+            await update.callback_query.answer("❌ شما دسترسی ادمین ندارید!", show_alert=True)
         else:
-            await update.message.reply_text("❌ شما ادمین نیستید!")
+            await update.message.reply_text("❌ شما دسترسی ادمین ندارید!")
         return
 
-    # دریافت آمار از دیتابیس
+    # ─── آمار اختصاصی نماینده فروش (بدون بکاپ‌ها و کاملاً ایزوله) ───
+    if reseller and not is_super_admin:
+        from reseller_bot_admin import get_reseller_stats_text
+        text = get_reseller_stats_text(reseller["id"])
+        keyboard = [[InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin_back_menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        if update.callback_query:
+            await update.callback_query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+        else:
+            await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+        return ADMIN_MENU
+
+    # دریافت آمار کل سامانه از دیتابیس (برای مدیریت ارشد)
     stats = db.get_stats()
     total_users = stats.get("total_users", 0)
     total_subs = stats.get("total_subscriptions", 0)
@@ -5358,7 +5908,6 @@ async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     completed = stats.get("completed_transactions", 0)
     rejected = stats.get("rejected_transactions", 0)
     total_revenue = stats.get("total_revenue", 0)
-    total_backups = stats.get("total_backups", 0)
 
     # دریافت اطلاعات Hidify
     try:
@@ -5380,6 +5929,7 @@ async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         active_plans = active_cards = 0
 
     revenue_formatted = f"{total_revenue:,}".replace(",", "،")
+    # سطر تعداد بکاپ‌ها طبق درخواست حذف شد
     text = f"""
 📊 **آمار دقیق سامانه و ربات**
 
@@ -5396,14 +5946,17 @@ async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • ❌ رد شده: {rejected}
 
 💵 **مجموع درآمد:** {revenue_formatted} تومان
-🔒 **تعداد بکاپ‌ها:** {total_backups} فایل
 """
+
+    keyboard = [[InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin_back_menu")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
 
     # ارسال پاسخ (چه از دکمه چه از دستور)
     if update.callback_query:
-        await update.callback_query.edit_message_text(text, parse_mode="Markdown")
+        await update.callback_query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown")
     else:
-        await update.message.reply_text(text, parse_mode="Markdown")
+        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+    return ADMIN_MENU
 
 
 # ═══════════════════════════════════════════════════════════════════════

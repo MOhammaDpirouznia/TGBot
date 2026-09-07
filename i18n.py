@@ -590,7 +590,15 @@ def get_main_keyboard(user_id: int, admin_id: int, lang: str = "fa", webapp_url:
             [KeyboardButton(t("btn_language", lang))],
         ]
 
-    if user_id == admin_id and not any(any(t("btn_admin", lang) in (getattr(b, "text", "") or "") for b in row) for row in keyboard):
+    is_reseller_user = False
+    try:
+        from database import db
+        if db.get_reseller_by_telegram_id(user_id):
+            is_reseller_user = True
+    except Exception:
+        pass
+
+    if (user_id == admin_id or is_reseller_user) and not any(any(t("btn_admin", lang) in (getattr(b, "text", "") or "") for b in row) for row in keyboard):
         keyboard.append([KeyboardButton(t("btn_admin", lang))])
 
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
