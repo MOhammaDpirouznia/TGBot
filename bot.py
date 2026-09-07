@@ -1624,25 +1624,6 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
             context.user_data["pending_order_id"] = invoice["order_id"]
             context.user_data["smart_final_amount"] = final_amount_toman
 
-            # ایجاد تراکنش معلق در جدول transactions
-            now_iso = get_now_iso()
-            user_id = update.effective_user.id
-            username = update.effective_user.username or update.effective_user.first_name or f"tg_{user_id}"
-            acc_name = context.user_data.get("account_name") or username
-            conn = db.get_connection()
-            conn.execute("""
-                INSERT OR REPLACE INTO transactions (
-                    order_id, user_id, username, plan_name, amount, status, gateway,
-                    tracking_code, reseller_id, is_renewal, renew_sub_id, account_name, source, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, 'pending', 'bank_sms', ?, 0, ?, ?, ?, 'telegram_bot', ?, ?)
-            """, (
-                invoice["order_id"], user_id, username, plan.get("name", "پلن"),
-                final_amount_toman, f"کارت {card_number}",
-                1 if sub_id else 0, sub_id, acc_name, now_iso, now_iso
-            ))
-            conn.commit()
-            conn.close()
-
             text = f"""
 💳 <b>پرداخت خودکار کارت به کارت</b>
 
@@ -1666,7 +1647,7 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
 ⚠️ <b>نکته بسیار مهم درباره مبلغ و کپی:</b>
 سیستم مجهز به <b>تایید و فعال‌سازی خودکار با پیامک بانکی</b> است. به دلیل وجود <b>ارقام خرد تصادفی</b> در مبلغ جهت شناسایی خودکار واریزی شما، لطفاً مبلغ را دقیقاً با دکمه <b>«کپی مبلغ به ریال»</b> بردارید و در همراه بانک پیست نمایید تا اشتباهی در انتقال رخ ندهد و اشتراک شما فوراً تایید گردد.
 
-⚡ پس از واریز، تایید خودکار انجام خواهد شد؛ همچنین می‌توانید در صورت تمایل شماره پیگیری یا تصویر فیش را ارسال فرمایید.
+⚠️ <b>بعد از پرداخت، متن رسید یا تصویر رسید را ارسال کنید.</b>
 """
             keyboard = [
                 [InlineKeyboardButton("📋 کپی شماره کارت", copy_text=CopyTextButton(card_number))],
@@ -1888,11 +1869,14 @@ async def confirm_card_payment(update: Update, context: ContextTypes.DEFAULT_TYP
         discount_amount = context.user_data.get("discount_amount", 0)
 
         original_price = plan.get("price", 0)
-        final_price = max(0, original_price - discount_amount)
+        if "smart_final_amount" in context.user_data:
+            final_price = context.user_data["smart_final_amount"]
+        else:
+            final_price = max(0, original_price - discount_amount)
         price_formatted = f"{final_price:,}".replace(",", "،")
 
         # ذخیره تراکنش کارت به کارت
-        order_id = f"card_{user.id}_{get_now_timestamp()}"
+        order_id = context.user_data.get("pending_order_id") or f"card_{user.id}_{get_now_timestamp()}"
         account_name = context.user_data.get("account_name", f"tg_{user.id}")
         account_comment = context.user_data.get("account_comment")
 
@@ -4193,11 +4177,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await help_command(update, context)
     elif text == "🧪 اشتراک تست":
         return await handle_test_subscription(update, context)
-    elif text == "🔧 پنل مدیریت" and (update.effective_user.id == ADMIN_ID or str(update.effective_user.id) == str(db.get_setting("admin_telegram_id")) or db.get_reseller_by_telegram_id(update.effective_user.id)):
+
+    is_r_adm, r_id_found, r_role = db.is_telegram_user_any_reseller_admin(user.id)
+    reseller = db.get_reseller_by_telegram_id(user.id)
+    if not reseller and is_r_adm:
+        reseller = db.get_reseller(r_id_found)
+
+    if text == "🔧 پنل مدیریت" and (update.effective_user.id == ADMIN_ID or str(update.effective_user.id) == str(db.get_setting("admin_telegram_id")) or reseller):
         return await admin_panel(update, context)
     
     # پردازش عملیات متنی نمایندگان (تمدید با جستجو، ساخت نام مشتری، کد تخفیف، پیام همگانی و فیش شارژ)
-    reseller = db.get_reseller_by_telegram_id(user.id)
     if reseller:
         r_id = reseller["id"]
         # ۱. جستجوی مشتری جهت تمدید
@@ -4903,7 +4892,10 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """پنل مدیریت ادمین کل و نماینده فروش"""
     user = update.effective_user
     is_super_admin = (user.id == ADMIN_ID or str(user.id) == str(db.get_setting("admin_telegram_id")))
+    is_r_adm, r_id_found, role = db.is_telegram_user_any_reseller_admin(user.id)
     reseller = db.get_reseller_by_telegram_id(user.id)
+    if not reseller and is_r_adm:
+        reseller = db.get_reseller(r_id_found)
 
     if not is_super_admin and not reseller:
         if update.callback_query:
@@ -4938,12 +4930,20 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from reseller_bot_admin import get_reseller_admin_keyboard
     r_id = reseller["id"]
     r_name = reseller.get("name") or reseller.get("username") or f"نماینده #{r_id}"
+    role_title_map = {
+        "main": "ادمین اصلی (دسترسی کامل)",
+        "finance": "مدیر مالی و فیش‌ها",
+        "support": "پشتیبانی و تیکت‌ها",
+        "sales": "کارشناس فروش و اشتراک‌ها"
+    }
+    role_badge = role_title_map.get(role, "ادمین")
     text = f"""🏢 **پنل مدیریت ربات اختصاصی نماینده**
 👤 نماینده: **{r_name}** (شناسه: `{r_id}`)
+🎖️ نقش شما: **{role_badge}**
 
 از منوی زیر می‌توانید کلیه امور مدیریتی، مالی و پشتیبانی ربات خود را مدیریت فرمایید:
 """
-    reply_markup = get_reseller_admin_keyboard(is_multibot=False)
+    reply_markup = get_reseller_admin_keyboard(is_multibot=False, role=role)
     if update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown")
     else:
@@ -4958,7 +4958,10 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     data = query.data
     user = update.effective_user
     is_super_admin = (user.id == ADMIN_ID or str(user.id) == str(db.get_setting("admin_telegram_id")))
+    is_r_adm, r_id_found, _ = db.is_telegram_user_any_reseller_admin(user.id)
     reseller = db.get_reseller_by_telegram_id(user.id)
+    if not reseller and is_r_adm:
+        reseller = db.get_reseller(r_id_found)
 
     if data == "admin_back":
         await query.edit_message_text("❌ پنل مدیریت بسته شد.")

@@ -705,7 +705,8 @@ class Database:
             "bank_sms_enabled INTEGER DEFAULT 0",
             "bank_sms_token TEXT",
             "bank_sms_digits INTEGER DEFAULT 3",
-            "bank_sms_timeout INTEGER DEFAULT 15"
+            "bank_sms_timeout INTEGER DEFAULT 15",
+            "bot_admins TEXT"
         ]:
             try:
                 cursor.execute(f"ALTER TABLE resellers ADD COLUMN {col_def}")
@@ -9199,7 +9200,8 @@ class Database:
                 "bot_token", "bot_username", "channel_id", "brand_name",
                 "start_message", "support_username", "card_number", "card_holder",
                 "bank_name", "is_bot_active", "tier_level", "auto_approval",
-                "vip_auto_enabled", "vip_auto_threshold", "vip_cashback_percent", "updated_at"
+                "vip_auto_enabled", "vip_auto_threshold", "vip_cashback_percent",
+                "bot_admins", "telegram_id", "updated_at"
             ]
             fields = []
             params = []
@@ -9216,6 +9218,88 @@ class Database:
         except Exception as e:
             logger.error(f"Error updating reseller bot settings: {e}")
             return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_reseller_bot_admins(self, reseller_id: int) -> list:
+        """دریافت لیست ادمین‌های ربات تلگرام نماینده با تفکیک نقش‌ها"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT telegram_id, bot_admins FROM resellers WHERE id = ?", (reseller_id,))
+            row = cursor.fetchone()
+            if not row:
+                return []
+            raw_admins = row["bot_admins"]
+            admins = []
+            if raw_admins:
+                try:
+                    admins = json.loads(raw_admins)
+                except Exception:
+                    admins = []
+
+            # اگر ادمین‌های ذخیره‌شده خالی بود اما telegram_id نماینده وجود داشت
+            main_tg = row["telegram_id"]
+            if main_tg and not any(str(a.get("telegram_id")) == str(main_tg) for a in admins):
+                admins.insert(0, {
+                    "telegram_id": main_tg,
+                    "role": "main",
+                    "title": "ادمین اصلی (پروفایل)"
+                })
+            return admins
+        except Exception as e:
+            logger.error(f"Error getting reseller bot admins: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def is_reseller_bot_admin(self, reseller_id: int, telegram_id: int) -> tuple:
+        """
+        بررسی آیا کاربر ادمین ربات این نماینده است یا خیر؟
+        بازگشت: (is_admin: bool, role: str)
+        نقش‌ها: main (ادمین اصلی), finance (مدیر مالی), support (پشتیبان), sales (فروش)
+        """
+        if not telegram_id or not reseller_id:
+            return False, ""
+
+        admins = self.get_reseller_bot_admins(reseller_id)
+        tg_str = str(telegram_id).strip()
+        for a in admins:
+            if str(a.get("telegram_id", "")).strip() == tg_str:
+                return True, a.get("role", "main")
+
+        # بررسی فیلد مستقیم telegram_id در resellers
+        reseller = self.get_reseller(reseller_id)
+        if reseller and reseller.get("telegram_id") and str(reseller["telegram_id"]).strip() == tg_str:
+            return True, "main"
+
+        return False, ""
+
+    def is_telegram_user_any_reseller_admin(self, telegram_id: int) -> tuple:
+        """بررسی آیا کاربر تلگرام ادمین ربات هر نماینده‌ای در سیستم هست یا نه"""
+        if not telegram_id:
+            return False, 0, ""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        tg_str = str(telegram_id).strip()
+        try:
+            cursor.execute("SELECT id, telegram_id, bot_admins FROM resellers WHERE status = 'active'")
+            for r in cursor.fetchall():
+                r_id = r["id"]
+                if r["telegram_id"] and str(r["telegram_id"]).strip() == tg_str:
+                    return True, r_id, "main"
+                if r["bot_admins"]:
+                    try:
+                        b_admins = json.loads(r["bot_admins"])
+                        for a in b_admins:
+                            if str(a.get("telegram_id", "")).strip() == tg_str:
+                                return True, r_id, a.get("role", "main")
+                    except Exception:
+                        pass
+            return False, 0, ""
+        except Exception as e:
+            logger.error(f"Error in is_telegram_user_any_reseller_admin: {e}")
+            return False, 0, ""
         finally:
             conn.close()
 

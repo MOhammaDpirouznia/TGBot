@@ -595,6 +595,10 @@ def get_main_keyboard(user_id: int, admin_id: int, lang: str = "fa", webapp_url:
         from database import db
         if db.get_reseller_by_telegram_id(user_id):
             is_reseller_user = True
+        else:
+            is_any_r_adm, _, _ = db.is_telegram_user_any_reseller_admin(user_id)
+            if is_any_r_adm:
+                is_reseller_user = True
     except Exception:
         pass
 

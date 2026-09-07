@@ -16,7 +16,7 @@ import threading
 import urllib.request
 import urllib.error
 from datetime import datetime, timedelta
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 
 import secrets
 from pathlib import Path
@@ -157,6 +157,43 @@ class ResellerBotInstance:
 
         # ─── هندلرهای اختصاصی ربات نماینده ───
 
+        def check_admin_access(user_id: int) -> Tuple[bool, str]:
+            """بررسی دسترسی ادمین ربات نماینده با پشتیبانی از چند ادمین و نقش‌های مختلف"""
+            is_adm, role = db.is_reseller_bot_admin(r_id, user_id)
+            if not is_adm:
+                reseller_tg = self.reseller_data.get("telegram_id")
+                if reseller_tg and user_id == reseller_tg:
+                    return True, "main"
+                return False, ""
+            return True, role
+
+        async def notify_reseller_admins(bot, roles: list, text: str, photo=None, reply_markup=None):
+            """ارسال اعلان هوشمند به مدیران مرتبط با نقش‌های اعلام‌شده"""
+            admins = db.get_reseller_bot_admins(r_id)
+            target_ids = set()
+            for adm in admins:
+                r_role = adm.get("role") or "main"
+                if r_role in roles or "main" in roles or r_role == "main":
+                    try:
+                        target_ids.add(int(adm.get("telegram_id")))
+                    except (ValueError, TypeError):
+                        pass
+            reseller_tg = self.reseller_data.get("telegram_id")
+            if reseller_tg:
+                try:
+                    target_ids.add(int(reseller_tg))
+                except (ValueError, TypeError):
+                    pass
+
+            for tid in target_ids:
+                try:
+                    if photo:
+                        await bot.send_photo(chat_id=tid, photo=photo, caption=text, reply_markup=reply_markup, parse_mode="HTML")
+                    else:
+                        await bot.send_message(chat_id=tid, text=text, reply_markup=reply_markup, parse_mode="HTML")
+                except Exception as ex:
+                    logger.debug(f"Failed to notify reseller admin {tid}: {ex}")
+
         def get_reseller_main_keyboard(lang: str = "fa", is_reseller_admin: bool = False) -> ReplyKeyboardMarkup:
             """ساخت کیبورد اصلی ربات نماینده مطابق با چیدمان ذخیره شده در پنل مدیریت"""
             menu_rows = db.get_bot_menu_keyboard_rows(is_reseller=True)
@@ -253,8 +290,7 @@ class ResellerBotInstance:
                 welcome += "🚀 اتصال پرسرعت، امن و بدون قطعی با سرورهای قدرتمند\n\n"
             welcome += "جهت شروع یکی از گزینه‌های زیر را انتخاب فرمایید:"
 
-            reseller_tg = self.reseller_data.get("telegram_id")
-            is_adm = bool(reseller_tg and user.id == reseller_tg)
+            is_adm, _ = check_admin_access(user.id)
             main_kb = get_reseller_main_keyboard(lang, is_reseller_admin=is_adm)
             if update.message:
                 await update.message.reply_text(welcome, reply_markup=main_kb, parse_mode="HTML")
@@ -290,7 +326,8 @@ class ResellerBotInstance:
                 await query.edit_message_text(f"{t('lang_changed', lang)}\n\n{welcome}", parse_mode="HTML")
             except Exception:
                 pass
-            await context.bot.send_message(chat_id=user.id, text=t("choose_option", lang), reply_markup=get_reseller_main_keyboard(lang))
+            is_adm, _ = check_admin_access(user.id)
+            await context.bot.send_message(chat_id=user.id, text=t("choose_option", lang), reply_markup=get_reseller_main_keyboard(lang, is_reseller_admin=is_adm))
 
         async def contact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """دریافت شماره تماس و احراز هویت خودکار کاربر"""
@@ -310,11 +347,12 @@ class ResellerBotInstance:
             db.set_user_phone(user.id, phone_number)
             db.save_user(telegram_id=user.id, username=user.username or user.first_name, reseller_id=r_id)
 
+            is_adm, _ = check_admin_access(user.id)
             brand = self.reseller_data.get("brand_name") or self.reseller_data.get("name") or "سرویس VPN"
             success_text = t("contact_auth_success", lang, phone=phone_number)
             welcome = f"🌟 به ربات اختصاصی <b>{html.escape(str(brand))}</b> خوش آمدید!\n\nجهت شروع یکی از گزینه‌های زیر را انتخاب فرمایید:"
             full_msg = f"{success_text}\n\n{welcome}"
-            await message.reply_text(full_msg, reply_markup=get_reseller_main_keyboard(lang), parse_mode="HTML")
+            await message.reply_text(full_msg, reply_markup=get_reseller_main_keyboard(lang, is_reseller_admin=is_adm), parse_mode="HTML")
 
         async def plans_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """نمایش پلن‌های فروش برای مشتری نماینده (با اعمال نام و قیمت سفارشی نماینده)"""
@@ -638,24 +676,16 @@ class ResellerBotInstance:
                 context.user_data["buying_plan_id"] = plan_id
                 context.user_data["buying_price"] = final_amount_toman
                 context.user_data["buying_order_id"] = invoice["order_id"]
-
-                # ایجاد تراکنش معلق در جدول transactions
-                now_iso = get_now_iso()
-                u_id = update.effective_user.id
-                u_name = update.effective_user.username or update.effective_user.first_name or f"tg_{u_id}"
-                conn = db.get_connection()
-                conn.execute("""
-                    INSERT OR REPLACE INTO transactions (
-                        order_id, user_id, username, plan_name, amount, status, gateway,
-                        tracking_code, reseller_id, is_renewal, account_name, source, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, 'pending', 'bank_sms', ?, ?, 0, ?, 'reseller_bot', ?, ?)
-                """, (
-                    invoice["order_id"], u_id, u_name, pname,
-                    final_amount_toman, f"کارت {card_num}", r_id,
-                    account_name, now_iso, now_iso
-                ))
-                conn.commit()
-                conn.close()
+                context.user_data["waiting_for_card_receipt"] = True
+                context.user_data["pending_card_invoice"] = {
+                    "order_id": invoice["order_id"],
+                    "plan_id": plan_id,
+                    "plan_name": pname,
+                    "amount": final_amount_toman,
+                    "account_name": account_name,
+                    "card_num": card_num,
+                    "reseller_id": r_id
+                }
 
                 msg = f"💳 <b>پرداخت خودکار کارت به کارت</b>\n\n"
                 msg += f"📦 پلن: <b>{pname}</b>\n"
@@ -673,7 +703,7 @@ class ResellerBotInstance:
                     msg += f"بانک: <b>{bank_name}</b>\n"
                 msg += "\n⚡ <b>نکته بسیار مهم درباره تایید خودکار:</b>\n"
                 msg += "سیستم مجهز به <b>تایید خودکار با پیامک بانکی اختصاصی نماینده</b> است. به دلیل وجود <b>ارقام خرد تصادفی</b> در مبلغ جهت شناسایی واریزی شما، لطفاً مبلغ را با دکمه <b>«کپی مبلغ به ریال»</b> بردارید و در همراه بانک پیست فرمایید تا اشتباهی رخ ندهد.\n\n"
-                msg += "✅ پس از واریز، اشتراک شما به صورت آنی فعال خواهد شد؛ همچنین می‌توانید در صورت تمایل تصویر فیش را ارسال فرمایید."
+                msg += "⚠️ <b>بعد از پرداخت، متن رسید یا تصویر رسید را ارسال کنید.</b>"
 
                 buttons = [
                     [InlineKeyboardButton("📋 کپی شماره کارت", copy_text=CopyTextButton(card_num))],
@@ -985,9 +1015,12 @@ class ResellerBotInstance:
                 )
                 return
 
-            plan_id = context.user_data.get("buying_plan_id")
-            price = context.user_data.get("buying_price", 0)
-            account_name = context.user_data.get("buying_account_name") or f"r{r_id}_u{user.id}"
+            p_inv = context.user_data.pop("pending_card_invoice", None) or {}
+            context.user_data.pop("waiting_for_card_receipt", None)
+
+            plan_id = p_inv.get("plan_id") or context.user_data.get("buying_plan_id")
+            price = p_inv.get("amount") or context.user_data.get("buying_price", 0)
+            account_name = p_inv.get("account_name") or context.user_data.get("buying_account_name") or f"r{r_id}_u{user.id}"
 
             if not plan_id:
                 await update.message.reply_text("⚠️ لطفاً ابتدا از بخش «🛍️ خرید اشتراک» یک پلن را انتخاب کرده و سپس فیش واریزی را ارسال کنید.")
@@ -995,7 +1028,7 @@ class ResellerBotInstance:
 
             photo = update.message.photo[-1]
             photo_file_id = photo.file_id
-            order_id = f"R{r_id}_{int(datetime.now().timestamp())}_{user.id % 1000}"
+            order_id = p_inv.get("order_id") or context.user_data.get("buying_order_id") or f"R{r_id}_{int(datetime.now().timestamp())}_{user.id % 1000}"
 
             saved_receipt_filename = None
             try:
@@ -1015,20 +1048,21 @@ class ResellerBotInstance:
                 plan = plans.get(plan_id, {})
                 pname = plan.get("name", "پلن انتخابی")
 
-            db.save_transaction(
-                order_id=order_id,
-                user_id=user.id,
-                username=user.username or user.first_name,
-                plan_name=pname,
-                amount=price,
-                gateway="card_reseller",
-                tracking_code=f"Receipt_{order_id}",
-                status="pending",
-                account_name=account_name,
-                receipt_image=saved_receipt_filename or photo_file_id,
-                receipt_file_type="web_upload" if saved_receipt_filename else "photo",
-                reseller_id=r_id
-            )
+            now_iso = get_now_iso()
+            conn = db.get_connection()
+            conn.execute("""
+                INSERT OR REPLACE INTO transactions (
+                    order_id, user_id, username, plan_name, amount, status, gateway,
+                    tracking_code, reseller_id, is_renewal, account_name, source,
+                    receipt_image, receipt_file_type, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 'pending', 'card_reseller', ?, ?, 0, ?, 'reseller_bot', ?, ?, ?, ?)
+            """, (
+                order_id, user.id, user.username or user.first_name, pname,
+                price, f"فیش عکس {order_id}", r_id, account_name,
+                saved_receipt_filename or photo_file_id, "photo", now_iso, now_iso
+            ))
+            conn.commit()
+            conn.close()
 
             await update.message.reply_text(
                 "✅ <b>فیش واریزی شما با موفقیت دریافت شد.</b>\n\n"
@@ -1036,32 +1070,21 @@ class ResellerBotInstance:
                 parse_mode="HTML"
             )
 
-            reseller_tg = self.reseller_data.get("telegram_id")
-            if reseller_tg:
-                try:
-                    notif_text = f"🔔 <b>فیش واریزی جدید در ربات شما!</b>\n\n"
-                    notif_text += f"👤 مشتری: {html.escape(str(user.first_name))} (ID: <code>{user.id}</code>)\n"
-                    notif_text += f"📦 پلن: <b>{html.escape(str(pname))}</b>\n"
-                    notif_text += f"👤 نام اکانت انتخابی: <code>{html.escape(str(account_name))}</code>\n"
-                    notif_text += f"💰 مبلغ: <b>{price:,} تومان</b>\n"
-                    notif_text += f"🔖 کد سفارش: <code>{order_id}</code>\n\n"
-                    notif_text += "جهت تایید یا رد پرداخت از دکمه‌های زیر استفاده کنید:"
+            notif_text = f"🔔 <b>فیش واریزی جدید در ربات شما!</b>\n\n"
+            notif_text += f"👤 مشتری: {html.escape(str(user.first_name))} (ID: <code>{user.id}</code>)\n"
+            notif_text += f"📦 پلن: <b>{html.escape(str(pname))}</b>\n"
+            notif_text += f"👤 نام اکانت انتخابی: <code>{html.escape(str(account_name))}</code>\n"
+            notif_text += f"💰 مبلغ: <b>{price:,} تومان</b>\n"
+            notif_text += f"🔖 کد سفارش: <code>{order_id}</code>\n\n"
+            notif_text += "جهت تایید یا رد پرداخت از دکمه‌های زیر استفاده کنید:"
 
-                    app_kb = InlineKeyboardMarkup([
-                        [
-                            InlineKeyboardButton("✅ تایید و تحویل کانفیگ", callback_data=f"rapprove_{order_id}_{user.id}_{plan_id}"),
-                            InlineKeyboardButton("❌ رد پرداخت", callback_data=f"rreject_{order_id}_{user.id}")
-                        ]
-                    ])
-                    await context.bot.send_photo(
-                        chat_id=reseller_tg,
-                        photo=photo_file_id,
-                        caption=notif_text,
-                        reply_markup=app_kb,
-                        parse_mode="HTML"
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to notify reseller {r_id} telegram: {e}")
+            app_kb = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("✅ تایید و تحویل کانفیگ", callback_data=f"rapprove_{order_id}_{user.id}_{plan_id}"),
+                    InlineKeyboardButton("❌ رد پرداخت", callback_data=f"rreject_{order_id}_{user.id}")
+                ]
+            ])
+            await notify_reseller_admins(context.bot, ["main", "finance"], notif_text, photo=photo_file_id, reply_markup=app_kb)
 
         async def reseller_approve_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """تایید پرداخت توسط نماینده و ساخت خودکار اکانت در هیدیفای"""
@@ -1069,8 +1092,8 @@ class ResellerBotInstance:
             await query.answer()
 
             caller_id = update.effective_user.id
-            reseller_tg = self.reseller_data.get("telegram_id")
-            if not reseller_tg or caller_id != reseller_tg:
+            is_adm, role = check_admin_access(caller_id)
+            if not is_adm or role not in ("main", "finance"):
                 await query.answer("⛔ شما دسترسی تایید این پرداخت را ندارید.", show_alert=True)
                 return
 
@@ -1395,8 +1418,8 @@ class ResellerBotInstance:
             await query.answer()
             data = query.data
             user = update.effective_user
-            reseller_tg = self.reseller_data.get("telegram_id")
-            if not reseller_tg or user.id != reseller_tg:
+            is_adm, role = check_admin_access(user.id)
+            if not is_adm or role not in ("main", "support"):
                 await query.answer("⛔ شما دسترسی مدیریت این تیکت را ندارید.", show_alert=True)
                 return
 
@@ -1491,8 +1514,8 @@ class ResellerBotInstance:
         async def reseller_reply_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """دستور ارسال پاسخ تیکت: /reply_ticket [شماره تیکت] [متن پاسخ]"""
             user = update.effective_user
-            reseller_tg = self.reseller_data.get("telegram_id")
-            if not reseller_tg or user.id != reseller_tg:
+            is_adm, role = check_admin_access(user.id)
+            if not is_adm or role not in ("main", "support"):
                 return
             args = context.args
             if not args or len(args) < 2:
@@ -1813,23 +1836,33 @@ class ResellerBotInstance:
         async def reseller_admin_panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """نمایش پنل مدیریت اختصاصی نماینده در ربات اختصاصی خود"""
             user = update.effective_user
-            reseller_tg = self.reseller_data.get("telegram_id")
-            if not reseller_tg or user.id != reseller_tg:
+            is_adm, role = check_admin_access(user.id)
+            if not is_adm:
                 if update.message:
                     await update.message.reply_text("⛔ شما دسترسی مدیریت این ربات را ندارید.")
+                elif update.callback_query:
+                    await update.callback_query.answer("⛔ شما دسترسی مدیریت این ربات را ندارید.", show_alert=True)
                 return
 
             reseller = db.get_reseller(r_id) or self.reseller_data
             balance = reseller.get("balance", 0)
             name = reseller.get("name") or reseller.get("brand_name") or "نماینده"
+            role_title_map = {
+                "main": "ادمین اصلی (دسترسی کامل)",
+                "finance": "مدیر مالی و فیش‌ها",
+                "support": "پشتیبانی و تیکت‌ها",
+                "sales": "کارشناس فروش و اشتراک‌ها"
+            }
+            role_badge = role_title_map.get(role, "ادمین")
 
             text = (
                 f"👑 <b>پنل مدیریت اختصاصی نماینده</b>\n\n"
                 f"👤 نماینده: <b>{html.escape(str(name))}</b> (کد #{r_id})\n"
+                f"🎖️ نقش شما: <b>{role_badge}</b>\n"
                 f"💼 موجودی کیف پول پنل: <b>{balance:,} تومان</b>\n\n"
                 f"لطفاً یکی از بخش‌های زیر را جهت مدیریت انتخاب فرمایید:"
             )
-            kb = get_reseller_admin_keyboard(is_multibot=True)
+            kb = get_reseller_admin_keyboard(is_multibot=True, role=role)
             if update.message:
                 await update.message.reply_text(text, reply_markup=kb, parse_mode="HTML")
             elif update.callback_query:
@@ -1847,8 +1880,8 @@ class ResellerBotInstance:
                 pass
 
             user = update.effective_user
-            reseller_tg = self.reseller_data.get("telegram_id")
-            if not reseller_tg or user.id != reseller_tg:
+            is_adm, role = check_admin_access(user.id)
+            if not is_adm:
                 await query.edit_message_text("⛔ شما دسترسی مدیریت این بخش را ندارید.")
                 return
 
@@ -2128,10 +2161,10 @@ class ResellerBotInstance:
                 return
 
             user = update.effective_user
+            is_adm, role = check_admin_access(user.id)
 
             # ۰. بررسی پاسخ مستقیم نماینده به تیکت مشتری
-            reseller_tg = self.reseller_data.get("telegram_id")
-            if reseller_tg and user.id == reseller_tg and context.user_data.get("reseller_replying_ticket_id"):
+            if is_adm and role in ("main", "support") and context.user_data.get("reseller_replying_ticket_id"):
                 ticket_id = context.user_data.pop("reseller_replying_ticket_id")
                 db.add_ticket_message(
                     ticket_id=ticket_id,
@@ -2159,14 +2192,12 @@ class ResellerBotInstance:
 
             # ۰.۱. دسترسی به پنل مدیریت نماینده
             if text in ("🔧 پنل مدیریت نماینده", "مدیریت نماینده", "/admin", "/manage", "/panel"):
-                reseller_tg = self.reseller_data.get("telegram_id")
-                if reseller_tg and user.id == reseller_tg:
+                if is_adm:
                     return await reseller_admin_panel_handler(update, context)
 
             # ۰.۲. ارسال پیام همگانی توسط نماینده
             if context.user_data.get("waiting_reseller_broadcast"):
-                reseller_tg = self.reseller_data.get("telegram_id")
-                if reseller_tg and user.id == reseller_tg:
+                if is_adm and role == "main":
                     context.user_data.pop("waiting_reseller_broadcast")
                     conn = db.get_connection()
                     cursor = conn.cursor()
@@ -2197,8 +2228,7 @@ class ResellerBotInstance:
 
             # ۰.۳. جستجوی اشتراک مشتری جهت تمدید
             if context.user_data.get("waiting_reseller_search_sub"):
-                reseller_tg = self.reseller_data.get("telegram_id")
-                if reseller_tg and user.id == reseller_tg:
+                if is_adm and role in ("main", "sales"):
                     context.user_data.pop("waiting_reseller_search_sub")
                     subs = search_reseller_subscriptions(r_id, text)
                     if not subs:
@@ -2227,8 +2257,7 @@ class ResellerBotInstance:
 
             # ۰.۴. ساخت دستی اشتراک مشتری توسط نماینده
             if context.user_data.get("res_create_plan_id"):
-                reseller_tg = self.reseller_data.get("telegram_id")
-                if reseller_tg and user.id == reseller_tg:
+                if is_adm and role in ("main", "sales"):
                     pid = context.user_data.pop("res_create_plan_id")
                     plan = db.get_reseller_plan(r_id, pid)
                     if not plan:
@@ -2310,8 +2339,7 @@ class ResellerBotInstance:
 
             # ۰.۵. ساخت کد تخفیف جدید توسط نماینده
             if context.user_data.get("waiting_reseller_new_discount"):
-                reseller_tg = self.reseller_data.get("telegram_id")
-                if reseller_tg and user.id == reseller_tg:
+                if is_adm and role in ("main", "sales"):
                     context.user_data.pop("waiting_reseller_new_discount")
                     parts = text.split()
                     if len(parts) >= 2:
@@ -2348,8 +2376,7 @@ class ResellerBotInstance:
 
             # ۰.۶. ارسال شماره پیگیری یا فیش متنی شارژ بسته توسط نماینده
             if context.user_data.get("waiting_reseller_bundle_receipt"):
-                reseller_tg = self.reseller_data.get("telegram_id")
-                if reseller_tg and user.id == reseller_tg:
+                if is_adm and role in ("main", "finance"):
                     bundle_id = context.user_data.pop("waiting_reseller_bundle_receipt")
                     bundle = db.get_reseller_credit_bundle(bundle_id) or {}
                     pname = bundle.get("title", "بسته اعتباری")
@@ -2400,6 +2427,65 @@ class ResellerBotInstance:
                         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="res_adm_menu")]]),
                         parse_mode="HTML"
                     )
+                    return
+
+            # ۰.۶۵. دریافت شماره پیگیری یا متن رسید واریز کارت به کارت از مشتری
+            if context.user_data.get("waiting_for_card_receipt"):
+                btn_match = db.match_bot_menu_button(text, is_reseller=True)
+                if not text.startswith("/") and not btn_match:
+                    p_inv = context.user_data.pop("pending_card_invoice", None) or {}
+                    context.user_data.pop("waiting_for_card_receipt", None)
+                    plan_id = p_inv.get("plan_id") or context.user_data.get("buying_plan_id")
+                    price = p_inv.get("amount") or context.user_data.get("buying_price", 0)
+                    account_name = p_inv.get("account_name") or context.user_data.get("buying_account_name") or f"r{r_id}_u{user.id}"
+                    order_id = p_inv.get("order_id") or context.user_data.get("buying_order_id") or f"R{r_id}_{int(datetime.now().timestamp())}_{user.id % 1000}"
+
+                    r_plan = db.get_reseller_plan(r_id, plan_id)
+                    if r_plan:
+                        pname = r_plan.get("display_name") or r_plan.get("name") or r_plan.get("master_name", "پلن انتخابی")
+                    else:
+                        plans = load_plans()
+                        plan = plans.get(plan_id, {})
+                        pname = plan.get("name", "پلن انتخابی")
+
+                    now_iso = get_now_iso()
+                    conn = db.get_connection()
+                    conn.execute("""
+                        INSERT OR REPLACE INTO transactions (
+                            order_id, user_id, username, plan_name, amount, status, gateway,
+                            tracking_code, reseller_id, is_renewal, account_name, source, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, 'pending', 'card_reseller', ?, ?, 0, ?, 'reseller_bot', ?, ?)
+                    """, (
+                        order_id, user.id, user.username or user.first_name, pname,
+                        price, text[:100], r_id, account_name, now_iso, now_iso
+                    ))
+                    conn.commit()
+                    conn.close()
+
+                    await update.message.reply_text(
+                        f"✅ <b>متن رسید و مشخصات واریزی شما با موفقیت ثبت شد:</b>\n"
+                        f"🔢 شماره پیگیری/مشخصات: <code>{html.escape(text)}</code>\n\n"
+                        f"اطلاعات جهت بررسی و تایید به پشتیبانی ارسال گردید و پس از تایید، اشتراک به صورت خودکار برای شما فعال و تحویل داده خواهد شد.",
+                        parse_mode="HTML"
+                    )
+
+                    notif_text = (
+                        f"🔔 <b>رسید متنی واریز جدید در ربات شما!</b>\n\n"
+                        f"👤 مشتری: {html.escape(str(user.first_name))} (ID: <code>{user.id}</code>)\n"
+                        f"📦 پلن: <b>{html.escape(str(pname))}</b>\n"
+                        f"👤 نام اکانت انتخابی: <code>{html.escape(str(account_name))}</code>\n"
+                        f"💰 مبلغ: <b>{price:,} تومان</b>\n"
+                        f"🔢 کد/متن پیگیری: <code>{html.escape(text)}</code>\n"
+                        f"🔖 کد سفارش: <code>{order_id}</code>\n\n"
+                        f"جهت تایید یا رد پرداخت از دکمه‌های زیر استفاده کنید:"
+                    )
+                    app_kb = InlineKeyboardMarkup([
+                        [
+                            InlineKeyboardButton("✅ تایید و تحویل کانفیگ", callback_data=f"rapprove_{order_id}_{user.id}_{plan_id}"),
+                            InlineKeyboardButton("❌ رد پرداخت", callback_data=f"rreject_{order_id}_{user.id}")
+                        ]
+                    ])
+                    await notify_reseller_admins(context.bot, ["main", "finance"], notif_text, reply_markup=app_kb)
                     return
 
             # ۰.۷. بررسی اعمال کد تخفیف توسط مشتری
@@ -2474,29 +2560,24 @@ class ResellerBotInstance:
                     t_id = t_res.get("ticket_id", 0)
                     await update.message.reply_text(f"✅ <b>پیام و تیکت پشتیبانی شما با شماره #{t_id} ثبت شد.</b>\nپاسخ کارشناسان در همین ربات برای شما ارسال خواهد شد.", parse_mode="HTML")
 
-                    reseller_tg = self.reseller_data.get("telegram_id")
-                    if reseller_tg:
-                        try:
-                            vip_alert = "🚨 ⭐️ <b>[تیکت فوری - مشتری ویژه VIP]</b>" if is_vip else "📨 <b>تیکت پشتیبانی جدید</b>"
-                            notif_msg = (
-                                f"{vip_alert}\n\n"
-                                f"👤 مشتری: {html.escape(str(user.first_name))} (ID: <code>{user.id}</code>)\n"
-                                f"💬 یوزرنیم: @{user.username or 'ندارد'}\n"
-                                f"📝 متن پیام:\n{html.escape(content)}\n\n"
-                                f"🔖 شماره تیکت: #{t_id}"
-                            )
-                            r_kb = InlineKeyboardMarkup([
-                                [
-                                    InlineKeyboardButton("✍️ پاسخ متنی", callback_data=f"res_reply_tkt_{t_id}"),
-                                    InlineKeyboardButton("⚡ پاسخ‌های آماده", callback_data=f"res_canned_tkt_{t_id}")
-                                ],
-                                [
-                                    InlineKeyboardButton("🔒 بستن تیکت", callback_data=f"res_close_tkt_{t_id}")
-                                ]
-                            ])
-                            await context.bot.send_message(chat_id=reseller_tg, text=notif_msg, reply_markup=r_kb, parse_mode="HTML")
-                        except Exception as e_notif:
-                            logger.error(f"Error notifying reseller of ticket: {e_notif}")
+                    vip_alert = "🚨 ⭐️ <b>[تیکت فوری - مشتری ویژه VIP]</b>" if is_vip else "📨 <b>تیکت پشتیبانی جدید</b>"
+                    notif_msg = (
+                        f"{vip_alert}\n\n"
+                        f"👤 مشتری: {html.escape(str(user.first_name))} (ID: <code>{user.id}</code>)\n"
+                        f"💬 یوزرنیم: @{user.username or 'ندارد'}\n"
+                        f"📝 متن پیام:\n{html.escape(content)}\n\n"
+                        f"🔖 شماره تیکت: #{t_id}"
+                    )
+                    r_kb = InlineKeyboardMarkup([
+                        [
+                            InlineKeyboardButton("✍️ پاسخ متنی", callback_data=f"res_reply_tkt_{t_id}"),
+                            InlineKeyboardButton("⚡ پاسخ‌های آماده", callback_data=f"res_canned_tkt_{t_id}")
+                        ],
+                        [
+                            InlineKeyboardButton("🔒 بستن تیکت", callback_data=f"res_close_tkt_{t_id}")
+                        ]
+                    ])
+                    await notify_reseller_admins(context.bot, ["main", "support"], notif_msg, reply_markup=r_kb)
                 else:
                     await update.message.reply_text("⚠️ لطفاً متن پیام خود را بعد از عبارت <code>تیکت:</code> بنویسید.", parse_mode="HTML")
                 return

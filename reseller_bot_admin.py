@@ -148,37 +148,61 @@ def get_reseller_stats_text(reseller_id: int) -> str:
 """
 
 
-def get_reseller_admin_keyboard(is_multibot: bool = False) -> InlineKeyboardMarkup:
+def get_reseller_admin_keyboard(is_multibot: bool = False, role: str = "main") -> InlineKeyboardMarkup:
     """
-    تولید کیبورد منوی اصلی پنل ادمین ربات نمایندگان
-    دکمه‌های پشتیبان‌گیری، بازیابی پشتیبان، مدیریت کارت‌ها و مدیریت پلن‌ها حذف شده‌اند.
+    تولید کیبورد منوی اصلی پنل ادمین ربات نمایندگان با پشتیبانی از نقش‌های مختلف
+    (دکمه‌های پشتیبان‌گیری، بازیابی پشتیبان، مدیریت کارت‌ها و مدیریت پلن‌ها حذف شده‌اند)
     """
     back_callback = "res_adm_close" if is_multibot else "admin_back"
-    keyboard = [
-        [InlineKeyboardButton("📊 آمار دقیق ربات شما", callback_data="res_adm_stats")],
-        [
-            InlineKeyboardButton("💰 خرید شارژ و بسته پنل", callback_data="res_adm_bundles"),
-            InlineKeyboardButton("📨 مدیریت تیکت‌ها", callback_data="res_adm_tickets"),
-        ],
-        [
-            InlineKeyboardButton("💳 مدیریت پرداخت‌ها و فیش‌ها", callback_data="res_adm_payments"),
-            InlineKeyboardButton("👤 ساخت مشتری جدید", callback_data="res_adm_create_user"),
-        ],
-        [
-            InlineKeyboardButton("🔄 تمدید مشتری (جستجو)", callback_data="res_adm_renew_user"),
-            InlineKeyboardButton("🎁 کدهای تخفیف", callback_data="res_adm_discounts"),
-        ],
-        [
-            InlineKeyboardButton("📈 گزارشات کاربردی", callback_data="res_adm_reports"),
-            InlineKeyboardButton("📢 ارسال پیام همگانی", callback_data="res_adm_broadcast"),
-        ],
-        [
-            InlineKeyboardButton("⚙️ وضعیت درگاه‌ها و تایید خودکار", callback_data="res_adm_settings"),
-        ],
-        [
-            InlineKeyboardButton("🔙 بازگشت به منوی کاربری", callback_data=back_callback),
+    
+    if role == "finance":
+        keyboard = [
+            [InlineKeyboardButton("📊 آمار فروش و ربات", callback_data="res_adm_stats")],
+            [InlineKeyboardButton("💳 مدیریت پرداخت‌ها و فیش‌ها", callback_data="res_adm_payments")],
+            [InlineKeyboardButton("💰 خرید شارژ و بسته پنل", callback_data="res_adm_bundles")],
+            [InlineKeyboardButton("📈 گزارشات مالی و فروش", callback_data="res_adm_reports")],
+            [InlineKeyboardButton("🔙 بازگشت به منوی کاربری", callback_data=back_callback)]
         ]
-    ]
+    elif role == "support":
+        keyboard = [
+            [InlineKeyboardButton("📨 مدیریت تیکت‌ها و پیام‌ها", callback_data="res_adm_tickets")],
+            [InlineKeyboardButton("📊 آمار ربات", callback_data="res_adm_stats")],
+            [InlineKeyboardButton("🔙 بازگشت به منوی کاربری", callback_data=back_callback)]
+        ]
+    elif role == "sales":
+        keyboard = [
+            [InlineKeyboardButton("👤 ساخت مشتری جدید", callback_data="res_adm_create_user")],
+            [InlineKeyboardButton("🔄 تمدید مشتری (جستجو)", callback_data="res_adm_renew_user")],
+            [InlineKeyboardButton("🎁 کدهای تخفیف", callback_data="res_adm_discounts")],
+            [InlineKeyboardButton("📊 آمار مشترکین", callback_data="res_adm_stats")],
+            [InlineKeyboardButton("🔙 بازگشت به منوی کاربری", callback_data=back_callback)]
+        ]
+    else: # main / full admin
+        keyboard = [
+            [InlineKeyboardButton("📊 آمار دقیق ربات شما", callback_data="res_adm_stats")],
+            [
+                InlineKeyboardButton("💰 خرید شارژ و بسته پنل", callback_data="res_adm_bundles"),
+                InlineKeyboardButton("📨 مدیریت تیکت‌ها", callback_data="res_adm_tickets"),
+            ],
+            [
+                InlineKeyboardButton("💳 مدیریت پرداخت‌ها و فیش‌ها", callback_data="res_adm_payments"),
+                InlineKeyboardButton("👤 ساخت مشتری جدید", callback_data="res_adm_create_user"),
+            ],
+            [
+                InlineKeyboardButton("🔄 تمدید مشتری (جستجو)", callback_data="res_adm_renew_user"),
+                InlineKeyboardButton("🎁 کدهای تخفیف", callback_data="res_adm_discounts"),
+            ],
+            [
+                InlineKeyboardButton("📈 گزارشات کاربردی", callback_data="res_adm_reports"),
+                InlineKeyboardButton("📢 ارسال پیام همگانی", callback_data="res_adm_broadcast"),
+            ],
+            [
+                InlineKeyboardButton("⚙️ وضعیت درگاه‌ها و تایید خودکار", callback_data="res_adm_settings"),
+            ],
+            [
+                InlineKeyboardButton("🔙 بازگشت به منوی کاربری", callback_data=back_callback),
+            ]
+        ]
     return InlineKeyboardMarkup(keyboard)
 
 

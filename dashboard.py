@@ -3632,6 +3632,33 @@ def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: 
     conn.close()
 
     if not tx_row:
+        # بررسی فاکتور هوشمند (در صورتی که پیامک بانک قبل از ارسال فیش ثبت شده باشد)
+        inv = db.get_smart_invoice_by_order_id(order_id) if hasattr(db, "get_smart_invoice_by_order_id") else None
+        if inv:
+            now_iso = get_now_iso()
+            sub_id = inv.get("sub_id") or 0
+            plan_id = inv.get("plan_id")
+            r_id = inv.get("reseller_id") or 0
+            amt = inv.get("final_amount") or inv.get("base_amount") or 0
+            plan = db.get_reseller_plan(r_id, plan_id) if r_id else None
+            pname = plan.get("display_name") or plan.get("master_name", "پلن") if plan else "اشتراک"
+            conn = db.get_connection()
+            conn.execute("""
+                INSERT OR REPLACE INTO transactions (
+                    order_id, user_id, username, plan_name, amount, status, gateway,
+                    tracking_code, reseller_id, is_renewal, renew_sub_id, account_name, source, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 'pending', 'bank_sms', ?, ?, ?, ?, ?, 'bank_sms_auto', ?, ?)
+            """, (
+                order_id, 0, "مشتری بانکی", pname, amt,
+                f"پیامک بانک {ref_id or ''}", r_id,
+                1 if sub_id else 0, sub_id, f"sub_{sub_id}" if sub_id else "",
+                now_iso, now_iso
+            ))
+            conn.commit()
+            tx_row = conn.execute("SELECT * FROM transactions WHERE order_id=?", (order_id,)).fetchone()
+            conn.close()
+
+    if not tx_row:
         logger.warning(f"fulfill_approved_transaction: Transaction {order_id} not found.")
         return {"success": False, "error": "تراکنش یافت نشد."}
 
@@ -10129,21 +10156,51 @@ def reseller_bot_settings():
         except Exception:
             vip_cashback_percent = 10
 
-        db.update_reseller_bot_settings(
-            reseller_id,
-            bot_token=bot_token,
-            bot_username=bot_username,
-            channel_id=channel_id,
-            brand_name=brand_name,
-            start_message=start_message,
-            support_username=support_username,
-            card_number=card_number,
-            card_holder=card_holder,
-            bank_name=bank_name,
-            vip_auto_enabled=vip_auto_enabled,
-            vip_auto_threshold=vip_auto_threshold,
-            vip_cashback_percent=vip_cashback_percent
-        )
+        # دریافت ادمین‌های تلگرام ربات با نقش‌های مختلف
+        admin_tids = request.form.getlist("admin_telegram_id[]")
+        admin_roles = request.form.getlist("admin_role[]")
+        admin_titles = request.form.getlist("admin_title[]")
+
+        bot_admins = []
+        primary_admin_id = None
+        for tid, role, title in zip(admin_tids, admin_roles, admin_titles):
+            tid_clean = re.sub(r"\D", "", str(tid or ""))
+            if tid_clean:
+                numeric_tid = int(tid_clean)
+                role_clean = role if role in ("main", "finance", "support", "sales") else "main"
+                bot_admins.append({
+                    "telegram_id": numeric_tid,
+                    "role": role_clean,
+                    "title": str(title or "").strip()
+                })
+                if role_clean == "main" and primary_admin_id is None:
+                    primary_admin_id = numeric_tid
+
+        # اگر ادمین اصلی وجود نداشت اما اولین ادمین دیگر موجود بود
+        if not primary_admin_id and bot_admins:
+            primary_admin_id = bot_admins[0]["telegram_id"]
+
+        bot_admins_json = json.dumps(bot_admins, ensure_ascii=False) if bot_admins else None
+
+        update_kwargs = {
+            "bot_token": bot_token,
+            "bot_username": bot_username,
+            "channel_id": channel_id,
+            "brand_name": brand_name,
+            "start_message": start_message,
+            "support_username": support_username,
+            "card_number": card_number,
+            "card_holder": card_holder,
+            "bank_name": bank_name,
+            "vip_auto_enabled": vip_auto_enabled,
+            "vip_auto_threshold": vip_auto_threshold,
+            "vip_cashback_percent": vip_cashback_percent,
+            "bot_admins": bot_admins_json
+        }
+        if primary_admin_id:
+            update_kwargs["telegram_id"] = primary_admin_id
+
+        db.update_reseller_bot_settings(reseller_id, **update_kwargs)
 
         # تنظیمات درگاه پرداخت آنلاین اختصاصی نماینده
         is_gw_active = request.form.get("is_gateway_active") in ("on", "1")
@@ -10152,12 +10209,22 @@ def reseller_bot_settings():
         gw_sandbox = request.form.get("gateway_sandbox") in ("on", "1")
         db.update_reseller_gateway(reseller_id, is_gw_active, gw_type, gw_key, gw_sandbox)
 
-        flash("تنظیمات ربات اختصاصی، باشگاه VIP و درگاه پرداخت با موفقیت ذخیره شد.", "success")
+        # ریلود کانفیگ ربات نماینده در multibot_manager
+        multibot_manager.restart_reseller_bot(reseller_id)
+
+        flash("تنظیمات ربات اختصاصی، ادمین‌های تلگرام، باشگاه VIP و درگاه پرداخت با موفقیت ذخیره شد.", "success")
         return redirect(url_for("reseller_bot_settings"))
 
     bot_status = multibot_manager.get_bot_status(reseller_id)
     reseller_gateway = db.get_reseller_gateway(reseller_id)
-    return render_template("reseller_bot_settings.html", reseller=reseller, bot_status=bot_status, reseller_gateway=reseller_gateway)
+    bot_admins = db.get_reseller_bot_admins(reseller_id)
+    return render_template(
+        "reseller_bot_settings.html",
+        reseller=reseller,
+        bot_status=bot_status,
+        reseller_gateway=reseller_gateway,
+        bot_admins=bot_admins
+    )
 
 
 @app.route("/reseller/bot/test-token", methods=["POST"])
