@@ -825,6 +825,35 @@ class Database:
         except Exception:
             pass
 
+        # جدول سوابق و رسیدهای بدهی مشتریان (تفکیک به ازای هر خرید یا تمدید)
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS customer_debt_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    subscription_id INTEGER NOT NULL,
+                    account_name TEXT,
+                    telegram_id INTEGER DEFAULT 0,
+                    reseller_id INTEGER DEFAULT 0,
+                    action_type TEXT NOT NULL,
+                    plan_name TEXT,
+                    amount INTEGER NOT NULL,
+                    previous_debt INTEGER DEFAULT 0,
+                    total_debt INTEGER NOT NULL,
+                    status TEXT DEFAULT 'unpaid',
+                    notes TEXT,
+                    created_by TEXT,
+                    paid_at TEXT,
+                    settled_by TEXT,
+                    settle_order_id TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_debt_records_sub_id ON customer_debt_records(subscription_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_debt_records_status ON customer_debt_records(status)")
+        except Exception:
+            pass
+
         # مایگریشن ستون‌های پورتال مشتری برای نمایندگان و فاکتورها
         try:
             cursor.execute("ALTER TABLE resellers ADD COLUMN portal_title TEXT")
@@ -848,6 +877,14 @@ class Database:
             pass
         try:
             cursor.execute("ALTER TABLE smart_invoices ADD COLUMN discount_amount INTEGER DEFAULT 0")
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE smart_invoices ADD COLUMN is_debt_settlement INTEGER DEFAULT 0")
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN is_debt_settlement INTEGER DEFAULT 0")
         except Exception:
             pass
 
@@ -5279,8 +5316,211 @@ class Database:
         finally:
             conn.close()
 
-    def clear_subscription_debt(self, sub_id: int, reseller_id: int = None):
-        """تسویه کامل بدهی مشتری و ثبت وضعیت پرداخت شده"""
+    def add_customer_debt_record(self, subscription_id: int, account_name: str = "",
+                                 telegram_id: int = 0, reseller_id: int = None,
+                                 action_type: str = "renew", plan_name: str = "",
+                                 amount: int = 0, notes: str = None,
+                                 created_by: str = None) -> dict:
+        """
+        ثبت رسید بدهی اختصاصی برای خرید یا تمدید مشتری به همراه تجمیع خودکار با بدهی قبلی
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT * FROM subscriptions WHERE id = ?", (subscription_id,))
+            sub_row = cursor.fetchone()
+            if not sub_row:
+                return {"success": False, "error": "اشتراک یافت نشد"}
+
+            sub = dict(sub_row)
+            previous_debt = int(sub.get("debt_amount") or 0)
+            added_amount = int(amount or 0)
+            total_debt = previous_debt + added_amount
+            act_name = account_name or sub.get("account_name") or ""
+            tg_id = telegram_id if telegram_id else (sub.get("telegram_id") or 0)
+            r_id = reseller_id if reseller_id is not None else sub.get("reseller_id")
+            creator = created_by or "admin"
+
+            # بروزرسانی اشتراک به وضعیت بدهکار و ثبت مجموع تجمعی بدهی
+            cursor.execute("""
+                UPDATE subscriptions
+                SET payment_status = 'unpaid',
+                    debt_amount = ?,
+                    debt_notes = COALESCE(?, debt_notes),
+                    debt_created_at = COALESCE(debt_created_at, ?),
+                    updated_at = ?
+                WHERE id = ?
+            """, (total_debt, notes, now, now, subscription_id))
+
+            # ثبت رکورد مجزا در جدول customer_debt_records
+            cursor.execute("""
+                INSERT INTO customer_debt_records
+                (subscription_id, account_name, telegram_id, reseller_id, action_type, plan_name,
+                 amount, previous_debt, total_debt, status, notes, created_by, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid', ?, ?, ?, ?)
+            """, (
+                subscription_id, act_name, tg_id, r_id, action_type, plan_name,
+                added_amount, previous_debt, total_debt, notes, creator, now, now
+            ))
+            record_id = cursor.lastrowid
+            conn.commit()
+
+            logger.info(f"Customer debt record #{record_id} saved for sub #{subscription_id}: added={added_amount}, prev={previous_debt}, total={total_debt}")
+            return {
+                "success": True,
+                "record_id": record_id,
+                "previous_debt": previous_debt,
+                "amount": added_amount,
+                "total_debt": total_debt
+            }
+        except Exception as e:
+            logger.error(f"Error adding customer debt record for sub {subscription_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_customer_debt_report(self, subscription_id: int) -> dict:
+        """
+        دریافت گزارش جامع بدهی‌های یک مشتری شامل جمع کل، بدهی فعلی و لیست رسیدها
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM subscriptions WHERE id = ?", (subscription_id,))
+            sub_row = cursor.fetchone()
+            if not sub_row:
+                return {"success": False, "error": "اشتراک یافت نشد"}
+
+            sub = dict(sub_row)
+            cursor.execute("""
+                SELECT * FROM customer_debt_records 
+                WHERE subscription_id = ? 
+                ORDER BY created_at DESC, id DESC
+            """, (subscription_id,))
+            rows = cursor.fetchall()
+            records = [dict(r) for r in rows]
+
+            current_debt = int(sub.get("debt_amount") or 0)
+
+            # اگر رکوردی هنوز در جدول جدید ثبت نشده ولی در سابسکریپشن بدهی وجود دارد، رکورد آغازین درج کنیم
+            if not records and current_debt > 0:
+                now = get_now_iso()
+                notes = sub.get("debt_notes") or "بدهی قبلی ثبت‌شده در سیستم"
+                cursor.execute("""
+                    INSERT INTO customer_debt_records
+                    (subscription_id, account_name, telegram_id, reseller_id, action_type, plan_name,
+                     amount, previous_debt, total_debt, status, notes, created_by, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, 'initial', ?, ?, 0, ?, 'unpaid', ?, ?, ?, ?)
+                """, (
+                    subscription_id, sub.get("account_name") or "", sub.get("telegram_id") or 0,
+                    sub.get("reseller_id"), sub.get("plan_name") or "اشتراک",
+                    current_debt, current_debt, notes, sub.get("created_by") or "سیستم",
+                    sub.get("debt_created_at") or now, now
+                ))
+                conn.commit()
+                cursor.execute("SELECT * FROM customer_debt_records WHERE subscription_id = ? ORDER BY id DESC", (subscription_id,))
+                records = [dict(r) for r in cursor.fetchall()]
+
+            total_debts_sum = sum(int(r.get("amount") or 0) for r in records if r.get("action_type") in ("create", "renew", "manual", "initial"))
+            total_settled_sum = sum(int(r.get("amount") or 0) for r in records if r.get("status") == "paid" and r.get("action_type") != "settle")
+            unpaid_count = sum(1 for r in records if r.get("status") == "unpaid")
+
+            return {
+                "success": True,
+                "subscription_id": subscription_id,
+                "account_name": sub.get("account_name") or "",
+                "telegram_id": sub.get("telegram_id") or 0,
+                "reseller_id": sub.get("reseller_id"),
+                "phone_number": sub.get("phone_number") or "",
+                "current_debt": current_debt,
+                "payment_status": sub.get("payment_status") or ("unpaid" if current_debt > 0 else "paid"),
+                "debt_notes": sub.get("debt_notes") or "",
+                "debt_created_at": sub.get("debt_created_at") or "",
+                "total_debts_sum": total_debts_sum,
+                "total_debt_accumulated": total_debts_sum,
+                "total_settled_sum": total_settled_sum,
+                "total_debt_settled": total_settled_sum,
+                "unpaid_count": unpaid_count,
+                "records": records
+            }
+        except Exception as e:
+            logger.error(f"Error getting customer debt report for sub {subscription_id}: {e}")
+            return {"success": False, "error": str(e), "records": []}
+        finally:
+            conn.close()
+
+    def settle_customer_debt_record(self, subscription_id: int, record_id: int = None,
+                                    amount: int = None, settled_by: str = "مدیریت",
+                                    order_id: str = None) -> dict:
+        """
+        تسویه یک رسید بدهی خاص یا تسویه بخشی از بدهی مشتری
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT * FROM subscriptions WHERE id = ?", (subscription_id,))
+            sub_row = cursor.fetchone()
+            if not sub_row:
+                return {"success": False, "error": "اشتراک یافت نشد"}
+
+            sub = dict(sub_row)
+            current_debt = int(sub.get("debt_amount") or 0)
+
+            if record_id:
+                cursor.execute("SELECT * FROM customer_debt_records WHERE id = ? AND subscription_id = ?", (record_id, subscription_id))
+                rec = cursor.fetchone()
+                if not rec:
+                    return {"success": False, "error": "رسید بدهی یافت نشد"}
+                rec_dict = dict(rec)
+                rec_amt = int(rec_dict.get("amount") or 0)
+                cursor.execute("""
+                    UPDATE customer_debt_records 
+                    SET status = 'paid', paid_at = ?, settled_by = ?, settle_order_id = ?, updated_at = ?
+                    WHERE id = ?
+                """, (now, settled_by, order_id, now, record_id))
+                new_debt = max(0, current_debt - rec_amt)
+            elif amount is not None and amount > 0:
+                new_debt = max(0, current_debt - int(amount))
+                cursor.execute("""
+                    INSERT INTO customer_debt_records
+                    (subscription_id, account_name, telegram_id, reseller_id, action_type, plan_name,
+                     amount, previous_debt, total_debt, status, notes, created_by, paid_at, settled_by, settle_order_id, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, 'settle', 'تسویه بدهی', ?, ?, ?, 'paid', ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    subscription_id, sub.get("account_name"), sub.get("telegram_id") or 0,
+                    sub.get("reseller_id"), int(amount), current_debt, new_debt,
+                    f"تسویه مبلغ {amount:,} تومان توسط {settled_by}", settled_by, now, settled_by, order_id, now, now
+                ))
+            else:
+                new_debt = 0
+                cursor.execute("""
+                    UPDATE customer_debt_records 
+                    SET status = 'paid', paid_at = ?, settled_by = ?, settle_order_id = ?, updated_at = ?
+                    WHERE subscription_id = ? AND status = 'unpaid'
+                """, (now, settled_by, order_id, now, subscription_id))
+
+            new_status = "paid" if new_debt == 0 else "unpaid"
+            cursor.execute("""
+                UPDATE subscriptions
+                SET debt_amount = ?,
+                    payment_status = ?,
+                    debt_notes = CASE WHEN ? = 0 THEN NULL ELSE debt_notes END,
+                    updated_at = ?
+                WHERE id = ?
+            """, (new_debt, new_status, new_debt, now, subscription_id))
+
+            conn.commit()
+            return {"success": True, "new_debt": new_debt, "new_status": new_status}
+        except Exception as e:
+            logger.error(f"Error settling debt for sub {subscription_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def clear_subscription_debt(self, sub_id: int, reseller_id: int = None, settled_by: str = "مدیریت", order_id: str = None):
+        """تسویه کامل بدهی مشتری و ثبت وضعیت پرداخت شده در اشتراک و رسیدها"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -5291,6 +5531,14 @@ class Database:
                 query += " AND reseller_id = ?"
                 params.append(reseller_id)
             cursor.execute(query, params)
+
+            # بروزرسانی تمامی رکوردهای باز در جدول رسیدهای بدهی
+            cursor.execute("""
+                UPDATE customer_debt_records 
+                SET status = 'paid', paid_at = ?, settled_by = ?, settle_order_id = ?, updated_at = ?
+                WHERE subscription_id = ? AND status = 'unpaid'
+            """, (now, settled_by or "مدیریت", order_id, now, sub_id))
+
             conn.commit()
             return {"success": True}
         except Exception as e:
@@ -11856,7 +12104,7 @@ class Database:
         finally:
             conn.close()
 
-    def create_smart_invoice(self, sub_id: int, plan_id: str, reseller_id: int, base_amount: int, target_card: dict = None, digits: int = 3, timeout_minutes: int = 15, instant_activation: bool = True, discount_code: str = None, discount_amount: int = 0) -> dict:
+    def create_smart_invoice(self, sub_id: int, plan_id: str, reseller_id: int, base_amount: int, target_card: dict = None, digits: int = 3, timeout_minutes: int = 15, instant_activation: bool = True, discount_code: str = None, discount_amount: int = 0, is_debt_settlement: int = 0) -> dict:
         """
         تولید فاکتور تمدید هوشمند با ارقام تصادفی خرد جهت تایید اتوماتیک با پیامک بانک
         """
@@ -11907,15 +12155,16 @@ class Database:
         inst_act_val = 1 if instant_activation else 0
         disc_code_clean = (discount_code or "").strip().upper() or None
         disc_amt_clean = int(discount_amount or 0)
+        debt_settle_val = 1 if is_debt_settlement else 0
 
         cursor.execute("""
             INSERT INTO smart_invoices (
                 order_id, sub_id, plan_id, reseller_id, base_amount, random_suffix, 
                 final_amount, target_card_id, card_number, card_holder, bank_name, 
                 status, token, expires_at, created_at, instant_activation,
-                discount_code, discount_amount
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
-        """, (order_id, sub_id, plan_id, reseller_id, base_amount, chosen_suffix, final_amount, card_id, c_num, c_holder, b_name, token, expires_str, now_str, inst_act_val, disc_code_clean, disc_amt_clean))
+                discount_code, discount_amount, is_debt_settlement
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)
+        """, (order_id, sub_id, plan_id, reseller_id, base_amount, chosen_suffix, final_amount, card_id, c_num, c_holder, b_name, token, expires_str, now_str, inst_act_val, disc_code_clean, disc_amt_clean, debt_settle_val))
         conn.commit()
         conn.close()
 
@@ -11936,7 +12185,8 @@ class Database:
             "created_at": now_str,
             "instant_activation": inst_act_val,
             "discount_code": disc_code_clean,
-            "discount_amount": disc_amt_clean
+            "discount_amount": disc_amt_clean,
+            "is_debt_settlement": debt_settle_val
         }
 
     def get_smart_invoice_by_token(self, token: str) -> Optional[dict]:
