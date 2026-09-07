@@ -1010,6 +1010,124 @@
     {% endif %}
     {% endmacro %}
 
+    {% macro macro_queue_card() %}
+    {% set q_items = pending_queues if pending_queues else ([pending_queue] if pending_queue else []) %}
+    {% if q_items and q_items|length > 0 %}
+    <div class="glass-card p-3 p-md-4 mb-4 border border-info border-opacity-50 shadow-lg position-relative overflow-hidden" style="background: linear-gradient(135deg, rgba(6, 182, 212, 0.12) 0%, rgba(15, 23, 42, 0.6) 100%);">
+        <!-- سربرگ بخش صف تمدید -->
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 pb-2 border-bottom border-info border-opacity-25">
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-info text-dark rounded-circle p-2 d-inline-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
+                    <i class="fas fa-layer-group"></i>
+                </span>
+                <div>
+                    <h6 class="fw-bold text-info mb-0">صف بسته‌های رزرو شده شما</h6>
+                    <small class="text-secondary font-monospace">{{ q_items|length }} بسته در نوبت فعال‌سازی</small>
+                </div>
+            </div>
+            <span class="badge bg-info bg-opacity-25 text-info border border-info border-opacity-50 px-2 py-1 rounded-pill small">
+                <i class="fas fa-bolt me-1"></i>فعال‌سازی هوشمند خودکار
+            </span>
+        </div>
+
+        <div class="small text-secondary mb-3">
+            <i class="fas fa-circle-info text-info me-1"></i>
+            بسته‌های زیر به ترتیب نوبت، پس از مصرف <strong>۹۹٪ حجم</strong> بسته فعلی یا در <strong>روز پایانی مهلت اعتبار</strong>، به صورت خودکار و بدون قطعی فعال خواهند شد. شما می‌توانید نوبت بسته‌ها را به دلخواه جابجا کرده و یا هر بسته را همین حالا به صورت آنی فعال نمایید.
+        </div>
+
+        <!-- لیست کارتهای بسته‌های در صف -->
+        <div class="d-flex flex-column gap-2">
+            {% for q in q_items %}
+            <div class="p-3 rounded-3 border {% if loop.first %}border-success border-opacity-50 bg-black bg-opacity-40{% else %}border-secondary border-opacity-25 bg-black bg-opacity-25{% endif %}">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div class="d-flex align-items-center gap-3">
+                        <div>
+                            {% if loop.first %}
+                                <span class="badge bg-success text-white py-1 px-2 mb-1 d-inline-block shadow-sm">
+                                    <i class="fas fa-circle-play me-1"></i> نوبت ۱ (فعال‌سازی بعدی خودکار)
+                                </span>
+                            {% else %}
+                                <span class="badge bg-secondary text-white py-1 px-2 mb-1 d-inline-block">
+                                    <i class="fas fa-clock me-1"></i> نوبت {{ loop.index }} در صف
+                                </span>
+                            {% endif %}
+                            <h6 class="fw-bold text-white mb-1">
+                                «{{ q.get('plan_name') or 'بسته تمدید' }}»
+                            </h6>
+                            <div class="text-secondary small d-flex flex-wrap gap-3">
+                                <span><i class="fas fa-database text-info me-1"></i><strong>{{ q.get('data_limit') }}</strong> گیگابایت</span>
+                                <span><i class="fas fa-calendar-days text-warning me-1"></i><strong>{{ q.get('duration') }}</strong> روز</span>
+                                {% if q.get('created_at') %}
+                                <span class="text-muted"><i class="fas fa-clock me-1"></i>ثبت: {{ q.get('created_at')|gregorian_clean }}</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- دکمه‌های جابجایی و فعال‌سازی آنی -->
+                    <div class="d-flex align-items-center gap-2 flex-wrap ms-auto">
+                        <!-- دکمه‌های جابجایی نوبت صف -->
+                        <div class="btn-group btn-group-sm">
+                            {% if not loop.first %}
+                            <form method="POST" action="{{ url_for('portal_queue_move', token=token, queue_id=q.get('id')) }}" class="m-0 d-inline">
+                                <input type="hidden" name="direction" value="up">
+                                <button type="submit" class="btn btn-outline-info btn-sm py-1 px-2" title="انتقال به نوبت بالاتر (اولویت زودتر)">
+                                    <i class="fas fa-arrow-up me-1"></i>بالا
+                                </button>
+                            </form>
+                            {% endif %}
+                            {% if not loop.last %}
+                            <form method="POST" action="{{ url_for('portal_queue_move', token=token, queue_id=q.get('id')) }}" class="m-0 d-inline">
+                                <input type="hidden" name="direction" value="down">
+                                <button type="submit" class="btn btn-outline-secondary btn-sm py-1 px-2" title="انتقال به نوبت پایین‌تر">
+                                    <i class="fas fa-arrow-down me-1"></i>پایین
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+
+                        <!-- دکمه فعال‌سازی آنی -->
+                        <button type="button" class="btn btn-success btn-sm fw-bold px-3 py-1 shadow-sm" data-bs-toggle="modal" data-bs-target="#instantActivateModal{{ q.get('id') }}">
+                            <i class="fas fa-bolt me-1"></i>فعال‌سازی آنی
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- مودال تاییدیه فعال‌سازی آنی برای این بسته -->
+            <div class="modal fade" id="instantActivateModal{{ q.get('id') }}" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered modal-sm">
+                    <div class="modal-content glass-card border border-success border-opacity-50 text-white p-3">
+                        <div class="modal-header border-0 pb-1">
+                            <h6 class="modal-title fw-bold text-success"><i class="fas fa-bolt me-1"></i> تایید فعال‌سازی آنی</h6>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body py-2">
+                            <p class="small mb-2">
+                                آیا می‌خواهید بسته <strong>«{{ q.get('plan_name') }}»</strong> ({{ q.get('data_limit') }} گیگ - {{ q.get('duration') }} روز) همین حالا فعال شود؟
+                            </p>
+                            <div class="alert alert-warning py-2 px-2 small mb-0" style="font-size: 0.75rem;">
+                                <i class="fas fa-triangle-exclamation me-1"></i>
+                                <strong>توجه مهم:</strong> با فعال‌سازی آنی، حجم مصرفی فعلی شما صفر شده و این بسته بلافاصله جایگزین وضعیت فعلی خواهد شد.
+                            </div>
+                        </div>
+                        <div class="modal-footer border-0 pt-2 d-flex gap-2">
+                            <button type="button" class="btn btn-secondary btn-sm flex-grow-1" data-bs-dismiss="modal">انصراف</button>
+                            <form method="POST" action="{{ url_for('portal_queue_activate', token=token, queue_id=q.get('id')) }}" class="m-0 flex-grow-1">
+                                <button type="submit" class="btn btn-success btn-sm w-100 fw-bold">
+                                    <i class="fas fa-check me-1"></i> فعال‌سازی
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    {% endmacro %}
+
     {% macro macro_sub_card() %}
     <div class="glass-card p-4 mb-4">
         <!-- سربرگ نام مشتری و دکمه‌های فشرده دسترسی سریع -->
@@ -1064,23 +1182,8 @@
             </div>
         </div>
 
-        <!-- اعلان بسته رزرو در صف در صورت وجود -->
-        {% if pending_queue %}
-        <div class="p-3 mb-3 rounded-3 border border-info border-opacity-50" style="background: rgba(6, 182, 212, 0.1);">
-            <div class="d-flex align-items-start gap-2">
-                <i class="fas fa-boxes-stacked text-info fs-4 mt-1"></i>
-                <div>
-                    <div class="fw-bold text-info small">بسته رزرو در صف انتظار دارید:</div>
-                    <div class="text-white small mt-1">
-                        بسته <strong>«{{ pending_queue.get('plan_name') or 'بسته رزرو' }}»</strong> با ظرفیت <strong>{{ pending_queue.get('data_limit') }} گیگابایت</strong> و <strong>{{ pending_queue.get('duration') }} روز</strong> زمان.
-                    </div>
-                    <div class="text-secondary small mt-1" style="font-size: 0.75rem;">
-                        <i class="fas fa-info-circle me-1"></i> به محض اتمام حجم یا پایان مهلت انقضای بسته فعلی، این بسته به صورت کاملاً خودکار برای شما فعال خواهد شد.
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endif %}
+        <!-- اعلان و مدیریت بسته‌های رزرو در صف تمدید -->
+        {{ macro_queue_card() }}
 
         <!-- نوار پیشرفت مصرف حجم -->
         {% set used_gb = sub.get('data_used', 0) | float %}
@@ -1455,6 +1558,7 @@
         <!-- ═══════════ قالب ۴: بنتو گرید ماژولار (Bento Grid) ═══════════ -->
         <div class="bento-grid-wrapper">
             {{ macro_invoice_card() }}
+            {{ macro_queue_card() }}
 
             <!-- ردیف ۱ بنتو: تایل مصرف حجم + تایل شمارنده روزها -->
             <div class="row g-3 mb-3">

@@ -287,8 +287,14 @@
                                              <span class="badge bg-warning text-dark py-0 px-1" title="مشتری طلایی (VIP)"><i class="fas fa-crown"></i> VIP</span>
                                         {% endif %}
                                         {% if sub.get('has_queue') %}
-                                            <span class="badge bg-info text-dark py-0 px-2 shadow-sm cursor-pointer" role="button" data-bs-toggle="modal" data-bs-target="#customerQueueModal{{ sub['id'] }}" style="font-size: 0.7rem;" title="مشاهده و مدیریت بسته در صف: {{ sub['pending_queue']['plan_name'] }}">
-                                                <i class="fas fa-layer-group me-1"></i> بسته در صف: {{ sub['pending_queue']['plan_name'] }}
+                                            {% set q_cnt = sub.get('queue_count') or (sub.get('pending_queues')|length if sub.get('pending_queues') else 1) %}
+                                            <span class="badge bg-info text-dark py-0 px-2 shadow-sm cursor-pointer" role="button" data-bs-toggle="modal" data-bs-target="#customerQueueModal{{ sub['id'] }}" style="font-size: 0.7rem;" title="مشاهده و مدیریت صف تمدید ({{ q_cnt }} بسته در نوبت)">
+                                                <i class="fas fa-layer-group me-1"></i>
+                                                {% if q_cnt > 1 %}
+                                                    صف تمدید ({{ q_cnt }} بسته در نوبت)
+                                                {% else %}
+                                                    بسته در صف: {{ sub['pending_queue']['plan_name'] if sub.get('pending_queue') else 'رزرو' }}
+                                                {% endif %}
                                             </span>
                                         {% endif %}
                                         
@@ -636,39 +642,76 @@
             </div>
             <div class="modal-body p-4">
                 {% if sub.get('has_queue') %}
-                {% set q = sub['pending_queue'] %}
-                <!-- نوار برجسته بسته در صف تمدید -->
-                <div class="card border-info bg-info bg-opacity-10 shadow-sm mb-4">
-                    <div class="card-body p-3">
-                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                            <div>
-                                <div class="d-flex align-items-center gap-2 flex-wrap">
-                                    <span class="badge bg-info text-dark fs-6"><i class="fas fa-layer-group me-1"></i> بسته رزرو در صف تمدید</span>
-                                    <strong class="text-dark fs-6">{{ q['plan_name'] }}</strong>
-                                    <span class="badge bg-primary">{{ q['data_limit'] }} گیگ - {{ q['duration'] }} روز</span>
+                {% set queue_list = sub.get('pending_queues') or [sub.get('pending_queue')] %}
+                <!-- بخش بسته‌های در صف تمدید -->
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="fw-bold text-dark small"><i class="fas fa-layer-group text-info me-1"></i> بسته‌های در صف تمدید ({{ queue_list|length }} بسته به نوبت):</span>
+                        <button type="button" class="btn btn-xs btn-outline-info py-0 px-2" data-bs-dismiss="modal" data-bs-toggle="modal" data-bs-target="#customerQueueModal{{ sub['id'] }}">
+                            <i class="fas fa-sliders me-1"></i> مدیریت کامل و تغییر نوبت
+                        </button>
+                    </div>
+                    {% for q in queue_list %}
+                    <div class="card border-info bg-info bg-opacity-10 shadow-sm mb-2">
+                        <div class="card-body p-3">
+                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                <div>
+                                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                                        {% if loop.first %}
+                                            <span class="badge bg-success text-white fs-6"><i class="fas fa-circle-play me-1"></i> نوبت ۱ (فعال‌سازی بعدی)</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary text-white fs-6"><i class="fas fa-clock me-1"></i> نوبت {{ loop.index }} در صف</span>
+                                        {% endif %}
+                                        <strong class="text-dark fs-6">{{ q['plan_name'] }}</strong>
+                                        <span class="badge bg-primary">{{ q['data_limit'] }} گیگ - {{ q['duration'] }} روز</span>
+                                    </div>
+                                    <div class="small text-muted mt-1">
+                                        <span><i class="fas fa-money-bill-wave me-1"></i>هزینه کسر شده: <strong>{{ "{:,}".format(q['cost']) if q['cost'] else 'رایگان' }} ت</strong></span> |
+                                        <span><i class="fas fa-clock me-1"></i>ثبت در صف: <strong>{{ q['created_at']|gregorian_clean }}</strong></span>
+                                        {% if q.get('note') %}
+                                        | <span><i class="fas fa-note-sticky me-1"></i>{{ q['note'] }}</span>
+                                        {% endif %}
+                                    </div>
+                                    {% if loop.first %}
+                                    <div class="small text-primary mt-1">
+                                        <i class="fas fa-circle-info me-1"></i><strong>فعال‌سازی خودکار:</strong> پس از مصرف ۹۹٪ حجم بسته فعلی یا در روز پایانی اشتراک
+                                    </div>
+                                    {% endif %}
                                 </div>
-                                <div class="small text-muted mt-1">
-                                    <span><i class="fas fa-money-bill-wave me-1"></i>هزینه کسر شده: <strong>{{ "{:,}".format(q['cost']) if q['cost'] else 'رایگان' }} ت</strong></span> |
-                                    <span><i class="fas fa-clock me-1"></i>ثبت در صف: <strong>{{ q['created_at']|gregorian_clean }}</strong></span>
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="btn-group btn-group-sm me-1">
+                                        {% if not loop.first %}
+                                        <form method="POST" action="{{ url_for('reseller_queue_move', queue_id=q['id']) }}" class="m-0 d-inline">
+                                            <input type="hidden" name="direction" value="up">
+                                            <button type="submit" class="btn btn-outline-primary btn-sm py-1 px-2" title="انتقال به نوبت بالاتر">
+                                                <i class="fas fa-arrow-up"></i>
+                                            </button>
+                                        </form>
+                                        {% endif %}
+                                        {% if not loop.last %}
+                                        <form method="POST" action="{{ url_for('reseller_queue_move', queue_id=q['id']) }}" class="m-0 d-inline">
+                                            <input type="hidden" name="direction" value="down">
+                                            <button type="submit" class="btn btn-outline-secondary btn-sm py-1 px-2" title="انتقال به نوبت پایین‌تر">
+                                                <i class="fas fa-arrow-down"></i>
+                                            </button>
+                                        </form>
+                                        {% endif %}
+                                    </div>
+                                    <form method="POST" action="{{ url_for('reseller_queue_activate', queue_id=q['id']) }}" class="m-0" onsubmit="return confirm('آیا می‌خواهید بسته «{{ q['plan_name'] }}» هم‌اکنون به صورت آنی فعال و ریست شود؟');">
+                                        <button type="submit" class="btn btn-success btn-sm fw-bold shadow-sm" title="فعال‌سازی آنی این بسته و ریست مصرف">
+                                            <i class="fas fa-bolt me-1"></i> فعال‌سازی آنی
+                                        </button>
+                                    </form>
+                                    <form method="POST" action="{{ url_for('reseller_queue_cancel', queue_id=q['id']) }}" class="m-0" onsubmit="return confirm('آیا از لغو این بسته از صف تمدید و بازگشت هزینه به کیف‌پول اطمینان دارید؟');">
+                                        <button type="submit" class="btn btn-outline-danger btn-sm" title="لغو رزرو و استرداد وجه">
+                                            <i class="fas fa-times me-1"></i> لغو و استرداد
+                                        </button>
+                                    </form>
                                 </div>
-                                <div class="small text-primary mt-1">
-                                    <i class="fas fa-circle-info me-1"></i><strong>فعال‌سازی خودکار:</strong> پس از مصرف ۹۹٪ حجم بسته فعلی یا در روز پایانی اشتراک
-                                </div>
-                            </div>
-                            <div class="d-flex gap-2">
-                                <form method="POST" action="{{ url_for('reseller_queue_activate', queue_id=q['id']) }}" class="m-0" onsubmit="return confirm('آیا می‌خواهید این بسته هم‌اکنون به صورت آنی فعال و ریست شود؟');">
-                                    <button type="submit" class="btn btn-success btn-sm fw-bold shadow-sm">
-                                        <i class="fas fa-bolt me-1"></i> فعال‌سازی آنی
-                                    </button>
-                                </form>
-                                <form method="POST" action="{{ url_for('reseller_queue_cancel', queue_id=q['id']) }}" class="m-0" onsubmit="return confirm('آیا از لغو این بسته از صف تمدید و بازگشت هزینه به کیف‌پول اطمینان دارید؟');">
-                                    <button type="submit" class="btn btn-outline-danger btn-sm" title="لغو رزرو و استرداد وجه">
-                                        <i class="fas fa-times me-1"></i> لغو و استرداد
-                                    </button>
-                                </form>
                             </div>
                         </div>
                     </div>
+                    {% endfor %}
                 </div>
                 {% endif %}
 
@@ -892,11 +935,21 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body p-4">
-                    {% if sub.get('pending_queue') %}
+                    {% if sub.get('has_queue') %}
+                    {% set q_list = sub.get('pending_queues') or [sub.get('pending_queue')] %}
                     <div class="alert alert-warning py-2 small mb-3">
-                        <i class="fas fa-layer-group me-1"></i>
-                        <strong>توجه:</strong> یک بسته تمدیدی از قبل در صف رزرو این مشتری قرار دارد:
-                        <strong class="d-block mt-1">«{{ sub['pending_queue']['plan_name'] }}» ({{ sub['pending_queue']['data_limit'] }} گیگ - {{ sub['pending_queue']['duration'] }} روز)</strong>
+                        <div class="fw-bold mb-1">
+                            <i class="fas fa-layer-group me-1"></i>
+                            <strong>توجه:</strong> تعداد <strong>{{ q_list|length }} بسته تمدیدی</strong> از قبل در صف رزرو این مشتری قرار دارد:
+                        </div>
+                        <ul class="mb-1 ps-3">
+                            {% for q_item in q_list %}
+                            <li>
+                                <strong>نوبت {{ loop.index }}:</strong> «{{ q_item['plan_name'] }}» ({{ q_item['data_limit'] }} گیگ - {{ q_item['duration'] }} روز)
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        <span class="text-muted d-block" style="font-size: 0.75rem;">در صورت انتخاب حالت «رزرو در صف تمدید»، بسته جدید به عنوان نوبت بعدی در صف ثبت خواهد شد.</span>
                     </div>
                     {% endif %}
 
@@ -1057,11 +1110,47 @@
             </div>
             <div class="modal-body p-4">
                 {% if sub.get('has_queue') %}
-                {% set q = sub['pending_queue'] %}
+                {% set queue_list = sub.get('pending_queues') or [sub.get('pending_queue')] %}
+                
+                <div class="alert alert-info py-2 px-3 small mb-3">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-1">
+                        <div>
+                            <i class="fas fa-layer-group text-primary me-1"></i>
+                            تعداد <strong>{{ queue_list|length }} بسته</strong> در صف رزرو این مشتری قرار دارد.
+                        </div>
+                        <span class="text-muted" style="font-size: 0.75rem;">فعال‌سازی خودکار پس از ۹۹٪ مصرف یا روز پایانی هر دوره</span>
+                    </div>
+                </div>
+
+                {% for q in queue_list %}
                 <div class="card border-primary border-opacity-50 shadow-sm mb-3">
-                    <div class="card-header bg-primary bg-opacity-10 py-2 d-flex justify-content-between align-items-center">
-                        <span class="fw-bold text-primary small"><i class="fas fa-box-archive me-1"></i> بسته رزرو شده در انتظار فعال‌سازی</span>
-                        <span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i>در صف رزرو</span>
+                    <div class="card-header bg-light py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div class="d-flex align-items-center gap-2">
+                            {% if loop.first %}
+                                <span class="badge bg-success fs-6"><i class="fas fa-circle-play me-1"></i> نوبت ۱ (فعال‌سازی بعدی خودکار)</span>
+                            {% else %}
+                                <span class="badge bg-secondary fs-6"><i class="fas fa-clock me-1"></i> نوبت {{ loop.index }} در صف</span>
+                            {% endif %}
+                            <span class="badge bg-warning text-dark"><i class="fas fa-hourglass-half me-1"></i>در صف رزرو</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-1">
+                            {% if not loop.first %}
+                            <form method="POST" action="{{ url_for('reseller_queue_move', queue_id=q['id']) }}" class="m-0 d-inline">
+                                <input type="hidden" name="direction" value="up">
+                                <button type="submit" class="btn btn-sm btn-outline-primary py-1 px-2" title="انتقال به نوبت بالاتر (اولویت بیشتر)">
+                                    <i class="fas fa-arrow-up me-1"></i>بالا
+                                </button>
+                            </form>
+                            {% endif %}
+                            {% if not loop.last %}
+                            <form method="POST" action="{{ url_for('reseller_queue_move', queue_id=q['id']) }}" class="m-0 d-inline">
+                                <input type="hidden" name="direction" value="down">
+                                <button type="submit" class="btn btn-sm btn-outline-secondary py-1 px-2" title="انتقال به نوبت پایین‌تر">
+                                    <i class="fas fa-arrow-down me-1"></i>پایین
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
                     </div>
                     <div class="card-body p-3">
                         <div class="text-center mb-3">
@@ -1088,14 +1177,9 @@
                             </li>
                             {% endif %}
                         </ul>
-
-                        <div class="alert alert-info py-2 px-3 small mb-0">
-                            <div class="fw-bold mb-1"><i class="fas fa-bolt text-warning me-1"></i> شرایط فعال‌سازی هوشمند خودکار:</div>
-                            این بسته به محض مصرف <strong>۹۹٪ حجم اشتراک فعلی</strong> یا رسیدن به <strong>روز پایانی اعتبار</strong> به صورت کاملاً خودکار، بدون قطعی و با صفر شدن حجم مصرفی فعال می‌گردد.
-                        </div>
                     </div>
                     <div class="card-footer bg-light p-3 d-flex gap-2">
-                        <form method="POST" action="{{ url_for('reseller_queue_activate', queue_id=q['id']) }}" class="flex-grow-1 m-0" onsubmit="return confirm('آیا از فعال‌سازی آنی این بسته همین حالا اطمینان دارید؟ مصرف صفر شده و بسته بلافاصله جایگزین خواهد شد.');">
+                        <form method="POST" action="{{ url_for('reseller_queue_activate', queue_id=q['id']) }}" class="flex-grow-1 m-0" onsubmit="return confirm('آیا از فعال‌سازی آنی بسته «{{ q['plan_name'] }}» همین حالا اطمینان دارید؟ مصرف صفر شده و این بسته بلافاصله جایگزین خواهد شد.');">
                             <button type="submit" class="btn btn-success w-100 fw-bold py-2 shadow-sm">
                                 <i class="fas fa-bolt me-1"></i> فعال‌سازی آنی
                             </button>
@@ -1107,6 +1191,7 @@
                         </form>
                     </div>
                 </div>
+                {% endfor %}
                 {% else %}
                 <div class="text-center py-4">
                     <div class="bg-light rounded-circle mx-auto d-flex align-items-center justify-content-center mb-3 text-muted" style="width: 64px; height: 64px;">
@@ -1553,6 +1638,13 @@
                                 </td>
                                 <td>
                                     <div>
+                                        <div class="d-flex align-items-center gap-1 mb-1">
+                                            {% if (item.get('queue_order') or 1) == 1 %}
+                                                <span class="badge bg-success text-white py-0 px-1" style="font-size: 0.7rem;"><i class="fas fa-circle-play me-1"></i>نوبت ۱ (فعال‌سازی بعدی)</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary text-white py-0 px-1" style="font-size: 0.7rem;"><i class="fas fa-clock me-1"></i>نوبت {{ item.get('queue_order') }}</span>
+                                            {% endif %}
+                                        </div>
                                         <strong class="text-success d-block"><i class="fas fa-layer-group me-1 text-primary"></i>{{ item['plan_name'] }}</strong>
                                         <div class="small text-muted">
                                             <span>{{ item['data_limit'] }} گیگ</span> |
