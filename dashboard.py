@@ -7935,6 +7935,35 @@ def settings():
 
             flash("تنظیمات پالت‌های رنگی، هاله‌های نوری و افکت شیشه‌ای مات با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
+        elif action == "save_chat_settings":
+            chat_button_style = request.form.get("chat_button_style", "modern_pill").strip()
+            chat_button_text = request.form.get("chat_button_text", "گفتگوی آنلاین").strip()
+            chat_button_position = request.form.get("chat_button_position", "right").strip()
+            chat_fake_online_mode = request.form.get("chat_fake_online_mode", "real").strip()
+            chat_fake_online_agents = request.form.getlist("chat_fake_online_agents")
+            chat_ai_enabled = "1" if request.form.get("chat_ai_enabled") else "0"
+            chat_ai_mode = request.form.get("chat_ai_mode", "smart_local").strip()
+            chat_ai_api_key = request.form.get("chat_ai_api_key", "").strip()
+            chat_ai_api_url = request.form.get("chat_ai_api_url", "https://api.openai.com/v1/chat/completions").strip()
+            chat_ai_model = request.form.get("chat_ai_model", "gpt-4o-mini").strip()
+            chat_sound_enabled = "1" if request.form.get("chat_sound_enabled") else "0"
+
+            db.save_chat_settings({
+                "chat_button_style": chat_button_style,
+                "chat_button_text": chat_button_text,
+                "chat_button_position": chat_button_position,
+                "chat_fake_online_mode": chat_fake_online_mode,
+                "chat_fake_online_agents": chat_fake_online_agents,
+                "chat_ai_enabled": chat_ai_enabled,
+                "chat_ai_mode": chat_ai_mode,
+                "chat_ai_api_key": chat_ai_api_key,
+                "chat_ai_api_url": chat_ai_api_url,
+                "chat_ai_model": chat_ai_model,
+                "chat_sound_enabled": chat_sound_enabled
+            })
+
+            flash("تنظیمات ظاهر دکمه گفتگوی آنلاین، وضعیت ساختگی و چتبات هوش مصنوعی با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("settings"))
 
     conn = db.get_connection()
     settings_list = conn.execute("SELECT * FROM settings").fetchall()
@@ -7976,6 +8005,8 @@ def settings():
         "palette_animation": db.get_setting("palette_animation", "float"),
         "portal_palette": db.get_setting("portal_palette", "inherit")
     }
+    chat_settings = db.get_chat_settings()
+
     return render_template(
         "settings.html",
         settings=settings_list,
@@ -7992,6 +8023,7 @@ def settings():
         store_branding_config=store_branding_config,
         customer_portal_config=customer_portal_config,
         palette_settings=palette_settings,
+        chat_settings=chat_settings,
         available_palettes=get_all_palettes()
     )
 
@@ -12932,6 +12964,8 @@ def customer_portal(token: str):
     server_status = get_customer_portal_server_status()
     portal_palette_config = get_active_palette_config(db, context="portal")
     portal_palette_css = generate_palette_css(portal_palette_config)
+    chat_settings = db.get_chat_settings()
+    support_online_info = db.is_support_online_for_sub(sub_id, reseller_id=reseller_id)
 
     return render_template(
         "customer_portal.html",
@@ -12956,7 +12990,9 @@ def customer_portal(token: str):
         total_paid=total_paid,
         server_status=server_status,
         palette_config=portal_palette_config,
-        palette_css=portal_palette_css
+        palette_css=portal_palette_css,
+        chat_settings=chat_settings,
+        support_online_info=support_online_info
     )
 
 
@@ -13187,6 +13223,10 @@ def api_portal_chat_init(token: str):
         default_name = ""
     default_phone = sub.get("phone_number") or ""
 
+    reseller_id = sub.get("reseller_id") or 0
+    support_status_info = db.is_support_online_for_sub(sub_id, reseller_id=reseller_id)
+    chat_cfg = db.get_chat_settings()
+
     return jsonify({
         "success": True,
         "subscription_id": sub_id,
@@ -13196,7 +13236,13 @@ def api_portal_chat_init(token: str):
         "messages": active_messages,
         "history_count": len(history),
         "history": history,
-        "support_status": "online"
+        "support_status": support_status_info["status"],
+        "support_is_online": support_status_info["is_online"],
+        "support_name": support_status_info["support_name"],
+        "support_status_text": support_status_info["status_text"],
+        "chat_button_style": chat_cfg["chat_button_style"],
+        "chat_button_text": chat_cfg["chat_button_text"],
+        "chat_button_position": chat_cfg["chat_button_position"]
     })
 
 
@@ -13336,6 +13382,16 @@ def api_portal_chat_start(token: str):
     except Exception as e_notif:
         logger.warning(f"Failed to notify of new portal chat: {e_notif}")
 
+    chat_cfg = db.get_chat_settings()
+    if chat_cfg.get("chat_ai_enabled"):
+        try:
+            ai_msg1 = "پیام شما دریافت شد و به پشتیبانی مربوط به مشکل خودتون ارسال کردم و بزودی پشتیبان پاسخ شمارو خواهد داد"
+            ai_msg2 = "من هوش مصنوعی هستم آیا مایلید مشکلتون رو حل کنم؟"
+            db.add_ticket_message(ticket_id, sender_type="ai", sender_name="هوش مصنوعی", message=ai_msg1, new_status="open")
+            db.add_ticket_message(ticket_id, sender_type="ai", sender_name="هوش مصنوعی", message=ai_msg2, new_status="open")
+        except Exception as e_ai_init:
+            logger.warning(f"Error adding initial AI messages: {e_ai_init}")
+
     ticket = db.get_portal_ticket(ticket_id, subscription_id=sub_id, portal_token=token)
     messages = db.get_ticket_messages(ticket_id)
 
@@ -13429,9 +13485,33 @@ def api_portal_chat_send(token: str):
     except Exception as e_notif:
         logger.warning(f"Failed to notify of chat user message: {e_notif}")
 
+    ai_reply_data = None
+    chat_cfg = db.get_chat_settings()
+    if chat_cfg.get("chat_ai_enabled"):
+        # بررسی عدم پاسخگویی یا دخالت پشتیبان انسانی (در صورت پاسخ پشتیبان، هوش مصنوعی ادامه نمی‌دهد)
+        if not db.has_human_support_replied(ticket_id):
+            ai_text = db.generate_ai_chat_reply(ticket_id, message_text, sub_info=sub)
+            if ai_text:
+                ai_res = db.add_ticket_message(
+                    ticket_id=ticket_id,
+                    sender_type="ai",
+                    sender_name="هوش مصنوعی",
+                    message=ai_text,
+                    new_status="open"
+                )
+                if ai_res.get("success"):
+                    ai_reply_data = {
+                        "id": ai_res.get("message_id"),
+                        "sender_type": "ai",
+                        "sender_name": "هوش مصنوعی",
+                        "message": ai_text,
+                        "created_at": get_now_iso()
+                    }
+
     return jsonify({
         "success": True,
         "message_id": res.get("message_id"),
+        "ai_reply": ai_reply_data,
         "ticket_id": ticket_id
     })
 
@@ -13468,8 +13548,15 @@ def api_portal_chat_poll(token: str):
         last_msg_id=last_msg_id
     )
 
+    reseller_id = sub.get("reseller_id") or 0
+    support_status_info = db.is_support_online_for_sub(sub_id, reseller_id=reseller_id)
+
     return jsonify({
         "success": True,
+        "support_status": support_status_info["status"],
+        "support_is_online": support_status_info["is_online"],
+        "support_name": support_status_info["support_name"],
+        "support_status_text": support_status_info["status_text"],
         **poll_result
     })
 

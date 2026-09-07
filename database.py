@@ -4229,7 +4229,7 @@ class Database:
             cursor.execute("""
                 SELECT COUNT(*) FROM ticket_messages m
                 JOIN support_tickets t ON m.ticket_id = t.id
-                WHERE t.subscription_id = ? AND m.sender_type IN ('admin', 'reseller') AND m.id > ?
+                WHERE t.subscription_id = ? AND m.sender_type IN ('admin', 'reseller', 'ai') AND m.id > ?
             """, (subscription_id, last_msg_id))
             unread_count = cursor.fetchone()[0]
 
@@ -4244,6 +4244,315 @@ class Database:
             return {"new_messages": [], "unread_count": 0}
         finally:
             conn.close()
+
+    def has_human_support_replied(self, ticket_id: int) -> bool:
+        """بررسی اینکه آیا پشتیبان انسانی (ادمین یا نماینده) در این تیکت پاسخ داده است یا خیر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT COUNT(*) FROM ticket_messages
+                WHERE ticket_id = ? AND sender_type IN ('admin', 'reseller', 'operator')
+            """, (ticket_id,))
+            cnt = cursor.fetchone()[0]
+            if cnt > 0:
+                return True
+            cursor.execute("SELECT status FROM support_tickets WHERE id = ?", (ticket_id,))
+            row = cursor.fetchone()
+            if row and row[0] == "closed":
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Error checking human support reply: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def is_support_online_for_sub(self, sub_id: int, reseller_id: int = 0) -> dict:
+        """تشخیص وضعیت آنلاین یا آفلاین بودن پشتیبان برای یک اشتراک خاص (پشتیبانی نماینده یا مدیر)"""
+        mode = self.get_setting("chat_fake_online_mode", "real")
+        raw_agents = self.get_setting("chat_fake_online_agents", [])
+        if isinstance(raw_agents, list):
+            fake_agents = raw_agents
+        elif isinstance(raw_agents, str):
+            try:
+                fake_agents = json.loads(raw_agents)
+            except Exception:
+                fake_agents = [x.strip() for x in raw_agents.split(",") if x.strip()]
+        else:
+            fake_agents = []
+
+        # استخراج نام و هویت پشتیبان
+        support_name = "پشتیبانی"
+        if reseller_id and int(reseller_id) > 0:
+            r = self.get_reseller(reseller_id)
+            if r:
+                support_name = r.get("brand_name") or r.get("brand_title") or r.get("name") or f"پشتیبانی نماینده ({r.get('username')})"
+        else:
+            support_name = self.get_setting("portal_title") or self.get_setting("store_name") or "پشتیبانی مرکزی"
+
+        # ۱. بررسی حالت آنلاین ساختگی (Fake Online)
+        if mode == "always_all":
+            return {
+                "is_online": True,
+                "status": "online",
+                "support_name": support_name,
+                "status_text": "آنلاین و پاسخگو",
+                "mode": "fake"
+            }
+        elif mode == "custom":
+            is_fake_target = False
+            if reseller_id and int(reseller_id) > 0:
+                if str(reseller_id) in [str(x) for x in fake_agents]:
+                    is_fake_target = True
+            else:
+                if "admin" in [str(x).lower() for x in fake_agents] or "0" in [str(x) for x in fake_agents]:
+                    is_fake_target = True
+
+            if is_fake_target:
+                return {
+                    "is_online": True,
+                    "status": "online",
+                    "support_name": support_name,
+                    "status_text": "آنلاین و پاسخگو",
+                    "mode": "fake"
+                }
+
+        # ۲. بررسی وضعیت واقعی (Real Online Status)
+        is_online = False
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            now_tehran = datetime.now(TEHRAN_TZ)
+
+            if reseller_id and int(reseller_id) > 0:
+                # بررسی لاگین نماینده یا زیرمدیران فعال او
+                cursor.execute("""
+                    SELECT last_active_at, login_at FROM login_logs
+                    WHERE user_type IN ('reseller', 'reseller_subadmin') AND user_id = ? AND is_active = 1
+                    ORDER BY id DESC LIMIT 1
+                """, (reseller_id,))
+                row = cursor.fetchone()
+                if row:
+                    last_time_str = row[0] or row[1]
+                    if last_time_str:
+                        try:
+                            last_time = datetime.fromisoformat(last_time_str)
+                            if last_time.tzinfo is None:
+                                last_time = last_time.replace(tzinfo=TEHRAN_TZ)
+                            if abs((now_tehran - last_time).total_seconds()) <= 15 * 60:
+                                is_online = True
+                        except Exception:
+                            pass
+
+                # بررسی ارسال پیام اخیر تیکت توسط نماینده
+                if not is_online:
+                    cursor.execute("""
+                        SELECT created_at FROM ticket_messages
+                        WHERE sender_type = 'reseller' AND sender_id = ?
+                        ORDER BY id DESC LIMIT 1
+                    """, (reseller_id,))
+                    t_msg = cursor.fetchone()
+                    if t_msg and t_msg[0]:
+                        try:
+                            t_time = datetime.fromisoformat(t_msg[0])
+                            if t_time.tzinfo is None:
+                                t_time = t_time.replace(tzinfo=TEHRAN_TZ)
+                            if abs((now_tehran - t_time).total_seconds()) <= 20 * 60:
+                                is_online = True
+                        except Exception:
+                            pass
+            else:
+                # بررسی ادمین اصلی و سایر مدیران پنل
+                cursor.execute("""
+                    SELECT last_active_at, login_at FROM login_logs
+                    WHERE user_type = 'admin' AND is_active = 1
+                    ORDER BY id DESC LIMIT 1
+                """)
+                row = cursor.fetchone()
+                if row:
+                    last_time_str = row[0] or row[1]
+                    if last_time_str:
+                        try:
+                            last_time = datetime.fromisoformat(last_time_str)
+                            if last_time.tzinfo is None:
+                                last_time = last_time.replace(tzinfo=TEHRAN_TZ)
+                            if abs((now_tehran - last_time).total_seconds()) <= 15 * 60:
+                                is_online = True
+                        except Exception:
+                            pass
+
+                # بررسی ارسال پیام اخیر توسط ادمین
+                if not is_online:
+                    cursor.execute("""
+                        SELECT created_at FROM ticket_messages
+                        WHERE sender_type = 'admin'
+                        ORDER BY id DESC LIMIT 1
+                    """)
+                    t_msg = cursor.fetchone()
+                    if t_msg and t_msg[0]:
+                        try:
+                            t_time = datetime.fromisoformat(t_msg[0])
+                            if t_time.tzinfo is None:
+                                t_time = t_time.replace(tzinfo=TEHRAN_TZ)
+                            if abs((now_tehran - t_time).total_seconds()) <= 20 * 60:
+                                is_online = True
+                        except Exception:
+                            pass
+        except Exception as e:
+            logger.error(f"Error checking support real online status: {e}")
+            is_online = False
+        finally:
+            conn.close()
+
+        return {
+            "is_online": is_online,
+            "status": "online" if is_online else "offline",
+            "support_name": support_name,
+            "status_text": "آنلاین و پاسخگو" if is_online else "آفلاین (ثبت پیام برای بررسی)",
+            "mode": "real"
+        }
+
+    def get_chat_settings(self) -> dict:
+        """دریافت تنظیمات جامع گفتگوی آنلاین پورتال مشتری، استایل دکمه و هوش مصنوعی"""
+        raw_agents = self.get_setting("chat_fake_online_agents", [])
+        if isinstance(raw_agents, list):
+            fake_agents = raw_agents
+        elif isinstance(raw_agents, str):
+            try:
+                fake_agents = json.loads(raw_agents)
+            except Exception:
+                fake_agents = [x.strip() for x in raw_agents.split(",") if x.strip()]
+        else:
+            fake_agents = []
+
+        return {
+            "chat_button_style": self.get_setting("chat_button_style", "modern_pill"),
+            "chat_button_text": self.get_setting("chat_button_text", "گفتگوی آنلاین"),
+            "chat_button_position": self.get_setting("chat_button_position", "right"),
+            "chat_fake_online_mode": self.get_setting("chat_fake_online_mode", "real"),
+            "chat_fake_online_agents": fake_agents,
+            "chat_ai_enabled": str(self.get_setting("chat_ai_enabled", "1")).lower() in ("1", "true"),
+            "chat_ai_mode": self.get_setting("chat_ai_mode", "smart_local"),
+            "chat_ai_api_key": self.get_setting("chat_ai_api_key", ""),
+            "chat_ai_api_url": self.get_setting("chat_ai_api_url", "https://api.openai.com/v1/chat/completions"),
+            "chat_ai_model": self.get_setting("chat_ai_model", "gpt-4o-mini"),
+            "chat_sound_enabled": str(self.get_setting("chat_sound_enabled", "1")).lower() in ("1", "true")
+        }
+
+    def save_chat_settings(self, settings: dict):
+        """ذخیره تنظیمات گفتگوی آنلاین در دیتابیس"""
+        for k, v in settings.items():
+            if isinstance(v, (list, dict)):
+                self.save_setting(k, json.dumps(v, ensure_ascii=False))
+            elif isinstance(v, bool):
+                self.save_setting(k, "1" if v else "0")
+            else:
+                self.save_setting(k, str(v) if v is not None else "")
+
+    def generate_ai_chat_reply(self, ticket_id: int, customer_message: str, sub_info: dict = None) -> Optional[str]:
+        """پاسخگویی هوشمند چتبات هوش مصنوعی به پیام مشتری با رعایت توقف در صورت پاسخ پشتیبان انسانی"""
+        # ۱. بررسی اینکه آیا پشتیبان انسانی قبلاً در این گفتگو پاسخ داده است یا خیر
+        if self.has_human_support_replied(ticket_id):
+            return None
+
+        # ۲. بررسی فعال بودن هوش مصنوعی
+        ai_enabled = str(self.get_setting("chat_ai_enabled", "1")).lower() in ("1", "true")
+        if not ai_enabled:
+            return None
+
+        text = (customer_message or "").strip().lower()
+        if not text:
+            return None
+
+        # ۳. حالت‌های مختلف پیام مشتری:
+        # الف) اعلام آمادگی و تایید جهت حل مشکل
+        affirmative_words = ["بله", "اره", "آره", "موافقم", "ممنون", "حل کن", "میخوام", "اوکی", "باشه", "مرسی", "لطفا", "لطفاً"]
+        if any(w == text or text.startswith(w + " ") or text.endswith(" " + w) for w in affirmative_words) and len(text) <= 25:
+            return (
+                "با کمال میل! 🌸 من هوش مصنوعی هستم و آماده‌ام مشکل‌تان را بررسی و حل کنم.\n\n"
+                "لطفاً بفرمایید دقیقاً چه مشکلی پیش آمده است؟\n"
+                "• مشکل در اتصال و پینگ؟\n"
+                "• نیاز به نرم‌افزار مناسب (اندروید، آیفون، ویندوز)؟\n"
+                "• سوال در مورد تمدید یا دریافت لینک اشتراک؟"
+            )
+
+        # ب) مشکلات اتصال، قطعی، کار نکردن یا پینگ بالا
+        if any(w in text for w in ["وصل نمیشه", "قطع", "کار نمیکنه", "پینگ", "سرعت", "کندی", "تایم اوت", "timeout", "فیلتر", "بسته شده", "وصل نیست"]):
+            return (
+                "برای رفع سریع مشکل اتصال و قطعی، لطفاً این مراحل پیشنهادی را به ترتیب انجام دهید:\n\n"
+                "۱- **حالت پرواز (Airplane Mode)** گوشی خود را به مدت ۵ ثانیه روشن و سپس خاموش کنید تا IP شبکه شما نو شود.\n"
+                "۲- در نرم‌افزار خود، گزینه **بروزرسانی اشتراک (Update Subscription)** را بزنید تا لیست جدیدترین سرورها دریافت شود.\n"
+                "۳- در صورت استفاده از v2rayNG یا Streisand، قابلیت **Fragment** را در تنظیمات فعال کنید؛ این کار اختلال اپراتور را دور می‌زند.\n"
+                "۴- در صورت امکان، یک‌بار اینترنت خود را بین همراه اول، ایرانسل یا وای‌فای سوییچ کنید.\n\n"
+                "پیام شما به پشتیبان انسانی نیز ارجاع شده است و در صورت عدم رفع مشکل به زودی پاسخ خواهند داد."
+            )
+
+        # ج) سیستم‌عامل آیفون و iOS
+        if any(w in text for w in ["آیفون", "ایفون", "iphone", "ios", "اپل", "apple"]):
+            return (
+                "برای دستگاه‌های **iOS (آیفون و آیپد)**، بهترین و سازگارترین نرم‌افزارها عبارتند از:\n\n"
+                "📱 **Streisand** (پیشنهاد اول - پرسرعت و پایدار در اپ‌استور)\n"
+                "📱 **FoXray** (بسیار قوی و سازگار با انواع کانفیگ‌ها)\n"
+                "📱 **V2Box** (رایگان با کاربری ساده)\n\n"
+                "کافیست لینک هوشمند اشتراک خود را از همین صفحه کپی نموده و در نرم‌افزار مربوطه اضافه نمایید."
+            )
+
+        # د) سیستم‌عامل اندروید
+        if any(w in text for w in ["اندروید", "android", "سامسونگ", "شیائومی"]):
+            return (
+                "برای دستگاه‌های **اندروید**، نرم‌افزارهای استاندارد زیر پیشنهاد می‌شوند:\n\n"
+                "🤖 **v2rayNG** (نسخه ۱.۸.۲۵ به بالا با پشتیبانی عالی از Fragment)\n"
+                "🤖 **Hiddify Next** یا **Sing-box**\n\n"
+                "کافی است لینک ساب را از دکمه کپی لینک در پورتال کپی کرده و در برنامه وارد فرمایید."
+            )
+
+        # ه) سوالات تمدید، شارژ و فاکتور
+        if any(w in text for w in ["تمدید", "خرید", "فاکتور", "پرداخت", "کارت", "واریز", "پلن", "قیمت"]):
+            return (
+                "جهت **تمدید اشتراک یا خرید حجم اضافه**:\n\n"
+                "می‌توانید مستقیماً در همین صفحه پورتال، از بخش **پلن‌های تمدید**، پلن مورد نظر خود را انتخاب کرده و به صورت آنلاین یا کارت‌به‌کارت واریز فرمایید. پس از واریز یا تایید فیش، اشتراک شما به طور خودکار شارژ و فعال می‌گردد."
+            )
+
+        # و) بررسی در صورت اتصال به API خارجی (OpenAI/Gemini/غیره)
+        ai_mode = self.get_setting("chat_ai_mode", "smart_local")
+        api_key = self.get_setting("chat_ai_api_key", "").strip()
+        if ai_mode == "external_api" and api_key:
+            try:
+                import urllib.request
+                api_url = self.get_setting("chat_ai_api_url", "https://api.openai.com/v1/chat/completions")
+                model = self.get_setting("chat_ai_model", "gpt-4o-mini")
+                payload = {
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": "You are a polite, helpful Persian AI assistant for a VPN service customer portal. Help the user concisely and professionally. If you cannot solve it, reassure them human support will help soon."},
+                        {"role": "user", "content": customer_message}
+                    ],
+                    "max_tokens": 250,
+                    "temperature": 0.7
+                }
+                req = urllib.request.Request(
+                    api_url,
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {api_key}"
+                    }
+                )
+                with urllib.request.urlopen(req, timeout=6) as response:
+                    res_data = json.loads(response.read().decode("utf-8"))
+                    choices = res_data.get("choices", [])
+                    if choices and "message" in choices[0]:
+                        return choices[0]["message"]["content"].strip()
+            except Exception as e_api:
+                logger.warning(f"External AI chat error: {e_api}")
+
+        # پاسخ پیش‌فرض هوشمند و خوش‌آمدگویی
+        return (
+            "پیام شما با موفقیت ثبت و بررسی شد. 🤖\n\n"
+            "من هوش مصنوعی پشتیبانی هستم؛ پیام‌تان همزمان برای کارشناسان پشتیبانی ارسال شده و در صورت نیاز به زودی به شما پاسخ خواهند داد.\n"
+            "اگر در خصوص اتصال، نرم‌افزارها یا تمدید سوالی دارید، بفرمایید تا راهنمایی‌تان کنم."
+        )
 
     def get_all_tickets(self, status=None, reseller_id=None, search=None, vip_only=False, category=None):
         """دریافت تمام تیکت‌ها با فیلتر وضعیت، جستجو، نماینده و تفکیک دسته‌بندی مشتریان و نمایندگان"""
