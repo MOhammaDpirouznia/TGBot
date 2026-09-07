@@ -302,6 +302,19 @@ function handlePlanChange() {
         customSec.style.display = 'none';
     }
     updatePlanCardsUI();
+
+    // بروزرسانی مستقیم فیلد بدهی بر اساس قیمت پلن جدید
+    let price = 0;
+    if (selectedRadio && selectedRadio.value === 'custom') {
+        price = parseInt(document.getElementById('customPriceInput').value || 0);
+    } else if (selectedRadio) {
+        price = parseInt(selectedRadio.getAttribute('data-price') || 0);
+    }
+    const debtInput = document.getElementById('debtAmountInput');
+    if (debtInput) {
+        debtInput.value = price;
+    }
+
     calculateDebt();
 }
 
@@ -321,6 +334,18 @@ function selectPaymentMethod(cardEl, method) {
     if (method === 'debtor') {
         debtorCard.style.display = 'block';
         finCard.style.display = 'block';
+        // در زمان انتخاب وضعیت بدهکار، اگر مبلغ خالی بود خودکار با قیمت پلن پر شود
+        const selectedRadio = getSelectedPlanRadio();
+        let price = 0;
+        if (selectedRadio && selectedRadio.value === 'custom') {
+            price = parseInt(document.getElementById('customPriceInput').value || 0);
+        } else if (selectedRadio) {
+            price = parseInt(selectedRadio.getAttribute('data-price') || 0);
+        }
+        const debtInput = document.getElementById('debtAmountInput');
+        if (debtInput && (!debtInput.value || parseInt(debtInput.value) === 0)) {
+            debtInput.value = price;
+        }
     } else {
         debtorCard.style.display = 'none';
         if (method === 'free') {
@@ -339,12 +364,6 @@ function calculateDebt() {
         price = parseInt(document.getElementById('customPriceInput').value || 0);
     } else if (selectedRadio) {
         price = parseInt(selectedRadio.getAttribute('data-price') || 0);
-    }
-
-    const debtInput = document.getElementById('debtAmountInput');
-    if (debtInput && (!debtInput.value || debtInput.dataset.autoFilled === "true" || !debtInput.dataset.userEdited)) {
-        debtInput.value = price;
-        debtInput.dataset.autoFilled = "true";
     }
 
     const priceEl = document.getElementById('displayTotalPrice');

@@ -1146,6 +1146,11 @@
                     {% else %}
                         <span class="badge bg-secondary px-2 py-1 rounded-pill small">{{ sub.get('status') }}</span>
                     {% endif %}
+                    {% if (sub.get('debt_amount') or 0)|int > 0 %}
+                        <span class="badge bg-danger text-white border border-danger px-2 py-1 rounded-pill small">
+                            <i class="fas fa-hand-holding-dollar me-1"></i> بدهکار ({{ "{:,}".format(sub.get('debt_amount')) }} ت)
+                        </span>
+                    {% endif %}
                 </div>
                 <span class="text-secondary small">پورتال هوشمند و اختصاصی اشتراک</span>
             </div>
@@ -1229,6 +1234,54 @@
         </div>
         {% endif %}
     </div>
+    {% endmacro %}
+
+    {% macro macro_debt_card() %}
+    {% set debt_val = (sub.get('debt_amount') or 0)|int %}
+    {% if debt_val > 0 %}
+    <div class="glass-card p-4 mb-4 border border-danger border-opacity-50 shadow-lg position-relative overflow-hidden" id="debtSettlementSection">
+        <div class="position-absolute top-0 end-0 bg-danger text-white px-3 py-1 rounded-bottom-start small fw-bold shadow-sm">
+            <i class="fas fa-hand-holding-dollar me-1"></i> بدهی معوقه اشتراک
+        </div>
+        <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="avatar-md bg-danger bg-opacity-20 text-danger rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 48px; height: 48px; font-size: 1.3rem;">
+                <i class="fas fa-file-invoice-dollar"></i>
+            </div>
+            <div>
+                <h5 class="fw-bold text-danger mb-0">صورت‌حساب بدهی اشتراک</h5>
+                <small class="text-secondary">تسویه آنلاین بدهی معوقه یا تمدید قبلی</small>
+            </div>
+        </div>
+
+        <div class="alert alert-danger bg-danger bg-opacity-10 border-danger border-opacity-25 text-white py-2 px-3 small rounded-3 mb-3">
+            <i class="fas fa-circle-exclamation text-danger me-1"></i>
+            کاربر گرامی، مبلغ <strong>{{ "{:,}".format(debt_val) }} تومان</strong> بدهی برای این اشتراک ثبت شده است. جهت تسویه حساب، می‌توانید از طریق دکمه زیر به صورت آنلاین یا کارت به کارت اقدام فرمایید.
+        </div>
+
+        {% if sub.get('debt_notes') %}
+        <div class="alert alert-secondary bg-black bg-opacity-25 border-0 py-2 px-3 small rounded-3 mb-3 text-secondary">
+            <i class="fas fa-note-sticky text-warning me-1"></i>
+            <strong>یادداشت مدیر / شرایط:</strong> {{ sub.get('debt_notes') }}
+        </div>
+        {% endif %}
+
+        <div class="bg-black bg-opacity-30 p-3 rounded-3 d-flex flex-wrap justify-content-between align-items-center gap-3 border border-secondary border-opacity-25">
+            <div>
+                <span class="text-secondary small d-block">مبلغ قابل پرداخت بدهی:</span>
+                <span class="fs-3 fw-bold text-danger font-monospace">{{ "{:,}".format(debt_val) }}</span>
+                <span class="text-secondary small ms-1">تومان</span>
+            </div>
+            <div>
+                <form action="{{ url_for('customer_settle_debt_invoice', token=token) }}" method="POST" class="m-0">
+                    <button type="submit" class="btn btn-danger btn-lg px-4 py-2 fw-bold shadow-sm d-flex align-items-center gap-2">
+                        <i class="fas fa-receipt"></i>
+                        <span>صدور فاکتور و تسویه بدهی</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
     {% endmacro %}
 
     {% macro macro_invoice_card() %}
@@ -1509,6 +1562,7 @@
             </div>
             <!-- ستون عملیات: فاکتور تمدید، انتخاب پلن‌ها و پرداخت -->
             <div class="col-lg-7">
+                {{ macro_debt_card() }}
                 {{ macro_invoice_card() }}
                 {{ macro_renewal_card() }}
             </div>
@@ -1523,7 +1577,9 @@
                 </button>
                 <button type="button" class="portal-tab-btn {% if invoice and invoice.get('status') == 'pending' %}active{% endif %}" onclick="switchPortalTab('tabRenewPlans', this)">
                     <i class="fas fa-cart-shopping me-1"></i> تمدید و خرید بسته
-                    {% if invoice and invoice.get('status') == 'pending' %}
+                    {% if (sub.get('debt_amount') or 0)|int > 0 %}
+                    <span class="badge bg-danger text-white ms-1">بدهی</span>
+                    {% elif invoice and invoice.get('status') == 'pending' %}
                     <span class="badge bg-warning text-dark ms-1">فاکتور فعال</span>
                     {% endif %}
                 </button>
@@ -1540,6 +1596,7 @@
             </div>
 
             <div id="tabRenewPlans" class="portal-tab-pane {% if invoice and invoice.get('status') == 'pending' %}active{% endif %}">
+                {{ macro_debt_card() }}
                 {{ macro_invoice_card() }}
                 {{ macro_renewal_card() }}
             </div>
@@ -1557,6 +1614,7 @@
     {% elif portal_layout == 'bento_grid' %}
         <!-- ═══════════ قالب ۴: بنتو گرید ماژولار (Bento Grid) ═══════════ -->
         <div class="bento-grid-wrapper">
+            {{ macro_debt_card() }}
             {{ macro_invoice_card() }}
             {{ macro_queue_card() }}
 
@@ -1656,6 +1714,7 @@
     {% else %}
         <!-- ═══════════ قالب ۱: کلاسیک آبشاری (پیش‌فرض) ═══════════ -->
         {{ macro_server_status() }}
+        {{ macro_debt_card() }}
         {{ macro_sub_card() }}
         {{ macro_invoice_card() }}
         {{ macro_renewal_card() }}

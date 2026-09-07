@@ -34,6 +34,16 @@
                 <button type="button" class="btn btn-primary active" data-source-filter="all">
                     همه ({{ transactions|length }})
                 </button>
+                {% if admin_count > 0 %}
+                <button type="button" class="btn btn-outline-dark" data-source-filter="admin">
+                    <i class="fas fa-user-shield me-1"></i>پنل مدیریت ({{ admin_count }})
+                </button>
+                {% endif %}
+                {% if reseller_count > 0 %}
+                <button type="button" class="btn btn-outline-secondary" data-source-filter="reseller">
+                    <i class="fas fa-handshake me-1"></i>پنل نماینده ({{ reseller_count }})
+                </button>
+                {% endif %}
                 <button type="button" class="btn btn-outline-info" data-source-filter="portal">
                     <i class="fas fa-globe me-1"></i>پرتال مشتری ({{ portal_count }})
                 </button>
@@ -80,7 +90,47 @@
                             {% endif %}
                         </td>
                         <td data-value="{{ (tx['customer_name'] or tx['account_name'] or tx['username'] or tx['user_id'] or '')|striptags }}">
-                            {% if tx['source'] == 'portal' %}
+                            {% if tx['source'] == 'admin' %}
+                                <!-- ثبت شده توسط مدیریت -->
+                                <div class="d-flex align-items-center gap-2">
+                                    <img src="{{ avatar_url(tx['customer_name'] or 'Admin') }}" 
+                                         alt="Admin" class="rounded-circle border shadow-sm flex-shrink-0" style="width: 36px; height: 36px; object-fit: cover;">
+                                    <div>
+                                        <div class="d-flex align-items-center gap-1">
+                                            <strong class="text-dark">{{ tx['customer_name'] }}</strong>
+                                            <span class="badge bg-dark-subtle text-dark border border-dark" style="font-size: 0.65rem;" title="ثبت‌شده در پنل مدیریت">
+                                                <i class="fas fa-user-shield"></i> مدیر
+                                            </span>
+                                        </div>
+                                        <div class="text-muted small">
+                                            <span>پنل مدیریت</span>
+                                            {% if tx.get('renew_sub_id') %}
+                                                <span> | اشتراک #{{ tx['renew_sub_id'] }}</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            {% elif tx['source'] == 'reseller' %}
+                                <!-- ثبت شده توسط نماینده -->
+                                <div class="d-flex align-items-center gap-2">
+                                    <img src="{{ avatar_url(tx['customer_name'] or 'Reseller') }}" 
+                                         alt="Reseller" class="rounded-circle border shadow-sm flex-shrink-0" style="width: 36px; height: 36px; object-fit: cover;">
+                                    <div>
+                                        <div class="d-flex align-items-center gap-1">
+                                            <strong class="text-dark">{{ tx['customer_name'] }}</strong>
+                                            <span class="badge bg-secondary-subtle text-secondary border border-secondary" style="font-size: 0.65rem;" title="ثبت‌شده در پنل نماینده">
+                                                <i class="fas fa-handshake"></i> نماینده
+                                            </span>
+                                        </div>
+                                        <div class="text-muted small">
+                                            <span>پنل نماینده</span>
+                                            {% if tx.get('renew_sub_id') %}
+                                                <span> | اشتراک #{{ tx['renew_sub_id'] }}</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            {% elif tx['source'] == 'portal' %}
                                 <!-- مشتری پرتال وب -->
                                 <div class="d-flex align-items-center gap-2">
                                     <img src="{{ avatar_url(tx['account_name'] or tx['customer_name'] or 'Customer') }}" 
@@ -132,9 +182,21 @@
                         </td>
                         <!-- ستون مبدأ فیش -->
                         <td class="text-center" data-value="{{ tx['source'] }}">
-                            {% if tx['source'] == 'portal' %}
+                            {% if tx['source'] == 'admin' %}
+                                <span class="badge bg-dark-subtle text-dark border border-dark px-2 py-1 shadow-sm" style="font-size: 0.78rem;">
+                                    <i class="fas fa-user-shield me-1"></i> پنل مدیریت
+                                </span>
+                            {% elif tx['source'] == 'reseller' %}
+                                <span class="badge bg-secondary-subtle text-secondary border border-secondary px-2 py-1 shadow-sm" style="font-size: 0.78rem;">
+                                    <i class="fas fa-handshake me-1"></i> پنل نماینده
+                                </span>
+                            {% elif tx['source'] == 'portal' %}
                                 <span class="badge bg-info-subtle text-info border border-info px-2 py-1 shadow-sm" style="font-size: 0.78rem;">
                                     <i class="fas fa-globe me-1"></i> پرتال مشتری
+                                </span>
+                            {% elif tx['source'] == 'bundle' %}
+                                <span class="badge bg-purple-subtle text-purple border border-purple px-2 py-1 shadow-sm" style="font-size: 0.78rem; background: #ede9fe; color: #6d28d9;">
+                                    <i class="fas fa-crown me-1 text-warning"></i> بسته نماینده
                                 </span>
                             {% else %}
                                 <span class="badge bg-primary-subtle text-primary border border-primary px-2 py-1 shadow-sm" style="font-size: 0.78rem;">
@@ -458,9 +520,14 @@ document.addEventListener('DOMContentLoaded', function() {
             const filter = this.getAttribute('data-source-filter');
 
             filterBtns.forEach(b => {
-                b.classList.remove('active', 'btn-primary', 'btn-info');
-                if (b.getAttribute('data-source-filter') === 'portal') {
+                b.classList.remove('active', 'btn-primary', 'btn-dark', 'btn-info', 'btn-secondary');
+                const bFilter = b.getAttribute('data-source-filter');
+                if (bFilter === 'portal') {
                     b.classList.add('btn-outline-info');
+                } else if (bFilter === 'admin') {
+                    b.classList.add('btn-outline-dark');
+                } else if (bFilter === 'reseller') {
+                    b.classList.add('btn-outline-secondary');
                 } else {
                     b.classList.add('btn-outline-primary');
                 }
@@ -470,6 +537,12 @@ document.addEventListener('DOMContentLoaded', function() {
             if (filter === 'portal') {
                 this.classList.remove('btn-outline-info');
                 this.classList.add('btn-info', 'text-white');
+            } else if (filter === 'admin') {
+                this.classList.remove('btn-outline-dark');
+                this.classList.add('btn-dark', 'text-white');
+            } else if (filter === 'reseller') {
+                this.classList.remove('btn-outline-secondary');
+                this.classList.add('btn-secondary', 'text-white');
             } else {
                 this.classList.remove('btn-outline-primary');
                 this.classList.add('btn-primary');

@@ -24,6 +24,11 @@
 <!-- تب‌های اصلی تفکیک منابع پرداخت -->
 <ul class="nav nav-pills nav-fill bg-white p-2 rounded-3 shadow-sm border mb-4">
     <li class="nav-item">
+        <a class="nav-link fw-bold py-2 {{ 'active' if source_tab == 'all' else '' }}" href="{{ url_for('payments', source='all', status=status_filter) }}">
+            <i class="fas fa-layer-group me-2"></i> همه (مستقیم + کیف پول نمایندگان)
+        </a>
+    </li>
+    <li class="nav-item">
         <a class="nav-link fw-bold py-2 {{ 'active' if source_tab == 'admin' else '' }}" href="{{ url_for('payments', source='admin', status=status_filter) }}">
             <i class="fas fa-crown me-2"></i> پرداخت‌های مستقیم مدیریت و ربات
         </a>
@@ -32,11 +37,6 @@
         <a class="nav-link fw-bold py-2 {{ 'active' if source_tab == 'resellers' else '' }}" href="{{ url_for('payments', source='resellers', status=status_filter, reseller_id=reseller_filter_id or '') }}">
             <i class="fas fa-handshake me-2"></i> پرداخت‌ها و رسیدهای نمایندگان (کیف پول)
             <span class="badge {{ 'bg-white text-primary' if source_tab == 'resellers' else 'bg-secondary' }} ms-1">{{ resellers_list|length }} نماینده</span>
-        </a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link fw-bold py-2 {{ 'active' if source_tab == 'all' else '' }}" href="{{ url_for('payments', source='all', status=status_filter) }}">
-            <i class="fas fa-layer-group me-2"></i> همه (مستقیم + کیف پول نمایندگان)
         </a>
     </li>
 </ul>
@@ -122,6 +122,12 @@
             <!-- دکمه‌های فیلتر سریع بر اساس مبدأ سفارش -->
             <div class="btn-group btn-group-sm ms-2" role="group" id="adminSourceFilterBtnGroup">
                 <button type="button" class="btn btn-primary active" data-source-filter="all">همه ({{ payments|length }})</button>
+                {% if admin_count > 0 %}
+                <button type="button" class="btn btn-outline-dark" data-source-filter="admin"><i class="fas fa-user-shield me-1"></i>پنل مدیریت ({{ admin_count }})</button>
+                {% endif %}
+                {% if reseller_count > 0 %}
+                <button type="button" class="btn btn-outline-secondary" data-source-filter="reseller"><i class="fas fa-handshake me-1"></i>پنل نماینده ({{ reseller_count }})</button>
+                {% endif %}
                 <button type="button" class="btn btn-outline-info" data-source-filter="portal"><i class="fas fa-globe me-1"></i>پرتال مشتری ({{ portal_count }})</button>
                 <button type="button" class="btn btn-outline-primary" data-source-filter="telegram"><i class="fab fa-telegram me-1"></i>ربات تلگرام ({{ telegram_count }})</button>
                 {% if bundle_count > 0 %}
@@ -189,13 +195,31 @@
                                 <div>
                                     <div class="d-flex align-items-center gap-1">
                                         <strong class="text-dark">{{ tx.get('customer_name') or tx['username'] or 'مشتری' }}</strong>
-                                        {% if tx.get('source') == 'portal' %}
+                                        {% if tx.get('source') == 'admin' %}
+                                            <span class="badge bg-dark-subtle text-dark border border-dark px-1 py-0" style="font-size: 10px;" title="پنل مدیریت">🛡️ مدیر</span>
+                                        {% elif tx.get('source') == 'reseller' %}
+                                            <span class="badge bg-secondary-subtle text-secondary border border-secondary px-1 py-0" style="font-size: 10px;" title="پنل نماینده">🤝 نماینده</span>
+                                        {% elif tx.get('source') == 'portal' %}
                                             <span class="badge bg-info-subtle text-info border border-info px-1 py-0" style="font-size: 10px;" title="کاربر پرتال آنلاین وب">🌐 وب</span>
                                         {% elif tx.get('source') == 'bundle' %}
                                             <span class="badge bg-purple-subtle text-purple border border-purple px-1 py-0" style="font-size: 10px; background: #ede9fe; color: #6d28d9;" title="شارژ بسته نماینده">👑 نماینده</span>
                                         {% endif %}
                                     </div>
-                                    {% if tx.get('source') == 'portal' %}
+                                    {% if tx.get('source') == 'admin' %}
+                                        <div class="text-muted small" style="font-size: 11px;">
+                                            <span>ثبت شده در پنل مدیریت</span>
+                                            {% if tx.get('renew_sub_id') %}
+                                                <span> | اشتراک #{{ tx['renew_sub_id'] }}</span>
+                                            {% endif %}
+                                        </div>
+                                    {% elif tx.get('source') == 'reseller' %}
+                                        <div class="text-muted small" style="font-size: 11px;">
+                                            <span>نماینده #{{ tx.get('reseller_id') or '-' }}</span>
+                                            {% if tx.get('renew_sub_id') %}
+                                                <span> | اشتراک #{{ tx['renew_sub_id'] }}</span>
+                                            {% endif %}
+                                        </div>
+                                    {% elif tx.get('source') == 'portal' %}
                                         <div class="text-muted small" style="font-size: 11px;">
                                             {% if tx.get('account_name') %}
                                                 <code>{{ tx['account_name'] }}</code>
@@ -213,7 +237,7 @@
                                         <div class="text-muted small"><code>{{ tx['user_id'] }}</code></div>
                                     {% endif %}
                                 </div>
-                                {% if tx.get('source') != 'portal' and tx['username'] and not tx['username'].startswith('tg_') and tx['username'] != 'کاربر' %}
+                                {% if tx.get('source') not in ['portal', 'admin', 'reseller'] and tx['username'] and not tx['username'].startswith('tg_') and tx['username'] != 'کاربر' %}
                                     <a href="https://t.me/{{ tx['username'].replace('@', '') }}" target="_blank" class="btn btn-sm btn-outline-primary py-0 px-2 ms-auto" title="چت تلگرام">
                                         <i class="fab fa-telegram"></i>
                                     </a>
@@ -221,7 +245,15 @@
                             </div>
                         </td>
                         <td class="text-center" data-value="{{ tx.get('source') or 'telegram' }}">
-                            {% if tx.get('source') == 'portal' %}
+                            {% if tx.get('source') == 'admin' %}
+                                <span class="badge bg-dark-subtle text-dark border border-dark px-2 py-1 shadow-sm" style="font-size: 0.78rem;">
+                                    <i class="fas fa-user-shield me-1"></i> پنل مدیریت
+                                </span>
+                            {% elif tx.get('source') == 'reseller' %}
+                                <span class="badge bg-secondary-subtle text-secondary border border-secondary px-2 py-1 shadow-sm" style="font-size: 0.78rem;">
+                                    <i class="fas fa-handshake me-1"></i> پنل نماینده
+                                </span>
+                            {% elif tx.get('source') == 'portal' %}
                                 <span class="badge bg-info-subtle text-info border border-info px-2 py-1 shadow-sm" style="font-size: 0.78rem;">
                                     <i class="fas fa-globe me-1"></i> پرتال مشتری
                                 </span>
@@ -1013,11 +1045,13 @@ document.addEventListener('DOMContentLoaded', function() {
             const filter = this.getAttribute('data-source-filter');
 
             filterBtns.forEach(b => {
-                b.classList.remove('active', 'btn-primary', 'btn-info', 'btn-secondary');
+                b.classList.remove('active', 'btn-primary', 'btn-dark', 'btn-info', 'btn-secondary');
                 const bFilter = b.getAttribute('data-source-filter');
                 if (bFilter === 'portal') {
                     b.classList.add('btn-outline-info');
-                } else if (bFilter === 'bundle') {
+                } else if (bFilter === 'admin') {
+                    b.classList.add('btn-outline-dark');
+                } else if (bFilter === 'reseller' || bFilter === 'bundle') {
                     b.classList.add('btn-outline-secondary');
                 } else {
                     b.classList.add('btn-outline-primary');
@@ -1028,7 +1062,10 @@ document.addEventListener('DOMContentLoaded', function() {
             if (filter === 'portal') {
                 this.classList.remove('btn-outline-info');
                 this.classList.add('btn-info', 'text-white');
-            } else if (filter === 'bundle') {
+            } else if (filter === 'admin') {
+                this.classList.remove('btn-outline-dark');
+                this.classList.add('btn-dark', 'text-white');
+            } else if (filter === 'reseller' || filter === 'bundle') {
                 this.classList.remove('btn-outline-secondary');
                 this.classList.add('btn-secondary', 'text-white');
             } else {

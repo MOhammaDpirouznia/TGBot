@@ -373,17 +373,22 @@
                         <td data-value="{{ sub.get('debt_amount')|int if is_debtor else 0 }}">
                             {% if is_debtor %}
                                 <div>
-                                    <span class="badge bg-danger text-white px-2 py-1 shadow-sm d-inline-flex align-items-center gap-1 cursor-pointer" role="button" data-bs-toggle="modal" data-bs-target="#customerDetailModal{{ sub['id'] }}">
+                                    <span class="badge bg-danger text-white px-2 py-1 shadow-sm d-inline-flex align-items-center gap-1 cursor-pointer" role="button" onclick="openCustomerDebtReport('{{ sub['id'] }}', '{{ sub['account_name'] }}')" title="مشاهده گزارش و سوابق بدهی">
                                         <i class="fas fa-hand-holding-dollar"></i> بدهکار: {{ "{:,}".format(sub.get('debt_amount')|int) }} ت
                                     </span>
-                                    {% if sub.get('debt_notes') %}
-                                        <div class="text-danger small mt-1" style="font-size: 10px;" title="{{ sub.get('debt_notes') }}">{{ sub.get('debt_notes')[:20] }}</div>
-                                    {% endif %}
+                                    <button type="button" class="btn btn-outline-danger py-0 px-1 mt-1 d-block w-100" style="font-size: 10px;" onclick="openCustomerDebtReport('{{ sub['id'] }}', '{{ sub['account_name'] }}')">
+                                        <i class="fas fa-file-invoice-dollar me-1"></i>گزارش بدهی
+                                    </button>
                                 </div>
                             {% else %}
-                                <span class="badge bg-success-subtle text-success border border-success">
-                                    <i class="fas fa-check-circle me-1"></i> تسویه شده
-                                </span>
+                                <div>
+                                    <span class="badge bg-success-subtle text-success border border-success">
+                                        <i class="fas fa-check-circle me-1"></i> تسویه شده
+                                    </span>
+                                    <button type="button" class="btn btn-link text-muted py-0 px-1 mt-1 d-block w-100 text-decoration-none" style="font-size: 10px;" onclick="openCustomerDebtReport('{{ sub['id'] }}', '{{ sub['account_name'] }}')">
+                                        <i class="fas fa-file-invoice me-1"></i>گزارش بدهی
+                                    </button>
+                                </div>
                             {% endif %}
                         </td>
                         <td data-value="{{ sub['data_limit']|float or 0 }}">
@@ -920,6 +925,11 @@
                         <i class="fas fa-history me-1"></i> سوابق دوره‌ها
                     </button>
 
+                    <!-- دکمه گزارش بدهی -->
+                    <button type="button" class="btn btn-outline-danger flex-grow-1 py-2 fw-bold" onclick="openCustomerDebtReport('{{ sub['id'] }}', '{{ sub['account_name'] }}')">
+                        <i class="fas fa-file-invoice-dollar me-1"></i> گزارش بدهی
+                    </button>
+
                     <!-- ۶. تسویه بدهی -->
                     {% if is_debtor %}
                     <form method="POST" action="{{ url_for('admin_subscription_clear_debt', sub_id=sub['id']) }}" class="d-inline flex-grow-1" onsubmit="return confirm('آیا از تسویه کامل بدهی این مشتری اطمینان دارید؟');">
@@ -1008,7 +1018,7 @@
                         <div class="col-md-6 col-12">
                             <label class="p-2 p-md-3 border rounded-3 cursor-pointer d-flex justify-content-between align-items-center h-100 plan-renew-option">
                                 <div class="d-flex align-items-center gap-2">
-                                    <input type="radio" name="plan_id" value="{{ p_key }}" class="form-check-input mt-0 flex-shrink-0" {% if p_key == sub['plan_id'] or loop.first %}checked{% endif %}>
+                                    <input type="radio" name="plan_id" value="{{ p_key }}" data-price="{{ p['price'] }}" class="form-check-input mt-0 flex-shrink-0" {% if p_key == sub['plan_id'] or loop.first %}checked{% endif %} onchange="handleAdminRenewPlanChange('{{ sub['id'] }}')">
                                     <span class="d-inline-flex align-items-center justify-content-center rounded-circle shadow-sm flex-shrink-0 {{ icon_info.bg_class }}" style="width: 32px; height: 32px; background-color: {{ icon_info.bg_color }}; color: {{ icon_info.color_hex }}; border: 1px solid {{ icon_info.border_color }}; font-size: 0.88rem;">
                                         <i class="{{ icon_info.icon }}"></i>
                                     </span>
@@ -1094,9 +1104,15 @@
                                     </select>
                                 </div>
                                 <div class="col-md-6" id="adminRenewDebtAmountBox{{ sub['id'] }}" style="{% if sub.get('payment_status') != 'unpaid' and not sub.get('debt_amount') %}display: none;{% endif %}">
-                                    <label class="form-label fw-bold text-danger">مبلغ بدهی مشتری (تومان):</label>
-                                    <input type="number" step="1000" name="debt_amount" id="adminRenewDebtAmountInput{{ sub['id'] }}" class="form-control font-monospace border-danger" placeholder="مبلغ بدهی دلخواه..." value="{{ sub.get('debt_amount') or '' }}">
-                                    <small class="text-muted" style="font-size: 11px;">می‌توانید کل قیمت پلن یا بخشی از آن را به عنوان بدهی وارد نمایید.</small>
+                                    <label class="form-label fw-bold text-danger">مبلغ بدهی مشتری در این تمدید (تومان):</label>
+                                    <input type="number" step="1000" name="debt_amount" id="adminRenewDebtAmountInput{{ sub['id'] }}" class="form-control font-monospace border-danger" placeholder="مبلغ بدهی..." value="{{ sub.get('debt_amount') or '' }}" data-existing-debt="{{ sub.get('debt_amount', 0) }}" oninput="updateAdminRenewDebtBreakdown('{{ sub['id'] }}')">
+                                    <small class="text-muted" style="font-size: 11px;">مبلغ بر اساس پلن انتخابی وارد می‌شود و قابل تغییر دستی است.</small>
+                                    {% if sub.get('debt_amount', 0) > 0 %}
+                                    <div class="alert alert-warning py-1 px-2 mt-1 mb-0 small" id="adminRenewCumulativeDebtHint{{ sub['id'] }}">
+                                        <i class="fas fa-coins text-warning me-1"></i>
+                                        بدهی قبلی: <strong>{{ "{:,}".format(sub.get('debt_amount', 0)) }} ت</strong> + این دوره: <span id="adminRenewThisPeriodDebt{{ sub['id'] }}">۰ ت</span> = کل بدهی جدید: <strong class="text-danger" id="adminRenewTotalDebtCalc{{ sub['id'] }}">{{ "{:,}".format(sub.get('debt_amount', 0)) }} ت</strong>
+                                    </div>
+                                    {% endif %}
                                 </div>
                                 <div class="col-12">
                                     <label class="form-label small text-muted"><i class="fas fa-comment-dots me-1"></i>توضیحات و یادداشت (اختیاری):</label>
@@ -1779,6 +1795,34 @@
     </div>
 </div>
 
+<!-- ─── Modal جامع گزارش بدهی‌های مشتری (Customer Debt Report Modal) ─── -->
+<div class="modal fade text-start" id="customerDebtReportModal" tabindex="-1" aria-labelledby="debtReportModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-danger text-white py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="fas fa-file-invoice-dollar fs-4"></i>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0" id="debtReportModalTitle">گزارش و سوابق بدهی مشتری</h5>
+                        <small class="opacity-75" id="debtReportModalSubtitle"></small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4" id="debtReportModalBody">
+                <div class="text-center py-4">
+                    <div class="spinner-border text-danger mb-2" role="status"></div>
+                    <div class="text-muted">در حال دریافت سوابق و رسیدهای بدهی...</div>
+                </div>
+            </div>
+            <div class="modal-footer d-flex justify-content-between">
+                <div id="debtReportModalFooterActions"></div>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">بستن</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ─── ۶. Modal عمومی تاریخچه دوره‌ها و سوابق مصرف (Universal History Modal) ─── -->
 <div class="modal fade text-start" id="subscriptionHistoryModal" tabindex="-1" aria-labelledby="historyModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
@@ -2106,15 +2150,228 @@ function generateNewUuid(elementId) {
     }
 }
 
+function handleAdminRenewPlanChange(subId) {
+    const modal = document.getElementById('renewModal' + subId);
+    if (!modal) return;
+    const checked = modal.querySelector('input[name="plan_id"]:checked');
+    const price = checked ? parseInt(checked.getAttribute('data-price') || 0) : 0;
+    const debtInput = document.getElementById('adminRenewDebtAmountInput' + subId);
+    if (debtInput) {
+        debtInput.value = price;
+        updateAdminRenewDebtBreakdown(subId);
+    }
+}
+
+function updateAdminRenewDebtBreakdown(subId) {
+    const debtInput = document.getElementById('adminRenewDebtAmountInput' + subId);
+    if (!debtInput) return;
+    const oldDebt = parseInt(debtInput.getAttribute('data-existing-debt') || 0);
+    const thisPeriodDebt = parseInt(debtInput.value || 0);
+    const total = oldDebt + thisPeriodDebt;
+    const thisPeriodEl = document.getElementById('adminRenewThisPeriodDebt' + subId);
+    const totalEl = document.getElementById('adminRenewTotalDebtCalc' + subId);
+    if (thisPeriodEl) thisPeriodEl.innerText = thisPeriodDebt.toLocaleString('fa-IR') + ' ت';
+    if (totalEl) totalEl.innerText = total.toLocaleString('fa-IR') + ' ت';
+}
+
 function toggleAdminRenewDebtor(subId) {
     const sel = document.getElementById('adminRenewPaymentStatus' + subId);
     const box = document.getElementById('adminRenewDebtAmountBox' + subId);
     if (!sel || !box) return;
     if (sel.value === 'unpaid') {
         box.style.display = 'block';
+        const debtInput = document.getElementById('adminRenewDebtAmountInput' + subId);
+        if (debtInput && (!debtInput.value || debtInput.value === '0')) {
+            handleAdminRenewPlanChange(subId);
+        } else {
+            updateAdminRenewDebtBreakdown(subId);
+        }
     } else {
         box.style.display = 'none';
     }
+}
+
+function openCustomerDebtReport(subId, accountName) {
+    const modalEl = document.getElementById('customerDebtReportModal');
+    if (!modalEl) return;
+    const modal = new bootstrap.Modal(modalEl);
+    document.getElementById('debtReportModalTitle').innerText = 'گزارش و سوابق بدهی: ' + (accountName || 'اشتراک #' + subId);
+    document.getElementById('debtReportModalSubtitle').innerText = 'شناسه اشتراک: #' + subId;
+    const body = document.getElementById('debtReportModalBody');
+    const footerActions = document.getElementById('debtReportModalFooterActions');
+    if (footerActions) footerActions.innerHTML = '';
+    body.innerHTML = `
+        <div class="text-center py-5">
+            <div class="spinner-border text-danger mb-2" role="status"></div>
+            <div class="text-muted">در حال بارگذاری صورت‌حساب‌ها و رسیدهای بدهی...</div>
+        </div>
+    `;
+    modal.show();
+
+    fetch(`/api/subscription/${subId}/debt-report`)
+        .then(res => res.json())
+        .then(data => {
+            if (!data.success) {
+                body.innerHTML = `<div class="alert alert-danger mb-0">${data.error || 'خطا در بارگذاری گزارش بدهی'}</div>`;
+                return;
+            }
+
+            const rep = data.report || {};
+            const sub = data.subscription || {};
+            const records = rep.records || [];
+            const curDebt = rep.current_debt || 0;
+            const totalAcc = rep.total_debt_accumulated || 0;
+            const totalSet = rep.total_debt_settled || 0;
+            const unpaidCount = rep.unpaid_count || 0;
+
+            let html = `
+                <!-- کارت‌های خلاصه وضعیت مالی -->
+                <div class="row g-2 mb-4">
+                    <div class="col-md-3 col-6">
+                        <div class="card bg-danger-subtle border border-danger text-center p-2 rounded-3 shadow-sm h-100">
+                            <small class="text-danger fw-bold">بدهی معوقه فعلی</small>
+                            <div class="fs-5 fw-bold text-danger font-monospace mt-1">${curDebt.toLocaleString('fa-IR')} <small style="font-size: 11px;">تومان</small></div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-6">
+                        <div class="card bg-light border text-center p-2 rounded-3 shadow-sm h-100">
+                            <small class="text-muted fw-bold">کل بدهی‌های ثبت‌شده</small>
+                            <div class="fs-5 fw-bold text-dark font-monospace mt-1">${totalAcc.toLocaleString('fa-IR')} <small style="font-size: 11px;">تومان</small></div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-6">
+                        <div class="card bg-success-subtle border border-success text-center p-2 rounded-3 shadow-sm h-100">
+                            <small class="text-success fw-bold">کل مبالغ تسویه‌شده</small>
+                            <div class="fs-5 fw-bold text-success font-monospace mt-1">${totalSet.toLocaleString('fa-IR')} <small style="font-size: 11px;">تومان</small></div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-6">
+                        <div class="card bg-warning-subtle border border-warning text-center p-2 rounded-3 shadow-sm h-100">
+                            <small class="text-warning-emphasis fw-bold">رسیدهای باز</small>
+                            <div class="fs-5 fw-bold text-warning-emphasis font-monospace mt-1">${unpaidCount} <small style="font-size: 11px;">مورد</small></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            if (sub.debt_notes) {
+                html += `
+                    <div class="alert alert-secondary py-2 px-3 small mb-3">
+                        <i class="fas fa-note-sticky text-secondary me-1"></i>
+                        <strong>یادداشت بدهی اشتراک:</strong> ${sub.debt_notes}
+                    </div>
+                `;
+            }
+
+            html += `
+                <h6 class="fw-bold text-dark mb-2"><i class="fas fa-receipt text-danger me-2"></i>رسیدها و صورت‌حساب‌های بدهی:</h6>
+            `;
+
+            if (records.length === 0) {
+                html += `
+                    <div class="alert alert-info text-center py-3 mb-0">
+                        <i class="fas fa-info-circle me-1"></i>
+                        هیچ رسید بدهی تفکیک‌شده‌ای برای این اشتراک ثبت نشده است.
+                        ${curDebt > 0 ? `<div class="mt-1">بدهی ثبت‌شده در سیستم: <strong>${curDebt.toLocaleString('fa-IR')} تومان</strong></div>` : ''}
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-sm align-middle mb-0" style="font-size: 0.82rem;">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="text-center" style="width: 50px;">رسید</th>
+                                    <th>تاریخ و زمان</th>
+                                    <th>عملیات</th>
+                                    <th>پلن</th>
+                                    <th>مبلغ این دوره</th>
+                                    <th>مجموع بدهی تا آن زمان</th>
+                                    <th>وضعیت</th>
+                                    <th>توضیحات</th>
+                                    <th class="text-center" style="width: 100px;">عملیات</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+
+                records.forEach(r => {
+                    const isPaid = (r.status === 'paid');
+                    const actName = (r.action_type === 'create') ? 'ساخت اولیه' : ((r.action_type === 'renew') ? 'تمدید اشتراک' : 'متفرقه');
+                    const actBadge = (r.action_type === 'create') ? 'bg-primary' : 'bg-info text-dark';
+                    const statusBadge = isPaid ? '<span class="badge bg-success">تسویه شده</span>' : '<span class="badge bg-danger">پرداخت‌نشده</span>';
+                    
+                    html += `
+                        <tr class="${isPaid ? 'table-light text-muted' : 'table-danger-subtle'}">
+                            <td class="text-center font-monospace fw-bold">#${r.id}</td>
+                            <td class="font-monospace small">${(r.created_at || '').substring(0, 16).replace('T', ' ')}</td>
+                            <td><span class="badge ${actBadge}">${actName}</span></td>
+                            <td class="fw-bold">${r.plan_name || '-'}</td>
+                            <td class="font-monospace fw-bold text-danger">${(r.amount || 0).toLocaleString('fa-IR')} ت</td>
+                            <td class="font-monospace text-muted">${(r.total_debt || 0).toLocaleString('fa-IR')} ت</td>
+                            <td>${statusBadge}</td>
+                            <td class="small text-muted">${r.notes || '-'}</td>
+                            <td class="text-center">
+                                ${!isPaid ? `
+                                    <button type="button" class="btn btn-xs btn-success py-1 px-2 fw-bold" onclick="settleCustomerDebtRecord(${subId}, ${r.id}, '${accountName}')" title="تسویه اختصاصی این فاکتور">
+                                        <i class="fas fa-check me-1"></i> تسویه
+                                    </button>
+                                ` : `
+                                    <small class="text-success"><i class="fas fa-check-double"></i></small>
+                                `}
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                html += `
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+            body.innerHTML = html;
+
+            if (footerActions && curDebt > 0) {
+                footerActions.innerHTML = `
+                    <form method="POST" action="/admin/subscription/${subId}/clear-debt" class="m-0 d-inline" onsubmit="return confirm('آیا از تسویه کامل کلیه بدهی‌های این مشتری اطمینان دارید؟');">
+                        <button type="submit" class="btn btn-success fw-bold">
+                            <i class="fas fa-check-double me-1"></i> تسویه کامل تمام بدهی‌ها (${curDebt.toLocaleString('fa-IR')} ت)
+                        </button>
+                    </form>
+                `;
+            }
+        })
+        .catch(err => {
+            body.innerHTML = `<div class="alert alert-danger mb-0">خطا در برقراری ارتباط با سرور: ${err.message}</div>`;
+        });
+}
+
+function settleCustomerDebtRecord(subId, recordId, accountName) {
+    if (!confirm('آیا از تسویه این رسید بدهی اطمینان دارید؟ مبلغ این رسید از بدهی کل کسر خواهد شد.')) return;
+    
+    const isResellerPanel = window.location.pathname.includes('/reseller');
+    const endpoint = isResellerPanel 
+        ? `/reseller/subscription/${subId}/settle-debt-record/${recordId}` 
+        : `/admin/subscription/${subId}/settle-debt-record/${recordId}`;
+
+    fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            alert('رسید بدهی با موفقیت تسویه شد.');
+            openCustomerDebtReport(subId, accountName);
+        } else {
+            alert('خطا در تسویه: ' + (data.error || 'خطای نامشخص'));
+        }
+    })
+    .catch(err => {
+        alert('خطای ارتباط با سرور: ' + err.message);
+    });
 }
 function filterQueueModalTable(val) {
     val = (val || '').toLowerCase().trim();

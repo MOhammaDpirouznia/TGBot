@@ -226,6 +226,7 @@
     const userAvailableCredit = {{ available_credit|default(0) }};
     const creditEnabled = {{ 'true' if has_credit else 'false' }};
     let currentFinalPrice = 0;
+    let currentRetailPrice = 0;
 
     function toggleResellerDebtor(sel) {
         const isDebtor = (sel.value === 'unpaid');
@@ -233,7 +234,7 @@
         document.getElementById('resellerDebtNoteBox').style.display = isDebtor ? 'block' : 'none';
         const debtInput = document.getElementById('resellerDebtAmountInput');
         if (isDebtor && (!debtInput.value || debtInput.value === '0')) {
-            debtInput.value = currentFinalPrice;
+            debtInput.value = currentRetailPrice || currentFinalPrice;
         }
     }
 
@@ -323,13 +324,14 @@
         const finalPrice = (wholesalePrice !== undefined && wholesalePrice !== null) ? wholesalePrice : Math.floor((price * (100 - discountPercent)) / 100);
         const discountAmount = Math.max(0, price - finalPrice);
         currentFinalPrice = finalPrice;
+        currentRetailPrice = price;
         document.getElementById('origPriceText').innerText = price.toLocaleString('fa-IR') + ' تومان';
         document.getElementById('discountAmountText').innerText = discountAmount.toLocaleString('fa-IR') + ' تومان';
         document.getElementById('finalPriceText').innerText = finalPrice.toLocaleString('fa-IR') + ' تومان';
         
         const debtInput = document.getElementById('resellerDebtAmountInput');
-        if (debtInput && (!debtInput.value || debtInput.value === '0')) {
-            debtInput.value = finalPrice;
+        if (debtInput) {
+            debtInput.value = price;
         }
 
         // هایلایت پلن فعال
