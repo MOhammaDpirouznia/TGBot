@@ -2200,13 +2200,25 @@ async def show_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # بررسی وجود بسته تمدیدی رزرو در صف
         queue_text = ""
         try:
-            queued_item = db.get_pending_queue_item(sub.get("id"))
-            if queued_item:
-                queue_text = (
-                    f"   ⏳ **بسته رزرو (در صف فعال‌سازی خودکار):**\n"
-                    f"      📦 پلن: {queued_item.get('plan_name')} ({queued_item.get('data_limit')} گیگ - {queued_item.get('duration')} روز)\n"
-                    f"      🔄 زمان فعال‌سازی: پس از مصرف ۹۹٪ حجم یا در روز پایانی اشتراک فعلی\n"
-                )
+            queued_items = db.get_pending_queue_items(sub.get("id"))
+            if queued_items:
+                if len(queued_items) == 1:
+                    q = queued_items[0]
+                    queue_text = (
+                        f"   ⏳ **بسته رزرو (در صف فعال‌سازی خودکار):**\n"
+                        f"      📦 پلن: {q.get('plan_name')} ({q.get('data_limit')} گیگ - {q.get('duration')} روز)\n"
+                        f"      🔄 زمان فعال‌سازی: پس از مصرف ۹۹٪ حجم یا در روز پایانی اشتراک فعلی\n"
+                    )
+                else:
+                    q_lines = [
+                        f"      🔹 **نوبت {idx}:** {q.get('plan_name')} ({q.get('data_limit')} گیگ - {q.get('duration')} روز)"
+                        for idx, q in enumerate(queued_items, 1)
+                    ]
+                    queue_text = (
+                        f"   ⏳ **بسته‌های رزرو (در صف فعال‌سازی خودکار - {len(queued_items)} بسته به نوبت):**\n"
+                        + "\n".join(q_lines) + "\n"
+                        f"      🔄 زمان فعال‌سازی: به ترتیب نوبت پس از اتمام ۹۹٪ حجم یا روز پایانی هر بسته\n"
+                    )
         except Exception as e_q:
             logger.debug(f"Error checking pending queue for sub {sub.get('id')}: {e_q}")
 

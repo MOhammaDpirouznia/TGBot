@@ -1122,6 +1122,7 @@ class Database:
                     created_at TEXT,
                     activated_at TEXT,
                     note TEXT,
+                    queue_order INTEGER DEFAULT 0,
                     FOREIGN KEY (subscription_id) REFERENCES subscriptions(id) ON DELETE CASCADE
                 )
             """)
@@ -1131,6 +1132,7 @@ class Database:
 
         # ستون‌های مبدأ پرداخت کیف‌پول/اعتبار و رهگیری ویرایش اسناد حسابداری و بدهی‌ها
         for col_sql in [
+            "ALTER TABLE subscription_queue ADD COLUMN queue_order INTEGER DEFAULT 0",
             "ALTER TABLE subscriptions ADD COLUMN payment_source TEXT DEFAULT 'wallet'",
             "ALTER TABLE reseller_transactions ADD COLUMN payment_source TEXT DEFAULT 'wallet'",
             "ALTER TABLE reseller_transactions ADD COLUMN subscription_id INTEGER",
@@ -1149,6 +1151,11 @@ class Database:
                 cursor.execute(col_sql)
             except Exception:
                 pass
+
+        try:
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sub_queue_sub_order ON subscription_queue(subscription_id, status, queue_order)")
+        except Exception:
+            pass
 
         # جدول بسته‌های پیش‌خرید اعتباری همکاران و نمایندگان (Reseller Credit Bundles)
         try:
@@ -8114,28 +8121,44 @@ class Database:
                 conn.commit()
                 return {"success": True, "mode": "instant", "payment_source": actual_source}
             else:
-                # ۴. افزودن به صف تمدید هوشمند (رزرو بسته خودکار)
-                cursor.execute("UPDATE subscription_queue SET status='cancelled' WHERE subscription_id=? AND status='pending'", (sub_id,))
+                # ۴. افزودن به صف تمدید هوشمند (رزرو بسته خودکار بدون لغو بسته‌های قبلی)
+                cursor.execute("SELECT COALESCE(MAX(queue_order), 0) + 1 FROM subscription_queue WHERE subscription_id=? AND status='pending'", (sub_id,))
+                next_order_row = cursor.fetchone()
+                next_order = next_order_row[0] if next_order_row else 1
                 cursor.execute("""
                     INSERT INTO subscription_queue (
                         subscription_id, telegram_id, hidify_uuid, reseller_id,
-                        plan_id, plan_name, data_limit, duration, cost, status, created_at, note
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+                        plan_id, plan_name, data_limit, duration, cost, status, created_at, note, queue_order
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
                 """, (sub_id, sub["telegram_id"] or 0, sub["hidify_uuid"] or "", reseller_id,
-                      plan_id, plan_name, data_limit, duration, cost, now, f"تمدید رزرو نماینده ({actual_source})"))
+                      plan_id, plan_name, data_limit, duration, cost, now, f"تمدید رزرو نماینده ({actual_source})", next_order))
                 cursor.execute("UPDATE subscriptions SET payment_source=? WHERE id=?", (actual_source, sub_id))
                 conn.commit()
-                return {"success": True, "mode": "queued", "payment_source": actual_source}
+                return {"success": True, "mode": "queued", "payment_source": actual_source, "queue_order": next_order}
         except Exception as e:
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
 
+    def _normalize_subscription_queue_orders(self, cursor, subscription_id: int):
+        """مرتب‌سازی و اصلاح مجدد شماره نوبت بسته‌های معلق در صف یک اشتراک (1, 2, 3...)"""
+        try:
+            cursor.execute("""
+                SELECT id FROM subscription_queue
+                WHERE subscription_id=? AND status='pending'
+                ORDER BY COALESCE(queue_order, id) ASC, id ASC
+            """, (subscription_id,))
+            rows = cursor.fetchall()
+            for idx, r in enumerate(rows, 1):
+                cursor.execute("UPDATE subscription_queue SET queue_order=? WHERE id=?", (idx, r[0]))
+        except Exception as e:
+            logger.warning(f"Error normalizing queue orders for sub {subscription_id}: {e}")
+
     def add_to_subscription_queue(self, subscription_id: int, plan_id: str, plan_name: str,
                                   data_limit: float, duration: int, cost: int = 0,
                                   reseller_id: int = None, telegram_id: int = None,
                                   hidify_uuid: str = None, note: str = None) -> dict:
-        """افزودن بسته تمدیدی به صف رزرو خودکار"""
+        """افزودن بسته تمدیدی به صف رزرو خودکار (بدون لغو بسته‌های قبلی و با تعیین شماره نوبت)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -8150,43 +8173,87 @@ class Database:
             u_uuid = hidify_uuid if hidify_uuid else (sub.get("hidify_uuid") or "")
             r_id = reseller_id if reseller_id is not None else sub.get("reseller_id")
 
-            # لغو رزرو قبلی در صورت وجود
-            cursor.execute("UPDATE subscription_queue SET status='cancelled' WHERE subscription_id=? AND status='pending'", (subscription_id,))
+            cursor.execute("SELECT COALESCE(MAX(queue_order), 0) + 1 FROM subscription_queue WHERE subscription_id=? AND status='pending'", (subscription_id,))
+            next_order_row = cursor.fetchone()
+            next_order = next_order_row[0] if next_order_row else 1
+
             cursor.execute("""
                 INSERT INTO subscription_queue (
                     subscription_id, telegram_id, hidify_uuid, reseller_id,
-                    plan_id, plan_name, data_limit, duration, cost, status, created_at, note
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
-            """, (subscription_id, t_id, u_uuid, r_id, plan_id, plan_name, data_limit, duration, cost, now, note or "تمدید در صف رزرو مدیریت"))
+                    plan_id, plan_name, data_limit, duration, cost, status, created_at, note, queue_order
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+            """, (subscription_id, t_id, u_uuid, r_id, plan_id, plan_name, data_limit, duration, cost, now, note or "تمدید در صف رزرو مدیریت", next_order))
             queue_id = cursor.lastrowid
             conn.commit()
-            return {"success": True, "queue_id": queue_id}
+            return {"success": True, "queue_id": queue_id, "queue_order": next_order}
         except Exception as e:
             logger.error(f"Error adding to subscription queue: {e}")
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
 
-    def get_pending_queue_item(self, subscription_id: int) -> dict:
-        """دریافت بسته رزرو در صف برای یک اشتراک خاص"""
+    def get_pending_queue_items(self, subscription_id: int) -> list:
+        """دریافت تمام بسته‌های در صف یک اشتراک به ترتیب نوبت تمدید"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute("""
                 SELECT * FROM subscription_queue
                 WHERE subscription_id=? AND status='pending'
-                ORDER BY id DESC LIMIT 1
+                ORDER BY COALESCE(queue_order, id) ASC, id ASC
             """, (subscription_id,))
-            row = cursor.fetchone()
-            return dict(row) if row else None
+            return [dict(r) for r in cursor.fetchall()]
         except Exception as e:
-            logger.error(f"Error getting pending queue item for sub {subscription_id}: {e}")
-            return None
+            logger.error(f"Error getting pending queue items for sub {subscription_id}: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_pending_queue_item(self, subscription_id: int) -> dict:
+        """دریافت اولین بسته در نوبت صف برای یک اشتراک خاص"""
+        items = self.get_pending_queue_items(subscription_id)
+        return items[0] if items else None
+
+    def reorder_subscription_queue(self, subscription_id: int, queue_id: int, direction: str) -> dict:
+        """
+        تغییر نوبت یک بسته در صف تمدید (direction: 'up', 'down', 'top')
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT id FROM subscription_queue
+                WHERE subscription_id=? AND status='pending'
+                ORDER BY COALESCE(queue_order, id) ASC, id ASC
+            """, (subscription_id,))
+            rows = [r[0] for r in cursor.fetchall()]
+            if queue_id not in rows:
+                return {"success": False, "error": "بسته در صف یافت نشد."}
+
+            idx = rows.index(queue_id)
+            if direction == "up":
+                if idx > 0:
+                    rows[idx], rows[idx - 1] = rows[idx - 1], rows[idx]
+            elif direction == "down":
+                if idx < len(rows) - 1:
+                    rows[idx], rows[idx + 1] = rows[idx + 1], rows[idx]
+            elif direction == "top":
+                rows.insert(0, rows.pop(idx))
+            else:
+                return {"success": False, "error": "جهت جابجایی نامعتبر است."}
+
+            for order, q_id in enumerate(rows, start=1):
+                cursor.execute("UPDATE subscription_queue SET queue_order=? WHERE id=?", (order, q_id))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error reordering queue for sub {subscription_id}: {e}")
+            return {"success": False, "error": str(e)}
         finally:
             conn.close()
 
     def get_all_pending_queue_items(self, reseller_id: int = None) -> list:
-        """دریافت تمام بسته‌های در صف به همراه اطلاعات اشتراک مربوطه برای پردازش خودکار و نمایش در پنل"""
+        """دریافت تمام بسته‌های در صف به همراه اطلاعات اشتراک مربوطه به ترتیب نوبت برای پردازش خودکار و نمایش در پنل"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -8204,7 +8271,7 @@ class Database:
             if reseller_id is not None:
                 sql += " AND q.reseller_id = ?"
                 params.append(reseller_id)
-            sql += " ORDER BY q.id ASC"
+            sql += " ORDER BY q.subscription_id ASC, COALESCE(q.queue_order, q.id) ASC, q.id ASC"
             cursor.execute(sql, params)
             return [dict(r) for r in cursor.fetchall()]
         except Exception as e:
@@ -8238,7 +8305,7 @@ class Database:
             cursor.execute("""
                 SELECT * FROM subscription_queue
                 WHERE subscription_id = ?
-                ORDER BY id DESC LIMIT ?
+                ORDER BY COALESCE(queue_order, id) ASC, id DESC LIMIT ?
             """, (subscription_id, limit))
             return [dict(r) for r in cursor.fetchall()]
         except Exception as e:
@@ -8248,12 +8315,18 @@ class Database:
             conn.close()
 
     def mark_queue_item_activated(self, queue_id: int) -> dict:
-        """علامت‌گذاری بسته در صف به عنوان فعال‌شده"""
+        """علامت‌گذاری بسته در صف به عنوان فعال‌شده و به‌روزرسانی نوبت بسته‌های باقیمانده"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
+            cursor.execute("SELECT subscription_id FROM subscription_queue WHERE id=?", (queue_id,))
+            row = cursor.fetchone()
+            sub_id = row[0] if row else None
+
             cursor.execute("UPDATE subscription_queue SET status='activated', activated_at=? WHERE id=?", (now, queue_id))
+            if sub_id:
+                self._normalize_subscription_queue_orders(cursor, sub_id)
             conn.commit()
             return {"success": True}
         except Exception as e:
@@ -8334,11 +8407,16 @@ class Database:
                 cursor.execute("""
                     UPDATE transactions
                     SET status = 'cancelled', is_deleted = 1
-                    WHERE renew_sub_id = ? AND status IN ('approved', 'completed') AND (is_deleted = 0 OR is_deleted IS NULL)
-                    ORDER BY id DESC LIMIT 1
+                    WHERE id = (
+                        SELECT id FROM transactions
+                        WHERE renew_sub_id = ? AND status IN ('approved', 'completed') AND (is_deleted = 0 OR is_deleted IS NULL)
+                        ORDER BY id DESC LIMIT 1
+                    )
                 """, (sub_id,))
 
             cursor.execute("UPDATE subscription_queue SET status='cancelled', note='لغو توسط کاربر/مدیر و استرداد وجه' WHERE id=?", (queue_id,))
+            if sub_id:
+                self._normalize_subscription_queue_orders(cursor, sub_id)
             conn.commit()
             return {"success": True, "refunded_amount": cost}
         except Exception as e:

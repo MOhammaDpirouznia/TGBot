@@ -1518,9 +1518,14 @@ def process_subscription_queue() -> dict:
 
         activated_count = 0
         now = get_now_naive()
+        processed_sub_ids = set()
 
         for item in pending_items:
             sub_id = item["subscription_id"]
+            if sub_id in processed_sub_ids:
+                # برای هر اشتراک، صرفاً اولین بسته در نوبت صف (سر صف) بررسی و فعال می‌شود
+                continue
+            processed_sub_ids.add(sub_id)
             uuid = item.get("hidify_uuid")
             new_limit = float(item.get("data_limit") or 0)
             new_duration = int(item.get("duration") or 30)
@@ -2231,12 +2236,16 @@ def enrich_subscription_details(sub: dict, resellers_map: dict = None, admins_ma
         item["is_vip"] = False
 
     try:
-        q_item = db.get_pending_queue_item(item.get("id"))
-        item["pending_queue"] = q_item
-        item["has_queue"] = bool(q_item)
+        q_items = db.get_pending_queue_items(item.get("id"))
+        item["pending_queues"] = q_items
+        item["pending_queue"] = q_items[0] if q_items else None
+        item["has_queue"] = bool(q_items)
+        item["queue_count"] = len(q_items)
     except Exception:
+        item["pending_queues"] = []
         item["pending_queue"] = None
         item["has_queue"] = False
+        item["queue_count"] = 0
 
     item["duration"] = duration
     item["is_started"] = is_started
@@ -5337,6 +5346,35 @@ def admin_queue_cancel(queue_id: int):
         flash(f"بسته رزرو شده با موفقیت از صف تمدید لغو شد{refund_txt}.", "info")
     else:
         flash(f"خطا در لغو بسته: {res.get('error')}", "danger")
+    return redirect(get_redirect_target("subscriptions"))
+
+
+@app.route("/admin/queue/<int:queue_id>/move", methods=["POST"])
+@permission_required("sub_manage")
+def admin_queue_move(queue_id: int):
+    """تغییر نوبت بسته در صف تمدید توسط مدیریت"""
+    direction = request.form.get("direction") or request.args.get("direction", "up")
+    if request.is_json:
+        direction = (request.get_json(silent=True) or {}).get("direction") or direction
+    conn = db.get_connection()
+    q_row = conn.execute("SELECT subscription_id FROM subscription_queue WHERE id=?", (queue_id,)).fetchone()
+    conn.close()
+    if not q_row:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": "بسته مورد نظر در صف یافت نشد."}), 404
+        flash("بسته مورد نظر در صف یافت نشد.", "danger")
+        return redirect(get_redirect_target("subscriptions"))
+    sub_id = q_row[0]
+    res = db.reorder_subscription_queue(sub_id, queue_id, direction)
+    if res.get("success"):
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": True, "message": "ترتیب بسته‌های در صف تمدید با موفقیت به‌روزرسانی شد."})
+        flash("ترتیب بسته‌های در صف تمدید با موفقیت به‌روزرسانی شد.", "success")
+    else:
+        err = res.get("error", "خطا در جابجایی بسته")
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": err}), 400
+        flash(f"خطا در جابجایی بسته: {err}", "danger")
     return redirect(get_redirect_target("subscriptions"))
 
 
@@ -9099,6 +9137,36 @@ def reseller_queue_cancel(queue_id: int):
         flash(f"بسته رزرو شده با موفقیت از صف تمدید لغو شد{refund_txt}.", "success")
     else:
         flash(f"خطا در لغو بسته: {res.get('error')}", "danger")
+    return redirect(get_redirect_target("reseller_users"))
+
+
+@app.route("/reseller/queue/<int:queue_id>/move", methods=["POST"])
+@reseller_required
+def reseller_queue_move(queue_id: int):
+    """تغییر نوبت بسته در صف تمدید توسط نماینده"""
+    reseller_id = session.get("reseller_id")
+    direction = request.form.get("direction") or request.args.get("direction", "up")
+    if request.is_json:
+        direction = (request.get_json(silent=True) or {}).get("direction") or direction
+    conn = db.get_connection()
+    q_row = conn.execute("SELECT subscription_id FROM subscription_queue WHERE id=? AND reseller_id=?", (queue_id, reseller_id)).fetchone()
+    conn.close()
+    if not q_row:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": "بسته مورد نظر یافت نشد یا متعلق به شما نیست."}), 404
+        flash("بسته مورد نظر یافت نشد یا متعلق به شما نیست.", "danger")
+        return redirect(get_redirect_target("reseller_users"))
+    sub_id = q_row[0]
+    res = db.reorder_subscription_queue(sub_id, queue_id, direction)
+    if res.get("success"):
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": True, "message": "ترتیب بسته‌های در صف تمدید با موفقیت به‌روزرسانی شد."})
+        flash("ترتیب بسته‌های در صف تمدید با موفقیت به‌روزرسانی شد.", "success")
+    else:
+        err = res.get("error", "خطا در جابجایی بسته")
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": err}), 400
+        flash(f"خطا در جابجایی بسته: {err}", "danger")
     return redirect(get_redirect_target("reseller_users"))
 
 
@@ -13017,7 +13085,8 @@ def customer_portal(token: str):
 
     portal_enable_renewal = str(db.get_setting("portal_enable_renewal", "1")).lower() in ("1", "true")
     portal_show_troubleshoot = str(db.get_setting("portal_show_troubleshoot", "1")).lower() in ("1", "true")
-    pending_queue = db.get_pending_queue_item(sub_id)
+    pending_queues = db.get_pending_queue_items(sub_id)
+    pending_queue = pending_queues[0] if pending_queues else None
 
     # دریافت سوابق دوره‌ها و تمدیدهای گذشته و تراکنش‌های پرداخت این اشتراک
     conn = db.get_connection()
@@ -13069,6 +13138,7 @@ def customer_portal(token: str):
         portal_enable_renewal=portal_enable_renewal,
         portal_show_troubleshoot=portal_show_troubleshoot,
         pending_queue=pending_queue,
+        pending_queues=pending_queues,
         sub_history=sub_history,
         tx_history=tx_history,
         total_paid=total_paid,
@@ -13274,6 +13344,95 @@ def api_invoice_status(order_id: str):
         "final_amount": inv.get("final_amount"),
         "expires_at": inv.get("expires_at")
     })
+
+
+@app.route("/sub/<token>/queue/<int:queue_id>/activate", methods=["POST"])
+@app.route("/user/<token>/queue/<int:queue_id>/activate", methods=["POST"])
+def portal_queue_activate(token: str, queue_id: int):
+    """فعال‌سازی آنی بسته در صف توسط مشتری از پورتال اختصاصی"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+    if not sub_row:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": "اشتراک یافت نشد."}), 404
+        flash("اشتراک یافت نشد.", "danger")
+        return redirect(url_for("customer_portal", token=token))
+
+    sub = dict(sub_row)
+    sub_id = sub["id"]
+
+    # اعتبارسنجی تعلق بسته به این اشتراک و وضعیت معلق آن
+    conn = db.get_connection()
+    q_row = conn.execute("SELECT * FROM subscription_queue WHERE id=? AND subscription_id=? AND status='pending'", (queue_id, sub_id)).fetchone()
+    conn.close()
+    if not q_row:
+        msg = "بسته مورد نظر در صف یافت نشد یا قبلاً فعال شده است."
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": msg}), 400
+        flash(msg, "warning")
+        return redirect(url_for("customer_portal", token=token))
+
+    acc_name = sub.get("account_name") or f"مشتری #{sub_id}"
+    res = activate_single_queue_item(queue_id, triggered_by=f"مشتری ({acc_name})")
+    if res.get("success"):
+        msg = f"بسته «{res.get('plan_name')}» با موفقیت فعال شد و حجم و تاریخ سرویس شما ریست گردید."
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": True, "message": msg, "plan_name": res.get("plan_name")})
+        flash(msg, "success")
+    else:
+        err = res.get("error", "خطا در فعال‌سازی بسته")
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": err}), 500
+        flash(f"خطا در فعال‌سازی بسته: {err}", "danger")
+
+    return redirect(url_for("customer_portal", token=token))
+
+
+@app.route("/sub/<token>/queue/<int:queue_id>/move", methods=["POST"])
+@app.route("/user/<token>/queue/<int:queue_id>/move", methods=["POST"])
+def portal_queue_move(token: str, queue_id: int):
+    """تغییر نوبت بسته در صف توسط مشتری از پورتال اختصاصی"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+    if not sub_row:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": "اشتراک یافت نشد."}), 404
+        flash("اشتراک یافت نشد.", "danger")
+        return redirect(url_for("customer_portal", token=token))
+
+    sub = dict(sub_row)
+    sub_id = sub["id"]
+
+    direction = request.form.get("direction") or request.args.get("direction", "up")
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+        direction = data.get("direction") or direction
+
+    conn = db.get_connection()
+    q_row = conn.execute("SELECT * FROM subscription_queue WHERE id=? AND subscription_id=? AND status='pending'", (queue_id, sub_id)).fetchone()
+    conn.close()
+    if not q_row:
+        msg = "بسته مورد نظر در صف یافت نشد."
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": msg}), 400
+        flash(msg, "warning")
+        return redirect(url_for("customer_portal", token=token))
+
+    res = db.reorder_subscription_queue(sub_id, queue_id, direction)
+    if res.get("success"):
+        msg = "ترتیب صف بسته‌های رزرو با موفقیت تغییر کرد."
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": True, "message": msg})
+        flash(msg, "success")
+    else:
+        err = res.get("error", "خطا در تغییر ترتیب صف")
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": err}), 400
+        flash(f"خطا در تغییر ترتیب صف: {err}", "danger")
+
+    return redirect(url_for("customer_portal", token=token))
 
 
 @app.route("/api/portal/<token>/chat/init", methods=["GET"])
