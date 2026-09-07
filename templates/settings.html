@@ -503,6 +503,318 @@ function selectPalette(pid) {
     </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- کارت جامع تنظیمات گفتگوی آنلاین پورتال، استایل دکمه و چتبات هوش مصنوعی -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="card shadow-sm mt-4 border-0">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 text-primary fw-bold">
+            <i class="fas fa-comments text-primary me-2"></i> تنظیمات گفتگوی آنلاین، استایل دکمه و چتبات هوش مصنوعی
+        </h5>
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2">
+            <i class="fas fa-robot me-1"></i>پشتیبانی هوشمند و اختصاصی
+        </span>
+    </div>
+    <div class="card-body p-4">
+        <p class="text-muted">
+            در این بخش می‌توانید ظاهر و استایل دکمه شناور چت در پورتال مشتری را سفارشی‌سازی کنید، وضعیت آنلاین بودن پشتیبانی را به صورت هوشمند یا ساختگی برای نمایندگان تنظیم نمایید، و چتبات پاسخگویی خودکار با هوش مصنوعی را مدیریت کنید.
+        </p>
+
+        <form action="{{ url_for('settings') }}" method="POST">
+            <input type="hidden" name="action" value="save_chat_settings">
+
+            <!-- ۱. بخش تنظیمات وضعیت آنلاین و فعال بودن پشتیبانی -->
+            <div class="p-3 border rounded-3 bg-light mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <label class="form-label fw-bold mb-0">
+                        <i class="fas fa-signal text-success me-1"></i> تنظیم نمایش آنلاین و فعال بودن پشتیبانی به مشتریان:
+                    </label>
+                    <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
+                        پایش واقعی یا ساختگی
+                    </span>
+                </div>
+                <p class="text-muted small mb-3">
+                    مشخص کنید نشانگر وضعیت پشتیبان در پورتال مشتریان بر اساس حضور واقعی باشد یا به صورت ساختگی همیشه سبز و آنلاین نشان داده شود.
+                </p>
+
+                <div class="row g-3">
+                    <div class="col-md-12">
+                        <div class="d-flex flex-wrap gap-4 mt-1">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="chat_fake_online_mode" id="chatOnlineReal" value="real" {% if chat_settings.chat_fake_online_mode == 'real' %}checked{% endif %} onchange="toggleFakeOnlineCustomBox()">
+                                <label class="form-check-label small fw-semibold" for="chatOnlineReal">
+                                    🟢 <strong>پایش وضعیت واقعی</strong>: نمایش وضعیت بر اساس فعالیت اخیر، ورود به پنل و پاسخ به تیکت‌ها در ۱۵ دقیقه گذشته
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="chat_fake_online_mode" id="chatOnlineAlwaysAll" value="always_all" {% if chat_settings.chat_fake_online_mode == 'always_all' %}checked{% endif %} onchange="toggleFakeOnlineCustomBox()">
+                                <label class="form-check-label small fw-semibold" for="chatOnlineAlwaysAll">
+                                    ⚡ <strong>آنلاین ساختگی برای همه</strong>: نمایش همیشگی وضعیت «آنلاین و فعال» به تمامی مشتریان (مدیر و نمایندگان)
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="chat_fake_online_mode" id="chatOnlineCustom" value="custom" {% if chat_settings.chat_fake_online_mode == 'custom' %}checked{% endif %} onchange="toggleFakeOnlineCustomBox()">
+                                <label class="form-check-label small fw-semibold" for="chatOnlineCustom">
+                                    🎯 <strong>آنلاین ساختگی سفارشی</strong>: فعال‌سازی آنلاین ساختگی فقط برای مدیر اصلی یا نمایندگان مشخص شده
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- جعبه انتخاب نمایندگان و مدیر در حالت سفارشی -->
+                    <div class="col-12 mt-2" id="fakeOnlineCustomBox" style="{% if chat_settings.chat_fake_online_mode != 'custom' %}display: none;{% endif %}">
+                        <div class="p-3 bg-white border rounded-3 shadow-xs">
+                            <div class="fw-bold small mb-2 text-primary">
+                                <i class="fas fa-users-cog me-1"></i> انتخاب اشخاصی که وضعیت آنها به مشتریان‌شان ساختگی (همیشه آنلاین) نشان داده شود:
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-md-3 col-sm-6">
+                                    <div class="form-check border rounded p-2 px-3 bg-light">
+                                        <input class="form-check-input" type="checkbox" name="chat_fake_online_agents" value="admin" id="agentAdmin" {% if 'admin' in chat_settings.chat_fake_online_agents or '0' in chat_settings.chat_fake_online_agents %}checked{% endif %}>
+                                        <label class="form-check-label small fw-bold text-dark" for="agentAdmin">
+                                            👑 مدیر ارشد سیستم (Admin)
+                                        </label>
+                                    </div>
+                                </div>
+                                {% for res in all_resellers %}
+                                <div class="col-md-3 col-sm-6">
+                                    <div class="form-check border rounded p-2 px-3 bg-light">
+                                        <input class="form-check-input" type="checkbox" name="chat_fake_online_agents" value="{{ res.id }}" id="agentReseller{{ res.id }}" {% if res.id|string in chat_settings.chat_fake_online_agents %}checked{% endif %}>
+                                        <label class="form-check-label small" for="agentReseller{{ res.id }}">
+                                            🤝 <strong>{{ res.name }}</strong> <small class="text-muted">({{ res.username }})</small>
+                                        </label>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ۲. بخش انتخاب استایل و ظاهر دکمه گفتگوی آنلاین -->
+            <div class="p-3 border rounded-3 bg-light mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <label class="form-label fw-bold mb-0">
+                        <i class="fas fa-palette text-primary me-1"></i> استایل و ظاهر دکمه گفتگوی آنلاین در پورتال مشتری:
+                    </label>
+                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1">
+                        ۵ استایل مدرن و شکیل
+                    </span>
+                </div>
+                <p class="text-muted small mb-3">
+                    روی هر یک از استایل‌های زیر کلیک کنید تا به عنوان قالب دکمه شناور انتخاب گردد:
+                </p>
+
+                <div class="row g-3">
+                    <!-- استایل ۱: کپسولی مدرن (Modern Pill) -->
+                    <div class="col-md-4 col-sm-6">
+                        <label class="chat-style-card d-block p-3 border rounded-3 bg-white h-100 position-relative cursor-pointer shadow-xs">
+                            <input type="radio" name="chat_button_style" value="modern_pill" class="form-check-input position-absolute top-0 end-0 m-3" {% if chat_settings.chat_button_style == 'modern_pill' %}checked{% endif %}>
+                            <div class="fw-bold small mb-2 text-dark">۱. کپسولی گرادیان مدرن (پیش‌فرض)</div>
+                            <div class="d-flex align-items-center justify-content-center p-3 rounded-2" style="background: #0f172a;">
+                                <div style="display: flex; align-items: center; gap: 8px; background: linear-gradient(135deg, #2563eb, #1d4ed8); color: white; border-radius: 50px; padding: 10px 18px; font-size: 0.82rem; font-weight: bold; box-shadow: 0 4px 15px rgba(37,99,235,0.5);">
+                                    <span style="width: 8px; height: 8px; background: #10b981; border-radius: 50%; box-shadow: 0 0 6px #10b981;"></span>
+                                    <i class="fas fa-comments"></i>
+                                    <span>گفتگوی آنلاین</span>
+                                </div>
+                            </div>
+                            <div class="form-text small mt-2">طراحی استاندارد کپسولی با گرادیان پرانرژی آبی سلطنتی.</div>
+                        </label>
+                    </div>
+
+                    <!-- استایل ۲: شیشه‌ای مات (Glassmorphism Frosted) -->
+                    <div class="col-md-4 col-sm-6">
+                        <label class="chat-style-card d-block p-3 border rounded-3 bg-white h-100 position-relative cursor-pointer shadow-xs">
+                            <input type="radio" name="chat_button_style" value="glassmorphism" class="form-check-input position-absolute top-0 end-0 m-3" {% if chat_settings.chat_button_style == 'glassmorphism' %}checked{% endif %}>
+                            <div class="fw-bold small mb-2 text-dark">۲. شیشه‌ای مات نئومورفیک (Frosted Glass)</div>
+                            <div class="d-flex align-items-center justify-content-center p-3 rounded-2" style="background: radial-gradient(circle, #1e293b, #090d16);">
+                                <div style="display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.12); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); color: #ffffff; border: 1.5px solid rgba(255,255,255,0.25); border-radius: 50px; padding: 10px 18px; font-size: 0.82rem; font-weight: bold; box-shadow: 0 8px 32px rgba(0,0,0,0.37);">
+                                    <span style="width: 8px; height: 8px; background: #38bdf8; border-radius: 50%; box-shadow: 0 0 8px #38bdf8;"></span>
+                                    <i class="fas fa-headset text-info"></i>
+                                    <span>پشتیبانی زنده</span>
+                                </div>
+                            </div>
+                            <div class="form-text small mt-2">افکت شیشه مات بسیار ترند با نور بازتابی و زیبایی فوق‌العاده.</div>
+                        </label>
+                    </div>
+
+                    <!-- استایل ۳: سایبرپانک نئونی (Cyber Neon Glow) -->
+                    <div class="col-md-4 col-sm-6">
+                        <label class="chat-style-card d-block p-3 border rounded-3 bg-white h-100 position-relative cursor-pointer shadow-xs">
+                            <input type="radio" name="chat_button_style" value="cyber_neon" class="form-check-input position-absolute top-0 end-0 m-3" {% if chat_settings.chat_button_style == 'cyber_neon' %}checked{% endif %}>
+                            <div class="fw-bold small mb-2 text-dark">۳. نئونی درخشان (Cyberpunk Glow)</div>
+                            <div class="d-flex align-items-center justify-content-center p-3 rounded-2" style="background: #050811;">
+                                <div style="display: flex; align-items: center; gap: 8px; background: #0b132b; color: #00f2fe; border: 2px solid #00f2fe; border-radius: 50px; padding: 10px 18px; font-size: 0.82rem; font-weight: bold; box-shadow: 0 0 16px rgba(0,242,254,0.6);">
+                                    <span style="width: 8px; height: 8px; background: #00f2fe; border-radius: 50%; box-shadow: 0 0 10px #00f2fe;"></span>
+                                    <i class="fas fa-bolt text-warning"></i>
+                                    <span>ارتباط فوری</span>
+                                </div>
+                            </div>
+                            <div class="form-text small mt-2">کادر نئونی پرنور با جلوه متمایز و جلب‌توجه فوری مخاطب.</div>
+                        </label>
+                    </div>
+
+                    <!-- استایل ۴: حباب دایره‌ای شناور (Minimal Circle FAB) -->
+                    <div class="col-md-4 col-sm-6">
+                        <label class="chat-style-card d-block p-3 border rounded-3 bg-white h-100 position-relative cursor-pointer shadow-xs">
+                            <input type="radio" name="chat_button_style" value="minimal_circle" class="form-check-input position-absolute top-0 end-0 m-3" {% if chat_settings.chat_button_style == 'minimal_circle' %}checked{% endif %}>
+                            <div class="fw-bold small mb-2 text-dark">۴. حباب دایره‌ای ارگونومیک (Minimal Circle)</div>
+                            <div class="d-flex align-items-center justify-content-center p-3 rounded-2" style="background: #0f172a;">
+                                <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #6366f1, #4f46e5); color: white; border-radius: 50%; box-shadow: 0 4px 18px rgba(99,102,241,0.5); position: relative;">
+                                    <i class="fas fa-comments fs-5"></i>
+                                    <span style="position: absolute; top: 0; right: 0; width: 10px; height: 10px; background: #10b981; border-radius: 50%; border: 2px solid #0f172a;"></span>
+                                </div>
+                            </div>
+                            <div class="form-text small mt-2">دایره‌ای شیک و مینی‌مال با اشغال کمترین فضای ممکن در صفحه.</div>
+                        </label>
+                    </div>
+
+                    <!-- استایل ۵: طلایی لوکس VIP (Sunset Amber Gold) -->
+                    <div class="col-md-4 col-sm-6">
+                        <label class="chat-style-card d-block p-3 border rounded-3 bg-white h-100 position-relative cursor-pointer shadow-xs">
+                            <input type="radio" name="chat_button_style" value="sunset_amber" class="form-check-input position-absolute top-0 end-0 m-3" {% if chat_settings.chat_button_style == 'sunset_amber' %}checked{% endif %}>
+                            <div class="fw-bold small mb-2 text-dark">۵. طلایی کهربایی لوکس (Sunset Gold VIP)</div>
+                            <div class="d-flex align-items-center justify-content-center p-3 rounded-2" style="background: #111827;">
+                                <div style="display: flex; align-items: center; gap: 8px; background: linear-gradient(135deg, #f59e0b, #d97706); color: #ffffff; border: 1.5px solid rgba(253,230,138,0.4); border-radius: 50px; padding: 10px 18px; font-size: 0.82rem; font-weight: bold; box-shadow: 0 6px 20px rgba(245,158,11,0.45);">
+                                    <span style="width: 8px; height: 8px; background: #10b981; border-radius: 50%; box-shadow: 0 0 8px #10b981;"></span>
+                                    <i class="fas fa-crown"></i>
+                                    <span>پشتیبانی VIP</span>
+                                </div>
+                            </div>
+                            <div class="form-text small mt-2">ظاهری بسیار شکیل و لوکس با تم طلایی-کهربایی مناسب برندهای ویژه.</div>
+                        </label>
+                    </div>
+
+                    <!-- تنظیمات تکمیلی دکمه: متن و موقعیت -->
+                    <div class="col-md-4 col-sm-6">
+                        <div class="p-3 border rounded-3 bg-white h-100">
+                            <div class="fw-bold small mb-2 text-dark">⚙️ گزینه‌های سفارشی دکمه:</div>
+                            <div class="mb-2">
+                                <label class="form-label small mb-1">متن روی دکمه چت:</label>
+                                <input type="text" name="chat_button_text" class="form-control form-control-sm" value="{{ chat_settings.chat_button_text }}" placeholder="مثلاً: گفتگوی آنلاین یا پشتیبانی 24/7">
+                            </div>
+                            <div>
+                                <label class="form-label small mb-1">موقعیت قرارگیری شناور:</label>
+                                <select class="form-select form-select-sm" name="chat_button_position">
+                                    <option value="right" {% if chat_settings.chat_button_position == 'right' %}selected{% endif %}>پایین صفحه - سمت راست (استاندارد)</option>
+                                    <option value="left" {% if chat_settings.chat_button_position == 'left' %}selected{% endif %}>پایین صفحه - سمت چپ</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ۳. بخش هوش مصنوعی و چتبات پاسخگویی هوشمند (AI Assistant) -->
+            <div class="p-3 border rounded-3 bg-light mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <label class="form-label fw-bold mb-0">
+                        <i class="fas fa-microchip text-purple me-1" style="color: #8b5cf6;"></i> چتبات هوشمند هوش مصنوعی (AI Assistant):
+                    </label>
+                    <span class="badge bg-purple-subtle text-purple border border-purple-subtle px-2 py-1" style="color: #7c3aed;">
+                        پاسخگویی سریع بدون اتلاف منابع سرور
+                    </span>
+                </div>
+                <div class="alert alert-info py-2 px-3 small border-0 mb-3" style="background-color: rgba(99, 102, 241, 0.08);">
+                    <i class="fas fa-info-circle me-1 text-primary"></i>
+                    <strong>سناریوی پاسخگویی:</strong> پس از ارسال اولین پیام توسط مشتری، ۲ پیام خودکار با نام فرستنده «هوش مصنوعی» ارسال می‌گردد (اعلام ارجاع به پشتیبان و پیشنهاد حل مشکل). اگر مشتری پیام داد گفتگو ادامه می‌یابد؛ و <strong>به محض ارسال پاسخ توسط پشتیبان انسانی، هوش مصنوعی بلافاصله سکوت کرده و ادامه نمی‌دهد.</strong>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="form-check form-switch mt-1">
+                            <input class="form-check-input" type="checkbox" name="chat_ai_enabled" id="chatAiEnabled" value="1" {% if chat_settings.chat_ai_enabled %}checked{% endif %} onchange="toggleAiSettingsBox()">
+                            <label class="form-check-label fw-bold small" for="chatAiEnabled">
+                                فعال‌سازی هوش مصنوعی و چتبات آنلاین برای مشتریان
+                            </label>
+                        </div>
+                        <div class="form-text small">در صورت خاموش بودن، هیچ پیام خودکاری از طرف هوش مصنوعی به مشتری ارسال نمی‌گردد.</div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="form-check form-switch mt-1">
+                            <input class="form-check-input" type="checkbox" name="chat_sound_enabled" id="chatSoundEnabled" value="1" {% if chat_settings.chat_sound_enabled %}checked{% endif %}>
+                            <label class="form-check-label fw-bold small" for="chatSoundEnabled">
+                                پخش صدای ملایم و جذاب زنگ نوتیفیکیشن هنگام دریافت پیام پشتیبان
+                            </label>
+                        </div>
+                        <div class="form-text small">با استفاده از Web Audio API و بدون نیاز به دانلود فایل صوتی اجرا می‌شود.</div>
+                    </div>
+
+                    <!-- گزینه‌های موتور هوش مصنوعی -->
+                    <div class="col-12 mt-2" id="aiSettingsBox" style="{% if not chat_settings.chat_ai_enabled %}display: none;{% endif %}">
+                        <div class="p-3 bg-white border rounded-3 shadow-xs">
+                            <label class="form-label fw-bold small">انتخاب موتور پردازش هوش مصنوعی:</label>
+                            <div class="d-flex flex-column gap-2 mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="chat_ai_mode" id="aiModeLocal" value="smart_local" {% if chat_settings.chat_ai_mode != 'external_api' %}checked{% endif %} onchange="toggleAiApiBox()">
+                                    <label class="form-check-label small fw-semibold" for="aiModeLocal">
+                                        ⚡ <strong>موتور محلی و سبک هوشمند (پیشنهادی)</strong>: حل سریع مشکلات اتصال، پینگ، نرم‌افزارهای v2ray/Streisand و تمدید اشتراک. <em>بدون کوچکترین مصرف منابع سرور، فوق‌العاده سریع و کاملاً رایگان.</em>
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="chat_ai_mode" id="aiModeExternal" value="external_api" {% if chat_settings.chat_ai_mode == 'external_api' %}checked{% endif %} onchange="toggleAiApiBox()">
+                                    <label class="form-check-label small fw-semibold" for="aiModeExternal">
+                                        🌐 <strong>اتصال به API مدل‌های زبانی خارجی (OpenAI / Gemini / مدل دلخواه)</strong>: پاسخگویی با مدل‌های پیشرفته ابری
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div id="aiApiConfigBox" class="row g-2 border-top pt-3" style="{% if chat_settings.chat_ai_mode != 'external_api' %}display: none;{% endif %}">
+                                <div class="col-md-5">
+                                    <label class="form-label small mb-1">آدرس API Endpoint:</label>
+                                    <input type="text" name="chat_ai_api_url" class="form-control form-control-sm font-monospace" style="direction: ltr;" value="{{ chat_settings.chat_ai_api_url }}" placeholder="https://api.openai.com/v1/chat/completions">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small mb-1">کلید دسترسی (API Key):</label>
+                                    <input type="password" name="chat_ai_api_key" class="form-control form-control-sm font-monospace" style="direction: ltr;" value="{{ chat_settings.chat_ai_api_key }}" placeholder="sk-...">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small mb-1">نام مدل (Model):</label>
+                                    <input type="text" name="chat_ai_model" class="form-control form-control-sm font-monospace" style="direction: ltr;" value="{{ chat_settings.chat_ai_model }}" placeholder="gpt-4o-mini">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-4 pt-3 border-top text-end">
+                <button type="submit" class="btn btn-primary px-4">
+                    <i class="fas fa-save me-1"></i> ذخیره تنظیمات گفتگوی آنلاین و هوش مصنوعی
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function toggleFakeOnlineCustomBox() {
+    const customRadio = document.getElementById("chatOnlineCustom");
+    const box = document.getElementById("fakeOnlineCustomBox");
+    if (customRadio && box) {
+        box.style.display = customRadio.checked ? "block" : "none";
+    }
+}
+
+function toggleAiSettingsBox() {
+    const aiSwitch = document.getElementById("chatAiEnabled");
+    const box = document.getElementById("aiSettingsBox");
+    if (aiSwitch && box) {
+        box.style.display = aiSwitch.checked ? "block" : "none";
+    }
+}
+
+function toggleAiApiBox() {
+    const extRadio = document.getElementById("aiModeExternal");
+    const box = document.getElementById("aiApiConfigBox");
+    if (extRadio && box) {
+        box.style.display = extRadio.checked ? "flex" : "none";
+    }
+}
+</script>
+
 <!-- کارت ساخت و تنظیم قالب لینک اتصال تکی (پروتکل VMess JSON) -->
 <div class="card shadow-sm mt-4 border-0">
     <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">

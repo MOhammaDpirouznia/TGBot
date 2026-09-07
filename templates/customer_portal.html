@@ -309,45 +309,149 @@
             70% { box-shadow: 0 0 0 12px rgba(239, 68, 68, 0); }
             100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
         }
-        /* دکمه شناور گفتگوی آنلاین */
+        /* دکمه شناور گفتگوی آنلاین - تثبیت شده در پایین صفحه */
         .floating-chat-btn {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            z-index: 1040;
-            display: flex;
+            position: fixed !important;
+            bottom: 24px !important;
+            z-index: 1045 !important;
+            display: flex !important;
             align-items: center;
+            justify-content: center;
             gap: 10px;
-            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-            color: #ffffff;
-            border: 2px solid rgba(255, 255, 255, 0.2);
-            border-radius: 50px;
-            padding: 12px 20px;
-            box-shadow: 0 8px 25px rgba(37, 99, 235, 0.5);
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             font-weight: bold;
             font-size: 0.9rem;
-            text-decoration: none;
+            text-decoration: none !important;
+            outline: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
-        .floating-chat-btn:hover {
+
+        /* موقعیت راست یا چپ */
+        .floating-chat-btn.pos-right {
+            right: 24px !important;
+            left: auto !important;
+        }
+        .floating-chat-btn.pos-left {
+            left: 24px !important;
+            right: auto !important;
+        }
+
+        /* استایل ۱: کپسولی مدرن (Modern Pill Gradient) */
+        .floating-chat-btn.style-modern_pill {
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            color: #ffffff !important;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50px;
+            padding: 12px 22px;
+            box-shadow: 0 8px 25px rgba(37, 99, 235, 0.5);
+        }
+        .floating-chat-btn.style-modern_pill:hover {
             transform: translateY(-4px) scale(1.03);
             box-shadow: 0 12px 30px rgba(37, 99, 235, 0.65);
-            color: #ffffff;
         }
+
+        /* استایل ۲: شیشه‌ای مات نئومورفیک (Glassmorphism Frosted) */
+        .floating-chat-btn.style-glassmorphism {
+            background: rgba(15, 23, 42, 0.75) !important;
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            color: #ffffff !important;
+            border: 1.5px solid rgba(255, 255, 255, 0.25);
+            border-radius: 50px;
+            padding: 12px 22px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        }
+        .floating-chat-btn.style-glassmorphism:hover {
+            transform: translateY(-4px) scale(1.03);
+            background: rgba(30, 41, 59, 0.85) !important;
+            border-color: rgba(56, 189, 248, 0.5);
+            box-shadow: 0 12px 35px rgba(56, 189, 248, 0.35);
+        }
+
+        /* استایل ۳: سایبرپانک نئونی درخشان (Cyber Neon Glow) */
+        .floating-chat-btn.style-cyber_neon {
+            background: #090d16 !important;
+            color: #00f2fe !important;
+            border: 2px solid #00f2fe;
+            border-radius: 50px;
+            padding: 12px 22px;
+            box-shadow: 0 0 18px rgba(0, 242, 254, 0.5), inset 0 0 10px rgba(0, 242, 254, 0.2);
+        }
+        .floating-chat-btn.style-cyber_neon:hover {
+            transform: translateY(-4px) scale(1.04);
+            box-shadow: 0 0 28px rgba(0, 242, 254, 0.8), inset 0 0 15px rgba(0, 242, 254, 0.35);
+            color: #ffffff !important;
+        }
+
+        /* استایل ۴: حباب دایره‌ای شناور (Minimal Circle FAB) */
+        .floating-chat-btn.style-minimal_circle {
+            width: 58px;
+            height: 58px;
+            padding: 0 !important;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%);
+            color: #ffffff !important;
+            border: 2.5px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 8px 25px rgba(99, 102, 241, 0.55);
+        }
+        .floating-chat-btn.style-minimal_circle .chat-badge-text {
+            display: none !important;
+        }
+        .floating-chat-btn.style-minimal_circle:hover {
+            transform: translateY(-4px) scale(1.08);
+            box-shadow: 0 12px 32px rgba(99, 102, 241, 0.7);
+        }
+
+        /* استایل ۵: طلایی کهربایی لوکس VIP (Sunset Amber Gold) */
+        .floating-chat-btn.style-sunset_amber {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 50%, #b45309 100%);
+            color: #ffffff !important;
+            border: 2px solid rgba(253, 230, 138, 0.5);
+            border-radius: 50px;
+            padding: 12px 22px;
+            box-shadow: 0 8px 25px rgba(245, 158, 11, 0.5);
+        }
+        .floating-chat-btn.style-sunset_amber:hover {
+            transform: translateY(-4px) scale(1.03);
+            box-shadow: 0 12px 30px rgba(245, 158, 11, 0.7);
+        }
+
+        /* نشانگر آنلاین / آفلاین بودن پشتیبان */
         .chat-status-dot {
             width: 10px;
             height: 10px;
-            background-color: #10b981;
             border-radius: 50%;
             display: inline-block;
+            transition: all 0.3s ease;
+        }
+        .chat-status-dot.online {
+            background-color: #10b981;
             box-shadow: 0 0 8px #10b981;
             animation: chat-pulse 1.8s infinite;
+        }
+        .chat-status-dot.offline {
+            background-color: #94a3b8;
+            box-shadow: 0 0 4px rgba(148, 163, 184, 0.5);
+            animation: none !important;
         }
         @keyframes chat-pulse {
             0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
             70% { transform: scale(1.1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
             100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        /* استایل اختصاصی حباب پیام هوش مصنوعی */
+        .chat-msg-row.ai {
+            justify-content: flex-start;
+        }
+        .chat-msg-bubble.ai-msg {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(99, 102, 241, 0.14) 100%) !important;
+            border: 1.5px solid rgba(167, 139, 250, 0.45) !important;
+            color: #f1f5f9 !important;
+            border-bottom-right-radius: 4px;
+            box-shadow: 0 4px 18px rgba(139, 92, 246, 0.15);
         }
         .nav-pills .nav-link {
             color: #94a3b8;
@@ -1147,11 +1251,11 @@
     </div>
 </div>
 
-<!-- دکمه شناور گفتگوی آنلاین با پشتیبانی (سمت راست پایین با نشانگر وضعیت و پیام جدید) -->
-<button type="button" class="floating-chat-btn position-relative" id="floatingChatBtn" onclick="openPortalChatModal()" title="گفتگوی آنلاین با پشتیبانی">
-    <span class="chat-status-dot" id="chatStatusDot"></span>
+<!-- دکمه شناور گفتگوی آنلاین با پشتیبانی (ثابت در پایین صفحه با استایل انتخابی و نشانگر وضعیت پویا) -->
+<button type="button" class="floating-chat-btn pos-{{ chat_settings.chat_button_position or 'right' }} style-{{ chat_settings.chat_button_style or 'modern_pill' }}" id="floatingChatBtn" onclick="openPortalChatModal()" title="گفتگوی آنلاین با پشتیبانی">
+    <span class="chat-status-dot {% if support_online_info and support_online_info.is_online %}online{% else %}offline{% endif %}" id="chatStatusDot" title="{% if support_online_info and support_online_info.is_online %}پشتیبانی آنلاین و پاسخگو است{% else %}پشتیبانی در حال حاضر آفلاین است (می‌توانید پیام بگذارید){% endif %}"></span>
     <i class="fas fa-comments fs-5"></i>
-    <span class="chat-badge-text">گفتگوی آنلاین</span>
+    <span class="chat-badge-text" id="chatBadgeText">{{ chat_settings.chat_button_text or 'گفتگوی آنلاین' }}</span>
     <span class="chat-unread-badge d-none" id="chatUnreadBadge">0</span>
 </button>
 
@@ -1166,14 +1270,14 @@
                         <div class="avatar-sm bg-primary bg-opacity-25 rounded-circle d-flex align-items-center justify-content-center text-primary p-2 shadow-sm" style="width: 44px; height: 44px;">
                             <i class="fas fa-headset fs-5"></i>
                         </div>
-                        <span class="position-absolute bottom-0 start-0 translate-middle p-1 bg-success border border-dark rounded-circle" style="width: 12px; height: 12px;" title="پشتیبانی آنلاین"></span>
+                        <span class="position-absolute bottom-0 start-0 translate-middle p-1 {% if support_online_info and support_online_info.is_online %}bg-success{% else %}bg-secondary{% endif %} border border-dark rounded-circle" id="chatHeaderAvatarDot" style="width: 12px; height: 12px;" title="وضعیت پشتیبان"></span>
                     </div>
                     <div>
                         <div class="d-flex align-items-center gap-2">
-                            <h5 class="modal-title fw-bold mb-0 fs-6">گفتگوی آنلاین با پشتیبانی</h5>
-                            <span class="badge bg-success bg-opacity-25 text-success border border-success border-opacity-25 py-1 px-2" style="font-size: 0.72rem;">آنلاین و فعال</span>
+                            <h5 class="modal-title fw-bold mb-0 fs-6" id="chatHeaderTitle">{{ support_online_info.support_name if support_online_info else 'گفتگوی آنلاین با پشتیبانی' }}</h5>
+                            <span class="badge {% if support_online_info and support_online_info.is_online %}bg-success bg-opacity-25 text-success border border-success border-opacity-25{% else %}bg-secondary bg-opacity-25 text-secondary border border-secondary border-opacity-25{% endif %} py-1 px-2" id="chatHeaderOnlineBadge" style="font-size: 0.72rem;">{{ support_online_info.status_text if support_online_info else 'آنلاین و پاسخگو' }}</span>
                         </div>
-                        <small class="text-secondary d-block" id="chatHeaderSubtitle">پاسخگویی سریع و پیگیری امور اشتراک و تمدید</small>
+                        <small class="text-secondary d-block" id="chatHeaderSubtitle">{% if support_online_info and support_online_info.is_online %}کارشناس پشتیبانی هم‌اکنون آنلاین و آماده پاسخگویی است{% else %}پشتیبان هم‌اکنون آفلاین است؛ پیام شما ثبت شده و در اولین فرصت پاسخ داده می‌شود{% endif %}</small>
                     </div>
                 </div>
 
@@ -1704,6 +1808,48 @@ function sendCustomerQuickReply(text) {
     }
 }
 
+// بروزرسانی بلادرنگ وضعیت آنلاین یا آفلاین بودن پشتیبان در نشانگر دکمه و هدر مودال
+function updateSupportOnlineStatusUI(isOnline, supportName, statusText) {
+    const dot = document.getElementById("chatStatusDot");
+    if (dot) {
+        if (isOnline) {
+            dot.className = "chat-status-dot online";
+            dot.title = "پشتیبانی آنلاین و پاسخگو است";
+        } else {
+            dot.className = "chat-status-dot offline";
+            dot.title = "پشتیبانی در حال حاضر آفلاین است (می‌توانید پیام بگذارید)";
+        }
+    }
+
+    const avatarDot = document.getElementById("chatHeaderAvatarDot");
+    if (avatarDot) {
+        avatarDot.className = `position-absolute bottom-0 start-0 translate-middle p-1 ${isOnline ? 'bg-success' : 'bg-secondary'} border border-dark rounded-circle`;
+    }
+
+    const onlineBadge = document.getElementById("chatHeaderOnlineBadge");
+    if (onlineBadge) {
+        if (isOnline) {
+            onlineBadge.className = "badge bg-success bg-opacity-25 text-success border border-success border-opacity-25 py-1 px-2";
+            onlineBadge.innerText = statusText || "آنلاین و پاسخگو";
+        } else {
+            onlineBadge.className = "badge bg-secondary bg-opacity-25 text-secondary border border-secondary border-opacity-25 py-1 px-2";
+            onlineBadge.innerText = statusText || "آفلاین (ثبت پیام)";
+        }
+    }
+
+    const subtitle = document.getElementById("chatHeaderSubtitle");
+    if (subtitle) {
+        subtitle.innerText = isOnline
+            ? "کارشناس پشتیبانی هم‌اکنون آنلاین و آماده پاسخگویی است"
+            : "پشتیبان هم‌اکنون آفلاین است؛ پیام شما ثبت شده و در اولین فرصت پاسخ داده می‌شود";
+    }
+
+    const title = document.getElementById("chatHeaderTitle");
+    if (title && supportName) {
+        title.innerText = supportName;
+    }
+}
+
 // مقداردهی اولیه سیستم چت در لود صفحه
 function initPortalChatSystem() {
     fetch('/api/portal/' + PORTAL_TOKEN + '/chat/init')
@@ -1718,6 +1864,10 @@ function initPortalChatSystem() {
             if (data.customer_phone) {
                 const phoneInput = document.getElementById("portalChatContact");
                 if (phoneInput && !phoneInput.value) phoneInput.value = data.customer_phone;
+            }
+
+            if (data.support_status !== undefined) {
+                updateSupportOnlineStatusUI(data.support_is_online, data.support_name, data.support_status_text);
             }
 
             chatHistoryCache = data.history || [];
@@ -1821,19 +1971,34 @@ function appendChatMessageBubble(msg) {
     if (!stream) return;
 
     const isUser = (msg.sender_type === 'user');
+    const isAi = (msg.sender_type === 'ai');
     const timeStr = formatPersianChatTime(msg.created_at);
 
     const row = document.createElement("div");
-    row.className = 'chat-msg-row ' + (isUser ? 'user' : 'support');
+    row.className = 'chat-msg-row ' + (isUser ? 'user' : (isAi ? 'ai' : 'support'));
 
     if (isUser) {
         row.innerHTML = `
             <div class="chat-msg-bubble user">
                 <div class="fw-bold small opacity-75 mb-1" style="font-size: 0.72rem;">${escapeHtml(msg.sender_name || 'شما')}</div>
-                <div>${escapeHtml(msg.message)}</div>
+                <div style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(msg.message)}</div>
                 <div class="chat-msg-time justify-content-end text-light">
                     <span>${timeStr}</span>
                     <i class="fas fa-check-double text-info" style="font-size: 0.65rem;"></i>
+                </div>
+            </div>
+        `;
+    } else if (isAi) {
+        row.innerHTML = `
+            <div class="chat-msg-bubble ai-msg">
+                <div class="d-flex align-items-center gap-1 fw-bold small mb-1" style="font-size: 0.72rem; color: #c084fc;">
+                    <i class="fas fa-robot me-1"></i>
+                    <span>${escapeHtml(msg.sender_name || 'هوش مصنوعی')}</span>
+                    <span class="badge bg-purple-subtle text-purple py-0 px-1 rounded-pill" style="font-size: 0.6rem; border: 1px solid rgba(192, 132, 252, 0.4); color: #e9d5ff;">پاسخ خودکار</span>
+                </div>
+                <div style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(msg.message)}</div>
+                <div class="chat-msg-time justify-content-start text-secondary">
+                    <span>${timeStr}</span>
                 </div>
             </div>
         `;
@@ -1844,7 +2009,7 @@ function appendChatMessageBubble(msg) {
                     <i class="fas fa-user-shield me-1"></i>
                     <span>${escapeHtml(msg.sender_name || 'پشتیبانی')}</span>
                 </div>
-                <div>${escapeHtml(msg.message)}</div>
+                <div style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(msg.message)}</div>
                 <div class="chat-msg-time justify-content-start text-secondary">
                     <span>${timeStr}</span>
                 </div>
@@ -1963,8 +2128,18 @@ function sendPortalChatMessage(e) {
     .then(data => {
         sendBtn.disabled = false;
         if (sendIcon) sendIcon.className = "fas fa-paper-plane";
-        if (data.success && data.message_id) {
-            chatLastMessageId = Math.max(chatLastMessageId, data.message_id);
+        if (data.success) {
+            if (data.message_id) {
+                chatLastMessageId = Math.max(chatLastMessageId, data.message_id);
+            }
+            if (data.ai_reply) {
+                setTimeout(() => {
+                    appendChatMessageBubble(data.ai_reply);
+                    chatLastMessageId = Math.max(chatLastMessageId, data.ai_reply.id);
+                    playChatNotificationSound();
+                    scrollChatToBottom();
+                }, 400);
+            }
         }
     })
     .catch(err => {
@@ -1983,6 +2158,10 @@ function startChatPolling() {
             .then(res => res.json())
             .then(data => {
                 if (!data.success) return;
+
+                if (data.support_status !== undefined) {
+                    updateSupportOnlineStatusUI(data.support_is_online, data.support_name, data.support_status_text);
+                }
 
                 if (data.new_messages && data.new_messages.length > 0) {
                     let hasSupportReply = false;
