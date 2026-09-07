@@ -687,7 +687,8 @@ class Database:
         # ستون‌های برندینگ، دامنه و آموزش‌های اختصاصی نماینده
         for col_def in [
             "custom_domain TEXT", "tutorial_domain TEXT", "logo_url TEXT", "favicon_url TEXT",
-            "brand_title TEXT", "primary_color TEXT", "footer_text TEXT"
+            "brand_title TEXT", "primary_color TEXT", "footer_text TEXT",
+            "portal_layout TEXT DEFAULT ''", "portal_plan_style TEXT DEFAULT ''"
         ]:
             try:
                 cursor.execute(f"ALTER TABLE resellers ADD COLUMN {col_def}")
@@ -9356,7 +9357,11 @@ class Database:
         now = get_now_iso()
         kwargs["updated_at"] = now
         try:
-            allowed = ["custom_domain", "tutorial_domain", "logo_url", "favicon_url", "brand_title", "portal_title", "portal_subtitle", "support_phone", "support_username", "primary_color", "footer_text", "updated_at"]
+            allowed = [
+                "custom_domain", "tutorial_domain", "logo_url", "favicon_url",
+                "brand_title", "portal_title", "portal_subtitle", "support_phone", "support_username",
+                "primary_color", "footer_text", "portal_layout", "portal_plan_style", "updated_at"
+            ]
             fields = []
             params = []
             for k, v in kwargs.items():

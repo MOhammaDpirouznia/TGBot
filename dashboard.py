@@ -7897,6 +7897,8 @@ def settings():
             support_username = request.form.get("support_username", "").strip().lstrip("@")
             portal_enable_renewal = "1" if request.form.get("portal_enable_renewal") else "0"
             portal_show_troubleshoot = "1" if request.form.get("portal_show_troubleshoot") else "0"
+            portal_layout = request.form.get("portal_layout", "classic").strip().lower()
+            portal_plan_style = request.form.get("portal_plan_style", "glass_classic").strip().lower()
 
             db.save_setting("user_proxy_path", user_proxy_path)
             db.save_setting("portal_title", portal_title)
@@ -7905,6 +7907,8 @@ def settings():
             db.save_setting("support_username", support_username)
             db.save_setting("portal_enable_renewal", portal_enable_renewal)
             db.save_setting("portal_show_troubleshoot", portal_show_troubleshoot)
+            db.save_setting("portal_layout", portal_layout)
+            db.save_setting("portal_plan_style", portal_plan_style)
 
             server_status_mode = request.form.get("server_status_mode", "smart").strip().lower()
             server_status_manual_state = request.form.get("server_status_manual_state", "operational").strip().lower()
@@ -7914,7 +7918,7 @@ def settings():
             db.save_setting("server_status_manual_state", server_status_manual_state)
             db.save_setting("server_status_custom_text", server_status_custom_text)
 
-            flash("تنظیمات پورتال اختصاصی مشتری، پروکسی پچ و وضعیت سرورها با موفقیت ذخیره شد.", "success")
+            flash("تنظیمات پورتال اختصاصی مشتری، قالب ظاهری، استایل دکمه‌ها، پروکسی پچ و وضعیت سرورها با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
         elif action == "save_palette_settings":
             active_palette = request.form.get("active_palette", "vps_aurora").strip()
@@ -7993,11 +7997,14 @@ def settings():
         "portal_title": db.get_setting("portal_title", "فروشگاه اینترنت آزاد"),
         "portal_subtitle": db.get_setting("portal_subtitle", "پورتال اختصاصی استعلام وضعیت و تمدید اشتراک"),
         "support_phone": db.get_setting("support_phone", ""),
+        "support_username": db.get_setting("support_username", ""),
         "portal_enable_renewal": str(db.get_setting("portal_enable_renewal", "1")).lower() in ("1", "true"),
         "portal_show_troubleshoot": str(db.get_setting("portal_show_troubleshoot", "1")).lower() in ("1", "true"),
         "server_status_mode": db.get_setting("server_status_mode", "smart"),
         "server_status_manual_state": db.get_setting("server_status_manual_state", "operational"),
-        "server_status_custom_text": db.get_setting("server_status_custom_text", "")
+        "server_status_custom_text": db.get_setting("server_status_custom_text", ""),
+        "portal_layout": db.get_setting("portal_layout", "classic"),
+        "portal_plan_style": db.get_setting("portal_plan_style", "glass_classic")
     }
     palette_settings = {
         "active_palette": db.get_setting("active_palette", "vps_aurora"),
@@ -11112,6 +11119,8 @@ def reseller_branding():
         portal_subtitle = request.form.get("portal_subtitle", "").strip()
         support_phone = request.form.get("support_phone", "").strip()
         support_username = request.form.get("support_username", "").strip().lstrip("@")
+        portal_layout = request.form.get("portal_layout", "").strip().lower()
+        portal_plan_style = request.form.get("portal_plan_style", "").strip().lower()
 
         # بررسی آپلود مستقیم لوگو در صورت ارسال فایل
         if "logo_file" in request.files:
@@ -11138,7 +11147,9 @@ def reseller_branding():
             logo_url=logo_url,
             favicon_url=favicon_url,
             primary_color=primary_color,
-            footer_text=footer_text
+            footer_text=footer_text,
+            portal_layout=portal_layout,
+            portal_plan_style=portal_plan_style
         )
         if res.get("success"):
             flash("تنظیمات هویت بصری، دامنه‌ها و آموزش‌های اختصاصی شما با موفقیت ذخیره شد.", "success")
@@ -12873,6 +12884,8 @@ def customer_portal(token: str):
     logo_url = db.get_setting("store_logo")
     support_username = db.get_setting("support_username")
     support_phone = db.get_setting("support_phone")
+    portal_layout = db.get_setting("portal_layout", "classic")
+    portal_plan_style = db.get_setting("portal_plan_style", "glass_classic")
 
     if reseller_id:
         r_info = db.get_reseller(reseller_id) or {}
@@ -12881,6 +12894,10 @@ def customer_portal(token: str):
         logo_url = r_info.get("logo_url") or logo_url
         support_username = r_info.get("support_username") or support_username
         support_phone = r_info.get("support_phone") or r_info.get("phone") or support_phone
+        if r_info.get("portal_layout"):
+            portal_layout = r_info["portal_layout"]
+        if r_info.get("portal_plan_style"):
+            portal_plan_style = r_info["portal_plan_style"]
 
     # روزهای مانده از تابع غنی‌ساز هیدیفای
     days_left = sub.get("remaining_days", sub.get("duration", 30))
@@ -12992,7 +13009,9 @@ def customer_portal(token: str):
         palette_config=portal_palette_config,
         palette_css=portal_palette_css,
         chat_settings=chat_settings,
-        support_online_info=support_online_info
+        support_online_info=support_online_info,
+        portal_layout=portal_layout,
+        portal_plan_style=portal_plan_style
     )
 
 
