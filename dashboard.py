@@ -6788,7 +6788,7 @@ def broadcast():
         flash(f"پیام به {success_count} کاربر ارسال شد. (خطا: {fail_count})", "success")
         return redirect(url_for("broadcast"))
 
-    resellers = db.get_resellers()
+    resellers = db.get_all_resellers()
     return render_template("broadcast.html", resellers=resellers, active_banners=RESELLER_PANEL_BANNERS)
 
 
@@ -7122,15 +7122,19 @@ def subscription_send_debt_reminder(sub_id):
         flash("برای این مشتری شناسه کاربری تلگرام ثبت نشده است.", "warning")
         return redirect(request.referrer or url_for("subscriptions"))
 
-    card_number = get_setting("card_number") or ""
-    card_holder = get_setting("card_holder") or ""
-    bank_name = get_setting("bank_name") or ""
-    if reseller_id:
-        r_info = db.get_reseller(reseller_id) or {}
+    card_number = db.get_setting("card_number") or ""
+    card_holder = db.get_setting("card_holder") or ""
+    bank_name = db.get_setting("bank_name") or ""
+    
+    sub_reseller_id = sub.get("reseller_id") or reseller_id
+    r_info = db.get_reseller(sub_reseller_id) if sub_reseller_id else {}
+    bot_token = None
+    if r_info:
         if r_info.get("card_number"):
             card_number = r_info["card_number"]
             card_holder = r_info.get("card_holder", "")
             bank_name = r_info.get("bank_name", "")
+        bot_token = r_info.get("bot_token")
 
     msg = (
         f"🌸 <b>کاربر گرامی، با سلام و احترام</b>\n\n"
@@ -7144,13 +7148,16 @@ def subscription_send_debt_reminder(sub_id):
     msg += "\n🙏 لطفاً پس از واریز، تصویر فیش پرداخت خود را در همین بات ارسال فرمایید."
 
     try:
-        send_telegram_msg(tg_id, msg)
-        flash(f"✅ پیام یادآوری بدهی با موفقیت به تلگرام مشتری «{sub.get('account_name')}» ارسال شد.", "success")
+        ok = send_telegram_msg(tg_id, msg, bot_token=bot_token)
+        if ok:
+            flash(f"✅ پیام یادآوری بدهی با موفقیت به تلگرام مشتری «{sub.get('account_name')}» ارسال شد.", "success")
+        else:
+            flash(f"⚠️ ارسال پیام به تلگرام مشتری ناموفق بود (ممکن است کاربر ربات را مسدود کرده باشد).", "warning")
     except Exception as e:
         logger.error(f"Error sending debt reminder to tg {tg_id}: {e}")
         flash(f"خطا در ارسال پیام تلگرام: {e}", "danger")
 
-    return redirect(request.referrer or url_for("subscriptions"))
+    return redirect(request.referrer or (url_for("reseller_users") if reseller_id else url_for("subscriptions")))
 
 
 @app.route("/admin/subscriptions/bulk", methods=["POST"])
@@ -9845,9 +9852,9 @@ def reseller_subscriptions_bulk():
             if tg_id and int(tg_id) > 0 and debt_amount > 0:
                 try:
                     r_info = db.get_reseller(reseller_id) or {}
-                    card_number = r_info.get("card_number") or get_setting("card_number") or ""
-                    card_holder = r_info.get("card_holder") or get_setting("card_holder") or ""
-                    bank_name = r_info.get("bank_name") or get_setting("bank_name") or ""
+                    card_number = r_info.get("card_number") or db.get_setting("card_number") or ""
+                    card_holder = r_info.get("card_holder") or db.get_setting("card_holder") or ""
+                    bank_name = r_info.get("bank_name") or db.get_setting("bank_name") or ""
                     msg = (
                         f"🌸 <b>کاربر گرامی، با سلام و احترام</b>\n\n"
                         f"📋 <b>یادآوری صورت‌حساب اشتراک:</b> «{sub.get('account_name')}»\n"
@@ -9858,7 +9865,7 @@ def reseller_subscriptions_bulk():
                     if card_number:
                         msg += f"\n💳 <b>شماره کارت جهت واریز:</b>\n<code>{card_number}</code>\n👤 بنام: {card_holder} ({bank_name})\n"
                     msg += "\n🙏 لطفاً پس از واریز، تصویر فیش پرداخت خود را در همین بات ارسال فرمایید."
-                    send_telegram_msg(tg_id, msg)
+                    send_telegram_msg(tg_id, msg, bot_token=r_info.get("bot_token"))
                     success_count += 1
                 except Exception:
                     pass

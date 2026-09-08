@@ -7244,6 +7244,8 @@ class Database:
         conn.close()
         return [dict(r) for r in rows]
 
+    get_resellers = get_all_resellers
+
     def get_reseller(self, reseller_id: int):
         """دریافت اطلاعات یک نماینده"""
         conn = self.get_connection()
