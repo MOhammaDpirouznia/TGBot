@@ -57,6 +57,22 @@ app = Flask(__name__)
 app.secret_key = os.getenv("DASHBOARD_SECRET", "hiddibot-super-secret-key-2026")
 
 
+# ─── بنرهای موقتی اطلاعیه پنل نمایندگان (In-Memory Temporary Banners) ───
+RESELLER_PANEL_BANNERS: List[Dict[str, Any]] = []
+
+def get_reseller_banners() -> List[Dict[str, Any]]:
+    """دریافت بنرهای فعال و موقتی پنل نمایندگان متناسب با شناسه نماینده جاری"""
+    if session.get("role") != "reseller":
+        return []
+    reseller_id = session.get("reseller_id")
+    result = []
+    for b in RESELLER_PANEL_BANNERS:
+        t_id = b.get("target_reseller_id")
+        if t_id is None or (reseller_id and int(t_id) == int(reseller_id)):
+            result.append(b)
+    return result
+
+
 # ─── توابع داینامیک خواندن تنظیمات محیطی ───
 
 def get_admin_username() -> str:
@@ -216,20 +232,60 @@ def fetch_smart_avatar_bytes(identifier: str) -> tuple[bytes, str]:
     except Exception:
         pass
 
-    # ۱. بررسی شماره همراه و جستجوی telegram_id مرتبط در دیتابیس
-    matched_tg_id = None
+    # ۱. استخراج هوشمند telegram_id برای مدیر، نماینده یا مشتری
+    target_tg_id = None
+    if contact_info and contact_info.get("telegram_id"):
+        target_tg_id = contact_info.get("telegram_id")
+
     is_phone = bool(re.match(r"^(\+98|0098|98|0)?9\d{9}$", clean_ident))
-    if is_phone:
+    if not target_tg_id:
+        if clean_ident.isdigit() and not is_phone:
+            # شاید مستقیماً آیدی عددی تلگرام ارسال شده باشد
+            target_tg_id = int(clean_ident)
+        elif is_phone:
+            try:
+                target_tg_id = db.find_telegram_id_by_phone(clean_ident)
+            except Exception:
+                pass
+
+    # بررسی در جدول اشتراک‌ها (Subscriptions)
+    if not target_tg_id:
         try:
-            matched_tg_id = db.find_telegram_id_by_phone(clean_ident)
+            conn = db.get_connection()
+            s_row = conn.execute("SELECT telegram_id FROM subscriptions WHERE account_name=? OR id=? OR hidify_uuid=? LIMIT 1", (clean_ident, clean_ident, clean_ident)).fetchone()
+            if s_row and s_row["telegram_id"]:
+                target_tg_id = s_row["telegram_id"]
+            if not target_tg_id and clean_ident.isdigit():
+                r_row = conn.execute("SELECT telegram_id FROM resellers WHERE id=?", (int(clean_ident),)).fetchone()
+                if r_row and r_row["telegram_id"]:
+                    target_tg_id = r_row["telegram_id"]
+            conn.close()
         except Exception:
             pass
 
-    # ۲. تلاش برای دریافت عکس واقعی تلگرام (در صورت داشتن telegram_id)
-    target_tg_id = matched_tg_id
-    if not target_tg_id and clean_ident.isdigit() and not is_phone:
-        target_tg_id = int(clean_ident)
+    # بررسی در جدول admin_users بر اساس نام یا نام نمایشی
+    if not target_tg_id:
+        try:
+            conn = db.get_connection()
+            a_row = conn.execute("SELECT telegram_id FROM admin_users WHERE LOWER(username)=? OR LOWER(display_name)=? LIMIT 1", (clean_ident.lower(), clean_ident.lower())).fetchone()
+            if a_row and a_row["telegram_id"]:
+                target_tg_id = a_row["telegram_id"]
+            conn.close()
+        except Exception:
+            pass
 
+    # بررسی در جدول users بر اساس username
+    if not target_tg_id:
+        try:
+            conn = db.get_connection()
+            u_row = conn.execute("SELECT telegram_id FROM users WHERE LOWER(username)=? LIMIT 1", (clean_ident.lower(),)).fetchone()
+            if u_row and u_row["telegram_id"]:
+                target_tg_id = u_row["telegram_id"]
+            conn.close()
+        except Exception:
+            pass
+
+    # ۲. دریافت عکس واقعی پروفایل تلگرام با Telegram ID واقعی
     if target_tg_id and target_tg_id > 0:
         cache_file_tg = AVATAR_CACHE_DIR / f"tg_{target_tg_id}.jpg"
         if cache_file_tg.exists() and (time.time() - cache_file_tg.stat().st_mtime < 86400 * 7):
@@ -258,21 +314,7 @@ def fetch_smart_avatar_bytes(identifier: str) -> tuple[bytes, str]:
             except Exception as e:
                 logger.debug(f"Telegram photo fetch error for {target_tg_id}: {e}")
 
-    # ۳. بررسی یوزرنیم تلگرام
-    if raw_ident.startswith("@") or (not clean_ident.isdigit() and len(clean_ident) > 3 and not is_phone):
-        cache_file_u = AVATAR_CACHE_DIR / f"user_{clean_ident}.jpg"
-        if cache_file_u.exists() and (time.time() - cache_file_u.stat().st_mtime < 86400 * 7):
-            return cache_file_u.read_bytes(), "image/jpeg"
-        try:
-            with httpx.Client(timeout=1.8, follow_redirects=True) as client:
-                resp = client.get(f"https://t.me/i/userpic/320/{clean_ident}.jpg")
-                if resp.status_code == 200 and len(resp.content) > 500:
-                    cache_file_u.write_bytes(resp.content)
-                    return resp.content, "image/jpeg"
-        except Exception:
-            pass
-
-    # ۴. تولید آواتار سه‌بعدی و مدرن به صورت محلی و کاملاً آفلاین
+    # ۳. در صورت نداشتن آیدی تلگرام یا عدم وجود عکس در تلگرام: تولید آواتار تصادفی/مدرن محلی
     hash_key = hashlib.md5(clean_ident.encode("utf-8")).hexdigest()[:12]
     cache_file_3d = AVATAR_CACHE_DIR / f"smart3d_{hash_key}.svg"
 
@@ -2647,7 +2689,9 @@ def inject_global_branding():
         global_credit_debt=reseller_credit_debt,
         palette_config=palette_config,
         palette_css=palette_css,
-        available_palettes=get_all_palettes()
+        available_palettes=get_all_palettes(),
+        get_reseller_banners=get_reseller_banners,
+        reseller_panel_banners=RESELLER_PANEL_BANNERS
     )
 
 
@@ -5336,7 +5380,8 @@ def admin_subscriptions_bulk_renew():
             if q_res.get("success"):
                 success_count += 1
 
-        if p_cost > 0:
+        is_sub_debtor = bool(sub.get("payment_status") in ("unpaid", "debtor") or (sub.get("debt_amount") or 0) > 0)
+        if p_cost > 0 and not is_sub_debtor:
             try:
                 b_order_id = f"RNW_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
                 db.save_transaction(
@@ -6674,8 +6719,45 @@ def export_accounting():
 @app.route("/broadcast", methods=["GET", "POST"])
 @permission_required("broadcast")
 def broadcast():
-    """ارسال پیام انبوه هدفمند به کاربران تلگرام"""
+    """ارسال پیام انبوه هدفمند به کاربران تلگرام و بنر اطلاعیه اختصاصی پنل نمایندگان"""
+    global RESELLER_PANEL_BANNERS
     if request.method == "POST":
+        action_type = request.form.get("action_type")
+        if action_type == "reseller_banner":
+            target = request.form.get("target_reseller", "all")
+            banner_message = request.form.get("banner_message", "").strip()
+            banner_title = request.form.get("banner_title", "").strip()
+            banner_level = request.form.get("banner_level", "info")
+            if not banner_message:
+                flash("متن بنر اطلاعیه نمی‌تواند خالی باشد.", "danger")
+                return redirect(url_for("broadcast"))
+
+            target_id = None
+            target_name = "همه نمایندگان"
+            if target != "all" and target.isdigit():
+                target_id = int(target)
+                r_info = db.get_reseller(target_id)
+                target_name = (r_info.get("name") if r_info else None) or f"نماینده #{target_id}"
+
+            banner_id = f"bnr_{int(time.time())}_{random.randint(100, 999)}"
+            RESELLER_PANEL_BANNERS.append({
+                "id": banner_id,
+                "target_reseller_id": target_id,
+                "target_name": target_name,
+                "title": banner_title,
+                "message": banner_message,
+                "level": banner_level,
+                "created_at": get_now_shamsi()
+            })
+            flash(f"✅ بنر اطلاعیه با موفقیت برای «{target_name}» در پنل نمایندگان فعال گردید.", "success")
+            return redirect(url_for("broadcast"))
+
+        elif action_type == "delete_banner":
+            banner_id = request.form.get("banner_id")
+            RESELLER_PANEL_BANNERS = [b for b in RESELLER_PANEL_BANNERS if b.get("id") != banner_id]
+            flash("🗑️ بنر اطلاعیه با موفقیت از پنل نمایندگان حذف گردید.", "info")
+            return redirect(url_for("broadcast"))
+
         target_group = request.form.get("target_group", "all")
         message_text = request.form.get("message", "").strip()
         btn_text = request.form.get("btn_text", "").strip()
@@ -6706,7 +6788,8 @@ def broadcast():
         flash(f"پیام به {success_count} کاربر ارسال شد. (خطا: {fail_count})", "success")
         return redirect(url_for("broadcast"))
 
-    return render_template("broadcast.html")
+    resellers = db.get_resellers()
+    return render_template("broadcast.html", resellers=resellers, active_banners=RESELLER_PANEL_BANNERS)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -6748,7 +6831,7 @@ def ticket_reply(ticket_id):
 
     ticket = db.get_ticket(ticket_id)
     if ticket:
-        sender_name = session.get("username") or session.get("name") or "پشتیبانی"
+        sender_name = session.get("display_name") or session.get("name") or session.get("username") or "پشتیبانی"
         db.add_ticket_message(
             ticket_id=ticket_id,
             sender_type="admin",
@@ -8503,12 +8586,13 @@ def reseller_create_user():
         # ۲. پس از تایید ۱۰۰٪ ساخت در هیدیفای، موجودی/اعتبار کسر و تراکنش خرید ثبت می‌گردد
         base_plan_title = plan.get("display_name") or plan.get("name") or plan.get("master_name", "")
         plan_title = base_plan_title + (f" (+{gift_traffic}GB هدیه)" if gift_traffic > 0 else "")
-        profit_margin = max(0, original_price - final_price)
+        profit_margin = 0 if payment_status in ("unpaid", "debtor") else max(0, original_price - final_price)
+        reseller_selling_price = 0 if payment_status in ("unpaid", "debtor") else original_price
         reseller_creator = session.get("username") or reseller.get("username") or f"reseller_{reseller_id}"
         deduct_res = db.deduct_reseller_balance(
             reseller_id, final_price, plan_title, account_name,
             payment_source=payment_source,
-            selling_price=original_price,
+            selling_price=reseller_selling_price,
             profit_margin=profit_margin,
             created_by=reseller_creator
         )
@@ -8580,6 +8664,27 @@ def reseller_create_user():
                 )
             except Exception as e_rec:
                 logger.error(f"Error logging customer debt record in reseller_create_user: {e_rec}")
+
+        # ثبت فیش پرداخت و درآمد مشتری برای نماینده در صورت تسویه و عدم بدهکاری
+        if payment_status not in ("unpaid", "debtor") and original_price > 0:
+            try:
+                tx_order_id = f"RES_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
+                db.save_transaction(
+                    order_id=tx_order_id,
+                    user_id=telegram_id or 0,
+                    username=account_name,
+                    plan_name=plan_title,
+                    amount=original_price,
+                    gateway="cash_reseller",
+                    tracking_code=f"CASH_{reseller_creator}",
+                    status="approved",
+                    account_name=account_name,
+                    source="reseller",
+                    reseller_id=reseller_id,
+                    subscription_id=sub_id
+                )
+            except Exception as e_tx:
+                logger.error(f"Error saving customer payment in reseller_create_user: {e_tx}")
 
         # ثبت سابقه دوره اولیه در تاریخچه
         db.save_subscription_history(
@@ -9077,7 +9182,8 @@ def reseller_renew_user(sub_id: int):
 
     # ۲. ثبت در دیتابیس (آنی با ریست یا رزرو در صف) و کسر هزینه با توجه به منبع پرداخت
     creator_user = session.get("username") or f"reseller_{reseller_id}"
-    profit_margin = max(0, original_price - final_price)
+    profit_margin = 0 if debt_status == "unpaid" else max(0, original_price - final_price)
+    renew_selling_price = 0 if debt_status == "unpaid" else original_price
     renew_db = db.renew_reseller_subscription(
         reseller_id=reseller_id,
         sub_id=sub_id,
@@ -9089,7 +9195,7 @@ def reseller_renew_user(sub_id: int):
         instant_activate=instant_activate,
         renewal_type=renewal_res.get("renewal_type", "reset_and_replaced"),
         payment_source=payment_source,
-        selling_price=original_price,
+        selling_price=renew_selling_price,
         profit_margin=profit_margin,
         created_by=creator_user
     )
@@ -9123,6 +9229,28 @@ def reseller_renew_user(sub_id: int):
                 conn.close()
 
         debt_tag = f" (مشتری بدهکار ثبت شد: {debt_amount:,} ت | مجموع بدهی: {total_sub_debt:,} ت)" if debt_status == "unpaid" else " (وضعیت مالی مشتری: تسویه شده)"
+
+        # ثبت فیش پرداخت و درآمد مشتری در صورت تسویه و عدم بدهکاری
+        if debt_status != "unpaid" and original_price > 0:
+            try:
+                rx_order_id = f"RNW_RES_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
+                db.save_transaction(
+                    order_id=rx_order_id,
+                    user_id=sub.get("telegram_id") or 0,
+                    username=sub.get("account_name") or "",
+                    plan_name=plan_title,
+                    amount=original_price,
+                    gateway="cash_reseller",
+                    tracking_code=f"RENEW_{creator_user}",
+                    status="approved",
+                    account_name=sub.get("account_name") or "",
+                    source="reseller",
+                    reseller_id=reseller_id,
+                    subscription_id=sub_id,
+                    is_renewal=1
+                )
+            except Exception as e_rx:
+                logger.error(f"Error saving customer renew transaction in reseller_renew_user: {e_rx}")
 
         if instant_activate:
             # ثبت در تاریخچه سوابق مصرف دوره‌های گذشته
@@ -11123,7 +11251,7 @@ def reseller_ticket_reply_to_admin(ticket_id):
             admin_tg = db.get_setting("admin_telegram_id") or get_admin_id()
             if admin_tg:
                 r_info = db.get_reseller(reseller_id) or {}
-                r_name = r_info.get("name") or session.get("name") or f"نماینده #{reseller_id}"
+                r_name = r_info.get("name") or r_info.get("display_name") or session.get("display_name") or session.get("name") or f"نماینده #{reseller_id}"
                 adm_notif = (
                     f"💬 <b>پیام جدید در تیکت مکاتبه با نماینده!</b>\n\n"
                     f"🆔 شماره تیکت: <b>#{ticket_id}</b>\n"
@@ -11165,7 +11293,7 @@ def reseller_ticket_reply(ticket_id):
         flash("متن پاسخ نمی‌تواند خالی باشد.", "warning")
         return redirect(url_for("reseller_tickets"))
 
-    sender_name = session.get("username") or session.get("name") or "پشتیبانی نماینده"
+    sender_name = session.get("display_name") or session.get("name") or session.get("username") or "پشتیبانی نماینده"
     db.add_ticket_message(
         ticket_id=ticket_id,
         sender_type="reseller",
@@ -13778,7 +13906,9 @@ def api_portal_chat_init(token: str):
         "support_status_text": support_status_info["status_text"],
         "chat_button_style": chat_cfg["chat_button_style"],
         "chat_button_text": chat_cfg["chat_button_text"],
-        "chat_button_position": chat_cfg["chat_button_position"]
+        "chat_button_position": chat_cfg["chat_button_position"],
+        "customer_avatar_url": f"/avatar/{tg_id if tg_id else (sub.get('account_name') or sub_id)}",
+        "support_avatar_url": f"/avatar/{('reseller_' + str(reseller_id)) if reseller_id else 'support'}"
     })
 
 

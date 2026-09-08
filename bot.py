@@ -238,7 +238,7 @@ async def single_link_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # دریافت اطلاعات اکانت و نام مشتری
     account_name = f"tg_{user.id}"
-    subs = db.get_user_subscriptions(user.id)
+    subs = db.get_user_subscriptions(user.id, is_admin_bot=True)
     for s in subs:
         if s.get("hidify_uuid") == uuid:
             if s.get("account_name"):
@@ -2082,7 +2082,7 @@ async def show_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
     try:
-        subscriptions = db.get_user_subscriptions(user.id)
+        subscriptions = db.get_user_subscriptions(user.id, is_admin_bot=True)
     except Exception as e:
         logger.error(f"Error getting subscriptions: {e}")
         await update.message.reply_text("❌ خطا در دریافت اطلاعات اشتراک!")
@@ -2318,7 +2318,7 @@ async def get_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
     try:
-        subscriptions = db.get_user_subscriptions(user.id)
+        subscriptions = db.get_user_subscriptions(user.id, is_admin_bot=True)
     except Exception as e:
         logger.error(f"Error getting subscriptions: {e}")
         await update.message.reply_text("❌ خطا در دریافت اطلاعات اشتراک!")
@@ -2514,7 +2514,7 @@ async def renew_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user = update.effective_user
     
     # دریافت اشتراک‌های کاربر از دیتابیس
-    subscriptions = db.get_user_subscriptions(user.id)
+    subscriptions = db.get_user_subscriptions(user.id, is_admin_bot=True)
     
     if not subscriptions:
         # بررسی اطلاعات قدیمی
@@ -2661,7 +2661,7 @@ async def handle_renew(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     target_sub = None
     if sub_id:
-        user_subscriptions = db.get_user_subscriptions(user.id)
+        user_subscriptions = db.get_user_subscriptions(user.id, is_admin_bot=True)
         for s in user_subscriptions:
             if s["id"] == sub_id:
                 target_sub = s
@@ -2873,7 +2873,7 @@ async def handle_test_subscription(update: Update, context: ContextTypes.DEFAULT
     user = update.effective_user
 
     # بررسی آیا قبلاً اشتراک تست گرفته
-    user_subscriptions = db.get_user_subscriptions(user.id)
+    user_subscriptions = db.get_user_subscriptions(user.id, is_admin_bot=True)
     for sub in user_subscriptions:
         if sub.get("plan_id") == "test":
             existing_uuid = sub.get("hidify_uuid", "")
@@ -3357,7 +3357,8 @@ async def admin_send_ticket_reply(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text("❌ تیکت یافت نشد.")
         return CHOOSING
 
-    db.reply_ticket(ticket_id, reply_text)
+    admin_name = db.get_setting("admin_display_name") or (update.effective_user.first_name if update.effective_user else None) or "مدیریت"
+    db.reply_ticket(ticket_id, reply_text, sender_name=admin_name)
 
     user_id = ticket.get("telegram_id") or ticket.get("user_id")
     try:
@@ -4123,7 +4124,8 @@ async def admin_reply_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE)
         ticket_id = int(args[0])
         reply_text = " ".join(args[1:])
         
-        result = db.reply_ticket(ticket_id, reply_text)
+        admin_name = db.get_setting("admin_display_name") or (update.effective_user.first_name if update.effective_user else None) or "مدیریت"
+        result = db.reply_ticket(ticket_id, reply_text, sender_name=admin_name)
         
         if result.get("success"):
             # دریافت اطلاعات تیکت

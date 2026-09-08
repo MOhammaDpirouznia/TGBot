@@ -1459,12 +1459,14 @@ class ResellerBotInstance:
                     5: "⏳ پیام شما در دست بررسی است، به زودی رفع می‌شود."
                 }
                 chosen_text = canned_map.get(idx, "پیام بررسی شد.")
+                reseller_info = db.get_reseller(r_id) if r_id else None
+                s_name = (reseller_info.get("name") if reseller_info else None) or "پشتیبانی"
                 db.add_ticket_message(
                     ticket_id=ticket_id,
                     sender_type="reseller",
                     message=chosen_text,
                     sender_id=r_id,
-                    sender_name="پشتیبانی",
+                    sender_name=s_name,
                     new_status="replied"
                 )
                 ticket = db.get_ticket(ticket_id)
@@ -1527,12 +1529,14 @@ class ResellerBotInstance:
                 await update.message.reply_text("❌ شماره تیکت باید عدد باشد.")
                 return
             reply_text = " ".join(args[1:])
+            reseller_info = db.get_reseller(r_id) if r_id else None
+            s_name = (reseller_info.get("name") if reseller_info else None) or "پشتیبانی"
             db.add_ticket_message(
                 ticket_id=ticket_id,
                 sender_type="reseller",
                 message=reply_text,
                 sender_id=r_id,
-                sender_name="پشتیبانی",
+                sender_name=s_name,
                 new_status="replied"
             )
             ticket = db.get_ticket(ticket_id)
@@ -1557,7 +1561,7 @@ class ResellerBotInstance:
                 return
 
             try:
-                subs = db.get_user_subscriptions(user.id)
+                subs = db.get_user_subscriptions(user.id, reseller_id=r_id)
             except Exception as e:
                 logger.error(f"Error getting subscriptions for reseller bot user {user.id}: {e}")
                 subs = []
@@ -1715,7 +1719,7 @@ class ResellerBotInstance:
             await query.answer()
             try:
                 sub_id = int(query.data.replace("r_sub_qr_", ""))
-                user_subs = db.get_user_subscriptions(update.effective_user.id)
+                user_subs = db.get_user_subscriptions(update.effective_user.id, reseller_id=r_id)
                 target_sub = next((s for s in user_subs if s["id"] == sub_id), None)
                 if not target_sub or not target_sub.get("hidify_uuid"):
                     await query.answer("❌ اشتراک یا لینک یافت نشد.", show_alert=True)
@@ -1748,7 +1752,7 @@ class ResellerBotInstance:
             await query.answer()
             try:
                 sub_id = int(query.data.replace("r_renew_", ""))
-                user_subs = db.get_user_subscriptions(update.effective_user.id)
+                user_subs = db.get_user_subscriptions(update.effective_user.id, reseller_id=r_id)
                 target_sub = next((s for s in user_subs if s["id"] == sub_id), None)
                 if not target_sub:
                     await query.answer("❌ اشتراک مورد نظر یافت نشد.", show_alert=True)
@@ -2166,12 +2170,14 @@ class ResellerBotInstance:
             # ۰. بررسی پاسخ مستقیم نماینده به تیکت مشتری
             if is_adm and role in ("main", "support") and context.user_data.get("reseller_replying_ticket_id"):
                 ticket_id = context.user_data.pop("reseller_replying_ticket_id")
+                reseller_info = db.get_reseller(r_id) if r_id else None
+                s_name = (reseller_info.get("name") if reseller_info else None) or "پشتیبانی"
                 db.add_ticket_message(
                     ticket_id=ticket_id,
                     sender_type="reseller",
                     message=text,
                     sender_id=r_id,
-                    sender_name="پشتیبانی",
+                    sender_name=s_name,
                     new_status="replied"
                 )
                 ticket = db.get_ticket(ticket_id)

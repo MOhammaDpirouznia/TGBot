@@ -111,10 +111,36 @@ class BackupManager:
 
 
 async def send_backup_to_admin(bot, admin_id):
-    """ارسال پشتیبان به ادمین"""
-    if not bot or not admin_id:
-        logger.error("Bot or admin_id not set")
-        return {"success": False, "error": "Bot or admin_id not set"}
+    """ارسال پشتیبان به ادمین ارشد سامانه (فقط Super Admin)"""
+    if not bot:
+        logger.error("Bot not set for backup")
+        return {"success": False, "error": "Bot not set"}
+
+    # اعتبارسنجی قطعی مقصد: پشتیبان باید صرفاً و منحصراً به مدیر ارشد سیستم ارسال شود
+    # و تحت هیچ شرایطی به نماینده یا ادمین ربات نماینده ارسال نگردد!
+    target_admin_id = admin_id
+    try:
+        conn = db.get_connection()
+        sa_row = conn.execute("SELECT telegram_id FROM admin_users WHERE role='super_admin' AND is_active=1 AND telegram_id IS NOT NULL LIMIT 1").fetchone()
+        conn.close()
+        if sa_row and sa_row["telegram_id"]:
+            target_admin_id = sa_row["telegram_id"]
+    except Exception as e_sa:
+        logger.debug(f"Error resolving super_admin telegram_id: {e_sa}")
+
+    if not target_admin_id:
+        logger.error("No valid super admin Telegram ID found for backup")
+        return {"success": False, "error": "No super admin found"}
+
+    # بررسی صریح عدم ارسال به نماینده یا ادمین ربات نماینده
+    try:
+        is_r_adm, _, _ = db.is_telegram_user_any_reseller_admin(target_admin_id)
+        is_reseller = db.get_reseller_by_telegram_id(target_admin_id) is not None
+        if is_r_adm or is_reseller:
+            logger.warning(f"Prevented sending backup to reseller or reseller admin: {target_admin_id}")
+            return {"success": False, "error": "Recipient is a reseller admin; backup sending aborted"}
+    except Exception as e_chk:
+        logger.warning(f"Error checking reseller status for backup recipient: {e_chk}")
 
     try:
         backup_mgr = BackupManager()
@@ -128,10 +154,10 @@ async def send_backup_to_admin(bot, admin_id):
         backup_size = backup_result["size"]
         backup_id = backup_result.get("backup_id")
 
-        # ارسال فایل به ادمین
+        # ارسال فایل به ادمین ارشد
         with open(backup_path, "rb") as f:
             await bot.send_document(
-                chat_id=admin_id,
+                chat_id=target_admin_id,
                 document=f,
                 caption=f"🔒 پشتیبان خودکار دیتابیس\n\n"
                         f"📅 تاریخ: {get_now_shamsi()}\n"
@@ -147,7 +173,7 @@ async def send_backup_to_admin(bot, admin_id):
         # حذف پشتیبان‌های قدیمی
         backup_mgr.delete_old_backups()
 
-        logger.info(f"Backup sent to admin {admin_id}")
+        logger.info(f"Backup sent to super admin {target_admin_id}")
         return {"success": True, "filename": backup_result["filename"]}
 
     except Exception as e:
@@ -198,22 +224,9 @@ class AutoBackupScheduler:
         return (target - now).total_seconds()
 
     async def _run_scheduler(self):
-        """حلقه اصلی زمان‌بند - ارسال در ساعت 12 و 24"""
-        # اولین پشتیبان بعد از 1 دقیقه برای تست
-        logger.info("First backup in 1 minute for testing...")
-        await asyncio.sleep(60)
-
+        """حلقه اصلی زمان‌بند - ارسال دقیقاً در ساعت 12 و 24"""
         while self.is_running:
             try:
-                # ارسال پشتیبان فوری برای تست
-                if self.bot:
-                    logger.info("Creating automatic backup...")
-                    result = await send_backup_to_admin(self.bot, self.admin_id)
-                    if result.get("success"):
-                        logger.info(f"Automatic backup completed: {result.get('filename')}")
-                    else:
-                        logger.error(f"Automatic backup failed: {result.get('error')}")
-
                 # انتظار تا ساعت 12 بعدی
                 wait_12 = self._seconds_until_next(12)
                 logger.info(f"Next backup at 12:00 (in {wait_12/3600:.1f} hours)")

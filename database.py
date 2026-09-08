@@ -2298,24 +2298,27 @@ class Database:
         finally:
             conn.close()
 
-    def get_user_subscriptions(self, telegram_id, status=None):
-        """دریافت اشتراک‌های کاربر"""
+    def get_user_subscriptions(self, telegram_id, status=None, reseller_id=None, is_admin_bot=False):
+        """دریافت اشتراک‌های کاربر با قابلیت ایزولاسیون بر اساس نماینده یا مدیریت"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
         try:
+            query = "SELECT * FROM subscriptions WHERE telegram_id = ?"
+            params = [telegram_id]
+
+            if reseller_id is not None:
+                query += " AND reseller_id = ?"
+                params.append(reseller_id)
+            elif is_admin_bot:
+                query += " AND (reseller_id IS NULL OR reseller_id = 0)"
+
             if status:
-                cursor.execute("""
-                    SELECT * FROM subscriptions
-                    WHERE telegram_id = ? AND status = ?
-                    ORDER BY created_at DESC
-                """, (telegram_id, status))
-            else:
-                cursor.execute("""
-                    SELECT * FROM subscriptions
-                    WHERE telegram_id = ?
-                    ORDER BY created_at DESC
-                """, (telegram_id,))
+                query += " AND status = ?"
+                params.append(status)
+
+            query += " ORDER BY created_at DESC"
+            cursor.execute(query, tuple(params))
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
         except Exception as e:
@@ -2324,18 +2327,23 @@ class Database:
         finally:
             conn.close()
 
-    def get_active_subscription(self, telegram_id):
-        """دریافت اشتراک فعال کاربر"""
+    def get_active_subscription(self, telegram_id, reseller_id=None, is_admin_bot=False):
+        """دریافت اشتراک فعال کاربر با قابلیت ایزولاسیون بر اساس نماینده یا مدیریت"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
         try:
-            cursor.execute("""
-                SELECT * FROM subscriptions
-                WHERE telegram_id = ? AND status = 'active'
-                ORDER BY created_at DESC
-                LIMIT 1
-            """, (telegram_id,))
+            query = "SELECT * FROM subscriptions WHERE telegram_id = ? AND status = 'active'"
+            params = [telegram_id]
+
+            if reseller_id is not None:
+                query += " AND reseller_id = ?"
+                params.append(reseller_id)
+            elif is_admin_bot:
+                query += " AND (reseller_id IS NULL OR reseller_id = 0)"
+
+            query += " ORDER BY created_at DESC LIMIT 1"
+            cursor.execute(query, tuple(params))
             row = cursor.fetchone()
             return dict(row) if row else None
         except Exception as e:
