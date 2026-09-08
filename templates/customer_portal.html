@@ -1279,29 +1279,111 @@
         </div>
         {% endif %}
 
-        <div class="bg-black bg-opacity-30 p-3 rounded-3 d-flex flex-wrap justify-content-between align-items-center gap-3 border border-secondary border-opacity-25">
-            <div>
-                <span class="text-secondary small d-block">مبلغ قابل پرداخت بدهی:</span>
-                <span class="fs-3 fw-bold text-danger font-monospace">{{ "{:,}".format(debt_val) }}</span>
-                <span class="text-secondary small ms-1">تومان</span>
+        <form action="{{ url_for('customer_settle_debt_invoice', token=token) }}" method="POST" class="m-0">
+            {% if portal_payment_methods and portal_payment_methods|length > 0 %}
+            <div class="mb-3">
+                <label class="form-label fw-bold text-white small mb-2"><i class="fas fa-wallet text-danger me-1"></i> روش تسویه بدهی را انتخاب کنید:</label>
+                <div class="row g-2">
+                    {% for m in portal_payment_methods %}
+                    <div class="col-12 col-sm-6">
+                        <label class="w-100 p-2 rounded-3 border d-flex align-items-center justify-content-between cursor-pointer debt-payment-method-card {% if loop.first %}border-danger bg-danger bg-opacity-10 text-white{% else %}border-secondary border-opacity-25 bg-black bg-opacity-25 text-secondary{% endif %}" style="cursor: pointer;">
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="radio" name="payment_method" value="{{ m['id'] }}" class="form-check-input mt-0" {% if loop.first %}checked{% endif %} onchange="onDebtPaymentMethodChange(this)">
+                                <div>
+                                    <span class="d-block fw-bold small text-white"><i class="{{ m.get('icon', 'fas fa-credit-card') }} me-1 text-danger"></i>{{ m['title'] }}</span>
+                                </div>
+                            </div>
+                            <span class="badge {{ m.get('badge_class', 'bg-secondary') }} font-monospace" style="font-size: 0.7rem;">{{ m['badge'] }}</span>
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
             </div>
-            <div>
-                <form action="{{ url_for('customer_settle_debt_invoice', token=token) }}" method="POST" class="m-0">
-                    <button type="submit" class="btn btn-danger btn-lg px-4 py-2 fw-bold shadow-sm d-flex align-items-center gap-2">
+            {% else %}
+            <div class="alert alert-warning border-0 bg-warning bg-opacity-10 text-warning p-2 rounded-3 small mb-3">
+                <i class="fas fa-triangle-exclamation me-1"></i> در حال حاضر هیچ درگاه یا روش پرداختی برای تسویه فعال نیست. لطفاً با پشتیبانی تماس بگیرید.
+            </div>
+            {% endif %}
+
+            <div class="bg-black bg-opacity-30 p-3 rounded-3 d-flex flex-wrap justify-content-between align-items-center gap-3 border border-secondary border-opacity-25">
+                <div>
+                    <span class="text-secondary small d-block">مبلغ قابل پرداخت بدهی:</span>
+                    <span class="fs-3 fw-bold text-danger font-monospace">{{ "{:,}".format(debt_val) }}</span>
+                    <span class="text-secondary small ms-1">تومان</span>
+                </div>
+                <div>
+                    <button type="submit" class="btn btn-danger btn-lg px-4 py-2 fw-bold shadow-sm d-flex align-items-center gap-2" id="debtSubmitBtn" {% if not portal_payment_methods %}disabled{% endif %}>
                         <i class="fas fa-receipt"></i>
-                        <span>صدور فاکتور و تسویه بدهی</span>
+                        <span id="debtSubmitBtnText">تسویه بدهی و پرداخت</span>
                     </button>
-                </form>
+                </div>
             </div>
-        </div>
+        </form>
     </div>
     {% endif %}
     {% endmacro %}
 
     {% macro macro_invoice_card() %}
-    <!-- بخش فاکتور پرداخت هوشمند (در صورت وجود فاکتور معلق) -->
+    <!-- بخش فاکتور پرداخت هوشمند یا کریپتو (در صورت وجود فاکتور معلق) -->
     {% if invoice and invoice.get('status') == 'pending' %}
     <div class="glass-card p-4 mb-4 border-warning border-2 pulse" id="invoiceSection">
+        {% if invoice.get('bank_name') == 'ارز دیجیتال (تتر)' %}
+        <!-- حالت فاکتور ارز دیجیتال تتر -->
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="fw-bold text-warning mb-0"><i class="fab fa-bitcoin me-2"></i>فاکتور پرداخت ارز دیجیتال (تتر USDT)</h5>
+            <span class="badge bg-warning text-dark font-monospace" id="countdownTimer">--:--</span>
+        </div>
+
+        <div class="alert alert-warning text-dark small border-0 mb-3">
+            ⚠️ <strong>راهنما:</strong> لطفاً دقیقاً مبلغ تتر زیر را به آدرس ولت اختصاصی اعلام شده انتقال دهید. پس از واریز، تراکنش شما بررسی و اشتراک فعال خواهد شد.
+        </div>
+
+        <!-- کادر مبلغ تتر -->
+        <div class="bg-black bg-opacity-40 p-3 rounded-3 text-center mb-3 border border-warning border-opacity-50">
+            <span class="text-secondary small d-block mb-1">مبلغ واریزی تتر (USDT):</span>
+            <div class="d-flex justify-content-center align-items-center gap-2 flex-wrap">
+                <span class="fs-2 fw-bold text-warning font-monospace" id="amountVal">{{ invoice['final_amount'] }}</span>
+                <span class="text-white fs-5 fw-bold">USDT</span>
+                <button class="btn btn-sm btn-warning text-dark copy-btn ms-2 fw-bold" onclick="copyText('{{ invoice['final_amount'] }}', 'مبلغ تتر')">
+                    <i class="fas fa-copy me-1"></i> کپی مبلغ
+                </button>
+            </div>
+            {% if invoice.get('raw_amount') %}
+            <div class="text-secondary small mt-1">
+                معادل تومانی: <strong class="text-white">{{ "{:,}".format(invoice['raw_amount']) }} تومان</strong>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- کادر کیف پول مقصد -->
+        <div class="bg-black bg-opacity-25 p-3 rounded-3 mb-3">
+            <div class="d-flex justify-content-between text-secondary small mb-1">
+                <span>شبکه انتقال: TRC-20 یا TON</span>
+                <span>{{ invoice['card_holder'] or 'کیف پول تتر' }}</span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                <span class="fs-6 font-monospace text-warning fw-bold text-break" dir="ltr">{{ invoice['card_number'] }}</span>
+                <button class="btn btn-sm btn-outline-light copy-btn flex-shrink-0" onclick="copyText('{{ invoice['card_number'] }}', 'آدرس کیف پول')">
+                    <i class="fas fa-copy me-1"></i> کپی ولت
+                </button>
+            </div>
+        </div>
+
+        <!-- وضعیت انتظار و لغو فاکتور -->
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 pt-2 border-top border-secondary border-opacity-25">
+            <div class="d-flex align-items-center gap-2">
+                <div class="spinner-border spinner-border-sm text-warning" role="status"></div>
+                <span class="text-secondary small">در انتظار واریز تتر...</span>
+            </div>
+            <div>
+                <a href="{{ url_for('customer_cancel_invoice', token=token, order_id=invoice['order_id']) }}" class="btn btn-sm btn-outline-danger rounded-pill px-3" onclick="return confirm('آیا مایلید این فاکتور را لغو کرده و روش پرداخت دیگری انتخاب نمایید؟');">
+                    <i class="fas fa-rotate-left me-1"></i> لغو فاکتور و انتخاب روش دیگر
+                </a>
+            </div>
+        </div>
+
+        {% else %}
+        <!-- حالت فاکتور کارت به کارت هوشمند با تایید پیامک بانک -->
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h5 class="fw-bold text-warning mb-0"><i class="fas fa-bolt me-2"></i>فاکتور تمدید هوشمند (تایید خودکار)</h5>
             <span class="badge bg-warning text-dark font-monospace" id="countdownTimer">--:--</span>
@@ -1344,11 +1426,19 @@
             </div>
         </div>
 
-        <!-- وضعیت انتظار زنده -->
-        <div class="text-center py-2" id="waitingStatus">
-            <div class="spinner-border spinner-border-sm text-warning me-2" role="status"></div>
-            <span class="text-secondary small">در انتظار واریز وجه و دریافت پیامک بانک...</span>
+        <!-- وضعیت انتظار زنده و دکمه لغو فاکتور -->
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 pt-2 border-top border-secondary border-opacity-25">
+            <div class="d-flex align-items-center gap-2" id="waitingStatus">
+                <div class="spinner-border spinner-border-sm text-warning me-2" role="status"></div>
+                <span class="text-secondary small">در انتظار واریز وجه و دریافت پیامک بانک...</span>
+            </div>
+            <div>
+                <a href="{{ url_for('customer_cancel_invoice', token=token, order_id=invoice['order_id']) }}" class="btn btn-sm btn-outline-danger rounded-pill px-3" onclick="return confirm('آیا مایلید این فاکتور را لغو کرده و روش پرداخت دیگری انتخاب نمایید؟');">
+                    <i class="fas fa-rotate-left me-1"></i> لغو فاکتور و انتخاب روش دیگر
+                </a>
+            </div>
         </div>
+        {% endif %}
     </div>
     {% endif %}
     {% endmacro %}
@@ -1435,8 +1525,64 @@
                 </div>
             </div>
 
-            <button type="submit" class="btn btn-primary w-100 py-3 fw-bold rounded-pill shadow">
-                <i class="fas fa-credit-card me-2"></i> صدور فاکتور و تمدید اشتراک
+            <!-- بخش انتخاب روش پرداخت فعال -->
+            <div class="mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <label class="form-label fw-bold text-white mb-0">
+                        <i class="fas fa-wallet text-primary me-2"></i>انتخاب روش پرداخت:
+                    </label>
+                    <span class="badge bg-secondary small">{{ portal_payment_methods|length }} روش فعال</span>
+                </div>
+
+                {% if not portal_payment_methods or portal_payment_methods|length == 0 %}
+                <div class="alert alert-warning border-0 bg-warning bg-opacity-10 text-warning p-3 rounded-3 small">
+                    <i class="fas fa-triangle-exclamation me-1"></i>
+                    در حال حاضر هیچ درگاه یا روش پرداختی فعال نمی‌باشد. لطفاً جهت تمدید اشتراک با پشتیبانی تماس بگیرید.
+                </div>
+                {% else %}
+                <div class="row g-2 portal-payment-methods-grid">
+                    {% for m in portal_payment_methods %}
+                    <div class="col-12 col-md-6 d-flex">
+                        <label class="w-100 mb-0 d-flex flex-column payment-method-card-label" style="cursor: pointer;">
+                            <input type="radio" name="payment_method" value="{{ m['id'] }}" class="d-none portal-method-radio" {% if loop.first %}checked{% endif %} onchange="onPaymentMethodSelected('{{ m['id'] }}', this)">
+                            <div class="portal-method-card p-3 rounded-3 border h-100 d-flex flex-column justify-content-between transition-all {% if loop.first %}selected border-primary bg-primary bg-opacity-10 shadow-sm{% else %}border-secondary border-opacity-25 bg-black bg-opacity-25{% endif %}" id="method_card_{{ m['id'] }}">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="avatar-sm rounded-circle bg-black bg-opacity-30 d-flex align-items-center justify-content-center text-primary flex-shrink-0" style="width: 36px; height: 36px; font-size: 1.1rem;">
+                                            <i class="{{ m.get('icon', 'fas fa-credit-card') }}"></i>
+                                        </div>
+                                        <div>
+                                            <strong class="text-white d-block small fw-bold">{{ m['title'] }}</strong>
+                                        </div>
+                                    </div>
+                                    <span class="badge {{ m.get('badge_class', 'bg-primary') }} font-monospace" style="font-size: 0.72rem;">{{ m['badge'] }}</span>
+                                </div>
+                                <div class="text-secondary small" style="font-size: 0.78rem;">
+                                    {{ m['desc'] }}
+                                </div>
+                            </div>
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            <button type="submit" class="btn btn-primary w-100 py-3 fw-bold rounded-pill shadow" id="portalSubmitRenewalBtn" {% if not portal_payment_methods %}disabled{% endif %}>
+                <i class="fas fa-credit-card me-2" id="portalSubmitBtnIcon"></i>
+                <span id="portalSubmitBtnText">
+                    {% if portal_payment_methods and portal_payment_methods[0]['id'] == 'online_gateway' %}
+                        اتصال به درگاه بانکی شاپرک و تمدید آنلاین
+                    {% elif portal_payment_methods and portal_payment_methods[0]['id'] == 'card_to_card' %}
+                        صدور فاکتور و پرداخت کارت به کارت (هوشمند)
+                    {% elif portal_payment_methods and portal_payment_methods[0]['id'] == 'crypto' %}
+                        صدور فاکتور پرداخت با ارز دیجیتال (تتر USDT)
+                    {% elif portal_payment_methods and portal_payment_methods[0]['id'] == 'wallet' %}
+                        پرداخت و کسر از کیف پول تلگرام
+                    {% else %}
+                        صدور فاکتور و تمدید اشتراک
+                    {% endif %}
+                </span>
             </button>
         </form>
     </div>
@@ -2376,6 +2522,74 @@ document.querySelectorAll('.plan-card').forEach(card => {
 document.addEventListener('DOMContentLoaded', function() {
     updatePricingDisplay();
 });
+
+// ─── مدیریت و پویایی روش‌های پرداخت پورتال مشتری ───
+function onPaymentMethodSelected(methodId, inputElem) {
+    const form = inputElem ? inputElem.closest('form') : document;
+    form.querySelectorAll('.portal-method-card').forEach(card => {
+        card.classList.remove('selected', 'border-primary', 'bg-primary', 'bg-opacity-10', 'shadow-sm');
+        card.classList.add('border-secondary', 'border-opacity-25', 'bg-black', 'bg-opacity-25');
+    });
+
+    if (inputElem) {
+        const parentCard = inputElem.closest('label').querySelector('.portal-method-card');
+        if (parentCard) {
+            parentCard.classList.remove('border-secondary', 'border-opacity-25', 'bg-black', 'bg-opacity-25');
+            parentCard.classList.add('selected', 'border-primary', 'bg-primary', 'bg-opacity-10', 'shadow-sm');
+        }
+    } else {
+        const targetCard = document.getElementById('method_card_' + methodId);
+        if (targetCard) {
+            targetCard.classList.remove('border-secondary', 'border-opacity-25', 'bg-black', 'bg-opacity-25');
+            targetCard.classList.add('selected', 'border-primary', 'bg-primary', 'bg-opacity-10', 'shadow-sm');
+        }
+    }
+
+    const btnText = form.querySelector('#portalSubmitBtnText') || document.getElementById('portalSubmitBtnText');
+    const btnIcon = form.querySelector('#portalSubmitBtnIcon') || document.getElementById('portalSubmitBtnIcon');
+    if (!btnText) return;
+
+    if (methodId === 'online_gateway') {
+        btnText.innerText = 'اتصال به درگاه بانکی شاپرک و تمدید آنلاین';
+        if (btnIcon) btnIcon.className = 'fas fa-globe me-2';
+    } else if (methodId === 'card_to_card') {
+        btnText.innerText = 'صدور فاکتور و پرداخت کارت به کارت (هوشمند)';
+        if (btnIcon) btnIcon.className = 'fas fa-receipt me-2';
+    } else if (methodId === 'crypto') {
+        btnText.innerText = 'صدور فاکتور پرداخت با ارز دیجیتال (تتر USDT)';
+        if (btnIcon) btnIcon.className = 'fab fa-bitcoin me-2';
+    } else if (methodId === 'wallet') {
+        btnText.innerText = 'پرداخت آنی و کسر از کیف پول تلگرام';
+        if (btnIcon) btnIcon.className = 'fas fa-wallet me-2';
+    } else {
+        btnText.innerText = 'صدور فاکتور و تمدید اشتراک';
+        if (btnIcon) btnIcon.className = 'fas fa-credit-card me-2';
+    }
+}
+
+function onDebtPaymentMethodChange(radio) {
+    const form = radio.closest('form') || document;
+    form.querySelectorAll('.debt-payment-method-card').forEach(card => {
+        card.classList.remove('border-danger', 'bg-danger', 'bg-opacity-10', 'text-white');
+        card.classList.add('border-secondary', 'border-opacity-25', 'bg-black', 'bg-opacity-25', 'text-secondary');
+    });
+    const label = radio.closest('.debt-payment-method-card');
+    if (label) {
+        label.classList.remove('border-secondary', 'border-opacity-25', 'bg-black', 'bg-opacity-25', 'text-secondary');
+        label.classList.add('border-danger', 'bg-danger', 'bg-opacity-10', 'text-white');
+    }
+    const btnText = form.querySelector('#debtSubmitBtnText') || document.getElementById('debtSubmitBtnText');
+    if (!btnText) return;
+    if (radio.value === 'online_gateway') {
+        btnText.innerText = 'اتصال به درگاه و تسویه آنلاین بدهی';
+    } else if (radio.value === 'wallet') {
+        btnText.innerText = 'تسویه آنی از کیف پول تلگرام';
+    } else if (radio.value === 'crypto') {
+        btnText.innerText = 'صدور فاکتور تسویه با ارز دیجیتال (تتر)';
+    } else {
+        btnText.innerText = 'صدور فاکتور و تسویه کارت به کارت';
+    }
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // سیستم جامع گفتگوی آنلاین پیام‌رسانی پورتال (Live Messenger Support Chat)

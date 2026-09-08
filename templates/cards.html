@@ -5,7 +5,7 @@
 <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
     <div>
         <h1 class="page-title"><i class="fas fa-credit-card text-primary me-2"></i> روش‌ها و تنظیمات پرداخت</h1>
-        <p class="text-muted mb-0">مدیریت چیدمان و اولویت روش‌های پرداخت در ربات تلگرام، روتاتور کارت‌های بانکی و درگاه‌های پرداخت آنلاین و کریپتو</p>
+        <p class="text-muted mb-0">مدیریت چیدمان و اولویت روش‌های پرداخت در ربات تلگرام و پورتال مشتری، روتاتور کارت‌های بانکی و درگاه‌های پرداخت آنلاین و کریپتو</p>
     </div>
     <div class="d-flex gap-2">
         <button type="button" class="btn btn-primary fw-bold" data-bs-toggle="modal" data-bs-target="#addCardModal">
@@ -14,14 +14,14 @@
     </div>
 </div>
 
-<!-- ردیف ۱: چیدمان و اولویت روش‌های پرداخت در ربات تلگرام -->
+<!-- ردیف ۱: چیدمان و اولویت روش‌های پرداخت در ربات تلگرام و پورتال مشتری -->
 <div class="card shadow-sm border-0 mb-4">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="d-flex align-items-center gap-2">
-            <h5 class="mb-0 fw-bold"><i class="fas fa-arrow-down-up-across-line text-primary me-2"></i>چیدمان و اولویت نمایش روش‌های پرداخت در ربات تلگرام</h5>
+            <h5 class="mb-0 fw-bold"><i class="fas fa-arrow-down-up-across-line text-primary me-2"></i>چیدمان و وضعیت نمایش روش‌های پرداخت در ربات و پورتال مشتری</h5>
             <span class="badge bg-info-subtle text-info border border-info">پویا و لحظه‌ای</span>
         </div>
-        <small class="text-muted">با دکمه‌های بالا و پایین می‌توانید ترتیب نمایش دکمه‌ها در ربات تلگرام را تنظیم کنید</small>
+        <small class="text-muted">ترتیب و وضعیت نمایش در ربات تلگرام و صفحه پورتال اشتراک مشتریان بر اساس این جدول اعمال می‌شود</small>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -32,7 +32,7 @@
                         <th style="width: 90px;" class="text-center">جابجایی</th>
                         <th>روش پرداخت</th>
                         <th>توضیحات و عملکرد</th>
-                        <th class="text-center">وضعیت در ربات</th>
+                        <th class="text-center">وضعیت در ربات و پورتال</th>
                         <th class="text-end pe-3">عملیات</th>
                     </tr>
                 </thead>
@@ -72,7 +72,7 @@
                         </td>
                         <td class="text-center">
                             {% if m.get('enabled', True) %}
-                                <span class="badge bg-success-subtle text-success border border-success px-3 py-1">🟢 فعال در ربات</span>
+                                <span class="badge bg-success-subtle text-success border border-success px-3 py-1">🟢 فعال در ربات و پورتال</span>
                             {% else %}
                                 <span class="badge bg-secondary-subtle text-secondary border px-3 py-1">⚪ غیرفعال</span>
                             {% endif %}

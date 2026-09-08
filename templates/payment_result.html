@@ -108,7 +108,12 @@
         </div>
 
         <div class="d-grid gap-2">
-            <a href="https://t.me" class="btn btn-primary btn-lg rounded-pill fw-bold">
+            {% if portal_url %}
+            <a href="{{ portal_url }}" class="btn btn-success btn-lg rounded-pill fw-bold shadow-sm">
+                <i class="fas fa-arrow-right me-1"></i> بازگشت به پورتال مشتری
+            </a>
+            {% endif %}
+            <a href="https://t.me/{{ (bot_username or '').lstrip('@') }}" class="btn {% if portal_url %}btn-outline-primary{% else %}btn-primary{% endif %} btn-lg rounded-pill fw-bold">
                 <i class="fab fa-telegram me-1"></i> بازگشت به ربات تلگرام
             </a>
         </div>
