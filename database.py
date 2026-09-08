@@ -718,13 +718,22 @@ class Database:
         except Exception:
             pass
 
+        # پاک‌سازی مقادیر خالی دامنه‌ها جهت جلوگیری از تداخل ایندکس یونیک
         try:
-            cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_resellers_custom_domain ON resellers(custom_domain)")
+            cursor.execute("UPDATE resellers SET custom_domain = NULL WHERE custom_domain = '' OR TRIM(custom_domain) = ''")
+            cursor.execute("UPDATE resellers SET tutorial_domain = NULL WHERE tutorial_domain = '' OR TRIM(tutorial_domain) = ''")
         except Exception:
             pass
 
         try:
-            cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_resellers_tutorial_domain ON resellers(tutorial_domain)")
+            cursor.execute("DROP INDEX IF EXISTS idx_resellers_custom_domain")
+            cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_resellers_custom_domain ON resellers(custom_domain) WHERE custom_domain IS NOT NULL AND custom_domain != ''")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("DROP INDEX IF EXISTS idx_resellers_tutorial_domain")
+            cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_resellers_tutorial_domain ON resellers(tutorial_domain) WHERE tutorial_domain IS NOT NULL AND tutorial_domain != ''")
         except Exception:
             pass
 
@@ -9786,16 +9795,25 @@ class Database:
             params = []
             for k, v in kwargs.items():
                 if k in allowed:
+                    val = v.strip() if isinstance(v, str) else v
+                    # دامنه‌ها در صورت خالی بودن باید None (معادل NULL در دیتابیس) ذخیره شوند تا تداخل ایندکس یونیک رخ ندهد
+                    if k in ("custom_domain", "tutorial_domain"):
+                        val = val.lower() if isinstance(val, str) else val
+                        if not val:
+                            val = None
                     fields.append(f"{k} = ?")
-                    params.append(v.strip() if isinstance(v, str) else v)
+                    params.append(val)
             if not fields:
                 return {"success": True}
             params.append(reseller_id)
             cursor.execute(f"UPDATE resellers SET {', '.join(fields)} WHERE id = ?", params)
             conn.commit()
             return {"success": True}
-        except sqlite3.IntegrityError:
-            return {"success": False, "error": "این دامنه قبلاً توسط نماینده دیگری ثبت شده است."}
+        except sqlite3.IntegrityError as e:
+            err_str = str(e).lower()
+            if "custom_domain" in err_str or "tutorial_domain" in err_str:
+                return {"success": False, "error": "این دامنه قبلاً توسط نماینده دیگری ثبت شده است."}
+            return {"success": False, "error": f"خطای یکتایی اطلاعات: {e}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
         finally:

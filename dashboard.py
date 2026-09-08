@@ -11630,8 +11630,6 @@ def reseller_branding():
     reseller = db.get_reseller(reseller_id) or {}
 
     if request.method == "POST":
-        custom_domain = request.form.get("custom_domain", "").strip().lower()
-        tutorial_domain = request.form.get("tutorial_domain", "").strip().lower()
         brand_title = request.form.get("brand_title", "").strip()
         logo_url = request.form.get("logo_url", "").strip()
         favicon_url = request.form.get("favicon_url", "").strip()
@@ -11659,24 +11657,32 @@ def reseller_branding():
         if not request.form.get("clear_logo") and not logo_url and reseller and reseller.get("logo_url"):
             logo_url = reseller["logo_url"]
 
-        res = db.update_reseller_branding(
-            reseller_id,
-            custom_domain=custom_domain,
-            tutorial_domain=tutorial_domain,
-            brand_title=brand_title,
-            portal_title=portal_title,
-            portal_subtitle=portal_subtitle,
-            support_phone=support_phone,
-            support_username=support_username,
-            logo_url=logo_url,
-            favicon_url=favicon_url,
-            primary_color=primary_color,
-            footer_text=footer_text,
-            portal_layout=portal_layout,
-            portal_plan_style=portal_plan_style
-        )
+        branding_kwargs = {
+            "brand_title": brand_title,
+            "portal_title": portal_title,
+            "portal_subtitle": portal_subtitle,
+            "support_phone": support_phone,
+            "support_username": support_username,
+            "logo_url": logo_url,
+            "favicon_url": favicon_url,
+            "primary_color": primary_color,
+            "footer_text": footer_text,
+            "portal_layout": portal_layout,
+            "portal_plan_style": portal_plan_style
+        }
+
+        # فقط در صورتی که فیلد دامنه در فرم ارسال شده باشد آن را پردازش کن
+        if "custom_domain" in request.form:
+            cd = request.form.get("custom_domain", "").strip().lower()
+            branding_kwargs["custom_domain"] = cd if cd else None
+
+        if "tutorial_domain" in request.form:
+            td = request.form.get("tutorial_domain", "").strip().lower()
+            branding_kwargs["tutorial_domain"] = td if td else None
+
+        res = db.update_reseller_branding(reseller_id, **branding_kwargs)
         if res.get("success"):
-            flash("تنظیمات هویت بصری، دامنه‌ها و آموزش‌های اختصاصی شما با موفقیت ذخیره شد.", "success")
+            flash("تنظیمات هویت بصری و شخصی‌سازی شما با موفقیت ذخیره شد.", "success")
         else:
             flash(f"خطا در ذخیره‌سازی: {res.get('error')}", "danger")
         return redirect(url_for("reseller_branding"))
