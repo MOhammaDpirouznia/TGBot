@@ -961,7 +961,7 @@ function selectPalette(pid) {
         </p>
 
         <form action="{{ url_for('settings') }}" method="POST">
-            <input type="hidden" name="action" value="save_login_security_settings">
+            <input type="hidden" name="action" value="save_login_appearance_settings">
 
             <div class="mb-4">
                 <label class="form-label fw-bold small mb-3">
@@ -1059,7 +1059,7 @@ function selectPalette(pid) {
 
                 <div class="col-12">
                     <div class="form-check form-switch p-0 d-flex align-items-center gap-3">
-                        <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" id="loginBgEffectSwitch" name="login_bg_effect" value="1" {% if login_security_config.login_bg_effect == '1' %}checked{% endif %} style="width: 2.8em; height: 1.4em;">
+                        <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" id="loginBgEffectSwitch" name="login_bg_effect" value="1" {% if login_security_config.login_bg_effect %}checked{% endif %} style="width: 2.8em; height: 1.4em;">
                         <label class="form-check-label fw-bold small" for="loginBgEffectSwitch">
                             <i class="fas fa-wand-magic-sparkles text-warning me-1"></i> نمایش افکت امواج نوری و هاله‌های شناور در پس‌زمینه لاگین
                         </label>
