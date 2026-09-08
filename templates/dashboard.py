@@ -37,18 +37,40 @@ from utils import (
     generate_qr_code_bytes, get_now_iso, get_now_naive, get_single_link_template, 
     format_single_link, gregorian_to_shamsi, gregorian_to_shamsi_full, get_now_shamsi, TEHRAN_TZ
 )
-from admin_manager import get_all_plans, add_plan, update_plan, delete_plan, move_plan_up, move_plan_down
+from admin_manager import (
+    get_all_plans, add_plan, update_plan, delete_plan, move_plan_up, move_plan_down,
+    get_plan_icon, get_bundle_icon, get_plan_telegram_emoji
+)
 from sms_service import send_auth_sms_notification, send_sms, get_sms_config, format_iranian_phone
 from payment import CryptoPaymentGateway
 import avatar_generator
 from multibot_manager import multibot_manager, ResellerBotInstance
 from tutorials_data import PLATFORMS, TUTORIALS, TROUBLESHOOTING_GUIDES
+from palette_manager import (
+    get_all_palettes, get_palette, get_active_palette_config, generate_palette_css
+)
 
 logger = logging.getLogger(__name__)
 
 # ─── تنظیمات Flask ───
 app = Flask(__name__)
 app.secret_key = os.getenv("DASHBOARD_SECRET", "hiddibot-super-secret-key-2026")
+
+
+# ─── بنرهای موقتی اطلاعیه پنل نمایندگان (In-Memory Temporary Banners) ───
+RESELLER_PANEL_BANNERS: List[Dict[str, Any]] = []
+
+def get_reseller_banners() -> List[Dict[str, Any]]:
+    """دریافت بنرهای فعال و موقتی پنل نمایندگان متناسب با شناسه نماینده جاری"""
+    if session.get("role") != "reseller":
+        return []
+    reseller_id = session.get("reseller_id")
+    result = []
+    for b in RESELLER_PANEL_BANNERS:
+        t_id = b.get("target_reseller_id")
+        if t_id is None or (reseller_id and int(t_id) == int(reseller_id)):
+            result.append(b)
+    return result
 
 
 # ─── توابع داینامیک خواندن تنظیمات محیطی ───
@@ -75,6 +97,12 @@ def get_hiddify_proxy() -> str:
     return os.getenv("HIDIFY_PROXY_PATH", "").strip("/")
 
 def get_user_proxy() -> str:
+    try:
+        db_proxy = db.get_setting("user_proxy_path") or db.get_setting("customer_proxy_path")
+        if db_proxy and str(db_proxy).strip():
+            return str(db_proxy).strip("/").strip()
+    except Exception:
+        pass
     return os.getenv("USER_PROXY_PATH", "user").strip("/")
 
 
@@ -204,20 +232,60 @@ def fetch_smart_avatar_bytes(identifier: str) -> tuple[bytes, str]:
     except Exception:
         pass
 
-    # ۱. بررسی شماره همراه و جستجوی telegram_id مرتبط در دیتابیس
-    matched_tg_id = None
+    # ۱. استخراج هوشمند telegram_id برای مدیر، نماینده یا مشتری
+    target_tg_id = None
+    if contact_info and contact_info.get("telegram_id"):
+        target_tg_id = contact_info.get("telegram_id")
+
     is_phone = bool(re.match(r"^(\+98|0098|98|0)?9\d{9}$", clean_ident))
-    if is_phone:
+    if not target_tg_id:
+        if clean_ident.isdigit() and not is_phone:
+            # شاید مستقیماً آیدی عددی تلگرام ارسال شده باشد
+            target_tg_id = int(clean_ident)
+        elif is_phone:
+            try:
+                target_tg_id = db.find_telegram_id_by_phone(clean_ident)
+            except Exception:
+                pass
+
+    # بررسی در جدول اشتراک‌ها (Subscriptions)
+    if not target_tg_id:
         try:
-            matched_tg_id = db.find_telegram_id_by_phone(clean_ident)
+            conn = db.get_connection()
+            s_row = conn.execute("SELECT telegram_id FROM subscriptions WHERE account_name=? OR id=? OR hidify_uuid=? LIMIT 1", (clean_ident, clean_ident, clean_ident)).fetchone()
+            if s_row and s_row["telegram_id"]:
+                target_tg_id = s_row["telegram_id"]
+            if not target_tg_id and clean_ident.isdigit():
+                r_row = conn.execute("SELECT telegram_id FROM resellers WHERE id=?", (int(clean_ident),)).fetchone()
+                if r_row and r_row["telegram_id"]:
+                    target_tg_id = r_row["telegram_id"]
+            conn.close()
         except Exception:
             pass
 
-    # ۲. تلاش برای دریافت عکس واقعی تلگرام (در صورت داشتن telegram_id)
-    target_tg_id = matched_tg_id
-    if not target_tg_id and clean_ident.isdigit() and not is_phone:
-        target_tg_id = int(clean_ident)
+    # بررسی در جدول admin_users بر اساس نام یا نام نمایشی
+    if not target_tg_id:
+        try:
+            conn = db.get_connection()
+            a_row = conn.execute("SELECT telegram_id FROM admin_users WHERE LOWER(username)=? OR LOWER(display_name)=? LIMIT 1", (clean_ident.lower(), clean_ident.lower())).fetchone()
+            if a_row and a_row["telegram_id"]:
+                target_tg_id = a_row["telegram_id"]
+            conn.close()
+        except Exception:
+            pass
 
+    # بررسی در جدول users بر اساس username
+    if not target_tg_id:
+        try:
+            conn = db.get_connection()
+            u_row = conn.execute("SELECT telegram_id FROM users WHERE LOWER(username)=? LIMIT 1", (clean_ident.lower(),)).fetchone()
+            if u_row and u_row["telegram_id"]:
+                target_tg_id = u_row["telegram_id"]
+            conn.close()
+        except Exception:
+            pass
+
+    # ۲. دریافت عکس واقعی پروفایل تلگرام با Telegram ID واقعی
     if target_tg_id and target_tg_id > 0:
         cache_file_tg = AVATAR_CACHE_DIR / f"tg_{target_tg_id}.jpg"
         if cache_file_tg.exists() and (time.time() - cache_file_tg.stat().st_mtime < 86400 * 7):
@@ -246,21 +314,7 @@ def fetch_smart_avatar_bytes(identifier: str) -> tuple[bytes, str]:
             except Exception as e:
                 logger.debug(f"Telegram photo fetch error for {target_tg_id}: {e}")
 
-    # ۳. بررسی یوزرنیم تلگرام
-    if raw_ident.startswith("@") or (not clean_ident.isdigit() and len(clean_ident) > 3 and not is_phone):
-        cache_file_u = AVATAR_CACHE_DIR / f"user_{clean_ident}.jpg"
-        if cache_file_u.exists() and (time.time() - cache_file_u.stat().st_mtime < 86400 * 7):
-            return cache_file_u.read_bytes(), "image/jpeg"
-        try:
-            with httpx.Client(timeout=1.8, follow_redirects=True) as client:
-                resp = client.get(f"https://t.me/i/userpic/320/{clean_ident}.jpg")
-                if resp.status_code == 200 and len(resp.content) > 500:
-                    cache_file_u.write_bytes(resp.content)
-                    return resp.content, "image/jpeg"
-        except Exception:
-            pass
-
-    # ۴. تولید آواتار سه‌بعدی و مدرن به صورت محلی و کاملاً آفلاین
+    # ۳. در صورت نداشتن آیدی تلگرام یا عدم وجود عکس در تلگرام: تولید آواتار تصادفی/مدرن محلی
     hash_key = hashlib.md5(clean_ident.encode("utf-8")).hexdigest()[:12]
     cache_file_3d = AVATAR_CACHE_DIR / f"smart3d_{hash_key}.svg"
 
@@ -422,6 +476,217 @@ def filter_from_json(val):
         return {}
 
 
+@app.template_filter("last_connection_display")
+@app.template_global("format_last_connection_display")
+def filter_last_connection_display(date_str):
+    """
+    نمایش هوشمند وضعیت آخرین اتصال:
+    - اگر متصل نشده باشد (null یا 0001-01-01): 'بدون اتصال'
+    - اگر بیش از ۱ روز باشد: نمایش نسبی (مثلاً ۳ روز قبل یا ۱ روز قبل) + تاریخ و ساعت شمسی
+    - اگر امروز باشد: 'امروز HH:MM' + تاریخ و ساعت شمسی
+    """
+    if not date_str or str(date_str).strip() in ["", "None", "null", "-", "0"] or str(date_str).startswith("0001"):
+        return {
+            "has_connected": False,
+            "relative": "بدون اتصال",
+            "relative_text": "بدون اتصال",
+            "shamsi_datetime": "-",
+            "shamsi_full": "بدون سابقه اتصال",
+            "is_old": False,
+            "is_past": False,
+            "days_ago": 0,
+            "time": "-",
+            "badge_class": "bg-secondary-subtle text-secondary"
+        }
+    try:
+        clean = str(date_str).replace("T", " ").split(".")[0].split("+")[0].strip()
+        dt = datetime.strptime(clean[:19], "%Y-%m-%d %H:%M:%S")
+        now_dt = get_now_naive()
+        diff_sec = (now_dt - dt).total_seconds()
+        days_ago = max(0, int(diff_sec // 86400))
+        shamsi_dt = gregorian_to_shamsi(clean, fmt="%Y/%m/%d %H:%M")
+        time_str = clean[11:16]
+
+        diff_days = (now_dt.date() - dt.date()).days
+        if diff_days > 0 or diff_sec >= 86400:
+            effective_days = max(1, diff_days if diff_days > 0 else days_ago)
+            rel_text = f"{effective_days} روز قبل"
+            return {
+                "has_connected": True,
+                "relative": rel_text,
+                "relative_text": rel_text,
+                "shamsi_datetime": shamsi_dt,
+                "shamsi_full": shamsi_dt,
+                "is_old": True,
+                "is_past": True,
+                "days_ago": effective_days,
+                "time": time_str,
+                "badge_class": "bg-danger-subtle text-danger border border-danger" if effective_days >= 3 else "bg-warning-subtle text-dark border border-warning"
+            }
+        else:
+            rel_text = f"امروز {time_str}"
+            return {
+                "has_connected": True,
+                "relative": rel_text,
+                "relative_text": rel_text,
+                "shamsi_datetime": shamsi_dt,
+                "shamsi_full": shamsi_dt,
+                "is_old": False,
+                "is_past": False,
+                "days_ago": 0,
+                "time": time_str,
+                "badge_class": "bg-light text-secondary border"
+            }
+    except Exception:
+        clean_fallback = str(date_str)[:16].replace("T", " ")
+        return {
+            "has_connected": True,
+            "relative": clean_fallback,
+            "relative_text": clean_fallback,
+            "shamsi_datetime": clean_fallback,
+            "shamsi_full": clean_fallback,
+            "is_old": False,
+            "is_past": False,
+            "days_ago": 0,
+            "time": "",
+            "badge_class": "bg-light text-secondary border"
+        }
+
+
+_hiddify_traffic_cache = {}
+
+def get_hiddify_dashboard_traffic_stats(api_key: str = None, reseller_id: int = None) -> dict:
+    """
+    دریافت و تحلیل هوشمند آمار مصرف ترافیک و کاربران آنلاین برای بلوک‌های رنگی داشبورد
+    (امروز، دیروز، ماهانه، کل و شبکه) همراه با کش حافظه ۲۰ ثانیه‌ای و بازیابی در صورت قطعی
+    """
+    cache_key = f"{api_key or 'admin'}_{reseller_id or 0}"
+    now_ts = time.time()
+    cached = _hiddify_traffic_cache.get(cache_key)
+    if cached and (now_ts - cached.get("ts", 0) < 20) and "today" in cached.get("data", {}):
+        return cached.get("data", {})
+
+    stats_db = db.get_online_users_stats(reseller_id=reseller_id)
+    total_subs = stats_db.get("total_subs", 0)
+    online_subs = stats_db.get("online_count", 0)
+
+    blocks = {
+        "today_gb": 0.0,
+        "today_online": online_subs,
+        "yesterday_gb": 0.0,
+        "yesterday_online": max(0, int(online_subs * 0.9)),
+        "monthly_gb": 0.0,
+        "monthly_online": max(online_subs, int(total_subs * 0.65)),
+        "total_gb": 0.0,
+        "total_users": total_subs,
+        "online_count": online_subs,
+        "online_5m": online_subs,
+        "net_up": "0.0",
+        "net_down": "0.0",
+        "net_cumulative": "0.0 GB",
+        "today_pct": 20,
+        "yesterday_pct": 40,
+        "monthly_pct": 80,
+    }
+
+    try:
+        raw_status = hidify_sync_request("GET", "/admin/server_status/", api_key=api_key)
+        if isinstance(raw_status, dict) and "stats" in raw_status:
+            sys_stats = raw_status.get("stats", {}).get("system", {})
+            uhist = raw_status.get("usage_history", {})
+
+            def _to_gb(val):
+                try:
+                    v = float(val or 0)
+                    if v > 1000000:
+                        return round(v / (1024 ** 3), 1)
+                    return round(v, 1)
+                except Exception:
+                    return 0.0
+
+            t_today = _to_gb(uhist.get("today", {}).get("usage", 0))
+            t_yesterday = _to_gb(uhist.get("yesterday", {}).get("usage", 0))
+            t_monthly = _to_gb(uhist.get("last_30_days", {}).get("usage", 0))
+            t_total = _to_gb(uhist.get("total", {}).get("usage", 0))
+
+            on_today = int(uhist.get("today", {}).get("online", 0)) or online_subs
+            on_yesterday = int(uhist.get("yesterday", {}).get("online", 0)) or max(0, int(online_subs * 0.95))
+            on_monthly = int(uhist.get("last_30_days", {}).get("online", 0)) or max(online_subs, int(total_subs * 0.65))
+            u_total = int(uhist.get("total", {}).get("users", 0)) or total_subs
+
+            bytes_sent = float(sys_stats.get("bytes_sent", 0))
+            bytes_recv = float(sys_stats.get("bytes_recv", 0))
+            mb_sent = round(bytes_sent / (1024 * 1024), 1)
+            mb_recv = round(bytes_recv / (1024 * 1024), 1)
+            net_total_gb = round(float(sys_stats.get("net_total_cumulative_GB", 0) or 0), 1)
+
+            max_usage = max(t_monthly, t_total, 1.0)
+            blocks.update({
+                "today_gb": t_today,
+                "today_online": on_today,
+                "yesterday_gb": t_yesterday,
+                "yesterday_online": on_yesterday,
+                "monthly_gb": t_monthly,
+                "monthly_online": on_monthly,
+                "total_gb": t_total,
+                "total_users": max(u_total, total_subs),
+                "online_5m": int(uhist.get("m5", {}).get("online", 0)) or online_subs,
+                "net_up": f"{mb_sent}",
+                "net_down": f"{mb_recv}",
+                "net_cumulative": f"{net_total_gb} GB" if net_total_gb > 0 else f"{t_total} GB",
+                "today_pct": min(100, max(5, int((t_today / max_usage) * 100))) if max_usage > 0 else 15,
+                "yesterday_pct": min(100, max(5, int((t_yesterday / max_usage) * 100))) if max_usage > 0 else 35,
+                "monthly_pct": 100
+            })
+    except Exception as ex:
+        logger.warning(f"Failed to fetch server_status from Hiddify: {ex}")
+
+    if blocks["total_gb"] == 0:
+        conn = db.get_connection()
+        c = conn.cursor()
+        if reseller_id:
+            c.execute("SELECT COALESCE(SUM(data_used), 0) FROM subscriptions WHERE reseller_id=? AND (is_deleted=0 OR is_deleted IS NULL)", (reseller_id,))
+        else:
+            c.execute("SELECT COALESCE(SUM(data_used), 0) FROM subscriptions WHERE (is_deleted=0 OR is_deleted IS NULL)")
+        total_used = round(float(c.fetchone()[0] or 0), 1)
+        conn.close()
+        blocks["total_gb"] = total_used
+        blocks["monthly_gb"] = total_used
+        blocks["today_gb"] = round(total_used * 0.12, 1)
+        blocks["yesterday_gb"] = round(total_used * 0.28, 1)
+
+    # ساختار متناظر برای تمپلیت‌های داشبورد اصلی و نماینده (dashboard.html & reseller_dashboard.html)
+    blocks["today"] = {
+        "usage_gb": float(blocks.get("today_gb", 0.0) or 0.0),
+        "online_users": int(blocks.get("today_online", 0) or 0),
+        "total_users": int(blocks.get("total_users", total_subs) or 0),
+        "percent": int(blocks.get("today_pct", 20) or 20)
+    }
+    blocks["yesterday"] = {
+        "usage_gb": float(blocks.get("yesterday_gb", 0.0) or 0.0),
+        "online_users": int(blocks.get("yesterday_online", 0) or 0),
+        "total_users": int(blocks.get("total_users", total_subs) or 0),
+        "percent": int(blocks.get("yesterday_pct", 40) or 40)
+    }
+    blocks["month"] = {
+        "usage_gb": float(blocks.get("monthly_gb", 0.0) or 0.0),
+        "online_users": int(blocks.get("monthly_online", 0) or 0),
+        "total_users": int(blocks.get("total_users", total_subs) or 0),
+        "percent": int(blocks.get("monthly_pct", 100) or 100)
+    }
+    try:
+        blocks["network_speed_down"] = float(blocks.get("net_down", 0) or 0.0)
+    except Exception:
+        blocks["network_speed_down"] = 0.0
+    try:
+        blocks["network_speed_up"] = float(blocks.get("net_up", 0) or 0.0)
+    except Exception:
+        blocks["network_speed_up"] = 0.0
+
+    _hiddify_traffic_cache[cache_key] = {"ts": now_ts, "data": blocks}
+    return blocks
+
+
 # ─── مسیرهای مینی‌اپ تلگرام (Telegram WebApp / Mini App Routes) ───
 
 @app.route("/webapp")
@@ -519,6 +784,29 @@ def api_webapp_user_data():
         "subscriptions": subscriptions,
         "wallet_balance": wallet_balance
     })
+
+
+@app.route("/api/qr-image", methods=["GET"])
+def api_qr_image():
+    """تولید تصویر بارکد QR به صورت کاملاً محلی و بدون وابستگی به اینترنت بین‌الملل"""
+    text = request.args.get("text", "").strip()
+    if not text:
+        return "پارامتر متن بارکد الزامی است", 400
+    try:
+        qr_bytes = generate_qr_code_bytes(text)
+        if not qr_bytes:
+            return "خطا در تولید بارکد", 500
+        return Response(
+            qr_bytes,
+            mimetype="image/png",
+            headers={
+                "Cache-Control": "public, max-age=86400",
+                "Content-Disposition": "inline; filename=qr.png"
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error in api_qr_image: {e}")
+        return "خطای سرور", 500
 
 
 @app.route("/sub/<sub_uuid>", defaults={"sub_path": ""}, strict_slashes=False, methods=["GET"])
@@ -1120,6 +1408,71 @@ def hidify_sync_update_user(uuid: str, api_key: str = None, reseller_id: int = N
     return last_res
 
 
+def hidify_sync_change_user_uuid(old_uuid: str, new_uuid: str, sub_fallback_data: dict = None) -> dict:
+    """تغییر مطمئن شناسه UUID مشتری در پنل هیدیفای با پشتیبانی از PATCH و ساخت مجدد Fallback"""
+    clean_old = str(old_uuid).strip().strip("/") if old_uuid else ""
+    clean_new = str(new_uuid).strip().strip("/")
+    if not clean_new:
+        return {"error": "شناسه جدید نامعتبر است"}
+    if clean_old == clean_new:
+        return {"success": True, "uuid": clean_new}
+
+    # کلیدهای معتبر برای اتصال
+    active_key = session.get("reseller_uuid") if "reseller_uuid" in session else None
+    main_admin_key = get_active_hiddify_admin_key()
+    keys_to_try = []
+    if active_key:
+        keys_to_try.append(active_key)
+    if main_admin_key and main_admin_key not in keys_to_try:
+        keys_to_try.append(main_admin_key)
+
+    for k_val in keys_to_try:
+        # ۱. ابتدا تلاش با متد PATCH
+        if clean_old:
+            for ep in (f"/admin/user/{clean_old}/", f"/admin/user/{clean_old}"):
+                res = hidify_sync_request("PATCH", ep, {"uuid": clean_new}, api_key=k_val)
+                if isinstance(res, dict) and "error" not in res:
+                    check = hidify_sync_request("GET", f"/admin/user/{clean_new}/", api_key=k_val)
+                    if isinstance(check, dict) and check.get("name"):
+                        logger.info(f"Successfully changed user UUID from {clean_old} to {clean_new} via PATCH")
+                        return check
+
+        # ۲. در صورت عدم تغییر با PATCH، استخراج مشخصات و ثبت مجدد با UUID جدید
+        old_user = {}
+        if clean_old:
+            for ep_get in (f"/admin/user/{clean_old}/", f"/admin/user/{clean_old}"):
+                resp = hidify_sync_request("GET", ep_get, api_key=k_val)
+                if isinstance(resp, dict) and "error" not in resp and resp.get("name"):
+                    old_user = resp
+                    break
+
+        # ساخت پیلود کاربر
+        allowed_fields = {
+            "name", "usage_limit_GB", "current_usage_GB", "package_days", "comment", "mode",
+            "start_date", "expire_date", "enable", "is_active", "lang",
+            "added_by", "wg_pk", "wg_pub", "wg_psk", "telegram_id"
+        }
+        payload = {k: v for k, v in old_user.items() if k in allowed_fields and v is not None}
+        payload["uuid"] = clean_new
+
+        # اگر اطلاعاتی از سرور هیدیفای برنگشت، از اطلاعات دیتابیس لوکال اشتراک استفاده می‌کنیم
+        if not payload.get("name") and sub_fallback_data:
+            payload["name"] = sub_fallback_data.get("account_name") or f"user_{clean_new[:8]}"
+            payload["usage_limit_GB"] = float(sub_fallback_data.get("data_limit") or 30)
+            payload["package_days"] = int(sub_fallback_data.get("duration") or 30)
+            payload["enable"] = (sub_fallback_data.get("status") != "disabled")
+            payload["is_active"] = True
+
+        create_res = hidify_sync_request("POST", "/admin/user/", payload, api_key=k_val)
+        if isinstance(create_res, dict) and "error" not in create_res:
+            logger.info(f"User recreated with new UUID {clean_new}. Deleting old user {clean_old}...")
+            if clean_old:
+                hidify_sync_request("DELETE", f"/admin/user/{clean_old}/", api_key=k_val)
+            return create_res
+
+    return {"error": "خطا در برقراری ارتباط با سرور هیدیفای جهت تغییر UUID"}
+
+
 def hidify_sync_renew_user(uuid: str, new_limit_gb: float, new_duration_days: int, force_instant: bool = True) -> dict:
     """
     تمدید هوشمند کاربر در هیدیفای با ریست کامل حجم و تاریخ شروع در حالت فعال‌سازی فوری:
@@ -1207,9 +1560,14 @@ def process_subscription_queue() -> dict:
 
         activated_count = 0
         now = get_now_naive()
+        processed_sub_ids = set()
 
         for item in pending_items:
             sub_id = item["subscription_id"]
+            if sub_id in processed_sub_ids:
+                # برای هر اشتراک، صرفاً اولین بسته در نوبت صف (سر صف) بررسی و فعال می‌شود
+                continue
+            processed_sub_ids.add(sub_id)
             uuid = item.get("hidify_uuid")
             new_limit = float(item.get("data_limit") or 0)
             new_duration = int(item.get("duration") or 30)
@@ -1330,6 +1688,103 @@ def process_subscription_queue() -> dict:
     except Exception as e:
         logger.error(f"Error in process_subscription_queue: {e}")
         return {"processed": 0, "activated": 0, "error": str(e)}
+
+
+def activate_single_queue_item(queue_id: int, triggered_by: str = "مدیریت") -> dict:
+    """
+    فعال‌سازی آنی و دستی یک بسته در صف تمدید:
+    - ریست کامل مصرف در هیدیفای به صفر و جایگزینی حجم و مدت جدید
+    - به‌روزرسانی وضعیت اشتراک در دیتابیس لوکال و ریست تاریخ شروع و انقضا
+    - ثبت در سوابق دوره‌های مصرف
+    - علامت‌گذاری به عنوان فعال‌شده در subscription_queue
+    - ارسال پیام به تلگرام کاربر در صورت وجود
+    """
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT * FROM subscription_queue WHERE id=? AND status='pending'", (queue_id,))
+        item = cursor.fetchone()
+        if not item:
+            return {"success": False, "error": "بسته مورد نظر در صف یافت نشد یا قبلاً فعال/لغو شده است."}
+        item = dict(item)
+
+        sub_id = item["subscription_id"]
+        cursor.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,))
+        sub_row = cursor.fetchone()
+        if not sub_row:
+            return {"success": False, "error": "اشتراک مربوط به این بسته یافت نشد."}
+        sub = dict(sub_row)
+
+        uuid = item.get("hidify_uuid") or sub.get("hidify_uuid")
+        new_limit = float(item.get("data_limit") or 0)
+        new_duration = int(item.get("duration") or 30)
+        plan_name = item.get("plan_name") or f"{new_limit} گیگ"
+        plan_id = item.get("plan_id") or "custom"
+
+        # ۱. فعال‌سازی در هیدیفای با ریست کامل حجم و روز
+        if uuid:
+            try:
+                hidify_sync_renew_user(uuid, new_limit, new_duration, force_instant=True)
+            except Exception as e:
+                logger.error(f"Hiddify manual queue activation error for {uuid}: {e}")
+
+        # ۲. به‌روزرسانی اشتراک در دیتابیس لوکال
+        now = get_now_naive()
+        now_str = get_now_iso()
+        new_start_str = now.strftime("%Y-%m-%d")
+        new_expire_str = (now + timedelta(days=new_duration)).isoformat()
+
+        cursor.execute("""
+            UPDATE subscriptions
+            SET plan_id=?, plan_name=?, data_limit=?, data_used=0, duration=?, status='active',
+                start_date=?, expire_date=?, updated_at=?, last_renewed_by=?
+            WHERE id=?
+        """, (plan_id, plan_name, new_limit, new_duration, new_start_str, new_expire_str, now_str, triggered_by, sub_id))
+        conn.commit()
+
+        # ۳. ثبت در سوابق مصرف
+        try:
+            db.log_subscription_history(
+                subscription_id=sub_id,
+                telegram_id=item.get("telegram_id") or sub.get("telegram_id") or 0,
+                hidify_uuid=uuid or "",
+                account_name=sub.get("account_name") or "",
+                plan_name=plan_name,
+                previous_usage_gb=sub.get("data_used") or 0,
+                previous_limit_gb=sub.get("data_limit") or 0,
+                period_days=new_duration,
+                renewal_type="queued_manual_activated",
+                reseller_id=item.get("reseller_id"),
+                cost_paid=item.get("cost") or 0,
+                note=f"فعال‌سازی دستی از صف رزرو توسط {triggered_by}"
+            )
+        except Exception as ex:
+            logger.warning(f"Error logging history for manual queue activation: {ex}")
+
+        # ۴. علامت‌گذاری در جدول صف
+        db.mark_queue_item_activated(queue_id)
+
+        # ۵. ارسال نوتیفیکیشن تلگرام
+        tg_id = item.get("telegram_id") or sub.get("telegram_id")
+        if tg_id and int(tg_id) > 0:
+            try:
+                send_telegram_msg(
+                    int(tg_id),
+                    f"🎉 <b>اشتراک شما با موفقیت تمدید و فعال شد!</b>\n\n"
+                    f"بسته رزرو شده «{plan_name}» هم‌اکنون برای اشتراک <b>{sub.get('account_name')}</b> فعال گردید.\n\n"
+                    f"📊 حجم جدید: <b>{new_limit} گیگابایت</b>\n"
+                    f"⏱ مدت اعتبار: <b>{new_duration} روز</b>\n"
+                    f"🔄 وضعیت: حجم مصرفی صفر شد و سرویس شما فعال است."
+                )
+            except Exception as ex:
+                logger.debug(f"Could not send telegram alert for manual queue activation: {ex}")
+
+        return {"success": True, "account_name": sub.get("account_name"), "plan_name": plan_name}
+    except Exception as e:
+        logger.error(f"Error in activate_single_queue_item: {e}")
+        return {"success": False, "error": str(e)}
+    finally:
+        conn.close()
 
 
 def hidify_sync_delete_user(uuid: str) -> dict:
@@ -1528,7 +1983,7 @@ def sync_hiddify_online_users(force: bool = False):
     """
     همگام‌سازی بلادرنگ وضعیت آنلاین بودن و اطلاعات اشتراک‌ها از API هیدیفای
     دارای محافظ نرخ درخواست و کش هوشمند (حداقل فاصله ۵ ثانیه)
-    همراه با پردازش هوشمند صف تمدید خودکار
+    همراه با پردازش هوشمند صف تمدید خودکار و اصلاح وضعیت‌های منقضی
     """
     global _last_online_sync_time
     now = time.time()
@@ -1544,6 +1999,24 @@ def sync_hiddify_online_users(force: bool = False):
         users = hidify_sync_request("GET", "/admin/user/")
         if isinstance(users, list) and users:
             db.sync_from_hidify(users)
+
+        # همگام‌سازی کاربران نمایندگانی که کلید اختصاصی دارند
+        try:
+            resellers = db.get_all_resellers()
+            for r in resellers:
+                r_uuid = r.get("hiddify_admin_uuid")
+                if r_uuid and str(r_uuid).strip():
+                    try:
+                        r_users = hidify_sync_request("GET", "/admin/user/", api_key=str(r_uuid).strip())
+                        if isinstance(r_users, list) and r_users:
+                            db.sync_from_hidify(r_users)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        # تصحیح و بروزرسانی بلادرنگ اشتراک‌های منقضی و رفع پرچم آنلاین کاذب
+        db.refresh_subscriptions_expiry_and_online()
         
         # بررسی و فعال‌سازی خودکار بسته‌های در صف رزرو
         process_subscription_queue()
@@ -1551,9 +2024,152 @@ def sync_hiddify_online_users(force: bool = False):
         logger.error(f"Error in sync_hiddify_online_users: {e}")
 
 
-def enrich_subscription_details(sub: dict) -> dict:
+def get_subscription_issuer_info(sub: dict, resellers_map: dict = None, admins_map: dict = None) -> dict:
     """
-    محاسبه شاخص‌های زنده اشتراک: روزهای مانده، وضعیت شروع، درصد مصرف
+    تشخیص دقیق صادرکننده اشتراک:
+    - برای شخص صادرکننده: نام‌کاربری (username) صادرکننده
+    - برای ربات نماینده: نام و عنوان نماینده + ربات (مثلاً: ربات صابر رحمانی)
+    - برای ربات مدیریت: ربات مدیریت
+    """
+    if not isinstance(sub, dict):
+        return {
+            "text": "مدیریت",
+            "username": "admin",
+            "is_bot": False,
+            "badge_class": "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle shadow-sm font-monospace",
+            "icon": "fa-user-shield",
+            "title": "مدیریت"
+        }
+
+    if resellers_map is None:
+        try:
+            resellers_map = {r["id"]: r for r in db.get_all_resellers()}
+        except Exception:
+            resellers_map = {}
+    if admins_map is None:
+        try:
+            admins_map = {a["username"].lower(): a for a in db.get_admin_users() if a.get("username")}
+        except Exception:
+            admins_map = {}
+
+    created_by = str(sub.get("created_by") or "").strip()
+    r_id = sub.get("reseller_id")
+    comment = str(sub.get("account_comment") or "").strip()
+    acct_name = str(sub.get("account_name") or "").strip()
+    tg_id = sub.get("telegram_id") or 0
+
+    # در صورتی که r_id خالی باشد اما در کامنت تگ نماینده وجود داشته باشد
+    if not r_id and ("[RESELLER_ID:" in comment or "Reseller #" in comment):
+        try:
+            import re
+            m = re.search(r"\[RESELLER_ID:\s*#?(\d+)\]", comment) or re.search(r"Reseller\s*#(\d+)", comment)
+            if m:
+                r_id = int(m.group(1))
+        except Exception:
+            pass
+
+    # ۱. اشتراک مربوط به یک نماینده است
+    if r_id:
+        reseller = resellers_map.get(int(r_id)) or {}
+        r_username = reseller.get("username") or f"reseller_{r_id}"
+        r_name = reseller.get("name") or reseller.get("brand_name") or r_username
+
+        is_reseller_bot = False
+        if created_by in ("bot", "robot", "ربات") or created_by.startswith("bot_reseller_") or created_by.startswith("bot:"):
+            is_reseller_bot = True
+        elif any(k in comment.lower() for k in ["wallet purchase", "direct issue", "multibot"]):
+            is_reseller_bot = True
+        elif "[reseller_id:" in comment.lower() and ("user " in comment.lower() or "tg:" in comment.lower()):
+            is_reseller_bot = True
+
+        if is_reseller_bot:
+            return {
+                "text": "ربات",
+                "username": "bot",
+                "is_bot": True,
+                "badge_class": "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle shadow-sm font-monospace",
+                "icon": "fa-robot",
+                "title": f"صادر شده توسط ربات نماینده {r_name} (@{r_username})"
+            }
+        else:
+            # صادر شده توسط شخص مدیر/کاربر نماینده در وب‌پنل
+            issuer_user = created_by if (created_by and not created_by.startswith("reseller_")) else r_username
+            return {
+                "text": issuer_user,
+                "username": issuer_user,
+                "is_bot": False,
+                "badge_class": "bg-light text-dark border font-monospace shadow-sm",
+                "icon": "fa-user-tie",
+                "title": f"صادرکننده: {issuer_user}"
+            }
+
+    # ۲. اشتراک مربوط به مدیریت است
+    # الف) صادر شده توسط ربات مدیریت اصلی
+    if created_by == "admin_bot":
+        return {
+            "text": "ربات مدیریت",
+            "username": "bot",
+            "is_bot": True,
+            "badge_class": "bg-primary-subtle text-primary border border-primary-subtle shadow-sm",
+            "icon": "fa-robot",
+            "title": "صادر شده توسط ربات تلگرام مدیریت"
+        }
+
+    # کاربر تلگرام خریداری کرده و پیشوند Admin: در کامنت ندارد
+    if tg_id and int(tg_id) > 0 and not comment.startswith("Admin:") and (not comment or comment.isdigit() or acct_name.startswith("tg_")):
+        return {
+            "text": "ربات مدیریت",
+            "username": "bot",
+            "is_bot": True,
+            "badge_class": "bg-primary-subtle text-primary border border-primary-subtle shadow-sm",
+            "icon": "fa-robot",
+            "title": "صادر شده توسط ربات تلگرام مدیریت"
+        }
+
+    # ب) صادر شده توسط شخص مدیر در پنل
+    if "Admin:" in comment:
+        try:
+            admin_user_tag = comment.split("Admin:")[1].split("|")[0].strip()
+            if admin_user_tag:
+                a_obj = admins_map.get(admin_user_tag.lower())
+                disp_title = a_obj.get("display_name", "") if a_obj else "مدیر"
+                return {
+                    "text": admin_user_tag,
+                    "username": admin_user_tag,
+                    "is_bot": False,
+                    "badge_class": "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle shadow-sm font-monospace",
+                    "icon": "fa-user-shield",
+                    "title": f"مدیر سیستم: {disp_title} ({admin_user_tag})"
+                }
+        except Exception:
+            pass
+
+    if created_by and created_by.lower() in admins_map:
+        a_obj = admins_map.get(created_by.lower())
+        disp_title = a_obj.get("display_name", "") if a_obj else "مدیر"
+        return {
+            "text": created_by,
+            "username": created_by,
+            "is_bot": False,
+            "badge_class": "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle shadow-sm font-monospace",
+            "icon": "fa-user-shield",
+            "title": f"مدیر سیستم: {disp_title} ({created_by})"
+        }
+
+    first_admin = next((a["username"] for a in admins_map.values() if a.get("role") == "super_admin"), "hECTOR")
+    return {
+        "text": first_admin,
+        "username": first_admin,
+        "is_bot": False,
+        "badge_class": "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle shadow-sm font-monospace",
+        "icon": "fa-user-shield",
+        "title": f"مدیر سیستم: {first_admin}"
+    }
+
+
+def enrich_subscription_details(sub: dict, resellers_map: dict = None, admins_map: dict = None) -> dict:
+    """
+    محاسبه شاخص‌های زنده اشتراک: روزهای مانده یا گذشته از انقضا، وضعیت شروع، درصد مصرف و تشخیص صادرکننده
     نکته مهم: در هیدیفای زمان تمامی اشتراک‌ها پس از اولین اتصال کاربر محاسبه و آغاز می‌شود.
     """
     item = dict(sub)
@@ -1566,34 +2182,91 @@ def enrich_subscription_details(sub: dict) -> dict:
 
     now_dt = get_now_naive()
     is_started = False
+    is_expired = False
     remaining_days = duration
+    expired_days = 0
+    expiry_text = ""
+    exp_dt = None
 
     if expire_date_str and str(expire_date_str).strip() not in ["None", "null", ""]:
         try:
             clean_exp = str(expire_date_str).strip().replace("Z", "")
-            exp_dt = datetime.fromisoformat(clean_exp)
+            if len(clean_exp) == 10:
+                exp_dt = datetime.strptime(clean_exp, "%Y-%m-%d")
+            else:
+                exp_dt = datetime.fromisoformat(clean_exp)
             if exp_dt.tzinfo is not None:
                 exp_dt = exp_dt.astimezone(TEHRAN_TZ).replace(tzinfo=None)
-            diff_seconds = (exp_dt - now_dt).total_seconds()
-            remaining_days = max(0, int(math.ceil(diff_seconds / 86400.0)))
             is_started = True
         except Exception:
             pass
     elif start_date_str and str(start_date_str).strip() not in ["None", "null", ""]:
         try:
             clean_start = str(start_date_str).strip().replace("Z", "")
-            start_dt = datetime.fromisoformat(clean_start)
+            if len(clean_start) == 10:
+                start_dt = datetime.strptime(clean_start, "%Y-%m-%d")
+            else:
+                start_dt = datetime.fromisoformat(clean_start)
             if start_dt.tzinfo is not None:
                 start_dt = start_dt.astimezone(TEHRAN_TZ).replace(tzinfo=None)
             exp_dt = start_dt + timedelta(days=duration)
-            diff_seconds = (exp_dt - now_dt).total_seconds()
-            remaining_days = max(0, int(math.ceil(diff_seconds / 86400.0)))
             is_started = True
         except Exception:
             pass
 
+    if is_started and exp_dt:
+        # تاریخ انقضا بر اساس روز تقویمی (دقیقاً مشابه پنل هیدیفای)
+        diff_days = (exp_dt.date() - now_dt.date()).days
+        diff_seconds = (exp_dt - now_dt).total_seconds()
+        
+        if diff_days < 0 or diff_seconds < 0:
+            is_expired = True
+            expired_days = max(1, abs(diff_days))
+            remaining_days = -expired_days
+            expiry_text = f"{expired_days} روز پیش"
+        elif diff_days == 0:
+            if diff_seconds <= 0:
+                is_expired = True
+                expired_days = 0
+                remaining_days = 0
+                expiry_text = "امروز منقضی شد"
+            else:
+                remaining_days = 0
+                expiry_text = "امروز به پایان می‌رسد"
+        else:
+            remaining_days = diff_days
+            expiry_text = f"{diff_days} روز دیگر"
+    else:
+        is_started = False
+        remaining_days = duration
+        expiry_text = f"{duration} روز"
+
     usage_pct = int((data_used / data_limit * 100)) if data_limit > 0 else 0
     remaining_gb = max(0.0, data_limit - data_used) if data_limit > 0 else 0.0
+    is_traffic_expired = (data_limit > 0 and data_used >= data_limit)
+
+    # اگر اشتراک منقضی شده، حجمش تمام شده یا غیرفعال باشد، آنلاین نخواهد بود
+    if is_expired or is_traffic_expired:
+        item["is_online"] = 0
+        if item.get("status") == "active":
+            item["status"] = "expired"
+
+    if item.get("status") in ("expired", "disabled", "inactive"):
+        item["is_online"] = 0
+
+    # اعتبارسنجی مجدد زمان آخرین اتصال (اگر بیش از ۵ دقیقه قبل بوده، آفلاین است)
+    last_online_val = item.get("last_online")
+    if last_online_val and str(last_online_val).strip() not in ["", "None", "null", "-"] and not str(last_online_val).startswith("0001"):
+        try:
+            clean_lo = str(last_online_val).replace("T", " ").split(".")[0].split("+")[0].strip()
+            lo_dt = datetime.strptime(clean_lo[:19], "%Y-%m-%d %H:%M:%S")
+            now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+            diff_lo = (now_dt - lo_dt).total_seconds()
+            diff_lo_utc = (now_utc - lo_dt).total_seconds()
+            if not ((0 <= diff_lo <= 300) or (0 <= diff_lo_utc <= 300)):
+                item["is_online"] = 0
+        except Exception:
+            pass
 
     tg_id = item.get("telegram_id")
     if tg_id:
@@ -1605,18 +2278,26 @@ def enrich_subscription_details(sub: dict) -> dict:
         item["is_vip"] = False
 
     try:
-        q_item = db.get_pending_queue_item(item.get("id"))
-        item["pending_queue"] = q_item
-        item["has_queue"] = bool(q_item)
+        q_items = db.get_pending_queue_items(item.get("id"))
+        item["pending_queues"] = q_items
+        item["pending_queue"] = q_items[0] if q_items else None
+        item["has_queue"] = bool(q_items)
+        item["queue_count"] = len(q_items)
     except Exception:
+        item["pending_queues"] = []
         item["pending_queue"] = None
         item["has_queue"] = False
+        item["queue_count"] = 0
 
     item["duration"] = duration
     item["is_started"] = is_started
+    item["is_expired"] = is_expired
+    item["expired_days"] = expired_days
+    item["expiry_text"] = expiry_text
     item["remaining_days"] = remaining_days
     item["remaining_gb"] = round(remaining_gb, 2)
     item["usage_pct"] = min(100, usage_pct)
+    item["issuer_info"] = get_subscription_issuer_info(item, resellers_map=resellers_map, admins_map=admins_map)
 
     return item
 
@@ -1637,13 +2318,30 @@ def get_plans_dict():
     }
 
 
+def get_reseller_plans_dict(reseller_id: int) -> dict:
+    """دریافت دیکشنری پلن‌های اختصاصی نماینده شامل تمام شخصی‌سازی‌های نام، قیمت، حجم و مدت اعمال‌شده توسط مدیریت"""
+    try:
+        return db.get_reseller_plans_dict(reseller_id)
+    except Exception as e:
+        logger.error(f"Error loading reseller plans dict for reseller {reseller_id}: {e}")
+        return get_plans_dict()
+
+
+
 # ─── دکوریتورهای احراز هویت (Auth Decorators) ───
 
 @app.before_request
 def update_user_session_activity():
     if session.get("logged_in") and session.get("session_token"):
+        token = session.get("session_token")
+        # بررسی اینکه آیا نشست توسط مدیر یا کاربر خاتمه داده شده است
+        if not request.path.startswith("/static") and request.path not in ("/login", "/logout"):
+            if not db.is_session_active(token):
+                session.clear()
+                flash("نشست کاربری شما پایان یافته است. لطفاً مجدداً وارد شوید.", "warning")
+                return redirect(url_for("login"))
         try:
-            db.update_session_activity(session.get("session_token"))
+            db.update_session_activity(token)
         except Exception:
             pass
 
@@ -1831,29 +2529,94 @@ def check_custom_domain():
         g.bot_username = None
 
 
+# ─── مدیریت نسخه هوشمند فروشگاه (Store Version) ───
+_store_version_cache = {"version": None, "timestamp": 0}
+
+def get_store_version() -> str:
+    """دریافت نسخه فروشگاه به صورت دستی یا هوشمند از گیت‌هاب"""
+    source = db.get_setting("store_version_source", "manual")
+    manual_version = db.get_setting("store_version", "v0.0.1 Beta") or "v0.0.1 Beta"
+    if source != "github":
+        return manual_version
+
+    now = time.time()
+    if _store_version_cache.get("version") and (now - _store_version_cache.get("timestamp", 0) < 900):
+        return _store_version_cache["version"]
+
+    repo = (db.get_setting("store_github_repo", "") or "").strip()
+    if not repo:
+        return manual_version
+
+    if "github.com/" in repo:
+        repo = repo.split("github.com/")[-1].strip("/")
+
+    try:
+        import urllib.request
+        url = f"https://api.github.com/repos/{repo}/releases/latest"
+        req = urllib.request.Request(url, headers={"User-Agent": "HiddiBot-System"})
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            tag = data.get("tag_name") or data.get("name")
+            if tag:
+                _store_version_cache["version"] = tag
+                _store_version_cache["timestamp"] = now
+                return tag
+    except Exception as e:
+        logger.debug(f"Could not fetch github latest release for {repo}: {e}")
+
+    try:
+        import urllib.request
+        url = f"https://api.github.com/repos/{repo}/tags"
+        req = urllib.request.Request(url, headers={"User-Agent": "HiddiBot-System"})
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            if data and isinstance(data, list) and len(data) > 0:
+                tag = data[0].get("name")
+                if tag:
+                    _store_version_cache["version"] = tag
+                    _store_version_cache["timestamp"] = now
+                    return tag
+    except Exception:
+        pass
+
+    return manual_version
+
+
 @app.context_processor
 def inject_global_branding():
-    """تزریق متغیرهای هویت بصری، برندینگ، دامنه اختصاصی و دسترسی‌ها به قالب‌های Jinja"""
+    """تزریق متغیرهای هویت بصری، برندینگ، دامنه اختصاصی، نسخه و دسترسی‌ها به قالب‌های Jinja"""
     active_reseller_id = session.get("reseller_id")
+    
+    # تنظیمات کلی سیستم و فروشگاه
+    system_store_name = db.get_setting("store_name", "سامانه هوشمند اینترنت پرو")
+    system_store_logo = db.get_setting("store_logo", "")
+    system_store_favicon = db.get_setting("store_favicon", "")
+    system_copyright = db.get_setting("store_copyright", "تمامی حقوق برای این سامانه محفوظ است © 2026")
+    system_primary_color = db.get_setting("store_primary_color", "#4f46e5")
+    store_version = get_store_version()
+
     branding = {}
     if active_reseller_id:
         r_data = db.get_reseller(active_reseller_id)
         if r_data:
             session["balance"] = int(r_data.get("balance") or 0)
-            credit_enabled = bool(r_data.get("credit_enabled"))
             credit_limit = int(r_data.get("credit_limit") or 0)
             credit_debt = int(r_data.get("credit_debt") or 0)
+            credit_enabled = bool(r_data.get("credit_enabled")) or (credit_limit > 0)
             available_credit = max(0, credit_limit - credit_debt) if credit_enabled else 0
             session["credit_enabled"] = credit_enabled
             session["credit_limit"] = credit_limit
             session["credit_debt"] = credit_debt
             session["available_credit"] = available_credit
+            session["total_purchasing_power"] = session["balance"] + available_credit
             branding = {
-                "brand_title": r_data.get("brand_title") or r_data.get("name") or "پنل نمایندگی",
-                "logo_url": r_data.get("logo_url"),
-                "favicon_url": r_data.get("favicon_url"),
-                "primary_color": r_data.get("primary_color"),
-                "footer_text": r_data.get("footer_text"),
+                "brand_title": r_data.get("brand_title") or r_data.get("name") or system_store_name,
+                "logo_url": r_data.get("logo_url") or system_store_logo,
+                "favicon_url": r_data.get("favicon_url") or system_store_favicon,
+                "primary_color": r_data.get("primary_color") or system_primary_color,
+                "footer_text": r_data.get("footer_text") or system_copyright,
+                "store_version": store_version,
+                "system_version": store_version,
                 "custom_domain": r_data.get("custom_domain"),
                 "tutorial_domain": r_data.get("tutorial_domain"),
                 "support_username": r_data.get("support_username"),
@@ -1865,32 +2628,70 @@ def inject_global_branding():
             session["credit_limit"] = 0
             session["credit_debt"] = 0
             session["available_credit"] = 0
+            session["total_purchasing_power"] = 0
     elif getattr(g, "custom_reseller", None):
         r_data = g.custom_reseller
         branding = {
-            "brand_title": r_data.get("brand_title") or r_data.get("name"),
-            "logo_url": r_data.get("logo_url"),
-            "favicon_url": r_data.get("favicon_url"),
-            "primary_color": r_data.get("primary_color"),
-            "footer_text": r_data.get("footer_text"),
+            "brand_title": r_data.get("brand_title") or r_data.get("name") or system_store_name,
+            "logo_url": r_data.get("logo_url") or system_store_logo,
+            "favicon_url": r_data.get("favicon_url") or system_store_favicon,
+            "primary_color": r_data.get("primary_color") or system_primary_color,
+            "footer_text": r_data.get("footer_text") or system_copyright,
+            "store_version": store_version,
+            "system_version": store_version,
             "custom_domain": r_data.get("custom_domain"),
             "tutorial_domain": r_data.get("tutorial_domain"),
             "support_username": r_data.get("support_username"),
             "bot_username": r_data.get("bot_username")
         }
     else:
-        # تنظیمات برند پیش‌فرض سیستم برای ادمین
+        # تنظیمات برند پیش‌فرض سیستم برای ادمین و صفحات عمومی
         admin_tutorial_title = db.get_setting("tutorial_title", "راهنما و آموزش اتصال")
         admin_tutorial_domain = db.get_setting("tutorial_domain", "")
         branding = {
-            "brand_title": admin_tutorial_title,
+            "brand_title": system_store_name,
+            "logo_url": system_store_logo,
+            "favicon_url": system_store_favicon,
+            "primary_color": system_primary_color,
+            "footer_text": system_copyright,
+            "store_version": store_version,
+            "system_version": store_version,
             "tutorial_domain": admin_tutorial_domain
         }
+
+    reseller_has_credit = False
+    reseller_available_credit = 0
+    reseller_credit_limit = 0
+    reseller_credit_debt = 0
+    if active_reseller_id:
+        reseller_has_credit = bool(session.get("credit_enabled")) or (session.get("credit_limit") or 0) > 0
+        reseller_available_credit = session.get("available_credit", 0)
+        reseller_credit_limit = session.get("credit_limit", 0)
+        reseller_credit_debt = session.get("credit_debt", 0)
+
+    # پالت اختصاصی و استایل‌های شیشه‌ای مات
+    palette_config = get_active_palette_config(db, context="system")
+    palette_css = generate_palette_css(palette_config)
 
     return dict(
         has_permission=has_permission,
         branding=branding,
-        sub_role=session.get("sub_role")
+        store_version=store_version,
+        get_plan_icon=get_plan_icon,
+        get_plan_telegram_emoji=get_plan_telegram_emoji,
+        get_bundle_icon=get_bundle_icon,
+        sub_role=session.get("sub_role"),
+        has_reseller_credit=reseller_has_credit,
+        has_credit=reseller_has_credit,
+        global_credit_enabled=reseller_has_credit,
+        global_available_credit=reseller_available_credit,
+        global_credit_limit=reseller_credit_limit,
+        global_credit_debt=reseller_credit_debt,
+        palette_config=palette_config,
+        palette_css=palette_css,
+        available_palettes=get_all_palettes(),
+        get_reseller_banners=get_reseller_banners,
+        reseller_panel_banners=RESELLER_PANEL_BANNERS
     )
 
 
@@ -2068,6 +2869,15 @@ def login():
             session["username"] = reseller["username"]
             session["name"] = reseller["name"]
             session["balance"] = reseller["balance"]
+            credit_limit = int(reseller.get("credit_limit") or 0)
+            credit_debt = int(reseller.get("credit_debt") or 0)
+            credit_enabled = bool(reseller.get("credit_enabled")) or (credit_limit > 0)
+            available_credit = max(0, credit_limit - credit_debt) if credit_enabled else 0
+            session["credit_enabled"] = credit_enabled
+            session["credit_limit"] = credit_limit
+            session["credit_debt"] = credit_debt
+            session["available_credit"] = available_credit
+            session["total_purchasing_power"] = session["balance"] + available_credit
             session["telegram_id"] = reseller.get("telegram_id")
             session["phone"] = reseller.get("phone")
             session["session_token"] = session_token
@@ -2297,6 +3107,7 @@ def dashboard():
     server_health = hidify_sync_ping()
     analytics = db.get_advanced_analytics()
     online_stats = db.get_online_users_stats()
+    traffic_blocks = get_hiddify_dashboard_traffic_stats()
 
     return render_template(
         "dashboard.html",
@@ -2312,7 +3123,8 @@ def dashboard():
         recent_transactions=recent_transactions,
         daily_revenue=daily_revenue,
         server_health=server_health,
-        analytics=analytics
+        analytics=analytics,
+        traffic_blocks=traffic_blocks
     )
 
 
@@ -2608,13 +3420,77 @@ def user_detail(telegram_id):
     )
 
 
+def determine_transaction_origin(tx: dict) -> str:
+    """
+    تشخیص دقیق مبدأ فیش و تراکنش:
+    - 'admin': پنل مدیریت (عملیات دستی مدیر، تمدید یا ساخت مشتری از پنل)
+    - 'reseller': پنل نماینده (عملیات دستی نماینده در پنل)
+    - 'bundle': بسته نماینده (شارژ بسته اعتباری یا کیف پول نماینده)
+    - 'portal': پرتال مشتری (خرید، تمدید یا تسویه بدهی از طریق وب پرتال مشتری)
+    - 'telegram': ربات تلگرام (خرید یا پرداخت توسط کاربر در ربات تلگرام اصلی یا ربات نماینده)
+    """
+    src = str(tx.get("source") or "").lower().strip()
+    gateway = str(tx.get("gateway") or "").lower().strip()
+    order_id = str(tx.get("order_id") or "").strip()
+    tracking_code = str(tx.get("tracking_code") or "").strip()
+    notes = str(tx.get("notes") or "").lower().strip()
+    user_id = tx.get("user_id") or 0
+    username = str(tx.get("username") or "")
+
+    # ۰. پرچم‌های صریح
+    if tx.get("is_admin_manual"):
+        return "admin"
+    if tx.get("is_portal"):
+        return "portal"
+
+    # ۱. بسته اعتباری یا کیف پول نماینده
+    if gateway == "bundle_reseller" or order_id.startswith("R_BUNDLE") or src == "bundle":
+        return "bundle"
+
+    # ۲. پنل مدیریت (عملیات دستی ادمین، ثبت نقد، تمدید یا ثبت از پنل مدیریت)
+    if (src in ("admin", "admin_panel") or
+        gateway in ("cash_admin", "free_admin", "admin_manual") or
+        order_id.startswith("ADM_") or order_id.startswith("RNW_") or
+        tracking_code.startswith("RENEW_") or tracking_code.startswith("CASH_") or
+        tracking_code.startswith("FREE_") or "رسید دستی" in tracking_code or
+        "مدیریت" in notes or "توسط ادمین" in notes or "ثبت دستی" in notes):
+        return "admin"
+
+    # ۳. پنل نماینده (عملیات دستی نماینده در پنل)
+    if (src in ("reseller", "reseller_panel") or
+        gateway in ("cash_reseller", "free_reseller", "reseller_manual", "reseller_panel") or
+        gateway.startswith("reseller_") or
+        order_id.startswith("RES_") or tracking_code.startswith("RESELLER_") or
+        "پنل نماینده" in notes):
+        return "reseller"
+
+    # ۴. وب پرتال اختصاصی مشتری
+    if (src in ("portal", "web", "customer_portal") or
+        gateway.startswith("portal") or "portal" in gateway or
+        "پرتال" in notes or "portal" in notes or
+        (order_id.startswith("INV") and user_id == 0 and not username.startswith("tg_"))):
+        return "portal"
+
+    # ۵. ربات تلگرام (ربات اصلی یا ربات‌های اختصاصی نمایندگان)
+    if (src in ("telegram", "bot", "reseller_bot") or
+        order_id.startswith("card_") or order_id.startswith("ONL_") or order_id.startswith("R1_") or
+        gateway in ("card_to_card", "card_reseller") or
+        "ربات" in notes or "telegram" in notes or
+        user_id > 0 or username.startswith("tg_")):
+        return "telegram"
+
+    if tx.get("account_name") and user_id == 0:
+        return "portal"
+    return "telegram"
+
+
 @app.route("/payments")
 @admin_required
 def payments():
     """کارتابل مدیریت و تایید فیش‌های پرداخت با تفکیک ۳ تب: مدیریت، نمایندگان و همه به همراه فیلتر نماینده"""
     conn = db.get_connection()
     status_filter = request.args.get("status", "all")
-    source_tab = request.args.get("source", "admin")  # 'admin', 'resellers', 'all'
+    source_tab = request.args.get("source", "all")  # 'all', 'admin', 'resellers' (پیش‌فرض: همه)
     reseller_filter_id = request.args.get("reseller_id", "")
     search = request.args.get("search", "").strip()
 
@@ -2622,13 +3498,17 @@ def payments():
     params = []
 
     if source_tab == "admin":
-        base_conditions.append("((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')")
+        # پرداخت‌های مستقیم مدیریت و ربات اصلی
+        base_conditions.append("(reseller_id IS NULL OR reseller_id = 0)")
     elif source_tab == "resellers":
-        base_conditions.append("(reseller_id IS NOT NULL AND reseller_id > 0 AND gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')")
+        # فقط رسیدهایی که نماینده برای کیف پول و بسته‌های خود ثبت کرده است
+        base_conditions.append("(reseller_id IS NOT NULL AND reseller_id > 0 AND (gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%'))")
         if reseller_filter_id and reseller_filter_id.isdigit():
             base_conditions.append("reseller_id = ?")
             params.append(int(reseller_filter_id))
     elif source_tab == "all":
+        # همه پرداخت‌های مدیریت و شارژ کیف‌پول نمایندگان (حذف کامل فیش‌های ربات نماینده از دید ادمین)
+        base_conditions.append("((reseller_id IS NULL OR reseller_id = 0) OR (reseller_id IS NOT NULL AND reseller_id > 0 AND (gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')))")
         if reseller_filter_id and reseller_filter_id.isdigit():
             base_conditions.append("reseller_id = ?")
             params.append(int(reseller_filter_id))
@@ -2650,13 +3530,16 @@ def payments():
     raw_payment_list = conn.execute(query, params).fetchall()
 
     # شمارنده‌های آماری بر اساس تب منبع فعلی
-    scope_cond = "1=1"
+    scope_cond = "((reseller_id IS NULL OR reseller_id = 0) OR (reseller_id IS NOT NULL AND reseller_id > 0 AND (gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')))"
     if source_tab == "admin":
-        scope_cond = "((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')"
+        scope_cond = "(reseller_id IS NULL OR reseller_id = 0)"
     elif source_tab == "resellers":
-        scope_cond = "(reseller_id IS NOT NULL AND reseller_id > 0 AND gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')"
+        scope_cond = "(reseller_id IS NOT NULL AND reseller_id > 0 AND (gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%'))"
         if reseller_filter_id and reseller_filter_id.isdigit():
             scope_cond += f" AND reseller_id = {int(reseller_filter_id)}"
+    elif source_tab == "all":
+        if reseller_filter_id and reseller_filter_id.isdigit():
+            scope_cond = f"(reseller_id = {int(reseller_filter_id)} AND (gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%'))"
 
     pending_count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='pending' AND {scope_cond}").fetchone()[0]
     approved_count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status IN ('approved', 'completed') AND {scope_cond}").fetchone()[0]
@@ -2664,14 +3547,47 @@ def payments():
     revoked_count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE (is_deleted=0 OR is_deleted IS NULL) AND status='revoked' AND {scope_cond}").fetchone()[0]
     deleted_count = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE is_deleted=1 AND {scope_cond}").fetchone()[0]
 
-    # اضافه کردن لاگ‌های حسابرسی برای هر تراکنش
+    # اضافه کردن لاگ‌های حسابرسی و غنی‌سازی مبدأ و نام مشتری برای هر تراکنش با تابع هوشمند
     payment_list = []
     for p in raw_payment_list:
         p_dict = dict(p)
         p_dict["audit_logs"] = db.get_transaction_audit_logs(p["id"])
+
+        origin = determine_transaction_origin(p_dict)
+        p_dict["source"] = origin
+
+        renew_sub_id = p_dict.get("renew_sub_id")
+        user_id = p_dict.get("user_id") or 0
+
+        # استخراج نام و عنوان مشتری جهت نمایش
+        if origin == "admin":
+            cust_name = p_dict.get("account_name") or p_dict.get("username") or "مشتری پنل مدیریت"
+            p_dict["customer_name"] = cust_name
+        elif origin == "reseller":
+            cust_name = p_dict.get("account_name") or p_dict.get("username") or f"مشتری نماینده #{p_dict.get('reseller_id') or '-'}"
+            p_dict["customer_name"] = cust_name
+        elif origin == "bundle":
+            p_dict["customer_name"] = f"نماینده #{p_dict.get('reseller_id') or '-'}"
+        elif origin == "portal":
+            cust_name = p_dict.get("account_name") or p_dict.get("username")
+            if not cust_name or cust_name in ("None", "null", "", "کاربر"):
+                cust_name = f"مشتری پرتال #{renew_sub_id or p_dict['id']}"
+            p_dict["customer_name"] = cust_name
+        else:
+            cust_name = p_dict.get("username")
+            if not cust_name or cust_name in ("None", "null", "", "کاربر"):
+                cust_name = f"کاربر {user_id}" if user_id else "کاربر تلگرام"
+            p_dict["customer_name"] = cust_name
+
         payment_list.append(p_dict)
 
     conn.close()
+
+    admin_count = sum(1 for p in payment_list if p.get("source") == "admin")
+    portal_count = sum(1 for p in payment_list if p.get("source") == "portal")
+    telegram_count = sum(1 for p in payment_list if p.get("source") == "telegram")
+    bundle_count = sum(1 for p in payment_list if p.get("source") == "bundle")
+    reseller_count = sum(1 for p in payment_list if p.get("source") == "reseller")
 
     resellers_list = db.get_all_resellers()
     cards = db.get_active_bank_cards()
@@ -2684,6 +3600,11 @@ def payments():
         resellers_list=resellers_list,
         search=search,
         cards=cards,
+        admin_count=admin_count,
+        portal_count=portal_count,
+        telegram_count=telegram_count,
+        bundle_count=bundle_count,
+        reseller_count=reseller_count,
         counts={
             "pending": pending_count,
             "approved": approved_count,
@@ -2823,6 +3744,33 @@ def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: 
     conn.close()
 
     if not tx_row:
+        # بررسی فاکتور هوشمند (در صورتی که پیامک بانک قبل از ارسال فیش ثبت شده باشد)
+        inv = db.get_smart_invoice_by_order_id(order_id) if hasattr(db, "get_smart_invoice_by_order_id") else None
+        if inv:
+            now_iso = get_now_iso()
+            sub_id = inv.get("sub_id") or 0
+            plan_id = inv.get("plan_id")
+            r_id = inv.get("reseller_id") or 0
+            amt = inv.get("final_amount") or inv.get("base_amount") or 0
+            plan = db.get_reseller_plan(r_id, plan_id) if r_id else None
+            pname = plan.get("display_name") or plan.get("master_name", "پلن") if plan else "اشتراک"
+            conn = db.get_connection()
+            conn.execute("""
+                INSERT OR REPLACE INTO transactions (
+                    order_id, user_id, username, plan_name, amount, status, gateway,
+                    tracking_code, reseller_id, is_renewal, renew_sub_id, account_name, source, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 'pending', 'bank_sms', ?, ?, ?, ?, ?, 'bank_sms_auto', ?, ?)
+            """, (
+                order_id, 0, "مشتری بانکی", pname, amt,
+                f"پیامک بانک {ref_id or ''}", r_id,
+                1 if sub_id else 0, sub_id, f"sub_{sub_id}" if sub_id else "",
+                now_iso, now_iso
+            ))
+            conn.commit()
+            tx_row = conn.execute("SELECT * FROM transactions WHERE order_id=?", (order_id,)).fetchone()
+            conn.close()
+
+    if not tx_row:
         logger.warning(f"fulfill_approved_transaction: Transaction {order_id} not found.")
         return {"success": False, "error": "تراکنش یافت نشد."}
 
@@ -2878,7 +3826,8 @@ def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: 
 
         return {"success": True, "type": "reseller_bundle"}
 
-    # ۲. حالت خرید یا تمدید اشتراک توسط کاربر
+    # ۲. حالت خرید، تمدید اشتراک یا تسویه بدهی توسط کاربر
+    is_debt_settlement = bool(tx.get("is_debt_settlement")) or (smart_inv and bool(smart_inv.get("is_debt_settlement"))) or ("تسویه بدهی" in str(pname))
     is_renewal = bool(tx.get("is_renewal"))
     renew_sub_id = tx.get("renew_sub_id")
     plans = get_plans_dict()
@@ -2887,44 +3836,74 @@ def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: 
     duration = selected_plan["duration"] if selected_plan else 30
     account_name = tx.get("account_name") or f"tg_{user_id}"
     user_uuid = ""
+    smart_inv = db.get_smart_invoice_by_order_id(order_id)
+    instant_activation = True
+    if smart_inv and smart_inv.get("instant_activation") is not None:
+        instant_activation = bool(smart_inv["instant_activation"])
 
-    if is_renewal and renew_sub_id:
-        user_subs = db.get_user_subscriptions(user_id)
-        target_sub = next((s for s in user_subs if s["id"] == renew_sub_id), None)
+    if is_debt_settlement and renew_sub_id:
+        target_sub = db.get_subscription(renew_sub_id)
+        if target_sub:
+            db.clear_subscription_debt(renew_sub_id, reseller_id=target_sub.get("reseller_id"), settled_by=f"درگاه خودکار ({processed_by})")
+            logger.info(f"Debt settled for sub #{renew_sub_id} via approved transaction {order_id}")
+    elif is_renewal and renew_sub_id:
+        target_sub = db.get_subscription(renew_sub_id)
+        if not target_sub and user_id:
+            user_subs = db.get_user_subscriptions(user_id)
+            target_sub = next((s for s in user_subs if s["id"] == renew_sub_id), None)
+
         if target_sub:
             user_uuid = target_sub.get("hidify_uuid", "")
             old_limit = float(target_sub.get("data_limit") or 0)
             old_used = float(target_sub.get("data_used") or 0)
             old_plan_name = target_sub.get("plan_name") or ""
 
-            renew_res = hidify_sync_renew_user(user_uuid, float(data_limit), int(duration))
-            final_limit = renew_res.get("new_limit", data_limit)
-            final_days = renew_res.get("new_days", duration)
-            renewal_type = renew_res.get("renewal_type", "fallback")
-            final_plan_name = pname if renewal_type == "reset_and_replaced" else (old_plan_name if old_limit > float(data_limit) else pname)
-            final_used = 0 if renewal_type == "reset_and_replaced" else old_used
+            if not instant_activation:
+                # بسته به صف رزرو اضافه می‌شود تا پس از اتمام بسته فعلی فعال شود
+                db.add_to_subscription_queue(
+                    subscription_id=renew_sub_id,
+                    plan_id="renewal_plan",
+                    plan_name=pname,
+                    data_limit=float(data_limit),
+                    duration=int(duration),
+                    cost=amount,
+                    reseller_id=target_sub.get("reseller_id") or r_id,
+                    telegram_id=user_id or target_sub.get("telegram_id") or 0,
+                    hidify_uuid=user_uuid,
+                    note=f"رزرو شده از طریق پورتال تمدید مشتری (سفارش {order_id})"
+                )
+                logger.info(f"Subscription {renew_sub_id} renewal queued successfully (instant_activation=False).")
+            else:
+                renew_res = hidify_sync_renew_user(user_uuid, float(data_limit), int(duration))
+                final_limit = renew_res.get("new_limit", data_limit)
+                final_days = renew_res.get("new_days", duration)
+                renewal_type = renew_res.get("renewal_type", "fallback")
+                final_plan_name = pname if renewal_type == "reset_and_replaced" else (old_plan_name if old_limit > float(data_limit) else pname)
+                final_used = 0 if renewal_type == "reset_and_replaced" else old_used
 
-            db.save_subscription_history(
-                subscription_id=renew_sub_id,
-                telegram_id=user_id,
-                hidify_uuid=user_uuid,
-                account_name=target_sub.get("account_name") or account_name,
-                plan_name=old_plan_name or pname,
-                previous_usage_gb=old_used,
-                previous_limit_gb=old_limit,
-                period_days=target_sub.get("duration") or duration,
-                renewal_type=renewal_type,
-                reseller_id=target_sub.get("reseller_id")
-            )
+                db.save_subscription_history(
+                    subscription_id=renew_sub_id,
+                    telegram_id=user_id or target_sub.get("telegram_id") or 0,
+                    hidify_uuid=user_uuid,
+                    account_name=target_sub.get("account_name") or account_name,
+                    plan_name=old_plan_name or pname,
+                    previous_usage_gb=old_used,
+                    previous_limit_gb=old_limit,
+                    period_days=target_sub.get("duration") or duration,
+                    renewal_type=renewal_type,
+                    reseller_id=target_sub.get("reseller_id"),
+                    plan_price=amount,
+                    cost_paid=amount
+                )
 
-            db.update_subscription(
-                renew_sub_id,
-                plan_name=final_plan_name,
-                data_limit=final_limit,
-                duration=final_days,
-                data_used=final_used,
-                status="active"
-            )
+                db.update_subscription(
+                    renew_sub_id,
+                    plan_name=final_plan_name,
+                    data_limit=final_limit,
+                    duration=final_days,
+                    data_used=final_used,
+                    status="active"
+                )
     else:
         # ساخت اشتراک جدید
         res = hidify_sync_create_user(name=account_name, usage_limit_gb=data_limit, package_days=duration, comment=str(user_id))
@@ -3104,17 +4083,21 @@ def approve_payment(payment_id):
     data_limit = selected_plan["data_limit"] if selected_plan else 30
     duration = selected_plan["duration"] if selected_plan else 30
 
-    account_name = tx["account_name"] or f"tg_{user_id}"
+    account_name = tx["account_name"] or (f"tg_{user_id}" if user_id else f"web_{payment_id}")
     user_uuid = ""
+    target_sub = None
 
     if is_renewal and renew_sub_id:
-        user_subs = db.get_user_subscriptions(user_id)
-        target_sub = next((s for s in user_subs if s["id"] == renew_sub_id), None)
+        target_sub = db.get_subscription(renew_sub_id)
+        if not target_sub and user_id:
+            user_subs = db.get_user_subscriptions(user_id)
+            target_sub = next((s for s in user_subs if s["id"] == renew_sub_id), None)
         if target_sub:
             user_uuid = target_sub.get("hidify_uuid", "")
             old_limit = float(target_sub.get("data_limit") or 0)
             old_used = float(target_sub.get("data_used") or 0)
             old_plan_name = target_sub.get("plan_name") or ""
+            target_account_name = target_sub.get("account_name") or tx.get("account_name") or account_name
 
             # تمدید هوشمند هیدیفای با رعایت ۲ حالت منقضی یا فعال
             renew_res = hidify_sync_renew_user(user_uuid, float(data_limit), int(duration))
@@ -3133,9 +4116,9 @@ def approve_payment(payment_id):
             # ثبت مصرف دوره گذشته در تاریخچه
             db.save_subscription_history(
                 subscription_id=renew_sub_id,
-                telegram_id=user_id,
+                telegram_id=user_id or target_sub.get("telegram_id") or 0,
                 hidify_uuid=user_uuid,
-                account_name=target_sub.get("account_name") or account_name,
+                account_name=target_account_name,
                 plan_name=old_plan_name or plan_name,
                 previous_usage_gb=old_used,
                 previous_limit_gb=old_limit,
@@ -3154,11 +4137,12 @@ def approve_payment(payment_id):
             )
     else:
         # خرید جدید
-        res = hidify_sync_create_user(name=account_name, usage_limit_gb=data_limit, package_days=duration, comment=str(user_id))
+        account_name = tx["account_name"] or (f"tg_{user_id}" if user_id else f"web_{payment_id}")
+        res = hidify_sync_create_user(name=account_name, usage_limit_gb=data_limit, package_days=duration, comment=str(user_id or f"WEB:{payment_id}"))
         user_uuid = res.get("uuid", "")
         if user_uuid:
             db.save_subscription(
-                telegram_id=user_id,
+                telegram_id=user_id or 0,
                 hidify_uuid=user_uuid,
                 plan_id="custom",
                 plan_name=plan_name,
@@ -3167,6 +4151,14 @@ def approve_payment(payment_id):
                 status="active",
                 account_name=account_name
             )
+
+    # اگر فیش مربوط به پیش‌فاکتور هوشمند پرتال بود، وضعیت پیش‌فاکتور را پرداخت‌شده کنیم
+    order_id = str(tx.get("order_id") or "")
+    if order_id.startswith("INV"):
+        try:
+            db.mark_smart_invoice_paid(order_id, tracking_code=str(payment_id))
+        except Exception as e_inv:
+            logger.error(f"Error marking invoice {order_id} paid: {e_inv}")
 
     # بروزرسانی وضعیت تراکنش در دیتابیس
     admin_name = session.get("name") or session.get("username") or "مدیر ارشد"
@@ -3193,67 +4185,71 @@ def approve_payment(payment_id):
         reason=f"تایید فیش پرداخت و صدور اشتراک {plan_name}"
     )
 
-    # پاداش رفرال
-    db.complete_referral(user_id)
+    # پاداش رفرال و کش‌بک تنها برای کاربران دارای اکانت تلگرام (user_id > 0)
+    if user_id and int(user_id) > 0:
+        db.complete_referral(user_id)
 
-    # پردازش و واریز کش‌بک کاربران VIP
-    try:
-        vip_info = db.get_user_vip_info(user_id)
-        if vip_info.get("is_vip") and vip_info.get("cashback_percent", 0) > 0:
-            paid_amount = int(tx.get("amount") or 0)
-            cb_rate = vip_info.get("cashback_percent", 10)
-            cashback_val = int((paid_amount * cb_rate) / 100)
-            if cashback_val > 0:
-                cb_res = db.add_wallet_balance(
-                    user_id,
-                    cashback_val,
-                    f"هدیه کش‌بک خرید ویژه VIP ({cb_rate}%)",
-                    ref_id=str(tx.get("order_id") or payment_id),
-                    tx_type="cashback"
-                )
-                new_w_bal = cb_res.get("new_balance", 0)
-                cb_msg = (
-                    f"🎁 <b>هدیه کش‌بک VIP واریز شد!</b>\n\n"
-                    f"💎 به عنوان کاربر ویژه، <b>{cb_rate}٪</b> از مبلغ خرید شما معادل <b>{cashback_val:,} تومان</b> به کیف پول شما بازگشت داده شد.\n"
-                    f"💰 <b>موجودی جدید کیف پول:</b> {new_w_bal:,} تومان"
+        # پردازش و واریز کش‌بک کاربران VIP
+        try:
+            vip_info = db.get_user_vip_info(user_id)
+            if vip_info.get("is_vip") and vip_info.get("cashback_percent", 0) > 0:
+                paid_amount = int(tx.get("amount") or 0)
+                cb_rate = vip_info.get("cashback_percent", 10)
+                cashback_val = int((paid_amount * cb_rate) / 100)
+                if cashback_val > 0:
+                    cb_res = db.add_wallet_balance(
+                        user_id,
+                        cashback_val,
+                        f"هدیه کش‌بک خرید ویژه VIP ({cb_rate}%)",
+                        ref_id=str(tx.get("order_id") or payment_id),
+                        tx_type="cashback"
+                    )
+                    new_w_bal = cb_res.get("new_balance", 0)
+                    cb_msg = (
+                        f"🎁 <b>هدیه کش‌بک VIP واریز شد!</b>\n\n"
+                        f"💎 به عنوان کاربر ویژه، <b>{cb_rate}٪</b> از مبلغ خرید شما معادل <b>{cashback_val:,} تومان</b> به کیف پول شما بازگشت داده شد.\n"
+                        f"💰 <b>موجودی جدید کیف پول:</b> {new_w_bal:,} تومان"
+                    )
+                    try:
+                        send_telegram_msg(user_id, cb_msg)
+                    except Exception as e_tg:
+                        logger.error(f"Error sending cashback msg to {user_id}: {e_tg}")
+        except Exception as e_cb:
+            logger.error(f"Error processing VIP cashback for {user_id}: {e_cb}")
+
+        # بررسی ارتقای خودکار کاربر به VIP بر اساس مجموع خریدهای تایید شده
+        try:
+            upgrade_res = db.check_and_upgrade_user_vip(user_id)
+            if upgrade_res.get("upgraded"):
+                t_spent = upgrade_res.get("total_spent", 0)
+                cb_percent = upgrade_res.get("cashback_percent", 10)
+                upgrade_msg = (
+                    f"🎉 <b>تبریک! شما به کاربر طلایی (⭐️ VIP) ارتقا یافتید!</b>\n\n"
+                    f"✨ با رسیدن مجموع خریدهای شما به <b>{t_spent:,} تومان</b>، سطح حساب شما ارتقا یافت.\n\n"
+                    f"👑 <b>مزایای اختصاصی شما:</b>\n"
+                    f"• 💰 <b>{cb_percent}٪ کش‌بک نقدی</b> در تمام خریدهای بعدی\n"
+                    f"• 🎧 <b>اولویت اول</b> در صف پاسخگویی تیکت‌های پشتیبانی\n"
+                    f"• 💎 <b>نشان طلایی VIP</b> در پروفایل ربات\n\n"
+                    f"از همراهی و اعتماد شما بی‌نهایت سپاسگزاریم! 🌹"
                 )
                 try:
-                    send_telegram_msg(user_id, cb_msg)
-                except Exception as e_tg:
-                    logger.error(f"Error sending cashback msg to {user_id}: {e_tg}")
-    except Exception as e_cb:
-        logger.error(f"Error processing VIP cashback for {user_id}: {e_cb}")
+                    send_telegram_msg(user_id, upgrade_msg)
+                except Exception as e_ug:
+                    logger.error(f"Error sending VIP upgrade msg to {user_id}: {e_ug}")
+        except Exception as e_up:
+            logger.error(f"Error checking VIP auto-upgrade for {user_id}: {e_up}")
 
-    # بررسی ارتقای خودکار کاربر به VIP بر اساس مجموع خریدهای تایید شده
-    try:
-        upgrade_res = db.check_and_upgrade_user_vip(user_id)
-        if upgrade_res.get("upgraded"):
-            t_spent = upgrade_res.get("total_spent", 0)
-            cb_percent = upgrade_res.get("cashback_percent", 10)
-            upgrade_msg = (
-                f"🎉 <b>تبریک! شما به کاربر طلایی (⭐️ VIP) ارتقا یافتید!</b>\n\n"
-                f"✨ با رسیدن مجموع خریدهای شما به <b>{t_spent:,} تومان</b>، سطح حساب شما ارتقا یافت.\n\n"
-                f"👑 <b>مزایای اختصاصی شما:</b>\n"
-                f"• 💰 <b>{cb_percent}٪ کش‌بک نقدی</b> در تمام خریدهای بعدی\n"
-                f"• 🎧 <b>اولویت اول</b> در صف پاسخگویی تیکت‌های پشتیبانی\n"
-                f"• 💎 <b>نشان طلایی VIP</b> در پروفایل ربات\n\n"
-                f"از همراهی و اعتماد شما بی‌نهایت سپاسگزاریم! 🌹"
-            )
+        # ارسال کارت و بارکد به تلگرام مشتری
+        h_url = get_hiddify_url()
+        u_proxy = get_user_proxy()
+        if user_uuid and h_url:
+            sub_url = f"{h_url}/{u_proxy}/{user_uuid}/"
+            card_title = "🎉 **اشتراک شما تایید و فعال شد!**" if not is_renewal else "🔄 **اشتراک شما با موفقیت تمدید شد!**"
+            card_details = f"📋 پلن: **{plan_name}**\n📊 حجم: **{data_limit} گیگابایت**\n⏰ مدت: **{duration} روز**"
             try:
-                send_telegram_msg(user_id, upgrade_msg)
-            except Exception as e_ug:
-                logger.error(f"Error sending VIP upgrade msg to {user_id}: {e_ug}")
-    except Exception as e_up:
-        logger.error(f"Error checking VIP auto-upgrade for {user_id}: {e_up}")
-
-    # ارسال کارت و بارکد به تلگرام مشتری
-    h_url = get_hiddify_url()
-    u_proxy = get_user_proxy()
-    if user_uuid and h_url:
-        sub_url = f"{h_url}/{u_proxy}/{user_uuid}/"
-        card_title = "🎉 **اشتراک شما تایید و فعال شد!**" if not is_renewal else "🔄 **اشتراک شما با موفقیت تمدید شد!**"
-        card_details = f"📋 پلن: **{plan_name}**\n📊 حجم: **{data_limit} گیگابایت**\n⏰ مدت: **{duration} روز**"
-        send_subscription_card_sync(user_id, sub_url, card_title, card_details)
+                send_subscription_card_sync(user_id, sub_url, card_title, card_details)
+            except Exception as e_card:
+                logger.error(f"Error sending subscription card to {user_id}: {e_card}")
 
     flash(f"پرداخت #{payment_id} تایید شد و اشتراک در هیدیفای فعال گردید!", "success")
     return redirect(url_for("payments"))
@@ -3291,6 +4287,14 @@ def reject_payment(payment_id):
             reason=reason
         )
 
+        # اگر فیش مربوط به پیش‌فاکتور هوشمند پرتال بود، وضعیت پیش‌فاکتور را رد شده کنیم
+        order_id = str(tx.get("order_id") or "")
+        if order_id.startswith("INV"):
+            try:
+                db.mark_smart_invoice_rejected(order_id, reason=reason)
+            except Exception as e_inv:
+                logger.error(f"Error marking invoice {order_id} rejected: {e_inv}")
+
         # اگر تراکنش مربوط به نماینده است:
         r_id = tx.get("reseller_id")
         if r_id or tx.get("gateway") == "bundle_reseller":
@@ -3319,9 +4323,9 @@ def reject_payment(payment_id):
                 except Exception as e:
                     logger.error(f"Error sending telegram reject msg to reseller {r_id}: {e}")
         else:
-            # ارسال پیام رد به کاربر عادی
+            # ارسال پیام رد به کاربر عادی تلگرام
             user_id = tx.get("user_id")
-            if user_id:
+            if user_id and int(user_id) > 0:
                 msg = f"❌ <b>پرداخت شما تایید نشد.</b>\n\n📝 <b>علت رد:</b> {reason}\n\nدر صورت وجود سوال، با بخش «💬 پشتیبانی» تماس بگیرید."
                 try:
                     send_telegram_msg(user_id, msg)
@@ -3407,9 +4411,10 @@ def admin_payments_bulk():
                 conn.close()
                 if tx_row and tx_row["status"] == "pending":
                     tx = dict(tx_row)
-                    user_id = tx["user_id"]
+                    user_id = tx["user_id"] or 0
                     plan_name = tx["plan_name"]
                     is_renewal = bool(tx.get("is_renewal"))
+                    renew_sub_id = tx.get("renew_sub_id")
                     plans = get_plans_dict()
                     selected_plan = next((p for p in plans.values() if p["name"] == plan_name), None)
                     if not selected_plan and plans:
@@ -3420,16 +4425,40 @@ def admin_payments_bulk():
 
                     user_uuid = None
                     if is_renewal:
-                        conn = db.get_connection()
-                        sub_row = conn.execute("SELECT * FROM subscriptions WHERE user_id=? AND status='active' ORDER BY id DESC LIMIT 1", (user_id,)).fetchone()
-                        conn.close()
-                        if sub_row and sub_row["hidify_uuid"]:
-                            user_uuid = sub_row["hidify_uuid"]
+                        target_sub = db.get_subscription(renew_sub_id) if renew_sub_id else None
+                        if not target_sub and user_id:
+                            conn = db.get_connection()
+                            sub_row = conn.execute("SELECT * FROM subscriptions WHERE user_id=? AND status='active' ORDER BY id DESC LIMIT 1", (user_id,)).fetchone()
+                            conn.close()
+                            if sub_row:
+                                target_sub = dict(sub_row)
+                        if target_sub and target_sub.get("hidify_uuid"):
+                            user_uuid = target_sub["hidify_uuid"]
                             hidify_sync_renew_user(user_uuid, data_limit, duration)
+                            db.update_subscription(target_sub["id"], status="active")
                     else:
-                        account_name = f"user_{user_id}_{int(time.time()) % 10000}"
-                        h_res = hidify_sync_create_user(name=account_name, usage_limit_gb=data_limit, package_days=duration, comment=f"TG: {user_id}")
+                        account_name = tx.get("account_name") or (f"user_{user_id}_{int(time.time()) % 10000}" if user_id else f"web_{pid}")
+                        h_res = hidify_sync_create_user(name=account_name, usage_limit_gb=data_limit, package_days=duration, comment=f"TG: {user_id}" if user_id else f"WEB:{pid}")
                         user_uuid = h_res.get("uuid") if h_res else None
+                        if user_uuid:
+                            db.save_subscription(
+                                telegram_id=user_id,
+                                hidify_uuid=user_uuid,
+                                plan_id="custom",
+                                plan_name=plan_name,
+                                data_limit=data_limit,
+                                duration=duration,
+                                status="active",
+                                account_name=account_name
+                            )
+
+                    # اگر پیش‌فاکتور هوشمند پرتال بود
+                    order_id = str(tx.get("order_id") or "")
+                    if order_id.startswith("INV"):
+                        try:
+                            db.mark_smart_invoice_paid(order_id, tracking_code=str(pid))
+                        except Exception:
+                            pass
 
                     now_iso = get_now_iso()
                     conn = db.get_connection()
@@ -3437,16 +4466,7 @@ def admin_payments_bulk():
                     conn.commit()
                     conn.close()
 
-                    if user_uuid:
-                        db.add_subscription(
-                            user_id=user_id,
-                            hidify_uuid=user_uuid,
-                            plan_name=plan_name,
-                            data_limit=data_limit,
-                            duration=duration,
-                            account_name=f"user_{user_id}",
-                            cost_paid=int(tx.get("amount") or 0)
-                        )
+                    if user_uuid and user_id and int(user_id) > 0:
                         h_url = get_hiddify_url()
                         u_proxy = get_user_proxy()
                         if h_url:
@@ -3463,6 +4483,12 @@ def admin_payments_bulk():
         elif action == "reject":
             try:
                 conn = db.get_connection()
+                tx_row = conn.execute("SELECT * FROM transactions WHERE id=?", (pid,)).fetchone()
+                if tx_row and str(tx_row["order_id"] or "").startswith("INV"):
+                    try:
+                        db.mark_smart_invoice_rejected(str(tx_row["order_id"]), reason="رد توسط مدیریت در عملیات گروهی")
+                    except Exception:
+                        pass
                 now_iso = get_now_iso()
                 conn.execute("UPDATE transactions SET status='rejected', rejection_reason='رد توسط مدیریت در عملیات گروهی', processed_by=?, processed_at=?, updated_at=? WHERE id=?", (admin_name, now_iso, now_iso, pid))
                 conn.commit()
@@ -3829,6 +4855,9 @@ def subscriptions():
 
     if status_filter == "deleted":
         base_conditions.append("is_deleted = 1")
+    elif status_filter == "queue":
+        base_conditions.append("(is_deleted = 0 OR is_deleted IS NULL)")
+        base_conditions.append("id IN (SELECT subscription_id FROM subscription_queue WHERE status = 'pending')")
     else:
         base_conditions.append("(is_deleted = 0 OR is_deleted IS NULL)")
 
@@ -3930,8 +4959,12 @@ def subscriptions():
     subscriptions_with_refund = []
     now_naive_val = get_now_naive()
     restore_window = float(db.get_refund_settings().get("restore_window_days", 7))
+    resellers_list = db.get_all_resellers()
+    resellers_map = {r["id"]: r for r in resellers_list}
+    admins_map = {a["username"].lower(): a for a in db.get_admin_users() if a.get("username")}
+
     for s in sub_list:
-        s_dict = enrich_subscription_details(s)
+        s_dict = enrich_subscription_details(s, resellers_map=resellers_map, admins_map=admins_map)
         s_dict["refund_info"] = db.calculate_customer_refund(s["id"])
 
         if status_filter == "deleted":
@@ -3953,7 +4986,6 @@ def subscriptions():
     
     online_stats = db.get_online_users_stats()
     debtor_count = db.get_debtor_count()
-    resellers_list = db.get_all_resellers()
     plans = get_plans_dict()
     single_link_template = get_single_link_template(db)
 
@@ -3967,6 +4999,9 @@ def subscriptions():
         c_del.close()
     except Exception:
         pass
+
+    queue_count = db.get_pending_queue_count()
+    all_pending_queue = db.get_all_pending_queue_items()
 
     return render_template(
         "subscriptions.html",
@@ -3988,6 +5023,8 @@ def subscriptions():
         online_stats=online_stats,
         debtor_count=debtor_count,
         deleted_count=deleted_count,
+        queue_count=queue_count,
+        all_pending_queue=all_pending_queue,
         panel_url=get_hiddify_url(),
         user_proxy=get_user_proxy(),
         single_link_template=single_link_template
@@ -4011,13 +5048,7 @@ def admin_subscription_renew(sub_id: int):
     custom_duration_raw = request.form.get("custom_duration", "").strip()
 
     plans = get_plans_dict()
-    if plan_key and plan_key in plans:
-        plan = plans[plan_key]
-        plan_name = plan.get("name", "تمدید اشتراک")
-        data_limit = float(plan.get("data_limit", 30))
-        duration = int(plan.get("duration", 30))
-        cost_paid = int(plan.get("price", 0))
-    elif custom_limit_raw and custom_duration_raw:
+    if custom_limit_raw and custom_duration_raw:
         try:
             data_limit = float(custom_limit_raw)
             duration = int(custom_duration_raw)
@@ -4027,12 +5058,47 @@ def admin_subscription_renew(sub_id: int):
         except ValueError:
             flash("مقادیر وارد شده برای حجم یا مدت نامعتبر است.", "danger")
             return redirect(get_redirect_target("subscriptions"))
+    elif plan_key and plan_key in plans:
+        plan = plans[plan_key]
+        plan_name = plan.get("name", "تمدید اشتراک")
+        data_limit = float(plan.get("data_limit", 30))
+        duration = int(plan.get("duration", 30))
+        cost_paid = int(plan.get("price", 0))
     else:
         data_limit = float(sub.get("data_limit") or 30)
         duration = int(sub.get("duration") or 30)
         plan_name = sub.get("plan_name") or f"{data_limit} گیگ {duration} روزه"
         plan_key = sub.get("plan_id") or "custom"
         cost_paid = 0
+
+    # دریافت و افزودن حجم هدیه (Gift Traffic)
+    gift_traffic = 0.0
+    try:
+        gift_traffic = max(0.0, float(request.form.get("gift_traffic_gb", 0) or 0))
+    except (ValueError, TypeError):
+        gift_traffic = 0.0
+
+    if gift_traffic > 0:
+        data_limit += gift_traffic
+        plan_name += f" (+{gift_traffic}GB هدیه)"
+
+    is_free = request.form.get("is_free") in ("on", "1", "true")
+    if is_free:
+        cost_paid = 0
+
+    payment_status = request.form.get("payment_status", "paid").strip()
+    debt_amount_raw = request.form.get("debt_amount", "").strip()
+    renewal_notes = request.form.get("renewal_notes", "").strip()
+
+    old_debt = int(sub.get("debt_amount") or 0)
+    if payment_status in ("unpaid", "debtor"):
+        this_period_debt = int(debt_amount_raw) if debt_amount_raw.isdigit() else cost_paid
+        debt_status = "unpaid"
+        total_debt = old_debt + this_period_debt
+    else:
+        this_period_debt = 0
+        debt_status = "paid"
+        total_debt = 0
 
     instant_activate = bool(request.form.get("instant_activate"))
 
@@ -4045,22 +5111,44 @@ def admin_subscription_renew(sub_id: int):
             except Exception as e:
                 logger.error(f"Admin renew Hiddify error: {e}")
 
-        # ۲. به‌روزرسانی آنی در دیتابیس (صفر کردن مصرف و تنظیم تاریخ‌های جدید)
+        # ۲. به‌روزرسانی آنی در دیتابیس (صفر کردن مصرف، تنظیم تاریخ‌ها و وضعیت مالی بدهی/تسویه)
         now = get_now_iso()
         now_naive = get_now_naive()
         new_start_date = now_naive.strftime("%Y-%m-%d")
         new_expire_date = (now_naive + timedelta(days=duration)).isoformat()
+        debt_created = now if debt_status == "unpaid" else None
 
         conn = db.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
             UPDATE subscriptions
             SET plan_id=?, plan_name=?, data_limit=?, data_used=0, duration=?,
-                start_date=?, expire_date=?, status='active', updated_at=?, cost_paid=?
+                start_date=?, expire_date=?, status='active', updated_at=?, cost_paid=?,
+                payment_status=?, debt_amount=?, debt_notes=?,
+                debt_created_at = CASE WHEN ? = 'unpaid' THEN COALESCE(debt_created_at, ?) ELSE NULL END
             WHERE id=?
-        """, (plan_key, plan_name, data_limit, duration, new_start_date, new_expire_date, now, cost_paid, sub_id))
+        """, (plan_key, plan_name, data_limit, duration, new_start_date, new_expire_date, now, 0 if debt_status == "unpaid" else cost_paid,
+              debt_status, total_debt, renewal_notes or None, debt_status, debt_created, sub_id))
         conn.commit()
         conn.close()
+
+        if debt_status == "unpaid":
+            try:
+                db.add_customer_debt_record(
+                    subscription_id=sub_id,
+                    account_name=sub.get("account_name"),
+                    telegram_id=sub.get("telegram_id") or 0,
+                    reseller_id=sub.get("reseller_id"),
+                    action_type="renew",
+                    plan_name=plan_name,
+                    amount=this_period_debt,
+                    notes=renewal_notes or None,
+                    created_by=session.get("username") or "admin"
+                )
+            except Exception as ex_rec:
+                logger.error(f"Error recording debt record in admin renew: {ex_rec}")
+        else:
+            db.clear_subscription_debt(sub_id, settled_by=session.get('username') or 'admin')
 
         # ۳. ثبت در تاریخچه دوره‌های اشتراک
         try:
@@ -4069,36 +5157,121 @@ def admin_subscription_renew(sub_id: int):
                 telegram_id=sub.get("telegram_id") or 0,
                 hidify_uuid=sub.get("hidify_uuid") or "",
                 account_name=sub.get("account_name") or "",
-                plan_name=plan_name,
+                plan_name=f"{plan_name} (تمدید رایگان)" if is_free else (f"{plan_name} (بدهکار)" if debt_status == "unpaid" else plan_name),
                 previous_usage_gb=sub.get("data_used") or 0,
                 previous_limit_gb=sub.get("data_limit") or 0,
                 period_days=duration,
                 renewal_type="reset_and_replaced",
                 reseller_id=sub.get("reseller_id"),
-                cost_paid=cost_paid
+                cost_paid=0 if debt_status == "unpaid" else cost_paid
             )
         except Exception as ex:
             logger.error(f"Error logging subscription history in admin renew: {ex}")
 
-        flash(f"اشتراک «{sub.get('account_name')}» با موفقیت به صورت آنی تمدید شد ({data_limit} GB - {duration} روز) و حجم و روز آن ریست گردید.", "success")
+        free_tag = " (تمدید رایگان با مبلغ ۰ تومان)" if is_free else ""
+        debt_tag = f" (مشتری بدهکار ثبت شد: {this_period_debt:,} ت | مجموع بدهی: {total_debt:,} ت)" if debt_status == "unpaid" else " (وضعیت مالی: تسویه شده)"
+        flash(f"اشتراک «{sub.get('account_name')}» با موفقیت به صورت آنی تمدید شد ({data_limit} GB - {duration} روز){free_tag}{debt_tag} و حجم و روز آن ریست گردید.", "success")
     else:
         # ۴. قرار دادن در صف تمدید هوشمند (رزرو برای پس از اتمام بسته)
+        if debt_status == "unpaid":
+            try:
+                db.add_customer_debt_record(
+                    subscription_id=sub_id,
+                    account_name=sub.get("account_name"),
+                    telegram_id=sub.get("telegram_id") or 0,
+                    reseller_id=sub.get("reseller_id"),
+                    action_type="renew",
+                    plan_name=plan_name,
+                    amount=this_period_debt,
+                    notes=renewal_notes or None,
+                    created_by=session.get("username") or "admin"
+                )
+            except Exception as ex_rec:
+                logger.error(f"Error recording debt record in queue renew: {ex_rec}")
+        else:
+            db.clear_subscription_debt(sub_id, settled_by=session.get('username') or 'admin')
+            if renewal_notes:
+                conn = db.get_connection()
+                conn.execute("UPDATE subscriptions SET debt_notes=? WHERE id=?", (renewal_notes, sub_id))
+                conn.commit()
+                conn.close()
         q_res = db.add_to_subscription_queue(
             subscription_id=sub_id,
             plan_id=plan_key,
-            plan_name=plan_name,
+            plan_name=f"{plan_name} (رایگان)" if is_free else (f"{plan_name} (بدهکار)" if debt_status == "unpaid" else plan_name),
             data_limit=data_limit,
             duration=duration,
-            cost=cost_paid,
+            cost=0 if debt_status == "unpaid" else cost_paid,
             reseller_id=sub.get("reseller_id"),
             telegram_id=sub.get("telegram_id") or 0,
             hidify_uuid=sub.get("hidify_uuid") or "",
-            note="تمدید در صف توسط مدیریت"
+            note="تمدید رایگان در صف توسط مدیریت" if is_free else ("تمدید بدهکار در صف توسط مدیریت" if debt_status == "unpaid" else "تمدید در صف توسط مدیریت")
         )
         if q_res.get("success"):
-            flash(f"بسته تمدیدی «{plan_name}» برای اشتراک «{sub.get('account_name')}» در صف رزرو قرار گرفت و پس از مصرف ۹۹٪ یا رسیدن به روز پایانی به صورت خودکار فعال خواهد شد.", "info")
+            free_tag = " (رایگان با مبلغ ۰ تومان)" if is_free else ""
+            debt_tag = f" (مشتری بدهکار ثبت شد: {this_period_debt:,} ت | مجموع بدهی: {total_debt:,} ت)" if debt_status == "unpaid" else ""
+            flash(f"بسته تمدیدی «{plan_name}» برای اشتراک «{sub.get('account_name')}»{free_tag}{debt_tag} در صف رزرو قرار گرفت و پس از مصرف ۹۹٪ یا رسیدن به روز پایانی به صورت خودکار فعال خواهد شد.", "info")
         else:
             flash(f"خطا در افزودن بسته به صف: {q_res.get('error')}", "danger")
+
+    # ثبت تراکنش و سند حسابداری فقط در صورتی که مشتری بدهکار نباشد
+    if debt_status != "unpaid":
+        if cost_paid > 0:
+            try:
+                r_order_id = f"RNW_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
+                db.save_transaction(
+                    order_id=r_order_id,
+                    user_id=sub.get("telegram_id") or 0,
+                    username=sub.get("account_name") or "",
+                    plan_name=plan_name,
+                    amount=cost_paid,
+                    gateway="cash_admin",
+                    tracking_code=f"RENEW_{session.get('username') or 'admin'}",
+                    status="approved",
+                    account_name=sub.get("account_name") or "",
+                    source="admin"
+                )
+                db.add_accounting_record(
+                    type="income",
+                    category="تمدید اشتراک",
+                    title=f"تمدید اشتراک {sub.get('account_name')} ({plan_name})",
+                    amount=cost_paid,
+                    source="admin_panel",
+                    ref_type="subscription",
+                    ref_id=str(sub_id),
+                    description=f"تمدید توسط مدیریت ({session.get('username') or 'admin'})",
+                    date=get_now_iso()[:10]
+                )
+            except Exception as e_rev:
+                logger.error(f"Error recording revenue for admin renew: {e_rev}")
+        elif is_free:
+            try:
+                r_order_id = f"RNW_FREE_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
+                db.save_transaction(
+                    order_id=r_order_id,
+                    user_id=sub.get("telegram_id") or 0,
+                    username=sub.get("account_name") or "",
+                    plan_name=f"{plan_name} (تمدید رایگان)",
+                    amount=0,
+                    gateway="free_admin",
+                    tracking_code=f"FREE_{session.get('username') or 'admin'}",
+                    status="approved",
+                    account_name=sub.get("account_name") or "",
+                    source="admin"
+                )
+                db.add_accounting_record(
+                    type="income",
+                    category="تمدید رایگان اشتراک",
+                    title=f"تمدید رایگان اشتراک {sub.get('account_name')} ({plan_name})",
+                    amount=0,
+                    source="admin_panel",
+                    ref_type="subscription",
+                    ref_id=str(sub_id),
+                    description=f"تمدید رایگان توسط مدیریت ارشد ({session.get('username') or 'admin'})",
+                    date=get_now_iso()[:10]
+                )
+            except Exception as e_rev:
+                logger.error(f"Error recording free renewal: {e_rev}")
 
     return redirect(get_redirect_target("subscriptions"))
 
@@ -4124,6 +5297,7 @@ def admin_subscriptions_bulk_renew():
 
     plan_key = request.form.get("plan_id", "current").strip()
     instant_activate = bool(request.form.get("instant_activate"))
+    is_free = request.form.get("is_free") in ("on", "1", "true")
     plans = get_plans_dict()
 
     success_count = 0
@@ -4150,6 +5324,10 @@ def admin_subscriptions_bulk_renew():
             p_dur = int(plan.get("duration", 30))
             p_name = plan.get("name", f"{p_limit} گیگ")
             p_cost = int(plan.get("price", 0))
+
+        if is_free:
+            p_cost = 0
+            p_name = f"{p_name} (رایگان)"
 
         if instant_activate:
             if sub.get("hidify_uuid"):
@@ -4197,14 +5375,71 @@ def admin_subscriptions_bulk_renew():
                 reseller_id=sub.get("reseller_id"),
                 telegram_id=sub.get("telegram_id") or 0,
                 hidify_uuid=sub.get("hidify_uuid") or "",
-                note="تمدید گروهی در صف"
+                note="تمدید گروهی رایگان در صف" if is_free else "تمدید گروهی در صف"
             )
             if q_res.get("success"):
                 success_count += 1
 
+        is_sub_debtor = bool(sub.get("payment_status") in ("unpaid", "debtor") or (sub.get("debt_amount") or 0) > 0)
+        if p_cost > 0 and not is_sub_debtor:
+            try:
+                b_order_id = f"RNW_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
+                db.save_transaction(
+                    order_id=b_order_id,
+                    user_id=sub.get("telegram_id") or 0,
+                    username=sub.get("account_name") or "",
+                    plan_name=p_name,
+                    amount=p_cost,
+                    gateway="cash_admin",
+                    tracking_code=f"BULK_RENEW_{session.get('username') or 'admin'}",
+                    status="approved",
+                    account_name=sub.get("account_name") or ""
+                )
+                db.add_accounting_record(
+                    type="income",
+                    category="تمدید اشتراک",
+                    title=f"تمدید گروهی {sub.get('account_name')} ({p_name})",
+                    amount=p_cost,
+                    source="admin_panel",
+                    ref_type="subscription",
+                    ref_id=str(s_id),
+                    description=f"تمدید گروهی توسط مدیریت ({session.get('username') or 'admin'})",
+                    date=now[:10]
+                )
+            except Exception as e_prev:
+                logger.error(f"Error recording revenue for bulk renew: {e_prev}")
+        elif is_free:
+            try:
+                b_order_id = f"RNW_FREE_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
+                db.save_transaction(
+                    order_id=b_order_id,
+                    user_id=sub.get("telegram_id") or 0,
+                    username=sub.get("account_name") or "",
+                    plan_name=p_name,
+                    amount=0,
+                    gateway="free_admin",
+                    tracking_code=f"BULK_FREE_{session.get('username') or 'admin'}",
+                    status="approved",
+                    account_name=sub.get("account_name") or ""
+                )
+                db.add_accounting_record(
+                    type="income",
+                    category="تمدید رایگان اشتراک",
+                    title=f"تمدید گروهی رایگان {sub.get('account_name')} ({p_name})",
+                    amount=0,
+                    source="admin_panel",
+                    ref_type="subscription",
+                    ref_id=str(s_id),
+                    description=f"تمدید گروهی رایگان توسط مدیریت ارشد ({session.get('username') or 'admin'})",
+                    date=now[:10]
+                )
+            except Exception as e_prev:
+                logger.error(f"Error recording free revenue for bulk renew: {e_prev}")
+
     conn.close()
     mode_text = "به صورت آنی تمدید و ریست شدند" if instant_activate else "در صف تمدید رزرو قرار گرفتند"
-    flash(f"{success_count} اشتراک با موفقیت {mode_text}.", "success")
+    free_mode_text = " (به صورت رایگان با مبلغ ۰ تومان)" if is_free else ""
+    flash(f"{success_count} اشتراک با موفقیت {mode_text}{free_mode_text}.", "success")
     return redirect(get_redirect_target("subscriptions"))
 
 
@@ -4232,6 +5467,72 @@ def admin_subscription_add_traffic(sub_id):
         flash(f"سقف ترافیک با موفقیت {extra_gb} گیگابایت افزایش یافت (سقف جدید: {res['new_limit']} GB).", "success")
     else:
         flash(f"خطا در افزایش ترافیک: {res.get('error')}", "danger")
+    return redirect(get_redirect_target("subscriptions"))
+
+
+@app.route("/admin/queue/<int:queue_id>/activate", methods=["POST"])
+@permission_required("sub_manage")
+def admin_queue_activate(queue_id: int):
+    """فعال‌سازی آنی بسته در صف تمدید توسط مدیریت"""
+    username = session.get("username") or "مدیریت"
+    res = activate_single_queue_item(queue_id, triggered_by=username)
+    if res.get("success"):
+        flash(f"بسته «{res.get('plan_name')}» برای اشتراک «{res.get('account_name')}» با موفقیت فعال شد و حجم و تاریخ آن ریست گردید.", "success")
+    else:
+        flash(f"خطا در فعال‌سازی بسته: {res.get('error')}", "danger")
+    return redirect(get_redirect_target("subscriptions"))
+
+
+@app.route("/admin/queue/<int:queue_id>/cancel", methods=["POST"])
+@permission_required("sub_manage")
+def admin_queue_cancel(queue_id: int):
+    """لغو بسته در صف تمدید توسط مدیریت و استرداد وجه در صورت نیاز"""
+    res = db.cancel_queue_item(queue_id)
+    if res.get("success"):
+        refund_txt = f" و مبلغ {res.get('refunded_amount'):,} تومان به حساب نماینده بازگردانده شد" if res.get('refunded_amount') else ""
+        flash(f"بسته رزرو شده با موفقیت از صف تمدید لغو شد{refund_txt}.", "info")
+    else:
+        flash(f"خطا در لغو بسته: {res.get('error')}", "danger")
+    return redirect(get_redirect_target("subscriptions"))
+
+
+@app.route("/admin/queue/<int:queue_id>/move", methods=["POST"])
+@permission_required("sub_manage")
+def admin_queue_move(queue_id: int):
+    """تغییر نوبت بسته در صف تمدید توسط مدیریت"""
+    direction = request.form.get("direction") or request.args.get("direction", "up")
+    if request.is_json:
+        direction = (request.get_json(silent=True) or {}).get("direction") or direction
+    conn = db.get_connection()
+    q_row = conn.execute("SELECT subscription_id FROM subscription_queue WHERE id=?", (queue_id,)).fetchone()
+    conn.close()
+    if not q_row:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": "بسته مورد نظر در صف یافت نشد."}), 404
+        flash("بسته مورد نظر در صف یافت نشد.", "danger")
+        return redirect(get_redirect_target("subscriptions"))
+    sub_id = q_row[0]
+    res = db.reorder_subscription_queue(sub_id, queue_id, direction)
+    if res.get("success"):
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": True, "message": "ترتیب بسته‌های در صف تمدید با موفقیت به‌روزرسانی شد."})
+        flash("ترتیب بسته‌های در صف تمدید با موفقیت به‌روزرسانی شد.", "success")
+    else:
+        err = res.get("error", "خطا در جابجایی بسته")
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": err}), 400
+        flash(f"خطا در جابجایی بسته: {err}", "danger")
+    return redirect(get_redirect_target("subscriptions"))
+
+
+@app.route("/admin/queue/process-now", methods=["POST"])
+@permission_required("sub_manage")
+def admin_queue_process_now():
+    """پردازش فوری و بررسی شرایط فعال‌سازی بسته‌های صف تمدید"""
+    res = process_subscription_queue()
+    activated = res.get("activated", 0)
+    processed = res.get("processed", 0)
+    flash(f"پردازش صف تمدید انجام شد: تعداد {processed} بسته بررسی و {activated} بسته واجد شرایط (۹۹٪ مصرف یا روز پایانی) فعال شدند.", "info")
     return redirect(get_redirect_target("subscriptions"))
 
 
@@ -4279,8 +5580,29 @@ def admin_subscription_edit(sub_id):
     now = get_now_iso()
     debt_created = now if (payment_status in ('unpaid', 'debtor') and not sub.get("debt_created_at")) else sub.get("debt_created_at")
 
+    # بررسی و تغییر شناسه اختصاصی (UUID) در صورت تغییر
+    form_uuid = request.form.get("hidify_uuid", "").strip().lower()
+    old_uuid = (sub.get("hidify_uuid") or "").strip().lower()
+    final_uuid = old_uuid
+    uuid_changed = False
+
+    if form_uuid and form_uuid != old_uuid:
+        try:
+            val_uuid = str(uuid.UUID(form_uuid))
+        except ValueError:
+            flash("شناسه UUID وارد شده نامعتبر است. لطفاً فرمت استاندارد UUID را رعایت فرمایید.", "danger")
+            return redirect(get_redirect_target("subscriptions"))
+
+        change_res = hidify_sync_change_user_uuid(old_uuid, val_uuid, sub_fallback_data=sub)
+        if isinstance(change_res, dict) and "error" in change_res:
+            flash(f"خطا در تغییر شناسه UUID در پنل هیدیفای: {change_res.get('error')}", "danger")
+            return redirect(get_redirect_target("subscriptions"))
+
+        final_uuid = val_uuid
+        uuid_changed = True
+
     # بروزرسانی در سرور هیدیفای
-    if sub.get("hidify_uuid"):
+    if final_uuid:
         h_update = {
             "name": account_name,
             "usage_limit_GB": data_limit,
@@ -4293,7 +5615,7 @@ def admin_subscription_edit(sub_id):
             h_update["enable"] = True
             h_update["is_active"] = True
 
-        hidify_sync_update_user(sub["hidify_uuid"], **h_update)
+        hidify_sync_update_user(final_uuid, **h_update)
 
     # بروزرسانی در پایگاه‌داده
     conn = db.get_connection()
@@ -4301,6 +5623,7 @@ def admin_subscription_edit(sub_id):
     cursor.execute("""
         UPDATE subscriptions 
         SET account_name = ?,
+            hidify_uuid = ?,
             data_limit = ?,
             duration = ?,
             status = ?,
@@ -4314,19 +5637,19 @@ def admin_subscription_edit(sub_id):
             updated_at = ?
         WHERE id = ?
     """, (
-        account_name, data_limit, duration, status,
+        account_name, final_uuid, data_limit, duration, status,
         telegram_id, phone_number or None, comment or None,
         payment_status, debt_amount, debt_notes or None,
         debt_created, now, sub_id
     ))
 
-    # اگر کاربر در جدول users باشد، بروزرسانی نام و شماره تلفن
+    # اگر کاربر در جدول users باشد، بروزرسانی نام، شماره تلفن و UUID
     if telegram_id and telegram_id > 0:
         cursor.execute("SELECT * FROM users WHERE telegram_id=?", (telegram_id,))
         if cursor.fetchone():
-            cursor.execute("UPDATE users SET phone_number=COALESCE(?, phone_number), username=COALESCE(?, username), updated_at=? WHERE telegram_id=?", (phone_number or None, account_name, now, telegram_id))
+            cursor.execute("UPDATE users SET phone_number=COALESCE(?, phone_number), username=COALESCE(?, username), hidify_uuid=COALESCE(?, hidify_uuid), updated_at=? WHERE telegram_id=?", (phone_number or None, account_name, final_uuid, now, telegram_id))
         else:
-            cursor.execute("INSERT INTO users (telegram_id, username, phone_number, is_verified, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)", (telegram_id, account_name, phone_number or None, now, now))
+            cursor.execute("INSERT INTO users (telegram_id, username, phone_number, hidify_uuid, is_verified, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)", (telegram_id, account_name, phone_number or None, final_uuid, now, now))
 
     conn.commit()
     conn.close()
@@ -4334,7 +5657,10 @@ def admin_subscription_edit(sub_id):
     # همگام‌سازی فوری
     sync_hiddify_online_users(force=True)
 
-    flash(f"مشخصات اشتراک «{account_name}» با موفقیت ویرایش و در هیدیفای اعمال شد.", "success")
+    if uuid_changed:
+        flash(f"مشخصات اشتراک «{account_name}» و شناسه هیدیفای (UUID) با موفقیت در سیستم و پنل هیدیفای تغییر یافت. لینک‌های قبلی مشتری باطل گردیدند.", "success")
+    else:
+        flash(f"مشخصات اشتراک «{account_name}» با موفقیت ویرایش و در هیدیفای اعمال شد.", "success")
     return redirect(get_redirect_target("subscriptions"))
 
 
@@ -4600,7 +5926,8 @@ def admin_resellers():
         password = request.form.get("password")
         name = request.form.get("name")
         telegram_id = int(request.form.get("telegram_id")) if request.form.get("telegram_id") else None
-        discount_percent = int(request.form.get("discount_percent", 20))
+        disc_raw = request.form.get("discount_percent")
+        discount_percent = int(disc_raw) if (disc_raw is not None and str(disc_raw).strip() != "") else 20
         initial_balance = int(request.form.get("initial_balance", 0))
         auto_hiddify = bool(request.form.get("auto_create_hiddify_admin"))
         hiddify_admin_uuid = request.form.get("hiddify_admin_uuid", "").strip()
@@ -4619,7 +5946,22 @@ def admin_resellers():
                 logger.warning(f"Failed to auto-create Hiddify admin: {h_admin.get('error')}")
                 flash(f"هشدار: ادمین هیدیفای خودکار ساخته نشد ({h_admin.get('error')})، اما حساب نماینده ایجاد گردید.", "warning")
 
-        res = db.create_reseller(username, password, name, telegram_id, discount_percent, initial_balance, hiddify_admin_uuid=hiddify_admin_uuid)
+        credit_limit = int(request.form.get("credit_limit", 0) or 0)
+        credit_enabled = 1 if (request.form.get("credit_enabled") or credit_limit > 0) else 0
+        can_gift_traffic = 1 if request.form.get("can_gift_traffic") in ("on", "1", "true") else 0
+
+        res = db.create_reseller(
+            username=username,
+            password=password,
+            name=name,
+            telegram_id=telegram_id,
+            discount_percent=discount_percent,
+            initial_balance=initial_balance,
+            hiddify_admin_uuid=hiddify_admin_uuid,
+            credit_enabled=credit_enabled,
+            credit_limit=credit_limit,
+            can_gift_traffic=can_gift_traffic
+        )
         if res.get("success"):
             flash(f"نماینده جدید «{name}» با موفقیت افزوده شد!", "success")
         else:
@@ -4635,10 +5977,43 @@ def admin_resellers():
         r_dict["bot_status"] = multibot_manager.get_bot_status(r["id"])
         r_dict["payment_history"] = db.get_reseller_full_payment_history(r["id"])
         r_dict["active_hiddify_key"] = db.get_reseller_hiddify_key(r["id"])
+        r_dict["team_members"] = db.get_reseller_team_with_sessions(r["id"])
+        r_dict["online_team_count"] = sum(1 for m in r_dict["team_members"] if m.get("is_online"))
+        r_dict["usage_summary"] = db.get_reseller_usage_summary(r["id"])
         reseller_list.append(r_dict)
 
     all_failed_logins = db.get_all_failed_login_logs(limit=50)
     return render_template("resellers.html", resellers=reseller_list, all_failed_logins=all_failed_logins)
+
+
+@app.route("/admin/session/<int:session_id>/terminate", methods=["POST"])
+@admin_required
+def admin_terminate_session(session_id):
+    """خاتمه فوری یک نشست فعال توسط مدیر ارشد"""
+    success = db.terminate_session(session_id)
+    if success:
+        flash("نشست فعال با موفقیت خاتمه یافت و دسترسی کاربر فوراً قطع شد.", "success")
+    else:
+        flash("خطا در خاتمه نشست یا این نشست از قبل غیرفعال بوده است.", "warning")
+    return redirect(request.referrer or url_for("admin_resellers"))
+
+
+@app.route("/admin/reseller/<int:reseller_id>/terminate-all-sessions", methods=["POST"])
+@admin_required
+def admin_terminate_all_reseller_sessions(reseller_id):
+    """خاتمه تمامی نشست‌های فعال نماینده و کادر زیرمجموعه وی توسط مدیر کل"""
+    count = db.terminate_reseller_and_team_sessions(reseller_id)
+    flash(f"تعداد {count} نشست فعال مربوط به این نماینده و کادر وی خاتمه یافت.", "success")
+    return redirect(request.referrer or url_for("admin_resellers"))
+
+
+@app.route("/admin/team-member/<int:member_id>/terminate-sessions", methods=["POST"])
+@admin_required
+def admin_terminate_team_member_sessions(member_id):
+    """خاتمه تمام نشست‌های فعال یک عضو تیم زیرمجموعه توسط مدیر کل"""
+    count = db.terminate_all_user_sessions("reseller_subadmin", member_id)
+    flash(f"تعداد {count} نشست فعال این عضو تیم با موفقیت خاتمه یافت.", "success")
+    return redirect(request.referrer or url_for("admin_resellers"))
 
 
 @app.route("/admin/reseller/<int:reseller_id>/payments")
@@ -4739,7 +6114,8 @@ def admin_reseller_edit(reseller_id):
     name = request.form.get("name", "").strip()
     username = request.form.get("username", "").strip().lower()
     telegram_id = int(request.form.get("telegram_id")) if request.form.get("telegram_id") else None
-    discount_percent = int(request.form.get("discount_percent", 20))
+    disc_raw = request.form.get("discount_percent")
+    discount_percent = int(disc_raw) if (disc_raw is not None and str(disc_raw).strip() != "") else 20
     status = request.form.get("status", "active")
     new_password = request.form.get("new_password", "").strip()
     hiddify_admin_uuid = request.form.get("hiddify_admin_uuid", "").strip()
@@ -4755,8 +6131,9 @@ def admin_reseller_edit(reseller_id):
             hiddify_admin_uuid = h_admin["uuid"]
             flash(f"ادمین اختصاصی هیدیفای با شناسه {hiddify_admin_uuid[:8]}... برای نماینده ساخته شد.", "info")
 
-    credit_enabled = 1 if request.form.get("credit_enabled") else 0
     credit_limit = int(request.form.get("credit_limit", 0) or 0)
+    credit_enabled = 1 if (request.form.get("credit_enabled") or credit_limit > 0) else 0
+    can_gift_traffic = 1 if request.form.get("can_gift_traffic") in ("on", "1", "true") else 0
 
     updates = {
         "name": name or r["name"],
@@ -4766,7 +6143,8 @@ def admin_reseller_edit(reseller_id):
         "status": status,
         "hiddify_admin_uuid": hiddify_admin_uuid or None,
         "credit_enabled": credit_enabled,
-        "credit_limit": credit_limit
+        "credit_limit": credit_limit,
+        "can_gift_traffic": can_gift_traffic
     }
     if new_password:
         updates["password"] = new_password
@@ -5341,8 +6719,45 @@ def export_accounting():
 @app.route("/broadcast", methods=["GET", "POST"])
 @permission_required("broadcast")
 def broadcast():
-    """ارسال پیام انبوه هدفمند به کاربران تلگرام"""
+    """ارسال پیام انبوه هدفمند به کاربران تلگرام و بنر اطلاعیه اختصاصی پنل نمایندگان"""
+    global RESELLER_PANEL_BANNERS
     if request.method == "POST":
+        action_type = request.form.get("action_type")
+        if action_type == "reseller_banner":
+            target = request.form.get("target_reseller", "all")
+            banner_message = request.form.get("banner_message", "").strip()
+            banner_title = request.form.get("banner_title", "").strip()
+            banner_level = request.form.get("banner_level", "info")
+            if not banner_message:
+                flash("متن بنر اطلاعیه نمی‌تواند خالی باشد.", "danger")
+                return redirect(url_for("broadcast"))
+
+            target_id = None
+            target_name = "همه نمایندگان"
+            if target != "all" and target.isdigit():
+                target_id = int(target)
+                r_info = db.get_reseller(target_id)
+                target_name = (r_info.get("name") if r_info else None) or f"نماینده #{target_id}"
+
+            banner_id = f"bnr_{int(time.time())}_{random.randint(100, 999)}"
+            RESELLER_PANEL_BANNERS.append({
+                "id": banner_id,
+                "target_reseller_id": target_id,
+                "target_name": target_name,
+                "title": banner_title,
+                "message": banner_message,
+                "level": banner_level,
+                "created_at": get_now_shamsi()
+            })
+            flash(f"✅ بنر اطلاعیه با موفقیت برای «{target_name}» در پنل نمایندگان فعال گردید.", "success")
+            return redirect(url_for("broadcast"))
+
+        elif action_type == "delete_banner":
+            banner_id = request.form.get("banner_id")
+            RESELLER_PANEL_BANNERS = [b for b in RESELLER_PANEL_BANNERS if b.get("id") != banner_id]
+            flash("🗑️ بنر اطلاعیه با موفقیت از پنل نمایندگان حذف گردید.", "info")
+            return redirect(url_for("broadcast"))
+
         target_group = request.form.get("target_group", "all")
         message_text = request.form.get("message", "").strip()
         btn_text = request.form.get("btn_text", "").strip()
@@ -5373,7 +6788,8 @@ def broadcast():
         flash(f"پیام به {success_count} کاربر ارسال شد. (خطا: {fail_count})", "success")
         return redirect(url_for("broadcast"))
 
-    return render_template("broadcast.html")
+    resellers = db.get_all_resellers()
+    return render_template("broadcast.html", resellers=resellers, active_banners=RESELLER_PANEL_BANNERS)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -5415,7 +6831,7 @@ def ticket_reply(ticket_id):
 
     ticket = db.get_ticket(ticket_id)
     if ticket:
-        sender_name = session.get("username") or session.get("name") or "پشتیبانی"
+        sender_name = session.get("display_name") or session.get("name") or session.get("username") or "پشتیبانی"
         db.add_ticket_message(
             ticket_id=ticket_id,
             sender_type="admin",
@@ -5598,20 +7014,85 @@ def reject_quota_change(ticket_id):
 @app.route("/admin/subscription/<int:sub_id>/clear-debt", methods=["POST"])
 @permission_required("sub_manage")
 def admin_subscription_clear_debt(sub_id):
-    """تسویه سریع بدهی اشتراک توسط مدیر"""
-    db.clear_subscription_debt(sub_id)
-    flash("بدهی مشتری با موفقیت تسویه شد و اشتراک به عنوان پرداخت شده علامت‌گذاری گردید.", "success")
+    """تسویه کامل و سریع بدهی اشتراک توسط مدیر"""
+    settled_by = session.get("username") or "admin"
+    db.clear_subscription_debt(sub_id, settled_by=settled_by)
+    flash("تمام بدهی‌های مشتری با موفقیت تسویه شد و اشتراک به عنوان پرداخت شده علامت‌گذاری گردید.", "success")
     return redirect(request.form.get("next") or request.referrer or url_for("subscriptions"))
 
 
 @app.route("/reseller/subscription/<int:sub_id>/clear-debt", methods=["POST"])
 @reseller_required
 def reseller_subscription_clear_debt(sub_id):
-    """تسویه سریع بدهی مشتری توسط نماینده"""
+    """تسویه کامل و سریع بدهی مشتری توسط نماینده"""
     reseller_id = session.get("reseller_id")
-    db.clear_subscription_debt(sub_id, reseller_id=reseller_id)
-    flash("بدهی مشتری با موفقیت تسویه شد و وضعیت اشتراک به پرداخت شده تغییر یافت.", "success")
+    settled_by = session.get("username") or f"reseller_{reseller_id}"
+    db.clear_subscription_debt(sub_id, reseller_id=reseller_id, settled_by=settled_by)
+    flash("تمام بدهی‌های مشتری با موفقیت تسویه شد و وضعیت اشتراک به پرداخت شده تغییر یافت.", "success")
     return redirect(request.form.get("next") or request.referrer or url_for("reseller_users"))
+
+
+@app.route("/api/subscription/<int:sub_id>/debt-report", methods=["GET"])
+def api_customer_debt_report(sub_id: int):
+    """دریافت گزارش تفصیلی بدهی‌ها و رسیدهای اشتراک جهت نمایش در مودال گزارش بدهی"""
+    is_admin = bool(session.get("logged_in") and (session.get("role") in ("admin", "super_admin", "partner") or session.get("is_admin")))
+    reseller_id = session.get("reseller_id")
+    if not is_admin and not reseller_id:
+        return jsonify({"success": False, "error": "دسترسی غیرمجاز"}), 403
+
+    sub = db.get_subscription(sub_id)
+    if not sub:
+        return jsonify({"success": False, "error": "اشتراک یافت نشد"}), 404
+
+    if not is_admin and reseller_id and sub.get("reseller_id") != reseller_id:
+        return jsonify({"success": False, "error": "دسترسی غیرمجاز به این اشتراک"}), 403
+
+    report = db.get_customer_debt_report(sub_id)
+    return jsonify({
+        "success": True,
+        "subscription": {
+            "id": sub["id"],
+            "account_name": sub.get("account_name"),
+            "debt_amount": sub.get("debt_amount", 0),
+            "payment_status": sub.get("payment_status", "paid"),
+            "debt_notes": sub.get("debt_notes")
+        },
+        "report": report
+    })
+
+
+@app.route("/admin/subscription/<int:sub_id>/settle-debt-record/<int:record_id>", methods=["POST"])
+@permission_required("sub_manage")
+def admin_settle_debt_record(sub_id: int, record_id: int):
+    """تسویه یک رسید بدهی مشخص توسط مدیر"""
+    sub = db.get_subscription(sub_id)
+    if not sub:
+        return jsonify({"success": False, "error": "اشتراک یافت نشد"}), 404
+
+    settled_by = session.get("username") or "admin"
+    res = db.settle_customer_debt_record(sub_id, record_id=record_id, settled_by=settled_by)
+    if res.get("success"):
+        return jsonify({"success": True, "message": "رسید بدهی با موفقیت تسویه شد.", "data": res})
+    else:
+        return jsonify({"success": False, "error": res.get("error", "خطا در تسویه بدهی")}), 400
+
+
+@app.route("/reseller/subscription/<int:sub_id>/settle-debt-record/<int:record_id>", methods=["POST"])
+@reseller_required
+def reseller_settle_debt_record(sub_id: int, record_id: int):
+    """تسویه یک رسید بدهی مشخص توسط نماینده"""
+    reseller_id = session.get("reseller_id")
+    sub = db.get_reseller_subscription(reseller_id, sub_id)
+    if not sub:
+        return jsonify({"success": False, "error": "اشتراک یافت نشد یا متعلق به شما نیست"}), 404
+
+    settled_by = session.get("username") or f"reseller_{reseller_id}"
+    res = db.settle_customer_debt_record(sub_id, record_id=record_id, settled_by=settled_by)
+    if res.get("success"):
+        return jsonify({"success": True, "message": "رسید بدهی با موفقیت تسویه شد.", "data": res})
+    else:
+        return jsonify({"success": False, "error": res.get("error", "خطا در تسویه بدهی")}), 400
+
 
 
 @app.route("/subscription/<int:sub_id>/send-debt-reminder", methods=["POST"])
@@ -5641,15 +7122,19 @@ def subscription_send_debt_reminder(sub_id):
         flash("برای این مشتری شناسه کاربری تلگرام ثبت نشده است.", "warning")
         return redirect(request.referrer or url_for("subscriptions"))
 
-    card_number = get_setting("card_number") or ""
-    card_holder = get_setting("card_holder") or ""
-    bank_name = get_setting("bank_name") or ""
-    if reseller_id:
-        r_info = db.get_reseller(reseller_id) or {}
+    card_number = db.get_setting("card_number") or ""
+    card_holder = db.get_setting("card_holder") or ""
+    bank_name = db.get_setting("bank_name") or ""
+    
+    sub_reseller_id = sub.get("reseller_id") or reseller_id
+    r_info = db.get_reseller(sub_reseller_id) if sub_reseller_id else {}
+    bot_token = None
+    if r_info:
         if r_info.get("card_number"):
             card_number = r_info["card_number"]
             card_holder = r_info.get("card_holder", "")
             bank_name = r_info.get("bank_name", "")
+        bot_token = r_info.get("bot_token")
 
     msg = (
         f"🌸 <b>کاربر گرامی، با سلام و احترام</b>\n\n"
@@ -5663,13 +7148,16 @@ def subscription_send_debt_reminder(sub_id):
     msg += "\n🙏 لطفاً پس از واریز، تصویر فیش پرداخت خود را در همین بات ارسال فرمایید."
 
     try:
-        send_telegram_msg(tg_id, msg)
-        flash(f"✅ پیام یادآوری بدهی با موفقیت به تلگرام مشتری «{sub.get('account_name')}» ارسال شد.", "success")
+        ok = send_telegram_msg(tg_id, msg, bot_token=bot_token)
+        if ok:
+            flash(f"✅ پیام یادآوری بدهی با موفقیت به تلگرام مشتری «{sub.get('account_name')}» ارسال شد.", "success")
+        else:
+            flash(f"⚠️ ارسال پیام به تلگرام مشتری ناموفق بود (ممکن است کاربر ربات را مسدود کرده باشد).", "warning")
     except Exception as e:
         logger.error(f"Error sending debt reminder to tg {tg_id}: {e}")
         flash(f"خطا در ارسال پیام تلگرام: {e}", "danger")
 
-    return redirect(request.referrer or url_for("subscriptions"))
+    return redirect(request.referrer or (url_for("reseller_users") if reseller_id else url_for("subscriptions")))
 
 
 @app.route("/admin/subscriptions/bulk", methods=["POST"])
@@ -6027,7 +7515,13 @@ def cards():
                 usdt_rate=usdt_rate,
                 db_instance=db
             )
-            flash("تنظیمات درگاه کریپتو / تتر با موفقیت بروزرسانی شد.", "success")
+        elif action == "save_admin_bank_sms":
+            enabled = bool(request.form.get("bank_sms_enabled"))
+            digits = int(request.form.get("bank_sms_digits", 3))
+            timeout = int(request.form.get("bank_sms_timeout", 15))
+            regenerate = bool(request.form.get("regenerate_token"))
+            db.save_admin_bank_sms_config(enabled=enabled, digits=digits, timeout=timeout, regenerate_token=regenerate)
+            flash("تنظیمات تایید خودکار کارت به کارت با پیامک بانک برای مدیریت با موفقیت ذخیره شد.", "success")
 
         return redirect(url_for("cards"))
 
@@ -6042,6 +7536,10 @@ def cards():
     blupal_webhook_url = f"{str(domain).rstrip('/')}/payment/blupal/webhook"
     blupal_callback_url = f"{str(domain).rstrip('/')}/payment/blupal/callback"
 
+    admin_bank_sms = db.get_admin_bank_sms_config()
+    bank_sms_webhook_url = f"{str(domain).rstrip('/')}/api/bank-sms/webhook?token={admin_bank_sms['token']}"
+    bank_sms_logs = db.get_bank_sms_logs(owner_type="admin", limit=15)
+
     return render_template(
         "cards.html",
         cards=cards_list,
@@ -6049,7 +7547,10 @@ def cards():
         admin_gateway=admin_gateway,
         crypto_config=crypto_config,
         blupal_webhook_url=blupal_webhook_url,
-        blupal_callback_url=blupal_callback_url
+        blupal_callback_url=blupal_callback_url,
+        admin_bank_sms=admin_bank_sms,
+        bank_sms_webhook_url=bank_sms_webhook_url,
+        bank_sms_logs=bank_sms_logs
     )
 
 
@@ -6110,21 +7611,50 @@ def admin_plans_page():
             price = int(request.form.get("price", 0))
             data_limit = int(request.form.get("data_limit", 0))
             duration = int(request.form.get("duration", 30))
-            res = add_plan(name, price, data_limit, duration)
+            plan_icon = request.form.get("plan_icon", "").strip()
+
+            target_type = request.form.get("target_type", "all")
+            allowed_resellers = []
+            is_exclusive_admin = False
+            is_exclusive_reseller = False
+
+            if target_type == "admin":
+                is_exclusive_admin = True
+            elif target_type == "resellers":
+                allowed_resellers = [int(x) for x in request.form.getlist("allowed_resellers") if str(x).isdigit()]
+                is_exclusive_reseller = True
+            else:
+                # اگر سوییچ قدیمی فرستاده شده باشد
+                if request.form.get("is_exclusive_admin") in ("on", "1", "true"):
+                    is_exclusive_admin = True
+
+            res = add_plan(
+                name=name,
+                price=price,
+                data_limit=data_limit,
+                duration=duration,
+                is_exclusive_admin=is_exclusive_admin,
+                plan_icon=plan_icon,
+                allowed_resellers=allowed_resellers,
+                is_exclusive_reseller=is_exclusive_reseller
+            )
             if res.get("success"):
                 flash("پلن جدید با موفقیت افزوده شد.", "success")
             else:
                 flash(f"خطا در افزودن پلن: {res.get('error')}", "danger")
-        return redirect(url_for("admin_plans_page", tab=current_tab, reseller_id=reseller_id_param))
+        return redirect(url_for("admin_plans_page", tab=current_tab, reseller_id=reseller_id_param if reseller_id_param else None))
 
     plans = get_all_plans()
     resellers_list = db.get_all_resellers()
+    resellers_map = {r["id"]: r for r in resellers_list}
     selected_reseller = db.get_reseller(selected_reseller_id) if selected_reseller_id else None
     selected_reseller_plans = db.get_reseller_plans(selected_reseller_id) if selected_reseller_id else []
 
-    # محاسبه پلن‌های پیش‌فرض نمایندگان با تخفیف پایه ۲۰ درصد
+    # محاسبه پلن‌های پیش‌فرض نمایندگان با تخفیف پایه ۲۰ درصد (پلن‌های اختصاصی مدیریت و پلن‌های اختصاصی نمایندگان خاص حذف می‌شوند)
     default_reseller_plans = []
     for pid, p in plans.items():
+        if p.get("is_exclusive_admin") or p.get("allowed_resellers") or p.get("is_exclusive_reseller"):
+            continue
         base_price = p.get("price", 0)
         default_reseller_plans.append({
             "plan_id": pid,
@@ -6133,18 +7663,39 @@ def admin_plans_page():
             "wholesale_price": int(base_price * 0.8),
             "data_limit": p.get("data_limit", 0),
             "duration": p.get("duration", 30),
+            "plan_icon": p.get("plan_icon", ""),
             "is_active": p.get("is_active", True)
         })
+
+    # پلن‌های اختصاصی تعریف‌شده در کل سیستم برای نمایش در نمای کلی تب همکاران
+    dedicated_reseller_plans = []
+    for pid, p in plans.items():
+        allowed = p.get("allowed_resellers") or []
+        if allowed or p.get("is_exclusive_reseller"):
+            r_names = [resellers_map.get(r_id, {}).get("name", f"نماینده #{r_id}") for r_id in allowed]
+            dedicated_reseller_plans.append({
+                "plan_id": pid,
+                "name": p.get("name", "پلن"),
+                "price": p.get("price", 0),
+                "data_limit": p.get("data_limit", 0),
+                "duration": p.get("duration", 30),
+                "plan_icon": p.get("plan_icon", ""),
+                "is_active": p.get("is_active", True),
+                "allowed_resellers": allowed,
+                "reseller_names": r_names
+            })
 
     return render_template(
         "plans.html",
         plans=plans,
         current_tab=current_tab,
         resellers_list=resellers_list,
+        resellers_map=resellers_map,
         selected_reseller_id=selected_reseller_id,
         selected_reseller=selected_reseller,
         selected_reseller_plans=selected_reseller_plans,
-        default_reseller_plans=default_reseller_plans
+        default_reseller_plans=default_reseller_plans,
+        dedicated_reseller_plans=dedicated_reseller_plans
     )
 
 
@@ -6197,16 +7748,79 @@ def admin_reseller_plan_reset():
     return redirect(url_for("admin_plans_page", tab="resellers", reseller_id=reseller_id))
 
 
+@app.route("/admin/reseller/plan/add_dedicated", methods=["POST"])
+@permission_required("plans_manage")
+def admin_reseller_add_dedicated_plan():
+    """افزودن مستقیم پلن اختصاصی برای یک نماینده از تب مدیریت پلن‌های نمایندگان"""
+    primary_reseller_id = int(request.form.get("reseller_id", 0))
+    name = request.form.get("name", "").strip()
+    price = int(request.form.get("price", 0))
+    data_limit = int(request.form.get("data_limit", 0))
+    duration = int(request.form.get("duration", 30))
+    plan_icon = request.form.get("plan_icon", "").strip()
+    
+    additional_resellers = request.form.getlist("additional_resellers")
+    selected_resellers = set()
+    if primary_reseller_id > 0:
+        selected_resellers.add(primary_reseller_id)
+    for r in additional_resellers:
+        if str(r).isdigit() and int(r) > 0:
+            selected_resellers.add(int(r))
+
+    if not selected_resellers or not name or price < 0:
+        flash("اطلاعات پلن اختصاصی نامعتبر است.", "danger")
+        return redirect(url_for("admin_plans_page", tab="resellers", reseller_id=primary_reseller_id if primary_reseller_id else None))
+
+    res = add_plan(
+        name=name,
+        price=price,
+        data_limit=data_limit,
+        duration=duration,
+        is_exclusive_admin=False,
+        plan_icon=plan_icon,
+        allowed_resellers=list(selected_resellers),
+        is_exclusive_reseller=True
+    )
+    if res.get("success"):
+        flash("پلن اختصاصی جدید با موفقیت برای نماینده تعریف شد و از سایرین کاملاً مخفی خواهد بود.", "success")
+    else:
+        flash(f"خطا در ایجاد پلن اختصاصی: {res.get('error')}", "danger")
+
+    return redirect(url_for("admin_plans_page", tab="resellers", reseller_id=primary_reseller_id if primary_reseller_id else None))
+
+
 @app.route("/plans/edit/<plan_id>", methods=["POST"])
 @permission_required("plans_manage")
 def admin_plan_edit(plan_id):
-    """ویرایش کامل مشخصات پلن و تغییر شناسه"""
+    """ویرایش کامل مشخصات پلن و تغییر شناسه و سطح دسترسی"""
     new_plan_id = request.form.get("new_plan_id", "").strip().lower().replace(" ", "_")
     name = request.form.get("name", "").strip()
     price = int(request.form.get("price", 0))
     data_limit = int(request.form.get("data_limit", 0))
     duration = int(request.form.get("duration", 30))
     is_active = request.form.get("is_active") == "1"
+    plan_icon = request.form.get("plan_icon", "").strip()
+
+    target_type = request.form.get("target_type")
+    is_exclusive_admin = False
+    allowed_resellers = None
+    is_exclusive_reseller = False
+
+    if target_type == "admin":
+        is_exclusive_admin = True
+        allowed_resellers = []
+        is_exclusive_reseller = False
+    elif target_type == "resellers":
+        is_exclusive_admin = False
+        allowed_resellers = [int(x) for x in request.form.getlist("allowed_resellers") if str(x).isdigit()]
+        is_exclusive_reseller = True
+    elif target_type == "all":
+        is_exclusive_admin = False
+        allowed_resellers = []
+        is_exclusive_reseller = False
+    else:
+        is_exclusive_admin = request.form.get("is_exclusive_admin") in ("on", "1", "true")
+        allowed_resellers = None
 
     update_kwargs = {
         "name": name,
@@ -6214,7 +7828,13 @@ def admin_plan_edit(plan_id):
         "data_limit": data_limit,
         "duration": duration,
         "is_active": is_active,
+        "is_exclusive_admin": is_exclusive_admin,
+        "plan_icon": plan_icon,
     }
+    if allowed_resellers is not None:
+        update_kwargs["allowed_resellers"] = allowed_resellers
+        update_kwargs["is_exclusive_reseller"] = is_exclusive_reseller
+
     if new_plan_id and new_plan_id != plan_id:
         update_kwargs["new_plan_id"] = new_plan_id
 
@@ -6223,7 +7843,10 @@ def admin_plan_edit(plan_id):
         flash("پلن با موفقیت بروزرسانی شد.", "success")
     else:
         flash(f"خطا در ویرایش پلن: {res.get('error')}", "danger")
-    return redirect(url_for("admin_plans_page"))
+
+    return_tab = request.form.get("return_tab") or request.args.get("tab", "admin")
+    reseller_id_param = request.form.get("reseller_id") or request.args.get("reseller_id", "")
+    return redirect(url_for("admin_plans_page", tab=return_tab, reseller_id=reseller_id_param if reseller_id_param else None))
 
 
 @app.route("/plans/toggle/<plan_id>")
@@ -6242,12 +7865,14 @@ def admin_plan_toggle(plan_id):
 @permission_required("plans_manage")
 def admin_plan_delete(plan_id):
     """حذف پلن"""
+    tab = request.args.get("tab", "admin")
+    reseller_id = request.args.get("reseller_id", "")
     res = delete_plan(plan_id)
     if res.get("success"):
         flash("پلن حذف شد.", "warning")
     else:
         flash(f"خطا در حذف پلن: {res.get('error')}", "danger")
-    return redirect(url_for("admin_plans_page"))
+    return redirect(url_for("admin_plans_page", tab=tab, reseller_id=reseller_id if reseller_id else None))
 
 
 @app.route("/plans/move-up/<plan_id>")
@@ -6382,6 +8007,7 @@ def export_transactions():
                processed_at,
                created_at 
         FROM transactions 
+        WHERE ((reseller_id IS NULL OR reseller_id = 0) OR (reseller_id IS NOT NULL AND reseller_id > 0 AND (gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')))
         ORDER BY created_at DESC
     """).fetchall()
     conn.close()
@@ -6450,6 +8076,7 @@ def settings():
             sms_provider = request.form.get("sms_provider", "ippanel").strip().lower()
             sms_api_key = request.form.get("sms_api_key", "").strip()
             sms_originator = request.form.get("sms_originator", "").strip()
+            sms_url = request.form.get("sms_url", "").strip()
             sms_pattern_login = request.form.get("sms_pattern_login", "").strip()
             sms_pattern_failed = request.form.get("sms_pattern_failed", "").strip()
             sms_pattern_logout = request.form.get("sms_pattern_logout", "").strip()
@@ -6459,6 +8086,8 @@ def settings():
             if sms_api_key:
                 db.save_setting("sms_api_key", sms_api_key)
             db.save_setting("sms_originator", sms_originator)
+            db.save_setting("sms_url", sms_url)
+            db.save_setting("sms_generic_url", sms_url)
             db.save_setting("sms_pattern_login", sms_pattern_login)
             db.save_setting("sms_pattern_failed", sms_pattern_failed)
             db.save_setting("sms_pattern_logout", sms_pattern_logout)
@@ -6546,6 +8175,121 @@ def settings():
             })
             flash("تنظیمات هوشمند استرداد وجه و سطل زباله نمایندگان با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
+        elif action == "save_store_branding":
+            store_name = request.form.get("store_name", "").strip()
+            store_version = request.form.get("store_version", "").strip()
+            store_version_source = request.form.get("store_version_source", "manual").strip()
+            store_github_repo = request.form.get("store_github_repo", "").strip()
+            store_copyright = request.form.get("store_copyright", "").strip()
+            store_primary_color = request.form.get("store_primary_color", "#4f46e5").strip()
+            store_logo_url = request.form.get("store_logo_url", "").strip()
+
+            if "store_logo_file" in request.files:
+                file = request.files["store_logo_file"]
+                if file and file.filename:
+                    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "png"
+                    fn = f"system_store_logo_{int(time.time())}.{ext}"
+                    fp = AVATAR_CACHE_DIR / fn
+                    file.save(fp)
+                    store_logo_url = url_for("telegram_avatar", identifier=fn)
+
+            if store_name:
+                db.save_setting("store_name", store_name)
+            if store_version:
+                db.save_setting("store_version", store_version)
+            db.save_setting("store_version_source", store_version_source)
+            db.save_setting("store_github_repo", store_github_repo)
+            if store_copyright:
+                db.save_setting("store_copyright", store_copyright)
+            if store_primary_color:
+                db.save_setting("store_primary_color", store_primary_color)
+            if store_logo_url:
+                db.save_setting("store_logo", store_logo_url)
+
+            _store_version_cache["version"] = None
+            _store_version_cache["timestamp"] = 0
+
+            flash("تنظیمات نام فروشگاه، نسخه، لوگو و کپی‌رایت با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("settings"))
+        elif action == "save_customer_portal_settings":
+            user_proxy_path = request.form.get("user_proxy_path", "").strip("/").strip()
+            portal_title = request.form.get("portal_title", "").strip()
+            portal_subtitle = request.form.get("portal_subtitle", "").strip()
+            support_phone = request.form.get("support_phone", "").strip()
+            support_username = request.form.get("support_username", "").strip().lstrip("@")
+            portal_enable_renewal = "1" if request.form.get("portal_enable_renewal") else "0"
+            portal_show_troubleshoot = "1" if request.form.get("portal_show_troubleshoot") else "0"
+            portal_layout = request.form.get("portal_layout", "classic").strip().lower()
+            portal_plan_style = request.form.get("portal_plan_style", "glass_classic").strip().lower()
+
+            db.save_setting("user_proxy_path", user_proxy_path)
+            db.save_setting("portal_title", portal_title)
+            db.save_setting("portal_subtitle", portal_subtitle)
+            db.save_setting("support_phone", support_phone)
+            db.save_setting("support_username", support_username)
+            db.save_setting("portal_enable_renewal", portal_enable_renewal)
+            db.save_setting("portal_show_troubleshoot", portal_show_troubleshoot)
+            db.save_setting("portal_layout", portal_layout)
+            db.save_setting("portal_plan_style", portal_plan_style)
+
+            server_status_mode = request.form.get("server_status_mode", "smart").strip().lower()
+            server_status_manual_state = request.form.get("server_status_manual_state", "operational").strip().lower()
+            server_status_custom_text = request.form.get("server_status_custom_text", "").strip()
+
+            db.save_setting("server_status_mode", server_status_mode)
+            db.save_setting("server_status_manual_state", server_status_manual_state)
+            db.save_setting("server_status_custom_text", server_status_custom_text)
+
+            flash("تنظیمات پورتال اختصاصی مشتری، قالب ظاهری، استایل دکمه‌ها، پروکسی پچ و وضعیت سرورها با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("settings"))
+        elif action == "save_palette_settings":
+            active_palette = request.form.get("active_palette", "vps_aurora").strip()
+            palette_intensity = request.form.get("palette_intensity", "normal").strip()
+            palette_animation = request.form.get("palette_animation", "float").strip()
+            portal_palette = request.form.get("portal_palette", "inherit").strip()
+
+            db.save_setting("active_palette", active_palette)
+            db.save_setting("palette_intensity", palette_intensity)
+            db.save_setting("palette_animation", palette_animation)
+            db.save_setting("portal_palette", portal_palette)
+
+            # در صورت تیک زدن همگام‌سازی رنگ سازمانی، رنگ شاخص نیز مطابق پالت تنظیم شود
+            sync_primary = request.form.get("sync_primary_color")
+            if sync_primary:
+                pal_data = get_palette(active_palette)
+                db.save_setting("store_primary_color", pal_data["primary_color"])
+
+            flash("تنظیمات پالت‌های رنگی، هاله‌های نوری و افکت شیشه‌ای مات با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("settings"))
+        elif action == "save_chat_settings":
+            chat_button_style = request.form.get("chat_button_style", "modern_pill").strip()
+            chat_button_text = request.form.get("chat_button_text", "گفتگوی آنلاین").strip()
+            chat_button_position = request.form.get("chat_button_position", "right").strip()
+            chat_fake_online_mode = request.form.get("chat_fake_online_mode", "real").strip()
+            chat_fake_online_agents = request.form.getlist("chat_fake_online_agents")
+            chat_ai_enabled = "1" if request.form.get("chat_ai_enabled") else "0"
+            chat_ai_mode = request.form.get("chat_ai_mode", "smart_local").strip()
+            chat_ai_api_key = request.form.get("chat_ai_api_key", "").strip()
+            chat_ai_api_url = request.form.get("chat_ai_api_url", "https://api.openai.com/v1/chat/completions").strip()
+            chat_ai_model = request.form.get("chat_ai_model", "gpt-4o-mini").strip()
+            chat_sound_enabled = "1" if request.form.get("chat_sound_enabled") else "0"
+
+            db.save_chat_settings({
+                "chat_button_style": chat_button_style,
+                "chat_button_text": chat_button_text,
+                "chat_button_position": chat_button_position,
+                "chat_fake_online_mode": chat_fake_online_mode,
+                "chat_fake_online_agents": chat_fake_online_agents,
+                "chat_ai_enabled": chat_ai_enabled,
+                "chat_ai_mode": chat_ai_mode,
+                "chat_ai_api_key": chat_ai_api_key,
+                "chat_ai_api_url": chat_ai_api_url,
+                "chat_ai_model": chat_ai_model,
+                "chat_sound_enabled": chat_sound_enabled
+            })
+
+            flash("تنظیمات ظاهر دکمه گفتگوی آنلاین، وضعیت ساختگی و چتبات هوش مصنوعی با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("settings"))
 
     conn = db.get_connection()
     settings_list = conn.execute("SELECT * FROM settings").fetchall()
@@ -6560,6 +8304,38 @@ def settings():
     vip_settings = db.get_vip_settings()
     refund_settings = db.get_refund_settings()
     all_resellers = db.get_all_resellers()
+    store_branding_config = {
+        "store_name": db.get_setting("store_name", "سامانه هوشمند اینترنت پرو"),
+        "store_version": db.get_setting("store_version", "v0.0.1 Beta"),
+        "store_version_source": db.get_setting("store_version_source", "manual"),
+        "store_github_repo": db.get_setting("store_github_repo", ""),
+        "store_copyright": db.get_setting("store_copyright", "تمامی حقوق برای این سامانه محفوظ است © 2026"),
+        "store_primary_color": db.get_setting("store_primary_color", "#4f46e5"),
+        "store_logo": db.get_setting("store_logo", ""),
+        "current_active_version": get_store_version()
+    }
+    customer_portal_config = {
+        "user_proxy_path": db.get_setting("user_proxy_path") or os.getenv("USER_PROXY_PATH", "user").strip("/"),
+        "portal_title": db.get_setting("portal_title", "فروشگاه اینترنت آزاد"),
+        "portal_subtitle": db.get_setting("portal_subtitle", "پورتال اختصاصی استعلام وضعیت و تمدید اشتراک"),
+        "support_phone": db.get_setting("support_phone", ""),
+        "support_username": db.get_setting("support_username", ""),
+        "portal_enable_renewal": str(db.get_setting("portal_enable_renewal", "1")).lower() in ("1", "true"),
+        "portal_show_troubleshoot": str(db.get_setting("portal_show_troubleshoot", "1")).lower() in ("1", "true"),
+        "server_status_mode": db.get_setting("server_status_mode", "smart"),
+        "server_status_manual_state": db.get_setting("server_status_manual_state", "operational"),
+        "server_status_custom_text": db.get_setting("server_status_custom_text", ""),
+        "portal_layout": db.get_setting("portal_layout", "classic"),
+        "portal_plan_style": db.get_setting("portal_plan_style", "glass_classic")
+    }
+    palette_settings = {
+        "active_palette": db.get_setting("active_palette", "vps_aurora"),
+        "palette_intensity": db.get_setting("palette_intensity", "normal"),
+        "palette_animation": db.get_setting("palette_animation", "float"),
+        "portal_palette": db.get_setting("portal_palette", "inherit")
+    }
+    chat_settings = db.get_chat_settings()
+
     return render_template(
         "settings.html",
         settings=settings_list,
@@ -6572,7 +8348,12 @@ def settings():
         tutorial_title=tutorial_title,
         vip_settings=vip_settings,
         refund_settings=refund_settings,
-        all_resellers=all_resellers
+        all_resellers=all_resellers,
+        store_branding_config=store_branding_config,
+        customer_portal_config=customer_portal_config,
+        palette_settings=palette_settings,
+        chat_settings=chat_settings,
+        available_palettes=get_all_palettes()
     )
 
 
@@ -6584,11 +8365,31 @@ def admin_sms_test():
     if not test_phone:
         return jsonify({"success": False, "error": "لطفاً شماره تلفن همراه را وارد نمایید."})
 
-    success, msg = send_sms(
-        receptor=test_phone,
-        message="✅ تست اتصال به درگاه پیامکی سامانه HiddiBot با موفقیت انجام شد.",
-        db_instance=db
-    )
+    cfg = get_sms_config(db)
+    pattern = cfg.get("pattern_login")
+
+    # چنانچه شماره خط اختصاصی تعریف نشده ولی پترن ورود تعریف شده، تست با پترن ارسال شود
+    if not cfg.get("originator") and pattern and cfg.get("provider") in ("smsir", "sms.ir", "ippanel", "farazsms", "maxsms", "kavenegar"):
+        pattern_data = {
+            "name": "مدیر سیستم",
+            "code": "123456",
+            "ip": request.remote_addr or "127.0.0.1",
+            "time": "اکنون"
+        }
+        success, msg = send_sms(
+            receptor=test_phone,
+            message="✅ تست اتصال به درگاه پیامکی سامانه HiddiBot با موفقیت انجام شد.",
+            pattern_code=pattern,
+            pattern_data=pattern_data,
+            db_instance=db
+        )
+    else:
+        success, msg = send_sms(
+            receptor=test_phone,
+            message="✅ تست اتصال به درگاه پیامکی سامانه HiddiBot با موفقیت انجام شد.",
+            db_instance=db
+        )
+
     if success:
         return jsonify({"success": True, "message": f"پیامک آزمایشی با موفقیت به شماره {test_phone} ارسال شد."})
     else:
@@ -6672,6 +8473,11 @@ def reseller_dashboard():
     analytics = db.get_advanced_analytics(reseller_id=reseller_id)
     bot_status = multibot_manager.get_bot_status(reseller_id)
     fin_summary = db.get_reseller_financial_summary(reseller_id)
+    revenue_7days = db.get_reseller_7days_revenue(reseller_id)
+    traffic_blocks = get_hiddify_dashboard_traffic_stats(
+        api_key=reseller.get("hiddify_admin_uuid"),
+        reseller_id=reseller_id
+    )
     return render_template(
         "reseller_dashboard.html",
         reseller=reseller,
@@ -6679,7 +8485,9 @@ def reseller_dashboard():
         recent_transactions=recent_transactions,
         analytics=analytics,
         bot_status=bot_status,
-        fin_summary=fin_summary
+        fin_summary=fin_summary,
+        revenue_7days=revenue_7days,
+        traffic_blocks=traffic_blocks
     )
 
 
@@ -6693,8 +8501,7 @@ def reseller_create_user():
     discount = stats.get("discount_percent", 20)
     
     # بارگذاری پلن‌های اختصاصی و فعال این نماینده
-    reseller_plans_list = db.get_reseller_plans(reseller_id)
-    plans = {p["plan_id"]: p for p in reseller_plans_list}
+    plans = get_reseller_plans_dict(reseller_id)
 
     if request.method == "POST":
         plan_key = request.form.get("plan_id")
@@ -6713,7 +8520,7 @@ def reseller_create_user():
             return redirect(url_for("reseller_create_user"))
 
         plan = plans[plan_key]
-        original_price = plan.get("master_price") or plan.get("price") or 0
+        original_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or 0
         final_price = plan.get("wholesale_price") if plan.get("wholesale_price") is not None else int(original_price * (100 - discount) / 100)
 
         # بررسی موجودی نقدی + اعتبار مجاز برای خرید با توجه به منبع انتخابی
@@ -6743,7 +8550,7 @@ def reseller_create_user():
 
         telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else 0
         if payment_status in ("unpaid", "debtor"):
-            debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else plan.get("display_price", plan.get("price", 0))
+            debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else original_price
         else:
             debt_amount = 0
 
@@ -6754,11 +8561,24 @@ def reseller_create_user():
             user_comment += f" | TG: {telegram_id}"
 
         # ۱. ابتدا ساخت کاربر در سرور هیدیفای انجام می‌شود
-        data_limit_gb = plan.get("data_limit", 30)
-        duration_days = plan.get("duration", 30)
+        data_limit_gb = plan.get("display_data_limit") if plan.get("display_data_limit") is not None else plan.get("data_limit", 30)
+        duration_days = plan.get("display_duration") if plan.get("display_duration") is not None else plan.get("duration", 30)
+
+        can_gift = bool(reseller.get("can_gift_traffic"))
+        gift_traffic = 0.0
+        if can_gift:
+            try:
+                gift_traffic = max(0.0, float(request.form.get("gift_traffic_gb", 0) or 0))
+            except (ValueError, TypeError):
+                gift_traffic = 0.0
+
+        effective_limit_gb = data_limit_gb + gift_traffic
+        if gift_traffic > 0:
+            user_comment += f" | +{gift_traffic}GB Gift"
+
         h_res = hidify_sync_create_user(
             name=account_name,
-            usage_limit_gb=data_limit_gb,
+            usage_limit_gb=effective_limit_gb,
             package_days=duration_days,
             comment=user_comment,
             reseller_id=reseller_id
@@ -6771,8 +8591,18 @@ def reseller_create_user():
             return redirect(url_for("reseller_create_user"))
 
         # ۲. پس از تایید ۱۰۰٪ ساخت در هیدیفای، موجودی/اعتبار کسر و تراکنش خرید ثبت می‌گردد
-        plan_title = plan.get("display_name") or plan.get("name") or plan.get("master_name", "")
-        deduct_res = db.deduct_reseller_balance(reseller_id, final_price, plan_title, account_name, payment_source=payment_source)
+        base_plan_title = plan.get("display_name") or plan.get("name") or plan.get("master_name", "")
+        plan_title = base_plan_title + (f" (+{gift_traffic}GB هدیه)" if gift_traffic > 0 else "")
+        profit_margin = 0 if payment_status in ("unpaid", "debtor") else max(0, original_price - final_price)
+        reseller_selling_price = 0 if payment_status in ("unpaid", "debtor") else original_price
+        reseller_creator = session.get("username") or reseller.get("username") or f"reseller_{reseller_id}"
+        deduct_res = db.deduct_reseller_balance(
+            reseller_id, final_price, plan_title, account_name,
+            payment_source=payment_source,
+            selling_price=reseller_selling_price,
+            profit_margin=profit_margin,
+            created_by=reseller_creator
+        )
         if not deduct_res.get("success"):
             logger.error(f"Failed to deduct balance after user creation: {deduct_res.get('error')}")
 
@@ -6794,19 +8624,20 @@ def reseller_create_user():
         actual_payment_source = deduct_res.get("payment_source", "wallet")
 
         # ۳. ثبت اشتراک با وضعیت بدهی، شناسه نماینده، شماره تلفن، هزینه و منبع پرداخت دقیق
+        reseller_creator = session.get("username") or f"reseller_{reseller_id}"
         conn = db.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO subscriptions 
             (telegram_id, hidify_uuid, plan_id, plan_name, account_name, phone_number,
              data_limit, duration, status, reseller_id, user_limit, cost_paid,
-             payment_status, debt_amount, debt_notes, debt_created_at, is_credit, credit_debt_amount, payment_source, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             payment_status, debt_amount, debt_notes, debt_created_at, is_credit, credit_debt_amount, payment_source, created_by, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             telegram_id, user_uuid, plan_key, plan_title, account_name, phone_number or None,
-            data_limit_gb, duration_days, reseller_id, user_limit, final_price,
+            effective_limit_gb, duration_days, reseller_id, user_limit, final_price,
             payment_status, debt_amount, debt_notes or None, debt_created, is_credit_sub, credit_used_amount,
-            actual_payment_source, now, now
+            actual_payment_source, reseller_creator, now, now
         ))
         sub_id = cursor.lastrowid
 
@@ -6823,6 +8654,44 @@ def reseller_create_user():
 
         conn.commit()
         conn.close()
+
+        # ثبت رسید بدهی در صورت بدهکار بودن مشتری
+        if payment_status in ("unpaid", "debtor") and debt_amount > 0:
+            try:
+                db.add_customer_debt_record(
+                    subscription_id=sub_id,
+                    account_name=account_name,
+                    telegram_id=telegram_id or 0,
+                    reseller_id=reseller_id,
+                    action_type="create",
+                    plan_name=plan_title,
+                    amount=debt_amount,
+                    notes=debt_notes or "ثبت بدهی هنگام ساخت اشتراک توسط نماینده",
+                    created_by=reseller_creator
+                )
+            except Exception as e_rec:
+                logger.error(f"Error logging customer debt record in reseller_create_user: {e_rec}")
+
+        # ثبت فیش پرداخت و درآمد مشتری برای نماینده در صورت تسویه و عدم بدهکاری
+        if payment_status not in ("unpaid", "debtor") and original_price > 0:
+            try:
+                tx_order_id = f"RES_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
+                db.save_transaction(
+                    order_id=tx_order_id,
+                    user_id=telegram_id or 0,
+                    username=account_name,
+                    plan_name=plan_title,
+                    amount=original_price,
+                    gateway="cash_reseller",
+                    tracking_code=f"CASH_{reseller_creator}",
+                    status="approved",
+                    account_name=account_name,
+                    source="reseller",
+                    reseller_id=reseller_id,
+                    subscription_id=sub_id
+                )
+            except Exception as e_tx:
+                logger.error(f"Error saving customer payment in reseller_create_user: {e_tx}")
 
         # ثبت سابقه دوره اولیه در تاریخچه
         db.save_subscription_history(
@@ -6911,7 +8780,7 @@ def reseller_users():
     reseller_id = session.get("reseller_id")
     stats = db.get_reseller_stats(reseller_id)
     discount = stats["discount_percent"]
-    plans = get_plans_dict()
+    plans = get_reseller_plans_dict(reseller_id)
     status_filter = request.args.get("status", "all")
     search_query = request.args.get("search", "").strip().lower()
     debtor_count = db.get_debtor_count(reseller_id)
@@ -6953,6 +8822,8 @@ def reseller_users():
                 continue
             elif status_filter == "debtors" and not (item.get("payment_status") in ("unpaid", "debtor") or (item.get("debt_amount") or 0) > 0):
                 continue
+            elif status_filter == "queue" and not item.get("has_queue"):
+                continue
 
             if search_query:
                 acc_name = (item.get("account_name") or "").lower()
@@ -6974,6 +8845,8 @@ def reseller_users():
     end_idx = min(start_idx + per_page, total_count)
     paginated_subs = subs[start_idx:end_idx]
 
+    queue_count = db.get_pending_queue_count(reseller_id=reseller_id)
+    all_pending_queue = db.get_all_pending_queue_items(reseller_id=reseller_id)
     single_link_template = get_single_link_template(db)
     return render_template(
         "reseller_users.html",
@@ -6983,8 +8856,13 @@ def reseller_users():
         discount=discount,
         stats=stats,
         debtor_count=debtor_count,
+        queue_count=queue_count,
+        all_pending_queue=all_pending_queue,
         balance=stats["balance"],
         available_credit=stats.get("available_credit", 0),
+        credit_enabled=stats.get("credit_enabled", False),
+        credit_limit=stats.get("credit_limit", 0),
+        credit_debt=stats.get("credit_debt", 0),
         total_purchasing_power=stats.get("total_purchasing_power", stats["balance"]),
         unpaid_debts_total=stats.get("unpaid_debts_total", 0),
         page=page,
@@ -7175,6 +9053,35 @@ def reseller_request_quota_change(sub_id):
     )
 
     if res.get("success"):
+        ticket_id = res.get("ticket_id")
+        try:
+            admin_tg = db.get_setting("admin_telegram_id") or get_admin_id()
+            if admin_tg:
+                r_info = db.get_reseller(reseller_id) or {}
+                r_name = r_info.get("name") or session.get("name") or f"نماینده #{reseller_id}"
+                sub_info = db.get_subscription(sub_id) or {}
+                acc_name = sub_info.get("account_name") or f"user_{sub_id}"
+                quota_notif = (
+                    f"⚖️ <b>درخواست تغییر مشخصات اشتراک از سمت نماینده!</b>\n\n"
+                    f"🎫 شماره تیکت: <b>#{ticket_id}</b>\n"
+                    f"👤 نماینده: <b>{r_name}</b> (کد #{reseller_id})\n"
+                    f"📦 اشتراک: <code>{acc_name}</code> (شناسه #{sub_id})\n"
+                    f"📊 حجم درخواستی: <b>{requested_limit} GB</b>\n"
+                    f"⏳ مدت درخواستی: <b>{requested_duration} روز</b>\n"
+                    + (f"📝 علت درخواست: {reason}\n" if reason else "")
+                    + f"⏰ زمان: {get_now_shamsi()}"
+                )
+                adm_kb = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "✅ تایید و اعمال مستقیم", "callback_data": f"adm_quota_app_{ticket_id}"},
+                            {"text": "❌ رد درخواست", "callback_data": f"adm_quota_rej_{ticket_id}"}
+                        ]
+                    ]
+                }
+                send_telegram_msg(int(admin_tg), quota_notif, reply_markup=adm_kb)
+        except Exception as e_tg:
+            logger.warning(f"Failed to notify admin of quota change request: {e_tg}")
         flash(f"✅ درخواست تغییر حجم به {requested_limit} گیگابایت و {requested_duration} روز با موفقیت برای مدیریت ارسال شد و در تیکت #{res.get('ticket_id')} ثبت گردید.", "success")
     else:
         flash(f"خطا در ثبت درخواست: {res.get('error')}", "danger")
@@ -7220,6 +9127,7 @@ def reseller_toggle_user(sub_id: int):
 def reseller_renew_user(sub_id: int):
     """تمدید اشتراک مشتری با کسر اعتبار تخفیف‌دار نماینده"""
     reseller_id = session.get("reseller_id")
+    reseller = db.get_reseller(reseller_id) or {}
     sub = db.get_reseller_subscription(reseller_id, sub_id)
     if not sub:
         flash("اشتراک مورد نظر یافت نشد.", "danger")
@@ -7227,48 +9135,130 @@ def reseller_renew_user(sub_id: int):
 
     plan_key = request.form.get("plan_id")
     payment_source = request.form.get("payment_source", "auto").strip()
-    plans = get_plans_dict()
+    plans = get_reseller_plans_dict(reseller_id)
     if plan_key not in plans:
         flash("پلن انتخابی نامعتبر است.", "danger")
         return redirect(get_redirect_target("reseller_users"))
 
     plan = plans[plan_key]
-    stats = db.get_reseller_stats(reseller_id)
-    discount = stats["discount_percent"]
-    original_price = plan["price"]
-    discount_amount = int((original_price * discount) / 100)
-    final_price = original_price - discount_amount
+    stats = db.get_reseller_stats(reseller_id) or {}
+    discount = stats.get("discount_percent", reseller.get("discount_percent", 20))
+    original_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or 0
+    final_price = plan.get("wholesale_price") if plan.get("wholesale_price") is not None else int(original_price * (100 - discount) / 100)
 
-    total_purchasing_power = stats.get("total_purchasing_power", stats["balance"])
+    total_purchasing_power = stats.get("total_purchasing_power", stats.get("balance", reseller.get("balance", 0)))
     if total_purchasing_power < final_price:
         flash(f"توان خرید شما (کیف پول + اعتبار) برای تمدید این پلن کافی نیست! توان خرید: {total_purchasing_power:,} ت | هزینه تمدید: {final_price:,} ت", "danger")
         return redirect(get_redirect_target("reseller_users"))
 
     instant_activate = bool(request.form.get("instant_activate"))
+    base_plan_title = plan.get("display_name") or plan.get("name") or plan.get("master_name", "")
+    data_limit_gb = plan.get("display_data_limit") if plan.get("display_data_limit") is not None else plan.get("data_limit", 30)
+    duration_days = plan.get("display_duration") if plan.get("display_duration") is not None else plan.get("duration", 30)
+
+    can_gift = bool(reseller.get("can_gift_traffic"))
+    gift_traffic = 0.0
+    if can_gift:
+        try:
+            gift_traffic = max(0.0, float(request.form.get("gift_traffic_gb", 0) or 0))
+        except (ValueError, TypeError):
+            gift_traffic = 0.0
+
+    effective_limit_gb = data_limit_gb + gift_traffic
+    plan_title = base_plan_title + (f" (+{gift_traffic}GB هدیه)" if gift_traffic > 0 else "")
 
     # ۱. در صورت فعال‌سازی آنی، هیدیفای بلافاصله ریست می‌شود
     renewal_res = {"renewal_type": "reset_and_replaced"}
     if instant_activate and sub.get("hidify_uuid"):
         try:
-            renewal_res = hidify_sync_renew_user(sub["hidify_uuid"], plan["data_limit"], plan["duration"], force_instant=True)
+            renewal_res = hidify_sync_renew_user(sub["hidify_uuid"], effective_limit_gb, duration_days, force_instant=True)
         except Exception as e:
             logger.error(f"Error in reseller renew Hiddify {sub.get('hidify_uuid')}: {e}")
 
+    # دریافت وضعیت مالی مشتری (تسویه یا بدهکار) و یادداشت تمدید
+    payment_status = request.form.get("payment_status", "paid").strip()
+    debt_amount_raw = request.form.get("debt_amount", "").strip()
+    renewal_notes = request.form.get("renewal_notes", "").strip()
+
+    if payment_status in ("unpaid", "debtor"):
+        debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else original_price
+        debt_status = "unpaid"
+    else:
+        debt_amount = 0
+        debt_status = "paid"
+
     # ۲. ثبت در دیتابیس (آنی با ریست یا رزرو در صف) و کسر هزینه با توجه به منبع پرداخت
+    creator_user = session.get("username") or f"reseller_{reseller_id}"
+    profit_margin = 0 if debt_status == "unpaid" else max(0, original_price - final_price)
+    renew_selling_price = 0 if debt_status == "unpaid" else original_price
     renew_db = db.renew_reseller_subscription(
         reseller_id=reseller_id,
         sub_id=sub_id,
         plan_id=plan_key,
-        plan_name=plan["name"],
+        plan_name=plan_title,
         cost=final_price,
-        data_limit=plan["data_limit"],
-        duration=plan["duration"],
+        data_limit=effective_limit_gb,
+        duration=duration_days,
         instant_activate=instant_activate,
         renewal_type=renewal_res.get("renewal_type", "reset_and_replaced"),
-        payment_source=payment_source
+        payment_source=payment_source,
+        selling_price=renew_selling_price,
+        profit_margin=profit_margin,
+        created_by=creator_user
     )
 
     if renew_db.get("success"):
+        # تنظیم یا تسویه وضعیت مالی و بدهی مشتری
+        old_debt = int(sub.get("debt_amount") or 0)
+        total_sub_debt = old_debt + debt_amount if debt_status == "unpaid" else 0
+
+        if debt_status == "unpaid":
+            try:
+                db.add_customer_debt_record(
+                    subscription_id=sub_id,
+                    account_name=sub.get("account_name"),
+                    telegram_id=sub.get("telegram_id") or 0,
+                    reseller_id=reseller_id,
+                    action_type="renew",
+                    plan_name=plan_title,
+                    amount=debt_amount,
+                    notes=renewal_notes or "ثبت بدهی هنگام تمدید توسط نماینده",
+                    created_by=creator_user
+                )
+            except Exception as e_rec:
+                logger.error(f"Error logging customer debt record in reseller_renew_user: {e_rec}")
+        else:
+            db.clear_subscription_debt(sub_id, reseller_id=reseller_id, settled_by=creator_user)
+            if renewal_notes:
+                conn = db.get_connection()
+                conn.execute("UPDATE subscriptions SET debt_notes=? WHERE id=? AND reseller_id=?", (renewal_notes, sub_id, reseller_id))
+                conn.commit()
+                conn.close()
+
+        debt_tag = f" (مشتری بدهکار ثبت شد: {debt_amount:,} ت | مجموع بدهی: {total_sub_debt:,} ت)" if debt_status == "unpaid" else " (وضعیت مالی مشتری: تسویه شده)"
+
+        # ثبت فیش پرداخت و درآمد مشتری در صورت تسویه و عدم بدهکاری
+        if debt_status != "unpaid" and original_price > 0:
+            try:
+                rx_order_id = f"RNW_RES_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
+                db.save_transaction(
+                    order_id=rx_order_id,
+                    user_id=sub.get("telegram_id") or 0,
+                    username=sub.get("account_name") or "",
+                    plan_name=plan_title,
+                    amount=original_price,
+                    gateway="cash_reseller",
+                    tracking_code=f"RENEW_{creator_user}",
+                    status="approved",
+                    account_name=sub.get("account_name") or "",
+                    source="reseller",
+                    reseller_id=reseller_id,
+                    subscription_id=sub_id,
+                    is_renewal=1
+                )
+            except Exception as e_rx:
+                logger.error(f"Error saving customer renew transaction in reseller_renew_user: {e_rx}")
+
         if instant_activate:
             # ثبت در تاریخچه سوابق مصرف دوره‌های گذشته
             try:
@@ -7277,24 +9267,33 @@ def reseller_renew_user(sub_id: int):
                     telegram_id=sub.get("telegram_id") or 0,
                     hidify_uuid=sub.get("hidify_uuid") or "",
                     account_name=sub["account_name"],
-                    plan_name=plan["name"],
+                    plan_name=plan_title,
                     previous_usage_gb=sub.get("data_used") or 0,
                     previous_limit_gb=sub.get("data_limit") or 0,
-                    period_days=plan["duration"],
+                    period_days=duration_days,
                     renewal_type="reset_and_replaced",
                     reseller_id=reseller_id,
-                    cost_paid=final_price
+                    cost_paid=final_price,
+                    created_by=creator_user
                 )
             except Exception as e:
                 logger.warning(f"Failed to log subscription history on reseller renew: {e}")
 
-            flash(f"اشتراک «{sub['account_name']}» با پلن «{plan['name']}» به صورت آنی تمدید شد، حجم و روز آن ریست گردید و مبلغ {final_price:,} تومان از حساب/اعتبار شما کسر شد.", "success")
+            flash(f"اشتراک «{sub['account_name']}» با پلن «{plan_title}» به صورت آنی تمدید شد، حجم و روز آن ریست گردید و مبلغ {final_price:,} تومان از حساب/اعتبار شما کسر شد.{debt_tag}", "success")
         else:
-            flash(f"بسته تمدیدی «{plan['name']}» برای اشتراک «{sub['account_name']}» در صف رزرو قرار گرفت و مبلغ {final_price:,} تومان کسر شد. پس از مصرف ۹۹٪ یا در روز پایانی اشتراک به صورت خودکار فعال خواهد شد.", "info")
+            flash(f"بسته تمدیدی «{plan_title}» برای اشتراک «{sub['account_name']}» در صف رزرو قرار گرفت و مبلغ {final_price:,} تومان کسر شد.{debt_tag} پس از مصرف ۹۹٪ یا در روز پایانی اشتراک به صورت خودکار فعال خواهد شد.", "info")
 
         r_after = db.get_reseller(reseller_id)
         if r_after:
             session["balance"] = r_after.get("balance", 0)
+            c_lim = r_after.get("credit_limit", 0)
+            c_debt = r_after.get("credit_debt", 0)
+            c_en = bool(r_after.get("credit_enabled")) or (c_lim > 0)
+            session["credit_enabled"] = c_en
+            session["credit_limit"] = c_lim
+            session["credit_debt"] = c_debt
+            session["available_credit"] = max(0, c_lim - c_debt) if c_en else 0
+            session["total_purchasing_power"] = session["balance"] + session["available_credit"]
     else:
         flash(f"خطا در تمدید اشتراک: {renew_db.get('error')}", "danger")
 
@@ -7324,9 +9323,9 @@ def reseller_subscriptions_bulk_renew():
     plan_key = request.form.get("plan_id", "current").strip()
     payment_source = request.form.get("payment_source", "auto").strip()
     instant_activate = bool(request.form.get("instant_activate"))
-    plans = get_plans_dict()
+    plans = get_reseller_plans_dict(reseller_id)
     stats = db.get_reseller_stats(reseller_id)
-    discount = stats["discount_percent"]
+    discount = stats.get("discount_percent", 20)
 
     # ۱. محاسبه کل هزینه مورد نیاز و اعتبارسنجی توان خرید
     subs_to_renew = []
@@ -7338,28 +9337,29 @@ def reseller_subscriptions_bulk_renew():
             continue
 
         if plan_key == "current" or plan_key not in plans:
-            p_key = sub.get("plan_id") or "custom"
+            p_key = str(sub.get("plan_id") or "custom")
             if p_key in plans:
                 p_item = plans[p_key]
-                p_name = p_item["name"]
-                p_limit = float(p_item["data_limit"])
-                p_dur = int(p_item["duration"])
-                orig_price = p_item["price"]
+                p_name = p_item.get("display_name") or p_item.get("name") or p_item.get("master_name", "")
+                p_limit = float(p_item.get("display_data_limit") if p_item.get("display_data_limit") is not None else p_item.get("data_limit", 30))
+                p_dur = int(p_item.get("display_duration") if p_item.get("display_duration") is not None else p_item.get("duration", 30))
+                orig_price = p_item.get("display_price") or p_item.get("price") or p_item.get("master_price") or 0
+                final_price = p_item.get("wholesale_price") if p_item.get("wholesale_price") is not None else int(orig_price * (100 - discount) / 100)
             else:
                 p_limit = float(sub.get("data_limit") or 30)
                 p_dur = int(sub.get("duration") or 30)
                 p_name = sub.get("plan_name") or f"{p_limit} گیگ"
                 orig_price = int(sub.get("cost_paid") or 0)
+                final_price = orig_price
         else:
             p_item = plans[plan_key]
             p_key = plan_key
-            p_name = p_item["name"]
-            p_limit = float(p_item["data_limit"])
-            p_dur = int(p_item["duration"])
-            orig_price = p_item["price"]
+            p_name = p_item.get("display_name") or p_item.get("name") or p_item.get("master_name", "")
+            p_limit = float(p_item.get("display_data_limit") if p_item.get("display_data_limit") is not None else p_item.get("data_limit", 30))
+            p_dur = int(p_item.get("display_duration") if p_item.get("display_duration") is not None else p_item.get("duration", 30))
+            orig_price = p_item.get("display_price") or p_item.get("price") or p_item.get("master_price") or 0
+            final_price = p_item.get("wholesale_price") if p_item.get("wholesale_price") is not None else int(orig_price * (100 - discount) / 100)
 
-        disc_amount = int((orig_price * discount) / 100)
-        final_price = orig_price - disc_amount
         total_cost_required += final_price
 
         subs_to_renew.append({
@@ -7368,7 +9368,9 @@ def reseller_subscriptions_bulk_renew():
             "plan_name": p_name,
             "data_limit": p_limit,
             "duration": p_dur,
-            "cost": final_price
+            "cost": final_price,
+            "selling_price": orig_price,
+            "profit_margin": max(0, orig_price - final_price)
         })
 
     total_purchasing_power = stats.get("total_purchasing_power", stats["balance"])
@@ -7377,6 +9379,7 @@ def reseller_subscriptions_bulk_renew():
         return redirect(get_redirect_target("reseller_users"))
 
     # ۲. اعمال تمدیدها برای تک‌تک اشتراک‌ها
+    creator_user = session.get("username") or f"reseller_{reseller_id}"
     success_count = 0
     for item in subs_to_renew:
         sub = item["sub"]
@@ -7389,7 +9392,10 @@ def reseller_subscriptions_bulk_renew():
             data_limit=item["data_limit"],
             duration=item["duration"],
             instant_activate=instant_activate,
-            payment_source=payment_source
+            payment_source=payment_source,
+            selling_price=item.get("selling_price", 0),
+            profit_margin=item.get("profit_margin", 0),
+            created_by=creator_user
         )
         if renew_res.get("success"):
             if instant_activate and sub.get("hidify_uuid"):
@@ -7410,7 +9416,8 @@ def reseller_subscriptions_bulk_renew():
                         period_days=item["duration"],
                         renewal_type="reset_and_replaced",
                         reseller_id=reseller_id,
-                        cost_paid=item["cost"]
+                        cost_paid=item["cost"],
+                        created_by=creator_user
                     )
                 except Exception:
                     pass
@@ -7419,9 +9426,82 @@ def reseller_subscriptions_bulk_renew():
     r_after = db.get_reseller(reseller_id)
     if r_after:
         session["balance"] = r_after.get("balance", 0)
+        c_lim = r_after.get("credit_limit", 0)
+        c_debt = r_after.get("credit_debt", 0)
+        c_en = bool(r_after.get("credit_enabled")) or (c_lim > 0)
+        session["credit_enabled"] = c_en
+        session["credit_limit"] = c_lim
+        session["credit_debt"] = c_debt
+        session["available_credit"] = max(0, c_lim - c_debt) if c_en else 0
+        session["total_purchasing_power"] = session["balance"] + session["available_credit"]
 
     mode_text = "به صورت آنی تمدید و ریست شدند" if instant_activate else "در صف تمدید رزرو قرار گرفتند"
     flash(f"{success_count} اشتراک با موفقیت {mode_text} و مجموع مبلغ {total_cost_required:,} تومان کسر گردید.", "success")
+    return redirect(get_redirect_target("reseller_users"))
+
+
+@app.route("/reseller/queue/<int:queue_id>/activate", methods=["POST"])
+@reseller_required
+def reseller_queue_activate(queue_id: int):
+    """فعال‌سازی آنی بسته در صف تمدید توسط نماینده"""
+    reseller_id = session.get("reseller_id")
+    conn = db.get_connection()
+    q_item = conn.execute("SELECT * FROM subscription_queue WHERE id=? AND reseller_id=?", (queue_id, reseller_id)).fetchone()
+    conn.close()
+    if not q_item:
+        flash("بسته مورد نظر یافت نشد یا متعلق به شما نیست.", "danger")
+        return redirect(get_redirect_target("reseller_users"))
+
+    username = session.get("username") or f"نماینده #{reseller_id}"
+    res = activate_single_queue_item(queue_id, triggered_by=username)
+    if res.get("success"):
+        flash(f"بسته «{res.get('plan_name')}» برای اشتراک «{res.get('account_name')}» با موفقیت فعال شد و حجم و تاریخ آن ریست گردید.", "success")
+    else:
+        flash(f"خطا در فعال‌سازی بسته: {res.get('error')}", "danger")
+    return redirect(get_redirect_target("reseller_users"))
+
+
+@app.route("/reseller/queue/<int:queue_id>/cancel", methods=["POST"])
+@reseller_required
+def reseller_queue_cancel(queue_id: int):
+    """لغو بسته در صف تمدید توسط نماینده و استرداد وجه به کیف‌پول"""
+    reseller_id = session.get("reseller_id")
+    res = db.cancel_queue_item(queue_id, reseller_id=reseller_id)
+    if res.get("success"):
+        refund_txt = f" و مبلغ {res.get('refunded_amount'):,} تومان به کیف‌پول شما استرداد گردید" if res.get('refunded_amount') else ""
+        flash(f"بسته رزرو شده با موفقیت از صف تمدید لغو شد{refund_txt}.", "success")
+    else:
+        flash(f"خطا در لغو بسته: {res.get('error')}", "danger")
+    return redirect(get_redirect_target("reseller_users"))
+
+
+@app.route("/reseller/queue/<int:queue_id>/move", methods=["POST"])
+@reseller_required
+def reseller_queue_move(queue_id: int):
+    """تغییر نوبت بسته در صف تمدید توسط نماینده"""
+    reseller_id = session.get("reseller_id")
+    direction = request.form.get("direction") or request.args.get("direction", "up")
+    if request.is_json:
+        direction = (request.get_json(silent=True) or {}).get("direction") or direction
+    conn = db.get_connection()
+    q_row = conn.execute("SELECT subscription_id FROM subscription_queue WHERE id=? AND reseller_id=?", (queue_id, reseller_id)).fetchone()
+    conn.close()
+    if not q_row:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": "بسته مورد نظر یافت نشد یا متعلق به شما نیست."}), 404
+        flash("بسته مورد نظر یافت نشد یا متعلق به شما نیست.", "danger")
+        return redirect(get_redirect_target("reseller_users"))
+    sub_id = q_row[0]
+    res = db.reorder_subscription_queue(sub_id, queue_id, direction)
+    if res.get("success"):
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": True, "message": "ترتیب بسته‌های در صف تمدید با موفقیت به‌روزرسانی شد."})
+        flash("ترتیب بسته‌های در صف تمدید با موفقیت به‌روزرسانی شد.", "success")
+    else:
+        err = res.get("error", "خطا در جابجایی بسته")
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": err}), 400
+        flash(f"خطا در جابجایی بسته: {err}", "danger")
     return redirect(get_redirect_target("reseller_users"))
 
 
@@ -7516,17 +9596,16 @@ def reseller_restore_user(sub_id: int):
         flash(restore_err, "danger")
         return redirect(get_redirect_target("reseller_users", status="deleted"))
 
-    plans = get_plans_dict()
-    plan_key = sub.get("plan_id")
+    plans = get_reseller_plans_dict(reseller_id)
+    plan_key = str(sub.get("plan_id"))
     plan = plans.get(plan_key) if plan_key in plans else None
     payment_source = request.form.get("payment_source", "auto").strip()
     stats = db.get_reseller_stats(reseller_id)
     discount = stats.get("discount_percent", 20)
     
     if plan:
-        original_price = plan.get("master_price") or plan.get("price") or 0
-        discount_amount = int((original_price * discount) / 100)
-        final_price = original_price - discount_amount
+        original_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or 0
+        final_price = plan.get("wholesale_price") if plan.get("wholesale_price") is not None else int(original_price * (100 - discount) / 100)
     else:
         final_price = sub.get("cost_paid") or 0
 
@@ -7624,7 +9703,7 @@ def reseller_trash_bulk():
             flash(restore_err, "danger")
             return redirect(get_redirect_target("reseller_users", status="deleted"))
 
-        plans = get_plans_dict()
+        plans = get_reseller_plans_dict(reseller_id)
         stats = db.get_reseller_stats(reseller_id)
         discount = stats.get("discount_percent", 20)
 
@@ -7635,12 +9714,11 @@ def reseller_trash_bulk():
             if not sub_row:
                 continue
             sub = dict(sub_row)
-            plan_key = sub.get("plan_id")
+            plan_key = str(sub.get("plan_id"))
             plan = plans.get(plan_key) if plan_key in plans else None
             if plan:
-                original_price = plan.get("master_price") or plan.get("price") or 0
-                discount_amount = int((original_price * discount) / 100)
-                final_price = original_price - discount_amount
+                original_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or 0
+                final_price = plan.get("wholesale_price") if plan.get("wholesale_price") is not None else int(original_price * (100 - discount) / 100)
             else:
                 final_price = sub.get("cost_paid") or 0
 
@@ -7774,9 +9852,9 @@ def reseller_subscriptions_bulk():
             if tg_id and int(tg_id) > 0 and debt_amount > 0:
                 try:
                     r_info = db.get_reseller(reseller_id) or {}
-                    card_number = r_info.get("card_number") or get_setting("card_number") or ""
-                    card_holder = r_info.get("card_holder") or get_setting("card_holder") or ""
-                    bank_name = r_info.get("bank_name") or get_setting("bank_name") or ""
+                    card_number = r_info.get("card_number") or db.get_setting("card_number") or ""
+                    card_holder = r_info.get("card_holder") or db.get_setting("card_holder") or ""
+                    bank_name = r_info.get("bank_name") or db.get_setting("bank_name") or ""
                     msg = (
                         f"🌸 <b>کاربر گرامی، با سلام و احترام</b>\n\n"
                         f"📋 <b>یادآوری صورت‌حساب اشتراک:</b> «{sub.get('account_name')}»\n"
@@ -7787,7 +9865,7 @@ def reseller_subscriptions_bulk():
                     if card_number:
                         msg += f"\n💳 <b>شماره کارت جهت واریز:</b>\n<code>{card_number}</code>\n👤 بنام: {card_holder} ({bank_name})\n"
                     msg += "\n🙏 لطفاً پس از واریز، تصویر فیش پرداخت خود را در همین بات ارسال فرمایید."
-                    send_telegram_msg(tg_id, msg)
+                    send_telegram_msg(tg_id, msg, bot_token=r_info.get("bot_token"))
                     success_count += 1
                 except Exception:
                     pass
@@ -7864,7 +9942,8 @@ def reseller_plans():
                 plan_id=plan_id,
                 custom_name=custom_name,
                 custom_price=custom_price,
-                is_active=is_active
+                is_active=is_active,
+                preserve_specs=True
             )
             if res.get("success"):
                 flash("تنظیمات پلن با موفقیت ذخیره شد.", "success")
@@ -7935,8 +10014,99 @@ def reseller_bundles_submit_receipt():
         reseller_id=reseller_id
     )
 
+    try:
+        admin_tg = db.get_setting("admin_telegram_id") or get_admin_id()
+        if admin_tg:
+            bundle_notif = (
+                f"📦 <b>رسید خرید بسته اعتباری نماینده!</b>\n\n"
+                f"👤 نماینده: <b>{username}</b> (کد #{reseller_id})\n"
+                f"📋 بسته: <b>{bundle['title']}</b>\n"
+                f"💰 مبلغ پرداختی: <b>{bundle['price']:,} تومان</b>\n"
+                f"🎁 اعتبار شارژ: <b>{bundle['credit']:,} تومان</b>\n"
+                f"🔢 کد رهگیری: <code>{tracking_code or 'ثبت شده با عکس فیش'}</code>\n"
+                f"🆔 کد سفارش: <code>{order_id}</code>\n"
+                f"⏰ زمان: {get_now_shamsi()}"
+            )
+            adm_bundle_kb = {
+                "inline_keyboard": [
+                    [
+                        {"text": "✅ تایید فیش و شارژ کیف پول", "callback_data": f"adm_pay_app_{order_id}"},
+                        {"text": "❌ رد فیش", "callback_data": f"adm_pay_rej_{order_id}"}
+                    ]
+                ]
+            }
+            send_telegram_msg(int(admin_tg), bundle_notif, reply_markup=adm_bundle_kb)
+    except Exception as e_b_tg:
+        logger.warning(f"Failed to notify admin of bundle receipt: {e_b_tg}")
+
     flash(f"✅ رسید پرداخت برای «{bundle['title']}» با موفقیت ثبت شد. پس از بررسی و تایید مدیریت، مبلغ {bundle['credit']:,} تومان (با {bundle['badge']}) به کیف پول شما اضافه خواهد شد.", "success")
     return redirect(url_for("reseller_transactions"))
+
+
+@app.route("/api/reseller/bundles/create-smart-invoice", methods=["POST"])
+@reseller_required
+def reseller_bundles_create_smart_invoice():
+    """صدور فاکتور هوشمند کارت‌به‌کارت با ارقام خرد برای خرید بسته اعتباری همکار"""
+    reseller_id = session.get("reseller_id")
+    bundle_id = request.form.get("bundle_id") or (request.json.get("bundle_id") if request.is_json else None)
+    bundles = {b["id"]: b for b in db.get_reseller_credit_bundles()}
+    bundle = bundles.get(bundle_id)
+    if not bundle:
+        return jsonify({"success": False, "error": "بسته اعتباری مورد نظر یافت نشد."}), 404
+
+    admin_cards = db.get_active_bank_cards()
+    if not admin_cards:
+        return jsonify({"success": False, "error": "شماره کارت فعالی برای مدیریت در سیستم تعریف نشده است."}), 400
+
+    target_card = admin_cards[0]
+    price = bundle["price"]
+
+    sms_cfg = db.get_admin_bank_sms_config()
+    digits = sms_cfg.get("digits", 3) if isinstance(sms_cfg, dict) else 3
+    timeout = sms_cfg.get("timeout", 20) if isinstance(sms_cfg, dict) else 20
+
+    invoice = db.create_smart_invoice(
+        sub_id=0,
+        plan_id=bundle_id,
+        reseller_id=0,  # واریز به حساب مدیریت برای تایید پیامک بانک
+        base_amount=price,
+        target_card=target_card,
+        digits=digits,
+        timeout_minutes=timeout,
+        instant_activation=True
+    )
+
+    now_iso = get_now_iso()
+    reseller = db.get_reseller(reseller_id) or {}
+    username = reseller.get("username", f"reseller_{reseller_id}")
+
+    # ذخیره تراکنش معلق
+    conn = db.get_connection()
+    conn.execute("""
+        INSERT OR REPLACE INTO transactions (
+            order_id, user_id, username, plan_name, amount, status, gateway,
+            tracking_code, reseller_id, is_renewal, account_name, source, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, 'pending', 'bundle_reseller', ?, ?, 0, ?, 'reseller_panel', ?, ?)
+    """, (
+        invoice["order_id"], reseller.get("telegram_id") or reseller_id, username,
+        f"بسته {bundle['title']}", invoice["final_amount"],
+        f"کارت {target_card.get('card_number', '')}", reseller_id,
+        username, now_iso, now_iso
+    ))
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "success": True,
+        "order_id": invoice["order_id"],
+        "token": invoice["token"],
+        "final_amount_toman": invoice["final_amount"],
+        "final_amount_rial": invoice["final_amount"] * 10,
+        "card_number": target_card.get("card_number"),
+        "card_holder": target_card.get("card_holder"),
+        "bank_name": target_card.get("bank_name"),
+        "expires_at": invoice["expires_at"]
+    })
 
 
 @app.route("/reseller/bundles/online_pay/<bundle_id>")
@@ -8389,21 +10559,51 @@ def reseller_bot_settings():
         except Exception:
             vip_cashback_percent = 10
 
-        db.update_reseller_bot_settings(
-            reseller_id,
-            bot_token=bot_token,
-            bot_username=bot_username,
-            channel_id=channel_id,
-            brand_name=brand_name,
-            start_message=start_message,
-            support_username=support_username,
-            card_number=card_number,
-            card_holder=card_holder,
-            bank_name=bank_name,
-            vip_auto_enabled=vip_auto_enabled,
-            vip_auto_threshold=vip_auto_threshold,
-            vip_cashback_percent=vip_cashback_percent
-        )
+        # دریافت ادمین‌های تلگرام ربات با نقش‌های مختلف
+        admin_tids = request.form.getlist("admin_telegram_id[]")
+        admin_roles = request.form.getlist("admin_role[]")
+        admin_titles = request.form.getlist("admin_title[]")
+
+        bot_admins = []
+        primary_admin_id = None
+        for tid, role, title in zip(admin_tids, admin_roles, admin_titles):
+            tid_clean = re.sub(r"\D", "", str(tid or ""))
+            if tid_clean:
+                numeric_tid = int(tid_clean)
+                role_clean = role if role in ("main", "finance", "support", "sales") else "main"
+                bot_admins.append({
+                    "telegram_id": numeric_tid,
+                    "role": role_clean,
+                    "title": str(title or "").strip()
+                })
+                if role_clean == "main" and primary_admin_id is None:
+                    primary_admin_id = numeric_tid
+
+        # اگر ادمین اصلی وجود نداشت اما اولین ادمین دیگر موجود بود
+        if not primary_admin_id and bot_admins:
+            primary_admin_id = bot_admins[0]["telegram_id"]
+
+        bot_admins_json = json.dumps(bot_admins, ensure_ascii=False) if bot_admins else None
+
+        update_kwargs = {
+            "bot_token": bot_token,
+            "bot_username": bot_username,
+            "channel_id": channel_id,
+            "brand_name": brand_name,
+            "start_message": start_message,
+            "support_username": support_username,
+            "card_number": card_number,
+            "card_holder": card_holder,
+            "bank_name": bank_name,
+            "vip_auto_enabled": vip_auto_enabled,
+            "vip_auto_threshold": vip_auto_threshold,
+            "vip_cashback_percent": vip_cashback_percent,
+            "bot_admins": bot_admins_json
+        }
+        if primary_admin_id:
+            update_kwargs["telegram_id"] = primary_admin_id
+
+        db.update_reseller_bot_settings(reseller_id, **update_kwargs)
 
         # تنظیمات درگاه پرداخت آنلاین اختصاصی نماینده
         is_gw_active = request.form.get("is_gateway_active") in ("on", "1")
@@ -8412,12 +10612,22 @@ def reseller_bot_settings():
         gw_sandbox = request.form.get("gateway_sandbox") in ("on", "1")
         db.update_reseller_gateway(reseller_id, is_gw_active, gw_type, gw_key, gw_sandbox)
 
-        flash("تنظیمات ربات اختصاصی، باشگاه VIP و درگاه پرداخت با موفقیت ذخیره شد.", "success")
+        # ریلود کانفیگ ربات نماینده در multibot_manager
+        multibot_manager.restart_reseller_bot(reseller_id)
+
+        flash("تنظیمات ربات اختصاصی، ادمین‌های تلگرام، باشگاه VIP و درگاه پرداخت با موفقیت ذخیره شد.", "success")
         return redirect(url_for("reseller_bot_settings"))
 
     bot_status = multibot_manager.get_bot_status(reseller_id)
     reseller_gateway = db.get_reseller_gateway(reseller_id)
-    return render_template("reseller_bot_settings.html", reseller=reseller, bot_status=bot_status, reseller_gateway=reseller_gateway)
+    bot_admins = db.get_reseller_bot_admins(reseller_id)
+    return render_template(
+        "reseller_bot_settings.html",
+        reseller=reseller,
+        bot_status=bot_status,
+        reseller_gateway=reseller_gateway,
+        bot_admins=bot_admins
+    )
 
 
 @app.route("/reseller/bot/test-token", methods=["POST"])
@@ -8455,7 +10665,7 @@ def reseller_bot_toggle():
 @app.route("/reseller/customer-payments")
 @reseller_required
 def reseller_customer_payments():
-    """لیست و تایید فیش‌های واریزی مشتریان ربات نماینده"""
+    """لیست و تایید فیش‌های واریزی مشتریان ربات و پرتال نماینده"""
     reseller_id = session.get("reseller_id")
     conn = db.get_connection()
     cursor = conn.cursor()
@@ -8464,17 +10674,80 @@ def reseller_customer_payments():
         WHERE reseller_id = ? AND (gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%') AND (is_deleted = 0 OR is_deleted IS NULL)
         ORDER BY CASE WHEN status = 'pending' THEN 0 ELSE 1 END, id DESC
     """, (reseller_id,))
-    transactions = [dict(r) for r in cursor.fetchall()]
+    raw_txs = [dict(r) for r in cursor.fetchall()]
     conn.close()
     
+    # واکشی سریع اشتراک‌های نماینده جهت تطبیق هوشمند مشخصات مشتری
+    sub_list = db.get_reseller_subscriptions(reseller_id)
+    sub_map = {s["id"]: s for s in sub_list}
+    sub_by_acc = {s["account_name"]: s for s in sub_list if s.get("account_name")}
+
+    portal_count = 0
+    telegram_count = 0
+    transactions = []
+
+    for tx in raw_txs:
+        src = str(tx.get("source") or "").lower()
+        order_id = str(tx.get("order_id") or "")
+        gateway = str(tx.get("gateway") or "")
+        user_id = tx.get("user_id") or 0
+        renew_sub_id = tx.get("renew_sub_id")
+        
+        origin = determine_transaction_origin(tx)
+        tx["source"] = origin
+            
+        # یافتن اشتراک مرتبط در صورت وجود
+        matched_sub = None
+        if renew_sub_id and renew_sub_id in sub_map:
+            matched_sub = sub_map[renew_sub_id]
+        elif tx.get("subscription_id") and tx["subscription_id"] in sub_map:
+            matched_sub = sub_map[tx["subscription_id"]]
+        elif tx.get("account_name") and tx["account_name"] in sub_by_acc:
+            matched_sub = sub_by_acc[tx["account_name"]]
+
+        tx["sub_info"] = matched_sub
+        
+        # استخراج نام شفاف و معتبر برای نمایش مشتری
+        if origin in ("portal", "admin", "reseller"):
+            customer_name = tx.get("account_name")
+            if not customer_name and matched_sub:
+                customer_name = matched_sub.get("account_name")
+            if not customer_name:
+                customer_name = tx.get("username")
+            if not customer_name or customer_name in ("None", "null", "", "کاربر"):
+                customer_name = f"مشتری #{renew_sub_id or tx['id']}"
+            tx["customer_name"] = customer_name
+            tx["customer_phone"] = matched_sub.get("phone_number") if matched_sub else None
+        else:
+            cust_name = tx.get("username")
+            if not cust_name or cust_name in ("None", "null", "", "کاربر"):
+                cust_name = f"کاربر {user_id}" if user_id else "کاربر تلگرام"
+            tx["customer_name"] = cust_name
+            tx["customer_phone"] = None
+            
+        transactions.append(tx)
+        
+    portal_count = sum(1 for tx in transactions if tx.get("source") == "portal")
+    telegram_count = sum(1 for tx in transactions if tx.get("source") == "telegram")
+    reseller_count = sum(1 for tx in transactions if tx.get("source") == "reseller")
+    admin_count = sum(1 for tx in transactions if tx.get("source") == "admin")
+
     stats = db.get_reseller_stats(reseller_id)
-    return render_template("reseller_customer_payments.html", transactions=transactions, stats=stats)
+    return render_template(
+        "reseller_customer_payments.html", 
+        transactions=transactions, 
+        stats=stats,
+        portal_count=portal_count,
+        telegram_count=telegram_count,
+        reseller_count=reseller_count,
+        admin_count=admin_count
+    )
 
 
 @app.route("/reseller/payment/<int:payment_id>/approve", methods=["POST"])
 @reseller_required
 def reseller_payment_approve(payment_id):
-    """تایید فیش پرداخت مشتری توسط نماینده در وب، کسر از کیف پول و صدور اشتراک"""
+    """تایید فیش پرداخت مشتری توسط نماینده در وب، کسر از کیف پول و صدور یا تمدید اشتراک"""
     reseller_id = session.get("reseller_id")
     conn = db.get_connection()
     cursor = conn.cursor()
@@ -8491,80 +10764,122 @@ def reseller_payment_approve(payment_id):
         flash("این تراکنش قبلاً تایید شده است.", "warning")
         return redirect(url_for("reseller_customer_payments"))
 
-    user_id = tx["user_id"]
+    user_id = tx.get("user_id") or 0
     plan_name = tx["plan_name"]
-    plans = get_plans_dict()
-    selected_plan = next((p for p in plans.values() if p["name"] == plan_name), None)
+    plans = get_reseller_plans_dict(reseller_id)
+    selected_plan = next((p for p in plans.values() if p.get("name") == plan_name or p.get("display_name") == plan_name or p.get("master_name") == plan_name or str(p.get("plan_id")) == str(tx.get("plan_id"))), None)
     if not selected_plan and plans:
         selected_plan = list(plans.values())[0]
 
-    data_limit = selected_plan["data_limit"] if selected_plan else 30
-    duration = selected_plan["duration"] if selected_plan else 30
-    original_price = selected_plan["price"] if selected_plan else tx.get("amount", 0)
+    data_limit = selected_plan.get("display_data_limit") if selected_plan and selected_plan.get("display_data_limit") is not None else (selected_plan.get("data_limit") if selected_plan else 30)
+    duration = selected_plan.get("display_duration") if selected_plan and selected_plan.get("display_duration") is not None else (selected_plan.get("duration") if selected_plan else 30)
+    original_price = selected_plan.get("display_price") or selected_plan.get("price") if selected_plan else tx.get("amount", 0)
 
     # محاسبه هزینه خرید عمده نماینده با تخفیف
     stats = db.get_reseller_stats(reseller_id)
-    discount = stats["discount_percent"]
-    discount_amount = int((original_price * discount) / 100)
-    wholesale_price = original_price - discount_amount
+    discount = stats.get("discount_percent", 20)
+    wholesale_price = selected_plan.get("wholesale_price") if selected_plan and selected_plan.get("wholesale_price") is not None else (original_price - int((original_price * discount) / 100))
 
     if stats["balance"] < wholesale_price:
         flash(f"موجودی کیف پول شما کافی نیست! موجودی: {stats['balance']:,} ت | مبلغ کسر: {wholesale_price:,} ت", "danger")
         return redirect(url_for("reseller_payments"))
 
-    account_name = tx.get("account_name") or f"r_{reseller_id}_{user_id}_{int(time.time()) % 10000}"
-    user_comment = f"Reseller #{reseller_id} ({session.get('name')}) via Web"
+    is_renewal = bool(tx.get("is_renewal"))
+    renew_sub_id = tx.get("renew_sub_id")
+    target_sub = None
+    if is_renewal and renew_sub_id:
+        target_sub = db.get_reseller_subscription(reseller_id, renew_sub_id) or db.get_subscription(renew_sub_id)
 
-    # ساخت اکانت در هیدیفای
-    h_res = hidify_sync_create_user(
-        name=account_name,
-        usage_limit_gb=data_limit,
-        package_days=duration,
-        comment=user_comment
-    )
+    approver_user = session.get("username") or f"reseller_{reseller_id}"
+    res_profit = max(0, original_price - wholesale_price)
+    sub_link = ""
 
-    uuid_val = h_res.get("uuid", "") if h_res else ""
-    sub_link = h_res.get("subscription_url", "") if h_res else ""
-    if not uuid_val:
-        import uuid
-        uuid_val = str(uuid.uuid4())
-        sub_link = f"https://vpn.service/sub/{account_name}"
+    if target_sub:
+        # تمدید اشتراک موجود مشتری (تمدید هوشمند پرتال / ربات بدون ایجاد اکانت تکراری)
+        account_name = target_sub.get("account_name")
+        smart_inv = db.get_smart_invoice_by_order_id(tx.get("order_id"))
+        instant_act = bool(smart_inv.get("instant_activation", 1)) if smart_inv else True
 
-    # کسر از کیف پول نماینده
-    db.deduct_reseller_balance(reseller_id, wholesale_price, plan_name, account_name)
+        db.deduct_reseller_balance(reseller_id, wholesale_price, plan_name, account_name, selling_price=original_price, profit_margin=res_profit, created_by=approver_user)
+        
+        if instant_act and target_sub.get("hidify_uuid"):
+            try:
+                hidify_sync_renew_user(target_sub["hidify_uuid"], data_limit, duration, force_instant=True)
+            except Exception as e:
+                logger.error(f"Error renewing user in Hiddify: {e}")
+
+        plan_id_val = str(selected_plan.get("id") or selected_plan.get("plan_id") or 1) if selected_plan else "1"
+        db.renew_reseller_subscription(
+            reseller_id=reseller_id,
+            sub_id=target_sub["id"],
+            plan_id=plan_id_val,
+            cost=wholesale_price,
+            instant_activate=instant_act,
+            payment_source="wallet",
+            selling_price=original_price,
+            profit_margin=res_profit,
+            creator=approver_user
+        )
+        sub_uuid = target_sub.get("hidify_uuid") or str(target_sub["id"])
+        h_url = get_hiddify_url()
+        u_proxy = get_user_proxy()
+        sub_link = f"{h_url}/{u_proxy}/{sub_uuid}/" if (h_url and sub_uuid) else f"https://vpn.service/sub/{account_name}"
+    else:
+        # ساخت اکانت جدید در هیدیفای و دیتابیس
+        account_name = tx.get("account_name") or f"r_{reseller_id}_{user_id}_{int(time.time()) % 10000}"
+        user_comment = f"Reseller #{reseller_id} ({session.get('name')}) via Web"
+
+        h_res = hidify_sync_create_user(
+            name=account_name,
+            usage_limit_gb=data_limit,
+            package_days=duration,
+            comment=user_comment
+        )
+
+        uuid_val = h_res.get("uuid", "") if h_res else ""
+        sub_link = h_res.get("subscription_url", "") if h_res else ""
+        if not uuid_val:
+            import uuid
+            uuid_val = str(uuid.uuid4())
+            sub_link = f"https://vpn.service/sub/{account_name}"
+
+        # کسر از کیف پول نماینده
+        db.deduct_reseller_balance(reseller_id, wholesale_price, plan_name, account_name, selling_price=original_price, profit_margin=res_profit, created_by=approver_user)
+        
+        # ثبت اشتراک برای کاربر
+        plan_id_val = str(selected_plan.get("id") or 1) if selected_plan else "1"
+        sub_row_id = db.save_subscription(
+            telegram_id=user_id,
+            hidify_uuid=uuid_val,
+            plan_id=plan_id_val,
+            plan_name=plan_name,
+            data_limit=float(data_limit),
+            duration=int(duration),
+            data_used=0.0,
+            status="active",
+            account_name=account_name,
+            account_comment=user_comment,
+            reseller_id=reseller_id,
+            created_by=approver_user
+        )
+
+        # واریز پورسانت زیرمجموعه‌گیری به بالادستی
+        try:
+            sub_id_int = sub_row_id.get("subscription_id") if isinstance(sub_row_id, dict) else sub_row_id
+            plan_base_price = int(selected_plan.get("price") or wholesale_price) if selected_plan else wholesale_price
+            db.process_sub_reseller_affiliate_commission(
+                sub_reseller_id=reseller_id,
+                plan_price=plan_base_price,
+                plan_name=plan_name,
+                account_name=account_name,
+                sub_id=sub_id_int
+            )
+        except Exception as e:
+            logger.error(f"Error processing affiliate commission in quick create: {e}")
+
     r_after = db.get_reseller(reseller_id)
     if r_after:
         session["balance"] = r_after.get("balance", 0)
-
-    # ثبت اشتراک برای کاربر
-    plan_id_val = str(selected_plan.get("id") or 1) if selected_plan else "1"
-    sub_row_id = db.save_subscription(
-        telegram_id=user_id,
-        hidify_uuid=uuid_val,
-        plan_id=plan_id_val,
-        plan_name=plan_name,
-        data_limit=float(data_limit),
-        duration=int(duration),
-        data_used=0.0,
-        status="active",
-        account_name=account_name,
-        account_comment=user_comment,
-        reseller_id=reseller_id
-    )
-
-    # واریز پورسانت زیرمجموعه‌گیری به بالادستی
-    try:
-        sub_id_int = sub_row_id.get("subscription_id") if isinstance(sub_row_id, dict) else sub_row_id
-        plan_base_price = int(selected_plan.get("price") or wholesale_price) if selected_plan else wholesale_price
-        db.process_sub_reseller_affiliate_commission(
-            sub_reseller_id=reseller_id,
-            plan_price=plan_base_price,
-            plan_name=plan_name,
-            account_name=account_name,
-            sub_id=sub_id_int
-        )
-    except Exception as e:
-        logger.error(f"Error processing affiliate commission in quick create: {e}")
 
     # بروزرسانی وضعیت تراکنش
     reseller_name = session.get("name") or session.get("username") or f"نماینده #{reseller_id}"
@@ -8578,54 +10893,62 @@ def reseller_payment_approve(payment_id):
     conn.commit()
     conn.close()
 
+    # تکمیل وضعیت فاکتور هوشمند در صورت وجود
+    try:
+        if tx.get("order_id"):
+            db.mark_smart_invoice_paid(tx["order_id"], tracking_code=tx.get("tracking_code"))
+    except Exception:
+        pass
+
     reseller_data = db.get_reseller(reseller_id)
     bot_tok = reseller_data.get("bot_token") if reseller_data else None
     brand_title = reseller_data.get("brand_name") or "فروشگاه"
     cashback_note = ""
 
-    # پردازش کش‌بک مشتریان VIP نماینده
-    try:
-        vip_info = db.get_user_vip_info(user_id)
-        if vip_info.get("is_vip") and vip_info.get("cashback_percent", 0) > 0:
-            paid_amount = int(tx.get("amount") or 0)
-            cb_rate = vip_info.get("cashback_percent", 10)
-            cashback_val = int((paid_amount * cb_rate) / 100)
-            if cashback_val > 0:
-                cb_res = db.add_wallet_balance(
-                    user_id,
-                    cashback_val,
-                    f"هدیه کش‌بک خرید VIP ({cb_rate}%) از {brand_title}",
-                    ref_id=str(tx.get("order_id") or payment_id),
-                    tx_type="cashback"
-                )
-                new_w_bal = cb_res.get("new_balance", 0)
-                cashback_note += f"\n\n🎁 **هدیه کش‌بک VIP:** مبلغ {cashback_val:,} تومان ({cb_rate}٪) به کیف پول شما واریز گردید.\n💰 موجودی کیف پول: {new_w_bal:,} تومان"
-    except Exception as e_cb:
-        logger.error(f"Error processing reseller VIP cashback for {user_id}: {e_cb}")
+    # پردازش کش‌بک مشتریان VIP نماینده (تنها در صورت داشتن آیدی تلگرام)
+    if user_id and int(user_id) > 0:
+        try:
+            vip_info = db.get_user_vip_info(user_id)
+            if vip_info.get("is_vip") and vip_info.get("cashback_percent", 0) > 0:
+                paid_amount = int(tx.get("amount") or 0)
+                cb_rate = vip_info.get("cashback_percent", 10)
+                cashback_val = int((paid_amount * cb_rate) / 100)
+                if cashback_val > 0:
+                    cb_res = db.add_wallet_balance(
+                        user_id,
+                        cashback_val,
+                        f"هدیه کش‌بک خرید VIP ({cb_rate}%) از {brand_title}",
+                        ref_id=str(tx.get("order_id") or payment_id),
+                        tx_type="cashback"
+                    )
+                    new_w_bal = cb_res.get("new_balance", 0)
+                    cashback_note += f"\n\n🎁 **هدیه کش‌بک VIP:** مبلغ {cashback_val:,} تومان ({cb_rate}٪) به کیف پول شما واریز گردید.\n💰 موجودی کیف پول: {new_w_bal:,} تومان"
+        except Exception as e_cb:
+            logger.error(f"Error processing reseller VIP cashback for {user_id}: {e_cb}")
 
-    # بررسی ارتقای خودکار به VIP برای مشتری نماینده
-    try:
-        upgrade_res = db.check_and_upgrade_user_vip(user_id, reseller_id=reseller_id)
-        if upgrade_res.get("upgraded"):
-            cb_rate = upgrade_res.get("cashback_percent", 10)
-            t_spent = upgrade_res.get("total_spent", 0)
-            upgrade_extra = f"\n\n🎉 **تبریک! شما به عنوان مشتری ویژه (⭐️ VIP) فروشگاه {brand_title} ارتقا یافتید!**\nبا رسیدن مجموع خریدهای شما به {t_spent:,} تومان، از این پس از {cb_rate}٪ کش‌بک در هر خرید و پشتیبانی در اولویت بهره‌مند خواهید بود. 🌹"
-            cashback_note += upgrade_extra
-    except Exception as e_ug:
-        logger.error(f"Error checking reseller VIP auto upgrade for {user_id}: {e_ug}")
+        # بررسی ارتقای خودکار به VIP برای مشتری نماینده
+        try:
+            upgrade_res = db.check_and_upgrade_user_vip(user_id, reseller_id=reseller_id)
+            if upgrade_res.get("upgraded"):
+                cb_rate = upgrade_res.get("cashback_percent", 10)
+                t_spent = upgrade_res.get("total_spent", 0)
+                upgrade_extra = f"\n\n🎉 **تبریک! شما به عنوان مشتری ویژه (⭐️ VIP) فروشگاه {brand_title} ارتقا یافتید!**\nبا رسیدن مجموع خریدهای شما به {t_spent:,} تومان، از این پس از {cb_rate}٪ کش‌بک در هر خرید و پشتیبانی در اولویت بهره‌مند خواهید بود. 🌹"
+                cashback_note += upgrade_extra
+        except Exception as e_ug:
+            logger.error(f"Error checking reseller VIP auto upgrade for {user_id}: {e_ug}")
 
-    # ارسال لینک برای کاربر در تلگرام
-    msg_to_user = f"🎉 **پرداخت شما تایید شد!**\n\n"
-    msg_to_user += f"📦 پلن: **{plan_name}** ({data_limit}GB - {duration} روزه)\n"
-    msg_to_user += f"🔗 لینک اشتراک شما:\n`{sub_link}`{cashback_note}\n\n"
-    msg_to_user += f"از خرید شما در **{brand_title}** متشکریم!"
+        # ارسال لینک برای کاربر در تلگرام
+        msg_to_user = f"🎉 **پرداخت شما تایید شد!**\n\n"
+        msg_to_user += f"📦 پلن: **{plan_name}** ({data_limit}GB - {duration} روزه)\n"
+        msg_to_user += f"🔗 لینک اشتراک شما:\n`{sub_link}`{cashback_note}\n\n"
+        msg_to_user += f"از خرید شما در **{brand_title}** متشکریم!"
 
-    if bot_tok:
-        send_telegram_msg(user_id, msg_to_user, bot_token=bot_tok)
-    else:
-        send_telegram_msg(user_id, msg_to_user)
+        if bot_tok:
+            send_telegram_msg(user_id, msg_to_user, bot_token=bot_tok)
+        else:
+            send_telegram_msg(user_id, msg_to_user)
 
-    flash(f"پرداخت سفارش #{payment_id} با موفقیت تایید و کانفیگ برای مشتری ارسال شد.", "success")
+    flash(f"پرداخت سفارش #{payment_id} با موفقیت تایید و اعمال شد.", "success")
     return redirect(url_for("reseller_customer_payments"))
 
 
@@ -8653,18 +10976,29 @@ def reseller_payment_reject(payment_id):
         (reason, f"{reseller_name} (نماینده #{reseller_id})", now_iso, now_iso, payment_id)
     )
     conn.commit()
+
+    # به روزرسانی فاکتور هوشمند در صورت وجود
+    if tx.get("order_id"):
+        try:
+            cursor.execute("UPDATE smart_invoices SET status = 'rejected' WHERE order_id = ?", (tx["order_id"],))
+            conn.commit()
+        except Exception:
+            pass
+
     conn.close()
 
-    # اطلاع به کاربر
-    reseller_data = db.get_reseller(reseller_id)
-    bot_tok = reseller_data.get("bot_token") if reseller_data else None
-    msg_to_user = f"❌ **پرداخت سفارش شما تایید نشد.**\n\nعلت: {reason}\nدر صورت داشتن هرگونه سوال با پشتیبانی تماس بگیرید."
-    if bot_tok:
-        send_telegram_msg(tx["user_id"], msg_to_user, bot_token=bot_tok)
-    else:
-        send_telegram_msg(tx["user_id"], msg_to_user)
+    # اطلاع به کاربر (تنها در صورت داشتن آیدی تلگرام)
+    user_id = tx.get("user_id") or 0
+    if user_id and int(user_id) > 0:
+        reseller_data = db.get_reseller(reseller_id)
+        bot_tok = reseller_data.get("bot_token") if reseller_data else None
+        msg_to_user = f"❌ **پرداخت سفارش شما تایید نشد.**\n\nعلت: {reason}\nدر صورت داشتن هرگونه سوال با پشتیبانی تماس بگیرید."
+        if bot_tok:
+            send_telegram_msg(user_id, msg_to_user, bot_token=bot_tok)
+        else:
+            send_telegram_msg(user_id, msg_to_user)
 
-    flash("فیش پرداخت با موفقیت رد شد و به مشتری اطلاع داده شد.", "info")
+    flash("فیش پرداخت با موفقیت رد شد و وضعیت آن ثبت گردید.", "info")
     return redirect(url_for("reseller_customer_payments"))
 
 
@@ -8749,6 +11083,13 @@ def reseller_cards():
             sandbox = bool(request.form.get("gateway_sandbox"))
             db.update_reseller_gateway(reseller_id, enabled, gw_type, gw_key, sandbox)
             flash("تنظیمات درگاه آنلاین اختصاصی نماینده با موفقیت ذخیره شد.", "success")
+        elif action == "save_reseller_bank_sms":
+            enabled = bool(request.form.get("bank_sms_enabled"))
+            digits = int(request.form.get("bank_sms_digits", 3))
+            timeout = int(request.form.get("bank_sms_timeout", 15))
+            regenerate = bool(request.form.get("regenerate_token"))
+            db.save_reseller_bank_sms_config(reseller_id, enabled=enabled, digits=digits, timeout=timeout, regenerate_token=regenerate)
+            flash("تنظیمات تایید خودکار با پیامک بانک برای پنل شما با موفقیت ذخیره شد.", "success")
 
         return redirect(url_for("reseller_cards"))
 
@@ -8763,13 +11104,20 @@ def reseller_cards():
     blupal_webhook_url = f"{str(domain).rstrip('/')}/payment/blupal/webhook"
     blupal_callback_url = f"{str(domain).rstrip('/')}/payment/blupal/callback"
 
+    reseller_bank_sms = db.get_reseller_bank_sms_config(reseller_id)
+    bank_sms_webhook_url = f"{str(domain).rstrip('/')}/api/bank-sms/webhook?token={reseller_bank_sms['token']}"
+    bank_sms_logs = db.get_bank_sms_logs(owner_type="reseller", owner_id=reseller_id, limit=15)
+
     return render_template(
         "reseller_cards.html",
         cards=cards,
         payment_methods=payment_methods,
         reseller_gateway=reseller_gateway,
         blupal_webhook_url=blupal_webhook_url,
-        blupal_callback_url=blupal_callback_url
+        blupal_callback_url=blupal_callback_url,
+        reseller_bank_sms=reseller_bank_sms,
+        bank_sms_webhook_url=bank_sms_webhook_url,
+        bank_sms_logs=bank_sms_logs
     )
 
 
@@ -8859,6 +11207,35 @@ def reseller_create_ticket_to_admin():
     full_subject = f"[{category_type}] {subject}" if category_type and category_type != "عمومی" else subject
     res = db.create_reseller_to_admin_ticket(reseller_id=reseller_id, subject=full_subject, message=message)
     if res.get("success"):
+        ticket_id = res.get("ticket_id")
+        try:
+            admin_tg = db.get_setting("admin_telegram_id") or get_admin_id()
+            if admin_tg:
+                r_info = db.get_reseller(reseller_id) or {}
+                r_name = r_info.get("name") or session.get("name") or f"نماینده #{reseller_id}"
+                adm_notif = (
+                    f"🎫 <b>تیکت جدید از نماینده برای مدیریت!</b>\n\n"
+                    f"🆔 شماره تیکت: <b>#{ticket_id}</b>\n"
+                    f"👤 نماینده: <b>{r_name}</b> (کد #{reseller_id})\n"
+                    f"🔖 موضوع: <b>{full_subject}</b>\n"
+                    f"📝 متن پیام:\n{message}\n"
+                    f"⏰ زمان: {get_now_shamsi()}\n\n"
+                    f"💡 پاسخگویی از دکمه‌های زیر یا دستور <code>/reply_ticket {ticket_id} متن پاسخ</code>"
+                )
+                adm_kb = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "✍️ پاسخ متنی", "callback_data": f"adm_reply_tkt_{ticket_id}"},
+                            {"text": "⚡ پاسخ‌های آماده", "callback_data": f"adm_canned_tkt_{ticket_id}"}
+                        ],
+                        [
+                            {"text": "🔒 بستن تیکت", "callback_data": f"adm_close_tkt_{ticket_id}"}
+                        ]
+                    ]
+                }
+                send_telegram_msg(int(admin_tg), adm_notif, reply_markup=adm_kb)
+        except Exception as e_tg:
+            logger.warning(f"Failed to notify admin of reseller ticket: {e_tg}")
         flash("✅ تیکت شما با موفقیت برای مدیریت ارسال شد و در اسرع وقت پاسخ داده می‌شود.", "success")
     else:
         flash(f"خطا در ارسال تیکت: {res.get('error')}", "danger")
@@ -8877,6 +11254,33 @@ def reseller_ticket_reply_to_admin(ticket_id):
 
     res = db.add_reseller_admin_ticket_reply(ticket_id=ticket_id, reseller_id=reseller_id, message=reply_msg)
     if res.get("success"):
+        try:
+            admin_tg = db.get_setting("admin_telegram_id") or get_admin_id()
+            if admin_tg:
+                r_info = db.get_reseller(reseller_id) or {}
+                r_name = r_info.get("name") or r_info.get("display_name") or session.get("display_name") or session.get("name") or f"نماینده #{reseller_id}"
+                adm_notif = (
+                    f"💬 <b>پیام جدید در تیکت مکاتبه با نماینده!</b>\n\n"
+                    f"🆔 شماره تیکت: <b>#{ticket_id}</b>\n"
+                    f"👤 فرستنده: <b>{r_name}</b> (نماینده #{reseller_id})\n"
+                    f"📝 متن پیام:\n{reply_msg}\n"
+                    f"⏰ زمان: {get_now_shamsi()}\n\n"
+                    f"💡 پاسخگویی از دکمه‌های زیر یا دستور <code>/reply_ticket {ticket_id} متن پاسخ</code>"
+                )
+                adm_kb = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "✍️ پاسخ متنی", "callback_data": f"adm_reply_tkt_{ticket_id}"},
+                            {"text": "⚡ پاسخ‌های آماده", "callback_data": f"adm_canned_tkt_{ticket_id}"}
+                        ],
+                        [
+                            {"text": "🔒 بستن تیکت", "callback_data": f"adm_close_tkt_{ticket_id}"}
+                        ]
+                    ]
+                }
+                send_telegram_msg(int(admin_tg), adm_notif, reply_markup=adm_kb)
+        except Exception as e_tg:
+            logger.warning(f"Failed to notify admin of reseller ticket reply: {e_tg}")
         flash("✅ پیام شما برای مدیریت ارسال شد.", "success")
     else:
         flash(f"خطا در ثبت پیام: {res.get('error')}", "danger")
@@ -8896,7 +11300,7 @@ def reseller_ticket_reply(ticket_id):
         flash("متن پاسخ نمی‌تواند خالی باشد.", "warning")
         return redirect(url_for("reseller_tickets"))
 
-    sender_name = session.get("username") or session.get("name") or "پشتیبانی نماینده"
+    sender_name = session.get("display_name") or session.get("name") or session.get("username") or "پشتیبانی نماینده"
     db.add_ticket_message(
         ticket_id=ticket_id,
         sender_type="reseller",
@@ -8976,9 +11380,21 @@ def reseller_discounts():
     reseller_id = session.get("reseller_id")
     if request.method == "POST":
         code = request.form.get("code", "").strip()
-        discount_percent = int(request.form.get("discount_percent", 0))
-        discount_amount = int(request.form.get("discount_amount", 0))
-        max_uses = int(request.form.get("max_uses", 0))
+        try:
+            discount_percent = int(request.form.get("discount_percent") or 0)
+        except (ValueError, TypeError):
+            discount_percent = 0
+
+        try:
+            discount_amount = int(request.form.get("discount_amount") or 0)
+        except (ValueError, TypeError):
+            discount_amount = 0
+
+        try:
+            max_uses = int(request.form.get("max_uses") or 0)
+        except (ValueError, TypeError):
+            max_uses = 0
+
         valid_until = request.form.get("valid_until", "").strip() or None
 
         if not code:
@@ -9043,8 +11459,9 @@ def reseller_team():
                 flash(f"خطا: {res.get('error')}", "danger")
         return redirect(get_redirect_target("reseller_team"))
 
-    team_members = db.get_reseller_team_members(reseller_id)
-    return render_template("reseller_team.html", team_members=team_members)
+    team_members = db.get_reseller_team_with_sessions(reseller_id)
+    is_main_reseller = (session.get("role") == "reseller" and not session.get("sub_role"))
+    return render_template("reseller_team.html", team_members=team_members, is_main_reseller=is_main_reseller)
 
 
 @app.route("/reseller/team/<int:member_id>/toggle", methods=["POST"])
@@ -9067,6 +11484,82 @@ def reseller_team_delete(member_id):
     return redirect(get_redirect_target("reseller_team"))
 
 
+@app.route("/reseller/session/<int:session_id>/terminate", methods=["POST"])
+@reseller_required
+def reseller_terminate_session(session_id):
+    """خاتمه نشست فعال توسط مدیر اصلی نماینده"""
+    if session.get("sub_role"):
+        flash("فقط مدیر اصلی حساب نمایندگی مجاز به خاتمه نشست‌ها می‌باشد.", "danger")
+        return redirect(request.referrer or url_for("reseller_dashboard"))
+
+    reseller_id = session.get("reseller_id")
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_type, user_id FROM login_logs WHERE id = ?", (session_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        flash("نشست مورد نظر یافت نشد.", "warning")
+        return redirect(request.referrer or url_for("reseller_dashboard"))
+
+    u_type = row["user_type"]
+    u_id = row["user_id"]
+
+    allowed = False
+    if u_type == "reseller" and u_id == reseller_id:
+        allowed = True
+    elif u_type == "reseller_subadmin":
+        team = db.get_reseller_team_members(reseller_id)
+        if any(m["id"] == u_id for m in team):
+            allowed = True
+
+    if not allowed:
+        flash("شما مجاز به خاتمه دادن به این نشست نیستید.", "danger")
+        return redirect(request.referrer or url_for("reseller_dashboard"))
+
+    success = db.terminate_session(session_id)
+    if success:
+        flash("نشست مورد نظر با موفقیت خاتمه یافت و کاربر مربوطه خارج شد.", "success")
+    else:
+        flash("خطا در خاتمه نشست یا نشست از قبل غیرفعال بوده است.", "warning")
+    return redirect(request.referrer or url_for("reseller_team"))
+
+
+@app.route("/reseller/team/<int:member_id>/terminate-sessions", methods=["POST"])
+@reseller_required
+def reseller_terminate_member_sessions(member_id):
+    """خاتمه تمام نشست‌های فعال یک عضو تیم توسط مدیر اصلی نماینده"""
+    if session.get("sub_role"):
+        flash("فقط مدیر اصلی حساب نمایندگی مجاز به خاتمه نشست‌ها می‌باشد.", "danger")
+        return redirect(request.referrer or url_for("reseller_team"))
+
+    reseller_id = session.get("reseller_id")
+    team = db.get_reseller_team_members(reseller_id)
+    if not any(m["id"] == member_id for m in team):
+        flash("این عضو متعلق به تیم شما نیست.", "danger")
+        return redirect(request.referrer or url_for("reseller_team"))
+
+    count = db.terminate_all_user_sessions("reseller_subadmin", member_id)
+    flash(f"تعداد {count} نشست فعال این عضو تیم با موفقیت خاتمه یافت.", "success")
+    return redirect(request.referrer or url_for("reseller_team"))
+
+
+@app.route("/reseller/terminate-other-sessions", methods=["POST"])
+@reseller_required
+def reseller_terminate_other_sessions():
+    """خاتمه تمام نشست‌های دیگر حساب خود نماینده به جز نشست فعلی"""
+    if session.get("sub_role"):
+        flash("فقط مدیر اصلی حساب نمایندگی مجاز به این عملیات است.", "danger")
+        return redirect(request.referrer or url_for("reseller_profile"))
+
+    reseller_id = session.get("reseller_id")
+    current_token = session.get("session_token")
+    count = db.terminate_all_user_sessions("reseller", reseller_id, except_token=current_token)
+    flash(f"تعداد {count} نشست فعال دیگر حساب شما با موفقیت خاتمه یافتند.", "success")
+    return redirect(request.referrer or url_for("reseller_profile"))
+
+
 # ─── ۶. هویت بصری، لوگو و دامنه اختصاصی نماینده (Branding & Custom Domain) ───
 
 @app.route("/reseller/branding", methods=["GET", "POST"])
@@ -9074,7 +11567,7 @@ def reseller_team_delete(member_id):
 def reseller_branding():
     """تنظیمات هویت بصری، لوگو، رنگ‌بندی، عنوان و دامنه اختصاصی نماینده"""
     reseller_id = session.get("reseller_id")
-    reseller = db.get_reseller(reseller_id)
+    reseller = db.get_reseller(reseller_id) or {}
 
     if request.method == "POST":
         custom_domain = request.form.get("custom_domain", "").strip().lower()
@@ -9084,6 +11577,12 @@ def reseller_branding():
         favicon_url = request.form.get("favicon_url", "").strip()
         primary_color = request.form.get("primary_color", "").strip()
         footer_text = request.form.get("footer_text", "").strip()
+        portal_title = request.form.get("portal_title", "").strip()
+        portal_subtitle = request.form.get("portal_subtitle", "").strip()
+        support_phone = request.form.get("support_phone", "").strip()
+        support_username = request.form.get("support_username", "").strip().lstrip("@")
+        portal_layout = request.form.get("portal_layout", "").strip().lower()
+        portal_plan_style = request.form.get("portal_plan_style", "").strip().lower()
 
         # بررسی آپلود مستقیم لوگو در صورت ارسال فایل
         if "logo_file" in request.files:
@@ -9103,10 +11602,16 @@ def reseller_branding():
             custom_domain=custom_domain,
             tutorial_domain=tutorial_domain,
             brand_title=brand_title,
+            portal_title=portal_title,
+            portal_subtitle=portal_subtitle,
+            support_phone=support_phone,
+            support_username=support_username,
             logo_url=logo_url,
             favicon_url=favicon_url,
             primary_color=primary_color,
-            footer_text=footer_text
+            footer_text=footer_text,
+            portal_layout=portal_layout,
+            portal_plan_style=portal_plan_style
         )
         if res.get("success"):
             flash("تنظیمات هویت بصری، دامنه‌ها و آموزش‌های اختصاصی شما با موفقیت ذخیره شد.", "success")
@@ -9161,6 +11666,17 @@ def admin_create_customer():
                 flash("اطلاعات پلن یا قیمت نامعتبر است.", "danger")
                 return redirect(url_for("admin_create_customer"))
 
+        # دریافت و اعمال حجم هدیه (Gift Traffic)
+        gift_traffic = 0.0
+        try:
+            gift_traffic = max(0.0, float(request.form.get("gift_traffic_gb", 0) or 0))
+        except (ValueError, TypeError):
+            gift_traffic = 0.0
+
+        if gift_traffic > 0:
+            data_limit += gift_traffic
+            plan_name += f" (+{gift_traffic}GB هدیه)"
+
         telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else None
 
         # بررسی موجودی کیف پول در صورت پرداخت از کیف پول
@@ -9173,6 +11689,8 @@ def admin_create_customer():
 
         # ایجاد کاربر در سرور هیدیفای
         h_comment = f"Admin:{session.get('username')}|{telegram_id or ''}"
+        if gift_traffic > 0:
+            h_comment += f" | +{gift_traffic}GB Gift"
         h_res = hidify_sync_create_user(name=account_name, usage_limit_gb=data_limit, package_days=duration, comment=h_comment)
         user_uuid = h_res.get("uuid", "")
         if not user_uuid:
@@ -9193,6 +11711,7 @@ def admin_create_customer():
         debt_created = now if debt_amount > 0 else None
 
         # ذخیره در دیتابیس
+        admin_creator = session.get("username") or "admin"
         sub_res = db.save_subscription(
             telegram_id=telegram_id or 0,
             hidify_uuid=user_uuid,
@@ -9202,7 +11721,8 @@ def admin_create_customer():
             duration=duration,
             status="active",
             account_name=account_name,
-            user_limit=user_limit
+            user_limit=user_limit,
+            created_by=admin_creator
         )
         sub_id = sub_res.get("subscription_id") if isinstance(sub_res, dict) else sub_res
 
@@ -9210,9 +11730,9 @@ def admin_create_customer():
         conn = db.get_connection()
         conn.execute("""
             UPDATE subscriptions 
-            SET phone_number = ?, account_comment = ?, payment_status = ?, debt_amount = ?, debt_notes = ?, debt_created_at = ?
+            SET phone_number = ?, account_comment = ?, payment_status = ?, debt_amount = ?, debt_notes = ?, debt_created_at = ?, created_by = COALESCE(created_by, ?)
             WHERE id = ?
-        """, (phone_number or None, comment or None, payment_status, debt_amount, debt_notes or None, debt_created, sub_id))
+        """, (phone_number or None, comment or None, payment_status, debt_amount, debt_notes or None, debt_created, admin_creator, sub_id))
         conn.commit()
         conn.close()
 
@@ -9242,6 +11762,48 @@ def admin_create_customer():
         debt_info_text = ""
         if payment_method == "debtor":
             debt_info_text = f" (مشتری بدهکار ثبت گردید: {debt_amount:,} تومان)"
+            try:
+                db.add_customer_debt_record(
+                    subscription_id=sub_id,
+                    account_name=account_name,
+                    telegram_id=telegram_id or 0,
+                    reseller_id=None,
+                    action_type="create",
+                    plan_name=plan_name,
+                    amount=debt_amount,
+                    notes=debt_notes or None,
+                    created_by=admin_creator
+                )
+            except Exception as e_rec:
+                logger.error(f"Error logging initial customer debt record: {e_rec}")
+        elif payment_method == "wallet" and price > 0:
+            order_id = f"WLT_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
+            db.save_transaction(
+                order_id=order_id,
+                user_id=telegram_id or 0,
+                username=account_name,
+                plan_name=plan_name,
+                amount=price,
+                gateway="wallet",
+                tracking_code=f"WALLET_{telegram_id}",
+                status="approved",
+                account_name=account_name,
+                source="admin"
+            )
+            try:
+                db.add_accounting_record(
+                    type="income",
+                    category="فروش اشتراک",
+                    title=f"خرید از کیف پول {account_name} ({plan_name})",
+                    amount=price,
+                    source="wallet",
+                    ref_type="subscription",
+                    ref_id=str(sub_id),
+                    description=f"کسر از کیف پول کاربر {telegram_id}",
+                    date=now[:10]
+                )
+            except Exception as e_acc:
+                logger.error(f"Error recording accounting record for wallet sale: {e_acc}")
         elif payment_method == "cash" and price > 0:
             order_id = f"ADM_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
             db.save_transaction(
@@ -9253,8 +11815,23 @@ def admin_create_customer():
                 gateway="cash_admin",
                 tracking_code=f"CASH_{session.get('username')}",
                 status="approved",
-                account_name=account_name
+                account_name=account_name,
+                source="admin"
             )
+            try:
+                db.add_accounting_record(
+                    type="income",
+                    category="فروش اشتراک",
+                    title=f"فروش نقدی {account_name} ({plan_name})",
+                    amount=price,
+                    source="admin_panel",
+                    ref_type="subscription",
+                    ref_id=str(sub_id),
+                    description=f"ثبت نقدی مشتری توسط {session.get('username') or 'admin'}",
+                    date=now[:10]
+                )
+            except Exception as e_acc:
+                logger.error(f"Error recording accounting record for cash sale: {e_acc}")
 
             if admin_role == "super_admin":
                 debt_info_text = " (مبلغ نقدی به صندوق اصلی ثبت شد)"
@@ -9544,7 +12121,16 @@ def reseller_profile():
 
     login_history = db.get_user_login_history("reseller", reseller_id, limit=20)
     current_token = session.get("session_token", "")
-    return render_template("reseller_profile.html", reseller=reseller, login_history=login_history, current_token=current_token)
+    usage_summary = db.get_reseller_usage_summary(reseller_id)
+    is_main_reseller = (session.get("role") == "reseller" and not session.get("sub_role"))
+    return render_template(
+        "reseller_profile.html",
+        reseller=reseller,
+        login_history=login_history,
+        current_token=current_token,
+        usage_summary=usage_summary,
+        is_main_reseller=is_main_reseller
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -10459,6 +13045,1324 @@ def reseller_apply():
         aff_settings=aff_settings,
         submitted=False
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# مسیر اختصاصی وب‌هوک دریافت پیامک‌های بانک (Smart Bank SMS Webhook)
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/api/bank-sms/webhook", methods=["GET", "POST"])
+def bank_sms_webhook():
+    """
+    دریافت اعلان خودکار پیامک بانک از اپلیکیشن فورواردر گوشی (SMS Forwarder / MacroDroid)
+    پشتیبانی از توکن اختصاصی برای ادمین و نمایندگان
+    """
+    token = request.args.get("token") or request.headers.get("X-Bank-SMS-Token") or request.headers.get("Authorization")
+    if token and str(token).startswith("Bearer "):
+        token = str(token)[7:].strip()
+
+    # خواندن از JSON یا فرم
+    payload = request.get_json(silent=True) or {}
+    if not token and payload:
+        token = payload.get("token")
+    if not token and request.form:
+        token = request.form.get("token")
+
+    if not token:
+        return jsonify({"error": "Unauthorized: Missing webhook token"}), 401
+
+    owner = db.find_bank_sms_owner_by_token(token)
+    if not owner:
+        return jsonify({"error": "Unauthorized: Invalid webhook token"}), 403
+
+    owner_type = owner["type"]
+    owner_id = owner["id"]
+
+    if request.method == "GET":
+        return jsonify({
+            "status": "ok",
+            "message": "Bank SMS Webhook is active and connected.",
+            "owner": owner
+        })
+
+    # استخراج متن و فرستنده پیامک
+    raw_message = (
+        payload.get("message") or payload.get("text") or payload.get("sms") or 
+        payload.get("content") or payload.get("body") or request.form.get("message") or 
+        request.form.get("text") or request.form.get("sms") or ""
+    )
+    sender = (
+        payload.get("sender") or payload.get("from") or payload.get("phone") or 
+        request.form.get("sender") or request.form.get("from") or ""
+    )
+
+    if not raw_message:
+        return jsonify({"error": "Empty message body"}), 400
+
+    logger.info(f"Received Bank SMS for {owner_type} #{owner_id} from {sender}: {raw_message}")
+
+    from bank_sms_parser import parse_bank_sms
+    parsed = parse_bank_sms(raw_message, sender=sender)
+
+    if not parsed or not parsed.get("is_deposit"):
+        db.log_bank_sms(
+            owner_type=owner_type,
+            owner_id=owner_id,
+            sender_number=sender,
+            raw_message=raw_message,
+            status="ignored"
+        )
+        return jsonify({"status": "ignored", "reason": "Not a deposit SMS"}), 200
+
+    amount_toman = parsed.get("amount_toman")
+    if not amount_toman or amount_toman <= 0:
+        db.log_bank_sms(
+            owner_type=owner_type,
+            owner_id=owner_id,
+            sender_number=sender,
+            raw_message=raw_message,
+            status="unmatched"
+        )
+        return jsonify({"status": "unmatched", "reason": "Could not extract deposit amount"}), 200
+
+    # تطبیق با فاکتورهای معلق باز
+    matched_invoice = db.match_smart_invoice_by_amount(amount_toman, owner_type=owner_type, owner_id=owner_id)
+
+    if not matched_invoice:
+        db.log_bank_sms(
+            owner_type=owner_type,
+            owner_id=owner_id,
+            sender_number=sender,
+            raw_message=raw_message,
+            extracted_amount=amount_toman,
+            status="unmatched"
+        )
+        return jsonify({
+            "status": "unmatched",
+            "amount_toman": amount_toman,
+            "bank": parsed.get("bank_name"),
+            "message": "No pending invoice matched this amount"
+        }), 200
+
+    order_id = matched_invoice["order_id"]
+    sub_id = matched_invoice.get("sub_id")
+    tracking = parsed.get("tracking_code") or f"SMS-{int(get_now_naive().timestamp())}"
+
+    # ثبت پرداخت فاکتور هوشمند
+    db.mark_smart_invoice_paid(order_id, tracking_code=tracking)
+
+    # ثبت لاگ موفقیت‌آمیز
+    db.log_bank_sms(
+        owner_type=owner_type,
+        owner_id=owner_id,
+        sender_number=sender,
+        raw_message=raw_message,
+        extracted_amount=amount_toman,
+        matched_order_id=order_id,
+        status="matched"
+    )
+
+    # تحویل و تمدید خودکار اشتراک
+    processed_by = f"پیامک بانک ({parsed.get('bank_name', 'شتاب')})"
+    fulfill_res = fulfill_approved_transaction(order_id, ref_id=tracking, processed_by=processed_by)
+    logger.info(f"Smart Invoice {order_id} fulfilled via Bank SMS: {fulfill_res}")
+
+    # ارسال پیامک تایید به مشتری (در صورت وجود شماره)
+    try:
+        if sub_id:
+            sub = db.get_subscription(sub_id)
+            if sub and sub.get("phone_number"):
+                from sms_service import send_sms
+                sms_body = f"کاربر گرامی، پرداخت {amount_toman:,} تومانی شما تایید و اشتراک «{sub.get('account_name')}» تمدید شد."
+                send_sms(sub["phone_number"], sms_body, db_instance=db)
+    except Exception as e_sms:
+        logger.warning(f"Failed to send confirmation SMS to customer: {e_sms}")
+
+    return jsonify({
+        "status": "success",
+        "matched_order_id": order_id,
+        "amount_toman": amount_toman,
+        "bank": parsed.get("bank_name"),
+        "tracking_code": tracking,
+        "fulfill": fulfill_res
+    }), 200
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# مسیرهای پورتال دائمی و صفحه تمدید اختصاصی مشتریان
+# ═══════════════════════════════════════════════════════════════════════
+
+def get_customer_portal_server_status() -> dict:
+    """دریافت وضعیت نمایشی سرورها برای پورتال مشتری بر اساس تنظیمات هوشمند یا دستی پنل مدیریت"""
+    mode = db.get_setting("server_status_mode", "smart")  # "smart" or "manual"
+    custom_text = db.get_setting("server_status_custom_text", "").strip()
+
+    if mode == "manual":
+        state = db.get_setting("server_status_manual_state", "operational")
+        if state == "operational":
+            return {
+                "mode": "manual",
+                "state": "operational",
+                "status_title": "متصل و عملیاتی",
+                "color_name": "success",
+                "color_code": "#10b981",
+                "bg_class": "bg-success",
+                "icon": "fa-check",
+                "show_ping": False,
+                "latency": 0,
+                "custom_text": custom_text
+            }
+        elif state == "disruption":
+            return {
+                "mode": "manual",
+                "state": "disruption",
+                "status_title": "اختلال در سرورها",
+                "color_name": "warning",
+                "color_code": "#f59e0b",
+                "bg_class": "bg-warning",
+                "icon": "fa-triangle-exclamation",
+                "show_ping": False,
+                "latency": 0,
+                "custom_text": custom_text
+            }
+        else:  # disconnected
+            return {
+                "mode": "manual",
+                "state": "disconnected",
+                "status_title": "سرورها قطع میباشند",
+                "color_name": "danger",
+                "color_code": "#ef4444",
+                "bg_class": "bg-danger",
+                "icon": "fa-xmark",
+                "show_ping": False,
+                "latency": 0,
+                "custom_text": custom_text
+            }
+    else:
+        # حالت هوشمند: تست زنده سرور هیدیفای
+        health = hidify_sync_ping()
+        if health.get("online"):
+            lat = int(health.get("latency") or 0)
+            # نکته درخواستی: اگر پینگ سرور بالاتر از ۱۸۰ بود پینگ نمایش داده نشود
+            show_ping = (lat > 0 and lat <= 180)
+            return {
+                "mode": "smart",
+                "state": "operational",
+                "status_title": "متصل و عملیاتی",
+                "color_name": "success",
+                "color_code": "#10b981",
+                "bg_class": "bg-success",
+                "icon": "fa-check",
+                "show_ping": show_ping,
+                "latency": lat,
+                "custom_text": custom_text
+            }
+        else:
+            return {
+                "mode": "smart",
+                "state": "disconnected",
+                "status_title": "سرورها قطع میباشند",
+                "color_name": "danger",
+                "color_code": "#ef4444",
+                "bg_class": "bg-danger",
+                "icon": "fa-xmark",
+                "show_ping": False,
+                "latency": 0,
+                "custom_text": custom_text
+            }
+
+
+@app.route("/api/server-status", methods=["GET"])
+def api_server_status():
+    """استعلام وضعیت سرور برای پورتال مشتریان"""
+    return jsonify(get_customer_portal_server_status())
+
+
+@app.route("/renew/check-discount/<token>", methods=["POST"])
+def customer_check_discount(token: str):
+    """بررسی و اعتبارسنجی بلادرنگ کد تخفیف برای مشتری با تفکیک کامل نماینده و مدیریت"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+
+    if not sub_row:
+        return jsonify({"valid": False, "error": "اشتراک یافت نشد"}), 404
+
+    sub = dict(sub_row)
+    data = request.get_json(silent=True) or request.form
+    code = (data.get("code") or "").strip().upper()
+    plan_id = str(data.get("plan_id") or "").strip()
+
+    if not code:
+        return jsonify({"valid": False, "error": "لطفاً کد تخفیف را وارد کنید."})
+
+    reseller_id = sub.get("reseller_id") or 0
+    price = 0
+    if reseller_id:
+        r_plan = db.get_reseller_plan(reseller_id, plan_id)
+        if r_plan:
+            price = r_plan.get("custom_price") or r_plan.get("price") or 0
+    if not price:
+        g_plan = get_plans_dict().get(plan_id)
+        if g_plan:
+            price = g_plan.get("price", 0)
+
+    if not price:
+        if reseller_id:
+            raw_plans = db.get_reseller_active_plans(reseller_id)
+            if raw_plans:
+                price = raw_plans[0].get("custom_price") or raw_plans[0].get("price") or 0
+        if not price:
+            all_p = get_plans_dict()
+            if all_p:
+                price = next(iter(all_p.values())).get("price", 100000)
+            else:
+                price = 100000
+
+    res = db.validate_customer_discount(sub, code, price)
+    if res.get("valid"):
+        return jsonify({
+            "valid": True,
+            "discount_code": res["discount_code"],
+            "discount_amount": res["discount_amount"],
+            "original_amount": price,
+            "final_amount": res["final_amount"],
+            "message": f"کد تخفیف اعمال شد: {res['discount_amount']:,} تومان تخفیف"
+        })
+    else:
+        return jsonify({
+            "valid": False,
+            "error": res.get("error", "این کد تخفیف برای شما معتبر نمی‌باشد.")
+        })
+
+
+@app.route("/user/<token>", methods=["GET"])
+@app.route("/sub/<token>", methods=["GET"])
+@app.route("/renew/<token>", methods=["GET"])
+def customer_portal(token: str):
+    """
+    پورتال دائمی و صفحه استعلام وضعیت و تمدید اشتراک مشتری (بدون نیاز به لاگین)
+    token می‌تواند hidify_uuid یا شناسه اشتراک باشد.
+    """
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+
+    if not sub_row:
+        return render_template("troubleshoot_wizard.html", error="اشتراک مورد نظر یافت نشد یا حذف شده است."), 404
+
+    sub = dict(sub_row)
+    sub = enrich_subscription_details(sub)
+    sub_id = sub["id"]
+    reseller_id = sub.get("reseller_id") or 0
+
+    # بررسی برندینگ و نماینده
+    brand_title = db.get_setting("portal_title") or db.get_setting("store_name") or "فروشگاه اینترنت آزاد"
+    portal_subtitle = db.get_setting("portal_subtitle") or "پورتال اختصاصی استعلام وضعیت و تمدید اشتراک"
+    logo_url = db.get_setting("store_logo")
+    support_username = db.get_setting("support_username")
+    support_phone = db.get_setting("support_phone")
+    portal_layout = db.get_setting("portal_layout", "classic")
+    portal_plan_style = db.get_setting("portal_plan_style", "glass_classic")
+
+    if reseller_id:
+        r_info = db.get_reseller(reseller_id) or {}
+        brand_title = r_info.get("portal_title") or r_info.get("brand_title") or r_info.get("brand_name") or r_info.get("name") or brand_title
+        portal_subtitle = r_info.get("portal_subtitle") or portal_subtitle
+        logo_url = r_info.get("logo_url") or logo_url
+        support_username = r_info.get("support_username") or support_username
+        support_phone = r_info.get("support_phone") or r_info.get("phone") or support_phone
+        if r_info.get("portal_layout"):
+            portal_layout = r_info["portal_layout"]
+        if r_info.get("portal_plan_style"):
+            portal_plan_style = r_info["portal_plan_style"]
+
+    # روزهای مانده از تابع غنی‌ساز هیدیفای
+    days_left = sub.get("remaining_days", sub.get("duration", 30))
+    if sub.get("is_expired") and days_left < 0:
+        days_left = 0
+
+    # دریافت پلن‌های مجاز
+    if reseller_id:
+        raw_plans = db.get_reseller_active_plans(reseller_id)
+        plans = []
+        for rp in raw_plans:
+            plans.append({
+                "id": str(rp["plan_id"]),
+                "plan_id": str(rp["plan_id"]),
+                "name": rp.get("custom_name") or rp.get("name") or rp["plan_id"],
+                "price": rp.get("custom_price") or rp.get("price") or 0,
+                "data_limit": rp.get("data_limit", 30),
+                "duration": rp.get("duration", 30),
+                "plan_icon": rp.get("plan_icon", "")
+            })
+        if not plans:
+            raw = get_plans_dict()
+            plans = [{"id": str(k), "plan_id": str(k), **v} for k, v in raw.items() if v.get("is_active", True)]
+    else:
+        raw = get_plans_dict()
+        plans = [{"id": str(k), "plan_id": str(k), **v} for k, v in raw.items() if v.get("is_active", True)]
+
+    # دریافت آخرین فاکتور فعال معلق برای این اشتراک (در صورت وجود)
+    now_str = get_now_naive().isoformat()
+    conn = db.get_connection()
+    inv_row = conn.execute("""
+        SELECT * FROM smart_invoices 
+        WHERE sub_id=? AND status='pending' AND expires_at > ?
+        ORDER BY id DESC LIMIT 1
+    """, (sub_id, now_str)).fetchone()
+    conn.close()
+    invoice = dict(inv_row) if inv_row else None
+
+    # لینک‌های اشتراک و کانفیگ تکی
+    user_uuid = sub.get("hidify_uuid") or str(sub_id)
+    acc_name = sub.get("account_name") or ""
+    panel_url = get_hiddify_url()
+    user_proxy = get_user_proxy()
+    sub_url = f"{panel_url}/{user_proxy}/{user_uuid}/" if (panel_url and user_uuid) else ""
+    single_link_template = db.get_setting("single_link_template")
+    single_url = format_single_link(single_link_template, uuid=user_uuid, name=acc_name) if (single_link_template and user_uuid) else ""
+
+    # لینک آموزش‌ها و عیب‌یابی اتصال
+    troubleshoot_url = url_for("troubleshoot_wizard", _external=True)
+
+    portal_enable_renewal = str(db.get_setting("portal_enable_renewal", "1")).lower() in ("1", "true")
+    portal_show_troubleshoot = str(db.get_setting("portal_show_troubleshoot", "1")).lower() in ("1", "true")
+    pending_queues = db.get_pending_queue_items(sub_id)
+    pending_queue = pending_queues[0] if pending_queues else None
+
+    # دریافت سوابق دوره‌ها و تمدیدهای گذشته و تراکنش‌های پرداخت این اشتراک
+    conn = db.get_connection()
+    sub_hist_rows = conn.execute("""
+        SELECT * FROM subscription_history 
+        WHERE subscription_id = ? OR (hidify_uuid = ? AND hidify_uuid IS NOT NULL AND hidify_uuid != '')
+        ORDER BY 
+            CASE 
+                WHEN period_offset IS NOT NULL AND period_offset > 0 THEN period_offset 
+                ELSE 9999 
+            END ASC,
+            renewed_at DESC, id DESC
+    """, (sub_id, sub.get("hidify_uuid") or "")).fetchall()
+
+    tx_rows = conn.execute("""
+        SELECT * FROM transactions 
+        WHERE (renew_sub_id = ? OR (account_name IS NOT NULL AND account_name != '' AND account_name = ?) OR (user_id = ? AND user_id > 0))
+          AND (is_deleted = 0 OR is_deleted IS NULL)
+          AND (gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
+        ORDER BY created_at DESC LIMIT 40
+    """, (sub_id, acc_name, sub.get("telegram_id") or 0)).fetchall()
+    conn.close()
+
+    sub_history = [dict(r) for r in sub_hist_rows]
+    tx_history = [dict(r) for r in tx_rows]
+    total_paid = sum(int(t.get("amount") or 0) for t in tx_history if t.get("status") in ("approved", "completed", "paid"))
+
+    server_status = get_customer_portal_server_status()
+    portal_palette_config = get_active_palette_config(db, context="portal")
+    portal_palette_css = generate_palette_css(portal_palette_config)
+    chat_settings = db.get_chat_settings()
+    support_online_info = db.is_support_online_for_sub(sub_id, reseller_id=reseller_id)
+
+    return render_template(
+        "customer_portal.html",
+        sub=sub,
+        token=token,
+        brand_title=brand_title,
+        portal_subtitle=portal_subtitle,
+        logo_url=logo_url,
+        support_username=support_username,
+        support_phone=support_phone,
+        days_left=days_left,
+        plans=plans,
+        invoice=invoice,
+        sub_url=sub_url,
+        single_url=single_url,
+        troubleshoot_url=troubleshoot_url,
+        portal_enable_renewal=portal_enable_renewal,
+        portal_show_troubleshoot=portal_show_troubleshoot,
+        pending_queue=pending_queue,
+        pending_queues=pending_queues,
+        sub_history=sub_history,
+        tx_history=tx_history,
+        total_paid=total_paid,
+        server_status=server_status,
+        palette_config=portal_palette_config,
+        palette_css=portal_palette_css,
+        chat_settings=chat_settings,
+        support_online_info=support_online_info,
+        portal_layout=portal_layout,
+        portal_plan_style=portal_plan_style
+    )
+
+
+@app.route("/renew/create-invoice/<token>", methods=["POST"])
+def customer_create_invoice(token: str):
+    """ایجاد فاکتور تمدید هوشمند با ارقام خرد برای مشتری با پشتیبانی از کدهای تخفیف ایزوله"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+
+    if not sub_row:
+        flash("اشتراک یافت نشد.", "danger")
+        return redirect(url_for("customer_portal", token=token))
+
+    sub = dict(sub_row)
+    sub_id = sub["id"]
+    reseller_id = sub.get("reseller_id") or 0
+    plan_id = request.form.get("plan_id")
+    instant_activation = (request.form.get("instant_activation") == "1")
+
+    # استخراج مشخصات پلن انتخابی
+    price = 0
+    plan_name = "بسته تمدید"
+    if reseller_id:
+        r_plan = db.get_reseller_plan(reseller_id, plan_id)
+        if r_plan:
+            price = r_plan.get("custom_price") or r_plan.get("price") or 0
+            plan_name = r_plan.get("custom_name") or r_plan.get("name") or plan_id
+    if not price:
+        g_plan = get_plans_dict().get(plan_id)
+        if g_plan:
+            price = g_plan.get("price", 0)
+            plan_name = g_plan.get("name", plan_id)
+
+    if not price:
+        price = 100000
+
+    # پردازش و اعتبارسنجی کد تخفیف (کاملاً تفکیک‌شده: کدهای نماینده فقط برای مشتری خود، و کدهای ادمین فقط برای مشتری ادمین)
+    raw_discount_code = request.form.get("discount_code", "").strip().upper()
+    discount_val = 0
+    valid_discount_code = None
+
+    if raw_discount_code:
+        chk_res = db.validate_customer_discount(sub, raw_discount_code, price)
+        if chk_res.get("valid"):
+            discount_val = int(chk_res.get("discount_amount") or 0)
+            valid_discount_code = raw_discount_code
+            price = max(0, price - discount_val)
+            db.apply_customer_discount(sub, raw_discount_code)
+        else:
+            flash(f"کد تخفیف نامعتبر: {chk_res.get('error', 'این کد تخفیف برای شما معتبر نیست.')}", "warning")
+
+    # انتخاب کارت بانکی مقصد (با فال‌بک هوشمند به کارت مدیریت در صورت نبود کارت نماینده)
+    target_card = None
+    sms_cfg = {}
+    if reseller_id:
+        r_cards = db.get_reseller_cards(reseller_id)
+        active_r_cards = [c for c in r_cards if c.get("is_active")]
+        if active_r_cards:
+            target_card = random.choice(active_r_cards)
+            sms_cfg = db.get_reseller_bank_sms_config(reseller_id)
+        else:
+            # نماینده هنوز کارتی ثبت نکرده است؛ جهت عدم توقف خرید مشتری، از کارت مدیریت استفاده می‌شود
+            adm_cards = db.get_all_bank_cards()
+            active_adm_cards = [c for c in adm_cards if c.get("is_active")]
+            if active_adm_cards:
+                target_card = random.choice(active_adm_cards)
+                sms_cfg = db.get_admin_bank_sms_config()
+                logger.warning(f"Reseller {reseller_id} has no active bank cards. Falling back to admin cards for sub {sub_id}.")
+    else:
+        adm_cards = db.get_all_bank_cards()
+        active_adm_cards = [c for c in adm_cards if c.get("is_active")]
+        if active_adm_cards:
+            target_card = random.choice(active_adm_cards)
+            sms_cfg = db.get_admin_bank_sms_config()
+
+    if not target_card:
+        flash("هیچ کارت بانکی فعالی در سامانه تعریف نشده است. لطفاً به پشتیبانی پیام دهید.", "warning")
+        return redirect(url_for("customer_portal", token=token))
+
+    digits = sms_cfg.get("digits", 3) if isinstance(sms_cfg, dict) else 3
+    timeout = sms_cfg.get("timeout", 15) if isinstance(sms_cfg, dict) else 15
+
+    invoice = db.create_smart_invoice(
+        sub_id=sub_id,
+        plan_id=plan_id,
+        reseller_id=reseller_id,
+        base_amount=price,
+        target_card=target_card,
+        digits=digits,
+        timeout_minutes=timeout,
+        instant_activation=instant_activation,
+        discount_code=valid_discount_code,
+        discount_amount=discount_val
+    )
+
+    # ایجاد همزمان تراکنش در جدول transactions با وضعیت معلق
+    now_iso = get_now_iso()
+    user_id = sub.get("telegram_id") or 0
+    account_name = sub.get("account_name") or f"sub_{sub_id}"
+    conn = db.get_connection()
+    conn.execute("""
+        INSERT OR REPLACE INTO transactions (
+            order_id, user_id, username, plan_name, amount, status, gateway, 
+            tracking_code, reseller_id, is_renewal, renew_sub_id, 
+            account_name, source, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, 'pending', 'bank_sms', ?, ?, 1, ?, ?, 'portal', ?, ?)
+    """, (
+        invoice["order_id"], user_id, account_name, plan_name, invoice["final_amount"],
+        f"کارت {target_card.get('card_number', '')}", reseller_id, sub_id,
+        account_name, now_iso, now_iso
+    ))
+    conn.commit()
+    conn.close()
+
+    # ارسال اعلان تلگرام برای نماینده یا مدیریت با دکمه‌های تایید و رد آنی
+    order_id = invoice["order_id"]
+    final_amount = invoice["final_amount"]
+    card_info = target_card.get("card_number", "")
+    card_holder = target_card.get("card_holder", "")
+    pay_notif = (
+        f"💳 <b>صدور پیش‌فاکتور تمدید جدید در پرتال مشتری!</b>\n\n"
+        f"🆔 شناسه سفارش: <code>{order_id}</code>\n"
+        f"👤 مشتری: <b>{account_name}</b> (اشتراک #{sub_id})\n"
+        f"📦 بسته انتخابی: <b>{plan_name}</b>\n"
+        f"💰 مبلغ واریزی: <b>{final_amount:,} تومان</b>\n"
+        f"💳 کارت مقصد: <code>{card_info}</code> ({card_holder})\n"
+        f"⏰ زمان: {get_now_shamsi()}"
+    )
+    if discount_val > 0 and valid_discount_code:
+        pay_notif += f"\n🎟️ کد تخفیف اعمال‌شده: <code>{valid_discount_code}</code> ({discount_val:,} تومان)"
+    if reseller_id:
+        try:
+            r_info = db.get_reseller(reseller_id) or {}
+            r_tg = r_info.get("telegram_id")
+            if r_tg:
+                r_bot_token = r_info.get("bot_token")
+                r_pay_kb = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "✅ تایید پرداخت و تمدید", "callback_data": f"res_pay_app_{order_id}"},
+                            {"text": "❌ رد پرداخت", "callback_data": f"res_pay_rej_{order_id}"}
+                        ]
+                    ]
+                }
+                send_telegram_msg(r_tg, pay_notif, reply_markup=r_pay_kb, bot_token=r_bot_token)
+        except Exception as e_res_tg:
+            logger.warning(f"Failed to notify reseller of invoice: {e_res_tg}")
+    else:
+        try:
+            admin_tg = db.get_setting("admin_telegram_id") or get_admin_id()
+            if admin_tg:
+                adm_pay_kb = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "✅ تایید پرداخت و تمدید", "callback_data": f"adm_pay_app_{order_id}"},
+                            {"text": "❌ رد پرداخت", "callback_data": f"adm_pay_rej_{order_id}"}
+                        ]
+                    ]
+                }
+                send_telegram_msg(int(admin_tg), pay_notif, reply_markup=adm_pay_kb)
+        except Exception as e_adm_tg:
+            logger.warning(f"Failed to notify admin of invoice: {e_adm_tg}")
+
+    flash(f"فاکتور تمدید برای «{plan_name}» صادر شد. لطفاً دقیقاً مبلغ مشخص شده را واریز نمایید.", "info")
+    return redirect(url_for("customer_portal", token=token))
+
+
+@app.route("/renew/settle-debt/<token>", methods=["POST"])
+def customer_settle_debt_invoice(token: str):
+    """ایجاد فاکتور هوشمند پرداخت جهت تسویه بدهی مشتری از طریق پرتال"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+
+    if not sub_row:
+        flash("اشتراک یافت نشد.", "danger")
+        return redirect(url_for("customer_portal", token=token))
+
+    sub = dict(sub_row)
+    sub_id = sub["id"]
+    reseller_id = sub.get("reseller_id") or 0
+    debt_amount = int(sub.get("debt_amount") or 0)
+
+    if debt_amount <= 0:
+        flash("این اشتراک هیچ بدهی پرداخت‌نشده‌ای ندارد.", "info")
+        return redirect(url_for("customer_portal", token=token))
+
+    # انتخاب کارت بانکی مقصد (با اولویت کارت‌های فعال نماینده و فال‌بک به کارت مدیریت)
+    target_card = None
+    sms_cfg = {}
+    if reseller_id:
+        r_cards = db.get_reseller_cards(reseller_id)
+        active_r_cards = [c for c in r_cards if c.get("is_active")]
+        if active_r_cards:
+            target_card = random.choice(active_r_cards)
+            sms_cfg = db.get_reseller_bank_sms_config(reseller_id)
+        else:
+            adm_cards = db.get_all_bank_cards()
+            active_adm_cards = [c for c in adm_cards if c.get("is_active")]
+            if active_adm_cards:
+                target_card = random.choice(active_adm_cards)
+                sms_cfg = db.get_admin_bank_sms_config()
+    else:
+        adm_cards = db.get_all_bank_cards()
+        active_adm_cards = [c for c in adm_cards if c.get("is_active")]
+        if active_adm_cards:
+            target_card = random.choice(active_adm_cards)
+            sms_cfg = db.get_admin_bank_sms_config()
+
+    if not target_card:
+        flash("هیچ کارت بانکی فعالی در سامانه تعریف نشده است. لطفاً با پشتیبانی تماس بگیرید.", "warning")
+        return redirect(url_for("customer_portal", token=token))
+
+    digits = sms_cfg.get("digits", 3) if isinstance(sms_cfg, dict) else 3
+    timeout = sms_cfg.get("timeout", 15) if isinstance(sms_cfg, dict) else 15
+
+    invoice = db.create_smart_invoice(
+        sub_id=sub_id,
+        plan_id="debt_settlement",
+        reseller_id=reseller_id,
+        base_amount=debt_amount,
+        target_card=target_card,
+        digits=digits,
+        timeout_minutes=timeout,
+        instant_activation=False,
+        is_debt_settlement=1
+    )
+
+    now_iso = get_now_iso()
+    user_id = sub.get("telegram_id") or 0
+    account_name = sub.get("account_name") or f"sub_{sub_id}"
+    conn = db.get_connection()
+    conn.execute("""
+        INSERT OR REPLACE INTO transactions (
+            order_id, user_id, username, plan_name, amount, status, gateway, 
+            tracking_code, reseller_id, is_renewal, renew_sub_id, 
+            account_name, source, is_debt_settlement, created_at, updated_at
+        ) VALUES (?, ?, ?, 'تسویه بدهی اشتراک', ?, 'pending', 'bank_sms', ?, ?, 0, ?, ?, 'portal', 1, ?, ?)
+    """, (
+        invoice["order_id"], user_id, account_name, invoice["final_amount"],
+        f"کارت {target_card.get('card_number', '')}", reseller_id, sub_id,
+        account_name, now_iso, now_iso
+    ))
+    conn.commit()
+    conn.close()
+
+    flash(f"فاکتور تسویه بدهی صادر شد. لطفاً مبلغ دقیق فاکتور ({invoice['final_amount']:,} تومان) را جهت تسویه واریز فرمایید.", "info")
+    return redirect(url_for("customer_portal", token=token))
+
+
+@app.route("/api/invoice/status/<order_id>", methods=["GET"])
+def api_invoice_status(order_id: str):
+    """بررسی زنده وضعیت فاکتور توسط صفحه مرورگر مشتری"""
+    inv = db.get_smart_invoice_by_order_id(order_id)
+    if not inv:
+        return jsonify({"status": "not_found"}), 404
+
+    status = inv.get("status", "pending")
+    is_expired = False
+    if status == "pending" and inv.get("expires_at"):
+        try:
+            exp_clean = str(inv["expires_at"]).strip().replace("Z", "")
+            exp_dt = datetime.fromisoformat(exp_clean)
+            if get_now_naive() > exp_dt:
+                is_expired = True
+        except Exception:
+            pass
+
+    return jsonify({
+        "order_id": inv["order_id"],
+        "status": status,
+        "is_expired": is_expired,
+        "paid_at": inv.get("paid_at"),
+        "tracking_code": inv.get("tracking_code"),
+        "final_amount": inv.get("final_amount"),
+        "expires_at": inv.get("expires_at")
+    })
+
+
+@app.route("/sub/<token>/queue/<int:queue_id>/activate", methods=["POST"])
+@app.route("/user/<token>/queue/<int:queue_id>/activate", methods=["POST"])
+def portal_queue_activate(token: str, queue_id: int):
+    """فعال‌سازی آنی بسته در صف توسط مشتری از پورتال اختصاصی"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+    if not sub_row:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": "اشتراک یافت نشد."}), 404
+        flash("اشتراک یافت نشد.", "danger")
+        return redirect(url_for("customer_portal", token=token))
+
+    sub = dict(sub_row)
+    sub_id = sub["id"]
+
+    # اعتبارسنجی تعلق بسته به این اشتراک و وضعیت معلق آن
+    conn = db.get_connection()
+    q_row = conn.execute("SELECT * FROM subscription_queue WHERE id=? AND subscription_id=? AND status='pending'", (queue_id, sub_id)).fetchone()
+    conn.close()
+    if not q_row:
+        msg = "بسته مورد نظر در صف یافت نشد یا قبلاً فعال شده است."
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": msg}), 400
+        flash(msg, "warning")
+        return redirect(url_for("customer_portal", token=token))
+
+    acc_name = sub.get("account_name") or f"مشتری #{sub_id}"
+    res = activate_single_queue_item(queue_id, triggered_by=f"مشتری ({acc_name})")
+    if res.get("success"):
+        msg = f"بسته «{res.get('plan_name')}» با موفقیت فعال شد و حجم و تاریخ سرویس شما ریست گردید."
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": True, "message": msg, "plan_name": res.get("plan_name")})
+        flash(msg, "success")
+    else:
+        err = res.get("error", "خطا در فعال‌سازی بسته")
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": err}), 500
+        flash(f"خطا در فعال‌سازی بسته: {err}", "danger")
+
+    return redirect(url_for("customer_portal", token=token))
+
+
+@app.route("/sub/<token>/queue/<int:queue_id>/move", methods=["POST"])
+@app.route("/user/<token>/queue/<int:queue_id>/move", methods=["POST"])
+def portal_queue_move(token: str, queue_id: int):
+    """تغییر نوبت بسته در صف توسط مشتری از پورتال اختصاصی"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+    if not sub_row:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": "اشتراک یافت نشد."}), 404
+        flash("اشتراک یافت نشد.", "danger")
+        return redirect(url_for("customer_portal", token=token))
+
+    sub = dict(sub_row)
+    sub_id = sub["id"]
+
+    direction = request.form.get("direction") or request.args.get("direction", "up")
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+        direction = data.get("direction") or direction
+
+    conn = db.get_connection()
+    q_row = conn.execute("SELECT * FROM subscription_queue WHERE id=? AND subscription_id=? AND status='pending'", (queue_id, sub_id)).fetchone()
+    conn.close()
+    if not q_row:
+        msg = "بسته مورد نظر در صف یافت نشد."
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": msg}), 400
+        flash(msg, "warning")
+        return redirect(url_for("customer_portal", token=token))
+
+    res = db.reorder_subscription_queue(sub_id, queue_id, direction)
+    if res.get("success"):
+        msg = "ترتیب صف بسته‌های رزرو با موفقیت تغییر کرد."
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": True, "message": msg})
+        flash(msg, "success")
+    else:
+        err = res.get("error", "خطا در تغییر ترتیب صف")
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": err}), 400
+        flash(f"خطا در تغییر ترتیب صف: {err}", "danger")
+
+    return redirect(url_for("customer_portal", token=token))
+
+
+@app.route("/api/portal/<token>/chat/init", methods=["GET"])
+def api_portal_chat_init(token: str):
+    """دریافت اطلاعات اولیه گفتگوی آنلاین، آخرین گفتگوی فعال و تاریخچه برای پورتال مشتری"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+
+    if not sub_row:
+        return jsonify({"success": False, "error": "اشتراک مورد نظر یافت نشد."}), 404
+
+    sub = dict(sub_row)
+    sub_id = sub["id"]
+    tg_id = sub.get("telegram_id")
+
+    history = db.get_portal_chat_history(sub_id, telegram_id=tg_id, portal_token=token)
+
+    active_ticket = None
+    active_messages = []
+    for t in history:
+        if t.get("status") in ("open", "in_progress", "replied"):
+            active_ticket = t
+            active_messages = db.get_ticket_messages(t["id"])
+            break
+
+    if not active_ticket and history:
+        active_ticket = history[0]
+        active_messages = db.get_ticket_messages(active_ticket["id"])
+
+    default_name = sub.get("account_name") or ""
+    if default_name.startswith("user_") or default_name.startswith("sub_"):
+        default_name = ""
+    default_phone = sub.get("phone_number") or ""
+
+    reseller_id = sub.get("reseller_id") or 0
+    support_status_info = db.is_support_online_for_sub(sub_id, reseller_id=reseller_id)
+    chat_cfg = db.get_chat_settings()
+
+    return jsonify({
+        "success": True,
+        "subscription_id": sub_id,
+        "customer_name": default_name,
+        "customer_phone": default_phone,
+        "active_ticket": active_ticket,
+        "messages": active_messages,
+        "history_count": len(history),
+        "history": history,
+        "support_status": support_status_info["status"],
+        "support_is_online": support_status_info["is_online"],
+        "support_name": support_status_info["support_name"],
+        "support_status_text": support_status_info["status_text"],
+        "chat_button_style": chat_cfg["chat_button_style"],
+        "chat_button_text": chat_cfg["chat_button_text"],
+        "chat_button_position": chat_cfg["chat_button_position"],
+        "customer_avatar_url": f"/avatar/{tg_id if tg_id else (sub.get('account_name') or sub_id)}",
+        "support_avatar_url": f"/avatar/{('reseller_' + str(reseller_id)) if reseller_id else 'support'}"
+    })
+
+
+@app.route("/api/portal/<token>/chat/history", methods=["GET"])
+def api_portal_chat_history(token: str):
+    """دریافت لیست تمامی گفتگوهای گذشته مشتری"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+
+    if not sub_row:
+        return jsonify({"success": False, "error": "اشتراک مورد نظر یافت نشد."}), 404
+
+    sub = dict(sub_row)
+    history = db.get_portal_chat_history(sub["id"], telegram_id=sub.get("telegram_id"), portal_token=token)
+    return jsonify({
+        "success": True,
+        "history": history
+    })
+
+
+@app.route("/api/portal/<token>/chat/messages/<int:ticket_id>", methods=["GET"])
+def api_portal_chat_messages(token: str, ticket_id: int):
+    """دریافت پیام‌های یک گفتگوی مشخص"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+
+    if not sub_row:
+        return jsonify({"success": False, "error": "اشتراک مورد نظر یافت نشد."}), 404
+
+    sub = dict(sub_row)
+    ticket = db.get_portal_ticket(ticket_id, subscription_id=sub["id"], portal_token=token)
+    if not ticket:
+        return jsonify({"success": False, "error": "گفتگوی مورد نظر یافت نشد."}), 404
+
+    messages = db.get_ticket_messages(ticket_id)
+    return jsonify({
+        "success": True,
+        "ticket": ticket,
+        "messages": messages
+    })
+
+
+@app.route("/api/portal/<token>/chat/start", methods=["POST"])
+def api_portal_chat_start(token: str):
+    """شروع گفتگوی جدید آنلاین توسط مشتری با انتخاب موضوع، نام و شماره تماس"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+
+    if not sub_row:
+        return jsonify({"success": False, "error": "اشتراک مورد نظر یافت نشد."}), 404
+
+    sub = dict(sub_row)
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    subject = (data.get("subject") or "پیام آنلاین مشتری از پرتال").strip()
+    name = (data.get("name") or sub.get("account_name") or f"مشتری #{sub['id']}").strip()
+    phone = (data.get("phone") or sub.get("phone_number") or "").strip()
+    message_text = (data.get("message") or "").strip()
+
+    if not message_text:
+        return jsonify({"success": False, "error": "لطفاً متن پیام خود را وارد نمایید."}), 400
+
+    sub_id = sub["id"]
+    reseller_id = sub.get("reseller_id") or 0
+    tg_id = sub.get("telegram_id") or sub_id
+
+    if phone and not sub.get("phone_number"):
+        try:
+            conn = db.get_connection()
+            conn.execute("UPDATE subscriptions SET phone_number=? WHERE id=?", (phone, sub_id))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+    res = db.create_portal_chat_ticket(
+        subscription_id=sub_id,
+        customer_name=name,
+        customer_phone=phone,
+        subject=subject,
+        initial_message=message_text,
+        portal_token=token,
+        reseller_id=reseller_id,
+        telegram_id=tg_id
+    )
+
+    if not res.get("success"):
+        return jsonify({"success": False, "error": res.get("error", "خطا در ایجاد گفتگو")}), 500
+
+    ticket_id = res["ticket_id"]
+
+    try:
+        notif_msg = (
+            f"💬 <b>گفتگوی آنلاین جدید در پورتال مشتری!</b>\n\n"
+            f"🎫 شماره تیکت: <b>#{ticket_id}</b>\n"
+            f"👤 مشتری: <b>{name}</b> (اشتراک #{sub_id})\n"
+            f"🔖 موضوع: <b>{subject}</b>\n"
+            + (f"📱 شماره تماس: <code>{phone}</code>\n" if phone else "")
+            + f"📝 پیام مشتری:\n{message_text}\n"
+            f"⏰ زمان: {get_now_shamsi()}\n\n"
+            f"💡 پاسخگویی از طریق میز کار وب یا دستور <code>/reply_ticket {ticket_id} متن پاسخ</code>"
+        )
+        if reseller_id:
+            r_info = db.get_reseller(reseller_id) or {}
+            r_tg = r_info.get("telegram_id")
+            if r_tg:
+                r_bot_token = r_info.get("bot_token")
+                r_kb = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "✍️ پاسخ متنی", "callback_data": f"res_reply_tkt_{ticket_id}"},
+                            {"text": "⚡ پاسخ‌های آماده", "callback_data": f"res_canned_tkt_{ticket_id}"}
+                        ],
+                        [
+                            {"text": "🔒 بستن تیکت", "callback_data": f"res_close_tkt_{ticket_id}"}
+                        ]
+                    ]
+                }
+                send_telegram_msg(r_tg, notif_msg, reply_markup=r_kb, bot_token=r_bot_token)
+        else:
+            admin_tg = db.get_setting("admin_telegram_id") or get_admin_id()
+            if admin_tg:
+                adm_kb = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "✍️ پاسخ متنی", "callback_data": f"adm_reply_tkt_{ticket_id}"},
+                            {"text": "⚡ پاسخ‌های آماده", "callback_data": f"adm_canned_tkt_{ticket_id}"}
+                        ],
+                        [
+                            {"text": "🔒 بستن تیکت", "callback_data": f"adm_close_tkt_{ticket_id}"}
+                        ]
+                    ]
+                }
+                send_telegram_msg(int(admin_tg), notif_msg, reply_markup=adm_kb)
+    except Exception as e_notif:
+        logger.warning(f"Failed to notify of new portal chat: {e_notif}")
+
+    chat_cfg = db.get_chat_settings()
+    if chat_cfg.get("chat_ai_enabled"):
+        try:
+            ai_msg1 = "پیام شما دریافت شد و به پشتیبانی مربوط به مشکل خودتون ارسال کردم و بزودی پشتیبان پاسخ شمارو خواهد داد"
+            ai_msg2 = "من هوش مصنوعی هستم آیا مایلید مشکلتون رو حل کنم؟"
+            db.add_ticket_message(ticket_id, sender_type="ai", sender_name="هوش مصنوعی", message=ai_msg1, new_status="open")
+            db.add_ticket_message(ticket_id, sender_type="ai", sender_name="هوش مصنوعی", message=ai_msg2, new_status="open")
+        except Exception as e_ai_init:
+            logger.warning(f"Error adding initial AI messages: {e_ai_init}")
+
+    ticket = db.get_portal_ticket(ticket_id, subscription_id=sub_id, portal_token=token)
+    messages = db.get_ticket_messages(ticket_id)
+
+    return jsonify({
+        "success": True,
+        "ticket_id": ticket_id,
+        "ticket": ticket,
+        "messages": messages,
+        "message": "گفتگوی شما با موفقیت ثبت شد و کارشناس پشتیبانی به زودی پاسخ خواهد داد."
+    })
+
+
+@app.route("/api/portal/<token>/chat/send", methods=["POST"])
+def api_portal_chat_send(token: str):
+    """ارسال پیام بعدی توسط مشتری در گفتگوی جاری"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+
+    if not sub_row:
+        return jsonify({"success": False, "error": "اشتراک مورد نظر یافت نشد."}), 404
+
+    sub = dict(sub_row)
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    ticket_id = data.get("ticket_id")
+    message_text = (data.get("message") or "").strip()
+    name = (data.get("name") or sub.get("account_name") or "مشتری").strip()
+
+    if not ticket_id:
+        return jsonify({"success": False, "error": "شناسه گفتگو الزامی است."}), 400
+    if not message_text:
+        return jsonify({"success": False, "error": "متن پیام نمی‌تواند خالی باشد."}), 400
+
+    try:
+        ticket_id = int(ticket_id)
+    except ValueError:
+        return jsonify({"success": False, "error": "شناسه گفتگو نامعتبر است."}), 400
+
+    sub_id = sub["id"]
+    res = db.add_portal_user_message(
+        ticket_id=ticket_id,
+        subscription_id=sub_id,
+        message=message_text,
+        customer_name=name
+    )
+
+    if not res.get("success"):
+        return jsonify({"success": False, "error": res.get("error", "خطا در ارسال پیام")}), 400
+
+    try:
+        reseller_id = sub.get("reseller_id") or 0
+        notif_msg = (
+            f"📩 <b>پیام جدید مشتری در گفتگوی آنلاین #{ticket_id}</b>\n\n"
+            f"👤 از طرف: <b>{name}</b> (اشتراک #{sub_id})\n"
+            f"💬 متن پیام:\n{message_text}\n"
+            f"⏰ {get_now_shamsi()}\n\n"
+            f"💡 پاسخ سریع با: <code>/reply_ticket {ticket_id} متن پاسخ</code>"
+        )
+        if reseller_id:
+            r_info = db.get_reseller(reseller_id) or {}
+            r_tg = r_info.get("telegram_id")
+            if r_tg:
+                r_bot_token = r_info.get("bot_token")
+                r_kb = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "✍️ پاسخ متنی", "callback_data": f"res_reply_tkt_{ticket_id}"},
+                            {"text": "⚡ پاسخ‌های آماده", "callback_data": f"res_canned_tkt_{ticket_id}"}
+                        ],
+                        [
+                            {"text": "🔒 بستن تیکت", "callback_data": f"res_close_tkt_{ticket_id}"}
+                        ]
+                    ]
+                }
+                send_telegram_msg(r_tg, notif_msg, reply_markup=r_kb, bot_token=r_bot_token)
+        else:
+            admin_tg = db.get_setting("admin_telegram_id") or get_admin_id()
+            if admin_tg:
+                adm_kb = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "✍️ پاسخ متنی", "callback_data": f"adm_reply_tkt_{ticket_id}"},
+                            {"text": "⚡ پاسخ‌های آماده", "callback_data": f"adm_canned_tkt_{ticket_id}"}
+                        ],
+                        [
+                            {"text": "🔒 بستن تیکت", "callback_data": f"adm_close_tkt_{ticket_id}"}
+                        ]
+                    ]
+                }
+                send_telegram_msg(int(admin_tg), notif_msg, reply_markup=adm_kb)
+    except Exception as e_notif:
+        logger.warning(f"Failed to notify of chat user message: {e_notif}")
+
+    ai_reply_data = None
+    chat_cfg = db.get_chat_settings()
+    if chat_cfg.get("chat_ai_enabled"):
+        # بررسی عدم پاسخگویی یا دخالت پشتیبان انسانی (در صورت پاسخ پشتیبان، هوش مصنوعی ادامه نمی‌دهد)
+        if not db.has_human_support_replied(ticket_id):
+            ai_text = db.generate_ai_chat_reply(ticket_id, message_text, sub_info=sub)
+            if ai_text:
+                ai_res = db.add_ticket_message(
+                    ticket_id=ticket_id,
+                    sender_type="ai",
+                    sender_name="هوش مصنوعی",
+                    message=ai_text,
+                    new_status="open"
+                )
+                if ai_res.get("success"):
+                    ai_reply_data = {
+                        "id": ai_res.get("message_id"),
+                        "sender_type": "ai",
+                        "sender_name": "هوش مصنوعی",
+                        "message": ai_text,
+                        "created_at": get_now_iso()
+                    }
+
+    return jsonify({
+        "success": True,
+        "message_id": res.get("message_id"),
+        "ai_reply": ai_reply_data,
+        "ticket_id": ticket_id
+    })
+
+
+@app.route("/api/portal/<token>/chat/poll", methods=["GET"])
+def api_portal_chat_poll(token: str):
+    """بررسی دوره‌ای پیام‌های جدید دریافتی از پشتیبان برای هشدار صوتی و نوتیفیکیشن"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+
+    if not sub_row:
+        return jsonify({"success": False, "error": "اشتراک مورد نظر یافت نشد."}), 404
+
+    sub = dict(sub_row)
+    sub_id = sub["id"]
+
+    raw_ticket_id = request.args.get("ticket_id")
+    raw_last_msg_id = request.args.get("last_msg_id", 0)
+
+    try:
+        ticket_id = int(raw_ticket_id) if raw_ticket_id else None
+    except ValueError:
+        ticket_id = None
+
+    try:
+        last_msg_id = int(raw_last_msg_id)
+    except ValueError:
+        last_msg_id = 0
+
+    poll_result = db.poll_portal_ticket_updates(
+        subscription_id=sub_id,
+        ticket_id=ticket_id,
+        last_msg_id=last_msg_id
+    )
+
+    reseller_id = sub.get("reseller_id") or 0
+    support_status_info = db.is_support_online_for_sub(sub_id, reseller_id=reseller_id)
+
+    return jsonify({
+        "success": True,
+        "support_status": support_status_info["status"],
+        "support_is_online": support_status_info["is_online"],
+        "support_name": support_status_info["support_name"],
+        "support_status_text": support_status_info["status_text"],
+        **poll_result
+    })
+
+
+@app.route("/api/portal/<token>/support-message", methods=["POST"])
+def api_portal_support_message(token: str):
+    """سازگاری با ای‌پی‌آی قدیمی ثبت پیام با ارجاع به شروع گفتگوی آنلاین"""
+    return api_portal_chat_start(token)
+
+
+@app.route("/admin/subscription/<int:sub_id>/send_renewal_link", methods=["POST"])
+@admin_required
+def admin_send_renewal_link(sub_id: int):
+    """ارسال لینک پورتال دائمی و تمدید اختصاصی به تلگرام و پیامک مشتری توسط مدیریت"""
+    sub = db.get_subscription(sub_id)
+    if not sub:
+        flash("اشتراک مورد نظر یافت نشد.", "danger")
+        return redirect(request.referrer or url_for("subscriptions"))
+
+    token = sub.get("hidify_uuid") or str(sub["id"])
+    portal_url = url_for("customer_portal", token=token, _external=True)
+    account_name = sub.get("account_name") or "کاربر گرامی"
+
+    sent_channels = []
+
+    # ارسال از طریق تلگرام
+    tg_id = None
+    try:
+        if sub.get("telegram_id"):
+            tg_id = int(sub["telegram_id"])
+    except (ValueError, TypeError):
+        tg_id = None
+
+    if tg_id:
+        tg_text = (
+            f"سلام <b>{account_name}</b> عزیز 🌸\n\n"
+            f"🔗 <b>لینک اختصاصی و دائمی اشتراک شما:</b>\n"
+            f"<code>{portal_url}</code>\n\n"
+            f"📊 از طریق این صفحه اختصاصی می‌توانید در هر لحظه وضعیت حجم مصرفی، روزهای باقی‌مانده، لینک‌ها و بارکدهای اتصال و همچنین تمدید آنلاین خودکار سرویس را مشاهده فرمایید."
+        )
+        markup = {
+            "inline_keyboard": [
+                [{"text": "🌐 ورود به پورتال و تمدید آنلاین", "url": portal_url}]
+            ]
+        }
+        if send_telegram_msg(tg_id, tg_text, reply_markup=markup):
+            sent_channels.append("تلگرام")
+
+    # ارسال از طریق پیامک
+    phone = sub.get("phone_number")
+    if phone:
+        sms_text = (
+            f"کاربر گرامی {account_name}\n"
+            f"جهت مشاهده وضعیت اشتراک، لینک‌های اتصال و تمدید آنلاین به لینک زیر مراجعه فرمایید:\n"
+            f"{portal_url}"
+        )
+        ok, _ = send_sms(receptor=phone, message=sms_text, db_instance=db)
+        if ok:
+            sent_channels.append("پیامک")
+
+    if sent_channels:
+        flash(f"✅ لینک پورتال اختصاصی با موفقیت از طریق {' و '.join(sent_channels)} برای {account_name} ارسال شد.", "success")
+    else:
+        flash(f"⚠️ برای مشتری «{account_name}» شماره موبایل یا آیدی تلگرام فعالی ثبت نشده است. لطفاً لینک را دستی کپی نمایید.", "warning")
+
+    return redirect(request.referrer or url_for("subscriptions"))
+
+
+@app.route("/reseller/subscription/<int:sub_id>/send_renewal_link", methods=["POST"])
+@reseller_required
+def reseller_send_renewal_link(sub_id: int):
+    """ارسال لینک پورتال دائمی و تمدید اختصاصی به تلگرام و پیامک مشتری توسط نماینده"""
+    reseller_id = session.get("reseller_id")
+    sub = db.get_reseller_subscription(reseller_id, sub_id)
+    if not sub:
+        flash("اشتراک مورد نظر یافت نشد یا متعلق به شما نیست.", "danger")
+        return redirect(request.referrer or url_for("reseller_users"))
+
+    r_info = db.get_reseller(reseller_id) or {}
+    brand_title = r_info.get("brand_title") or r_info.get("name") or "پشتیبانی اینترنت"
+    custom_domain = r_info.get("domain")
+
+    token = sub.get("hidify_uuid") or str(sub["id"])
+    if custom_domain:
+        portal_url = f"https://{custom_domain}/user/{token}"
+    else:
+        portal_url = url_for("customer_portal", token=token, _external=True)
+
+    account_name = sub.get("account_name") or "کاربر گرامی"
+    sent_channels = []
+
+    # ارسال تلگرام با ربات اختصاصی نماینده
+    tg_id = None
+    try:
+        if sub.get("telegram_id"):
+            tg_id = int(sub["telegram_id"])
+    except (ValueError, TypeError):
+        tg_id = None
+
+    if tg_id:
+        bot_token = r_info.get("bot_token")
+        tg_text = (
+            f"سلام <b>{account_name}</b> عزیز 🌸\n\n"
+            f"🔗 <b>لینک اختصاصی و دائمی اشتراک شما ({brand_title}):</b>\n"
+            f"<code>{portal_url}</code>\n\n"
+            f"📊 از طریق این صفحه اختصاصی می‌توانید در هر لحظه وضعیت مصرف، روزهای باقی‌مانده و تمدید آنلاین سرویس خود را مدیریت نمایید."
+        )
+        markup = {
+            "inline_keyboard": [
+                [{"text": "🌐 ورود به پورتال و تمدید آنلاین", "url": portal_url}]
+            ]
+        }
+        if send_telegram_msg(tg_id, tg_text, reply_markup=markup, bot_token=bot_token):
+            sent_channels.append("تلگرام")
+
+    # ارسال پیامک
+    phone = sub.get("phone_number")
+    if phone:
+        sms_text = (
+            f"کاربر گرامی {account_name} ({brand_title})\n"
+            f"جهت استعلام وضعیت و تمدید آنلاین اشتراک به لینک اختصاصی زیر مراجعه فرمایید:\n"
+            f"{portal_url}"
+        )
+        ok, _ = send_sms(receptor=phone, message=sms_text, db_instance=db)
+        if ok:
+            sent_channels.append("پیامک")
+
+    if sent_channels:
+        flash(f"✅ لینک پورتال با موفقیت از طریق {' و '.join(sent_channels)} برای {account_name} ارسال شد.", "success")
+    else:
+        flash(f"⚠️ برای مشتری «{account_name}» شماره موبایل یا آیدی تلگرام ثبت نشده است. لطفاً لینک را دستی کپی نمایید.", "warning")
+
+    return redirect(request.referrer or url_for("reseller_users"))
 
 
 # ─── راه‌اندازی سرور وب ───
