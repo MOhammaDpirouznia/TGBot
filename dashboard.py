@@ -25,7 +25,7 @@ import math
 from pathlib import Path
 from flask import (
     Flask, render_template, request, redirect, url_for, session,
-    jsonify, flash, Response, send_file, g
+    jsonify, flash, Response, send_file, g, abort
 )
 from werkzeug.utils import secure_filename
 
@@ -104,6 +104,53 @@ def get_user_proxy() -> str:
     except Exception:
         pass
     return os.getenv("USER_PROXY_PATH", "user").strip("/")
+
+
+def get_portal_proxy_path() -> str:
+    """مسیر پروکسی پچ پورتال اختصاصی مشتریان (پیش‌فرض: renew)"""
+    try:
+        p = db.get_setting("portal_proxy_path")
+        if p and str(p).strip():
+            return str(p).strip("/").strip()
+    except Exception:
+        pass
+    return "renew"
+
+
+def get_customer_portal_url(token: str, _external: bool = True) -> str:
+    """تولید آدرس اختصاصی پورتال مشتری با در نظر گرفتن پروکسی پچ تنظیمی"""
+    token_clean = str(token).strip() if token else ""
+    proxy = get_portal_proxy_path()
+    if _external:
+        try:
+            base = request.host_url.rstrip("/") if request else ""
+        except Exception:
+            base = ""
+        return f"{base}/{proxy}/{token_clean}" if base else f"/{proxy}/{token_clean}"
+    return f"/{proxy}/{token_clean}"
+
+
+def get_admin_login_proxy_path() -> str:
+    """مسیر پروکسی پچ امنیتی ورود مدیریت و همکاران (پیش‌فرض: خالی)"""
+    try:
+        p = db.get_setting("admin_login_proxy_path")
+        if p and str(p).strip():
+            return str(p).strip("/").strip()
+    except Exception:
+        pass
+    return ""
+
+
+def get_login_url() -> str:
+    """آدرس فعال ورود بر اساس وضعیت پروکسی پچ امنیتی"""
+    proxy = get_admin_login_proxy_path()
+    if proxy:
+        return f"/{proxy}"
+    try:
+        return url_for("login")
+    except Exception:
+        return "/login"
+
 
 
 def get_redirect_target(default_endpoint: str = "subscriptions", **fallback_kwargs) -> str:
@@ -2348,11 +2395,16 @@ def update_user_session_activity():
     if session.get("logged_in") and session.get("session_token"):
         token = session.get("session_token")
         # بررسی اینکه آیا نشست توسط مدیر یا کاربر خاتمه داده شده است
-        if not request.path.startswith("/static") and request.path not in ("/login", "/logout"):
+        admin_proxy = get_admin_login_proxy_path()
+        excluded_paths = {"/login", "/logout"}
+        if admin_proxy:
+            excluded_paths.add(f"/{admin_proxy}")
+            excluded_paths.add(f"/{admin_proxy}/login")
+        if not request.path.startswith("/static") and request.path not in excluded_paths:
             if not db.is_session_active(token):
                 session.clear()
                 flash("نشست کاربری شما پایان یافته است. لطفاً مجدداً وارد شوید.", "warning")
-                return redirect(url_for("login"))
+                return redirect(get_login_url())
         try:
             db.update_session_activity(token)
         except Exception:
@@ -2363,7 +2415,7 @@ def login_required(f):
     @functools.wraps(f)
     def decorated_function(*args, **kwargs):
         if not session.get("logged_in"):
-            return redirect(url_for("login"))
+            return redirect(get_login_url())
         return f(*args, **kwargs)
     return decorated_function
 
@@ -2409,7 +2461,7 @@ def permission_required(perm: str):
         def decorated_function(*args, **kwargs):
             if not session.get("logged_in") or session.get("role") != "admin":
                 flash("دسترسی به این صفحه فقط برای مدیران مجاز است.", "danger")
-                return redirect(url_for("login"))
+                return redirect(get_login_url())
             if not has_permission(perm):
                 flash("⛔ دسترسی غیرمجاز: نقش شما مجوز استفاده از این بخش را ندارد.", "danger")
                 if has_permission("dashboard"):
@@ -2430,7 +2482,7 @@ def admin_required(f):
     def decorated_function(*args, **kwargs):
         if not session.get("logged_in") or session.get("role") != "admin":
             flash("دسترسی به این صفحه فقط برای مدیران مجاز است.", "danger")
-            return redirect(url_for("login"))
+            return redirect(get_login_url())
         return f(*args, **kwargs)
     return decorated_function
 
@@ -2441,7 +2493,7 @@ def super_admin_required(f):
     def decorated_function(*args, **kwargs):
         if not session.get("logged_in") or session.get("role") != "admin":
             flash("دسترسی به این صفحه فقط برای مدیران مجاز است.", "danger")
-            return redirect(url_for("login"))
+            return redirect(get_login_url())
         if session.get("admin_role") != "super_admin":
             flash("⛔ این عملیات حساس و کلیدی فقط توسط مدیر ارشد (Super Admin) قابل انجام است.", "danger")
             return redirect(url_for("dashboard"))
@@ -2455,7 +2507,7 @@ def reseller_required(f):
     def decorated_function(*args, **kwargs):
         if not session.get("logged_in") or session.get("role") != "reseller":
             flash("دسترسی به این صفحه فقط برای نمایندگان مجاز است.", "danger")
-            return redirect(url_for("login"))
+            return redirect(get_login_url())
         return f(*args, **kwargs)
     return decorated_function
 
@@ -2729,15 +2781,32 @@ def inject_global_branding():
         palette_css=palette_css,
         available_palettes=get_all_palettes(),
         get_reseller_banners=get_reseller_banners,
-        reseller_panel_banners=RESELLER_PANEL_BANNERS
+        reseller_panel_banners=RESELLER_PANEL_BANNERS,
+        get_customer_portal_url=get_customer_portal_url,
+        get_portal_proxy_path=get_portal_proxy_path,
+        get_admin_login_proxy_path=get_admin_login_proxy_path,
+        get_login_url=get_login_url
     )
 
 
 # ─── مسیرهای احراز هویت (Authentication) ───
 
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    """صفحه ورود با پشتیبانی از چند مدیر، نقش‌های دسترسی (RBAC) و نمایندگان فروش به همراه ثبت لاگ نشست و کپچا"""
+def render_login_page():
+    login_style = db.get_setting("login_style", "glass_aurora")
+    login_page_title = db.get_setting("login_page_title", "")
+    login_page_subtitle = db.get_setting("login_page_subtitle", "")
+    login_bg_effect = str(db.get_setting("login_bg_effect", "1")).lower() in ("1", "true")
+    return render_template(
+        "login.html",
+        login_style=login_style,
+        login_page_title=login_page_title,
+        login_page_subtitle=login_page_subtitle,
+        login_bg_effect=login_bg_effect
+    )
+
+
+def _handle_login_flow():
+    """منطق احراز هویت مشترک ورود با پشتیبانی از نقش‌های RBAC، نمایندگان و کپچا"""
     if session.get("logged_in"):
         if session.get("role") == "reseller":
             return redirect(url_for("reseller_dashboard"))
@@ -2774,7 +2843,7 @@ def login():
             notify_auth_event("failed", username, target_user, ip, device_os, browser, attempted_password=password, failure_reason="کد امنیتی (کپچا) نادرست یا منقضی شده")
             send_failed_login_telegram_alert(username, password, ip, browser, device_os, "کد امنیتی (کپچا) نادرست یا منقضی شده")
             flash("کد امنیتی (کپچا) وارد شده نادرست یا منقضی شده است!", "danger")
-            return render_template("login.html")
+            return render_login_page()
 
         # مصرف کد کپچا
         session.pop("captcha_code", None)
@@ -2967,7 +3036,34 @@ def login():
 
         flash("نام کاربری یا رمز عبور اشتباه است!", "danger")
 
-    return render_template("login.html")
+    return render_login_page()
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    """صفحه ورود پیش‌فرض (در صورت تنظیم پروکسی پچ ورود، این روت مسدود ۴۰۴ می‌شود)"""
+    admin_proxy = get_admin_login_proxy_path()
+    if admin_proxy:
+        abort(404)
+    return _handle_login_flow()
+
+
+@app.route("/<path_proxy>", methods=["GET", "POST"])
+def custom_login(path_proxy: str):
+    """صفحه ورود از طریق پروکسی پچ اختصاصی تنظیم‌شده توسط مدیر"""
+    admin_proxy = get_admin_login_proxy_path()
+    if admin_proxy and path_proxy.strip("/") == admin_proxy:
+        return _handle_login_flow()
+    abort(404)
+
+
+@app.route("/<path_proxy>/login", methods=["GET", "POST"])
+def custom_login_subpath(path_proxy: str):
+    """پشتیبانی از فرمت آدرس با پسوند login"""
+    admin_proxy = get_admin_login_proxy_path()
+    if admin_proxy and path_proxy.strip("/") == admin_proxy:
+        return _handle_login_flow()
+    abort(404)
 
 
 @app.route("/logout")
@@ -2989,7 +3085,7 @@ def logout():
 
     session.clear()
     flash("با موفقیت از سیستم خارج شدید.", "info")
-    return redirect(url_for("login"))
+    return redirect(get_login_url())
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -8270,7 +8366,9 @@ def settings():
             flash("تنظیمات هویت بصری، استایل سربرگ، نسخه و لوگوی سیستم با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
         elif action == "save_customer_portal_settings":
-            user_proxy_path = request.form.get("user_proxy_path", "").strip("/").strip()
+            portal_proxy_path = request.form.get("portal_proxy_path", "renew").strip("/").strip()
+            if not portal_proxy_path:
+                portal_proxy_path = "renew"
             portal_title = request.form.get("portal_title", "").strip()
             portal_subtitle = request.form.get("portal_subtitle", "").strip()
             support_phone = request.form.get("support_phone", "").strip()
@@ -8280,7 +8378,7 @@ def settings():
             portal_layout = request.form.get("portal_layout", "classic").strip().lower()
             portal_plan_style = request.form.get("portal_plan_style", "glass_classic").strip().lower()
 
-            db.save_setting("user_proxy_path", user_proxy_path)
+            db.save_setting("portal_proxy_path", portal_proxy_path)
             db.save_setting("portal_title", portal_title)
             db.save_setting("portal_subtitle", portal_subtitle)
             db.save_setting("support_phone", support_phone)
@@ -8299,6 +8397,21 @@ def settings():
             db.save_setting("server_status_custom_text", server_status_custom_text)
 
             flash("تنظیمات پورتال اختصاصی مشتری، قالب ظاهری، استایل دکمه‌ها، پروکسی پچ و وضعیت سرورها با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("settings"))
+        elif action == "save_login_security_settings":
+            admin_login_proxy_path = request.form.get("admin_login_proxy_path", "").strip("/").strip()
+            login_style = request.form.get("login_style", "glass_aurora").strip().lower()
+            login_page_title = request.form.get("login_page_title", "").strip()
+            login_page_subtitle = request.form.get("login_page_subtitle", "").strip()
+            login_bg_effect = "1" if request.form.get("login_bg_effect") else "0"
+
+            db.save_setting("admin_login_proxy_path", admin_login_proxy_path)
+            db.save_setting("login_style", login_style)
+            db.save_setting("login_page_title", login_page_title)
+            db.save_setting("login_page_subtitle", login_page_subtitle)
+            db.save_setting("login_bg_effect", login_bg_effect)
+
+            flash("تنظیمات امنیت ورود، پروکسی پچ دسترسی و استایل صفحه لاگین با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
         elif action == "save_palette_settings":
             active_palette = request.form.get("active_palette", "vps_aurora").strip()
@@ -8377,6 +8490,7 @@ def settings():
         "current_active_version": get_store_version()
     }
     customer_portal_config = {
+        "portal_proxy_path": get_portal_proxy_path(),
         "user_proxy_path": db.get_setting("user_proxy_path") or os.getenv("USER_PROXY_PATH", "user").strip("/"),
         "portal_title": db.get_setting("portal_title", "فروشگاه اینترنت آزاد"),
         "portal_subtitle": db.get_setting("portal_subtitle", "پورتال اختصاصی استعلام وضعیت و تمدید اشتراک"),
@@ -8389,6 +8503,13 @@ def settings():
         "server_status_custom_text": db.get_setting("server_status_custom_text", ""),
         "portal_layout": db.get_setting("portal_layout", "classic"),
         "portal_plan_style": db.get_setting("portal_plan_style", "glass_classic")
+    }
+    login_security_config = {
+        "admin_login_proxy_path": get_admin_login_proxy_path(),
+        "login_style": db.get_setting("login_style", "glass_aurora"),
+        "login_page_title": db.get_setting("login_page_title", ""),
+        "login_page_subtitle": db.get_setting("login_page_subtitle", ""),
+        "login_bg_effect": str(db.get_setting("login_bg_effect", "1")).lower() in ("1", "true"),
     }
     palette_settings = {
         "active_palette": db.get_setting("active_palette", "vps_aurora"),
@@ -8413,6 +8534,7 @@ def settings():
         all_resellers=all_resellers,
         store_branding_config=store_branding_config,
         customer_portal_config=customer_portal_config,
+        login_security_config=login_security_config,
         palette_settings=palette_settings,
         chat_settings=chat_settings,
         available_palettes=get_all_palettes()
@@ -13406,10 +13528,7 @@ def customer_check_discount(token: str):
         })
 
 
-@app.route("/user/<token>", methods=["GET"])
-@app.route("/sub/<token>", methods=["GET"])
-@app.route("/renew/<token>", methods=["GET"])
-def customer_portal(token: str):
+def _handle_customer_portal_view(token: str):
     """
     پورتال دائمی و صفحه استعلام وضعیت و تمدید اشتراک مشتری (بدون نیاز به لاگین)
     token می‌تواند hidify_uuid یا شناسه اشتراک باشد.
@@ -13563,6 +13682,24 @@ def customer_portal(token: str):
         portal_layout=portal_layout,
         portal_plan_style=portal_plan_style
     )
+
+
+@app.route("/user/<token>", methods=["GET"])
+@app.route("/sub/<token>", methods=["GET"])
+@app.route("/renew/<token>", methods=["GET"])
+def customer_portal(token: str):
+    """روت اصلی پورتال دائمی و استعلام وضعیت و تمدید اشتراک مشتری"""
+    return _handle_customer_portal_view(token)
+
+
+@app.route("/<portal_prefix>/<token>", methods=["GET"])
+def customer_portal_dynamic(portal_prefix: str, token: str):
+    """روت پویا و سفارشی پورتال مشتری با پشتیبانی از هر پروکسی پچ تنظیمی"""
+    active_prefix = get_portal_proxy_path()
+    valid_prefixes = {active_prefix, "renew", "user", "sub"}
+    if portal_prefix not in valid_prefixes:
+        abort(404)
+    return _handle_customer_portal_view(token)
 
 
 @app.route("/renew/create-invoice/<token>", methods=["POST"])
@@ -14320,7 +14457,7 @@ def admin_send_renewal_link(sub_id: int):
         return redirect(request.referrer or url_for("subscriptions"))
 
     token = sub.get("hidify_uuid") or str(sub["id"])
-    portal_url = url_for("customer_portal", token=token, _external=True)
+    portal_url = get_customer_portal_url(token, _external=True)
     account_name = sub.get("account_name") or "کاربر گرامی"
 
     sent_channels = []
@@ -14383,10 +14520,11 @@ def reseller_send_renewal_link(sub_id: int):
     custom_domain = r_info.get("domain")
 
     token = sub.get("hidify_uuid") or str(sub["id"])
+    proxy_path = get_portal_proxy_path()
     if custom_domain:
-        portal_url = f"https://{custom_domain}/user/{token}"
+        portal_url = f"https://{custom_domain}/{proxy_path}/{token}"
     else:
-        portal_url = url_for("customer_portal", token=token, _external=True)
+        portal_url = get_customer_portal_url(token, _external=True)
 
     account_name = sub.get("account_name") or "کاربر گرامی"
     sent_channels = []
