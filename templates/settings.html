@@ -72,7 +72,7 @@
                         <div class="row g-3">
                             <!-- استایل ۱: کارت شیشه‌ای مدرن -->
                             <div class="col-md-4 col-sm-6">
-                                <label class="brand-style-card w-100 p-3 rounded-3 border cursor-pointer position-relative {% if store_branding_config.brand_header_style == 'style_glass' or not store_branding_config.brand_header_style %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="transition: all 0.2s;">
+                                <label class="brand-style-card w-100 p-3 rounded-3 border cursor-pointer position-relative {% if store_branding_config.brand_header_style == 'style_glass' or not store_branding_config.brand_header_style %}border-primary shadow-sm bg-white active-style{% else %}bg-light opacity-75{% endif %}" style="transition: all 0.2s; cursor: pointer; user-select: none;" for="styleGlass" onclick="selectBrandStyle('style_glass', this)">
                                     <div class="d-flex align-items-center justify-content-between mb-2">
                                         <div class="form-check m-0">
                                             <input class="form-check-input" type="radio" name="brand_header_style" value="style_glass" id="styleGlass" {% if store_branding_config.brand_header_style == 'style_glass' or not store_branding_config.brand_header_style %}checked{% endif %} onchange="updateBrandHeaderStyleCards(this)">
@@ -93,7 +93,7 @@
 
                             <!-- استایل ۲: کلاسیک مینیمال -->
                             <div class="col-md-4 col-sm-6">
-                                <label class="brand-style-card w-100 p-3 rounded-3 border cursor-pointer position-relative {% if store_branding_config.brand_header_style == 'style_minimal' %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="transition: all 0.2s;">
+                                <label class="brand-style-card w-100 p-3 rounded-3 border cursor-pointer position-relative {% if store_branding_config.brand_header_style == 'style_minimal' %}border-primary shadow-sm bg-white active-style{% else %}bg-light opacity-75{% endif %}" style="transition: all 0.2s; cursor: pointer; user-select: none;" for="styleMinimal" onclick="selectBrandStyle('style_minimal', this)">
                                     <div class="d-flex align-items-center justify-content-between mb-2">
                                         <div class="form-check m-0">
                                             <input class="form-check-input" type="radio" name="brand_header_style" value="style_minimal" id="styleMinimal" {% if store_branding_config.brand_header_style == 'style_minimal' %}checked{% endif %} onchange="updateBrandHeaderStyleCards(this)">
@@ -113,7 +113,7 @@
 
                             <!-- استایل ۳: متمرکز و عمودی شیک -->
                             <div class="col-md-4 col-sm-6">
-                                <label class="brand-style-card w-100 p-3 rounded-3 border cursor-pointer position-relative {% if store_branding_config.brand_header_style == 'style_centered' %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="transition: all 0.2s;">
+                                <label class="brand-style-card w-100 p-3 rounded-3 border cursor-pointer position-relative {% if store_branding_config.brand_header_style == 'style_centered' %}border-primary shadow-sm bg-white active-style{% else %}bg-light opacity-75{% endif %}" style="transition: all 0.2s; cursor: pointer; user-select: none;" for="styleCentered" onclick="selectBrandStyle('style_centered', this)">
                                     <div class="d-flex align-items-center justify-content-between mb-2">
                                         <div class="form-check m-0">
                                             <input class="form-check-input" type="radio" name="brand_header_style" value="style_centered" id="styleCentered" {% if store_branding_config.brand_header_style == 'style_centered' %}checked{% endif %} onchange="updateBrandHeaderStyleCards(this)">
@@ -122,8 +122,10 @@
                                     </div>
                                     <div class="p-2 rounded-3 border text-center bg-white">
                                         <div class="rounded-circle bg-primary bg-opacity-25 mx-auto mb-1 d-flex align-items-center justify-content-center" style="width:30px; height:30px;"><i class="fas fa-shield-halved text-primary" style="font-size:0.85rem;"></i></div>
-                                        <div style="font-size: 0.75rem; font-weight: bold;">نام فروشگاه</div>
-                                        <span class="badge bg-light text-muted border" style="font-size: 0.58rem;">v1.0.0</span>
+                                        <div style="line-height: 1.1;">
+                                            <div style="font-size: 0.75rem; font-weight: bold;">نام فروشگاه</div>
+                                            <span class="badge bg-light text-muted border" style="font-size: 0.58rem;">v1.0.0</span>
+                                        </div>
                                     </div>
                                     <div class="small text-muted mt-2" style="font-size: 0.72rem;">لوگو بزرگتر در بالا، نام متمرکز و برجسته در مرکز</div>
                                 </label>
@@ -131,7 +133,7 @@
 
                             <!-- استایل ۴: سایبری و نئونی مدرن -->
                             <div class="col-md-4 col-sm-6">
-                                <label class="brand-style-card w-100 p-3 rounded-3 border cursor-pointer position-relative {% if store_branding_config.brand_header_style == 'style_cyber' %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="transition: all 0.2s;">
+                                <label class="brand-style-card w-100 p-3 rounded-3 border cursor-pointer position-relative {% if store_branding_config.brand_header_style == 'style_cyber' %}border-primary shadow-sm bg-white active-style{% else %}bg-light opacity-75{% endif %}" style="transition: all 0.2s; cursor: pointer; user-select: none;" for="styleCyber" onclick="selectBrandStyle('style_cyber', this)">
                                     <div class="d-flex align-items-center justify-content-between mb-2">
                                         <div class="form-check m-0">
                                             <input class="form-check-input" type="radio" name="brand_header_style" value="style_cyber" id="styleCyber" {% if store_branding_config.brand_header_style == 'style_cyber' %}checked{% endif %} onchange="updateBrandHeaderStyleCards(this)">
@@ -152,7 +154,7 @@
 
                             <!-- استایل ۵: افقی فشرده -->
                             <div class="col-md-4 col-sm-6">
-                                <label class="brand-style-card w-100 p-3 rounded-3 border cursor-pointer position-relative {% if store_branding_config.brand_header_style == 'style_compact' %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="transition: all 0.2s;">
+                                <label class="brand-style-card w-100 p-3 rounded-3 border cursor-pointer position-relative {% if store_branding_config.brand_header_style == 'style_compact' %}border-primary shadow-sm bg-white active-style{% else %}bg-light opacity-75{% endif %}" style="transition: all 0.2s; cursor: pointer; user-select: none;" for="styleCompact" onclick="selectBrandStyle('style_compact', this)">
                                     <div class="d-flex align-items-center justify-content-between mb-2">
                                         <div class="form-check m-0">
                                             <input class="form-check-input" type="radio" name="brand_header_style" value="style_compact" id="styleCompact" {% if store_branding_config.brand_header_style == 'style_compact' %}checked{% endif %} onchange="updateBrandHeaderStyleCards(this)">
@@ -182,62 +184,63 @@
                         <p class="text-muted small mb-3">یکی از ۱۰ آیکون استاندارد را انتخاب کنید یا آیکون اختصاصی برند خود را در زیر آپلود فرمایید:</p>
 
                         <!-- ۱۰ چیپ آیکون پریست -->
-                        <div class="d-flex flex-wrap gap-2 mb-3">
+                        <div class="d-flex flex-wrap gap-2 mb-3" id="versionIconChipsContainer">
                             {% set current_icon = store_branding_config.version_icon_type or 'branch' %}
                             
-                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'branch' %}bg-primary text-white border-primary shadow-sm{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s;">
-                                <input type="radio" name="version_icon_type" value="branch" class="d-none" {% if current_icon == 'branch' %}checked{% endif %} onchange="updateVersionIconChips(this)">
+                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'branch' %}bg-primary text-white border-primary shadow-sm active-chip{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s; cursor: pointer; user-select: none;" for="vicon_branch" onclick="selectVersionIcon('branch', this)">
+                                <input type="radio" name="version_icon_type" id="vicon_branch" value="branch" class="visually-hidden" {% if current_icon == 'branch' %}checked{% endif %} onchange="updateVersionIconChips(this)">
                                 <i class="fas fa-code-branch"></i> <span class="small fw-semibold">شاخه کد (گیت)</span>
                             </label>
 
-                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'tag' %}bg-primary text-white border-primary shadow-sm{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s;">
-                                <input type="radio" name="version_icon_type" value="tag" class="d-none" {% if current_icon == 'tag' %}checked{% endif %} onchange="updateVersionIconChips(this)">
+                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'tag' %}bg-primary text-white border-primary shadow-sm active-chip{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s; cursor: pointer; user-select: none;" for="vicon_tag" onclick="selectVersionIcon('tag', this)">
+                                <input type="radio" name="version_icon_type" id="vicon_tag" value="tag" class="visually-hidden" {% if current_icon == 'tag' %}checked{% endif %} onchange="updateVersionIconChips(this)">
                                 <i class="fas fa-tag"></i> <span class="small fw-semibold">برچسب نسخه (Tag)</span>
                             </label>
 
-                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'cube' %}bg-primary text-white border-primary shadow-sm{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s;">
-                                <input type="radio" name="version_icon_type" value="cube" class="d-none" {% if current_icon == 'cube' %}checked{% endif %} onchange="updateVersionIconChips(this)">
+                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'cube' %}bg-primary text-white border-primary shadow-sm active-chip{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s; cursor: pointer; user-select: none;" for="vicon_cube" onclick="selectVersionIcon('cube', this)">
+                                <input type="radio" name="version_icon_type" id="vicon_cube" value="cube" class="visually-hidden" {% if current_icon == 'cube' %}checked{% endif %} onchange="updateVersionIconChips(this)">
                                 <i class="fas fa-cube"></i> <span class="small fw-semibold">پکیج نرم‌افزار (Cube)</span>
                             </label>
 
-                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'rocket' %}bg-primary text-white border-primary shadow-sm{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s;">
-                                <input type="radio" name="version_icon_type" value="rocket" class="d-none" {% if current_icon == 'rocket' %}checked{% endif %} onchange="updateVersionIconChips(this)">
+                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'rocket' %}bg-primary text-white border-primary shadow-sm active-chip{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s; cursor: pointer; user-select: none;" for="vicon_rocket" onclick="selectVersionIcon('rocket', this)">
+                                <input type="radio" name="version_icon_type" id="vicon_rocket" value="rocket" class="visually-hidden" {% if current_icon == 'rocket' %}checked{% endif %} onchange="updateVersionIconChips(this)">
                                 <i class="fas fa-rocket"></i> <span class="small fw-semibold">راکت انتشار (Rocket)</span>
                             </label>
 
-                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'sparkles' %}bg-primary text-white border-primary shadow-sm{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s;">
-                                <input type="radio" name="version_icon_type" value="sparkles" class="d-none" {% if current_icon == 'sparkles' %}checked{% endif %} onchange="updateVersionIconChips(this)">
+                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'sparkles' %}bg-primary text-white border-primary shadow-sm active-chip{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s; cursor: pointer; user-select: none;" for="vicon_sparkles" onclick="selectVersionIcon('sparkles', this)">
+                                <input type="radio" name="version_icon_type" id="vicon_sparkles" value="sparkles" class="visually-hidden" {% if current_icon == 'sparkles' %}checked{% endif %} onchange="updateVersionIconChips(this)">
                                 <i class="fas fa-wand-magic-sparkles"></i> <span class="small fw-semibold">هوشمند AI (Sparkles)</span>
                             </label>
 
-                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'shield' %}bg-primary text-white border-primary shadow-sm{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s;">
-                                <input type="radio" name="version_icon_type" value="shield" class="d-none" {% if current_icon == 'shield' %}checked{% endif %} onchange="updateVersionIconChips(this)">
+                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'shield' %}bg-primary text-white border-primary shadow-sm active-chip{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s; cursor: pointer; user-select: none;" for="vicon_shield" onclick="selectVersionIcon('shield', this)">
+                                <input type="radio" name="version_icon_type" id="vicon_shield" value="shield" class="visually-hidden" {% if current_icon == 'shield' %}checked{% endif %} onchange="updateVersionIconChips(this)">
                                 <i class="fas fa-shield-halved"></i> <span class="small fw-semibold">سپر امنیت (Shield)</span>
                             </label>
 
-                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'terminal' %}bg-primary text-white border-primary shadow-sm{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s;">
-                                <input type="radio" name="version_icon_type" value="terminal" class="d-none" {% if current_icon == 'terminal' %}checked{% endif %} onchange="updateVersionIconChips(this)">
+                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'terminal' %}bg-primary text-white border-primary shadow-sm active-chip{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s; cursor: pointer; user-select: none;" for="vicon_terminal" onclick="selectVersionIcon('terminal', this)">
+                                <input type="radio" name="version_icon_type" id="vicon_terminal" value="terminal" class="visually-hidden" {% if current_icon == 'terminal' %}checked{% endif %} onchange="updateVersionIconChips(this)">
                                 <i class="fas fa-terminal"></i> <span class="small fw-semibold">هسته و ترمینال</span>
                             </label>
 
-                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'bolt' %}bg-primary text-white border-primary shadow-sm{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s;">
-                                <input type="radio" name="version_icon_type" value="bolt" class="d-none" {% if current_icon == 'bolt' %}checked{% endif %} onchange="updateVersionIconChips(this)">
+                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'bolt' %}bg-primary text-white border-primary shadow-sm active-chip{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s; cursor: pointer; user-select: none;" for="vicon_bolt" onclick="selectVersionIcon('bolt', this)">
+                                <input type="radio" name="version_icon_type" id="vicon_bolt" value="bolt" class="visually-hidden" {% if current_icon == 'bolt' %}checked{% endif %} onchange="updateVersionIconChips(this)">
                                 <i class="fas fa-bolt"></i> <span class="small fw-semibold">صاعقه سرعت (Bolt)</span>
                             </label>
 
-                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'microchip' %}bg-primary text-white border-primary shadow-sm{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s;">
-                                <input type="radio" name="version_icon_type" value="microchip" class="d-none" {% if current_icon == 'microchip' %}checked{% endif %} onchange="updateVersionIconChips(this)">
+                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'microchip' %}bg-primary text-white border-primary shadow-sm active-chip{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s; cursor: pointer; user-select: none;" for="vicon_microchip" onclick="selectVersionIcon('microchip', this)">
+                                <input type="radio" name="version_icon_type" id="vicon_microchip" value="microchip" class="visually-hidden" {% if current_icon == 'microchip' %}checked{% endif %} onchange="updateVersionIconChips(this)">
                                 <i class="fas fa-microchip"></i> <span class="small fw-semibold">پردازنده (Chip)</span>
                             </label>
 
-                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'star' %}bg-primary text-white border-primary shadow-sm{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s;">
-                                <input type="radio" name="version_icon_type" value="star" class="d-none" {% if current_icon == 'star' %}checked{% endif %} onchange="updateVersionIconChips(this)">
+                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'star' %}bg-primary text-white border-primary shadow-sm active-chip{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s; cursor: pointer; user-select: none;" for="vicon_star" onclick="selectVersionIcon('star', this)">
+                                <input type="radio" name="version_icon_type" id="vicon_star" value="star" class="visually-hidden" {% if current_icon == 'star' %}checked{% endif %} onchange="updateVersionIconChips(this)">
                                 <i class="fas fa-star"></i> <span class="small fw-semibold">ستاره پرمیوم (Star)</span>
                             </label>
                         </div>
 
                         <!-- آپلود آیکون شخصی نسخه -->
                         <div class="p-3 bg-white rounded-3 border">
+                            <input type="hidden" name="version_custom_icon" id="versionCustomIconInput" value="{{ store_branding_config.version_custom_icon or '' }}">
                             <label class="form-label fw-bold small">
                                 <i class="fas fa-cloud-arrow-up me-1 text-primary"></i> آپلود آیکون اختصاصی و شخصی نسخه (اختیاری):
                             </label>
@@ -250,7 +253,7 @@
                                 </div>
                                 <div class="col-md-5">
                                     {% if store_branding_config.version_custom_icon %}
-                                        <div class="d-flex align-items-center gap-2 p-2 rounded bg-light border">
+                                        <div class="d-flex align-items-center gap-2 p-2 rounded bg-light border" id="currentVersionIconBox">
                                             <span class="small text-muted">آیکون فعال:</span>
                                             <img src="{{ store_branding_config.version_custom_icon }}" id="currentVersionIconImg" alt="آیکون اختصاصی" class="border rounded p-1 bg-white" style="width: 28px; height: 28px; object-fit: contain;">
                                             <div class="form-check ms-auto">
@@ -261,7 +264,7 @@
                                             </div>
                                         </div>
                                     {% else %}
-                                        <div class="text-muted small">
+                                        <div class="text-muted small" id="currentVersionIconBox">
                                             <i class="fas fa-circle-info text-info me-1"></i> در حال حاضر از مدل انتخابی بالا استفاده می‌شود.
                                         </div>
                                     {% endif %}
@@ -358,17 +361,14 @@
                             </div>
                         </div>
 
-                        <div class="d-flex justify-content-center p-3 rounded-3" id="livePreviewContainer" data-preview-theme="dark" style="background: #070b14; min-height: 90px; transition: background 0.25s ease;">
+                        <div class="d-flex justify-content-center p-3 rounded-3" id="livePreviewContainer" data-preview-theme="dark" data-bs-theme="dark" style="background: #070b14; min-height: 90px; transition: background 0.25s ease;">
                             <div style="width: 280px; max-width: 100%;">
                                 <div class="sidebar-brand-wrapper {{ store_branding_config.brand_header_style or 'style_glass' }}" id="livePreviewWrapper">
                                     <div class="brand brand-{{ store_branding_config.brand_header_style or 'style_glass' }}" id="livePreviewBrand">
-                                        {% if store_branding_config.logo_url %}
-                                            <img src="{{ store_branding_config.logo_url }}" id="livePreviewLogoImg" alt="لوگو" class="brand-logo-img">
-                                        {% else %}
-                                            <div class="brand-logo-fallback" id="livePreviewLogoFallback">
-                                                <i class="fas fa-shield-halved"></i>
-                                            </div>
-                                        {% endif %}
+                                        <img src="{{ store_branding_config.logo_url or '' }}" id="livePreviewLogoImg" alt="لوگو" class="brand-logo-img" style="{% if not store_branding_config.logo_url %}display: none;{% endif %}">
+                                        <div class="brand-logo-fallback" id="livePreviewLogoFallback" style="{% if store_branding_config.logo_url %}display: none;{% endif %}">
+                                            <i class="fas fa-shield-halved"></i>
+                                        </div>
                                         <div class="brand-text-block">
                                             <div class="brand-title text-truncate" id="livePreviewTitle">{{ store_branding_config.store_name or 'نام فروشگاه' }}</div>
                                             <div class="brand-version">
@@ -413,6 +413,235 @@
 </div>
 
 <script>
+const PRESET_VERSION_ICONS = {
+    'branch': '<i class="fas fa-code-branch me-1"></i>',
+    'tag': '<i class="fas fa-tag me-1"></i>',
+    'cube': '<i class="fas fa-cube me-1"></i>',
+    'rocket': '<i class="fas fa-rocket me-1"></i>',
+    'sparkles': '<i class="fas fa-wand-magic-sparkles me-1"></i>',
+    'shield': '<i class="fas fa-shield-halved me-1"></i>',
+    'terminal': '<i class="fas fa-terminal me-1"></i>',
+    'bolt': '<i class="fas fa-bolt me-1"></i>',
+    'microchip': '<i class="fas fa-microchip me-1"></i>',
+    'star': '<i class="fas fa-star me-1"></i>'
+};
+
+window.customLogoPreviewData = null;
+window.customVersionIconPreviewData = null;
+
+function selectBrandStyle(styleName, cardEl) {
+    document.querySelectorAll('.brand-style-card').forEach(card => {
+        card.classList.remove('border-primary', 'shadow-sm', 'bg-white', 'active-style');
+        card.classList.add('bg-light', 'opacity-75');
+        const r = card.querySelector('input[type="radio"]');
+        if (r) r.checked = false;
+    });
+
+    const radio = document.getElementById(
+        styleName === 'style_glass' ? 'styleGlass' :
+        styleName === 'style_minimal' ? 'styleMinimal' :
+        styleName === 'style_centered' ? 'styleCentered' :
+        styleName === 'style_cyber' ? 'styleCyber' : 'styleCompact'
+    ) || (cardEl ? cardEl.querySelector('input[type="radio"]') : null);
+
+    if (radio) {
+        radio.checked = true;
+    }
+    const targetCard = cardEl || (radio ? radio.closest('.brand-style-card') : null);
+    if (targetCard) {
+        targetCard.classList.remove('bg-light', 'opacity-75');
+        targetCard.classList.add('border-primary', 'shadow-sm', 'bg-white', 'active-style');
+    }
+
+    updateLiveBrandPreview();
+}
+
+function updateBrandHeaderStyleCards(radioEl) {
+    if (!radioEl) return;
+    selectBrandStyle(radioEl.value, radioEl.closest('.brand-style-card'));
+}
+
+function selectVersionIcon(iconType, labelEl) {
+    const container = document.getElementById('versionIconChipsContainer') || document;
+    container.querySelectorAll('.version-icon-chip').forEach(chip => {
+        chip.classList.remove('bg-primary', 'text-white', 'border-primary', 'shadow-sm', 'active-chip');
+        chip.classList.add('bg-white', 'text-dark');
+        const r = chip.querySelector('input[type="radio"]');
+        if (r) r.checked = false;
+    });
+
+    const radio = document.getElementById('vicon_' + iconType) || (labelEl ? labelEl.querySelector('input[type="radio"]') : null);
+    if (radio) {
+        radio.checked = true;
+    }
+    const targetLabel = labelEl || (radio ? radio.closest('.version-icon-chip') : null);
+    if (targetLabel) {
+        targetLabel.classList.remove('bg-white', 'text-dark');
+        targetLabel.classList.add('bg-primary', 'text-white', 'border-primary', 'shadow-sm', 'active-chip');
+    }
+
+    // اگر آیکون شخصی آپلود شده بود و کاربر چیپ انتخاب کرد، تیک حذف را فعال کن تا پیش‌نمایش آیکون چیپ را نشان دهد
+    const clearCustomCheckbox = document.getElementById('clearVersionIconCheckbox');
+    if (clearCustomCheckbox) {
+        clearCustomCheckbox.checked = true;
+    }
+    window.customVersionIconPreviewData = null;
+
+    updateLiveBrandPreview();
+}
+
+function updateVersionIconChips(radioEl) {
+    if (!radioEl) return;
+    selectVersionIcon(radioEl.value, radioEl.closest('.version-icon-chip'));
+}
+
+function previewUploadedVersionIcon(input) {
+    if (input.files && input.files[0]) {
+        const file = input.files[0];
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            window.customVersionIconPreviewData = e.target.result;
+            const clearCheckbox = document.getElementById('clearVersionIconCheckbox');
+            if (clearCheckbox) clearCheckbox.checked = false;
+            updateLiveBrandPreview();
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+function previewUploadedLogo(input) {
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            window.customLogoPreviewData = e.target.result;
+            const curLogo = document.getElementById('currentLogoPreview');
+            if (curLogo) curLogo.src = e.target.result;
+            const clearCheckbox = document.getElementById('clearStoreLogoCheckbox');
+            if (clearCheckbox) clearCheckbox.checked = false;
+            updateLiveBrandPreview();
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+
+function setPreviewTheme(theme) {
+    const container = document.getElementById('livePreviewContainer');
+    const darkBtn = document.getElementById('previewThemeDarkBtn');
+    const lightBtn = document.getElementById('previewThemeLightBtn');
+    if (!container) return;
+
+    if (theme === 'dark') {
+        container.setAttribute('data-preview-theme', 'dark');
+        container.setAttribute('data-bs-theme', 'dark');
+        container.style.background = '#070b14';
+        darkBtn?.classList.add('active');
+        lightBtn?.classList.remove('active');
+    } else {
+        container.setAttribute('data-preview-theme', 'light');
+        container.setAttribute('data-bs-theme', 'light');
+        container.style.background = '#f1f5f9';
+        lightBtn?.classList.add('active');
+        darkBtn?.classList.remove('active');
+    }
+}
+
+function updateLiveBrandPreview() {
+    // ۱. نام فروشگاه
+    const titleInput = document.getElementById('storeNameInput');
+    const titleEl = document.getElementById('livePreviewTitle');
+    if (titleInput && titleEl) {
+        titleEl.textContent = titleInput.value.trim() || 'نام فروشگاه';
+    }
+
+    // ۲. استایل سربرگ
+    const selectedStyleRadio = document.querySelector('input[name="brand_header_style"]:checked');
+    const selectedStyle = selectedStyleRadio ? selectedStyleRadio.value : 'style_glass';
+    const wrapper = document.getElementById('livePreviewWrapper');
+    const brand = document.getElementById('livePreviewBrand');
+    if (wrapper && brand) {
+        wrapper.className = 'sidebar-brand-wrapper ' + selectedStyle;
+        brand.className = 'brand brand-' + selectedStyle;
+    }
+
+    // ۳. شماره نسخه
+    const manualVer = document.getElementById('manualVersionInput');
+    const isGithub = document.getElementById('versionSourceGithub')?.checked;
+    const verEl = document.getElementById('livePreviewVersionText');
+    if (verEl) {
+        if (isGithub) {
+            verEl.textContent = 'v... (گیت‌هاب)';
+        } else {
+            verEl.textContent = (manualVer?.value || '').trim() || 'v0.0.1 Beta';
+        }
+    }
+
+    // ۴. لوگوی فروشگاه
+    const logoUrlInput = document.getElementById('storeLogoUrlInput');
+    const clearLogo = document.getElementById('clearStoreLogoCheckbox')?.checked;
+    const logoImg = document.getElementById('livePreviewLogoImg');
+    const logoFallback = document.getElementById('livePreviewLogoFallback');
+
+    let activeLogoSrc = '';
+    if (!clearLogo) {
+        if (window.customLogoPreviewData) {
+            activeLogoSrc = window.customLogoPreviewData;
+        } else if (logoUrlInput && logoUrlInput.value.trim()) {
+            activeLogoSrc = logoUrlInput.value.trim();
+        }
+    }
+
+    if (activeLogoSrc) {
+        if (logoImg) {
+            logoImg.src = activeLogoSrc;
+            logoImg.style.display = 'block';
+        }
+        if (logoFallback) {
+            logoFallback.style.display = 'none';
+        }
+    } else {
+        if (logoImg) {
+            logoImg.style.display = 'none';
+        }
+        if (logoFallback) {
+            logoFallback.style.display = 'flex';
+        }
+    }
+
+    // ۵. آیکون نسخه
+    const iconContainer = document.getElementById('livePreviewIconContainer');
+    const clearIcon = document.getElementById('clearVersionIconCheckbox')?.checked;
+    const customIconHidden = document.getElementById('versionCustomIconInput');
+    let activeCustomIcon = '';
+
+    if (!clearIcon) {
+        if (window.customVersionIconPreviewData) {
+            activeCustomIcon = window.customVersionIconPreviewData;
+        } else if (customIconHidden && customIconHidden.value.trim()) {
+            activeCustomIcon = customIconHidden.value.trim();
+        }
+    }
+
+    if (activeCustomIcon) {
+        if (iconContainer) {
+            iconContainer.innerHTML = `<img src="${activeCustomIcon}" alt="آیکون" class="version-icon-img me-1" style="width: 13px; height: 13px; vertical-align: middle;">`;
+        }
+    } else {
+        const selectedIconRadio = document.querySelector('input[name="version_icon_type"]:checked');
+        const iconKey = selectedIconRadio ? selectedIconRadio.value : 'branch';
+        if (iconContainer) {
+            iconContainer.innerHTML = PRESET_VERSION_ICONS[iconKey] || '<i class="fas fa-code-branch me-1"></i>';
+        }
+    }
+
+    // ۶. رنگ سازمانی
+    const primaryColor = document.getElementById('primaryColorPicker')?.value || '#4f46e5';
+    if (wrapper) {
+        wrapper.style.setProperty('--primary', primaryColor);
+        wrapper.style.setProperty('--bs-primary', primaryColor);
+        wrapper.style.setProperty('--sidebar-brand', primaryColor);
+    }
+}
+
 function toggleVersionInputs() {
     const isGithub = document.getElementById('versionSourceGithub')?.checked;
     const manualInput = document.getElementById('manualVersionInput');
@@ -453,15 +682,23 @@ function updateStyleCards(input) {
         }
     }
 }
+
 document.addEventListener('DOMContentLoaded', function() {
     const picker = document.getElementById('primaryColorPicker');
     const hex = document.getElementById('primaryColorHex');
     if (picker && hex) {
-        picker.addEventListener('input', function() { hex.value = picker.value; });
-        hex.addEventListener('input', function() { picker.value = hex.value; });
+        picker.addEventListener('input', function() { 
+            hex.value = picker.value; 
+            updateLiveBrandPreview();
+        });
+        hex.addEventListener('input', function() { 
+            picker.value = hex.value; 
+            updateLiveBrandPreview();
+        });
     }
     toggleVersionInputs();
     toggleServerStatusManualBox();
+    updateLiveBrandPreview();
 });
 </script>
 

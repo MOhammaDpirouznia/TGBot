@@ -102,10 +102,11 @@
                     <!-- عنوان فروشگاه و تب مرورگر -->
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">
-                            <label class="form-label fw-bold">عنوان برند / عنوان پنل همکار</label>
+                            <label class="form-label fw-bold">عنوان برند / عنوان پنل همکار (اختیاری)</label>
                             <input type="text" class="form-control" name="brand_title" 
-                                   value="{{ reseller.get('brand_title') or reseller.get('name') or '' }}" 
-                                   placeholder="مثال: توربو نت | TurboNet">
+                                   value="{{ reseller.get('brand_title') or '' }}" 
+                                   placeholder="پیش‌فرض سیستم: {{ branding.get('brand_title') or 'نام فروشگاه' }} (در صورت خالی بودن)">
+                            <div class="form-text small">در صورت خالی گذاشتن، نام فروشگاه اصلی تنظیم‌شده توسط مدیریت اعمال می‌شود.</div>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-bold">رنگ سازمانی اصلی (Hex Color)</label>
@@ -123,12 +124,18 @@
                             <label class="form-label fw-bold">فایل لوگوی اختصاصی نماینده</label>
                             <input type="file" class="form-control" name="logo_file" accept="image/*">
                             {% if reseller.get('logo_url') %}
-                                <div class="mt-2 d-flex align-items-center gap-2">
-                                    <span class="small text-muted">لوگوی فعلی:</span>
-                                    <img src="{{ reseller.get('logo_url') }}" alt="لوگو" style="max-height: 36px;" class="border rounded p-1">
+                                <div class="mt-2 d-flex align-items-center gap-2 p-2 rounded bg-light border">
+                                    <span class="small text-muted">لوگوی اختصاصی فعلی:</span>
+                                    <img src="{{ reseller.get('logo_url') }}" alt="لوگو" style="max-height: 36px;" class="border rounded p-1 bg-white">
+                                    <div class="form-check ms-auto">
+                                        <input class="form-check-input" type="checkbox" name="clear_logo" value="1" id="clearResellerLogo">
+                                        <label class="form-check-label small text-danger" for="clearResellerLogo">
+                                            حذف و بازگشت به لوگوی سامانه
+                                        </label>
+                                    </div>
                                 </div>
                             {% endif %}
-                            <div class="form-text small">این لوگو هم در پنل همکار و هم در پورتال مشتریان شما نمایش داده می‌شود.</div>
+                            <div class="form-text small">در صورت عدم آپلود یا حذف، لوگوی اصلی فروشگاه نمایش داده می‌شود.</div>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-bold">آدرس مستقیم آیکون تب مرورگر (Favicon URL)</label>
