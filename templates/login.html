@@ -18,7 +18,23 @@
                     <h4 class="fw-bold mb-1">{{ branding.get('brand_title') or 'سامانه هوشمند VPN' }}</h4>
                     <p class="small mb-2 opacity-75">ورود مدیران و همکاران فروش</p>
                     <span class="badge bg-white bg-opacity-25 text-white border border-white border-opacity-25 font-monospace" style="font-size: 0.72rem;">
-                        <i class="fas fa-code-branch me-1"></i>نسخه {{ branding.get('store_version') or 'v0.0.1 Beta' }}
+                        {% if branding.get('version_custom_icon') %}
+                            <img src="{{ branding.get('version_custom_icon') }}" alt="نسخه" class="version-icon-img me-1" style="width: 12px; height: 12px; vertical-align: middle;">
+                        {% else %}
+                            {% set v_icon = branding.get('version_icon_type', 'branch') %}
+                            {% if v_icon == 'tag' %}<i class="fas fa-tag me-1"></i>
+                            {% elif v_icon == 'cube' %}<i class="fas fa-cube me-1"></i>
+                            {% elif v_icon == 'rocket' %}<i class="fas fa-rocket me-1"></i>
+                            {% elif v_icon == 'sparkles' %}<i class="fas fa-wand-magic-sparkles me-1"></i>
+                            {% elif v_icon == 'shield' %}<i class="fas fa-shield-halved me-1"></i>
+                            {% elif v_icon == 'terminal' %}<i class="fas fa-terminal me-1"></i>
+                            {% elif v_icon == 'bolt' %}<i class="fas fa-bolt me-1"></i>
+                            {% elif v_icon == 'microchip' %}<i class="fas fa-microchip me-1"></i>
+                            {% elif v_icon == 'star' %}<i class="fas fa-star me-1"></i>
+                            {% else %}<i class="fas fa-code-branch me-1"></i>
+                            {% endif %}
+                        {% endif %}
+                        نسخه {{ branding.get('store_version') or 'v0.0.1 Beta' }}
                     </span>
                 </div>
                 <div class="card-body p-4">

@@ -9,25 +9,42 @@
 
 <!-- کارت تنظیمات هویت بصری، نام فروشگاه، نسخه و کپی‌رایت -->
 <div class="card shadow-sm mb-4 border-0">
-    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h5 class="mb-0 text-primary fw-bold">
-            <i class="fas fa-palette text-primary me-2"></i> تنظیمات هویت بصری، نام فروشگاه، نسخه و کپی‌رایت
+            <i class="fas fa-palette text-primary me-2"></i> تنظیمات هویت بصری، استایل سربرگ، لوگو و نسخه
         </h5>
         <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2">
-            <i class="fas fa-code-branch me-1"></i>نسخه فعال: {{ store_branding_config.store_version }}
+            {% if store_branding_config.version_custom_icon %}
+                <img src="{{ store_branding_config.version_custom_icon }}" alt="آیکون" class="me-1" style="width: 13px; height: 13px; vertical-align: middle;">
+            {% else %}
+                {% set v_icon = store_branding_config.version_icon_type or 'branch' %}
+                {% if v_icon == 'tag' %}<i class="fas fa-tag me-1"></i>
+                {% elif v_icon == 'cube' %}<i class="fas fa-cube me-1"></i>
+                {% elif v_icon == 'rocket' %}<i class="fas fa-rocket me-1"></i>
+                {% elif v_icon == 'sparkles' %}<i class="fas fa-wand-magic-sparkles me-1"></i>
+                {% elif v_icon == 'shield' %}<i class="fas fa-shield-halved me-1"></i>
+                {% elif v_icon == 'terminal' %}<i class="fas fa-terminal me-1"></i>
+                {% elif v_icon == 'bolt' %}<i class="fas fa-bolt me-1"></i>
+                {% elif v_icon == 'microchip' %}<i class="fas fa-microchip me-1"></i>
+                {% elif v_icon == 'star' %}<i class="fas fa-star me-1"></i>
+                {% else %}<i class="fas fa-code-branch me-1"></i>
+                {% endif %}
+            {% endif %}
+            نسخه فعال: {{ store_branding_config.store_version }}
         </span>
     </div>
     <div class="card-body p-4">
-        <form action="{{ url_for('settings') }}" method="POST" enctype="multipart/form-data">
+        <form action="{{ url_for('settings') }}" method="POST" enctype="multipart/form-data" id="storeBrandingForm">
             <input type="hidden" name="action" value="save_store_branding">
             
-            <div class="row g-3">
+            <div class="row g-4">
+                <!-- ۱. نام فروشگاه و رنگ سازمانی -->
                 <div class="col-md-6">
                     <label class="form-label fw-bold small">
                         <i class="fas fa-store me-1 text-primary"></i> نام کلی فروشگاه و سامانه:
                     </label>
-                    <input type="text" name="store_name" class="form-control" value="{{ store_branding_config.store_name }}" placeholder="مثلاً: HiddiBot یا نوین‌نت" required>
-                    <div class="form-text small">این نام در بالای سایدبار، هدر موبایل، صفحه لاگین و عنوان صفحات نمایش داده می‌شود.</div>
+                    <input type="text" name="store_name" id="storeNameInput" class="form-control" value="{{ store_branding_config.store_name }}" placeholder="مثلاً: HiddiBot یا نوین‌نت" required oninput="updateLiveBrandPreview()">
+                    <div class="form-text small">این نام در بالای سایدبار، هدر موبایل، صفحه لاگین و برای تمامی نمایندگان نمایش داده می‌شود.</div>
                 </div>
 
                 <div class="col-md-6">
@@ -35,31 +52,244 @@
                         <i class="fas fa-eye-dropper me-1 text-primary"></i> رنگ سازمانی پنل (Primary Color):
                     </label>
                     <div class="d-flex align-items-center gap-2">
-                        <input type="color" name="store_primary_color" id="primaryColorPicker" class="form-control form-control-color" value="{{ store_branding_config.primary_color or '#4f46e5' }}" title="انتخاب رنگ سازمانی">
+                        <input type="color" name="store_primary_color" id="primaryColorPicker" class="form-control form-control-color" value="{{ store_branding_config.primary_color or '#4f46e5' }}" title="انتخاب رنگ سازمانی" oninput="updateLiveBrandPreview()">
                         <input type="text" class="form-control font-monospace" id="primaryColorHex" value="{{ store_branding_config.primary_color or '#4f46e5' }}">
                     </div>
                     <div class="form-text small">رنگ دکمه‌ها، آیکون‌ها و المان‌های شاخص پنل مدیریت و همکاران.</div>
                 </div>
 
-                <!-- تنظیمات ورژن -->
+                <!-- ۲. انتخاب استایل سربرگ سایدبار (۵ مدل مدرن) -->
+                <div class="col-12">
+                    <div class="p-3 border rounded-3 bg-light">
+                        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                            <label class="form-label fw-bold small mb-0">
+                                <i class="fas fa-layer-group me-1 text-primary"></i> انتخاب استایل سربرگ سایدبار (محدوده سبز بالا):
+                            </label>
+                            <span class="badge bg-primary text-white px-2 py-1 small">اعمال خودکار برای تمام نمایندگان</span>
+                        </div>
+                        <p class="text-muted small mb-3">یکی از استایل‌های زیر را برای نمایش لوگو، نام و نسخه در سربرگ سایدبار انتخاب کنید:</p>
+                        
+                        <div class="row g-3">
+                            <!-- استایل ۱: کارت شیشه‌ای مدرن -->
+                            <div class="col-md-4 col-sm-6">
+                                <label class="brand-style-card w-100 p-3 rounded-3 border cursor-pointer position-relative {% if store_branding_config.brand_header_style == 'style_glass' or not store_branding_config.brand_header_style %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="transition: all 0.2s;">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <div class="form-check m-0">
+                                            <input class="form-check-input" type="radio" name="brand_header_style" value="style_glass" id="styleGlass" {% if store_branding_config.brand_header_style == 'style_glass' or not store_branding_config.brand_header_style %}checked{% endif %} onchange="updateBrandHeaderStyleCards(this)">
+                                            <span class="fw-bold small ms-1">کارت شیشه‌ای مدرن</span>
+                                        </div>
+                                        <span class="badge bg-primary-subtle text-primary" style="font-size: 0.65rem;">پیش‌فرض</span>
+                                    </div>
+                                    <div class="p-2 rounded-3 border bg-dark text-white text-center d-flex align-items-center gap-2" style="background: rgba(15,23,42,0.85) !important;">
+                                        <div class="rounded-2 bg-primary bg-opacity-25 p-1 flex-shrink-0" style="width:28px; height:28px;"><i class="fas fa-shield-halved text-primary" style="font-size:0.9rem;"></i></div>
+                                        <div class="text-start" style="line-height: 1.1;">
+                                            <div style="font-size: 0.75rem; font-weight: bold;">نام فروشگاه</div>
+                                            <span class="badge bg-primary bg-opacity-25 text-primary" style="font-size: 0.6rem; padding: 1px 4px;">v1.0.0</span>
+                                        </div>
+                                    </div>
+                                    <div class="small text-muted mt-2" style="font-size: 0.72rem;">کانتینر مات بلوری با بوردر ملایم نئونی و جلوه لوکس</div>
+                                </label>
+                            </div>
+
+                            <!-- استایل ۲: کلاسیک مینیمال -->
+                            <div class="col-md-4 col-sm-6">
+                                <label class="brand-style-card w-100 p-3 rounded-3 border cursor-pointer position-relative {% if store_branding_config.brand_header_style == 'style_minimal' %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="transition: all 0.2s;">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <div class="form-check m-0">
+                                            <input class="form-check-input" type="radio" name="brand_header_style" value="style_minimal" id="styleMinimal" {% if store_branding_config.brand_header_style == 'style_minimal' %}checked{% endif %} onchange="updateBrandHeaderStyleCards(this)">
+                                            <span class="fw-bold small ms-1">کلاسیک مینیمال</span>
+                                        </div>
+                                    </div>
+                                    <div class="p-2 border-bottom text-start d-flex align-items-center gap-2 bg-white rounded">
+                                        <div class="rounded bg-secondary bg-opacity-10 p-1 flex-shrink-0" style="width:26px; height:26px;"><i class="fas fa-shield-halved text-secondary" style="font-size:0.85rem;"></i></div>
+                                        <div style="line-height: 1.1;">
+                                            <div style="font-size: 0.75rem; font-weight: 600;">نام فروشگاه</div>
+                                            <span class="text-muted" style="font-size: 0.62rem; font-family: monospace;">v1.0.0</span>
+                                        </div>
+                                    </div>
+                                    <div class="small text-muted mt-2" style="font-size: 0.72rem;">طراحی فلت، بدون کادر اضافه، سبک و مینیمال</div>
+                                </label>
+                            </div>
+
+                            <!-- استایل ۳: متمرکز و عمودی شیک -->
+                            <div class="col-md-4 col-sm-6">
+                                <label class="brand-style-card w-100 p-3 rounded-3 border cursor-pointer position-relative {% if store_branding_config.brand_header_style == 'style_centered' %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="transition: all 0.2s;">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <div class="form-check m-0">
+                                            <input class="form-check-input" type="radio" name="brand_header_style" value="style_centered" id="styleCentered" {% if store_branding_config.brand_header_style == 'style_centered' %}checked{% endif %} onchange="updateBrandHeaderStyleCards(this)">
+                                            <span class="fw-bold small ms-1">متمرکز عمودی شیک</span>
+                                        </div>
+                                    </div>
+                                    <div class="p-2 rounded-3 border text-center bg-white">
+                                        <div class="rounded-circle bg-primary bg-opacity-25 mx-auto mb-1 d-flex align-items-center justify-content-center" style="width:30px; height:30px;"><i class="fas fa-shield-halved text-primary" style="font-size:0.85rem;"></i></div>
+                                        <div style="font-size: 0.75rem; font-weight: bold;">نام فروشگاه</div>
+                                        <span class="badge bg-light text-muted border" style="font-size: 0.58rem;">v1.0.0</span>
+                                    </div>
+                                    <div class="small text-muted mt-2" style="font-size: 0.72rem;">لوگو بزرگتر در بالا، نام متمرکز و برجسته در مرکز</div>
+                                </label>
+                            </div>
+
+                            <!-- استایل ۴: سایبری و نئونی مدرن -->
+                            <div class="col-md-4 col-sm-6">
+                                <label class="brand-style-card w-100 p-3 rounded-3 border cursor-pointer position-relative {% if store_branding_config.brand_header_style == 'style_cyber' %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="transition: all 0.2s;">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <div class="form-check m-0">
+                                            <input class="form-check-input" type="radio" name="brand_header_style" value="style_cyber" id="styleCyber" {% if store_branding_config.brand_header_style == 'style_cyber' %}checked{% endif %} onchange="updateBrandHeaderStyleCards(this)">
+                                            <span class="fw-bold small ms-1">سایبری نئونی مدرن</span>
+                                        </div>
+                                        <span class="badge bg-info text-dark" style="font-size: 0.65rem;">Cyber 2026</span>
+                                    </div>
+                                    <div class="p-2 rounded-2 border border-info text-start d-flex align-items-center gap-2" style="background: #090d16; box-shadow: 0 0 10px rgba(56,189,248,0.25);">
+                                        <div class="rounded border border-info p-1 flex-shrink-0" style="width:26px; height:26px;"><i class="fas fa-shield-halved text-info" style="font-size:0.85rem;"></i></div>
+                                        <div style="line-height: 1.1;">
+                                            <div style="font-size: 0.75rem; font-weight: bold; color: #f8fafc;">نام فروشگاه</div>
+                                            <span class="badge border border-info text-info bg-black font-monospace" style="font-size: 0.6rem; padding: 1px 4px;">v1.0.0</span>
+                                        </div>
+                                    </div>
+                                    <div class="small text-muted mt-2" style="font-size: 0.72rem;">حس تکنو با خطوط درخشان نئونی و کادر های‌تک</div>
+                                </label>
+                            </div>
+
+                            <!-- استایل ۵: افقی فشرده -->
+                            <div class="col-md-4 col-sm-6">
+                                <label class="brand-style-card w-100 p-3 rounded-3 border cursor-pointer position-relative {% if store_branding_config.brand_header_style == 'style_compact' %}border-primary shadow-sm bg-white{% else %}bg-light opacity-75{% endif %}" style="transition: all 0.2s;">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <div class="form-check m-0">
+                                            <input class="form-check-input" type="radio" name="brand_header_style" value="style_compact" id="styleCompact" {% if store_branding_config.brand_header_style == 'style_compact' %}checked{% endif %} onchange="updateBrandHeaderStyleCards(this)">
+                                            <span class="fw-bold small ms-1">افقی فشرده (کم‌جا)</span>
+                                        </div>
+                                    </div>
+                                    <div class="p-1 border-bottom text-start d-flex align-items-center gap-2 bg-white rounded">
+                                        <div class="rounded bg-light p-1 flex-shrink-0" style="width:22px; height:22px;"><i class="fas fa-shield-halved text-primary" style="font-size:0.75rem;"></i></div>
+                                        <div style="line-height: 1.1;">
+                                            <span style="font-size: 0.72rem; font-weight: bold;">نام فروشگاه</span>
+                                            <span class="text-primary font-monospace ms-1" style="font-size: 0.62rem;">v1.0.0</span>
+                                        </div>
+                                    </div>
+                                    <div class="small text-muted mt-2" style="font-size: 0.72rem;">ارتفاع کم جهت حداکثر فضا برای گزینه‌های منو</div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ۳. تنظیمات آیکون نسخه (۱۰ مدل آیکون پریست + آپلود آیکون شخصی) -->
+                <div class="col-12">
+                    <div class="p-3 border rounded-3 bg-light">
+                        <label class="form-label fw-bold small d-block mb-1">
+                            <i class="fas fa-icons me-1 text-primary"></i> انتخاب مدل آیکون نسخه (کنار شماره نسخه):
+                        </label>
+                        <p class="text-muted small mb-3">یکی از ۱۰ آیکون استاندارد را انتخاب کنید یا آیکون اختصاصی برند خود را در زیر آپلود فرمایید:</p>
+
+                        <!-- ۱۰ چیپ آیکون پریست -->
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            {% set current_icon = store_branding_config.version_icon_type or 'branch' %}
+                            
+                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'branch' %}bg-primary text-white border-primary shadow-sm{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s;">
+                                <input type="radio" name="version_icon_type" value="branch" class="d-none" {% if current_icon == 'branch' %}checked{% endif %} onchange="updateVersionIconChips(this)">
+                                <i class="fas fa-code-branch"></i> <span class="small fw-semibold">شاخه کد (گیت)</span>
+                            </label>
+
+                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'tag' %}bg-primary text-white border-primary shadow-sm{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s;">
+                                <input type="radio" name="version_icon_type" value="tag" class="d-none" {% if current_icon == 'tag' %}checked{% endif %} onchange="updateVersionIconChips(this)">
+                                <i class="fas fa-tag"></i> <span class="small fw-semibold">برچسب نسخه (Tag)</span>
+                            </label>
+
+                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'cube' %}bg-primary text-white border-primary shadow-sm{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s;">
+                                <input type="radio" name="version_icon_type" value="cube" class="d-none" {% if current_icon == 'cube' %}checked{% endif %} onchange="updateVersionIconChips(this)">
+                                <i class="fas fa-cube"></i> <span class="small fw-semibold">پکیج نرم‌افزار (Cube)</span>
+                            </label>
+
+                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'rocket' %}bg-primary text-white border-primary shadow-sm{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s;">
+                                <input type="radio" name="version_icon_type" value="rocket" class="d-none" {% if current_icon == 'rocket' %}checked{% endif %} onchange="updateVersionIconChips(this)">
+                                <i class="fas fa-rocket"></i> <span class="small fw-semibold">راکت انتشار (Rocket)</span>
+                            </label>
+
+                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'sparkles' %}bg-primary text-white border-primary shadow-sm{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s;">
+                                <input type="radio" name="version_icon_type" value="sparkles" class="d-none" {% if current_icon == 'sparkles' %}checked{% endif %} onchange="updateVersionIconChips(this)">
+                                <i class="fas fa-wand-magic-sparkles"></i> <span class="small fw-semibold">هوشمند AI (Sparkles)</span>
+                            </label>
+
+                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'shield' %}bg-primary text-white border-primary shadow-sm{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s;">
+                                <input type="radio" name="version_icon_type" value="shield" class="d-none" {% if current_icon == 'shield' %}checked{% endif %} onchange="updateVersionIconChips(this)">
+                                <i class="fas fa-shield-halved"></i> <span class="small fw-semibold">سپر امنیت (Shield)</span>
+                            </label>
+
+                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'terminal' %}bg-primary text-white border-primary shadow-sm{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s;">
+                                <input type="radio" name="version_icon_type" value="terminal" class="d-none" {% if current_icon == 'terminal' %}checked{% endif %} onchange="updateVersionIconChips(this)">
+                                <i class="fas fa-terminal"></i> <span class="small fw-semibold">هسته و ترمینال</span>
+                            </label>
+
+                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'bolt' %}bg-primary text-white border-primary shadow-sm{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s;">
+                                <input type="radio" name="version_icon_type" value="bolt" class="d-none" {% if current_icon == 'bolt' %}checked{% endif %} onchange="updateVersionIconChips(this)">
+                                <i class="fas fa-bolt"></i> <span class="small fw-semibold">صاعقه سرعت (Bolt)</span>
+                            </label>
+
+                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'microchip' %}bg-primary text-white border-primary shadow-sm{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s;">
+                                <input type="radio" name="version_icon_type" value="microchip" class="d-none" {% if current_icon == 'microchip' %}checked{% endif %} onchange="updateVersionIconChips(this)">
+                                <i class="fas fa-microchip"></i> <span class="small fw-semibold">پردازنده (Chip)</span>
+                            </label>
+
+                            <label class="version-icon-chip p-2 px-3 rounded-pill border cursor-pointer d-flex align-items-center gap-2 {% if current_icon == 'star' %}bg-primary text-white border-primary shadow-sm{% else %}bg-white text-dark{% endif %}" style="transition: all 0.2s;">
+                                <input type="radio" name="version_icon_type" value="star" class="d-none" {% if current_icon == 'star' %}checked{% endif %} onchange="updateVersionIconChips(this)">
+                                <i class="fas fa-star"></i> <span class="small fw-semibold">ستاره پرمیوم (Star)</span>
+                            </label>
+                        </div>
+
+                        <!-- آپلود آیکون شخصی نسخه -->
+                        <div class="p-3 bg-white rounded-3 border">
+                            <label class="form-label fw-bold small">
+                                <i class="fas fa-cloud-arrow-up me-1 text-primary"></i> آپلود آیکون اختصاصی و شخصی نسخه (اختیاری):
+                            </label>
+                            <div class="row g-3 align-items-center">
+                                <div class="col-md-7">
+                                    <div class="input-group">
+                                        <input type="file" name="version_icon_file" id="versionIconFileInput" class="form-control" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/x-icon" onchange="previewUploadedVersionIcon(this)">
+                                    </div>
+                                    <div class="form-text small">فرمت‌های پشتیبانی‌شده: SVG, PNG, WebP, ICO (بهترین سایز: 24x24 یا 32x32 پیکسل)</div>
+                                </div>
+                                <div class="col-md-5">
+                                    {% if store_branding_config.version_custom_icon %}
+                                        <div class="d-flex align-items-center gap-2 p-2 rounded bg-light border">
+                                            <span class="small text-muted">آیکون فعال:</span>
+                                            <img src="{{ store_branding_config.version_custom_icon }}" id="currentVersionIconImg" alt="آیکون اختصاصی" class="border rounded p-1 bg-white" style="width: 28px; height: 28px; object-fit: contain;">
+                                            <div class="form-check ms-auto">
+                                                <input class="form-check-input" type="checkbox" name="clear_version_custom_icon" value="1" id="clearVersionIconCheckbox" onchange="updateLiveBrandPreview()">
+                                                <label class="form-check-label small text-danger" for="clearVersionIconCheckbox">
+                                                    حذف و استفاده از آیکون‌های بالا
+                                                </label>
+                                            </div>
+                                        </div>
+                                    {% else %}
+                                        <div class="text-muted small">
+                                            <i class="fas fa-circle-info text-info me-1"></i> در حال حاضر از مدل انتخابی بالا استفاده می‌شود.
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ۴. نحوه تعیین نسخه پنل -->
                 <div class="col-md-12">
                     <div class="p-3 border rounded-3 bg-light">
                         <label class="form-label fw-bold small d-block mb-2">
-                            <i class="fas fa-code-branch me-1 text-primary"></i> نحوه تعیین نسخه پنل (زیر لوگو و فوتر):
+                            <i class="fas fa-code-branch me-1 text-primary"></i> شماره نسخه پنل (نمایش زیر لوگو و فوتر):
                         </label>
                         <div class="row g-3 align-items-center">
                             <div class="col-md-4">
                                 <div class="form-check mb-2">
-                                    <input class="form-check-input" type="radio" name="store_version_source" id="versionSourceManual" value="manual" {% if store_branding_config.store_version_source != 'github' %}checked{% endif %} onchange="toggleVersionInputs()">
+                                    <input class="form-check-input" type="radio" name="store_version_source" id="versionSourceManual" value="manual" {% if store_branding_config.store_version_source != 'github' %}checked{% endif %} onchange="toggleVersionInputs(); updateLiveBrandPreview();">
                                     <label class="form-check-label fw-semibold small" for="versionSourceManual">
                                         تعیین دستی نسخه
                                     </label>
                                 </div>
-                                <input type="text" name="store_version" id="manualVersionInput" class="form-control font-monospace" value="{{ store_branding_config.store_version }}" placeholder="مثلاً: v1.2.0 Beta">
+                                <input type="text" name="store_version" id="manualVersionInput" class="form-control font-monospace" value="{{ store_branding_config.store_version }}" placeholder="مثلاً: v1.2.0 Beta" oninput="updateLiveBrandPreview()">
                             </div>
                             <div class="col-md-8">
                                 <div class="form-check mb-2">
-                                    <input class="form-check-input" type="radio" name="store_version_source" id="versionSourceGithub" value="github" {% if store_branding_config.store_version_source == 'github' %}checked{% endif %} onchange="toggleVersionInputs()">
+                                    <input class="form-check-input" type="radio" name="store_version_source" id="versionSourceGithub" value="github" {% if store_branding_config.store_version_source == 'github' %}checked{% endif %} onchange="toggleVersionInputs(); updateLiveBrandPreview();">
                                     <label class="form-check-label fw-semibold small" for="versionSourceGithub">
                                         دریافت هوشمند آخرین نسخه از مخزن گیت‌هاب (GitHub Releases / Tags)
                                     </label>
@@ -68,45 +298,114 @@
                                     <span class="input-group-text small bg-white text-muted">https://github.com/</span>
                                     <input type="text" name="store_github_repo" id="githubRepoInput" class="form-control font-monospace" value="{{ store_branding_config.store_github_repo }}" placeholder="owner/repo (مثلاً: username/hiddibot)">
                                 </div>
-                                <div class="form-text small">در صورت فعال بودن، نسخه جدیدترین Release یا Tag ریپازیتوری به صورت خودکار زیر لوگو و در فوتر نمایش داده می‌شود.</div>
+                                <div class="form-text small">در صورت فعال بودن، شماره آخرین Release یا Tag ریپازیتوری به صورت خودکار نمایش داده می‌شود.</div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- تنظیمات لوگو -->
+                <!-- ۵. تنظیمات لوگو -->
                 <div class="col-md-6">
                     <label class="form-label fw-bold small">
-                        <i class="fas fa-image me-1 text-primary"></i> لوگوی فروشگاه:
+                        <i class="fas fa-image me-1 text-primary"></i> لوگوی فروشگاه (نمایش در هدر سایدبار، لاگین و پنل همکاران):
                     </label>
                     <div class="d-flex align-items-center gap-3 mb-2">
                         {% if store_branding_config.logo_url %}
-                            <img src="{{ store_branding_config.logo_url }}" alt="لوگو" class="rounded border p-1 shadow-sm" style="width: 50px; height: 50px; object-fit: contain; background: #fff;">
+                            <img src="{{ store_branding_config.logo_url }}" id="currentLogoPreview" alt="لوگو" class="rounded border p-1 shadow-sm" style="width: 50px; height: 50px; object-fit: contain; background: #fff;">
                         {% endif %}
                         <div class="flex-grow-1">
-                            <input type="file" name="store_logo_file" class="form-control" accept="image/png,image/jpeg,image/webp,image/svg+xml">
-                            <div class="form-text small">آپلود تصویر جدید (PNG, JPG, SVG, WebP)</div>
+                            <input type="file" name="store_logo_file" id="storeLogoFileInput" class="form-control" accept="image/png,image/jpeg,image/webp,image/svg+xml" onchange="previewUploadedLogo(this)">
+                            <div class="form-text small">آپلود تصویر جدید لوگو (PNG, JPG, SVG, WebP)</div>
                         </div>
                     </div>
                     <div class="input-group mt-2">
-                        <span class="input-group-text small bg-white text-muted"><i class="fas fa-link"></i> یا لینک لوگو:</span>
-                        <input type="url" name="store_logo_url" class="form-control font-monospace" value="{{ store_branding_config.logo_url }}" placeholder="https://example.com/logo.png">
+                        <span class="input-group-text small bg-white text-muted"><i class="fas fa-link"></i> یا آدرس مستقیم لوگو:</span>
+                        <input type="text" name="store_logo_url" id="storeLogoUrlInput" class="form-control font-monospace" value="{{ store_branding_config.logo_url }}" placeholder="/avatars/logo.png یا https://..." oninput="updateLiveBrandPreview()">
                     </div>
+                    {% if store_branding_config.logo_url %}
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" name="clear_store_logo" value="1" id="clearStoreLogoCheckbox" onchange="updateLiveBrandPreview()">
+                        <label class="form-check-label small text-danger" for="clearStoreLogoCheckbox">
+                            حذف لوگوی فعلی و استفاده از آیکون پیش‌فرض سیستم
+                        </label>
+                    </div>
+                    {% endif %}
                 </div>
 
-                <!-- تنظیمات کپی‌رایت -->
+                <!-- ۶. تنظیمات کپی‌رایت -->
                 <div class="col-md-6">
                     <label class="form-label fw-bold small">
                         <i class="fas fa-copyright me-1 text-primary"></i> متن کپی‌رایت (نمایش در فوتر پنل نماینده و لاگین):
                     </label>
-                    <textarea name="store_copyright" class="form-control" rows="3" placeholder="مثلاً: تمامی حقوق محفوظ است. قدرت گرفته از HiddiBot">{{ store_branding_config.footer_text }}</textarea>
+                    <textarea name="store_copyright" class="form-control" rows="3" placeholder="مثلاً: تمامی حقوق محفوظ است. قدرت گرفته از HiddiBot">{{ store_branding_config.store_copyright or store_branding_config.footer_text }}</textarea>
                     <div class="form-text small">این متن همراه با شماره نسخه در فوتر پنل همکاران و صفحه ورود نشان داده می‌شود.</div>
+                </div>
+
+                <!-- ۷. ویجت پیش‌نمایش زنده سربرگ سایدبار (Live Interactive Preview) -->
+                <div class="col-12">
+                    <div class="p-3 border rounded-3" style="background: rgba(148,163,184,0.06);">
+                        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                            <span class="fw-bold small text-primary">
+                                <i class="fas fa-eye me-1"></i> پیش‌نمایش زنده سربرگ سایدبار (بر اساس تنظیمات انتخابی شما):
+                            </span>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button type="button" class="btn btn-outline-secondary active" id="previewThemeDarkBtn" onclick="setPreviewTheme('dark')">
+                                    <i class="fas fa-moon me-1"></i> تم تیره
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" id="previewThemeLightBtn" onclick="setPreviewTheme('light')">
+                                    <i class="fas fa-sun me-1"></i> تم روشن
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-center p-3 rounded-3" id="livePreviewContainer" data-preview-theme="dark" style="background: #070b14; min-height: 90px; transition: background 0.25s ease;">
+                            <div style="width: 280px; max-width: 100%;">
+                                <div class="sidebar-brand-wrapper {{ store_branding_config.brand_header_style or 'style_glass' }}" id="livePreviewWrapper">
+                                    <div class="brand brand-{{ store_branding_config.brand_header_style or 'style_glass' }}" id="livePreviewBrand">
+                                        {% if store_branding_config.logo_url %}
+                                            <img src="{{ store_branding_config.logo_url }}" id="livePreviewLogoImg" alt="لوگو" class="brand-logo-img">
+                                        {% else %}
+                                            <div class="brand-logo-fallback" id="livePreviewLogoFallback">
+                                                <i class="fas fa-shield-halved"></i>
+                                            </div>
+                                        {% endif %}
+                                        <div class="brand-text-block">
+                                            <div class="brand-title text-truncate" id="livePreviewTitle">{{ store_branding_config.store_name or 'نام فروشگاه' }}</div>
+                                            <div class="brand-version">
+                                                <span class="badge brand-version-chip" id="livePreviewChip">
+                                                    <span id="livePreviewIconContainer">
+                                                        {% if store_branding_config.version_custom_icon %}
+                                                            <img src="{{ store_branding_config.version_custom_icon }}" alt="آیکون" class="version-icon-img me-1">
+                                                        {% else %}
+                                                            {% set v_icon = store_branding_config.version_icon_type or 'branch' %}
+                                                            {% if v_icon == 'tag' %}<i class="fas fa-tag me-1"></i>
+                                                            {% elif v_icon == 'cube' %}<i class="fas fa-cube me-1"></i>
+                                                            {% elif v_icon == 'rocket' %}<i class="fas fa-rocket me-1"></i>
+                                                            {% elif v_icon == 'sparkles' %}<i class="fas fa-wand-magic-sparkles me-1"></i>
+                                                            {% elif v_icon == 'shield' %}<i class="fas fa-shield-halved me-1"></i>
+                                                            {% elif v_icon == 'terminal' %}<i class="fas fa-terminal me-1"></i>
+                                                            {% elif v_icon == 'bolt' %}<i class="fas fa-bolt me-1"></i>
+                                                            {% elif v_icon == 'microchip' %}<i class="fas fa-microchip me-1"></i>
+                                                            {% elif v_icon == 'star' %}<i class="fas fa-star me-1"></i>
+                                                            {% else %}<i class="fas fa-code-branch me-1"></i>
+                                                            {% endif %}
+                                                        {% endif %}
+                                                    </span>
+                                                    <span>نسخه: <span id="livePreviewVersionText">{{ store_branding_config.store_version or 'v0.0.1 Beta' }}</span></span>
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <div class="mt-4 text-end">
-                <button type="submit" class="btn btn-primary px-4 fw-bold">
-                    <i class="fas fa-floppy-disk me-1"></i> ذخیره تنظیمات هویت بصری و نسخه
+                <button type="submit" class="btn btn-primary px-4 py-2 fw-bold">
+                    <i class="fas fa-floppy-disk me-1"></i> ذخیره تنظیمات هویت بصری، استایل و نسخه
                 </button>
             </div>
         </form>

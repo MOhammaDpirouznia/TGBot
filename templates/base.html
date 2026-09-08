@@ -536,38 +536,264 @@
             overflow: hidden;
         }
 
-        .sidebar .brand {
-            padding: 16px 16px;
+        /* ══════════════════════════════════════════════════════════════
+           استایل‌های ۵ گانه سربرگ هویت بصری سایدبار (Brand Header Styles)
+           ══════════════════════════════════════════════════════════════ */
+        .sidebar-brand-wrapper {
+            flex-shrink: 0;
+            transition: all 0.25s ease;
+        }
+
+        .sidebar-brand-wrapper .brand {
             display: flex;
             align-items: center;
-            gap: 12px;
-            border-bottom: 1px solid var(--sidebar-border);
-            color: var(--sidebar-brand);
             text-decoration: none;
+            color: var(--sidebar-brand);
+            transition: all 0.25s ease;
             flex-shrink: 0 !important;
         }
 
-        .sidebar .brand i {
-            font-size: 1.6rem;
-            color: var(--secondary);
+        .sidebar-brand-wrapper .brand-logo-img {
+            object-fit: contain;
             flex-shrink: 0;
+            transition: transform 0.25s ease;
         }
 
-        .sidebar .brand-title {
-            font-size: 1.05rem;
+        .sidebar-brand-wrapper .brand:hover .brand-logo-img {
+            transform: scale(1.05);
+        }
+
+        .sidebar-brand-wrapper .brand-logo-fallback {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            background: rgba(var(--bs-primary-rgb, 79, 70, 229), 0.12);
+            color: var(--primary);
+            border-radius: 10px;
+        }
+        .sidebar-brand-wrapper .brand-logo-fallback i {
+            font-size: 1.4rem;
+        }
+
+        .sidebar-brand-wrapper .brand-text-block {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+        }
+
+        .sidebar-brand-wrapper .brand-title {
             font-weight: 700;
+            line-height: 1.3;
+            color: var(--text-main);
+        }
+
+        .sidebar-brand-wrapper .brand-version {
+            margin-top: 3px;
+        }
+
+        .sidebar-brand-wrapper .brand-version-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-family: monospace;
+            font-weight: 600;
+            letter-spacing: 0.2px;
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            border-radius: 8px;
+            background: rgba(148, 163, 184, 0.12);
+            color: var(--text-muted);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            white-space: nowrap;
+        }
+
+        .sidebar-brand-wrapper .version-icon-img {
+            width: 13px;
+            height: 13px;
+            object-fit: contain;
+            vertical-align: middle;
+        }
+
+        /* ─── استایل ۱: کارت شیشه‌ای مدرن (Style 1: Modern Glass Card) ─── */
+        .sidebar-brand-wrapper.style_glass {
+            padding: 10px 12px;
+        }
+        .sidebar-brand-wrapper.style_glass .brand {
+            gap: 12px;
+            padding: 12px 14px;
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(16px) saturate(180%);
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.12);
+        }
+        [data-bs-theme="light"] .sidebar-brand-wrapper.style_glass .brand {
+            background: rgba(255, 255, 255, 0.7);
+            border-color: rgba(79, 70, 229, 0.15);
+            box-shadow: 0 4px 18px -2px rgba(79, 70, 229, 0.08);
+        }
+        .sidebar-brand-wrapper.style_glass .brand-logo-img,
+        .sidebar-brand-wrapper.style_glass .brand-logo-fallback {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+        [data-bs-theme="light"] .sidebar-brand-wrapper.style_glass .brand-logo-img {
+            border-color: rgba(0, 0, 0, 0.08);
+            background: #fff;
+            padding: 2px;
+        }
+        .sidebar-brand-wrapper.style_glass .brand-title {
+            font-size: 1.02rem;
+        }
+        .sidebar-brand-wrapper.style_glass .brand-version-chip {
+            background: rgba(var(--bs-primary-rgb, 79, 70, 229), 0.1);
+            color: var(--primary);
+            border-color: rgba(var(--bs-primary-rgb, 79, 70, 229), 0.25);
+            border-radius: 20px;
+        }
+
+        /* ─── استایل ۲: کلاسیک مینیمال (Style 2: Classic Minimal) ─── */
+        .sidebar-brand-wrapper.style_minimal {
+            padding: 0;
+            border-bottom: 1px solid var(--sidebar-border);
+        }
+        .sidebar-brand-wrapper.style_minimal .brand {
+            gap: 12px;
+            padding: 14px 16px;
+        }
+        .sidebar-brand-wrapper.style_minimal .brand-logo-img,
+        .sidebar-brand-wrapper.style_minimal .brand-logo-fallback {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+        }
+        .sidebar-brand-wrapper.style_minimal .brand-title {
+            font-size: 0.98rem;
+        }
+        .sidebar-brand-wrapper.style_minimal .brand-version-chip {
+            background: transparent;
+            border: 1px solid var(--sidebar-border);
+            padding: 2px 6px;
+            font-size: 0.68rem;
+        }
+
+        /* ─── استایل ۳: متمرکز و عمودی شیک (Style 3: Centered Vertical) ─── */
+        .sidebar-brand-wrapper.style_centered {
+            padding: 12px 14px;
+        }
+        .sidebar-brand-wrapper.style_centered .brand {
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: 8px;
+            padding: 16px 12px 14px;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--sidebar-border);
+        }
+        [data-bs-theme="light"] .sidebar-brand-wrapper.style_centered .brand {
+            background: rgba(255, 255, 255, 0.55);
+        }
+        .sidebar-brand-wrapper.style_centered .brand-logo-img,
+        .sidebar-brand-wrapper.style_centered .brand-logo-fallback {
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            box-shadow: 0 0 0 3px rgba(var(--bs-primary-rgb, 79, 70, 229), 0.2);
+        }
+        .sidebar-brand-wrapper.style_centered .brand-text-block {
+            align-items: center;
+            width: 100%;
+        }
+        .sidebar-brand-wrapper.style_centered .brand-title {
+            font-size: 1.05rem;
+            font-weight: 800;
+        }
+        .sidebar-brand-wrapper.style_centered .brand-version-chip {
+            border-radius: 20px;
+            padding: 2px 10px;
+            font-size: 0.69rem;
+            background: rgba(var(--bs-primary-rgb, 79, 70, 229), 0.08);
+            border-color: rgba(var(--bs-primary-rgb, 79, 70, 229), 0.2);
+            color: var(--primary);
+        }
+
+        /* ─── استایل ۴: سایبری و نئونی مدرن (Style 4: Cyber Glow) ─── */
+        .sidebar-brand-wrapper.style_cyber {
+            padding: 10px 12px;
+        }
+        .sidebar-brand-wrapper.style_cyber .brand {
+            gap: 12px;
+            padding: 12px 14px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 27, 75, 0.85));
+            border: 1px solid rgba(var(--bs-primary-rgb, 79, 70, 229), 0.5);
+            box-shadow: 0 0 16px rgba(var(--bs-primary-rgb, 79, 70, 229), 0.2), inset 0 0 8px rgba(var(--bs-primary-rgb, 79, 70, 229), 0.1);
+        }
+        [data-bs-theme="light"] .sidebar-brand-wrapper.style_cyber .brand {
+            background: linear-gradient(135deg, rgba(241, 245, 249, 0.95), rgba(224, 231, 255, 0.85));
+            border-color: var(--primary);
+            box-shadow: 0 0 14px rgba(var(--bs-primary-rgb, 79, 70, 229), 0.18);
+        }
+        .sidebar-brand-wrapper.style_cyber .brand-logo-img,
+        .sidebar-brand-wrapper.style_cyber .brand-logo-fallback {
+            width: 38px;
+            height: 38px;
+            border-radius: 8px;
+            border: 1.5px solid var(--primary);
+            box-shadow: 0 0 8px rgba(var(--bs-primary-rgb, 79, 70, 229), 0.35);
+        }
+        .sidebar-brand-wrapper.style_cyber .brand-title {
+            font-size: 1.02rem;
+            font-weight: 800;
+            letter-spacing: 0.3px;
+        }
+        .sidebar-brand-wrapper.style_cyber .brand-version-chip {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--primary);
+            color: #38bdf8;
+            border-radius: 6px;
+            text-transform: uppercase;
+        }
+        [data-bs-theme="light"] .sidebar-brand-wrapper.style_cyber .brand-version-chip {
+            background: rgba(255, 255, 255, 0.8);
+            color: var(--primary);
+        }
+
+        /* ─── استایل ۵: افقی فشرده (Style 5: Inline Compact) ─── */
+        .sidebar-brand-wrapper.style_compact {
+            padding: 0;
+            border-bottom: 1px solid var(--sidebar-border);
+        }
+        .sidebar-brand-wrapper.style_compact .brand {
+            gap: 10px;
+            padding: 10px 14px;
+        }
+        .sidebar-brand-wrapper.style_compact .brand-logo-img,
+        .sidebar-brand-wrapper.style_compact .brand-logo-fallback {
+            width: 30px;
+            height: 30px;
+            border-radius: 6px;
+        }
+        .sidebar-brand-wrapper.style_compact .brand-title {
+            font-size: 0.92rem;
             line-height: 1.2;
         }
-
-        .sidebar .brand-badge {
-            font-size: 0.68rem;
-            padding: 2px 7px;
-            border-radius: 6px;
-            background: rgba(14, 165, 233, 0.2);
-            color: var(--secondary);
-            font-weight: 600;
-            margin-top: 3px;
-            display: inline-block;
+        .sidebar-brand-wrapper.style_compact .brand-version {
+            margin-top: 1px;
+        }
+        .sidebar-brand-wrapper.style_compact .brand-version-chip {
+            padding: 1px 5px;
+            font-size: 0.65rem;
+            border-radius: 4px;
+            border: none;
+            background: rgba(var(--bs-primary-rgb, 79, 70, 229), 0.08);
+            color: var(--primary);
         }
 
         .sidebar .nav {
@@ -1249,48 +1475,42 @@
 
     <!-- Sidebar -->
     <aside class="sidebar">
-        <a href="{% if session.get('role') == 'reseller' %}{{ url_for('reseller_dashboard') }}{% else %}{{ url_for('dashboard') }}{% endif %}" class="brand">
-            {% if branding.get('logo_url') %}
-                <img src="{{ branding.get('logo_url') }}" alt="لوگو" style="width: 38px; height: 38px; object-fit: contain; border-radius: 8px;">
-            {% else %}
-                <i class="fas fa-shield-halved"></i>
-            {% endif %}
-            <div class="d-flex flex-column" style="min-width: 0;">
-                <div class="brand-title text-truncate">{{ branding.get('brand_title') or 'پنل مدیریت VPN' }}</div>
-                <div class="brand-badge text-truncate">
-                    {% if session.get('role') == 'reseller' %}
-                        {% if sub_role == 'manager2' %}
-                            👑 مدیر دو: {{ session.get('name', 'مدیر') }}
-                        {% elif sub_role == 'partner' %}
-                            🤝 شریک: {{ session.get('name', 'همکار') }}
-                        {% elif sub_role == 'finance' %}
-                            💰 امور مالی: {{ session.get('name', 'همکار') }}
-                        {% elif sub_role == 'support' %}
-                            🎧 پشتیبانی: {{ session.get('name', 'همکار') }}
-                        {% else %}
-                            نماینده: {{ session.get('name', 'همکار') }}
-                        {% endif %}
-                    {% else %}
-                        {% if session.get('admin_role') == 'partner' %}
-                            🤝 شریک: {{ session.get('name', 'شریک تجاری') }}
-                        {% elif session.get('admin_role') == 'finance' %}
-                            💰 مالی: {{ session.get('name', 'حسابدار') }}
-                        {% elif session.get('admin_role') == 'support' %}
-                            🎧 پشتیبان: {{ session.get('name', 'پشتیبان') }}
-                        {% elif session.get('admin_role') == 'viewer' %}
-                            👁️ ناظر سیستم (فقط‌خواندنی)
-                        {% else %}
-                            👑 مدیریت اصلی (Super Admin)
-                        {% endif %}
-                    {% endif %}
+        {% set header_style = branding.get('brand_header_style', 'style_glass') %}
+        <div class="sidebar-brand-wrapper {{ header_style }}">
+            <a href="{% if session.get('role') == 'reseller' %}{{ url_for('reseller_dashboard') }}{% else %}{{ url_for('dashboard') }}{% endif %}" class="brand brand-{{ header_style }}">
+                {% if branding.get('logo_url') %}
+                    <img src="{{ branding.get('logo_url') }}" alt="لوگو" class="brand-logo-img">
+                {% else %}
+                    <div class="brand-logo-fallback">
+                        <i class="fas fa-shield-halved"></i>
+                    </div>
+                {% endif %}
+                <div class="brand-text-block">
+                    <div class="brand-title text-truncate" title="{{ branding.get('brand_title') or 'پنل مدیریت VPN' }}">{{ branding.get('brand_title') or 'پنل مدیریت VPN' }}</div>
+                    <div class="brand-version">
+                        <span class="badge brand-version-chip">
+                            {% if branding.get('version_custom_icon') %}
+                                <img src="{{ branding.get('version_custom_icon') }}" alt="نسخه" class="version-icon-img">
+                            {% else %}
+                                {% set v_icon = branding.get('version_icon_type', 'branch') %}
+                                {% if v_icon == 'tag' %}<i class="fas fa-tag text-primary"></i>
+                                {% elif v_icon == 'cube' %}<i class="fas fa-cube text-primary"></i>
+                                {% elif v_icon == 'rocket' %}<i class="fas fa-rocket text-primary"></i>
+                                {% elif v_icon == 'sparkles' %}<i class="fas fa-wand-magic-sparkles text-primary"></i>
+                                {% elif v_icon == 'shield' %}<i class="fas fa-shield-halved text-primary"></i>
+                                {% elif v_icon == 'terminal' %}<i class="fas fa-terminal text-primary"></i>
+                                {% elif v_icon == 'bolt' %}<i class="fas fa-bolt text-primary"></i>
+                                {% elif v_icon == 'microchip' %}<i class="fas fa-microchip text-primary"></i>
+                                {% elif v_icon == 'star' %}<i class="fas fa-star text-primary"></i>
+                                {% else %}<i class="fas fa-code-branch text-primary"></i>
+                                {% endif %}
+                            {% endif %}
+                            <span>نسخه: {{ branding.get('store_version') or 'v0.0.1 Beta' }}</span>
+                        </span>
+                    </div>
                 </div>
-                <div class="brand-version mt-1">
-                    <span class="badge bg-secondary bg-opacity-25 text-body border border-secondary border-opacity-25" style="font-size: 0.68rem; font-family: monospace; font-weight: 600; padding: 2px 6px;">
-                        <i class="fas fa-code-branch me-1 text-primary"></i>نسخه: {{ branding.get('store_version') or 'v0.0.1 Beta' }}
-                    </span>
-                </div>
-            </div>
-        </a>
+            </a>
+        </div>
 
         <nav class="nav flex-column flex-nowrap w-100">
             {% if session.get('role') == 'reseller' %}
@@ -1417,10 +1637,10 @@
                 </a>
                 {% endif %}
 
-                <!-- ۳. ساخت اشتراک مشتری -->
+                <!-- ۳. مشتری جدید -->
                 {% if has_permission('create_customer') %}
                 <a class="nav-link {% if request.endpoint == 'admin_create_customer' %}active{% endif %}" href="{{ url_for('admin_create_customer') }}">
-                    <i class="fas fa-user-plus text-success"></i> ساخت اشتراک مشتری
+                    <i class="fas fa-user-plus text-success"></i> مشتری جدید
                 </a>
                 {% endif %}
 
@@ -1703,7 +1923,23 @@
                 </div>
                 <div class="d-flex align-items-center gap-2">
                     <span class="badge bg-secondary bg-opacity-25 text-body border border-secondary border-opacity-25 px-2 py-1" style="font-family: monospace; font-size: 0.75rem;">
-                        <i class="fas fa-code-branch me-1 text-primary"></i>نسخه {{ branding.get('store_version') or 'v0.0.1 Beta' }}
+                        {% if branding.get('version_custom_icon') %}
+                            <img src="{{ branding.get('version_custom_icon') }}" alt="نسخه" class="version-icon-img me-1" style="width: 13px; height: 13px; vertical-align: middle;">
+                        {% else %}
+                            {% set v_icon = branding.get('version_icon_type', 'branch') %}
+                            {% if v_icon == 'tag' %}<i class="fas fa-tag me-1 text-primary"></i>
+                            {% elif v_icon == 'cube' %}<i class="fas fa-cube me-1 text-primary"></i>
+                            {% elif v_icon == 'rocket' %}<i class="fas fa-rocket me-1 text-primary"></i>
+                            {% elif v_icon == 'sparkles' %}<i class="fas fa-wand-magic-sparkles me-1 text-primary"></i>
+                            {% elif v_icon == 'shield' %}<i class="fas fa-shield-halved me-1 text-primary"></i>
+                            {% elif v_icon == 'terminal' %}<i class="fas fa-terminal me-1 text-primary"></i>
+                            {% elif v_icon == 'bolt' %}<i class="fas fa-bolt me-1 text-primary"></i>
+                            {% elif v_icon == 'microchip' %}<i class="fas fa-microchip me-1 text-primary"></i>
+                            {% elif v_icon == 'star' %}<i class="fas fa-star me-1 text-primary"></i>
+                            {% else %}<i class="fas fa-code-branch me-1 text-primary"></i>
+                            {% endif %}
+                        {% endif %}
+                        نسخه {{ branding.get('store_version') or 'v0.0.1 Beta' }}
                     </span>
                 </div>
             </div>
