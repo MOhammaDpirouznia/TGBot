@@ -11289,12 +11289,19 @@ def reseller_cards():
             regenerate = bool(request.form.get("regenerate_token"))
             db.save_reseller_bank_sms_config(reseller_id, enabled=enabled, digits=digits, timeout=timeout, regenerate_token=regenerate)
             flash("تنظیمات تایید خودکار با پیامک بانک برای پنل شما با موفقیت ذخیره شد.", "success")
+        elif action == "save_reseller_crypto":
+            enabled = bool(request.form.get("crypto_enabled"))
+            wallet_address = request.form.get("crypto_wallet_address", "").strip()
+            usdt_rate = int(request.form.get("crypto_usdt_rate", 90000) or 90000)
+            db.save_reseller_crypto_config(reseller_id, enabled, wallet_address, usdt_rate)
+            flash("تنظیمات درگاه ارزی و کیف پول تتر با موفقیت ذخیره شد.", "success")
 
         return redirect(url_for("reseller_cards"))
 
     cards = db.get_reseller_cards(reseller_id)
     payment_methods = db.get_payment_methods(reseller_id=reseller_id)
     reseller_gateway = db.get_reseller_gateway(reseller_id)
+    reseller_crypto = db.get_reseller_crypto_config(reseller_id)
 
     r_info = db.get_reseller(reseller_id) or {}
     domain = r_info.get("custom_domain") or db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "http://localhost:5000")
@@ -11312,6 +11319,7 @@ def reseller_cards():
         cards=cards,
         payment_methods=payment_methods,
         reseller_gateway=reseller_gateway,
+        reseller_crypto=reseller_crypto,
         blupal_webhook_url=blupal_webhook_url,
         blupal_callback_url=blupal_callback_url,
         reseller_bank_sms=reseller_bank_sms,
@@ -12792,12 +12800,19 @@ def payment_callback(order_id: str):
                 verified = True
                 ref_id = f"کارت: {res.get('payer_card', '')} | فاکتور: {invoice_id}"
 
+    portal_token = request.args.get("token")
+    if not portal_token and trans.get("renew_sub_id"):
+        sub_info = db.get_subscription(trans.get("renew_sub_id"))
+        if sub_info:
+            portal_token = sub_info.get("hidify_uuid") or str(sub_info.get("id"))
+    portal_url = url_for("customer_portal", token=portal_token) if portal_token else None
+
     if verified:
         fulfill_approved_transaction(order_id, ref_id=str(ref_id or authority or idpay_id), processed_by=f"درگاه {gw_type}")
-        return render_template("payment_result.html", success=True, order_id=order_id, amount=amount, ref_id=ref_id, plan_name=plan_name)
+        return render_template("payment_result.html", success=True, order_id=order_id, amount=amount, ref_id=ref_id, plan_name=plan_name, portal_url=portal_url)
     else:
         db.update_transaction(order_id, status="failed")
-        return render_template("payment_result.html", success=False, order_id=order_id, amount=amount, message="پرداخت ناموفق بود یا توسط کاربر لغو گردید.")
+        return render_template("payment_result.html", success=False, order_id=order_id, amount=amount, message="پرداخت ناموفق بود یا توسط کاربر لغو گردید.", portal_url=portal_url)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -13543,6 +13558,98 @@ def customer_check_discount(token: str):
         })
 
 
+def get_portal_payment_methods(sub: dict) -> list:
+    """
+    دریافت لیست و اولویت روش‌های پرداخت فعال اختصاصی برای مشتری این اشتراک
+    با تفکیک و ایزولاسیون کامل بین نماینده و مدیریت اصلی.
+    هر روشی که غیرفعال باشد هرگز نمایش داده نمی‌شود.
+    """
+    reseller_id = sub.get("reseller_id") or 0
+    ordered_methods = db.get_payment_methods(reseller_id=reseller_id if reseller_id else None)
+
+    # دریافت اطلاعات پرداخت اختصاصی مالک اشتراک
+    if reseller_id:
+        r_cards = db.get_reseller_cards(reseller_id)
+        active_cards = [c for c in r_cards if c.get("is_active")]
+        if not active_cards:
+            adm_cards = db.get_all_bank_cards()
+            active_cards = [c for c in adm_cards if c.get("is_active")]
+        gw_cfg = db.get_reseller_gateway(reseller_id)
+        crypto_cfg = db.get_reseller_crypto_config(reseller_id)
+    else:
+        adm_cards = db.get_all_bank_cards()
+        active_cards = [c for c in adm_cards if c.get("is_active")]
+        gw_cfg = db.get_admin_gateway()
+        from payment import CryptoPaymentGateway
+        crypto_cfg = CryptoPaymentGateway.get_crypto_config(db)
+
+    user_id = sub.get("telegram_id") or 0
+    user_wallet = db.get_user_wallet_balance(user_id) if user_id else 0
+
+    active_methods = []
+    for m in ordered_methods:
+        if not m.get("enabled", True):
+            continue
+
+        m_id = m.get("id")
+        if m_id == "card_to_card":
+            if active_cards:
+                active_methods.append({
+                    "id": "card_to_card",
+                    "name": "کارت به کارت (بانکی)",
+                    "title": "کارت به کارت (واریز بانکی)",
+                    "desc": "واریز به شماره کارت با تایید خودکار پیامک بانک",
+                    "icon": "fa-credit-card",
+                    "color": "primary",
+                    "badge": "تایید خودکار"
+                })
+        elif m_id == "online_gateway":
+            if gw_cfg.get("enabled") and gw_cfg.get("key"):
+                gw_type = gw_cfg.get("type", "zarinpal")
+                if gw_type == "blupal":
+                    gw_title = "کارت به کارت هوشمند (بلوپال)"
+                    gw_desc = "پرداخت شتابی با درگاه کارت به کارت هوشمند بلوپال"
+                else:
+                    gw_label = "زرین‌پال" if gw_type == "zarinpal" else ("آیدی‌پی" if gw_type == "idpay" else "شاپرک")
+                    gw_title = f"درگاه پرداخت اینترنتی ({gw_label})"
+                    gw_desc = "پرداخت آنلاین و آنی با کلیه کارت‌های بانکی عضو شتاب"
+
+                active_methods.append({
+                    "id": "online_gateway",
+                    "name": gw_title,
+                    "title": gw_title,
+                    "desc": gw_desc,
+                    "icon": "fa-globe",
+                    "color": "success",
+                    "badge": "پرداخت آنی"
+                })
+        elif m_id == "crypto":
+            if crypto_cfg.get("enabled") and (crypto_cfg.get("wallet_address") or crypto_cfg.get("api_key")):
+                active_methods.append({
+                    "id": "crypto",
+                    "name": "ارز دیجیتال (تتر / کریپتو)",
+                    "title": "پرداخت با تتر (USDT)",
+                    "desc": f"شبکه USDT (TRC20 / TON) - نرخ: {crypto_cfg.get('usdt_rate', 90000):,} ت",
+                    "icon": "fa-gem",
+                    "color": "warning",
+                    "badge": "TRC20 / TON"
+                })
+        elif m_id == "wallet":
+            if user_id and user_id > 0:
+                active_methods.append({
+                    "id": "wallet",
+                    "name": "کیف پول",
+                    "title": "پرداخت از موجودی کیف پول",
+                    "desc": f"کسر آنی از کیف پول کاربری (موجودی: {user_wallet:,} تومان)",
+                    "icon": "fa-wallet",
+                    "color": "info",
+                    "badge": f"{user_wallet:,} ت",
+                    "balance": user_wallet
+                })
+
+    return active_methods
+
+
 def _handle_customer_portal_view(token: str):
     """
     پورتال دائمی و صفحه استعلام وضعیت و تمدید اشتراک مشتری (بدون نیاز به لاگین)
@@ -13667,6 +13774,11 @@ def _handle_customer_portal_view(token: str):
     chat_settings = db.get_chat_settings()
     support_online_info = db.is_support_online_for_sub(sub_id, reseller_id=reseller_id)
 
+    # روش‌های پرداخت فعال اختصاصی برای مشتری بر اساس مالک اشتراک
+    portal_payment_methods = get_portal_payment_methods(sub)
+    user_id = sub.get("telegram_id") or 0
+    user_wallet = db.get_user_wallet_balance(user_id) if user_id else 0
+
     return render_template(
         "customer_portal.html",
         sub=sub,
@@ -13695,7 +13807,9 @@ def _handle_customer_portal_view(token: str):
         chat_settings=chat_settings,
         support_online_info=support_online_info,
         portal_layout=portal_layout,
-        portal_plan_style=portal_plan_style
+        portal_plan_style=portal_plan_style,
+        portal_payment_methods=portal_payment_methods,
+        user_wallet=user_wallet
     )
 
 
@@ -13717,9 +13831,47 @@ def customer_portal_dynamic(portal_prefix: str, token: str):
     return _handle_customer_portal_view(token)
 
 
+@app.route("/renew/cancel-invoice/<token>", methods=["GET", "POST"])
+@app.route("/renew/cancel-invoice/<token>/<order_id>", methods=["GET", "POST"])
+def customer_cancel_invoice(token: str, order_id: str = None):
+    """لغو فاکتور معلق فعلی و بازگشت به انتخاب مجدد روش پرداخت توسط مشتری"""
+    conn = db.get_connection()
+    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    conn.close()
+
+    if not sub_row:
+        flash("اشتراک یافت نشد.", "danger")
+        return redirect(url_for("customer_portal", token=token))
+
+    sub_id = sub_row["id"]
+    if not order_id:
+        now_str = get_now_naive().isoformat()
+        conn = db.get_connection()
+        inv_row = conn.execute("""
+            SELECT order_id FROM smart_invoices 
+            WHERE sub_id=? AND status='pending' AND expires_at > ?
+            ORDER BY id DESC LIMIT 1
+        """, (sub_id, now_str)).fetchone()
+        conn.close()
+        if inv_row:
+            order_id = inv_row["order_id"]
+
+    if order_id:
+        db.cancel_smart_invoice(order_id, sub_id=sub_id)
+        conn = db.get_connection()
+        conn.execute("UPDATE transactions SET status='cancelled' WHERE order_id=? AND status='pending'", (order_id,))
+        conn.commit()
+        conn.close()
+        flash("فاکتور قبلی لغو شد. اکنون می‌توانید روش پرداخت مورد نظر خود را انتخاب نمایید.", "info")
+    else:
+        flash("هیچ فاکتور فعالی برای لغو یافت نشد.", "warning")
+
+    return redirect(url_for("customer_portal", token=token))
+
+
 @app.route("/renew/create-invoice/<token>", methods=["POST"])
 def customer_create_invoice(token: str):
-    """ایجاد فاکتور تمدید هوشمند با ارقام خرد برای مشتری با پشتیبانی از کدهای تخفیف ایزوله"""
+    """ایجاد فاکتور و پردازش پرداخت تمدید مشتری با پشتیبانی کامل از روش‌های پرداخت تفکیک‌شده (کارت به کارت، درگاه آنلاین، کریپتو، کیف پول)"""
     conn = db.get_connection()
     sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
     conn.close()
@@ -13732,26 +13884,33 @@ def customer_create_invoice(token: str):
     sub_id = sub["id"]
     reseller_id = sub.get("reseller_id") or 0
     plan_id = request.form.get("plan_id")
+    payment_method = request.form.get("payment_method", "card_to_card").strip()
     instant_activation = (request.form.get("instant_activation") == "1")
 
     # استخراج مشخصات پلن انتخابی
     price = 0
     plan_name = "بسته تمدید"
+    plan_data_limit = 30
+    plan_duration = 30
     if reseller_id:
         r_plan = db.get_reseller_plan(reseller_id, plan_id)
         if r_plan:
             price = r_plan.get("custom_price") or r_plan.get("price") or 0
             plan_name = r_plan.get("custom_name") or r_plan.get("name") or plan_id
+            plan_data_limit = r_plan.get("data_limit", 30)
+            plan_duration = r_plan.get("duration", 30)
     if not price:
         g_plan = get_plans_dict().get(plan_id)
         if g_plan:
             price = g_plan.get("price", 0)
             plan_name = g_plan.get("name", plan_id)
+            plan_data_limit = g_plan.get("data_limit", 30)
+            plan_duration = g_plan.get("duration", 30)
 
     if not price:
         price = 100000
 
-    # پردازش و اعتبارسنجی کد تخفیف (کاملاً تفکیک‌شده: کدهای نماینده فقط برای مشتری خود، و کدهای ادمین فقط برای مشتری ادمین)
+    # پردازش و اعتبارسنجی کد تخفیف
     raw_discount_code = request.form.get("discount_code", "").strip().upper()
     discount_val = 0
     valid_discount_code = None
@@ -13766,7 +13925,240 @@ def customer_create_invoice(token: str):
         else:
             flash(f"کد تخفیف نامعتبر: {chk_res.get('error', 'این کد تخفیف برای شما معتبر نیست.')}", "warning")
 
-    # انتخاب کارت بانکی مقصد (با فال‌بک هوشمند به کارت مدیریت در صورت نبود کارت نماینده)
+    now_iso = get_now_iso()
+    user_id = sub.get("telegram_id") or 0
+    account_name = sub.get("account_name") or f"sub_{sub_id}"
+
+    # ۱. حالت ویژه: مبلغ صفر ریال (۱۰۰٪ تخفیف یا رایگان)
+    if price <= 0:
+        order_id = f"FREE_{int(datetime.now().timestamp())}_{sub_id}"
+        conn = db.get_connection()
+        conn.execute("""
+            INSERT OR REPLACE INTO transactions (
+                order_id, user_id, username, plan_name, amount, status, gateway, 
+                tracking_code, reseller_id, is_renewal, renew_sub_id, 
+                account_name, source, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, 0, 'approved', 'free_discount', 'رایگان', ?, 1, ?, ?, 'portal_free', ?, ?)
+        """, (order_id, user_id, account_name, plan_name, reseller_id, sub_id, account_name, now_iso, now_iso))
+        conn.commit()
+        conn.close()
+
+        fulfill_approved_transaction(order_id, ref_id="رایگان", processed_by="کد تخفیف ۱۰۰٪")
+        flash(f"🎉 تبریک! اشتراک شما با بسته «{plan_name}» به صورت رایگان فعال شد.", "success")
+        return redirect(url_for("customer_portal", token=token))
+
+    # ۲. پرداخت آنلاین از طریق درگاه شاپرک / بلوپال
+    if payment_method == "online_gateway":
+        if reseller_id:
+            gw_cfg = db.get_reseller_gateway(reseller_id)
+        else:
+            gw_cfg = db.get_admin_gateway()
+
+        if not gw_cfg.get("enabled") or not gw_cfg.get("key"):
+            flash("درگاه پرداخت آنلاین در دسترس نیست یا توسط مدیریت/نماینده فعال نشده است. لطفاً از کارت به کارت استفاده فرمایید.", "warning")
+            return redirect(url_for("customer_portal", token=token))
+
+        gw_type = gw_cfg.get("type", "zarinpal")
+        gw_key = gw_cfg.get("key")
+        sandbox = gw_cfg.get("sandbox", False)
+        order_id = f"CP_ONL_{int(datetime.now().timestamp())}_{sub_id}"
+
+        # دریافت دامنه پایه جهت کال‌بک
+        r_info = db.get_reseller(reseller_id) or {} if reseller_id else {}
+        domain = r_info.get("custom_domain") or db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "http://localhost:5000")
+        if not str(domain).startswith("http"):
+            domain = f"https://{domain}"
+        callback_url = f"{str(domain).rstrip('/')}/payment/callback/{order_id}?token={token}"
+
+        conn = db.get_connection()
+        conn.execute("""
+            INSERT OR REPLACE INTO transactions (
+                order_id, user_id, username, plan_name, amount, status, gateway, 
+                tracking_code, reseller_id, is_renewal, renew_sub_id, 
+                account_name, source, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, 'pending', ?, '', ?, 1, ?, ?, 'portal_online', ?, ?)
+        """, (order_id, user_id, account_name, plan_name, price, f"{gw_type}_portal", reseller_id, sub_id, account_name, now_iso, now_iso))
+        conn.commit()
+        conn.close()
+
+        # ثبت هوشمند جهت حفظ وضعیت instant_activation در زمان بازگشت از درگاه
+        db.create_smart_invoice(
+            sub_id=sub_id,
+            plan_id=plan_id,
+            reseller_id=reseller_id,
+            base_amount=price,
+            target_card={"card_number": f"ONLINE_{gw_type.upper()}", "card_holder": f"درگاه {gw_type}", "bank_name": "شاپرک"},
+            digits=0,
+            timeout_minutes=60,
+            instant_activation=instant_activation,
+            discount_code=valid_discount_code,
+            discount_amount=discount_val
+        )
+
+        try:
+            if gw_type == "zarinpal":
+                from payment import ZarinPal
+                zp = ZarinPal(merchant_id=gw_key, sandbox=sandbox)
+                res = zp.create_payment(amount=price, description=f"تمدید اشتراک {account_name} ({plan_name})", callback_url=callback_url)
+                if res.get("success"):
+                    db.update_transaction(order_id, tracking_code=res.get("authority", ""))
+                    return redirect(res.get("payment_url"))
+                else:
+                    flash(f"خطا در ایجاد تراکنش زرین‌پال: {res.get('error')}", "danger")
+                    return redirect(url_for("customer_portal", token=token))
+            elif gw_type == "idpay":
+                from payment import IDPay
+                idp = IDPay(api_key=gw_key, sandbox=sandbox)
+                res = idp.create_payment(amount=price, name=account_name, description=f"تمدید اشتراک {account_name} ({plan_name})", callback_url=callback_url, order_id=order_id)
+                if res.get("success"):
+                    db.update_transaction(order_id, tracking_code=res.get("payment_id", ""))
+                    return redirect(res.get("payment_url"))
+                else:
+                    flash(f"خطا در ایجاد تراکنش آیدی‌پی: {res.get('error')}", "danger")
+                    return redirect(url_for("customer_portal", token=token))
+            elif gw_type == "blupal":
+                from payment import BluPal
+                bp = BluPal(api_key=gw_key, sandbox=sandbox)
+                res = bp.create_payment(amount=price, order_id=order_id, description=f"تمدید اشتراک {account_name} ({plan_name})")
+                if res.get("success"):
+                    invoice_id = res.get("invoice_id")
+                    db.update_transaction(order_id, tracking_code=str(invoice_id or order_id))
+                    return redirect(res.get("payment_url") or res.get("payment_link"))
+                else:
+                    flash(f"خطا در ایجاد فاکتور بلوپال: {res.get('error')}", "danger")
+                    return redirect(url_for("customer_portal", token=token))
+            else:
+                flash("درگاه انتخاب شده پشتیبانی نمی‌شود.", "warning")
+                return redirect(url_for("customer_portal", token=token))
+        except Exception as e_gw:
+            logger.error(f"Online gateway exception: {e_gw}")
+            flash(f"خطا در اتصال به درگاه پرداخت: {str(e_gw)}", "danger")
+            return redirect(url_for("customer_portal", token=token))
+
+    # ۳. پرداخت آنی از موجودی کیف پول کاربر
+    elif payment_method == "wallet":
+        if not user_id or user_id <= 0:
+            flash("پرداخت از کیف پول فقط برای اشتراک‌های متصل به حساب تلگرام امکان‌پذیر است.", "warning")
+            return redirect(url_for("customer_portal", token=token))
+
+        user_wallet = db.get_user_wallet_balance(user_id)
+        if user_wallet < price:
+            flash(f"موجودی کیف پول شما ({user_wallet:,} تومان) کافی نیست. کسری موجودی: {price - user_wallet:,} تومان.", "warning")
+            return redirect(url_for("customer_portal", token=token))
+
+        deduct_res = db.deduct_wallet_balance(user_id, price, f"تمدید اشتراک {account_name} ({plan_name}) از پورتال")
+        if not deduct_res.get("success"):
+            flash(f"خطا در کسر از کیف پول: {deduct_res.get('error')}", "danger")
+            return redirect(url_for("customer_portal", token=token))
+
+        order_id = f"CP_WAL_{int(datetime.now().timestamp())}_{sub_id}"
+        conn = db.get_connection()
+        conn.execute("""
+            INSERT OR REPLACE INTO transactions (
+                order_id, user_id, username, plan_name, amount, status, gateway, 
+                tracking_code, reseller_id, is_renewal, renew_sub_id, 
+                account_name, source, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, 'approved', 'wallet', 'کیف پول', ?, 1, ?, ?, 'portal_wallet', ?, ?)
+        """, (order_id, user_id, account_name, plan_name, price, reseller_id, sub_id, account_name, now_iso, now_iso))
+        conn.commit()
+        conn.close()
+
+        fulfill_approved_transaction(order_id, ref_id="کسر از کیف پول", processed_by="کیف پول (پورتال)")
+        flash(f"✅ مبلغ {price:,} تومان از کیف پول شما کسر و بسته «{plan_name}» با موفقیت فعال شد.", "success")
+        return redirect(url_for("customer_portal", token=token))
+
+    # ۴. پرداخت با ارز دیجیتال (تتر / کریپتو)
+    elif payment_method == "crypto":
+        if reseller_id:
+            crypto_cfg = db.get_reseller_crypto_config(reseller_id)
+        else:
+            from payment import CryptoPaymentGateway
+            crypto_cfg = CryptoPaymentGateway.get_crypto_config(db)
+
+        wallet_addr = crypto_cfg.get("wallet_address", "").strip()
+        if not crypto_cfg.get("enabled") or not wallet_addr:
+            flash("درگاه پرداخت کریپتو برای این فروشگاه فعال نشده است. لطفاً از کارت به کارت استفاده فرمایید.", "warning")
+            return redirect(url_for("customer_portal", token=token))
+
+        usdt_rate = crypto_cfg.get("usdt_rate") or 90000
+        usdt_amount = round(float(price) / float(usdt_rate), 2)
+        order_id = f"CP_CRY_{int(datetime.now().timestamp())}_{sub_id}"
+
+        target_card = {
+            "card_number": wallet_addr,
+            "card_holder": f"{usdt_amount} USDT ({crypto_cfg.get('network', 'TRC20 / TON')})",
+            "bank_name": "ارز دیجیتال (تتر)"
+        }
+
+        invoice = db.create_smart_invoice(
+            sub_id=sub_id,
+            plan_id=plan_id,
+            reseller_id=reseller_id,
+            base_amount=price,
+            target_card=target_card,
+            digits=0,
+            timeout_minutes=120,
+            instant_activation=instant_activation,
+            discount_code=valid_discount_code,
+            discount_amount=discount_val
+        )
+
+        conn = db.get_connection()
+        conn.execute("""
+            INSERT OR REPLACE INTO transactions (
+                order_id, user_id, username, plan_name, amount, status, gateway, 
+                tracking_code, reseller_id, is_renewal, renew_sub_id, 
+                account_name, source, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, 'pending', 'crypto', ?, ?, 1, ?, ?, 'portal_crypto', ?, ?)
+        """, (order_id, user_id, account_name, plan_name, price, f"تتر: {usdt_amount} USDT", reseller_id, sub_id, account_name, now_iso, now_iso))
+        conn.commit()
+        conn.close()
+
+        # اطلاع به مالک در تلگرام
+        pay_notif = (
+            f"💎 <b>صدور فاکتور تمدید ارزی (تتر / کریپتو) در پرتال مشتری!</b>\n\n"
+            f"🆔 شناسه سفارش: <code>{order_id}</code>\n"
+            f"👤 مشتری: <b>{account_name}</b> (اشتراک #{sub_id})\n"
+            f"📦 بسته انتخابی: <b>{plan_name}</b>\n"
+            f"💰 مبلغ تتر: <b>{usdt_amount} USDT</b> ({price:,} تومان)\n"
+            f"📥 والت مقصد: <code>{wallet_addr}</code>\n"
+            f"⏰ زمان: {get_now_shamsi()}"
+        )
+        if reseller_id:
+            try:
+                r_info = db.get_reseller(reseller_id) or {}
+                if r_info.get("telegram_id"):
+                    r_pay_kb = {
+                        "inline_keyboard": [
+                            [
+                                {"text": "✅ تایید پرداخت و تمدید", "callback_data": f"res_pay_app_{order_id}"},
+                                {"text": "❌ رد پرداخت", "callback_data": f"res_pay_rej_{order_id}"}
+                            ]
+                        ]
+                    }
+                    send_telegram_msg(r_info["telegram_id"], pay_notif, reply_markup=r_pay_kb, bot_token=r_info.get("bot_token"))
+            except Exception as e_res_tg:
+                logger.warning(f"Failed to notify reseller of crypto invoice: {e_res_tg}")
+        else:
+            try:
+                admin_tg = db.get_setting("admin_telegram_id") or get_admin_id()
+                if admin_tg:
+                    adm_pay_kb = {
+                        "inline_keyboard": [
+                            [
+                                {"text": "✅ تایید پرداخت و تمدید", "callback_data": f"adm_pay_app_{order_id}"},
+                                {"text": "❌ رد پرداخت", "callback_data": f"adm_pay_rej_{order_id}"}
+                            ]
+                        ]
+                    }
+                    send_telegram_msg(int(admin_tg), pay_notif, reply_markup=adm_pay_kb)
+            except Exception as e_adm_tg:
+                logger.warning(f"Failed to notify admin of crypto invoice: {e_adm_tg}")
+
+        flash(f"فاکتور پرداخت ارزی صادر شد. لطفاً دقیقاً مبلغ {usdt_amount} تتر (USDT) را به آدرس والت مشخص شده واریز نمایید.", "info")
+        return redirect(url_for("customer_portal", token=token))
+
+    # ۵. حالت پیش‌فرض: کارت به کارت بانکی (با اولویت کارت‌های فعال مالک)
     target_card = None
     sms_cfg = {}
     if reseller_id:
@@ -13776,7 +14168,6 @@ def customer_create_invoice(token: str):
             target_card = random.choice(active_r_cards)
             sms_cfg = db.get_reseller_bank_sms_config(reseller_id)
         else:
-            # نماینده هنوز کارتی ثبت نکرده است؛ جهت عدم توقف خرید مشتری، از کارت مدیریت استفاده می‌شود
             adm_cards = db.get_all_bank_cards()
             active_adm_cards = [c for c in adm_cards if c.get("is_active")]
             if active_adm_cards:
@@ -13810,10 +14201,7 @@ def customer_create_invoice(token: str):
         discount_amount=discount_val
     )
 
-    # ایجاد همزمان تراکنش در جدول transactions با وضعیت معلق
-    now_iso = get_now_iso()
-    user_id = sub.get("telegram_id") or 0
-    account_name = sub.get("account_name") or f"sub_{sub_id}"
+    order_id = invoice["order_id"]
     conn = db.get_connection()
     conn.execute("""
         INSERT OR REPLACE INTO transactions (
@@ -13822,15 +14210,14 @@ def customer_create_invoice(token: str):
             account_name, source, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, 'pending', 'bank_sms', ?, ?, 1, ?, ?, 'portal', ?, ?)
     """, (
-        invoice["order_id"], user_id, account_name, plan_name, invoice["final_amount"],
+        order_id, user_id, account_name, plan_name, invoice["final_amount"],
         f"کارت {target_card.get('card_number', '')}", reseller_id, sub_id,
         account_name, now_iso, now_iso
     ))
     conn.commit()
     conn.close()
 
-    # ارسال اعلان تلگرام برای نماینده یا مدیریت با دکمه‌های تایید و رد آنی
-    order_id = invoice["order_id"]
+    # ارسال اعلان تلگرام برای نماینده یا مدیریت
     final_amount = invoice["final_amount"]
     card_info = target_card.get("card_number", "")
     card_holder = target_card.get("card_holder", "")
@@ -13884,7 +14271,7 @@ def customer_create_invoice(token: str):
 
 @app.route("/renew/settle-debt/<token>", methods=["POST"])
 def customer_settle_debt_invoice(token: str):
-    """ایجاد فاکتور هوشمند پرداخت جهت تسویه بدهی مشتری از طریق پرتال"""
+    """ایجاد فاکتور و پرداخت جهت تسویه بدهی مشتری از طریق پرتال با پشتیبانی از کلیه روش‌های فعال"""
     conn = db.get_connection()
     sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
     conn.close()
@@ -13897,12 +14284,130 @@ def customer_settle_debt_invoice(token: str):
     sub_id = sub["id"]
     reseller_id = sub.get("reseller_id") or 0
     debt_amount = int(sub.get("debt_amount") or 0)
+    payment_method = request.form.get("payment_method", "card_to_card").strip()
 
     if debt_amount <= 0:
         flash("این اشتراک هیچ بدهی پرداخت‌نشده‌ای ندارد.", "info")
         return redirect(url_for("customer_portal", token=token))
 
-    # انتخاب کارت بانکی مقصد (با اولویت کارت‌های فعال نماینده و فال‌بک به کارت مدیریت)
+    now_iso = get_now_iso()
+    user_id = sub.get("telegram_id") or 0
+    account_name = sub.get("account_name") or f"sub_{sub_id}"
+
+    # ۱. پرداخت آنلاین بدهی با درگاه شاپرک / بلوپال
+    if payment_method == "online_gateway":
+        if reseller_id:
+            gw_cfg = db.get_reseller_gateway(reseller_id)
+        else:
+            gw_cfg = db.get_admin_gateway()
+
+        if not gw_cfg.get("enabled") or not gw_cfg.get("key"):
+            flash("درگاه پرداخت آنلاین در دسترس نیست. لطفاً از کارت به کارت استفاده فرمایید.", "warning")
+            return redirect(url_for("customer_portal", token=token))
+
+        gw_type = gw_cfg.get("type", "zarinpal")
+        gw_key = gw_cfg.get("key")
+        sandbox = gw_cfg.get("sandbox", False)
+        order_id = f"DEBT_ONL_{int(datetime.now().timestamp())}_{sub_id}"
+
+        r_info = db.get_reseller(reseller_id) or {} if reseller_id else {}
+        domain = r_info.get("custom_domain") or db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "http://localhost:5000")
+        if not str(domain).startswith("http"):
+            domain = f"https://{domain}"
+        callback_url = f"{str(domain).rstrip('/')}/payment/callback/{order_id}?token={token}"
+
+        conn = db.get_connection()
+        conn.execute("""
+            INSERT OR REPLACE INTO transactions (
+                order_id, user_id, username, plan_name, amount, status, gateway, 
+                tracking_code, reseller_id, is_renewal, renew_sub_id, 
+                account_name, source, is_debt_settlement, created_at, updated_at
+            ) VALUES (?, ?, ?, 'تسویه بدهی اشتراک', ?, 'pending', ?, '', ?, 0, ?, ?, 'portal_debt_online', 1, ?, ?)
+        """, (order_id, user_id, account_name, debt_amount, f"{gw_type}_portal", reseller_id, sub_id, account_name, now_iso, now_iso))
+        conn.commit()
+        conn.close()
+
+        db.create_smart_invoice(
+            sub_id=sub_id,
+            plan_id="debt_settlement",
+            reseller_id=reseller_id,
+            base_amount=debt_amount,
+            target_card={"card_number": f"ONLINE_{gw_type.upper()}", "card_holder": f"درگاه {gw_type}", "bank_name": "شاپرک"},
+            digits=0,
+            timeout_minutes=60,
+            instant_activation=False,
+            is_debt_settlement=1
+        )
+
+        try:
+            if gw_type == "zarinpal":
+                from payment import ZarinPal
+                zp = ZarinPal(merchant_id=gw_key, sandbox=sandbox)
+                res = zp.create_payment(amount=debt_amount, description=f"تسویه بدهی اشتراک {account_name}", callback_url=callback_url)
+                if res.get("success"):
+                    db.update_transaction(order_id, tracking_code=res.get("authority", ""))
+                    return redirect(res.get("payment_url"))
+                else:
+                    flash(f"خطا در درگاه زرین‌پال: {res.get('error')}", "danger")
+                    return redirect(url_for("customer_portal", token=token))
+            elif gw_type == "idpay":
+                from payment import IDPay
+                idp = IDPay(api_key=gw_key, sandbox=sandbox)
+                res = idp.create_payment(amount=debt_amount, name=account_name, description=f"تسویه بدهی اشتراک {account_name}", callback_url=callback_url, order_id=order_id)
+                if res.get("success"):
+                    db.update_transaction(order_id, tracking_code=res.get("payment_id", ""))
+                    return redirect(res.get("payment_url"))
+                else:
+                    flash(f"خطا در درگاه آیدی‌پی: {res.get('error')}", "danger")
+                    return redirect(url_for("customer_portal", token=token))
+            elif gw_type == "blupal":
+                from payment import BluPal
+                bp = BluPal(api_key=gw_key, sandbox=sandbox)
+                res = bp.create_payment(amount=debt_amount, order_id=order_id, description=f"تسویه بدهی اشتراک {account_name}")
+                if res.get("success"):
+                    invoice_id = res.get("invoice_id")
+                    db.update_transaction(order_id, tracking_code=str(invoice_id or order_id))
+                    return redirect(res.get("payment_url") or res.get("payment_link"))
+                else:
+                    flash(f"خطا در درگاه بلوپال: {res.get('error')}", "danger")
+                    return redirect(url_for("customer_portal", token=token))
+            else:
+                flash("درگاه انتخاب شده پشتیبانی نمی‌شود.", "warning")
+                return redirect(url_for("customer_portal", token=token))
+        except Exception as e_gw:
+            flash(f"خطا در اتصال به درگاه: {str(e_gw)}", "danger")
+            return redirect(url_for("customer_portal", token=token))
+
+    # ۲. پرداخت بدهی از کیف پول کاربر
+    elif payment_method == "wallet":
+        if not user_id or user_id <= 0:
+            flash("پرداخت از کیف پول فقط برای کاربران متصل به تلگرام مجاز است.", "warning")
+            return redirect(url_for("customer_portal", token=token))
+
+        user_wallet = db.get_user_wallet_balance(user_id)
+        if user_wallet < debt_amount:
+            flash(f"موجودی کیف پول شما ({user_wallet:,} ت) برای تسویه این بدهی کافی نیست.", "warning")
+            return redirect(url_for("customer_portal", token=token))
+
+        db.deduct_wallet_balance(user_id, debt_amount, f"تسویه بدهی اشتراک {account_name} از پورتال")
+        db.clear_subscription_debt(sub_id, reseller_id=reseller_id, settled_by="کیف پول (پورتال)")
+
+        order_id = f"DEBT_WAL_{int(datetime.now().timestamp())}_{sub_id}"
+        conn = db.get_connection()
+        conn.execute("""
+            INSERT OR REPLACE INTO transactions (
+                order_id, user_id, username, plan_name, amount, status, gateway, 
+                tracking_code, reseller_id, is_renewal, renew_sub_id, 
+                account_name, source, is_debt_settlement, created_at, updated_at
+            ) VALUES (?, ?, ?, 'تسویه بدهی اشتراک', ?, 'approved', 'wallet', 'کیف پول', ?, 0, ?, ?, 'portal_debt_wallet', 1, ?, ?)
+        """, (order_id, user_id, account_name, debt_amount, reseller_id, sub_id, account_name, now_iso, now_iso))
+        conn.commit()
+        conn.close()
+
+        flash(f"بدهی اشتراک شما به مبلغ {debt_amount:,} تومان با موفقیت از کیف پول تسویه گردید.", "success")
+        return redirect(url_for("customer_portal", token=token))
+
+    # ۳. پرداخت بدهی با کارت به کارت بانکی
     target_card = None
     sms_cfg = {}
     if reseller_id:
@@ -13943,9 +14448,6 @@ def customer_settle_debt_invoice(token: str):
         is_debt_settlement=1
     )
 
-    now_iso = get_now_iso()
-    user_id = sub.get("telegram_id") or 0
-    account_name = sub.get("account_name") or f"sub_{sub_id}"
     conn = db.get_connection()
     conn.execute("""
         INSERT OR REPLACE INTO transactions (

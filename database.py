@@ -11987,6 +11987,38 @@ class Database:
             logger.error(f"Error updating admin gateway: {e}")
             return {"success": False, "error": str(e)}
 
+    # ─── تنظیمات پرداخت ارزی و کریپتو نماینده (Reseller Crypto Settings) ───
+
+    def get_reseller_crypto_config(self, reseller_id: int) -> dict:
+        """دریافت تنظیمات پرداخت ارزی و کریپتو اختصاصی نماینده"""
+        enabled_val = self.get_setting(f"crypto_enabled_r_{reseller_id}", "0")
+        wallet_addr = str(self.get_setting(f"crypto_wallet_r_{reseller_id}", "") or "").strip()
+        usdt_rate_val = self.get_setting(f"crypto_rate_r_{reseller_id}", "")
+        if not usdt_rate_val or not str(usdt_rate_val).isdigit():
+            # فال‌بک به نرخ درگاه کریپتو سراسری
+            rate_val = self.get_setting("crypto_usdt_rate", "90000")
+            usdt_rate = int(rate_val) if str(rate_val).isdigit() else 90000
+        else:
+            usdt_rate = int(usdt_rate_val)
+        return {
+            "enabled": str(enabled_val).lower() in ("1", "true", "yes") and bool(wallet_addr),
+            "wallet_address": wallet_addr,
+            "usdt_rate": usdt_rate,
+            "network": "USDT (TRC20 / TON)"
+        }
+
+    def save_reseller_crypto_config(self, reseller_id: int, enabled: bool, wallet_address: str, usdt_rate: int = 0) -> dict:
+        """ذخیره تنظیمات پرداخت ارزی و کریپتو اختصاصی نماینده"""
+        try:
+            self.set_setting(f"crypto_enabled_r_{reseller_id}", "1" if enabled else "0")
+            self.set_setting(f"crypto_wallet_r_{reseller_id}", str(wallet_address or "").strip())
+            if usdt_rate and int(usdt_rate) > 0:
+                self.set_setting(f"crypto_rate_r_{reseller_id}", str(int(usdt_rate)))
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error saving reseller crypto config: {e}")
+            return {"success": False, "error": str(e)}
+
     # ─── تنظیمات تایید خودکار کارت به کارت با پیامک بانک (Smart Bank SMS) ───
 
     def get_admin_bank_sms_config(self) -> dict:
@@ -12290,6 +12322,32 @@ class Database:
             return affected > 0
         except Exception as e:
             logger.error(f"Error marking smart invoice paid: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def cancel_smart_invoice(self, order_id: str, sub_id: Optional[int] = None) -> bool:
+        """لغو فاکتور هوشمند معلق توسط مشتری یا مدیر"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if sub_id:
+                cursor.execute("""
+                    UPDATE smart_invoices 
+                    SET status='cancelled'
+                    WHERE order_id=? AND sub_id=? AND status='pending'
+                """, (order_id, sub_id))
+            else:
+                cursor.execute("""
+                    UPDATE smart_invoices 
+                    SET status='cancelled'
+                    WHERE order_id=? AND status='pending'
+                """, (order_id,))
+            affected = cursor.rowcount
+            conn.commit()
+            return affected > 0
+        except Exception as e:
+            logger.error(f"Error cancelling smart invoice: {e}")
             return False
         finally:
             conn.close()
