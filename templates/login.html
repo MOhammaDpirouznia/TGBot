@@ -1,100 +1,528 @@
 {% extends "base.html" %}
 
-{% block title %}ورود به {{ branding.get('brand_title') or 'سامانه مدیریت و نمایندگی VPN' }}{% endblock %}
+{% block title %}ورود به {{ login_page_title or branding.get('brand_title') or 'سامانه مدیریت و نمایندگی VPN' }}{% endblock %}
 
 {% block login_content %}
-<div class="container">
-    <div class="row justify-content-center align-items-center" style="min-height: 100vh; padding: 20px 0;">
-        <div class="col-md-5 col-lg-4">
-            <div class="card shadow-lg border-0" style="border-radius: 20px; overflow: hidden;">
-                <div class="card-header text-center py-4" style="background: linear-gradient(135deg, var(--primary, #4f46e5) 0%, #0ea5e9 100%); color: white;">
+{% set active_style = login_style or 'glass_aurora' %}
+{% set show_bg_effect = login_bg_effect if login_bg_effect is defined else true %}
+
+<div class="login-page-root login-theme-{{ active_style }} position-relative overflow-hidden d-flex align-items-center justify-content-center" style="min-height: 100vh; padding: 24px 16px;">
+    
+    <!-- جلوه‌های نوری و پس‌زمینه بر اساس تنظیمات سیستم -->
+    {% if show_bg_effect %}
+    <div class="login-bg-decorations position-absolute w-100 h-100 top-0 start-0 overflow-hidden" style="z-index: 0; pointer-events: none;">
+        {% if active_style == 'glass_aurora' %}
+            <div class="aurora-orb orb-1 position-absolute rounded-circle" style="width: 450px; height: 450px; top: -10%; right: -5%; background: radial-gradient(circle, rgba(99, 102, 241, 0.35) 0%, rgba(99, 102, 241, 0) 70%); filter: blur(60px); animation: floatOrb1 14s ease-in-out infinite alternate;"></div>
+            <div class="aurora-orb orb-2 position-absolute rounded-circle" style="width: 400px; height: 400px; bottom: -10%; left: -5%; background: radial-gradient(circle, rgba(14, 165, 233, 0.3) 0%, rgba(14, 165, 233, 0) 70%); filter: blur(65px); animation: floatOrb2 16s ease-in-out infinite alternate;"></div>
+            <div class="aurora-orb orb-3 position-absolute rounded-circle" style="width: 320px; height: 320px; top: 40%; left: 20%; background: radial-gradient(circle, rgba(236, 72, 153, 0.2) 0%, rgba(236, 72, 153, 0) 70%); filter: blur(55px); animation: floatOrb3 18s ease-in-out infinite alternate;"></div>
+        {% elif active_style == 'cyber_neon' %}
+            <div class="cyber-grid position-absolute w-100 h-100 top-0 start-0" style="background-image: linear-gradient(rgba(0, 242, 254, 0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 242, 254, 0.07) 1px, transparent 1px); background-size: 35px 35px; opacity: 0.85;"></div>
+            <div class="position-absolute top-0 start-50 translate-middle-x" style="width: 600px; height: 300px; background: radial-gradient(circle, rgba(0, 242, 254, 0.22) 0%, rgba(0,0,0,0) 75%); filter: blur(50px);"></div>
+        {% elif active_style == 'gradient_vibrant' %}
+            <div class="position-absolute w-100 h-100 top-0 start-0" style="background: radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.15) 0%, transparent 40%), radial-gradient(circle at 90% 80%, rgba(236, 72, 153, 0.15) 0%, transparent 40%);"></div>
+        {% elif active_style == 'executive_dark' %}
+            <div class="position-absolute top-0 start-50 translate-middle-x" style="width: 500px; height: 350px; background: radial-gradient(circle, rgba(245, 158, 11, 0.15) 0%, rgba(0,0,0,0) 70%); filter: blur(60px);"></div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="login-card-container position-relative" style="z-index: 2; width: 100%; max-width: 440px;">
+        <div class="card login-main-card border-0 overflow-hidden shadow-2xl">
+            
+            <!-- سربرگ کارت لاگین -->
+            <div class="login-card-header text-center p-4 pb-3">
+                <div class="login-brand-logo mb-3">
                     {% if branding.get('logo_url') %}
-                        <div class="d-flex justify-content-center mb-2">
-                            <img src="{{ branding.get('logo_url') }}" alt="لوگو" class="shadow-sm" style="max-height: 64px; max-width: 64px; object-fit: contain; border-radius: 12px; background: rgba(255,255,255,0.15); padding: 4px;">
+                        <div class="logo-wrapper d-inline-flex p-2 rounded-4 shadow-sm">
+                            <img src="{{ branding.get('logo_url') }}" alt="لوگو" style="max-height: 60px; max-width: 60px; object-fit: contain;">
                         </div>
                     {% else %}
-                        <i class="fas fa-shield-halved fa-3x mb-2"></i>
-                    {% endif %}
-                    <h4 class="fw-bold mb-1">{{ branding.get('brand_title') or 'سامانه هوشمند VPN' }}</h4>
-                    <p class="small mb-2 opacity-75">ورود مدیران و همکاران فروش</p>
-                    <span class="badge bg-white bg-opacity-25 text-white border border-white border-opacity-25 font-monospace" style="font-size: 0.72rem;">
-                        {% if branding.get('version_custom_icon') %}
-                            <img src="{{ branding.get('version_custom_icon') }}" alt="نسخه" class="version-icon-img me-1" style="width: 12px; height: 12px; vertical-align: middle;">
-                        {% else %}
-                            {% set v_icon = branding.get('version_icon_type', 'branch') %}
-                            {% if v_icon == 'tag' %}<i class="fas fa-tag me-1"></i>
-                            {% elif v_icon == 'cube' %}<i class="fas fa-cube me-1"></i>
-                            {% elif v_icon == 'rocket' %}<i class="fas fa-rocket me-1"></i>
-                            {% elif v_icon == 'sparkles' %}<i class="fas fa-wand-magic-sparkles me-1"></i>
-                            {% elif v_icon == 'shield' %}<i class="fas fa-shield-halved me-1"></i>
-                            {% elif v_icon == 'terminal' %}<i class="fas fa-terminal me-1"></i>
-                            {% elif v_icon == 'bolt' %}<i class="fas fa-bolt me-1"></i>
-                            {% elif v_icon == 'microchip' %}<i class="fas fa-microchip me-1"></i>
-                            {% elif v_icon == 'star' %}<i class="fas fa-star me-1"></i>
-                            {% else %}<i class="fas fa-code-branch me-1"></i>
+                        <div class="logo-icon-wrapper d-inline-flex align-items-center justify-content-center rounded-4 shadow-sm" style="width: 64px; height: 64px;">
+                            {% if active_style == 'cyber_neon' %}
+                                <i class="fas fa-microchip fs-2 text-cyan"></i>
+                            {% elif active_style == 'executive_dark' %}
+                                <i class="fas fa-shield-halved fs-2 text-warning"></i>
+                            {% else %}
+                                <i class="fas fa-shield-halved fs-2 text-primary"></i>
                             {% endif %}
-                        {% endif %}
-                        نسخه {{ branding.get('store_version') or 'v0.0.1 Beta' }}
-                    </span>
+                        </div>
+                    {% endif %}
                 </div>
-                <div class="card-body p-4">
-                    {% with messages = get_flashed_messages(with_categories=true) %}
-                        {% if messages %}
-                            {% for category, message in messages %}
-                                <div class="alert alert-{{ 'success' if category == 'success' else 'danger' }} py-2 small mb-3">
-                                    {{ message }}
-                                </div>
-                            {% endfor %}
+
+                <h4 class="fw-black mb-1 login-brand-title">
+                    {{ login_page_title or branding.get('brand_title') or 'سامانه هوشمند VPN' }}
+                </h4>
+                
+                <p class="small mb-2 login-brand-subtitle opacity-75">
+                    {{ login_page_subtitle or 'ورود مدیران و همکاران فروش' }}
+                </p>
+
+                <!-- نشان نسخه فعال -->
+                <div class="d-inline-flex align-items-center gap-1 px-3 py-1 rounded-pill login-version-badge font-monospace" style="font-size: 0.72rem;">
+                    {% if branding.get('version_custom_icon') %}
+                        <img src="{{ branding.get('version_custom_icon') }}" alt="نسخه" style="width: 12px; height: 12px; vertical-align: middle;">
+                    {% else %}
+                        {% set v_icon = branding.get('version_icon_type', 'branch') %}
+                        {% if v_icon == 'tag' %}<i class="fas fa-tag"></i>
+                        {% elif v_icon == 'cube' %}<i class="fas fa-cube"></i>
+                        {% elif v_icon == 'rocket' %}<i class="fas fa-rocket"></i>
+                        {% elif v_icon == 'sparkles' %}<i class="fas fa-wand-magic-sparkles"></i>
+                        {% elif v_icon == 'shield' %}<i class="fas fa-shield-halved"></i>
+                        {% elif v_icon == 'terminal' %}<i class="fas fa-terminal"></i>
+                        {% elif v_icon == 'bolt' %}<i class="fas fa-bolt"></i>
+                        {% elif v_icon == 'microchip' %}<i class="fas fa-microchip"></i>
+                        {% elif v_icon == 'star' %}<i class="fas fa-star"></i>
+                        {% else %}<i class="fas fa-code-branch"></i>
                         {% endif %}
-                    {% endwith %}
-
-                    <form method="POST">
-                        <div class="mb-3">
-                            <label class="form-label small fw-bold">نام کاربری (مدیر یا همکار):</label>
-                            <div class="input-group">
-                                <span class="input-group-text bg-light"><i class="fas fa-user text-muted"></i></span>
-                                <input type="text" class="form-control" name="username" placeholder="Username" required autofocus>
-                            </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label small fw-bold">رمز عبور:</label>
-                            <div class="input-group">
-                                <span class="input-group-text bg-light"><i class="fas fa-lock text-muted"></i></span>
-                                <input type="password" class="form-control" name="password" placeholder="Password" required>
-                            </div>
-                        </div>
-
-                        <div class="mb-4">
-                            <label class="form-label small fw-bold">کد امنیتی (کپچا):</label>
-                            <div class="d-flex align-items-center gap-2 mb-2">
-                                <img id="captchaImg" src="{{ url_for('captcha_image') }}" alt="کپچا" class="rounded border shadow-sm flex-grow-1" style="height: 46px; object-fit: contain; background: #f8fafc; cursor: pointer;" onclick="refreshCaptcha()" title="برای تغییر تصویر کلیک کنید">
-                                <button type="button" class="btn btn-outline-secondary" onclick="refreshCaptcha()" title="تغییر تصویر کد امنیتی" style="height: 46px; width: 46px;">
-                                    <i class="fas fa-rotate"></i>
-                                </button>
-                            </div>
-                            <input type="text" class="form-control text-center font-monospace fs-5 text-uppercase fw-bold" name="captcha" placeholder="کد داخل تصویر" maxlength="6" autocomplete="off" required>
-                        </div>
-
-                        <button type="submit" class="btn btn-primary w-100 py-2 fw-bold">
-                            <i class="fas fa-right-to-bracket me-1"></i> ورود به سامانه
-                        </button>
-                    </form>
+                    {% endif %}
+                    <span>نسخه {{ branding.get('store_version') or 'v0.0.1 Beta' }}</span>
                 </div>
-                <div class="card-footer bg-light text-center py-3">
-                    <div class="small text-muted mb-1">{{ branding.get('footer_text') or 'تمامی حقوق برای مدیریت محفوظ است.' }}</div>
-                    <small class="text-muted opacity-75"><i class="fas fa-lock me-1"></i> ارتباط امن و رمزنگاری شده</small>
+            </div>
+
+            <!-- بدنه فرم لاگین -->
+            <div class="card-body p-4 pt-2">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ 'success' if category == 'success' else 'danger' }} py-2 px-3 small mb-3 rounded-3 d-flex align-items-center gap-2 border-0 shadow-sm animate__animated animate__shakeX">
+                                <i class="fas fa-{{ 'check-circle' if category == 'success' else 'exclamation-triangle' }} fs-6"></i>
+                                <div>{{ message }}</div>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+
+                <form method="POST" autocomplete="on" id="mainLoginForm">
+                    <!-- نام کاربری -->
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold mb-1">
+                            <i class="fas fa-user-circle me-1 opacity-75"></i> نام کاربری:
+                        </label>
+                        <div class="input-group login-input-group">
+                            <span class="input-group-text border-end-0">
+                                <i class="fas fa-user text-muted"></i>
+                            </span>
+                            <input type="text" class="form-control border-start-0 ps-1 font-monospace" name="username" placeholder="Username" required autofocus style="direction: ltr; text-align: right;">
+                        </div>
+                    </div>
+
+                    <!-- کلمه عبور -->
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold mb-1">
+                            <i class="fas fa-key me-1 opacity-75"></i> رمز عبور:
+                        </label>
+                        <div class="input-group login-input-group">
+                            <span class="input-group-text border-end-0">
+                                <i class="fas fa-lock text-muted"></i>
+                            </span>
+                            <input type="password" id="loginPasswordInput" class="form-control border-start-0 border-end-0 px-1 font-monospace" name="password" placeholder="••••••••" required style="direction: ltr;">
+                            <button type="button" class="input-group-text border-start-0 bg-transparent cursor-pointer" onclick="togglePasswordVisibility()" title="نمایش/مخفی‌سازی رمز">
+                                <i class="fas fa-eye text-muted" id="passwordToggleIcon"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- کد کپچا امنیتی -->
+                    <div class="mb-4">
+                        <label class="form-label small fw-bold mb-1 d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-shield-check me-1 opacity-75"></i> کد امنیتی (کپچا):</span>
+                            <small class="text-muted cursor-pointer" onclick="refreshCaptcha()" style="font-size: 0.75rem;">
+                                <i class="fas fa-rotate me-1"></i>تغییر تصویر
+                            </small>
+                        </label>
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <div class="captcha-img-box flex-grow-1 rounded-3 overflow-hidden shadow-sm border p-1 d-flex align-items-center justify-content-center cursor-pointer" onclick="refreshCaptcha()" title="برای تغییر تصویر کلیک کنید">
+                                <img id="captchaImg" src="{{ url_for('captcha_image') }}" alt="کپچا" class="w-100" style="height: 48px; object-fit: contain;">
+                            </div>
+                            <button type="button" class="btn btn-outline-secondary rounded-3 d-flex align-items-center justify-content-center flex-shrink-0" onclick="refreshCaptcha()" title="تغییر تصویر کد امنیتی" style="width: 48px; height: 48px;">
+                                <i class="fas fa-rotate"></i>
+                            </button>
+                        </div>
+                        <input type="text" class="form-control text-center font-monospace fs-4 text-uppercase fw-bold login-captcha-input py-2" name="captcha" placeholder="کد تصویر" maxlength="6" autocomplete="off" required style="letter-spacing: 4px;">
+                    </div>
+
+                    <!-- دکمه ورود -->
+                    <button type="submit" class="btn w-100 py-2 fw-bold login-submit-btn d-flex align-items-center justify-content-center gap-2">
+                        <i class="fas fa-arrow-right-to-bracket"></i>
+                        <span>ورود به پنل کاربری</span>
+                    </button>
+                </form>
+            </div>
+
+            <!-- پاورقی کارت -->
+            <div class="card-footer login-card-footer text-center py-3 border-0">
+                <div class="small opacity-75 mb-1">{{ branding.get('footer_text') or 'تمامی حقوق برای مدیریت این سامانه محفوظ است.' }}</div>
+                <div class="d-inline-flex align-items-center gap-1 small opacity-50" style="font-size: 0.72rem;">
+                    <i class="fas fa-shield-halved"></i>
+                    <span>اتصال امن، حفاظت‌شده و مانیتور شده</span>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
+<style>
+/* ─── استایل‌های عمومی و انیمیشن‌ها ─── */
+@keyframes floatOrb1 { 0% { transform: translate(0, 0) scale(1); } 100% { transform: translate(-30px, 40px) scale(1.15); } }
+@keyframes floatOrb2 { 0% { transform: translate(0, 0) scale(1); } 100% { transform: translate(40px, -30px) scale(1.1); } }
+@keyframes floatOrb3 { 0% { transform: translate(0, 0) scale(1); } 100% { transform: translate(-20px, -25px) scale(1.2); } }
+
+.cursor-pointer { cursor: pointer; }
+.login-input-group .form-control:focus { box-shadow: none; }
+
+/* ─── استایل ۱: شیشه‌ای آئورا (glass_aurora) ─── */
+.login-theme-glass_aurora {
+    background: #090d16;
+    color: #f1f5f9;
+}
+.login-theme-glass_aurora .login-main-card {
+    background: rgba(15, 23, 42, 0.72) !important;
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
+    box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7), 0 0 40px rgba(99, 102, 241, 0.25) !important;
+    border-radius: 26px !important;
+    color: #f8fafc;
+}
+.login-theme-glass_aurora .login-card-header {
+    background: linear-gradient(180deg, rgba(99, 102, 241, 0.15) 0%, rgba(255, 255, 255, 0) 100%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.login-theme-glass_aurora .logo-wrapper,
+.login-theme-glass_aurora .logo-icon-wrapper {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    backdrop-filter: blur(10px);
+}
+.login-theme-glass_aurora .login-version-badge {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #cbd5e1;
+}
+.login-theme-glass_aurora .login-input-group .input-group-text,
+.login-theme-glass_aurora .login-input-group .form-control {
+    background: rgba(15, 23, 42, 0.6);
+    border-color: rgba(255, 255, 255, 0.14);
+    color: #f8fafc;
+}
+.login-theme-glass_aurora .login-input-group .form-control:focus {
+    border-color: #818cf8;
+    background: rgba(15, 23, 42, 0.85);
+}
+.login-theme-glass_aurora .captcha-img-box {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.12) !important;
+}
+.login-theme-glass_aurora .login-captcha-input {
+    background: rgba(15, 23, 42, 0.6);
+    border-color: rgba(255, 255, 255, 0.14);
+    color: #f8fafc;
+}
+.login-theme-glass_aurora .login-submit-btn {
+    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+    border: none;
+    color: #ffffff;
+    border-radius: 14px;
+    padding: 12px;
+    box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.5);
+    transition: all 0.25s ease;
+}
+.login-theme-glass_aurora .login-submit-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 30px -5px rgba(99, 102, 241, 0.7);
+    filter: brightness(1.1);
+}
+.login-theme-glass_aurora .login-card-footer {
+    background: rgba(10, 15, 26, 0.4);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    color: #94a3b8;
+}
+
+/* ─── استایل ۲: سایبرپانک نئونی (cyber_neon) ─── */
+.login-theme-cyber_neon {
+    background: #060911;
+    color: #e2e8f0;
+}
+.login-theme-cyber_neon .login-main-card {
+    background: rgba(10, 15, 26, 0.94) !important;
+    border: 1px solid #00f2fe !important;
+    box-shadow: 0 0 35px rgba(0, 242, 254, 0.25), inset 0 0 20px rgba(0, 242, 254, 0.05) !important;
+    border-radius: 20px !important;
+}
+.login-theme-cyber_neon .text-cyan { color: #00f2fe !important; }
+.login-theme-cyber_neon .login-brand-title {
+    color: #00f2fe;
+    text-shadow: 0 0 12px rgba(0, 242, 254, 0.4);
+}
+.login-theme-cyber_neon .login-card-header {
+    background: linear-gradient(180deg, rgba(0, 242, 254, 0.12) 0%, transparent 100%);
+    border-bottom: 1px solid rgba(0, 242, 254, 0.2);
+}
+.login-theme-cyber_neon .logo-wrapper,
+.login-theme-cyber_neon .logo-icon-wrapper {
+    background: rgba(0, 242, 254, 0.08);
+    border: 1px solid #00f2fe;
+    box-shadow: 0 0 15px rgba(0, 242, 254, 0.3);
+}
+.login-theme-cyber_neon .login-version-badge {
+    background: rgba(0, 242, 254, 0.1);
+    border: 1px solid #00f2fe;
+    color: #00f2fe;
+}
+.login-theme-cyber_neon .login-input-group .input-group-text,
+.login-theme-cyber_neon .login-input-group .form-control {
+    background: #0c1220;
+    border-color: rgba(0, 242, 254, 0.3);
+    color: #e2e8f0;
+}
+.login-theme-cyber_neon .login-input-group .form-control:focus {
+    border-color: #00f2fe;
+    box-shadow: 0 0 10px rgba(0, 242, 254, 0.35);
+}
+.login-theme-cyber_neon .captcha-img-box {
+    background: #0c1220;
+    border-color: rgba(0, 242, 254, 0.3) !important;
+}
+.login-theme-cyber_neon .login-captcha-input {
+    background: #0c1220;
+    border-color: rgba(0, 242, 254, 0.3);
+    color: #00f2fe;
+}
+.login-theme-cyber_neon .login-submit-btn {
+    background: linear-gradient(90deg, #00f2fe 0%, #4facfe 100%);
+    color: #050b14;
+    font-weight: 800;
+    border: none;
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 0 20px rgba(0, 242, 254, 0.4);
+    transition: all 0.25s ease;
+}
+.login-theme-cyber_neon .login-submit-btn:hover {
+    box-shadow: 0 0 30px rgba(0, 242, 254, 0.7);
+    filter: brightness(1.15);
+    transform: translateY(-2px);
+}
+.login-theme-cyber_neon .login-card-footer {
+    background: rgba(6, 10, 18, 0.8);
+    border-top: 1px solid rgba(0, 242, 254, 0.15);
+    color: #94a3b8;
+}
+
+/* ─── استایل ۳: مینیمال لوکس (minimal_luxury) ─── */
+.login-theme-minimal_luxury {
+    background: #f8fafc;
+    color: #0f172a;
+}
+[data-bs-theme="dark"] .login-theme-minimal_luxury {
+    background: #0f172a;
+    color: #f8fafc;
+}
+.login-theme-minimal_luxury .login-main-card {
+    background: #ffffff !important;
+    border: 1px solid rgba(226, 232, 240, 0.8) !important;
+    box-shadow: 0 20px 45px -12px rgba(15, 23, 42, 0.08), 0 2px 6px rgba(15, 23, 42, 0.03) !important;
+    border-radius: 28px !important;
+}
+[data-bs-theme="dark"] .login-theme-minimal_luxury .login-main-card {
+    background: #1e293b !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5) !important;
+}
+.login-theme-minimal_luxury .login-card-header {
+    background: transparent;
+}
+.login-theme-minimal_luxury .logo-wrapper,
+.login-theme-minimal_luxury .logo-icon-wrapper {
+    background: #f1f5f9;
+    border-radius: 18px !important;
+}
+[data-bs-theme="dark"] .login-theme-minimal_luxury .logo-wrapper,
+[data-bs-theme="dark"] .login-theme-minimal_luxury .logo-icon-wrapper {
+    background: #334155;
+}
+.login-theme-minimal_luxury .login-version-badge {
+    background: #f1f5f9;
+    color: #64748b;
+}
+[data-bs-theme="dark"] .login-theme-minimal_luxury .login-version-badge {
+    background: #334155;
+    color: #94a3b8;
+}
+.login-theme-minimal_luxury .login-input-group .input-group-text,
+.login-theme-minimal_luxury .login-input-group .form-control {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+}
+[data-bs-theme="dark"] .login-theme-minimal_luxury .login-input-group .input-group-text,
+[data-bs-theme="dark"] .login-theme-minimal_luxury .login-input-group .form-control {
+    background: #0f172a;
+    border-color: #334155;
+    color: #f8fafc;
+}
+.login-theme-minimal_luxury .login-submit-btn {
+    background: #0f172a;
+    color: #ffffff;
+    border-radius: 16px;
+    padding: 12px;
+    border: none;
+    transition: all 0.2s ease;
+}
+[data-bs-theme="dark"] .login-theme-minimal_luxury .login-submit-btn {
+    background: #38bdf8;
+    color: #0f172a;
+}
+.login-theme-minimal_luxury .login-submit-btn:hover {
+    opacity: 0.92;
+    transform: translateY(-2px);
+}
+.login-theme-minimal_luxury .login-card-footer {
+    background: transparent;
+    color: #94a3b8;
+}
+
+/* ─── استایل ۴: گرادینت زنده (gradient_vibrant) ─── */
+.login-theme-gradient_vibrant {
+    background: #0b0f19;
+    color: #f8fafc;
+}
+.login-theme-gradient_vibrant .login-main-card {
+    background: rgba(18, 24, 38, 0.85) !important;
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    box-shadow: 0 25px 50px -10px rgba(0, 0, 0, 0.6), 0 0 30px rgba(236, 72, 153, 0.2) !important;
+    border-radius: 26px !important;
+}
+.login-theme-gradient_vibrant .login-card-header {
+    background: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
+    color: white;
+    border-radius: 26px 26px 0 0;
+}
+.login-theme-gradient_vibrant .login-brand-title { color: white !important; }
+.login-theme-gradient_vibrant .login-brand-subtitle { color: rgba(255,255,255,0.85) !important; }
+.login-theme-gradient_vibrant .logo-wrapper,
+.login-theme-gradient_vibrant .logo-icon-wrapper {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+.login-theme-gradient_vibrant .login-version-badge {
+    background: rgba(255, 255, 255, 0.25);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+}
+.login-theme-gradient_vibrant .login-input-group .input-group-text,
+.login-theme-gradient_vibrant .login-input-group .form-control {
+    background: rgba(11, 15, 25, 0.7);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #f8fafc;
+}
+.login-theme-gradient_vibrant .login-submit-btn {
+    background: linear-gradient(135deg, #6366f1 0%, #ec4899 100%);
+    border: none;
+    color: white;
+    border-radius: 14px;
+    padding: 12px;
+    box-shadow: 0 10px 25px rgba(236, 72, 153, 0.4);
+    transition: all 0.25s ease;
+}
+.login-theme-gradient_vibrant .login-submit-btn:hover {
+    box-shadow: 0 14px 30px rgba(236, 72, 153, 0.6);
+    transform: translateY(-2px);
+}
+.login-theme-gradient_vibrant .login-card-footer {
+    background: rgba(11, 15, 25, 0.5);
+    color: #94a3b8;
+}
+
+/* ─── استایل ۵: دارک سازمانی و طلایی (executive_dark) ─── */
+.login-theme-executive_dark {
+    background: #080a0f;
+    color: #f8fafc;
+}
+.login-theme-executive_dark .login-main-card {
+    background: #0e121b !important;
+    border: 1px solid rgba(245, 158, 11, 0.35) !important;
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.9), 0 0 30px rgba(245, 158, 11, 0.12) !important;
+    border-radius: 22px !important;
+}
+.login-theme-executive_dark .login-card-header {
+    background: linear-gradient(180deg, rgba(245, 158, 11, 0.1) 0%, transparent 100%);
+    border-bottom: 1px solid rgba(245, 158, 11, 0.2);
+}
+.login-theme-executive_dark .login-brand-title {
+    color: #f59e0b;
+}
+.login-theme-executive_dark .logo-wrapper,
+.login-theme-executive_dark .logo-icon-wrapper {
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+}
+.login-theme-executive_dark .login-version-badge {
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    color: #fbbf24;
+}
+.login-theme-executive_dark .login-input-group .input-group-text,
+.login-theme-executive_dark .login-input-group .form-control {
+    background: #141a26;
+    border-color: rgba(245, 158, 11, 0.25);
+    color: #f8fafc;
+}
+.login-theme-executive_dark .login-input-group .form-control:focus {
+    border-color: #f59e0b;
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.3);
+}
+.login-theme-executive_dark .captcha-img-box {
+    background: #141a26;
+    border-color: rgba(245, 158, 11, 0.25) !important;
+}
+.login-theme-executive_dark .login-captcha-input {
+    background: #141a26;
+    border-color: rgba(245, 158, 11, 0.25);
+    color: #fbbf24;
+}
+.login-theme-executive_dark .login-submit-btn {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    border: none;
+    color: #0b0f19;
+    font-weight: 800;
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 10px 25px rgba(245, 158, 11, 0.3);
+    transition: all 0.25s ease;
+}
+.login-theme-executive_dark .login-submit-btn:hover {
+    box-shadow: 0 14px 30px rgba(245, 158, 11, 0.5);
+    transform: translateY(-2px);
+    filter: brightness(1.1);
+}
+.login-theme-executive_dark .login-card-footer {
+    background: #090c14;
+    border-top: 1px solid rgba(245, 158, 11, 0.12);
+    color: #94a3b8;
+}
+</style>
+
 <script>
 function refreshCaptcha() {
     const img = document.getElementById('captchaImg');
     if (img) {
         img.src = "{{ url_for('captcha_image') }}?t=" + new Date().getTime();
+    }
+}
+
+function togglePasswordVisibility() {
+    const pwdInput = document.getElementById('loginPasswordInput');
+    const icon = document.getElementById('passwordToggleIcon');
+    if (!pwdInput || !icon) return;
+    if (pwdInput.type === 'password') {
+        pwdInput.type = 'text';
+        icon.classList.remove('fa-eye');
+        icon.classList.add('fa-eye-slash');
+    } else {
+        pwdInput.type = 'password';
+        icon.classList.remove('fa-eye-slash');
+        icon.classList.add('fa-eye');
     }
 }
 </script>

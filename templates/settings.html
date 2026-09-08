@@ -3,16 +3,81 @@
 {% block title %}تنظیمات - پنل مدیریت VPN{% endblock %}
 
 {% block content %}
-<div class="content-header">
-    <h4><i class="fas fa-cog"></i> تنظیمات</h4>
+<!-- هدر صفحه و نوار ابزار هوشمند دسته‌بندی و جستجو -->
+<div class="content-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+        <h4 class="mb-1 text-dark fw-bold"><i class="fas fa-sliders text-primary me-2"></i> پیکربندی و تنظیمات سیستم</h4>
+        <div class="text-muted small">مدیریت هویت بصری، امنیت، درگاه‌ها، پورتال‌ها و یکپارچه‌سازی هیدیفای</div>
+    </div>
+    <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 rounded-pill">
+        <i class="fas fa-layer-group me-1"></i> ۱۶ بخش ماژولار و دسته‌بندی‌شده
+    </span>
 </div>
 
-<!-- کارت تنظیمات هویت بصری، نام فروشگاه، نسخه و کپی‌رایت -->
-<div class="card shadow-sm mb-4 border-0">
-    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <h5 class="mb-0 text-primary fw-bold">
-            <i class="fas fa-palette text-primary me-2"></i> تنظیمات هویت بصری، استایل سربرگ، لوگو و نسخه
-        </h5>
+<!-- نوار ناوبری موضوعی (Category Tab Pills) و نوار جستجوی زنده -->
+<div class="settings-toolbar-container mb-4 sticky-top pt-2 pb-2" style="background: var(--body-bg, #f8fafc); z-index: 10;">
+    <!-- قرص‌های دسته‌بندی موضوعی -->
+    <div class="d-flex align-items-center gap-2 overflow-x-auto pb-2 mb-2 settings-pills-bar" style="scrollbar-width: thin;">
+        <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 py-2 text-nowrap settings-category-pill active shadow-sm" data-category="all" onclick="filterSettingsCategory('all', this)">
+            <i class="fas fa-border-all me-1"></i> همه بخش‌ها <span class="badge bg-white bg-opacity-25 ms-1" id="badgeCountAll">16</span>
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-2 text-nowrap settings-category-pill" data-category="appearance" onclick="filterSettingsCategory('appearance', this)">
+            <i class="fas fa-palette me-1 text-primary"></i> ظاهر و استایل <span class="badge bg-primary-subtle text-primary ms-1">3</span>
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-2 text-nowrap settings-category-pill" data-category="portals" onclick="filterSettingsCategory('portals', this)">
+            <i class="fas fa-globe me-1 text-info"></i> پورتال‌ها و مشتری <span class="badge bg-info-subtle text-info ms-1">4</span>
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-2 text-nowrap settings-category-pill" data-category="security" onclick="filterSettingsCategory('security', this)">
+            <i class="fas fa-shield-halved me-1 text-danger"></i> امنیت و شبکه <span class="badge bg-danger-subtle text-danger ms-1">3</span>
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-2 text-nowrap settings-category-pill" data-category="finance" onclick="filterSettingsCategory('finance', this)">
+            <i class="fas fa-credit-card me-1 text-success"></i> مالی و درگاه‌ها <span class="badge bg-success-subtle text-success ms-1">3</span>
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-2 text-nowrap settings-category-pill" data-category="sms" onclick="filterSettingsCategory('sms', this)">
+            <i class="fas fa-comment-sms me-1 text-warning"></i> پیامک و اطلاع‌رسانی <span class="badge bg-warning-subtle text-warning ms-1">1</span>
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-2 text-nowrap settings-category-pill" data-category="system" onclick="filterSettingsCategory('system', this)">
+            <i class="fas fa-server me-1 text-secondary"></i> سیستم و بکاپ <span class="badge bg-secondary-subtle text-secondary ms-1">2</span>
+        </button>
+    </div>
+
+    <!-- اینپوت جستجوی سریع و دکمه‌های جمع/باز کردن همه -->
+    <div class="card border-0 shadow-sm p-3 bg-white rounded-3">
+        <div class="row g-2 align-items-center">
+            <div class="col-md-7 col-lg-8">
+                <div class="input-group">
+                    <span class="input-group-text bg-light border-end-0"><i class="fas fa-search text-muted"></i></span>
+                    <input type="text" id="settingsSearchInput" class="form-control border-start-0 ps-1" placeholder="جستجوی سریع در تنظیمات (مثلاً: پروکسی پچ، استایل لاگین، پیامک، شاپرک، تمدید...)" oninput="handleSettingsSearch(this.value)">
+                    <button class="btn btn-outline-secondary border" type="button" onclick="clearSettingsSearch()" title="پاک کردن جستجو" id="clearSearchBtn" style="display: none;">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-5 col-lg-4 d-flex justify-content-md-end gap-2">
+                <button type="button" class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 flex-fill flex-md-grow-0" onclick="expandAllSettingsCards()">
+                    <i class="fas fa-angles-down"></i>
+                    <span>باز کردن همه</span>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1 flex-fill flex-md-grow-0" onclick="collapseAllSettingsCards()">
+                    <i class="fas fa-angles-up"></i>
+                    <span>جمع کردن همه</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ بخش ۱: ظاهر و استایل ═══ -->
+<!-- کارت ۱: هویت بصری و برندینگ -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="appearance" id="card-branding">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-primary fw-bold">
+                <i class="fas fa-palette text-primary me-2"></i> هویت بصری و برندینگ
+            </h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
         <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2">
             {% if store_branding_config.version_custom_icon %}
                 <img src="{{ store_branding_config.version_custom_icon }}" alt="آیکون" class="me-1" style="width: 13px; height: 13px; vertical-align: middle;">
@@ -31,6 +96,10 @@
                 {% endif %}
             {% endif %}
             نسخه فعال: {{ store_branding_config.store_version }}
+
+        </div>
+    </div>
+    <div class="card-body p-4 settings-card-body">
         </span>
     </div>
     <div class="card-body p-4">
@@ -410,8 +479,9 @@
             </div>
         </form>
     </div>
-</div>
 
+    </div>
+</div>
 <script>
 const PRESET_VERSION_ICONS = {
     'branch': '<i class="fas fa-code-branch me-1"></i>',
@@ -702,17 +772,26 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<!-- کارت اختصاصی تنظیمات پالت و پس‌زمینه مات (Aura Mesh & Glassmorphism Palettes) -->
-<div class="card shadow-sm mb-4 border-0">
-    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <h5 class="mb-0 text-primary fw-bold">
-            <i class="fas fa-wand-magic-sparkles text-primary me-2"></i> تنظیمات پالت‌های رنگی و پس‌زمینه مات (پالت)
-        </h5>
+
+<!-- کارت ۲: پالت‌های رنگی -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="appearance" id="card-palettes">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2 settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-primary fw-bold">
+                <i class="fas fa-wand-magic-sparkles text-primary me-2"></i> پالت‌های رنگی
+            </h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
         <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 rounded-pill">
             <i class="fas fa-palette me-1"></i>پالت فعال: {{ available_palettes.get(palette_settings.active_palette, {}).get('name', 'وی‌پی‌اس اورورا') }}
         </span>
     </div>
     <div class="card-body p-4">
+
+        </div>
+    </div>
+    <div class="card-body p-4 settings-card-body">
         <p class="text-muted small mb-4">
             با انتخاب هر پالت، هاله‌های نوری شناور پس‌زمینه (Aura Blobs) و کارت‌های مات شیشه‌ای (Glassmorphism) به صورت زنده و کاملاً هماهنگ در هر دو <strong>حالت روشن (Light)</strong> و <strong>حالت تیره (Dark)</strong> برای پنل مدیریت، پنل همکاران و خصوصاً <strong>پورتال مشتری</strong> اعمال می‌گردند.
         </p>
@@ -839,8 +918,9 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         </form>
     </div>
-</div>
 
+    </div>
+</div>
 <script>
 function selectPalette(pid) {
     const radio = document.getElementById('radio_' + pid);
@@ -859,73 +939,167 @@ function selectPalette(pid) {
 }
 </script>
 
-<div class="row g-4">
-    <div class="col-lg-6">
-        <div class="card shadow-sm h-100">
-            <div class="card-header bg-white py-3">
-                <h5 class="mb-0 text-primary"><i class="fas fa-database me-2"></i> پشتیبان‌گیری و بازیابی دیتابیس</h5>
-            </div>
-            <div class="card-body">
-                <p class="text-muted small">
-                    می‌توانید فایل کامل پایگاه داده SQLite شامل تمامی مشتریان، اشتراک‌ها، کیف پول‌ها و تراکنش‌ها را دانلود کنید یا یک فایل پشتیبان قبلی را بازیابی نمایید.
-                </p>
-                
-                <div class="d-flex gap-2 mb-4">
-                    <a href="{{ url_for('download_backup') }}" class="btn btn-primary">
-                        <i class="fas fa-download me-1"></i> دانلود فایل پشتیبان (.db)
-                    </a>
-                </div>
 
-                <hr>
+<!-- کارت ۳: ظاهر صفحه ورود -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="appearance" id="card-login-style">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-primary fw-bold">
+                <i class="fas fa-brush text-primary me-2"></i> ظاهر صفحه ورود
+            </h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 rounded-pill">
+                <i class="fas fa-sparkles me-1"></i> ۵ تم مدرن
+            </span>
+        </div>
+    </div>
+    <div class="card-body p-4 settings-card-body">
+        <p class="text-muted small mb-4">
+            صفحه ورود مدیریت و نمایندگان را با سبک‌های بصری فوق‌العاده مدرن، المان‌های شیشه‌ای (Glassmorphism)، تایپوگرافی اختصاصی و افکت‌های نوری سفارشی‌سازی نمایید.
+        </p>
 
-                <h6 class="fw-bold mb-2">📤 بازیابی از فایل پشتیبان:</h6>
-                <form action="{{ url_for('upload_backup') }}" method="POST" enctype="multipart/form-data" onsubmit="return confirm('هشدار: بازیابی فایل پشتیبان اطلاعات فعلی را با داده‌های فایل جایگزین خواهد کرد. آیا ادامه می‌دهید؟');">
-                    <div class="mb-3">
-                        <label class="form-label small text-muted">انتخاب فایل .db پشتیبان:</label>
-                        <input type="file" name="backup_file" class="form-control" accept=".db" required>
+        <form action="{{ url_for('settings') }}" method="POST">
+            <input type="hidden" name="action" value="save_login_security_settings">
+
+            <div class="mb-4">
+                <label class="form-label fw-bold small mb-3">
+                    <i class="fas fa-palette me-1 text-primary"></i> انتخاب تم گرافیکی صفحه لاگین:
+                </label>
+                <div class="row g-3">
+                    <!-- Glass Aurora -->
+                    <div class="col-md-6 col-lg-4">
+                        <label class="login-theme-choice-card d-block p-3 rounded-3 border h-100 position-relative {% if login_security_config.login_style == 'glass_aurora' %}border-primary shadow-sm bg-primary-subtle bg-opacity-10{% else %}border-light-subtle bg-white{% endif %}" style="cursor: pointer;">
+                            <input type="radio" name="login_style" value="glass_aurora" class="form-check-input position-absolute top-0 end-0 m-3" {% if login_security_config.login_style == 'glass_aurora' %}checked{% endif %} onchange="selectLoginTheme(this)">
+                            <div class="theme-preview-box rounded-2 mb-2 p-3 text-center" style="background: radial-gradient(circle at top right, rgba(99, 102, 241, 0.4), transparent 60%), #0f172a; color: #fff; min-height: 80px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.1);">
+                                <div style="background: rgba(255,255,255,0.1); backdrop-filter: blur(8px); border-radius: 6px; padding: 6px 14px; font-size: 0.75rem; border: 1px solid rgba(255,255,255,0.2);">
+                                    <i class="fas fa-sparkles text-warning me-1"></i> Glass Aurora
+                                </div>
+                            </div>
+                            <div class="fw-bold text-dark small mb-1">گلس اورورا (شیشه‌ای نئونی)</div>
+                            <div class="text-muted" style="font-size: 0.75rem;">طراحی مدرن شیشه‌ای با هاله‌های رنگی ارغوانی و فیروزه‌ای و پس‌زمینه تیره</div>
+                        </label>
                     </div>
-                    <button type="submit" class="btn btn-warning">
-                        <i class="fas fa-upload me-1"></i> آپلود و بازیابی دیتابیس
-                    </button>
-                </form>
-            </div>
-        </div>
-    </div>
 
-    <div class="col-lg-6">
-        <div class="card shadow-sm h-100">
-            <div class="card-header bg-white py-3">
-                <h5 class="mb-0 text-success"><i class="fas fa-rotate me-2"></i> همگام‌سازی خودکار با پنل هیدیفای</h5>
-            </div>
-            <div class="card-body">
-                <p class="text-muted small">
-                    تمامی اطلاعات کانفیگ‌ها، حجم‌ها و مشتریان همیشه روی پنل هیدیفای محفوظ هستند. در صورت دیپلوی مجدد روی Railway یا خالی شدن دیتابیس، ربات به صورت خودکار یا با زدن دکمه زیر تمام کاربران را از پنل هیدیفای بازگردانی می‌کند.
-                </p>
+                    <!-- Cyber Neon -->
+                    <div class="col-md-6 col-lg-4">
+                        <label class="login-theme-choice-card d-block p-3 rounded-3 border h-100 position-relative {% if login_security_config.login_style == 'cyber_neon' %}border-primary shadow-sm bg-primary-subtle bg-opacity-10{% else %}border-light-subtle bg-white{% endif %}" style="cursor: pointer;">
+                            <input type="radio" name="login_style" value="cyber_neon" class="form-check-input position-absolute top-0 end-0 m-3" {% if login_security_config.login_style == 'cyber_neon' %}checked{% endif %} onchange="selectLoginTheme(this)">
+                            <div class="theme-preview-box rounded-2 mb-2 p-3 text-center" style="background: #050b14; color: #00ffcc; min-height: 80px; display: flex; align-items: center; justify-content: center; border: 1px solid #00ffcc44;">
+                                <div style="background: rgba(0,255,204,0.08); border-radius: 6px; padding: 6px 14px; font-size: 0.75rem; border: 1px solid #00ffcc; text-shadow: 0 0 8px #00ffcc;">
+                                    <i class="fas fa-terminal me-1"></i> Cyber Neon
+                                </div>
+                            </div>
+                            <div class="fw-bold text-dark small mb-1">سایبرپانک نئونی (Cyber Neon)</div>
+                            <div class="text-muted" style="font-size: 0.75rem;">تم ماتریس تاریک آینده‌نگرانه با خطوط فیروزه‌ای و سبز فسفری درخشان</div>
+                        </label>
+                    </div>
 
-                <form action="{{ url_for('admin_sync_hidify') }}" method="POST" onsubmit="return confirm('آیا مایل به همگام‌سازی و بازیابی اطلاعات تمامی کاربران از هیدیفای هستید؟');">
-                    <button type="submit" class="btn btn-success mb-3">
-                        <i class="fas fa-cloud-arrow-down me-1"></i> همگام‌سازی و بازیابی کاربران از هیدیفای
-                    </button>
-                </form>
+                    <!-- Minimal Luxury -->
+                    <div class="col-md-6 col-lg-4">
+                        <label class="login-theme-choice-card d-block p-3 rounded-3 border h-100 position-relative {% if login_security_config.login_style == 'minimal_luxury' %}border-primary shadow-sm bg-primary-subtle bg-opacity-10{% else %}border-light-subtle bg-white{% endif %}" style="cursor: pointer;">
+                            <input type="radio" name="login_style" value="minimal_luxury" class="form-check-input position-absolute top-0 end-0 m-3" {% if login_security_config.login_style == 'minimal_luxury' %}checked{% endif %} onchange="selectLoginTheme(this)">
+                            <div class="theme-preview-box rounded-2 mb-2 p-3 text-center" style="background: #f8fafc; color: #0f172a; min-height: 80px; display: flex; align-items: center; justify-content: center; border: 1px solid #e2e8f0;">
+                                <div style="background: #ffffff; border-radius: 6px; padding: 6px 14px; font-size: 0.75rem; border: 1px solid #cbd5e1; box-shadow: 0 2px 8px rgba(0,0,0,0.06); font-weight: 600;">
+                                    <i class="fas fa-crown me-1" style="color: #d97706;"></i> Minimal Luxury
+                                </div>
+                            </div>
+                            <div class="fw-bold text-dark small mb-1">مینیمال لوکس (Minimal Luxury)</div>
+                            <div class="text-muted" style="font-size: 0.75rem;">روشن، تمیز و باوقار، خطوط ظریف، تایپوگرافی چشم‌نواز و کنتراست شفاف</div>
+                        </label>
+                    </div>
 
-                <div class="alert alert-info py-2 small mb-0">
-                    <i class="fas fa-lightbulb me-1"></i> <strong>نکته Railway:</strong>
-                    برای ماندگاری دائمی فایل‌های دیتابیس در دیپلوی‌های گیت‌هاب، می‌توانید در داشبورد Railway یک <strong>Volume</strong> با مسیر <code>/data</code> اضافه کنید.
+                    <!-- Gradient Vibrant -->
+                    <div class="col-md-6 col-lg-4">
+                        <label class="login-theme-choice-card d-block p-3 rounded-3 border h-100 position-relative {% if login_security_config.login_style == 'gradient_vibrant' %}border-primary shadow-sm bg-primary-subtle bg-opacity-10{% else %}border-light-subtle bg-white{% endif %}" style="cursor: pointer;">
+                            <input type="radio" name="login_style" value="gradient_vibrant" class="form-check-input position-absolute top-0 end-0 m-3" {% if login_security_config.login_style == 'gradient_vibrant' %}checked{% endif %} onchange="selectLoginTheme(this)">
+                            <div class="theme-preview-box rounded-2 mb-2 p-3 text-center" style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #db2777 100%); color: #fff; min-height: 80px; display: flex; align-items: center; justify-content: center;">
+                                <div style="background: rgba(255,255,255,0.18); backdrop-filter: blur(8px); border-radius: 6px; padding: 6px 14px; font-size: 0.75rem; border: 1px solid rgba(255,255,255,0.3);">
+                                    <i class="fas fa-fire me-1"></i> Gradient Vibrant
+                                </div>
+                            </div>
+                            <div class="fw-bold text-dark small mb-1">گرادیانت پرانرژی (Gradient Vibrant)</div>
+                            <div class="text-muted" style="font-size: 0.75rem;">ترکیب شاداب ارغوانی و بنفش با کنتراست پویا، جذاب برای فضاهای جوان‌پسند</div>
+                        </label>
+                    </div>
+
+                    <!-- Executive Dark -->
+                    <div class="col-md-6 col-lg-4">
+                        <label class="login-theme-choice-card d-block p-3 rounded-3 border h-100 position-relative {% if login_security_config.login_style == 'executive_dark' %}border-primary shadow-sm bg-primary-subtle bg-opacity-10{% else %}border-light-subtle bg-white{% endif %}" style="cursor: pointer;">
+                            <input type="radio" name="login_style" value="executive_dark" class="form-check-input position-absolute top-0 end-0 m-3" {% if login_security_config.login_style == 'executive_dark' %}checked{% endif %} onchange="selectLoginTheme(this)">
+                            <div class="theme-preview-box rounded-2 mb-2 p-3 text-center" style="background: #0b0f19; color: #94a3b8; min-height: 80px; display: flex; align-items: center; justify-content: center; border: 1px solid #1e293b;">
+                                <div style="background: #111827; border-radius: 6px; padding: 6px 14px; font-size: 0.75rem; border: 1px solid #334155; color: #e2e8f0; font-weight: 600;">
+                                    <i class="fas fa-briefcase text-primary me-1"></i> Executive Dark
+                                </div>
+                            </div>
+                            <div class="fw-bold text-dark small mb-1">مدیریت دارک (Executive Dark)</div>
+                            <div class="text-muted" style="font-size: 0.75rem;">تیره اداری فوق‌حرفه‌ای با المان‌های مونوکروم و کنتراست دقیق و تمرکز بالا</div>
+                        </label>
+                    </div>
                 </div>
             </div>
+
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold small">
+                        <i class="fas fa-heading me-1 text-primary"></i> عنوان صفحه ورود (Page Title):
+                    </label>
+                    <input type="text" name="login_page_title" class="form-control" value="{{ login_security_config.login_page_title }}" placeholder="پیش‌فرض: نام فروشگاه یا پورتال دسترسی">
+                    <div class="form-text small">در بالای کارت ورود نمایش داده می‌شود (در صورت خالی بودن، نام برند فروشگاه نمایش می‌یابد).</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold small">
+                        <i class="fas fa-align-right me-1 text-primary"></i> زیرعنوان صفحه ورود (Subtitle):
+                    </label>
+                    <input type="text" name="login_page_subtitle" class="form-control" value="{{ login_security_config.login_page_subtitle }}" placeholder="پیش‌فرض: ورود به پنل مدیریت و نمایندگی">
+                    <div class="form-text small">پیام خوش‌آمدگویی یا توضیح کوتاه در زیر عنوان اصلی کارت ورود.</div>
+                </div>
+
+                <div class="col-12">
+                    <div class="form-check form-switch p-0 d-flex align-items-center gap-3">
+                        <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" id="loginBgEffectSwitch" name="login_bg_effect" value="1" {% if login_security_config.login_bg_effect == '1' %}checked{% endif %} style="width: 2.8em; height: 1.4em;">
+                        <label class="form-check-label fw-bold small" for="loginBgEffectSwitch">
+                            <i class="fas fa-wand-magic-sparkles text-warning me-1"></i> نمایش افکت امواج نوری و هاله‌های شناور در پس‌زمینه لاگین
+                        </label>
+                    </div>
+                    <div class="form-text small text-muted ms-4">
+                        در صورت غیرفعال کردن، پس‌زمینه ثابت و ساده خواهد بود که برای سیستم‌های بسیار قدیمی سبک‌تر است.
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 pt-2 border-top">
+                <button type="submit" class="btn btn-primary fw-bold px-4">
+                    <i class="fas fa-save me-1"></i> ذخیره ظاهر صفحه ورود
+                </button>
+                <a href="{{ get_login_url() }}" target="_blank" class="btn btn-outline-info d-inline-flex align-items-center gap-1">
+                    <i class="fas fa-arrow-up-right-from-square"></i>
+                    <span>مشاهده پیش‌نمایش صفحه ورود</span>
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ═══ بخش ۲: پورتال‌ها و مشتری ═══ -->
+<!-- کارت ۴: پورتال مشتری -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="portals" id="card-customer-portal">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-primary fw-bold">
+                <i class="fas fa-user-shield text-info me-2"></i> پورتال مشتری
+            </h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-info-subtle text-info border border-info-subtle px-3 py-2 rounded-pill">
+                <i class="fas fa-globe me-1"></i> پورتال دائمی هوشمند
+            </span>
         </div>
     </div>
-
-<!-- کارت تنظیمات پورتال اختصاصی مشتری و پروکسی پچ -->
-<div class="card shadow-sm mb-4 border-0">
-    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
-        <h5 class="mb-0 text-primary fw-bold">
-            <i class="fas fa-user-shield text-info me-2"></i> تنظیمات پورتال اختصاصی مشتری و پروکسی پچ
-        </h5>
-        <span class="badge bg-info-subtle text-info border border-info-subtle px-3 py-2">
-            <i class="fas fa-globe me-1"></i>پورتال دائمی هوشمند
-        </span>
-    </div>
+    <div class="card-body p-4 settings-card-body">
     <div class="card-body p-4">
         <p class="text-muted">
             هر مشتری دارای یک صفحه اختصاصی دائمی به آدرس <code>https://domain/ProxyPatch/UUID</code> است که از طریق آن می‌تواند وضعیت اشتراک (حجم باقیمانده، روزهای باقیمانده، وضعیت اتصال)، دریافت لینک ساب و کانفیگ تکی، و تمدید هوشمند حساب خود را انجام دهد. در این بخش می‌توانید تنظیمات این پورتال را سفارشی‌سازی کنید.
@@ -937,15 +1111,18 @@ function selectPalette(pid) {
             <div class="row g-3">
                 <div class="col-md-6">
                     <label class="form-label fw-bold small">
-                        <i class="fas fa-route me-1 text-primary"></i> پروکسی پچ اختصاصی مشتری (Proxy Path):
+                        <i class="fas fa-route me-1 text-primary"></i> پروکسی پچ پورتال هوشمند مشتری (Portal Proxy Path):
                     </label>
                     <div class="input-group">
                         <span class="input-group-text font-monospace small" style="direction: ltr;">https://domain/</span>
-                        <input type="text" name="user_proxy_path" class="form-control font-monospace" value="{{ customer_portal_config.user_proxy_path }}" placeholder="user یا sub یا client" required style="direction: ltr;">
+                        <input type="text" name="portal_proxy_path" id="portalProxyInput" class="form-control font-monospace" value="{{ customer_portal_config.portal_proxy_path or 'renew' }}" placeholder="renew" required style="direction: ltr;" oninput="updatePortalUrlPreview(this.value)">
                         <span class="input-group-text font-monospace small" style="direction: ltr;">/{uuid}</span>
                     </div>
+                    <div class="mt-2 p-2 rounded bg-light border font-monospace small text-info" id="customerPortalUrlPreview" style="direction: ltr;">
+                        https://domain/{{ customer_portal_config.portal_proxy_path or 'renew' }}/{uuid}
+                    </div>
                     <div class="form-text small">
-                        مسیر پیش‌فرض معمولاً <code>user</code> است. تغییر این مسیر، آدرس اشتراک ساب و پورتال مشتریان مستقیم ادمین را مطابق ساختار سرور تغییر می‌دهد.
+                        <i class="fas fa-shield-check text-success me-1"></i> این مسیر اختصاصاً برای آدرس صفحه پورتال هوشمند مشتری است (پیش‌فرض <code>renew</code>). تغییر این مسیر <strong>هیچ اثری روی ساب‌لینک‌ها یا تنظیمات پنل هیدیفای ندارد</strong> و تمام لینک‌های قبلی مشتریان نیز فعال باقی می‌مانند.
                     </div>
                 </div>
 
@@ -1249,16 +1426,19 @@ function selectPalette(pid) {
             </div>
         </form>
     </div>
-</div>
 
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
-<!-- کارت جامع تنظیمات گفتگوی آنلاین پورتال، استایل دکمه و چتبات هوش مصنوعی -->
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
-<div class="card shadow-sm mt-4 border-0">
-    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
-        <h5 class="mb-0 text-primary fw-bold">
-            <i class="fas fa-comments text-primary me-2"></i> تنظیمات گفتگوی آنلاین، استایل دکمه و چتبات هوش مصنوعی
-        </h5>
+    </div>
+</div>
+<!-- کارت ۵: چت و هوش مصنوعی -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="portals" id="card-chat-ai">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-primary fw-bold">
+                <i class="fas fa-headset text-info me-2"></i> چت و هوش مصنوعی
+            </h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
         <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2">
             <i class="fas fa-robot me-1"></i>پشتیبانی هوشمند و اختصاصی
         </span>
@@ -1266,6 +1446,10 @@ function selectPalette(pid) {
     <div class="card-body p-4">
         <p class="text-muted">
             در این بخش می‌توانید ظاهر و استایل دکمه شناور چت در پورتال مشتری را سفارشی‌سازی کنید، وضعیت آنلاین بودن پشتیبانی را به صورت هوشمند یا ساختگی برای نمایندگان تنظیم نمایید، و چتبات پاسخگویی خودکار با هوش مصنوعی را مدیریت کنید.
+
+        </div>
+    </div>
+    <div class="card-body p-4 settings-card-body">
         </p>
 
         <form action="{{ url_for('settings') }}" method="POST">
@@ -1537,6 +1721,9 @@ function selectPalette(pid) {
     </div>
 </div>
 
+
+    </div>
+</div>
 <script>
 function toggleFakeOnlineCustomBox() {
     const customRadio = document.getElementById("chatOnlineCustom");
@@ -1563,14 +1750,236 @@ function toggleAiApiBox() {
 }
 </script>
 
-<!-- کارت ساخت و تنظیم قالب لینک اتصال تکی (پروتکل VMess JSON) -->
-<div class="card shadow-sm mt-4 border-0">
-    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
-        <h5 class="mb-0 text-primary fw-bold">
-            <i class="fas fa-bolt text-warning me-2"></i> تنظیم قالب نمونه JSON برای لینک تکی (VMess Config)
-        </h5>
+
+<!-- کارت ۶: پورتال آموزش -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="portals" id="card-tutorials">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-primary fw-bold">
+                <i class="fas fa-graduation-cap text-primary me-2"></i> پورتال آموزش
+            </h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+        <a href="{{ url_for('tutorials_portal') }}" target="_blank" class="btn btn-sm btn-outline-primary fw-bold">
+            <i class="fas fa-arrow-up-right-from-square me-1"></i> مشاهده آنلاین پورتال آموزش‌ها
+        </a>
+    </div>
+    <div class="card-body p-4">
+        <p class="text-muted">
+            پورتال آموزش‌های چندسکویی و عیب‌یابی هوشمند به صورت پیش‌فرض در آدرس <code>/help</code> در دسترس است. شما می‌توانید یک ساب‌دامنه اختصاصی (مانند <code>help.yourdomain.com</code>) برای آن تنظیم نمایید تا کاربران و مشتریان مستقیماً بدون نیاز به لاگین آموزش‌ها را مشاهده کنند.
+
+        </div>
+    </div>
+    <div class="card-body p-4 settings-card-body">
+        </p>
+
+        <form action="{{ url_for('settings') }}" method="POST">
+            <input type="hidden" name="action" value="save_tutorial_settings">
+            
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">دامنه یا ساب‌دامنه اختصاصی راهنمای اتصال (📖 Tutorial Domain)</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light"><i class="fas fa-book-open text-primary"></i></span>
+                        <input type="text" class="form-control font-monospace" name="tutorial_domain" 
+                               value="{{ tutorial_domain }}" placeholder="مثال: help.mydomain.com" dir="ltr">
+                    </div>
+                    <div class="form-text text-muted">آدرس پورتال آموزش‌های تصویری اتصال برای کاربران.</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">دامنه اختصاصی حل مشکلات اتصال (🛠️ Troubleshoot Domain)</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light"><i class="fas fa-wrench text-warning"></i></span>
+                        <input type="text" class="form-control font-monospace" name="troubleshoot_domain" 
+                               value="{{ troubleshoot_domain }}" placeholder="مثال: fix.mydomain.com" dir="ltr">
+                    </div>
+                    <div class="form-text text-muted">آدرس سامانه ویزارد هوشمند عیب‌یابی و رفع قطعی اینترنت.</div>
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label fw-bold">عنوان اصلی پورتال آموزش‌ها</label>
+                    <input type="text" class="form-control" name="tutorial_title" 
+                           value="{{ tutorial_title }}" placeholder="مثال: مرکز آموزش و راهنمای اتصال VPN">
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary px-4 fw-bold">
+                <i class="fas fa-save me-1"></i> ذخیره تنظیمات پورتال آموزش‌ها
+            </button>
+        </form>
+    </div>
+
+    </div>
+</div>
+<!-- کارت ۷: باشگاه مشتریان (VIP) -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="portals" id="card-vip-club">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-warning fw-bold">
+                <i class="fas fa-crown text-warning me-2"></i> باشگاه مشتریان (VIP)
+            </h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-warning text-dark"><i class="fas fa-coins me-1"></i>سیستم وفاداری و پاداش نقدی</span>
+    </div>
+    <div class="card-body p-4">
+        <p class="text-muted">
+
+        </div>
+    </div>
+    <div class="card-body p-4 settings-card-body">
+            با فعال بودن این قابلیت، سیستم به صورت خودکار کاربرانی که مجموع خریدهای موفق آن‌ها به سقف تعیین‌شده برسد را به عنوان <strong>کاربر ویژه (VIP)</strong> ارتقا داده و در خریدهای بعدی درصد مشخصی از مبلغ خرید را به صورت <strong>کش‌بک (Cashback)</strong> آنی به کیف پول آن‌ها واریز می‌کند.
+        </p>
+
+        <form action="{{ url_for('settings') }}" method="POST">
+            <input type="hidden" name="action" value="save_vip_settings">
+            
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <div class="form-check form-switch pt-4">
+                        <input class="form-check-input" type="checkbox" name="vip_auto_enabled" id="vip_auto_enabled" {% if vip_settings.get('auto_enabled') %}checked{% endif %}>
+                        <label class="form-check-label fw-bold" for="vip_auto_enabled">ارتقای خودکار کاربران به VIP فعال باشد</label>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">حداقل مجموع خریدهای کاربر جهت ارتقای خودکار (تومان):</label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" name="vip_auto_threshold" 
+                               value="{{ vip_settings.get('auto_threshold', 1000000) }}" placeholder="1000000" min="0" step="50000">
+                        <span class="input-group-text">تومان</span>
+                    </div>
+                    <div class="form-text text-muted">پیش‌فرض: ۱,۰۰۰,۰۰۰ تومان</div>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">درصد بازگشت وجه کش‌بک پیش‌فرض (Cashback %):</label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" name="vip_cashback_percent" 
+                               value="{{ vip_settings.get('cashback_percent', 10) }}" placeholder="10" min="0" max="100">
+                        <span class="input-group-text">درصد ٪</span>
+                    </div>
+                    <div class="form-text text-muted">درصد واریز خودکار به کیف پول در هر خرید تایید شده</div>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-warning fw-bold px-4">
+                <i class="fas fa-save me-1"></i> ذخیره تنظیمات باشگاه مشتریان VIP
+            </button>
+        </form>
+
+    </div>
+</div>
+
+<!-- ═══ بخش ۳: امنیت و شبکه ═══ -->
+<!-- کارت ۸: امنیت و آدرس ورود -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="security" id="card-login-security">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-danger fw-bold">
+                <i class="fas fa-shield-cat text-danger me-2"></i> امنیت و آدرس ورود
+            </h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-3 py-2 rounded-pill">
+                <i class="fas fa-user-secret me-1"></i> پنهان‌سازی لاگین
+            </span>
+        </div>
+    </div>
+    <div class="card-body p-4 settings-card-body">
+        <div class="alert alert-warning border-warning-subtle d-flex align-items-start gap-3 mb-4">
+            <i class="fas fa-shield-halved fa-2x text-warning flex-shrink-0 mt-1"></i>
+            <div>
+                <h6 class="fw-bold mb-1">محافظت هوشمند در برابر ربات‌ها و پویشگرها (Secret Login Gate)</h6>
+                <p class="mb-0 small text-dark">
+                    با تعیین یک مسیر مخفی برای لاگین، دسترسی به آدرس پیش‌فرض <code>/login</code> کاملاً قطع شده و پاسخ <strong>404 Not Found</strong> می‌دهد. تنها کسانی که این مسیر مخفی را بدانند می‌توانند صفحه ورود را باز کنند.
+                </p>
+            </div>
+        </div>
+
+        <form action="{{ url_for('settings') }}" method="POST">
+            <input type="hidden" name="action" value="save_login_security_settings">
+
+            <div class="mb-3">
+                <label class="form-label fw-bold small">
+                    <i class="fas fa-key me-1 text-danger"></i> مسیر مخفی ورود مدیریت و نمایندگان (Admin Login Proxy Path):
+                </label>
+                <div class="input-group">
+                    <span class="input-group-text font-monospace small" style="direction: ltr;">https://domain/</span>
+                    <input type="text" name="admin_login_proxy_path" id="adminLoginProxyInput" class="form-control font-monospace" value="{{ login_security_config.admin_login_proxy_path }}" placeholder="مثلاً: secret-gate (در صورت خالی بودن، /login فعال خواهد بود)" style="direction: ltr;" oninput="updateAdminLoginPreview(this.value)">
+                </div>
+                <div class="mt-2 p-2 rounded bg-light border font-monospace small text-primary" id="adminLoginUrlPreview" style="direction: ltr;">
+                    https://domain/{{ login_security_config.admin_login_proxy_path if login_security_config.admin_login_proxy_path else 'login' }}
+                </div>
+                <div class="form-text small">
+                    <i class="fas fa-info-circle text-info me-1"></i> <strong>نکته مهم امنیتی:</strong>
+                    در صورتی که این فیلد را خالی بگذارید، ورود مانند قبل از طریق مسیر معمولی <code>/login</code> انجام می‌شود تا هیچ‌گونه قطعی دسترسی ناخواسته رخ ندهد.
+                </div>
+            </div>
+
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 pt-2 border-top">
+                <button type="submit" class="btn btn-danger fw-bold px-4">
+                    <i class="fas fa-shield-alt me-1"></i> ذخیره تنظیمات امنیتی آدرس ورود
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+<!-- کارت ۹: اتصال هیدیفای -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="security" id="card-hiddify-sync">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-success fw-bold">
+                <i class="fas fa-rotate text-success me-2"></i> اتصال هیدیفای
+            </h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 rounded-pill">
+                <i class="fas fa-server me-1"></i> همگام‌سازی پنل
+            </span>
+        </div>
+    </div>
+    <div class="card-body p-4 settings-card-body">
+                <p class="text-muted small">
+                    تمامی اطلاعات کانفیگ‌ها، حجم‌ها و مشتریان همیشه روی پنل هیدیفای محفوظ هستند. در صورت دیپلوی مجدد روی Railway یا خالی شدن دیتابیس، ربات به صورت خودکار یا با زدن دکمه زیر تمام کاربران را از پنل هیدیفای بازگردانی می‌کند.
+                </p>
+
+                <form action="{{ url_for('admin_sync_hidify') }}" method="POST" onsubmit="return confirm('آیا مایل به همگام‌سازی و بازیابی اطلاعات تمامی کاربران از هیدیفای هستید؟');">
+                    <button type="submit" class="btn btn-success mb-3">
+                        <i class="fas fa-cloud-arrow-down me-1"></i> همگام‌سازی و بازیابی کاربران از هیدیفای
+                    </button>
+                </form>
+
+                <div class="alert alert-info py-2 small mb-0">
+                    <i class="fas fa-lightbulb me-1"></i> <strong>نکته Railway:</strong>
+                    برای ماندگاری دائمی فایل‌های دیتابیس در دیپلوی‌های گیت‌هاب، می‌توانید در داشبورد Railway یک <strong>Volume</strong> با مسیر <code>/data</code> اضافه کنید.
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+<!-- کارت ۱۰: قالب کانفیگ تکی -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="security" id="card-vmess-config">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-primary fw-bold">
+                <i class="fas fa-bolt text-warning me-2"></i> قالب کانفیگ تکی
+            </h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
         <span class="badge bg-success-subtle text-success fs-6">پشتیبانی از خروجی استاندارد vmess://</span>
     </div>
+
+        </div>
+    </div>
+    <div class="card-body p-4 settings-card-body">
     <div class="card-body">
         <p class="text-muted">
             شما می‌توانید یک فایل یا متن نمونه <strong>JSON پروتکل VMess</strong> را در کادر زیر قرار دهید. سیستم به طور خودکار هنگام درخواست مشتری یا همکار، شناسه <code>UUID</code> و <code>نام اکانت</code> مشتری را در متغیرهای <code>{uuid}</code> و <code>{name}</code> قرار داده و خروجی را به صورت یک لینک رمزنگاری‌شده استاندارد <strong><code>vmess://Base64...</code></strong> (همراه با بارکد QR) تولید و ارسال می‌کند.
@@ -1828,6 +2237,9 @@ function updateSmsFields() {
     } else if (provider === 'smsir') {
         urlInput.placeholder = 'https://api.sms.ir (پیش‌فرض سامانه sms.ir)';
         urlHelp.innerHTML = 'آدرس پیش‌فرض وب‌سرویس: <code>https://api.sms.ir</code> (نیاز به تغییر ندارد مگر آدرس اختصاصی). شناسه قالب (TemplateId) عددی پنل sms.ir را در کدهای پترن زیر ثبت فرمایید.';
+
+    </div>
+</div>
         if (urlLabel) urlLabel.classList.remove('text-danger');
     } else if (provider === 'kavenegar') {
         urlInput.placeholder = 'https://api.kavenegar.com (پیش‌فرض)';
@@ -1853,121 +2265,19 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<!-- کارت تنظیمات درگاه پیامک (SMS Gateway) -->
-<div class="card shadow-sm mt-4 border-0">
-    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <h5 class="mb-0 text-success fw-bold">
-            <i class="fas fa-comment-sms text-success me-2"></i> پیکربندی درگاه پیامک و اطلاع‌رسانی‌ها (SMS Gateway)
-        </h5>
-        {% if sms_config and sms_config.get('enabled') %}
-            <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-circle-check me-1"></i>پیامک فعال است</span>
-        {% else %}
-            <span class="badge bg-secondary-subtle text-muted border"><i class="fas fa-circle-pause me-1"></i>غیرفعال</span>
-        {% endif %}
-    </div>
-    <div class="card-body">
-        <p class="text-muted small">
-            با اتصال سامانه به درگاه پیامکی، هشدارهای امنیتی ورود، تلاش‌های ناموفق و خروج علاوه بر تلگرام به شماره همراه مدیران و همکاران نیز پیامک خواهد شد.
-        </p>
 
-        <form action="{{ url_for('settings') }}" method="POST">
-            <input type="hidden" name="action" value="save_sms_settings">
 
-            <div class="form-check form-switch mb-3">
-                <input class="form-check-input" type="checkbox" name="sms_enabled" id="smsEnabledSwitch" {% if sms_config and sms_config.get('enabled') %}checked{% endif %}>
-                <label class="form-check-label fw-bold" for="smsEnabledSwitch">فعال‌سازی ارسال پیامک‌های سیستمی و امنیتی</label>
-            </div>
-
-            <div class="row g-3 mb-3">
-                <div class="col-md-6">
-                    <label class="form-label fw-bold">ارائه‌دهنده وب‌سرویس پیامک (Provider):</label>
-                    <select name="sms_provider" id="smsProviderSelect" class="form-select" onchange="updateSmsFields()">
-                        <option value="ippanel" {% if sms_config and sms_config.get('provider') == 'ippanel' %}selected{% endif %}>فراز اس‌ام‌اس / IPPanel / MaxSMS (پیش‌فرض)</option>
-                        <option value="smsir" {% if sms_config and sms_config.get('provider') in ('smsir', 'sms.ir') %}selected{% endif %}>سامانه پیامک SMS.ir (وب‌سرویس جدید سریع و پترن)</option>
-                        <option value="kavenegar" {% if sms_config and sms_config.get('provider') == 'kavenegar' %}selected{% endif %}>کاوه‌نگار (Kavenegar)</option>
-                        <option value="melipayamak" {% if sms_config and sms_config.get('provider') == 'melipayamak' %}selected{% endif %}>ملی پیامک (MeliPayamak)</option>
-                        <option value="ghasedak" {% if sms_config and sms_config.get('provider') == 'ghasedak' %}selected{% endif %}>قاصدک (Ghasedak)</option>
-                        <option value="generic" {% if sms_config and sms_config.get('provider') == 'generic' %}selected{% endif %}>درگاه دلخواه / وب‌هوک (Generic Webhook)</option>
-                    </select>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label fw-bold">شماره اختصاصی / خط ارسال‌کننده (Sender):</label>
-                    <input type="text" name="sms_originator" id="smsOriginatorInput" class="form-control font-monospace" placeholder="مثال: +983000505 یا 3000... (در حالت ارسال با پترن اختیاری)" value="{{ sms_config.get('originator', '') if sms_config else '' }}">
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label fw-bold">کلید دسترسی وب‌سرویس / توکن API (API Key):</label>
-                    <div class="input-group">
-                        <input type="password" name="sms_api_key" id="smsApiKeyInput" class="form-control font-monospace" placeholder="کلید API خود را وارد کنید" value="{{ sms_config.get('api_key', '') if sms_config else '' }}">
-                        <button class="btn btn-outline-secondary" type="button" onclick="toggleSmsApiKeyVisibility()" title="نمایش/پنهان‌سازی کلید">
-                            <i class="fas fa-eye" id="smsApiKeyToggleIcon"></i>
-                        </button>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label fw-bold" id="smsUrlLabel">
-                        <i class="fas fa-link me-1 text-primary"></i> آدرس URL وب‌سرویس / درگاه وب‌هوک (API / Webhook URL):
-                    </label>
-                    <input type="text" name="sms_url" id="smsUrlInput" class="form-control font-monospace" style="direction: ltr;" placeholder="https://api.sms.ir یا URL درگاه وب‌هوک" value="{{ sms_config.get('url', '') if sms_config else '' }}">
-                    <div class="form-text small" id="smsUrlHelp">
-                        برای وب‌هوک دلخواه الزامی است (متغیرها: <code>{api_key}</code>، <code>{phone}</code>، <code>{message}</code>، <code>{sender}</code>). برای سایر پنل‌ها در صورت تمایل به تغییر آدرس پیش‌فرض استفاده می‌شود.
-                    </div>
-                </div>
-            </div>
-
-            <div class="card bg-light border-0 p-3 mb-3">
-                <h6 class="fw-bold text-dark mb-2"><i class="fas fa-bolt text-warning me-1"></i>کدهای پترن/الگوی خدماتی (جهت ارسال سریع و عبور از بلک‌لیست مخابرات):</h6>
-                <p class="text-muted small mb-3">در صورت تعریف الگو در پنل پیامکی خود، کدهای آن را وارد نمایید. در غیر این صورت فیلدها را خالی بگذارید تا ارسال به صورت متن مستقیم انجام شود.</p>
-                <div class="row g-2">
-                    <div class="col-md-4">
-                        <label class="form-label small">کد پترن ورود موفق:</label>
-                        <input type="text" name="sms_pattern_login" class="form-control form-control-sm font-monospace" placeholder="مثال: log-ok-90" value="{{ sms_config.get('pattern_login', '') if sms_config else '' }}">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label small">کد پترن تلاش ناموفق:</label>
-                        <input type="text" name="sms_pattern_failed" class="form-control form-control-sm font-monospace" placeholder="مثال: log-fail-91" value="{{ sms_config.get('pattern_failed', '') if sms_config else '' }}">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label small">کد پترن خروج از حساب:</label>
-                        <input type="text" name="sms_pattern_logout" class="form-control form-control-sm font-monospace" placeholder="مثال: log-out-92" value="{{ sms_config.get('pattern_logout', '') if sms_config else '' }}">
-                    </div>
-                </div>
-            </div>
-
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <button type="submit" class="btn btn-success px-4">
-                    <i class="fas fa-save me-1"></i> ذخیره تنظیمات سامانه پیامک
-                </button>
-            </div>
-        </form>
-
-        <hr class="my-4">
-
-        <!-- ابزار تست ارسال پیامک -->
-        <div class="bg-white border rounded p-3">
-            <h6 class="fw-bold text-primary mb-2"><i class="fas fa-paper-plane me-1"></i> تست ارسال پیامک آزمایشی:</h6>
-            <div class="row g-2 align-items-center">
-                <div class="col-md-5">
-                    <input type="text" id="testSmsPhone" class="form-control font-monospace form-control-sm" placeholder="شماره همراه تست (مثال: 09123456789)">
-                </div>
-                <div class="col-md-3">
-                    <button type="button" class="btn btn-sm btn-outline-success w-100" onclick="sendTestSms()">
-                        <i class="fas fa-envelope-circle-check me-1"></i> ارسال پیامک تست
-                    </button>
-                </div>
-                <div class="col-md-12 mt-2">
-                    <div id="testSmsResult" style="display: none;"></div>
-                </div>
-            </div>
+<!-- ═══ بخش ۴: مالی و درگاه‌ها ═══ -->
+<!-- کارت ۱۱: درگاه کریپتو -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="finance" id="card-crypto">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-warning fw-bold">
+                <i class="fas fa-coins text-warning me-2"></i> درگاه کریپتو
+            </h5>
         </div>
-    </div>
-</div>
-
-<!-- کارت تنظیمات درگاه پرداخت کریپتو (Crypto Gateway) -->
-<div class="card shadow-sm mt-4 border-0">
-    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <h5 class="mb-0 text-warning fw-bold">
-            <i class="fas fa-coins text-warning me-2"></i> درگاه پرداخت ارزی و کریپتو (USDT TRC20 / TON / Crypto)
-        </h5>
+        <div class="d-flex align-items-center gap-2">
         {% if crypto_config and crypto_config.get('enabled') %}
             <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-circle-check me-1"></i>پرداخت ارزی فعال است</span>
         {% else %}
@@ -1975,6 +2285,10 @@ document.addEventListener('DOMContentLoaded', function() {
         {% endif %}
     </div>
     <div class="card-body">
+
+        </div>
+    </div>
+    <div class="card-body p-4 settings-card-body">
         <p class="text-muted small">
             با فعال‌سازی درگاه کریپتو، کاربران و مشتریان می‌توانند اشتراک‌ها و شارژ کیف پول خود را به صورت ۱۰۰٪ خودکار با تتر (USDT)، ترون (TRX) یا تون (TON) پرداخت کنند.
         </p>
@@ -2017,17 +2331,27 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
 </div>
 
-<!-- کارت تنظیمات درگاه پرداخت آنلاین شاپرک -->
-<div class="card shadow-sm mt-4 border-0">
-    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <h5 class="mb-0 text-success fw-bold">
-            <i class="fas fa-credit-card text-success me-2"></i> تنظیمات درگاه پرداخت آنلاین شاپرک (زرین‌پال / آیدی‌پی)
-        </h5>
+    </div>
+</div>
+<!-- کارت ۱۲: درگاه شاپرک -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="finance" id="card-shaparak">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-success fw-bold">
+                <i class="fas fa-credit-card text-success me-2"></i> درگاه شاپرک
+            </h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
         <span class="badge {% if admin_gateway.get('enabled') %}bg-success-subtle text-success border border-success{% else %}bg-secondary-subtle text-secondary border{% endif %} fs-6">
             {{ '🟢 درگاه آنلاین فعال' if admin_gateway.get('enabled') else '⚪ درگاه غیرفعال (بزودی)' }}
         </span>
     </div>
     <div class="card-body p-4">
+
+        </div>
+    </div>
+    <div class="card-body p-4 settings-card-body">
         <p class="text-muted">
             با فعال‌سازی درگاه آنلاین، مشتریان در ربات تلگرام و وب‌اپ می‌توانند به صورت مستقیم به درگاه پرداخت شاپرک متصل شوند و پس از پرداخت، اشتراک آن‌ها به صورت آنی و خودکار تحویل داده می‌شود.
         </p>
@@ -2072,118 +2396,25 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
 </div>
 
-<!-- کارت تنظیمات پورتال اختصاصی آموزش‌ها و ساب‌دامنه -->
-<div class="card shadow-sm mt-4 border-0">
-    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <h5 class="mb-0 text-primary fw-bold">
-            <i class="fas fa-graduation-cap text-primary me-2"></i> تنظیمات پورتال اختصاصی آموزش‌ها و ساب‌دامنه
-        </h5>
-        <a href="{{ url_for('tutorials_portal') }}" target="_blank" class="btn btn-sm btn-outline-primary fw-bold">
-            <i class="fas fa-arrow-up-right-from-square me-1"></i> مشاهده آنلاین پورتال آموزش‌ها
-        </a>
-    </div>
-    <div class="card-body p-4">
-        <p class="text-muted">
-            پورتال آموزش‌های چندسکویی و عیب‌یابی هوشمند به صورت پیش‌فرض در آدرس <code>/help</code> در دسترس است. شما می‌توانید یک ساب‌دامنه اختصاصی (مانند <code>help.yourdomain.com</code>) برای آن تنظیم نمایید تا کاربران و مشتریان مستقیماً بدون نیاز به لاگین آموزش‌ها را مشاهده کنند.
-        </p>
-
-        <form action="{{ url_for('settings') }}" method="POST">
-            <input type="hidden" name="action" value="save_tutorial_settings">
-            
-            <div class="row g-3 mb-3">
-                <div class="col-md-6">
-                    <label class="form-label fw-bold">دامنه یا ساب‌دامنه اختصاصی راهنمای اتصال (📖 Tutorial Domain)</label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-light"><i class="fas fa-book-open text-primary"></i></span>
-                        <input type="text" class="form-control font-monospace" name="tutorial_domain" 
-                               value="{{ tutorial_domain }}" placeholder="مثال: help.mydomain.com" dir="ltr">
-                    </div>
-                    <div class="form-text text-muted">آدرس پورتال آموزش‌های تصویری اتصال برای کاربران.</div>
-                </div>
-
-                <div class="col-md-6">
-                    <label class="form-label fw-bold">دامنه اختصاصی حل مشکلات اتصال (🛠️ Troubleshoot Domain)</label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-light"><i class="fas fa-wrench text-warning"></i></span>
-                        <input type="text" class="form-control font-monospace" name="troubleshoot_domain" 
-                               value="{{ troubleshoot_domain }}" placeholder="مثال: fix.mydomain.com" dir="ltr">
-                    </div>
-                    <div class="form-text text-muted">آدرس سامانه ویزارد هوشمند عیب‌یابی و رفع قطعی اینترنت.</div>
-                </div>
-
-                <div class="col-12">
-                    <label class="form-label fw-bold">عنوان اصلی پورتال آموزش‌ها</label>
-                    <input type="text" class="form-control" name="tutorial_title" 
-                           value="{{ tutorial_title }}" placeholder="مثال: مرکز آموزش و راهنمای اتصال VPN">
-                </div>
-            </div>
-
-            <button type="submit" class="btn btn-primary px-4 fw-bold">
-                <i class="fas fa-save me-1"></i> ذخیره تنظیمات پورتال آموزش‌ها
-            </button>
-        </form>
     </div>
 </div>
-
-<!-- کارت تنظیمات باشگاه مشتریان پریمیوم (VIP) و کش‌بک -->
-<div class="card shadow-sm mt-4 border-0">
-    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <h5 class="mb-0 text-warning fw-bold">
-            <i class="fas fa-crown text-warning me-2"></i> تنظیمات باشگاه مشتریان ویژه (⭐️ VIP Club) و سیستم کش‌بک
-        </h5>
-        <span class="badge bg-warning text-dark"><i class="fas fa-coins me-1"></i>سیستم وفاداری و پاداش نقدی</span>
-    </div>
-    <div class="card-body p-4">
-        <p class="text-muted">
-            با فعال بودن این قابلیت، سیستم به صورت خودکار کاربرانی که مجموع خریدهای موفق آن‌ها به سقف تعیین‌شده برسد را به عنوان <strong>کاربر ویژه (VIP)</strong> ارتقا داده و در خریدهای بعدی درصد مشخصی از مبلغ خرید را به صورت <strong>کش‌بک (Cashback)</strong> آنی به کیف پول آن‌ها واریز می‌کند.
-        </p>
-
-        <form action="{{ url_for('settings') }}" method="POST">
-            <input type="hidden" name="action" value="save_vip_settings">
-            
-            <div class="row g-3 mb-3">
-                <div class="col-md-4">
-                    <div class="form-check form-switch pt-4">
-                        <input class="form-check-input" type="checkbox" name="vip_auto_enabled" id="vip_auto_enabled" {% if vip_settings.get('auto_enabled') %}checked{% endif %}>
-                        <label class="form-check-label fw-bold" for="vip_auto_enabled">ارتقای خودکار کاربران به VIP فعال باشد</label>
-                    </div>
-                </div>
-
-                <div class="col-md-4">
-                    <label class="form-label fw-bold">حداقل مجموع خریدهای کاربر جهت ارتقای خودکار (تومان):</label>
-                    <div class="input-group">
-                        <input type="number" class="form-control" name="vip_auto_threshold" 
-                               value="{{ vip_settings.get('auto_threshold', 1000000) }}" placeholder="1000000" min="0" step="50000">
-                        <span class="input-group-text">تومان</span>
-                    </div>
-                    <div class="form-text text-muted">پیش‌فرض: ۱,۰۰۰,۰۰۰ تومان</div>
-                </div>
-
-                <div class="col-md-4">
-                    <label class="form-label fw-bold">درصد بازگشت وجه کش‌بک پیش‌فرض (Cashback %):</label>
-                    <div class="input-group">
-                        <input type="number" class="form-control" name="vip_cashback_percent" 
-                               value="{{ vip_settings.get('cashback_percent', 10) }}" placeholder="10" min="0" max="100">
-                        <span class="input-group-text">درصد ٪</span>
-                    </div>
-                    <div class="form-text text-muted">درصد واریز خودکار به کیف پول در هر خرید تایید شده</div>
-                </div>
-            </div>
-
-            <button type="submit" class="btn btn-warning fw-bold px-4">
-                <i class="fas fa-save me-1"></i> ذخیره تنظیمات باشگاه مشتریان VIP
-            </button>
-        </form>
-    </div>
-<!-- کارت تنظیمات استرداد وجه نمایندگان (Refund Settings) -->
-<div class="card shadow-sm mt-4 border-0">
-    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <h5 class="mb-0 text-danger fw-bold">
-            <i class="fas fa-undo-alt text-danger me-2"></i> تنظیمات استرداد وجه و مرجوعی نمایندگان (Refund Settings)
-        </h5>
+<!-- کارت ۱۳: استرداد وجه -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="finance" id="card-refund">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-danger fw-bold">
+                <i class="fas fa-money-bill-transfer text-danger me-2"></i> استرداد وجه
+            </h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
         <span class="badge bg-danger-subtle text-danger fs-6"><i class="fas fa-shield-alt me-1"></i>مدیریت مالی و قوانین عودت</span>
     </div>
     <div class="card-body p-4">
+
+        </div>
+    </div>
+    <div class="card-body p-4 settings-card-body">
         <p class="text-muted">
             قوانین بازگشت وجه هنگام حذف یا لغو اشتراک‌های نمایندگان را مشخص کنید. در صورت فعال بودن، در هنگام حذف اشتراک، وجه اشتراک (دقیقاً بر مبنای هزینه عمده‌فروشی پرداختی) با توجه به زمان سپری‌شده به کیف پول یا اعتبار نماینده عودت داده می‌شود.
         </p>
@@ -2338,12 +2569,190 @@ document.addEventListener('DOMContentLoaded', function() {
             </button>
         </form>
     </div>
+
+    </div>
 </div>
 
-<div class="card shadow-sm mt-4">
-    <div class="card-header bg-white py-3">
-        <h5 class="mb-0"><i class="fas fa-sliders me-2"></i> تنظیمات ثبت‌شده در دیتابیس</h5>
+<!-- ═══ بخش ۵: پیامک و اطلاع‌رسانی ═══ -->
+<!-- کارت ۱۴: درگاه پیامک -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="sms" id="card-sms">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-success fw-bold">
+                <i class="fas fa-comment-sms text-success me-2"></i> درگاه پیامک
+            </h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+        {% if sms_config and sms_config.get('enabled') %}
+            <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-circle-check me-1"></i>پیامک فعال است</span>
+        {% else %}
+            <span class="badge bg-secondary-subtle text-muted border"><i class="fas fa-circle-pause me-1"></i>غیرفعال</span>
+        {% endif %}
     </div>
+    <div class="card-body">
+
+        </div>
+    </div>
+    <div class="card-body p-4 settings-card-body">
+        <p class="text-muted small">
+            با اتصال سامانه به درگاه پیامکی، هشدارهای امنیتی ورود، تلاش‌های ناموفق و خروج علاوه بر تلگرام به شماره همراه مدیران و همکاران نیز پیامک خواهد شد.
+        </p>
+
+        <form action="{{ url_for('settings') }}" method="POST">
+            <input type="hidden" name="action" value="save_sms_settings">
+
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" name="sms_enabled" id="smsEnabledSwitch" {% if sms_config and sms_config.get('enabled') %}checked{% endif %}>
+                <label class="form-check-label fw-bold" for="smsEnabledSwitch">فعال‌سازی ارسال پیامک‌های سیستمی و امنیتی</label>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">ارائه‌دهنده وب‌سرویس پیامک (Provider):</label>
+                    <select name="sms_provider" id="smsProviderSelect" class="form-select" onchange="updateSmsFields()">
+                        <option value="ippanel" {% if sms_config and sms_config.get('provider') == 'ippanel' %}selected{% endif %}>فراز اس‌ام‌اس / IPPanel / MaxSMS (پیش‌فرض)</option>
+                        <option value="smsir" {% if sms_config and sms_config.get('provider') in ('smsir', 'sms.ir') %}selected{% endif %}>سامانه پیامک SMS.ir (وب‌سرویس جدید سریع و پترن)</option>
+                        <option value="kavenegar" {% if sms_config and sms_config.get('provider') == 'kavenegar' %}selected{% endif %}>کاوه‌نگار (Kavenegar)</option>
+                        <option value="melipayamak" {% if sms_config and sms_config.get('provider') == 'melipayamak' %}selected{% endif %}>ملی پیامک (MeliPayamak)</option>
+                        <option value="ghasedak" {% if sms_config and sms_config.get('provider') == 'ghasedak' %}selected{% endif %}>قاصدک (Ghasedak)</option>
+                        <option value="generic" {% if sms_config and sms_config.get('provider') == 'generic' %}selected{% endif %}>درگاه دلخواه / وب‌هوک (Generic Webhook)</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">شماره اختصاصی / خط ارسال‌کننده (Sender):</label>
+                    <input type="text" name="sms_originator" id="smsOriginatorInput" class="form-control font-monospace" placeholder="مثال: +983000505 یا 3000... (در حالت ارسال با پترن اختیاری)" value="{{ sms_config.get('originator', '') if sms_config else '' }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">کلید دسترسی وب‌سرویس / توکن API (API Key):</label>
+                    <div class="input-group">
+                        <input type="password" name="sms_api_key" id="smsApiKeyInput" class="form-control font-monospace" placeholder="کلید API خود را وارد کنید" value="{{ sms_config.get('api_key', '') if sms_config else '' }}">
+                        <button class="btn btn-outline-secondary" type="button" onclick="toggleSmsApiKeyVisibility()" title="نمایش/پنهان‌سازی کلید">
+                            <i class="fas fa-eye" id="smsApiKeyToggleIcon"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold" id="smsUrlLabel">
+                        <i class="fas fa-link me-1 text-primary"></i> آدرس URL وب‌سرویس / درگاه وب‌هوک (API / Webhook URL):
+                    </label>
+                    <input type="text" name="sms_url" id="smsUrlInput" class="form-control font-monospace" style="direction: ltr;" placeholder="https://api.sms.ir یا URL درگاه وب‌هوک" value="{{ sms_config.get('url', '') if sms_config else '' }}">
+                    <div class="form-text small" id="smsUrlHelp">
+                        برای وب‌هوک دلخواه الزامی است (متغیرها: <code>{api_key}</code>، <code>{phone}</code>، <code>{message}</code>، <code>{sender}</code>). برای سایر پنل‌ها در صورت تمایل به تغییر آدرس پیش‌فرض استفاده می‌شود.
+                    </div>
+                </div>
+            </div>
+
+            <div class="card bg-light border-0 p-3 mb-3">
+                <h6 class="fw-bold text-dark mb-2"><i class="fas fa-bolt text-warning me-1"></i>کدهای پترن/الگوی خدماتی (جهت ارسال سریع و عبور از بلک‌لیست مخابرات):</h6>
+                <p class="text-muted small mb-3">در صورت تعریف الگو در پنل پیامکی خود، کدهای آن را وارد نمایید. در غیر این صورت فیلدها را خالی بگذارید تا ارسال به صورت متن مستقیم انجام شود.</p>
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <label class="form-label small">کد پترن ورود موفق:</label>
+                        <input type="text" name="sms_pattern_login" class="form-control form-control-sm font-monospace" placeholder="مثال: log-ok-90" value="{{ sms_config.get('pattern_login', '') if sms_config else '' }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small">کد پترن تلاش ناموفق:</label>
+                        <input type="text" name="sms_pattern_failed" class="form-control form-control-sm font-monospace" placeholder="مثال: log-fail-91" value="{{ sms_config.get('pattern_failed', '') if sms_config else '' }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small">کد پترن خروج از حساب:</label>
+                        <input type="text" name="sms_pattern_logout" class="form-control form-control-sm font-monospace" placeholder="مثال: log-out-92" value="{{ sms_config.get('pattern_logout', '') if sms_config else '' }}">
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <button type="submit" class="btn btn-success px-4">
+                    <i class="fas fa-save me-1"></i> ذخیره تنظیمات سامانه پیامک
+                </button>
+            </div>
+        </form>
+
+        <hr class="my-4">
+
+        <!-- ابزار تست ارسال پیامک -->
+        <div class="bg-white border rounded p-3">
+            <h6 class="fw-bold text-primary mb-2"><i class="fas fa-paper-plane me-1"></i> تست ارسال پیامک آزمایشی:</h6>
+            <div class="row g-2 align-items-center">
+                <div class="col-md-5">
+                    <input type="text" id="testSmsPhone" class="form-control font-monospace form-control-sm" placeholder="شماره همراه تست (مثال: 09123456789)">
+                </div>
+                <div class="col-md-3">
+                    <button type="button" class="btn btn-sm btn-outline-success w-100" onclick="sendTestSms()">
+                        <i class="fas fa-envelope-circle-check me-1"></i> ارسال پیامک تست
+                    </button>
+                </div>
+                <div class="col-md-12 mt-2">
+                    <div id="testSmsResult" style="display: none;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+    </div>
+</div>
+
+<!-- ═══ بخش ۶: سیستم و دیتابیس ═══ -->
+<!-- کارت ۱۵: پشتیبان‌گیری و بازیابی -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="system" id="card-backup">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-primary fw-bold">
+                <i class="fas fa-database text-primary me-2"></i> پشتیبان‌گیری و بازیابی
+            </h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 rounded-pill">
+                <i class="fas fa-hard-drive me-1"></i> دیتابیس SQLite
+            </span>
+        </div>
+    </div>
+    <div class="card-body p-4 settings-card-body">
+                <p class="text-muted small">
+                    می‌توانید فایل کامل پایگاه داده SQLite شامل تمامی مشتریان، اشتراک‌ها، کیف پول‌ها و تراکنش‌ها را دانلود کنید یا یک فایل پشتیبان قبلی را بازیابی نمایید.
+                </p>
+                
+                <div class="d-flex gap-2 mb-4">
+                    <a href="{{ url_for('download_backup') }}" class="btn btn-primary">
+                        <i class="fas fa-download me-1"></i> دانلود فایل پشتیبان (.db)
+                    </a>
+                </div>
+
+                <hr>
+
+                <h6 class="fw-bold mb-2">📤 بازیابی از فایل پشتیبان:</h6>
+                <form action="{{ url_for('upload_backup') }}" method="POST" enctype="multipart/form-data" onsubmit="return confirm('هشدار: بازیابی فایل پشتیبان اطلاعات فعلی را با داده‌های فایل جایگزین خواهد کرد. آیا ادامه می‌دهید؟');">
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">انتخاب فایل .db پشتیبان:</label>
+                        <input type="file" name="backup_file" class="form-control" accept=".db" required>
+                    </div>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="fas fa-upload me-1"></i> آپلود و بازیابی دیتابیس
+                    </button>
+                </form>
+            </div>
+
+    </div>
+</div>
+<!-- کارت ۱۶: متغیرهای خام دیتابیس -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="system" id="card-raw-settings">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-secondary fw-bold">
+                <i class="fas fa-sliders text-secondary me-2"></i> متغیرهای خام دیتابیس
+            </h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle px-3 py-2 rounded-pill">
+                <i class="fas fa-table me-1"></i> جدول تنظیمات
+            </span>
+        </div>
+    </div>
+    <div class="card-body p-0 settings-card-body">
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover mb-0 align-middle">
@@ -2376,5 +2785,227 @@ document.addEventListener('DOMContentLoaded', function() {
             </table>
         </div>
     </div>
+
+    </div>
 </div>
+
+<style>
+/* استایل‌های ماژولار و مدرن صفحه تنظیمات */
+.settings-category-pill {
+    transition: all 0.2s ease-in-out;
+    font-weight: 500;
+}
+.settings-category-pill:hover {
+    transform: translateY(-1px);
+}
+.settings-section-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    border-radius: 12px !important;
+    overflow: hidden;
+}
+.settings-card-header {
+    user-select: none;
+    transition: background-color 0.15s ease;
+}
+.settings-card-header:hover {
+    background-color: rgba(241, 245, 249, 0.7) !important;
+}
+.settings-toggle-chevron {
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    font-size: 0.95rem;
+    color: #64748b;
+}
+.settings-section-card.is-collapsed .settings-toggle-chevron {
+    transform: rotate(-90deg);
+}
+.settings-section-card.is-collapsed .settings-card-body,
+.settings-section-card.is-collapsed .card-body,
+.settings-section-card.is-collapsed .card-footer {
+    display: none !important;
+}
+.login-theme-choice-card {
+    transition: all 0.2s ease;
+}
+.login-theme-choice-card:hover {
+    border-color: #3b82f6 !important;
+    transform: translateY(-2px);
+}
+.login-theme-choice-card.border-primary {
+    border-width: 2px !important;
+}
+</style>
+
+<script>
+// ۱. سیستم باز و بسته کردن کارت‌ها (Accordion Collapse) و ماندگاری در LocalStorage
+function getSettingsCollapsedMap() {
+    try {
+        return JSON.parse(localStorage.getItem('hiddibot_settings_collapsed') || '{}');
+    } catch (e) {
+        return {};
+    }
+}
+
+function saveSettingsCollapsedMap(map) {
+    try {
+        localStorage.setItem('hiddibot_settings_collapsed', JSON.stringify(map));
+    } catch (e) {}
+}
+
+function toggleSettingsCard(headerEl) {
+    const card = headerEl.closest('.settings-section-card');
+    if (!card) return;
+    const cardId = card.id;
+    const isNowCollapsed = card.classList.toggle('is-collapsed');
+    
+    if (cardId) {
+        const map = getSettingsCollapsedMap();
+        map[cardId] = isNowCollapsed;
+        saveSettingsCollapsedMap(map);
+    }
+}
+
+function expandAllSettingsCards() {
+    const map = {};
+    document.querySelectorAll('.settings-section-card').forEach(card => {
+        card.classList.remove('is-collapsed');
+        if (card.id) map[card.id] = false;
+    });
+    saveSettingsCollapsedMap(map);
+}
+
+function collapseAllSettingsCards() {
+    const map = {};
+    document.querySelectorAll('.settings-section-card').forEach(card => {
+        card.classList.add('is-collapsed');
+        if (card.id) map[card.id] = true;
+    });
+    saveSettingsCollapsedMap(map);
+}
+
+// ۲. فیلتر تب‌های موضوعی (Category Filter)
+let activeSettingsCategory = 'all';
+
+function filterSettingsCategory(category, btnEl) {
+    activeSettingsCategory = category;
+    try {
+        localStorage.setItem('hiddibot_settings_active_category', category);
+    } catch (e) {}
+
+    // بروزرسانی ظاهر دکمه‌ها
+    document.querySelectorAll('.settings-category-pill').forEach(btn => {
+        btn.classList.remove('btn-primary', 'active', 'shadow-sm');
+        btn.classList.add('btn-outline-secondary');
+    });
+    if (btnEl) {
+        btnEl.classList.remove('btn-outline-secondary');
+        btnEl.classList.add('btn-primary', 'active', 'shadow-sm');
+    }
+
+    // فیلتر کارت‌ها
+    const cards = document.querySelectorAll('.settings-section-card');
+    cards.forEach(card => {
+        const cardCat = card.getAttribute('data-category');
+        if (category === 'all' || cardCat === category) {
+            card.style.display = '';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+
+    // اگر جستجو پر بود، فیلتر جستجو را هم دوباره اعمال کن
+    const searchVal = document.getElementById('settingsSearchInput')?.value || '';
+    if (searchVal.trim()) {
+        handleSettingsSearch(searchVal);
+    }
+}
+
+// ۳. جستجوی زنده و سریع در تمام تنظیمات
+function handleSettingsSearch(query) {
+    const term = (query || '').trim().toLowerCase();
+    const clearBtn = document.getElementById('clearSearchBtn');
+    if (clearBtn) clearBtn.style.display = term ? 'block' : 'none';
+
+    const cards = document.querySelectorAll('.settings-section-card');
+    cards.forEach(card => {
+        const cardCat = card.getAttribute('data-category');
+        const inCategory = (activeSettingsCategory === 'all' || cardCat === activeSettingsCategory);
+
+        if (!term) {
+            // وقتی جستجو خالی شد، فقط بر اساس تب دسته‌بندی نمایش بده
+            card.style.display = inCategory ? '' : 'none';
+        } else {
+            // جستجو در متن کل کارت
+            const text = (card.innerText || '').toLowerCase();
+            if (text.includes(term)) {
+                card.style.display = '';
+                // باز کردن کارت برای اینکه نتیجه جستجو بلافاصله دیده شود
+                card.classList.remove('is-collapsed');
+            } else {
+                card.style.display = 'none';
+            }
+        }
+    });
+}
+
+function clearSettingsSearch() {
+    const input = document.getElementById('settingsSearchInput');
+    if (input) {
+        input.value = '';
+        handleSettingsSearch('');
+    }
+}
+
+// ۴. پیش‌نمایش آدرس ورود مخفی
+function updateAdminLoginPreview(val) {
+    const clean = (val || '').trim().replace(/^\/+|\/+$/g, '');
+    const preview = document.getElementById('adminLoginUrlPreview');
+    if (preview) {
+        preview.textContent = clean ? ('https://domain/' + clean) : 'https://domain/login';
+    }
+}
+
+// ۵. پیش‌نمایش آدرس پورتال مشتری
+function updatePortalUrlPreview(val) {
+    const clean = (val || '').trim().replace(/^\/+|\/+$/g, '');
+    const preview = document.getElementById('customerPortalUrlPreview');
+    if (preview) {
+        preview.textContent = 'https://domain/' + (clean || 'renew') + '/{uuid}';
+    }
+}
+
+// ۶. انتخاب کارت تم لاگین
+function selectLoginTheme(radio) {
+    document.querySelectorAll('.login-theme-choice-card').forEach(c => {
+        c.classList.remove('border-primary', 'shadow-sm', 'bg-primary-subtle', 'bg-opacity-10');
+        c.classList.add('border-light-subtle', 'bg-white');
+    });
+    const parent = radio.closest('.login-theme-choice-card');
+    if (parent) {
+        parent.classList.remove('border-light-subtle', 'bg-white');
+        parent.classList.add('border-primary', 'shadow-sm', 'bg-primary-subtle', 'bg-opacity-10');
+    }
+}
+
+// ۷. مقداردهی اولیه هنگام لود صفحه
+document.addEventListener('DOMContentLoaded', function() {
+    // بازیابی وضعیت باز/بسته بودن کارت‌ها
+    const collapsedMap = getSettingsCollapsedMap();
+    document.querySelectorAll('.settings-section-card').forEach(card => {
+        if (card.id && collapsedMap[card.id]) {
+            card.classList.add('is-collapsed');
+        }
+    });
+
+    // بازیابی آخرین تب دسته‌بندی انتخاب شده
+    try {
+        const savedCat = localStorage.getItem('hiddibot_settings_active_category');
+        if (savedCat && savedCat !== 'all') {
+            const btn = document.querySelector(`.settings-category-pill[data-category="${savedCat}"]`);
+            if (btn) {
+                filterSettingsCategory(savedCat, btn);
+            }
+        }
+    } catch (e) {}
+});
+</script>
 {% endblock %}

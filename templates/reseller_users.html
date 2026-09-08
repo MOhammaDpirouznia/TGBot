@@ -497,7 +497,7 @@
                                 {% endif %}
 
                                 <!-- ۳. دکمه سریع کپی لینک پورتال و پروفایل مشتری -->
-                                <button type="button" class="btn btn-sm btn-outline-info d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" onclick="copyLink('{{ url_for('customer_portal', token=sub.get('hidify_uuid') or sub['id'], _external=True) }}', 'لینک پورتال مشتری')" title="مشاهده و کپی لینک پورتال مشتری">
+                                <button type="button" class="btn btn-sm btn-outline-info d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" onclick="copyLink('{{ get_customer_portal_url(sub.get('hidify_uuid') or sub['id']) }}', 'لینک پورتال مشتری')" title="مشاهده و کپی لینک پورتال مشتری">
                                     <i class="fas fa-link"></i>
                                     <span class="d-none d-lg-inline">پورتال مشتری</span>
                                 </button>
@@ -787,7 +787,7 @@
                 </div>
 
                 <!-- بخش پورتال دائمی و لینک تمدید اختصاصی مشتری نماینده -->
-                {% set portal_url = url_for('customer_portal', token=sub.get('hidify_uuid') or sub['id'], _external=True) %}
+                {% set portal_url = get_customer_portal_url(sub.get('hidify_uuid') or sub['id']) %}
                 <div class="card border-primary border-opacity-25 bg-primary bg-opacity-10 shadow-sm mb-4">
                     <div class="card-body p-3">
                         <div class="d-flex justify-content-between align-items-center mb-2">
