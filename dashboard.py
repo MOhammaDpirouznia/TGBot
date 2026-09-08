@@ -8398,18 +8398,33 @@ def settings():
 
             flash("تنظیمات پورتال اختصاصی مشتری، قالب ظاهری، استایل دکمه‌ها، پروکسی پچ و وضعیت سرورها با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
-        elif action == "save_login_security_settings":
-            admin_login_proxy_path = request.form.get("admin_login_proxy_path", "").strip("/").strip()
+        elif action == "save_login_appearance_settings":
             login_style = request.form.get("login_style", "glass_aurora").strip().lower()
             login_page_title = request.form.get("login_page_title", "").strip()
             login_page_subtitle = request.form.get("login_page_subtitle", "").strip()
             login_bg_effect = "1" if request.form.get("login_bg_effect") else "0"
 
-            db.save_setting("admin_login_proxy_path", admin_login_proxy_path)
             db.save_setting("login_style", login_style)
             db.save_setting("login_page_title", login_page_title)
             db.save_setting("login_page_subtitle", login_page_subtitle)
             db.save_setting("login_bg_effect", login_bg_effect)
+
+            flash("تنظیمات ظاهر و استایل صفحه لاگین با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("settings"))
+        elif action == "save_login_security_settings":
+            admin_login_proxy_path = request.form.get("admin_login_proxy_path", "").strip("/").strip()
+            db.save_setting("admin_login_proxy_path", admin_login_proxy_path)
+
+            if "login_style" in request.form:
+                login_style = request.form.get("login_style", "glass_aurora").strip().lower()
+                login_page_title = request.form.get("login_page_title", "").strip()
+                login_page_subtitle = request.form.get("login_page_subtitle", "").strip()
+                login_bg_effect = "1" if request.form.get("login_bg_effect") else "0"
+
+                db.save_setting("login_style", login_style)
+                db.save_setting("login_page_title", login_page_title)
+                db.save_setting("login_page_subtitle", login_page_subtitle)
+                db.save_setting("login_bg_effect", login_bg_effect)
 
             flash("تنظیمات امنیت ورود، پروکسی پچ دسترسی و استایل صفحه لاگین با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
