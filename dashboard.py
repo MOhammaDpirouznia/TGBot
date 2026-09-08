@@ -8220,10 +8220,12 @@ def settings():
             store_github_repo = request.form.get("store_github_repo", "").strip()
             store_copyright = request.form.get("store_copyright", "").strip()
             store_primary_color = request.form.get("store_primary_color", "#4f46e5").strip()
-            store_logo_url = request.form.get("store_logo_url", "").strip()
+            existing_store_logo = db.get_setting("store_logo", "")
+            store_logo_url = request.form.get("store_logo_url", existing_store_logo).strip()
             brand_header_style = request.form.get("brand_header_style", "style_glass").strip()
             version_icon_type = request.form.get("version_icon_type", "branch").strip()
-            version_custom_icon = request.form.get("version_custom_icon", "").strip()
+            existing_version_icon = db.get_setting("version_custom_icon", "")
+            version_custom_icon = request.form.get("version_custom_icon", existing_version_icon).strip()
 
             if request.form.get("clear_store_logo"):
                 store_logo_url = ""
