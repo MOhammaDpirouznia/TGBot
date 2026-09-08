@@ -353,6 +353,19 @@ def preset_avatar_img(preset_id: str):
     return resp
 
 
+@app.route("/avatars/<path:filename>")
+def serve_avatar_static_file(filename):
+    """سرویس‌دهی مستقیم و امن فایل‌های آواتار، لوگوها و فاویکون‌ها از پوشه کش"""
+    p = AVATAR_CACHE_DIR / filename
+    if p.exists() and p.is_file():
+        ext = p.suffix.lower()
+        mime = "image/svg+xml" if ext == ".svg" else ("image/png" if ext == ".png" else ("image/webp" if ext == ".webp" else ("image/x-icon" if ext == ".ico" else "image/jpeg")))
+        resp = Response(p.read_bytes(), mimetype=mime)
+        resp.headers["Cache-Control"] = "public, max-age=259200"
+        return resp
+    abort(404)
+
+
 @app.template_filter("avatar_url")
 @app.template_global("avatar_url")
 def avatar_url_helper(identifier=None):
@@ -2593,6 +2606,9 @@ def inject_global_branding():
     system_store_favicon = db.get_setting("store_favicon", "")
     system_copyright = db.get_setting("store_copyright", "تمامی حقوق برای این سامانه محفوظ است © 2026")
     system_primary_color = db.get_setting("store_primary_color", "#4f46e5")
+    system_brand_header_style = db.get_setting("brand_header_style", "style_glass")
+    system_version_icon_type = db.get_setting("version_icon_type", "branch")
+    system_version_custom_icon = db.get_setting("version_custom_icon", "")
     store_version = get_store_version()
 
     branding = {}
@@ -2609,14 +2625,24 @@ def inject_global_branding():
             session["credit_debt"] = credit_debt
             session["available_credit"] = available_credit
             session["total_purchasing_power"] = session["balance"] + available_credit
+
+            reseller_custom_title = (r_data.get("brand_title") or "").strip()
+            final_brand_title = reseller_custom_title if reseller_custom_title else system_store_name
+
+            reseller_custom_logo = (r_data.get("logo_url") or "").strip()
+            final_logo_url = reseller_custom_logo if reseller_custom_logo else system_store_logo
+
             branding = {
-                "brand_title": r_data.get("brand_title") or r_data.get("name") or system_store_name,
-                "logo_url": r_data.get("logo_url") or system_store_logo,
+                "brand_title": final_brand_title,
+                "logo_url": final_logo_url,
                 "favicon_url": r_data.get("favicon_url") or system_store_favicon,
                 "primary_color": r_data.get("primary_color") or system_primary_color,
                 "footer_text": r_data.get("footer_text") or system_copyright,
                 "store_version": store_version,
                 "system_version": store_version,
+                "brand_header_style": system_brand_header_style,
+                "version_icon_type": system_version_icon_type,
+                "version_custom_icon": system_version_custom_icon,
                 "custom_domain": r_data.get("custom_domain"),
                 "tutorial_domain": r_data.get("tutorial_domain"),
                 "support_username": r_data.get("support_username"),
@@ -2631,14 +2657,23 @@ def inject_global_branding():
             session["total_purchasing_power"] = 0
     elif getattr(g, "custom_reseller", None):
         r_data = g.custom_reseller
+        reseller_custom_title = (r_data.get("brand_title") or "").strip()
+        final_brand_title = reseller_custom_title if reseller_custom_title else system_store_name
+
+        reseller_custom_logo = (r_data.get("logo_url") or "").strip()
+        final_logo_url = reseller_custom_logo if reseller_custom_logo else system_store_logo
+
         branding = {
-            "brand_title": r_data.get("brand_title") or r_data.get("name") or system_store_name,
-            "logo_url": r_data.get("logo_url") or system_store_logo,
+            "brand_title": final_brand_title,
+            "logo_url": final_logo_url,
             "favicon_url": r_data.get("favicon_url") or system_store_favicon,
             "primary_color": r_data.get("primary_color") or system_primary_color,
             "footer_text": r_data.get("footer_text") or system_copyright,
             "store_version": store_version,
             "system_version": store_version,
+            "brand_header_style": system_brand_header_style,
+            "version_icon_type": system_version_icon_type,
+            "version_custom_icon": system_version_custom_icon,
             "custom_domain": r_data.get("custom_domain"),
             "tutorial_domain": r_data.get("tutorial_domain"),
             "support_username": r_data.get("support_username"),
@@ -2656,6 +2691,9 @@ def inject_global_branding():
             "footer_text": system_copyright,
             "store_version": store_version,
             "system_version": store_version,
+            "brand_header_style": system_brand_header_style,
+            "version_icon_type": system_version_icon_type,
+            "version_custom_icon": system_version_custom_icon,
             "tutorial_domain": admin_tutorial_domain
         }
 
@@ -8183,8 +8221,13 @@ def settings():
             store_copyright = request.form.get("store_copyright", "").strip()
             store_primary_color = request.form.get("store_primary_color", "#4f46e5").strip()
             store_logo_url = request.form.get("store_logo_url", "").strip()
+            brand_header_style = request.form.get("brand_header_style", "style_glass").strip()
+            version_icon_type = request.form.get("version_icon_type", "branch").strip()
+            version_custom_icon = request.form.get("version_custom_icon", "").strip()
 
-            if "store_logo_file" in request.files:
+            if request.form.get("clear_store_logo"):
+                store_logo_url = ""
+            elif "store_logo_file" in request.files:
                 file = request.files["store_logo_file"]
                 if file and file.filename:
                     ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "png"
@@ -8192,6 +8235,17 @@ def settings():
                     fp = AVATAR_CACHE_DIR / fn
                     file.save(fp)
                     store_logo_url = url_for("telegram_avatar", identifier=fn)
+
+            if request.form.get("clear_version_custom_icon"):
+                version_custom_icon = ""
+            elif "version_icon_file" in request.files:
+                v_file = request.files["version_icon_file"]
+                if v_file and v_file.filename:
+                    ext = v_file.filename.rsplit(".", 1)[-1].lower() if "." in v_file.filename else "svg"
+                    fn = f"system_version_icon_{int(time.time())}.{ext}"
+                    fp = AVATAR_CACHE_DIR / fn
+                    v_file.save(fp)
+                    version_custom_icon = url_for("telegram_avatar", identifier=fn)
 
             if store_name:
                 db.save_setting("store_name", store_name)
@@ -8203,13 +8257,15 @@ def settings():
                 db.save_setting("store_copyright", store_copyright)
             if store_primary_color:
                 db.save_setting("store_primary_color", store_primary_color)
-            if store_logo_url:
-                db.save_setting("store_logo", store_logo_url)
+            db.save_setting("store_logo", store_logo_url)
+            db.save_setting("brand_header_style", brand_header_style)
+            db.save_setting("version_icon_type", version_icon_type)
+            db.save_setting("version_custom_icon", version_custom_icon)
 
             _store_version_cache["version"] = None
             _store_version_cache["timestamp"] = 0
 
-            flash("تنظیمات نام فروشگاه، نسخه، لوگو و کپی‌رایت با موفقیت ذخیره شد.", "success")
+            flash("تنظیمات هویت بصری، استایل سربرگ، نسخه و لوگوی سیستم با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
         elif action == "save_customer_portal_settings":
             user_proxy_path = request.form.get("user_proxy_path", "").strip("/").strip()
@@ -8312,6 +8368,10 @@ def settings():
         "store_copyright": db.get_setting("store_copyright", "تمامی حقوق برای این سامانه محفوظ است © 2026"),
         "store_primary_color": db.get_setting("store_primary_color", "#4f46e5"),
         "store_logo": db.get_setting("store_logo", ""),
+        "logo_url": db.get_setting("store_logo", ""),
+        "brand_header_style": db.get_setting("brand_header_style", "style_glass"),
+        "version_icon_type": db.get_setting("version_icon_type", "branch"),
+        "version_custom_icon": db.get_setting("version_custom_icon", ""),
         "current_active_version": get_store_version()
     }
     customer_portal_config = {
@@ -11584,8 +11644,10 @@ def reseller_branding():
         portal_layout = request.form.get("portal_layout", "").strip().lower()
         portal_plan_style = request.form.get("portal_plan_style", "").strip().lower()
 
-        # بررسی آپلود مستقیم لوگو در صورت ارسال فایل
-        if "logo_file" in request.files:
+        # بررسی پاک‌سازی یا آپلود لوگوی اختصاصی
+        if request.form.get("clear_logo"):
+            logo_url = ""
+        elif "logo_file" in request.files:
             file = request.files["logo_file"]
             if file and file.filename:
                 ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "png"
@@ -11594,7 +11656,7 @@ def reseller_branding():
                 file.save(fp)
                 logo_url = url_for("telegram_avatar", identifier=fn)
 
-        if not logo_url and reseller and reseller.get("logo_url"):
+        if not request.form.get("clear_logo") and not logo_url and reseller and reseller.get("logo_url"):
             logo_url = reseller["logo_url"]
 
         res = db.update_reseller_branding(
