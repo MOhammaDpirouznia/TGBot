@@ -1305,7 +1305,7 @@
 
                 {% if not sub_role or sub_role in ['partner', 'finance', 'manager2'] %}
                 <a class="nav-link {% if request.endpoint == 'reseller_customer_payments' %}active{% endif %}" href="{{ url_for('reseller_customer_payments') }}">
-                    <i class="fas fa-receipt text-warning"></i> پرداخت‌های آنلاین مشتری
+                    <i class="fas fa-receipt text-warning"></i> پرداخت‌ها
                 </a>
                 {% endif %}
 
@@ -1401,128 +1401,200 @@
                 </a>
             {% else %}
                 <!-- منوی مدیریت کل بر اساس سطح دسترسی (RBAC) -->
-                <div class="nav-category">اصلی و عملیات</div>
+                <div class="nav-category">عملیات اصلی و روزانه</div>
+
+                <!-- ۱. داشبورد اصلی -->
                 {% if has_permission('dashboard') %}
                 <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
                     <i class="fas fa-chart-pie" style="color: #6366f1;"></i> داشبورد اصلی
                 </a>
                 {% endif %}
 
-                {% if has_permission('create_customer') %}
-                <a class="nav-link {% if request.endpoint == 'admin_create_customer' %}active{% endif %}" href="{{ url_for('admin_create_customer') }}">
-                    <i class="fas fa-user-plus text-success"></i> ساخت اشتراک مشتری
-                </a>
-                {% endif %}
-
-                {% if has_permission('payments_view') %}
-                <a class="nav-link {% if request.endpoint == 'payments' %}active{% endif %}" href="{{ url_for('payments') }}">
-                    <i class="fas fa-receipt text-warning"></i> پرداخت‌ها و تایید فیش
-                    <span id="sidebarPendingBadge" class="badge bg-danger ms-auto rounded-pill" style="display: none; font-size: 0.75rem;">0</span>
-                </a>
-                {% endif %}
-
-                {% if has_permission('users_view') %}
-                <a class="nav-link {% if request.endpoint == 'users' %}active{% endif %}" href="{{ url_for('users') }}">
-                    <i class="fas fa-users" style="color: #3b82f6;"></i> کاربران تلگرام
-                </a>
-                <a class="nav-link {% if request.endpoint == 'vip_settings' %}active{% endif %}" href="{{ url_for('vip_settings') }}">
-                    <i class="fas fa-crown text-warning"></i> مشتریان پرمیوم (VIP)
-                </a>
-                {% endif %}
-
+                <!-- ۲. مشتریان -->
                 {% if has_permission('subscriptions_view') %}
                 <a class="nav-link {% if request.endpoint == 'subscriptions' %}active{% endif %}" href="{{ url_for('subscriptions') }}">
                     <i class="fas fa-users-gear" style="color: #ec4899;"></i> مشتریان
                 </a>
                 {% endif %}
 
-                {% if has_permission('plans') %}
-                <a class="nav-link {% if request.endpoint == 'admin_plans_page' %}active{% endif %}" href="{{ url_for('admin_plans_page') }}">
-                    <i class="fas fa-layer-group text-info"></i> پلن‌های فروش
+                <!-- ۳. ساخت اشتراک مشتری -->
+                {% if has_permission('create_customer') %}
+                <a class="nav-link {% if request.endpoint == 'admin_create_customer' %}active{% endif %}" href="{{ url_for('admin_create_customer') }}">
+                    <i class="fas fa-user-plus text-success"></i> ساخت اشتراک مشتری
                 </a>
                 {% endif %}
 
-                {% if has_permission('manage_resellers') or has_permission('broadcast') or has_permission('discounts') or has_permission('tickets') %}
-                <div class="nav-category">ارتباطات و همکاران</div>
-                {% endif %}
-
-                {% if has_permission('manage_resellers') %}
-                <a class="nav-link {% if request.endpoint == 'admin_resellers' %}active{% endif %}" href="{{ url_for('admin_resellers') }}">
-                    <i class="fas fa-handshake" style="color: #8b5cf6;"></i> نمایندگان فروش (Resellers)
-                </a>
-                <a class="nav-link {% if request.endpoint == 'admin_reseller_bundles' %}active{% endif %}" href="{{ url_for('admin_reseller_bundles') }}">
-                    <i class="fas fa-boxes-stacked" style="color: #ec4899;"></i> بسته‌های همکاران و نمایندگان
-                </a>
-                <a class="nav-link {% if request.endpoint == 'admin_reseller_affiliates' %}active{% endif %}" href="{{ url_for('admin_reseller_affiliates') }}">
-                    <i class="fas fa-network-wired text-warning"></i> زیرمجموعه‌گیری همکاران
+                <!-- ۴. پرداخت‌ها -->
+                {% if has_permission('payments_view') %}
+                <a class="nav-link {% if request.endpoint == 'payments' %}active{% endif %}" href="{{ url_for('payments') }}">
+                    <i class="fas fa-receipt text-warning"></i> پرداخت‌ها
+                    <span id="sidebarPendingBadge" class="badge bg-danger ms-auto rounded-pill" style="display: none; font-size: 0.75rem;">0</span>
                 </a>
                 {% endif %}
 
-                {% if has_permission('broadcast') %}
-                <a class="nav-link {% if request.endpoint == 'broadcast' %}active{% endif %}" href="{{ url_for('broadcast') }}">
-                    <i class="fas fa-bullhorn" style="color: #f97316;"></i> پیام همگانی (Broadcast)
-                </a>
-                {% endif %}
-
-                {% if has_permission('discounts') %}
-                <a class="nav-link {% if request.endpoint == 'admin_discounts_page' %}active{% endif %}" href="{{ url_for('admin_discounts_page') }}">
-                    <i class="fas fa-ticket text-danger"></i> کدهای تخفیف
-                </a>
-                {% endif %}
-
+                <!-- ۵. تیکت‌ها -->
                 {% if has_permission('tickets') %}
                 <a class="nav-link {% if request.endpoint == 'tickets' %}active{% endif %}" href="{{ url_for('tickets') }}">
-                    <i class="fas fa-headset text-info"></i> تیکت‌های پشتیبانی
+                    <i class="fas fa-headset text-info"></i> تیکت‌ها
                     <span id="sidebarTicketsBadge" class="badge bg-warning text-dark ms-auto rounded-pill" style="display: none; font-size: 0.75rem;">0</span>
                 </a>
                 {% endif %}
 
-                <div class="nav-category">سیستم و حسابداری</div>
-                {% if has_permission('cards') %}
-                <a class="nav-link {% if request.endpoint == 'cards' %}active{% endif %}" href="{{ url_for('cards') }}">
-                    <i class="fas fa-credit-card text-success"></i> روش‌ها و تنظیمات پرداخت
-                </a>
+                <div class="nav-category">بخش‌های تکمیلی و مدیریت</div>
+
+                <!-- دسته‌بندی ۱: مدیریت نمایندگان و همکاران -->
+                {% if has_permission('manage_resellers') %}
+                {% set is_resellers_group_active = request.endpoint in ['admin_resellers', 'admin_reseller_bundles', 'admin_reseller_affiliates'] %}
+                <button class="sidebar-dropdown-toggle {% if is_resellers_group_active %}has-active{% endif %}" 
+                        type="button" 
+                        data-bs-toggle="collapse" 
+                        data-bs-target="#adminResellersCollapse" 
+                        aria-expanded="{% if is_resellers_group_active %}true{% else %}false{% endif %}" 
+                        aria-controls="adminResellersCollapse">
+                    <span class="d-flex align-items-center gap-2">
+                        <i class="fas fa-handshake" style="color: #8b5cf6;"></i>
+                        <span>مدیریت نمایندگان</span>
+                    </span>
+                    <i class="fas fa-chevron-down dropdown-chevron"></i>
+                </button>
+                <div class="collapse submenu-collapse {% if is_resellers_group_active %}show{% endif %}" id="adminResellersCollapse">
+                    <div class="submenu-inner">
+                        <a class="submenu-item {% if request.endpoint == 'admin_resellers' %}active{% endif %}" href="{{ url_for('admin_resellers') }}">
+                            <i class="fas fa-user-tie text-primary"></i> نمایندگان فروش (Resellers)
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'admin_reseller_bundles' %}active{% endif %}" href="{{ url_for('admin_reseller_bundles') }}">
+                            <i class="fas fa-boxes-stacked text-warning"></i> بسته‌های همکاران
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'admin_reseller_affiliates' %}active{% endif %}" href="{{ url_for('admin_reseller_affiliates') }}">
+                            <i class="fas fa-network-wired text-info"></i> زیرمجموعه‌گیری همکاران
+                        </a>
+                    </div>
+                </div>
                 {% endif %}
 
-                {% if has_permission('reports') %}
-                <a class="nav-link {% if request.endpoint == 'reports' %}active{% endif %}" href="{{ url_for('reports') }}">
-                    <i class="fas fa-chart-line" style="color: #10b981;"></i> گزارشات و هوش مالی
-                </a>
+                <!-- دسته‌بندی ۲: فروش و بازاریابی -->
+                {% if has_permission('plans') or has_permission('discounts') or has_permission('broadcast') or has_permission('users_view') %}
+                {% set is_marketing_group_active = request.endpoint in ['admin_plans_page', 'admin_discounts_page', 'vip_settings', 'broadcast'] %}
+                <button class="sidebar-dropdown-toggle {% if is_marketing_group_active %}has-active{% endif %}" 
+                        type="button" 
+                        data-bs-toggle="collapse" 
+                        data-bs-target="#adminMarketingCollapse" 
+                        aria-expanded="{% if is_marketing_group_active %}true{% else %}false{% endif %}" 
+                        aria-controls="adminMarketingCollapse">
+                    <span class="d-flex align-items-center gap-2">
+                        <i class="fas fa-bullhorn" style="color: #f97316;"></i>
+                        <span>فروش و بازاریابی</span>
+                    </span>
+                    <i class="fas fa-chevron-down dropdown-chevron"></i>
+                </button>
+                <div class="collapse submenu-collapse {% if is_marketing_group_active %}show{% endif %}" id="adminMarketingCollapse">
+                    <div class="submenu-inner">
+                        {% if has_permission('plans') %}
+                        <a class="submenu-item {% if request.endpoint == 'admin_plans_page' %}active{% endif %}" href="{{ url_for('admin_plans_page') }}">
+                            <i class="fas fa-layer-group text-info"></i> پلن‌های فروش
+                        </a>
+                        {% endif %}
+                        {% if has_permission('discounts') %}
+                        <a class="submenu-item {% if request.endpoint == 'admin_discounts_page' %}active{% endif %}" href="{{ url_for('admin_discounts_page') }}">
+                            <i class="fas fa-ticket text-danger"></i> کدهای تخفیف
+                        </a>
+                        {% endif %}
+                        {% if has_permission('users_view') %}
+                        <a class="submenu-item {% if request.endpoint == 'vip_settings' %}active{% endif %}" href="{{ url_for('vip_settings') }}">
+                            <i class="fas fa-crown text-warning"></i> مشتریان پرمیوم (VIP)
+                        </a>
+                        {% endif %}
+                        {% if has_permission('broadcast') %}
+                        <a class="submenu-item {% if request.endpoint == 'broadcast' %}active{% endif %}" href="{{ url_for('broadcast') }}">
+                            <i class="fas fa-paper-plane text-primary"></i> پیام همگانی و اطلاعیه‌ها
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
                 {% endif %}
 
-                {% if has_permission('accounting') %}
-                <a class="nav-link {% if request.endpoint == 'accounting' %}active{% endif %}" href="{{ url_for('accounting') }}">
-                    <i class="fas fa-file-invoice-dollar text-primary"></i> حسابداری و تراز سود
-                </a>
+                <!-- دسته‌بندی ۳: مالی و حسابداری -->
+                {% if has_permission('reports') or has_permission('accounting') or has_permission('cards') %}
+                {% set is_finance_group_active = request.endpoint in ['reports', 'accounting', 'cards'] %}
+                <button class="sidebar-dropdown-toggle {% if is_finance_group_active %}has-active{% endif %}" 
+                        type="button" 
+                        data-bs-toggle="collapse" 
+                        data-bs-target="#adminFinanceCollapse" 
+                        aria-expanded="{% if is_finance_group_active %}true{% else %}false{% endif %}" 
+                        aria-controls="adminFinanceCollapse">
+                    <span class="d-flex align-items-center gap-2">
+                        <i class="fas fa-coins text-warning"></i>
+                        <span>مالی و حسابداری</span>
+                    </span>
+                    <i class="fas fa-chevron-down dropdown-chevron"></i>
+                </button>
+                <div class="collapse submenu-collapse {% if is_finance_group_active %}show{% endif %}" id="adminFinanceCollapse">
+                    <div class="submenu-inner">
+                        {% if has_permission('reports') %}
+                        <a class="submenu-item {% if request.endpoint == 'reports' %}active{% endif %}" href="{{ url_for('reports') }}">
+                            <i class="fas fa-chart-line text-success"></i> گزارشات و هوش مالی
+                        </a>
+                        {% endif %}
+                        {% if has_permission('accounting') %}
+                        <a class="submenu-item {% if request.endpoint == 'accounting' %}active{% endif %}" href="{{ url_for('accounting') }}">
+                            <i class="fas fa-file-invoice-dollar text-primary"></i> حسابداری و تراز سود
+                        </a>
+                        {% endif %}
+                        {% if has_permission('cards') %}
+                        <a class="submenu-item {% if request.endpoint == 'cards' %}active{% endif %}" href="{{ url_for('cards') }}">
+                            <i class="fas fa-credit-card text-warning"></i> روش‌ها و تنظیمات پرداخت
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
                 {% endif %}
 
-                {% if session.get('admin_role') == 'super_admin' %}
-                <a class="nav-link {% if request.endpoint == 'admin_managers' %}active{% endif %}" href="{{ url_for('admin_managers') }}">
-                    <i class="fas fa-users-gear" style="color: #8b5cf6;"></i> مدیران و دسترسی‌ها
-                </a>
-                {% endif %}
-
-                <a class="nav-link {% if request.endpoint == 'admin_profile' %}active{% endif %}" href="{{ url_for('admin_profile') }}">
-                    <i class="fas fa-user-gear" style="color: #64748b;"></i> حساب کاربری من
-                </a>
-
-                {% if has_permission('servers_view') %}
-                <a class="nav-link {% if request.endpoint == 'admin_logs' %}active{% endif %}" href="{{ url_for('admin_logs') }}">
-                    <i class="fas fa-terminal" style="color: #06b6d4;"></i> وضعیت سرور و لاگ‌ها
-                </a>
-                {% endif %}
-
-                {% if session.get('admin_role') == 'super_admin' or has_permission('settings_manage') %}
-                <a class="nav-link {% if request.endpoint in ['bot_menu_settings', 'admin_bot_settings'] %}active{% endif %}" href="{{ url_for('bot_menu_settings') }}">
-                    <i class="fas fa-robot text-primary"></i> چیدمان دکمه‌های ربات
-                </a>
-                {% endif %}
-
-                {% if session.get('admin_role') == 'super_admin' %}
-                <a class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">
-                    <i class="fas fa-sliders" style="color: #94a3b8;"></i> تنظیمات سیستم
-                </a>
-                {% endif %}
+                <!-- دسته‌بندی ۴: سیستم و تنظیمات -->
+                {% set is_settings_group_active = request.endpoint in ['users', 'admin_managers', 'admin_logs', 'bot_menu_settings', 'admin_bot_settings', 'settings', 'admin_profile'] %}
+                <button class="sidebar-dropdown-toggle {% if is_settings_group_active %}has-active{% endif %}" 
+                        type="button" 
+                        data-bs-toggle="collapse" 
+                        data-bs-target="#adminSettingsCollapse" 
+                        aria-expanded="{% if is_settings_group_active %}true{% else %}false{% endif %}" 
+                        aria-controls="adminSettingsCollapse">
+                    <span class="d-flex align-items-center gap-2">
+                        <i class="fas fa-gear text-info"></i>
+                        <span>سیستم و تنظیمات</span>
+                    </span>
+                    <i class="fas fa-chevron-down dropdown-chevron"></i>
+                </button>
+                <div class="collapse submenu-collapse {% if is_settings_group_active %}show{% endif %}" id="adminSettingsCollapse">
+                    <div class="submenu-inner">
+                        {% if has_permission('users_view') %}
+                        <a class="submenu-item {% if request.endpoint == 'users' %}active{% endif %}" href="{{ url_for('users') }}">
+                            <i class="fas fa-users text-primary"></i> کاربران تلگرام
+                        </a>
+                        {% endif %}
+                        {% if session.get('admin_role') == 'super_admin' or has_permission('settings_manage') %}
+                        <a class="submenu-item {% if request.endpoint in ['bot_menu_settings', 'admin_bot_settings'] %}active{% endif %}" href="{{ url_for('bot_menu_settings') }}">
+                            <i class="fas fa-robot text-info"></i> چیدمان دکمه‌های ربات
+                        </a>
+                        {% endif %}
+                        {% if session.get('admin_role') == 'super_admin' %}
+                        <a class="submenu-item {% if request.endpoint == 'admin_managers' %}active{% endif %}" href="{{ url_for('admin_managers') }}">
+                            <i class="fas fa-users-gear" style="color: #8b5cf6;"></i> مدیران و دسترسی‌ها
+                        </a>
+                        {% endif %}
+                        {% if has_permission('servers_view') %}
+                        <a class="submenu-item {% if request.endpoint == 'admin_logs' %}active{% endif %}" href="{{ url_for('admin_logs') }}">
+                            <i class="fas fa-terminal text-success"></i> وضعیت سرور و لاگ‌ها
+                        </a>
+                        {% endif %}
+                        {% if session.get('admin_role') == 'super_admin' %}
+                        <a class="submenu-item {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">
+                            <i class="fas fa-sliders text-secondary"></i> تنظیمات سیستم
+                        </a>
+                        {% endif %}
+                        <a class="submenu-item {% if request.endpoint == 'admin_profile' %}active{% endif %}" href="{{ url_for('admin_profile') }}">
+                            <i class="fas fa-user-gear text-warning"></i> حساب کاربری من
+                        </a>
+                    </div>
+                </div>
             {% endif %}
         </nav>
 
@@ -1565,6 +1637,50 @@
 
     <!-- Main Content -->
     <main class="main-content">
+        <!-- بنرهای اطلاعیه بالای پنل نمایندگان با ماندگاری در localStorage تا زمان بستن -->
+        {% if session.get('role') == 'reseller' %}
+            {% set active_reseller_banners = get_reseller_banners() if get_reseller_banners else [] %}
+            {% if active_reseller_banners %}
+                <div class="reseller-banners-container mb-3">
+                    {% for bnr in active_reseller_banners %}
+                        <div class="alert alert-{{ bnr.level or 'info' }} alert-dismissible fade show shadow-sm border-2 reseller-panel-banner position-relative" 
+                             id="reseller-banner-{{ bnr.id }}" 
+                             role="alert" 
+                             style="display: none;">
+                            <div class="d-flex align-items-start justify-content-between gap-3">
+                                <div class="d-flex align-items-start gap-2">
+                                    <i class="fas fa-bullhorn fs-5 mt-1 text-{{ bnr.level or 'info' }}"></i>
+                                    <div>
+                                        {% if bnr.title %}<strong class="d-block mb-1 fs-6">{{ bnr.title }}</strong>{% endif %}
+                                        <div style="white-space: pre-line; word-break: break-word;">{{ bnr.message }}</div>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn-close position-relative p-2" onclick="dismissResellerBanner('{{ bnr.id }}')" aria-label="بستن"></button>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <script>
+                    (function() {
+                        document.querySelectorAll('.reseller-panel-banner').forEach(function(bannerEl) {
+                            var bId = bannerEl.id.replace('reseller-banner-', '');
+                            if (localStorage.getItem('dismissed_reseller_banner_' + bId) !== 'true') {
+                                bannerEl.style.display = 'block';
+                            }
+                        });
+                    })();
+                    function dismissResellerBanner(bId) {
+                        try {
+                            localStorage.setItem('dismissed_reseller_banner_' + bId, 'true');
+                        } catch(e) {}
+                        var el = document.getElementById('reseller-banner-' + bId);
+                        if (el) {
+                            el.style.display = 'none';
+                        }
+                    }
+                </script>
+            {% endif %}
+        {% endif %}
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}

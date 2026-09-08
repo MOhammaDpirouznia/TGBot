@@ -836,12 +836,18 @@
         .chat-msg-row {
             display: flex;
             width: 100%;
+            align-items: flex-end;
+            gap: 8px;
         }
         .chat-msg-row.user {
             justify-content: flex-start;
         }
-        .chat-msg-row.support {
+        .chat-msg-row.support, .chat-msg-row.ai {
             justify-content: flex-end;
+        }
+        .chat-msg-avatar {
+            flex-shrink: 0;
+            margin-bottom: 2px;
         }
         .chat-msg-bubble {
             max-width: 82%;
@@ -1143,8 +1149,16 @@
                         <span class="badge bg-danger-subtle text-danger border border-danger px-2 py-1 rounded-pill small">
                             <i class="fas fa-triangle-exclamation me-1"></i> منقضی شده
                         </span>
+                    {% elif sub.get('status') == 'disabled' %}
+                        <span class="badge bg-secondary text-white border border-secondary px-2 py-1 rounded-pill small">
+                            <i class="fas fa-ban me-1"></i> غیرفعال
+                        </span>
+                    {% elif sub.get('status') == 'limited' %}
+                        <span class="badge bg-warning-subtle text-warning border border-warning px-2 py-1 rounded-pill small">
+                            <i class="fas fa-gauge me-1"></i> محدود شده
+                        </span>
                     {% else %}
-                        <span class="badge bg-secondary px-2 py-1 rounded-pill small">{{ sub.get('status') }}</span>
+                        <span class="badge bg-secondary px-2 py-1 rounded-pill small">{{ 'غیرفعال' if sub.get('status') == 'disabled' else sub.get('status') }}</span>
                     {% endif %}
                     {% if (sub.get('debt_amount') or 0)|int > 0 %}
                         <span class="badge bg-danger text-white border border-danger px-2 py-1 rounded-pill small">
@@ -1629,6 +1643,10 @@
                                     <span class="badge bg-success-subtle text-success border border-success px-2 py-1 rounded-pill small">فعال</span>
                                 {% elif sub.get('status') == 'expired' %}
                                     <span class="badge bg-danger-subtle text-danger border border-danger px-2 py-1 rounded-pill small">منقضی</span>
+                                {% elif sub.get('status') == 'disabled' %}
+                                    <span class="badge bg-secondary-subtle text-secondary border border-secondary px-2 py-1 rounded-pill small">غیرفعال</span>
+                                {% elif sub.get('status') == 'limited' %}
+                                    <span class="badge bg-warning-subtle text-warning border border-warning px-2 py-1 rounded-pill small">محدود</span>
                                 {% endif %}
                             </div>
                             <span class="text-secondary small"><i class="fas fa-chart-pie me-1 text-info"></i>مصرف دوره</span>
@@ -1966,9 +1984,11 @@
             <div class="modal-header border-secondary border-opacity-25 pb-3 d-flex justify-content-between align-items-center">
                 <div class="d-flex align-items-center gap-3">
                     <div class="position-relative">
-                        <div class="avatar-sm bg-primary bg-opacity-25 rounded-circle d-flex align-items-center justify-content-center text-primary p-2 shadow-sm" style="width: 44px; height: 44px;">
-                            <i class="fas fa-headset fs-5"></i>
-                        </div>
+                        <img src="{{ avatar_url(('reseller_' ~ sub.reseller_id) if sub.reseller_id else 'support') }}" 
+                             class="rounded-circle border border-info border-opacity-50 shadow-sm" 
+                             style="width: 44px; height: 44px; object-fit: cover;" 
+                             alt="پشتیبانی" 
+                             onerror="this.onerror=null; this.src='/avatar/Support';">
                         <span class="position-absolute bottom-0 start-0 translate-middle p-1 {% if support_online_info and support_online_info.is_online %}bg-success{% else %}bg-secondary{% endif %} border border-dark rounded-circle" id="chatHeaderAvatarDot" style="width: 12px; height: 12px;" title="وضعیت پشتیبان"></span>
                     </div>
                     <div>
@@ -2362,6 +2382,8 @@ document.addEventListener('DOMContentLoaded', function() {
 // ═══════════════════════════════════════════════════════════════════════
 
 const PORTAL_TOKEN = "{{ token }}";
+let CUSTOMER_AVATAR_URL = "{{ avatar_url(sub.telegram_id if sub.telegram_id else (sub.account_name if sub.account_name else sub.id)) }}";
+let SUPPORT_AVATAR_URL = "{{ avatar_url(('reseller_' ~ sub.reseller_id) if sub.reseller_id else 'support') }}";
 let chatActiveTicket = null;
 let chatLastMessageId = 0;
 let chatIsModalOpen = false;
@@ -2573,6 +2595,9 @@ function initPortalChatSystem() {
                 if (phoneInput && !phoneInput.value) phoneInput.value = data.customer_phone;
             }
 
+            if (data.customer_avatar_url) CUSTOMER_AVATAR_URL = data.customer_avatar_url;
+            if (data.support_avatar_url) SUPPORT_AVATAR_URL = data.support_avatar_url;
+
             if (data.support_status !== undefined) {
                 updateSupportOnlineStatusUI(data.support_is_online, data.support_name, data.support_status_text);
             }
@@ -2686,6 +2711,9 @@ function appendChatMessageBubble(msg) {
 
     if (isUser) {
         row.innerHTML = `
+            <div class="chat-msg-avatar" title="${escapeHtml(msg.sender_name || 'شما')}">
+                <img src="${CUSTOMER_AVATAR_URL}" class="rounded-circle border border-primary border-opacity-50 shadow-sm" style="width: 32px; height: 32px; object-fit: cover;" alt="شما" onerror="this.onerror=null; this.src='/avatar/User';">
+            </div>
             <div class="chat-msg-bubble user">
                 <div class="fw-bold small opacity-75 mb-1" style="font-size: 0.72rem;">${escapeHtml(msg.sender_name || 'شما')}</div>
                 <div style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(msg.message)}</div>
@@ -2708,6 +2736,11 @@ function appendChatMessageBubble(msg) {
                     <span>${timeStr}</span>
                 </div>
             </div>
+            <div class="chat-msg-avatar" title="هوش مصنوعی">
+                <div class="rounded-circle bg-purple bg-opacity-25 border border-purple border-opacity-50 shadow-sm d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; color: #c084fc;">
+                    <i class="fas fa-robot" style="font-size: 0.85rem;"></i>
+                </div>
+            </div>
         `;
     } else {
         row.innerHTML = `
@@ -2720,6 +2753,9 @@ function appendChatMessageBubble(msg) {
                 <div class="chat-msg-time justify-content-start text-secondary">
                     <span>${timeStr}</span>
                 </div>
+            </div>
+            <div class="chat-msg-avatar" title="${escapeHtml(msg.sender_name || 'پشتیبانی')}">
+                <img src="${SUPPORT_AVATAR_URL}" class="rounded-circle border border-info border-opacity-50 shadow-sm" style="width: 32px; height: 32px; object-fit: cover;" alt="پشتیبانی" onerror="this.onerror=null; this.src='/avatar/Support';">
             </div>
         `;
     }

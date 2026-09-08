@@ -1,53 +1,214 @@
 {% extends "base.html" %}
-{% block title %}پیام همگانی و برودکست هدفمند{% endblock %}
+{% block title %}پیام همگانی و اطلاعیه‌ها{% endblock %}
 
 {% block content %}
-<div class="page-header">
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="page-title"><i class="fas fa-bullhorn text-primary"></i> سامانه ارسال پیام همگانی هدفمند</h1>
-        <p class="text-muted mb-0">ارسال اطلاعیه، تخفیف‌ها یا پیام‌های مهم به دسته‌های خاص از کاربران ربات</p>
+        <h1 class="page-title d-flex align-items-center gap-2 mb-1">
+            <i class="fas fa-bullhorn text-primary"></i>
+            سامانه پیام همگانی و اطلاعیه‌های سیستم
+        </h1>
+        <p class="text-muted mb-0">ارسال اطلاعیه و پیام گروهی به کاربران ربات تلگرام، یا نمایش بنر اطلاعیه در بالای پنل نمایندگان</p>
     </div>
 </div>
 
 <div class="row justify-content-center">
-    <div class="col-lg-8">
-        <div class="card">
-            <div class="card-header bg-white py-3">
-                <h5 class="mb-0 fw-bold">تنظیم پیام ارسالی</h5>
+    <div class="col-lg-9">
+        <!-- تب‌های انتخاب نوع ارسال -->
+        <ul class="nav nav-pills nav-fill gap-2 mb-4 bg-light p-2 rounded-3 shadow-sm" id="broadcastTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active fw-bold py-2 d-flex align-items-center justify-content-center gap-2" 
+                        id="tab-telegram-btn" 
+                        data-bs-toggle="pill" 
+                        data-bs-target="#tab-telegram" 
+                        type="button" 
+                        role="tab">
+                    <i class="fab fa-telegram fs-5 text-info"></i>
+                    <span>ارسال پیام به کاربران تلگرام</span>
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link fw-bold py-2 d-flex align-items-center justify-content-center gap-2" 
+                        id="tab-reseller-banner-btn" 
+                        data-bs-toggle="pill" 
+                        data-bs-target="#tab-reseller-banner" 
+                        type="button" 
+                        role="tab">
+                    <i class="fas fa-window-maximize fs-5 text-warning"></i>
+                    <span>بنر اطلاعیه بالای پنل نمایندگان</span>
+                    {% if active_banners and active_banners|length > 0 %}
+                        <span class="badge bg-danger rounded-pill">{{ active_banners|length }}</span>
+                    {% endif %}
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="broadcastTabContent">
+            <!-- تب ۱: ارسال پیام همگانی تلگرام -->
+            <div class="tab-pane fade show active" id="tab-telegram" role="tabpanel">
+                <div class="card shadow-sm border-0">
+                    <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+                        <h5 class="mb-0 fw-bold d-flex align-items-center gap-2">
+                            <i class="fas fa-paper-plane text-primary"></i>
+                            تنظیم پیام ارسالی به تلگرام
+                        </h5>
+                        <span class="badge bg-primary-subtle text-primary border border-primary border-opacity-25 px-2 py-1">ربات تلگرام</span>
+                    </div>
+                    <div class="card-body p-4">
+                        <form method="POST">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">انتخاب گروه هدف:</label>
+                                <select name="target_group" class="form-select form-select-lg" required>
+                                    <option value="all">👥 همه کاربران عضو ربات</option>
+                                    <option value="active">✅ کاربران دارای اشتراک فعال</option>
+                                    <option value="expiring_soon">⏰ کاربرانی که اشتراکشان تا ۳ روز آینده منقضی می‌شود</option>
+                                    <option value="expired">❌ کاربرانی که اشتراکشان منقضی شده است</option>
+                                    <option value="test_only">🎁 کاربرانی که فقط تست رایگان گرفته‌اند و خرید نکرده‌اند</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">متن پیام (پشتیبانی از تگ‌های مجاز HTML تلگرام):</label>
+                                <textarea name="message" class="form-control" rows="6" placeholder="متن پیام خود را بنویسید..." required></textarea>
+                                <div class="form-text small text-muted">تگ‌های مجاز تلگرام: <code>&lt;b&gt;ضخیم&lt;/b&gt;</code>، <code>&lt;i&gt;کج&lt;/i&gt;</code>، <code>&lt;code&gt;کد&lt;/code&gt;</code></div>
+                            </div>
+
+                            <div class="row g-3 mb-4">
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold">متن دکمه شیشه‌ای (اختیاری):</label>
+                                    <input type="text" name="btn_text" class="form-control" placeholder="مثال: 🛍 تمدید با تخفیف ویژه">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold">لینک دکمه شیشه‌ای (اختیاری):</label>
+                                    <input type="url" name="btn_url" class="form-control" placeholder="مثال: https://t.me/yourbot?start=renew">
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary w-100 py-3 fw-bold fs-5 shadow-sm" onclick="return confirm('آیا از شروع ارسال همگانی تلگرام به گروه انتخابی مطمئن هستید؟')">
+                                <i class="fas fa-paper-plane me-2"></i> شروع ارسال پیام به گروه هدف تلگرام
+                            </button>
+                        </form>
+                    </div>
+                </div>
             </div>
-            <div class="card-body p-4">
-                <form method="POST">
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">انتخاب گروه هدف:</label>
-                        <select name="target_group" class="form-select" required>
-                            <option value="all">👥 همه کاربران عضو ربات</option>
-                            <option value="active">✅ کاربران دارای اشتراک فعال</option>
-                            <option value="expiring_soon">⏰ کاربرانی که اشتراکشان تا ۳ روز آینده منقضی می‌شود</option>
-                            <option value="expired">❌ کاربرانی که اشتراکشان منقضی شده است</option>
-                            <option value="test_only">🎁 کاربرانی که فقط تست رایگان گرفته‌اند و خرید نکرده‌اند</option>
-                        </select>
-                    </div>
 
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">متن پیام (پشتیبانی از HTML):</label>
-                        <textarea name="message" class="form-control" rows="6" placeholder="متن پیام خود را بنویسید..." required></textarea>
+            <!-- تب ۲: بنر اطلاعیه بالای پنل نمایندگان -->
+            <div class="tab-pane fade" id="tab-reseller-banner" role="tabpanel">
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+                        <h5 class="mb-0 fw-bold d-flex align-items-center gap-2">
+                            <i class="fas fa-bullhorn text-warning"></i>
+                            ایجاد بنر اطلاعیه در پنل نمایندگان
+                        </h5>
+                        <span class="badge bg-warning-subtle text-warning border border-warning border-opacity-25 px-2 py-1">موقتی و بدون انباشت در دیتابیس</span>
                     </div>
+                    <div class="card-body p-4">
+                        <p class="text-muted small mb-4">
+                            این اطلاعیه به صورت بنر در بالای تمامی صفحات پنل نماینده(ها) نمایش داده می‌شود و تا زمانی که نماینده دکمه بستن (✕) را نزده باشد، با رفرش یا جابجایی بین صفحات پاک نخواهد شد.
+                        </p>
+                        <form method="POST">
+                            <input type="hidden" name="action_type" value="reseller_banner">
 
-                    <div class="row g-2 mb-4">
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">متن دکمه شیشه‌ای (اختیاری):</label>
-                            <input type="text" name="btn_text" class="form-control" placeholder="مثال: 🛍 تمدید با تخفیف ویژه">
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">لینک دکمه شیشه‌ای (اختیاری):</label>
-                            <input type="url" name="btn_url" class="form-control" placeholder="مثال: https://t.me/yourbot?start=renew">
-                        </div>
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold">انتخاب نماینده هدف:</label>
+                                    <select name="target_reseller" class="form-select" required>
+                                        <option value="all">👥 تمامی نمایندگان (همگانی)</option>
+                                        {% if resellers %}
+                                            <optgroup label="نمایندگان خاص">
+                                            {% for r in resellers %}
+                                                <option value="{{ r.id }}">{{ r.name }} (@{{ r.username }}) - شناسه #{{ r.id }}</option>
+                                            {% endfor %}
+                                            </optgroup>
+                                        {% endif %}
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold">رنگ و سطح بنر:</label>
+                                    <select name="banner_level" class="form-select" required>
+                                        <option value="info">🔵 اطلاع‌رسانی و پیام عمومی (آبی)</option>
+                                        <option value="warning" selected>🟡 اطلاعیه مهم و هشدار (زرد)</option>
+                                        <option value="danger">🔴 اخطار فوری و قطعی سرور (قرمز)</option>
+                                        <option value="success">🟢 مژده و اعلامیه ویژه (سبز)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">عنوان بنر (اختیاری):</label>
+                                <input type="text" name="banner_title" class="form-control" placeholder="مثال: اطلاعیه تعمیرات فنی سرور آلمان، آفر شارژ حساب و...">
+                            </div>
+
+                            <div class="mb-4">
+                                <label class="form-label fw-bold">متن پیام اطلاعیه:</label>
+                                <textarea name="banner_message" class="form-control" rows="4" placeholder="متن کامل اطلاعیه که می‌خواهید نمایندگان در بالای پنل مشاهده کنند..." required></textarea>
+                            </div>
+
+                            <button type="submit" class="btn btn-warning w-100 py-3 fw-bold fs-5 shadow-sm text-dark">
+                                <i class="fas fa-bullhorn me-2"></i> انتشار بنر در پنل نمایندگان
+                            </button>
+                        </form>
                     </div>
+                </div>
 
-                    <button type="submit" class="btn btn-primary w-100 py-3 fw-bold fs-5" onclick="return confirm('آیا از شروع ارسال همگانی مطمئن هستید؟')">
-                        <i class="fas fa-paper-plane me-2"></i> شروع ارسال پیام به گروه هدف
-                    </button>
-                </form>
+                <!-- لیست بنرهای فعال جاری در حافظه سیستم -->
+                <div class="card shadow-sm border-0">
+                    <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+                        <h6 class="mb-0 fw-bold d-flex align-items-center gap-2">
+                            <i class="fas fa-list-check text-secondary"></i>
+                            بنرهای فعال جاری در حافظه
+                        </h6>
+                        <span class="badge bg-secondary rounded-pill">{{ active_banners|length if active_banners else 0 }}</span>
+                    </div>
+                    <div class="card-body p-0">
+                        {% if active_banners and active_banners|length > 0 %}
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>عنوان و متن بنر</th>
+                                            <th>مخاطب</th>
+                                            <th>سطح</th>
+                                            <th>زمان ایجاد</th>
+                                            <th class="text-center">عملیات</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for bnr in active_banners %}
+                                            <tr>
+                                                <td>
+                                                    {% if bnr.title %}<strong class="d-block text-dark mb-1">{{ bnr.title }}</strong>{% endif %}
+                                                    <div class="small text-muted" style="white-space: pre-line; max-width: 320px;">{{ bnr.message }}</div>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-primary-subtle text-primary border border-primary border-opacity-25">{{ bnr.target_name }}</span>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-{{ bnr.level or 'info' }}">{{ bnr.level }}</span>
+                                                </td>
+                                                <td class="small text-muted">{{ bnr.created_at }}</td>
+                                                <td class="text-center">
+                                                    <form method="POST" class="d-inline" onsubmit="return confirm('آیا از حذف این بنر اطلاعیه مطمئن هستید؟')">
+                                                        <input type="hidden" name="action_type" value="delete_banner">
+                                                        <input type="hidden" name="banner_id" value="{{ bnr.id }}">
+                                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="حذف بنر">
+                                                            <i class="fas fa-trash-alt me-1"></i> حذف
+                                                        </button>
+                                                    </form>
+                                                </td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <div class="text-center py-4 text-muted">
+                                <i class="fas fa-info-circle fs-3 text-secondary mb-2 d-block opacity-50"></i>
+                                هیچ بنر اطلاعیه‌ای در حال حاضر فعال نیست.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
         </div>
     </div>
