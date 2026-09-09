@@ -197,8 +197,10 @@
                     <tr>
                         <th class="ps-3">شناسه پلن</th>
                         <th>نام در ربات نماینده</th>
-                        <th>قیمت فروش نماینده</th>
+                        <th>قیمت پایه مدیر</th>
+                        <th>درصد تخفیف</th>
                         <th>قیمت عمده تمام‌شده</th>
+                        <th>قیمت فروش نماینده</th>
                         <th>سقف حجم (GB)</th>
                         <th>مدت (روز)</th>
                         <th>وضعیت در ربات نماینده</th>
@@ -207,7 +209,7 @@
                 </thead>
                 <tbody>
                     {% for p in selected_reseller_plans %}
-                    {% set has_override = (p.custom_name or p.custom_price or (p.custom_data_limit is not none) or p.custom_duration) %}
+                    {% set has_override = (p.custom_name or p.custom_price or (p.custom_data_limit is not none) or p.custom_duration or p.has_custom_discount) %}
                     <tr class="{% if p.is_dedicated %}table-primary bg-opacity-10 border-start border-primary border-4{% elif has_override %}table-warning bg-opacity-25 border-start border-warning border-3{% endif %}">
                         <td class="ps-3"><code class="font-monospace text-primary">{{ p.plan_id }}</code></td>
                         <td>
@@ -225,10 +227,27 @@
                             {% endif %}
                         </td>
                         <td>
-                            <span class="badge bg-primary-subtle text-primary fs-6 font-monospace">{{ "{:,}".format(p.display_price) }} تومان</span>
+                            <span class="text-muted font-monospace">{{ "{:,}".format(p.master_price) }} ت</span>
+                        </td>
+                        <td>
+                            {% if p.has_custom_discount %}
+                                <span class="badge bg-warning-subtle text-dark border border-warning font-monospace" title="درصد تخفیف اختصاصی این پلن">
+                                    <i class="fas fa-tag me-1"></i>{{ p.discount_percent }}٪ (اختصاصی)
+                                </span>
+                            {% else %}
+                                <span class="badge bg-light text-muted border font-monospace" title="بر اساس تخفیف پیش‌فرض کلی نماینده">
+                                    {{ p.discount_percent }}٪ (پیش‌فرض)
+                                </span>
+                            {% endif %}
                         </td>
                         <td>
                             <span class="badge bg-success-subtle text-success fs-6 font-monospace">{{ "{:,}".format(p.wholesale_price) }} تومان</span>
+                            {% if p.custom_wholesale_price %}
+                                <span class="badge bg-info-subtle text-info small d-block mt-1 font-monospace">رندسازی دستی</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-primary-subtle text-primary fs-6 font-monospace">{{ "{:,}".format(p.display_price) }} تومان</span>
                         </td>
                         <td>
                             <span class="badge bg-info-subtle text-info fs-6 font-monospace">{{ p.display_data_limit }} گیگ</span>
@@ -388,9 +407,61 @@
                             </select>
                         </div>
                     </div>
-                    <div class="alert alert-light border small mb-0">
-                        <i class="fas fa-calculator text-primary me-1"></i>
-                        قیمت عمده تمام‌شده برای نماینده با احتساب تخفیف {{ selected_reseller['discount_percent'] }}٪ محاسبه خواهد شد.
+                    <div class="p-3 rounded-3 border bg-light mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-1">
+                            <span class="fw-bold text-primary small">
+                                <i class="fas fa-percent me-1"></i> تنظیم درصد تخفیف و قیمت عمده (با رندسازی دستی)
+                            </span>
+                            <span class="badge bg-secondary-subtle text-secondary small font-monospace">
+                                قیمت پایه مدیر: {{ "{:,}".format(p.master_price) }} ت
+                            </span>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="form-label small fw-semibold">درصد تخفیف اختصاصی پلن (٪):</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="number" 
+                                           name="custom_discount_percent" 
+                                           class="form-control font-monospace admin-plan-discount-input" 
+                                           id="adm_disc_{{ p.plan_id }}"
+                                           data-plan-id="{{ p.plan_id }}"
+                                           data-master-price="{{ p.master_price }}"
+                                           data-default-discount="{{ selected_reseller['discount_percent'] }}"
+                                           value="{{ p.custom_discount_percent if p.custom_discount_percent is not none else '' }}" 
+                                           placeholder="{{ selected_reseller['discount_percent'] }}" 
+                                           step="0.1" min="0" max="100">
+                                    <span class="input-group-text">٪</span>
+                                </div>
+                                <small class="text-muted" style="font-size: 0.72rem;">پیش‌فرض نماینده: {{ selected_reseller['discount_percent'] }}٪ (خالی = پیش‌فرض)</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-semibold">قیمت خرید عمده (تومان) - رندسازی دستی:</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="number" 
+                                           name="custom_wholesale_price" 
+                                           class="form-control font-monospace admin-plan-wholesale-input" 
+                                           id="adm_wh_{{ p.plan_id }}"
+                                           data-plan-id="{{ p.plan_id }}"
+                                           data-master-price="{{ p.master_price }}"
+                                           data-default-discount="{{ selected_reseller['discount_percent'] }}"
+                                           value="{{ p.custom_wholesale_price or '' }}" 
+                                           placeholder="{{ p.wholesale_price }}" 
+                                           step="1000" min="0">
+                                    <span class="input-group-text">ت</span>
+                                </div>
+                                <small class="text-muted" style="font-size: 0.72rem;">تغییر این فیلد تخفیف را خودکار محاسبه می‌کند</small>
+                            </div>
+                        </div>
+                        <div class="small mt-2 d-flex align-items-center justify-content-between flex-wrap gap-1" id="adm_calc_hint_{{ p.plan_id }}">
+                            <span class="badge {% if p.has_custom_discount %}bg-warning-subtle text-dark border border-warning{% else %}bg-white text-dark border{% endif %} font-monospace">
+                                قیمت خرید عمده فعلی: {{ "{:,}".format(p.wholesale_price) }} تومان ({{ p.discount_percent }}٪ تخفیف)
+                            </span>
+                            {% if p.has_custom_discount %}
+                            <button type="button" class="btn btn-link btn-sm text-danger p-0 text-decoration-none small" onclick="resetPlanDiscountToDefault('{{ p.plan_id }}', {{ p.master_price }}, {{ selected_reseller['discount_percent'] }})">
+                                <i class="fas fa-undo me-1"></i>بازنشانی به تخفیف پیش‌فرض نماینده
+                            </button>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -745,5 +816,71 @@ function toggleAddResellerSelect() {
         box.style.display = radio.checked ? 'block' : 'none';
     }
 }
+
+function resetPlanDiscountToDefault(planId, masterPrice, defaultDiscount) {
+    const discInput = document.getElementById('adm_disc_' + planId);
+    const whInput = document.getElementById('adm_wh_' + planId);
+    const hint = document.getElementById('adm_calc_hint_' + planId);
+    if (discInput) discInput.value = '';
+    if (whInput) whInput.value = '';
+    const defWholesale = Math.round(masterPrice * (100 - defaultDiscount) / 100);
+    if (hint) {
+        hint.innerHTML = `<span class="badge bg-white text-dark border font-monospace">قیمت خرید عمده پیش‌فرض: ${defWholesale.toLocaleString()} تومان (${defaultDiscount}٪ تخفیف)</span>`;
+    }
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+    document.querySelectorAll(".admin-plan-discount-input").forEach(function(discInput) {
+        const planId = discInput.dataset.planId;
+        const masterPrice = parseFloat(discInput.dataset.masterPrice) || 0;
+        const defaultDiscount = parseFloat(discInput.dataset.defaultDiscount) || 20;
+        const whInput = document.getElementById("adm_wh_" + planId);
+        const hint = document.getElementById("adm_calc_hint_" + planId);
+
+        discInput.addEventListener("input", function() {
+            const rawVal = discInput.value.trim();
+            if (rawVal === "") {
+                const defWh = Math.round(masterPrice * (100 - defaultDiscount) / 100);
+                if (whInput) whInput.value = "";
+                if (hint) {
+                    hint.innerHTML = `<span class="badge bg-white text-dark border font-monospace">قیمت عمده پیش‌فرض: ${defWh.toLocaleString()} ت (${defaultDiscount}٪ تخفیف)</span>`;
+                }
+                return;
+            }
+            let disc = parseFloat(rawVal);
+            if (isNaN(disc)) disc = defaultDiscount;
+            if (disc < 0) disc = 0;
+            if (disc > 100) disc = 100;
+            const newWh = Math.round(masterPrice * (100 - disc) / 100);
+            if (whInput) whInput.value = newWh;
+            if (hint) {
+                hint.innerHTML = `<span class="badge bg-warning-subtle text-dark border border-warning font-monospace">قیمت عمده اختصاصی: ${newWh.toLocaleString()} ت (${disc}٪ تخفیف)</span>`;
+            }
+        });
+
+        if (whInput) {
+            whInput.addEventListener("input", function() {
+                const rawVal = whInput.value.trim();
+                if (rawVal === "") {
+                    if (discInput) discInput.value = "";
+                    const defWh = Math.round(masterPrice * (100 - defaultDiscount) / 100);
+                    if (hint) {
+                        hint.innerHTML = `<span class="badge bg-white text-dark border font-monospace">قیمت عمده پیش‌فرض: ${defWh.toLocaleString()} ت (${defaultDiscount}٪ تخفیف)</span>`;
+                    }
+                    return;
+                }
+                let wh = parseInt(rawVal);
+                if (isNaN(wh)) wh = 0;
+                if (wh < 0) wh = 0;
+                let calculatedDisc = masterPrice > 0 ? ((masterPrice - wh) / masterPrice) * 100 : 0;
+                calculatedDisc = Math.round(calculatedDisc * 10) / 10;
+                if (discInput) discInput.value = calculatedDisc;
+                if (hint) {
+                    hint.innerHTML = `<span class="badge bg-info-subtle text-info border border-info font-monospace">رندسازی دستی: ${wh.toLocaleString()} ت (معادل ${calculatedDisc}٪ تخفیف)</span>`;
+                }
+            });
+        }
+    });
+});
 </script>
 {% endblock %}
