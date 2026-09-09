@@ -1105,7 +1105,7 @@
                                 </div>
                                 <div class="col-md-6" id="adminRenewDebtAmountBox{{ sub['id'] }}" style="{% if sub.get('payment_status') != 'unpaid' and not sub.get('debt_amount') %}display: none;{% endif %}">
                                     <label class="form-label fw-bold text-danger">مبلغ بدهی مشتری در این تمدید (تومان):</label>
-                                    <input type="number" step="1000" name="debt_amount" id="adminRenewDebtAmountInput{{ sub['id'] }}" class="form-control font-monospace border-danger" placeholder="مبلغ بدهی..." value="{{ sub.get('debt_amount') or '' }}" data-existing-debt="{{ sub.get('debt_amount', 0) }}" oninput="updateAdminRenewDebtBreakdown('{{ sub['id'] }}')">
+                                    <input type="number" step="1000" name="debt_amount" id="adminRenewDebtAmountInput{{ sub['id'] }}" class="form-control font-monospace border-danger" placeholder="مبلغ بدهی..." value="" data-existing-debt="{{ sub.get('debt_amount', 0) }}" oninput="updateAdminRenewDebtBreakdown('{{ sub['id'] }}')">
                                     <small class="text-muted" style="font-size: 11px;">مبلغ بر اساس پلن انتخابی وارد می‌شود و قابل تغییر دستی است.</small>
                                     {% if sub.get('debt_amount', 0) > 0 %}
                                     <div class="alert alert-warning py-1 px-2 mt-1 mb-0 small" id="adminRenewCumulativeDebtHint{{ sub['id'] }}">
@@ -1116,7 +1116,7 @@
                                 </div>
                                 <div class="col-12">
                                     <label class="form-label small text-muted"><i class="fas fa-comment-dots me-1"></i>توضیحات و یادداشت (اختیاری):</label>
-                                    <input type="text" name="renewal_notes" class="form-control form-control-sm" placeholder="توضیحات تکمیلی، شرایط یا موعد تسویه حساب مشتری..." value="{{ sub.get('debt_notes') or '' }}">
+                                    <input type="text" name="renewal_notes" class="form-control form-control-sm" placeholder="توضیحات تکمیلی، شرایط یا موعد تسویه حساب مشتری..." value="">
                                 </div>
                             </div>
                         </div>

@@ -115,12 +115,14 @@
                                 <th class="sortable-th" data-column="2">مبلغ</th>
                                 <th class="sortable-th" data-column="3">پلن / اکانت هیدیفای</th>
                                 <th class="sortable-th" data-column="4">توضیحات</th>
-                                <th class="sortable-th" data-column="5">تاریخ و زمان</th>
+                                <th class="sortable-th" data-column="5">وضعیت و نشان مدیریت</th>
+                                <th class="sortable-th" data-column="6">تاریخ و زمان</th>
+                                <th class="text-end pe-3" style="min-width: 140px;">عملیات</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for tx in history.get('wallet_transactions', []) %}
-                            <tr>
+                            <tr class="{% if tx.get('status') == 'revoked' or tx.get('is_revoked') %}table-light opacity-75{% endif %}">
                                 <td class="ps-3"><code class="font-monospace">#{{ tx['id'] }}</code></td>
                                 <td>
                                     {% if tx['type'] == 'deposit' %}
@@ -134,9 +136,13 @@
                                     {% endif %}
                                 </td>
                                 <td>
-                                    <strong class="{{ 'text-success' if (tx['type'] in ['deposit', 'refund']) else 'text-danger' }} font-monospace">
-                                        {{ '+' if (tx['type'] in ['deposit', 'refund']) else '-' }}{{ "{:,}".format(tx['amount'] or 0) }} تومان
-                                    </strong>
+                                    {% if tx.get('status') == 'revoked' or tx.get('is_revoked') %}
+                                        <del class="text-muted font-monospace">{{ "{:,}".format(tx['amount'] or 0) }} تومان</del>
+                                    {% else %}
+                                        <strong class="{{ 'text-success' if (tx['type'] in ['deposit', 'refund']) else 'text-danger' }} font-monospace">
+                                            {{ '+' if (tx['type'] in ['deposit', 'refund']) else '-' }}{{ "{:,}".format(tx['amount'] or 0) }} تومان
+                                        </strong>
+                                    {% endif %}
                                 </td>
                                 <td>
                                     {{ tx['plan_name'] or '-' }}
@@ -145,12 +151,52 @@
                                     {% endif %}
                                 </td>
                                 <td data-value="{{ tx['description'] or '' }}"><small class="text-muted">{{ tx['description'] or '-' }}</small></td>
+                                <td>
+                                    {% if tx.get('status') == 'revoked' or tx.get('is_revoked') %}
+                                        <span class="badge bg-secondary border border-secondary shadow-sm" title="{{ tx.get('revoke_reason') or 'باطل شده توسط مدیریت' }}">
+                                            <i class="fas fa-ban me-1"></i> ابطال‌شده توسط مدیریت
+                                        </span>
+                                        {% if tx.get('revoked_by') %}
+                                            <div class="text-danger small mt-1" style="font-size: 11px;"><i class="fas fa-user-slash me-1"></i>{{ tx['revoked_by'] }}</div>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="badge bg-success-subtle text-success border border-success"><i class="fas fa-check-circle me-1"></i> فعال</span>
+                                    {% endif %}
+
+                                    {% if tx.get('is_edited') or (tx.get('audit_logs') and tx['audit_logs']|selectattr('action', 'equalto', 'edit')|list|length > 0) %}
+                                        <div class="mt-1">
+                                            <span class="badge bg-info-subtle text-info border border-info px-1 py-0 shadow-sm" style="font-size: 10px;" title="ویرایش شده توسط {{ tx.get('edited_by') or 'مدیریت' }}">
+                                                <i class="fas fa-pen-to-square me-1"></i> ویرایش‌شده توسط مدیریت
+                                            </span>
+                                            {% if tx.get('edited_by') %}
+                                                <div class="text-muted small" style="font-size: 10px;"><i class="fas fa-user-pen me-1"></i>{{ tx['edited_by'] }}</div>
+                                            {% endif %}
+                                        </div>
+                                    {% endif %}
+                                </td>
                                 <td data-value="{{ tx['created_at'] or '' }}"><small class="text-muted">{{ tx['created_at'][:16].replace('T', ' ') if tx['created_at'] else '-' }}</small></td>
+                                <td class="text-end pe-3">
+                                    <div class="btn-group btn-group-sm">
+                                        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#walletTxDetailModal{{ tx['id'] }}" title="مشاهده جزئیات">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                        {% if session.get('admin_role') == 'super_admin' %}
+                                            <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#walletTxEditModal{{ tx['id'] }}" title="ویرایش تراکنش">
+                                                <i class="fas fa-pen"></i>
+                                            </button>
+                                            {% if not (tx.get('status') == 'revoked' or tx.get('is_revoked')) %}
+                                                <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#walletTxRevokeModal{{ tx['id'] }}" title="ابطال تراکنش">
+                                                    <i class="fas fa-ban"></i>
+                                                </button>
+                                            {% endif %}
+                                        {% endif %}
+                                    </div>
+                                </td>
                             </tr>
                             {% endfor %}
                             {% if not history.get('wallet_transactions') %}
                             <tr>
-                                <td colspan="6" class="text-center py-4 text-muted">تراکنشی در کیف پول این نماینده ثبت نشده است.</td>
+                                <td colspan="8" class="text-center py-4 text-muted">تراکنشی در کیف پول این نماینده ثبت نشده است.</td>
                             </tr>
                             {% endif %}
                         </tbody>
@@ -169,13 +215,14 @@
                                 <th class="sortable-th" data-column="2">مبلغ</th>
                                 <th class="sortable-th" data-column="3">روش پرداخت</th>
                                 <th class="sortable-th" data-column="4">کد پیگیری</th>
-                                <th class="sortable-th" data-column="5">وضعیت</th>
+                                <th class="sortable-th" data-column="5">وضعیت و نشان مدیریت</th>
                                 <th class="sortable-th" data-column="6">تاریخ ثبت</th>
+                                <th class="text-end pe-3" style="min-width: 140px;">عملیات</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for r in history.get('receipt_transactions', []) %}
-                            <tr>
+                            <tr class="{% if r['status'] == 'revoked' %}table-light opacity-75{% endif %}">
                                 <td class="ps-3"><code class="font-monospace">{{ r['order_id'] }}</code></td>
                                 <td>
                                     {% if r.get('gateway') == 'bundle_reseller' or (r.get('order_id') and r['order_id'].startswith('R_BUNDLE')) %}
@@ -186,7 +233,11 @@
                                     <div class="fw-bold">{{ r['plan_name'] or '-' }}</div>
                                 </td>
                                 <td>
-                                    <strong class="text-primary font-monospace">{{ "{:,}".format(r['amount'] or 0) }} تومان</strong>
+                                    {% if r['status'] == 'revoked' %}
+                                        <del class="text-muted font-monospace">{{ "{:,}".format(r['amount'] or 0) }} تومان</del>
+                                    {% else %}
+                                        <strong class="text-primary font-monospace">{{ "{:,}".format(r['amount'] or 0) }} تومان</strong>
+                                    {% endif %}
                                 </td>
                                 <td data-value="{{ r['gateway'] or '' }}">
                                     <span class="badge bg-light text-dark border">{{ r['gateway']|gateway_name }}</span>
@@ -201,18 +252,59 @@
                                 <td data-value="{{ r['status'] }}">
                                     {% if r['status'] == 'completed' or r['status'] == 'approved' %}
                                         <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i> تایید شده</span>
+                                        {% if r.get('processed_by') %}
+                                            <div class="text-muted small mt-1" style="font-size: 11px;"><i class="fas fa-user-check text-success me-1"></i>{{ r['processed_by'] }}</div>
+                                        {% endif %}
                                     {% elif r['status'] == 'pending' %}
                                         <span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i> در انتظار</span>
+                                    {% elif r['status'] == 'revoked' %}
+                                        <span class="badge bg-secondary border border-secondary shadow-sm" title="{{ r.get('revoke_reason') or 'باطل شده توسط مدیریت' }}">
+                                            <i class="fas fa-ban me-1"></i> ابطال‌شده توسط مدیریت
+                                        </span>
+                                        {% if r.get('revoked_by') %}
+                                            <div class="text-danger small mt-1" style="font-size: 11px;"><i class="fas fa-user-slash me-1"></i>{{ r['revoked_by'] }}</div>
+                                        {% endif %}
                                     {% else %}
                                         <span class="badge bg-danger"><i class="fas fa-times-circle me-1"></i> رد شده</span>
+                                        {% if r.get('processed_by') %}
+                                            <div class="text-muted small mt-1" style="font-size: 11px;"><i class="fas fa-user-xmark me-1"></i>{{ r['processed_by'] }}</div>
+                                        {% endif %}
+                                    {% endif %}
+
+                                    {% if r.get('is_edited') or (r.get('audit_logs') and r['audit_logs']|selectattr('action', 'equalto', 'edit')|list|length > 0) %}
+                                        <div class="mt-1">
+                                            <span class="badge bg-info-subtle text-info border border-info px-1 py-0 shadow-sm" style="font-size: 10px;" title="ویرایش شده توسط {{ r.get('edited_by') or 'مدیریت' }}">
+                                                <i class="fas fa-pen-to-square me-1"></i> ویرایش‌شده توسط مدیریت
+                                            </span>
+                                            {% if r.get('edited_by') %}
+                                                <div class="text-muted small" style="font-size: 10px;"><i class="fas fa-user-pen me-1"></i>{{ r['edited_by'] }}</div>
+                                            {% endif %}
+                                        </div>
                                     {% endif %}
                                 </td>
                                 <td data-value="{{ r['created_at'] or '' }}"><small class="text-muted">{{ r['created_at'][:16].replace('T', ' ') if r['created_at'] else '-' }}</small></td>
+                                <td class="text-end pe-3">
+                                    <div class="btn-group btn-group-sm">
+                                        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#receiptDetailModal{{ r['id'] }}" title="مشاهده جزئیات کامل">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                        {% if session.get('admin_role') == 'super_admin' %}
+                                            <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#receiptEditModal{{ r['id'] }}" title="ویرایش فیش">
+                                                <i class="fas fa-pen"></i>
+                                            </button>
+                                            {% if r['status'] in ['approved', 'completed'] %}
+                                                <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#receiptRevokeModal{{ r['id'] }}" title="ابطال فیش">
+                                                    <i class="fas fa-ban"></i>
+                                                </button>
+                                            {% endif %}
+                                        {% endif %}
+                                    </div>
+                                </td>
                             </tr>
                             {% endfor %}
                             {% if not history.get('receipt_transactions') %}
                             <tr>
-                                <td colspan="7" class="text-center py-4 text-muted">فیش یا سفارشی برای این نماینده ثبت نشده است.</td>
+                                <td colspan="8" class="text-center py-4 text-muted">فیش یا سفارشی برای این نماینده ثبت نشده است.</td>
                             </tr>
                             {% endif %}
                         </tbody>
@@ -222,4 +314,395 @@
         </div>
     </div>
 </div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- مودال‌های تراکنش‌های کیف پول نماینده -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+{% for tx in history.get('wallet_transactions', []) %}
+<!-- Modal جزئیات تراکنش کیف پول با جدول مقایسه قبل و بعد -->
+<div class="modal fade" id="walletTxDetailModal{{ tx['id'] }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white py-3">
+                <h5 class="modal-title fw-bold">
+                    <i class="fas fa-wallet me-2"></i> جزئیات تراکنش کیف پول #{{ tx['id'] }}
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                {% if tx.get('status') == 'revoked' or tx.get('is_revoked') %}
+                <div class="alert alert-secondary border-start border-danger border-4 d-flex align-items-center gap-3 mb-4 shadow-sm">
+                    <div class="rounded-circle bg-danger bg-opacity-10 text-danger p-3 d-flex align-items-center justify-content-center flex-shrink-0" style="width: 48px; height: 48px;">
+                        <i class="fas fa-ban fs-4"></i>
+                    </div>
+                    <div>
+                        <h6 class="fw-bold text-danger mb-1"><i class="fas fa-circle-exclamation me-1"></i> این تراکنش کیف پول توسط مدیریت باطل شده است</h6>
+                        <div class="small text-muted">
+                            باطل‌کننده: <strong class="text-dark">{{ tx.get('revoked_by') or 'مدیر ارشد' }}</strong>
+                            {% if tx.get('revoked_at') %} | زمان ابطال: <span class="font-monospace text-dark">{{ tx.get('revoked_at')|shamsi_date("%Y/%m/%d - %H:%M") }}</span>{% endif %}
+                            {% if tx.get('revoke_reason') %} | علت ابطال: <span class="text-danger fw-semibold">{{ tx.get('revoke_reason') }}</span>{% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if tx.get('is_edited') or (tx.get('audit_logs') and tx['audit_logs']|selectattr('action', 'equalto', 'edit')|list|length > 0) %}
+                <div class="card border-primary border-opacity-25 mb-4 shadow-sm">
+                    <div class="card-header bg-primary bg-opacity-10 py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <span class="fw-bold text-primary small">
+                            <i class="fas fa-pen-to-square me-1"></i> علامت ویرایش توسط مدیریت — جزئیات تغییرات (قبل و بعد)
+                        </span>
+                        {% if tx.get('edited_by') %}
+                            <span class="badge bg-primary">ویرایش‌شده توسط: {{ tx.get('edited_by') }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered align-middle mb-0 text-center">
+                                <thead class="table-light small">
+                                    <tr>
+                                        <th>مشخصه / فیلد</th>
+                                        <th class="text-danger bg-danger bg-opacity-10">مقدار قبل از ویرایش (قبل)</th>
+                                        <th class="text-success bg-success bg-opacity-10">مقدار پس از ویرایش (بعد)</th>
+                                        <th>علت ویرایش</th>
+                                        <th>زمان ویرایش</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="small font-monospace">
+                                    {% for log in tx.get('audit_logs', []) if log['action'] == 'edit' %}
+                                    <tr>
+                                        <td class="fw-bold text-dark font-sans">{{ log['field_name']|field_display_name }}</td>
+                                        <td class="text-danger bg-danger bg-opacity-10">
+                                            <del>{{ log['old_value']|format_audit_value(log['field_name']) }}</del>
+                                        </td>
+                                        <td class="text-success bg-success bg-opacity-10 fw-bold">
+                                            {{ log['new_value']|format_audit_value(log['field_name']) }}
+                                        </td>
+                                        <td class="text-muted font-sans">{{ log['reason'] or '-' }}</td>
+                                        <td class="text-muted">{{ log['created_at'][:16].replace('T', ' ') if log['created_at'] else '-' }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr>
+                                        <td colspan="5" class="text-muted py-2">ویرایش مشخصات توسط مدیریت ثبت شده است.</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="list-group list-group-flush border rounded">
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span class="text-muted">شناسه تراکنش:</span>
+                        <code class="fw-bold fs-6">#{{ tx['id'] }}</code>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span class="text-muted">نوع تراکنش:</span>
+                        <span>
+                            {% if tx['type'] == 'deposit' %}
+                                <span class="badge bg-success">شارژ کیف پول</span>
+                            {% elif tx['type'] == 'refund' %}
+                                <span class="badge bg-info text-dark">استرداد وجه</span>
+                            {% elif tx['type'] == 'renewal' %}
+                                <span class="badge bg-warning text-dark">تمدید اشتراک</span>
+                            {% else %}
+                                <span class="badge bg-danger">خرید اشتراک</span>
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span class="text-muted">مبلغ:</span>
+                        <strong class="fs-6 font-monospace">{{ "{:,}".format(tx['amount'] or 0) }} تومان</strong>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span class="text-muted">پلن / اشتراک:</span>
+                        <span>{{ tx['plan_name'] or '-' }} {% if tx['account_name'] and tx['account_name'] != '-' %}<code>({{ tx['account_name'] }})</code>{% endif %}</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span class="text-muted">شرح / توضیحات:</span>
+                        <span>{{ tx['description'] or '-' }}</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span class="text-muted">تاریخ و زمان ثبت:</span>
+                        <span class="font-monospace text-muted">{{ tx['created_at'][:19].replace('T', ' ') if tx['created_at'] else '-' }}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">بستن</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if session.get('admin_role') == 'super_admin' %}
+<!-- Modal ویرایش تراکنش کیف پول -->
+<div class="modal fade" id="walletTxEditModal{{ tx['id'] }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content text-start border-0 shadow-lg">
+            <form method="POST" action="{{ url_for('admin_reseller_wallet_tx_edit', rtx_id=tx['id']) }}">
+                <div class="modal-header bg-primary bg-opacity-10">
+                    <h5 class="modal-title fw-bold text-primary">
+                        <i class="fas fa-pen-to-square me-2"></i> ویرایش تراکنش کیف پول #{{ tx['id'] }}
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-info small mb-3">
+                        <strong>توجه سیستم مالی:</strong> تغییر مبلغ این تراکنش کیف پول، به صورت خودکار مابه‌التفاوت آن را روی موجودی فعلی کیف پول نماینده <strong>({{ reseller['name'] }})</strong> محاسبه و تراز می‌کند.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">مبلغ تراکنش (تومان):</label>
+                        <input type="number" name="amount" class="form-control font-monospace" value="{{ tx['amount'] or 0 }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">عنوان پلن / بسته:</label>
+                        <input type="text" name="plan_name" class="form-control" value="{{ tx['plan_name'] or '' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">شرح / توضیحات:</label>
+                        <textarea name="description" class="form-control" rows="2">{{ tx['description'] or '' }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-danger">علت ویرایش (ثبت در لاگ حسابرسی قبل و بعد):</label>
+                        <input type="text" name="reason" class="form-control" placeholder="مثال: اصلاح مبلغ به دلیل خطای اپراتور" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary fw-bold">ذخیره و تعدیل موجودی</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal ابطال تراکنش کیف پول -->
+<div class="modal fade" id="walletTxRevokeModal{{ tx['id'] }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content text-start border-0 shadow-lg">
+            <form method="POST" action="{{ url_for('admin_reseller_wallet_tx_revoke', rtx_id=tx['id']) }}">
+                <div class="modal-header bg-warning bg-opacity-10">
+                    <h5 class="modal-title fw-bold text-warning-emphasis">
+                        <i class="fas fa-triangle-exclamation text-warning me-2"></i> ابطال تراکنش کیف پول #{{ tx['id'] }}
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-warning mb-3 small">
+                        <strong>هشدار مالی:</strong> با ابطال این تراکنش، وضعیت آن به «ابطال‌شده» تغییر یافته و مبلغ <strong>{{ "{:,}".format(tx['amount'] or 0) }} تومان</strong> از موجودی کیف پول نماینده کسر/برگشت داده می‌شود.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">علت ابطال تراکنش کیف پول:</label>
+                        <input type="text" name="reason" class="form-control" placeholder="مثال: شارژ اشتباهی کیف پول / انصراف همکاری" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-warning fw-bold">تایید ابطال و کسر از موجودی</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- مودال‌های فیش‌ها و بسته‌های ثبت‌شده نماینده -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+{% for r in history.get('receipt_transactions', []) %}
+<!-- Modal جزئیات کامل فیش با جدول قبل و بعد -->
+<div class="modal fade" id="receiptDetailModal{{ r['id'] }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white py-3">
+                <h5 class="modal-title fw-bold">
+                    <i class="fas fa-file-invoice-dollar me-2"></i> جزئیات سفارش #{{ r['id'] }} ({{ r['order_id'] }})
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                {% if r['status'] == 'revoked' %}
+                <div class="alert alert-secondary border-start border-danger border-4 d-flex align-items-center gap-3 mb-4 shadow-sm">
+                    <div class="rounded-circle bg-danger bg-opacity-10 text-danger p-3 d-flex align-items-center justify-content-center flex-shrink-0" style="width: 48px; height: 48px;">
+                        <i class="fas fa-ban fs-4"></i>
+                    </div>
+                    <div>
+                        <h6 class="fw-bold text-danger mb-1"><i class="fas fa-circle-exclamation me-1"></i> این رسید توسط مدیریت باطل شده است</h6>
+                        <div class="small text-muted">
+                            باطل‌کننده: <strong class="text-dark">{{ r.get('revoked_by') or 'مدیر ارشد' }}</strong>
+                            {% if r.get('revoked_at') %} | زمان ابطال: <span class="font-monospace text-dark">{{ r.get('revoked_at')|shamsi_date("%Y/%m/%d - %H:%M") }}</span>{% endif %}
+                            {% if r.get('revoke_reason') %} | علت ابطال: <span class="text-danger fw-semibold">{{ r.get('revoke_reason') }}</span>{% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if r.get('is_edited') or (r.get('audit_logs') and r['audit_logs']|selectattr('action', 'equalto', 'edit')|list|length > 0) %}
+                <div class="card border-primary border-opacity-25 mb-4 shadow-sm">
+                    <div class="card-header bg-primary bg-opacity-10 py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <span class="fw-bold text-primary small">
+                            <i class="fas fa-pen-to-square me-1"></i> علامت ویرایش توسط مدیریت — جزئیات تغییرات (قبل و بعد)
+                        </span>
+                        {% if r.get('edited_by') %}
+                            <span class="badge bg-primary">ویرایش‌شده توسط: {{ r.get('edited_by') }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered align-middle mb-0 text-center">
+                                <thead class="table-light small">
+                                    <tr>
+                                        <th>مشخصه / فیلد</th>
+                                        <th class="text-danger bg-danger bg-opacity-10">مقدار قبل از ویرایش (قبل)</th>
+                                        <th class="text-success bg-success bg-opacity-10">مقدار پس از ویرایش (بعد)</th>
+                                        <th>علت ویرایش</th>
+                                        <th>زمان ویرایش</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="small font-monospace">
+                                    {% for log in r.get('audit_logs', []) if log['action'] == 'edit' %}
+                                    <tr>
+                                        <td class="fw-bold text-dark font-sans">{{ log['field_name']|field_display_name }}</td>
+                                        <td class="text-danger bg-danger bg-opacity-10">
+                                            <del>{{ log['old_value']|format_audit_value(log['field_name']) }}</del>
+                                        </td>
+                                        <td class="text-success bg-success bg-opacity-10 fw-bold">
+                                            {{ log['new_value']|format_audit_value(log['field_name']) }}
+                                        </td>
+                                        <td class="text-muted font-sans">{{ log['reason'] or '-' }}</td>
+                                        <td class="text-muted">{{ log['created_at'][:16].replace('T', ' ') if log['created_at'] else '-' }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr>
+                                        <td colspan="5" class="text-muted py-2">ویرایش مشخصات توسط مدیریت ثبت شده است.</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="list-group list-group-flush border rounded">
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span class="text-muted">کد سفارش:</span>
+                        <code class="fw-bold fs-6">{{ r['order_id'] }}</code>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span class="text-muted">عنوان پلن / بسته:</span>
+                        <span class="fw-bold text-dark">{{ r['plan_name'] or '-' }}</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span class="text-muted">مبلغ پرداختی:</span>
+                        <strong class="text-primary fs-6 font-monospace">{{ "{:,}".format(r['amount'] or 0) }} تومان</strong>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span class="text-muted">روش پرداخت / درگاه:</span>
+                        <span class="badge bg-light text-dark border">{{ r['gateway']|gateway_name }}</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span class="text-muted">کد پیگیری:</span>
+                        <code class="text-secondary">{{ r['tracking_code'] or '-' }}</code>
+                    </div>
+                    {% if r['card_number'] %}
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span class="text-muted">شماره کارت مقصد:</span>
+                        <code dir="ltr">{{ r['card_number'] }}</code>
+                    </div>
+                    {% endif %}
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span class="text-muted">تاریخ ثبت فیش:</span>
+                        <span class="font-monospace text-muted">{{ r['created_at'][:19].replace('T', ' ') if r['created_at'] else '-' }}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">بستن</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if session.get('admin_role') == 'super_admin' %}
+<!-- Modal ویرایش فیش ثبت‌شده نماینده -->
+<div class="modal fade" id="receiptEditModal{{ r['id'] }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content text-start border-0 shadow-lg">
+            <form method="POST" action="{{ url_for('edit_payment', payment_id=r['id']) }}">
+                <div class="modal-header bg-primary bg-opacity-10">
+                    <h5 class="modal-title fw-bold text-primary">
+                        <i class="fas fa-pen-to-square me-2"></i> ویرایش فیش #{{ r['id'] }} ({{ r['order_id'] }})
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-info small mb-3">
+                        <strong>توجه سیستم مالی:</strong> تغییر مبلغ فیش بسته اعتباری، به طور خودکار مابه‌التفاوت آن را در درآمد کل و موجودی کیف پول نماینده تعدیل می‌نماید.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">مبلغ پرداختی (تومان):</label>
+                        <input type="number" name="amount" class="form-control font-monospace" value="{{ r['amount'] or 0 }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">کد پیگیری / ارجاع:</label>
+                        <input type="text" name="tracking_code" class="form-control font-monospace" value="{{ r['tracking_code'] or '' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">شماره کارت مقصد:</label>
+                        <input type="text" name="card_number" class="form-control font-monospace" value="{{ r['card_number'] or '' }}" placeholder="شماره کارت مقصد">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">یادداشت و توضیحات:</label>
+                        <textarea name="notes" class="form-control" rows="2">{{ r['account_comment'] or '' }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-danger">علت ویرایش (الزامی برای ثبت در لاگ حسابرسی قبل و بعد):</label>
+                        <input type="text" name="reason" class="form-control" placeholder="مثال: تصحیح مبلغ واریزی نماینده" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary fw-bold">ذخیره تغییرات و تعدیل</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal ابطال فیش ثبت‌شده نماینده -->
+<div class="modal fade" id="receiptRevokeModal{{ r['id'] }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content text-start border-0 shadow-lg">
+            <form method="POST" action="{{ url_for('revoke_payment', payment_id=r['id']) }}">
+                <div class="modal-header bg-warning bg-opacity-10">
+                    <h5 class="modal-title fw-bold text-warning-emphasis">
+                        <i class="fas fa-triangle-exclamation text-warning me-2"></i> ابطال فیش #{{ r['id'] }}
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-warning mb-3 small">
+                        <strong>هشدار مالی:</strong> با ابطال این فیش، وضعیت آن به «ابطال‌شده توسط مدیریت» تغییر یافته، مبلغ <strong>{{ "{:,}".format(r['amount'] or 0) }} تومان</strong> از درآمد کل کسر شده و اعتبار شارژ شده نیز از کیف پول نماینده کسر می‌گردد.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">علت ابطال فیش:</label>
+                        <input type="text" name="reason" class="form-control" placeholder="مثال: فیش نامعتبر / برگشت واریزی" required>
+                    </div>
+                    <input type="hidden" name="rollback_sub_action" value="keep">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-warning fw-bold">تایید ابطال و کسر از درآمد</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
 {% endblock %}

@@ -1,55 +1,793 @@
 {% extends "base.html" %}
-{% block title %}وضعیت سیستم و لاگ‌ها{% endblock %}
+{% block title %}وضعیت سرورها و لاگ رویدادها{% endblock %}
 
 {% block content %}
-<div class="page-header">
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="page-title"><i class="fas fa-terminal text-primary"></i> مانیتورینگ زنده و وضعیت سرور</h1>
-        <p class="text-muted mb-0">پایش اتصال به نودهای هیدیفای و گزارش‌های عملکرد سیستم</p>
+        <h1 class="page-title"><i class="fas fa-terminal text-primary me-2"></i> وضعیت سرورها و لاگ رویدادها</h1>
+        <p class="text-muted mb-0">پایش بلادرنگ نودهای هیدیفای، حسابرسی کلیه اقدامات خودکار و دستی، و کشف مغایرت‌ها</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <button type="button" class="btn btn-sm btn-outline-warning fw-bold shadow-sm d-flex align-items-center gap-1" onclick="runDiscrepancyAudit()">
+            <i class="fas fa-magnifying-glass-chart text-warning"></i> تحلیل مغایرت هیدیفای و دیتابیس
+        </button>
+        <a href="{{ url_for('admin_logs_export', category=category, action=action, level=level, time_range=time_range, search=search) }}" class="btn btn-sm btn-outline-success fw-bold shadow-sm d-flex align-items-center gap-1" title="دانلود خروجی لاگ‌های فیلتر شده به اکسل">
+            <i class="fas fa-file-excel text-success"></i> خروجی اکسل / CSV
+        </a>
+        <a href="{{ url_for('admin_logs') }}" class="btn btn-sm btn-outline-secondary fw-bold shadow-sm d-flex align-items-center gap-1" title="بروزرسانی صفحه">
+            <i class="fas fa-rotate"></i> بروزرسانی
+        </a>
+        {% if session.get('admin_role') == 'super_admin' %}
+        <button type="button" class="btn btn-sm btn-outline-danger fw-bold shadow-sm d-flex align-items-center gap-1" data-bs-toggle="modal" data-bs-target="#clearLogsModal">
+            <i class="fas fa-trash-can"></i> پاکسازی لاگ‌ها
+        </button>
+        {% endif %}
     </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════════════
+     بخش ۱: کارت‌های پایش وضعیت سرور و تطبیق کاربران با دیتابیس
+     ═══════════════════════════════════════════════════════════════════════ -->
 <div class="row g-3 mb-4">
-    <div class="col-md-6">
-        <div class="card stat-card">
+    <!-- وضعیت اتصال به هیدیفای -->
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card h-100">
             <div>
                 <span class="text-muted small fw-bold">وضعیت اتصال به پنل هیدیفای</span>
                 <h4 class="fw-bold my-1 {{ 'text-success' if health.online else 'text-danger' }}">
                     <i class="fas fa-{{ 'circle-check' if health.online else 'triangle-exclamation' }} me-1"></i>
-                    {{ 'متصل و عملیاتی' if health.online else 'قطع یا خطا در ارتباط' }}
+                    {{ 'متصل و برخط' if health.online else 'قطع یا خطا در ارتباط' }}
                 </h4>
-                <span class="text-muted small">تاخیر پاسخ (Latency): <strong>{{ health.latency }} ms</strong></span>
+                <span class="text-muted small">تاخیر پاسخ: <strong class="{{ 'text-success' if health.latency < 250 else 'text-warning' }}">{{ health.latency }} میلی‌ثانیه</strong></span>
             </div>
             <div class="stat-icon {{ 'bg-success bg-opacity-10 text-success' if health.online else 'bg-danger bg-opacity-10 text-danger' }}">
                 <i class="fas fa-server"></i>
             </div>
         </div>
     </div>
-    <div class="col-md-6">
-        <div class="card stat-card">
+
+    <!-- کاربران سرور هیدیفای -->
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card h-100">
             <div>
-                <span class="text-muted small fw-bold">تعداد کاربران در سرور هیدیفای</span>
-                <h4 class="fw-bold my-1 text-primary">{{ health.get('users_count', 0) }} کاربر</h4>
-                <span class="text-muted small">همگام‌سازی شده با دیتابیس محلی</span>
+                <span class="text-muted small fw-bold">کاربران موجود در هیدیفای</span>
+                <h3 class="fw-bold my-1 text-primary">{{ "{:,}".format(hiddify_count) }}</h3>
+                <span class="text-muted small">تعداد اکانت‌های زنده دریافت شده از API</span>
             </div>
             <div class="stat-icon bg-primary bg-opacity-10 text-primary">
-                <i class="fas fa-network-wired"></i>
+                <i class="fas fa-cloud"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- اشتراک‌های دیتابیس محلی -->
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card h-100">
+            <div>
+                <span class="text-muted small fw-bold">اشتراک‌های فعال در دیتابیس</span>
+                <h3 class="fw-bold my-1 text-info">{{ "{:,}".format(db_active_count) }}</h3>
+                <span class="text-muted small">سطل زباله: <strong>{{ "{:,}".format(db_deleted_count) }}</strong> اشتراک</span>
+            </div>
+            <div class="stat-icon bg-info bg-opacity-10 text-info">
+                <i class="fas fa-database"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- تحلیل تفاوت و مغایرت -->
+    <div class="col-xl-3 col-md-6">
+        <div class="card stat-card h-100 border-{{ 'warning' if count_diff != 0 else 'success' }} border-opacity-25">
+            <div>
+                <span class="text-muted small fw-bold">وضعیت همگام‌سازی و مغایرت</span>
+                {% if count_diff > 0 %}
+                <h4 class="fw-bold my-1 text-warning">
+                    <i class="fas fa-triangle-exclamation me-1"></i> {{ "{:,}".format(count_diff) }} اکانت اختلاف
+                </h4>
+                <span class="text-muted small">در دیتابیس بیشتر از هیدیفای است</span>
+                {% elif count_diff < 0 %}
+                <h4 class="fw-bold my-1 text-danger">
+                    <i class="fas fa-triangle-exclamation me-1"></i> {{ "{:,}".format(count_diff|abs) }} اکانت ناشناخته
+                </h4>
+                <span class="text-muted small">در هیدیفای بیشتر از دیتابیس است</span>
+                {% else %}
+                <h4 class="fw-bold my-1 text-success">
+                    <i class="fas fa-check-double me-1"></i> کاملاً منطبق (۱۰۰٪)
+                </h4>
+                <span class="text-muted small">دیتابیس با هیدیفای هماهنگ است</span>
+                {% endif %}
+            </div>
+            <div class="stat-icon {{ 'bg-warning bg-opacity-10 text-warning' if count_diff != 0 else 'bg-success bg-opacity-10 text-success' }}">
+                <i class="fas fa-scale-unbalanced"></i>
             </div>
         </div>
     </div>
 </div>
 
-<div class="card">
-    <div class="card-header bg-white py-3">
-        <h5 class="mb-0 fw-bold"><i class="fas fa-list-check text-primary me-2"></i> لاگ‌های سرور و سرویس‌ها</h5>
+<!-- بنر هشدار در صورت وجود مغایرت چشمگیر -->
+{% if count_diff != 0 %}
+<div class="alert alert-warning border-warning border-opacity-50 shadow-sm d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
+    <div class="d-flex align-items-center gap-3">
+        <div class="fs-3 text-warning"><i class="fas fa-circle-exclamation"></i></div>
+        <div>
+            <div class="fw-bold text-dark mb-1">هشدار مغایرت تعداد اشتراک‌های هیدیفای و دیتابیس</div>
+            <div class="small text-secondary">
+                در پایگاه‌داده <strong>{{ "{:,}".format(db_active_count) }}</strong> اشتراک فعال ثبت شده اما در پنل هیدیفای <strong>{{ "{:,}".format(hiddify_count) }}</strong> کاربر وجود دارد (اختلاف {{ "{:,}".format(count_diff|abs) }} اکانت). این ممکن است بر اثر پاکسازی خودکار یا تغییر دستی در سرور رخ داده باشد.
+            </div>
+        </div>
     </div>
-    <div class="card-body p-0">
-        <div class="p-3 bg-dark text-light font-monospace small" style="border-radius: 0 0 14px 14px; max-height: 350px; overflow-y: auto;">
-            [SYSTEM] Bot & Web dashboard running smoothly.<br>
-            [HIDDIFY] Ping check: {{ 'OK' if health.online else 'ERROR' }} ({{ health.latency }}ms)<br>
-            [DATABASE] SQLite database connected at data/bot_database.db<br>
-            [READY] All services operational.
+    <button type="button" class="btn btn-warning btn-sm fw-bold px-3 shadow-sm" onclick="runDiscrepancyAudit()">
+        <i class="fas fa-magnifying-glass me-1"></i> مشاهده لیست اکانت‌های مفقود
+    </button>
+</div>
+{% endif %}
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     بخش ۲: کارت‌های شاخص آمار رویدادها (Audit KPI Cards)
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-2 col-md-4 col-6">
+        <div class="card p-3 text-center border-0 shadow-sm h-100">
+            <span class="text-muted small fw-bold">کل وقایع ثبت‌شده</span>
+            <h3 class="fw-bold text-primary my-1">{{ "{:,}".format(stats.total) }}</h3>
+            <span class="text-muted small"><i class="fas fa-list-check me-1"></i>مجموع لاگ‌ها</span>
+        </div>
+    </div>
+    <div class="col-lg-2 col-md-4 col-6">
+        <div class="card p-3 text-center border-0 shadow-sm h-100">
+            <span class="text-muted small fw-bold">خودکار سیستم</span>
+            <h3 class="fw-bold text-info my-1">{{ "{:,}".format(stats.system_count) }}</h3>
+            <span class="text-muted small"><i class="fas fa-robot me-1"></i>کرون و پاکسازی</span>
+        </div>
+    </div>
+    <div class="col-lg-2 col-md-4 col-6">
+        <div class="card p-3 text-center border-0 shadow-sm h-100">
+            <span class="text-muted small fw-bold">تغییرات مدیران</span>
+            <h3 class="fw-bold text-success my-1">{{ "{:,}".format(stats.admin_count) }}</h3>
+            <span class="text-muted small"><i class="fas fa-user-shield me-1"></i>مدیریت کل</span>
+        </div>
+    </div>
+    <div class="col-lg-2 col-md-4 col-6">
+        <div class="card p-3 text-center border-0 shadow-sm h-100">
+            <span class="text-muted small fw-bold">اقدامات نمایندگان</span>
+            <h3 class="fw-bold my-1" style="color: #8b5cf6;">{{ "{:,}".format(stats.reseller_count) }}</h3>
+            <span class="text-muted small"><i class="fas fa-handshake me-1"></i>همکاران فروش</span>
+        </div>
+    </div>
+    <div class="col-lg-2 col-md-4 col-6">
+        <div class="card p-3 text-center border-0 shadow-sm h-100">
+            <span class="text-muted small fw-bold">هشدارها و خطاها</span>
+            <h3 class="fw-bold text-danger my-1">{{ "{:,}".format(stats.warnings_errors) }}</h3>
+            <span class="text-muted small"><i class="fas fa-triangle-exclamation me-1"></i>حساس و بحرانی</span>
+        </div>
+    </div>
+    <div class="col-lg-2 col-md-4 col-6">
+        <div class="card p-3 text-center border-0 shadow-sm h-100">
+            <span class="text-muted small fw-bold">رویدادهای امروز</span>
+            <h3 class="fw-bold text-warning my-1">{{ "{:,}".format(stats.today_count) }}</h3>
+            <span class="text-muted small"><i class="fas fa-clock me-1"></i>۲۴ ساعت گذشته</span>
         </div>
     </div>
 </div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     بخش ۳: فیلترها و جستجوی پیشرفته
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="card mb-4 border-0 shadow-sm">
+    <div class="card-body p-3">
+        <form method="GET" action="{{ url_for('admin_logs') }}" id="filterForm">
+            <input type="hidden" name="per_page" value="{{ per_page }}">
+            
+            <div class="row g-2 align-items-center">
+                <!-- جستجوی متنی -->
+                <div class="col-lg-3 col-md-6">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-light border-end-0"><i class="fas fa-magnifying-glass text-muted"></i></span>
+                        <input type="text" class="form-control border-start-0" name="search" value="{{ search or '' }}" placeholder="جستجو در عنوان، شرح، نام اکانت، IP...">
+                    </div>
+                </div>
+
+                <!-- فیلتر دسته‌بندی -->
+                <div class="col-lg-2 col-md-3 col-6">
+                    <select class="form-select form-select-sm" name="category" onchange="document.getElementById('filterForm').submit()">
+                        <option value="all" {% if category == 'all' or not category %}selected{% endif %}>همه دسته‌بندی‌ها</option>
+                        <option value="system" {% if category == 'system' %}selected{% endif %}>⚙️ اقدامات خودکار سیستم</option>
+                        <option value="admin" {% if category == 'admin' %}selected{% endif %}>🛡️ اقدامات مدیران کل</option>
+                        <option value="reseller" {% if category == 'reseller' %}selected{% endif %}>🤝 اقدامات نمایندگان</option>
+                        <option value="user_bot" {% if category == 'user_bot' %}selected{% endif %}>🤖 کاربران و ربات‌ها</option>
+                        <option value="security" {% if category == 'security' %}selected{% endif %}>🔒 امنیت و ورود</option>
+                    </select>
+                </div>
+
+                <!-- فیلتر نوع اقدام -->
+                <div class="col-lg-2 col-md-3 col-6">
+                    <select class="form-select form-select-sm" name="action" onchange="document.getElementById('filterForm').submit()">
+                        <option value="all" {% if action == 'all' or not action %}selected{% endif %}>همه نوع اقدامات</option>
+                        <option value="purge" {% if action == 'purge' %}selected{% endif %}>پاکسازی قطعی (Purge)</option>
+                        <option value="delete" {% if action == 'delete' %}selected{% endif %}>انتقال به سطل زباله</option>
+                        <option value="restore" {% if action == 'restore' %}selected{% endif %}>بازگردانی اشتراک</option>
+                        <option value="create" {% if action == 'create' %}selected{% endif %}>ساخت اشتراک / کاربر</option>
+                        <option value="update" {% if action == 'update' %}selected{% endif %}>ویرایش مشخصات</option>
+                        <option value="renew" {% if action == 'renew' %}selected{% endif %}>تمدید اشتراک</option>
+                        <option value="bulk_restore" {% if action == 'bulk_restore' %}selected{% endif %}>بازگردانی گروهی</option>
+                        <option value="bulk_purge" {% if action == 'bulk_purge' %}selected{% endif %}>حذف دائمی گروهی</option>
+                        <option value="sync_diff" {% if action == 'sync_diff' %}selected{% endif %}>تحلیل مغایرت هیدیفای</option>
+                        <option value="login" {% if action == 'login' %}selected{% endif %}>ورود به سیستم</option>
+                    </select>
+                </div>
+
+                <!-- فیلتر سطح اهمیت -->
+                <div class="col-lg-2 col-md-4 col-6">
+                    <select class="form-select form-select-sm" name="level" onchange="document.getElementById('filterForm').submit()">
+                        <option value="all" {% if level == 'all' or not level %}selected{% endif %}>همه سطوح اهمیت</option>
+                        <option value="info" {% if level == 'info' %}selected{% endif %}>ℹ️ اطلاعات (Info)</option>
+                        <option value="success" {% if level == 'success' %}selected{% endif %}>✅ موفقیت‌آمیز (Success)</option>
+                        <option value="warning" {% if level == 'warning' %}selected{% endif %}>⚠️ هشدار (Warning)</option>
+                        <option value="danger" {% if level == 'danger' %}selected{% endif %}>⛔️ خطا و بحرانی (Danger)</option>
+                    </select>
+                </div>
+
+                <!-- فیلتر بازه زمانی -->
+                <div class="col-lg-2 col-md-4 col-6">
+                    <select class="form-select form-select-sm" name="time_range" onchange="document.getElementById('filterForm').submit()">
+                        <option value="all" {% if time_range == 'all' or not time_range %}selected{% endif %}>همه زمان‌ها</option>
+                        <option value="today" {% if time_range == 'today' %}selected{% endif %}>فقط امروز</option>
+                        <option value="3days" {% if time_range == '3days' %}selected{% endif %}>۳ روز گذشته</option>
+                        <option value="7days" {% if time_range == '7days' %}selected{% endif %}>۷ روز گذشته</option>
+                        <option value="30days" {% if time_range == '30days' %}selected{% endif %}>۳۰ روز گذشته</option>
+                    </select>
+                </div>
+
+                <!-- کلید اعمال و ریست -->
+                <div class="col-lg-1 col-md-4 col-12 d-flex gap-1 justify-content-end">
+                    <button type="submit" class="btn btn-primary btn-sm flex-fill" title="جستجو و اعمال فیلتر">
+                        <i class="fas fa-filter"></i>
+                    </button>
+                    {% if search or (category and category != 'all') or (action and action != 'all') or (level and level != 'all') or (time_range and time_range != 'all') %}
+                    <a href="{{ url_for('admin_logs') }}" class="btn btn-outline-secondary btn-sm" title="پاکسازی همه فیلترها">
+                        <i class="fas fa-times"></i>
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     بخش ۴: جدول لاگ‌ها و رویدادهای سیستم
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <h5 class="mb-0 fw-bold"><i class="fas fa-list-check text-primary me-2"></i> گزارش وقایع و ردپای تغییرات</h5>
+            <span class="badge bg-primary rounded-pill py-2 px-3">
+                نمایش {{ "{:,}".format(logs|length) }} مورد از {{ "{:,}".format(total_count) }} رویداد ثبت‌شده
+            </span>
+            {% if search %}
+            <span class="badge bg-info text-dark d-inline-flex align-items-center gap-1">
+                <i class="fas fa-magnifying-glass me-1"></i> عبارت: «{{ search }}»
+            </span>
+            {% endif %}
+        </div>
+        
+        <div class="d-flex align-items-center gap-2">
+            <label class="form-label small text-muted mb-0 d-none d-sm-inline">تعداد در صفحه:</label>
+            <select class="form-select form-select-sm" style="width: 85px;" onchange="location.href='{{ url_for('admin_logs', category=category, action=action, level=level, time_range=time_range, search=search) }}&per_page=' + this.value;">
+                <option value="25" {% if per_page == 25 %}selected{% endif %}>۲۵</option>
+                <option value="50" {% if per_page == 50 %}selected{% endif %}>۵۰</option>
+                <option value="100" {% if per_page == 100 %}selected{% endif %}>۱۰۰</option>
+                <option value="200" {% if per_page == 200 %}selected{% endif %}>۲۰۰</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th style="width: 50px;" class="text-center">#</th>
+                    <th style="width: 170px;">زمان ثبت (تهران)</th>
+                    <th style="width: 130px;">دسته‌بندی</th>
+                    <th style="width: 160px;">عامل اقدام‌کننده</th>
+                    <th>عنوان و شرح عملیات</th>
+                    <th style="width: 160px;">موجودیت هدف</th>
+                    <th style="width: 100px;" class="text-center">سطح</th>
+                    <th style="width: 90px;" class="text-center">عملیات</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if logs %}
+                    {% for lg in logs %}
+                    <tr>
+                        <td class="text-center text-muted font-monospace small">#{{ lg.id }}</td>
+                        <td>
+                            <div class="fw-bold small">{{ lg.created_at|shamsi_date }}</div>
+                            <div class="text-muted font-monospace" style="font-size: 0.75rem;">
+                                {{ lg.created_at|gregorian_clean }}
+                            </div>
+                        </td>
+                        <td>
+                            {% if lg.category == 'system' %}
+                                <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 px-2 py-1">
+                                    <i class="fas fa-gear me-1"></i> خودکار سیستم
+                                </span>
+                            {% elif lg.category == 'admin' %}
+                                <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-2 py-1">
+                                    <i class="fas fa-user-shield me-1"></i> مدیریت کل
+                                </span>
+                            {% elif lg.category == 'reseller' %}
+                                <span class="badge bg-purple bg-opacity-10 text-purple border border-purple border-opacity-25 px-2 py-1" style="color: #8b5cf6; border-color: rgba(139, 92, 246, 0.3) !important;">
+                                    <i class="fas fa-handshake me-1"></i> نماینده فروش
+                                </span>
+                            {% elif lg.category == 'security' %}
+                                <span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 px-2 py-1">
+                                    <i class="fas fa-shield-halved me-1"></i> امنیت
+                                </span>
+                            {% else %}
+                                <span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25 px-2 py-1">
+                                    <i class="fas fa-robot me-1"></i> کاربر / بات
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                {% if lg.actor_type == 'system' %}
+                                    <div class="rounded-circle bg-info bg-opacity-10 text-info d-flex align-items-center justify-content-center flex-shrink-0" style="width: 28px; height: 28px; font-size: 0.8rem;">
+                                        <i class="fas fa-robot"></i>
+                                    </div>
+                                {% elif lg.actor_type == 'admin' %}
+                                    <div class="rounded-circle bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center flex-shrink-0" style="width: 28px; height: 28px; font-size: 0.8rem;">
+                                        <i class="fas fa-user-tie"></i>
+                                    </div>
+                                {% elif lg.actor_type == 'reseller' %}
+                                    <div class="rounded-circle bg-warning bg-opacity-10 text-warning d-flex align-items-center justify-content-center flex-shrink-0" style="width: 28px; height: 28px; font-size: 0.8rem;">
+                                        <i class="fas fa-handshake"></i>
+                                    </div>
+                                {% else %}
+                                    <div class="rounded-circle bg-secondary bg-opacity-10 text-secondary d-flex align-items-center justify-content-center flex-shrink-0" style="width: 28px; height: 28px; font-size: 0.8rem;">
+                                        <i class="fas fa-user"></i>
+                                    </div>
+                                {% endif %}
+                                <div class="text-truncate" style="max-width: 120px;" title="{{ lg.actor_name or 'سیستم' }}">
+                                    <div class="small fw-bold">{{ lg.actor_name or 'سیستم' }}</div>
+                                    {% if lg.ip_address %}
+                                    <div class="font-monospace text-muted" style="font-size: 0.7rem;">{{ lg.ip_address }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="fw-bold text-dark mb-1">{{ lg.title }}</div>
+                            {% if lg.description %}
+                            <div class="small text-muted text-break" style="max-height: 45px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
+                                {{ lg.description }}
+                            </div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if lg.target_name %}
+                                <div class="small fw-bold text-truncate" style="max-width: 150px;" title="{{ lg.target_name }}">
+                                    <i class="fas fa-tag text-muted me-1"></i>{{ lg.target_name }}
+                                </div>
+                                {% if lg.target_type %}
+                                <div class="badge bg-light text-muted border py-0 px-1" style="font-size: 0.68rem;">{{ lg.target_type }}</div>
+                                {% endif %}
+                            {% else %}
+                                <span class="text-muted small">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if lg.level == 'success' %}
+                                <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1">موفق</span>
+                            {% elif lg.level == 'warning' %}
+                                <span class="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25 px-2 py-1">هشدار</span>
+                            {% elif lg.level == 'danger' %}
+                                <span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 px-2 py-1">خطا</span>
+                            {% else %}
+                                <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 px-2 py-1">اطلاع</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <button type="button" class="btn btn-outline-primary btn-sm px-2 py-1" onclick='showLogDetails({{ lg|tojson|safe }})' title="مشاهده جزئیات کامل">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="8" class="text-center py-5 text-muted">
+                            <i class="fas fa-folder-open fs-1 text-secondary opacity-50 mb-3 d-block"></i>
+                            <h6 class="fw-bold">هیچ رویدادی با این شرایط یافت نشد.</h6>
+                            <p class="small mb-0">می‌توانید فیلترها را تغییر دهید یا دکمه ریست را بزنید.</p>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- صفحه‌بندی (Pagination) -->
+    {% if total_pages > 1 %}
+    <div class="card-footer bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="small text-muted">
+            صفحه <strong>{{ page }}</strong> از <strong>{{ total_pages }}</strong> (کل ردیف‌ها: {{ "{:,}".format(total_count) }})
+        </div>
+        <nav aria-label="Page navigation">
+            <ul class="pagination pagination-sm mb-0">
+                {% if page > 1 %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('admin_logs', page=1, per_page=per_page, category=category, action=action, level=level, time_range=time_range, search=search) }}">&laquo; اول</a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('admin_logs', page=page-1, per_page=per_page, category=category, action=action, level=level, time_range=time_range, search=search) }}">قبلی</a>
+                </li>
+                {% endif %}
+
+                {% set start_page = [1, page - 2]|max %}
+                {% set end_page = [total_pages, page + 2]|min %}
+                {% for p in range(start_page, end_page + 1) %}
+                <li class="page-item {% if p == page %}active{% endif %}">
+                    <a class="page-link" href="{{ url_for('admin_logs', page=p, per_page=per_page, category=category, action=action, level=level, time_range=time_range, search=search) }}">{{ p }}</a>
+                </li>
+                {% endfor %}
+
+                {% if page < total_pages %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('admin_logs', page=page+1, per_page=per_page, category=category, action=action, level=level, time_range=time_range, search=search) }}">بعدی</a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('admin_logs', page=total_pages, per_page=per_page, category=category, action=action, level=level, time_range=time_range, search=search) }}">آخر &raquo;</a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     بخش ۵: ترمینال زنده لاگ‌های سرور (جمع‌شونده)
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center cursor-pointer" data-bs-toggle="collapse" data-bs-target="#liveTerminalCollapse" aria-expanded="false">
+        <h6 class="mb-0 fw-bold"><i class="fas fa-square-terminal text-success me-2"></i> لاگ کنسول زنده سرویس‌ها و نودها</h6>
+        <i class="fas fa-chevron-down text-muted"></i>
+    </div>
+    <div class="collapse" id="liveTerminalCollapse">
+        <div class="card-body p-0">
+            <div class="p-3 bg-dark text-light font-monospace small" style="max-height: 250px; overflow-y: auto;">
+                <span class="text-success">[SYSTEM]</span> Bot & Web dashboard running smoothly.<br>
+                <span class="text-info">[HIDDIFY]</span> Ping check: {{ 'OK' if health.online else 'ERROR' }} ({{ health.latency }}ms) - Users on node: {{ health.get('users_count', 0) }}<br>
+                <span class="text-warning">[DATABASE]</span> SQLite connected - Active subs: {{ db_active_count }}, In trash: {{ db_deleted_count }}<br>
+                <span class="text-secondary">[AUDIT]</span> System Activity Log Engine Active. All operations monitored.
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     مودال ۱: مشاهده جزئیات کامل رویداد (Log Details Modal)
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="logDetailsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header border-bottom py-3">
+                <h5 class="modal-title fw-bold" id="logDetailsTitle"><i class="fas fa-circle-info text-primary me-2"></i> جزئیات کامل رویداد</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="row g-3 mb-3">
+                    <div class="col-sm-6">
+                        <div class="p-2 rounded bg-light border">
+                            <span class="text-muted small d-block">شناسه و دسته‌بندی:</span>
+                            <span class="fw-bold" id="detailIdCategory"></span>
+                        </div>
+                    </div>
+                    <div class="col-sm-6">
+                        <div class="p-2 rounded bg-light border">
+                            <span class="text-muted small d-block">زمان ثبت:</span>
+                            <span class="fw-bold font-monospace" id="detailTime"></span>
+                        </div>
+                    </div>
+                    <div class="col-sm-6">
+                        <div class="p-2 rounded bg-light border">
+                            <span class="text-muted small d-block">عامل اقدام‌کننده:</span>
+                            <span class="fw-bold" id="detailActor"></span>
+                        </div>
+                    </div>
+                    <div class="col-sm-6">
+                        <div class="p-2 rounded bg-light border">
+                            <span class="text-muted small d-block">موجودیت هدف:</span>
+                            <span class="fw-bold" id="detailTarget"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-muted">شرح کامل رویداد:</label>
+                    <div class="p-3 bg-light rounded border text-dark" id="detailDescription" style="white-space: pre-wrap;"></div>
+                </div>
+
+                <div id="detailJsonSection" style="display: none;">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label class="form-label fw-bold small text-muted mb-0">اطلاعات ساختاریافته فنی (JSON Details):</label>
+                        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size: 0.75rem;" onclick="copyJsonDetails()">
+                            <i class="fas fa-copy me-1"></i> کپی JSON
+                        </button>
+                    </div>
+                    <pre class="p-3 bg-dark text-success rounded font-monospace small" id="detailJsonContent" style="max-height: 250px; overflow-y: auto; direction: ltr; text-align: left;"></pre>
+                </div>
+            </div>
+            <div class="modal-footer border-top py-2">
+                <button type="button" class="btn btn-secondary btn-sm px-4" data-bs-dismiss="modal">بستن</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     مودال ۲: تحلیل مغایرت هیدیفای و دیتابیس (Discrepancy Audit Modal)
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="discrepancyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header border-bottom py-3">
+                <h5 class="modal-title fw-bold text-warning"><i class="fas fa-magnifying-glass-chart me-2"></i> تحلیل هوشمند مغایرت هیدیفای و دیتابیس</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div id="diffLoading" class="text-center py-5">
+                    <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;"></div>
+                    <h6 class="fw-bold">در حال استخراج و مقایسه اشتراک‌های هیدیفای با دیتابیس...</h6>
+                    <p class="text-muted small">لطفاً چند لحظه صبر نمایید، ارتباط با API هیدیفای در حال برقراری است.</p>
+                </div>
+
+                <div id="diffResults" style="display: none;">
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <div class="p-3 rounded bg-light border text-center">
+                                <span class="text-muted small d-block">اشتراک‌های فعال در دیتابیس:</span>
+                                <h4 class="fw-bold text-primary my-1" id="diffDbCount">۰</h4>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="p-3 rounded bg-light border text-center">
+                                <span class="text-muted small d-block">کاربران موجود در پنل هیدیفای:</span>
+                                <h4 class="fw-bold text-info my-1" id="diffHiddifyCount">۰</h4>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="p-3 rounded bg-light border text-center">
+                                <span class="text-muted small d-block">مفقود در هیدیفای (نیاز به توجه):</span>
+                                <h4 class="fw-bold text-danger my-1" id="diffMissingCount">۰</h4>
+                            </div>
+                        </div>
+                    </div>
+
+                    <ul class="nav nav-pills mb-3" id="diffTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active btn-sm" id="missing-hiddify-tab" data-bs-toggle="pill" data-bs-target="#tabMissingHiddify" type="button">
+                                <i class="fas fa-triangle-exclamation me-1"></i> اکانت‌های مفقود در هیدیفای (<span id="badgeMissingHiddify">۰</span>)
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link btn-sm" id="missing-db-tab" data-bs-toggle="pill" data-bs-target="#tabMissingDb" type="button">
+                                <i class="fas fa-circle-question me-1"></i> کاربران ناشناخته در هیدیفای (<span id="badgeMissingDb">۰</span>)
+                            </button>
+                        </li>
+                    </ul>
+
+                    <div class="tab-content" id="diffTabsContent">
+                        <!-- تب اکانت‌های مفقود در هیدیفای -->
+                        <div class="tab-pane fade show active" id="tabMissingHiddify">
+                            <div class="alert alert-info py-2 small mb-3">
+                                <i class="fas fa-info-circle me-1"></i> این اشتراک‌ها در پایگاه‌داده به عنوان فعال ثبت هستند اما در پنل هیدیفای یافت نشدند (احتمالاً بر اثر پاکسازی خودکار یا حذف دستی در پنل هیدیفای رخ داده است).
+                            </div>
+                            <div class="table-responsive" style="max-height: 350px; overflow-y: auto;">
+                                <table class="table table-sm table-hover align-middle mb-0">
+                                    <thead class="table-light sticky-top">
+                                        <tr>
+                                            <th>#</th>
+                                            <th>نام اکانت</th>
+                                            <th>UUID هیدیفای</th>
+                                            <th>وضعیت دیتابیس</th>
+                                            <th>انقضا</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tableMissingHiddifyBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- تب کاربران ناشناخته در هیدیفای -->
+                        <div class="tab-pane fade" id="tabMissingDb">
+                            <div class="alert alert-secondary py-2 small mb-3">
+                                <i class="fas fa-info-circle me-1"></i> این کاربران در پنل هیدیفای وجود دارند اما در جدول اشتراک‌های دیتابیس ثبت نشده‌اند.
+                            </div>
+                            <div class="table-responsive" style="max-height: 350px; overflow-y: auto;">
+                                <table class="table table-sm table-hover align-middle mb-0">
+                                    <thead class="table-light sticky-top">
+                                        <tr>
+                                            <th>نام در هیدیفای</th>
+                                            <th>UUID</th>
+                                            <th>سقف حجم</th>
+                                            <th>وضعیت</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tableMissingDbBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer border-top py-2">
+                <button type="button" class="btn btn-secondary btn-sm px-4" data-bs-dismiss="modal">بستن</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     مودال ۳: پاکسازی لاگ‌های قدیمی (فقط سوپرادمین)
+     ═══════════════════════════════════════════════════════════════════════ -->
+{% if session.get('admin_role') == 'super_admin' %}
+<div class="modal fade" id="clearLogsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <form method="POST" action="{{ url_for('admin_logs_clear') }}">
+                <div class="modal-header border-bottom py-3">
+                    <h5 class="modal-title fw-bold text-danger"><i class="fas fa-trash-can me-2"></i> پاکسازی لاگ‌های قدیمی</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <p class="text-secondary small mb-3">
+                        جهت بهینه‌سازی دیتابیس، می‌توانید لاگ‌های رویدادهای قدیمی‌تر از مدت مشخصی را پاکسازی فرمایید. لاگ‌های جدیدتر محفوظ باقی خواهند ماند.
+                    </p>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small">حذف لاگ‌های قدیمی‌تر از:</label>
+                        <select class="form-select form-select-sm" name="days">
+                            <option value="30">۳۰ روز گذشته (یک ماه)</option>
+                            <option value="60">۶۰ روز گذشته (دو ماه)</option>
+                            <option value="90" selected>۹۰ روز گذشته (سه ماه - پیشنهادی)</option>
+                            <option value="180">۱۸۰ روز گذشته (شش ماه)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer border-top py-2">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-danger btn-sm px-3 fw-bold">تایید و پاکسازی</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script>
+let currentRawDetails = null;
+
+function showLogDetails(log) {
+    document.getElementById('logDetailsTitle').innerHTML = '<i class="fas fa-circle-info text-primary me-2"></i> جزئیات رویداد #' + log.id;
+    
+    let catFa = {
+        'system': 'خودکار سیستم',
+        'admin': 'مدیریت کل',
+        'reseller': 'نماینده فروش',
+        'user_bot': 'کاربر / بات',
+        'security': 'امنیت'
+    }[log.category] || log.category;
+
+    document.getElementById('detailIdCategory').innerText = '#' + log.id + ' (' + catFa + ' - اقدام: ' + (log.action || '-') + ')';
+    document.getElementById('detailTime').innerText = (log.created_at || '-');
+    document.getElementById('detailActor').innerText = (log.actor_name || 'سیستم') + (log.ip_address ? ' | IP: ' + log.ip_address : '');
+    document.getElementById('detailTarget').innerText = (log.target_name || '-') + (log.target_type ? ' (' + log.target_type + ')' : '');
+    document.getElementById('detailDescription').innerText = (log.title ? '【 ' + log.title + ' 】\n\n' : '') + (log.description || 'بدون شرح تفصیلی');
+
+    let jsonSection = document.getElementById('detailJsonSection');
+    let jsonContent = document.getElementById('detailJsonContent');
+    currentRawDetails = null;
+
+    if (log.details) {
+        try {
+            let parsed = typeof log.details === 'string' ? JSON.parse(log.details) : log.details;
+            currentRawDetails = JSON.stringify(parsed, null, 2);
+            jsonContent.innerText = currentRawDetails;
+            jsonSection.style.display = 'block';
+        } catch (e) {
+            currentRawDetails = String(log.details);
+            jsonContent.innerText = currentRawDetails;
+            jsonSection.style.display = 'block';
+        }
+    } else {
+        jsonSection.style.display = 'none';
+    }
+
+    let modal = new bootstrap.Modal(document.getElementById('logDetailsModal'));
+    modal.show();
+}
+
+function copyJsonDetails() {
+    if (!currentRawDetails) return;
+    navigator.clipboard.writeText(currentRawDetails).then(() => {
+        alert('محتوای فنی JSON در کلیپ‌بورد کپی شد.');
+    }).catch(() => {
+        prompt('محتوای JSON:', currentRawDetails);
+    });
+}
+
+function runDiscrepancyAudit() {
+    let modalEl = document.getElementById('discrepancyModal');
+    let modal = new bootstrap.Modal(modalEl);
+    modal.show();
+
+    document.getElementById('diffLoading').style.display = 'block';
+    document.getElementById('diffResults').style.display = 'none';
+
+    fetch('{{ url_for("admin_logs_audit_diff") }}?format=json', {
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('diffLoading').style.display = 'none';
+        if (!data.success) {
+            alert('خطا در تحلیل مغایرت: ' + (data.error || 'خطای ناشناخته'));
+            modal.hide();
+            return;
+        }
+
+        document.getElementById('diffDbCount').innerText = Number(data.db_count || 0).toLocaleString();
+        document.getElementById('diffHiddifyCount').innerText = Number(data.hiddify_count || 0).toLocaleString();
+        document.getElementById('diffMissingCount').innerText = Number(data.missing_in_hiddify_total || 0).toLocaleString();
+
+        document.getElementById('badgeMissingHiddify').innerText = Number(data.missing_in_hiddify_total || 0).toLocaleString();
+        document.getElementById('badgeMissingDb').innerText = Number(data.missing_in_db_total || 0).toLocaleString();
+
+        let tbodyH = document.getElementById('tableMissingHiddifyBody');
+        tbodyH.innerHTML = '';
+        if (data.missing_in_hiddify && data.missing_in_hiddify.length > 0) {
+            data.missing_in_hiddify.forEach(item => {
+                let tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="small text-muted">#${item.id}</td>
+                    <td class="fw-bold">${item.name || '-'}</td>
+                    <td class="font-monospace small text-muted">${item.uuid || '-'}</td>
+                    <td><span class="badge bg-secondary">${item.status || 'active'}</span></td>
+                    <td class="small">${item.expire_date ? item.expire_date.slice(0, 10) : '-'}</td>
+                `;
+                tbodyH.appendChild(tr);
+            });
+        } else {
+            tbodyH.innerHTML = '<tr><td colspan="5" class="text-center text-success py-4"><i class="fas fa-check-circle me-1"></i> تمامی اشتراک‌های دیتابیس در سرور هیدیفای موجود هستند.</td></tr>';
+        }
+
+        let tbodyD = document.getElementById('tableMissingDbBody');
+        tbodyD.innerHTML = '';
+        if (data.missing_in_db && data.missing_in_db.length > 0) {
+            data.missing_in_db.forEach(item => {
+                let tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="fw-bold">${item.name || '-'}</td>
+                    <td class="font-monospace small text-muted">${item.uuid || '-'}</td>
+                    <td class="small">${item.usage_limit_gb || 0} GB</td>
+                    <td><span class="badge bg-${item.enable ? 'success' : 'danger'}">${item.enable ? 'فعال' : 'غیرفعال'}</span></td>
+                `;
+                tbodyD.appendChild(tr);
+            });
+        } else {
+            tbodyD.innerHTML = '<tr><td colspan="4" class="text-center text-success py-4"><i class="fas fa-check-circle me-1"></i> هیچ کاربر ناشناخته‌ای در هیدیفای یافت نشد.</td></tr>';
+        }
+
+        document.getElementById('diffResults').style.display = 'block';
+    })
+    .catch(err => {
+        document.getElementById('diffLoading').style.display = 'none';
+        alert('خطا در برقراری ارتباط با سرور جهت تحلیل مغایرت: ' + err);
+        modal.hide();
+    });
+}
+</script>
 {% endblock %}
