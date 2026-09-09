@@ -1827,15 +1827,274 @@ class ResellerBotInstance:
                 troubleshoot_url = f"{tutorial_url.split('?')[0].rstrip('/')}/troubleshoot"
 
             guide_text = (
-                f"📖 <b>مرکز آموزش تصویری و راهنمای اتصال {brand_name}</b>\n\n"
-                "برای مشاهده آموزش‌های مرحله‌به‌مرحله تصویری برای تمام دستگاه‌ها (اندروید، آیفون، ویندوز، مک، تلویزیون هوشمند و مودم) و رفع سریع هرگونه مشکل در اتصال، روی دکمه‌های زیر کلیک نمایید:"
+                f"📖 <b>مرکز آموزش و راهنمای جامع اتصال {brand_name}</b>\n\n"
+                "برای اتصال آسان یا رفع هرگونه اختلال و قطعی، روش مورد نظر خود را انتخاب نمایید:\n\n"
+                "📱 <b>اندروید:</b> v2rayNG, Hiddify, Happ, NekoBox\n"
+                "🍏 <b>آیفون و آیپد:</b> Streisand, FoXray, V2Box, Shadowrocket\n"
+                "💻 <b>ویندوز و مک:</b> v2rayN, Hiddify, Nekoray\n"
+                "📺 <b>تلویزیون هوشمند:</b> Android TV, Spark\n"
+                "🌐 <b>مودم و روتر:</b> OpenWrt, MikroTik"
             )
             buttons = [
-                [InlineKeyboardButton("🌐 مشاهده آموزش‌های تصویری تمام دستگاه‌ها", url=tutorial_url)],
-                [InlineKeyboardButton("🛠️ عیب‌یابی و حل مشکلات اتصال", url=troubleshoot_url)]
+                [InlineKeyboardButton("🧭 راهنمای قدم‌به‌قدم حل مشکل (داخل تلگرام)", callback_data="wiz_tb_start")],
+                [InlineKeyboardButton("🚀 راهنمای قدم‌به‌قدم اتصال (داخل تلگرام)", callback_data="wiz_conn_start")],
+                [InlineKeyboardButton("🌐 مشاهده آموزش‌های تصویری تمام دستگاه‌ها (وب)", url=tutorial_url)],
+                [InlineKeyboardButton("🛠️ سامانه آنلاین عیب‌یابی هوشمند (وب)", url=troubleshoot_url)]
             ]
             kb = InlineKeyboardMarkup(buttons)
             await update.message.reply_text(guide_text, reply_markup=kb, parse_mode="HTML")
+
+        async def reseller_wizard_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """مدیریت ویزاردهای تعاملی قدم‌به‌قدم عیب‌یابی و اتصال در ربات نماینده"""
+            query = update.callback_query
+            await query.answer()
+            data = query.data
+
+            r_info = db.get_reseller(r_id) or {}
+            custom_tutorial = r_info.get("tutorial_domain") or db.get_setting("tutorial_domain")
+            custom_troubleshoot = r_info.get("troubleshoot_domain") or db.get_setting("troubleshoot_domain")
+            dashboard_url = os.getenv("DASHBOARD_URL", "").rstrip("/")
+
+            if custom_tutorial:
+                tutorial_url = f"https://{custom_tutorial}" if not str(custom_tutorial).startswith("http") else str(custom_tutorial)
+            elif dashboard_url:
+                tutorial_url = f"{dashboard_url}/help?r={r_id}"
+            else:
+                tutorial_url = f"http://127.0.0.1:5000/help?r={r_id}"
+
+            if custom_troubleshoot:
+                troubleshoot_url = f"https://{custom_troubleshoot}" if not str(custom_troubleshoot).startswith("http") else str(custom_troubleshoot)
+            else:
+                troubleshoot_url = f"{tutorial_url.split('?')[0].rstrip('/')}/troubleshoot"
+
+            if data == "wiz_menu":
+                help_text = (
+                    "📖 <b>مرکز آموزش تصویری و راهنمای اتصال</b>\n\n"
+                    "برای مشاهده آموزش مرحله‌به‌مرحله و رفع سریع هرگونه مشکل، روش مورد نظر خود را انتخاب نمایید:"
+                )
+                buttons = [
+                    [InlineKeyboardButton("🧭 راهنمای قدم‌به‌قدم حل مشکل (داخل تلگرام)", callback_data="wiz_tb_start")],
+                    [InlineKeyboardButton("🚀 راهنمای قدم‌به‌قدم اتصال (داخل تلگرام)", callback_data="wiz_conn_start")],
+                    [InlineKeyboardButton("🌐 مشاهده آموزش‌های تصویری جامع (وب)", url=tutorial_url)],
+                    [InlineKeyboardButton("🛠️ سامانه آنلاین عیب‌یابی هوشمند (وب)", url=troubleshoot_url)]
+                ]
+                return await query.edit_message_text(help_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
+            if data == "wiz_tb_start":
+                text = (
+                    "🧭 <b>سامانه هوشمند عیب‌یابی اتصال (گام ۱ از ۶)</b>\n\n"
+                    "لطفاً دستگاهی که در اتصال آن مشکل دارید را انتخاب فرمایید:"
+                )
+                buttons = [
+                    [InlineKeyboardButton("📱 گوشی اندروید (Samsung, Xiaomi, ...)", callback_data="wiz_tb_dev_android")],
+                    [InlineKeyboardButton("🍏 آیفون یا آیپد (iOS)", callback_data="wiz_tb_dev_ios")],
+                    [InlineKeyboardButton("💻 کامپیوتر یا لپ‌تاپ ویندوز", callback_data="wiz_tb_dev_windows")],
+                    [InlineKeyboardButton("🖥️ مک‌بوک و مک (macOS)", callback_data="wiz_tb_dev_macos")],
+                    [InlineKeyboardButton("📺 تلویزیون هوشمند (Android TV)", callback_data="wiz_tb_dev_tv")],
+                    [InlineKeyboardButton("◀️ بازگشت", callback_data="wiz_menu")]
+                ]
+                return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
+            if data.startswith("wiz_tb_dev_"):
+                device = data.replace("wiz_tb_dev_", "")
+                text = (
+                    "📶 <b>بررسی بسته اینترنت (گام ۲ از ۶)</b>\n\n"
+                    "گاهی با نزدیک شدن به اتمام حجم بسته، اپراتورها پکت‌های اینترنت را به صفحه خرید شارژ هدایت می‌کنند که مانع اتصال VPN می‌شود.\n\n"
+                    "کدهای استعلام: همراه اول `#10*100*` | ایرانسل `#4*1*555*` | رایتل `#144*`\n\n"
+                    "وضعیت بسته اینترنت خود را مشخص کنید:"
+                )
+                buttons = [
+                    [InlineKeyboardButton("بسته اینترنت من فعال است و حجم دارد 🟢", callback_data=f"wiz_tb_pkg_ok_{device}")],
+                    [InlineKeyboardButton("بسته‌ام تمام شده / نیاز به شارژ دارم 🔴", callback_data=f"wiz_tb_pkg_empty_{device}")],
+                    [InlineKeyboardButton("◀️ مرحله قبل", callback_data="wiz_tb_start")]
+                ]
+                return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
+            if data.startswith("wiz_tb_pkg_empty_"):
+                device = data.replace("wiz_tb_pkg_empty_", "")
+                text = (
+                    "⚠️ <b>علت مشکل: اتمام بسته اینترنت</b>\n\n"
+                    "لطفاً ابتدا بسته اینترنت جدید خریداری فرمایید. سپس دستگاه را ۱۰ ثانیه روی <b>حالت پرواز (Airplane Mode)</b> قرار داده و خارج نمایید."
+                )
+                buttons = [
+                    [InlineKeyboardButton("بسته را شارژ کردم، ادامه عیب‌یابی 🔄", callback_data=f"wiz_tb_pkg_ok_{device}")],
+                    [InlineKeyboardButton("◀️ مرحله قبل", callback_data=f"wiz_tb_dev_{device}")]
+                ]
+                return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
+            if data.startswith("wiz_tb_pkg_ok_"):
+                device = data.replace("wiz_tb_pkg_ok_", "")
+                text = (
+                    "🛡️ <b>بررسی اعتبار و حجم اشتراک VPN (گام ۳ از ۶)</b>\n\n"
+                    "با دکمه «اشتراک‌های من» یا باز کردن لینک اشتراک، مطمئن شوید حجم گیگابایتی یا مهلت روزهای اشتراک شما تمام نشده باشد.\n\n"
+                    "وضعیت اشتراک شما:"
+                )
+                buttons = [
+                    [InlineKeyboardButton("اشتراکم معتبر است و زمان و حجم دارد ✅", callback_data=f"wiz_tb_sub_ok_{device}")],
+                    [InlineKeyboardButton("حجم یا زمان اشتراکم به پایان رسیده 🔄", callback_data=f"wiz_tb_sub_empty_{device}")],
+                    [InlineKeyboardButton("◀️ مرحله قبل", callback_data=f"wiz_tb_dev_{device}")]
+                ]
+                return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
+            if data.startswith("wiz_tb_sub_empty_"):
+                device = data.replace("wiz_tb_sub_empty_", "")
+                text = (
+                    "🔄 <b>اتمام اعتبار اشتراک VPN</b>\n\n"
+                    "سرویس شما به پایان رسیده است. جهت تمدید، می‌توانید از منوی اصلی ربات دکمه تمدید اشتراک یا خرید اشتراک جدید را انتخاب کنید."
+                )
+                buttons = [
+                    [InlineKeyboardButton("اشتراک را تمدید کردم، ادامه عیب‌یابی 🔄", callback_data=f"wiz_tb_sub_ok_{device}")],
+                    [InlineKeyboardButton("◀️ مرحله قبل", callback_data=f"wiz_tb_pkg_ok_{device}")]
+                ]
+                return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
+            if data.startswith("wiz_tb_sub_ok_"):
+                device = data.replace("wiz_tb_sub_ok_", "")
+                text = (
+                    "⏱️ <b>تنظیم ساعت و تاریخ سیستم (گام ۴ از ۶)</b>\n\n"
+                    "پروتکل‌های نسل جدید بر پایه زمان استاندارد جهانی کار می‌کنند. اختلاف حتی ۶۰ ثانیه‌ای ساعت باعث عدم اتصال می‌شود!\n\n"
+                    "در تنظیمات تاریخ و ساعت دستگاه گزینه <code>Set Automatically</code> را خاموش و مجدداً روشن فرمایید (در ویندوز دکمه Sync now را بزنید)."
+                )
+                buttons = [
+                    [InlineKeyboardButton("ساعت و تاریخ دقیقاً با ساعت رسمی همگام است ⏱️", callback_data=f"wiz_tb_time_ok_{device}")],
+                    [InlineKeyboardButton("◀️ مرحله قبل", callback_data=f"wiz_tb_pkg_ok_{device}")]
+                ]
+                return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
+            if data.startswith("wiz_tb_time_ok_"):
+                device = data.replace("wiz_tb_time_ok_", "")
+                text = (
+                    "📡 <b>انتخاب اپراتور اینترنت (گام ۵ از ۶)</b>\n\n"
+                    "در حال حاضر به کدام شبکه اینترنت متصل هستید؟"
+                )
+                buttons = [
+                    [InlineKeyboardButton("همراه اول یا ایرانسل (سیم‌کارت) 📶", callback_data=f"wiz_tb_op_mci_{device}")],
+                    [InlineKeyboardButton("اینترنت خانگی / وای‌فای (مخابرات، شاتل و...) 🌐", callback_data=f"wiz_tb_op_wifi_{device}")],
+                    [InlineKeyboardButton("رایتل یا سایرین 📱", callback_data=f"wiz_tb_op_other_{device}")],
+                    [InlineKeyboardButton("◀️ مرحله قبل", callback_data=f"wiz_tb_sub_ok_{device}")]
+                ]
+                return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
+            if data.startswith("wiz_tb_op_mci_"):
+                device = data.replace("wiz_tb_op_mci_", "")
+                text = (
+                    "🛡️ <b>تنظیم ضروری Fragment برای همراه اول و ایرانسل:</b>\n\n"
+                    "در تنظیمات نرم‌افزار خود بخش <b>Fragment</b> را روشن کنید و مقادیر packets را روی <code>1-3</code> و length را روی <code>10-20</code> بگذارید."
+                )
+                buttons = [
+                    [InlineKeyboardButton("تنظیمات Fragment را اعمال کردم 🛡️", callback_data=f"wiz_tb_done_{device}")],
+                    [InlineKeyboardButton("◀️ مرحله قبل", callback_data=f"wiz_tb_time_ok_{device}")]
+                ]
+                return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
+            if data.startswith("wiz_tb_op_wifi_"):
+                device = data.replace("wiz_tb_op_wifi_", "")
+                text = (
+                    "🌐 <b>تنظیم DNS و IPv6 برای اینترنت خانگی:</b>\n\n"
+                    "در تنظیمات برنامه VPN گزینه <b>Enable IPv6</b> را خاموش کنید و Remote DNS را روی <code>https://1.1.1.1/dns-query</code> قرار دهید."
+                )
+                buttons = [
+                    [InlineKeyboardButton("تنظیمات DNS و IPv6 را اعمال کردم 🌐", callback_data=f"wiz_tb_done_{device}")],
+                    [InlineKeyboardButton("◀️ مرحله قبل", callback_data=f"wiz_tb_time_ok_{device}")]
+                ]
+                return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
+            if data.startswith("wiz_tb_op_other_"):
+                device = data.replace("wiz_tb_op_other_", "")
+                text = (
+                    "✈️ <b>دریافت آی‌پی تازه با حالت پرواز:</b>\n\n"
+                    "گوشی را ۱۰ ثانیه روی حالت پرواز قرار دهید و سپس متصل شوید."
+                )
+                buttons = [
+                    [InlineKeyboardButton("انجام دادم و آماده تستم ✈️", callback_data=f"wiz_tb_done_{device}")],
+                    [InlineKeyboardButton("◀️ مرحله قبل", callback_data=f"wiz_tb_time_ok_{device}")]
+                ]
+                return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
+            if data.startswith("wiz_tb_done_"):
+                text = (
+                    "🔄 <b>به‌روزرسانی سرورها و تست پینگ (گام ۶ از ۶)</b>\n\n"
+                    "۱. در نرم‌افزار خود گزینه Update subscription را بزنید.\n"
+                    "۲. تست پینگ بگیرید و سرور با پینگ سبز را انتخاب فرمایید.\n"
+                    "۳. دکمه اتصال را روشن کنید.\n\n"
+                    "آیا اتصال با موفقیت برقرار شد؟"
+                )
+                buttons = [
+                    [InlineKeyboardButton("مشکل حل شد و با موفقیت متصلم! 🎉", callback_data="wiz_tb_solved")],
+                    [InlineKeyboardButton("هنوز متصل نیستم / پشتیبانی 🎧", callback_data="wiz_tb_support")],
+                    [InlineKeyboardButton("◀️ شروع مجدد عیب‌یابی", callback_data="wiz_tb_start")]
+                ]
+                return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
+            if data == "wiz_tb_solved":
+                text = "🎉 <b>بسیار عالی!</b>\n\nخوشحالیم که مشکل اتصال شما برطرف گردید."
+                buttons = [[InlineKeyboardButton("بازگشت به منوی اصلی", callback_data="r_back_plans")]]
+                return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
+            if data == "wiz_tb_support":
+                sup_user = r_info.get("support_username") or db.get_setting("support_username", "")
+                text = "🎧 <b>ارتباط با واحد پشتیبانی:</b>\nجهت بررسی اختصاصی، نام کاربری اشتراک و نوع خط اینترنت خود را به پشتیبانی ارسال فرمایید."
+                buttons = []
+                if sup_user:
+                    buttons.append([InlineKeyboardButton("ارسال پیام به پشتیبانی تلگرام", url=f"https://t.me/{sup_user.lstrip('@')}")])
+                buttons.append([InlineKeyboardButton("بازگشت به منوی اصلی", callback_data="r_back_plans")])
+                return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
+            # ─── ویزارد اتصال ───
+            if data == "wiz_conn_start":
+                text = "🚀 <b>راهنمای گام‌به‌گام راه‌اندازی و اتصال (گام ۱ از ۵)</b>\n\nسیستم‌عامل یا دستگاه خود را انتخاب فرمایید:"
+                buttons = [
+                    [InlineKeyboardButton("📱 اندروید", callback_data="wiz_conn_dev_android")],
+                    [InlineKeyboardButton("🍏 آیفون یا آیپد", callback_data="wiz_conn_dev_ios")],
+                    [InlineKeyboardButton("💻 ویندوز", callback_data="wiz_conn_dev_windows")],
+                    [InlineKeyboardButton("🖥️ مک‌بوک", callback_data="wiz_conn_dev_macos")],
+                    [InlineKeyboardButton("📺 تلویزیون هوشمند", callback_data="wiz_conn_dev_tv")],
+                    [InlineKeyboardButton("◀️ بازگشت", callback_data="wiz_menu")]
+                ]
+                return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
+            if data.startswith("wiz_conn_dev_"):
+                device = data.replace("wiz_conn_dev_", "")
+                app_map = {"android": ("v2rayNG", "https://github.com/2dust/v2rayNG/releases/latest"),
+                           "ios": ("Streisand", "https://apps.apple.com/app/streisand/id6450534064"),
+                           "windows": ("v2rayN", "https://github.com/2dust/v2rayN/releases/latest"),
+                           "macos": ("FoXray", "https://apps.apple.com/app/foxray/id6448898396"),
+                           "tv": ("v2rayNG TV", "https://github.com/2dust/v2rayNG/releases/latest")}
+                app_name, dl_url = app_map.get(device, ("v2rayNG", "https://github.com/2dust/v2rayNG/releases/latest"))
+                text = f"📲 <b>دانلود و نصب نرم‌افزار {app_name} (گام ۲ از ۵)</b>\n\nنرم‌افزار رسمی را از لینک زیر دانلود و روی دستگاه باز کنید:"
+                buttons = [
+                    [InlineKeyboardButton(f"دانلود {app_name}", url=dl_url)],
+                    [InlineKeyboardButton("برنامه را نصب کردم، مرحله بعد 📲", callback_data=f"wiz_conn_imp_{device}")],
+                    [InlineKeyboardButton("◀️ مرحله قبل", callback_data="wiz_conn_start")]
+                ]
+                return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
+            if data.startswith("wiz_conn_imp_"):
+                device = data.replace("wiz_conn_imp_", "")
+                text = "📥 <b>وارد کردن لینک اشتراک (گام ۳ از ۵)</b>\n\n۱. لینک اشتراک خود را کپی کنید.\n۲. نرم‌افزار را باز کرده و علامت (+) بالای صفحه را بزنید.\n۳. گزینه <b>Import from clipboard</b> را لمس نمایید."
+                buttons = [
+                    [InlineKeyboardButton("لینک را وارد کردم، مرحله بعد 📥", callback_data=f"wiz_conn_upd_{device}")],
+                    [InlineKeyboardButton("◀️ مرحله قبل", callback_data=f"wiz_conn_dev_{device}")]
+                ]
+                return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
+            if data.startswith("wiz_conn_upd_"):
+                device = data.replace("wiz_conn_upd_", "")
+                text = "🔄 <b>به‌روزرسانی سرورها و پینگ (گام ۴ از ۵)</b>\n\n۱. در نرم‌افزار گزینه <b>Update subscription</b> را بزنید.\n۲. گزینه <b>Real delay test</b> را بزنید تا پینگ‌ها سبز شوند.\n۳. سرور با کمترین پینگ سبز را انتخاب فرمایید."
+                buttons = [
+                    [InlineKeyboardButton("سرورها آپدیت شدند و پینگ سبز دیدم 🔄", callback_data=f"wiz_conn_con_{device}")],
+                    [InlineKeyboardButton("◀️ مرحله قبل", callback_data=f"wiz_conn_imp_{device}")]
+                ]
+                return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
+            if data.startswith("wiz_conn_con_"):
+                text = "🚀 <b>اتصال و استارت (گام ۵ از ۵)</b>\n\nروی دکمه اتصال کلیک فرمایید و در پنجره امنیتی OK یا Allow بزنید تا اینترنت آزاد متصل شود!"
+                buttons = [
+                    [InlineKeyboardButton("با موفقیت متصل شدم! 🎉", callback_data="wiz_tb_solved")],
+                    [InlineKeyboardButton("متصل نشد، رفتن به عیب‌یابی 🛠️", callback_data="wiz_tb_start")],
+                    [InlineKeyboardButton("◀️ شروع مجدد راهنما", callback_data="wiz_conn_start")]
+                ]
+                return await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
 
         async def reseller_admin_panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """نمایش پنل مدیریت اختصاصی نماینده در ربات اختصاصی خود"""
@@ -2668,6 +2927,7 @@ class ResellerBotInstance:
         app.add_handler(CallbackQueryHandler(reseller_ticket_callbacks, pattern="^(res_reply_tkt_|res_canned_tkt_|res_canned_send_|res_canned_cancel_|res_close_tkt_)"))
         app.add_handler(CallbackQueryHandler(reseller_approve_callback, pattern="^(rapprove_|rreject_|res_pay_app_|res_pay_rej_)"))
         app.add_handler(CallbackQueryHandler(reseller_admin_callback_handler, pattern="^res_adm_"))
+        app.add_handler(CallbackQueryHandler(reseller_wizard_callback_handler, pattern="^wiz_"))
         app.add_handler(MessageHandler(filters.CONTACT, contact_handler))
         app.add_handler(MessageHandler(filters.PHOTO, receipt_photo_handler))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router))
