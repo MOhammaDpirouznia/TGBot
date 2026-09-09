@@ -7978,6 +7978,18 @@ def admin_reseller_plan_override():
     custom_duration_raw = request.form.get("custom_duration", "").strip()
     custom_duration = int(custom_duration_raw) if custom_duration_raw else None
     
+    custom_discount_raw = request.form.get("custom_discount_percent", "").strip()
+    try:
+        custom_discount_percent = float(custom_discount_raw) if custom_discount_raw else None
+    except ValueError:
+        custom_discount_percent = None
+
+    custom_wholesale_raw = request.form.get("custom_wholesale_price", "").strip()
+    try:
+        custom_wholesale_price = int(custom_wholesale_raw) if custom_wholesale_raw else None
+    except ValueError:
+        custom_wholesale_price = None
+
     is_active = request.form.get("is_active") == "1"
 
     if reseller_id <= 0 or not plan_id:
@@ -7991,6 +8003,8 @@ def admin_reseller_plan_override():
         custom_price=custom_price,
         custom_data_limit=custom_data_limit,
         custom_duration=custom_duration,
+        custom_discount_percent=custom_discount_percent,
+        custom_wholesale_price=custom_wholesale_price,
         is_active=is_active
     )
     if res.get("success"):
