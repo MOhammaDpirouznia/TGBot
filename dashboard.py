@@ -46,6 +46,7 @@ from payment import CryptoPaymentGateway
 import avatar_generator
 from multibot_manager import multibot_manager, ResellerBotInstance
 from tutorials_data import PLATFORMS, TUTORIALS, TROUBLESHOOTING_GUIDES
+import tutorials_manager
 from palette_manager import (
     get_all_palettes, get_palette, get_active_palette_config, generate_palette_css
 )
@@ -3137,9 +3138,17 @@ def logout():
 @app.route("/tutorials")
 def tutorials_portal():
     """صفحه اصلی پورتال آموزش‌های چندسکویی با انتخاب گرافیکی سیستم‌عامل و جستجو"""
+    platforms = tutorials_manager.get_platforms()
+    tutorials = tutorials_manager.get_all_tutorials()
+    troubleshooting = tutorials_manager.get_troubleshooting_guides()
+    step_connection = tutorials_manager.get_step_by_step_connection()
+    step_troubleshoot = tutorials_manager.get_step_by_step_troubleshoot()
+
     active_platform = request.args.get("platform", "android").lower()
-    if active_platform not in PLATFORMS:
+    if active_platform not in platforms:
         active_platform = "android"
+
+    active_mode = request.args.get("mode", "catalog")
 
     # تعیین هویت نماینده در صورت فراخوانی با پارامتر r
     reseller_param = request.args.get("r")
@@ -3153,10 +3162,13 @@ def tutorials_portal():
 
     return render_template(
         "tutorials_portal.html",
-        platforms=PLATFORMS,
-        tutorials=TUTORIALS,
-        troubleshooting=TROUBLESHOOTING_GUIDES,
-        active_platform=active_platform
+        platforms=platforms,
+        tutorials=tutorials,
+        troubleshooting=troubleshooting,
+        step_connection=step_connection,
+        step_troubleshoot=step_troubleshoot,
+        active_platform=active_platform,
+        active_mode=active_mode
     )
 
 
@@ -3164,10 +3176,18 @@ def tutorials_portal():
 @app.route("/tutorials/<platform>")
 def tutorials_platform(platform):
     """مشاهده لیست نرم‌افزارها و آموزش‌های یک سیستم‌عامل خاص"""
+    platforms = tutorials_manager.get_platforms()
+    tutorials = tutorials_manager.get_all_tutorials()
+    troubleshooting = tutorials_manager.get_troubleshooting_guides()
+    step_connection = tutorials_manager.get_step_by_step_connection()
+    step_troubleshoot = tutorials_manager.get_step_by_step_troubleshoot()
+
     platform_key = platform.lower()
-    if platform_key not in PLATFORMS:
+    if platform_key not in platforms:
         flash("سیستم‌عامل انتخاب شده معتبر نمی‌باشد.", "warning")
         return redirect(url_for("tutorials_portal"))
+
+    active_mode = request.args.get("mode", "catalog")
 
     reseller_param = request.args.get("r")
     if reseller_param and not getattr(g, "custom_reseller", None):
@@ -3180,10 +3200,13 @@ def tutorials_platform(platform):
 
     return render_template(
         "tutorials_portal.html",
-        platforms=PLATFORMS,
-        tutorials=TUTORIALS,
-        troubleshooting=TROUBLESHOOTING_GUIDES,
-        active_platform=platform_key
+        platforms=platforms,
+        tutorials=tutorials,
+        troubleshooting=troubleshooting,
+        step_connection=step_connection,
+        step_troubleshoot=step_troubleshoot,
+        active_platform=platform_key,
+        active_mode=active_mode
     )
 
 
@@ -3192,7 +3215,9 @@ def tutorials_platform(platform):
 def tutorial_view(platform, app_slug):
     """صفحه آموزش اختصاصی گام‌به‌گام و تصویری یک نرم‌افزار با دکمه‌های دانلود"""
     app_key = app_slug.lower()
-    tutorial = TUTORIALS.get(app_key)
+    platforms = tutorials_manager.get_platforms()
+    tutorials = tutorials_manager.get_all_tutorials()
+    tutorial = tutorials_manager.get_tutorial(app_key)
     if not tutorial:
         flash("آموزش نرم‌افزار مورد نظر یافت نشد.", "warning")
         return redirect(url_for("tutorials_portal", platform=platform))
@@ -3206,24 +3231,30 @@ def tutorial_view(platform, app_slug):
         except Exception:
             pass
 
-    platform_info = PLATFORMS.get(tutorial["platform"], {})
+    platform_info = platforms.get(tutorial.get("platform", platform), {})
     return render_template(
         "tutorial_view.html",
         tutorial=tutorial,
         platform_info=platform_info,
-        platforms=PLATFORMS,
-        tutorials=TUTORIALS
+        platforms=platforms,
+        tutorials=tutorials
     )
 
 
 @app.route("/help/troubleshoot")
 @app.route("/tutorials/troubleshoot")
 def troubleshoot_wizard():
-    """سامانه ویزارد عیب‌یابی هوشمند و راهنمای حل مشکلات اتصال"""
+    """سامانه ویزارد عیب‌یابی هوشمند و راهنمای حل مشکلات اتصال (با پشتیبانی از حالت دوگانه)"""
+    platforms = tutorials_manager.get_platforms()
+    guides = tutorials_manager.get_troubleshooting_guides()
+    step_troubleshoot = tutorials_manager.get_step_by_step_troubleshoot()
+
     active_slug = request.args.get("issue")
     active_issue = None
     if active_slug:
-        active_issue = next((g for g in TROUBLESHOOTING_GUIDES if g["slug"] == active_slug), None)
+        active_issue = next((g for g in guides if g.get("slug") == active_slug), None)
+
+    active_mode = request.args.get("mode", "wizard")
 
     reseller_param = request.args.get("r")
     if reseller_param and not getattr(g, "custom_reseller", None):
@@ -3236,9 +3267,218 @@ def troubleshoot_wizard():
 
     return render_template(
         "troubleshoot_wizard.html",
-        guides=TROUBLESHOOTING_GUIDES,
-        active_issue=active_issue
+        guides=guides,
+        platforms=platforms,
+        step_troubleshoot=step_troubleshoot,
+        active_issue=active_issue,
+        active_mode=active_mode
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# مسیرهای مدیریت آموزش‌ها و عیب‌یابی در پنل مدیریت (Admin Tutorials Management)
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/admin/tutorials")
+@admin_required
+def admin_tutorials():
+    """صفحه مدیریت آموزش‌های نرم‌افزارها، مقالات عیب‌یابی و ویزاردهای تعاملی"""
+    platforms = tutorials_manager.get_platforms()
+    tutorials = tutorials_manager.get_all_tutorials()
+    guides = tutorials_manager.get_troubleshooting_guides()
+    step_troubleshoot = tutorials_manager.get_step_by_step_troubleshoot()
+    step_connection = tutorials_manager.get_step_by_step_connection()
+
+    tutorial_domain = db.get_setting("tutorial_domain", "")
+    troubleshoot_domain = db.get_setting("troubleshoot_domain", "")
+    tutorial_title = db.get_setting("tutorial_title", "راهنما و آموزش اتصال")
+
+    active_tab = request.args.get("tab", "apps")
+
+    return render_template(
+        "admin_tutorials.html",
+        platforms=platforms,
+        tutorials=tutorials,
+        guides=guides,
+        step_troubleshoot=step_troubleshoot,
+        step_connection=step_connection,
+        tutorial_domain=tutorial_domain,
+        troubleshoot_domain=troubleshoot_domain,
+        tutorial_title=tutorial_title,
+        active_tab=active_tab
+    )
+
+
+@app.route("/admin/tutorials/app/save", methods=["POST"])
+@admin_required
+def admin_save_tutorial_app():
+    """ذخیره یا ویرایش اطلاعات یک نرم‌افزار آموزشی"""
+    app_slug = request.form.get("app_slug", "").strip().lower()
+    name = request.form.get("name", "").strip()
+    if not app_slug:
+        app_slug = re.sub(r"[^a-zA-Z0-9_-]", "-", name.lower()).strip("-") or str(uuid.uuid4())[:8]
+
+    platform = request.form.get("platform", "android").strip()
+    subtitle = request.form.get("subtitle", "").strip()
+    badge = request.form.get("badge", "").strip()
+    badge_color = request.form.get("badge_color", "primary").strip()
+    icon = request.form.get("icon", "fas fa-rocket").strip()
+    rating = request.form.get("rating", "4.9").strip()
+
+    # دانلودها
+    downloads_json = request.form.get("downloads_json", "").strip()
+    downloads = []
+    if downloads_json:
+        try:
+            downloads = json.loads(downloads_json)
+        except Exception:
+            downloads = []
+    if not downloads:
+        dl_url = request.form.get("dl_url", "").strip()
+        dl_title = request.form.get("dl_title", "").strip() or "دانلود مستقیم"
+        if dl_url:
+            downloads.append({
+                "title": dl_title,
+                "url": dl_url,
+                "icon": "fas fa-download",
+                "btn_class": "btn-primary"
+            })
+
+    # مراحل گام‌به‌گام
+    steps_json = request.form.get("steps_json", "").strip()
+    steps = []
+    if steps_json:
+        try:
+            steps = json.loads(steps_json)
+        except Exception:
+            steps = []
+    if not steps:
+        steps_text = request.form.get("steps_text", "").strip()
+        if steps_text:
+            lines = [l.strip() for l in steps_text.splitlines() if l.strip()]
+            for idx, line in enumerate(lines, 1):
+                steps.append({
+                    "step": idx,
+                    "title": f"مرحله {idx}",
+                    "desc": line,
+                    "tip": ""
+                })
+
+    # نکات رفع اشکال
+    troubleshoot_text = request.form.get("troubleshoot_text", "").strip()
+    troubleshoot = [t.strip() for t in troubleshoot_text.splitlines() if t.strip()]
+
+    app_data = {
+        "platform": platform,
+        "name": name,
+        "subtitle": subtitle,
+        "badge": badge,
+        "badge_color": badge_color,
+        "icon": icon,
+        "rating": rating,
+        "downloads": downloads,
+        "steps": steps,
+        "troubleshoot": troubleshoot
+    }
+
+    success = tutorials_manager.save_tutorial(app_slug, app_data)
+    if success:
+        flash(f"آموزش نرم‌افزار '{name}' با موفقیت ذخیره شد.", "success")
+    else:
+        flash("خطا در ذخیره‌سازی آموزش نرم‌افزار.", "danger")
+
+    return redirect(url_for("admin_tutorials", tab="apps"))
+
+
+@app.route("/admin/tutorials/app/delete/<app_slug>", methods=["POST"])
+@admin_required
+def admin_delete_tutorial_app(app_slug):
+    """حذف یک نرم‌افزار آموزشی"""
+    success = tutorials_manager.delete_tutorial(app_slug)
+    if success:
+        flash(f"نرم‌افزار '{app_slug}' با موفقیت حذف گردید.", "info")
+    else:
+        flash("خطا در حذف نرم‌افزار.", "danger")
+    return redirect(url_for("admin_tutorials", tab="apps"))
+
+
+@app.route("/admin/tutorials/guide/save", methods=["POST"])
+@admin_required
+def admin_save_troubleshooting_guide():
+    """ذخیره یا ویرایش یک راهکار خطای عیب‌یابی"""
+    slug = request.form.get("slug", "").strip().lower()
+    title = request.form.get("title", "").strip()
+    if not slug:
+        slug = re.sub(r"[^a-zA-Z0-9_-]", "_", title.lower()).strip("_") or str(uuid.uuid4())[:8]
+
+    subtitle = request.form.get("subtitle", "").strip()
+    icon = request.form.get("icon", "fas fa-wrench").strip()
+    color = request.form.get("color", "warning").strip()
+    problem = request.form.get("problem", "").strip()
+    cause = request.form.get("cause", "").strip()
+
+    steps_text = request.form.get("solution_steps", "").strip()
+    solution_steps = [s.strip() for s in steps_text.splitlines() if s.strip()]
+
+    guide_data = {
+        "slug": slug,
+        "title": title,
+        "subtitle": subtitle,
+        "icon": icon,
+        "color": color,
+        "problem": problem,
+        "cause": cause,
+        "solution_steps": solution_steps
+    }
+
+    success = tutorials_manager.save_troubleshooting_guide(slug, guide_data)
+    if success:
+        flash(f"راهکار خطای '{title}' با موفقیت ذخیره شد.", "success")
+    else:
+        flash("خطا در ذخیره راهکار عیب‌یابی.", "danger")
+
+    return redirect(url_for("admin_tutorials", tab="guides"))
+
+
+@app.route("/admin/tutorials/guide/delete/<slug>", methods=["POST"])
+@admin_required
+def admin_delete_troubleshooting_guide(slug):
+    """حذف یک راهکار خطای عیب‌یابی"""
+    success = tutorials_manager.delete_troubleshooting_guide(slug)
+    if success:
+        flash(f"راهکار خطای '{slug}' با موفقیت حذف شد.", "info")
+    else:
+        flash("خطا در حذف راهکار خطای عیب‌یابی.", "danger")
+    return redirect(url_for("admin_tutorials", tab="guides"))
+
+
+@app.route("/admin/tutorials/wizard/save", methods=["POST"])
+@admin_required
+def admin_save_wizard_config():
+    """ذخیره ساختار سفارشی ویزارد قدم‌به‌قدم"""
+    wizard_type = request.form.get("wizard_type", "troubleshoot")
+    wizard_json = request.form.get("wizard_json", "").strip()
+    try:
+        data = json.loads(wizard_json)
+        if wizard_type == "troubleshoot":
+            tutorials_manager.save_step_by_step_troubleshoot(data)
+        else:
+            tutorials_manager.save_step_by_step_connection(data)
+        flash("تنظیمات ساختار ویزارد تعاملی با موفقیت ذخیره شد.", "success")
+    except Exception as e:
+        flash(f"خطا در ساختار JSON ارسالی ویزارد: {e}", "danger")
+
+    return redirect(url_for("admin_tutorials", tab="wizards"))
+
+
+@app.route("/admin/tutorials/reset", methods=["POST"])
+@admin_required
+def admin_reset_tutorials():
+    """بازنشانی محتوای آموزش‌ها یا عیب‌یابی به حالت اولیه کارخانه"""
+    section = request.form.get("section", "").strip() or None
+    tutorials_manager.reset_to_defaults(section)
+    flash("محتوای بخش انتخاب شده با موفقیت به پیش‌فرض‌های استاندارد بازنشانی شد.", "success")
+    return redirect(url_for("admin_tutorials"))
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -4002,6 +4242,7 @@ def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: 
         return {"success": True, "type": "reseller_bundle"}
 
     # ۲. حالت خرید، تمدید اشتراک یا تسویه بدهی توسط کاربر
+    smart_inv = db.get_smart_invoice_by_order_id(order_id)
     is_debt_settlement = bool(tx.get("is_debt_settlement")) or (smart_inv and bool(smart_inv.get("is_debt_settlement"))) or ("تسویه بدهی" in str(pname))
     is_renewal = bool(tx.get("is_renewal"))
     renew_sub_id = tx.get("renew_sub_id")
@@ -4011,10 +4252,13 @@ def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: 
     duration = selected_plan["duration"] if selected_plan else 30
     account_name = tx.get("account_name") or f"tg_{user_id}"
     user_uuid = ""
-    smart_inv = db.get_smart_invoice_by_order_id(order_id)
     instant_activation = True
     if smart_inv and smart_inv.get("instant_activation") is not None:
         instant_activation = bool(smart_inv["instant_activation"])
+    else:
+        comm = tx.get("account_comment") or ""
+        if "instant_act:0" in comm or "queue_renewal" in comm:
+            instant_activation = False
 
     if is_debt_settlement and renew_sub_id:
         target_sub = db.get_subscription(renew_sub_id)
@@ -6640,6 +6884,417 @@ def admin_hiddify_bulk_restore_resellers():
         flash(f"خطا در ارتباط با هیدیفای: {err}", "danger")
 
     return redirect(url_for("admin_resellers"))
+
+
+@app.route("/admin/hiddify/sync-preview", methods=["POST"])
+@admin_required
+def admin_hiddify_sync_preview():
+    """پیش‌نمایش مشترکین برای عملیات‌های همگام‌سازی، بازیابی و تطبیق هیدیفای"""
+    data = request.get_json() or {}
+    scope = data.get("scope", "reseller")
+    reseller_id = data.get("reseller_id")
+    sync_type = data.get("type", "push_sync")  # push_sync, restore, prune_sync
+
+    reseller = None
+    reseller_key = None
+    target_name = "کل سیستم"
+
+    if scope == "reseller" and reseller_id:
+        reseller = db.get_reseller(int(reseller_id))
+        if not reseller:
+            return jsonify({"success": False, "error": "نماینده مورد نظر یافت نشد."}), 404
+        reseller_key = db.get_reseller_hiddify_key(int(reseller_id))
+        target_name = reseller.get("name") or f"نماینده #{reseller_id}"
+
+    # دریافت لیست کاربران از سرور هیدیفای
+    users_resp = hidify_sync_request("GET", "/admin/user/", api_key=reseller_key)
+    if not isinstance(users_resp, list):
+        err = users_resp.get("error") if isinstance(users_resp, dict) else "پاسخ نامعتبر از سرور هیدیفای"
+        return jsonify({"success": False, "error": f"خطا در ارتباط با هیدیفای: {err}"}), 502
+
+    # فیلتر کاربران هیدیفای در صورت اتصال با ادمین عمومی
+    filtered_hiddify_users = users_resp
+    if scope == "reseller" and reseller and not reseller_key:
+        adm_uuid = str(reseller.get("hiddify_admin_uuid") or "").strip()
+        filtered_hiddify_users = [
+            u for u in users_resp
+            if isinstance(u, dict) and (
+                (adm_uuid and str(u.get("added_by") or "").strip() == adm_uuid)
+                or f"[RESELLER_ID: #{reseller['id']}]" in str(u.get("comment") or "")
+                or f"[RESELLER_ID: {reseller['id']}]" in str(u.get("comment") or "")
+            )
+        ]
+
+    # ایندکس کردن کاربران هیدیفای بر اساس UUID و Name
+    h_by_uuid = {}
+    h_by_name = {}
+    for u in filtered_hiddify_users:
+        if isinstance(u, dict):
+            u_uuid = str(u.get("uuid") or "").strip().lower()
+            if u_uuid:
+                h_by_uuid[u_uuid] = u
+            u_name = str(u.get("name") or "").strip().lower()
+            if u_name:
+                h_by_name[u_name] = u
+
+    items = []
+
+    if sync_type == "push_sync":
+        # همگام‌سازی هیدیفای با پنل (ارسال مشترکین محلی به هیدیفای و انطباق حجم/زمان)
+        r_id = int(reseller_id) if (scope == "reseller" and reseller_id) else None
+        local_subs = db.get_active_subscriptions_for_sync(r_id)
+
+        for sub in local_subs:
+            sub_id = sub["id"]
+            sub_uuid = str(sub.get("hidify_uuid") or "").strip().lower()
+            sub_name = str(sub.get("account_name") or f"sub_{sub_id}").strip()
+            
+            # جستجو در هیدیفای با UUID یا نام اکانت
+            h_user = h_by_uuid.get(sub_uuid)
+            if not h_user and sub_name:
+                h_user = h_by_name.get(sub_name.lower())
+
+            l_limit = float(sub.get("data_limit") or 0)
+            l_used = float(sub.get("data_used") or 0)
+            l_days = int(sub.get("duration") or 30)
+            l_expire = str(sub.get("expire_date") or "").strip()
+
+            if not h_user:
+                state = "missing"
+                badge_text = "جدید (ناموجود در هیدیفای)"
+                badge_color = "primary"
+                action_desc = "ساخت مشترک در هیدیفای و انطباق حجم و زمان"
+                checked = True
+                h_limit = None
+                h_used = None
+                h_expire = "-"
+            else:
+                h_limit = float(h_user.get("usage_limit_GB") or 0)
+                h_used = float(h_user.get("current_usage_GB") or 0)
+                h_days = int(h_user.get("package_days") or 0)
+                h_expire = str(h_user.get("expire_date") or h_user.get("expiry_time") or "").strip()[:10]
+
+                diff_limit = abs(h_limit - l_limit) >= 0.05
+                diff_used = abs(h_used - l_used) >= 0.05
+                diff_days = (l_days > 0 and h_days != l_days)
+
+                if diff_limit or diff_used or diff_days:
+                    state = "mismatch"
+                    badge_text = "نیاز به انطباق حجم/زمان"
+                    badge_color = "warning"
+                    action_desc = "انطباق حجم و انقضا با پنل"
+                    checked = True
+                else:
+                    state = "synced"
+                    badge_text = "کاملاً منطبق"
+                    badge_color = "success"
+                    action_desc = "اطلاعات هیدیفای و پنل یکسان است"
+                    checked = False
+
+            items.append({
+                "id": sub_id,
+                "uuid": sub.get("hidify_uuid") or "(تولید خودکار)",
+                "name": sub_name,
+                "local_limit": round(l_limit, 2),
+                "local_used": round(l_used, 2),
+                "local_days": l_days,
+                "local_expire": l_expire or "-",
+                "hiddify_limit": round(h_limit, 2) if h_limit is not None else None,
+                "hiddify_used": round(h_used, 2) if h_used is not None else None,
+                "hiddify_expire": h_expire or "-",
+                "state": state,
+                "badge_text": badge_text,
+                "badge_color": badge_color,
+                "action_desc": action_desc,
+                "checked": checked
+            })
+
+    elif sync_type == "restore":
+        # بازیابی مشترکین از هیدیفای به پنل
+        r_id = int(reseller_id) if (scope == "reseller" and reseller_id) else None
+        local_subs = db.get_active_subscriptions_for_sync(r_id)
+        local_uuids = {str(s.get("hidify_uuid") or "").strip().lower() for s in local_subs if s.get("hidify_uuid")}
+
+        for u in filtered_hiddify_users:
+            if not isinstance(u, dict):
+                continue
+            u_uuid = str(u.get("uuid") or "").strip()
+            if not u_uuid:
+                continue
+            u_name = u.get("name") or f"user_{u_uuid[:8]}"
+            u_limit = float(u.get("usage_limit_GB") or 0)
+            u_used = float(u.get("current_usage_GB") or 0)
+            u_days = int(u.get("package_days") or 30)
+            u_expire = str(u.get("expire_date") or u.get("expiry_time") or "").strip()[:10]
+            in_local = u_uuid.lower() in local_uuids
+
+            items.append({
+                "id": u_uuid,
+                "uuid": u_uuid,
+                "name": u_name,
+                "local_limit": None,
+                "local_used": None,
+                "local_days": None,
+                "local_expire": "-",
+                "hiddify_limit": round(u_limit, 2),
+                "hiddify_used": round(u_used, 2),
+                "hiddify_expire": u_expire or f"{u_days} روز",
+                "state": "exists" if in_local else "new",
+                "badge_text": "موجود در پنل (بروزرسانی)" if in_local else "جدید (بازیابی به پنل)",
+                "badge_color": "secondary" if in_local else "info",
+                "action_desc": "بروزرسانی اشتراک در پنل" if in_local else "افزودن اشتراک جدید به پنل",
+                "checked": True
+            })
+
+    elif sync_type == "prune_sync":
+        # همگام‌سازی و پاکسازی دقیق با هیدیفای
+        r_id = int(reseller_id) if (scope == "reseller" and reseller_id) else None
+        local_subs = db.get_active_subscriptions_for_sync(r_id)
+
+        # ۱. مشترکین موجود در هیدیفای جهت بروزرسانی در پنل
+        for u in filtered_hiddify_users:
+            if not isinstance(u, dict):
+                continue
+            u_uuid = str(u.get("uuid") or "").strip()
+            if not u_uuid:
+                continue
+            u_name = u.get("name") or f"user_{u_uuid[:8]}"
+            u_limit = float(u.get("usage_limit_GB") or 0)
+            u_used = float(u.get("current_usage_GB") or 0)
+            u_expire = str(u.get("expire_date") or u.get("expiry_time") or "").strip()[:10]
+            items.append({
+                "id": u_uuid,
+                "uuid": u_uuid,
+                "name": u_name,
+                "local_limit": None,
+                "local_used": None,
+                "local_days": None,
+                "local_expire": "-",
+                "hiddify_limit": round(u_limit, 2),
+                "hiddify_used": round(u_used, 2),
+                "hiddify_expire": u_expire or "-",
+                "state": "sync",
+                "badge_text": "همگام‌سازی از هیدیفای",
+                "badge_color": "success",
+                "action_desc": "بروزرسانی اطلاعات در پنل",
+                "checked": True
+            })
+
+        # ۲. مشترکین اضافی محلی که در هیدیفای وجود ندارند
+        for sub in local_subs:
+            sub_uuid = str(sub.get("hidify_uuid") or "").strip().lower()
+            if not sub_uuid or sub_uuid not in h_by_uuid:
+                items.append({
+                    "id": sub["id"],
+                    "uuid": sub.get("hidify_uuid") or "-",
+                    "name": sub.get("account_name") or f"sub_{sub['id']}",
+                    "local_limit": round(float(sub.get("data_limit") or 0), 2),
+                    "local_used": round(float(sub.get("data_used") or 0), 2),
+                    "local_days": int(sub.get("duration") or 30),
+                    "local_expire": str(sub.get("expire_date") or "-")[:10],
+                    "hiddify_limit": None,
+                    "hiddify_used": None,
+                    "hiddify_expire": "ناموجود",
+                    "state": "prune",
+                    "badge_text": "ناموجود در هیدیفای (حذف)",
+                    "badge_color": "danger",
+                    "action_desc": "حذف از دیتابیس پنل",
+                    "checked": True
+                })
+
+    summary = {
+        "total": len(items),
+        "missing": sum(1 for i in items if i["state"] == "missing"),
+        "mismatch": sum(1 for i in items if i["state"] == "mismatch"),
+        "synced": sum(1 for i in items if i["state"] == "synced"),
+        "new": sum(1 for i in items if i["state"] == "new"),
+        "exists": sum(1 for i in items if i["state"] == "exists"),
+        "prune": sum(1 for i in items if i["state"] == "prune"),
+        "sync": sum(1 for i in items if i["state"] == "sync")
+    }
+
+    return jsonify({
+        "success": True,
+        "target_name": target_name,
+        "sync_type": sync_type,
+        "scope": scope,
+        "reseller_id": reseller_id,
+        "summary": summary,
+        "items": items
+    })
+
+
+@app.route("/admin/hiddify/sync-execute", methods=["POST"])
+@admin_required
+def admin_hiddify_sync_execute():
+    """اجرای عملیات گزینشی همگام‌سازی، بازیابی یا پاکسازی هیدیفای بر اساس موارد انتخاب‌شده"""
+    data = request.get_json() or {}
+    scope = data.get("scope", "reseller")
+    reseller_id = data.get("reseller_id")
+    sync_type = data.get("type", "push_sync")
+    selected_ids = data.get("selected_ids") or []
+    selected_uuids = data.get("selected_uuids") or []
+    prune_ids = data.get("prune_ids") or []
+
+    reseller = None
+    reseller_key = None
+    target_name = "کل سیستم"
+
+    if scope == "reseller" and reseller_id:
+        reseller = db.get_reseller(int(reseller_id))
+        if not reseller:
+            return jsonify({"success": False, "error": "نماینده مورد نظر یافت نشد."}), 404
+        reseller_key = db.get_reseller_hiddify_key(int(reseller_id))
+        target_name = reseller.get("name") or f"نماینده #{reseller_id}"
+
+    created_count = 0
+    updated_count = 0
+    pruned_count = 0
+    errors = []
+
+    try:
+        if sync_type == "push_sync":
+            # ارسال مشترکین محلی به هیدیفای و تطبیق حجم و زمان
+            if not selected_ids:
+                return jsonify({"success": False, "error": "هیچ مشترکی برای همگام‌سازی انتخاب نشده است."}), 400
+
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            placeholders = ",".join("?" for _ in selected_ids)
+            cursor.execute(f"SELECT * FROM subscriptions WHERE id IN ({placeholders})", selected_ids)
+            target_subs = [dict(r) for r in cursor.fetchall()]
+            conn.close()
+
+            for sub in target_subs:
+                sub_id = sub["id"]
+                sub_name = sub.get("account_name") or f"user_{sub_id}"
+                sub_uuid = db.ensure_subscription_uuid(sub_id)
+                sub_r_id = sub.get("reseller_id") or (int(reseller_id) if reseller_id else None)
+                active_api_key = db.get_reseller_hiddify_key(sub_r_id) if sub_r_id else reseller_key
+
+                limit_gb = float(sub.get("data_limit") or 0)
+                used_gb = float(sub.get("data_used") or 0)
+                pkg_days = int(sub.get("duration") or 30)
+                s_date = sub.get("start_date")
+                e_date = sub.get("expire_date")
+                comm = sub.get("account_comment")
+
+                try:
+                    # بررسی وجود کاربر در هیدیفای
+                    user_chk = hidify_sync_request("GET", f"/admin/user/{sub_uuid}/", api_key=active_api_key)
+                    user_exists = isinstance(user_chk, dict) and "error" not in user_chk and user_chk.get("uuid")
+
+                    if not user_exists:
+                        # ۱. ساخت کاربر جدید در هیدیفای
+                        create_res = hidify_sync_create_user(
+                            name=sub_name,
+                            usage_limit_gb=limit_gb,
+                            package_days=pkg_days,
+                            comment=comm,
+                            api_key=active_api_key,
+                            reseller_id=sub_r_id,
+                            uuid=sub_uuid,
+                            current_usage_gb=used_gb,
+                            start_date=s_date,
+                            expire_date=e_date,
+                            enable=True,
+                            is_active=True
+                        )
+                        if isinstance(create_res, dict) and "error" in create_res:
+                            errors.append(f"{sub_name}: خطا در ساخت ({create_res['error']})")
+                            continue
+
+                        # ۲. اعمال قطعی حجم مصرفی و تاریخ انقضا از طریق PATCH/PUT
+                        hidify_sync_update_user(
+                            uuid=sub_uuid,
+                            current_usage_GB=used_gb,
+                            usage_limit_GB=limit_gb,
+                            package_days=pkg_days,
+                            start_date=s_date,
+                            expire_date=e_date,
+                            api_key=active_api_key,
+                            reseller_id=sub_r_id
+                        )
+                        created_count += 1
+                    else:
+                        # انطباق کامل حجم و زمان کاربر موجود در هیدیفای با پنل نماینده
+                        up_res = hidify_sync_update_user(
+                            uuid=sub_uuid,
+                            current_usage_GB=used_gb,
+                            usage_limit_GB=limit_gb,
+                            package_days=pkg_days,
+                            start_date=s_date,
+                            expire_date=e_date,
+                            name=sub_name,
+                            api_key=active_api_key,
+                            reseller_id=sub_r_id
+                        )
+                        if isinstance(up_res, dict) and "error" in up_res:
+                            errors.append(f"{sub_name}: خطا در بروزرسانی ({up_res['error']})")
+                        else:
+                            updated_count += 1
+
+                except Exception as sub_err:
+                    errors.append(f"{sub_name}: {str(sub_err)}")
+
+            msg = f"همگام‌سازی هیدیفای با موفقیت انجام شد: {created_count} مشترک جدید ایجاد گردید و {updated_count} مشترک منطبق شدند."
+            return jsonify({
+                "success": True,
+                "message": msg,
+                "created_count": created_count,
+                "updated_count": updated_count,
+                "errors": errors
+            })
+
+        elif sync_type == "restore":
+            # بازیابی مشترکین انتخاب‌شده از هیدیفای به دیتابیس محلی
+            if not selected_uuids:
+                return jsonify({"success": False, "error": "هیچ کاربری برای بازیابی انتخاب نشده است."}), 400
+
+            users_resp = hidify_sync_request("GET", "/admin/user/", api_key=reseller_key)
+            if not isinstance(users_resp, list):
+                return jsonify({"success": False, "error": "خطا در فراخوانی اطلاعات از هیدیفای"}), 502
+
+            sel_set = {str(u).strip().lower() for u in selected_uuids}
+            matched_users = [u for u in users_resp if isinstance(u, dict) and str(u.get("uuid") or "").strip().lower() in sel_set]
+
+            r_id = int(reseller_id) if (scope == "reseller" and reseller_id) else None
+            res = db.restore_subscriptions_from_hiddify(matched_users, default_reseller_id=r_id)
+            synced_count = res.get("synced_count", 0)
+
+            return jsonify({
+                "success": True,
+                "message": f"تعداد {synced_count} مشترک با موفقیت از هیدیفای به پنل بازیابی شدند.",
+                "synced_count": synced_count
+            })
+
+        elif sync_type == "prune_sync":
+            # ۱. همگام‌سازی کاربران انتخاب‌شده از هیدیفای
+            if selected_uuids:
+                users_resp = hidify_sync_request("GET", "/admin/user/", api_key=reseller_key)
+                if isinstance(users_resp, list):
+                    sel_set = {str(u).strip().lower() for u in selected_uuids}
+                    matched_users = [u for u in users_resp if isinstance(u, dict) and str(u.get("uuid") or "").strip().lower() in sel_set]
+                    r_id = int(reseller_id) if (scope == "reseller" and reseller_id) else None
+                    res = db.restore_subscriptions_from_hiddify(matched_users, default_reseller_id=r_id)
+                    updated_count = res.get("synced_count", 0)
+
+            # ۲. پاکسازی اشتراک‌های اضافی انتخاب‌شده از پنل
+            if prune_ids:
+                p_res = db.prune_selected_subscriptions(prune_ids)
+                pruned_count = p_res.get("purged_count", 0)
+
+            msg = f"همگام‌سازی کامل شد: {updated_count} مشترک هیدیفای بروزرسانی شدند و {pruned_count} مشترک اضافی از پنل حذف گردیدند."
+            return jsonify({
+                "success": True,
+                "message": msg,
+                "updated_count": updated_count,
+                "pruned_count": pruned_count
+            })
+
+    except Exception as e:
+        logger.error(f"Error in admin_hiddify_sync_execute: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/admin/reseller/<int:reseller_id>/bot-toggle", methods=["POST"])
@@ -10882,6 +11537,7 @@ def reseller_bundles_online_pay(bundle_id: str):
 
     pay_url = None
     invoice_id = None
+    err_msg = None
     if gw_type == "zarinpal":
         from payment import ZarinPal
         zp = ZarinPal(merchant_id=gw_key, sandbox=sandbox)
@@ -10889,6 +11545,8 @@ def reseller_bundles_online_pay(bundle_id: str):
         if res.get("success"):
             pay_url = res.get("payment_url")
             invoice_id = res.get("authority")
+        else:
+            err_msg = res.get("error")
     elif gw_type == "idpay":
         from payment import IDPay
         idp = IDPay(api_key=gw_key, sandbox=sandbox)
@@ -10896,6 +11554,8 @@ def reseller_bundles_online_pay(bundle_id: str):
         if res.get("success"):
             pay_url = res.get("payment_url")
             invoice_id = res.get("payment_id")
+        else:
+            err_msg = res.get("error")
     elif gw_type == "blupal":
         from payment import BluPal
         bp = BluPal(api_key=gw_key, sandbox=sandbox)
@@ -10903,6 +11563,8 @@ def reseller_bundles_online_pay(bundle_id: str):
         if res.get("success"):
             pay_url = res.get("payment_url") or res.get("payment_link")
             invoice_id = res.get("invoice_id")
+        else:
+            err_msg = res.get("error")
 
     if pay_url:
         db.save_transaction(
@@ -10918,7 +11580,8 @@ def reseller_bundles_online_pay(bundle_id: str):
         )
         return redirect(pay_url)
     else:
-        flash("خطا در اتصال به درگاه بانکی. لطفاً از پرداخت کارت به کارت استفاده نمایید.", "danger")
+        err_detail = f": {err_msg}" if err_msg else ""
+        flash(f"خطا در اتصال به درگاه بانکی{err_detail}. لطفاً از پرداخت کارت به کارت استفاده نمایید.", "danger")
         return redirect(url_for("reseller_transactions"))
 
 
@@ -13313,6 +13976,79 @@ def reseller_bundles_buy():
     return redirect(url_for("reseller_transactions"))
 
 
+def get_bot_username_for_transaction(tx: dict) -> str:
+    """
+    تشخیص و استخراج دقیق نام‌کاربری ربات مبدا برای یک تراکنش.
+    اگر تراکنش از سمت ربات یکی از نمایندگان ثبت شده باشد، نام‌کاربری ربات همان نماینده
+    و اگر از سمت ربات مدیریت یا پرتال بدون نماینده باشد، نام‌کاربری ربات اصلی مدیریت را برمی‌گرداند.
+    """
+    if not tx:
+        adm_u = db.get_setting("bot_username") or os.getenv("BOT_USERNAME")
+        return adm_u.strip().lstrip("@") if adm_u else "hiddify_shop_bot"
+
+    reseller_id = tx.get("reseller_id")
+    order_id = str(tx.get("order_id") or "")
+    gateway = str(tx.get("gateway") or "")
+
+    if tx.get("bot_username") and str(tx.get("bot_username")).strip():
+        return str(tx.get("bot_username")).strip().lstrip("@")
+
+    # استخراج reseller_id از order_id یا gateway در صورت نیاز
+    if not reseller_id and order_id.startswith("R"):
+        parts = order_id.split("_")
+        if len(parts) > 1 and parts[0][1:].isdigit():
+            try:
+                reseller_id = int(parts[0][1:])
+            except Exception:
+                pass
+    if not reseller_id and "_reseller_" in gateway:
+        try:
+            reseller_id = int(gateway.split("_reseller_")[-1])
+        except Exception:
+            pass
+
+    # ۱. اگر تراکنش متعلق به یک نماینده باشد
+    if reseller_id and int(reseller_id) > 0:
+        reseller = db.get_reseller(int(reseller_id))
+        if reseller:
+            # الف) نام‌کاربری ذخیره‌شده ربات نماینده
+            bot_u = reseller.get("bot_username")
+            if bot_u and bot_u.strip():
+                return bot_u.strip().lstrip("@")
+            # ب) در صورت نبود نام‌کاربری، استعلام زنده با bot_token و ذخیره در دیتابیس
+            bot_tok = reseller.get("bot_token")
+            if bot_tok and bot_tok.strip():
+                try:
+                    from multibot_manager import ResellerBotInstance
+                    t_test = ResellerBotInstance.test_token(bot_tok.strip())
+                    if t_test.get("valid") and t_test.get("username"):
+                        new_u = t_test["username"].strip().lstrip("@")
+                        db.update_reseller(int(reseller_id), bot_username=new_u)
+                        return new_u
+                except Exception as e_tok:
+                    logger.warning(f"Error testing reseller #{reseller_id} bot token: {e_tok}")
+
+    # ۲. تراکنش متعلق به ربات مدیریت اصلی
+    adm_u = db.get_setting("bot_username") or os.getenv("BOT_USERNAME")
+    if adm_u and adm_u.strip():
+        return adm_u.strip().lstrip("@")
+
+    # استعلام خودکار از تلگرام با BOT_TOKEN مدیریت در صورت امکان
+    adm_tok = get_bot_token()
+    if adm_tok and adm_tok.strip():
+        try:
+            from multibot_manager import ResellerBotInstance
+            t_test = ResellerBotInstance.test_token(adm_tok.strip())
+            if t_test.get("valid") and t_test.get("username"):
+                new_adm_u = t_test["username"].strip().lstrip("@")
+                db.set_setting("bot_username", new_adm_u)
+                return new_adm_u
+        except Exception as e_adm:
+            logger.warning(f"Error fetching admin bot username: {e_adm}")
+
+    return "hiddify_shop_bot"
+
+
 @app.route("/payment/callback/<order_id>", methods=["GET", "POST"])
 def payment_callback(order_id: str):
     """پردازش بازگشت از درگاه پرداخت آنلاین شاپرک (زرین‌پال / آیدی‌پی / بلوپال)"""
@@ -13323,11 +14059,31 @@ def payment_callback(order_id: str):
 
     trans = db.get_transaction_by_order_id(order_id)
     if not trans:
-        return render_template("payment_result.html", success=False, message="تراکنش یافت نشد.")
+        bot_username = (db.get_setting("bot_username") or os.getenv("BOT_USERNAME") or "").lstrip("@")
+        return render_template("payment_result.html", success=False, message="تراکنش یافت نشد.", bot_username=bot_username)
+
+    bot_username = get_bot_username_for_transaction(trans)
+    portal_token = request.args.get("token")
+    if not portal_token and trans.get("renew_sub_id"):
+        sub_info = db.get_subscription(trans.get("renew_sub_id"))
+        if sub_info:
+            portal_token = sub_info.get("hidify_uuid") or str(sub_info.get("id"))
+    portal_url = url_for("customer_portal", token=portal_token) if portal_token else None
+    reseller_portal_url = url_for("reseller_transactions") if (trans.get("gateway") == "bundle_reseller" or str(order_id).startswith("R_BUNDLE")) else None
 
     # اگر از قبل تایید شده باشد
     if trans.get("status") == "approved":
-        return render_template("payment_result.html", success=True, order_id=order_id, amount=trans.get("amount", 0), ref_id=trans.get("ref_id"), plan_name=trans.get("plan_name", ""))
+        return render_template(
+            "payment_result.html",
+            success=True,
+            order_id=order_id,
+            amount=trans.get("amount", 0),
+            ref_id=trans.get("ref_id"),
+            plan_name=trans.get("plan_name", ""),
+            bot_username=bot_username,
+            portal_url=portal_url,
+            reseller_portal_url=reseller_portal_url
+        )
 
     amount = trans.get("amount", 0)
     user_id = trans.get("user_id")
@@ -13371,19 +14127,31 @@ def payment_callback(order_id: str):
                 verified = True
                 ref_id = f"کارت: {res.get('payer_card', '')} | فاکتور: {invoice_id}"
 
-    portal_token = request.args.get("token")
-    if not portal_token and trans.get("renew_sub_id"):
-        sub_info = db.get_subscription(trans.get("renew_sub_id"))
-        if sub_info:
-            portal_token = sub_info.get("hidify_uuid") or str(sub_info.get("id"))
-    portal_url = url_for("customer_portal", token=portal_token) if portal_token else None
-
     if verified:
         fulfill_approved_transaction(order_id, ref_id=str(ref_id or authority or idpay_id), processed_by=f"درگاه {gw_type}")
-        return render_template("payment_result.html", success=True, order_id=order_id, amount=amount, ref_id=ref_id, plan_name=plan_name, portal_url=portal_url)
+        return render_template(
+            "payment_result.html",
+            success=True,
+            order_id=order_id,
+            amount=amount,
+            ref_id=ref_id,
+            plan_name=plan_name,
+            portal_url=portal_url,
+            reseller_portal_url=reseller_portal_url,
+            bot_username=bot_username
+        )
     else:
         db.update_transaction(order_id, status="failed")
-        return render_template("payment_result.html", success=False, order_id=order_id, amount=amount, message="پرداخت ناموفق بود یا توسط کاربر لغو گردید.", portal_url=portal_url)
+        return render_template(
+            "payment_result.html",
+            success=False,
+            order_id=order_id,
+            amount=amount,
+            message="پرداخت ناموفق بود یا توسط کاربر لغو گردید.",
+            portal_url=portal_url,
+            reseller_portal_url=reseller_portal_url,
+            bot_username=bot_username
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -13452,11 +14220,22 @@ def blupal_callback(order_id: str = None):
                 order_id = tx_by_inv.get("order_id")
 
     if not order_id:
-        return render_template("payment_result.html", success=False, message="شناسه سفارش نامعتبر است.")
+        bot_username = (db.get_setting("bot_username") or os.getenv("BOT_USERNAME") or "").lstrip("@")
+        return render_template("payment_result.html", success=False, message="شناسه سفارش نامعتبر است.", bot_username=bot_username)
 
     tx = db.get_transaction_by_order_id(order_id)
     if not tx:
-        return render_template("payment_result.html", success=False, message="تراکنش یافت نشد.")
+        bot_username = (db.get_setting("bot_username") or os.getenv("BOT_USERNAME") or "").lstrip("@")
+        return render_template("payment_result.html", success=False, message="تراکنش یافت نشد.", bot_username=bot_username)
+
+    bot_username = get_bot_username_for_transaction(tx)
+    portal_token = request.args.get("token")
+    if not portal_token and tx.get("renew_sub_id"):
+        sub_info = db.get_subscription(tx.get("renew_sub_id"))
+        if sub_info:
+            portal_token = sub_info.get("hidify_uuid") or str(sub_info.get("id"))
+    portal_url = url_for("customer_portal", token=portal_token) if portal_token else None
+    reseller_portal_url = url_for("reseller_transactions") if (tx.get("gateway") == "bundle_reseller" or str(order_id).startswith("R_BUNDLE")) else None
 
     amount = tx.get("amount", 0)
     plan_name = tx.get("plan_name", "")
@@ -13471,7 +14250,10 @@ def blupal_callback(order_id: str = None):
             order_id=order_id,
             amount=amount,
             plan_name=plan_name,
-            ref_id=tx.get("ref_id")
+            ref_id=tx.get("ref_id"),
+            portal_url=portal_url,
+            reseller_portal_url=reseller_portal_url,
+            bot_username=bot_username
         )
 
     # در غیر این صورت، استعلام زنده از API بلوپال جهت اطمینان
@@ -13504,7 +14286,10 @@ def blupal_callback(order_id: str = None):
                     order_id=order_id,
                     amount=amount,
                     plan_name=plan_name,
-                    ref_id=ref_info
+                    ref_id=ref_info,
+                    portal_url=portal_url,
+                    reseller_portal_url=reseller_portal_url,
+                    bot_username=bot_username
                 )
             elif check_res.get("status") == "PENDING":
                 return render_template(
@@ -13513,7 +14298,10 @@ def blupal_callback(order_id: str = None):
                     order_id=order_id,
                     amount=amount,
                     plan_name=plan_name,
-                    message="فاکتور شما در وضعیت در انتظار واریز قرار دارد. به محض واریز کارت به کارت، اشتراک شما به صورت خودکار فعال خواهد شد."
+                    message="فاکتور شما در وضعیت در انتظار واریز قرار دارد. به محض واریز کارت به کارت، اشتراک شما به صورت خودکار فعال خواهد شد.",
+                    portal_url=portal_url,
+                    reseller_portal_url=reseller_portal_url,
+                    bot_username=bot_username
                 )
         except Exception as e:
             logger.error(f"Error checking invoice in blupal_callback: {e}")
@@ -13524,7 +14312,10 @@ def blupal_callback(order_id: str = None):
         order_id=order_id,
         amount=amount,
         plan_name=plan_name,
-        message="پرداخت هنوز تایید نشده است یا مهلت فاکتور به پایان رسیده است."
+        message="پرداخت هنوز تایید نشده است یا مهلت فاکتور به پایان رسیده است.",
+        portal_url=portal_url,
+        reseller_portal_url=reseller_portal_url,
+        bot_username=bot_username
     )
 
 
@@ -14146,6 +14937,8 @@ def get_portal_payment_methods(sub: dict) -> list:
             adm_cards = db.get_all_bank_cards()
             active_cards = [c for c in adm_cards if c.get("is_active")]
         gw_cfg = db.get_reseller_gateway(reseller_id)
+        if not gw_cfg.get("enabled") or not gw_cfg.get("key"):
+            gw_cfg = db.get_admin_gateway()
         crypto_cfg = db.get_reseller_crypto_config(reseller_id)
     else:
         adm_cards = db.get_all_bank_cards()
@@ -14178,7 +14971,7 @@ def get_portal_payment_methods(sub: dict) -> list:
             if gw_cfg.get("enabled") and gw_cfg.get("key"):
                 gw_type = gw_cfg.get("type", "zarinpal")
                 if gw_type == "blupal":
-                    gw_title = "کارت به کارت هوشمند (بلوپال)"
+                    gw_title = "درگاه پرداخت هوشمند (بلوپال)"
                     gw_desc = "پرداخت شتابی با درگاه کارت به کارت هوشمند بلوپال"
                 else:
                     gw_label = "زرین‌پال" if gw_type == "zarinpal" else ("آیدی‌پی" if gw_type == "idpay" else "شاپرک")
@@ -14350,6 +15143,13 @@ def _handle_customer_portal_view(token: str):
     user_id = sub.get("telegram_id") or 0
     user_wallet = db.get_user_wallet_balance(user_id) if user_id else 0
 
+    if reseller_id:
+        gw_cfg = db.get_reseller_gateway(reseller_id)
+        if not gw_cfg.get("enabled") or not gw_cfg.get("key"):
+            gw_cfg = db.get_admin_gateway()
+    else:
+        gw_cfg = db.get_admin_gateway()
+
     return render_template(
         "customer_portal.html",
         sub=sub,
@@ -14380,6 +15180,7 @@ def _handle_customer_portal_view(token: str):
         portal_layout=portal_layout,
         portal_plan_style=portal_plan_style,
         portal_payment_methods=portal_payment_methods,
+        gw_cfg=gw_cfg,
         user_wallet=user_wallet
     )
 
@@ -14522,6 +15323,8 @@ def customer_create_invoice(token: str):
     if payment_method == "online_gateway":
         if reseller_id:
             gw_cfg = db.get_reseller_gateway(reseller_id)
+            if not gw_cfg.get("enabled") or not gw_cfg.get("key"):
+                gw_cfg = db.get_admin_gateway()
         else:
             gw_cfg = db.get_admin_gateway()
 
@@ -14541,30 +15344,20 @@ def customer_create_invoice(token: str):
             domain = f"https://{domain}"
         callback_url = f"{str(domain).rstrip('/')}/payment/callback/{order_id}?token={token}"
 
+        account_comment = f"instant_act:{1 if instant_activation else 0}"
+        if valid_discount_code:
+            account_comment += f"|discount:{valid_discount_code}"
+
         conn = db.get_connection()
         conn.execute("""
             INSERT OR REPLACE INTO transactions (
                 order_id, user_id, username, plan_name, amount, status, gateway, 
                 tracking_code, reseller_id, is_renewal, renew_sub_id, 
-                account_name, source, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, 'pending', ?, '', ?, 1, ?, ?, 'portal_online', ?, ?)
-        """, (order_id, user_id, account_name, plan_name, price, f"{gw_type}_portal", reseller_id, sub_id, account_name, now_iso, now_iso))
+                account_name, account_comment, source, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, 'pending', ?, '', ?, 1, ?, ?, ?, 'portal_online', ?, ?)
+        """, (order_id, user_id, account_name, plan_name, price, f"{gw_type}_portal", reseller_id, sub_id, account_name, account_comment, now_iso, now_iso))
         conn.commit()
         conn.close()
-
-        # ثبت هوشمند جهت حفظ وضعیت instant_activation در زمان بازگشت از درگاه
-        db.create_smart_invoice(
-            sub_id=sub_id,
-            plan_id=plan_id,
-            reseller_id=reseller_id,
-            base_amount=price,
-            target_card={"card_number": f"ONLINE_{gw_type.upper()}", "card_holder": f"درگاه {gw_type}", "bank_name": "شاپرک"},
-            digits=0,
-            timeout_minutes=60,
-            instant_activation=instant_activation,
-            discount_code=valid_discount_code,
-            discount_amount=discount_val
-        )
 
         try:
             if gw_type == "zarinpal":
@@ -14594,7 +15387,12 @@ def customer_create_invoice(token: str):
                 if res.get("success"):
                     invoice_id = res.get("invoice_id")
                     db.update_transaction(order_id, tracking_code=str(invoice_id or order_id))
-                    return redirect(res.get("payment_url") or res.get("payment_link"))
+                    pay_target = res.get("payment_url") or res.get("payment_link")
+                    if pay_target:
+                        return redirect(pay_target)
+                    else:
+                        flash("آدرس درگاه پرداخت توسط بلوپال ارسال نشد.", "danger")
+                        return redirect(url_for("customer_portal", token=token))
                 else:
                     flash(f"خطا در ایجاد فاکتور بلوپال: {res.get('error')}", "danger")
                     return redirect(url_for("customer_portal", token=token))
@@ -14869,6 +15667,8 @@ def customer_settle_debt_invoice(token: str):
     if payment_method == "online_gateway":
         if reseller_id:
             gw_cfg = db.get_reseller_gateway(reseller_id)
+            if not gw_cfg.get("enabled") or not gw_cfg.get("key"):
+                gw_cfg = db.get_admin_gateway()
         else:
             gw_cfg = db.get_admin_gateway()
 
@@ -14898,18 +15698,6 @@ def customer_settle_debt_invoice(token: str):
         conn.commit()
         conn.close()
 
-        db.create_smart_invoice(
-            sub_id=sub_id,
-            plan_id="debt_settlement",
-            reseller_id=reseller_id,
-            base_amount=debt_amount,
-            target_card={"card_number": f"ONLINE_{gw_type.upper()}", "card_holder": f"درگاه {gw_type}", "bank_name": "شاپرک"},
-            digits=0,
-            timeout_minutes=60,
-            instant_activation=False,
-            is_debt_settlement=1
-        )
-
         try:
             if gw_type == "zarinpal":
                 from payment import ZarinPal
@@ -14938,7 +15726,12 @@ def customer_settle_debt_invoice(token: str):
                 if res.get("success"):
                     invoice_id = res.get("invoice_id")
                     db.update_transaction(order_id, tracking_code=str(invoice_id or order_id))
-                    return redirect(res.get("payment_url") or res.get("payment_link"))
+                    pay_target = res.get("payment_url") or res.get("payment_link")
+                    if pay_target:
+                        return redirect(pay_target)
+                    else:
+                        flash("آدرس درگاه پرداخت توسط بلوپال ارسال نشد.", "danger")
+                        return redirect(url_for("customer_portal", token=token))
                 else:
                     flash(f"خطا در درگاه بلوپال: {res.get('error')}", "danger")
                     return redirect(url_for("customer_portal", token=token))

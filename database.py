@@ -7685,6 +7685,88 @@ class Database:
         finally:
             conn.close()
 
+    def get_active_subscriptions_for_sync(self, reseller_id: int = None) -> list:
+        """واکشی اشتراک‌های فعال جهت پیش‌نمایش و همگام‌سازی با هیدیفای"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if reseller_id:
+                cursor.execute("""
+                    SELECT id, telegram_id, hidify_uuid, plan_name, account_name, account_comment,
+                           data_limit, data_used, duration, start_date, expire_date, status, reseller_id
+                    FROM subscriptions
+                    WHERE reseller_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)
+                    ORDER BY id DESC
+                """, (reseller_id,))
+            else:
+                cursor.execute("""
+                    SELECT id, telegram_id, hidify_uuid, plan_name, account_name, account_comment,
+                           data_limit, data_used, duration, start_date, expire_date, status, reseller_id
+                    FROM subscriptions
+                    WHERE (is_deleted = 0 OR is_deleted IS NULL)
+                    ORDER BY id DESC
+                """)
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    def ensure_subscription_uuid(self, sub_id: int) -> str:
+        """بررسی و تولید شناسه UUID در صورت خالی بودن برای اشتراک محلی"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT hidify_uuid FROM subscriptions WHERE id = ?", (sub_id,))
+            row = cursor.fetchone()
+            if row and row["hidify_uuid"] and str(row["hidify_uuid"]).strip():
+                return str(row["hidify_uuid"]).strip()
+            
+            new_uuid = str(uuid.uuid4())
+            cursor.execute("UPDATE subscriptions SET hidify_uuid = ?, updated_at = ? WHERE id = ?", (new_uuid, get_now_iso(), sub_id))
+            conn.commit()
+            return new_uuid
+        finally:
+            conn.close()
+
+    def prune_selected_subscriptions(self, subscription_ids: list) -> dict:
+        """حذف ایمن اشتراک‌های انتخاب‌شده محلی با پاکسازی وابستگی‌ها"""
+        if not subscription_ids:
+            return {"success": True, "purged_count": 0, "purged_names": []}
+        
+        valid_ids = [int(i) for i in subscription_ids if str(i).isdigit()]
+        if not valid_ids:
+            return {"success": True, "purged_count": 0, "purged_names": []}
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        purged_names = []
+        try:
+            placeholders = ",".join("?" for _ in valid_ids)
+            cursor.execute(f"SELECT id, account_name FROM subscriptions WHERE id IN ({placeholders})", valid_ids)
+            rows = cursor.fetchall()
+            for r in rows:
+                purged_names.append(r["account_name"] or f"#{r['id']}")
+
+            # پاکسازی ارجاعات
+            cursor.execute(f"UPDATE transactions SET subscription_id = NULL WHERE subscription_id IN ({placeholders})", valid_ids)
+            cursor.execute(f"DELETE FROM subscription_history WHERE subscription_id IN ({placeholders})", valid_ids)
+            cursor.execute(f"DELETE FROM subscriptions WHERE id IN ({placeholders})", valid_ids)
+            
+            # پاکسازی کاربران شبیه‌سازی‌شده بدون اشتراک
+            cursor.execute("""
+                DELETE FROM users 
+                WHERE telegram_id >= 900000000 
+                  AND telegram_id NOT IN (SELECT telegram_id FROM subscriptions)
+            """)
+            conn.commit()
+            return {"success": True, "purged_count": len(valid_ids), "purged_names": purged_names}
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Error in prune_selected_subscriptions: {e}")
+            return {"success": False, "error": str(e), "purged_count": 0}
+        finally:
+            conn.close()
+
     def find_subscriptions_by_pattern(self, pattern: str, pattern_type: str = "auto", source_filter: str = "all") -> list:
         """
         جستجوی هوشمند اشتراک‌ها بر اساس الگو، پیشوند، وایلدکارد یا عبارت منظم (Regex)
