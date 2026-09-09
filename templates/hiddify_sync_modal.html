@@ -1,0 +1,719 @@
+<!-- مودال هوشمند و یکپارچه همگام‌سازی، بازیابی و انطباق هیدیفای -->
+<div class="modal fade" id="hiddifyUnifiedSyncModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-lg-down">
+        <div class="modal-content shadow-lg border-0">
+            <!-- سربرگ مودال -->
+            <div class="modal-header py-3 px-4" id="hsyncModalHeader" style="background: linear-gradient(135deg, rgba(79, 70, 229, 0.08) 0%, rgba(248, 250, 252, 0.95) 100%);">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="rounded-circle p-2 d-flex align-items-center justify-content-center" id="hsyncModalIconBg" style="width: 42px; height: 42px; background: rgba(79, 70, 229, 0.15);">
+                        <i class="fas fa-arrows-rotate text-primary fs-5" id="hsyncModalIcon"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0 text-dark" id="hsyncModalTitle">همگام‌سازی هیدیفای</h5>
+                        <div class="text-muted small mt-0.5" id="hsyncModalSubtitle">پیش‌نمایش مشترکین و تایید نهایی عملیات</div>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن" id="hsyncCloseXBtn"></button>
+            </div>
+
+            <!-- بدنه مودال -->
+            <div class="modal-body p-4">
+                <!-- وضعیت در حال بارگذاری -->
+                <div id="hsyncLoadingState" class="text-center py-5">
+                    <div class="spinner-border text-primary mb-3" style="width: 3.2rem; height: 3.2rem;" role="status">
+                        <span class="visually-hidden">در حال دریافت داده‌ها...</span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">در حال ارتباط با سرور هیدیفای و تطبیق اطلاعات...</h6>
+                    <p class="text-muted small mb-0">لطفاً چند لحظه شکیبا باشید، در حال استخراج و مقایسه داده‌های مشترکین هستیم.</p>
+                </div>
+
+                <!-- وضعیت بروز خطا -->
+                <div id="hsyncErrorState" class="alert alert-danger d-none my-3 p-3">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <i class="fas fa-circle-exclamation fs-4"></i>
+                        <h6 class="fw-bold mb-0">خطا در فرآیند استخراج داده‌ها</h6>
+                    </div>
+                    <p class="mb-3 small" id="hsyncErrorMessage">خطایی در برقراری ارتباط با سرور رخ داده است.</p>
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="retryHsyncFetch()">
+                        <i class="fas fa-rotate-right me-1"></i> تلاش مجدد
+                    </button>
+                </div>
+
+                <!-- وضعیت بدون داده / خالی -->
+                <div id="hsyncEmptyState" class="text-center py-5 d-none">
+                    <div class="text-muted mb-3"><i class="fas fa-box-open" style="font-size: 3.5rem; opacity: 0.4;"></i></div>
+                    <h6 class="fw-bold text-dark mb-1">موردی برای نمایش یافت نشد</h6>
+                    <p class="text-muted small">هیچ کاربری در محدوده انتخابی جهت انجام این عملیات پیدا نشد.</p>
+                </div>
+
+                <!-- محتوای اصلی پیش‌نمایش -->
+                <div id="hsyncContentState" class="d-none">
+                    <!-- کارت‌های آمار سریع و شاخص‌ها -->
+                    <div class="row g-2 mb-3" id="hsyncStatsRow">
+                        <!-- کارت ۱: کل مشترکین -->
+                        <div class="col-6 col-md-3">
+                            <div class="p-2.5 rounded-3 border bg-light d-flex align-items-center justify-content-between">
+                                <div>
+                                    <div class="text-muted small" style="font-size: 0.75rem;">کل موارد بررسی‌شده</div>
+                                    <div class="fw-bold fs-5 text-dark font-monospace" id="statHsyncTotal">0</div>
+                                </div>
+                                <i class="fas fa-list-check text-secondary opacity-50 fs-4"></i>
+                            </div>
+                        </div>
+                        <!-- کارت ۲: نیازمند اقدام / جدید -->
+                        <div class="col-6 col-md-3">
+                            <div class="p-2.5 rounded-3 border d-flex align-items-center justify-content-between" style="background-color: rgba(59, 130, 246, 0.06); border-color: rgba(59, 130, 246, 0.2) !important;">
+                                <div>
+                                    <div class="text-primary small fw-medium" id="statHsyncCard2Label" style="font-size: 0.75rem;">جدید (ایجاد)</div>
+                                    <div class="fw-bold fs-5 text-primary font-monospace" id="statHsyncCard2Val">0</div>
+                                </div>
+                                <i class="fas fa-user-plus text-primary opacity-50 fs-4"></i>
+                            </div>
+                        </div>
+                        <!-- کارت ۳: مغایرت / تغییر -->
+                        <div class="col-6 col-md-3">
+                            <div class="p-2.5 rounded-3 border d-flex align-items-center justify-content-between" style="background-color: rgba(245, 158, 11, 0.06); border-color: rgba(245, 158, 11, 0.2) !important;">
+                                <div>
+                                    <div class="text-warning small fw-medium" id="statHsyncCard3Label" style="font-size: 0.75rem;">نیاز به انطباق</div>
+                                    <div class="fw-bold fs-5 text-warning font-monospace" id="statHsyncCard3Val">0</div>
+                                </div>
+                                <i class="fas fa-sliders text-warning opacity-50 fs-4"></i>
+                            </div>
+                        </div>
+                        <!-- کارت ۴: منطبق / آماده -->
+                        <div class="col-6 col-md-3">
+                            <div class="p-2.5 rounded-3 border d-flex align-items-center justify-content-between" style="background-color: rgba(16, 185, 129, 0.06); border-color: rgba(16, 185, 129, 0.2) !important;">
+                                <div>
+                                    <div class="text-success small fw-medium" id="statHsyncCard4Label" style="font-size: 0.75rem;">منطبق</div>
+                                    <div class="fw-bold fs-5 text-success font-monospace" id="statHsyncCard4Val">0</div>
+                                </div>
+                                <i class="fas fa-circle-check text-success opacity-50 fs-4"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- نوار ابزار: تب‌های فیلتر، جستجو و انتخاب گروهی -->
+                    <div class="card border mb-3 bg-white shadow-xs">
+                        <div class="card-body p-2.5">
+                            <div class="row g-2 align-items-center">
+                                <!-- فیلترهای تب -->
+                                <div class="col-12 col-lg-6 d-flex align-items-center gap-1 overflow-x-auto pb-1 pb-lg-0" id="hsyncFilterTabs" style="scrollbar-width: thin;">
+                                    <button type="button" class="btn btn-xs btn-primary rounded-pill px-2.5 py-1 text-nowrap active hsync-filter-btn" data-filter="all" onclick="filterHsyncRows('all', this)">
+                                        همه (<span id="tabCountAll">0</span>)
+                                    </button>
+                                    <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill px-2.5 py-1 text-nowrap hsync-filter-btn" data-filter="actionable" onclick="filterHsyncRows('actionable', this)" id="btnFilterActionable">
+                                        نیازمند اقدام (<span id="tabCountActionable">0</span>)
+                                    </button>
+                                    <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill px-2.5 py-1 text-nowrap hsync-filter-btn" data-filter="synced" onclick="filterHsyncRows('synced', this)" id="btnFilterSynced">
+                                        منطبق (<span id="tabCountSynced">0</span>)
+                                    </button>
+                                </div>
+
+                                <!-- جستجو و شمارنده -->
+                                <div class="col-12 col-lg-6 d-flex align-items-center justify-content-lg-end gap-2">
+                                    <div class="input-group input-group-sm flex-grow-1 flex-lg-grow-0" style="max-width: 250px;">
+                                        <span class="input-group-text bg-light border-end-0"><i class="fas fa-search text-muted"></i></span>
+                                        <input type="text" id="hsyncSearchInput" class="form-control border-start-0 ps-1" placeholder="جستجو نام یا شناسه..." oninput="searchHsyncRows(this.value)">
+                                    </div>
+                                    <div class="d-flex align-items-center gap-1 flex-shrink-0">
+                                        <button type="button" class="btn btn-xs btn-outline-primary" onclick="selectAllHsyncRows(true)" title="انتخاب همه موارد">
+                                            <i class="fas fa-check-double me-1"></i> همه
+                                        </button>
+                                        <button type="button" class="btn btn-xs btn-outline-secondary" onclick="selectAllHsyncRows(false)" title="لغو انتخاب">
+                                            <i class="fas fa-xmark me-1"></i> هیچ‌کدام
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- جدول لیست مشترکین -->
+                    <div class="table-responsive rounded-3 border" style="max-height: 420px; overflow-y: auto;">
+                        <table class="table table-hover align-middle mb-0" id="hsyncTable" style="font-size: 0.83rem;">
+                            <thead class="table-light sticky-top" style="z-index: 2;">
+                                <tr>
+                                    <th style="width: 40px;" class="text-center">
+                                        <input class="form-check-input" type="checkbox" id="hsyncMasterCheckbox" onchange="toggleMasterHsyncCheckbox(this)" title="انتخاب/عدم انتخاب موارد فیلترشده">
+                                    </th>
+                                    <th>نام و عنوان مشترک</th>
+                                    <th>شناسه UUID</th>
+                                    <th>حجم پنل (مصرف/کل)</th>
+                                    <th>حجم هیدیفای</th>
+                                    <th>زمان / انقضا</th>
+                                    <th>وضعیت و عملیات</th>
+                                </tr>
+                            </thead>
+                            <tbody id="hsyncTableBody">
+                                <!-- سطرها به صورت پویا با جاوااسکریپت تزریق می‌شوند -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- نوار راهنما -->
+                    <div class="d-flex justify-content-between align-items-center mt-2 px-1 text-muted small">
+                        <div>
+                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1 fw-bold" id="hsyncSelectedBadge">۰ مورد انتخاب شده</span>
+                        </div>
+                        <div class="d-none d-md-block">
+                            <i class="fas fa-info-circle me-1 text-info"></i> حجم مصرف‌شده و تاریخ انقضا به طور دقیق با هیدیفای منطبق خواهند شد.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- گزارش اجرای عملیات (Execution Result State) -->
+                <div id="hsyncResultState" class="d-none py-3">
+                    <div class="text-center mb-4">
+                        <div class="rounded-circle d-inline-flex align-items-center justify-content-center mb-2" id="hsyncResultIconWrapper" style="width: 54px; height: 54px; background: rgba(16, 185, 129, 0.15);">
+                            <i class="fas fa-check text-success fs-3" id="hsyncResultIcon"></i>
+                        </div>
+                        <h5 class="fw-bold text-dark" id="hsyncResultTitle">عملیات با موفقیت انجام شد</h5>
+                        <p class="text-muted small mb-0" id="hsyncResultMessage"></p>
+                    </div>
+
+                    <div class="row g-2 justify-content-center mb-3">
+                        <div class="col-sm-4">
+                            <div class="p-2.5 rounded-3 border bg-light text-center">
+                                <span class="text-muted small d-block">مشترکین جدید ایجادشده</span>
+                                <span class="fw-bold text-success fs-5 font-monospace" id="resultCreatedCount">0</span>
+                            </div>
+                        </div>
+                        <div class="col-sm-4">
+                            <div class="p-2.5 rounded-3 border bg-light text-center">
+                                <span class="text-muted small d-block">مشترکین منطبق/بروزرسانی‌شده</span>
+                                <span class="fw-bold text-primary fs-5 font-monospace" id="resultUpdatedCount">0</span>
+                            </div>
+                        </div>
+                        <div class="col-sm-4" id="resultPrunedCol" style="display: none;">
+                            <div class="p-2.5 rounded-3 border bg-light text-center">
+                                <span class="text-muted small d-block">مشترکین اضافی حذف‌شده</span>
+                                <span class="fw-bold text-danger fs-5 font-monospace" id="resultPrunedCount">0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="hsyncResultErrorsBox" class="alert alert-warning small d-none">
+                        <h6 class="fw-bold mb-1"><i class="fas fa-triangle-exclamation me-1"></i> هشدارهای عملیات:</h6>
+                        <ul class="mb-0 ps-3" id="hsyncResultErrorsList"></ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- پاورقی مودال -->
+            <div class="modal-footer py-2.5 px-4 bg-light border-top d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal" id="hsyncCancelBtn">انصراف و بستن</button>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <button type="button" class="btn btn-primary btn-sm px-4 fw-bold shadow-sm d-flex align-items-center gap-1.5" id="hsyncSubmitBtn" onclick="executeHsyncAction()" disabled>
+                        <span class="spinner-border spinner-border-sm d-none" id="hsyncSubmitSpinner" role="status"></span>
+                        <i class="fas fa-check" id="hsyncSubmitIcon"></i>
+                        <span id="hsyncSubmitText">تایید و اجرای عملیات</span>
+                    </button>
+                    <button type="button" class="btn btn-success btn-sm px-4 fw-bold d-none" id="hsyncDoneBtn" onclick="location.reload()">
+                        <i class="fas fa-arrows-rotate me-1"></i> بروزرسانی صفحه
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- اسکریپت جاوااسکریپت کنترل مودال همگام‌سازی -->
+<script>
+let currentHsyncState = {
+    scope: 'reseller',
+    resellerId: null,
+    syncType: 'push_sync',
+    title: '',
+    items: [],
+    filteredItems: [],
+    selectedIds: new Set(),
+    activeFilter: 'all',
+    searchQuery: ''
+};
+
+function openHiddifySyncModal(scope, resellerId, syncType, title) {
+    currentHsyncState.scope = scope || 'reseller';
+    currentHsyncState.resellerId = resellerId || null;
+    currentHsyncState.syncType = syncType || 'push_sync';
+    currentHsyncState.title = title || (scope === 'global' ? 'کل سیستم' : 'نماینده');
+    currentHsyncState.items = [];
+    currentHsyncState.filteredItems = [];
+    currentHsyncState.selectedIds.clear();
+    currentHsyncState.activeFilter = 'all';
+    currentHsyncState.searchQuery = '';
+
+    // تنظیم ظاهر سربرگ بر اساس نوع عملیات
+    const titleEl = document.getElementById('hsyncModalTitle');
+    const subEl = document.getElementById('hsyncModalSubtitle');
+    const iconEl = document.getElementById('hsyncModalIcon');
+    const iconBgEl = document.getElementById('hsyncModalIconBg');
+    const submitTextEl = document.getElementById('hsyncSubmitText');
+    const submitBtn = document.getElementById('hsyncSubmitBtn');
+
+    if (syncType === 'push_sync') {
+        titleEl.innerText = (scope === 'global') ? 'همگام‌سازی هیدیفای با سیستم' : `همگام‌سازی هیدیفای با نماینده: ${title}`;
+        subEl.innerText = 'ارسال مشترکین فعال پنل به سرور هیدیفای و تطبیق حجم مصرفی و زمان با پنل';
+        iconEl.className = 'fas fa-cloud-arrow-up text-success fs-5';
+        iconBgEl.style.background = 'rgba(16, 185, 129, 0.15)';
+        submitBtn.className = 'btn btn-success btn-sm px-4 fw-bold shadow-sm d-flex align-items-center gap-1.5';
+        submitTextEl.innerText = 'تایید و ارسال به هیدیفای';
+    } else if (syncType === 'restore') {
+        titleEl.innerText = (scope === 'global') ? 'بازیابی مشترکین از هیدیفای' : `بازیابی مشترکین نماینده: ${title}`;
+        subEl.innerText = 'فراخوانی مشترکین موجود در هیدیفای و ثبت/بروزرسانی در دیتابیس پنل';
+        iconEl.className = 'fas fa-arrows-rotate text-primary fs-5';
+        iconBgEl.style.background = 'rgba(79, 70, 229, 0.15)';
+        submitBtn.className = 'btn btn-primary btn-sm px-4 fw-bold shadow-sm d-flex align-items-center gap-1.5';
+        submitTextEl.innerText = 'تایید و بازیابی به پنل';
+    } else if (syncType === 'prune_sync') {
+        titleEl.innerText = (scope === 'global') ? 'همگام‌سازی و پاکسازی با هیدیفای' : `همگام‌سازی کامل با هیدیفای: ${title}`;
+        subEl.innerText = 'انطباق قطعی با هیدیفای، بروزرسانی مشترکین هیدیفای و حذف مشترکین اضافی پنل';
+        iconEl.className = 'fas fa-rotate text-warning fs-5';
+        iconBgEl.style.background = 'rgba(245, 158, 11, 0.15)';
+        submitBtn.className = 'btn btn-warning text-dark btn-sm px-4 fw-bold shadow-sm d-flex align-items-center gap-1.5';
+        submitTextEl.innerText = 'تایید و انجام همگام‌سازی';
+    }
+
+    // ریست نماها
+    document.getElementById('hsyncLoadingState').classList.remove('d-none');
+    document.getElementById('hsyncErrorState').classList.add('d-none');
+    document.getElementById('hsyncEmptyState').classList.add('d-none');
+    document.getElementById('hsyncContentState').classList.add('d-none');
+    document.getElementById('hsyncResultState').classList.add('d-none');
+    document.getElementById('hsyncSubmitBtn').classList.remove('d-none');
+    document.getElementById('hsyncSubmitBtn').disabled = true;
+    document.getElementById('hsyncDoneBtn').classList.add('d-none');
+    document.getElementById('hsyncCancelBtn').innerText = 'انصراف و بستن';
+
+    const modalEl = document.getElementById('hiddifyUnifiedSyncModal');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+
+    // فراخوانی بک‌اند جهت استخراج پیش‌نمایش
+    fetchHsyncPreview();
+}
+
+function retryHsyncFetch() {
+    document.getElementById('hsyncLoadingState').classList.remove('d-none');
+    document.getElementById('hsyncErrorState').classList.add('d-none');
+    fetchHsyncPreview();
+}
+
+async function fetchHsyncPreview() {
+    try {
+        const resp = await fetch('/admin/hiddify/sync-preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                scope: currentHsyncState.scope,
+                reseller_id: currentHsyncState.resellerId,
+                type: currentHsyncState.syncType
+            })
+        });
+
+        const data = await resp.json();
+        document.getElementById('hsyncLoadingState').classList.add('d-none');
+
+        if (!data.success) {
+            document.getElementById('hsyncErrorState').classList.remove('d-none');
+            document.getElementById('hsyncErrorMessage').innerText = data.error || 'خطایی در واکشی داده‌ها رخ داد.';
+            return;
+        }
+
+        currentHsyncState.items = data.items || [];
+        if (currentHsyncState.items.length === 0) {
+            document.getElementById('hsyncEmptyState').classList.remove('d-none');
+            return;
+        }
+
+        // انتخاب پیش‌فرض آیتم‌ها
+        currentHsyncState.selectedIds.clear();
+        currentHsyncState.items.forEach(item => {
+            if (item.checked) {
+                currentHsyncState.selectedIds.add(String(item.id));
+            }
+        });
+
+        // نمایش شاخص‌ها و تب‌ها
+        renderHsyncStats(data.summary || {});
+        renderHsyncTabs();
+        applyHsyncFilters();
+
+        document.getElementById('hsyncContentState').classList.remove('d-none');
+        updateHsyncSubmitButton();
+
+    } catch (err) {
+        document.getElementById('hsyncLoadingState').classList.add('d-none');
+        document.getElementById('hsyncErrorState').classList.remove('d-none');
+        document.getElementById('hsyncErrorMessage').innerText = 'خطای غیرمنتظره در ارتباط: ' + err.message;
+    }
+}
+
+function renderHsyncStats(summary) {
+    document.getElementById('statHsyncTotal').innerText = summary.total || currentHsyncState.items.length;
+
+    const lbl2 = document.getElementById('statHsyncCard2Label');
+    const val2 = document.getElementById('statHsyncCard2Val');
+    const lbl3 = document.getElementById('statHsyncCard3Label');
+    const val3 = document.getElementById('statHsyncCard3Val');
+    const lbl4 = document.getElementById('statHsyncCard4Label');
+    const val4 = document.getElementById('statHsyncCard4Val');
+
+    if (currentHsyncState.syncType === 'push_sync') {
+        lbl2.innerText = 'جدید در هیدیفای';
+        val2.innerText = summary.missing || 0;
+        lbl3.innerText = 'نیاز به انطباق حجم/زمان';
+        val3.innerText = summary.mismatch || 0;
+        lbl4.innerText = 'کاملاً منطبق';
+        val4.innerText = summary.synced || 0;
+    } else if (currentHsyncState.syncType === 'restore') {
+        lbl2.innerText = 'مشترکین جدید (بازیابی)';
+        val2.innerText = summary.new || 0;
+        lbl3.innerText = 'مشترکین موجود در پنل';
+        val3.innerText = summary.exists || 0;
+        lbl4.innerText = 'کل در هیدیفای';
+        val4.innerText = summary.total || 0;
+    } else if (currentHsyncState.syncType === 'prune_sync') {
+        lbl2.innerText = 'همگام‌سازی از هیدیفای';
+        val2.innerText = summary.sync || 0;
+        lbl3.innerText = 'مشترکین اضافی (جهت حذف)';
+        val3.innerText = summary.prune || 0;
+        lbl4.innerText = 'کل موارد';
+        val4.innerText = summary.total || 0;
+    }
+}
+
+function renderHsyncTabs() {
+    const totalCount = currentHsyncState.items.length;
+    document.getElementById('tabCountAll').innerText = totalCount;
+
+    const btnActionable = document.getElementById('btnFilterActionable');
+    const btnSynced = document.getElementById('btnFilterSynced');
+
+    if (currentHsyncState.syncType === 'push_sync') {
+        const actionCount = currentHsyncState.items.filter(i => i.state === 'missing' || i.state === 'mismatch').length;
+        const syncedCount = currentHsyncState.items.filter(i => i.state === 'synced').length;
+        btnActionable.innerHTML = `نیازمند انطباق/جدید (<span id="tabCountActionable">${actionCount}</span>)`;
+        btnSynced.innerHTML = `منطبق (<span id="tabCountSynced">${syncedCount}</span>)`;
+        btnActionable.classList.remove('d-none');
+        btnSynced.classList.remove('d-none');
+    } else if (currentHsyncState.syncType === 'restore') {
+        const newCount = currentHsyncState.items.filter(i => i.state === 'new').length;
+        const existsCount = currentHsyncState.items.filter(i => i.state === 'exists').length;
+        btnActionable.innerHTML = `جدید جهت بازیابی (<span id="tabCountActionable">${newCount}</span>)`;
+        btnSynced.innerHTML = `موجود در پنل (<span id="tabCountSynced">${existsCount}</span>)`;
+        btnActionable.classList.remove('d-none');
+        btnSynced.classList.remove('d-none');
+    } else if (currentHsyncState.syncType === 'prune_sync') {
+        const syncCount = currentHsyncState.items.filter(i => i.state === 'sync').length;
+        const pruneCount = currentHsyncState.items.filter(i => i.state === 'prune').length;
+        btnActionable.innerHTML = `بروزرسانی از هیدیفای (<span id="tabCountActionable">${syncCount}</span>)`;
+        btnSynced.innerHTML = `حذف از پنل (<span id="tabCountSynced">${pruneCount}</span>)`;
+        btnActionable.classList.remove('d-none');
+        btnSynced.classList.remove('d-none');
+    }
+}
+
+function filterHsyncRows(filterType, btnEl) {
+    currentHsyncState.activeFilter = filterType;
+    document.querySelectorAll('.hsync-filter-btn').forEach(b => {
+        b.classList.remove('btn-primary', 'active');
+        b.classList.add('btn-outline-secondary');
+    });
+    if (btnEl) {
+        btnEl.classList.remove('btn-outline-secondary');
+        btnEl.classList.add('btn-primary', 'active');
+    }
+    applyHsyncFilters();
+}
+
+function searchHsyncRows(query) {
+    currentHsyncState.searchQuery = (query || '').trim().toLowerCase();
+    applyHsyncFilters();
+}
+
+function applyHsyncFilters() {
+    const filter = currentHsyncState.activeFilter;
+    const query = currentHsyncState.searchQuery;
+
+    currentHsyncState.filteredItems = currentHsyncState.items.filter(item => {
+        // فیلتر تب
+        let matchesFilter = true;
+        if (currentHsyncState.syncType === 'push_sync') {
+            if (filter === 'actionable') matchesFilter = (item.state === 'missing' || item.state === 'mismatch');
+            else if (filter === 'synced') matchesFilter = (item.state === 'synced');
+        } else if (currentHsyncState.syncType === 'restore') {
+            if (filter === 'actionable') matchesFilter = (item.state === 'new');
+            else if (filter === 'synced') matchesFilter = (item.state === 'exists');
+        } else if (currentHsyncState.syncType === 'prune_sync') {
+            if (filter === 'actionable') matchesFilter = (item.state === 'sync');
+            else if (filter === 'synced') matchesFilter = (item.state === 'prune');
+        }
+
+        // فیلتر جستجو
+        let matchesSearch = true;
+        if (query) {
+            const nameStr = (item.name || '').toLowerCase();
+            const uuidStr = (item.uuid || '').toLowerCase();
+            matchesSearch = nameStr.includes(query) || uuidStr.includes(query);
+        }
+
+        return matchesFilter && matchesSearch;
+    });
+
+    renderHsyncTable();
+}
+
+function renderHsyncTable() {
+    const tbody = document.getElementById('hsyncTableBody');
+    tbody.innerHTML = '';
+
+    if (currentHsyncState.filteredItems.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-muted small">هیچ موردی با فیلترهای انتخابی یافت نشد.</td></tr>`;
+        updateHsyncMasterCheckboxState();
+        return;
+    }
+
+    currentHsyncState.filteredItems.forEach(item => {
+        const isChecked = currentHsyncState.selectedIds.has(String(item.id));
+        const tr = document.createElement('tr');
+        if (isChecked) tr.classList.add('table-active-row-selected');
+
+        // حجم پنل
+        let localVolText = '-';
+        if (item.local_limit !== null && item.local_limit !== undefined) {
+            localVolText = `<span class="font-monospace fw-bold text-dark">${item.local_used}</span> / <span class="font-monospace text-muted">${item.local_limit} GB</span>`;
+        }
+
+        // حجم هیدیفای
+        let hiddifyVolText = '<span class="text-muted small">ناموجود</span>';
+        if (item.hiddify_limit !== null && item.hiddify_limit !== undefined) {
+            hiddifyVolText = `<span class="font-monospace fw-bold text-dark">${item.hiddify_used}</span> / <span class="font-monospace text-muted">${item.hiddify_limit} GB</span>`;
+        }
+
+        // زمان / انقضا
+        let timeText = item.local_expire;
+        if (item.local_days) {
+            timeText += ` <span class="badge bg-light text-secondary border">(${item.local_days} روز)</span>`;
+        } else if (item.hiddify_expire && item.hiddify_expire !== '-') {
+            timeText = item.hiddify_expire;
+        }
+
+        tr.innerHTML = `
+            <td class="text-center">
+                <input class="form-check-input hsync-row-checkbox" type="checkbox" value="${item.id}" ${isChecked ? 'checked' : ''} onchange="toggleHsyncItem('${item.id}', this)">
+            </td>
+            <td>
+                <div class="fw-bold text-dark">${escapeHtml(item.name)}</div>
+            </td>
+            <td>
+                <code class="font-monospace small text-muted" style="font-size: 0.72rem;">${item.uuid ? item.uuid.substring(0, 16) + '...' : '-'}</code>
+            </td>
+            <td>${localVolText}</td>
+            <td>${hiddifyVolText}</td>
+            <td><small class="text-muted">${timeText}</small></td>
+            <td>
+                <span class="badge bg-${item.badge_color}-subtle text-${item.badge_color} border border-${item.badge_color} px-2 py-1 mb-1 d-inline-block" style="font-size: 0.72rem;">
+                    ${item.badge_text}
+                </span>
+                <div class="small text-muted" style="font-size: 0.7rem;">${item.action_desc || ''}</div>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    updateHsyncMasterCheckboxState();
+    updateHsyncSelectedBadge();
+}
+
+function toggleHsyncItem(itemId, cb) {
+    const idStr = String(itemId);
+    if (cb.checked) {
+        currentHsyncState.selectedIds.add(idStr);
+        cb.closest('tr')?.classList.add('table-active-row-selected');
+    } else {
+        currentHsyncState.selectedIds.delete(idStr);
+        cb.closest('tr')?.classList.remove('table-active-row-selected');
+    }
+    updateHsyncMasterCheckboxState();
+    updateHsyncSelectedBadge();
+    updateHsyncSubmitButton();
+}
+
+function toggleMasterHsyncCheckbox(masterCb) {
+    const isChecked = masterCb.checked;
+    currentHsyncState.filteredItems.forEach(item => {
+        const idStr = String(item.id);
+        if (isChecked) {
+            currentHsyncState.selectedIds.add(idStr);
+        } else {
+            currentHsyncState.selectedIds.delete(idStr);
+        }
+    });
+    renderHsyncTable();
+    updateHsyncSubmitButton();
+}
+
+function selectAllHsyncRows(selectAll) {
+    if (selectAll) {
+        currentHsyncState.filteredItems.forEach(item => currentHsyncState.selectedIds.add(String(item.id)));
+    } else {
+        currentHsyncState.filteredItems.forEach(item => currentHsyncState.selectedIds.delete(String(item.id)));
+    }
+    renderHsyncTable();
+    updateHsyncSubmitButton();
+}
+
+function updateHsyncMasterCheckboxState() {
+    const masterCb = document.getElementById('hsyncMasterCheckbox');
+    if (!masterCb) return;
+    const totalVisible = currentHsyncState.filteredItems.length;
+    if (totalVisible === 0) {
+        masterCb.checked = false;
+        masterCb.indeterminate = false;
+        return;
+    }
+    let checkedCount = 0;
+    currentHsyncState.filteredItems.forEach(item => {
+        if (currentHsyncState.selectedIds.has(String(item.id))) checkedCount++;
+    });
+    masterCb.checked = (checkedCount > 0 && checkedCount === totalVisible);
+    masterCb.indeterminate = (checkedCount > 0 && checkedCount < totalVisible);
+}
+
+function updateHsyncSelectedBadge() {
+    const count = currentHsyncState.selectedIds.size;
+    const badge = document.getElementById('hsyncSelectedBadge');
+    if (badge) {
+        badge.innerText = `${count} مورد انتخاب شده`;
+        if (count > 0) {
+            badge.className = 'badge bg-primary px-2.5 py-1.5 fw-bold shadow-xs';
+        } else {
+            badge.className = 'badge bg-secondary-subtle text-secondary border px-2.5 py-1.5';
+        }
+    }
+}
+
+function updateHsyncSubmitButton() {
+    const count = currentHsyncState.selectedIds.size;
+    const btn = document.getElementById('hsyncSubmitBtn');
+    const textEl = document.getElementById('hsyncSubmitText');
+    btn.disabled = (count === 0);
+
+    let verb = 'اجرای عملیات';
+    if (currentHsyncState.syncType === 'push_sync') verb = 'ارسال به هیدیفای';
+    else if (currentHsyncState.syncType === 'restore') verb = 'بازیابی به پنل';
+    else if (currentHsyncState.syncType === 'prune_sync') verb = 'انجام همگام‌سازی';
+
+    textEl.innerText = count > 0 ? `تایید و ${verb} (${count} مورد)` : `تایید و ${verb}`;
+}
+
+async function executeHsyncAction() {
+    const count = currentHsyncState.selectedIds.size;
+    if (count === 0) return;
+
+    const confirmMsg = `آیا از اجرای این عملیات برای ${count} مشترک انتخاب شده اطمینان دارید؟`;
+    if (!confirm(confirmMsg)) return;
+
+    const submitBtn = document.getElementById('hsyncSubmitBtn');
+    const spinner = document.getElementById('hsyncSubmitSpinner');
+    const icon = document.getElementById('hsyncSubmitIcon');
+    const cancelBtn = document.getElementById('hsyncCancelBtn');
+
+    submitBtn.disabled = true;
+    spinner.classList.remove('d-none');
+    icon.classList.add('d-none');
+    cancelBtn.disabled = true;
+
+    // تفکیک شناسه‌ها
+    const selectedList = Array.from(currentHsyncState.selectedIds);
+    let payload = {
+        scope: currentHsyncState.scope,
+        reseller_id: currentHsyncState.resellerId,
+        type: currentHsyncState.syncType
+    };
+
+    if (currentHsyncState.syncType === 'push_sync') {
+        payload.selected_ids = selectedList.map(i => parseInt(i)).filter(i => !isNaN(i));
+    } else if (currentHsyncState.syncType === 'restore') {
+        payload.selected_uuids = selectedList;
+    } else if (currentHsyncState.syncType === 'prune_sync') {
+        // شناسه‌های عددی متعلق به prune و رشته‌ها متعلق به sync
+        payload.prune_ids = selectedList.map(i => parseInt(i)).filter(i => !isNaN(i));
+        payload.selected_uuids = selectedList.filter(i => isNaN(parseInt(i)) || String(parseInt(i)) !== String(i));
+    }
+
+    try {
+        const resp = await fetch('/admin/hiddify/sync-execute', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await resp.json();
+        spinner.classList.add('d-none');
+        icon.classList.remove('d-none');
+
+        if (!data.success) {
+            alert('خطا در انجام عملیات: ' + (data.error || 'خطای ناشناخته'));
+            submitBtn.disabled = false;
+            cancelBtn.disabled = false;
+            return;
+        }
+
+        // نمایش صفحه نتیجه موفقیت
+        document.getElementById('hsyncContentState').classList.add('d-none');
+        document.getElementById('hsyncSubmitBtn').classList.add('d-none');
+        document.getElementById('hsyncDoneBtn').classList.remove('d-none');
+        cancelBtn.disabled = false;
+        cancelBtn.innerText = 'بستن پنجره';
+
+        const resultState = document.getElementById('hsyncResultState');
+        resultState.classList.remove('d-none');
+
+        document.getElementById('hsyncResultMessage').innerText = data.message || 'عملیات با موفقیت پایان یافت.';
+        document.getElementById('resultCreatedCount').innerText = data.created_count || 0;
+        document.getElementById('resultUpdatedCount').innerText = data.updated_count || 0;
+
+        if (data.pruned_count !== undefined && data.pruned_count > 0) {
+            document.getElementById('resultPrunedCol').style.display = 'block';
+            document.getElementById('resultPrunedCount').innerText = data.pruned_count;
+        } else {
+            document.getElementById('resultPrunedCol').style.display = 'none';
+        }
+
+        // خطاهای موردی
+        const errBox = document.getElementById('hsyncResultErrorsBox');
+        const errList = document.getElementById('hsyncResultErrorsList');
+        errList.innerHTML = '';
+        if (data.errors && data.errors.length > 0) {
+            errBox.classList.remove('d-none');
+            data.errors.forEach(e => {
+                const li = document.createElement('li');
+                li.innerText = e;
+                errList.appendChild(li);
+            });
+        } else {
+            errBox.classList.add('d-none');
+        }
+
+    } catch (err) {
+        spinner.classList.add('d-none');
+        icon.classList.remove('d-none');
+        submitBtn.disabled = false;
+        cancelBtn.disabled = false;
+        alert('خطای غیرمنتظره در ارسال درخواست: ' + err.message);
+    }
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+</script>

@@ -1761,10 +1761,13 @@ function toggleAiApiBox() {
             </h5>
         </div>
         <div class="d-flex align-items-center gap-2">
-        <a href="{{ url_for('tutorials_portal') }}" target="_blank" class="btn btn-sm btn-outline-primary fw-bold">
-            <i class="fas fa-arrow-up-right-from-square me-1"></i> مشاهده آنلاین پورتال آموزش‌ها
-        </a>
-    </div>
+            <a href="{{ url_for('admin_tutorials') }}" class="btn btn-sm btn-warning fw-bold">
+                <i class="fas fa-edit me-1"></i> مدیریت و ویرایش محتوای آموزش‌ها
+            </a>
+            <a href="{{ url_for('tutorials_portal') }}" target="_blank" class="btn btn-sm btn-outline-primary fw-bold">
+                <i class="fas fa-arrow-up-right-from-square me-1"></i> مشاهده آنلاین پورتال آموزش‌ها
+            </a>
+        </div>
     <div class="card-body p-4">
         <p class="text-muted">
             پورتال آموزش‌های چندسکویی و عیب‌یابی هوشمند به صورت پیش‌فرض در آدرس <code>/help</code> در دسترس است. شما می‌توانید یک ساب‌دامنه اختصاصی (مانند <code>help.yourdomain.com</code>) برای آن تنظیم نمایید تا کاربران و مشتریان مستقیماً بدون نیاز به لاگین آموزش‌ها را مشاهده کنند.
@@ -1940,28 +1943,87 @@ function toggleAiApiBox() {
         </div>
         <div class="d-flex align-items-center gap-2">
             <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 rounded-pill">
-                <i class="fas fa-server me-1"></i> همگام‌سازی پنل
+                <i class="fas fa-server me-1"></i> همگام‌سازی دوطرفه
             </span>
         </div>
     </div>
     <div class="card-body p-4 settings-card-body">
-                <p class="text-muted small">
-                    تمامی اطلاعات کانفیگ‌ها، حجم‌ها و مشتریان همیشه روی پنل هیدیفای محفوظ هستند. در صورت دیپلوی مجدد روی Railway یا خالی شدن دیتابیس، ربات به صورت خودکار یا با زدن دکمه زیر تمام کاربران را از پنل هیدیفای بازگردانی می‌کند.
-                </p>
+        <p class="text-muted small mb-4">
+            تمامی اطلاعات کانفیگ‌ها، حجم‌ها و مشتریان همیشه روی پنل هیدیفای محفوظ هستند. با استفاده از ابزارهای زیر می‌توانید اطلاعات را به صورت دوطرفه بین پنل/دیتابیس ربات و سرور هیدیفای همراه با <strong>پیش‌نمایش لیست مشترکین، انتخاب گروهی و تایید نهایی</strong> همگام نمایید.
+        </p>
 
-                <form action="{{ url_for('admin_sync_hidify') }}" method="POST" onsubmit="return confirm('آیا مایل به همگام‌سازی و بازیابی اطلاعات تمامی کاربران از هیدیفای هستید؟');">
-                    <button type="submit" class="btn btn-success mb-3">
-                        <i class="fas fa-cloud-arrow-down me-1"></i> همگام‌سازی و بازیابی کاربران از هیدیفای
+        <div class="row g-3 mb-4">
+            <!-- عملیات ۱: بازیابی مشترکین از هیدیفای -->
+            <div class="col-md-4">
+                <div class="p-3.5 rounded-3 border h-100 d-flex flex-column justify-content-between" style="background: linear-gradient(135deg, rgba(79, 70, 229, 0.03) 0%, rgba(255, 255, 255, 0.95) 100%); border-color: rgba(79, 70, 229, 0.2) !important;">
+                    <div>
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <div class="rounded-circle p-2 d-flex align-items-center justify-content-center" style="width: 36px; height: 36px; background: rgba(79, 70, 229, 0.12);">
+                                <i class="fas fa-arrows-rotate text-primary"></i>
+                            </div>
+                            <h6 class="fw-bold mb-0 text-primary">بازیابی مشترکین از هیدیفای</h6>
+                        </div>
+                        <p class="text-muted small mb-3">
+                            فراخوانی کلیه کاربران موجود در پنل هیدیفای و ثبت یا بروزرسانی در دیتابیس پنل با امکان انتخاب مشترکین دلخواه.
+                        </p>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary fw-bold w-100 d-flex align-items-center justify-content-center gap-1.5 shadow-xs py-2" onclick="openHiddifySyncModal('global', null, 'restore', 'کل سیستم')">
+                        <i class="fas fa-cloud-arrow-down"></i>
+                        <span>بازیابی مشترکین از هیدیفای</span>
                     </button>
-                </form>
+                </div>
+            </div>
 
-                <div class="alert alert-info py-2 small mb-0">
-                    <i class="fas fa-lightbulb me-1"></i> <strong>نکته Railway:</strong>
-                    برای ماندگاری دائمی فایل‌های دیتابیس در دیپلوی‌های گیت‌هاب، می‌توانید در داشبورد Railway یک <strong>Volume</strong> با مسیر <code>/data</code> اضافه کنید.
+            <!-- عملیات ۲: همگام‌سازی با هیدیفای -->
+            <div class="col-md-4">
+                <div class="p-3.5 rounded-3 border h-100 d-flex flex-column justify-content-between" style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.03) 0%, rgba(255, 255, 255, 0.95) 100%); border-color: rgba(245, 158, 11, 0.25) !important;">
+                    <div>
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <div class="rounded-circle p-2 d-flex align-items-center justify-content-center" style="width: 36px; height: 36px; background: rgba(245, 158, 11, 0.12);">
+                                <i class="fas fa-rotate text-warning"></i>
+                            </div>
+                            <h6 class="fw-bold mb-0 text-dark">همگام‌سازی با هیدیفای</h6>
+                        </div>
+                        <p class="text-muted small mb-3">
+                            انطباق قطعی دیتابیس با هیدیفای؛ بروزرسانی اطلاعات کاربران هیدیفای و مدیریت/حذف اختیاری مشترکین اضافی محلی.
+                        </p>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-warning text-dark fw-bold w-100 d-flex align-items-center justify-content-center gap-1.5 shadow-xs py-2" onclick="openHiddifySyncModal('global', null, 'prune_sync', 'کل سیستم')">
+                        <i class="fas fa-rotate text-warning"></i>
+                        <span>همگام‌سازی با هیدیفای</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- عملیات ۳: همگام‌سازی هیدیفای با سیستم -->
+            <div class="col-md-4">
+                <div class="p-3.5 rounded-3 border h-100 d-flex flex-column justify-content-between" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.03) 0%, rgba(255, 255, 255, 0.95) 100%); border-color: rgba(16, 185, 129, 0.25) !important;">
+                    <div>
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <div class="rounded-circle p-2 d-flex align-items-center justify-content-center" style="width: 36px; height: 36px; background: rgba(16, 185, 129, 0.12);">
+                                <i class="fas fa-cloud-arrow-up text-success"></i>
+                            </div>
+                            <h6 class="fw-bold mb-0 text-success">همگام‌سازی هیدیفای با سیستم</h6>
+                        </div>
+                        <p class="text-muted small mb-3">
+                            ارسال مشترکین فعال پنل به سرور هیدیفای و انطباق دقیق سقف حجم، حجم مصرفی فعلی و تاریخ انقضا با پنل.
+                        </p>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-success fw-bold w-100 d-flex align-items-center justify-content-center gap-1.5 shadow-xs py-2" onclick="openHiddifySyncModal('global', null, 'push_sync', 'کل سیستم')">
+                        <i class="fas fa-cloud-arrow-up text-success"></i>
+                        <span>همگام‌سازی هیدیفای با سیستم</span>
+                    </button>
                 </div>
             </div>
         </div>
 
+        <div class="alert alert-info py-2.5 small mb-0 d-flex align-items-center gap-2">
+            <i class="fas fa-lightbulb text-info fs-5"></i>
+            <div>
+                <strong>نکته پایداری دیتابیس (Railway & Docker):</strong>
+                برای ماندگاری دائمی فایل‌های دیتابیس در دیپلوی‌های گیت‌هاب، می‌توانید در داشبورد Railway یک <strong>Volume</strong> با مسیر <code>/data</code> اضافه فرمایید.
+            </div>
+        </div>
     </div>
 </div>
 <!-- کارت ۱۰: قالب کانفیگ تکی -->
@@ -3008,4 +3070,6 @@ document.addEventListener('DOMContentLoaded', function() {
     } catch (e) {}
 });
 </script>
+
+{% include "hiddify_sync_modal.html" %}
 {% endblock %}
