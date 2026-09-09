@@ -89,7 +89,8 @@
                         <td data-value="{{ p['custom_name'] or p['master_name'] }}">
                             <input type="text" class="form-control form-control-sm" name="custom_name" 
                                    form="form_override_{{ p['plan_id'] }}"
-                                   value="{{ p['custom_name'] }}" placeholder="{{ p['master_name'] }}">
+                                   value="{{ p['reseller_custom_name'] if p.get('is_reseller_modified') and p.get('reseller_custom_name') else '' }}" 
+                                   placeholder="{{ p['admin_custom_name'] or p['master_name'] }}">
                         </td>
                         <td data-value="{{ selling }}" style="min-width: 175px;">
                             <div class="input-group input-group-sm">
@@ -98,7 +99,7 @@
                                        form="form_override_{{ p['plan_id'] }}"
                                        id="selling_price_{{ p['plan_id'] }}"
                                        data-plan-id="{{ p['plan_id'] }}"
-                                       value="{{ p['custom_price'] or selling }}" 
+                                       value="{{ p['display_price'] or selling }}" 
                                        placeholder="{{ p['master_price'] }}" 
                                        step="1000" min="{{ wholesale }}">
                                 <span class="input-group-text small text-muted px-2">ت</span>
@@ -140,11 +141,11 @@
                                 <button type="submit" form="form_override_{{ p['plan_id'] }}" class="btn btn-sm btn-primary px-3" title="ذخیره تنظیمات پلن">
                                     <i class="fas fa-save me-1"></i> ذخیره
                                 </button>
-                                {% if p['custom_name'] or (p['custom_price'] is not none and p['custom_price'] > 0) %}
-                                <form method="POST" action="{{ url_for('reseller_plans') }}" class="d-inline" onsubmit="return confirm('آیا از بازنشانی این پلن به تنظیمات پیش‌فرض مدیر کل اطمینان دارید؟');">
+                                {% if p.get('is_reseller_modified') %}
+                                <form method="POST" action="{{ url_for('reseller_plans') }}" class="d-inline" onsubmit="return confirm('آیا از بازگردانی این پلن به تنظیمات تعیین‌شده توسط مدیریت اطمینان دارید؟');">
                                     <input type="hidden" name="action" value="reset_override">
                                     <input type="hidden" name="plan_id" value="{{ p['plan_id'] }}">
-                                    <button type="submit" class="btn btn-sm btn-outline-secondary" title="بازنشانی به پیش‌فرض مدیر">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary" title="بازگردانی به تنظیمات مدیریت">
                                         <i class="fas fa-undo"></i>
                                     </button>
                                 </form>
