@@ -86,20 +86,24 @@
 
                         <ul class="nav nav-pills nav-fill mb-3" id="pills-tab-{{ b['id'] }}" role="tablist">
                             <li class="nav-item" role="presentation">
-                                <button class="nav-link active fw-bold" id="pills-card-tab-{{ b['id'] }}" data-bs-toggle="pill" data-bs-target="#pills-card-{{ b['id'] }}" type="button" role="tab">
+                                <button class="nav-link {% if not (admin_gateway and admin_gateway.get('enabled') and admin_gateway.get('type') == 'blupal') %}active{% endif %} fw-bold" id="pills-card-tab-{{ b['id'] }}" data-bs-toggle="pill" data-bs-target="#pills-card-{{ b['id'] }}" type="button" role="tab">
                                     <i class="fas fa-credit-card me-1"></i> کارت به کارت (بانکی)
                                 </button>
                             </li>
                             <li class="nav-item" role="presentation">
-                                <button class="nav-link fw-bold" id="pills-online-tab-{{ b['id'] }}" data-bs-toggle="pill" data-bs-target="#pills-online-{{ b['id'] }}" type="button" role="tab">
+                                <button class="nav-link {% if admin_gateway and admin_gateway.get('enabled') and admin_gateway.get('type') == 'blupal' %}active{% endif %} fw-bold" id="pills-online-tab-{{ b['id'] }}" data-bs-toggle="pill" data-bs-target="#pills-online-{{ b['id'] }}" type="button" role="tab">
+                                    {% if admin_gateway and admin_gateway.get('type') == 'blupal' %}
+                                    <i class="fas fa-bolt me-1 text-primary"></i> 💳 پرداخت با بلوپال (BluPal)
+                                    {% else %}
                                     <i class="fas fa-globe me-1"></i> درگاه آنلاین شاپرک
+                                    {% endif %}
                                 </button>
                             </li>
                         </ul>
 
                         <div class="tab-content" id="pills-tabContent-{{ b['id'] }}">
                             <!-- تب کارت به کارت -->
-                            <div class="tab-pane fade show active" id="pills-card-{{ b['id'] }}" role="tabpanel">
+                            <div class="tab-pane fade {% if not (admin_gateway and admin_gateway.get('enabled') and admin_gateway.get('type') == 'blupal') %}show active{% endif %}" id="pills-card-{{ b['id'] }}" role="tabpanel">
                                 <!-- راهنمای کپی مبلغ و ارقام خرد -->
                                 <div class="alert alert-warning py-2 px-3 mb-3 small border-0 bg-opacity-25" style="font-size: 0.83rem;">
                                     <i class="fas fa-lightbulb text-warning me-1"></i>
@@ -199,14 +203,22 @@
                             </div>
 
                             <!-- تب درگاه آنلاین -->
-                            <div class="tab-pane fade text-center py-3" id="pills-online-{{ b['id'] }}" role="tabpanel">
+                            <div class="tab-pane fade {% if admin_gateway and admin_gateway.get('enabled') and admin_gateway.get('type') == 'blupal' %}show active{% endif %} text-center py-3" id="pills-online-{{ b['id'] }}" role="tabpanel">
                                 <div class="mb-3">
+                                    {% if admin_gateway and admin_gateway.get('type') == 'blupal' %}
+                                    <div class="avatar-lg bg-primary bg-opacity-10 text-primary rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 70px; height: 70px;">
+                                        <i class="fas fa-bolt fs-1"></i>
+                                    </div>
+                                    <h5 class="fw-bold text-primary">درگاه کارت به کارت هوشمند بلوپال (BluPal)</h5>
+                                    <p class="text-muted small">با کلیک روی دکمه زیر، مستقیماً به درگاه پرداخت هوشمند بلوپال منتقل می‌شوید. پس از انجام پرداخت، بسته اعتباری و بونوس هدیه به صورت خودکار به کیف پول شما افزوده می‌شود.</p>
+                                    {% else %}
                                     <i class="fas fa-shield-halved text-success fs-1 mb-2"></i>
                                     <h6>پرداخت آنی و خودکار از طریق کلیه کارت‌های عضو شتاب</h6>
                                     <p class="text-muted small">پس از پرداخت موفق در درگاه بانکی، موجودی کیف پول و بونوس هدیه فوراً و بدون نیاز به تایید دستی به حسابتان افزوده خواهد شد.</p>
+                                    {% endif %}
                                 </div>
-                                <a href="{{ url_for('reseller_bundles_online_pay', bundle_id=b['id']) }}" class="btn btn-primary btn-lg px-4 fw-bold">
-                                    <i class="fas fa-arrow-up-right-from-square me-2"></i> انتقال به درگاه پرداخت آنلاین
+                                <a href="{{ url_for('reseller_bundles_online_pay', bundle_id=b['id']) }}" class="btn btn-primary btn-lg px-4 fw-bold shadow-sm">
+                                    <i class="fas fa-arrow-up-right-from-square me-2"></i> {% if admin_gateway and admin_gateway.get('type') == 'blupal' %}انتقال به درگاه پرداخت بلوپال{% else %}انتقال به درگاه پرداخت آنلاین{% endif %}
                                 </a>
                             </div>
                         </div>

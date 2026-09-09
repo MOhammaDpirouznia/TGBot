@@ -4,6 +4,22 @@
 
 {% block extra_head %}
 <style>
+    .troubleshoot-hero {
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(234, 88, 12, 0.12) 100%);
+        border: 1px solid rgba(245, 158, 11, 0.25);
+        border-radius: 20px;
+    }
+    .mode-pill-btn {
+        border-radius: 14px;
+        padding: 10px 20px;
+        font-weight: 700;
+        font-size: 0.95rem;
+        transition: all 0.2s ease;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
     .troubleshoot-card {
         border-radius: 20px;
         border: 1px solid var(--card-border, rgba(0,0,0,0.08));
@@ -11,17 +27,88 @@
         transition: all 0.3s ease;
     }
     .troubleshoot-card:hover {
-        border-color: rgba(79, 70, 229, 0.4);
+        border-color: rgba(245, 158, 11, 0.4);
         box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08);
     }
     .solution-step {
         background: rgba(16, 185, 129, 0.06);
         border-right: 4px solid #10b981;
         border-radius: 10px;
-        padding: 12px 16px;
-        margin-bottom: 10px;
+        padding: 14px 18px;
+        margin-bottom: 12px;
         font-size: 0.95rem;
-        line-height: 1.8;
+        line-height: 1.85;
+    }
+    /* استایل‌های اختصاصی ویزارد تعاملی قدم‌به‌قدم */
+    .wizard-card {
+        border-radius: 24px;
+        border: 1px solid rgba(79, 70, 229, 0.15);
+        background: var(--card-bg, #ffffff);
+        box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.07);
+        overflow: hidden;
+    }
+    .wizard-step-badge {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 1rem;
+    }
+    .device-select-btn {
+        border-radius: 16px;
+        padding: 16px;
+        border: 2px solid rgba(0,0,0,0.08);
+        background: #ffffff;
+        color: #1e293b;
+        font-weight: 700;
+        text-align: center;
+        transition: all 0.25s ease;
+        cursor: pointer;
+        width: 100%;
+    }
+    .device-select-btn:hover, .device-select-btn.active {
+        border-color: #4f46e5;
+        background: rgba(79, 70, 229, 0.05);
+        transform: translateY(-3px);
+        box-shadow: 0 8px 18px -4px rgba(79, 70, 229, 0.2);
+    }
+    .operator-select-btn {
+        border-radius: 16px;
+        padding: 16px;
+        border: 2px solid rgba(0,0,0,0.08);
+        background: #ffffff;
+        color: #1e293b;
+        font-weight: 700;
+        text-align: center;
+        transition: all 0.25s ease;
+        cursor: pointer;
+        width: 100%;
+    }
+    .operator-select-btn:hover, .operator-select-btn.active {
+        border-color: #ea580c;
+        background: rgba(234, 88, 12, 0.05);
+        transform: translateY(-3px);
+        box-shadow: 0 8px 18px -4px rgba(234, 88, 12, 0.2);
+    }
+    .interactive-action-btn {
+        border-radius: 14px;
+        padding: 14px 22px;
+        font-weight: 700;
+        font-size: 1rem;
+        transition: all 0.25s ease;
+    }
+    .interactive-action-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px -3px rgba(0,0,0,0.15);
+    }
+    .clock-live-box {
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(14, 165, 233, 0.08) 100%);
+        border: 1px dashed rgba(16, 185, 129, 0.4);
+        border-radius: 16px;
+        padding: 18px;
     }
 </style>
 {% endblock %}
@@ -29,81 +116,524 @@
 {% macro render_troubleshoot_body() %}
 <div class="container-fluid px-0">
     <!-- Breadcrumb -->
-    <nav aria-label="breadcrumb" class="mb-4">
+    <nav aria-label="breadcrumb" class="mb-3">
         <ol class="breadcrumb">
             <li class="breadcrumb-item"><a href="{{ url_for('tutorials_portal') }}"><i class="fas fa-home me-1"></i> پورتال آموزش‌ها</a></li>
             <li class="breadcrumb-item active" aria-current="page">عیب‌یابی هوشمند و حل مشکلات اتصال</li>
         </ol>
     </nav>
 
-    <!-- Header Hero -->
-    <div class="card shadow-sm border-0 rounded-4 mb-4" style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(234, 88, 12, 0.1) 100%); border: 1px solid rgba(245, 158, 11, 0.2) !important;">
+    <!-- Header Hero & حالت دوگانه سوییچر -->
+    <div class="card troubleshoot-hero shadow-sm mb-4">
         <div class="card-body p-4 d-flex flex-column flex-md-row align-items-center justify-content-between gap-3">
-            <div class="d-flex align-items-center gap-3">
-                <div class="stat-icon bg-warning bg-opacity-20 text-warning-emphasis rounded-4 p-3 d-flex align-items-center justify-content-center" style="width: 64px; height: 64px;">
+            <div class="d-flex align-items-center gap-3 text-center text-md-start">
+                <div class="bg-warning bg-opacity-20 text-warning-emphasis rounded-4 p-3 d-flex align-items-center justify-content-center" style="width: 64px; height: 64px;">
                     <i class="fas fa-screwdriver-wrench fa-2x"></i>
                 </div>
                 <div>
                     <h2 class="h4 fw-bold mb-1 text-dark">سامانه هوشمند عیب‌یابی و حل خطاهای اتصال</h2>
-                    <p class="text-muted mb-0 small">راهنمای تصویری و مرحله‌به‌مرحله رفع رایج‌ترین خطاهای قطع و وصلی، تنظیم ساعت و اختلالات اپراتورها</p>
+                    <p class="text-muted mb-0 small">راهنمای تصویری و مرحله‌به‌مرحله رفع قطعی اینترنت، تنظیم ساعت، تنظیمات دور زدن فیلترینگ اپراتورها</p>
                 </div>
             </div>
-            <a href="{{ url_for('tutorials_portal') }}" class="btn btn-outline-dark btn-sm fw-bold">
-                <i class="fas fa-book-open me-1"></i> مشاهده تمام آموزش‌ها
-            </a>
+
+            <!-- دکمه‌های سوییچر دو حالته -->
+            <div class="d-flex flex-wrap gap-2 p-1 bg-white rounded-4 shadow-sm border">
+                <button type="button" class="mode-pill-btn {% if active_mode == 'wizard' or not active_mode %}btn btn-primary text-white shadow-sm{% else %}btn btn-light text-dark{% endif %}" onclick="switchMode('wizard')">
+                    <i class="fas fa-route"></i> راهنمای قدم‌به‌قدم تعاملی
+                </button>
+                <button type="button" class="mode-pill-btn {% if active_mode == 'catalog' %}btn btn-primary text-white shadow-sm{% else %}btn btn-light text-dark{% endif %}" onclick="switchMode('catalog')">
+                    <i class="fas fa-table-list"></i> نمای جامع تمام خطاها
+                </button>
+            </div>
         </div>
     </div>
 
-    <!-- لیست خطاهای رایج و راهکارهای فوری -->
-    <div class="row g-4 mb-5">
-        {% for g in guides %}
-        <div class="col-12" id="{{ g.slug }}">
-            <div class="troubleshoot-card shadow-sm p-4">
-                <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
-                    <div class="d-flex align-items-center gap-3">
-                        <div class="stat-icon bg-{{ g.color }} bg-opacity-10 text-{{ g.color }} rounded-3 p-3 d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
-                            <i class="{{ g.icon }} fa-xl"></i>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- حالت اول: ویزارد تعاملی قدم‌به‌قدم (Interactive Step-by-Step Wizard) -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div id="mode-wizard" style="{% if active_mode == 'catalog' %}display: none;{% else %}display: block;{% endif %}">
+        <div class="wizard-card p-4 p-md-5 mb-5">
+            <!-- نوار پیشرفت و مراحل -->
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span class="small fw-bold text-primary" id="wizardStepIndicator">
+                    <i class="fas fa-compass me-1"></i> مرحله <span id="currentStepNum">۱</span> از ۷
+                </span>
+                <span class="badge bg-primary bg-opacity-10 text-primary border border-primary small" id="wizardStepTitleBadge">
+                    انتخاب دستگاه
+                </span>
+            </div>
+            <div class="progress mb-4" style="height: 8px; border-radius: 10px; background-color: rgba(0,0,0,0.06);">
+                <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" id="wizardProgressBar" role="progressbar" style="width: 14%;"></div>
+            </div>
+
+            <!-- محفظه مراحل (Steps Container) -->
+            <div id="wizardStepsWrapper">
+                <!-- گام ۱: انتخاب دستگاه -->
+                <div class="wizard-step-content" id="wstep-1">
+                    <div class="text-center mb-4">
+                        <div class="bg-primary bg-opacity-10 text-primary rounded-circle d-inline-flex p-3 mb-2">
+                            <i class="fas fa-mobile-screen-button fa-2x"></i>
                         </div>
-                        <div>
-                            <h5 class="fw-bold mb-1 text-dark">{{ g.title }}</h5>
-                            <p class="text-muted small mb-0">{{ g.subtitle }}</p>
+                        <h4 class="fw-bold text-dark mb-1">دستگاه مورد نظر جهت عیب‌یابی را انتخاب فرمایید</h4>
+                        <p class="text-muted small">مشکل قطعی یا عدم اتصال روی کدام دستگاه برای شما ایجاد شده است؟</p>
+                    </div>
+
+                    <div class="row g-3 mb-4 justify-content-center">
+                        <div class="col-6 col-md-4 col-lg-2">
+                            <button type="button" class="device-select-btn" onclick="selectDevice('android', 'اندروید')">
+                                <i class="fab fa-android fa-2x text-success mb-2 d-block"></i>
+                                <span>گوشی اندروید</span>
+                            </button>
+                        </div>
+                        <div class="col-6 col-md-4 col-lg-2">
+                            <button type="button" class="device-select-btn" onclick="selectDevice('ios', 'آیفون/آیپد')">
+                                <i class="fab fa-apple fa-2x text-dark mb-2 d-block"></i>
+                                <span>آیفون و آیپد</span>
+                            </button>
+                        </div>
+                        <div class="col-6 col-md-4 col-lg-2">
+                            <button type="button" class="device-select-btn" onclick="selectDevice('windows', 'ویندوز')">
+                                <i class="fab fa-windows fa-2x text-primary mb-2 d-block"></i>
+                                <span>کامپیوتر ویندوز</span>
+                            </button>
+                        </div>
+                        <div class="col-6 col-md-4 col-lg-2">
+                            <button type="button" class="device-select-btn" onclick="selectDevice('macos', 'مک‌بوک')">
+                                <i class="fas fa-laptop fa-2x text-secondary mb-2 d-block"></i>
+                                <span>مک‌بوک (Mac)</span>
+                            </button>
+                        </div>
+                        <div class="col-6 col-md-4 col-lg-2">
+                            <button type="button" class="device-select-btn" onclick="selectDevice('tv', 'تلویزیون هوشمند')">
+                                <i class="fas fa-tv fa-2x text-danger mb-2 d-block"></i>
+                                <span>تلویزیون هوشمند</span>
+                            </button>
                         </div>
                     </div>
-                    <span class="badge bg-{{ g.color }} bg-opacity-10 text-{{ g.color }} border border-{{ g.color }}">
-                        راهکار تایید شده
-                    </span>
                 </div>
 
-                <!-- شرح مشکل و علت -->
-                <div class="row g-3 mb-3">
-                    <div class="col-md-6">
-                        <div class="p-3 bg-danger bg-opacity-10 rounded-3 border border-danger border-opacity-25 h-100">
-                            <div class="small fw-bold text-danger mb-1"><i class="fas fa-circle-exclamation me-1"></i> نشانه مشکل:</div>
-                            <p class="small text-dark mb-0">{{ g.problem }}</p>
+                <!-- گام ۲: بررسی بسته اینترنت -->
+                <div class="wizard-step-content" id="wstep-2" style="display: none;">
+                    <div class="text-center mb-4">
+                        <div class="bg-warning bg-opacity-10 text-warning rounded-circle d-inline-flex p-3 mb-2">
+                            <i class="fas fa-sim-card fa-2x"></i>
                         </div>
+                        <h4 class="fw-bold text-dark mb-1">بررسی فعال بودن بسته اینترنت سیم‌کارت یا مودم</h4>
+                        <p class="text-muted small">یکی از رایج‌ترین دلایل قطع شدن اتصال، اتمام بسته و هدایت ترافیک توسط اپراتور است.</p>
                     </div>
-                    <div class="col-md-6">
-                        <div class="p-3 bg-light rounded-3 border h-100">
-                            <div class="small fw-bold text-secondary mb-1"><i class="fas fa-magnifying-glass me-1"></i> علت فنی:</div>
-                            <p class="small text-muted mb-0">{{ g.cause }}</p>
-                        </div>
+
+                    <div class="alert alert-warning border-warning border-opacity-25 rounded-4 p-4 mb-4 small" style="line-height: 1.9;">
+                        <h6 class="fw-bold text-warning-emphasis mb-2"><i class="fas fa-info-circle me-1"></i> راهنمای سریع استعلام بسته اینترنت:</h6>
+                        <ul class="mb-0 ps-3">
+                            <li><strong>همراه اول:</strong> شماره‌گیری کد <code>#10*100*</code> یا بررسی در اپلیکیشن همراه من</li>
+                            <li><strong>ایرانسل:</strong> شماره‌گیری کد <code>#4*1*555*</code> یا بررسی در اپلیکیشن ایرانسل من</li>
+                            <li><strong>رایتل:</strong> شماره‌گیری کد <code>#144*</code> یا سامانه رایتل من</li>
+                            <li><strong>اینترنت خانگی (مودم):</strong> ورود به پنل کاربری شرکت (مخابرات، شاتل، آسیاتک) و اطمینان از داشتن حجم بین‌الملل</li>
+                        </ul>
+                    </div>
+
+                    <div class="d-flex flex-column flex-sm-row justify-content-center gap-3">
+                        <button type="button" class="btn btn-success interactive-action-btn" onclick="goToStep(3)">
+                            <i class="fas fa-check-circle me-1"></i> بسته اینترنت من فعال است و حجم دارد 🟢
+                        </button>
+                        <button type="button" class="btn btn-outline-danger interactive-action-btn" onclick="showResolveBox('pkg_empty')">
+                            <i class="fas fa-circle-xmark me-1"></i> بسته اینترنتم تمام شده است 🔴
+                        </button>
+                    </div>
+
+                    <div id="pkg_empty_box" class="alert alert-danger rounded-4 p-3 mt-4 small" style="display: none;">
+                        <i class="fas fa-lightbulb me-1"></i> <strong>راهکار:</strong> لطفاً ابتدا بسته اینترنت جدید برای سیم‌کارت یا مودم خود خریداری فرمایید. سپس یک بار گوشی را به مدت ۱۰ ثانیه در <strong>حالت پرواز (Airplane Mode)</strong> قرار داده و مجدداً خارج کنید تا اتصال اینترنت تازه شود.
                     </div>
                 </div>
 
-                <!-- مراحل حل مشکل -->
-                <div>
-                    <h6 class="fw-bold text-success mb-2"><i class="fas fa-check-circle me-1"></i> دستورالعمل گام‌به‌گام رفع مشکل:</h6>
-                    {% for step in g.solution_steps %}
-                    <div class="solution-step">
-                        {{ step | safe }}
+                <!-- گام ۳: بررسی حجم و زمان اشتراک VPN -->
+                <div class="wizard-step-content" id="wstep-3" style="display: none;">
+                    <div class="text-center mb-4">
+                        <div class="bg-primary bg-opacity-10 text-primary rounded-circle d-inline-flex p-3 mb-2">
+                            <i class="fas fa-shield-halved fa-2x"></i>
+                        </div>
+                        <h4 class="fw-bold text-dark mb-1">بررسی اعتبار و حجم باقی‌مانده اشتراک VPN</h4>
+                        <p class="text-muted small">مطمئن شوید که ترافیک گیگابایتی یا مهلت روزهای اشتراک شما به پایان نرسیده باشد.</p>
                     </div>
-                    {% endfor %}
+
+                    <div class="bg-light border rounded-4 p-4 mb-4 small" style="line-height: 1.9;">
+                        <h6 class="fw-bold text-dark mb-2"><i class="fas fa-magnifying-glass me-1"></i> نحوه چک کردن وضعیت اشتراک:</h6>
+                        <p class="mb-1">۱. وارد <strong>ربات تلگرام</strong> شده و دکمه <strong>«اشتراک‌های من»</strong> را لمس کنید.</p>
+                        <p class="mb-0">۲. همچنین با وارد کردن لینک اشتراک در نوار آدرس مرورگر، صفحه پرتال کاربری با مشخصات روزهای مانده و حجم مصرفی نمایش داده می‌شود.</p>
+                    </div>
+
+                    <div class="d-flex flex-column flex-sm-row justify-content-center gap-3">
+                        <button type="button" class="btn btn-success interactive-action-btn" onclick="goToStep(4)">
+                            <i class="fas fa-check-circle me-1"></i> اشتراکم معتبر است و زمان و حجم کافی دارد ✅
+                        </button>
+                        <button type="button" class="btn btn-outline-warning interactive-action-btn" onclick="showResolveBox('sub_empty')">
+                            <i class="fas fa-rotate me-1"></i> حجم یا زمان اشتراکم تمام شده است 🔄
+                        </button>
+                    </div>
+
+                    <div id="sub_empty_box" class="alert alert-warning rounded-4 p-3 mt-4 small" style="display: none;">
+                        <i class="fas fa-cart-shopping me-1"></i> <strong>راهکار:</strong> از طریق ربات تلگرام و بخش <strong>«تمدید اشتراک»</strong> یا خرید پلن جدید، سرویس خود را شارژ نمایید تا بلافاصله سرورها فعال گردند.
+                    </div>
+                </div>
+
+                <!-- گام ۴: تنظیم و همگام‌سازی ساعت سیستم -->
+                <div class="wizard-step-content" id="wstep-4" style="display: none;">
+                    <div class="text-center mb-4">
+                        <div class="bg-danger bg-opacity-10 text-danger rounded-circle d-inline-flex p-3 mb-2">
+                            <i class="fas fa-clock fa-2x"></i>
+                        </div>
+                        <h4 class="fw-bold text-dark mb-1">بررسی تنظیم دقیق ساعت و تاریخ دستگاه (Time Synchronization)</h4>
+                        <p class="text-muted small">پروتکل‌های نسل جدید (VLESS / VMess) در صورت اختلاف زمانی بیش از ۶۰ ثانیه اتصال را مسدود می‌کنند.</p>
+                    </div>
+
+                    <!-- ابزار سنجش زنده ساعت دستگاه با سرور -->
+                    <div class="clock-live-box mb-4 text-center">
+                        <div class="d-flex align-items-center justify-content-center gap-2 mb-2">
+                            <i class="fas fa-stopwatch fa-lg text-success"></i>
+                            <h6 class="fw-bold text-dark mb-0">ابزار سنجش زنده اختلاف ساعت دستگاه:</h6>
+                        </div>
+                        <div class="fs-5 fw-bold font-monospace text-primary mb-1" id="liveDeviceClock">--:--:--</div>
+                        <div class="small" id="clockSyncStatus">
+                            <span class="text-muted"><i class="fas fa-spinner fa-spin me-1"></i> در حال ارزیابی دقت ساعت دستگاه...</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-light border rounded-4 p-4 mb-4 small" style="line-height: 1.9;">
+                        <h6 class="fw-bold text-dark mb-2"><i class="fas fa-gear me-1"></i> دستورالعمل همگام‌سازی ساعت:</h6>
+                        <ul class="mb-0 ps-3">
+                            <li><strong>در اندروید:</strong> به Settings > General Management > Date and time بروید و گزینه‌های <code>Set time automatically</code> و <code>Automatic time zone</code> را یک بار خاموش و روشن کنید.</li>
+                            <li><strong>در آیفون:</strong> به Settings > General > Date & Time بروید و تیک <code>Set Automatically</code> را روشن کنید.</li>
+                            <li><strong>در ویندوز:</strong> روی ساعت گوشه پایین راست‌کلیک کرده و Adjust date/time را بزنید، سپس روی دکمه <strong>Sync now</strong> کلیک نمایید.</li>
+                        </ul>
+                    </div>
+
+                    <div class="d-flex justify-content-center">
+                        <button type="button" class="btn btn-success interactive-action-btn" onclick="goToStep(5)">
+                            <i class="fas fa-check-double me-1"></i> ساعت و تاریخ دقیقاً با ساعت رسمی همگام است ⏱️
+                        </button>
+                    </div>
+                </div>
+
+                <!-- گام ۵: انتخاب اپراتور و اعمال فرگمنت و دی‌ان‌اس -->
+                <div class="wizard-step-content" id="wstep-5" style="display: none;">
+                    <div class="text-center mb-4">
+                        <div class="bg-warning bg-opacity-20 text-warning rounded-circle d-inline-flex p-3 mb-2">
+                            <i class="fas fa-tower-broadcast fa-2x"></i>
+                        </div>
+                        <h4 class="fw-bold text-dark mb-1">انتخاب اپراتور و اعمال تنظیمات ضد فیلترینگ</h4>
+                        <p class="text-muted small">اپراتور اینترنتی که در حال حاضر به آن وصل هستید را انتخاب کنید:</p>
+                    </div>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <button type="button" class="operator-select-btn" onclick="selectOperator('mci_irancell')">
+                                <i class="fas fa-signal fa-2x text-warning mb-2 d-block"></i>
+                                <div>همراه اول یا ایرانسل</div>
+                                <span class="badge bg-warning bg-opacity-10 text-warning small mt-1">دیتای سیم‌کارت</span>
+                            </button>
+                        </div>
+                        <div class="col-md-4">
+                            <button type="button" class="operator-select-btn" onclick="selectOperator('wifi')">
+                                <i class="fas fa-wifi fa-2x text-primary mb-2 d-block"></i>
+                                <div>اینترنت خانگی / وای‌فای</div>
+                                <span class="badge bg-primary bg-opacity-10 text-primary small mt-1">مخابرات، شاتل، فیبر نوری</span>
+                            </button>
+                        </div>
+                        <div class="col-md-4">
+                            <button type="button" class="operator-select-btn" onclick="selectOperator('rightel')">
+                                <i class="fas fa-sim-card fa-2x text-purple mb-2 d-block" style="color: #8b5cf6;"></i>
+                                <div>رایتل یا سایر اپراتورها</div>
+                                <span class="badge bg-secondary bg-opacity-10 text-secondary small mt-1">سایر شبکه‌ها</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- محتوای شاخه همراه اول و ایرانسل -->
+                    <div id="branch_mci_irancell" class="alert alert-warning border-warning border-opacity-50 rounded-4 p-4 mb-4 small" style="display: none; line-height: 1.9;">
+                        <h6 class="fw-bold text-dark mb-2"><i class="fas fa-shield-virus me-1"></i> تنظیم ضروری Fragment ویژه همراه اول و ایرانسل:</h6>
+                        <p class="mb-2">سیستم فیلترینگ این اپراتورها پکت ابتدایی را مسدود می‌کند. با روشن کردن Fragment پکت‌ها خرد می‌شوند:</p>
+                        <ul class="mb-3 ps-3">
+                            <li><strong>در v2rayNG:</strong> منوی کشویی سمت چپ > Settings > بخش <code>Fragment</code> را روشن کنید و packets را روی <code>1-3</code> و length را روی <code>10-20</code> بگذارید.</li>
+                            <li><strong>در Hiddify:</strong> در تنظیمات برنامه > دور زدن فیلترینگ (Fragment) را روی حالت <code>TLS Hello</code> فعال کنید.</li>
+                            <li><strong>در Streisand (آیفون):</strong> وارد Settings برنامه شوید و گزینه <code>Fragment</code> را روشن کنید.</li>
+                        </ul>
+                        <button type="button" class="btn btn-warning fw-bold btn-sm" onclick="goToStep(6)">
+                            <i class="fas fa-check me-1"></i> تنظیمات Fragment را اعمال کردم 🛡️
+                        </button>
+                    </div>
+
+                    <!-- محتوای شاخه وای‌فای -->
+                    <div id="branch_wifi" class="alert alert-info border-info border-opacity-50 rounded-4 p-4 mb-4 small" style="display: none; line-height: 1.9;">
+                        <h6 class="fw-bold text-dark mb-2"><i class="fas fa-globe me-1"></i> تنظیم دی‌ان‌اس و IPv6 ویژه اینترنت خانگی:</h6>
+                        <p class="mb-2">در مودم‌های خانگی تداخل IPv6 و دستکاری DNS رخ می‌دهد:</p>
+                        <ul class="mb-3 ps-3">
+                            <li>در تنظیمات برنامه VPN گزینه <code>Enable IPv6</code> را خاموش کنید.</li>
+                            <li>در بخش Remote DNS آدرس <code>https://1.1.1.1/dns-query</code> یا <code>https://dns.google/dns-query</code> را قرار دهید.</li>
+                        </ul>
+                        <button type="button" class="btn btn-info text-white fw-bold btn-sm" onclick="goToStep(6)">
+                            <i class="fas fa-check me-1"></i> تنظیمات DNS و IPv6 را اعمال کردم 🌐
+                        </button>
+                    </div>
+
+                    <!-- محتوای شاخه رایتل -->
+                    <div id="branch_rightel" class="alert alert-secondary rounded-4 p-4 mb-4 small" style="display: none; line-height: 1.9;">
+                        <h6 class="fw-bold text-dark mb-2"><i class="fas fa-plane me-1"></i> دریافت آی‌پی تمیز با ترفند حالت پرواز:</h6>
+                        <p class="mb-3">یک‌بار گوشی را ۱۰ ثانیه روی حالت پرواز قرار دهید و سپس به یکی از سرورهای با پینگ سبز متصل شوید.</p>
+                        <button type="button" class="btn btn-secondary fw-bold btn-sm" onclick="goToStep(6)">
+                            <i class="fas fa-check me-1"></i> این کار را انجام دادم ✈️
+                        </button>
+                    </div>
+                </div>
+
+                <!-- گام ۶: به‌روزرسانی سابسکریپشن و پینگ واقعی -->
+                <div class="wizard-step-content" id="wstep-6" style="display: none;">
+                    <div class="text-center mb-4">
+                        <div class="bg-primary bg-opacity-10 text-primary rounded-circle d-inline-flex p-3 mb-2">
+                            <i class="fas fa-arrows-rotate fa-2x"></i>
+                        </div>
+                        <h4 class="fw-bold text-dark mb-1">به‌روزرسانی سرورها و دریافت لیست کانفیگ‌های تازه</h4>
+                        <p class="text-muted small">کانفیگ‌ها به صورت خودکار توسط سرورها تغییر می‌یابند و باید آپدیت شوند.</p>
+                    </div>
+
+                    <div class="bg-light border rounded-4 p-4 mb-4 small" style="line-height: 1.9;">
+                        <h6 class="fw-bold text-dark mb-2"><i class="fas fa-rotate me-1"></i> نحوه آپدیت سابسکریپشن در برنامه:</h6>
+                        <ul class="mb-0 ps-3">
+                            <li><strong>در v2rayNG:</strong> سه نقطه بالا سمت راست > گزینه <code>Update subscription</code> را بزنید. سپس منو را زده و <code>Real delay all configuration</code> را بزنید.</li>
+                            <li><strong>در Streisand (آیفون):</strong> انگشت خود را روی لیست به سمت پایین بکشید (Pull-down to Refresh).</li>
+                            <li><strong>در v2rayN (ویندوز):</strong> منوی Subscription Group > گزینه <code>Update subscription without proxy</code> را بزنید.</li>
+                        </ul>
+                    </div>
+
+                    <div class="d-flex flex-column flex-sm-row justify-content-center gap-3">
+                        <button type="button" class="btn btn-success interactive-action-btn" onclick="goToStep(7)">
+                            <i class="fas fa-check-circle me-1"></i> سرورها آپدیت شدند و پینگ سبز دریافت کردم 📶
+                        </button>
+                        <button type="button" class="btn btn-outline-warning interactive-action-btn" onclick="showResolveBox('ping_fail')">
+                            <i class="fas fa-triangle-exclamation me-1"></i> پینگ سرورها ناموفق (-1) است ⚠️
+                        </button>
+                    </div>
+
+                    <div id="ping_fail_box" class="alert alert-warning rounded-4 p-3 mt-4 small" style="display: none;">
+                        <i class="fas fa-lightbulb me-1"></i> <strong>راهکار پینگ -1:</strong> موقتاً با وای‌فای یا اینترنت سیم‌کارت دیگری وصل شوید و Update بزنید تا لینک باز شود، یا گزینه Allow Insecure را در تنظیمات روشن کنید.
+                    </div>
+                </div>
+
+                <!-- گام ۷: نتیجه نهایی -->
+                <div class="wizard-step-content" id="wstep-7" style="display: none;">
+                    <div class="text-center mb-4">
+                        <div class="bg-success bg-opacity-10 text-success rounded-circle d-inline-flex p-3 mb-2">
+                            <i class="fas fa-flag-checkered fa-2x"></i>
+                        </div>
+                        <h4 class="fw-bold text-dark mb-1">نتیجه نهایی اتصال و تست اینترنت آزاد</h4>
+                        <p class="text-muted small">دکمه اتصال را روشن کنید و یک بار سایت گوگل یا یوتیوب را در مرورگر باز نمایید:</p>
+                    </div>
+
+                    <div class="d-flex flex-column flex-sm-row justify-content-center gap-3 mb-4">
+                        <button type="button" class="btn btn-success interactive-action-btn px-4" onclick="finishWizard(true)">
+                            <i class="fas fa-circle-check me-1"></i> مشکل حل شد و با موفقیت متصل شدم! 🎉
+                        </button>
+                        {% if branding.get('support_username') %}
+                        <a href="https://t.me/{{ branding.get('support_username').lstrip('@') }}" target="_blank" class="btn btn-danger interactive-action-btn px-4">
+                            <i class="fab fa-telegram me-1"></i> هنوز متصل نیستم / پیام به پشتیبانی 🎧
+                        </a>
+                        {% else %}
+                        <button type="button" class="btn btn-outline-danger interactive-action-btn px-4" onclick="finishWizard(false)">
+                            <i class="fas fa-headset me-1"></i> هنوز مشکل دارم / نیاز به راهنمایی 🎧
+                        </button>
+                        {% endif %}
+                    </div>
+
+                    <div id="wizard_success_box" class="alert alert-success rounded-4 p-4 text-center small" style="display: none;">
+                        <i class="fas fa-circle-check fa-2x text-success mb-2 d-block"></i>
+                        <h5 class="fw-bold mb-1">بسیار عالی! خوشحالیم مشکل اتصال شما برطرف گردید.</h5>
+                        <p class="mb-0 text-muted">همواره می‌توانید در صورت هرگونه افت سرعت یا قطعی، مجدداً از این ویزارد هوشمند استفاده فرمایید.</p>
+                    </div>
                 </div>
             </div>
+
+            <!-- دکمه بازگشت به گام قبلی -->
+            <div class="d-flex justify-content-between align-items-center pt-4 mt-4 border-top">
+                <button type="button" class="btn btn-outline-secondary btn-sm fw-bold" id="wizardPrevBtn" onclick="prevStep()" style="display: none;">
+                    <i class="fas fa-arrow-right me-1"></i> بازگشت به گام قبلی
+                </button>
+                <button type="button" class="btn btn-link text-muted btn-sm text-decoration-none" onclick="restartWizard()">
+                    <i class="fas fa-rotate-left me-1"></i> شروع مجدد عیب‌یابی
+                </button>
+            </div>
         </div>
-        {% endfor %}
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- حالت دوم: کاتالوگ جامع تمام خطاهای متداول (All-in-One Catalog) -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div id="mode-catalog" style="{% if active_mode == 'catalog' %}display: block;{% else %}display: none;{% endif %}">
+        <div class="row g-4 mb-5">
+            {% for g in guides %}
+            <div class="col-12" id="{{ g.slug }}">
+                <div class="troubleshoot-card shadow-sm p-4">
+                    <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="stat-icon bg-{{ g.color }} bg-opacity-10 text-{{ g.color }} rounded-3 p-3 d-flex align-items-center justify-content-center" style="width: 52px; height: 52px;">
+                                <i class="{{ g.icon }} fa-xl"></i>
+                            </div>
+                            <div>
+                                <h5 class="fw-bold mb-1 text-dark">{{ g.title }}</h5>
+                                <p class="text-muted small mb-0">{{ g.subtitle }}</p>
+                            </div>
+                        </div>
+                        <span class="badge bg-{{ g.color }} bg-opacity-10 text-{{ g.color }} border border-{{ g.color }}">
+                            راهکار قطعی تایید شده
+                        </span>
+                    </div>
+
+                    <!-- شرح مشکل و علت فنی -->
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <div class="p-3 bg-danger bg-opacity-10 rounded-3 border border-danger border-opacity-25 h-100">
+                                <div class="small fw-bold text-danger mb-1"><i class="fas fa-circle-exclamation me-1"></i> نشانه خطا در اپلیکیشن:</div>
+                                <p class="small text-dark mb-0" style="line-height: 1.8;">{{ g.problem }}</p>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="p-3 bg-light rounded-3 border h-100">
+                                <div class="small fw-bold text-secondary mb-1"><i class="fas fa-magnifying-glass me-1"></i> علت فنی:</div>
+                                <p class="small text-muted mb-0" style="line-height: 1.8;">{{ g.cause }}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- مراحل گام‌به‌گام رفع مشکل -->
+                    <div>
+                        <h6 class="fw-bold text-success mb-2"><i class="fas fa-check-circle me-1"></i> دستورالعمل گام‌به‌گام رفع مشکل:</h6>
+                        {% for step in g.solution_steps %}
+                        <div class="solution-step">
+                            {{ step | safe }}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
     </div>
 </div>
+
+<script>
+    let currentStep = 1;
+    const totalSteps = 7;
+    const stepTitles = [
+        "انتخاب دستگاه",
+        "بررسی بسته اینترنت",
+        "اعتبار اشتراک VPN",
+        "تنظیم ساعت سیستم",
+        "تنظیمات اپراتور",
+        "بروزرسانی سرورها",
+        "نتیجه نهایی اتصال"
+    ];
+
+    function switchMode(mode) {
+        if (mode === 'wizard') {
+            document.getElementById('mode-wizard').style.display = 'block';
+            document.getElementById('mode-catalog').style.display = 'none';
+        } else {
+            document.getElementById('mode-wizard').style.display = 'none';
+            document.getElementById('mode-catalog').style.display = 'block';
+        }
+    }
+
+    function goToStep(step) {
+        // پنهان کردن تمام مراحل
+        for (let i = 1; i <= totalSteps; i++) {
+            const el = document.getElementById('wstep-' + i);
+            if (el) el.style.display = 'none';
+        }
+
+        // نمایش مرحله جدید
+        const target = document.getElementById('wstep-' + step);
+        if (target) target.style.display = 'block';
+
+        currentStep = step;
+        document.getElementById('currentStepNum').innerText = step;
+        document.getElementById('wizardStepTitleBadge').innerText = stepTitles[step - 1];
+
+        // به‌روزرسانی نوار درصد
+        const pct = Math.round((step / totalSteps) * 100);
+        document.getElementById('wizardProgressBar').style.width = pct + '%';
+
+        // دکمه بازگشت
+        document.getElementById('wizardPrevBtn').style.display = (step > 1) ? 'inline-block' : 'none';
+
+        // اگر وارد گام ۴ شدیم تست ساعت را ران کن
+        if (step === 4) {
+            checkLiveClock();
+        }
+
+        window.scrollTo({ top: 180, behavior: 'smooth' });
+    }
+
+    function prevStep() {
+        if (currentStep > 1) {
+            goToStep(currentStep - 1);
+        }
+    }
+
+    function restartWizard() {
+        goToStep(1);
+    }
+
+    function selectDevice(platform, label) {
+        goToStep(2);
+    }
+
+    function showResolveBox(boxId) {
+        const el = document.getElementById(boxId + '_box');
+        if (el) {
+            el.style.display = (el.style.display === 'none') ? 'block' : 'none';
+        }
+    }
+
+    function selectOperator(opId) {
+        document.getElementById('branch_mci_irancell').style.display = 'none';
+        document.getElementById('branch_wifi').style.display = 'none';
+        document.getElementById('branch_rightel').style.display = 'none';
+
+        if (opId === 'mci_irancell') {
+            document.getElementById('branch_mci_irancell').style.display = 'block';
+        } else if (opId === 'wifi') {
+            document.getElementById('branch_wifi').style.display = 'block';
+        } else {
+            document.getElementById('branch_rightel').style.display = 'block';
+        }
+    }
+
+    function finishWizard(success) {
+        if (success) {
+            document.getElementById('wizard_success_box').style.display = 'block';
+        }
+    }
+
+    // تستر زنده انحراف ساعت با زمان مرورگر
+    function checkLiveClock() {
+        const now = new Date();
+        const timeStr = now.toTimeString().split(' ')[0];
+        document.getElementById('liveDeviceClock').innerText = timeStr;
+
+        // مقایسه زمان محلی
+        const statusEl = document.getElementById('clockSyncStatus');
+        statusEl.innerHTML = '<span class="text-success fw-bold"><i class="fas fa-circle-check me-1"></i> ساعت دستگاه شما فعال است. حتماً گزینه Set Automatically را در تنظیمات فعال نگه دارید.</span>';
+    }
+
+    // اگر صفحه با پارامتر هش اسلاگ باز شده، به آن اسکرول کن
+    document.addEventListener('DOMContentLoaded', () => {
+        if (window.location.hash) {
+            const targetEl = document.querySelector(window.location.hash);
+            if (targetEl) {
+                switchMode('catalog');
+                targetEl.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+    });
+</script>
 {% endmacro %}
 
 {% block content %}

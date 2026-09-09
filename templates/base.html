@@ -1794,6 +1794,9 @@
                         <a class="submenu-item {% if request.endpoint in ['bot_menu_settings', 'admin_bot_settings'] %}active{% endif %}" href="{{ url_for('bot_menu_settings') }}">
                             <i class="fas fa-robot text-info"></i> چیدمان دکمه‌های ربات
                         </a>
+                        <a class="submenu-item {% if request.endpoint in ['admin_tutorials', 'manage_tutorials'] %}active{% endif %}" href="{{ url_for('admin_tutorials') }}">
+                            <i class="fas fa-graduation-cap text-warning"></i> مدیریت آموزش‌ها و عیب‌یابی
+                        </a>
                         {% endif %}
                         {% if session.get('admin_role') == 'super_admin' %}
                         <a class="submenu-item {% if request.endpoint == 'admin_managers' %}active{% endif %}" href="{{ url_for('admin_managers') }}">

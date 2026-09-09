@@ -1,0 +1,597 @@
+{% extends "base.html" %}
+
+{% block title %}مدیریت آموزش‌ها و عیب‌یابی - پنل مدیریت{% endblock %}
+
+{% block extra_head %}
+<style>
+    .tutorial-manage-card {
+        border-radius: 16px;
+        border: 1px solid var(--card-border, rgba(0,0,0,0.08));
+        background: var(--card-bg, #ffffff);
+        transition: all 0.25s ease;
+    }
+    .tutorial-manage-card:hover {
+        border-color: rgba(79, 70, 229, 0.35);
+        box-shadow: 0 8px 20px -4px rgba(0, 0, 0, 0.08);
+    }
+    .nav-tabs .nav-link {
+        font-weight: 700;
+        color: #64748b;
+        border: none;
+        border-bottom: 3px solid transparent;
+        padding: 12px 20px;
+        transition: all 0.2s;
+    }
+    .nav-tabs .nav-link.active {
+        color: #4f46e5;
+        border-bottom: 3px solid #4f46e5;
+        background: transparent;
+    }
+    .platform-filter-btn {
+        border-radius: 12px;
+        padding: 6px 14px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <!-- Breadcrumb & Actions -->
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-1">
+                    <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}"><i class="fas fa-home me-1"></i> داشبورد</a></li>
+                    <li class="breadcrumb-item active">مدیریت آموزش‌ها و عیب‌یابی</li>
+                </ol>
+            </nav>
+            <h3 class="fw-bold mb-0 text-dark">
+                <i class="fas fa-graduation-cap text-primary me-2"></i> مدیریت آموزش‌های اتصال و عیب‌یابی هوشمند
+            </h3>
+            <p class="text-muted small mb-0 mt-1">ویرایش، شخصی‌سازی و افزودن راهنماهای اتصال، مقالات حل مشکلات و تنظیمات ویزارد قدم‌به‌قدم</p>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('tutorials_portal') }}" target="_blank" class="btn btn-outline-primary fw-bold btn-sm">
+                <i class="fas fa-arrow-up-right-from-square me-1"></i> مشاهده آنلاین پورتال
+            </a>
+            <a href="{{ url_for('troubleshoot_wizard') }}" target="_blank" class="btn btn-outline-warning fw-bold btn-sm">
+                <i class="fas fa-wrench me-1"></i> تست ویزارد عیب‌یابی
+            </a>
+            <button type="button" class="btn btn-outline-danger fw-bold btn-sm" data-bs-toggle="modal" data-bs-target="#resetModal">
+                <i class="fas fa-rotate-left me-1"></i> بازنشانی به پیش‌فرض
+            </button>
+        </div>
+    </div>
+
+    <!-- تب‌های ناوبری اصلی -->
+    <ul class="nav nav-tabs mb-4 border-bottom" id="tutorialsTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if active_tab == 'apps' or not active_tab %}active{% endif %}" id="apps-tab" data-bs-toggle="tab" data-bs-target="#apps-pane" type="button" role="tab">
+                <i class="fas fa-mobile-screen-button me-2"></i> نرم‌افزارها و راهنماهای اتصال ({{ tutorials|length }})
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if active_tab == 'guides' %}active{% endif %}" id="guides-tab" data-bs-toggle="tab" data-bs-target="#guides-pane" type="button" role="tab">
+                <i class="fas fa-wrench me-2"></i> مقالات و راهکارهای عیب‌یابی ({{ guides|length }})
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if active_tab == 'wizards' %}active{% endif %}" id="wizards-tab" data-bs-toggle="tab" data-bs-target="#wizards-pane" type="button" role="tab">
+                <i class="fas fa-route me-2"></i> تنظیمات ویزارد قدم‌به‌قدم
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="tutorialsTabContent">
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- تب اول: نرم‌افزارها و آموزش‌های اتصال -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <div class="tab-pane fade {% if active_tab == 'apps' or not active_tab %}show active{% endif %}" id="apps-pane" role="tabpanel">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-3">
+                <!-- فیلتر پلتفرم‌ها -->
+                <div class="d-flex flex-wrap gap-2 align-items-center">
+                    <span class="small fw-bold text-muted me-1">سیستم‌عامل:</span>
+                    <button type="button" class="btn btn-sm btn-primary platform-filter-btn" onclick="filterPlatform('all', this)">همه پلتفرم‌ها</button>
+                    {% for p_key, p in platforms.items() %}
+                    <button type="button" class="btn btn-sm btn-outline-secondary platform-filter-btn" onclick="filterPlatform('{{ p_key }}', this)">
+                        <i class="{{ p.icon }} me-1"></i> {{ p.title.split(' ')[0] }}
+                    </button>
+                    {% endfor %}
+                </div>
+
+                <button type="button" class="btn btn-success fw-bold btn-sm shadow-sm" onclick="openNewAppModal()">
+                    <i class="fas fa-plus me-1"></i> افزودن نرم‌افزار جدید
+                </button>
+            </div>
+
+            <div class="row g-3" id="appsGrid">
+                {% for slug, app in tutorials.items() %}
+                <div class="col-md-6 col-lg-4 app-item-card" data-platform="{{ app.platform }}">
+                    <div class="tutorial-manage-card p-4 h-100 d-flex flex-column justify-content-between shadow-sm">
+                        <div>
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="bg-primary bg-opacity-10 text-primary p-2 rounded-3 text-center" style="width: 44px; height: 44px;">
+                                        <i class="{{ app.icon }} fa-lg mt-1"></i>
+                                    </div>
+                                    <div>
+                                        <h5 class="fw-bold mb-0 text-dark">{{ app.name }}</h5>
+                                        <span class="badge bg-light text-secondary border small">{{ platforms.get(app.platform, {}).get('title') or app.platform }}</span>
+                                    </div>
+                                </div>
+                                <span class="badge bg-{{ app.badge_color }} bg-opacity-10 text-{{ app.badge_color }} border border-{{ app.badge_color }}">
+                                    {{ app.badge }}
+                                </span>
+                            </div>
+
+                            <p class="text-muted small mb-3" style="line-height: 1.6; min-height: 40px;">
+                                {{ app.subtitle }}
+                            </p>
+
+                            <div class="bg-light p-2 rounded-3 mb-3 small d-flex justify-content-around text-center border">
+                                <div>
+                                    <div class="fw-bold text-primary">{{ app.steps|length }}</div>
+                                    <div class="text-muted text-xs">مراحل نصب</div>
+                                </div>
+                                <div class="border-end"></div>
+                                <div>
+                                    <div class="fw-bold text-success">{{ app.downloads|length }}</div>
+                                    <div class="text-muted text-xs">لینک دانلود</div>
+                                </div>
+                                <div class="border-end"></div>
+                                <div>
+                                    <div class="fw-bold text-warning">{{ app.troubleshoot|length }}</div>
+                                    <div class="text-muted text-xs">نکته عیب‌یابی</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex gap-2 pt-2 border-top">
+                            <button type="button" class="btn btn-outline-primary btn-sm w-100 fw-bold" onclick="editApp('{{ slug }}')">
+                                <i class="fas fa-edit me-1"></i> ویرایش
+                            </button>
+                            <a href="{{ url_for('tutorial_view', platform=app.platform, app_slug=slug) }}" target="_blank" class="btn btn-outline-secondary btn-sm" title="مشاهده پیش‌نمایش">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                            <form action="{{ url_for('admin_delete_tutorial_app', app_slug=slug) }}" method="POST" onsubmit="return confirm('آیا از حذف این نرم‌افزار اطمینان دارید؟');" style="display:inline;">
+                                <button type="submit" class="btn btn-outline-danger btn-sm" title="حذف نرم‌افزار">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- تب دوم: مقالات و راهکارهای عیب‌یابی -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <div class="tab-pane fade {% if active_tab == 'guides' %}show active{% endif %}" id="guides-pane" role="tabpanel">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <p class="text-muted small mb-0">لیست خطاهای رایج اتصال، علل فنی و راهکارهای گام‌به‌گام تایید شده برای کاربران</p>
+                <button type="button" class="btn btn-warning fw-bold btn-sm shadow-sm" onclick="openNewGuideModal()">
+                    <i class="fas fa-plus me-1"></i> افزودن راهکار خطای جدید
+                </button>
+            </div>
+
+            <div class="row g-3">
+                {% for g in guides %}
+                <div class="col-md-6">
+                    <div class="tutorial-manage-card p-4 h-100 d-flex flex-column justify-content-between shadow-sm">
+                        <div>
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="bg-{{ g.color }} bg-opacity-10 text-{{ g.color }} p-2 rounded-3 text-center" style="width: 44px; height: 44px;">
+                                        <i class="{{ g.icon }} fa-lg mt-1"></i>
+                                    </div>
+                                    <div>
+                                        <h5 class="fw-bold mb-0 text-dark">{{ g.title }}</h5>
+                                        <span class="text-muted small font-monospace">{{ g.slug }}</span>
+                                    </div>
+                                </div>
+                                <span class="badge bg-{{ g.color }} bg-opacity-10 text-{{ g.color }} border border-{{ g.color }}">
+                                    {{ g.solution_steps|length }} دستورالعمل
+                                </span>
+                            </div>
+
+                            <p class="text-muted small mb-3">{{ g.subtitle }}</p>
+
+                            <div class="p-2 bg-light rounded-3 mb-3 border small">
+                                <div class="text-danger fw-bold mb-1"><i class="fas fa-circle-exclamation me-1"></i> نشانه خطا:</div>
+                                <div class="text-dark">{{ g.problem }}</div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex gap-2 pt-2 border-top">
+                            <button type="button" class="btn btn-outline-warning btn-sm w-100 fw-bold" onclick="editGuide('{{ g.slug }}')">
+                                <i class="fas fa-edit me-1"></i> ویرایش راهکار
+                            </button>
+                            <form action="{{ url_for('admin_delete_troubleshooting_guide', slug=g.slug) }}" method="POST" onsubmit="return confirm('آیا از حذف این راهکار اطمینان دارید؟');" style="display:inline;">
+                                <button type="submit" class="btn btn-outline-danger btn-sm" title="حذف راهکار">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- تب سوم: تنظیمات ویزارد تعاملی قدم‌به‌قدم -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <div class="tab-pane fade {% if active_tab == 'wizards' %}show active{% endif %}" id="wizards-pane" role="tabpanel">
+            <div class="row g-4">
+                <!-- ویزارد عیب‌یابی قدم‌به‌قدم -->
+                <div class="col-lg-6">
+                    <div class="card shadow-sm border-0 rounded-4 p-4 h-100">
+                        <div class="d-flex align-items-center gap-2 mb-3">
+                            <div class="bg-warning bg-opacity-20 text-warning p-2 rounded-3">
+                                <i class="fas fa-route fa-lg"></i>
+                            </div>
+                            <div>
+                                <h5 class="fw-bold mb-0">ساختار ویزارد عیب‌یابی قدم‌به‌قدم</h5>
+                                <small class="text-muted">مراحل هوشمند: دستگاه > بسته > اشتراک > ساعت > اپراتور > پینگ > اتصال</small>
+                            </div>
+                        </div>
+
+                        <form action="{{ url_for('admin_save_wizard_config') }}" method="POST">
+                            <input type="hidden" name="wizard_type" value="troubleshoot">
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">کد پیکربندی JSON مراحل و دکمه‌ها:</label>
+                                <textarea name="wizard_json" class="form-control font-monospace small" rows="16" dir="ltr">{{ step_troubleshoot | tojson(indent=2) }}</textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary fw-bold btn-sm">
+                                <i class="fas fa-save me-1"></i> ذخیره تغییرات ویزارد عیب‌یابی
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- ویزارد اتصال قدم‌به‌قدم -->
+                <div class="col-lg-6">
+                    <div class="card shadow-sm border-0 rounded-4 p-4 h-100">
+                        <div class="d-flex align-items-center gap-2 mb-3">
+                            <div class="bg-primary bg-opacity-10 text-primary p-2 rounded-3">
+                                <i class="fas fa-paper-plane fa-lg"></i>
+                            </div>
+                            <div>
+                                <h5 class="fw-bold mb-0">ساختار ویزارد راهنمای اتصال قدم‌به‌قدم</h5>
+                                <small class="text-muted">مراحل استاندارد: انتخاب سیستم‌عامل > دانلود > ایمپورت > آپدیت > تست اتصال</small>
+                            </div>
+                        </div>
+
+                        <form action="{{ url_for('admin_save_wizard_config') }}" method="POST">
+                            <input type="hidden" name="wizard_type" value="connection">
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">کد پیکربندی JSON مراحل و دکمه‌ها:</label>
+                                <textarea name="wizard_json" class="form-control font-monospace small" rows="16" dir="ltr">{{ step_connection | tojson(indent=2) }}</textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary fw-bold btn-sm">
+                                <i class="fas fa-save me-1"></i> ذخیره تغییرات ویزارد اتصال
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- مودال ویرایش / افزودن نرم‌افزار (App Modal) -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="appModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <form action="{{ url_for('admin_save_tutorial_app') }}" method="POST" id="appForm">
+                <div class="modal-header border-bottom py-3">
+                    <h5 class="modal-title fw-bold" id="appModalTitle">
+                        <i class="fas fa-cube text-primary me-2"></i> ویرایش اطلاعات نرم‌افزار
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">شناسه یکتا (Slug - انگلیسی بدون فاصله)</label>
+                            <input type="text" name="app_slug" id="app_slug" class="form-control font-monospace" placeholder="مثال: v2rayng" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">سیستم‌عامل / پلتفرم</label>
+                            <select name="platform" id="app_platform" class="form-select" required>
+                                {% for p_key, p in platforms.items() %}
+                                <option value="{{ p_key }}">{{ p.title }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">نام نمایشی نرم‌افزار</label>
+                            <input type="text" name="name" id="app_name" class="form-control" placeholder="مثال: v2rayNG" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">عنوان نشان / بج (Badge)</label>
+                            <input type="text" name="badge" id="app_badge" class="form-control" placeholder="مثال: پیشنهادی اندروید">
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">رنگ نشان</label>
+                            <select name="badge_color" id="app_badge_color" class="form-select">
+                                <option value="primary">آبی (Primary)</option>
+                                <option value="success">سبز (Success)</option>
+                                <option value="info">فیروزه‌ای (Info)</option>
+                                <option value="warning">نارنجی (Warning)</option>
+                                <option value="danger">قرمز (Danger)</option>
+                                <option value="secondary">خاکستری (Secondary)</option>
+                                <option value="dark">مشکی (Dark)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">کلاس آیکون FontAwesome</label>
+                            <input type="text" name="icon" id="app_icon" class="form-control font-monospace" placeholder="fas fa-rocket">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">امتیاز (Rating)</label>
+                            <input type="text" name="rating" id="app_rating" class="form-control" placeholder="4.9">
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label small fw-bold">توضیح کوتاه / زیرعنوان (Subtitle)</label>
+                            <input type="text" name="subtitle" id="app_subtitle" class="form-control" placeholder="توضیح مختصر در خصوص عملکرد این برنامه">
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label small fw-bold">لینک‌های دانلود (فرمت JSON)</label>
+                            <textarea name="downloads_json" id="app_downloads_json" class="form-control font-monospace small" rows="3" dir="ltr" placeholder='[{"title":"دانلود مستقیم","url":"https://...","icon":"fas fa-download","btn_class":"btn-success"}]'></textarea>
+                            <div class="form-text text-muted">می‌توانید چند دکمه دانلود با استایل‌های مختلف در قالب آرایه JSON تعریف کنید.</div>
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label small fw-bold">مراحل راه‌اندازی گام‌به‌گام (فرمت JSON)</label>
+                            <textarea name="steps_json" id="app_steps_json" class="form-control font-monospace small" rows="6" dir="ltr" placeholder='[{"step":1,"title":"عنوان گام","desc":"توضیحات کامل","tip":"نکته کاربردی"}]'></textarea>
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label small fw-bold">نکات رفع عیب اختصاصی برای این نرم‌افزار (هر نکته در یک سطر)</label>
+                            <textarea name="troubleshoot_text" id="app_troubleshoot_text" class="form-control small" rows="3" placeholder="نکته اول&#10;نکته دوم"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-top py-3">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary fw-bold px-4">
+                        <i class="fas fa-save me-1"></i> ذخیره اطلاعات نرم‌افزار
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- مودال ویرایش / افزودن راهکار عیب‌یابی (Guide Modal) -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="guideModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <form action="{{ url_for('admin_save_troubleshooting_guide') }}" method="POST" id="guideForm">
+                <div class="modal-header border-bottom py-3">
+                    <h5 class="modal-title fw-bold" id="guideModalTitle">
+                        <i class="fas fa-wrench text-warning me-2"></i> ویرایش راهکار خطای اتصال
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">شناسه خطا (Slug - انگلیسی بدون فاصله)</label>
+                            <input type="text" name="slug" id="guide_slug" class="form-control font-monospace" placeholder="مثال: time_desync" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">رنگ قالب خطا</label>
+                            <select name="color" id="guide_color" class="form-select">
+                                <option value="danger">قرمز (بحرانی / Danger)</option>
+                                <option value="warning">نارنجی (هشدار / Warning)</option>
+                                <option value="info">آبی / فیروزه‌ای (Info)</option>
+                                <option value="success">سبز (Success)</option>
+                                <option value="secondary">خاکستری (Secondary)</option>
+                                <option value="primary">سرمه‌ای (Primary)</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-8">
+                            <label class="form-label small fw-bold">عنوان اصلی خطای عیب‌یابی</label>
+                            <input type="text" name="title" id="guide_title" class="form-control" placeholder="مثال: خطای عدم تطابق ساعت سیستم" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">آیکون FontAwesome</label>
+                            <input type="text" name="icon" id="guide_icon" class="form-control font-monospace" placeholder="fas fa-clock">
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label small fw-bold">زیرعنوان / شرح خلاصه</label>
+                            <input type="text" name="subtitle" id="guide_subtitle" class="form-control" placeholder="شرح کوتاه درباره اهمیت این خطا">
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">نشانه مشکل (در برنامه کاربر چه پیام یا نشانه‌ای می‌بیند؟)</label>
+                            <textarea name="problem" id="guide_problem" class="form-control small" rows="2" placeholder="پیام خطای invalid user یا پینگ بی‌پاسخ..."></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">علت فنی مشکل</label>
+                            <textarea name="cause" id="guide_cause" class="form-control small" rows="2" placeholder="توضیح فنی اینکه چرا این اتفاق رخ می‌دهد..."></textarea>
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label small fw-bold">مراحل و دستورالعمل‌های رفع مشکل (هر مرحله در یک سطر - پشتیبانی از Markdown)</label>
+                            <textarea name="solution_steps" id="guide_solution_steps" class="form-control small" rows="5" placeholder="**در اندروید:** وارد تنظیمات شوید...&#10;**در آیفون:** تیک تنظیم ساعت خودکار را بزنید..."></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-top py-3">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-warning fw-bold px-4">
+                        <i class="fas fa-save me-1"></i> ذخیره راهکار عیب‌یابی
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- مودال بازنشانی به پیش‌فرض (Reset Modal) -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="resetModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <form action="{{ url_for('admin_reset_tutorials') }}" method="POST">
+                <div class="modal-header border-bottom py-3">
+                    <h5 class="modal-title fw-bold text-danger">
+                        <i class="fas fa-triangle-exclamation me-2"></i> بازنشانی به تنظیمات پیش‌فرض کارخانه
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <p class="text-dark">
+                        آیا مطمئن هستید که می‌خواهید تغییرات اختصاصی را حذف کرده و محتوا را به مقادیر استاندارد پیش‌فرض سیستم بازگردانید؟
+                    </p>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">بخش مورد نظر جهت بازنشانی:</label>
+                        <select name="section" class="form-select">
+                            <option value="">همه بخش‌ها (کل آموزش‌ها و راهکارها)</option>
+                            <option value="tutorials">فقط آموزش‌های نرم‌افزارها</option>
+                            <option value="guides">فقط مقالات عیب‌یابی</option>
+                            <option value="wizard_troubleshoot">فقط ویزارد عیب‌یابی</option>
+                            <option value="wizard_connection">فقط ویزارد اتصال</option>
+                        </select>
+                    </div>
+                    <div class="alert alert-warning py-2 small mb-0 rounded-3">
+                        <i class="fas fa-info-circle me-1"></i> داده‌های استاندارد کارخانه همواره جامع و به‌روزترین تنظیمات رقبای VPN ایران هستند.
+                    </div>
+                </div>
+                <div class="modal-footer border-top py-3">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-danger fw-bold px-4">
+                        <i class="fas fa-rotate-left me-1"></i> بله، بازنشانی شود
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ذخیره داده‌های خام برای دسترسی سریع فرم در جاوااسکریپت
+    const ALL_TUTORIALS = {{ tutorials | tojson }};
+    const ALL_GUIDES = {{ guides | tojson }};
+
+    function filterPlatform(platform, btn) {
+        document.querySelectorAll('.platform-filter-btn').forEach(b => {
+            b.classList.remove('btn-primary');
+            b.classList.add('btn-outline-secondary');
+        });
+        btn.classList.remove('btn-outline-secondary');
+        btn.classList.add('btn-primary');
+
+        document.querySelectorAll('.app-item-card').forEach(card => {
+            if (platform === 'all' || card.getAttribute('data-platform') === platform) {
+                card.style.display = 'block';
+            } else {
+                card.style.display = 'none';
+            }
+        });
+    }
+
+    function openNewAppModal() {
+        document.getElementById('appModalTitle').innerHTML = '<i class="fas fa-plus text-success me-2"></i> افزودن نرم‌افزار جدید';
+        document.getElementById('app_slug').value = '';
+        document.getElementById('app_slug').readOnly = false;
+        document.getElementById('app_platform').value = 'android';
+        document.getElementById('app_name').value = '';
+        document.getElementById('app_subtitle').value = '';
+        document.getElementById('app_badge').value = 'پیشنهادی';
+        document.getElementById('app_badge_color').value = 'success';
+        document.getElementById('app_icon').value = 'fas fa-rocket';
+        document.getElementById('app_rating').value = '4.9';
+        document.getElementById('app_downloads_json').value = JSON.stringify([
+            {"title": "دانلود مستقیم", "url": "https://...", "icon": "fas fa-download", "btn_class": "btn-success"}
+        ], null, 2);
+        document.getElementById('app_steps_json').value = JSON.stringify([
+            {"step": 1, "title": "کپی کردن لینک اشتراک", "desc": "لینک اشتراک را از ربات کپی کنید.", "tip": ""},
+            {"step": 2, "title": "وارد کردن در برنامه", "desc": "علامت + را در برنامه بزنید و لینک را وارد کنید.", "tip": ""},
+            {"step": 3, "title": "اتصال و استارت", "desc": "سرور با پینگ سبز را انتخاب کرده و اتصال را برقرار کنید.", "tip": ""}
+        ], null, 2);
+        document.getElementById('app_troubleshoot_text').value = '';
+
+        const modal = new bootstrap.Modal(document.getElementById('appModal'));
+        modal.show();
+    }
+
+    function editApp(slug) {
+        const app = ALL_TUTORIALS[slug];
+        if (!app) return;
+
+        document.getElementById('appModalTitle').innerHTML = `<i class="fas fa-edit text-primary me-2"></i> ویرایش نرم‌افزار: ${app.name}`;
+        document.getElementById('app_slug').value = slug;
+        document.getElementById('app_slug').readOnly = true;
+        document.getElementById('app_platform').value = app.platform || 'android';
+        document.getElementById('app_name').value = app.name || '';
+        document.getElementById('app_subtitle').value = app.subtitle || '';
+        document.getElementById('app_badge').value = app.badge || '';
+        document.getElementById('app_badge_color').value = app.badge_color || 'primary';
+        document.getElementById('app_icon').value = app.icon || 'fas fa-rocket';
+        document.getElementById('app_rating').value = app.rating || '4.9';
+        document.getElementById('app_downloads_json').value = JSON.stringify(app.downloads || [], null, 2);
+        document.getElementById('app_steps_json').value = JSON.stringify(app.steps || [], null, 2);
+        document.getElementById('app_troubleshoot_text').value = (app.troubleshoot || []).join('\n');
+
+        const modal = new bootstrap.Modal(document.getElementById('appModal'));
+        modal.show();
+    }
+
+    function openNewGuideModal() {
+        document.getElementById('guideModalTitle').innerHTML = '<i class="fas fa-plus text-warning me-2"></i> افزودن راهکار خطای اتصال جدید';
+        document.getElementById('guide_slug').value = '';
+        document.getElementById('guide_slug').readOnly = false;
+        document.getElementById('guide_title').value = '';
+        document.getElementById('guide_subtitle').value = '';
+        document.getElementById('guide_icon').value = 'fas fa-wrench';
+        document.getElementById('guide_color').value = 'warning';
+        document.getElementById('guide_problem').value = '';
+        document.getElementById('guide_cause').value = '';
+        document.getElementById('guide_solution_steps').value = '';
+
+        const modal = new bootstrap.Modal(document.getElementById('guideModal'));
+        modal.show();
+    }
+
+    function editGuide(slug) {
+        const guide = ALL_GUIDES.find(g => g.slug === slug);
+        if (!guide) return;
+
+        document.getElementById('guideModalTitle').innerHTML = `<i class="fas fa-edit text-warning me-2"></i> ویرایش راهکار: ${guide.title}`;
+        document.getElementById('guide_slug').value = guide.slug;
+        document.getElementById('guide_slug').readOnly = true;
+        document.getElementById('guide_title').value = guide.title || '';
+        document.getElementById('guide_subtitle').value = guide.subtitle || '';
+        document.getElementById('guide_icon').value = guide.icon || 'fas fa-wrench';
+        document.getElementById('guide_color').value = guide.color || 'warning';
+        document.getElementById('guide_problem').value = guide.problem || '';
+        document.getElementById('guide_cause').value = guide.cause || '';
+        document.getElementById('guide_solution_steps').value = (guide.solution_steps || []).join('\n');
+
+        const modal = new bootstrap.Modal(document.getElementById('guideModal'));
+        modal.show();
+    }
+</script>
+{% endblock %}

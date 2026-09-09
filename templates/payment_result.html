@@ -113,9 +113,16 @@
                 <i class="fas fa-arrow-right me-1"></i> بازگشت به پورتال مشتری
             </a>
             {% endif %}
-            <a href="https://t.me/{{ (bot_username or '').lstrip('@') }}" class="btn {% if portal_url %}btn-outline-primary{% else %}btn-primary{% endif %} btn-lg rounded-pill fw-bold">
+            {% if reseller_portal_url %}
+            <a href="{{ reseller_portal_url }}" class="btn btn-primary btn-lg rounded-pill fw-bold shadow-sm">
+                <i class="fas fa-briefcase me-1"></i> بازگشت به پنل نمایندگی
+            </a>
+            {% endif %}
+            {% if bot_username %}
+            <a href="https://t.me/{{ bot_username.lstrip('@') }}" class="btn {% if portal_url or reseller_portal_url %}btn-outline-primary{% else %}btn-primary{% endif %} btn-lg rounded-pill fw-bold">
                 <i class="fab fa-telegram me-1"></i> بازگشت به ربات تلگرام
             </a>
+            {% endif %}
         </div>
     </div>
 </div>

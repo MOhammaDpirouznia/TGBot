@@ -9,9 +9,20 @@
         border-radius: 20px;
         padding: 35px 25px;
         border: 1px solid rgba(79, 70, 229, 0.15);
-        margin-bottom: 30px;
+        margin-bottom: 25px;
         position: relative;
         overflow: hidden;
+    }
+    .mode-pill-btn {
+        border-radius: 14px;
+        padding: 10px 20px;
+        font-weight: 700;
+        font-size: 0.95rem;
+        transition: all 0.2s ease;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
     }
     .platform-pill {
         border-radius: 16px;
@@ -49,7 +60,7 @@
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         height: 100%;
         display: flex;
-        flex-column: column;
+        flex-direction: column;
         justify-content: space-between;
     }
     .app-card:hover {
@@ -63,6 +74,32 @@
         color: white;
         padding: 24px;
         box-shadow: 0 10px 25px -5px rgba(245, 158, 11, 0.4);
+    }
+    /* ویزارد قدم‌به‌قدم اتصال */
+    .wizard-conn-card {
+        border-radius: 24px;
+        border: 1px solid rgba(79, 70, 229, 0.15);
+        background: var(--card-bg, #ffffff);
+        box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.07);
+        overflow: hidden;
+    }
+    .device-step-card {
+        border-radius: 16px;
+        padding: 16px;
+        border: 2px solid rgba(0,0,0,0.08);
+        background: #ffffff;
+        color: #1e293b;
+        font-weight: 700;
+        text-align: center;
+        transition: all 0.25s ease;
+        cursor: pointer;
+        width: 100%;
+    }
+    .device-step-card:hover, .device-step-card.active {
+        border-color: #4f46e5;
+        background: rgba(79, 70, 229, 0.05);
+        transform: translateY(-3px);
+        box-shadow: 0 8px 18px -4px rgba(79, 70, 229, 0.2);
     }
 </style>
 {% endblock %}
@@ -83,7 +120,7 @@
                 <h1 class="h3 fw-bold mb-0 text-dark">{{ branding.get('brand_title') or 'مرکز آموزش و راهنمای اتصال' }}</h1>
             </div>
             <p class="text-muted mb-0 fs-6">
-                راهنمای تصویری و گام‌به‌گام اتصال به VPN اختصاصی پرسرعت برای تمامی گوشی‌ها، کامپیوترها، تلویزیون‌ها و مودم‌ها
+                راهنمای تصویری و گام‌به‌گام اتصال به اینترنت آزاد و پرسرعت برای تمامی گوشی‌ها، کامپیوترها، تلویزیون‌ها و مودم‌ها
             </p>
         </div>
         <div class="d-flex flex-wrap gap-2 z-1 justify-content-center">
@@ -98,97 +135,362 @@
         </div>
     </div>
 
-    <!-- بنر راهنمای سریع عیب‌یابی -->
-    <div class="troubleshoot-banner mb-4 d-flex flex-column flex-md-row align-items-center justify-content-between gap-3">
-        <div class="d-flex align-items-center gap-3">
-            <i class="fas fa-lightbulb fa-2x"></i>
-            <div>
-                <h5 class="fw-bold mb-1">قطع و وصل می‌شوید یا خطای ساعت دارید؟</h5>
-                <p class="mb-0 small opacity-90">با ویزارد هوشمند عیب‌یابی، خطاهای ساعت (Time Desync)، تنظیم Fragment همراه اول/ایرانسل و DNS را در کمتر از ۱ دقیقه رفع کنید.</p>
+    <!-- سوییچر دو حالته برای راهنمای اتصال -->
+    <div class="d-flex justify-content-center justify-content-md-start mb-4">
+        <div class="d-flex flex-wrap gap-2 p-1 bg-white rounded-4 shadow-sm border">
+            <button type="button" class="mode-pill-btn {% if active_mode == 'catalog' or not active_mode %}btn btn-primary text-white shadow-sm{% else %}btn btn-light text-dark{% endif %}" onclick="switchConnMode('catalog')">
+                <i class="fas fa-grid-2 me-1"></i> کاتالوگ تمام نرم‌افزارها
+            </button>
+            <button type="button" class="mode-pill-btn {% if active_mode == 'wizard' %}btn btn-primary text-white shadow-sm{% else %}btn btn-light text-dark{% endif %}" onclick="switchConnMode('wizard')">
+                <i class="fas fa-compass me-1"></i> راهنمای قدم‌به‌قدم اتصال (ویزارد هوشمند)
+            </button>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- حالت اول: کاتالوگ نرم‌افزارها و پلتفرم‌ها (Catalog View) -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div id="conn-mode-catalog" style="{% if active_mode == 'wizard' %}display: none;{% else %}display: block;{% endif %}">
+        <!-- بنر راهنمای سریع عیب‌یابی -->
+        <div class="troubleshoot-banner mb-4 d-flex flex-column flex-md-row align-items-center justify-content-between gap-3">
+            <div class="d-flex align-items-center gap-3">
+                <i class="fas fa-lightbulb fa-2x"></i>
+                <div>
+                    <h5 class="fw-bold mb-1">قطع و وصل می‌شوید یا خطای ساعت دارید؟</h5>
+                    <p class="mb-0 small opacity-90">با ویزارد هوشمند عیب‌یابی، خطاهای ساعت (Time Desync)، تنظیم Fragment همراه اول/ایرانسل و DNS را در کمتر از ۱ دقیقه رفع کنید.</p>
+                </div>
+            </div>
+            <a href="{{ url_for('troubleshoot_wizard') }}" class="btn btn-light text-dark fw-bold px-4 py-2 flex-shrink-0 shadow-sm">
+                شروع عیب‌یابی هوشمند <i class="fas fa-arrow-left ms-1"></i>
+            </a>
+        </div>
+
+        <!-- نوار انتخاب سیستم‌عامل (Platform Selector) -->
+        <div class="mb-4">
+            <label class="form-label fw-bold text-muted small mb-2"><i class="fas fa-laptop-mobile me-1"></i> ۱. سیستم‌عامل یا دستگاه خود را انتخاب کنید:</label>
+            <div class="d-flex flex-wrap gap-2">
+                {% for p_key, p in platforms.items() %}
+                <a href="{{ url_for('tutorials_platform', platform=p_key) }}" 
+                   class="platform-pill {% if active_platform == p_key %}active{% endif %}">
+                    <i class="{{ p.icon }} fs-5" style="color: {{ p.color }};"></i>
+                    <span>{{ p.title }}</span>
+                </a>
+                {% endfor %}
             </div>
         </div>
-        <a href="{{ url_for('troubleshoot_wizard') }}" class="btn btn-light text-dark fw-bold px-4 py-2 flex-shrink-0 shadow-sm">
-            شروع عیب‌یابی هوشمند <i class="fas fa-arrow-left ms-1"></i>
-        </a>
-    </div>
 
-    <!-- نوار انتخاب سیستم‌عامل (Platform Selector) -->
-    <div class="mb-4">
-        <label class="form-label fw-bold text-muted small mb-2"><i class="fas fa-laptop-mobile me-1"></i> ۱. سیستم‌عامل یا دستگاه خود را انتخاب کنید:</label>
-        <div class="d-flex flex-wrap gap-2">
-            {% for p_key, p in platforms.items() %}
-            <a href="{{ url_for('tutorials_platform', platform=p_key) }}" 
-               class="platform-pill {% if active_platform == p_key %}active{% endif %}">
-                <i class="{{ p.icon }} fs-5" style="color: {{ p.color }};"></i>
-                <span>{{ p.title }}</span>
-            </a>
-            {% endfor %}
-        </div>
-    </div>
+        <!-- کارت‌های نرم‌افزارهای سیستم‌عامل انتخاب‌شده -->
+        <div class="mb-5">
+            {% set current_platform = platforms.get(active_platform) %}
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                <h4 class="fw-bold mb-0">
+                    <i class="{{ current_platform.icon }} me-2" style="color: {{ current_platform.color }};"></i>
+                    نرم‌افزارهای پیشنهادی برای {{ current_platform.title }}
+                </h4>
+                <span class="badge bg-secondary fs-6">{{ current_platform.apps|length }} نرم‌افزار سازگار</span>
+            </div>
+            <p class="text-muted small mb-4">{{ current_platform.description }}</p>
 
-    <!-- کارت‌های نرم‌افزارهای سیستم‌عامل انتخاب‌شده -->
-    <div class="mb-5">
-        {% set current_platform = platforms.get(active_platform) %}
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-            <h4 class="fw-bold mb-0">
-                <i class="{{ current_platform.icon }} me-2" style="color: {{ current_platform.color }};"></i>
-                نرم‌افزارهای پیشنهادی برای {{ current_platform.title }}
-            </h4>
-            <span class="badge bg-secondary fs-6">{{ current_platform.apps|length }} نرم‌افزار سازگار</span>
-        </div>
-        <p class="text-muted small mb-4">{{ current_platform.description }}</p>
-
-        <div class="row g-4">
-            {% for app_slug in current_platform.apps %}
-                {% set app = tutorials.get(app_slug) %}
-                {% if app %}
-                <div class="col-md-6 col-lg-4">
-                    <div class="app-card shadow-sm p-4">
-                        <div>
-                            <div class="d-flex justify-content-between align-items-start mb-3">
-                                <div class="d-flex align-items-center gap-3">
-                                    <div class="stat-icon bg-primary bg-opacity-10 text-primary rounded-3 p-3 d-flex align-items-center justify-content-center" style="width: 52px; height: 52px;">
-                                        <i class="{{ app.icon }} fa-xl"></i>
-                                    </div>
-                                    <div>
-                                        <h5 class="fw-bold mb-0 text-dark">{{ app.name }}</h5>
-                                        <div class="text-warning small mt-1">
-                                            <i class="fas fa-star"></i> {{ app.rating }}
+            <div class="row g-4">
+                {% for app_slug in current_platform.apps %}
+                    {% set app = tutorials.get(app_slug) %}
+                    {% if app %}
+                    <div class="col-md-6 col-lg-4">
+                        <div class="app-card shadow-sm p-4">
+                            <div>
+                                <div class="d-flex justify-content-between align-items-start mb-3">
+                                    <div class="d-flex align-items-center gap-3">
+                                        <div class="stat-icon bg-primary bg-opacity-10 text-primary rounded-3 p-3 d-flex align-items-center justify-content-center" style="width: 52px; height: 52px;">
+                                            <i class="{{ app.icon }} fa-xl"></i>
+                                        </div>
+                                        <div>
+                                            <h5 class="fw-bold mb-0 text-dark">{{ app.name }}</h5>
+                                            <div class="text-warning small mt-1">
+                                                <i class="fas fa-star"></i> {{ app.rating }}
+                                            </div>
                                         </div>
                                     </div>
+                                    <span class="badge bg-{{ app.badge_color }} bg-opacity-10 text-{{ app.badge_color }} border border-{{ app.badge_color }} small">
+                                        {{ app.badge }}
+                                    </span>
                                 </div>
-                                <span class="badge bg-{{ app.badge_color }} bg-opacity-10 text-{{ app.badge_color }} border border-{{ app.badge_color }} small">
-                                    {{ app.badge }}
-                                </span>
+
+                                <p class="text-muted small mb-4" style="line-height: 1.7; min-height: 48px;">
+                                    {{ app.subtitle }}
+                                </p>
+
+                                <!-- خلاصه مراحل گام‌به‌گام -->
+                                <div class="bg-light p-3 rounded-3 mb-4 border">
+                                    <div class="small fw-bold text-secondary mb-2"><i class="fas fa-list-ol me-1"></i> مراحل راه‌اندازی سریع:</div>
+                                    <ol class="ps-3 mb-0 small text-muted">
+                                        {% for step in app.steps[:3] %}
+                                            <li class="mb-1">{{ step.title }}</li>
+                                        {% endfor %}
+                                    </ol>
+                                </div>
                             </div>
 
-                            <p class="text-muted small mb-4" style="line-height: 1.7; min-height: 48px;">
-                                {{ app.subtitle }}
-                            </p>
-
-                            <!-- خلاصه مراحل گام‌به‌گام -->
-                            <div class="bg-light p-3 rounded-3 mb-4 border">
-                                <div class="small fw-bold text-secondary mb-2"><i class="fas fa-list-ol me-1"></i> مراحل راه‌اندازی سریع:</div>
-                                <ol class="ps-3 mb-0 small text-muted">
-                                    {% for step in app.steps[:3] %}
-                                        <li class="mb-1">{{ step.title }}</li>
-                                    {% endfor %}
-                                </ol>
+                            <div class="d-flex gap-2 pt-2 border-top">
+                                <a href="{{ url_for('tutorial_view', platform=active_platform, app_slug=app_slug) }}" class="btn btn-primary w-100 fw-bold py-2">
+                                    <i class="fas fa-book-open-reader me-1"></i> مشاهده آموزش کامل تصویری
+                                </a>
                             </div>
                         </div>
+                    </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
 
-                        <div class="d-flex gap-2 pt-2 border-top">
-                            <a href="{{ url_for('tutorial_view', platform=active_platform, app_slug=app_slug) }}" class="btn btn-primary w-100 fw-bold py-2">
-                                <i class="fas fa-book-open-reader me-1"></i> مشاهده آموزش کامل تصویری
-                            </a>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- حالت دوم: ویزارد تعاملی قدم‌به‌قدم اتصال (Interactive Step Wizard) -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div id="conn-mode-wizard" style="{% if active_mode == 'wizard' %}display: block;{% else %}display: none;{% endif %}">
+        <div class="wizard-conn-card p-4 p-md-5 mb-5">
+            <!-- نوار پیشرفت -->
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span class="small fw-bold text-primary" id="connWizardStepIndicator">
+                    <i class="fas fa-compass me-1"></i> مرحله <span id="connCurrentStepNum">۱</span> از ۵
+                </span>
+                <span class="badge bg-primary bg-opacity-10 text-primary border border-primary small" id="connWizardStepTitleBadge">
+                    انتخاب سیستم‌عامل
+                </span>
+            </div>
+            <div class="progress mb-4" style="height: 8px; border-radius: 10px; background-color: rgba(0,0,0,0.06);">
+                <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" id="connWizardProgressBar" role="progressbar" style="width: 20%;"></div>
+            </div>
+
+            <!-- محتوای مراحل -->
+            <div id="connWizardWrapper">
+                <!-- مرحله ۱: انتخاب سیستم‌عامل -->
+                <div class="conn-wizard-step" id="cwstep-1">
+                    <div class="text-center mb-4">
+                        <div class="bg-primary bg-opacity-10 text-primary rounded-circle d-inline-flex p-3 mb-2">
+                            <i class="fas fa-laptop-mobile fa-2x"></i>
+                        </div>
+                        <h4 class="fw-bold text-dark mb-1">سیستم‌عامل یا دستگاه خود را انتخاب کنید</h4>
+                        <p class="text-muted small">قصد دارید فیلترشکن را روی کدام دستگاه راه‌اندازی نمایید؟</p>
+                    </div>
+
+                    <div class="row g-3 justify-content-center mb-4">
+                        <div class="col-6 col-md-4 col-lg-2">
+                            <button type="button" class="device-step-card" onclick="selectConnDevice('android', 'v2rayng', 'v2rayNG')">
+                                <i class="fab fa-android fa-2x text-success mb-2 d-block"></i>
+                                <span>اندروید</span>
+                            </button>
+                        </div>
+                        <div class="col-6 col-md-4 col-lg-2">
+                            <button type="button" class="device-step-card" onclick="selectConnDevice('ios', 'streisand', 'Streisand')">
+                                <i class="fab fa-apple fa-2x text-dark mb-2 d-block"></i>
+                                <span>آیفون / آیپد</span>
+                            </button>
+                        </div>
+                        <div class="col-6 col-md-4 col-lg-2">
+                            <button type="button" class="device-step-card" onclick="selectConnDevice('windows', 'v2rayn', 'v2rayN')">
+                                <i class="fab fa-windows fa-2x text-primary mb-2 d-block"></i>
+                                <span>ویندوز</span>
+                            </button>
+                        </div>
+                        <div class="col-6 col-md-4 col-lg-2">
+                            <button type="button" class="device-step-card" onclick="selectConnDevice('macos', 'foxray-mac', 'FoXray')">
+                                <i class="fas fa-laptop fa-2x text-secondary mb-2 d-block"></i>
+                                <span>مک‌بوک</span>
+                            </button>
+                        </div>
+                        <div class="col-6 col-md-4 col-lg-2">
+                            <button type="button" class="device-step-card" onclick="selectConnDevice('tv', 'v2rayng-tv', 'v2rayNG TV')">
+                                <i class="fas fa-tv fa-2x text-danger mb-2 d-block"></i>
+                                <span>تلویزیون</span>
+                            </button>
                         </div>
                     </div>
                 </div>
-                {% endif %}
-            {% endfor %}
+
+                <!-- مرحله ۲: دانلود و نصب نرم‌افزار -->
+                <div class="conn-wizard-step" id="cwstep-2" style="display: none;">
+                    <div class="text-center mb-4">
+                        <div class="bg-success bg-opacity-10 text-success rounded-circle d-inline-flex p-3 mb-2">
+                            <i class="fas fa-cloud-arrow-down fa-2x"></i>
+                        </div>
+                        <h4 class="fw-bold text-dark mb-1">دانلود و نصب نرم‌افزار <span id="selectedAppName" class="text-primary"></span></h4>
+                        <p class="text-muted small">نرم‌افزار رسمی و سازگار را از لینک معتبر زیر دریافت و بر روی دستگاه خود باز کنید:</p>
+                    </div>
+
+                    <div class="text-center mb-4" id="connDownloadLinksArea">
+                        <a href="https://github.com/2dust/v2rayNG/releases/latest" id="connMainDlBtn" target="_blank" class="btn btn-success btn-lg fw-bold px-5 py-3 shadow-sm rounded-4">
+                            <i class="fas fa-download me-2"></i> دانلود مستقیم آخرین نسخه نرم‌افزار
+                        </a>
+                    </div>
+
+                    <div class="d-flex justify-content-center">
+                        <button type="button" class="btn btn-primary fw-bold px-4 py-2" onclick="goConnStep(3)">
+                            <i class="fas fa-check-circle me-1"></i> برنامه را نصب کردم، قدم بعدی 📲
+                        </button>
+                    </div>
+                </div>
+
+                <!-- مرحله ۳: کپی کردن و واردسازی لینک اشتراک -->
+                <div class="conn-wizard-step" id="cwstep-3" style="display: none;">
+                    <div class="text-center mb-4">
+                        <div class="bg-primary bg-opacity-10 text-primary rounded-circle d-inline-flex p-3 mb-2">
+                            <i class="fas fa-file-import fa-2x"></i>
+                        </div>
+                        <h4 class="fw-bold text-dark mb-1">وارد کردن لینک اشتراک هوشمند در برنامه</h4>
+                        <p class="text-muted small">لینک اشتراک خود را از ربات یا پنل کاربری کپی کرده و در برنامه اضافه کنید.</p>
+                    </div>
+
+                    <div class="bg-light border rounded-4 p-4 mb-4 small" style="line-height: 1.9;" id="connImportGuideText">
+                        <h6 class="fw-bold text-dark mb-2"><i class="fas fa-info-circle me-1"></i> روش افزودن در نرم‌افزار:</h6>
+                        <p class="mb-1">۱. لینک اشتراک دریافتی را لمس کنید تا در کلیپ‌بورد کپی شود.</p>
+                        <p class="mb-1">۲. نرم‌افزار را باز کرده و علامت مثبت (<strong>+</strong>) بالای صفحه را بزنید.</p>
+                        <p class="mb-0">۳. گزینه <strong>Import from Clipboard</strong> یا افزودن اشتراک را انتخاب نمایید.</p>
+                    </div>
+
+                    <div class="d-flex justify-content-center">
+                        <button type="button" class="btn btn-primary fw-bold px-4 py-2" onclick="goConnStep(4)">
+                            <i class="fas fa-check-circle me-1"></i> لینک را در برنامه وارد کردم، قدم بعدی 📥
+                        </button>
+                    </div>
+                </div>
+
+                <!-- مرحله ۴: به‌روزرسانی سرورها و تست پینگ -->
+                <div class="conn-wizard-step" id="cwstep-4" style="display: none;">
+                    <div class="text-center mb-4">
+                        <div class="bg-info bg-opacity-10 text-info rounded-circle d-inline-flex p-3 mb-2">
+                            <i class="fas fa-rotate fa-2x"></i>
+                        </div>
+                        <h4 class="fw-bold text-dark mb-1">به‌روزرسانی سرورها و تست پینگ سبز</h4>
+                        <p class="text-muted small">لیست کانفیگ‌های تازه را بارگذاری کنید و بهترین سرور را پیدا نمایید.</p>
+                    </div>
+
+                    <div class="bg-light border rounded-4 p-4 mb-4 small" style="line-height: 1.9;">
+                        <h6 class="fw-bold text-dark mb-2"><i class="fas fa-signal me-1"></i> تست پینگ واقعی:</h6>
+                        <p class="mb-1">روی منوی سه‌نقطه یا دکمه رفرش ضربه بزنید و گزینه <strong>Update subscription</strong> را بزنید.</p>
+                        <p class="mb-0">سپس گزینه <strong>Real delay all configuration</strong> را بزنید تا پینگ‌ها با رنگ سبز ظاهر شوند. سروری که کمترین پینگ عددی سبز را دارد انتخاب کنید.</p>
+                    </div>
+
+                    <div class="d-flex justify-content-center">
+                        <button type="button" class="btn btn-primary fw-bold px-4 py-2" onclick="goConnStep(5)">
+                            <i class="fas fa-check-circle me-1"></i> سرورها آپدیت شدند و پینگ سبز دیدم 🔄
+                        </button>
+                    </div>
+                </div>
+
+                <!-- مرحله ۵: اتصال و تایید مجوز امنیتی -->
+                <div class="conn-wizard-step" id="cwstep-5" style="display: none;">
+                    <div class="text-center mb-4">
+                        <div class="bg-success bg-opacity-10 text-success rounded-circle d-inline-flex p-3 mb-2">
+                            <i class="fas fa-power-off fa-2x"></i>
+                        </div>
+                        <h4 class="fw-bold text-dark mb-1">روشن کردن اتصال و آزادسازی اینترنت</h4>
+                        <p class="text-muted small">روی دکمه اتصال کلیک فرمایید و در کادر باز شده تایید (OK / Allow) را بزنید.</p>
+                    </div>
+
+                    <div class="d-flex flex-column flex-sm-row justify-content-center gap-3 mb-4">
+                        <button type="button" class="btn btn-success btn-lg fw-bold px-4" onclick="document.getElementById('connSuccessBanner').style.display='block';">
+                            <i class="fas fa-circle-check me-1"></i> با موفقیت متصل شدم! 🚀
+                        </button>
+                        <a href="{{ url_for('troubleshoot_wizard') }}" class="btn btn-outline-warning btn-lg fw-bold px-4">
+                            <i class="fas fa-wrench me-1"></i> متصل نشد، رفتن به ویزارد عیب‌یابی 🛠️
+                        </a>
+                    </div>
+
+                    <div id="connSuccessBanner" class="alert alert-success rounded-4 p-4 text-center small" style="display: none;">
+                        <i class="fas fa-champagne-glasses fa-2x text-success mb-2 d-block"></i>
+                        <h5 class="fw-bold mb-1">تبریک! اکنون اینترنت آزاد و پرسرعت برای شما برقرار است.</h5>
+                        <p class="mb-0 text-muted">می‌توانید یوتیوب، اینستاگرام و تمام نرم‌افزارهای خود را بدون اختلال باز کنید.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- دکمه بازگشت به گام قبل -->
+            <div class="d-flex justify-content-between align-items-center pt-4 mt-4 border-top">
+                <button type="button" class="btn btn-outline-secondary btn-sm fw-bold" id="connPrevBtn" onclick="prevConnStep()" style="display: none;">
+                    <i class="fas fa-arrow-right me-1"></i> بازگشت به گام قبلی
+                </button>
+                <button type="button" class="btn btn-link text-muted btn-sm text-decoration-none" onclick="restartConnWizard()">
+                    <i class="fas fa-rotate-left me-1"></i> شروع مجدد راهنمای اتصال
+                </button>
+            </div>
         </div>
     </div>
 </div>
+
+<script>
+    let connCurrentStep = 1;
+    const connTotalSteps = 5;
+    const connStepTitles = [
+        "انتخاب سیستم‌عامل",
+        "دانلود و نصب نرم‌افزار",
+        "افزودن لینک اشتراک",
+        "به‌روزرسانی و پینگ",
+        "اتصال و استارت"
+    ];
+
+    function switchConnMode(mode) {
+        if (mode === 'wizard') {
+            document.getElementById('conn-mode-wizard').style.display = 'block';
+            document.getElementById('conn-mode-catalog').style.display = 'none';
+        } else {
+            document.getElementById('conn-mode-wizard').style.display = 'none';
+            document.getElementById('conn-mode-catalog').style.display = 'block';
+        }
+    }
+
+    function selectConnDevice(platform, appSlug, appName) {
+        document.getElementById('selectedAppName').innerText = appName;
+        // لینک‌های دانلود مناسب هر سیستم‌عامل
+        const dlBtn = document.getElementById('connMainDlBtn');
+        if (platform === 'android') {
+            dlBtn.href = "https://github.com/2dust/v2rayNG/releases/latest";
+            dlBtn.innerHTML = '<i class="fab fa-android me-2"></i> دانلود مستقیم v2rayNG برای اندروید';
+        } else if (platform === 'ios') {
+            dlBtn.href = "https://apps.apple.com/app/streisand/id6450534064";
+            dlBtn.innerHTML = '<i class="fab fa-apple me-2"></i> دریافت Streisand از App Store';
+        } else if (platform === 'windows') {
+            dlBtn.href = "https://github.com/2dust/v2rayN/releases/latest";
+            dlBtn.innerHTML = '<i class="fab fa-windows me-2"></i> دانلود v2rayN با هسته کامل برای ویندوز';
+        } else if (platform === 'macos') {
+            dlBtn.href = "https://apps.apple.com/app/foxray/id6448898396";
+            dlBtn.innerHTML = '<i class="fas fa-laptop me-2"></i> دانلود FoXray برای مک';
+        } else {
+            dlBtn.href = "https://github.com/2dust/v2rayNG/releases/latest";
+            dlBtn.innerHTML = '<i class="fas fa-tv me-2"></i> دانلود فایل نصبی برای تلویزیون هوشمند';
+        }
+        goConnStep(2);
+    }
+
+    function goConnStep(step) {
+        for (let i = 1; i <= connTotalSteps; i++) {
+            const el = document.getElementById('cwstep-' + i);
+            if (el) el.style.display = 'none';
+        }
+
+        const target = document.getElementById('cwstep-' + step);
+        if (target) target.style.display = 'block';
+
+        connCurrentStep = step;
+        document.getElementById('connCurrentStepNum').innerText = step;
+        document.getElementById('connWizardStepTitleBadge').innerText = connStepTitles[step - 1];
+
+        const pct = Math.round((step / connTotalSteps) * 100);
+        document.getElementById('connWizardProgressBar').style.width = pct + '%';
+        document.getElementById('connPrevBtn').style.display = (step > 1) ? 'inline-block' : 'none';
+
+        window.scrollTo({ top: 200, behavior: 'smooth' });
+    }
+
+    function prevConnStep() {
+        if (connCurrentStep > 1) {
+            goConnStep(connCurrentStep - 1);
+        }
+    }
+
+    function restartConnWizard() {
+        goConnStep(1);
+    }
+</script>
 {% endmacro %}
 
 {% block content %}

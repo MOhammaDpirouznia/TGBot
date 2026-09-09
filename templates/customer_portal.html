@@ -1544,7 +1544,7 @@
                     {% for m in portal_payment_methods %}
                     <div class="col-12 col-md-6 d-flex">
                         <label class="w-100 mb-0 d-flex flex-column payment-method-card-label" style="cursor: pointer;">
-                            <input type="radio" name="payment_method" value="{{ m['id'] }}" class="d-none portal-method-radio" {% if loop.first %}checked{% endif %} onchange="onPaymentMethodSelected('{{ m['id'] }}', this)">
+                            <input type="radio" name="payment_method" value="{{ m['id'] }}" class="portal-method-radio" style="position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px;" {% if loop.first %}checked{% endif %} onchange="onPaymentMethodSelected('{{ m['id'] }}', this)">
                             <div class="portal-method-card p-3 rounded-3 border h-100 d-flex flex-column justify-content-between transition-all {% if loop.first %}selected border-primary bg-primary bg-opacity-10 shadow-sm{% else %}border-secondary border-opacity-25 bg-black bg-opacity-25{% endif %}" id="method_card_{{ m['id'] }}">
                                 <div class="d-flex justify-content-between align-items-start mb-2">
                                     <div class="d-flex align-items-center gap-2">
@@ -1572,7 +1572,11 @@
                 <i class="fas fa-credit-card me-2" id="portalSubmitBtnIcon"></i>
                 <span id="portalSubmitBtnText">
                     {% if portal_payment_methods and portal_payment_methods[0]['id'] == 'online_gateway' %}
-                        اتصال به درگاه بانکی شاپرک و تمدید آنلاین
+                        {% if gw_cfg and gw_cfg.get('type') == 'blupal' %}
+                            ورود به درگاه پرداخت هوشمند بلوپال
+                        {% else %}
+                            اتصال به درگاه بانکی شاپرک و تمدید آنلاین
+                        {% endif %}
                     {% elif portal_payment_methods and portal_payment_methods[0]['id'] == 'card_to_card' %}
                         صدور فاکتور و پرداخت کارت به کارت (هوشمند)
                     {% elif portal_payment_methods and portal_payment_methods[0]['id'] == 'crypto' %}
@@ -2521,6 +2525,28 @@ document.querySelectorAll('.plan-card').forEach(card => {
 
 document.addEventListener('DOMContentLoaded', function() {
     updatePricingDisplay();
+
+    // هندلر کلیک مستقیم روی کارت‌های روش پرداخت تمدید
+    document.querySelectorAll('.payment-method-card-label').forEach(label => {
+        label.addEventListener('click', function(e) {
+            const radio = this.querySelector('input[name="payment_method"]');
+            if (radio && !radio.checked) {
+                radio.checked = true;
+                onPaymentMethodSelected(radio.value, radio);
+            }
+        });
+    });
+
+    // هندلر کلیک مستقیم روی کارت‌های روش پرداخت بدهی
+    document.querySelectorAll('.debt-payment-method-card').forEach(card => {
+        card.addEventListener('click', function(e) {
+            const radio = this.querySelector('input[name="payment_method"]');
+            if (radio && !radio.checked) {
+                radio.checked = true;
+                onDebtPaymentMethodChange(radio);
+            }
+        });
+    });
 });
 
 // ─── مدیریت و پویایی روش‌های پرداخت پورتال مشتری ───
@@ -2550,7 +2576,8 @@ function onPaymentMethodSelected(methodId, inputElem) {
     if (!btnText) return;
 
     if (methodId === 'online_gateway') {
-        btnText.innerText = 'اتصال به درگاه بانکی شاپرک و تمدید آنلاین';
+        const isBluPal = {{ 'true' if (gw_cfg and gw_cfg.get('type') == 'blupal') else 'false' }};
+        btnText.innerText = isBluPal ? 'ورود به درگاه پرداخت هوشمند بلوپال' : 'اتصال به درگاه بانکی شاپرک و تمدید آنلاین';
         if (btnIcon) btnIcon.className = 'fas fa-globe me-2';
     } else if (methodId === 'card_to_card') {
         btnText.innerText = 'صدور فاکتور و پرداخت کارت به کارت (هوشمند)';
@@ -2581,7 +2608,8 @@ function onDebtPaymentMethodChange(radio) {
     const btnText = form.querySelector('#debtSubmitBtnText') || document.getElementById('debtSubmitBtnText');
     if (!btnText) return;
     if (radio.value === 'online_gateway') {
-        btnText.innerText = 'اتصال به درگاه و تسویه آنلاین بدهی';
+        const isBluPal = {{ 'true' if (gw_cfg and gw_cfg.get('type') == 'blupal') else 'false' }};
+        btnText.innerText = isBluPal ? 'ورود به درگاه بلوپال و تسویه آنلاین' : 'اتصال به درگاه و تسویه آنلاین بدهی';
     } else if (radio.value === 'wallet') {
         btnText.innerText = 'تسویه آنی از کیف پول تلگرام';
     } else if (radio.value === 'crypto') {
