@@ -1090,7 +1090,11 @@ class Database:
             "custom_data_limit REAL DEFAULT NULL",
             "custom_duration INTEGER DEFAULT NULL",
             "custom_discount_percent REAL DEFAULT NULL",
-            "custom_wholesale_price INTEGER DEFAULT NULL"
+            "custom_wholesale_price INTEGER DEFAULT NULL",
+            "reseller_custom_name TEXT DEFAULT NULL",
+            "reseller_custom_price INTEGER DEFAULT NULL",
+            "reseller_is_active INTEGER DEFAULT NULL",
+            "is_reseller_modified INTEGER DEFAULT 0"
         ]:
             try:
                 cursor.execute(f"ALTER TABLE reseller_plans ADD COLUMN {col_def}")
@@ -13283,7 +13287,9 @@ class Database:
         overrides = {}
         try:
             cursor.execute("""
-                SELECT plan_id, custom_name, custom_price, custom_data_limit, custom_duration, custom_discount_percent, custom_wholesale_price, is_active 
+                SELECT plan_id, custom_name, custom_price, custom_data_limit, custom_duration, 
+                       custom_discount_percent, custom_wholesale_price, is_active,
+                       reseller_custom_name, reseller_custom_price, reseller_is_active, is_reseller_modified 
                 FROM reseller_plans WHERE reseller_id = ?
             """, (reseller_id,))
             for row in cursor.fetchall():
@@ -13296,7 +13302,11 @@ class Database:
                     "custom_duration": row["custom_duration"],
                     "custom_discount_percent": row["custom_discount_percent"] if ("custom_discount_percent" in r_keys and row["custom_discount_percent"] is not None) else None,
                     "custom_wholesale_price": row["custom_wholesale_price"] if ("custom_wholesale_price" in r_keys and row["custom_wholesale_price"] is not None) else None,
-                    "is_active": bool(row["is_active"])
+                    "is_active": bool(row["is_active"]),
+                    "reseller_custom_name": row["reseller_custom_name"] if ("reseller_custom_name" in r_keys and row["reseller_custom_name"] is not None) else None,
+                    "reseller_custom_price": row["reseller_custom_price"] if ("reseller_custom_price" in r_keys and row["reseller_custom_price"] is not None) else None,
+                    "reseller_is_active": bool(row["reseller_is_active"]) if ("reseller_is_active" in r_keys and row["reseller_is_active"] is not None) else None,
+                    "is_reseller_modified": bool(row["is_reseller_modified"]) if ("is_reseller_modified" in r_keys and row["is_reseller_modified"] is not None) else False,
                 }
         except Exception as e:
             logger.error(f"Error fetching reseller plan overrides: {e}")
@@ -13309,17 +13319,33 @@ class Database:
             pid_str = str(pid)
             seen_pids.add(pid_str)
             ov = overrides.get(pid_str) or overrides.get(pid, {})
-            custom_name = ov.get("custom_name") or ""
-            custom_price = ov.get("custom_price")
+            admin_custom_name = ov.get("custom_name") or ""
+            admin_custom_price = ov.get("custom_price")
             custom_data_limit = ov.get("custom_data_limit")
             custom_duration = ov.get("custom_duration")
             custom_discount_percent = ov.get("custom_discount_percent")
             custom_wholesale_price = ov.get("custom_wholesale_price")
-            is_active_override = ov.get("is_active")
+            admin_is_active = ov.get("is_active")
+
+            is_reseller_modified = bool(ov.get("is_reseller_modified"))
+            reseller_custom_name = ov.get("reseller_custom_name")
+            reseller_custom_price = ov.get("reseller_custom_price")
+            reseller_is_active = ov.get("reseller_is_active")
 
             master_price = p.get("price", 0)
-            display_price = custom_price if (custom_price is not None and custom_price > 0) else master_price
-            display_name = custom_name if custom_name else p.get("name", "پلن")
+            admin_price = admin_custom_price if (admin_custom_price is not None and admin_custom_price > 0) else master_price
+            admin_name = admin_custom_name if admin_custom_name else p.get("name", "پلن")
+
+            # اگر نماینده قیمت یا نام اختصاصی داده باشد و فلگ تغییر خورده باشد
+            if is_reseller_modified and reseller_custom_price is not None and reseller_custom_price > 0:
+                display_price = reseller_custom_price
+            else:
+                display_price = admin_price
+
+            if is_reseller_modified and reseller_custom_name:
+                display_name = reseller_custom_name
+            else:
+                display_name = admin_name
             
             master_data_limit = p.get("data_limit", 0)
             display_data_limit = custom_data_limit if (custom_data_limit is not None and custom_data_limit >= 0) else master_data_limit
@@ -13327,21 +13353,24 @@ class Database:
             master_duration = p.get("duration", 30)
             display_duration = custom_duration if (custom_duration is not None and custom_duration > 0) else master_duration
 
-            is_active = is_active_override if is_active_override is not None else p.get("is_active", True)
+            if is_reseller_modified and reseller_is_active is not None:
+                is_active = bool(reseller_is_active)
+            elif admin_is_active is not None:
+                is_active = bool(admin_is_active)
+            else:
+                is_active = p.get("is_active", True)
             
-            # قیمت تمام‌شده خرید عمده برای نماینده:
-            # ۱. اگر قیمت خرید عمده اختصاصی رندشده تعیین شده باشد
-            # ۲. در غیر این صورت اگر درصد تخفیف اختصاصی برای این پلن تعیین شده باشد
-            # ۳. در غیر این صورت استفاده از درصد تخفیف عمومی نماینده
+            # قیمت تمام‌شده خرید عمده برای نماینده همیشه بر مبنای قیمت پایه تعیین شده توسط مدیر (admin_price) محاسبه می‌شود
+            base_wholesale_price = admin_price
             if custom_wholesale_price is not None and custom_wholesale_price >= 0:
                 wholesale_price = int(custom_wholesale_price)
-                effective_discount_pct = round(((master_price - wholesale_price) / master_price) * 100, 1) if master_price > 0 else 0.0
+                effective_discount_pct = round(((base_wholesale_price - wholesale_price) / base_wholesale_price) * 100, 1) if base_wholesale_price > 0 else 0.0
             elif custom_discount_percent is not None and custom_discount_percent >= 0:
                 effective_discount_pct = float(custom_discount_percent)
-                wholesale_price = int(master_price * (100 - effective_discount_pct) / 100)
+                wholesale_price = int(base_wholesale_price * (100 - effective_discount_pct) / 100)
             else:
                 effective_discount_pct = float(discount_pct)
-                wholesale_price = int(master_price * (100 - effective_discount_pct) / 100)
+                wholesale_price = int(base_wholesale_price * (100 - effective_discount_pct) / 100)
 
             profit = max(0, display_price - wholesale_price)
             has_custom_discount = bool(custom_wholesale_price is not None or custom_discount_percent is not None)
@@ -13353,17 +13382,22 @@ class Database:
                 "name": display_name,
                 "price": display_price,
                 "master_name": p.get("name", "پلن"),
+                "admin_custom_name": admin_custom_name,
+                "reseller_custom_name": reseller_custom_name,
                 "display_name": display_name,
-                "custom_name": custom_name,
-                "master_price": master_price,
+                "custom_name": reseller_custom_name if is_reseller_modified else admin_custom_name,
+                "master_price": base_wholesale_price,
+                "admin_custom_price": admin_custom_price,
+                "reseller_custom_price": reseller_custom_price,
                 "display_price": display_price,
-                "custom_price": custom_price,
+                "custom_price": reseller_custom_price if is_reseller_modified else admin_custom_price,
                 "wholesale_price": wholesale_price,
                 "discount_percent": effective_discount_pct,
                 "custom_discount_percent": custom_discount_percent,
                 "custom_wholesale_price": custom_wholesale_price,
                 "has_custom_discount": has_custom_discount,
                 "profit": profit,
+                "is_reseller_modified": is_reseller_modified,
                 "master_data_limit": master_data_limit,
                 "display_data_limit": display_data_limit,
                 "data_limit": display_data_limit,
@@ -13396,44 +13430,64 @@ class Database:
                 elif p_meta.get("is_exclusive_reseller"):
                     continue
 
-                custom_name = ov.get("custom_name") or pid_str
-                custom_price = ov.get("custom_price") or 0
+                admin_custom_name = ov.get("custom_name") or pid_str
+                admin_custom_price = ov.get("custom_price") or 0
                 custom_data_limit = ov.get("custom_data_limit") if ov.get("custom_data_limit") is not None else 30
                 custom_duration = ov.get("custom_duration") or 30
                 custom_discount_percent = ov.get("custom_discount_percent")
                 custom_wholesale_price = ov.get("custom_wholesale_price")
-                is_active = ov.get("is_active", True)
-                master_p = p_meta.get("price") if (p_meta and p_meta.get("price") is not None) else (custom_price or 0)
+                admin_is_active = ov.get("is_active", True)
+                
+                is_reseller_modified = bool(ov.get("is_reseller_modified"))
+                reseller_custom_name = ov.get("reseller_custom_name")
+                reseller_custom_price = ov.get("reseller_custom_price")
+                reseller_is_active = ov.get("reseller_is_active")
+
+                master_p = p_meta.get("price") if (p_meta and p_meta.get("price") is not None) else (admin_custom_price or 0)
+                base_wholesale_price = admin_custom_price if admin_custom_price > 0 else master_p
+
+                display_price = reseller_custom_price if (is_reseller_modified and reseller_custom_price is not None and reseller_custom_price > 0) else base_wholesale_price
+                display_name = reseller_custom_name if (is_reseller_modified and reseller_custom_name) else (admin_custom_name or p_meta.get("name", "پلن"))
+
+                if is_reseller_modified and reseller_is_active is not None:
+                    is_active = bool(reseller_is_active)
+                else:
+                    is_active = admin_is_active
 
                 if custom_wholesale_price is not None and custom_wholesale_price >= 0:
                     wholesale_price = int(custom_wholesale_price)
-                    effective_discount_pct = round(((master_p - wholesale_price) / master_p) * 100, 1) if master_p > 0 else 0.0
+                    effective_discount_pct = round(((base_wholesale_price - wholesale_price) / base_wholesale_price) * 100, 1) if base_wholesale_price > 0 else 0.0
                 elif custom_discount_percent is not None and custom_discount_percent >= 0:
                     effective_discount_pct = float(custom_discount_percent)
-                    wholesale_price = int(master_p * (100 - effective_discount_pct) / 100)
+                    wholesale_price = int(base_wholesale_price * (100 - effective_discount_pct) / 100)
                 else:
                     effective_discount_pct = float(discount_pct)
-                    wholesale_price = int(master_p * (100 - effective_discount_pct) / 100)
+                    wholesale_price = int(base_wholesale_price * (100 - effective_discount_pct) / 100)
 
-                profit = max(0, (custom_price or 0) - wholesale_price)
+                profit = max(0, display_price - wholesale_price)
                 has_custom_discount = bool(custom_wholesale_price is not None or custom_discount_percent is not None)
                 is_dedicated = bool(allowed) or bool(p_meta.get("is_exclusive_reseller"))
                 result.append({
                     "plan_id": pid_str,
-                    "name": custom_name,
-                    "price": custom_price,
-                    "master_name": custom_name,
-                    "display_name": custom_name,
-                    "custom_name": custom_name,
-                    "master_price": master_p,
-                    "display_price": custom_price,
-                    "custom_price": custom_price,
+                    "name": display_name,
+                    "price": display_price,
+                    "master_name": admin_custom_name,
+                    "admin_custom_name": admin_custom_name,
+                    "reseller_custom_name": reseller_custom_name,
+                    "display_name": display_name,
+                    "custom_name": reseller_custom_name if is_reseller_modified else admin_custom_name,
+                    "master_price": base_wholesale_price,
+                    "admin_custom_price": admin_custom_price,
+                    "reseller_custom_price": reseller_custom_price,
+                    "display_price": display_price,
+                    "custom_price": reseller_custom_price if is_reseller_modified else admin_custom_price,
                     "wholesale_price": wholesale_price,
                     "discount_percent": effective_discount_pct,
                     "custom_discount_percent": custom_discount_percent,
                     "custom_wholesale_price": custom_wholesale_price,
                     "has_custom_discount": has_custom_discount,
                     "profit": profit,
+                    "is_reseller_modified": is_reseller_modified,
                     "master_data_limit": custom_data_limit,
                     "display_data_limit": custom_data_limit,
                     "data_limit": custom_data_limit,
@@ -13470,42 +13524,46 @@ class Database:
                 return p
         return None
 
-    def update_reseller_plan_override(self, reseller_id: int, plan_id: str, custom_name: str = None, custom_price: int = None, custom_data_limit: float = None, custom_duration: int = None, custom_discount_percent: float = None, custom_wholesale_price: int = None, is_active: bool = True, preserve_specs: bool = False) -> dict:
+    def update_reseller_plan_override(self, reseller_id: int, plan_id: str, custom_name: str = None, custom_price: int = None, custom_data_limit: float = None, custom_duration: int = None, custom_discount_percent: float = None, custom_wholesale_price: int = None, is_active: bool = True, preserve_specs: bool = False, is_reseller: bool = False) -> dict:
         """بروزرسانی یا ثبت تنظیمات اختصاصی نماینده برای یک پلن (نام، قیمت، حجم، مدت، تخفیف، قیمت عمده، وضعیت)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
-            if preserve_specs:
+            if is_reseller or preserve_specs:
                 cursor.execute("""
-                    INSERT INTO reseller_plans (reseller_id, plan_id, custom_name, custom_price, custom_data_limit, custom_duration, custom_discount_percent, custom_wholesale_price, is_active, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO reseller_plans (
+                        reseller_id, plan_id, 
+                        reseller_custom_name, reseller_custom_price, reseller_is_active, is_reseller_modified,
+                        is_active, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
                     ON CONFLICT(reseller_id, plan_id) DO UPDATE SET
-                        custom_name = excluded.custom_name,
-                        custom_price = excluded.custom_price,
-                        custom_data_limit = COALESCE(excluded.custom_data_limit, reseller_plans.custom_data_limit),
-                        custom_duration = COALESCE(excluded.custom_duration, reseller_plans.custom_duration),
-                        custom_discount_percent = COALESCE(excluded.custom_discount_percent, reseller_plans.custom_discount_percent),
-                        custom_wholesale_price = COALESCE(excluded.custom_wholesale_price, reseller_plans.custom_wholesale_price),
-                        is_active = excluded.is_active,
+                        reseller_custom_name = excluded.reseller_custom_name,
+                        reseller_custom_price = excluded.reseller_custom_price,
+                        reseller_is_active = excluded.reseller_is_active,
+                        is_reseller_modified = 1,
                         updated_at = excluded.updated_at
                 """, (
                     reseller_id, 
                     str(plan_id), 
                     custom_name.strip() if custom_name else None, 
                     custom_price if (custom_price is not None and custom_price > 0) else None, 
-                    custom_data_limit if (custom_data_limit is not None and custom_data_limit >= 0) else None,
-                    custom_duration if (custom_duration is not None and custom_duration > 0) else None,
-                    custom_discount_percent if (custom_discount_percent is not None and custom_discount_percent >= 0) else None,
-                    custom_wholesale_price if (custom_wholesale_price is not None and custom_wholesale_price >= 0) else None,
+                    1 if is_active else 0,
                     1 if is_active else 0, 
                     now, 
                     now
                 ))
             else:
                 cursor.execute("""
-                    INSERT INTO reseller_plans (reseller_id, plan_id, custom_name, custom_price, custom_data_limit, custom_duration, custom_discount_percent, custom_wholesale_price, is_active, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO reseller_plans (
+                        reseller_id, plan_id, 
+                        custom_name, custom_price, custom_data_limit, custom_duration, 
+                        custom_discount_percent, custom_wholesale_price, is_active, 
+                        reseller_custom_name, reseller_custom_price, reseller_is_active, is_reseller_modified,
+                        created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 0, ?, ?)
                     ON CONFLICT(reseller_id, plan_id) DO UPDATE SET
                         custom_name = excluded.custom_name,
                         custom_price = excluded.custom_price,
@@ -13514,6 +13572,10 @@ class Database:
                         custom_discount_percent = excluded.custom_discount_percent,
                         custom_wholesale_price = excluded.custom_wholesale_price,
                         is_active = excluded.is_active,
+                        reseller_custom_name = NULL,
+                        reseller_custom_price = NULL,
+                        reseller_is_active = NULL,
+                        is_reseller_modified = 0,
                         updated_at = excluded.updated_at
                 """, (
                     reseller_id, 
@@ -13536,12 +13598,41 @@ class Database:
         finally:
             conn.close()
 
-    def reset_reseller_plan_override(self, reseller_id: int, plan_id: str) -> dict:
-        """حذف سفارشی‌سازی نماینده و بازگشت به پلن اصلی"""
+    def reset_reseller_plan_override(self, reseller_id: int, plan_id: str, by_reseller: bool = True) -> dict:
+        """بازنشانی تنظیمات پلن نماینده؛ در صورت بازنشانی توسط نماینده، درصد تخفیف و قیمت عمده مدیر حفظ می‌شود"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("DELETE FROM reseller_plans WHERE reseller_id = ? AND plan_id = ?", (reseller_id, plan_id))
+            if by_reseller:
+                cursor.execute("""
+                    SELECT custom_name, custom_price, custom_data_limit, custom_duration, 
+                           custom_discount_percent, custom_wholesale_price 
+                    FROM reseller_plans 
+                    WHERE reseller_id = ? AND plan_id = ?
+                """, (reseller_id, plan_id))
+                row = cursor.fetchone()
+                
+                has_admin_overrides = False
+                if row:
+                    for k in ["custom_name", "custom_price", "custom_data_limit", "custom_duration", "custom_discount_percent", "custom_wholesale_price"]:
+                        if row[k] is not None:
+                            has_admin_overrides = True
+                            break
+                            
+                if has_admin_overrides:
+                    cursor.execute("""
+                        UPDATE reseller_plans 
+                        SET reseller_custom_name = NULL,
+                            reseller_custom_price = NULL,
+                            reseller_is_active = NULL,
+                            is_reseller_modified = 0,
+                            updated_at = ?
+                        WHERE reseller_id = ? AND plan_id = ?
+                    """, (get_now_iso(), reseller_id, plan_id))
+                else:
+                    cursor.execute("DELETE FROM reseller_plans WHERE reseller_id = ? AND plan_id = ?", (reseller_id, plan_id))
+            else:
+                cursor.execute("DELETE FROM reseller_plans WHERE reseller_id = ? AND plan_id = ?", (reseller_id, plan_id))
             conn.commit()
             return {"success": True}
         except Exception as e:

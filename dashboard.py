@@ -7903,6 +7903,34 @@ def admin_plans_page():
                 is_exclusive_reseller=is_exclusive_reseller
             )
             if res.get("success"):
+                new_pid = res.get("plan_id")
+                if target_type == "resellers" and allowed_resellers and new_pid:
+                    custom_discount_raw = request.form.get("custom_discount_percent", "").strip()
+                    custom_wholesale_raw = request.form.get("custom_wholesale_price", "").strip()
+                    try:
+                        custom_discount_percent = float(custom_discount_raw) if custom_discount_raw else None
+                    except ValueError:
+                        custom_discount_percent = None
+                    try:
+                        custom_wholesale_price = int(custom_wholesale_raw) if custom_wholesale_raw else None
+                    except ValueError:
+                        custom_wholesale_price = None
+
+                    if custom_discount_percent is not None or custom_wholesale_price is not None:
+                        for rid in allowed_resellers:
+                            db.update_reseller_plan_override(
+                                reseller_id=rid,
+                                plan_id=new_pid,
+                                custom_name=name,
+                                custom_price=price,
+                                custom_data_limit=data_limit,
+                                custom_duration=duration,
+                                custom_discount_percent=custom_discount_percent,
+                                custom_wholesale_price=custom_wholesale_price,
+                                is_active=True,
+                                preserve_specs=False,
+                                is_reseller=False
+                            )
                 flash("پلن جدید با موفقیت افزوده شد.", "success")
             else:
                 flash(f"خطا در افزودن پلن: {res.get('error')}", "danger")
@@ -8021,7 +8049,7 @@ def admin_reseller_plan_reset():
     reseller_id = int(request.form.get("reseller_id", 0))
     plan_id = request.form.get("plan_id", "").strip()
     if reseller_id > 0 and plan_id:
-        db.reset_reseller_plan_override(reseller_id, plan_id)
+        db.reset_reseller_plan_override(reseller_id, plan_id, by_reseller=False)
         flash("پلن نماینده با موفقیت به حالت پیش‌فرض بازگردانده شد.", "info")
     return redirect(url_for("admin_plans_page", tab="resellers", reseller_id=reseller_id))
 
@@ -8060,6 +8088,33 @@ def admin_reseller_add_dedicated_plan():
         is_exclusive_reseller=True
     )
     if res.get("success"):
+        new_pid = res.get("plan_id")
+        custom_discount_raw = request.form.get("custom_discount_percent", "").strip()
+        custom_wholesale_raw = request.form.get("custom_wholesale_price", "").strip()
+        try:
+            custom_discount_percent = float(custom_discount_raw) if custom_discount_raw else None
+        except ValueError:
+            custom_discount_percent = None
+        try:
+            custom_wholesale_price = int(custom_wholesale_raw) if custom_wholesale_raw else None
+        except ValueError:
+            custom_wholesale_price = None
+
+        if (custom_discount_percent is not None or custom_wholesale_price is not None) and new_pid:
+            for rid in selected_resellers:
+                db.update_reseller_plan_override(
+                    reseller_id=rid,
+                    plan_id=new_pid,
+                    custom_name=name,
+                    custom_price=price,
+                    custom_data_limit=data_limit,
+                    custom_duration=duration,
+                    custom_discount_percent=custom_discount_percent,
+                    custom_wholesale_price=custom_wholesale_price,
+                    is_active=True,
+                    preserve_specs=False,
+                    is_reseller=False
+                )
         flash("پلن اختصاصی جدید با موفقیت برای نماینده تعریف شد و از سایرین کاملاً مخفی خواهد بود.", "success")
     else:
         flash(f"خطا در ایجاد پلن اختصاصی: {res.get('error')}", "danger")
@@ -10628,7 +10683,8 @@ def reseller_plans():
                 custom_name=custom_name,
                 custom_price=custom_price,
                 is_active=is_active,
-                preserve_specs=True
+                preserve_specs=True,
+                is_reseller=True
             )
             if res.get("success"):
                 flash("تنظیمات پلن با موفقیت ذخیره شد.", "success")
@@ -10637,8 +10693,8 @@ def reseller_plans():
             return redirect(url_for("reseller_plans"))
 
         elif action == "reset_override" and plan_id:
-            db.reset_reseller_plan_override(reseller_id, plan_id)
-            flash("پلن به حالت پیش‌فرض پنل مدیریت بازگردانی شد.", "info")
+            db.reset_reseller_plan_override(reseller_id, plan_id, by_reseller=True)
+            flash("پلن با موفقیت به تنظیمات تعیین‌شده توسط مدیریت بازگردانی شد.", "info")
             return redirect(url_for("reseller_plans"))
 
     plans = db.get_reseller_plans(reseller_id)
