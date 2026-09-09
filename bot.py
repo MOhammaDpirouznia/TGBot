@@ -3685,7 +3685,9 @@ async def admin_order_pay_action_callback(update: Update, context: ContextTypes.
             r_plans = db.get_reseller_plans(r_id)
             r_sel_plan = next((p for p in r_plans if p.get("name") == plan_name or p.get("display_name") == plan_name), None)
             orig_p = r_sel_plan.get("display_price") or tx.get("amount", 0) if r_sel_plan else tx.get("amount", 0)
-            wh_p = r_sel_plan.get("wholesale_price") if r_sel_plan and r_sel_plan.get("wholesale_price") else int(orig_p * 0.8)
+            master_p = (r_sel_plan.get("master_price") or orig_p) if r_sel_plan else orig_p
+            r_discount = r_stats.get("discount_percent", 20)
+            wh_p = r_sel_plan.get("wholesale_price") if r_sel_plan and r_sel_plan.get("wholesale_price") else int(master_p * (100 - r_discount) / 100)
             if r_stats["balance"] < wh_p:
                 await query.answer(f"❌ موجودی کیف پول کافی نیست! نیاز: {wh_p:,} تومان", show_alert=True)
                 return

@@ -13322,9 +13322,9 @@ class Database:
 
             is_active = is_active_override if is_active_override is not None else p.get("is_active", True)
             
-            # قیمت تمام‌شده عمده برای نماینده بر اساس قیمت پلن اصلی یا سفارشی
-            base_calc_price = custom_price if (custom_price is not None and custom_price > 0) else master_price
-            wholesale_price = int(base_calc_price * (100 - discount_pct) / 100)
+            # قیمت تمام‌شده خرید عمده برای نماینده: همواره بر اساس قیمت پلن اصلی (تعریف‌شده توسط مدیر کل) و درصد تخفیف نماینده
+            wholesale_price = int(master_price * (100 - discount_pct) / 100)
+            profit = max(0, display_price - wholesale_price)
 
             is_dedicated = bool(p.get("allowed_resellers")) or bool(p.get("is_exclusive_reseller"))
 
@@ -13339,6 +13339,7 @@ class Database:
                 "display_price": display_price,
                 "custom_price": custom_price,
                 "wholesale_price": wholesale_price,
+                "profit": profit,
                 "master_data_limit": master_data_limit,
                 "display_data_limit": display_data_limit,
                 "data_limit": display_data_limit,
@@ -13376,7 +13377,9 @@ class Database:
                 custom_data_limit = ov.get("custom_data_limit") if ov.get("custom_data_limit") is not None else 30
                 custom_duration = ov.get("custom_duration") or 30
                 is_active = ov.get("is_active", True)
-                wholesale_price = int(custom_price * (100 - discount_pct) / 100)
+                master_p = p_meta.get("price") if (p_meta and p_meta.get("price") is not None) else (custom_price or 0)
+                wholesale_price = int(master_p * (100 - discount_pct) / 100)
+                profit = max(0, (custom_price or 0) - wholesale_price)
                 is_dedicated = bool(allowed) or bool(p_meta.get("is_exclusive_reseller"))
                 result.append({
                     "plan_id": pid_str,
@@ -13385,10 +13388,11 @@ class Database:
                     "master_name": custom_name,
                     "display_name": custom_name,
                     "custom_name": custom_name,
-                    "master_price": custom_price,
+                    "master_price": master_p,
                     "display_price": custom_price,
                     "custom_price": custom_price,
                     "wholesale_price": wholesale_price,
+                    "profit": profit,
                     "master_data_limit": custom_data_limit,
                     "display_data_limit": custom_data_limit,
                     "data_limit": custom_data_limit,

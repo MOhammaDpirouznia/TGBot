@@ -1262,8 +1262,8 @@ class ResellerBotInstance:
                 original_price = selected_plan.get("display_price") or selected_plan.get("price") if selected_plan else tx_data.get("amount", 0)
 
                 stats = db.get_reseller_stats(r_id)
-                discount = stats.get("discount_percent", 20)
-                wholesale_cost = selected_plan.get("wholesale_price") if selected_plan and selected_plan.get("wholesale_price") is not None else (original_price - int((original_price * discount) / 100))
+                master_base = (selected_plan.get("master_price") or original_price) if selected_plan else original_price
+                wholesale_cost = selected_plan.get("wholesale_price") if selected_plan and selected_plan.get("wholesale_price") is not None else (master_base - int((master_base * discount) / 100))
 
                 if stats["balance"] < wholesale_cost:
                     await query.answer(f"❌ موجودی کیف پول شما کافی نیست!\nموجودی: {stats['balance']:,} تومان | نیاز: {wholesale_cost:,} تومان", show_alert=True)

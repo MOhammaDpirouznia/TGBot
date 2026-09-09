@@ -9115,7 +9115,7 @@ def reseller_create_user():
 
         plan = plans[plan_key]
         original_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or 0
-        final_price = plan.get("wholesale_price") if plan.get("wholesale_price") is not None else int(original_price * (100 - discount) / 100)
+        final_price = plan.get("wholesale_price") if plan.get("wholesale_price") is not None else int((plan.get("master_price") or original_price) * (100 - discount) / 100)
 
         # بررسی موجودی نقدی + اعتبار مجاز برای خرید با توجه به منبع انتخابی
         credit_enabled = bool(reseller.get("credit_enabled")) or bool(stats.get("credit_enabled"))
@@ -9767,7 +9767,7 @@ def reseller_renew_user(sub_id: int):
     stats = db.get_reseller_stats(reseller_id) or {}
     discount = stats.get("discount_percent", reseller.get("discount_percent", 20))
     original_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or 0
-    final_price = plan.get("wholesale_price") if plan.get("wholesale_price") is not None else int(original_price * (100 - discount) / 100)
+    final_price = plan.get("wholesale_price") if plan.get("wholesale_price") is not None else int((plan.get("master_price") or original_price) * (100 - discount) / 100)
 
     total_purchasing_power = stats.get("total_purchasing_power", stats.get("balance", reseller.get("balance", 0)))
     if total_purchasing_power < final_price:
@@ -9968,7 +9968,7 @@ def reseller_subscriptions_bulk_renew():
                 p_limit = float(p_item.get("display_data_limit") if p_item.get("display_data_limit") is not None else p_item.get("data_limit", 30))
                 p_dur = int(p_item.get("display_duration") if p_item.get("display_duration") is not None else p_item.get("duration", 30))
                 orig_price = p_item.get("display_price") or p_item.get("price") or p_item.get("master_price") or 0
-                final_price = p_item.get("wholesale_price") if p_item.get("wholesale_price") is not None else int(orig_price * (100 - discount) / 100)
+                final_price = p_item.get("wholesale_price") if p_item.get("wholesale_price") is not None else int((p_item.get("master_price") or orig_price) * (100 - discount) / 100)
             else:
                 p_limit = float(sub.get("data_limit") or 30)
                 p_dur = int(sub.get("duration") or 30)
@@ -9982,7 +9982,7 @@ def reseller_subscriptions_bulk_renew():
             p_limit = float(p_item.get("display_data_limit") if p_item.get("display_data_limit") is not None else p_item.get("data_limit", 30))
             p_dur = int(p_item.get("display_duration") if p_item.get("display_duration") is not None else p_item.get("duration", 30))
             orig_price = p_item.get("display_price") or p_item.get("price") or p_item.get("master_price") or 0
-            final_price = p_item.get("wholesale_price") if p_item.get("wholesale_price") is not None else int(orig_price * (100 - discount) / 100)
+            final_price = p_item.get("wholesale_price") if p_item.get("wholesale_price") is not None else int((p_item.get("master_price") or orig_price) * (100 - discount) / 100)
 
         total_cost_required += final_price
 
@@ -10229,7 +10229,7 @@ def reseller_restore_user(sub_id: int):
     
     if plan:
         original_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or 0
-        final_price = plan.get("wholesale_price") if plan.get("wholesale_price") is not None else int(original_price * (100 - discount) / 100)
+        final_price = plan.get("wholesale_price") if plan.get("wholesale_price") is not None else int((plan.get("master_price") or original_price) * (100 - discount) / 100)
     else:
         final_price = sub.get("cost_paid") or 0
 
@@ -10582,12 +10582,31 @@ def reseller_plans():
         if action == "update_override" and plan_id:
             custom_name = request.form.get("custom_name", "").strip()
             custom_price_str = request.form.get("custom_price", "").strip()
+            custom_profit_str = request.form.get("custom_profit", "").strip()
             is_active = request.form.get("is_active") in ("on", "1", "true")
 
-            try:
-                custom_price = int(custom_price_str) if custom_price_str else None
-            except ValueError:
-                custom_price = None
+            plan = db.get_reseller_plan(reseller_id, plan_id)
+            wholesale_price = plan.get("wholesale_price", 0) if plan else 0
+
+            custom_price = None
+            # اگر هم سود و هم قیمت فروش ارسال شده باشد یا فقط قیمت فروش
+            if custom_price_str:
+                try:
+                    custom_price = int(custom_price_str)
+                    if custom_price < wholesale_price:
+                        flash(f"قیمت فروش ({custom_price:,} تومان) نمی‌تواند کمتر از قیمت خرید عمده شما ({wholesale_price:,} تومان) باشد.", "warning")
+                        return redirect(url_for("reseller_plans"))
+                except ValueError:
+                    custom_price = None
+            elif custom_profit_str:
+                try:
+                    custom_profit = int(custom_profit_str)
+                    if custom_profit < 0:
+                        flash("حاشیه سود نمی‌تواند منفی باشد.", "warning")
+                        return redirect(url_for("reseller_plans"))
+                    custom_price = wholesale_price + custom_profit
+                except ValueError:
+                    custom_price = None
 
             res = db.update_reseller_plan_override(
                 reseller_id=reseller_id,
@@ -11430,7 +11449,8 @@ def reseller_payment_approve(payment_id):
     # محاسبه هزینه خرید عمده نماینده با تخفیف
     stats = db.get_reseller_stats(reseller_id)
     discount = stats.get("discount_percent", 20)
-    wholesale_price = selected_plan.get("wholesale_price") if selected_plan and selected_plan.get("wholesale_price") is not None else (original_price - int((original_price * discount) / 100))
+    base_price = (selected_plan.get("master_price") or original_price) if selected_plan else original_price
+    wholesale_price = selected_plan.get("wholesale_price") if selected_plan and selected_plan.get("wholesale_price") is not None else int(base_price * (100 - discount) / 100)
 
     if stats["balance"] < wholesale_price:
         flash(f"موجودی کیف پول شما کافی نیست! موجودی: {stats['balance']:,} ت | مبلغ کسر: {wholesale_price:,} ت", "danger")
