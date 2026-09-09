@@ -523,6 +523,47 @@ def filter_diff_time(start_str, end_str):
         return ""
 
 
+@app.template_filter("field_display_name")
+def filter_field_display_name(field_name):
+    """ترجمه نام فیلدهای دیتابیس به عناوین خوانا و فارسی در سوابق تغییرات قبل و بعد"""
+    translations = {
+        "amount": "مبلغ (تومان)",
+        "tracking_code": "کد پیگیری / ارجاع",
+        "card_number": "شماره کارت مقصد",
+        "account_comment": "یادداشت و توضیحات",
+        "notes": "یادداشت و توضیحات",
+        "description": "شرح / توضیحات",
+        "plan_name": "نام پلن / بسته",
+        "status": "وضعیت تراکنش",
+        "is_deleted": "حذف نرم (سطل زباله)",
+        "account_name": "نام کاربری / اکانت",
+    }
+    return translations.get(str(field_name).strip(), str(field_name))
+
+
+@app.template_filter("format_audit_value")
+def filter_format_audit_value(val, field_name=""):
+    """قالب‌بندی خوانا و شکیل مقادیر در جدول مقایسه قبل و بعد"""
+    if val is None or str(val).strip() in ("", "None", "null"):
+        return "-"
+    s_val = str(val).strip()
+    if field_name == "amount":
+        try:
+            return f"{int(s_val):,} تومان"
+        except Exception:
+            return s_val
+    elif field_name == "status":
+        st_map = {
+            "pending": "در انتظار",
+            "approved": "تایید شده",
+            "completed": "تکمیل شده",
+            "rejected": "رد شده",
+            "revoked": "ابطال‌شده",
+        }
+        return st_map.get(s_val, s_val)
+    return s_val
+
+
 @app.template_filter("from_json")
 def filter_from_json(val):
     """تبدیل رشته JSON به دیکشنری در قالب‌های Jinja"""
@@ -4511,7 +4552,7 @@ def revoke_payment(payment_id):
     else:
         flash(f"تراکنش #{payment_id} با موفقیت باطل شد.", "success")
 
-    return redirect(url_for("payments"))
+    return redirect(request.referrer or url_for("payments"))
 
 
 @app.route("/admin/payments/bulk", methods=["POST"])
@@ -4681,7 +4722,7 @@ def edit_payment(payment_id):
     else:
         flash(f"خطا در ویرایش فیش: {res.get('error')}", "danger")
 
-    return redirect(url_for("payments"))
+    return redirect(request.referrer or url_for("payments"))
 
 
 @app.route("/payment/<int:payment_id>/delete", methods=["POST"])
@@ -5276,8 +5317,9 @@ def admin_subscription_renew(sub_id: int):
                     action_type="renew",
                     plan_name=plan_name,
                     amount=this_period_debt,
-                    notes=renewal_notes or None,
-                    created_by=session.get("username") or "admin"
+                    notes=renewal_notes or "ثبت بدهی هنگام تمدید توسط مدیریت",
+                    created_by=session.get("username") or "admin",
+                    previous_debt=old_debt
                 )
             except Exception as ex_rec:
                 logger.error(f"Error recording debt record in admin renew: {ex_rec}")
@@ -5317,8 +5359,9 @@ def admin_subscription_renew(sub_id: int):
                     action_type="renew",
                     plan_name=plan_name,
                     amount=this_period_debt,
-                    notes=renewal_notes or None,
-                    created_by=session.get("username") or "admin"
+                    notes=renewal_notes or "ثبت بدهی تمدید در صف توسط مدیریت",
+                    created_by=session.get("username") or "admin",
+                    previous_debt=old_debt
                 )
             except Exception as ex_rec:
                 logger.error(f"Error recording debt record in queue renew: {ex_rec}")
@@ -5777,6 +5820,14 @@ def admin_subscription_edit(sub_id):
         debt_created, now, sub_id
     ))
 
+    # در صورت تسویه وضعیت مالی، بستن فاکتورهای باز
+    if payment_status == 'paid' or debt_amount == 0:
+        cursor.execute("""
+            UPDATE customer_debt_records
+            SET status = 'paid', paid_at = ?, settled_by = ?, updated_at = ?
+            WHERE subscription_id = ? AND status = 'unpaid'
+        """, (now, session.get("username") or "admin", now, sub_id))
+
     # اگر کاربر در جدول users باشد، بروزرسانی نام، شماره تلفن و UUID
     if telegram_id and telegram_id > 0:
         cursor.execute("SELECT * FROM users WHERE telegram_id=?", (telegram_id,))
@@ -6025,6 +6076,19 @@ def admin_trash_bulk():
                     new_data_used=h_res.get("data_used")
                 )
                 success_count += 1
+        db.add_system_log(
+            category="admin",
+            action="bulk_restore",
+            title=f"بازگردانی گروهی {success_count} اشتراک از سطل زباله",
+            description=f"تعداد {success_count} اشتراک به صورت گروهی توسط مدیر ({session.get('username')}) از سطل زباله بازیابی و در هیدیفای فعال شدند.",
+            actor_type="admin",
+            actor_name=session.get("username", "مدیر سیستم"),
+            target_type="subscription",
+            target_name=f"{success_count} اشتراک",
+            details={"sub_ids": sub_ids, "success_count": success_count},
+            level="success",
+            ip_address=request.remote_addr
+        )
         flash(f"{success_count} اشتراک با موفقیت از سطل زباله بازگردانی شدند و در هیدیفای فعال گردیدند.", "success")
     elif action == "purge":
         for sub_id in sub_ids:
@@ -6042,6 +6106,19 @@ def admin_trash_bulk():
             del_res = db.purge_subscription_permanently(sub_id)
             if del_res.get("success"):
                 success_count += 1
+        db.add_system_log(
+            category="admin",
+            action="bulk_purge",
+            title=f"حذف دائمی گروهی {success_count} اشتراک از سطل زباله",
+            description=f"تعداد {success_count} اشتراک به صورت گروهی توسط مدیر ({session.get('username')}) برای همیشه از هیدیفای و سطل زباله دیتابیس پاکسازی شدند.",
+            actor_type="admin",
+            actor_name=session.get("username", "مدیر سیستم"),
+            target_type="subscription",
+            target_name=f"{success_count} اشتراک",
+            details={"sub_ids": sub_ids, "success_count": success_count},
+            level="danger",
+            ip_address=request.remote_addr
+        )
         flash(f"{success_count} اشتراک برای همیشه از سطل زباله و پنل هیدیفای حذف گردیدند.", "warning")
 
     return redirect(url_for("subscriptions", status="deleted"))
@@ -6222,6 +6299,59 @@ def admin_reseller_export_payments(reseller_id):
         mimetype="text/csv; charset=utf-8",
         headers={"Content-Disposition": f"attachment;filename={filename}"}
     )
+
+
+@app.route("/admin/reseller/wallet-tx/<int:rtx_id>/edit", methods=["POST"])
+@super_admin_required
+def admin_reseller_wallet_tx_edit(rtx_id):
+    """ویرایش تراکنش کیف پول نماینده توسط مدیر ارشد با ثبت لاگ و تعدیل مالی"""
+    amount = request.form.get("amount", "").strip()
+    description = request.form.get("description", "").strip()
+    plan_name = request.form.get("plan_name", "").strip()
+    reason = request.form.get("reason", "").strip() or "ویرایش تراکنش کیف پول نماینده توسط مدیریت"
+
+    admin_name = session.get("name") or session.get("username") or "مدیر ارشد"
+    admin_id = session.get("admin_id")
+
+    res = db.update_reseller_wallet_transaction(
+        rtx_id=rtx_id,
+        admin_id=admin_id,
+        admin_name=admin_name,
+        amount=int(amount) if amount.isdigit() else None,
+        description=description,
+        plan_name=plan_name,
+        reason=reason
+    )
+
+    if res.get("success"):
+        flash(f"تراکنش کیف پول #{rtx_id} با موفقیت ویرایش شد و مبالغ در سیستم مالی و موجودی نماینده تعدیل گردید.", "success")
+    else:
+        flash(f"خطا در ویرایش تراکنش کیف پول: {res.get('error')}", "danger")
+
+    return redirect(request.referrer or url_for("admin_reseller_payments", reseller_id=res.get("reseller_id") or 1))
+
+
+@app.route("/admin/reseller/wallet-tx/<int:rtx_id>/revoke", methods=["POST"])
+@super_admin_required
+def admin_reseller_wallet_tx_revoke(rtx_id):
+    """ابطال تراکنش کیف پول نماینده توسط مدیر ارشد با کسر/استرداد خودکار از کیف پول"""
+    reason = request.form.get("reason", "").strip() or "ابطال تراکنش کیف پول نماینده توسط مدیریت"
+    admin_name = session.get("name") or session.get("username") or "مدیر ارشد"
+    admin_id = session.get("admin_id")
+
+    res = db.revoke_reseller_wallet_transaction(
+        rtx_id=rtx_id,
+        admin_id=admin_id,
+        admin_name=admin_name,
+        reason=reason
+    )
+
+    if res.get("success"):
+        flash(f"تراکنش کیف پول #{rtx_id} با موفقیت باطل شد و اثر مالی آن روی موجودی کیف پول نماینده اعمال گردید.", "warning")
+    else:
+        flash(f"خطا در ابطال تراکنش کیف پول: {res.get('error')}", "danger")
+
+    return redirect(request.referrer or url_for("admin_reseller_payments", reseller_id=res.get("reseller_id") or 1))
 
 
 @app.route("/admin/reseller/<int:reseller_id>/add-balance", methods=["POST"])
@@ -8189,9 +8319,274 @@ def export_transactions():
 @app.route("/logs")
 @permission_required("servers_view")
 def admin_logs():
-    """مشاهده لاگ‌های زنده سرور"""
+    """مشاهده وضعیت سرورها، پایش عملکرد، تحلیل مغایرت‌ها و گزارش جامع لاگ‌های وقایع سیستم"""
     health = hidify_sync_ping()
-    return render_template("logs.html", health=health)
+    
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 50, type=int)
+    category = request.args.get("category", "all").strip()
+    action = request.args.get("action", "all").strip()
+    level = request.args.get("level", "all").strip()
+    time_range = request.args.get("time_range", "all").strip()
+    search = request.args.get("search", "").strip()
+
+    logs, total_count = db.get_system_logs(
+        page=page,
+        per_page=per_page,
+        category=category,
+        action=action,
+        level=level,
+        search=search,
+        time_range=time_range
+    )
+    stats = db.get_system_logs_stats()
+    total_pages = max(1, (total_count + per_page - 1) // per_page)
+    
+    # آمار تطبیقی دیتابیس محلی و سرور هیدیفای
+    db_active_count = 0
+    db_deleted_count = 0
+    try:
+        conn = db.get_connection()
+        db_active_count = conn.execute("SELECT COUNT(*) FROM subscriptions WHERE is_deleted = 0").fetchone()[0]
+        db_deleted_count = conn.execute("SELECT COUNT(*) FROM subscriptions WHERE is_deleted = 1").fetchone()[0]
+        conn.close()
+    except Exception:
+        pass
+        
+    hiddify_count = health.get("users_count", 0) if health.get("online") else 0
+    count_diff = db_active_count - hiddify_count
+
+    return render_template(
+        "logs.html",
+        health=health,
+        logs=logs,
+        stats=stats,
+        page=page,
+        per_page=per_page,
+        total_count=total_count,
+        total_pages=total_pages,
+        category=category,
+        action=action,
+        level=level,
+        time_range=time_range,
+        search=search,
+        db_active_count=db_active_count,
+        db_deleted_count=db_deleted_count,
+        hiddify_count=hiddify_count,
+        count_diff=count_diff
+    )
+
+
+@app.route("/admin/logs/audit-diff", methods=["GET", "POST"])
+@permission_required("servers_view")
+def admin_logs_audit_diff():
+    """
+    تحلیل هوشمند و کشف مغایرت‌های کاربران سرور هیدیفای با دیتابیس محلی
+    شناسایی دقیق اکانت‌هایی که در دیتابیس فعال هستند اما در پنل هیدیفای مفقود شده‌اند (یا برعکس)
+    """
+    try:
+        # ۱. دریافت لیست کاربران از سرور هیدیفای
+        h_users = hidify_sync_request("GET", "/admin/user/")
+        if isinstance(h_users, dict) and "error" in h_users:
+            err_msg = f"خطا در ارتباط با هیدیفای: {h_users.get('error')}"
+            if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.args.get("format") == "json":
+                return jsonify({"success": False, "error": err_msg}), 500
+            flash(err_msg, "danger")
+            return redirect(url_for("admin_logs"))
+
+        if not isinstance(h_users, list):
+            h_users = []
+
+        h_map = {}
+        for u in h_users:
+            u_uuid = str(u.get("uuid") or "").strip().lower()
+            if u_uuid:
+                h_map[u_uuid] = u
+
+        # ۲. دریافت اشتراک‌های فعال از دیتابیس محلی
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, account_name, hidify_uuid, status, duration, data_limit, data_used, reseller_id, created_at, expire_date FROM subscriptions WHERE is_deleted = 0")
+        db_subs = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+
+        db_map = {}
+        missing_in_hiddify = []
+        for s in db_subs:
+            s_uuid = str(s.get("hidify_uuid") or "").strip().lower()
+            if s_uuid:
+                db_map[s_uuid] = s
+                if s_uuid not in h_map:
+                    missing_in_hiddify.append({
+                        "id": s["id"],
+                        "name": s.get("account_name"),
+                        "uuid": s.get("hidify_uuid"),
+                        "status": s.get("status"),
+                        "expire_date": s.get("expire_date"),
+                        "reseller_id": s.get("reseller_id")
+                    })
+
+        missing_in_db = []
+        for u_uuid, u in h_map.items():
+            if u_uuid not in db_map:
+                missing_in_db.append({
+                    "name": u.get("name"),
+                    "uuid": u_uuid,
+                    "usage_limit_gb": u.get("usage_limit_GB"),
+                    "current_usage_gb": u.get("current_usage_GB"),
+                    "enable": u.get("enable")
+                })
+
+        # ۳. ثبت لاگ حسابرسی
+        log_title = f"تحلیل مغایرت: {len(missing_in_hiddify)} اشتراک مفقود در هیدیفای" if missing_in_hiddify else "تحلیل مغایرت: تطابق کامل هیدیفای و دیتابیس"
+        log_level = "warning" if missing_in_hiddify else "success"
+        log_desc = (
+            f"بررسی مغایرت انجام شد. تعداد کل در دیتابیس: {len(db_subs):,} | "
+            f"تعداد در هیدیفای: {len(h_map):,} | "
+            f"مفقود در هیدیفای: {len(missing_in_hiddify):,} | "
+            f"ناشناخته در هیدیفای: {len(missing_in_db):,}"
+        )
+
+        db.add_system_log(
+            category="system",
+            action="sync_diff",
+            title=log_title,
+            description=log_desc,
+            actor_type="admin",
+            actor_name=session.get("username", "مدیر سیستم"),
+            target_type="system",
+            target_name="هیدیفای vs دیتابیس",
+            details={
+                "db_active_count": len(db_subs),
+                "hiddify_count": len(h_map),
+                "missing_in_hiddify_count": len(missing_in_hiddify),
+                "missing_in_db_count": len(missing_in_db),
+                "missing_in_hiddify_sample": missing_in_hiddify[:50],
+                "missing_in_db_sample": missing_in_db[:50]
+            },
+            level=log_level,
+            ip_address=request.remote_addr
+        )
+
+        resp_data = {
+            "success": True,
+            "db_count": len(db_subs),
+            "hiddify_count": len(h_map),
+            "missing_in_hiddify_total": len(missing_in_hiddify),
+            "missing_in_hiddify": missing_in_hiddify[:100],
+            "missing_in_db_total": len(missing_in_db),
+            "missing_in_db": missing_in_db[:100],
+            "message": log_desc
+        }
+
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.args.get("format") == "json":
+            return jsonify(resp_data)
+
+        flash(f"تحلیل مغایرت با موفقیت انجام شد: {len(missing_in_hiddify):,} کاربر دیتابیس در پنل هیدیفای یافت نشدند.", "warning" if missing_in_hiddify else "success")
+        return redirect(url_for("admin_logs"))
+
+    except Exception as e:
+        logger.error(f"Error in admin_logs_audit_diff: {e}")
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.args.get("format") == "json":
+            return jsonify({"success": False, "error": str(e)}), 500
+        flash(f"خطا در تحلیل مغایرت: {e}", "danger")
+        return redirect(url_for("admin_logs"))
+
+
+@app.route("/admin/logs/export")
+@permission_required("servers_view")
+def admin_logs_export():
+    """خروجی فایل اکسل/CSV از لاگ‌های فیلتر شده با کدگذاری استاندارد UTF-8 BOM"""
+    category = request.args.get("category", "all").strip()
+    action = request.args.get("action", "all").strip()
+    level = request.args.get("level", "all").strip()
+    time_range = request.args.get("time_range", "all").strip()
+    search = request.args.get("search", "").strip()
+
+    logs, _ = db.get_system_logs(
+        page=1,
+        per_page=10000,
+        category=category,
+        action=action,
+        level=level,
+        search=search,
+        time_range=time_range
+    )
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow([
+        "شناسه",
+        "تاریخ و ساعت شمسی",
+        "تاریخ میلادی",
+        "دسته‌بندی",
+        "نوع عملیات",
+        "سطح اهمیت",
+        "نوع عامل",
+        "نام عامل",
+        "نوع هدف",
+        "شناسه هدف",
+        "نام هدف",
+        "عنوان رویداد",
+        "شرح کامل",
+        "آدرس IP"
+    ])
+
+    cat_names = {
+        "system": "سیستم و خودکار",
+        "admin": "مدیران",
+        "reseller": "نمایندگان",
+        "user_bot": "کاربران و ربات",
+        "security": "امنیت و دسترسی"
+    }
+
+    for lg in logs:
+        c_at = lg.get("created_at") or ""
+        shamsi_dt = gregorian_to_shamsi_full(c_at) if c_at else "-"
+        writer.writerow([
+            lg.get("id"),
+            shamsi_dt,
+            c_at[:19].replace("T", " "),
+            cat_names.get(lg.get("category"), lg.get("category")),
+            lg.get("action") or "-",
+            lg.get("level") or "-",
+            lg.get("actor_type") or "-",
+            lg.get("actor_name") or "-",
+            lg.get("target_type") or "-",
+            lg.get("target_id") or "-",
+            lg.get("target_name") or "-",
+            lg.get("title") or "-",
+            lg.get("description") or "-",
+            lg.get("ip_address") or "-"
+        ])
+
+    csv_data = "\ufeff" + output.getvalue()
+    return Response(
+        csv_data.encode("utf-8-sig"),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment;filename=system_activity_logs.csv"}
+    )
+
+
+@app.route("/admin/logs/clear", methods=["POST"])
+@super_admin_required
+def admin_logs_clear():
+    """پاکسازی لاگ‌های قدیمی سیستم توسط مدیر ارشد"""
+    days = request.form.get("days", 90, type=int)
+    deleted = db.clear_old_system_logs(days=days)
+    db.add_system_log(
+        category="system",
+        action="purge_logs",
+        title=f"پاکسازی {deleted} لاگ قدیمی سیستم",
+        description=f"تعداد {deleted} رکورد لاگ قدیمی‌تر از {days} روز توسط مدیر ارشد ({session.get('username')}) پاکسازی گردید.",
+        actor_type="admin",
+        actor_name=session.get("username", "admin"),
+        level="info",
+        ip_address=request.remote_addr
+    )
+    flash(f"{deleted:,} لاگ قدیمی‌تر از {days} روز با موفقیت پاکسازی شد.", "success")
+    return redirect(url_for("admin_logs"))
 
 
 @app.route("/settings", methods=["GET", "POST"])
@@ -8866,7 +9261,8 @@ def reseller_create_user():
                     plan_name=plan_title,
                     amount=debt_amount,
                     notes=debt_notes or "ثبت بدهی هنگام ساخت اشتراک توسط نماینده",
-                    created_by=reseller_creator
+                    created_by=reseller_creator,
+                    previous_debt=0
                 )
             except Exception as e_rec:
                 logger.error(f"Error logging customer debt record in reseller_create_user: {e_rec}")
@@ -8932,6 +9328,34 @@ def reseller_create_user():
             source_msg = f"مبلغ {final_price:,} تومان از کیف پول نقدی شما کسر گردید."
         else:
             source_msg = f"مبلغ {final_price:,} تومان کسر گردید."
+
+        # ثبت رویداد در سامانه لاگ و حسابرسی
+        try:
+            db.add_system_log(
+                category="reseller",
+                action="create",
+                title=f"ایجاد اشتراک «{account_name}» توسط نماینده",
+                description=f"اشتراک «{account_name}» با بسته {plan_title} ({data_limit_gb}GB / {duration_days} روز) توسط نماینده ({reseller_creator}) صادر گردید. هزینه کسر شده: {final_price:,} تومان.{debt_msg}",
+                actor_type="reseller",
+                actor_id=reseller_id,
+                actor_name=reseller_creator,
+                target_type="subscription",
+                target_id=sub_id,
+                target_name=account_name,
+                details={
+                    "reseller_id": reseller_id,
+                    "plan_title": plan_title,
+                    "data_limit_gb": data_limit_gb,
+                    "duration_days": duration_days,
+                    "final_price": final_price,
+                    "payment_source": actual_payment_source,
+                    "hidify_uuid": user_uuid
+                },
+                level="success",
+                ip_address=request.remote_addr
+            )
+        except Exception:
+            pass
 
         flash(f"اشتراک «{account_name}» با موفقیت ساخته شد و {source_msg}{debt_msg}", "success")
 
@@ -9422,7 +9846,8 @@ def reseller_renew_user(sub_id: int):
                     plan_name=plan_title,
                     amount=debt_amount,
                     notes=renewal_notes or "ثبت بدهی هنگام تمدید توسط نماینده",
-                    created_by=creator_user
+                    created_by=creator_user,
+                    previous_debt=old_debt
                 )
             except Exception as e_rec:
                 logger.error(f"Error logging customer debt record in reseller_renew_user: {e_rec}")
@@ -9945,6 +10370,20 @@ def reseller_trash_bulk():
         if r_after:
             session["balance"] = r_after.get("balance", 0)
 
+        db.add_system_log(
+            category="reseller",
+            action="bulk_restore",
+            title=f"بازگردانی گروهی {success_count} اشتراک توسط نماینده",
+            description=f"تعداد {success_count} اشتراک به صورت گروهی توسط نماینده (#{reseller_id}) از سطل زباله بازیابی شدند.",
+            actor_type="reseller",
+            actor_id=reseller_id,
+            actor_name=f"نماینده #{reseller_id}",
+            target_type="subscription",
+            target_name=f"{success_count} اشتراک",
+            details={"sub_ids": sub_ids, "success_count": success_count, "reseller_id": reseller_id},
+            level="success",
+            ip_address=request.remote_addr
+        )
         flash(f"{success_count} اشتراک با موفقیت از سطل زباله بازگردانی و در هیدیفای فعال شدند.", "success")
     elif action == "purge":
         for sub_id in sub_ids:
@@ -9963,6 +10402,20 @@ def reseller_trash_bulk():
             if del_res.get("success"):
                 success_count += 1
 
+        db.add_system_log(
+            category="reseller",
+            action="bulk_purge",
+            title=f"حذف دائمی گروهی {success_count} اشتراک توسط نماینده",
+            description=f"تعداد {success_count} اشتراک به صورت گروهی توسط نماینده (#{reseller_id}) برای همیشه از هیدیفای و سطل زباله پاکسازی شدند.",
+            actor_type="reseller",
+            actor_id=reseller_id,
+            actor_name=f"نماینده #{reseller_id}",
+            target_type="subscription",
+            target_name=f"{success_count} اشتراک",
+            details={"sub_ids": sub_ids, "success_count": success_count, "reseller_id": reseller_id},
+            level="danger",
+            ip_address=request.remote_addr
+        )
         flash(f"{success_count} اشتراک برای همیشه از سطل زباله و پنل هیدیفای حذف گردیدند.", "warning")
 
     return redirect(get_redirect_target("reseller_users", status="deleted"))
@@ -11986,8 +12439,9 @@ def admin_create_customer():
                     action_type="create",
                     plan_name=plan_name,
                     amount=debt_amount,
-                    notes=debt_notes or None,
-                    created_by=admin_creator
+                    notes=debt_notes or "ثبت بدهی هنگام ساخت اشتراک توسط مدیریت",
+                    created_by=admin_creator,
+                    previous_debt=0
                 )
             except Exception as e_rec:
                 logger.error(f"Error logging initial customer debt record: {e_rec}")
@@ -12080,6 +12534,33 @@ def admin_create_customer():
                 "🎉 **اشتراک جدید شما آماده شد!**",
                 f"📋 پلن: **{plan_name}**\n📊 حجم: **{data_limit} گیگابایت**\n⏰ مدت: **{duration} روز**"
             )
+
+        # ثبت رویداد در سامانه لاگ و حسابرسی
+        try:
+            db.add_system_log(
+                category="admin",
+                action="create",
+                title=f"ایجاد اشتراک جدید «{account_name}»",
+                description=f"اشتراک «{account_name}» با بسته {plan_name} ({data_limit} گیگابایت / {duration} روز) توسط مدیر ({admin_creator}) ایجاد گردید.{debt_info_text}",
+                actor_type="admin",
+                actor_name=admin_creator,
+                target_type="subscription",
+                target_id=sub_id,
+                target_name=account_name,
+                details={
+                    "plan_name": plan_name,
+                    "data_limit": data_limit,
+                    "duration": duration,
+                    "price": price,
+                    "payment_method": payment_method,
+                    "hidify_uuid": user_uuid,
+                    "telegram_id": telegram_id
+                },
+                level="success",
+                ip_address=request.remote_addr
+            )
+        except Exception:
+            pass
 
         flash(f"✅ اشتراک «{account_name}» با موفقیت ایجاد شد!{debt_info_text}", "success")
         return render_template(

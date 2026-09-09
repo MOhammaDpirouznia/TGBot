@@ -446,10 +446,36 @@ class Database:
             )
         """)
 
-        # مایگریشن خودکار ستون‌های جدید
+        # جدول ثبت وقایع و حسابرسی جامع سیستم (System Activity & Audit Logs)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS system_activity_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category TEXT NOT NULL,          -- 'system', 'admin', 'reseller', 'user_bot', 'security'
+                action TEXT NOT NULL,            -- 'purge', 'delete', 'restore', 'create', 'update', 'renew', 'sync', 'sync_diff', 'login', 'backup', 'settings_change', 'bulk_action', 'status_change', etc.
+                title TEXT NOT NULL,             -- خلاصه عنوان عملیات
+                description TEXT,                -- شرح تفصیلی رویداد
+                actor_type TEXT NOT NULL,        -- 'system', 'admin', 'reseller', 'bot', 'user'
+                actor_id INTEGER,               -- شناسه عامل
+                actor_name TEXT,                 -- نام یا نام کاربری عامل
+                target_type TEXT,                -- موجودیت هدف: 'subscription', 'user', 'reseller', 'setting', 'payment', 'system'
+                target_id INTEGER,               -- شناسه هدف (مثل sub_id)
+                target_name TEXT,                -- عنوان یا نام هدف (مثل account_name یا UUID)
+                details TEXT,                    -- اطلاعات جزئی با فرمت JSON
+                level TEXT DEFAULT 'info',       -- 'info', 'success', 'warning', 'danger'
+                ip_address TEXT,                 -- آدرس IP عامل در صورت وجود
+                created_at TEXT NOT NULL         -- زمان ایزو تهران
+            )
+        """)
+
+        # مایگریشن خودکار ایندکس‌ها و ستون‌های جدید
         try:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_login_logs_token ON login_logs(session_token)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_login_logs_user_active ON login_logs(user_type, user_id, is_active)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON system_activity_logs(created_at DESC)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_activity_logs_category ON system_activity_logs(category)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_activity_logs_action ON system_activity_logs(action)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_activity_logs_actor ON system_activity_logs(actor_type, actor_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_activity_logs_target ON system_activity_logs(target_type, target_id)")
         except Exception:
             pass
 
@@ -475,6 +501,26 @@ class Database:
 
         try:
             cursor.execute("ALTER TABLE transactions ADD COLUMN card_number TEXT")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN is_edited INTEGER DEFAULT 0")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN edited_by TEXT")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN edited_at TEXT")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN edit_reason TEXT")
         except Exception:
             pass
 
@@ -1185,6 +1231,15 @@ class Database:
             "ALTER TABLE reseller_transactions ADD COLUMN selling_price INTEGER DEFAULT 0",
             "ALTER TABLE reseller_transactions ADD COLUMN profit_margin INTEGER DEFAULT 0",
             "ALTER TABLE reseller_transactions ADD COLUMN created_by TEXT",
+            "ALTER TABLE reseller_transactions ADD COLUMN status TEXT DEFAULT 'completed'",
+            "ALTER TABLE reseller_transactions ADD COLUMN is_edited INTEGER DEFAULT 0",
+            "ALTER TABLE reseller_transactions ADD COLUMN edited_by TEXT",
+            "ALTER TABLE reseller_transactions ADD COLUMN edited_at TEXT",
+            "ALTER TABLE reseller_transactions ADD COLUMN edit_reason TEXT",
+            "ALTER TABLE reseller_transactions ADD COLUMN is_revoked INTEGER DEFAULT 0",
+            "ALTER TABLE reseller_transactions ADD COLUMN revoked_by TEXT",
+            "ALTER TABLE reseller_transactions ADD COLUMN revoked_at TEXT",
+            "ALTER TABLE reseller_transactions ADD COLUMN revoke_reason TEXT",
             "ALTER TABLE subscriptions ADD COLUMN last_renewed_by TEXT",
             "ALTER TABLE accounting_records ADD COLUMN is_edited INTEGER DEFAULT 0",
             "ALTER TABLE accounting_records ADD COLUMN edited_by TEXT",
@@ -1197,6 +1252,25 @@ class Database:
                 cursor.execute(col_sql)
             except Exception:
                 pass
+
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS reseller_transaction_audit_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    reseller_transaction_id INTEGER NOT NULL,
+                    admin_id INTEGER,
+                    admin_name TEXT,
+                    action TEXT NOT NULL,
+                    field_name TEXT,
+                    old_value TEXT,
+                    new_value TEXT,
+                    reason TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (reseller_transaction_id) REFERENCES reseller_transactions(id)
+                )
+            """)
+        except Exception:
+            pass
 
         try:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sub_queue_sub_order ON subscription_queue(subscription_id, status, queue_order)")
@@ -1256,6 +1330,12 @@ class Database:
             self.auto_restore_full()
         except Exception as e:
             logger.warning(f"Initial auto_restore_full check: {e}")
+
+        # خودترمیمی و اصلاح خودکار هرگونه انحراف یا خطای محاسباتی در رسیدها و بدهی‌ها
+        try:
+            self.repair_customer_debt_records()
+        except Exception as e:
+            logger.warning(f"Initial repair_customer_debt_records check: {e}")
 
     def export_full_backup_json(self) -> dict:
         """پشتیبان‌گیری کامل از تمام جداول، کاربران، پلن‌ها، کارت‌ها، تنظیمات، تخفیف‌ها و نمایندگان در قالب یک فایل JSON پایدار"""
@@ -2558,7 +2638,7 @@ class Database:
 
     def revoke_transaction(self, tx_id: int, admin_name: str, admin_id: int = None, reason: str = "", rollback_sub_action: str = "keep") -> dict:
         """
-        ابطال تراکنش توسط مدیر ارشد با ثبت تاریخچه و امکان رول‌بک اشتراک
+        ابطال تراکنش توسط مدیر ارشد با ثبت تاریخچه، کسر از درآمد، اصلاح تراز مالی نماینده و امکان رول‌بک اشتراک
         rollback_sub_action: 'keep', 'disable', 'delete'
         """
         conn = self.get_connection()
@@ -2568,6 +2648,7 @@ class Database:
             if not tx:
                 return {"success": False, "error": "تراکنش یافت نشد."}
 
+            tx = dict(tx)
             if tx["status"] == "revoked":
                 return {"success": False, "error": "این تراکنش قبلاً باطل شده است."}
 
@@ -2588,7 +2669,47 @@ class Database:
                 VALUES (?, ?, ?, 'revoke', 'status', ?, 'revoked', ?, ?)
             """, (tx_id, admin_id, admin_name, old_status, reason, now_iso))
 
-            # ۳. یافتن اشتراک مرتبط
+            # ۳. در صورت تایید قبلی فیش، اصلاح و بازنگری در سیستم مالی:
+            if old_status in ("approved", "completed"):
+                r_id = tx["reseller_id"]
+                is_bundle = (tx.get("gateway") == "bundle_reseller" or str(tx.get("order_id") or "").startswith("R_BUNDLE"))
+                if r_id and is_bundle:
+                    # یافتن تراکنش واریز بسته اعتباری
+                    r_tx = cursor.execute("""
+                        SELECT id, amount FROM reseller_transactions 
+                        WHERE reseller_id=? AND (description LIKE ? OR plan_name=?) AND type='deposit'
+                        ORDER BY id DESC LIMIT 1
+                    """, (r_id, f"%{tx['order_id']}%", tx.get("plan_name"))).fetchone()
+                    credit_deduct = r_tx["amount"] if r_tx else (tx["amount"] or 0)
+                    
+                    cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (credit_deduct, now_iso, r_id))
+                    
+                    if r_tx:
+                        cursor.execute("""
+                            UPDATE reseller_transactions
+                            SET status='revoked', is_revoked=1, revoked_by=?, revoked_at=?, revoke_reason=?
+                            WHERE id=?
+                        """, (admin_name, now_iso, reason, r_tx["id"]))
+                        
+                        cursor.execute("""
+                            INSERT INTO reseller_transaction_audit_logs
+                            (reseller_transaction_id, admin_id, admin_name, action, field_name, old_value, new_value, reason, created_at)
+                            VALUES (?, ?, ?, 'revoke', 'status', 'active', 'revoked', ?, ?)
+                        """, (r_tx["id"], admin_id, admin_name, reason, now_iso))
+
+                # ابطال یا خنثی‌سازی سند در سیستم حسابداری
+                try:
+                    cursor.execute("""
+                        UPDATE accounting_records
+                        SET amount = 0, is_edited = 1, edited_by = ?, edited_at = ?,
+                            description = COALESCE(description, '') || ' [باطل شده توسط مدیریت]'
+                        WHERE (ref_type = 'transaction' AND ref_id = ?)
+                           OR title LIKE ?
+                    """, (admin_name, now_iso, str(tx_id), f"%{tx['order_id']}%"))
+                except Exception:
+                    pass
+
+            # ۴. یافتن اشتراک مرتبط
             sub_id = tx["subscription_id"]
             associated_sub = None
             if sub_id:
@@ -2614,7 +2735,7 @@ class Database:
             conn.close()
 
     def update_transaction_details(self, tx_id: int, admin_id: int, admin_name: str, amount: int = None, tracking_code: str = None, card_number: str = None, notes: str = None, reason: str = "") -> dict:
-        """ویرایش مشخصات فیش با ثبت دقیق لاگ حسابرسی برای هر فیلد تغییر یافته"""
+        """ویرایش مشخصات فیش با ثبت دقیق لاگ حسابرسی (قبل و بعد)، برچسب ویرایش، و اعمال تغییرات مالی"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -2622,8 +2743,10 @@ class Database:
             if not tx:
                 return {"success": False, "error": "تراکنش یافت نشد."}
 
+            tx = dict(tx)
             now_iso = get_now_iso()
             changes = []
+            int_amt = None
 
             fields_to_update = {}
             if amount is not None:
@@ -2650,11 +2773,41 @@ class Database:
             if not fields_to_update:
                 return {"success": True, "message": "هیچ تغییری اعمال نشد."}
 
+            fields_to_update["is_edited"] = 1
+            fields_to_update["edited_by"] = admin_name
+            fields_to_update["edited_at"] = now_iso
+            fields_to_update["edit_reason"] = reason
             fields_to_update["updated_at"] = now_iso
+
             set_clause = ", ".join([f"{k}=?" for k in fields_to_update.keys()])
             values = list(fields_to_update.values()) + [tx_id]
 
             cursor.execute(f"UPDATE transactions SET {set_clause} WHERE id=?", values)
+
+            # در صورت تغییر مبلغ فیش‌های تایید شده، اعمال تراز در حسابداری و تراز کیف پول نماینده
+            if int_amt is not None and tx["status"] in ("approved", "completed"):
+                delta = int_amt - tx["amount"]
+                r_id = tx["reseller_id"]
+                is_bundle = (tx.get("gateway") == "bundle_reseller" or str(tx.get("order_id") or "").startswith("R_BUNDLE"))
+                if r_id and is_bundle and delta != 0:
+                    cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at=? WHERE id=?", (delta, now_iso, r_id))
+                    t_type = "deposit" if delta > 0 else "refund"
+                    t_desc = f"تعدیل موجودی به علت ویرایش مبلغ سفارش #{tx['order_id']} توسط مدیریت ({delta:+,} تومان)"
+                    cursor.execute("""
+                        INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
+                        VALUES (?, ?, ?, ?, '-', ?, ?)
+                    """, (r_id, t_type, abs(delta), tx.get("plan_name"), t_desc, now_iso))
+
+                # به‌روزرسانی سند در حسابداری
+                try:
+                    cursor.execute("""
+                        UPDATE accounting_records
+                        SET amount = ?, is_edited = 1, edited_by = ?, edited_at = ?
+                        WHERE (ref_type = 'transaction' AND ref_id = ?)
+                           OR title LIKE ?
+                    """, (int_amt, admin_name, now_iso, str(tx_id), f"%{tx['order_id']}%"))
+                except Exception:
+                    pass
 
             # ثبت لاگ حسابرسی برای هر تغییر
             for field, old_val, new_val in changes:
@@ -2724,6 +2877,135 @@ class Database:
             WHERE transaction_id=?
             ORDER BY id DESC
         """, (tx_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+
+    def update_reseller_wallet_transaction(self, rtx_id: int, admin_id: int, admin_name: str, amount: int = None, description: str = None, plan_name: str = None, reason: str = "") -> dict:
+        """ویرایش تراکنش کیف پول نماینده با تعدیل تراز مالی و ثبت لاگ قبل و بعد"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now_iso = get_now_iso()
+        try:
+            rtx = cursor.execute("SELECT * FROM reseller_transactions WHERE id=?", (rtx_id,)).fetchone()
+            if not rtx:
+                return {"success": False, "error": "تراکنش کیف پول یافت نشد."}
+
+            reseller_id = rtx["reseller_id"]
+            rtx_dict = dict(rtx)
+            changes = []
+            updates = {}
+
+            if amount is not None:
+                try:
+                    int_amt = int(amount)
+                    if int_amt != rtx_dict["amount"]:
+                        updates["amount"] = int_amt
+                        changes.append(("amount", str(rtx_dict["amount"]), str(int_amt)))
+
+                        # تعدیل موجودی کیف پول نماینده بر اساس نوع تراکنش
+                        delta = int_amt - rtx_dict["amount"]
+                        if rtx_dict.get("status") != "revoked" and not rtx_dict.get("is_revoked"):
+                            if rtx_dict["type"] == "deposit":
+                                cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at=? WHERE id=?", (delta, now_iso, reseller_id))
+                            elif rtx_dict["type"] in ("purchase", "renewal", "refund"):
+                                cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (delta, now_iso, reseller_id))
+                except Exception:
+                    pass
+
+            if description is not None and description.strip() != (rtx_dict.get("description") or ""):
+                updates["description"] = description.strip()
+                changes.append(("description", rtx_dict.get("description") or "", description.strip()))
+
+            if plan_name is not None and plan_name.strip() != (rtx_dict.get("plan_name") or ""):
+                updates["plan_name"] = plan_name.strip()
+                changes.append(("plan_name", rtx_dict.get("plan_name") or "", plan_name.strip()))
+
+            if not updates:
+                return {"success": True, "message": "هیچ تغییری اعمال نشد.", "reseller_id": reseller_id}
+
+            updates["is_edited"] = 1
+            updates["edited_by"] = admin_name
+            updates["edited_at"] = now_iso
+            updates["edit_reason"] = reason
+
+            set_clause = ", ".join([f"{k}=?" for k in updates.keys()])
+            values = list(updates.values()) + [rtx_id]
+            cursor.execute(f"UPDATE reseller_transactions SET {set_clause} WHERE id=?", values)
+
+            # ثبت در لاگ حسابرسی
+            for f_name, old_v, new_v in changes:
+                cursor.execute("""
+                    INSERT INTO reseller_transaction_audit_logs
+                    (reseller_transaction_id, admin_id, admin_name, action, field_name, old_value, new_value, reason, created_at)
+                    VALUES (?, ?, ?, 'edit', ?, ?, ?, ?, ?)
+                """, (rtx_id, admin_id, admin_name, f_name, old_v, new_v, reason, now_iso))
+
+            conn.commit()
+            return {"success": True, "changes_count": len(changes), "reseller_id": reseller_id}
+        except Exception as e:
+            logger.error(f"Error updating reseller wallet transaction {rtx_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def revoke_reseller_wallet_transaction(self, rtx_id: int, admin_id: int, admin_name: str, reason: str = "") -> dict:
+        """ابطال تراکنش کیف پول نماینده با کسر/استرداد خودکار از تراز مالی کیف پول"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now_iso = get_now_iso()
+        try:
+            rtx = cursor.execute("SELECT * FROM reseller_transactions WHERE id=?", (rtx_id,)).fetchone()
+            if not rtx:
+                return {"success": False, "error": "تراکنش کیف پول یافت نشد."}
+
+            rtx_dict = dict(rtx)
+            if rtx_dict.get("status") == "revoked" or rtx_dict.get("is_revoked"):
+                return {"success": False, "error": "این تراکنش قبلاً باطل شده است."}
+
+            reseller_id = rtx_dict["reseller_id"]
+            amount = rtx_dict["amount"] or 0
+            ttype = rtx_dict["type"]
+
+            # ۱. کسر یا بازگشت مبلغ به موجودی کیف پول نماینده
+            if ttype == "deposit":
+                cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (amount, now_iso, reseller_id))
+            elif ttype in ("purchase", "renewal"):
+                cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at=? WHERE id=?", (amount, now_iso, reseller_id))
+            elif ttype == "refund":
+                cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (amount, now_iso, reseller_id))
+
+            # ۲. علامت‌گذاری تراکنش به عنوان باطل‌شده
+            cursor.execute("""
+                UPDATE reseller_transactions
+                SET status='revoked', is_revoked=1, revoked_by=?, revoked_at=?, revoke_reason=?
+                WHERE id=?
+            """, (admin_name, now_iso, reason, rtx_id))
+
+            # ۳. ثبت لاگ حسابرسی
+            cursor.execute("""
+                INSERT INTO reseller_transaction_audit_logs
+                (reseller_transaction_id, admin_id, admin_name, action, field_name, old_value, new_value, reason, created_at)
+                VALUES (?, ?, ?, 'revoke', 'status', 'completed', 'revoked', ?, ?)
+            """, (rtx_id, admin_id, admin_name, reason, now_iso))
+
+            conn.commit()
+            return {"success": True, "reseller_id": reseller_id, "amount": amount, "type": ttype}
+        except Exception as e:
+            logger.error(f"Error revoking reseller wallet transaction {rtx_id}: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_reseller_wallet_transaction_audit_logs(self, rtx_id: int) -> list:
+        """دریافت لاگ‌های حسابرسی یک تراکنش کیف پول نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM reseller_transaction_audit_logs
+            WHERE reseller_transaction_id=?
+            ORDER BY id DESC
+        """, (rtx_id,))
         rows = cursor.fetchall()
         conn.close()
         return [dict(r) for r in rows]
@@ -3007,6 +3289,226 @@ class Database:
             return []
         finally:
             conn.close()
+
+    # ═══════════════════════════════════════════════════════════════
+    # سامانه ثبت وقایع و حسابرسی فعالیت‌های سیستم (System Activity & Audit Logs)
+    # ═══════════════════════════════════════════════════════════════
+
+    def add_system_log(
+        self,
+        category: str,
+        action: str,
+        title: str,
+        description: str = None,
+        actor_type: str = "system",
+        actor_id: int = None,
+        actor_name: str = None,
+        target_type: str = None,
+        target_id: int = None,
+        target_name: str = None,
+        details: Union[dict, list, str] = None,
+        level: str = "info",
+        ip_address: str = None
+    ) -> dict:
+        """
+        ثبت یک رویداد در سامانه لاگ و حسابرسی سیستم
+        category: 'system', 'admin', 'reseller', 'user_bot', 'security'
+        action: 'purge', 'delete', 'restore', 'create', 'update', 'renew', 'sync', 'sync_diff', 'login', 'backup', 'settings_change', 'bulk_action', 'status_change', etc.
+        level: 'info', 'success', 'warning', 'danger'
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now_iso = get_now_iso()
+
+        details_str = None
+        if details is not None:
+            if isinstance(details, (dict, list)):
+                try:
+                    details_str = json.dumps(details, ensure_ascii=False)
+                except Exception:
+                    details_str = str(details)
+            else:
+                details_str = str(details)
+
+        try:
+            cursor.execute("""
+                INSERT INTO system_activity_logs (
+                    category, action, title, description,
+                    actor_type, actor_id, actor_name,
+                    target_type, target_id, target_name,
+                    details, level, ip_address, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                category.strip(),
+                action.strip(),
+                title.strip(),
+                (description or "").strip(),
+                actor_type.strip(),
+                actor_id,
+                (actor_name or "").strip(),
+                (target_type or "").strip() if target_type else None,
+                target_id,
+                (target_name or "").strip() if target_name else None,
+                details_str,
+                level.strip(),
+                (ip_address or "").strip() if ip_address else None,
+                now_iso
+            ))
+            conn.commit()
+            log_id = cursor.lastrowid
+            return {"success": True, "id": log_id}
+        except Exception as e:
+            logger.error(f"Error adding system activity log: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_system_logs(
+        self,
+        page: int = 1,
+        per_page: int = 50,
+        category: str = None,
+        action: str = None,
+        level: str = None,
+        actor_type: str = None,
+        search: str = None,
+        time_range: str = None
+    ) -> Tuple[List[dict], int]:
+        """
+        دریافت لیست لاگ‌های سیستم با فیلترهای چندگانه و صفحه‌بندی
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            where_clauses = []
+            params = []
+
+            if category and category != "all":
+                where_clauses.append("category = ?")
+                params.append(category.strip())
+
+            if action and action != "all":
+                where_clauses.append("action = ?")
+                params.append(action.strip())
+
+            if level and level != "all":
+                where_clauses.append("level = ?")
+                params.append(level.strip())
+
+            if actor_type and actor_type != "all":
+                where_clauses.append("actor_type = ?")
+                params.append(actor_type.strip())
+
+            if time_range and time_range != "all":
+                now_dt = get_now_naive()
+                if time_range == "today":
+                    start_today = now_dt.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+                    where_clauses.append("created_at >= ?")
+                    params.append(start_today)
+                elif time_range == "3days":
+                    start_3d = (now_dt - timedelta(days=3)).isoformat()
+                    where_clauses.append("created_at >= ?")
+                    params.append(start_3d)
+                elif time_range == "7days":
+                    start_7d = (now_dt - timedelta(days=7)).isoformat()
+                    where_clauses.append("created_at >= ?")
+                    params.append(start_7d)
+                elif time_range == "30days":
+                    start_30d = (now_dt - timedelta(days=30)).isoformat()
+                    where_clauses.append("created_at >= ?")
+                    params.append(start_30d)
+
+            if search and search.strip():
+                s = f"%{search.strip()}%"
+                where_clauses.append("""(
+                    title LIKE ? OR
+                    description LIKE ? OR
+                    actor_name LIKE ? OR
+                    target_name LIKE ? OR
+                    ip_address LIKE ? OR
+                    details LIKE ?
+                )""")
+                params.extend([s, s, s, s, s, s])
+
+            where_str = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+
+            count_query = f"SELECT COUNT(*) FROM system_activity_logs{where_str}"
+            cursor.execute(count_query, params)
+            total_count = cursor.fetchone()[0]
+
+            page = max(1, int(page or 1))
+            per_page = max(10, min(500, int(per_page or 50)))
+            offset = (page - 1) * per_page
+
+            data_query = f"""
+                SELECT * FROM system_activity_logs
+                {where_str}
+                ORDER BY id DESC
+                LIMIT ? OFFSET ?
+            """
+            cursor.execute(data_query, params + [per_page, offset])
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows], total_count
+        except Exception as e:
+            logger.error(f"Error fetching system activity logs: {e}")
+            return [], 0
+        finally:
+            conn.close()
+
+    def get_system_logs_stats(self) -> dict:
+        """محاسبه آمار کلان لاگ‌ها برای کارت‌های شاخص (KPI)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now_dt = get_now_naive()
+        today_start = now_dt.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        stats = {
+            "total": 0,
+            "system_count": 0,
+            "admin_count": 0,
+            "reseller_count": 0,
+            "warnings_errors": 0,
+            "today_count": 0
+        }
+        try:
+            r_total = cursor.execute("SELECT COUNT(*) FROM system_activity_logs").fetchone()
+            stats["total"] = r_total[0] if r_total else 0
+
+            r_sys = cursor.execute("SELECT COUNT(*) FROM system_activity_logs WHERE category = 'system'").fetchone()
+            stats["system_count"] = r_sys[0] if r_sys else 0
+
+            r_adm = cursor.execute("SELECT COUNT(*) FROM system_activity_logs WHERE category = 'admin'").fetchone()
+            stats["admin_count"] = r_adm[0] if r_adm else 0
+
+            r_res = cursor.execute("SELECT COUNT(*) FROM system_activity_logs WHERE category = 'reseller'").fetchone()
+            stats["reseller_count"] = r_res[0] if r_res else 0
+
+            r_warn = cursor.execute("SELECT COUNT(*) FROM system_activity_logs WHERE level IN ('warning', 'danger')").fetchone()
+            stats["warnings_errors"] = r_warn[0] if r_warn else 0
+
+            r_today = cursor.execute("SELECT COUNT(*) FROM system_activity_logs WHERE created_at >= ?", (today_start,)).fetchone()
+            stats["today_count"] = r_today[0] if r_today else 0
+        except Exception as e:
+            logger.error(f"Error calculating system logs stats: {e}")
+        finally:
+            conn.close()
+        return stats
+
+    def clear_old_system_logs(self, days: int = 90) -> int:
+        """پاکسازی لاگ‌های قدیمی‌تر از تعداد روز مشخص شده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now_dt = get_now_naive()
+        cutoff = (now_dt - timedelta(days=days)).isoformat()
+        deleted = 0
+        try:
+            cursor.execute("DELETE FROM system_activity_logs WHERE created_at < ?", (cutoff,))
+            deleted = cursor.rowcount
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Error clearing old system logs: {e}")
+        finally:
+            conn.close()
+        return deleted
 
     # ═══════════════════════════════════════════════════════════════
     # مدیریت تنظیمات
@@ -5028,12 +5530,12 @@ class Database:
             
             # درآمد ماهانه
             cursor.execute("""SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
-                WHERE status = 'completed' AND created_at >= date('now', '-30 days')""")
+                WHERE status IN ('approved', 'completed') AND (is_deleted = 0 OR is_deleted IS NULL) AND created_at >= date('now', '-30 days')""")
             stats["monthly_revenue"] = cursor.fetchone()["total"]
             
             # درآمد امروز
             cursor.execute("""SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
-                WHERE status = 'completed' AND date(created_at) = date('now')""")
+                WHERE status IN ('approved', 'completed') AND (is_deleted = 0 OR is_deleted IS NULL) AND date(created_at) = date('now')""")
             stats["today_revenue"] = cursor.fetchone()["total"]
             
             # کاربران جدید امروز
@@ -5093,7 +5595,7 @@ class Database:
             stats["rejected_transactions"] = cursor.fetchone()["count"]
 
             # درآمد کل
-            cursor.execute("SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE status IN ('approved', 'completed')")
+            cursor.execute("SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE status IN ('approved', 'completed') AND (is_deleted = 0 OR is_deleted IS NULL)")
             stats["total_revenue"] = cursor.fetchone()["total"]
 
             # تعداد پشتیبان‌ها
@@ -5337,9 +5839,10 @@ class Database:
                                  telegram_id: int = 0, reseller_id: int = None,
                                  action_type: str = "renew", plan_name: str = "",
                                  amount: int = 0, notes: str = None,
-                                 created_by: str = None) -> dict:
+                                 created_by: str = None,
+                                 previous_debt: int = None) -> dict:
         """
-        ثبت رسید بدهی اختصاصی برای خرید یا تمدید مشتری به همراه تجمیع خودکار با بدهی قبلی
+        ثبت رسید بدهی اختصاصی برای خرید یا تمدید مشتری به همراه تجمیع خودکار و دقیق با بدهی قبلی
         """
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -5351,15 +5854,34 @@ class Database:
                 return {"success": False, "error": "اشتراک یافت نشد"}
 
             sub = dict(sub_row)
-            previous_debt = int(sub.get("debt_amount") or 0)
             added_amount = int(amount or 0)
-            total_debt = previous_debt + added_amount
+
+            # محاسبه دقیق بدهی قبلی
+            if previous_debt is not None:
+                prev_debt = max(0, int(previous_debt))
+            elif action_type == "create":
+                # در زمان ساخت اولیه اشتراک، بدهی قبلی قطعاً صفر است
+                prev_debt = 0
+            else:
+                # محاسبه بر اساس مجموع فاکتورهای باز ثبت‌شده قبلی
+                cursor.execute("""
+                    SELECT COALESCE(SUM(amount), 0), COUNT(*)
+                    FROM customer_debt_records
+                    WHERE subscription_id = ? AND status = 'unpaid' AND action_type != 'settle'
+                """, (subscription_id,))
+                unpaid_sum, count = cursor.fetchone()
+                if count > 0:
+                    prev_debt = int(unpaid_sum or 0)
+                else:
+                    prev_debt = int(sub.get("debt_amount") or 0)
+
+            total_debt = prev_debt + added_amount
             act_name = account_name or sub.get("account_name") or ""
             tg_id = telegram_id if telegram_id else (sub.get("telegram_id") or 0)
             r_id = reseller_id if reseller_id is not None else sub.get("reseller_id")
             creator = created_by or "admin"
 
-            # بروزرسانی اشتراک به وضعیت بدهکار و ثبت مجموع تجمعی بدهی
+            # بروزرسانی اشتراک به وضعیت بدهکار و ثبت مجموع تجمعی صحیح بدهی
             cursor.execute("""
                 UPDATE subscriptions
                 SET payment_status = 'unpaid',
@@ -5378,16 +5900,16 @@ class Database:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid', ?, ?, ?, ?)
             """, (
                 subscription_id, act_name, tg_id, r_id, action_type, plan_name,
-                added_amount, previous_debt, total_debt, notes, creator, now, now
+                added_amount, prev_debt, total_debt, notes, creator, now, now
             ))
             record_id = cursor.lastrowid
             conn.commit()
 
-            logger.info(f"Customer debt record #{record_id} saved for sub #{subscription_id}: added={added_amount}, prev={previous_debt}, total={total_debt}")
+            logger.info(f"Customer debt record #{record_id} saved for sub #{subscription_id}: added={added_amount}, prev={prev_debt}, total={total_debt}")
             return {
                 "success": True,
                 "record_id": record_id,
-                "previous_debt": previous_debt,
+                "previous_debt": prev_debt,
                 "amount": added_amount,
                 "total_debt": total_debt
             }
@@ -5397,10 +5919,128 @@ class Database:
         finally:
             conn.close()
 
+    def repair_customer_debt_records(self, subscription_id: int = None) -> dict:
+        """
+        بررسی و خودترمیمی جامع زنجیره محاسباتی بدهی‌ها و رسیدها:
+        - اصلاح previous_debt و total_debt بر اساس تاریخچه زمانی و مبالغ واقعی
+        - همگام‌سازی subscriptions.debt_amount و payment_status با جمع فاکتورهای باز
+        - تصحیح یادداشت‌های کپی‌شده مربوط به ساخت اشتراک روی رکوردهای تمدید
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        repaired_subs = 0
+        repaired_records = 0
+        try:
+            if subscription_id:
+                sub_ids = [subscription_id]
+            else:
+                cursor.execute("""
+                    SELECT DISTINCT subscription_id FROM customer_debt_records
+                    UNION
+                    SELECT id FROM subscriptions WHERE payment_status IN ('unpaid', 'debtor') OR debt_amount > 0
+                """)
+                sub_ids = [r[0] for r in cursor.fetchall() if r[0]]
+
+            for s_id in sub_ids:
+                cursor.execute("""
+                    SELECT * FROM customer_debt_records
+                    WHERE subscription_id = ?
+                    ORDER BY COALESCE(created_at, '') ASC, id ASC
+                """, (s_id,))
+                rows = cursor.fetchall()
+                if not rows:
+                    continue
+
+                records = [dict(r) for r in rows]
+                running_debt = 0
+                sub_updated = False
+
+                for rec in records:
+                    rec_id = rec["id"]
+                    act_type = rec.get("action_type") or "renew"
+                    amt = int(rec.get("amount") or 0)
+                    status = rec.get("status") or "unpaid"
+                    current_prev = int(rec.get("previous_debt") or 0)
+                    current_tot = int(rec.get("total_debt") or 0)
+                    notes = rec.get("notes") or ""
+
+                    # اصلاح یادداشت‌هایی که متن ساخت اشتراک را روی تمدید کپی کرده بودند
+                    new_notes = notes
+                    if act_type == "renew" and "ساخت اشتراک" in str(notes):
+                        new_notes = str(notes).replace("ساخت اشتراک", "تمدید اشتراک")
+
+                    if act_type in ("create", "renew", "manual", "initial"):
+                        expected_prev = running_debt
+                        expected_tot = running_debt + amt
+                        if status != "paid":
+                            running_debt = expected_tot
+
+                    elif act_type == "settle":
+                        expected_prev = running_debt
+                        expected_tot = max(0, running_debt - amt)
+                        running_debt = expected_tot
+                    else:
+                        expected_prev = running_debt
+                        expected_tot = running_debt + amt
+                        if status != "paid":
+                            running_debt = expected_tot
+
+                    if current_prev != expected_prev or current_tot != expected_tot or new_notes != notes:
+                        cursor.execute("""
+                            UPDATE customer_debt_records
+                            SET previous_debt = ?, total_debt = ?, notes = ?
+                            WHERE id = ?
+                        """, (expected_prev, expected_tot, new_notes, rec_id))
+                        repaired_records += 1
+                        sub_updated = True
+
+                # محاسبه جمع واقعی رسیدهای باز و همگام‌سازی اشتراک
+                cursor.execute("""
+                    SELECT COALESCE(SUM(amount), 0), COUNT(*)
+                    FROM customer_debt_records
+                    WHERE subscription_id = ? AND status = 'unpaid' AND action_type != 'settle'
+                """, (s_id,))
+                unpaid_sum, unpaid_count = cursor.fetchone()
+                unpaid_sum = int(unpaid_sum or 0)
+
+                cursor.execute("SELECT debt_amount, payment_status FROM subscriptions WHERE id = ?", (s_id,))
+                sub_row = cursor.fetchone()
+                if sub_row:
+                    current_sub_debt = int(sub_row[0] or 0)
+                    current_sub_status = sub_row[1] or "paid"
+                    expected_status = "unpaid" if unpaid_sum > 0 else "paid"
+
+                    if current_sub_debt != unpaid_sum or (unpaid_sum == 0 and current_sub_status in ("unpaid", "debtor")):
+                        cursor.execute("""
+                            UPDATE subscriptions
+                            SET debt_amount = ?,
+                                payment_status = ?,
+                                debt_notes = CASE WHEN ? = 0 THEN NULL ELSE debt_notes END
+                            WHERE id = ?
+                        """, (unpaid_sum, expected_status, unpaid_sum, s_id))
+                        sub_updated = True
+
+                if sub_updated:
+                    repaired_subs += 1
+
+            conn.commit()
+            return {"success": True, "repaired_subs": repaired_subs, "repaired_records": repaired_records}
+        except Exception as e:
+            logger.error(f"Error repairing customer debt records: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
     def get_customer_debt_report(self, subscription_id: int) -> dict:
         """
-        دریافت گزارش جامع بدهی‌های یک مشتری شامل جمع کل، بدهی فعلی و لیست رسیدها
+        دریافت گزارش جامع بدهی‌های یک مشتری شامل جمع کل، بدهی فعلی و لیست رسیدها به همراه خودترمیمی خودکار
         """
+        # ابتدا خودترمیمی اجرا می‌شود تا هرگونه انحراف در دیتابیس خودبه‌خود اصلاح شود
+        try:
+            self.repair_customer_debt_records(subscription_id)
+        except Exception as e_rep:
+            logger.warning(f"Debt auto-repair warning for sub {subscription_id}: {e_rep}")
+
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -5441,7 +6081,11 @@ class Database:
 
             total_debts_sum = sum(int(r.get("amount") or 0) for r in records if r.get("action_type") in ("create", "renew", "manual", "initial"))
             total_settled_sum = sum(int(r.get("amount") or 0) for r in records if r.get("status") == "paid" and r.get("action_type") != "settle")
-            unpaid_count = sum(1 for r in records if r.get("status") == "unpaid")
+            unpaid_count = sum(1 for r in records if r.get("status") == "unpaid" and r.get("action_type") != "settle")
+
+            # محاسبه قطعی بدهی معوقه بر اساس جمع فاکتورهای باز
+            if records:
+                current_debt = sum(int(r.get("amount") or 0) for r in records if r.get("status") == "unpaid" and r.get("action_type") != "settle")
 
             return {
                 "success": True,
@@ -5471,7 +6115,7 @@ class Database:
                                     amount: int = None, settled_by: str = "مدیریت",
                                     order_id: str = None) -> dict:
         """
-        تسویه یک رسید بدهی خاص یا تسویه بخشی از بدهی مشتری
+        تسویه یک رسید بدهی خاص یا تسویه بخشی از بدهی مشتری با محاسبه دقیق مانده
         """
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -5497,7 +6141,15 @@ class Database:
                     SET status = 'paid', paid_at = ?, settled_by = ?, settle_order_id = ?, updated_at = ?
                     WHERE id = ?
                 """, (now, settled_by, order_id, now, record_id))
-                new_debt = max(0, current_debt - rec_amt)
+
+                # محاسبه دقیق بدهی جدید بر اساس فاکتورهای باز باقیمانده
+                cursor.execute("""
+                    SELECT COALESCE(SUM(amount), 0)
+                    FROM customer_debt_records
+                    WHERE subscription_id = ? AND status = 'unpaid' AND action_type != 'settle'
+                """, (subscription_id,))
+                new_debt = int(cursor.fetchone()[0] or 0)
+
             elif amount is not None and amount > 0:
                 new_debt = max(0, current_debt - int(amount))
                 cursor.execute("""
@@ -7724,7 +8376,12 @@ class Database:
             WHERE reseller_id = ? 
             ORDER BY created_at DESC
         """, (reseller_id,))
-        wallet_txs = [dict(r) for r in cursor.fetchall()]
+        raw_wallet_txs = cursor.fetchall()
+        wallet_txs = []
+        for r in raw_wallet_txs:
+            w_dict = dict(r)
+            w_dict["audit_logs"] = self.get_reseller_wallet_transaction_audit_logs(w_dict["id"])
+            wallet_txs.append(w_dict)
 
         # ۲. رسیدها، فیش‌های بانکی و تراکنش‌های ثبت‌شده در جدول اصلی
         cursor.execute("""
@@ -7732,16 +8389,36 @@ class Database:
             WHERE reseller_id = ? 
             ORDER BY created_at DESC
         """, (reseller_id,))
-        receipt_txs = [dict(r) for r in cursor.fetchall()]
+        raw_receipt_txs = cursor.fetchall()
+        receipt_txs = []
+        for r in raw_receipt_txs:
+            r_dict = dict(r)
+            r_dict["audit_logs"] = self.get_transaction_audit_logs(r_dict["id"])
+            receipt_txs.append(r_dict)
 
-        # ۳. محاسبات مالی دقیق
-        cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions WHERE reseller_id=? AND type='deposit'", (reseller_id,))
+        # ۳. محاسبات مالی دقیق (با حذف کامل تراکنش‌های باطل‌شده)
+        cursor.execute("""
+            SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions 
+            WHERE reseller_id=? AND type='deposit' 
+              AND (is_revoked=0 OR is_revoked IS NULL) 
+              AND (status != 'revoked' OR status IS NULL)
+        """, (reseller_id,))
         total_deposited = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions WHERE reseller_id=? AND type IN ('purchase', 'renewal')", (reseller_id,))
+        cursor.execute("""
+            SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions 
+            WHERE reseller_id=? AND type IN ('purchase', 'renewal') 
+              AND (is_revoked=0 OR is_revoked IS NULL) 
+              AND (status != 'revoked' OR status IS NULL)
+        """, (reseller_id,))
         total_spent = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions WHERE reseller_id=? AND type='refund'", (reseller_id,))
+        cursor.execute("""
+            SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions 
+            WHERE reseller_id=? AND type='refund' 
+              AND (is_revoked=0 OR is_revoked IS NULL) 
+              AND (status != 'revoked' OR status IS NULL)
+        """, (reseller_id,))
         total_refunded = cursor.fetchone()[0]
 
         cursor.execute("SELECT COUNT(*) FROM transactions WHERE reseller_id=? AND (gateway='bundle_reseller' OR order_id LIKE 'R_BUNDLE%')", (reseller_id,))
@@ -8234,6 +8911,14 @@ class Database:
                 sub_id,
                 reseller_id
             ))
+
+            # در صورت تسویه بدهی یا تنظیم مبلغ ۰، بستن فاکتورهای باز
+            if payment_status == 'paid' or (debt_amount is not None and int(debt_amount) == 0):
+                cursor.execute("""
+                    UPDATE customer_debt_records
+                    SET status = 'paid', paid_at = ?, settled_by = ?, updated_at = ?
+                    WHERE subscription_id = ? AND status = 'unpaid'
+                """, (now, f"reseller_{reseller_id}", now, sub_id))
 
             # ۲. اگر کاربر دارای شناسه تلگرام باشد، بروزرسانی در جدول users
             if effective_tg and int(effective_tg) > 0:
@@ -8977,6 +9662,32 @@ class Database:
             """, (now, reason, by_user, now, sub_id, reseller_id))
             conn.commit()
 
+            # ثبت لاگ انتقال به سطل زباله توسط نماینده
+            try:
+                self.add_system_log(
+                    category="reseller",
+                    action="delete",
+                    title=f"انتقال اشتراک «{account_name}» به سطل زباله",
+                    description=f"اشتراک «{account_name}» توسط نماینده ({by_user}) با علت «{reason}» به سطل زباله منتقل گردید." + (f" (استرداد وجه: {refund_amount:,} تومان به {payment_source})" if refund_amount > 0 else ""),
+                    actor_type="reseller",
+                    actor_id=reseller_id,
+                    actor_name=by_user,
+                    target_type="subscription",
+                    target_id=sub_id,
+                    target_name=account_name,
+                    details={
+                        "reseller_id": reseller_id,
+                        "account_name": account_name,
+                        "reason": reason,
+                        "refund_amount": refund_amount,
+                        "refund_percent": refund_percent,
+                        "payment_source": payment_source
+                    },
+                    level="warning"
+                )
+            except Exception:
+                pass
+
             return {
                 "success": True,
                 "refund_amount": refund_amount,
@@ -9194,6 +9905,32 @@ class Database:
             """, (now, reason, admin_name, now, sub_id))
             conn.commit()
 
+            # ثبت لاگ انتقال به سطل زباله توسط مدیر
+            try:
+                self.add_system_log(
+                    category="admin",
+                    action="delete",
+                    title=f"انتقال اشتراک «{account_name}» به سطل زباله",
+                    description=f"اشتراک «{account_name}» توسط {admin_name} با علت «{reason}» به سطل زباله منتقل گردید." + (f" (استرداد وجه: {refund_amount:,} تومان به کیف پول کاربر)" if (refund_done and refund_amount > 0) else ""),
+                    actor_type="admin",
+                    actor_name=admin_name,
+                    target_type="subscription",
+                    target_id=sub_id,
+                    target_name=account_name,
+                    details={
+                        "account_name": account_name,
+                        "hidify_uuid": hidify_uuid,
+                        "user_id": user_id,
+                        "reason": reason,
+                        "refund_done": refund_done,
+                        "refund_amount": refund_amount if refund_done else 0,
+                        "refund_percent": refund_percent
+                    },
+                    level="warning"
+                )
+            except Exception:
+                pass
+
             return {
                 "success": True,
                 "refund_done": refund_done,
@@ -9321,6 +10058,30 @@ class Database:
             cursor.execute(update_sql, tuple(params))
             conn.commit()
 
+            # ثبت لاگ بازگردانی
+            try:
+                self.add_system_log(
+                    category="admin" if not is_reseller else "reseller",
+                    action="restore",
+                    title=f"بازگردانی اشتراک «{account_name}» از سطل زباله",
+                    description=f"اشتراک «{account_name}» از سطل زباله بازیابی و مجدداً در پنل هیدیفای فعال گردید." + (f" (هزینه کسر شده: {cost:,} تومان)" if cost > 0 else ""),
+                    actor_type="admin" if not is_reseller else "reseller",
+                    actor_id=reseller_id if is_reseller else None,
+                    actor_name=f"نماینده #{reseller_id}" if is_reseller else "مدیر سیستم",
+                    target_type="subscription",
+                    target_id=sub_id,
+                    target_name=account_name,
+                    details={
+                        "account_name": account_name,
+                        "hidify_uuid": new_uuid or sub_dict.get("hidify_uuid"),
+                        "cost_deducted": cost,
+                        "payment_source": chosen_source if (is_reseller and cost > 0) else None
+                    },
+                    level="success"
+                )
+            except Exception:
+                pass
+
             return {
                 "success": True,
                 "account_name": account_name,
@@ -9348,8 +10109,35 @@ class Database:
                 return {"success": False, "error": "اشتراک در سطل زباله یافت نشد."}
 
             sub_dict = dict(row)
+            sub_name = sub_dict.get("account_name") or f"Sub #{sub_id}"
             cursor.execute("DELETE FROM subscriptions WHERE id = ?", (sub_id,))
             conn.commit()
+
+            # ثبت لاگ حذف دائمی دستی
+            try:
+                self.add_system_log(
+                    category="admin" if not reseller_id else "reseller",
+                    action="purge",
+                    title=f"حذف دائمی اشتراک «{sub_name}» از سطل زباله",
+                    description=f"اشتراک «{sub_name}» به صورت دستی برای همیشه از سطل زباله دیتابیس و پنل هیدیفای حذف گردید.",
+                    actor_type="admin" if not reseller_id else "reseller",
+                    actor_id=reseller_id,
+                    actor_name=f"نماینده #{reseller_id}" if reseller_id else "مدیر سیستم",
+                    target_type="subscription",
+                    target_id=sub_id,
+                    target_name=sub_name,
+                    details={
+                        "sub_id": sub_id,
+                        "account_name": sub_name,
+                        "hidify_uuid": sub_dict.get("hidify_uuid"),
+                        "deleted_at": sub_dict.get("deleted_at"),
+                        "deleted_by": sub_dict.get("deleted_by")
+                    },
+                    level="danger"
+                )
+            except Exception:
+                pass
+
             return {
                 "success": True,
                 "account_name": sub_dict.get("account_name"),
@@ -9368,8 +10156,9 @@ class Database:
         now_dt = get_now_naive()
         restore_window = float(self.get_refund_settings().get("restore_window_days", 7))
         purged_count = 0
+        purged_items = []
         try:
-            cursor.execute("SELECT id, hidify_uuid, account_name, deleted_at FROM subscriptions WHERE is_deleted = 1")
+            cursor.execute("SELECT id, hidify_uuid, account_name, deleted_at, reseller_id FROM subscriptions WHERE is_deleted = 1")
             rows = cursor.fetchall()
             for r in rows:
                 del_str = r["deleted_at"]
@@ -9390,7 +10179,37 @@ class Database:
                     # حذف قطعی از دیتابیس جهت تمیز شدن کامل سطل زباله
                     cursor.execute("DELETE FROM subscriptions WHERE id = ?", (r["id"],))
                     purged_count += 1
+                    purged_items.append({
+                        "id": r["id"],
+                        "account_name": r["account_name"],
+                        "uuid": uuid_val,
+                        "deleted_at": del_str,
+                        "days_in_trash": round(days_passed, 1),
+                        "reseller_id": r["reseller_id"]
+                    })
             conn.commit()
+
+            # ثبت لاگ دقیق خودکار سیستم در صورت پاکسازی اشتراک‌ها
+            if purged_count > 0:
+                try:
+                    self.add_system_log(
+                        category="system",
+                        action="purge",
+                        title=f"پاکسازی خودکار {purged_count} اشتراک از سرور هیدیفای",
+                        description=f"تعداد {purged_count} اشتراک به علت انقضای مهلت {restore_window} روزه سطل زباله، به صورت خودکار توسط پردازش پس‌زمینه سیستم از پنل هیدیفای و دیتابیس حذف دائمی شدند.",
+                        actor_type="system",
+                        actor_name="سیستم (پاکسازی خودکار ۷ روزه)",
+                        target_type="subscription",
+                        target_name=f"{purged_count} اشتراک سطل زباله",
+                        details={
+                            "purged_count": purged_count,
+                            "restore_window_days": restore_window,
+                            "purged_items": purged_items
+                        },
+                        level="warning"
+                    )
+                except Exception as log_ex:
+                    logger.error(f"Error recording auto purge system log: {log_ex}")
         except Exception as e:
             logger.error(f"Error in purge_expired_deleted_subscriptions: {e}")
         finally:
