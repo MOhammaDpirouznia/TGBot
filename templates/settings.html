@@ -95,7 +95,7 @@
                 {% else %}<i class="fas fa-code-branch me-1"></i>
                 {% endif %}
             {% endif %}
-            نسخه فعال: {{ store_branding_config.store_version }}
+            نسخه فعال: {{ store_branding_config.current_active_version or store_branding_config.store_version }}
 
         </div>
     </div>
@@ -368,9 +368,13 @@
                                 </div>
                                 <div class="input-group">
                                     <span class="input-group-text small bg-white text-muted">https://github.com/</span>
-                                    <input type="text" name="store_github_repo" id="githubRepoInput" class="form-control font-monospace" value="{{ store_branding_config.store_github_repo }}" placeholder="owner/repo (مثلاً: username/hiddibot)">
+                                    <input type="text" name="store_github_repo" id="githubRepoInput" class="form-control font-monospace" value="{{ store_branding_config.store_github_repo }}" placeholder="owner/repo (مثلاً: MohammadPirouznia/TGBot)" oninput="normalizeGithubInput(this)">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" id="btnTestGithubVersion" onclick="testGithubVersionConnection()">
+                                        <i class="fab fa-github me-1"></i> تست و بررسی نسخه
+                                    </button>
                                 </div>
-                                <div class="form-text small">در صورت فعال بودن، شماره آخرین Release یا Tag ریپازیتوری به صورت خودکار نمایش داده می‌شود.</div>
+                                <div id="githubTestStatus" class="small mt-1"></div>
+                                <div class="form-text small">فقط نام کاربری و نام مخزن را وارد کنید (مثال: <code>MohammadPirouznia/TGBot</code>). در صورت فعال بودن، نسخه مستقیماً از Release یا Tag خوانده می‌شود.</div>
                             </div>
                         </div>
                     </div>
@@ -639,7 +643,7 @@ function updateLiveBrandPreview() {
     const verEl = document.getElementById('livePreviewVersionText');
     if (verEl) {
         if (isGithub) {
-            verEl.textContent = 'v... (گیت‌هاب)';
+            verEl.textContent = window.lastFetchedGithubVersion || '{{ store_branding_config.current_active_version }}' || 'v... (گیت‌هاب)';
         } else {
             verEl.textContent = (manualVer?.value || '').trim() || 'v0.0.1 Beta';
         }
@@ -716,8 +720,66 @@ function toggleVersionInputs() {
     const isGithub = document.getElementById('versionSourceGithub')?.checked;
     const manualInput = document.getElementById('manualVersionInput');
     const githubInput = document.getElementById('githubRepoInput');
+    const btnTest = document.getElementById('btnTestGithubVersion');
     if (manualInput) manualInput.disabled = isGithub;
     if (githubInput) githubInput.disabled = !isGithub;
+    if (btnTest) btnTest.disabled = !isGithub;
+}
+
+function normalizeGithubInput(el) {
+    if (!el) return;
+    let val = el.value.trim();
+    if (val.includes('github.com/')) {
+        val = val.split('github.com/')[1];
+    }
+    val = val.split('?')[0].split('#')[0].replace(/^\/+|\/+$/g, '');
+    const parts = val.split('/').filter(Boolean);
+    if (parts.length >= 2) {
+        el.value = parts[0] + '/' + parts[1];
+    }
+}
+
+function testGithubVersionConnection() {
+    const repoInput = document.getElementById('githubRepoInput');
+    normalizeGithubInput(repoInput);
+    const repo = repoInput.value.trim();
+    const statusEl = document.getElementById('githubTestStatus');
+    const btn = document.getElementById('btnTestGithubVersion');
+    const verEl = document.getElementById('livePreviewVersionText');
+
+    if (!repo || !repo.includes('/')) {
+        statusEl.innerHTML = '<span class="text-danger"><i class="fas fa-circle-exclamation me-1"></i> لطفاً نام مخزن را به شکل <code>نام‌کاربری/نام‌مخزن</code> وارد کنید (مثلاً MohammadPirouznia/TGBot).</span>';
+        return;
+    }
+
+    const origBtnHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> در حال بررسی...';
+    statusEl.innerHTML = '<span class="text-muted"><i class="fas fa-spinner fa-spin me-1"></i> در حال استعلام نسخه از گیت‌هاب...</span>';
+
+    fetch('/admin/github/test_version', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo: repo })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = origBtnHtml;
+        if (data.success) {
+            statusEl.innerHTML = `<span class="text-success fw-bold"><i class="fas fa-check-circle me-1"></i> اتصال موفق! آخرین نسخه شناسایی شده: <span class="badge bg-success font-monospace px-2 py-1">${data.version}</span> (مخزن: ${data.normalized_repo})</span>`;
+            window.lastFetchedGithubVersion = data.version;
+            if (verEl) verEl.textContent = data.version;
+            repoInput.value = data.normalized_repo;
+        } else {
+            statusEl.innerHTML = `<span class="text-danger"><i class="fas fa-circle-xmark me-1"></i> ${data.message || 'خطا در استعلام مخزن'}</span>`;
+        }
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.innerHTML = origBtnHtml;
+        statusEl.innerHTML = '<span class="text-danger"><i class="fas fa-triangle-exclamation me-1"></i> خطا در برقراری ارتباط با سرور.</span>';
+    });
 }
 function toggleServerStatusManualBox() {
     const isManual = document.getElementById('statusModeManual')?.checked;
