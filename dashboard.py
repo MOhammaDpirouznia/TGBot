@@ -4487,6 +4487,100 @@ def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: 
     return {"success": True, "type": "subscription", "uuid": user_uuid}
 
 
+def notify_failed_transaction(order_id: str, reason: str = None):
+    """ثبت وضعیت ناموفق و ارسال پیام‌های اطلاع‌رسانی عدم موفقیت پرداخت در تلگرام و پنل نماینده"""
+    if not order_id:
+        return
+    tx = db.get_transaction_by_order_id(order_id)
+    if not tx:
+        return
+
+    # اگر قبلاً تایید شده، نباید به failed تغییر یابد
+    if tx.get("status") == "approved":
+        return
+
+    try:
+        db.update_transaction(order_id, status="failed")
+    except Exception as e_up:
+        logger.error(f"Error updating transaction status to failed: {e_up}")
+
+    amount = tx.get("amount", 0)
+    plan_name = tx.get("plan_name") or "اشتراک"
+    order_id_str = str(order_id)
+    r_id = tx.get("reseller_id")
+    user_id = tx.get("user_id")
+
+    # ۱. حالت خرید بسته پیش‌خرید اعتباری نماینده (Reseller Bundle)
+    if tx.get("gateway") == "bundle_reseller" or order_id_str.startswith("R_BUNDLE") or tx.get("source") in ("reseller_bundle", "reseller_panel"):
+        if r_id:
+            try:
+                db.add_reseller_notification(
+                    reseller_id=r_id,
+                    title="پرداخت ناموفق بسته اعتباری",
+                    message=f"پرداخت آنلاین شما برای شماره سفارش {order_id} (بسته «{plan_name}» به مبلغ {amount:,} تومان) ناموفق بود یا توسط درگاه لغو گردید.",
+                    type="danger"
+                )
+            except Exception as e_notif:
+                logger.error(f"Error adding reseller failure notif: {e_notif}")
+
+            reseller = db.get_reseller(r_id)
+            if reseller and reseller.get("telegram_id"):
+                r_tg_msg = (
+                    f"❌ <b>پرداخت آنلاین بسته اعتباری ناموفق بود</b>\n\n"
+                    f"همکار گرامی، پرداخت شما برای خرید «{plan_name}» با شماره سفارش <code>{order_id}</code> ناموفق بود یا لغو گردید.\n\n"
+                    f"💰 <b>مبلغ:</b> {amount:,} تومان\n\n"
+                    f"ℹ️ <i>در صورت کسر وجه از حساب، مبلغ طبق قوانین بانکی ظرف حداکثر ۷۲ ساعت توسط بانک مسترد خواهد شد.</i>\n"
+                    f"جهت خرید مجدد بسته می‌توانید به پنل نمایندگی مراجعه فرمایید."
+                )
+                try:
+                    send_telegram_msg(reseller["telegram_id"], r_tg_msg)
+                except Exception as e_tg:
+                    logger.error(f"Error sending reseller failure tg msg: {e_tg}")
+        return
+
+    # ۲. حالت پورتال مشتری (Customer Portal)
+    is_portal = (
+        tx.get("source") in ("portal", "portal_online", "portal_debt_online") or
+        order_id_str.startswith(("CP_", "DEBT_")) or
+        bool(str(tx.get("gateway", "")).endswith("_portal"))
+    )
+    if is_portal:
+        target_tg_id = user_id
+        if (not target_tg_id or target_tg_id <= 0) and tx.get("renew_sub_id"):
+            sub_info = db.get_subscription(tx.get("renew_sub_id"))
+            if sub_info and sub_info.get("telegram_id"):
+                target_tg_id = sub_info.get("telegram_id")
+
+        if target_tg_id and target_tg_id > 0:
+            portal_tg_msg = (
+                f"❌ <b>پرداخت آنلاین در پورتال ناموفق بود</b>\n\n"
+                f"پرداخت شما برای شماره سفارش <code>{order_id}</code> در پورتال مشتری ناموفق بود یا لغو گردید.\n\n"
+                f"📦 <b>پلن انتخابی:</b> {plan_name}\n"
+                f"💰 <b>مبلغ:</b> {amount:,} تومان\n\n"
+                f"ℹ️ <i>در صورت کسر وجه، مبلغ طبق قوانین بانکی ظرف حداکثر ۷۲ ساعت توسط بانک مسترد خواهد شد.</i>"
+            )
+            try:
+                send_telegram_msg(target_tg_id, portal_tg_msg)
+            except Exception as e_tg:
+                logger.error(f"Error sending portal failure tg msg: {e_tg}")
+        return
+
+    # ۳. حالت خرید / تمدید از طریق ربات تلگرام
+    if user_id and user_id > 0:
+        bot_tg_msg = (
+            f"❌ <b>پرداخت آنلاین ناموفق بود</b>\n\n"
+            f"پرداخت شما برای شماره سفارش <code>{order_id}</code> ناموفق بود یا توسط درگاه لغو گردید.\n\n"
+            f"📦 <b>پلن انتخابی:</b> {plan_name}\n"
+            f"💰 <b>مبلغ:</b> {amount:,} تومان\n\n"
+            f"ℹ️ <i>در صورتی که مبلغی از حساب شما کسر شده است، طبق قوانین بانکی ظرف حداکثر ۷۲ ساعت توسط بانک مسترد خواهد شد.</i>\n\n"
+            f"جهت تلاش مجدد می‌توانید از منوی اصلی ربات اقدام فرمایید."
+        )
+        try:
+            send_telegram_msg(user_id, bot_tg_msg)
+        except Exception as e_tg:
+            logger.error(f"Error sending bot failure tg msg: {e_tg}")
+
+
 @app.route("/payment/approve/<int:payment_id>")
 @admin_required
 def approve_payment(payment_id):
@@ -11996,10 +12090,11 @@ def reseller_bundles_online_pay(bundle_id: str):
             username=username,
             plan_name=f"بسته {bundle['title']}",
             amount=price,
-            gateway=f"{gw_type}_admin",
+            gateway="bundle_reseller",
             tracking_code=str(invoice_id or order_id),
             status="pending",
-            reseller_id=reseller_id
+            reseller_id=reseller_id,
+            source="reseller_bundle"
         )
         return redirect(pay_url)
     else:
@@ -14681,38 +14776,68 @@ def payment_callback(order_id: str):
 
     trans = db.get_transaction_by_order_id(order_id)
     if not trans:
-        bot_username = (db.get_setting("bot_username") or os.getenv("BOT_USERNAME") or "").lstrip("@")
-        return render_template("payment_result.html", success=False, message="تراکنش یافت نشد.", bot_username=bot_username)
+        portal_token = request.args.get("token")
+        portal_url = url_for("customer_portal", token=portal_token) if portal_token else None
+        reseller_portal_url = url_for("reseller_transactions") if str(order_id).startswith("R_BUNDLE") else None
+        bot_username = None if (portal_url or reseller_portal_url) else (db.get_setting("bot_username") or os.getenv("BOT_USERNAME") or "").lstrip("@")
+        return render_template("payment_result.html", success=False, message=f"پرداخت شما برای شماره سفارش {order_id} ناموفق بود.", bot_username=bot_username, portal_url=portal_url, reseller_portal_url=reseller_portal_url, order_id=order_id)
 
-    bot_username = get_bot_username_for_transaction(trans)
+    is_reseller_tx = (
+        trans.get("gateway") == "bundle_reseller" or 
+        str(order_id).startswith("R_BUNDLE") or 
+        trans.get("source") in ("reseller_bundle", "reseller_panel")
+    )
     portal_token = request.args.get("token")
     if not portal_token and trans.get("renew_sub_id"):
         sub_info = db.get_subscription(trans.get("renew_sub_id"))
         if sub_info:
             portal_token = sub_info.get("hidify_uuid") or str(sub_info.get("id"))
-    portal_url = url_for("customer_portal", token=portal_token) if portal_token else None
-    reseller_portal_url = url_for("reseller_transactions") if (trans.get("gateway") == "bundle_reseller" or str(order_id).startswith("R_BUNDLE")) else None
+        else:
+            portal_token = str(trans.get("renew_sub_id"))
 
-    # اگر از قبل تایید شده باشد
-    if trans.get("status") == "approved":
-        return render_template(
-            "payment_result.html",
-            success=True,
-            order_id=order_id,
-            amount=trans.get("amount", 0),
-            ref_id=trans.get("ref_id"),
-            plan_name=trans.get("plan_name", ""),
-            bot_username=bot_username,
-            portal_url=portal_url,
-            reseller_portal_url=reseller_portal_url
+    is_portal_tx = (
+        not is_reseller_tx and (
+            bool(portal_token) or 
+            trans.get("source") in ("portal", "portal_online", "portal_debt_online") or 
+            str(order_id).startswith(("CP_", "DEBT_")) or 
+            bool(str(trans.get("gateway", "")).endswith("_portal"))
         )
+    )
+
+    if is_portal_tx:
+        portal_url = url_for("customer_portal", token=portal_token) if portal_token else None
+        reseller_portal_url = None
+        bot_username = None
+    elif is_reseller_tx:
+        portal_url = None
+        reseller_portal_url = url_for("reseller_transactions")
+        bot_username = None
+    else:
+        portal_url = None
+        reseller_portal_url = None
+        bot_username = get_bot_username_for_transaction(trans)
 
     amount = trans.get("amount", 0)
     user_id = trans.get("user_id")
     plan_name = trans.get("plan_name", "")
     reseller_id = trans.get("reseller_id")
 
-    if reseller_id:
+    # اگر از قبل تایید شده باشد
+    if trans.get("status") == "approved":
+        success_portal_url = url_for("customer_portal", token=portal_token, success_order=order_id) if (is_portal_tx and portal_token) else portal_url
+        return render_template(
+            "payment_result.html",
+            success=True,
+            order_id=order_id,
+            amount=amount,
+            ref_id=trans.get("ref_id"),
+            plan_name=plan_name,
+            bot_username=bot_username,
+            portal_url=success_portal_url,
+            reseller_portal_url=reseller_portal_url
+        )
+
+    if reseller_id and not is_reseller_tx:
         gw_cfg = db.get_reseller_gateway(reseller_id)
     else:
         gw_cfg = db.get_admin_gateway()
@@ -14751,6 +14876,7 @@ def payment_callback(order_id: str):
 
     if verified:
         fulfill_approved_transaction(order_id, ref_id=str(ref_id or authority or idpay_id), processed_by=f"درگاه {gw_type}")
+        success_portal_url = url_for("customer_portal", token=portal_token, success_order=order_id) if (is_portal_tx and portal_token) else portal_url
         return render_template(
             "payment_result.html",
             success=True,
@@ -14758,19 +14884,22 @@ def payment_callback(order_id: str):
             amount=amount,
             ref_id=ref_id,
             plan_name=plan_name,
-            portal_url=portal_url,
+            portal_url=success_portal_url,
             reseller_portal_url=reseller_portal_url,
             bot_username=bot_username
         )
     else:
-        db.update_transaction(order_id, status="failed")
+        notify_failed_transaction(order_id, reason="پرداخت توسط درگاه آنلاین شاپرک تایید نشد")
+        fail_portal_url = url_for("customer_portal", token=portal_token, failed_order=order_id) if (is_portal_tx and portal_token) else portal_url
+        fail_msg = f"پرداخت شما برای شماره سفارش {order_id} ناموفق بود یا توسط کاربر لغو گردید."
         return render_template(
             "payment_result.html",
             success=False,
             order_id=order_id,
             amount=amount,
-            message="پرداخت ناموفق بود یا توسط کاربر لغو گردید.",
-            portal_url=portal_url,
+            plan_name=plan_name,
+            message=fail_msg,
+            portal_url=fail_portal_url,
             reseller_portal_url=reseller_portal_url,
             bot_username=bot_username
         )
@@ -14842,22 +14971,59 @@ def blupal_callback(order_id: str = None):
                 order_id = tx_by_inv.get("order_id")
 
     if not order_id:
-        bot_username = (db.get_setting("bot_username") or os.getenv("BOT_USERNAME") or "").lstrip("@")
-        return render_template("payment_result.html", success=False, message="شناسه سفارش نامعتبر است.", bot_username=bot_username)
+        portal_token = request.args.get("token")
+        portal_url = url_for("customer_portal", token=portal_token) if portal_token else None
+        reseller_portal_url = url_for("reseller_transactions") if (request.args.get("source") == "reseller_bundle") else None
+        bot_username = None if (portal_url or reseller_portal_url) else (db.get_setting("bot_username") or os.getenv("BOT_USERNAME") or "").lstrip("@")
+        return render_template("payment_result.html", success=False, message="شناسه سفارش نامعتبر است.", bot_username=bot_username, portal_url=portal_url, reseller_portal_url=reseller_portal_url)
 
     tx = db.get_transaction_by_order_id(order_id)
     if not tx:
-        bot_username = (db.get_setting("bot_username") or os.getenv("BOT_USERNAME") or "").lstrip("@")
-        return render_template("payment_result.html", success=False, message="تراکنش یافت نشد.", bot_username=bot_username)
+        portal_token = request.args.get("token")
+        if not portal_token and (str(order_id).startswith("CP_") or str(order_id).startswith("DEBT_")):
+            try:
+                portal_token = str(order_id).rsplit("_", 1)[-1]
+            except Exception:
+                pass
+        portal_url = url_for("customer_portal", token=portal_token) if portal_token else None
+        reseller_portal_url = url_for("reseller_transactions") if str(order_id).startswith("R_BUNDLE") else None
+        bot_username = None if (portal_url or reseller_portal_url) else (db.get_setting("bot_username") or os.getenv("BOT_USERNAME") or "").lstrip("@")
+        return render_template("payment_result.html", success=False, message=f"پرداخت شما برای شماره سفارش {order_id} ناموفق بود.", bot_username=bot_username, portal_url=portal_url, reseller_portal_url=reseller_portal_url, order_id=order_id)
 
-    bot_username = get_bot_username_for_transaction(tx)
+    is_reseller_tx = (
+        tx.get("gateway") == "bundle_reseller" or 
+        str(order_id).startswith("R_BUNDLE") or 
+        tx.get("source") in ("reseller_bundle", "reseller_panel")
+    )
     portal_token = request.args.get("token")
     if not portal_token and tx.get("renew_sub_id"):
         sub_info = db.get_subscription(tx.get("renew_sub_id"))
         if sub_info:
             portal_token = sub_info.get("hidify_uuid") or str(sub_info.get("id"))
-    portal_url = url_for("customer_portal", token=portal_token) if portal_token else None
-    reseller_portal_url = url_for("reseller_transactions") if (tx.get("gateway") == "bundle_reseller" or str(order_id).startswith("R_BUNDLE")) else None
+        else:
+            portal_token = str(tx.get("renew_sub_id"))
+
+    is_portal_tx = (
+        not is_reseller_tx and (
+            bool(portal_token) or 
+            tx.get("source") in ("portal", "portal_online", "portal_debt_online") or 
+            str(order_id).startswith(("CP_", "DEBT_")) or 
+            bool(str(tx.get("gateway", "")).endswith("_portal"))
+        )
+    )
+
+    if is_portal_tx:
+        portal_url = url_for("customer_portal", token=portal_token) if portal_token else None
+        reseller_portal_url = None
+        bot_username = None
+    elif is_reseller_tx:
+        portal_url = None
+        reseller_portal_url = url_for("reseller_transactions")
+        bot_username = None
+    else:
+        portal_url = None
+        reseller_portal_url = None
+        bot_username = get_bot_username_for_transaction(tx)
 
     amount = tx.get("amount", 0)
     plan_name = tx.get("plan_name", "")
@@ -14866,6 +15032,7 @@ def blupal_callback(order_id: str = None):
 
     # اگر قبلاً با وب‌هوک یا تایید قبلی انجام شده باشد
     if tx.get("status") == "approved":
+        success_portal_url = url_for("customer_portal", token=portal_token, success_order=order_id) if (is_portal_tx and portal_token) else portal_url
         return render_template(
             "payment_result.html",
             success=True,
@@ -14873,13 +15040,13 @@ def blupal_callback(order_id: str = None):
             amount=amount,
             plan_name=plan_name,
             ref_id=tx.get("ref_id"),
-            portal_url=portal_url,
+            portal_url=success_portal_url,
             reseller_portal_url=reseller_portal_url,
             bot_username=bot_username
         )
 
     # در غیر این صورت، استعلام زنده از API بلوپال جهت اطمینان
-    if reseller_id:
+    if reseller_id and not is_reseller_tx:
         gw_cfg = db.get_reseller_gateway(reseller_id)
     else:
         gw_cfg = db.get_admin_gateway()
@@ -14902,6 +15069,7 @@ def blupal_callback(order_id: str = None):
                     payer_info=check_res,
                     processed_by="استعلام بازگشت بلوپال"
                 )
+                success_portal_url = url_for("customer_portal", token=portal_token, success_order=order_id) if (is_portal_tx and portal_token) else portal_url
                 return render_template(
                     "payment_result.html",
                     success=True,
@@ -14909,7 +15077,7 @@ def blupal_callback(order_id: str = None):
                     amount=amount,
                     plan_name=plan_name,
                     ref_id=ref_info,
-                    portal_url=portal_url,
+                    portal_url=success_portal_url,
                     reseller_portal_url=reseller_portal_url,
                     bot_username=bot_username
                 )
@@ -14928,14 +15096,18 @@ def blupal_callback(order_id: str = None):
         except Exception as e:
             logger.error(f"Error checking invoice in blupal_callback: {e}")
 
+    # در صورت عدم تایید یا انقضای فاکتور بلوپال
+    notify_failed_transaction(order_id, reason="عدم پرداخت یا انقضای فاکتور بلوپال")
+    fail_portal_url = url_for("customer_portal", token=portal_token, failed_order=order_id) if (is_portal_tx and portal_token) else portal_url
+    fail_msg = f"پرداخت شما برای شماره سفارش {order_id} ناموفق بود یا مهلت فاکتور به پایان رسیده است."
     return render_template(
         "payment_result.html",
         success=False,
         order_id=order_id,
         amount=amount,
         plan_name=plan_name,
-        message="پرداخت هنوز تایید نشده است یا مهلت فاکتور به پایان رسیده است.",
-        portal_url=portal_url,
+        message=fail_msg,
+        portal_url=fail_portal_url,
         reseller_portal_url=reseller_portal_url,
         bot_username=bot_username
     )
