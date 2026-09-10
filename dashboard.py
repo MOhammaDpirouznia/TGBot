@@ -8652,6 +8652,8 @@ def cards():
 
     financial_summary = db.get_cards_financial_summary(owner_type="admin")
     cash_desk_logs = db.get_cash_desk_logs(owner_type="admin", status="all", limit=50)
+    if isinstance(cash_desk_logs, dict) and "logs" in cash_desk_logs:
+        cash_desk_logs = cash_desk_logs["logs"]
     payment_methods = db.get_payment_methods()
     admin_gateway = db.get_admin_gateway()
     crypto_config = CryptoPaymentGateway.get_crypto_config(db)
@@ -8662,8 +8664,9 @@ def cards():
     blupal_webhook_url = f"{str(domain).rstrip('/')}/payment/blupal/webhook"
     blupal_callback_url = f"{str(domain).rstrip('/')}/payment/blupal/callback"
 
-    admin_bank_sms = db.get_admin_bank_sms_config()
-    bank_sms_webhook_url = f"{str(domain).rstrip('/')}/api/bank-sms/webhook?token={admin_bank_sms['token']}"
+    admin_bank_sms = db.get_admin_bank_sms_config() or {}
+    admin_sms_token = admin_bank_sms.get("token", "")
+    bank_sms_webhook_url = f"{str(domain).rstrip('/')}/api/bank-sms/webhook?token={admin_sms_token}"
     bank_sms_logs = db.get_bank_sms_logs(owner_type="admin", limit=15)
 
     return render_template(
@@ -13029,14 +13032,16 @@ def reseller_cards():
     cards = db.get_reseller_cards(reseller_id)
     for c in cards:
         c_id = c["id"]
-        today_vol = db.get_card_daily_volume(c_id, owner_type="reseller", owner_id=reseller_id)
+        today_vol = db.get_card_daily_volume(c_id, owner_type="reseller", reseller_id=reseller_id, owner_id=reseller_id)
         c["today_volume"] = today_vol
         d_limit = c.get("daily_limit") or 50000000
         c["usage_percent"] = min(100, int((today_vol / d_limit) * 100)) if d_limit > 0 else 0
         c["remaining_limit"] = max(0, d_limit - today_vol)
 
-    financial_summary = db.get_cards_financial_summary(owner_type="reseller", owner_id=reseller_id)
+    financial_summary = db.get_cards_financial_summary(owner_type="reseller", reseller_id=reseller_id, owner_id=reseller_id)
     cash_desk_logs = db.get_cash_desk_logs(owner_type="reseller", owner_id=reseller_id, status="all", limit=50)
+    if isinstance(cash_desk_logs, dict) and "logs" in cash_desk_logs:
+        cash_desk_logs = cash_desk_logs["logs"]
     payment_methods = db.get_payment_methods(reseller_id=reseller_id)
     reseller_gateway = db.get_reseller_gateway(reseller_id)
     reseller_crypto = db.get_reseller_crypto_config(reseller_id)
@@ -13048,8 +13053,9 @@ def reseller_cards():
     blupal_webhook_url = f"{str(domain).rstrip('/')}/payment/blupal/webhook"
     blupal_callback_url = f"{str(domain).rstrip('/')}/payment/blupal/callback"
 
-    reseller_bank_sms = db.get_reseller_bank_sms_config(reseller_id)
-    bank_sms_webhook_url = f"{str(domain).rstrip('/')}/api/bank-sms/webhook?token={reseller_bank_sms['token']}"
+    reseller_bank_sms = db.get_reseller_bank_sms_config(reseller_id) or {}
+    reseller_sms_token = reseller_bank_sms.get("token", "")
+    bank_sms_webhook_url = f"{str(domain).rstrip('/')}/api/bank-sms/webhook?token={reseller_sms_token}"
     bank_sms_logs = db.get_bank_sms_logs(owner_type="reseller", owner_id=reseller_id, limit=15)
 
     return render_template(

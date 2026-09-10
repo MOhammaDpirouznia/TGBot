@@ -11354,7 +11354,8 @@ class Database:
     # سیستم جامع حسابداری شناور و روتاتور هوشمند کارت‌ها (Card Rotator & Ledger)
     # ═══════════════════════════════════════════════════════════════════════
 
-    def get_card_daily_volume(self, card_id: int, owner_type: str = "admin", date_str: str = None) -> int:
+    def get_card_daily_volume(self, card_id: int, owner_type: str = "admin", date_str: str = None,
+                               owner_id: int = 0, reseller_id: int = 0, **kwargs) -> int:
         """محاسبه مجموع واریزی‌های یک کارت در روز جاری جهت کنترل سقف روزانه"""
         if not date_str:
             date_str = get_now_naive().strftime("%Y-%m-%d")
@@ -11500,12 +11501,15 @@ class Database:
                              tx_type: str = "deposit", category: str = "subscription",
                              title: str = "", description: str = None, tracking_code: str = None,
                              ref_type: str = None, ref_id: str = None, created_by: str = None,
-                             reseller_id: int = 0) -> dict:
+                             reseller_id: int = 0, owner_id: int = None, actor: str = None, **kwargs) -> dict:
         """
         ثبت تراکنش واریز/برداشت و به‌روزرسانی آنی مانده حساب شناور کارت
         """
         if not card_id or int(card_id) <= 0:
             return {"success": False, "error": "شناسه کارت نامعتبر است."}
+
+        effective_reseller_id = owner_id if owner_id is not None else reseller_id
+        effective_created_by = actor or created_by or "system"
 
         table = "bank_cards" if owner_type == "admin" else "reseller_cards"
         conn = self.get_connection()
@@ -11536,13 +11540,13 @@ class Database:
                     created_by, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                card_id, owner_type, reseller_id or card.get("reseller_id", 0),
+                card_id, owner_type, effective_reseller_id or card.get("reseller_id", 0),
                 tx_type, amt, new_balance, category,
                 title.strip() if title else ("واریز به کارت" if tx_type == "deposit" else "برداشت از کارت"),
                 description.strip() if description else None,
                 tracking_code.strip() if tracking_code else None,
                 ref_type, str(ref_id) if ref_id else None,
-                created_by or "system", now
+                effective_created_by, now
             ))
             tx_id = cursor.lastrowid
 
@@ -11583,13 +11587,19 @@ class Database:
         finally:
             conn.close()
 
-    def get_card_details_and_transactions(self, card_id: int, owner_type: str = "admin", limit: int = 150, category: str = None, tx_type: str = None) -> dict:
+    def get_card_details_and_transactions(self, card_id: int, owner_type: str = "admin", limit: int = 150,
+                                           category: str = None, tx_type: str = None,
+                                           owner_id: int = 0, reseller_id: int = 0, **kwargs) -> dict:
         """دریافت جزییات کارت، مانده شناور، گردش روز و ریزتراکنش‌های تفکیکی"""
         table = "bank_cards" if owner_type == "admin" else "reseller_cards"
+        effective_reseller_id = owner_id or reseller_id
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute(f"SELECT * FROM {table} WHERE id = ?", (card_id,))
+            if owner_type == "reseller" and effective_reseller_id:
+                cursor.execute(f"SELECT * FROM {table} WHERE id = ? AND reseller_id = ?", (card_id, effective_reseller_id))
+            else:
+                cursor.execute(f"SELECT * FROM {table} WHERE id = ?", (card_id,))
             card_row = cursor.fetchone()
             if not card_row:
                 return {"success": False, "error": "کارت یافت نشد."}
@@ -11640,11 +11650,13 @@ class Database:
         finally:
             conn.close()
 
-    def get_cards_financial_summary(self, owner_type: str = "admin", reseller_id: int = 0) -> dict:
+    def get_cards_financial_summary(self, owner_type: str = "admin", reseller_id: int = 0,
+                                    owner_id: int = None, **kwargs) -> dict:
         """محاسبه شاخص‌های مالی مانده شناور، کل واریزها، مخارج و صندوق نقد"""
+        effective_reseller_id = owner_id if owner_id is not None else reseller_id
         table = "bank_cards" if owner_type == "admin" else "reseller_cards"
         owner_filter = "" if owner_type == "admin" else " WHERE reseller_id = ?"
-        params = [reseller_id] if owner_type == "reseller" else []
+        params = [effective_reseller_id] if owner_type == "reseller" else []
         today_str = get_now_naive().strftime("%Y-%m-%d")
         month_str = get_now_naive().strftime("%Y-%m")
 
@@ -11660,33 +11672,36 @@ class Database:
                 SELECT COALESCE(SUM(amount), 0) FROM card_transactions 
                 WHERE owner_type = ? AND (reseller_id = ? OR ? = 0) AND type = 'deposit' AND created_at LIKE ?
             """
-            cursor.execute(q_dep, (owner_type, reseller_id, reseller_id, f"{month_str}%"))
+            cursor.execute(q_dep, (owner_type, effective_reseller_id, effective_reseller_id, f"{month_str}%"))
             month_deposits = cursor.fetchone()[0] or 0
 
             q_with = """
                 SELECT COALESCE(SUM(amount), 0) FROM card_transactions 
                 WHERE owner_type = ? AND (reseller_id = ? OR ? = 0) AND type = 'withdrawal' AND created_at LIKE ?
             """
-            cursor.execute(q_with, (owner_type, reseller_id, reseller_id, f"{month_str}%"))
+            cursor.execute(q_with, (owner_type, effective_reseller_id, effective_reseller_id, f"{month_str}%"))
             month_withdrawals = cursor.fetchone()[0] or 0
 
             q_today = """
                 SELECT COALESCE(SUM(amount), 0) FROM card_transactions 
                 WHERE owner_type = ? AND (reseller_id = ? OR ? = 0) AND type = 'deposit' AND created_at LIKE ?
             """
-            cursor.execute(q_today, (owner_type, reseller_id, reseller_id, f"{today_str}%"))
+            cursor.execute(q_today, (owner_type, effective_reseller_id, effective_reseller_id, f"{today_str}%"))
             today_deposits = cursor.fetchone()[0] or 0
 
             cursor.execute("""
                 SELECT COALESCE(SUM(amount), 0) FROM cash_desk_logs 
                 WHERE owner_type = ? AND (owner_id = ? OR ? = 0) AND is_settled = 0 AND type = 'income'
-            """, (owner_type, reseller_id, reseller_id))
+            """, (owner_type, effective_reseller_id, effective_reseller_id))
             unsettled_cash = cursor.fetchone()[0] or 0
 
             net_floating_balance = total_cards_balance + unsettled_cash
 
             return {
                 "total_cards_balance": total_cards_balance,
+                "total_balance": total_cards_balance,
+                "total_deposits": month_deposits,
+                "total_withdrawals": month_withdrawals,
                 "unsettled_cash": unsettled_cash,
                 "net_floating_balance": net_floating_balance,
                 "month_deposits": month_deposits,
@@ -11717,17 +11732,35 @@ class Database:
         finally:
             conn.close()
 
-    def get_cash_desk_logs(self, owner_type: str = "admin", owner_id: int = 0, limit: int = 100) -> dict:
+    def get_cash_desk_logs(self, owner_type: str = "admin", owner_id: int = 0, limit: int = 100,
+                           status: str = "all", as_dict: bool = False, **kwargs):
         """لیست دریافتی‌های نقدی و مانده تسویه نشده صندوق نقد"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("""
+            status_cond = ""
+            params = [owner_type, owner_id, owner_id]
+            if status == "settled":
+                status_cond = " AND is_settled = 1"
+            elif status in ("unsettled", "pending"):
+                status_cond = " AND is_settled = 0"
+            params.append(limit)
+
+            cursor.execute(f"""
                 SELECT * FROM cash_desk_logs 
-                WHERE owner_type = ? AND (owner_id = ? OR ? = 0)
+                WHERE owner_type = ? AND (owner_id = ? OR ? = 0){status_cond}
                 ORDER BY id DESC LIMIT ?
-            """, (owner_type, owner_id, owner_id, limit))
-            logs = [dict(r) for r in cursor.fetchall()]
+            """, params)
+            raw_logs = [dict(r) for r in cursor.fetchall()]
+
+            logs = []
+            for r in raw_logs:
+                r_dict = dict(r)
+                if "status" not in r_dict:
+                    r_dict["status"] = "settled" if r_dict.get("is_settled") else "pending"
+                if "source" not in r_dict:
+                    r_dict["source"] = r_dict.get("description") or r_dict.get("plan_name") or "دریافت نقدی"
+                logs.append(r_dict)
 
             cursor.execute("""
                 SELECT COALESCE(SUM(amount), 0) FROM cash_desk_logs 
@@ -11741,11 +11774,16 @@ class Database:
             """, (owner_type, owner_id, owner_id))
             settled_total = cursor.fetchone()[0] or 0
 
-            return {
-                "logs": logs,
-                "unsettled_total": unsettled_total,
-                "settled_total": settled_total
-            }
+            if as_dict:
+                return {
+                    "logs": logs,
+                    "unsettled_total": unsettled_total,
+                    "settled_total": settled_total
+                }
+            return logs
+        except Exception as e:
+            logger.error(f"Error getting cash desk logs: {e}")
+            return [] if not as_dict else {"logs": [], "unsettled_total": 0, "settled_total": 0}
         finally:
             conn.close()
 
