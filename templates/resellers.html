@@ -1522,6 +1522,29 @@
                         </div>
                     </div>
 
+                    <!-- بخش کنترل دسترسی‌های مالی و فیش‌های پرداخت -->
+                    <div class="mb-3 border border-info p-3 rounded bg-info bg-opacity-10">
+                        <label class="form-label fw-bold text-dark"><i class="fas fa-shield-halved text-info me-1"></i> دسترسی‌های مالی و مدیریت فیش‌ها:</label>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" name="can_revoke_payments" id="canRevokeEdit{{ r['id'] }}" value="1" {% if r.get('can_revoke_payments') is none or r.get('can_revoke_payments') %}checked{% endif %}>
+                            <label class="form-check-label fw-bold small text-dark" for="canRevokeEdit{{ r['id'] }}">
+                                اجازه ابطال فیش‌های تاییدشده مشتریان
+                            </label>
+                            <div class="small text-muted" style="font-size: 0.72rem;">
+                                در صورت فعال بودن، نماینده می‌تواند فیش‌های اشتباه یا لغوشده را باطل کند (مبلغ از درآمد کسر و هزینه خرید عمده به کیف‌پول بازمی‌گردد).
+                            </div>
+                        </div>
+                        <div class="form-check form-switch mb-1">
+                            <input class="form-check-input" type="checkbox" name="can_delete_payments" id="canDeleteEdit{{ r['id'] }}" value="1" {% if r.get('can_delete_payments') %}checked{% endif %}>
+                            <label class="form-check-label fw-bold small text-danger" for="canDeleteEdit{{ r['id'] }}">
+                                اجازه حذف فیش‌های پرداخت (انتقال به سطل زباله)
+                            </label>
+                            <div class="small text-muted" style="font-size: 0.72rem;">
+                                ⚠️ پیشنهاد می‌شود خاموش باشد. به جای حذف، از گزینه ابطال استفاده نمایید تا شفافیت مالی حفظ گردد.
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="mb-3 border p-3 rounded bg-light">
                         <label class="form-label fw-bold small text-primary"><i class="fas fa-server me-1"></i> تنظیمات ادمین اختصاصی در هیدیفای:</label>
                         <div class="input-group input-group-sm mb-2">

@@ -17,12 +17,41 @@
         <p class="text-muted mb-0">گزارش کامل واریزی‌ها، پیش‌خرید بسته‌های اعتباری، خریدهای اشتراک و تاریخچه مالی</p>
     </div>
     <div class="d-flex align-items-center gap-2">
+        <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#settlePeriodModal">
+            <i class="fas fa-handshake-simple me-1"></i> تسویه حساب و بستن دوره مالی
+        </button>
         <a href="{{ url_for('admin_reseller_export_payments', reseller_id=reseller['id']) }}" class="btn btn-outline-success">
             <i class="fas fa-file-excel me-1"></i> خروجی اکسل (CSV)
         </a>
         <a href="{{ url_for('admin_resellers') }}" class="btn btn-outline-secondary">
             <i class="fas fa-arrow-right me-1"></i> بازگشت به لیست نمایندگان
         </a>
+    </div>
+</div>
+
+<!-- نوار وضعیت دوره مالی و فیلتر دوره -->
+<div class="card shadow-sm border-0 mb-4 bg-light">
+    <div class="card-body py-2 px-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <span class="text-muted small"><i class="fas fa-calendar-check text-primary me-1"></i> وضعیت دوره حسابداری:</span>
+            {% if history.get('last_settled_at') %}
+                <span class="badge bg-success-subtle text-success border border-success">
+                    آخرین تسویه دوره: {{ history['last_settled_at'][:16].replace('T', ' ') }}
+                </span>
+            {% else %}
+                <span class="badge bg-secondary-subtle text-secondary border">
+                    تاکنون دوره مالی بسته نشده است
+                </span>
+            {% endif %}
+        </div>
+        <div class="btn-group btn-group-sm" role="group">
+            <a href="{{ url_for('admin_reseller_payments', reseller_id=reseller['id'], period='current') }}" class="btn {{ 'btn-primary' if period == 'current' else 'btn-outline-primary' }}">
+                <i class="fas fa-clock me-1"></i> دوره جاری (از آخرین تسویه)
+            </a>
+            <a href="{{ url_for('admin_reseller_payments', reseller_id=reseller['id'], period='all') }}" class="btn {{ 'btn-primary' if period != 'current' else 'btn-outline-primary' }}">
+                <i class="fas fa-list me-1"></i> کل سوابق تاریخی (آرشیو)
+            </a>
+        </div>
     </div>
 </div>
 
@@ -705,4 +734,62 @@
 </div>
 {% endif %}
 {% endfor %}
+
+<!-- Modal تسویه حساب و بستن دوره مالی نماینده -->
+<div class="modal fade text-start" id="settlePeriodModal" tabindex="-1" aria-labelledby="settlePeriodModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <form method="POST" action="{{ url_for('admin_reseller_settle_period', reseller_id=reseller['id']) }}">
+                <div class="modal-header bg-danger text-white py-3">
+                    <h5 class="modal-title fw-bold" id="settlePeriodModalLabel">
+                        <i class="fas fa-handshake-simple me-2"></i> تسویه حساب و بستن دوره مالی نماینده
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-info py-2 mb-3 small">
+                        <i class="fas fa-info-circle me-1"></i>
+                        با بستن دوره مالی، تراز و بدهی‌های معوق نماینده تسویه شده، سند رسمی در سیستم حسابداری ثبت می‌گردد و تاریخ شروع دوره جدید از لحظه اکنون آغاز می‌شود.
+                    </div>
+
+                    <div class="mb-3 border p-3 rounded bg-light">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted small">نماینده:</span>
+                            <strong class="text-dark">{{ reseller['name'] }} (@{{ reseller['username'] }})</strong>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted small">موجودی کیف پول فعلی:</span>
+                            <strong class="text-success font-monospace">{{ "{:,}".format(reseller.get('balance', 0)) }} تومان</strong>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span class="text-muted small">بدهی اعتباری فعلی:</span>
+                            <strong class="text-danger font-monospace">{{ "{:,}".format(reseller.get('credit_debt', 0)) }} تومان</strong>
+                        </div>
+                    </div>
+
+                    <div class="form-check form-switch mb-3 p-2 border rounded bg-warning bg-opacity-10">
+                        <input class="form-check-input ms-2" type="checkbox" name="reset_balance" value="1" id="resetBalanceCheck">
+                        <label class="form-check-label fw-bold small text-dark" for="resetBalanceCheck">
+                            صفر کردن موجودی کیف پول نقدی (تسویه و ریست کامل تراز)
+                        </label>
+                        <div class="small text-muted ps-4" style="font-size: 0.72rem;">
+                            در صورت تیک زدن، علاوه بر تسویه بدهی‌ها، موجودی کیف پول نماینده نیز صفر شده و دوره جدید از موجودی صفر آغاز می‌شود.
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">توضیحات یا بابت تسویه دوره (اختیاری):</label>
+                        <input type="text" name="notes" class="form-control" placeholder="مثال: تسویه پایان ماه، واریز وجه تراز نقدی">
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-danger fw-bold px-4">
+                        <i class="fas fa-check-double me-1"></i> تایید و بستن دوره مالی
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 {% endblock %}

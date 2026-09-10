@@ -215,6 +215,16 @@
                                 {% endif %}
                             {% elif tx['status'] == 'pending' %}
                                 <span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i> در انتظار تایید</span>
+                            {% elif tx['status'] == 'revoked' %}
+                                <span class="badge bg-secondary border border-secondary shadow-sm" title="{{ tx.get('revoke_reason') or 'باطل شده' }}">
+                                    <i class="fas fa-ban me-1 text-warning"></i> باطل‌شده
+                                </span>
+                                {% if tx.get('revoked_by') %}
+                                    <div class="text-danger small mt-1" style="font-size: 11px;"><i class="fas fa-user-slash me-1"></i>{{ tx['revoked_by'] }}</div>
+                                {% endif %}
+                                {% if tx.get('revoke_reason') %}
+                                    <div class="text-muted small mt-0" style="font-size: 10px;">{{ tx['revoke_reason'] }}</div>
+                                {% endif %}
                             {% else %}
                                 <span class="badge bg-danger"><i class="fas fa-times-circle me-1"></i> رد شده</span>
                                 {% if tx.get('processed_by') %}
@@ -239,6 +249,10 @@
                                     </form>
                                     <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#rejectModal{{ tx['id'] }}" title="رد فیش">
                                         <i class="fas fa-times"></i>
+                                    </button>
+                                {% elif (tx['status'] == 'approved' or tx['status'] == 'completed') and (reseller.get('can_revoke_payments') is none or reseller.get('can_revoke_payments')) %}
+                                    <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#revokeModal{{ tx['id'] }}" title="ابطال فیش">
+                                        <i class="fas fa-ban me-1"></i> ابطال
                                     </button>
                                 {% endif %}
                             </div>
@@ -273,9 +287,11 @@
         <button type="button" class="btn btn-sm btn-outline-warning" onclick="submitBulkAction('resellerPaymentBulkForm', 'reject', 'آیا از رد تمام فیش‌های انتخاب شده اطمینان دارید؟')">
             <i class="fas fa-times me-1"></i> رد فیش‌های انتخابی
         </button>
-        <button type="button" class="btn btn-sm btn-danger" onclick="submitBulkAction('resellerPaymentBulkForm', 'delete', 'هشدار: آیا از حذف کامل فیش‌های انتخاب شده اطمینان دارید؟')">
-            <i class="fas fa-trash-can me-1"></i> حذف گروهی
+        {% if reseller.get('can_delete_payments') %}
+        <button type="button" class="btn btn-sm btn-outline-danger" onclick="submitBulkAction('resellerPaymentBulkForm', 'delete', 'هشدار: آیا از انتقال فیش‌های انتخاب شده به سطل زباله اطمینان دارید؟')">
+            <i class="fas fa-trash-can me-1"></i> انتقال به سطل زباله
         </button>
+        {% endif %}
     </form>
 </div>
 
@@ -473,6 +489,60 @@
         </div>
     </div>
 </div>
+
+<!-- Modal ابطال فیش تاییدشده توسط نماینده -->
+{% if tx['status'] == 'approved' or tx['status'] == 'completed' %}
+<div class="modal fade text-start" id="revokeModal{{ tx['id'] }}" tabindex="-1" aria-labelledby="revokeModalLabel{{ tx['id'] }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <form method="POST" action="{{ url_for('reseller_payment_revoke', payment_id=tx['id']) }}">
+                <div class="modal-header bg-warning text-dark py-3">
+                    <h5 class="modal-title fw-bold" id="revokeModalLabel{{ tx['id'] }}">
+                        <i class="fas fa-ban me-2 text-dark"></i> ابطال فیش پرداخت #{{ tx['id'] }}
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-warning py-2 mb-3 small">
+                        <i class="fas fa-triangle-exclamation me-1"></i>
+                        با ابطال این فیش، رکورد از <strong>درآمد و آمار فروش</strong> شما کسر می‌گردد و وضعیت آن به «باطل‌شده» تغییر می‌یابد.
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">علت ابطال فیش <span class="text-danger">*</span>:</label>
+                        <input type="text" name="reason" class="form-control" placeholder="مثال: فیش اشتباهی تایید شده بود یا استرداد وجه مشتری" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">عملیات روی اکانت/اشتراک کاربر در سرور هیدیفای:</label>
+                        <select name="rollback_sub_action" class="form-select">
+                            <option value="disable" selected>🔒 غیرفعال‌سازی اکانت کاربر در سرور هیدیفای (پیشنهادی)</option>
+                            <option value="delete">🗑 حذف کامل اکانت کاربر از سرور هیدیفای و دیتابیس</option>
+                            <option value="keep">⚙️ بدون تغییر (اکانت کاربر فعال بماند)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-check form-switch mb-2 p-2 border rounded bg-light">
+                        <input class="form-check-input ms-2" type="checkbox" name="refund_wallet" value="1" id="refundWallet{{ tx['id'] }}" checked>
+                        <label class="form-check-label fw-bold small text-success" for="refundWallet{{ tx['id'] }}">
+                            <i class="fas fa-rotate-left me-1"></i> بازگشت هزینه خرید عمده به کیف پول من
+                        </label>
+                        <div class="small text-muted ps-4" style="font-size: 0.72rem;">
+                            مبلغی که از کیف پول شما برای صدور این بسته کسر شده بود، به موجودی کیف پول شما مسترد خواهد شد.
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-warning text-dark fw-bold px-4">
+                        <i class="fas fa-ban me-1"></i> تأیید ابطال فیش
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endfor %}
 
 <!-- Modal مشاهده کامل تصویر فیش با بزرگنمایی -->
