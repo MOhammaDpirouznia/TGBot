@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>پورتال تمدید و مدیریت اشتراک | {{ brand_title }}</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/Vazirmatn-FD-font-face.css" rel="stylesheet" type="text/css" />
@@ -940,18 +941,28 @@
     </div>
 
     <div class="container portal-container">
-        <!-- نوار بالایی هدر: دکمه‌های تم و پشتیبانی (عنوان سربرگ سمت راست حذف شد) -->
-        <div class="d-flex justify-content-end align-items-center mb-4 px-1 gap-2">
-            {% if support_username %}
-            <a href="https://t.me/{{ support_username.lstrip('@') }}" target="_blank" class="btn btn-sm btn-outline-light rounded-pill px-3 py-1 shadow-sm d-inline-flex align-items-center gap-1" style="font-size: 0.8rem;">
-                <i class="fab fa-telegram text-info"></i>
-                <span>پشتیبانی</span>
-            </a>
-            {% endif %}
-            <button type="button" class="btn btn-sm btn-outline-light rounded-pill px-3 py-1 shadow-sm d-inline-flex align-items-center gap-2" id="portalThemeToggleBtn" onclick="togglePortalTheme()" aria-label="تغییر حالت تیره و روشن">
-                <i id="portalThemeIcon" class="fas fa-moon text-info"></i>
-                <span id="portalThemeLabel" class="small fw-semibold">حالت تیره</span>
-            </button>
+        <!-- نوار بالایی هدر: دکمه خرید جدید، دکمه‌های تم و پشتیبانی -->
+        <div class="d-flex justify-content-between align-items-center mb-4 px-1 gap-2">
+            <div>
+                {% if enable_new_purchase and not is_new_customer %}
+                <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 py-1 shadow-sm d-inline-flex align-items-center gap-1 fw-bold" style="font-size: 0.82rem;" data-bs-toggle="modal" data-bs-target="#newSubPurchaseModal" onclick="window.tgHaptic && window.tgHaptic('light');">
+                    <i class="fas fa-cart-plus"></i>
+                    <span>خرید اشتراک جدید</span>
+                </button>
+                {% endif %}
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                {% if support_username %}
+                <a href="https://t.me/{{ support_username.lstrip('@') }}" target="_blank" class="btn btn-sm btn-outline-light rounded-pill px-3 py-1 shadow-sm d-inline-flex align-items-center gap-1" style="font-size: 0.8rem;">
+                    <i class="fab fa-telegram text-info"></i>
+                    <span>پشتیبانی</span>
+                </a>
+                {% endif %}
+                <button type="button" class="btn btn-sm btn-outline-light rounded-pill px-3 py-1 shadow-sm d-inline-flex align-items-center gap-2" id="portalThemeToggleBtn" onclick="togglePortalTheme()" aria-label="تغییر حالت تیره و روشن">
+                    <i id="portalThemeIcon" class="fas fa-moon text-info"></i>
+                    <span id="portalThemeLabel" class="small fw-semibold">حالت تیره</span>
+                </button>
+            </div>
         </div>
 
         <!-- هدر برندینگ مرکزی -->
@@ -966,6 +977,40 @@
             <h3 class="fw-bold mb-1">{{ brand_title }}</h3>
             <p class="text-secondary small">{{ portal_subtitle }}</p>
         </div>
+
+        {% if user_subscriptions and user_subscriptions|length > 1 %}
+        <!-- سلکتور جابجایی بین اشتراک‌های کاربر در مینی‌اپ و پرتال -->
+        <div class="glass-card p-3 mb-4 border border-primary border-opacity-30 shadow-sm">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+                <span class="small fw-bold text-white d-flex align-items-center gap-2">
+                    <i class="fas fa-layer-group text-primary"></i>
+                    اشتراک‌های فعال شما ({{ user_subscriptions|length }} اشتراک)
+                </span>
+                {% if enable_new_purchase %}
+                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-0 fw-bold" style="font-size: 0.76rem; height: 26px;" data-bs-toggle="modal" data-bs-target="#newSubPurchaseModal" onclick="window.tgHaptic && window.tgHaptic('light');">
+                    <i class="fas fa-plus me-1"></i> خرید جدید
+                </button>
+                {% endif %}
+            </div>
+            <div class="d-flex gap-2 overflow-x-auto pb-1" style="scrollbar-width: thin;">
+                {% for usub in user_subscriptions %}
+                    {% set usub_token = usub.get('hidify_uuid') or usub.get('id') %}
+                    {% set is_active_selected = (token and (token == usub.get('hidify_uuid') or token|string == usub.get('id')|string)) or (loop.first and not token) %}
+                    <a href="{% if is_webapp %}{{ url_for('telegram_webapp', tg_id=telegram_id, r=reseller_id, token=usub_token) }}{% else %}{{ url_for('customer_portal', token=usub_token) }}{% endif %}" 
+                       class="btn btn-sm text-nowrap rounded-3 px-3 py-2 text-start transition-all {% if is_active_selected %}btn-primary shadow border-0{% else %}btn-outline-secondary text-white border-opacity-25 bg-black bg-opacity-20{% endif %}"
+                       style="min-width: 140px;" onclick="window.tgHaptic && window.tgHaptic('light');">
+                        <div class="fw-bold font-monospace text-truncate d-flex align-items-center gap-1" style="max-width: 130px;">
+                            {% if is_active_selected %}<i class="fas fa-check-circle small"></i>{% endif %}
+                            {{ usub.get('account_name') or ('اشتراک ' ~ loop.index) }}
+                        </div>
+                        <div class="small opacity-75 mt-1" style="font-size: 0.72rem;">
+                            {{ usub.get('remaining_days', usub.get('duration', 0)) }} روز • {{ usub.get('traffic_limit', 0) }} گیگ
+                        </div>
+                    </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
 
         {% set failed_order = request.args.get('failed_order') %}
         {% if failed_order %}
@@ -1466,13 +1511,16 @@
     {% endmacro %}
 
     {% macro macro_renewal_card() %}
-    <!-- بخش انتخاب پلن تمدید -->
+    <!-- بخش انتخاب پلن تمدید یا خرید جدید -->
     {% if portal_enable_renewal %}
     <div class="glass-card p-4 mb-4">
-        <h5 class="fw-bold mb-3"><i class="fas fa-cart-shopping text-primary me-2"></i>تمدید یا ارتقای اشتراک</h5>
-        <p class="text-secondary small">یک بسته را انتخاب کنید تا فاکتور واریز اختصاصی صادر شود:</p>
+        <h5 class="fw-bold mb-3"><i class="fas fa-cart-shopping text-primary me-2"></i>{% if is_new_customer %}خرید اشتراک جدید{% else %}تمدید یا ارتقای اشتراک{% endif %}</h5>
+        <p class="text-secondary small">{% if is_new_customer %}یک بسته را انتخاب کنید تا اشتراک اختصاصی شما صادر شود:{% else %}یک بسته را انتخاب کنید تا فاکتور واریز اختصاصی صادر شود:{% endif %}</p>
 
-        <form action="{{ url_for('customer_create_invoice', token=token) }}" method="POST">
+        <form action="{% if is_new_customer or not token %}{{ url_for('customer_buy_new_plan') }}{% else %}{{ url_for('customer_create_invoice', token=token) }}{% endif %}" method="POST">
+            <input type="hidden" name="reseller_id" value="{{ reseller_id or 0 }}">
+            <input type="hidden" name="telegram_id" value="{{ telegram_id or 0 }}">
+            <input type="hidden" name="is_webapp" value="{% if is_webapp %}1{% else %}0{% endif %}">
             <div class="portal-plans-wrapper plan-style-{{ portal_plan_style or 'glass_classic' }}">
                 <div class="row g-3 mb-3">
                     {% for p in plans %}
@@ -1534,6 +1582,7 @@
                 </div>
             </div>
 
+            {% if not is_new_customer %}
             <!-- گزینه فعال‌سازی آنی یا رزرو در صف -->
             <div class="p-3 rounded-3 bg-black bg-opacity-25 border border-secondary border-opacity-25 mb-4">
                 <div class="form-check form-switch d-flex align-items-center gap-2 mb-0">
@@ -1546,6 +1595,9 @@
                     با غیرفعال کردن این گزینه، بسته خریداری‌شده در صف رزرو قرار می‌گیرد و پس از پایان حجم یا انقضای بسته فعلی به طور خودکار فعال می‌شود.
                 </div>
             </div>
+            {% else %}
+            <input type="hidden" name="instant_activation" value="1">
+            {% endif %}
 
             <!-- بخش انتخاب روش پرداخت فعال -->
             <div class="mb-4">
@@ -1559,7 +1611,7 @@
                 {% if not portal_payment_methods or portal_payment_methods|length == 0 %}
                 <div class="alert alert-warning border-0 bg-warning bg-opacity-10 text-warning p-3 rounded-3 small">
                     <i class="fas fa-triangle-exclamation me-1"></i>
-                    در حال حاضر هیچ درگاه یا روش پرداختی فعال نمی‌باشد. لطفاً جهت تمدید اشتراک با پشتیبانی تماس بگیرید.
+                    در حال حاضر هیچ درگاه یا روش پرداختی فعال نمی‌باشد. لطفاً با پشتیبانی تماس بگیرید.
                 </div>
                 {% else %}
                 <div class="row g-2 portal-payment-methods-grid">
@@ -1590,23 +1642,37 @@
                 {% endif %}
             </div>
 
-            <button type="submit" class="btn btn-primary w-100 py-3 fw-bold rounded-pill shadow" id="portalSubmitRenewalBtn" {% if not portal_payment_methods %}disabled{% endif %}>
+            <button type="submit" class="btn btn-primary w-100 py-3 fw-bold rounded-pill shadow" id="portalSubmitRenewalBtn" {% if not portal_payment_methods %}disabled{% endif %} onclick="window.tgHaptic && window.tgHaptic('medium');">
                 <i class="fas fa-credit-card me-2" id="portalSubmitBtnIcon"></i>
                 <span id="portalSubmitBtnText">
-                    {% if portal_payment_methods and portal_payment_methods[0]['id'] == 'online_gateway' %}
-                        {% if gw_cfg and gw_cfg.get('type') == 'blupal' %}
-                            ورود به درگاه پرداخت هوشمند بلوپال
+                    {% if is_new_customer %}
+                        {% if portal_payment_methods and portal_payment_methods[0]['id'] == 'online_gateway' %}
+                            اتصال به درگاه بانکی شاپرک و خرید اشتراک
+                        {% elif portal_payment_methods and portal_payment_methods[0]['id'] == 'card_to_card' %}
+                            صدور فاکتور و خرید کارت به کارت (هوشمند)
+                        {% elif portal_payment_methods and portal_payment_methods[0]['id'] == 'crypto' %}
+                            صدور فاکتور خرید با ارز دیجیتال (تتر USDT)
+                        {% elif portal_payment_methods and portal_payment_methods[0]['id'] == 'wallet' %}
+                            خرید اشتراک و کسر از کیف پول
                         {% else %}
-                            اتصال به درگاه بانکی شاپرک و تمدید آنلاین
+                            خرید و صدور اشتراک جدید
                         {% endif %}
-                    {% elif portal_payment_methods and portal_payment_methods[0]['id'] == 'card_to_card' %}
-                        صدور فاکتور و پرداخت کارت به کارت (هوشمند)
-                    {% elif portal_payment_methods and portal_payment_methods[0]['id'] == 'crypto' %}
-                        صدور فاکتور پرداخت با ارز دیجیتال (تتر USDT)
-                    {% elif portal_payment_methods and portal_payment_methods[0]['id'] == 'wallet' %}
-                        پرداخت و کسر از کیف پول تلگرام
                     {% else %}
-                        صدور فاکتور و تمدید اشتراک
+                        {% if portal_payment_methods and portal_payment_methods[0]['id'] == 'online_gateway' %}
+                            {% if gw_cfg and gw_cfg.get('type') == 'blupal' %}
+                                ورود به درگاه پرداخت هوشمند بلوپال
+                            {% else %}
+                                اتصال به درگاه بانکی شاپرک و تمدید آنلاین
+                            {% endif %}
+                        {% elif portal_payment_methods and portal_payment_methods[0]['id'] == 'card_to_card' %}
+                            صدور فاکتور و پرداخت کارت به کارت (هوشمند)
+                        {% elif portal_payment_methods and portal_payment_methods[0]['id'] == 'crypto' %}
+                            صدور فاکتور پرداخت با ارز دیجیتال (تتر USDT)
+                        {% elif portal_payment_methods and portal_payment_methods[0]['id'] == 'wallet' %}
+                            پرداخت و کسر از کیف پول تلگرام
+                        {% else %}
+                            صدور فاکتور و تمدید اشتراک
+                        {% endif %}
                     {% endif %}
                 </span>
             </button>
@@ -1735,7 +1801,23 @@
     <!-- رندر طرح‌بندی‌های اختصاصی پورتال مشتری بر اساس تنظیمات (Portal Layouts) -->
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
 
-    {% if portal_layout == 'split_dashboard' %}
+    {% if is_new_customer %}
+        <!-- خوش‌آمدگویی و خرید اولین اشتراک در مینی‌اپ -->
+        <div class="glass-card p-4 mb-4 text-center shadow-sm">
+            <div class="avatar-lg bg-primary bg-opacity-20 text-primary rounded-circle d-inline-flex align-items-center justify-content-center mb-3 shadow" style="width: 72px; height: 72px;">
+                <i class="fas fa-rocket fa-2x"></i>
+            </div>
+            <h4 class="fw-bold mb-2">خرید اشتراک جدید</h4>
+            <p class="text-secondary small mb-0" style="max-width: 540px; margin: 0 auto;">
+                به فروشگاه ما خوش آمدید! شما در حال حاضر اشتراک فعالی ندارید. لطفاً یکی از بسته‌های پرسرعت زیر را انتخاب فرمایید تا فاکتور صادر و مشخصات اشتراک بلافاصله در اختیارتان قرار گیرد.
+            </p>
+        </div>
+        {{ macro_invoice_card() }}
+        {{ macro_renewal_card() }}
+        {{ macro_server_status() }}
+        {{ macro_support_card() }}
+
+    {% elif portal_layout == 'split_dashboard' %}
         <!-- ═══════════ قالب ۲: داشبورد دو ستونه مدرن (Split Dashboard) ═══════════ -->
         <div class="row g-4">
             <!-- ستون سایدبار مشخصات اشتراک، وضعیت سرور و پشتیبانی -->
@@ -1939,6 +2021,145 @@
     {% endif %}
 
 </div>
+
+{% if enable_new_purchase %}
+<!-- مودال خرید اشتراک جدید در مینی‌اپ با تفکیک پلن‌ها و قیمت‌های نماینده یا مدیریت -->
+<div class="modal fade" id="newSubPurchaseModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content glass-card border-0 text-white p-2 p-md-3">
+            <div class="modal-header border-secondary border-opacity-25 pb-3">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="avatar-sm bg-primary bg-opacity-25 rounded-circle d-flex align-items-center justify-content-center text-primary p-2" style="width: 42px; height: 42px;">
+                        <i class="fas fa-cart-plus fs-5"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0">خرید اشتراک جدید</h5>
+                        <small class="text-secondary">خرید یک اشتراک اختصاصی متصل به حساب تلگرام شما</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body py-3">
+                <form action="{{ url_for('customer_buy_new_plan') }}" method="POST" id="newSubPurchaseForm">
+                    <input type="hidden" name="reseller_id" value="{{ reseller_id or 0 }}">
+                    <input type="hidden" name="telegram_id" value="{{ telegram_id or 0 }}">
+                    <input type="hidden" name="is_webapp" value="1">
+
+                    <!-- نام دلخواه برای این اشتراک (اختیاری) -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-white">
+                            <i class="fas fa-tag text-info me-1"></i> عنوان یا نام دلخواه اشتراک (اختیاری):
+                        </label>
+                        <input type="text" name="account_name" class="form-control" placeholder="مثلاً: گوشی من، لپ‌تاپ، اشتراک دوم...">
+                        <small class="text-secondary" style="font-size: 0.76rem;">در صورت خالی گذاشتن، نام کاربری به طور خودکار تعیین می‌شود.</small>
+                    </div>
+
+                    <!-- لیست پلن‌های فعال مربوط به این ربات -->
+                    <label class="form-label fw-bold small text-white mb-2">
+                        <i class="fas fa-boxes-stacked text-primary me-1"></i> انتخاب بسته:
+                    </label>
+                    <div class="portal-plans-wrapper plan-style-{{ portal_plan_style or 'glass_classic' }} mb-3">
+                        <div class="row g-2">
+                            {% for p in plans %}
+                            <div class="col-12 col-md-6 d-flex">
+                                <label class="w-100 d-flex flex-column mb-0" style="cursor: pointer;">
+                                    <input type="radio" name="plan_id" value="{{ p['id'] }}" data-price="{{ p['price'] }}" class="d-none plan-radio-modal" {% if loop.first %}checked{% endif %} onchange="updateNewSubModalPricing()">
+                                    <div class="plan-card p-3 d-flex justify-content-between align-items-center w-100 h-100 {% if loop.first %}selected{% endif %}" id="modal_plan_card_{{ p['id'] }}">
+                                        <div class="d-flex align-items-center gap-2">
+                                            {% set icon_info = get_plan_icon(p, p['id']) %}
+                                            <div class="avatar-sm rounded-circle d-flex align-items-center justify-content-center shadow-sm flex-shrink-0 {{ icon_info.bg_class }}" style="width: 38px; height: 38px; font-size: 1.1rem; background-color: {{ icon_info.bg_color }}; color: {{ icon_info.color_hex }}; border: 1px solid {{ icon_info.border_color }};">
+                                                <i class="{{ icon_info.icon }}"></i>
+                                            </div>
+                                            <div>
+                                                <strong class="text-white d-block small">{{ p['name'] }}</strong>
+                                                <small class="text-secondary" style="font-size: 0.75rem;">{{ p['data_limit'] }} گیگابایت • {{ p['duration'] }} روزه</small>
+                                            </div>
+                                        </div>
+                                        <div class="text-end flex-shrink-0">
+                                            <strong class="text-success small font-monospace">{{ "{:,}".format(p['price']) }}</strong>
+                                            <small class="text-secondary d-block" style="font-size: 0.7rem;">تومان</small>
+                                        </div>
+                                    </div>
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <!-- کادر کد تخفیف اختصاصی -->
+                    <div class="p-3 rounded-3 bg-black bg-opacity-25 border border-secondary border-opacity-25 mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label class="form-label fw-bold text-white small mb-0">
+                                <i class="fas fa-ticket text-warning me-1"></i> کد تخفیف دارید؟
+                            </label>
+                            <span id="modalDiscountStatusBadge" class="badge bg-secondary small" style="display: none;"></span>
+                        </div>
+                        <div class="input-group">
+                            <input type="text" name="discount_code" id="modalPortalDiscountInput" class="form-control text-uppercase font-monospace text-center" placeholder="کد تخفیف را وارد کنید..." style="letter-spacing: 2px;">
+                            <button type="button" class="btn btn-outline-warning fw-bold px-3" id="applyModalDiscountBtn" onclick="applyModalNewDiscount()">
+                                <i class="fas fa-tag me-1"></i> اعمال کد
+                            </button>
+                        </div>
+                        <div id="modalDiscountFeedback" class="small mt-2" style="display: none;"></div>
+
+                        <div id="modalPricingSummaryBox" class="mt-2 pt-2 border-top border-secondary border-opacity-25">
+                            <div class="d-flex justify-content-between align-items-center small text-secondary mb-1">
+                                <span>مبلغ بسته انتخابی:</span>
+                                <span class="font-monospace text-white" id="modalSummaryOriginalPrice">۰ تومان</span>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center small text-success mb-1" id="modalSummaryDiscountRow" style="display: none;">
+                                <span>مقدار تخفیف:</span>
+                                <span class="font-monospace fw-bold text-success" id="modalSummaryDiscountAmount">- ۰ تومان</span>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center fw-bold fs-6 text-white pt-2 border-top border-secondary border-opacity-25">
+                                <span>مبلغ نهایی قابل پرداخت:</span>
+                                <span class="font-monospace text-success fs-5" id="modalSummaryFinalPrice">۰ تومان</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- روش‌های پرداخت فعال -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-white mb-2">
+                            <i class="fas fa-wallet text-primary me-1"></i> روش پرداخت:
+                        </label>
+                        {% if not portal_payment_methods or portal_payment_methods|length == 0 %}
+                        <div class="alert alert-warning border-0 bg-warning bg-opacity-10 text-warning p-3 rounded-3 small">
+                            در حال حاضر هیچ روش پرداختی فعال نیست.
+                        </div>
+                        {% else %}
+                        <div class="row g-2">
+                            {% for m in portal_payment_methods %}
+                            <div class="col-12 col-md-6 d-flex">
+                                <label class="w-100 mb-0 d-flex flex-column" style="cursor: pointer;">
+                                    <input type="radio" name="payment_method" value="{{ m['id'] }}" class="d-none modal-method-radio" {% if loop.first %}checked{% endif %} onchange="onModalMethodSelected('{{ m['id'] }}')">
+                                    <div class="p-3 rounded-3 border h-100 d-flex flex-column justify-content-between transition-all {% if loop.first %}border-primary bg-primary bg-opacity-10{% else %}border-secondary border-opacity-25 bg-black bg-opacity-25{% endif %}" id="modal_method_card_{{ m['id'] }}">
+                                        <div class="d-flex justify-content-between align-items-center mb-1">
+                                            <div class="d-flex align-items-center gap-2">
+                                                <i class="{{ m.get('icon', 'fas fa-credit-card') }} text-primary"></i>
+                                                <strong class="text-white small fw-bold">{{ m['title'] }}</strong>
+                                            </div>
+                                            <span class="badge {{ m.get('badge_class', 'bg-primary') }} font-monospace" style="font-size: 0.7rem;">{{ m['badge'] }}</span>
+                                        </div>
+                                        <small class="text-secondary" style="font-size: 0.75rem;">{{ m['desc'] }}</small>
+                                    </div>
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100 py-3 fw-bold rounded-pill shadow" id="modalNewSubSubmitBtn" {% if not portal_payment_methods %}disabled{% endif %} onclick="window.tgHaptic && window.tgHaptic('medium');">
+                        <i class="fas fa-cart-shopping me-2"></i> ثبت سفارش و خرید اشتراک
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <!-- مودال یکپارچه سوابق دوره‌ها، تمدیدها و پرداخت‌ها -->
 <div class="modal fade" id="historyModal" tabindex="-1" aria-hidden="true">
@@ -2478,10 +2699,16 @@ function applyPortalDiscount() {
         btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال بررسی...';
     }
 
-    fetch('{{ url_for("customer_check_discount", token=token) }}', {
+    const discountCheckEndpoint = "{% if token %}{{ url_for('customer_check_discount', token=token) }}{% else %}{{ url_for('customer_check_discount') }}{% endif %}";
+    fetch(discountCheckEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: code, plan_id: plan.id })
+        body: JSON.stringify({
+            code: code,
+            plan_id: plan.id,
+            reseller_id: {{ reseller_id or 0 }},
+            telegram_id: {{ telegram_id or 0 }}
+        })
     })
     .then(res => res.json())
     .then(data => {
@@ -2528,25 +2755,162 @@ function applyPortalDiscount() {
     });
 }
 
-// انتخاب پلن‌ها با کلیک و محاسبه قیمت
-document.querySelectorAll('.plan-card').forEach(card => {
-    card.addEventListener('click', function() {
-        document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
-        this.classList.add('selected');
-        const radio = this.closest('label').querySelector('input[type="radio"]');
-        if (radio) {
-            radio.checked = true;
-            if (currentDiscountData && currentDiscountData.valid) {
-                applyPortalDiscount();
-            } else {
-                updatePricingDisplay();
-            }
+// ─── توابع اختصاصی مودال خرید اشتراک جدید در مینی‌اپ ───
+let currentModalDiscountData = null;
+
+function getSelectedModalPlan() {
+    const checked = document.querySelector('input.plan-radio-modal:checked');
+    if (!checked) return { id: '', price: 0 };
+    return {
+        id: checked.value,
+        price: parseInt(checked.getAttribute('data-price') || '0', 10)
+    };
+}
+
+function updateNewSubModalPricing() {
+    const plan = getSelectedModalPlan();
+    const origSpan = document.getElementById('modalSummaryOriginalPrice');
+    const discRow = document.getElementById('modalSummaryDiscountRow');
+    const discAmtSpan = document.getElementById('modalSummaryDiscountAmount');
+    const finalSpan = document.getElementById('modalSummaryFinalPrice');
+
+    if (!origSpan || !finalSpan) return;
+
+    origSpan.innerText = formatMoney(plan.price) + ' تومان';
+
+    if (currentModalDiscountData && currentModalDiscountData.valid) {
+        let discAmt = currentModalDiscountData.discount_amount || 0;
+        let finalAmt = Math.max(0, plan.price - discAmt);
+        if (discRow) discRow.style.display = 'flex';
+        if (discAmtSpan) discAmtSpan.innerText = '- ' + formatMoney(discAmt) + ' تومان';
+        finalSpan.innerText = formatMoney(finalAmt) + ' تومان';
+    } else {
+        if (discRow) discRow.style.display = 'none';
+        finalSpan.innerText = formatMoney(plan.price) + ' تومان';
+    }
+}
+
+function applyModalNewDiscount() {
+    const input = document.getElementById('modalPortalDiscountInput');
+    const feedback = document.getElementById('modalDiscountFeedback');
+    const badge = document.getElementById('modalDiscountStatusBadge');
+    const btn = document.getElementById('applyModalDiscountBtn');
+    const code = (input ? input.value : '').trim();
+    const plan = getSelectedModalPlan();
+
+    if (!code) {
+        if (feedback) {
+            feedback.style.display = 'block';
+            feedback.className = 'small mt-2 text-warning';
+            feedback.innerText = 'لطفاً کد تخفیف را وارد فرمایید.';
         }
+        return;
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال بررسی...';
+    }
+
+    const discountCheckEndpoint = "{% if token %}{{ url_for('customer_check_discount', token=token) }}{% else %}{{ url_for('customer_check_discount') }}{% endif %}";
+    fetch(discountCheckEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            code: code,
+            plan_id: plan.id,
+            reseller_id: {{ reseller_id or 0 }},
+            telegram_id: {{ telegram_id or 0 }}
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-tag me-1"></i> اعمال کد';
+        }
+        if (data.valid) {
+            currentModalDiscountData = data;
+            if (feedback) {
+                feedback.style.display = 'block';
+                feedback.className = 'small mt-2 text-success fw-bold';
+                feedback.innerHTML = '<i class="fas fa-check-circle me-1"></i> ' + (data.message || 'کد تخفیف اعمال شد.');
+            }
+            if (badge) {
+                badge.style.display = 'inline-block';
+                badge.className = 'badge bg-success small';
+                badge.innerText = 'تخفیف: ' + formatMoney(data.discount_amount) + ' ت';
+            }
+            updateNewSubModalPricing();
+        } else {
+            currentModalDiscountData = null;
+            if (feedback) {
+                feedback.style.display = 'block';
+                feedback.className = 'small mt-2 text-danger';
+                feedback.innerHTML = '<i class="fas fa-times-circle me-1"></i> ' + (data.error || 'کد تخفیف نامعتبر است.');
+            }
+            if (badge) {
+                badge.style.display = 'none';
+            }
+            updateNewSubModalPricing();
+        }
+    })
+    .catch(err => {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-tag me-1"></i> اعمال کد';
+        }
+        if (feedback) {
+            feedback.style.display = 'block';
+            feedback.className = 'small mt-2 text-danger';
+            feedback.innerText = 'خطا در برقراری ارتباط با سرور.';
+        }
+    });
+}
+
+function onModalMethodSelected(methodId) {
+    document.querySelectorAll('[id^="modal_method_card_"]').forEach(el => {
+        el.classList.remove('border-primary', 'bg-primary', 'bg-opacity-10');
+        el.classList.add('border-secondary', 'border-opacity-25', 'bg-black', 'bg-opacity-25');
+    });
+    const selected = document.getElementById('modal_method_card_' + methodId);
+    if (selected) {
+        selected.classList.remove('border-secondary', 'border-opacity-25', 'bg-black', 'bg-opacity-25');
+        selected.classList.add('border-primary', 'bg-primary', 'bg-opacity-10');
+    }
+}
+
+// انتخاب پلن‌ها با کلیک و محاسبه قیمت
+document.querySelectorAll('.portal-plans-wrapper').forEach(wrapper => {
+    wrapper.querySelectorAll('.plan-card').forEach(card => {
+        card.addEventListener('click', function() {
+            wrapper.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
+            this.classList.add('selected');
+            const radio = this.closest('label').querySelector('input[type="radio"]');
+            if (radio) {
+                radio.checked = true;
+                if (radio.classList.contains('plan-radio-modal')) {
+                    if (currentModalDiscountData && currentModalDiscountData.valid) {
+                        applyModalNewDiscount();
+                    } else {
+                        updateNewSubModalPricing();
+                    }
+                } else {
+                    if (currentDiscountData && currentDiscountData.valid) {
+                        applyPortalDiscount();
+                    } else {
+                        updatePricingDisplay();
+                    }
+                }
+            }
+            if (window.tgHaptic) window.tgHaptic('light');
+        });
     });
 });
 
 document.addEventListener('DOMContentLoaded', function() {
     updatePricingDisplay();
+    updateNewSubModalPricing();
 
     // هندلر کلیک مستقیم روی کارت‌های روش پرداخت تمدید
     document.querySelectorAll('.payment-method-card-label').forEach(label => {
@@ -3555,6 +3919,56 @@ document.addEventListener('show.bs.modal', function (event) {
     }
 });
 relocateModalsToBody();
+
+// ─── اتصال پیشرفته به مینی‌اپ تلگرام (Telegram WebApp Integration) ───
+(function initTelegramWebApp() {
+    try {
+        const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+        if (tg) {
+            tg.ready();
+            tg.expand();
+            
+            // همگام‌سازی تم تلگرام با پورتال
+            if (tg.colorScheme) {
+                applyPortalTheme(tg.colorScheme);
+            }
+            tg.onEvent('themeChanged', function() {
+                if (tg.colorScheme) applyPortalTheme(tg.colorScheme);
+            });
+
+            // تنظیم رنگ‌های هدر و پس‌زمینه در تلگرام
+            try {
+                if (tg.setHeaderColor) tg.setHeaderColor(tg.colorScheme === 'dark' ? '#070b14' : '#f8fafc');
+                if (tg.setBackgroundColor) tg.setBackgroundColor(tg.colorScheme === 'dark' ? '#070b14' : '#f8fafc');
+            } catch(e) {}
+
+            // هدایت لینک‌های خارجی به مرورگر بومی تلگرام
+            window.openExternalLink = function(url) {
+                if (tg && tg.openLink) {
+                    tg.openLink(url);
+                } else {
+                    window.open(url, '_blank');
+                }
+            };
+        }
+    } catch(e) {
+        console.debug("Telegram WebApp init:", e);
+    }
+})();
+
+// سیستم بازخورد لرزشی (Haptic Feedback) برای تعاملات لمسی در مینی‌اپ تلگرام
+window.tgHaptic = function(type = 'light') {
+    try {
+        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) {
+            const hf = window.Telegram.WebApp.HapticFeedback;
+            if (type === 'success' || type === 'warning' || type === 'error') {
+                hf.notificationOccurred(type);
+            } else {
+                hf.impactOccurred(type);
+            }
+        }
+    } catch(e) {}
+};
 </script>
 </body>
 </html>
