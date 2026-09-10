@@ -1344,11 +1344,23 @@ async def plan_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ عملیات لغو شد.")
         return CHOOSING
 
-    plan_id = query.data.replace("plan_", "")
+    raw_data = query.data
+    extracted_id = raw_data.removeprefix("plan_") if raw_data.startswith("plan_") else raw_data
+
     plans = get_plans()
-    if plan_id not in plans:
-        await query.edit_message_text("❌ پلن نامعتبر!")
-        return CHOOSING
+    if extracted_id in plans:
+        plan_id = extracted_id
+    elif raw_data in plans:
+        plan_id = raw_data
+    elif f"plan_{extracted_id}" in plans:
+        plan_id = f"plan_{extracted_id}"
+    else:
+        matched_id = next((k for k in plans.keys() if k.lower() in [extracted_id.lower(), raw_data.lower()]), None)
+        if matched_id:
+            plan_id = matched_id
+        else:
+            await query.edit_message_text("❌ پلن نامعتبر!")
+            return CHOOSING
 
     plan = plans[plan_id]
     context.user_data["selected_plan"] = plan_id
@@ -2955,11 +2967,23 @@ async def handle_renew(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not query.data.startswith("renew_plan_"):
         return RENEWING
     
-    plan_id = query.data.replace("renew_plan_", "")
+    raw_data = query.data
+    extracted_id = raw_data.removeprefix("renew_plan_") if raw_data.startswith("renew_plan_") else raw_data
+
     plans = get_plans()
-    if plan_id not in plans:
-        await query.edit_message_text("❌ پلن نامعتبر!")
-        return CHOOSING
+    if extracted_id in plans:
+        plan_id = extracted_id
+    elif raw_data in plans:
+        plan_id = raw_data
+    elif f"plan_{extracted_id}" in plans:
+        plan_id = f"plan_{extracted_id}"
+    else:
+        matched_id = next((k for k in plans.keys() if k.lower() in [extracted_id.lower(), raw_data.lower()]), None)
+        if matched_id:
+            plan_id = matched_id
+        else:
+            await query.edit_message_text("❌ پلن نامعتبر!")
+            return CHOOSING
     
     plan = plans[plan_id]
     user = update.effective_user
