@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}تنظیمات و چیدمان منوی ربات - پنل مدیریت VPN{% endblock %}
+{% block title %}تنظیمات ربات‌ها - پنل مدیریت VPN{% endblock %}
 
 {% block content %}
 <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
@@ -8,111 +8,459 @@
             <ol class="breadcrumb mb-1">
                 <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">داشبورد</a></li>
                 <li class="breadcrumb-item"><a href="{{ url_for('settings') }}">تنظیمات</a></li>
-                <li class="breadcrumb-item active" aria-current="page">چیدمان دکمه‌های ربات</li>
+                <li class="breadcrumb-item active" aria-current="page">تنظیمات ربات‌ها</li>
             </ol>
         </nav>
         <h1 class="page-title d-flex align-items-center gap-2 mb-1">
-            <i class="fas fa-th-large text-primary"></i>
-            تنظیمات و چیدمان دکمه‌های منوی ربات
+            <i class="fas fa-robot text-primary"></i>
+            تنظیمات ربات‌ها
         </h1>
-        <p class="text-muted mb-0">مدیریت تفکیک‌شده عناوین، موقعیت افقی و عمودی، فعال/غیرفعال‌سازی دکمه‌ها و تنظیم دامنه‌های راهنما و عیب‌یابی برای ربات مدیریت و ربات‌های نمایندگان</p>
+        <p class="text-muted mb-0">پیکربندی جامع ربات اصلی مدیریت، ربات فروش بسته نمایندگی، چیدمان دکمه‌های منوی اصلی و زیرمنوهای کاربردی (پرداخت، پشتیبانی، آموزش، کیف پول)</p>
     </div>
 </div>
 
-<!-- کارت تنظیمات دامنه‌های راهنمای اتصال و حل مشکلات اتصال -->
-<div class="card border-0 shadow-sm mb-4">
-    <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <h5 class="card-title mb-0 d-flex align-items-center gap-2 text-primary fw-bold">
-            <i class="fas fa-globe text-primary"></i>
-            تنظیم دامنه‌های راهنمای اتصال و حل مشکلات اتصال ربات
-        </h5>
-        <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-2 py-1">اعمال در ربات مدیریت و نمایندگان</span>
-    </div>
-    <div class="card-body p-4 bg-light rounded-bottom">
-        <form method="POST" action="{{ url_for('bot_menu_settings') }}">
-            <input type="hidden" name="bot_type" value="domains">
-            <input type="hidden" name="action" value="save_domains">
-            <input type="hidden" name="active_tab" value="{{ active_tab }}">
-
-            <div class="row g-3 mb-3">
-                <div class="col-md-6">
-                    <label class="form-label fw-bold small text-dark">
-                        <i class="fas fa-book-open text-primary me-1"></i> دامنه اختصاصی راهنمای اتصال (📖 آموزش‌ها):
-                    </label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-white"><i class="fas fa-link text-muted"></i></span>
-                        <input type="text" 
-                               name="tutorial_domain" 
-                               class="form-control font-monospace" 
-                               value="{{ tutorial_domain }}" 
-                               placeholder="مثال: help.mydomain.com یا https://help.mydomain.com" 
-                               dir="ltr">
-                    </div>
-                    <div class="form-text text-muted small">هنگام کلیک روی دکمه «📖 راهنمای اتصال»، کاربر به این آدرس هدایت می‌شود.</div>
-                </div>
-
-                <div class="col-md-6">
-                    <label class="form-label fw-bold small text-dark">
-                        <i class="fas fa-wrench text-warning me-1"></i> دامنه اختصاصی حل مشکلات اتصال (🛠️ عیب‌یابی هوشمند):
-                    </label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-white"><i class="fas fa-link text-muted"></i></span>
-                        <input type="text" 
-                               name="troubleshoot_domain" 
-                               class="form-control font-monospace" 
-                               value="{{ troubleshoot_domain }}" 
-                               placeholder="مثال: fix.mydomain.com یا https://help.mydomain.com/troubleshoot" 
-                               dir="ltr">
-                    </div>
-                    <div class="form-text text-muted small">هنگام کلیک روی دکمه «🛠️ حل مشکلات اتصال»، کاربر مستقیماً به این آدرس هدایت می‌شود.</div>
-                </div>
-            </div>
-
-            <div class="d-flex justify-content-end">
-                <button type="submit" class="btn btn-primary px-4 fw-bold shadow-sm">
-                    <i class="fas fa-save me-1"></i> ذخیره دامنه‌های راهنما و عیب‌یابی
-                </button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- تب‌های اصلی: ربات مدیریت و ربات نمایندگان -->
-<ul class="nav nav-pills mb-4 nav-justified gap-2 p-1 bg-white rounded-3 shadow-sm border" id="botMenuTabs" role="tablist">
+<!-- تب‌های اصلی بالای صفحه -->
+<ul class="nav nav-pills mb-4 nav-justified gap-2 p-1 bg-white rounded-3 shadow-sm border" id="botMainTabs" role="tablist">
     <li class="nav-item" role="presentation">
-        <button class="nav-link py-3 fw-bold d-flex align-items-center justify-content-center gap-2 {% if active_tab != 'reseller' %}active{% endif %}" 
-                id="admin-bot-tab" 
+        <button class="nav-link py-3 fw-bold d-flex align-items-center justify-content-center gap-2 {% if active_tab == 'admin_bot' %}active{% endif %}" 
+                id="admin-config-tab" 
                 data-bs-toggle="pill" 
-                data-bs-target="#admin-bot-panel" 
+                data-bs-target="#admin-config-panel" 
                 type="button" 
                 role="tab" 
-                aria-controls="admin-bot-panel" 
-                aria-selected="{% if active_tab != 'reseller' %}true{% else %}false{% endif %}">
-            <i class="fas fa-shield-halved fa-lg"></i>
-            <span>🤖 چیدمان دکمه‌های ربات مدیریت (اصلی)</span>
+                aria-controls="admin-config-panel" 
+                aria-selected="{% if active_tab == 'admin_bot' %}true{% else %}false{% endif %}">
+            <i class="fas fa-robot fa-lg text-primary"></i>
+            <span>تنظیمات ربات اصلی مدیریت</span>
         </button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link py-3 fw-bold d-flex align-items-center justify-content-center gap-2 {% if active_tab == 'reseller' %}active{% endif %}" 
-                id="reseller-bot-tab" 
+        <button class="nav-link py-3 fw-bold d-flex align-items-center justify-content-center gap-2 {% if active_tab == 'bundle_bot' %}active{% endif %}" 
+                id="bundle-bot-tab" 
                 data-bs-toggle="pill" 
-                data-bs-target="#reseller-bot-panel" 
+                data-bs-target="#bundle-bot-panel" 
                 type="button" 
                 role="tab" 
-                aria-controls="reseller-bot-panel" 
-                aria-selected="{% if active_tab == 'reseller' %}true{% else %}false{% endif %}">
-            <i class="fas fa-users-gear fa-lg"></i>
-            <span>👥 چیدمان دکمه‌های ربات‌های نمایندگان (White-Label)</span>
+                aria-controls="bundle-bot-panel" 
+                aria-selected="{% if active_tab == 'bundle_bot' %}true{% else %}false{% endif %}">
+            <i class="fas fa-cubes-stacked fa-lg text-success"></i>
+            <span>«ربات فروش بسته نمایندگی»</span>
+            {% if bundle_bot_config.get('is_active') %}
+            <span class="badge bg-success ms-1">فعال</span>
+            {% else %}
+            <span class="badge bg-secondary ms-1">خاموش</span>
+            {% endif %}
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link py-3 fw-bold d-flex align-items-center justify-content-center gap-2 {% if active_tab in ['admin', 'reseller', 'main_menu'] or (active_tab not in ['admin_bot', 'bundle_bot', 'sub_menus'] and not active_tab.startswith('sub_')) %}active{% endif %}" 
+                id="main-menu-tab" 
+                data-bs-toggle="pill" 
+                data-bs-target="#main-menu-panel" 
+                type="button" 
+                role="tab" 
+                aria-controls="main-menu-panel" 
+                aria-selected="{% if active_tab in ['admin', 'reseller', 'main_menu'] or (active_tab not in ['admin_bot', 'bundle_bot', 'sub_menus'] and not active_tab.startswith('sub_')) %}true{% else %}false{% endif %}">
+            <i class="fas fa-th-large fa-lg text-info"></i>
+            <span>چیدمان منوی اصلی ربات‌ها</span>
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link py-3 fw-bold d-flex align-items-center justify-content-center gap-2 {% if active_tab == 'sub_menus' or active_tab.startswith('sub_') %}active{% endif %}" 
+                id="sub-menus-tab" 
+                data-bs-toggle="pill" 
+                data-bs-target="#sub-menus-panel" 
+                type="button" 
+                role="tab" 
+                aria-controls="sub-menus-panel" 
+                aria-selected="{% if active_tab == 'sub_menus' or active_tab.startswith('sub_') %}true{% else %}false{% endif %}">
+            <i class="fas fa-sitemap fa-lg text-warning"></i>
+            <span>چیدمان زیرمنوهای ربات</span>
         </button>
     </li>
 </ul>
 
-<div class="tab-content" id="botMenuTabsContent">
+<div class="tab-content" id="botMainTabsContent">
     
     <!-- ═══════════════════════════════════════════════════════════════ -->
-    <!-- تب ۱: ربات مدیریت (Main Admin Bot) -->
+    <!-- تب ۱: تنظیمات جامع ربات اصلی مدیریت -->
     <!-- ═══════════════════════════════════════════════════════════════ -->
-    <div class="tab-pane fade {% if active_tab != 'reseller' %}show active{% endif %}" id="admin-bot-panel" role="tabpanel" aria-labelledby="admin-bot-tab">
+    <div class="tab-pane fade {% if active_tab == 'admin_bot' %}show active{% endif %}" id="admin-config-panel" role="tabpanel" aria-labelledby="admin-config-tab">
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0 fw-bold text-primary">
+                    <i class="fas fa-robot text-primary me-2"></i>تنظیمات و اطلاعات ربات اصلی مدیریت
+                </h5>
+                <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-2 py-1">ربات کاربری اصلی</span>
+            </div>
+            <div class="card-body p-4">
+                <div class="alert alert-info border-0 shadow-sm d-flex align-items-center gap-3 mb-4 rounded-3">
+                    <div class="fs-4 text-info"><i class="fas fa-circle-info"></i></div>
+                    <div>
+                        <strong>تنظیمات کارت‌ها، حساب‌ها و درگاه‌های پرداخت:</strong>
+                        جهت تمرکز و یکپارچگی محاسبات موجودی شناور و تراکنش‌ها، کارت‌های بانکی و درگاه‌های پرداخت آنلاین به صورت اختصاصی در منوی
+                        <a href="{{ url_for('admin_wallet') }}" class="alert-link fw-bold">کیف پول و حساب‌ها</a> و
+                        <a href="{{ url_for('cards') }}" class="alert-link fw-bold">مدیریت کارت‌ها</a>
+                        تعریف و متصل می‌شوند و در این فرم تکرار نخواهند شد.
+                    </div>
+                </div>
+
+                <form method="POST" action="{{ url_for('bot_menu_settings') }}">
+                    <input type="hidden" name="action" value="save_admin_bot_config">
+                    
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-key text-muted me-1"></i>توکن ربات اصلی تلگرام (Bot Token):
+                            </label>
+                            <div class="input-group" dir="ltr">
+                                <input type="password" name="admin_bot_token" id="adminBotTokenInput" class="form-control font-monospace" value="{{ admin_bot_config.token }}" placeholder="123456789:ABCDefgh...">
+                                <button class="btn btn-outline-secondary" type="button" onclick="toggleTokenVis('adminBotTokenInput', this)">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                            <div class="form-text small text-muted">توکن دریافتی از BotFather@ برای ربات اصلی مشتریان</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-tag text-muted me-1"></i>نام تجاری یا برند ربات (Brand Name):
+                            </label>
+                            <input type="text" name="admin_brand_name" class="form-control" value="{{ admin_bot_config.brand_name }}" placeholder="مثال: توربو وی‌پی‌ان">
+                            <div class="form-text small text-muted">در متن پیام‌ها و هدرهای ربات نمایش داده می‌شود.</div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">
+                                <i class="fab fa-telegram text-muted me-1"></i>کانال عضویت اجباری (Channel ID):
+                            </label>
+                            <input type="text" name="admin_channel_id" class="form-control font-monospace" value="{{ admin_bot_config.channel_id }}" placeholder="@MyChannel یا -1001234567890" dir="ltr">
+                            <div class="form-text small text-muted">آیدی یا یوزرنیم کانال تلگرام برای عضویت اجباری کاربران قبل از استفاده</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-headset text-muted me-1"></i>یوزرنیم پشتیبانی تلگرام (Support Username):
+                            </label>
+                            <input type="text" name="admin_support_username" class="form-control font-monospace" value="{{ admin_bot_config.support_username }}" placeholder="@support_username" dir="ltr">
+                            <div class="form-text small text-muted">یوزرنیم ادمین یا ربات پشتیبانی جهت ارتباط مستقیم کاربران</div>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-comment-dots text-muted me-1"></i>پیام خوش‌آمدگویی استارت ربات (Start Message):
+                        </label>
+                        <textarea name="admin_start_message" class="form-control" rows="3" placeholder="سلام {name}! به ربات ما خوش آمدید...">{{ admin_bot_config.start_message }}</textarea>
+                        <div class="form-text small text-muted">متغیرهای مجاز: <code>{name}</code> (نام کاربر)، <code>{user_id}</code> (شناسه عددی)، <code>{brand_name}</code> (نام برند)</div>
+                    </div>
+
+                    <!-- جدول ادمین‌های تلگرام ربات مدیریت -->
+                    <div class="card border border-light-subtle shadow-sm mb-4">
+                        <div class="card-header bg-light py-2 d-flex justify-content-between align-items-center">
+                            <span class="fw-bold text-dark small"><i class="fas fa-users-gear text-primary me-1"></i>ادمین‌ها و مدیران تلگرام ربات اصلی</span>
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="addTelegramAdminRow('adminAdminsTableBody', 'admin')">
+                                <i class="fas fa-plus me-1"></i>افزودن ادمین تلگرام
+                            </button>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover align-middle mb-0">
+                                    <thead class="table-light small">
+                                        <tr>
+                                            <th class="ps-3">شناسه عددی تلگرام (Telegram User ID)</th>
+                                            <th>نقش / دسترسی</th>
+                                            <th>عنوان یا نام مدیر</th>
+                                            <th class="text-center" style="width: 80px;">عملیات</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="adminAdminsTableBody">
+                                        {% for adm in admin_telegram_admins %}
+                                        <tr>
+                                            <td class="ps-3">
+                                                <input type="number" name="admin_telegram_id[]" class="form-control form-control-sm font-monospace" value="{{ adm.telegram_id }}" placeholder="مثال: 123456789" required dir="ltr">
+                                            </td>
+                                            <td>
+                                                <select name="admin_role[]" class="form-select form-select-sm">
+                                                    <option value="main" {% if adm.role == 'main' %}selected{% endif %}>مدیر ارشد (دسترسی کامل)</option>
+                                                    <option value="support" {% if adm.role == 'support' %}selected{% endif %}>پشتیبان (پاسخ تیکت و پیام)</option>
+                                                    <option value="accountant" {% if adm.role == 'accountant' %}selected{% endif %}>حسابدار (تایید واریزی‌ها)</option>
+                                                </select>
+                                            </td>
+                                            <td>
+                                                <input type="text" name="admin_title[]" class="form-control form-control-sm" value="{{ adm.title }}" placeholder="مثال: مهندس محمدی">
+                                            </td>
+                                            <td class="text-center">
+                                                <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove()" title="حذف ادمین">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        {% else %}
+                                        <tr id="adminNoAdminsRow">
+                                            <td colspan="4" class="text-center py-3 text-muted small">هنوز هیچ ادمین تلگرامی تعریف نشده است. جهت افزودن روی «افزودن ادمین تلگرام» کلیک کنید.</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-end">
+                        <button type="submit" class="btn btn-primary px-4 fw-bold shadow-sm">
+                            <i class="fas fa-save me-1"></i>ذخیره تنظیمات ربات اصلی
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- تب ۲: «ربات فروش بسته نمایندگی» (Bundle Sales Bot) -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <div class="tab-pane fade {% if active_tab == 'bundle_bot' %}show active{% endif %}" id="bundle-bot-panel" role="tabpanel" aria-labelledby="bundle-bot-tab">
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <h5 class="card-title mb-0 fw-bold text-success">
+                        <i class="fas fa-cubes-stacked text-success me-2"></i>تنظیمات «ربات فروش بسته نمایندگی»
+                    </h5>
+                    <small class="text-muted">ربات اختصاصی تلگرام جهت خرید بسته‌های اعتباری و شارژ کیف پول توسط نمایندگان</small>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    {% if bundle_bot_config.get('is_active') %}
+                        <span class="badge bg-success fs-6 py-2 px-3"><i class="fas fa-check-circle me-1"></i>فعال</span>
+                    {% else %}
+                        <span class="badge bg-danger fs-6 py-2 px-3"><i class="fas fa-power-off me-1"></i>خاموش</span>
+                    {% endif %}
+
+                    {% if bundle_is_running %}
+                        <span class="badge bg-success-subtle text-success border border-success px-2 py-2"><i class="fas fa-circle-play me-1"></i>در حال اجرا (Online)</span>
+                    {% else %}
+                        <span class="badge bg-secondary-subtle text-secondary border border-secondary px-2 py-2"><i class="fas fa-circle-stop me-1"></i>متوقف (Offline)</span>
+                    {% endif %}
+
+                    <form method="POST" action="{{ url_for('bot_menu_settings') }}" class="d-inline">
+                        <input type="hidden" name="action" value="toggle_bundle_bot">
+                        {% if bundle_bot_config.get('is_active') %}
+                        <button type="submit" class="btn btn-sm btn-outline-danger fw-bold" onclick="return confirm('آیا از متوقف کردن ربات فروش بسته نمایندگی اطمینان دارید؟');">
+                            <i class="fas fa-stop me-1"></i>خاموش کردن ربات
+                        </button>
+                        {% else %}
+                        <button type="submit" class="btn btn-sm btn-success fw-bold">
+                            <i class="fas fa-play me-1"></i>روشن کردن ربات
+                        </button>
+                        {% endif %}
+                    </form>
+                </div>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" action="{{ url_for('bot_menu_settings') }}">
+                    <input type="hidden" name="action" value="save_bundle_bot_config">
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-key text-muted me-1"></i>توکن «ربات فروش بسته نمایندگی» (Bundle Bot Token):
+                            </label>
+                            <div class="input-group" dir="ltr">
+                                <input type="password" name="bundle_bot_token" id="bundleBotTokenInput" class="form-control font-monospace" value="{{ bundle_bot_config.token }}" placeholder="123456789:ABCDefgh...">
+                                <button class="btn btn-outline-secondary" type="button" onclick="toggleTokenVis('bundleBotTokenInput', this)">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                            <div class="form-text small text-muted">توکن اختصاصی ربات فروش بسته‌ها از BotFather@</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-tag text-muted me-1"></i>نام تجاری ربات فروش بسته (Brand Name):
+                            </label>
+                            <input type="text" name="bundle_brand_name" class="form-control" value="{{ bundle_bot_config.brand_name }}" placeholder="مثال: فروشگاه بسته‌های نمایندگی">
+                            <div class="form-text small text-muted">عنوان و نامی که در هدر ربات به نماینده نمایش داده می‌شود.</div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">
+                                <i class="fab fa-telegram text-muted me-1"></i>کانال اطلاع‌رسانی نمایندگان (Channel ID):
+                            </label>
+                            <input type="text" name="bundle_channel_id" class="form-control font-monospace" value="{{ bundle_bot_config.channel_id }}" placeholder="@ResellerChannel یا کانال خصوصی" dir="ltr">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-headset text-muted me-1"></i>یوزرنیم پشتیبانی نمایندگان (Support Username):
+                            </label>
+                            <input type="text" name="bundle_support_username" class="form-control font-monospace" value="{{ bundle_bot_config.support_username }}" placeholder="@reseller_support" dir="ltr">
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-comment-dots text-muted me-1"></i>متن خوش‌آمدگویی به نمایندگان (Start Message):
+                        </label>
+                        <textarea name="bundle_start_message" class="form-control" rows="3" placeholder="سلام نماینده محترم {name}! به سامانه خرید بسته‌های اعتباری خوش آمدید...">{{ bundle_bot_config.start_message }}</textarea>
+                        <div class="form-text small text-muted">متغیرهای مجاز: <code>{name}</code>، <code>{user_id}</code>، <code>{brand_name}</code></div>
+                    </div>
+
+                    <!-- جدول ادمین‌های تلگرام ربات بسته -->
+                    <div class="card border border-light-subtle shadow-sm mb-4">
+                        <div class="card-header bg-light py-2 d-flex justify-content-between align-items-center">
+                            <span class="fw-bold text-dark small"><i class="fas fa-user-shield text-success me-1"></i>ادمین‌ها و تاییدکنندگان فیش‌های نمایندگی در تلگرام</span>
+                            <button type="button" class="btn btn-sm btn-outline-success" onclick="addTelegramAdminRow('bundleAdminsTableBody', 'bundle')">
+                                <i class="fas fa-plus me-1"></i>افزودن ادمین تاییدکننده
+                            </button>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover align-middle mb-0">
+                                    <thead class="table-light small">
+                                        <tr>
+                                            <th class="ps-3">شناسه عددی تلگرام (Telegram User ID)</th>
+                                            <th>نقش</th>
+                                            <th>عنوان یا نام مدیر</th>
+                                            <th class="text-center" style="width: 80px;">عملیات</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="bundleAdminsTableBody">
+                                        {% for adm in bundle_bot_admins %}
+                                        <tr>
+                                            <td class="ps-3">
+                                                <input type="number" name="bundle_admin_telegram_id[]" class="form-control form-control-sm font-monospace" value="{{ adm.telegram_id }}" placeholder="مثال: 123456789" required dir="ltr">
+                                            </td>
+                                            <td>
+                                                <select name="bundle_admin_role[]" class="form-select form-select-sm">
+                                                    <option value="main" {% if adm.role == 'main' %}selected{% endif %}>مدیر کل (تایید فیش + گزارشات کامل)</option>
+                                                    <option value="finance" {% if adm.role == 'finance' %}selected{% endif %}>امور مالی (تایید رسید و تسویه)</option>
+                                                </select>
+                                            </td>
+                                            <td>
+                                                <input type="text" name="bundle_admin_title[]" class="form-control form-control-sm" value="{{ adm.title }}" placeholder="مثال: بخش مالی">
+                                            </td>
+                                            <td class="text-center">
+                                                <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove()" title="حذف">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        {% else %}
+                                        <tr id="bundleNoAdminsRow">
+                                            <td colspan="4" class="text-center py-3 text-muted small">هیچ ادمینی برای تایید فیش‌ها تعریف نشده است.</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-end">
+                        <button type="submit" class="btn btn-success px-4 fw-bold shadow-sm">
+                            <i class="fas fa-save me-1"></i>ذخیره تنظیمات ربات فروش بسته
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- تب ۳: چیدمان منوی اصلی ربات‌ها (Main Menu Buttons Layout) -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <div class="tab-pane fade {% if active_tab in ['admin', 'reseller', 'main_menu'] or (active_tab not in ['admin_bot', 'bundle_bot', 'sub_menus'] and not active_tab.startswith('sub_')) %}show active{% endif %}" id="main-menu-panel" role="tabpanel" aria-labelledby="main-menu-tab">
+
+        <!-- کارت تنظیمات دامنه‌های راهنمای اتصال و حل مشکلات اتصال -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h5 class="card-title mb-0 d-flex align-items-center gap-2 text-primary fw-bold">
+                    <i class="fas fa-globe text-primary"></i>
+                    تنظیم دامنه‌های راهنمای اتصال و حل مشکلات اتصال ربات
+                </h5>
+                <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-2 py-1">اعمال در ربات مدیریت و نمایندگان</span>
+            </div>
+            <div class="card-body p-4 bg-light rounded-bottom">
+                <form method="POST" action="{{ url_for('bot_menu_settings') }}">
+                    <input type="hidden" name="bot_type" value="domains">
+                    <input type="hidden" name="action" value="save_domains">
+                    <input type="hidden" name="active_tab" value="{{ active_tab }}">
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small text-dark">
+                                <i class="fas fa-book-open text-primary me-1"></i> دامنه اختصاصی راهنمای اتصال (📖 آموزش‌ها):
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-white"><i class="fas fa-link text-muted"></i></span>
+                                <input type="text" 
+                                       name="tutorial_domain" 
+                                       class="form-control font-monospace" 
+                                       value="{{ tutorial_domain }}" 
+                                       placeholder="مثال: help.mydomain.com یا https://help.mydomain.com" 
+                                       dir="ltr">
+                            </div>
+                            <div class="form-text text-muted small">هنگام کلیک روی دکمه «📖 راهنمای اتصال»، کاربر به این آدرس هدایت می‌شود.</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small text-dark">
+                                <i class="fas fa-wrench text-warning me-1"></i> دامنه اختصاصی حل مشکلات اتصال (🛠️ عیب‌یابی هوشمند):
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-white"><i class="fas fa-link text-muted"></i></span>
+                                <input type="text" 
+                                       name="troubleshoot_domain" 
+                                       class="form-control font-monospace" 
+                                       value="{{ troubleshoot_domain }}" 
+                                       placeholder="مثال: fix.mydomain.com یا https://help.mydomain.com/troubleshoot" 
+                                       dir="ltr">
+                            </div>
+                            <div class="form-text text-muted small">هنگام کلیک روی دکمه «🛠️ حل مشکلات اتصال»، کاربر مستقیماً به این آدرس هدایت می‌شود.</div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-end">
+                        <button type="submit" class="btn btn-primary px-4 fw-bold shadow-sm">
+                            <i class="fas fa-save me-1"></i> ذخیره دامنه‌های راهنما و عیب‌یابی
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- تب‌های فرعی چیدمان: ربات مدیریت و ربات نمایندگان -->
+        <ul class="nav nav-tabs mb-4 nav-justified gap-2 p-1 bg-white rounded-3 shadow-sm border" id="mainMenuSubTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link py-3 fw-bold d-flex align-items-center justify-content-center gap-2 {% if active_tab != 'reseller' %}active{% endif %}" 
+                        id="admin-bot-tab" 
+                        data-bs-toggle="tab" 
+                        data-bs-target="#admin-bot-panel" 
+                        type="button" 
+                        role="tab" 
+                        aria-controls="admin-bot-panel" 
+                        aria-selected="{% if active_tab != 'reseller' %}true{% else %}false{% endif %}">
+                    <i class="fas fa-shield-halved fa-lg"></i>
+                    <span>🤖 چیدمان دکمه‌های منوی ربات مدیریت (اصلی)</span>
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link py-3 fw-bold d-flex align-items-center justify-content-center gap-2 {% if active_tab == 'reseller' %}active{% endif %}" 
+                        id="reseller-bot-tab" 
+                        data-bs-toggle="tab" 
+                        data-bs-target="#reseller-bot-panel" 
+                        type="button" 
+                        role="tab" 
+                        aria-controls="reseller-bot-panel" 
+                        aria-selected="{% if active_tab == 'reseller' %}true{% else %}false{% endif %}">
+                    <i class="fas fa-users-gear fa-lg"></i>
+                    <span>👥 چیدمان دکمه‌های منوی ربات‌های نمایندگان (White-Label)</span>
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="mainMenuSubTabsContent">
+            <div class="tab-pane fade {% if active_tab != 'reseller' %}show active{% endif %}" id="admin-bot-panel" role="tabpanel" aria-labelledby="admin-bot-tab">
         
         <!-- ردیف پیش‌نمایش تلگرام و کارت اطلاعات برای ربات مدیریت -->
         <div class="row g-4 mb-4">
@@ -559,10 +907,255 @@
             </div>
         </form>
     </div>
+</div><!-- /mainMenuSubTabsContent -->
+    </div><!-- /main-menu-panel -->
 
-</div>
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <!-- تب ۴: چیدمان زیرمنوهای ربات (روش‌های پرداخت، پشتیبانی، آموزش، کیف پول) -->
+    <!-- ═══════════════════════════════════════════════════════════════ -->
+    <div class="tab-pane fade {% if active_tab == 'sub_menus' or active_tab.startswith('sub_') %}show active{% endif %}" id="sub-menus-panel" role="tabpanel" aria-labelledby="sub-menus-tab">
+        
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <h5 class="card-title mb-0 fw-bold text-warning-emphasis">
+                        <i class="fas fa-sitemap text-warning me-2"></i>شخصی‌سازی و چیدمان زیرمنوهای ربات تلگرام
+                    </h5>
+                    <small class="text-muted">تغییر عنوان، سطر و ستون، و فعال/غیرفعال کردن گزینه‌های داخلی کیبورد شیشه‌ای یا ریپلای ربات‌ها</small>
+                </div>
+                <span class="badge bg-warning bg-opacity-10 text-dark border border-warning px-3 py-2">۴ زیرمنوی کلیدی</span>
+            </div>
+            <div class="card-body p-4 bg-light">
+
+                <!-- تب‌های تفکیک ربات مدیریت و ربات‌های نمایندگان برای زیرمنوها -->
+                <ul class="nav nav-pills mb-4 nav-fill gap-2 p-1 bg-white rounded-3 shadow-sm border" id="subMenusBotTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link py-2 fw-bold active" id="sub-admin-tab" data-bs-toggle="pill" data-bs-target="#sub-admin-panel" type="button" role="tab">
+                            <i class="fas fa-robot me-1 text-primary"></i> زیرمنوهای ربات اصلی مدیریت
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link py-2 fw-bold" id="sub-reseller-tab" data-bs-toggle="pill" data-bs-target="#sub-reseller-panel" type="button" role="tab">
+                            <i class="fas fa-users-gear me-1 text-success"></i> زیرمنوهای ربات‌های نمایندگان
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content" id="subMenusBotTabsContent">
+                    
+                    <!-- زیرمنوهای ربات مدیریت -->
+                    <div class="tab-pane fade show active" id="sub-admin-panel" role="tabpanel">
+                        <div class="row g-4">
+                            {% set sub_titles = {'payment': 'روش‌های پرداخت و تسویه حساب', 'support': 'پشتیبانی، تیکت و ارتباط', 'tutorials': 'آموزش اتصال و دانلود نرم‌افزارها', 'wallet': 'کیف پول و مدیریت حساب کاربری'} %}
+                            {% set sub_icons = {'payment': 'fas fa-credit-card text-success', 'support': 'fas fa-headset text-info', 'tutorials': 'fas fa-book-open text-primary', 'wallet': 'fas fa-wallet text-warning'} %}
+                            
+                            {% for m_key, items in admin_sub_menus.items() %}
+                            <div class="col-lg-6">
+                                <div class="card border-0 shadow-sm h-100">
+                                    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                                        <h6 class="mb-0 fw-bold">
+                                            <i class="{{ sub_icons.get(m_key, 'fas fa-list') }} me-2"></i>{{ sub_titles.get(m_key, m_key) }}
+                                        </h6>
+                                        <form method="POST" action="{{ url_for('bot_menu_settings') }}" onsubmit="return confirm('آیا از بازنشانی این زیرمنو به پیش‌فرض مطمئن هستید؟');" class="d-inline">
+                                            <input type="hidden" name="action" value="reset_sub_menu">
+                                            <input type="hidden" name="sub_bot_type" value="admin">
+                                            <input type="hidden" name="menu_key" value="{{ m_key }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-secondary py-1 px-2" title="بازنشانی به پیش‌فرض">
+                                                <i class="fas fa-undo me-1"></i>پیش‌فرض
+                                            </button>
+                                        </form>
+                                    </div>
+                                    <form method="POST" action="{{ url_for('bot_menu_settings') }}">
+                                        <input type="hidden" name="action" value="save_sub_menu">
+                                        <input type="hidden" name="sub_bot_type" value="admin">
+                                        <input type="hidden" name="menu_key" value="{{ m_key }}">
+                                        
+                                        <div class="card-body p-0">
+                                            <div class="table-responsive">
+                                                <table class="table table-sm table-hover align-middle mb-0">
+                                                    <thead class="table-light small">
+                                                        <tr>
+                                                            <th class="ps-3">عنوان دکمه</th>
+                                                            <th class="text-center" style="width: 85px;">سطر</th>
+                                                            <th class="text-center" style="width: 85px;">ستون</th>
+                                                            <th class="text-center" style="width: 60px;">فعال</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {% for it in items %}
+                                                        <tr>
+                                                            <td class="ps-3">
+                                                                <input type="text" name="title_{{ it.id }}" class="form-control form-control-sm fw-bold" value="{{ it.title }}" required>
+                                                                <small class="font-monospace text-muted d-block" style="font-size: 0.7rem;">{{ it.id }}</small>
+                                                            </td>
+                                                            <td class="text-center">
+                                                                <select name="row_{{ it.id }}" class="form-select form-select-sm text-center">
+                                                                    {% for r in range(0, 6) %}
+                                                                    <option value="{{ r }}" {% if it.row == r %}selected{% endif %}>{{ r + 1 }}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                            </td>
+                                                            <td class="text-center">
+                                                                <select name="col_{{ it.id }}" class="form-select form-select-sm text-center">
+                                                                    {% for c in range(0, 4) %}
+                                                                    <option value="{{ c }}" {% if it.col == c %}selected{% endif %}>{{ c + 1 }}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                            </td>
+                                                            <td class="text-center">
+                                                                <div class="form-check form-switch d-inline-block">
+                                                                    <input class="form-check-input" type="checkbox" name="enabled_{{ it.id }}" value="1" {% if it.enabled %}checked{% endif %}>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                        {% endfor %}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                        <div class="card-footer bg-white py-2 text-end">
+                                            <button type="submit" class="btn btn-sm btn-primary fw-bold">
+                                                <i class="fas fa-save me-1"></i>ذخیره این زیرمنو
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <!-- زیرمنوهای ربات نمایندگان -->
+                    <div class="tab-pane fade" id="sub-reseller-panel" role="tabpanel">
+                        <div class="row g-4">
+                            {% for m_key, items in reseller_sub_menus.items() %}
+                            <div class="col-lg-6">
+                                <div class="card border-0 shadow-sm h-100">
+                                    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                                        <h6 class="mb-0 fw-bold">
+                                            <i class="{{ sub_icons.get(m_key, 'fas fa-list') }} me-2"></i>{{ sub_titles.get(m_key, m_key) }} (نمایندگان)
+                                        </h6>
+                                        <form method="POST" action="{{ url_for('bot_menu_settings') }}" onsubmit="return confirm('آیا از بازنشانی این زیرمنو به پیش‌فرض مطمئن هستید؟');" class="d-inline">
+                                            <input type="hidden" name="action" value="reset_sub_menu">
+                                            <input type="hidden" name="sub_bot_type" value="reseller">
+                                            <input type="hidden" name="menu_key" value="{{ m_key }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-secondary py-1 px-2" title="بازنشانی به پیش‌فرض">
+                                                <i class="fas fa-undo me-1"></i>پیش‌فرض
+                                            </button>
+                                        </form>
+                                    </div>
+                                    <form method="POST" action="{{ url_for('bot_menu_settings') }}">
+                                        <input type="hidden" name="action" value="save_sub_menu">
+                                        <input type="hidden" name="sub_bot_type" value="reseller">
+                                        <input type="hidden" name="menu_key" value="{{ m_key }}">
+                                        
+                                        <div class="card-body p-0">
+                                            <div class="table-responsive">
+                                                <table class="table table-sm table-hover align-middle mb-0">
+                                                    <thead class="table-light small">
+                                                        <tr>
+                                                            <th class="ps-3">عنوان دکمه</th>
+                                                            <th class="text-center" style="width: 85px;">سطر</th>
+                                                            <th class="text-center" style="width: 85px;">ستون</th>
+                                                            <th class="text-center" style="width: 60px;">فعال</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {% for it in items %}
+                                                        <tr>
+                                                            <td class="ps-3">
+                                                                <input type="text" name="title_{{ it.id }}" class="form-control form-control-sm fw-bold" value="{{ it.title }}" required>
+                                                                <small class="font-monospace text-muted d-block" style="font-size: 0.7rem;">{{ it.id }}</small>
+                                                            </td>
+                                                            <td class="text-center">
+                                                                <select name="row_{{ it.id }}" class="form-select form-select-sm text-center">
+                                                                    {% for r in range(0, 6) %}
+                                                                    <option value="{{ r }}" {% if it.row == r %}selected{% endif %}>{{ r + 1 }}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                            </td>
+                                                            <td class="text-center">
+                                                                <select name="col_{{ it.id }}" class="form-select form-select-sm text-center">
+                                                                    {% for c in range(0, 4) %}
+                                                                    <option value="{{ c }}" {% if it.col == c %}selected{% endif %}>{{ c + 1 }}</option>
+                                                                    {% endfor %}
+                                                                </select>
+                                                            </td>
+                                                            <td class="text-center">
+                                                                <div class="form-check form-switch d-inline-block">
+                                                                    <input class="form-check-input" type="checkbox" name="enabled_{{ it.id }}" value="1" {% if it.enabled %}checked{% endif %}>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                        {% endfor %}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                        <div class="card-footer bg-white py-2 text-end">
+                                            <button type="submit" class="btn btn-sm btn-success fw-bold">
+                                                <i class="fas fa-save me-1"></i>ذخیره این زیرمنو
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /sub-menus-panel -->
+
+</div><!-- /botMainTabsContent -->
 
 <script>
+function toggleTokenVis(inputId, btn) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const icon = btn.querySelector('i');
+    if (input.type === 'password') {
+        input.type = 'text';
+        if (icon) icon.className = 'fas fa-eye-slash';
+    } else {
+        input.type = 'password';
+        if (icon) icon.className = 'fas fa-eye';
+    }
+}
+
+function addTelegramAdminRow(tbodyId, prefix) {
+    const tbody = document.getElementById(tbodyId);
+    if (!tbody) return;
+    const noRow = document.getElementById(prefix + 'NoAdminsRow');
+    if (noRow) noRow.remove();
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td class="ps-3">
+            <input type="number" name="${prefix}_admin_telegram_id[]" class="form-control form-control-sm font-monospace" placeholder="مثال: 123456789" required dir="ltr">
+        </td>
+        <td>
+            <select name="${prefix}_admin_role[]" class="form-select form-select-sm">
+                <option value="main">مدیر ارشد (دسترسی کامل)</option>
+                <option value="support">پشتیبان (پاسخ تیکت و پیام)</option>
+                <option value="accountant">حسابدار / امور مالی</option>
+            </select>
+        </td>
+        <td>
+            <input type="text" name="${prefix}_admin_title[]" class="form-control form-control-sm" placeholder="نام یا عنوان">
+        </td>
+        <td class="text-center">
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove()" title="حذف">
+                <i class="fas fa-trash"></i>
+            </button>
+        </td>
+    `;
+    tbody.appendChild(tr);
+}
+
 document.addEventListener("DOMContentLoaded", function() {
     
     // ۱. تابع بروزرسانی پیش‌نمایش کیبورد ربات مدیریت

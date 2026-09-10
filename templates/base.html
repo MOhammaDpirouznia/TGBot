@@ -1735,7 +1735,7 @@
 
                 <!-- دسته‌بندی ۳: مالی و حسابداری -->
                 {% if has_permission('reports') or has_permission('accounting') or has_permission('cards') %}
-                {% set is_finance_group_active = request.endpoint in ['reports', 'accounting', 'cards'] %}
+                {% set is_finance_group_active = request.endpoint in ['reports', 'accounting', 'cards', 'admin_wallet'] %}
                 <button class="sidebar-dropdown-toggle {% if is_finance_group_active %}has-active{% endif %}" 
                         type="button" 
                         data-bs-toggle="collapse" 
@@ -1750,6 +1750,11 @@
                 </button>
                 <div class="collapse submenu-collapse {% if is_finance_group_active %}show{% endif %}" id="adminFinanceCollapse">
                     <div class="submenu-inner">
+                        {% if has_permission('cards') %}
+                        <a class="submenu-item {% if request.endpoint == 'admin_wallet' %}active{% endif %}" href="{{ url_for('admin_wallet') }}">
+                            <i class="fas fa-wallet text-info"></i> کیف پول و حساب‌ها
+                        </a>
+                        {% endif %}
                         {% if has_permission('reports') %}
                         <a class="submenu-item {% if request.endpoint == 'reports' %}active{% endif %}" href="{{ url_for('reports') }}">
                             <i class="fas fa-chart-line text-success"></i> گزارشات و هوش مالی
@@ -1792,7 +1797,7 @@
                         {% endif %}
                         {% if session.get('admin_role') == 'super_admin' or has_permission('settings_manage') %}
                         <a class="submenu-item {% if request.endpoint in ['bot_menu_settings', 'admin_bot_settings'] %}active{% endif %}" href="{{ url_for('bot_menu_settings') }}">
-                            <i class="fas fa-robot text-info"></i> چیدمان دکمه‌های ربات
+                            <i class="fas fa-robot text-info"></i> تنظیمات ربات‌ها
                         </a>
                         <a class="submenu-item {% if request.endpoint in ['admin_tutorials', 'manage_tutorials'] %}active{% endif %}" href="{{ url_for('admin_tutorials') }}">
                             <i class="fas fa-graduation-cap text-warning"></i> مدیریت آموزش‌ها و عیب‌یابی

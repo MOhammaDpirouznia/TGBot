@@ -1105,10 +1105,27 @@
                                 </div>
                                 <div class="col-md-6" id="adminRenewPaymentDestBox{{ sub['id'] }}" style="{% if sub.get('payment_status') == 'unpaid' or sub.get('debt_amount', 0) > 0 %}display: none;{% endif %}">
                                     <label class="form-label fw-bold text-success"><i class="fas fa-credit-card text-success me-1"></i>واریز به کارت بانکی یا صندوق:</label>
-                                    <select name="payment_destination" class="form-select border-success">
-                                        <option value="cash">💵 دریافت نقدی (ثبت در صندوق نقدی)</option>
-                                        {% for c in cards %}
-                                        <option value="card_{{ c['id'] }}">💳 {{ c.get('bank_name') or 'بانک' }} - {{ c['card_number'][-4:] }} ({{ c['card_holder'] }}) [موجودی: {{ "{:,}".format(c.get('balance', 0)) }} ت]</option>
+                                    <select name="payment_destination" class="form-select border-success fw-bold">
+                                        {% if default_account %}
+                                        <option value="account_{{ default_account['id'] }}" selected>
+                                            ⭐ [پیش‌فرض مشتریان] {{ default_account.get('bank_name') }} - {{ default_account.get('card_holder') }} [موجودی: {{ "{:,}".format(default_account.get('balance', 0)) }} ت]
+                                        </option>
+                                        {% endif %}
+                                        <option value="cash" {% if not default_account %}selected{% endif %}>💵 دریافت نقدی (ثبت در صندوق نقدی)</option>
+                                        {% for acc in (accounts or cards) %}
+                                            {% if not default_account or acc['id'] != default_account['id'] %}
+                                            <option value="account_{{ acc['id'] }}">
+                                                {% if acc.get('account_type') == 'cash_desk' %}
+                                                    🏢 صندوق {{ acc.get('bank_name') }} (مسئول: {{ acc.get('assigned_to', '-') }}) [موجودی: {{ "{:,}".format(acc.get('balance', 0)) }} ت]
+                                                {% elif 'gateway' in acc.get('account_type', '') %}
+                                                    ⚡ درگاه {{ acc.get('bank_name') }} ({{ acc.get('connected_gateway', '') }}) [موجودی: {{ "{:,}".format(acc.get('balance', 0)) }} ت]
+                                                {% elif acc.get('account_type') == 'crypto_wallet' %}
+                                                    💎 ولت کریپتو {{ acc.get('bank_name') }} [موجودی: {{ "{:,}".format(acc.get('balance', 0)) }} ت]
+                                                {% else %}
+                                                    💳 {{ acc.get('bank_name') or 'بانک' }} - {{ acc.get('card_number', '')[-4:] }} ({{ acc.get('card_holder') }}) [موجودی: {{ "{:,}".format(acc.get('balance', 0)) }} ت]
+                                                {% endif %}
+                                            </option>
+                                            {% endif %}
                                         {% endfor %}
                                     </select>
                                     <small class="text-muted" style="font-size: 11px;">مبلغ دریافتی مستقیم به موجودی این کارت یا صندوق افزوده می‌شود.</small>
