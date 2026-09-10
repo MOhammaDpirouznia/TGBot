@@ -7069,6 +7069,87 @@ def admin_reseller_settle_period(reseller_id):
     return redirect(url_for("admin_reseller_payments", reseller_id=reseller_id))
 
 
+@app.route("/admin/reseller/receipt/<int:tx_id>/delete", methods=["POST"])
+@super_admin_required
+def admin_reseller_receipt_delete(tx_id):
+    """حذف فیش ثبت‌شده نماینده توسط مدیر ارشد با تعدیل خودکار موجودی یا بدهی"""
+    reason = request.form.get("reason", "").strip() or "حذف فیش تستی توسط مدیر ارشد"
+    rollback_finances = request.form.get("rollback_finances", "1") in ("1", "on", "true")
+    admin_name = session.get("name") or session.get("username") or "مدیر ارشد"
+    admin_id = session.get("admin_id")
+
+    res = db.admin_delete_reseller_receipt(
+        tx_id=tx_id,
+        admin_id=admin_id,
+        admin_name=admin_name,
+        reason=reason,
+        rollback_finances=rollback_finances
+    )
+    if res.get("success"):
+        flash(f"فیش #{tx_id} با موفقیت حذف گردید و اثرات مالی آن روی موجودی و بدهی نماینده تعدیل شد.", "info")
+    else:
+        flash(f"خطا در حذف فیش: {res.get('error')}", "danger")
+
+    return redirect(request.referrer or url_for("admin_reseller_payments", reseller_id=res.get("reseller_id") or 1))
+
+
+@app.route("/admin/reseller/wallet-tx/<int:rtx_id>/delete", methods=["POST"])
+@super_admin_required
+def admin_reseller_wallet_tx_delete(rtx_id):
+    """حذف تراکنش کیف پول نماینده توسط مدیر ارشد با تعدیل تراز مالی"""
+    reason = request.form.get("reason", "").strip() or "حذف تراکنش کیف پول توسط مدیر ارشد"
+    rollback_finances = request.form.get("rollback_finances", "1") in ("1", "on", "true")
+    admin_name = session.get("name") or session.get("username") or "مدیر ارشد"
+    admin_id = session.get("admin_id")
+
+    res = db.admin_delete_reseller_wallet_tx(
+        rtx_id=rtx_id,
+        admin_id=admin_id,
+        admin_name=admin_name,
+        reason=reason,
+        rollback_finances=rollback_finances
+    )
+    if res.get("success"):
+        flash(f"تراکنش کیف پول #{rtx_id} با موفقیت حذف گردید و اثر مالی آن روی تراز کیف پول/بدهی نماینده تعدیل شد.", "info")
+    else:
+        flash(f"خطا در حذف تراکنش کیف پول: {res.get('error')}", "danger")
+
+    return redirect(request.referrer or url_for("admin_reseller_payments", reseller_id=res.get("reseller_id") or 1))
+
+
+@app.route("/admin/reseller/<int:reseller_id>/reset-finances", methods=["POST"])
+@super_admin_required
+def admin_reseller_reset_finances(reseller_id):
+    """ریست کامل تراز مالی نماینده و پاکسازی رسیدها و تراکنش‌های تستی"""
+    reset_balance = request.form.get("reset_balance") in ("1", "on", "true")
+    reset_credit_debt = request.form.get("reset_credit_debt") in ("1", "on", "true")
+    purge_receipts = request.form.get("purge_receipts") in ("1", "on", "true")
+    purge_wallet_txs = request.form.get("purge_wallet_txs") in ("1", "on", "true")
+    reset_cards = request.form.get("reset_cards") in ("1", "on", "true")
+    notes = request.form.get("notes", "").strip()
+
+    admin_name = session.get("name") or session.get("username") or "مدیر ارشد"
+    admin_id = session.get("admin_id")
+
+    res = db.admin_reset_reseller_finances(
+        reseller_id=reseller_id,
+        admin_id=admin_id,
+        admin_name=admin_name,
+        reset_balance=reset_balance,
+        reset_credit_debt=reset_credit_debt,
+        purge_receipts=purge_receipts,
+        purge_wallet_txs=purge_wallet_txs,
+        reset_cards=reset_cards,
+        notes=notes
+    )
+    if res.get("success"):
+        flash("تراز مالی نماینده با موفقیت ریست شد و داده‌های تستی انتخابی پاکسازی شدند.", "success")
+    else:
+        flash(f"خطا در ریست مالی نماینده: {res.get('error')}", "danger")
+
+    return redirect(url_for("admin_reseller_payments", reseller_id=reseller_id))
+
+
 @app.route("/admin/reseller/<int:reseller_id>/add-debt", methods=["POST"])
 @admin_required
 def admin_reseller_add_debt(reseller_id):
@@ -10405,6 +10486,58 @@ def settings():
 
             flash("تنظیمات ظاهر دکمه گفتگوی آنلاین، وضعیت ساختگی و چتبات هوش مصنوعی با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
+        elif action == "save_mini_app_settings":
+            btn_enabled = "1" if request.form.get("mini_app_menu_button_enabled") else "0"
+            btn_text = request.form.get("mini_app_menu_button_text", "").strip() or "ورود به برنامه | HiddiPlus"
+            custom_url = request.form.get("mini_app_custom_url", "").strip()
+
+            splash_enabled = "1" if request.form.get("mini_app_splash_enabled") else "0"
+            splash_title = request.form.get("mini_app_splash_title", "").strip() or "HiddiPlus"
+            splash_subtitle = request.form.get("mini_app_splash_subtitle", "").strip() or "سرویس اتصال هوشمند و پرسرعت"
+            splash_duration = request.form.get("mini_app_splash_duration", "1800").strip()
+
+            db.save_setting("mini_app_menu_button_enabled", btn_enabled)
+            db.save_setting("mini_app_menu_button_text", btn_text)
+            db.save_setting("mini_app_custom_url", custom_url)
+            db.save_setting("mini_app_splash_enabled", splash_enabled)
+            db.save_setting("mini_app_splash_title", splash_title)
+            db.save_setting("mini_app_splash_subtitle", splash_subtitle)
+            db.save_setting("mini_app_splash_duration", splash_duration)
+
+            if "splash_image_file" in request.files:
+                file = request.files["splash_image_file"]
+                if file and file.filename:
+                    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
+                    if ext in ["jpg", "jpeg", "png", "webp", "gif"]:
+                        fn = f"mini_app_splash_{int(time.time())}.{ext}"
+                        fp = AVATAR_CACHE_DIR / fn
+                        file.save(fp)
+                        splash_image_url = url_for("telegram_avatar", identifier=fn)
+                        db.save_setting("mini_app_splash_image", splash_image_url)
+
+            try:
+                from telegram_menu_helper import sync_all_bots_menu_button
+                sync_res = sync_all_bots_menu_button()
+                if sync_res.get("success"):
+                    flash(f"تنظیمات مینی‌اپ ذخیره شد و دکمه تلگرام در ربات اصلی و {sync_res.get('resellers_synced', 0)} ربات نماینده به‌روزرسانی گردید.", "success")
+                else:
+                    flash("تنظیمات مینی‌اپ با موفقیت ذخیره شد.", "success")
+            except Exception as e_sync:
+                flash(f"تنظیمات مینی‌اپ ذخیره شد اما همگام‌سازی دکمه تلگرام با خطا مواجه شد: {e_sync}", "warning")
+            return redirect(url_for("settings"))
+
+        elif action == "sync_mini_app_menu_button":
+            try:
+                from telegram_menu_helper import sync_all_bots_menu_button
+                sync_res = sync_all_bots_menu_button()
+                if sync_res.get("success"):
+                    flash(f"⚡ دکمه منوی مینی‌اپ با موفقیت در ربات اصلی و {sync_res.get('resellers_synced', 0)} ربات فعال نماینده همگام‌سازی شد.", "success")
+                else:
+                    err_msg = ", ".join(sync_res.get("errors", [])) or "خطای نامشخص"
+                    flash(f"همگام‌سازی دکمه تلگرام ناموفق بود: {err_msg}", "danger")
+            except Exception as e_s:
+                flash(f"خطا در همگام‌سازی دکمه تلگرام: {e_s}", "danger")
+            return redirect(url_for("settings"))
 
     conn = db.get_connection()
     settings_list = conn.execute("SELECT * FROM settings").fetchall()
@@ -10462,6 +10595,16 @@ def settings():
         "portal_palette": db.get_setting("portal_palette", "inherit")
     }
     chat_settings = db.get_chat_settings()
+    mini_app_config = {
+        "menu_button_enabled": str(db.get_setting("mini_app_menu_button_enabled", "1")).lower() in ("1", "true"),
+        "menu_button_text": db.get_setting("mini_app_menu_button_text", "ورود به برنامه | HiddiPlus") or "ورود به برنامه | HiddiPlus",
+        "custom_url": db.get_setting("mini_app_custom_url", ""),
+        "splash_enabled": str(db.get_setting("mini_app_splash_enabled", "1")).lower() in ("1", "true"),
+        "splash_title": db.get_setting("mini_app_splash_title", "HiddiPlus") or "HiddiPlus",
+        "splash_subtitle": db.get_setting("mini_app_splash_subtitle", "سرویس اتصال هوشمند و پرسرعت") or "سرویس اتصال هوشمند و پرسرعت",
+        "splash_image": db.get_setting("mini_app_splash_image", "/static/images/hiddiplus_splash.jpg") or "/static/images/hiddiplus_splash.jpg",
+        "splash_duration": int(db.get_setting("mini_app_splash_duration", "1800") or 1800),
+    }
 
     return render_template(
         "settings.html",
@@ -10481,7 +10624,8 @@ def settings():
         login_security_config=login_security_config,
         palette_settings=palette_settings,
         chat_settings=chat_settings,
-        available_palettes=get_all_palettes()
+        available_palettes=get_all_palettes(),
+        mini_app_config=mini_app_config
     )
 
 
@@ -16771,6 +16915,16 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
     # فعال بودن خرید اشتراک جدید منحصراً برای مینی‌اپ
     enable_new_purchase = is_webapp or bool(request.args.get("tg_id")) or bool(request.path.startswith("/webapp"))
 
+    # تنظیمات صفحه لودینگ / اسپلش مینی‌اپ تلگرام
+    mini_app_splash_enabled = str(db.get_setting("mini_app_splash_enabled", "1")).lower() in ("1", "true")
+    mini_app_splash_title = db.get_setting("mini_app_splash_title", "HiddiPlus")
+    mini_app_splash_subtitle = db.get_setting("mini_app_splash_subtitle", "سرویس اتصال هوشمند و پرسرعت")
+    mini_app_splash_image = db.get_setting("mini_app_splash_image", "/static/images/hiddiplus_splash.jpg")
+    try:
+        mini_app_splash_duration = int(db.get_setting("mini_app_splash_duration", "1800"))
+    except Exception:
+        mini_app_splash_duration = 1800
+
     return render_template(
         "customer_portal.html",
         sub=sub,
@@ -16808,7 +16962,12 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
         is_webapp=is_webapp,
         enable_new_purchase=enable_new_purchase,
         telegram_id=telegram_id,
-        reseller_id=reseller_id
+        reseller_id=reseller_id,
+        mini_app_splash_enabled=mini_app_splash_enabled,
+        mini_app_splash_title=mini_app_splash_title,
+        mini_app_splash_subtitle=mini_app_splash_subtitle,
+        mini_app_splash_image=mini_app_splash_image,
+        mini_app_splash_duration=mini_app_splash_duration
     )
 
 

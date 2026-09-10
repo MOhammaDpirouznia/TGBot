@@ -482,6 +482,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """دستور /start - شروع ربات همراه با انتخاب زبان و احراز هویت شماره تلفن"""
     user = update.effective_user
     
+    # تنظیم دکمه ثابت مینی‌اپ تلگرام برای این کاربر
+    try:
+        from telegram_menu_helper import setup_telegram_chat_menu_button
+        await setup_telegram_chat_menu_button(context.bot, chat_id=user.id, user_id=user.id, reseller_id=0)
+    except Exception as e_btn:
+        logger.debug(f"Could not setup menu button for user {user.id}: {e_btn}")
+
     # ثبت کاربر در دیتابیس
     db.save_user(telegram_id=user.id, username=user.username or user.first_name)
 
@@ -589,6 +596,13 @@ async def select_language_callback(update: Update, context: ContextTypes.DEFAULT
         text=t("choose_option", lang),
         reply_markup=reply_markup
     )
+
+    try:
+        from telegram_menu_helper import setup_telegram_chat_menu_button
+        await setup_telegram_chat_menu_button(context.bot, chat_id=user.id, user_id=user.id, reseller_id=0)
+    except Exception:
+        pass
+
     return CHOOSING
 
 
@@ -7482,6 +7496,14 @@ def main():
         notif_scheduler.set_bot(application.bot)
         await notif_scheduler.start()
         logger.info("Notification scheduler started")
+
+        # راه‌اندازی دکمه ثابت مینی‌اپ تلگرام (MenuButtonWebApp)
+        try:
+            from telegram_menu_helper import setup_telegram_chat_menu_button
+            await setup_telegram_chat_menu_button(application.bot, reseller_id=0)
+            logger.info("Admin bot Telegram Mini App menu button configured in post_init.")
+        except Exception as e_menu:
+            logger.warning(f"Could not setup menu button in post_init: {e_menu}")
 
         # همگام‌سازی و بازیابی خودکار کاربران از پنل هیدیفای در زمان استارت
         try:

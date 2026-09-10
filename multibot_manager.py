@@ -250,6 +250,13 @@ class ResellerBotInstance:
                 reseller_id=r_id
             )
 
+            # تنظیم دکمه ثابت مینی‌اپ تلگرام برای این کاربر در ربات نماینده
+            try:
+                from telegram_menu_helper import setup_telegram_chat_menu_button
+                await setup_telegram_chat_menu_button(context.bot, chat_id=user.id, user_id=user.id, reseller_id=r_id)
+            except Exception as e_btn:
+                logger.debug(f"Could not setup reseller menu button for user {user.id}: {e_btn}")
+
             # بررسی عضویت در کانال اجباری نماینده (در صورت تعریف)
             channel_id = (self.reseller_data.get("channel_id") or "").strip()
             if channel_id:
@@ -2972,6 +2979,11 @@ class ResellerBotInstance:
         try:
             self.loop.run_until_complete(self.application.initialize())
             self.loop.run_until_complete(self.application.start())
+            try:
+                from telegram_menu_helper import setup_telegram_chat_menu_button
+                self.loop.run_until_complete(setup_telegram_chat_menu_button(self.application.bot, reseller_id=self.reseller_id))
+            except Exception as e_mbtn:
+                logger.warning(f"Could not configure default menu button for reseller #{self.reseller_id}: {e_mbtn}")
             self.loop.run_until_complete(self.application.updater.start_polling(allowed_updates=Update.ALL_TYPES))
             self.is_running = True
             logger.info(f"Reseller bot #{self.reseller_id} (@{self.bot_info.get('username')}) started successfully.")
