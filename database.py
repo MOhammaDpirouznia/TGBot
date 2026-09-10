@@ -1286,7 +1286,16 @@ class Database:
             "ALTER TABLE reseller_cards ADD COLUMN is_default_customer INTEGER DEFAULT 0",
             "ALTER TABLE reseller_cards ADD COLUMN profit_percent REAL DEFAULT 0",
             "ALTER TABLE reseller_cards ADD COLUMN assigned_to TEXT",
-            "ALTER TABLE cash_desk_logs ADD COLUMN desk_id INTEGER DEFAULT 0"
+            "ALTER TABLE cash_desk_logs ADD COLUMN desk_id INTEGER DEFAULT 0",
+            # ستون‌های دسترسی مالی و تسویه حساب دوره‌ای نماینده
+            "ALTER TABLE resellers ADD COLUMN can_delete_payments INTEGER DEFAULT 0",
+            "ALTER TABLE resellers ADD COLUMN can_revoke_payments INTEGER DEFAULT 1",
+            "ALTER TABLE resellers ADD COLUMN last_settled_at TEXT",
+            "ALTER TABLE resellers ADD COLUMN settled_balance_marker INTEGER DEFAULT 0",
+            "ALTER TABLE card_transactions ADD COLUMN is_revoked INTEGER DEFAULT 0",
+            "ALTER TABLE card_transactions ADD COLUMN revoked_at TEXT",
+            "ALTER TABLE card_transactions ADD COLUMN revoked_by TEXT",
+            "ALTER TABLE card_transactions ADD COLUMN revoke_reason TEXT"
         ]:
             try:
                 cursor.execute(col_sql)
@@ -2808,6 +2817,27 @@ class Database:
                             VALUES (?, ?, ?, 'revoke', 'status', 'active', 'revoked', ?, ?)
                         """, (r_tx["id"], admin_id, admin_name, reason, now_iso))
 
+                elif r_id and not is_bundle:
+                    # ابطال پرداخت مشتری نماینده توسط مدیر: استرداد هزینه خرید عمده به کیف پول نماینده
+                    r_tx = cursor.execute("""
+                        SELECT id, amount FROM reseller_transactions 
+                        WHERE reseller_id=? AND (description LIKE ? OR plan_name=?) AND type IN ('purchase', 'purchase_credit', 'renewal')
+                          AND (is_revoked=0 OR is_revoked IS NULL)
+                        ORDER BY id DESC LIMIT 1
+                    """, (r_id, f"%{tx['order_id']}%", tx.get("plan_name"))).fetchone()
+                    if r_tx:
+                        ref_amount = int(r_tx["amount"] or 0)
+                        cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at=? WHERE id=?", (ref_amount, now_iso, r_id))
+                        cursor.execute("""
+                            UPDATE reseller_transactions
+                            SET status='revoked', is_revoked=1, revoked_by=?, revoked_at=?, revoke_reason=?
+                            WHERE id=?
+                        """, (admin_name, now_iso, reason, r_tx["id"]))
+                        cursor.execute("""
+                            INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, description, payment_source, created_by, created_at)
+                            VALUES (?, 'refund', ?, ?, ?, 'wallet', ?, ?)
+                        """, (r_id, ref_amount, tx.get("plan_name"), f"استرداد وجه ناشی از ابطال سفارش #{tx['order_id']} توسط مدیریت ({admin_name})", admin_name, now_iso))
+
                 # ابطال یا خنثی‌سازی سند در سیستم حسابداری
                 try:
                     cursor.execute("""
@@ -2841,6 +2871,328 @@ class Database:
                 "rollback_sub_action": rollback_sub_action
             }
         except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def reseller_revoke_transaction(
+        self,
+        tx_id: int,
+        reseller_id: int,
+        reseller_name: str,
+        reason: str = "",
+        rollback_sub_action: str = "keep",
+        refund_wallet: bool = True
+    ) -> dict:
+        """
+        ابطال فیش پرداخت مشتری توسط نماینده با ثبت سوابق، کسر از درآمد،
+        استرداد وجه خرید عمده به کیف پول نماینده، ابطال تراکنش کارت بانکی و مدیریت وضعیت اشتراک.
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            # ۱. بررسی وجود تراکنش و مالکیت نماینده
+            tx = cursor.execute("SELECT * FROM transactions WHERE id=?", (tx_id,)).fetchone()
+            if not tx:
+                return {"success": False, "error": "فیش پرداخت یافت نشد."}
+
+            tx = dict(tx)
+            if tx.get("reseller_id") != reseller_id:
+                return {"success": False, "error": "این فیش متعلق به نمایندگی شما نیست."}
+
+            # ۲. بررسی دسترسی نماینده
+            r_row = cursor.execute("SELECT can_revoke_payments, balance, discount_percent FROM resellers WHERE id=?", (reseller_id,)).fetchone()
+            if r_row and "can_revoke_payments" in r_row.keys() and r_row["can_revoke_payments"] == 0:
+                return {"success": False, "error": "شما دسترسی لازم برای ابطال فیش‌های پرداخت را ندارید."}
+
+            if tx.get("status") == "revoked":
+                return {"success": False, "error": "این فیش قبلاً باطل شده است."}
+
+            old_status = tx.get("status")
+            now_iso = get_now_iso()
+            order_id = tx.get("order_id") or ""
+            account_name = tx.get("account_name") or ""
+            amount = int(tx.get("amount") or 0)
+
+            # ۳. به‌روزرسانی وضعیت تراکنش به باطل شده (revoked)
+            cursor.execute("""
+                UPDATE transactions
+                SET status='revoked', revoked_at=?, revoked_by=?, revoke_reason=?, updated_at=?
+                WHERE id=?
+            """, (now_iso, f"{reseller_name} (نماینده #{reseller_id})", reason, now_iso, tx_id))
+
+            # ۴. ثبت در لاگ حسابرسی فیش‌ها
+            cursor.execute("""
+                INSERT INTO transaction_audit_logs 
+                (transaction_id, admin_id, admin_name, action, field_name, old_value, new_value, reason, created_at)
+                VALUES (?, ?, ?, 'revoke', 'status', ?, 'revoked', ?, ?)
+            """, (tx_id, reseller_id, reseller_name, old_status, reason, now_iso))
+
+            # ۵. در صورت تایید قبلی فیش، رول‌بک مالی و استرداد وجه به کیف پول نماینده:
+            refund_amount = 0
+            if old_status in ("approved", "completed"):
+                # الف) یافتن تراکنش کسر از کیف‌پول نماینده برای این خرید
+                r_tx = None
+                if account_name:
+                    r_tx = cursor.execute("""
+                        SELECT id, amount, payment_source FROM reseller_transactions
+                        WHERE reseller_id=? AND account_name=? AND type IN ('purchase', 'purchase_credit', 'renewal')
+                          AND (is_revoked=0 OR is_revoked IS NULL)
+                        ORDER BY id DESC LIMIT 1
+                    """, (reseller_id, account_name)).fetchone()
+
+                if not r_tx and order_id:
+                    r_tx = cursor.execute("""
+                        SELECT id, amount, payment_source FROM reseller_transactions
+                        WHERE reseller_id=? AND (description LIKE ? OR plan_name=?) AND type IN ('purchase', 'purchase_credit', 'renewal')
+                          AND (is_revoked=0 OR is_revoked IS NULL)
+                        ORDER BY id DESC LIMIT 1
+                    """, (reseller_id, f"%{order_id}%", tx.get("plan_name"))).fetchone()
+
+                if r_tx:
+                    refund_amount = int(r_tx["amount"] or 0)
+                    r_tx_id = r_tx["id"]
+                    cursor.execute("""
+                        UPDATE reseller_transactions
+                        SET status='revoked', is_revoked=1, revoked_by=?, revoked_at=?, revoke_reason=?
+                        WHERE id=?
+                    """, (reseller_name, now_iso, reason, r_tx_id))
+                else:
+                    disc_pct = r_row["discount_percent"] if r_row and r_row["discount_percent"] is not None else 20
+                    refund_amount = int(amount * (100 - disc_pct) / 100) if amount > 0 else 0
+
+                # برگشت وجه به کیف پول نماینده
+                if refund_wallet and refund_amount > 0:
+                    cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at=? WHERE id=?", (refund_amount, now_iso, reseller_id))
+                    cursor.execute("""
+                        INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, created_by, created_at)
+                        VALUES (?, 'refund', ?, ?, ?, ?, 'wallet', ?, ?)
+                    """, (
+                        reseller_id,
+                        refund_amount,
+                        tx.get("plan_name"),
+                        account_name,
+                        f"استرداد وجه ناشی از ابطال فیش #{tx_id} (سفارش {order_id}) - علت: {reason}",
+                        reseller_name,
+                        now_iso
+                    ))
+
+                # ب) رول‌بک تراکنش کارت بانکی نماینده
+                try:
+                    c_tx = cursor.execute("""
+                        SELECT id, card_id, amount FROM card_transactions
+                        WHERE owner_type='reseller' AND reseller_id=? AND ref_type='transaction' AND ref_id=?
+                          AND type='deposit' AND (is_revoked=0 OR is_revoked IS NULL)
+                        ORDER BY id DESC LIMIT 1
+                    """, (reseller_id, str(tx_id))).fetchone()
+
+                    if c_tx:
+                        cursor.execute("""
+                            UPDATE card_transactions
+                            SET is_revoked=1, revoked_at=?, revoked_by=?, revoke_reason=?
+                            WHERE id=?
+                        """, (now_iso, reseller_name, reason, c_tx["id"]))
+                        cursor.execute("UPDATE reseller_cards SET balance = balance - ?, updated_at=? WHERE id=?", (c_tx["amount"], now_iso, c_tx["card_id"]))
+                except Exception as e_ctx:
+                    logger.warning(f"Error rolling back card transaction on reseller revoke: {e_ctx}")
+
+                # ج) به‌روزرسانی فاکتور هوشمند در صورت وجود
+                if order_id:
+                    try:
+                        cursor.execute("UPDATE smart_invoices SET status='revoked' WHERE order_id=?", (order_id,))
+                    except Exception:
+                        pass
+
+            # ۶. یافتن اشتراک مرتبط جهت اعمال اکشن سرور
+            sub_id = tx.get("subscription_id")
+            associated_sub = None
+            if sub_id:
+                associated_sub = cursor.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,)).fetchone()
+            elif tx.get("user_id") and account_name:
+                associated_sub = cursor.execute(
+                    "SELECT * FROM subscriptions WHERE telegram_id=? AND account_name=? ORDER BY id DESC LIMIT 1",
+                    (tx["user_id"], account_name)
+                ).fetchone()
+            elif account_name:
+                associated_sub = cursor.execute(
+                    "SELECT * FROM subscriptions WHERE account_name=? ORDER BY id DESC LIMIT 1",
+                    (account_name,)
+                ).fetchone()
+
+            # ۷. ثبت در لاگ جامع فعالیت‌های سیستم
+            try:
+                cursor.execute("""
+                    INSERT INTO system_activity_logs
+                    (category, action, title, description, actor_type, actor_id, actor_name, target_type, target_id, target_name, level, created_at)
+                    VALUES ('reseller', 'revoke', ?, ?, 'reseller', ?, ?, 'payment', ?, ?, 'warning', ?)
+                """, (
+                    f"ابطال فیش پرداخت #{tx_id}",
+                    f"فیش سفارش {order_id} به مبلغ {amount:,} تومان توسط نماینده باطل شد. علت: {reason}",
+                    reseller_id,
+                    reseller_name,
+                    tx_id,
+                    order_id,
+                    now_iso
+                ))
+            except Exception:
+                pass
+
+            conn.commit()
+
+            return {
+                "success": True,
+                "tx": tx,
+                "sub": dict(associated_sub) if associated_sub else None,
+                "refund_amount": refund_amount,
+                "rollback_sub_action": rollback_sub_action
+            }
+        except Exception as e:
+            conn.rollback()
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def reseller_soft_delete_transaction(self, tx_id: int, reseller_id: int, reseller_name: str, reason: str = "") -> dict:
+        """حذف نرم فیش پرداخت توسط نماینده (در صورت داشتن مجوز) با ثبت دقیق لاگ حسابرسی"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            tx = cursor.execute("SELECT * FROM transactions WHERE id=?", (tx_id,)).fetchone()
+            if not tx:
+                return {"success": False, "error": "فیش پرداخت یافت نشد."}
+
+            tx = dict(tx)
+            if tx.get("reseller_id") != reseller_id:
+                return {"success": False, "error": "این فیش متعلق به نمایندگی شما نیست."}
+
+            r_row = cursor.execute("SELECT can_delete_payments FROM resellers WHERE id=?", (reseller_id,)).fetchone()
+            if not r_row or not r_row["can_delete_payments"]:
+                return {"success": False, "error": "شما دسترسی لازم برای حذف فیش‌های پرداخت را ندارید."}
+
+            now_iso = get_now_iso()
+            cursor.execute("UPDATE transactions SET is_deleted=1, updated_at=? WHERE id=?", (now_iso, tx_id))
+
+            cursor.execute("""
+                INSERT INTO transaction_audit_logs 
+                (transaction_id, admin_id, admin_name, action, field_name, old_value, new_value, reason, created_at)
+                VALUES (?, ?, ?, 'soft_delete', 'is_deleted', '0', '1', ?, ?)
+            """, (tx_id, reseller_id, reseller_name, reason or "حذف نرم توسط نماینده", now_iso))
+
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            conn.rollback()
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def settle_reseller_accounting_period(
+        self,
+        reseller_id: int,
+        admin_name: str,
+        admin_id: int = None,
+        notes: str = "",
+        reset_balance: bool = False
+    ) -> dict:
+        """
+        تسویه حساب و بستن دوره مالی نماینده توسط مدیریت.
+        - ثبت تاریخچه تسویه (last_settled_at)
+        - تسویه بدهی‌های معوق در صورت وجود
+        - ثبت سند رسمی در accounting_records و reseller_transactions
+        - انتقال تراکنش‌های پیش از این تاریخ به سوابق بایگانی‌شده دوره قبل
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            r_row = cursor.execute("SELECT * FROM resellers WHERE id=?", (reseller_id,)).fetchone()
+            if not r_row:
+                return {"success": False, "error": "نماینده یافت نشد."}
+
+            r = dict(r_row)
+            now_iso = get_now_iso()
+            today_str = now_iso[:10]
+            current_balance = int(r.get("balance") or 0)
+            credit_debt = int(r.get("credit_debt") or 0)
+
+            # ۱. تسویه بدهی‌های اعتباری معوق در جدول بدهی‌ها
+            if credit_debt > 0:
+                try:
+                    cursor.execute("""
+                        UPDATE reseller_debts 
+                        SET status='paid', remaining_amount=0, settled_at=?, settled_by=?
+                        WHERE reseller_id=? AND status != 'paid'
+                    """, (now_iso, admin_name, reseller_id))
+                except Exception:
+                    pass
+                cursor.execute("UPDATE resellers SET credit_debt = 0 WHERE id=?", (reseller_id,))
+
+            # ۲. در صورت انتخاب صفر کردن موجودی نقدی
+            if reset_balance and current_balance != 0:
+                cursor.execute("UPDATE resellers SET balance = 0 WHERE id=?", (reseller_id,))
+                cursor.execute("""
+                    INSERT INTO reseller_transactions (reseller_id, type, amount, description, created_at)
+                    VALUES (?, 'settlement', ?, ?, ?)
+                """, (
+                    reseller_id,
+                    abs(current_balance),
+                    f"تسویه حساب و صفر کردن تراز پایان دوره مالی توسط مدیریت ({admin_name}) - {notes or 'پایان دوره مالی'}",
+                    now_iso
+                ))
+
+            # ۳. ثبت تاریخ آخرین تسویه در جدول نماینده
+            cursor.execute("""
+                UPDATE resellers 
+                SET last_settled_at = ?, settled_balance_marker = ?, updated_at = ?
+                WHERE id = ?
+            """, (now_iso, current_balance, now_iso, reseller_id))
+
+            # ۴. ثبت سند حسابداری رسمی در accounting_records
+            desc_text = f"تسویه حساب و بستن دوره مالی نماینده «{r['name']}» (@{r['username']}) توسط {admin_name}"
+            if notes:
+                desc_text += f" - توضیحات: {notes}"
+            try:
+                cursor.execute("""
+                    INSERT INTO accounting_records
+                    (type, category, title, amount, source, ref_type, ref_id, description, date, created_at)
+                    VALUES ('expense', 'settlement', ?, ?, 'reseller_settlement', 'reseller', ?, ?, ?, ?)
+                """, (
+                    f"تسویه دوره مالی نماینده {r['name']}",
+                    max(0, credit_debt),
+                    str(reseller_id),
+                    desc_text,
+                    today_str,
+                    now_iso
+                ))
+            except Exception:
+                pass
+
+            # ۵. ثبت لاگ سیستمی
+            try:
+                cursor.execute("""
+                    INSERT INTO system_activity_logs
+                    (category, action, title, description, actor_type, actor_id, actor_name, target_type, target_id, target_name, level, created_at)
+                    VALUES ('reseller', 'settlement', ?, ?, 'admin', ?, ?, 'reseller', ?, ?, 'success', ?)
+                """, (
+                    f"بستن دوره مالی نماینده {r['name']}",
+                    desc_text,
+                    admin_id,
+                    admin_name,
+                    reseller_id,
+                    r['name'],
+                    now_iso
+                ))
+            except Exception:
+                pass
+
+            conn.commit()
+            return {
+                "success": True,
+                "settled_at": now_iso,
+                "previous_balance": current_balance,
+                "previous_debt": credit_debt
+            }
+        except Exception as e:
+            conn.rollback()
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
@@ -3820,6 +4172,16 @@ class Database:
 
     DEFAULT_BOT_MENU_BUTTONS = [
         {
+            "id": "mini_app",
+            "title": "📱 پنل هوشمند (Mini App)",
+            "description": "پورتال جامع استعلام وضعیت، اتصال، تمدید و خرید اشتراک داخل تلگرام",
+            "row": 0,
+            "col": 0,
+            "is_enabled": True,
+            "disabled_behavior": "show_disabled",
+            "disabled_message": "⚠️ پنل هوشمند موقتاً در دسترس نیست.",
+        },
+        {
             "id": "buy",
             "title": "🛍️ خرید اشتراک",
             "description": "نمایش تعرفه‌ها و خرید اشتراک VPN",
@@ -3932,6 +4294,16 @@ class Database:
     ]
 
     DEFAULT_RESELLER_BOT_MENU_BUTTONS = [
+        {
+            "id": "mini_app",
+            "title": "📱 پنل هوشمند (Mini App)",
+            "description": "پورتال کاربری استعلام وضعیت، اتصال، تمدید و خرید اشتراک داخل تلگرام",
+            "row": 0,
+            "col": 0,
+            "is_enabled": True,
+            "disabled_behavior": "show_disabled",
+            "disabled_message": "⚠️ پنل هوشمند موقتاً در دسترس نیست.",
+        },
         {
             "id": "buy",
             "title": "🛍️ خرید اشتراک",
@@ -4177,6 +4549,7 @@ class Database:
 
         # ۲. تطبیق کلمات کلیدی استاندارد هر دکمه
         keywords_map = {
+            "mini_app": ["پنل هوشمند", "مینی اپ", "مینی‌اپ", "mini app", "webapp", "web app", "پورتال", "پنل کاربری"],
             "buy": ["خرید اشتراک", "خرید", "buy", "اشتراک جدید", "خرید سرویس"],
             "my_subs": ["اشتراک‌های من", "سرویس‌های من", "وضعیت سرویس", "کانفیگ‌های من", "my subscriptions", "status", "link", "لینک"],
             "test_sub": ["تست رایگان", "اکانت تست", "تست", "اشتراک تست", "free test", "test"],
@@ -8556,8 +8929,8 @@ class Database:
         activities.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
         return activities[:limit]
 
-    def get_reseller_full_payment_history(self, reseller_id: int) -> dict:
-        """دریافت سابقه کامل پرداختی‌ها، شارژها، بسته‌های اعتباری و ریز تراکنش‌های نماینده"""
+    def get_reseller_full_payment_history(self, reseller_id: int, period_filter: str = "all") -> dict:
+        """دریافت سابقه کامل پرداختی‌ها، شارژها، بسته‌های اعتباری و ریز تراکنش‌های نماینده با پشتیبانی از فیلتر دوره مالی"""
         reseller = self.get_reseller(reseller_id)
         if not reseller:
             return {}
@@ -8565,12 +8938,24 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
 
+        last_settled = reseller.get("last_settled_at")
+        date_cond_rtx = ""
+        date_cond_tx = ""
+        params_rtx = [reseller_id]
+        params_tx = [reseller_id]
+
+        if period_filter == "current" and last_settled:
+            date_cond_rtx = " AND created_at >= ?"
+            date_cond_tx = " AND created_at >= ?"
+            params_rtx.append(last_settled)
+            params_tx.append(last_settled)
+
         # ۱. تراکنش‌های کیف پول نماینده (شارژها، خریدها، تمدیدها، استردادها)
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT * FROM reseller_transactions 
-            WHERE reseller_id = ? 
+            WHERE reseller_id = ?{date_cond_rtx}
             ORDER BY created_at DESC
-        """, (reseller_id,))
+        """, tuple(params_rtx))
         raw_wallet_txs = cursor.fetchall()
         wallet_txs = []
         for r in raw_wallet_txs:
@@ -8579,11 +8964,11 @@ class Database:
             wallet_txs.append(w_dict)
 
         # ۲. رسیدها، فیش‌های بانکی و تراکنش‌های ثبت‌شده در جدول اصلی
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT * FROM transactions 
-            WHERE reseller_id = ? 
+            WHERE reseller_id = ?{date_cond_tx}
             ORDER BY created_at DESC
-        """, (reseller_id,))
+        """, tuple(params_tx))
         raw_receipt_txs = cursor.fetchall()
         receipt_txs = []
         for r in raw_receipt_txs:
@@ -8592,31 +8977,31 @@ class Database:
             receipt_txs.append(r_dict)
 
         # ۳. محاسبات مالی دقیق (با حذف کامل تراکنش‌های باطل‌شده)
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions 
             WHERE reseller_id=? AND type='deposit' 
               AND (is_revoked=0 OR is_revoked IS NULL) 
-              AND (status != 'revoked' OR status IS NULL)
-        """, (reseller_id,))
+              AND (status != 'revoked' OR status IS NULL){date_cond_rtx}
+        """, tuple(params_rtx))
         total_deposited = cursor.fetchone()[0]
 
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions 
             WHERE reseller_id=? AND type IN ('purchase', 'renewal') 
               AND (is_revoked=0 OR is_revoked IS NULL) 
-              AND (status != 'revoked' OR status IS NULL)
-        """, (reseller_id,))
+              AND (status != 'revoked' OR status IS NULL){date_cond_rtx}
+        """, tuple(params_rtx))
         total_spent = cursor.fetchone()[0]
 
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions 
             WHERE reseller_id=? AND type='refund' 
               AND (is_revoked=0 OR is_revoked IS NULL) 
-              AND (status != 'revoked' OR status IS NULL)
-        """, (reseller_id,))
+              AND (status != 'revoked' OR status IS NULL){date_cond_rtx}
+        """, tuple(params_rtx))
         total_refunded = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM transactions WHERE reseller_id=? AND (gateway='bundle_reseller' OR order_id LIKE 'R_BUNDLE%')", (reseller_id,))
+        cursor.execute(f"SELECT COUNT(*) FROM transactions WHERE reseller_id=? AND (gateway='bundle_reseller' OR order_id LIKE 'R_BUNDLE%'){date_cond_tx}", tuple(params_tx))
         total_bundle_orders = cursor.fetchone()[0]
 
         conn.close()
@@ -8630,7 +9015,9 @@ class Database:
             "total_refunded": total_refunded,
             "total_bundle_orders": total_bundle_orders,
             "balance": reseller.get("balance", 0),
-            "discount_percent": reseller.get("discount_percent") if reseller.get("discount_percent") is not None else 20
+            "discount_percent": reseller.get("discount_percent") if reseller.get("discount_percent") is not None else 20,
+            "last_settled_at": last_settled,
+            "period_filter": period_filter
         }
 
     def get_reseller_subscriptions(self, reseller_id: int):
@@ -8647,7 +9034,7 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("SELECT balance, discount_percent, credit_enabled, credit_limit, credit_debt, can_gift_traffic, max_gift_traffic_gb FROM resellers WHERE id=?", (reseller_id,))
+        cursor.execute("SELECT balance, discount_percent, credit_enabled, credit_limit, credit_debt, can_gift_traffic, max_gift_traffic_gb, can_delete_payments, can_revoke_payments, last_settled_at FROM resellers WHERE id=?", (reseller_id,))
         res = cursor.fetchone()
         balance = res["balance"] if res else 0
         discount = res["discount_percent"] if res else 0
@@ -8655,6 +9042,9 @@ class Database:
         credit_debt = (res["credit_debt"] or 0) if res and "credit_debt" in res.keys() else 0
         credit_enabled = bool(res["credit_enabled"]) if (res and "credit_enabled" in res.keys() and res["credit_enabled"]) else (credit_limit > 0)
         can_gift_traffic = bool(res["can_gift_traffic"]) if (res and "can_gift_traffic" in res.keys() and res["can_gift_traffic"]) else False
+        can_delete_payments = bool(res["can_delete_payments"]) if (res and "can_delete_payments" in res.keys() and res["can_delete_payments"]) else False
+        can_revoke_payments = bool(res["can_revoke_payments"]) if (res and "can_revoke_payments" in res.keys() and res["can_revoke_payments"] is not None) else True
+        last_settled_at = res["last_settled_at"] if res and "last_settled_at" in res.keys() else None
         available_credit = max(0, credit_limit - credit_debt) if credit_enabled else 0
         total_purchasing_power = balance + available_credit
         
@@ -8676,12 +9066,12 @@ class Database:
         except Exception:
             unpaid_debts_total = 0
         
-        # مجموع خریدهای واقعی (کسر مبالغ مرجوعی/خطا در صورت وجود)
+        # مجموع خریدهای واقعی (کسر مبالغ مرجوعی/خطا و حذف تراکنش‌های باطل‌شده)
         cursor.execute("""
             SELECT COALESCE(
-                (SELECT SUM(amount) FROM reseller_transactions WHERE reseller_id=? AND type='purchase'), 0
+                (SELECT SUM(amount) FROM reseller_transactions WHERE reseller_id=? AND type='purchase' AND (is_revoked=0 OR is_revoked IS NULL) AND (status != 'revoked' OR status IS NULL)), 0
             ) - COALESCE(
-                (SELECT SUM(amount) FROM reseller_transactions WHERE reseller_id=? AND (type='refund' OR description LIKE '%برگشت%')), 0
+                (SELECT SUM(amount) FROM reseller_transactions WHERE reseller_id=? AND (type='refund' OR description LIKE '%برگشت%') AND (is_revoked=0 OR is_revoked IS NULL) AND (status != 'revoked' OR status IS NULL)), 0
             )
         """, (reseller_id, reseller_id))
         total_purchases_val = cursor.fetchone()[0] or 0
@@ -10691,6 +11081,7 @@ class Database:
             cursor.execute("""
                 SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions 
                 WHERE reseller_id = ? AND type IN ('purchase', 'purchase_credit', 'renewal', 'renew', 'renew_credit')
+                  AND (is_revoked = 0 OR is_revoked IS NULL) AND (status != 'revoked' OR status IS NULL)
             """, (reseller_id,))
             total_wholesale_cost = cursor.fetchone()[0] or 0
 
@@ -10698,6 +11089,7 @@ class Database:
             cursor.execute("""
                 SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions 
                 WHERE reseller_id = ? AND type = 'deposit'
+                  AND (is_revoked = 0 OR is_revoked IS NULL) AND (status != 'revoked' OR status IS NULL)
             """, (reseller_id,))
             total_deposited = cursor.fetchone()[0] or 0
 
@@ -10714,6 +11106,7 @@ class Database:
                 SELECT COALESCE(SUM(profit_margin), 0), COALESCE(SUM(selling_price), 0)
                 FROM reseller_transactions
                 WHERE reseller_id = ? AND type IN ('purchase', 'purchase_credit', 'renewal', 'renew', 'renew_credit')
+                  AND (is_revoked = 0 OR is_revoked IS NULL) AND (status != 'revoked' OR status IS NULL)
             """, (reseller_id,))
             p_row = cursor.fetchone()
             actual_profit = p_row[0] if p_row else 0

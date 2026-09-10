@@ -56,7 +56,8 @@ from telegram import (
     ReplyKeyboardMarkup,
     KeyboardButton,
     Bot,
-    CopyTextButton
+    CopyTextButton,
+    WebAppInfo
 )
 from telegram.ext import (
     Application,
@@ -194,16 +195,28 @@ class ResellerBotInstance:
                 except Exception as ex:
                     logger.debug(f"Failed to notify reseller admin {tid}: {ex}")
 
-        def get_reseller_main_keyboard(lang: str = "fa", is_reseller_admin: bool = False) -> ReplyKeyboardMarkup:
-            """ساخت کیبورد اصلی ربات نماینده مطابق با چیدمان ذخیره شده در پنل مدیریت"""
+        def get_reseller_main_keyboard(lang: str = "fa", is_reseller_admin: bool = False, user_id: int = None) -> ReplyKeyboardMarkup:
+            """ساخت کیبورد اصلی ربات نماینده مطابق با چیدمان ذخیره شده در پنل مدیریت با اتصال مینی‌اپ اختصاصی نماینده"""
             menu_rows = db.get_bot_menu_keyboard_rows(is_reseller=True)
             kb_list = []
+            webapp_url = db.get_setting("webapp_url", "") or os.getenv("DASHBOARD_URL", "")
+            if not webapp_url and os.getenv("RAILWAY_PUBLIC_DOMAIN"):
+                webapp_url = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}"
+
             for r in menu_rows:
                 row_btns = []
                 for b in r:
                     b_id = b.get("id")
                     b_title = b.get("title") or t(f"btn_{b_id}", lang)
-                    row_btns.append(KeyboardButton(b_title))
+                    if b_id in ("mini_app", "webapp"):
+                        if webapp_url:
+                            uid_param = f"tg_id={user_id}&" if user_id else ""
+                            full_app_url = f"{webapp_url.rstrip('/')}/webapp?{uid_param}r={r_id}"
+                            row_btns.append(KeyboardButton(b_title, web_app=WebAppInfo(url=full_app_url)))
+                        else:
+                            row_btns.append(KeyboardButton(b_title))
+                    else:
+                        row_btns.append(KeyboardButton(b_title))
                 if row_btns:
                     kb_list.append(row_btns)
             if not kb_list:
@@ -291,7 +304,7 @@ class ResellerBotInstance:
             welcome += "جهت شروع یکی از گزینه‌های زیر را انتخاب فرمایید:"
 
             is_adm, _ = check_admin_access(user.id)
-            main_kb = get_reseller_main_keyboard(lang, is_reseller_admin=is_adm)
+            main_kb = get_reseller_main_keyboard(lang, is_reseller_admin=is_adm, user_id=user.id)
             if update.message:
                 await update.message.reply_text(welcome, reply_markup=main_kb, parse_mode="HTML")
             elif update.callback_query:
@@ -327,7 +340,7 @@ class ResellerBotInstance:
             except Exception:
                 pass
             is_adm, _ = check_admin_access(user.id)
-            await context.bot.send_message(chat_id=user.id, text=t("choose_option", lang), reply_markup=get_reseller_main_keyboard(lang, is_reseller_admin=is_adm))
+            await context.bot.send_message(chat_id=user.id, text=t("choose_option", lang), reply_markup=get_reseller_main_keyboard(lang, is_reseller_admin=is_adm, user_id=user.id))
 
         async def contact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """دریافت شماره تماس و احراز هویت خودکار کاربر"""
@@ -352,7 +365,7 @@ class ResellerBotInstance:
             success_text = t("contact_auth_success", lang, phone=phone_number)
             welcome = f"🌟 به ربات اختصاصی <b>{html.escape(str(brand))}</b> خوش آمدید!\n\nجهت شروع یکی از گزینه‌های زیر را انتخاب فرمایید:"
             full_msg = f"{success_text}\n\n{welcome}"
-            await message.reply_text(full_msg, reply_markup=get_reseller_main_keyboard(lang, is_reseller_admin=is_adm), parse_mode="HTML")
+            await message.reply_text(full_msg, reply_markup=get_reseller_main_keyboard(lang, is_reseller_admin=is_adm, user_id=user.id), parse_mode="HTML")
 
         async def plans_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """نمایش پلن‌های فروش برای مشتری نماینده (با اعمال نام و قیمت سفارشی نماینده)"""
@@ -2857,7 +2870,25 @@ class ResellerBotInstance:
                     await update.message.reply_text(dis_msg)
                     return
 
-                if b_id == "buy":
+                if b_id in ("mini_app", "webapp"):
+                    webapp_url = db.get_setting("webapp_url", "") or os.getenv("DASHBOARD_URL", "")
+                    if not webapp_url and os.getenv("RAILWAY_PUBLIC_DOMAIN"):
+                        webapp_url = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}"
+                    if webapp_url:
+                        full_app_url = f"{webapp_url.rstrip('/')}/webapp?tg_id={user.id}&r={r_id}"
+                        kb = InlineKeyboardMarkup([
+                            [InlineKeyboardButton("📱 ورود به پنل کاربری هوشمند (Mini App)", web_app=WebAppInfo(url=full_app_url))]
+                        ])
+                        await update.message.reply_text(
+                            "📱 <b>پنل کاربری و پورتال اختصاصی (Telegram Mini App)</b>\n\n"
+                            "جهت مشاهده وضعیت سرویس، بارکد اتصال، تمدید و خرید اشتراک روی دکمه زیر بزنید:",
+                            reply_markup=kb,
+                            parse_mode="HTML"
+                        )
+                    else:
+                        await update.message.reply_text("⚠️ آدرس وب‌اپ تنظیم نشده است.")
+                    return
+                elif b_id == "buy":
                     return await plans_handler(update, context)
                 elif b_id in ("my_subs", "renew"):
                     return await my_subs_handler(update, context)

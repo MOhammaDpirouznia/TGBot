@@ -795,77 +795,16 @@ def get_hiddify_dashboard_traffic_stats(api_key: str = None, reseller_id: int = 
 @app.route("/webapp/user/<int:telegram_id>")
 @app.route("/webapp/sub/<sub_uuid>")
 def telegram_webapp(telegram_id=None, sub_uuid=None):
-    """رابط کاربری مدرن و واکنش‌گرای مینی‌اپ تلگرام جهت استعلام آنی حجم، زمان و اتصال سریع با Deep Link"""
+    """رابط کاربری هوشمند مینی‌اپ تلگرام متصل مستقیم به پورتال مشتری با تفکیک کامل نماینده و مدیریت"""
     tg_id_arg = request.args.get("tg_id") or request.args.get("id")
     if tg_id_arg and str(tg_id_arg).isdigit():
         telegram_id = int(tg_id_arg)
 
-    if sub_uuid:
-        sub = db.get_subscription_by_uuid(sub_uuid)
-        if sub and sub.get("telegram_id"):
-            telegram_id = sub["telegram_id"]
+    r_arg = request.args.get("r") or request.args.get("reseller_id")
+    reseller_id = int(r_arg) if (r_arg and str(r_arg).isdigit()) else None
 
-    user = None
-    raw_subscriptions = []
-    wallet_balance = 0
-    expire_shamsi = None
-
-    if telegram_id:
-        user = db.get_user(telegram_id)
-        raw_subscriptions = db.get_user_subscriptions(telegram_id, status="active")
-        if not raw_subscriptions:
-            raw_subscriptions = db.get_user_subscriptions(telegram_id)
-        wallet_balance = db.get_user_wallet_balance(telegram_id)
-
-    if not user:
-        all_users = db.get_all_users()
-        user = all_users[0] if all_users else {"telegram_id": 123456789, "username": "کاربر مهمان"}
-        raw_subscriptions = db.get_user_subscriptions(user["telegram_id"])
-        wallet_balance = db.get_user_wallet_balance(user["telegram_id"])
-
-    panel_url = get_hiddify_url()
-    user_proxy = get_user_proxy()
-    single_link_template = get_single_link_template(db)
-
-    subscriptions = []
-    for s in raw_subscriptions:
-        item = enrich_subscription_details(s)
-        uuid_val = item.get("hidify_uuid") or ""
-        acc_name = item.get("account_name") or "Account"
-        item["sub_url"] = f"{panel_url}/{user_proxy}/{uuid_val}/" if uuid_val else ""
-        item["single_url"] = format_single_link(single_link_template, uuid_val, acc_name) if (single_link_template and uuid_val) else ""
-        subscriptions.append(item)
-
-    if subscriptions:
-        first_sub = subscriptions[0]
-        exp_date = first_sub.get("expire_date")
-        if exp_date:
-            try:
-                expire_shamsi = gregorian_to_shamsi_full(exp_date)
-            except Exception:
-                pass
-
-    bot_username = os.getenv("BOT_USERNAME", "hiddify_shop_bot").lstrip("@")
-    
-    # دریافت دامنه آموزش
-    tutorial_domain = db.get_setting("tutorial_domain", "").strip()
-    if tutorial_domain:
-        if not tutorial_domain.startswith("http://") and not tutorial_domain.startswith("https://"):
-            tutorial_url = f"https://{tutorial_domain}"
-        else:
-            tutorial_url = tutorial_domain
-    else:
-        tutorial_url = url_for("tutorials_portal")
-
-    return render_template(
-        "webapp.html",
-        user=user,
-        subscriptions=subscriptions,
-        wallet_balance=wallet_balance,
-        expire_shamsi=expire_shamsi,
-        bot_username=bot_username,
-        tutorial_url=tutorial_url
-    )
+    token = sub_uuid or request.args.get("token") or request.args.get("sub_id")
+    return _handle_customer_portal_view(token=token, telegram_id=telegram_id, reseller_id=reseller_id, is_webapp=True)
 
 
 @app.route("/api/webapp/user_data")
@@ -6897,11 +6836,13 @@ def admin_reseller_payments(reseller_id):
         flash("نماینده مورد نظر یافت نشد.", "danger")
         return redirect(url_for("admin_resellers"))
 
-    history = db.get_reseller_full_payment_history(reseller_id)
+    period = request.args.get("period", "all")
+    history = db.get_reseller_full_payment_history(reseller_id, period_filter=period)
     return render_template(
         "admin_reseller_payments.html",
         reseller=reseller,
-        history=history
+        history=history,
+        period=period
     )
 
 
@@ -7059,6 +7000,8 @@ def admin_reseller_edit(reseller_id):
     credit_limit = int(request.form.get("credit_limit", 0) or 0)
     credit_enabled = 1 if (request.form.get("credit_enabled") or credit_limit > 0) else 0
     can_gift_traffic = 1 if request.form.get("can_gift_traffic") in ("on", "1", "true") else 0
+    can_delete_payments = 1 if request.form.get("can_delete_payments") in ("on", "1", "true") else 0
+    can_revoke_payments = 1 if request.form.get("can_revoke_payments") in ("on", "1", "true") else 0
 
     updates = {
         "name": name or r["name"],
@@ -7069,7 +7012,9 @@ def admin_reseller_edit(reseller_id):
         "hiddify_admin_uuid": hiddify_admin_uuid or None,
         "credit_enabled": credit_enabled,
         "credit_limit": credit_limit,
-        "can_gift_traffic": can_gift_traffic
+        "can_gift_traffic": can_gift_traffic,
+        "can_delete_payments": can_delete_payments,
+        "can_revoke_payments": can_revoke_payments
     }
     if new_password:
         updates["password"] = new_password
@@ -7099,6 +7044,29 @@ def admin_reseller_settle_debt(reseller_id):
     else:
         flash(f"خطا در تسویه بدهی: {res.get('error')}", "danger")
     return redirect(url_for("admin_resellers"))
+
+
+@app.route("/admin/reseller/<int:reseller_id>/settle-period", methods=["POST"])
+@admin_required
+def admin_reseller_settle_period(reseller_id):
+    """ثبت تسویه حساب کامل، بستن دوره مالی و صفر کردن حساب‌کتاب نماینده توسط مدیر"""
+    notes = request.form.get("notes", "").strip()
+    reset_balance = request.form.get("reset_balance") in ("1", "on", "true")
+    admin_name = session.get("name") or session.get("username") or "مدیر ارشد"
+    admin_id = session.get("admin_id")
+
+    res = db.settle_reseller_accounting_period(
+        reseller_id=reseller_id,
+        admin_name=admin_name,
+        admin_id=admin_id,
+        notes=notes,
+        reset_balance=reset_balance
+    )
+    if res.get("success"):
+        flash("دوره مالی نماینده با موفقیت بسته شد و حساب‌کتاب دوره گذشته تسویه و آرشیو گردید.", "success")
+    else:
+        flash(f"خطا در تسویه دوره مالی: {res.get('error')}", "danger")
+    return redirect(url_for("admin_reseller_payments", reseller_id=reseller_id))
 
 
 @app.route("/admin/reseller/<int:reseller_id>/add-debt", methods=["POST"])
@@ -13130,10 +13098,12 @@ def reseller_customer_payments():
     admin_count = sum(1 for tx in transactions if tx.get("source") == "admin")
 
     stats = db.get_reseller_stats(reseller_id)
+    reseller = db.get_reseller(reseller_id) or {}
     return render_template(
         "reseller_customer_payments.html", 
         transactions=transactions, 
         stats=stats,
+        reseller=reseller,
         portal_count=portal_count,
         telegram_count=telegram_count,
         reseller_count=reseller_count,
@@ -13434,10 +13404,73 @@ def reseller_payment_reject(payment_id):
     return redirect(url_for("reseller_customer_payments"))
 
 
+@app.route("/reseller/payment/<int:payment_id>/revoke", methods=["POST"])
+@reseller_required
+def reseller_payment_revoke(payment_id):
+    """ابطال فیش پرداخت مشتری توسط نماینده با امکان رول‌بک اشتراک و بازگشت وجه کیف پول"""
+    reseller_id = session.get("reseller_id")
+    reseller_name = session.get("name") or session.get("username") or f"نماینده #{reseller_id}"
+    reason = request.form.get("reason", "").strip() or "ابطال توسط نماینده"
+    rollback_sub_action = request.form.get("rollback_sub_action", "disable")  # disable, delete, keep
+    refund_wallet = request.form.get("refund_wallet", "1") in ("1", "on", "true")
+
+    res = db.reseller_revoke_transaction(
+        tx_id=payment_id,
+        reseller_id=reseller_id,
+        reseller_name=reseller_name,
+        reason=reason,
+        rollback_sub_action=rollback_sub_action,
+        refund_wallet=refund_wallet
+    )
+
+    if not res.get("success"):
+        flash(f"خطا در ابطال فیش پرداخت: {res.get('error')}", "danger")
+        return redirect(url_for("reseller_customer_payments"))
+
+    sub = res.get("sub")
+    if sub and sub.get("hidify_uuid"):
+        uuid = sub["hidify_uuid"]
+        sub_id = sub["id"]
+        if rollback_sub_action == "disable":
+            hidify_sync_update_user(uuid, enable=False)
+            db.update_subscription(sub_id, status="disabled")
+            flash(f"فیش #{payment_id} با موفقیت باطل شد و اکانت «{sub.get('account_name')}» غیرفعال گردید.", "warning")
+        elif rollback_sub_action == "delete":
+            hidify_sync_delete_user(uuid)
+            db.delete_subscription(sub_id)
+            flash(f"فیش #{payment_id} با موفقیت باطل شد و اکانت «{sub.get('account_name')}» از سرور حذف شد.", "warning")
+        else:
+            flash(f"فیش #{payment_id} با موفقیت باطل شد (اشتراک بدون تغییر باقی ماند).", "success")
+    else:
+        flash(f"فیش #{payment_id} با موفقیت باطل شد و وضعیت آن بروزرسانی گردید.", "success")
+
+    # به‌روزرسانی موجودی سشن نماینده در صورت استرداد وجه
+    r_after = db.get_reseller(reseller_id)
+    if r_after:
+        session["balance"] = r_after.get("balance", 0)
+
+    # اطلاع‌رسانی به کاربر در تلگرام در صورت وجود
+    tx = res.get("tx") or {}
+    user_id = tx.get("user_id") or 0
+    if user_id and int(user_id) > 0:
+        reseller_data = db.get_reseller(reseller_id)
+        bot_tok = reseller_data.get("bot_token") if reseller_data else None
+        msg_to_user = f"⚠️ **فیش پرداخت سفارش #{tx.get('order_id') or payment_id} باطل شد.**\n\nعلت ابطال: {reason}\nدر صورت وجود سوال با پشتیبانی تماس بگیرید."
+        try:
+            if bot_tok:
+                send_telegram_msg(user_id, msg_to_user, bot_token=bot_tok)
+            else:
+                send_telegram_msg(user_id, msg_to_user)
+        except Exception as e_tg:
+            logger.warning(f"Error sending revoke notification to telegram user: {e_tg}")
+
+    return redirect(url_for("reseller_customer_payments"))
+
+
 @app.route("/reseller/customer-payments/bulk", methods=["POST"])
 @reseller_required
 def reseller_customer_payments_bulk():
-    """عملیات گروهی روی فیش‌های پرداخت مشتریان نماینده (رد، حذف)"""
+    """عملیات گروهی روی فیش‌های پرداخت مشتریان نماینده (رد، حذف نرم) با کنترل دسترسی"""
     reseller_id = session.get("reseller_id")
     action = request.form.get("bulk_action")
     raw_ids = request.form.getlist("selected_ids") or [x.strip() for x in request.form.get("selected_ids_str", "").split(",") if x.strip()]
@@ -13454,6 +13487,13 @@ def reseller_customer_payments_bulk():
         flash("هیچ فیش پرداختی انتخاب نشده است.", "warning")
         return redirect(url_for("reseller_customer_payments"))
 
+    # کنترل دسترسی حذف
+    if action == "delete":
+        r_info = db.get_reseller(reseller_id)
+        if not r_info or not r_info.get("can_delete_payments"):
+            flash("⛔ شما مجوز حذف فیش‌های پرداختی را ندارید. در صورت لزوم می‌توانید از دکمه «ابطال فیش» برای لغو فیش‌های تاییدشده استفاده کنید.", "danger")
+            return redirect(url_for("reseller_customer_payments"))
+
     success_count = 0
     now_iso = get_now_iso()
     reseller_name = session.get("name") or session.get("username") or f"نماینده #{reseller_id}"
@@ -13461,24 +13501,25 @@ def reseller_customer_payments_bulk():
     for pid in payment_ids:
         conn = db.get_connection()
         tx_row = conn.execute("SELECT * FROM transactions WHERE id=? AND reseller_id=?", (pid, reseller_id)).fetchone()
+        conn.close()
         if not tx_row:
-            conn.close()
             continue
 
         if action == "reject":
-            conn.execute("UPDATE transactions SET status='rejected', rejection_reason='رد توسط نماینده در عملیات گروهی', processed_by=?, processed_at=?, updated_at=? WHERE id=?", (f"{reseller_name} (نماینده #{reseller_id})", now_iso, now_iso, pid))
-            conn.commit()
+            c_conn = db.get_connection()
+            c_conn.execute("UPDATE transactions SET status='rejected', rejection_reason='رد توسط نماینده در عملیات گروهی', processed_by=?, processed_at=?, updated_at=? WHERE id=?", (f"{reseller_name} (نماینده #{reseller_id})", now_iso, now_iso, pid))
+            c_conn.commit()
+            c_conn.close()
             success_count += 1
         elif action == "delete":
-            conn.execute("DELETE FROM transactions WHERE id=? AND reseller_id=?", (pid, reseller_id))
-            conn.commit()
-            success_count += 1
-        conn.close()
+            del_res = db.reseller_soft_delete_transaction(pid, reseller_id, reseller_name, reason="حذف گروهی توسط نماینده")
+            if del_res.get("success"):
+                success_count += 1
 
     if action == "reject":
         flash(f"✅ تعداد {success_count} فیش پرداخت با موفقیت رد شدند.", "info")
     elif action == "delete":
-        flash(f"✅ تعداد {success_count} فیش پرداخت حذف شدند.", "success")
+        flash(f"✅ تعداد {success_count} فیش پرداخت به سطل زباله منتقل شدند.", "success")
     else:
         flash(f"عملیات برای {success_count} فیش انجام شد.", "info")
 
@@ -16343,22 +16384,28 @@ def api_server_status():
 
 
 @app.route("/renew/check-discount/<token>", methods=["POST"])
-def customer_check_discount(token: str):
+@app.route("/portal/check-discount", methods=["POST"])
+def customer_check_discount(token: str = None):
     """بررسی و اعتبارسنجی بلادرنگ کد تخفیف برای مشتری با تفکیک کامل نماینده و مدیریت"""
-    conn = db.get_connection()
-    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
-    conn.close()
-
-    if not sub_row:
-        return jsonify({"valid": False, "error": "اشتراک یافت نشد"}), 404
-
-    sub = dict(sub_row)
     data = request.get_json(silent=True) or request.form
     code = (data.get("code") or "").strip().upper()
     plan_id = str(data.get("plan_id") or "").strip()
 
     if not code:
         return jsonify({"valid": False, "error": "لطفاً کد تخفیف را وارد کنید."})
+
+    sub_row = None
+    if token and token not in ("new", "portal", "0"):
+        conn = db.get_connection()
+        sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+        conn.close()
+
+    if not sub_row:
+        tg_id = data.get("telegram_id") or (request.args.get("tg_id") if request else 0)
+        r_id = data.get("reseller_id") or (request.args.get("r") if request else 0)
+        sub = {"id": 0, "telegram_id": int(tg_id or 0), "reseller_id": int(r_id or 0)}
+    else:
+        sub = dict(sub_row)
 
     reseller_id = sub.get("reseller_id") or 0
     price = 0
@@ -16400,13 +16447,21 @@ def customer_check_discount(token: str):
         })
 
 
-def get_portal_payment_methods(sub: dict) -> list:
+def get_portal_payment_methods(sub: dict = None, reseller_id: int = None, user_id: int = None) -> list:
     """
-    دریافت لیست و اولویت روش‌های پرداخت فعال اختصاصی برای مشتری این اشتراک
+    دریافت لیست و اولویت روش‌های پرداخت فعال اختصاصی برای مشتری این اشتراک یا خرید جدید
     با تفکیک و ایزولاسیون کامل بین نماینده و مدیریت اصلی.
     هر روشی که غیرفعال باشد هرگز نمایش داده نمی‌شود.
     """
-    reseller_id = sub.get("reseller_id") or 0
+    if sub:
+        if reseller_id is None:
+            reseller_id = sub.get("reseller_id") or 0
+        if user_id is None:
+            user_id = sub.get("telegram_id") or 0
+    else:
+        reseller_id = reseller_id or 0
+        user_id = user_id or 0
+
     ordered_methods = db.get_payment_methods(reseller_id=reseller_id if reseller_id else None)
 
     # دریافت اطلاعات پرداخت اختصاصی مالک اشتراک
@@ -16494,22 +16549,161 @@ def get_portal_payment_methods(sub: dict) -> list:
     return active_methods
 
 
-def _handle_customer_portal_view(token: str):
+def _handle_customer_portal_view(token: str = None, telegram_id: int = None, reseller_id: int = None, is_webapp: bool = False):
     """
-    پورتال دائمی و صفحه استعلام وضعیت و تمدید اشتراک مشتری (بدون نیاز به لاگین)
-    token می‌تواند hidify_uuid یا شناسه اشتراک باشد.
+    پورتال دائمی و صفحه استعلام وضعیت، تمدید و خرید اشتراک مشتری و مینی‌اپ هوشمند تلگرام
+    با تفکیک کامل و ایزوله نماینده و مدیریت
     """
+    if request:
+        tg_id_arg = request.args.get("tg_id") or request.args.get("id")
+        if tg_id_arg and str(tg_id_arg).isdigit():
+            telegram_id = int(tg_id_arg)
+        r_arg = request.args.get("r") or request.args.get("reseller_id")
+        if r_arg and str(r_arg).isdigit():
+            reseller_id = int(r_arg)
+        if not token:
+            token = request.args.get("token") or request.args.get("sub_id")
+        if not is_webapp and (request.args.get("tg_id") or request.path.startswith("/webapp")):
+            is_webapp = True
+
+    sub_row = None
     conn = db.get_connection()
-    sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
+    if token:
+        sub_row = conn.execute("SELECT * FROM subscriptions WHERE (hidify_uuid=? OR id=?) AND (is_deleted=0 OR is_deleted IS NULL)", (token, token)).fetchone()
+
+    # اگر توکن داده نشده یا یافت نشد اما آیدی تلگرام داریم
+    if not sub_row and telegram_id:
+        user_subs_all = db.get_user_subscriptions(telegram_id)
+        if reseller_id is not None and reseller_id > 0:
+            r_subs = [s for s in user_subs_all if (s.get("reseller_id") or 0) == reseller_id]
+            user_subs = [s for s in r_subs if s.get("status") == "active"] or r_subs
+            if not user_subs and not r_subs:
+                user_subs = user_subs_all
+        else:
+            user_subs = [s for s in user_subs_all if s.get("status") == "active"] or user_subs_all
+
+        if user_subs:
+            target_sub_id = request.args.get("sub_id")
+            selected_sub = None
+            if target_sub_id and str(target_sub_id).isdigit():
+                selected_sub = next((s for s in user_subs if s.get("id") == int(target_sub_id)), None)
+            if not selected_sub:
+                selected_sub = user_subs[0]
+            sub_row = selected_sub
+            token = selected_sub.get("hidify_uuid") or str(selected_sub.get("id"))
     conn.close()
 
+    is_new_customer = False
     if not sub_row:
-        return render_template("troubleshoot_wizard.html", error="اشتراک مورد نظر یافت نشد یا حذف شده است."), 404
+        if is_webapp or telegram_id:
+            # کاربر بدون اشتراک در مینی‌اپ (حالت خرید اشتراک جدید)
+            is_new_customer = True
+            sub = {
+                "id": 0,
+                "account_name": "کاربر گرامی",
+                "data_limit": 0,
+                "data_used": 0,
+                "status": "none",
+                "telegram_id": telegram_id,
+                "reseller_id": reseller_id or 0
+            }
+            sub_id = 0
+            reseller_id = reseller_id or 0
+            days_left = 0
+            invoice = None
+            sub_url = ""
+            single_url = ""
+            pending_queue = None
+            pending_queues = []
+            sub_history = []
+            tx_history = []
+            total_paid = 0
+        else:
+            return render_template("troubleshoot_wizard.html", error="اشتراک مورد نظر یافت نشد یا حذف شده است."), 404
+    else:
+        sub = dict(sub_row)
+        sub = enrich_subscription_details(sub)
+        sub_id = sub["id"]
+        if reseller_id is None:
+            reseller_id = sub.get("reseller_id") or 0
+        if not telegram_id:
+            telegram_id = sub.get("telegram_id") or 0
 
-    sub = dict(sub_row)
-    sub = enrich_subscription_details(sub)
-    sub_id = sub["id"]
-    reseller_id = sub.get("reseller_id") or 0
+        # روزهای مانده از تابع غنی‌ساز هیدیفای
+        days_left = sub.get("remaining_days", sub.get("duration", 30))
+        if sub.get("is_expired") and days_left < 0:
+            days_left = 0
+
+        # دریافت آخرین فاکتور فعال معلق برای این اشتراک (در صورت وجود)
+        now_str = get_now_naive().isoformat()
+        conn = db.get_connection()
+        inv_row = None
+        req_order_id = request.args.get("order_id") if request else None
+        if req_order_id:
+            inv_row = conn.execute("""
+                SELECT * FROM smart_invoices 
+                WHERE order_id=? AND status='pending'
+            """, (req_order_id,)).fetchone()
+        if not inv_row and sub_id:
+            inv_row = conn.execute("""
+                SELECT * FROM smart_invoices 
+                WHERE sub_id=? AND status='pending' AND expires_at > ?
+                ORDER BY id DESC LIMIT 1
+            """, (sub_id, now_str)).fetchone()
+        elif not inv_row and telegram_id:
+            inv_row = conn.execute("""
+                SELECT * FROM smart_invoices 
+                WHERE telegram_id=? AND status='pending' AND expires_at > ?
+                ORDER BY id DESC LIMIT 1
+            """, (telegram_id, now_str)).fetchone()
+        conn.close()
+        invoice = dict(inv_row) if inv_row else None
+
+        # لینک‌های اشتراک و کانفیگ تکی
+        user_uuid = sub.get("hidify_uuid") or str(sub_id)
+        acc_name = sub.get("account_name") or ""
+        panel_url = get_hiddify_url()
+        user_proxy = get_user_proxy()
+        sub_url = f"{panel_url}/{user_proxy}/{user_uuid}/" if (panel_url and user_uuid) else ""
+        single_link_template = db.get_setting("single_link_template")
+        single_url = format_single_link(single_link_template, uuid=user_uuid, name=acc_name) if (single_link_template and user_uuid) else ""
+
+        pending_queues = db.get_pending_queue_items(sub_id)
+        pending_queue = pending_queues[0] if pending_queues else None
+
+        # دریافت سوابق دوره‌ها و تمدیدهای گذشته و تراکنش‌های پرداخت این اشتراک
+        conn = db.get_connection()
+        sub_hist_rows = conn.execute("""
+            SELECT * FROM subscription_history 
+            WHERE subscription_id = ? OR (hidify_uuid = ? AND hidify_uuid IS NOT NULL AND hidify_uuid != '')
+            ORDER BY 
+                CASE 
+                    WHEN period_offset IS NOT NULL AND period_offset > 0 THEN period_offset 
+                    ELSE 9999 
+                END ASC,
+                renewed_at DESC, id DESC
+        """, (sub_id, sub.get("hidify_uuid") or "")).fetchall()
+
+        tx_rows = conn.execute("""
+            SELECT * FROM transactions 
+            WHERE (renew_sub_id = ? OR (username IS NOT NULL AND username != '' AND username = ?) OR (user_id = ? AND user_id > 0))
+              AND (is_deleted = 0 OR is_deleted IS NULL)
+              AND (gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
+            ORDER BY created_at DESC LIMIT 40
+        """, (sub_id, acc_name, sub.get("telegram_id") or 0)).fetchall()
+        conn.close()
+
+        sub_history = [dict(r) for r in sub_hist_rows]
+        tx_history = [dict(r) for r in tx_rows]
+        total_paid = sum(int(t.get("amount") or 0) for t in tx_history if t.get("status") in ("approved", "completed", "paid"))
+
+    # تمام اشتراک‌های کاربر جهت نمایش در سوئیچر اکانت‌ها در مینی‌اپ
+    user_subscriptions = []
+    if telegram_id:
+        raw_user_subs = db.get_user_subscriptions(telegram_id)
+        for s in raw_user_subs:
+            item = enrich_subscription_details(s)
+            user_subscriptions.append(item)
 
     # بررسی برندینگ و نماینده
     brand_title = db.get_setting("portal_title") or db.get_setting("store_name") or "فروشگاه اینترنت آزاد"
@@ -16532,12 +16726,7 @@ def _handle_customer_portal_view(token: str):
         if r_info.get("portal_plan_style"):
             portal_plan_style = r_info["portal_plan_style"]
 
-    # روزهای مانده از تابع غنی‌ساز هیدیفای
-    days_left = sub.get("remaining_days", sub.get("duration", 30))
-    if sub.get("is_expired") and days_left < 0:
-        days_left = 0
-
-    # دریافت پلن‌های مجاز
+    # دریافت پلن‌های مجاز تفکیک شده نماینده و مدیریت
     if reseller_id:
         raw_plans = db.get_reseller_active_plans(reseller_id)
         plans = []
@@ -16558,59 +16747,9 @@ def _handle_customer_portal_view(token: str):
         raw = get_plans_dict()
         plans = [{"id": str(k), "plan_id": str(k), **v} for k, v in raw.items() if v.get("is_active", True)]
 
-    # دریافت آخرین فاکتور فعال معلق برای این اشتراک (در صورت وجود)
-    now_str = get_now_naive().isoformat()
-    conn = db.get_connection()
-    inv_row = conn.execute("""
-        SELECT * FROM smart_invoices 
-        WHERE sub_id=? AND status='pending' AND expires_at > ?
-        ORDER BY id DESC LIMIT 1
-    """, (sub_id, now_str)).fetchone()
-    conn.close()
-    invoice = dict(inv_row) if inv_row else None
-
-    # لینک‌های اشتراک و کانفیگ تکی
-    user_uuid = sub.get("hidify_uuid") or str(sub_id)
-    acc_name = sub.get("account_name") or ""
-    panel_url = get_hiddify_url()
-    user_proxy = get_user_proxy()
-    sub_url = f"{panel_url}/{user_proxy}/{user_uuid}/" if (panel_url and user_uuid) else ""
-    single_link_template = db.get_setting("single_link_template")
-    single_url = format_single_link(single_link_template, uuid=user_uuid, name=acc_name) if (single_link_template and user_uuid) else ""
-
-    # لینک آموزش‌ها و عیب‌یابی اتصال
     troubleshoot_url = url_for("troubleshoot_wizard", _external=True)
-
     portal_enable_renewal = str(db.get_setting("portal_enable_renewal", "1")).lower() in ("1", "true")
     portal_show_troubleshoot = str(db.get_setting("portal_show_troubleshoot", "1")).lower() in ("1", "true")
-    pending_queues = db.get_pending_queue_items(sub_id)
-    pending_queue = pending_queues[0] if pending_queues else None
-
-    # دریافت سوابق دوره‌ها و تمدیدهای گذشته و تراکنش‌های پرداخت این اشتراک
-    conn = db.get_connection()
-    sub_hist_rows = conn.execute("""
-        SELECT * FROM subscription_history 
-        WHERE subscription_id = ? OR (hidify_uuid = ? AND hidify_uuid IS NOT NULL AND hidify_uuid != '')
-        ORDER BY 
-            CASE 
-                WHEN period_offset IS NOT NULL AND period_offset > 0 THEN period_offset 
-                ELSE 9999 
-            END ASC,
-            renewed_at DESC, id DESC
-    """, (sub_id, sub.get("hidify_uuid") or "")).fetchall()
-
-    tx_rows = conn.execute("""
-        SELECT * FROM transactions 
-        WHERE (renew_sub_id = ? OR (account_name IS NOT NULL AND account_name != '' AND account_name = ?) OR (user_id = ? AND user_id > 0))
-          AND (is_deleted = 0 OR is_deleted IS NULL)
-          AND (gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
-        ORDER BY created_at DESC LIMIT 40
-    """, (sub_id, acc_name, sub.get("telegram_id") or 0)).fetchall()
-    conn.close()
-
-    sub_history = [dict(r) for r in sub_hist_rows]
-    tx_history = [dict(r) for r in tx_rows]
-    total_paid = sum(int(t.get("amount") or 0) for t in tx_history if t.get("status") in ("approved", "completed", "paid"))
 
     server_status = get_customer_portal_server_status()
     portal_palette_config = get_active_palette_config(db, context="portal")
@@ -16619,9 +16758,8 @@ def _handle_customer_portal_view(token: str):
     support_online_info = db.is_support_online_for_sub(sub_id, reseller_id=reseller_id)
 
     # روش‌های پرداخت فعال اختصاصی برای مشتری بر اساس مالک اشتراک
-    portal_payment_methods = get_portal_payment_methods(sub)
-    user_id = sub.get("telegram_id") or 0
-    user_wallet = db.get_user_wallet_balance(user_id) if user_id else 0
+    portal_payment_methods = get_portal_payment_methods(sub=sub, reseller_id=reseller_id, user_id=telegram_id)
+    user_wallet = db.get_user_wallet_balance(telegram_id) if telegram_id else 0
 
     if reseller_id:
         gw_cfg = db.get_reseller_gateway(reseller_id)
@@ -16629,6 +16767,9 @@ def _handle_customer_portal_view(token: str):
             gw_cfg = db.get_admin_gateway()
     else:
         gw_cfg = db.get_admin_gateway()
+
+    # فعال بودن خرید اشتراک جدید منحصراً برای مینی‌اپ
+    enable_new_purchase = is_webapp or bool(request.args.get("tg_id")) or bool(request.path.startswith("/webapp"))
 
     return render_template(
         "customer_portal.html",
@@ -16661,16 +16802,25 @@ def _handle_customer_portal_view(token: str):
         portal_plan_style=portal_plan_style,
         portal_payment_methods=portal_payment_methods,
         gw_cfg=gw_cfg,
-        user_wallet=user_wallet
+        user_wallet=user_wallet,
+        user_subscriptions=user_subscriptions,
+        is_new_customer=is_new_customer,
+        is_webapp=is_webapp,
+        enable_new_purchase=enable_new_purchase,
+        telegram_id=telegram_id,
+        reseller_id=reseller_id
     )
 
 
 @app.route("/user/<token>", methods=["GET"])
 @app.route("/sub/<token>", methods=["GET"])
 @app.route("/renew/<token>", methods=["GET"])
-def customer_portal(token: str):
+@app.route("/portal", methods=["GET"])
+@app.route("/portal/<token>", methods=["GET"])
+@app.route("/portal/user/<int:telegram_id>", methods=["GET"])
+def customer_portal(token: str = None, telegram_id: int = None):
     """روت اصلی پورتال دائمی و استعلام وضعیت و تمدید اشتراک مشتری"""
-    return _handle_customer_portal_view(token)
+    return _handle_customer_portal_view(token=token, telegram_id=telegram_id)
 
 
 @app.route("/<portal_prefix>/<token>", methods=["GET"])
@@ -16691,12 +16841,8 @@ def customer_cancel_invoice(token: str, order_id: str = None):
     sub_row = conn.execute("SELECT * FROM subscriptions WHERE hidify_uuid=? OR id=?", (token, token)).fetchone()
     conn.close()
 
-    if not sub_row:
-        flash("اشتراک یافت نشد.", "danger")
-        return redirect(url_for("customer_portal", token=token))
-
-    sub_id = sub_row["id"]
-    if not order_id:
+    sub_id = sub_row["id"] if sub_row else 0
+    if not order_id and sub_id:
         now_str = get_now_naive().isoformat()
         conn = db.get_connection()
         inv_row = conn.execute("""
@@ -16718,7 +16864,11 @@ def customer_cancel_invoice(token: str, order_id: str = None):
     else:
         flash("هیچ فاکتور فعالی برای لغو یافت نشد.", "warning")
 
-    return redirect(url_for("customer_portal", token=token))
+    tg_id = request.args.get("tg_id") if request else None
+    r_id = request.args.get("r") if request else None
+    if tg_id or (request and request.args.get("is_webapp")):
+        return redirect(url_for("telegram_webapp", tg_id=tg_id, r=r_id))
+    return redirect(url_for("customer_portal", token=token if sub_row else ""))
 
 
 @app.route("/renew/create-invoice/<token>", methods=["POST"])
@@ -17116,6 +17266,244 @@ def customer_create_invoice(token: str):
 
     flash(f"فاکتور تمدید برای «{plan_name}» صادر شد. لطفاً دقیقاً مبلغ مشخص شده را واریز نمایید.", "info")
     return redirect(url_for("customer_portal", token=token))
+
+
+@app.route("/portal/buy-new-plan", methods=["POST"])
+def customer_buy_new_plan():
+    """
+    خرید اشتراک جدید اختصاصی از طریق مینی‌اپ تلگرام با تفکیک کامل نماینده و مدیریت
+    """
+    plan_id = request.form.get("plan_id")
+    payment_method = request.form.get("payment_method", "card_to_card").strip()
+    reseller_id = int(request.form.get("reseller_id") or 0)
+    telegram_id = int(request.form.get("telegram_id") or 0)
+    raw_discount_code = request.form.get("discount_code", "").strip().upper()
+    account_name = request.form.get("account_name", "").strip()
+    if not account_name:
+        account_name = f"user_{telegram_id}_{int(time.time()) % 10000}" if telegram_id else f"client_{int(time.time())}"
+
+    # استخراج مشخصات و قیمت پلن بر اساس نماینده یا مدیریت
+    price = 0
+    plan_name = "اشتراک جدید"
+    plan_data_limit = 30
+    plan_duration = 30
+
+    if reseller_id:
+        r_plan = db.get_reseller_plan(reseller_id, plan_id)
+        if r_plan:
+            price = r_plan.get("custom_price") or r_plan.get("price") or 0
+            plan_name = r_plan.get("custom_name") or r_plan.get("name") or plan_id
+            plan_data_limit = r_plan.get("data_limit", 30)
+            plan_duration = r_plan.get("duration", 30)
+    if not price:
+        g_plan = get_plans_dict().get(plan_id)
+        if g_plan:
+            price = g_plan.get("price", 0)
+            plan_name = g_plan.get("name", plan_id)
+            plan_data_limit = g_plan.get("data_limit", 30)
+            plan_duration = g_plan.get("duration", 30)
+
+    if not price:
+        price = 100000
+
+    # بررسی تخفیف
+    discount_val = 0
+    valid_discount_code = None
+    if raw_discount_code:
+        fake_sub = {"id": 0, "reseller_id": reseller_id, "telegram_id": telegram_id}
+        chk_res = db.validate_customer_discount(fake_sub, raw_discount_code, price)
+        if chk_res.get("valid"):
+            discount_val = int(chk_res.get("discount_amount") or 0)
+            valid_discount_code = raw_discount_code
+            price = max(0, price - discount_val)
+            db.apply_customer_discount(fake_sub, raw_discount_code)
+        else:
+            flash(f"کد تخفیف نامعتبر: {chk_res.get('error', '')}", "warning")
+
+    now_iso = get_now_iso()
+    order_id = f"BUY_{int(datetime.now().timestamp())}_{telegram_id or 'anon'}"
+    target_webapp_url = url_for("telegram_webapp", tg_id=telegram_id, r=reseller_id) if telegram_id else url_for("telegram_webapp", r=reseller_id)
+
+    # ۱. حالت رایگان یا ۱۰۰٪ تخفیف
+    if price <= 0:
+        conn = db.get_connection()
+        conn.execute("""
+            INSERT OR REPLACE INTO transactions (
+                order_id, user_id, username, plan_name, amount, status, gateway, 
+                tracking_code, reseller_id, is_renewal, renew_sub_id, 
+                source, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, 0, 'approved', 'free_discount', 'رایگان', ?, 0, NULL, 'portal_new_free', ?, ?)
+        """, (order_id, telegram_id, account_name, plan_name, reseller_id, now_iso, now_iso))
+        conn.commit()
+        conn.close()
+
+        fulfill_res = fulfill_approved_transaction(order_id, ref_id="رایگان", processed_by="تخفیف ۱۰۰٪ (مینی‌اپ)")
+        flash(f"🎉 تبریک! اشتراک جدید «{plan_name}» به صورت رایگان فعال شد.", "success")
+        sep = "&" if "?" in target_webapp_url else "?"
+        return redirect(f"{target_webapp_url}{sep}success_order={order_id}")
+
+    # ۲. پرداخت آنلاین
+    if payment_method == "online_gateway":
+        if reseller_id:
+            gw_cfg = db.get_reseller_gateway(reseller_id)
+            if not gw_cfg.get("enabled") or not gw_cfg.get("key"):
+                gw_cfg = db.get_admin_gateway()
+        else:
+            gw_cfg = db.get_admin_gateway()
+
+        if not gw_cfg.get("enabled") or not gw_cfg.get("key"):
+            flash("درگاه پرداخت آنلاین برای این فروشگاه فعال نیست. لطفاً از کارت به کارت استفاده فرمایید.", "warning")
+            return redirect(target_webapp_url)
+
+        gw_type = gw_cfg.get("type", "zarinpal")
+        gw_key = gw_cfg.get("key")
+        sandbox = gw_cfg.get("sandbox", False)
+        order_id = f"ONL_BUY_{int(datetime.now().timestamp())}_{telegram_id}"
+
+        r_info = db.get_reseller(reseller_id) or {} if reseller_id else {}
+        domain = r_info.get("custom_domain") or db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "http://localhost:5000")
+        if not str(domain).startswith("http"):
+            domain = f"https://{domain}"
+        callback_url = f"{str(domain).rstrip('/')}/payment/callback/{order_id}?tg_id={telegram_id}&r={reseller_id}"
+
+        conn = db.get_connection()
+        conn.execute("""
+            INSERT OR REPLACE INTO transactions (
+                order_id, user_id, username, plan_name, amount, status, gateway, 
+                tracking_code, reseller_id, is_renewal, renew_sub_id, 
+                source, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, 'pending', ?, '', ?, 0, NULL, 'portal_new_online', ?, ?)
+        """, (order_id, telegram_id, account_name, plan_name, price, f"{gw_type}_portal", reseller_id, now_iso, now_iso))
+        conn.commit()
+        conn.close()
+
+        try:
+            if gw_type == "zarinpal":
+                from payment import ZarinPal
+                zp = ZarinPal(merchant_id=gw_key, sandbox=sandbox)
+                res = zp.create_payment(amount=price, description=f"خرید اشتراک {plan_name}", callback_url=callback_url)
+                if res.get("success"):
+                    db.update_transaction(order_id, tracking_code=res.get("authority", ""))
+                    return redirect(res.get("payment_url"))
+                else:
+                    flash(f"خطا در ایجاد تراکنش زرین‌پال: {res.get('error')}", "danger")
+                    return redirect(target_webapp_url)
+            elif gw_type == "idpay":
+                from payment import IDPay
+                idp = IDPay(api_key=gw_key, sandbox=sandbox)
+                res = idp.create_payment(amount=price, name=account_name, description=f"خرید اشتراک {plan_name}", callback_url=callback_url, order_id=order_id)
+                if res.get("success"):
+                    db.update_transaction(order_id, tracking_code=res.get("payment_id", ""))
+                    return redirect(res.get("payment_url"))
+                else:
+                    flash(f"خطا در ایجاد تراکنش آیدی‌پی: {res.get('error')}", "danger")
+                    return redirect(target_webapp_url)
+            elif gw_type == "blupal":
+                from payment import BluPal
+                bp = BluPal(api_key=gw_key, sandbox=sandbox)
+                res = bp.create_payment(amount=price, order_id=order_id, description=f"خرید اشتراک {plan_name}")
+                if res.get("success"):
+                    invoice_id = res.get("invoice_id")
+                    db.update_transaction(order_id, tracking_code=str(invoice_id or order_id))
+                    pay_target = res.get("payment_url") or res.get("payment_link")
+                    if pay_target:
+                        return redirect(pay_target)
+                    else:
+                        flash("آدرس درگاه پرداخت ارسال نشد.", "danger")
+                        return redirect(target_webapp_url)
+                else:
+                    flash(f"خطا در ایجاد فاکتور بلوپال: {res.get('error')}", "danger")
+                    return redirect(target_webapp_url)
+        except Exception as e_gw:
+            logger.error(f"Error creating online payment for new sub: {e_gw}")
+            flash(f"خطا در اتصال به درگاه: {str(e_gw)}", "danger")
+            return redirect(target_webapp_url)
+
+    # ۳. پرداخت از کیف پول
+    elif payment_method == "wallet":
+        if not telegram_id or telegram_id <= 0:
+            flash("پرداخت از کیف پول نیازمند اتصال به حساب کاربری تلگرام است.", "warning")
+            return redirect(target_webapp_url)
+
+        user_wallet = db.get_user_wallet_balance(telegram_id)
+        if user_wallet < price:
+            flash(f"موجودی کیف پول شما ({user_wallet:,} تومان) کافی نیست. کسری موجودی: {price - user_wallet:,} تومان.", "warning")
+            return redirect(target_webapp_url)
+
+        deduct_res = db.deduct_wallet_balance(telegram_id, price, f"خرید اشتراک جدید «{plan_name}» از مینی‌اپ")
+        if not deduct_res.get("success"):
+            flash(f"خطا در کسر از کیف پول: {deduct_res.get('error')}", "danger")
+            return redirect(target_webapp_url)
+
+        order_id = f"WAL_BUY_{int(datetime.now().timestamp())}_{telegram_id}"
+        conn = db.get_connection()
+        conn.execute("""
+            INSERT OR REPLACE INTO transactions (
+                order_id, user_id, username, plan_name, amount, status, gateway, 
+                tracking_code, reseller_id, is_renewal, renew_sub_id, 
+                source, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, 'approved', 'wallet', 'کیف پول', ?, 0, NULL, 'portal_new_wallet', ?, ?)
+        """, (order_id, telegram_id, account_name, plan_name, price, reseller_id, now_iso, now_iso))
+        conn.commit()
+        conn.close()
+
+        fulfill_res = fulfill_approved_transaction(order_id, ref_id="کسر از کیف پول", processed_by="کیف پول (مینی‌اپ)")
+        flash(f"✅ مبلغ {price:,} تومان از کیف پول کسر و اشتراک جدید «{plan_name}» با موفقیت فعال شد.", "success")
+        sep = "&" if "?" in target_webapp_url else "?"
+        return redirect(f"{target_webapp_url}{sep}success_order={order_id}")
+
+    # ۴. کارت به کارت
+    else:
+        if reseller_id:
+            r_cards = db.get_reseller_cards(reseller_id)
+            active_cards = [c for c in r_cards if c.get("is_active")]
+            if not active_cards:
+                adm_cards = db.get_all_bank_cards()
+                active_cards = [c for c in adm_cards if c.get("is_active")]
+        else:
+            adm_cards = db.get_all_bank_cards()
+            active_cards = [c for c in adm_cards if c.get("is_active")]
+
+        target_card = active_cards[0] if active_cards else None
+        digits = 3
+        timeout = 15
+        if reseller_id:
+            sms_cfg = db.get_reseller_bank_sms_config(reseller_id)
+        else:
+            sms_cfg = db.get_admin_bank_sms_config()
+        if isinstance(sms_cfg, dict):
+            digits = sms_cfg.get("digits", 3)
+            timeout = sms_cfg.get("timeout", 15)
+
+        invoice = db.create_smart_invoice(
+            sub_id=0,
+            plan_id=plan_id,
+            reseller_id=reseller_id,
+            base_amount=price,
+            target_card=target_card,
+            digits=digits,
+            timeout_minutes=timeout,
+            instant_activation=True,
+            discount_code=valid_discount_code,
+            discount_amount=discount_val
+        )
+        order_id = invoice["order_id"]
+        inv_amount = invoice.get("final_amount", price)
+
+        conn = db.get_connection()
+        conn.execute("""
+            INSERT OR REPLACE INTO transactions (
+                order_id, user_id, username, plan_name, amount, status, gateway, 
+                tracking_code, reseller_id, is_renewal, renew_sub_id, 
+                source, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, 'pending', 'card_to_card', '', ?, 0, NULL, 'portal_new_c2c', ?, ?)
+        """, (order_id, telegram_id, account_name, plan_name, inv_amount, reseller_id, now_iso, now_iso))
+        conn.commit()
+        conn.close()
+
+        flash("فاکتور خرید اشتراک جدید صادر شد. لطفاً واریز را انجام و فیش یا مشخصات پرداخت را ثبت نمایید.", "info")
+        sep = "&" if "?" in target_webapp_url else "?"
+        return redirect(f"{target_webapp_url}{sep}order_id={order_id}")
 
 
 @app.route("/renew/settle-debt/<token>", methods=["POST"])
