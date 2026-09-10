@@ -125,7 +125,14 @@
                                             <i class="{{ icon_info.icon }}"></i>
                                         </span>
                                         <div class="flex-grow-1">
-                                            <div class="fw-bold">{{ p_name }}</div>
+                                            <div class="d-flex align-items-center justify-content-between flex-wrap gap-1">
+                                                <span class="fw-bold">{{ p_name }}</span>
+                                                {% if not p.get('show_in_reseller_bot', True) %}
+                                                <span class="badge bg-warning-subtle text-dark border border-warning px-2 py-1" style="font-size: 0.7rem;" title="این پلن در ربات تلگرام نمایش داده نمی‌شود و فقط مخصوص صدور دستی در پنل وب شماست">
+                                                    <i class="fas fa-gem text-warning me-1"></i>پلن اختصاصی دستی
+                                                </span>
+                                                {% endif %}
+                                            </div>
                                             <div class="text-muted small">حجم: {{ p_limit }} گیگ | مدت: {{ p_duration }} روز</div>
                                             <div class="mt-2">
                                                 <span class="text-decoration-line-through text-muted small">{{ "{:,}".format(p_orig_price) }} ت</span>
