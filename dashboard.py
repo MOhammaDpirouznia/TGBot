@@ -8352,9 +8352,16 @@ def reject_quota_change(ticket_id):
 def admin_subscription_clear_debt(sub_id):
     """تسویه کامل و سریع بدهی اشتراک توسط مدیر"""
     settled_by = session.get("username") or "admin"
-    db.clear_subscription_debt(sub_id, settled_by=settled_by)
-    flash("تمام بدهی‌های مشتری با موفقیت تسویه شد و اشتراک به عنوان پرداخت شده علامت‌گذاری گردید.", "success")
-    return redirect(request.form.get("next") or request.referrer or url_for("subscriptions"))
+    res = db.clear_subscription_debt(sub_id, settled_by=settled_by)
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+        if res.get("success"):
+            return jsonify({"success": True, "message": "تمام بدهی‌های مشتری با موفقیت تسویه شد."})
+        return jsonify({"success": False, "error": res.get("error", "خطا در تسویه بدهی")}), 400
+    if res.get("success"):
+        flash("تمام بدهی‌های مشتری با موفقیت تسویه شد و اشتراک به عنوان پرداخت شده علامت‌گذاری گردید.", "success")
+    else:
+        flash(f"خطا در تسویه بدهی: {res.get('error')}", "danger")
+    return redirect(request.form.get("redirect_url") or request.form.get("next") or request.referrer or url_for("subscriptions"))
 
 
 @app.route("/reseller/subscription/<int:sub_id>/clear-debt", methods=["POST"])
@@ -8363,9 +8370,16 @@ def reseller_subscription_clear_debt(sub_id):
     """تسویه کامل و سریع بدهی مشتری توسط نماینده"""
     reseller_id = session.get("reseller_id")
     settled_by = session.get("username") or f"reseller_{reseller_id}"
-    db.clear_subscription_debt(sub_id, reseller_id=reseller_id, settled_by=settled_by)
-    flash("تمام بدهی‌های مشتری با موفقیت تسویه شد و وضعیت اشتراک به پرداخت شده تغییر یافت.", "success")
-    return redirect(request.form.get("next") or request.referrer or url_for("reseller_users"))
+    res = db.clear_subscription_debt(sub_id, reseller_id=reseller_id, settled_by=settled_by)
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+        if res.get("success"):
+            return jsonify({"success": True, "message": "تمام بدهی‌های مشتری با موفقیت تسویه شد."})
+        return jsonify({"success": False, "error": res.get("error", "خطا در تسویه بدهی")}), 400
+    if res.get("success"):
+        flash("تمام بدهی‌های مشتری با موفقیت تسویه شد و وضعیت اشتراک به پرداخت شده تغییر یافت.", "success")
+    else:
+        flash(f"خطا در تسویه بدهی: {res.get('error')}", "danger")
+    return redirect(request.form.get("redirect_url") or request.form.get("next") or request.referrer or url_for("reseller_users"))
 
 
 @app.route("/api/subscription/<int:sub_id>/debt-report", methods=["GET"])
