@@ -11711,7 +11711,7 @@ class Database:
             """, (owner_type, owner_id, tx_type, int(amount), customer_name, plan_name, description, created_by, now))
             row_id = cursor.lastrowid
             conn.commit()
-            return {"success": True, "id": row_id}
+            return {"success": True, "id": row_id, "log_id": row_id}
         except Exception as e:
             return {"success": False, "error": str(e)}
         finally:
@@ -11749,18 +11749,54 @@ class Database:
         finally:
             conn.close()
 
-    def settle_cash_desk_log(self, log_id: int, settled_by: str = None) -> dict:
-        """تسویه سند دریافت نقدی"""
+    def settle_cash_desk_log(self, log_id: int, settled_by: str = None, owner_type: str = "admin",
+                            owner_id: int = 0, target_card_id: int = None, note: str = None,
+                            actor: str = None) -> dict:
+        """تسویه سند دریافت نقدی و واریز به کارت مقصد در صورت انتخاب"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
+        effective_actor = actor or settled_by or "admin"
         try:
+            cursor.execute("SELECT * FROM cash_desk_logs WHERE id = ?", (log_id,))
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "error": "سند صندوق نقدی یافت نشد."}
+            log_data = dict(row)
+            if log_data.get("is_settled"):
+                return {"success": False, "error": "این سند قبلاً تسویه شده است."}
+
+            amount = int(log_data.get("amount", 0))
+            cust_name = log_data.get("customer_name") or ""
+            row_owner_type = log_data.get("owner_type") or owner_type or "admin"
+            row_owner_id = int(log_data.get("owner_id", 0) or owner_id or 0)
+
             cursor.execute("""
                 UPDATE cash_desk_logs 
                 SET is_settled = 1, settled_at = ?, settled_by = ? 
                 WHERE id = ?
-            """, (now, settled_by or "admin", log_id))
+            """, (now, effective_actor, log_id))
             conn.commit()
+
+            # اگر کارت مقصد انتخاب شده باشد، مبلغ نقدی به موجودی کارت واریز می‌شود
+            if target_card_id:
+                try:
+                    self.add_card_transaction(
+                        card_id=target_card_id,
+                        owner_type=row_owner_type,
+                        amount=amount,
+                        tx_type="deposit",
+                        category="تسویه صندوق نقدی",
+                        title=f"واریز تسویه نقدی ({cust_name})" if cust_name else "واریز تسویه صندوق نقدی",
+                        description=note or f"تسویه سند نقدی شماره #{log_id}",
+                        ref_type="cash_settle",
+                        ref_id=str(log_id),
+                        created_by=effective_actor,
+                        reseller_id=row_owner_id if row_owner_type == "reseller" else 0
+                    )
+                except Exception as ex_card:
+                    logger.error(f"Error depositing to target card during cash settlement: {ex_card}")
+
             return {"success": True}
         except Exception as e:
             return {"success": False, "error": str(e)}

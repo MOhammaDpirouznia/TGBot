@@ -855,8 +855,8 @@ async def back_to_enter_tracking(update: Update, context: ContextTypes.DEFAULT_T
     plan = plans.get(plan_id, {})
     price_formatted = f"{plan.get('price', 0):,}".replace(",", "،")
     
-    # دریافت کارت فعال
-    active_card = get_active_card()
+    # دریافت هوشمند کارت فعال با توجه به سقف روزانه و اولویت پیش‌فرض/پشتیبان
+    active_card = get_active_card(incoming_amount=plan.get('price', 0))
     card_number = active_card.get("card_number", CARD_NUMBER)
     card_holder = active_card.get("card_holder", CARD_HOLDER)
     bank_name = active_card.get("bank_name", BANK_NAME)
@@ -1893,8 +1893,8 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
             pass
 
         try:
-            # دریافت هوشمند کارت فعال مستقیماً از تنظیمات دیتابیس پنل مدیریت
-            active_card = get_active_card() or {}
+            # دریافت هوشمند کارت فعال مستقیماً از تنظیمات دیتابیس پنل مدیریت بر اساس سقف روزانه و اولویت
+            active_card = get_active_card(incoming_amount=plan.get('price', 0)) or {}
             raw_card = active_card.get("card_number") or ""
             card_holder = html.escape(str(active_card.get("card_holder") or ""))
             bank_name = html.escape(str(active_card.get("bank_name") or ""))

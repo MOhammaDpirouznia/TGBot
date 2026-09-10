@@ -167,11 +167,21 @@ def get_active_cards() -> dict:
     return {cid: c for cid, c in cards.items() if c.get("is_active", False)}
 
 
-def get_active_card() -> dict:
-    """دریافت کارت فعال برای پرداخت با اولویت دیتابیس پنل مدیریت"""
+def get_active_card(incoming_amount: int = 0) -> dict:
+    """دریافت کارت فعال برای پرداخت با اولویت دیتابیس پنل مدیریت و روتاتور هوشمند پیش‌فرض/پشتیبان بر اساس سقف روزانه"""
     try:
         from database import db
-        # ۱. بررسی جدول bank_cards
+        best = db.get_best_active_card(owner_type="admin", incoming_amount=incoming_amount)
+        if best:
+            return {
+                "card_id": f"card_{best['id']}",
+                "card_number": best["card_number"],
+                "card_holder": best.get("card_holder") or "",
+                "bank_name": best.get("bank_name") or "",
+                "is_active": True,
+                **best
+            }
+        # در صورت نبود جدول، بررسی کارت‌های فعال معمولی
         db_cards = db.get_active_bank_cards()
         if db_cards:
             c = db_cards[0]
@@ -324,7 +334,9 @@ ICON_TO_TELEGRAM_EMOJI = {
     "star": "⭐",
     "fire": "🔥",
     "flame": "🔥",
+    "fire-flame-curved": "🔥",
     "shield": "🛡️",
+    "shield-halved": "🛡️",
     "cube": "📦",
     "cubes": "📦",
     "box": "📦",
@@ -332,22 +344,39 @@ ICON_TO_TELEGRAM_EMOJI = {
     "rocket": "🚀",
     "bolt": "⚡",
     "zap": "⚡",
+    "gauge": "⚡",
+    "gauge-high": "⚡",
     "apple": "🍏",
     "apple-whole": "🍏",
     "heart": "❤️",
     "globe": "🌐",
     "cloud": "☁️",
     "wifi": "📶",
+    "network-wired": "🌐",
+    "server": "🖥️",
+    "laptop": "💻",
+    "mobile": "📱",
+    "mobile-screen": "📱",
     "check": "✅",
     "circle-check": "✅",
     "leaf": "🍃",
+    "seedling": "🌱",
     "lock": "🔒",
     "key": "🔑",
     "gift": "🎁",
     "sparkles": "✨",
+    "wand-magic-sparkles": "✨",
     "infinity": "♾️",
     "cart": "🛒",
     "bag": "🛍️",
+    "basket-shopping": "🛍️",
+    "tag": "🏷️",
+    "tags": "🏷️",
+    "plane": "✈️",
+    "tornado": "🌪️",
+    "thumbs-up": "👍",
+    "bell": "🔔",
+    "compass": "🧭",
 }
 
 TIER_COLOR_CONFIG = {
@@ -419,7 +448,7 @@ def get_plan_icon(plan: dict = None, plan_id: str = None) -> dict:
 
     if custom_icon:
         custom_icon = str(custom_icon).strip()
-        # بررسی اگر ایموجی تلگرام مستقیماً وارد شده باشد
+        # بررسی اگر کاربر ایموجی مستقیم یا نام کلاس فونت‌آوسام وارد کرده باشد
         if any(ord(c) > 127 for c in custom_icon) and not any(p in custom_icon for p in ["fa-", "fas", "far", "fab"]):
             detected_emoji = custom_icon
             for kw, em in ICON_TO_TELEGRAM_EMOJI.items():
@@ -427,10 +456,24 @@ def get_plan_icon(plan: dict = None, plan_id: str = None) -> dict:
                     custom_icon = f"fas fa-{kw}"
                     break
         else:
-            if not custom_icon.startswith("fa"):
-                custom_icon = f"fas fa-{custom_icon}"
-            elif custom_icon.startswith("fa-") and not any(custom_icon.startswith(p) for p in ["fas ", "far ", "fab ", "fa-solid ", "fa-regular ", "fa-light "]):
-                custom_icon = f"fas {custom_icon}"
+            cleaned = custom_icon.strip()
+            # استخراج آیکون صحیح حتی اگر کاربر متن اضافی یا دونقطه نوشته باشد
+            if "fa-" in cleaned:
+                import re
+                fa_match = re.search(r'(fas|far|fab|fa-solid|fa-regular)?\s*(fa-[a-z0-9-]+)', cleaned)
+                if fa_match:
+                    prefix = fa_match.group(1) or "fas"
+                    if prefix.startswith("fa-"):
+                        prefix = "fas"
+                    custom_icon = f"{prefix} {fa_match.group(2)}"
+                else:
+                    custom_icon = cleaned
+            elif not cleaned.startswith("fa") and not cleaned.startswith("bi"):
+                custom_icon = f"fas fa-{cleaned}"
+            elif cleaned.startswith("fa-") and not any(cleaned.startswith(p) for p in ["fas ", "far ", "fab ", "fa-solid ", "fa-regular ", "fa-light "]):
+                custom_icon = f"fas {cleaned}"
+            else:
+                custom_icon = cleaned
 
     # مشخصات پلن: اولویت کامل با پلن مادر مدیریت جهت حفظ هماهنگی ۱۰۰٪
     name = (master_plan.get("name") or plan_dict.get("master_name") or plan_dict.get("name") or "").strip().lower()
@@ -438,8 +481,8 @@ def get_plan_icon(plan: dict = None, plan_id: str = None) -> dict:
     price = int(master_plan.get("price") if master_plan.get("price") is not None else (plan_dict.get("master_price") or plan_dict.get("price") or plan_dict.get("display_price") or 0))
     pid_lower = pid.lower()
 
-    # رتبه ۷: الماس / اپل پلاس / VIP ارشد / ماکسیمم حجم یا قیمت
-    if any(k in name or k in pid_lower for k in ["اپل", "apple", "الماس", "gem", "diamond", "royal", "vip"]) or data_limit >= 250 or price >= 1500000:
+    # رتبه ۷: الماس / اپل پلاس / VIP ارشد / زمرد / یاقوت / ماکسیمم حجم یا قیمت
+    if any(k in name or k in pid_lower for k in ["اپل", "apple", "الماس", "زمرد", "یاقوت", "فیروزه", "جواهر", "کریستال", "gem", "diamond", "emerald", "ruby", "crystal", "royal", "رویال", "vip", "وی آی پی", "ویژه"]) or data_limit >= 250 or price >= 1500000:
         c_name = "primary"
         fallback_icon = "fas fa-gem"
         badge_style = "background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); color: white;"
@@ -447,8 +490,8 @@ def get_plan_icon(plan: dict = None, plan_id: str = None) -> dict:
         tier = 7
         fallback_emoji = "💎"
 
-    # رتبه ۶: پرومکس پلاس / اولترا
-    elif any(k in name or k in pid_lower for k in ["پرومکس پلاس", "promaxplus", "promax+", "ultra"]) or data_limit >= 180 or price >= 1100000:
+    # رتبه ۶: پرومکس پلاس / اولترا / سوپر / تاج / سلطنتی / نامحدود
+    elif any(k in name or k in pid_lower for k in ["پرومکس پلاس", "promaxplus", "promax+", "ultra", "اولترا", "سوپر", "super", "تاج", "شاه", "سلطنتی", "crown", "king", "نامحدود", "بینهایت", "unlimited", "infinite"]) or data_limit >= 180 or price >= 1100000:
         c_name = "warning"
         fallback_icon = "fas fa-crown"
         badge_style = "background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%); color: white;"
@@ -456,8 +499,8 @@ def get_plan_icon(plan: dict = None, plan_id: str = None) -> dict:
         tier = 6
         fallback_emoji = "👑"
 
-    # رتبه ۵: پرومکس / پلاتینیوم
-    elif any(k in name or k in pid_lower for k in ["پرومکس", "promax", "platinum"]) or data_limit >= 100 or price >= 800000:
+    # رتبه ۵: پرومکس / پلاتینیوم / کاپ قهرمانی / پریمیوم
+    elif any(k in name or k in pid_lower for k in ["پرومکس", "promax", "platinum", "پلاتین", "پلاتینیوم", "جام", "قهرمان", "trophy", "champion", "premium", "پرمیوم", "پریمیوم", "توربو پلاس"]) or data_limit >= 100 or price >= 800000:
         c_name = "warning"
         fallback_icon = "fas fa-trophy"
         badge_style = "background-color: #fef3c7; color: #b45309;"
@@ -465,8 +508,8 @@ def get_plan_icon(plan: dict = None, plan_id: str = None) -> dict:
         tier = 5
         fallback_emoji = "🏆"
 
-    # رتبه ۴: پرو پلاس
-    elif any(k in name or k in pid_lower for k in ["پرو پلاس", "proplus", "pro+"]) or data_limit >= 80:
+    # رتبه ۴: پرو پلاس / آتش / موشک / توربو / سریع / رعد
+    elif any(k in name or k in pid_lower for k in ["پرو پلاس", "proplus", "pro+", "موشک", "موشکی", "rocket", "توربو", "turbo", "سرعت", "سریع", "اکسپرس", "express", "آتش", "اتش", "شعله", "داغ", "خفن", "fire", "flame", "رعد", "صاعقه", "برق", "bolt", "zap", "شتاب", "جت"]) or data_limit >= 80:
         c_name = "danger"
         fallback_icon = "fas fa-fire-flame-curved"
         badge_style = "background-color: #fee2e2; color: #b91c1c;"
@@ -474,8 +517,8 @@ def get_plan_icon(plan: dict = None, plan_id: str = None) -> dict:
         tier = 4
         fallback_emoji = "🔥"
 
-    # رتبه ۳: پرو / طلایی
-    elif any(k in name or k in pid_lower for k in ["پرو", "pro", "طلا", "gold"]) or data_limit >= 60 or price >= 500000:
+    # رتبه ۳: پرو / طلایی / ستاره / حرفه‌ای
+    elif any(k in name or k in pid_lower for k in ["پرو", "pro", "طلا", "طلایی", "gold", "golden", "ستاره", "star", "حرفه‌ای", "حرفه ای", "محبوب", "برتر", "خاص"]) or data_limit >= 60 or price >= 500000:
         c_name = "warning"
         fallback_icon = "fas fa-star"
         badge_style = "background-color: #fef9c3; color: #854d0e;"
@@ -483,8 +526,8 @@ def get_plan_icon(plan: dict = None, plan_id: str = None) -> dict:
         tier = 3
         fallback_emoji = "⭐"
 
-    # رتبه ۲: استاندارد / نقره‌ای
-    elif any(k in name or k in pid_lower for k in ["استاندارد", "standard", "نقره", "silver", "medium"]) or data_limit >= 40:
+    # رتبه ۲: استاندارد / نقره‌ای / سپر / امنیت / اطلس
+    elif any(k in name or k in pid_lower for k in ["استاندارد", "standard", "نقره", "نقره‌ای", "silver", "medium", "متوسط", "سپر", "امن", "امنیت", "shield", "گارد", "guard", "اطلس", "atlas", "شبکه", "گلوبال", "globe"]) or data_limit >= 40:
         c_name = "info"
         fallback_icon = "fas fa-shield-halved"
         badge_style = "background-color: #e0f2fe; color: #0369a1;"
@@ -492,7 +535,7 @@ def get_plan_icon(plan: dict = None, plan_id: str = None) -> dict:
         tier = 2
         fallback_emoji = "🛡️"
 
-    # رتبه ۱: پایه / استارتر / برنز
+    # رتبه ۱: پایه / استارتر / برنز / شروع / تست / بلویال
     else:
         c_name = "secondary"
         fallback_icon = "fas fa-cube"
@@ -609,8 +652,8 @@ def get_bundle_icon(bundle: dict) -> dict:
         }
 
 
-def add_plan(name: str, price: int, data_limit: int, duration: int, is_exclusive_admin: bool = False, plan_icon: str = "", allowed_resellers: list = None, is_exclusive_reseller: bool = False) -> dict:
-    """افزودن پلن جدید با امکان تعیین دسترسی اختصاصی برای نمایندگان منتخب"""
+def add_plan(name: str, price: int, data_limit: int, duration: int, is_exclusive_admin: bool = False, plan_icon: str = "", allowed_resellers: list = None, is_exclusive_reseller: bool = False, is_exclusive_admin_bot: bool = False) -> dict:
+    """افزودن پلن جدید با امکان تعیین دسترسی اختصاصی برای مدیریت، ربات مدیریت یا نمایندگان منتخب"""
     plans = load_plans()
     
     # ساخت آیدی یکتا
@@ -624,7 +667,8 @@ def add_plan(name: str, price: int, data_limit: int, duration: int, is_exclusive
     
     clean_resellers = [int(x) for x in allowed_resellers if str(x).isdigit() or isinstance(x, int)] if allowed_resellers else []
     is_reseller_excl = bool(clean_resellers) or bool(is_exclusive_reseller)
-    is_admin_excl = bool(is_exclusive_admin) and not is_reseller_excl
+    is_admin_bot_excl = bool(is_exclusive_admin_bot) and not is_reseller_excl
+    is_admin_excl = bool(is_exclusive_admin) and not is_reseller_excl and not is_admin_bot_excl
     
     plans[plan_id] = {
         "name": name,
@@ -634,6 +678,7 @@ def add_plan(name: str, price: int, data_limit: int, duration: int, is_exclusive
         "description": description,
         "is_active": True,
         "is_exclusive_admin": is_admin_excl,
+        "is_exclusive_admin_bot": is_admin_bot_excl,
         "is_exclusive_reseller": is_reseller_excl,
         "allowed_resellers": clean_resellers,
         "plan_icon": plan_icon.strip() if plan_icon else "",
@@ -662,17 +707,33 @@ def update_plan(plan_id: str, **kwargs) -> dict:
         current_id = new_plan_id
 
     for key, value in kwargs.items():
-        if key in ["name", "price", "data_limit", "duration", "is_active", "is_exclusive_admin", "plan_icon", "allowed_resellers", "is_exclusive_reseller"]:
-            if key == "is_exclusive_admin":
-                plans[current_id][key] = bool(value)
+        if key in ["name", "price", "data_limit", "duration", "is_active", "is_exclusive_admin", "is_exclusive_admin_bot", "plan_icon", "allowed_resellers", "is_exclusive_reseller"]:
+            if key == "is_exclusive_admin_bot":
+                val = bool(value)
+                plans[current_id]["is_exclusive_admin_bot"] = val
+                if val:
+                    plans[current_id]["is_exclusive_admin"] = False
+                    plans[current_id]["is_exclusive_reseller"] = False
+                    plans[current_id]["allowed_resellers"] = []
+            elif key == "is_exclusive_admin":
+                val = bool(value)
+                plans[current_id]["is_exclusive_admin"] = val
+                if val:
+                    plans[current_id]["is_exclusive_admin_bot"] = False
+                    plans[current_id]["is_exclusive_reseller"] = False
+                    plans[current_id]["allowed_resellers"] = []
             elif key == "allowed_resellers":
                 clean_resellers = [int(x) for x in value if str(x).isdigit() or isinstance(x, int)] if value else []
                 plans[current_id]["allowed_resellers"] = clean_resellers
                 plans[current_id]["is_exclusive_reseller"] = bool(clean_resellers)
                 if clean_resellers:
                     plans[current_id]["is_exclusive_admin"] = False
+                    plans[current_id]["is_exclusive_admin_bot"] = False
             elif key == "is_exclusive_reseller":
                 plans[current_id][key] = bool(value)
+                if value:
+                    plans[current_id]["is_exclusive_admin"] = False
+                    plans[current_id]["is_exclusive_admin_bot"] = False
             else:
                 plans[current_id][key] = value
     
@@ -707,6 +768,13 @@ def get_active_plans(include_exclusive_admin: bool = False, reseller_id: Optiona
         if not p.get("is_active", False):
             continue
         if p.get("is_exclusive_admin") and not include_exclusive_admin:
+            continue
+        # پلن اختصاصی برای پنل و ربات مدیریت (مخفی از نمایندگان و ربات نمایندگان)
+        if p.get("is_exclusive_admin_bot"):
+            if reseller_id is not None:
+                continue
+            # برای ربات اصلی و پنل مدیریت مجاز است
+            result[pid] = p
             continue
         allowed = p.get("allowed_resellers") or []
         if allowed:

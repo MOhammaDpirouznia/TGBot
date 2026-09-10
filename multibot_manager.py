@@ -626,7 +626,7 @@ class ResellerBotInstance:
                 disc_amount = context.user_data.get("applied_discount_amount", 0) if applied_code else 0
                 price = max(0, base_price - disc_amount)
 
-                active_card = db.get_active_reseller_card(r_id)
+                active_card = db.get_active_reseller_card(r_id, incoming_amount=price)
                 if not active_card:
                     all_rcards = db.get_reseller_cards(r_id)
                     if all_rcards:
