@@ -403,7 +403,7 @@ class ResellerBotInstance:
             try:
                 plan_id = query.data.replace("r_buy_", "")
                 plan = db.get_reseller_plan(r_id, plan_id)
-                if not plan:
+                if not plan or not plan.get("show_in_reseller_bot", True):
                     await query.edit_message_text("❌ پلن مورد نظر یافت نشد.")
                     return
 
@@ -470,7 +470,7 @@ class ResellerBotInstance:
         async def show_order_confirm(query, context, plan_id: str, account_name: str):
             """نمایش پیش‌فاکتور تایید نام و هدایت به روش‌های پرداخت"""
             plan = db.get_reseller_plan(r_id, plan_id)
-            if not plan:
+            if not plan or not plan.get("show_in_reseller_bot", True):
                 await query.edit_message_text("❌ پلن یافت نشد.")
                 return
 
@@ -512,7 +512,7 @@ class ResellerBotInstance:
             try:
                 plan_id = query.data.replace("r_conf_", "")
                 plan = db.get_reseller_plan(r_id, plan_id)
-                if not plan:
+                if not plan or not plan.get("show_in_reseller_bot", True):
                     await query.edit_message_text("❌ پلن مورد نظر یافت نشد.")
                     return
 
@@ -3074,6 +3074,15 @@ class MultiBotManager:
                 logger.info(f"Auto-start reseller bot #{rid} (@{r.get('bot_username', 'unnamed')}): {res}")
         except Exception as e:
             logger.error(f"Error auto-starting reseller bots: {e}")
+
+        # راه‌اندازی خودکار «ربات فروش بسته نمایندگی» در صورت فعال بودن
+        try:
+            if db.get_setting("bundle_bot_active") == "1" and db.get_setting("bundle_bot_token"):
+                from bundle_sales_bot import bundle_sales_bot_runner
+                ok = bundle_sales_bot_runner.start()
+                logger.info(f"Auto-start bundle sales bot status: {ok}")
+        except Exception as ex_b:
+            logger.error(f"Error auto-starting bundle sales bot: {ex_b}")
 
 
 # ساخت نمونه تکین (Singleton) برای کل پروژه
