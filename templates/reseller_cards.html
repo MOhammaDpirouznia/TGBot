@@ -90,64 +90,263 @@
     </div>
 </div>
 
-<!-- ردیف ۲: کارت‌های بانکی مقصد نماینده -->
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h5 class="fw-bold mb-0 text-dark"><i class="fas fa-credit-card text-primary me-2"></i>کارت‌های بانکی مقصد واریزی مشتریان</h5>
-    <span class="badge bg-secondary">{{ cards|length }} کارت ثبت شده</span>
-</div>
-
-<div class="row g-4 mb-4">
-    {% for card in cards %}
-    <div class="col-md-6 col-lg-4">
-        <div class="card shadow-sm border-0 h-100 {% if card.get('is_active') %}border-start border-success border-4{% else %}border-start border-secondary border-4 opacity-75{% endif %}">
-            <div class="card-body p-4 d-flex flex-column justify-content-between">
+<!-- ردیف ۲: خلاصه مالی و حسابداری موجودی شناور کارت‌ها و صندوق نقدی نماینده -->
+<div class="row g-3 mb-4">
+    <div class="col-sm-6 col-xl-3">
+        <div class="card shadow-sm border-0 border-start border-primary border-4 h-100">
+            <div class="card-body p-3 d-flex align-items-center justify-content-between">
                 <div>
-                    <div class="d-flex justify-content-between align-items-start mb-3">
-                        <span class="badge {% if card.get('is_active') %}bg-success bg-opacity-10 text-success border border-success{% else %}bg-secondary text-white{% endif %}">
-                            {{ '🟢 فعال برای ربات' if card.get('is_active') else '⚪ غیرفعال' }}
-                        </span>
-                        <span class="fw-bold text-muted small"><i class="fas fa-building-columns me-1"></i>{{ card.get('bank_name') or 'بانک' }}</span>
-                    </div>
-
-                    <div class="my-3 text-center">
-                        <div class="font-monospace fs-5 fw-bold text-primary" dir="ltr" style="letter-spacing: 2px;">
-                            {{ card.get('card_number') }}
-                        </div>
-                        <div class="text-dark fw-bold mt-2">{{ card.get('card_holder') }}</div>
-                    </div>
-
-                    <div class="text-muted small d-flex justify-content-between border-top pt-2">
-                        <span>سقف روزانه:</span>
-                        <span>{{ "{:,}".format(card.get('daily_limit') or 50000000) }} تومان</span>
-                    </div>
+                    <span class="text-muted small fw-semibold">موجودی شناور کل کارت‌ها</span>
+                    <h4 class="mb-0 fw-bold text-primary font-monospace mt-1">{{ "{:,}".format(financial_summary.get('total_balance', 0)) }} <small class="fs-6 fw-normal text-muted">تومان</small></h4>
                 </div>
-
-                <div class="d-flex justify-content-end gap-2 mt-4 pt-2 border-top">
-                    <form action="{{ url_for('reseller_card_toggle', card_id=card['id']) }}" method="POST" class="d-inline">
-                        <button type="submit" class="btn btn-sm {{ 'btn-outline-warning' if card.get('is_active') else 'btn-outline-success' }}" title="تغییر وضعیت فعال/غیرفعال">
-                            <i class="fas fa-power-off me-1"></i> {{ 'غیرفعال‌سازی' if card.get('is_active') else 'فعال‌سازی' }}
-                        </button>
-                    </form>
-                    <form action="{{ url_for('reseller_card_delete', card_id=card['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از حذف این کارت مطمئن هستید؟');">
-                        <button type="submit" class="btn btn-sm btn-outline-danger" title="حذف کارت">
-                            <i class="fas fa-trash-can"></i>
-                        </button>
-                    </form>
+                <div class="avatar-sm rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center" style="width: 44px; height: 44px;">
+                    <i class="fas fa-wallet fs-5"></i>
                 </div>
             </div>
         </div>
     </div>
-    {% endfor %}
-
-    {% if not cards %}
-    <div class="col-12">
-        <div class="card border-0 shadow-sm text-center py-5">
-            <i class="fas fa-credit-card fs-1 text-secondary opacity-50 mb-3"></i>
-            <h5 class="fw-bold text-muted">هنوز هیچ کارت بانکی ثبت نکرده‌اید!</h5>
-            <p class="text-muted small">برای اینکه مشتریان در ربات اختصاصی شما شماره کارت شما را ببینند، روی دکمه «افزودن کارت بانکی جدید» کلیک کنید.</p>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card shadow-sm border-0 border-start border-success border-4 h-100">
+            <div class="card-body p-3 d-flex align-items-center justify-content-between">
+                <div>
+                    <span class="text-muted small fw-semibold">مجموع واریزی‌های ثبت‌شده</span>
+                    <h4 class="mb-0 fw-bold text-success font-monospace mt-1">{{ "{:,}".format(financial_summary.get('total_deposits', 0)) }} <small class="fs-6 fw-normal text-muted">تومان</small></h4>
+                </div>
+                <div class="avatar-sm rounded-circle bg-success-subtle text-success d-flex align-items-center justify-content-center" style="width: 44px; height: 44px;">
+                    <i class="fas fa-arrow-down-long fs-5"></i>
+                </div>
+            </div>
         </div>
     </div>
-    {% endif %}
+    <div class="col-sm-6 col-xl-3">
+        <div class="card shadow-sm border-0 border-start border-danger border-4 h-100">
+            <div class="card-body p-3 d-flex align-items-center justify-content-between">
+                <div>
+                    <span class="text-muted small fw-semibold">برداشت‌ها، هزینه‌ها و کارمزدها</span>
+                    <h4 class="mb-0 fw-bold text-danger font-monospace mt-1">{{ "{:,}".format(financial_summary.get('total_withdrawals', 0)) }} <small class="fs-6 fw-normal text-muted">تومان</small></h4>
+                </div>
+                <div class="avatar-sm rounded-circle bg-danger-subtle text-danger d-flex align-items-center justify-content-center" style="width: 44px; height: 44px;">
+                    <i class="fas fa-arrow-up-long fs-5"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card shadow-sm border-0 border-start border-warning border-4 h-100">
+            <div class="card-body p-3 d-flex align-items-center justify-content-between">
+                <div>
+                    <span class="text-muted small fw-semibold">صندوق نقدی (در انتظار تسویه)</span>
+                    <h4 class="mb-0 fw-bold text-warning-emphasis font-monospace mt-1">{{ "{:,}".format(financial_summary.get('unsettled_cash', 0)) }} <small class="fs-6 fw-normal text-muted">تومان</small></h4>
+                </div>
+                <div class="avatar-sm rounded-circle bg-warning-subtle text-warning d-flex align-items-center justify-content-center" style="width: 44px; height: 44px;">
+                    <i class="fas fa-cash-register fs-5"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ردیف ۳: کارت‌های بانکی مقصد نماینده (روتاتور هوشمند و مانده حساب‌ها) -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0 fw-bold"><i class="fas fa-credit-card text-primary me-2"></i>کارت‌های بانکی مقصد نماینده (روتاتور هوشمند و مانده حساب‌ها)</h5>
+            <span class="badge bg-secondary">{{ cards|length }} کارت ثبت شده</span>
+        </div>
+        <small class="text-muted">در صورت رسیدن واریزی‌های روزانه به سقف تعیین‌شده، ربات تلگرام خودکار به کارت پشتیبان سوئیچ می‌کند</small>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">اطلاعات کارت و بانک</th>
+                        <th>نقش در روتاتور</th>
+                        <th>موجودی شناور</th>
+                        <th style="min-width: 200px;">تراکنش امروز / سقف روزانه</th>
+                        <th class="text-center">وضعیت</th>
+                        <th class="text-end pe-3">عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in cards %}
+                    <tr class="{% if not c.get('is_active') %}opacity-75 bg-light{% endif %}">
+                        <td class="ps-3">
+                            <div class="d-flex align-items-center gap-2">
+                                <div>
+                                    <strong class="fs-6 font-monospace text-primary" dir="ltr" style="letter-spacing: 1.5px;">{{ c['card_number'] }}</strong>
+                                    <div class="small text-dark fw-bold">{{ c['card_holder'] }}</div>
+                                    <div class="small text-muted">
+                                        <i class="fas fa-building-columns me-1 text-secondary"></i>{{ c['bank_name'] }}
+                                        {% if c.get('shaba_number') %}
+                                            <span class="ms-2 font-monospace text-secondary" dir="ltr">IR{{ c['shaba_number'] }}</span>
+                                        {% endif %}
+                                    </div>
+                                    {% if c.get('notes') %}
+                                        <small class="text-muted d-block fst-italic mt-1"><i class="fas fa-note-sticky me-1"></i>{{ c['notes'] }}</small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            {% if c.get('is_default') %}
+                                <span class="badge bg-warning text-dark border border-warning px-2 py-1" title="کارت اصلی برای ارسال به مشتری"><i class="fas fa-star me-1"></i>کارت پیش‌فرض</span>
+                            {% elif c.get('is_backup') %}
+                                <span class="badge bg-info-subtle text-info border border-info px-2 py-1" title="در صورت پر شدن سقف کارت پیش‌فرض جایگزین می‌شود"><i class="fas fa-shield-halved me-1"></i>کارت پشتیبان</span>
+                            {% else %}
+                                <span class="badge bg-light text-muted border px-2 py-1">عادی</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <div>
+                                    <span class="font-monospace fs-6 fw-bold {% if c.get('balance', 0) >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                        {{ "{:,}".format(c.get('balance', 0)) }}
+                                    </span>
+                                    <span class="small text-muted">تومان</span>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" title="ثبت سریع واریز / برداشت / هزینه" onclick="openAddTxModal({{ c['id'] }}, '{{ c['card_number'] }}', '{{ c['card_holder'] }}')">
+                                    <i class="fas fa-plus-minus small"></i>
+                                </button>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="d-flex justify-content-between small mb-1">
+                                <span class="text-muted">امروز: <strong class="text-dark font-monospace">{{ "{:,}".format(c.get('today_volume', 0)) }}</strong> ت</span>
+                                <span class="text-muted">سقف: <strong class="text-dark font-monospace">{{ "{:,}".format(c.get('daily_limit', 50000000)) }}</strong> ت</span>
+                            </div>
+                            <div class="progress" style="height: 6px;" title="{{ c.get('usage_percent', 0) }}% پر شده">
+                                <div class="progress-bar {% if c.get('usage_percent', 0) >= 90 %}bg-danger{% elif c.get('usage_percent', 0) >= 70 %}bg-warning{% else %}bg-primary{% endif %}" 
+                                     role="progressbar" style="width: {{ c.get('usage_percent', 0) }}%;"></div>
+                            </div>
+                            <div class="d-flex justify-content-between text-muted" style="font-size: 11px;">
+                                <span>{{ c.get('usage_percent', 0) }}% استفاده شده</span>
+                                <span>مانده سقف: {{ "{:,}".format(c.get('remaining_limit', 0)) }} ت</span>
+                            </div>
+                        </td>
+                        <td class="text-center">
+                            {% if c['is_active'] %}
+                                <span class="badge bg-success-subtle text-success border border-success px-2 py-1">🟢 فعال</span>
+                            {% else %}
+                                <span class="badge bg-secondary-subtle text-secondary border px-2 py-1">⚪ غیرفعال</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end pe-3">
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-primary" title="مشاهده گزارش کامل و تفکیک تراکنش‌ها" onclick="viewCardDetails({{ c['id'] }})">
+                                    <i class="fas fa-chart-line me-1"></i>گردش حساب
+                                </button>
+                                <div class="btn-group btn-group-sm">
+                                    <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" title="نقش در روتاتور">
+                                        <i class="fas fa-cog"></i>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                                        <li>
+                                            <a class="dropdown-item small" href="{{ url_for('reseller_card_set_role', card_id=c['id'], role_type='default') }}">
+                                                <i class="fas fa-star text-warning me-2"></i>انتخاب به عنوان کارت پیش‌فرض (اصلی)
+                                            </a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item small" href="{{ url_for('reseller_card_set_role', card_id=c['id'], role_type='backup') }}">
+                                                <i class="fas fa-shield-halved text-info me-2"></i>انتخاب به عنوان کارت پشتیبان
+                                            </a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item small" href="{{ url_for('reseller_card_set_role', card_id=c['id'], role_type='normal') }}">
+                                                <i class="fas fa-minus text-muted me-2"></i>کارت عادی (بدون اولویت)
+                                            </a>
+                                        </li>
+                                    </ul>
+                                </div>
+                                <button type="button" class="btn btn-outline-secondary" title="ویرایش اطلاعات کارت" onclick="openEditCardModal({{ c|tojson }})">
+                                    <i class="fas fa-pencil"></i>
+                                </button>
+                                <form action="{{ url_for('reseller_card_toggle', card_id=c['id']) }}" method="POST" class="d-inline">
+                                    <button type="submit" class="btn {% if c['is_active'] %}btn-outline-warning{% else %}btn-outline-success{% endif %}" title="تغییر وضعیت فعال/غیرفعال">
+                                        <i class="fas fa-power-off"></i>
+                                    </button>
+                                </form>
+                                <form action="{{ url_for('reseller_card_delete', card_id=c['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از حذف این کارت مطمئن هستید؟ تمام تراکنش‌های آن حفظ می‌شوند.');">
+                                    <button type="submit" class="btn btn-outline-danger" title="حذف کارت">
+                                        <i class="fas fa-trash-can"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not cards %}
+                    <tr>
+                        <td colspan="6" class="text-center py-4 text-muted">هنوز هیچ کارت بانکی ثبت نکرده‌اید. جهت دریافت مبالغ کارت به کارت در ربات اختصاصی، یک کارت اضافه نمایید.</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ردیف ۴: صندوق دریافت‌های نقدی و تسویه حساب‌های نماینده (Cash Desk) -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0 fw-bold"><i class="fas fa-cash-register text-warning me-2"></i>صندوق دریافت‌های نقدی و تسویه به حساب</h5>
+            <span class="badge bg-secondary">{{ cash_desk_logs|length }} فیش</span>
+        </div>
+        <small class="text-muted">دریافت‌های نقدی ثبت‌شده هنگام ساخت یا تمدید دستی مشتری در این بخش قرار می‌گیرند و قابل تسویه به کارت‌های بانکی هستند</small>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">تاریخ و زمان</th>
+                        <th>نام مشتری / اشتراک</th>
+                        <th>بابت / عنوان</th>
+                        <th>مبلغ نقدی</th>
+                        <th class="text-center">وضعیت تسویه</th>
+                        <th class="text-end pe-3">عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for l in cash_desk_logs %}
+                    <tr>
+                        <td class="ps-3 small font-monospace text-muted">{{ l['created_at'][:19] }}</td>
+                        <td><strong>{{ l.get('customer_name') or '-' }}</strong></td>
+                        <td><span class="badge bg-light text-dark border">{{ l.get('source') or 'دریافت نقدی' }}</span></td>
+                        <td><strong class="font-monospace text-success">{{ "{:,}".format(l.get('amount', 0)) }} تومان</strong></td>
+                        <td class="text-center">
+                            {% if l.get('status') == 'settled' %}
+                                <span class="badge bg-success-subtle text-success border border-success px-2 py-1">
+                                    <i class="fas fa-check me-1"></i>تسویه شده به کارت
+                                </span>
+                            {% else %}
+                                <span class="badge bg-warning-subtle text-warning border border-warning px-2 py-1">
+                                    <i class="fas fa-clock me-1"></i>در انتظار تسویه
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end pe-3">
+                            {% if l.get('status') != 'settled' %}
+                                <button type="button" class="btn btn-sm btn-outline-warning fw-bold" onclick="openSettleCashModal({{ l['id'] }}, {{ l.get('amount', 0) }}, '{{ l.get('customer_name') or '' }}')">
+                                    <i class="fas fa-building-columns me-1"></i>تسویه و واریز به کارت
+                                </button>
+                            {% else %}
+                                <small class="text-muted font-monospace">تسویه توسط: {{ l.get('settled_by') or '-' }}</small>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not cash_desk_logs %}
+                    <tr>
+                        <td colspan="6" class="text-center py-3 text-muted">هیچ فیش نقدی در صندوق ثبت نشده است.</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 </div>
 
 <!-- ردیف ۳: درگاه پرداخت آنلاین اختصاصی نماینده -->
@@ -358,20 +557,57 @@
         <!-- باکس راهنما ویژه نماینده -->
         <div class="collapse mb-4" id="rBankSmsGuide">
             <div class="p-4 bg-light rounded-3 border border-success border-opacity-25">
-                <h6 class="fw-bold text-success mb-3"><i class="fas fa-graduation-cap me-2"></i>راهنمای راه‌اندازی تایید خودکار روی گوشی همراه نماینده:</h6>
-                <ol class="small text-secondary mb-3 pe-3 lh-lg">
-                    <li>اپلیکیشن <strong>SMS Forwarder</strong> یا <strong>MacroDroid</strong> را روی گوشی‌ای که پیامک‌های کارت بانکی شما روی آن می‌آید نصب کنید.</li>
-                    <li>یک دستور فوروارد به آدرس وب‌هوک بالا تنظیم نمایید:
-                        <ul>
-                            <li><strong>نوع:</strong> HTTP Post / Webhook</li>
-                            <li><strong>فیلتر شماره:</strong> سرشماره پیامک بانکی کارت‌های شما (مانند ملی، ملت، بلوبانک، سامان و...).</li>
-                            <li><strong>آدرس مقصد:</strong> آدرس وب‌هوک بالا را کپی و پیست کنید.</li>
-                            <li><strong>پارامتر ارسالی:</strong> متن پیامک به عنوان <code>message</code> و شماره فرستنده به عنوان <code>sender</code>.</li>
-                        </ul>
-                    </li>
-                    <li>بهینه‌سازی باتری گوشی را برای اپلیکیشن غیرفعال کنید تا در پس‌زمینه گوشی همیشه فعال بماند.</li>
-                    <li>از این پس هر مشتری شما که بسته تمدیدی انتخاب کند، به محض واریز وجه، حسابش درجا تمدید می‌شود و نیازی به ارسال فیش و تایید دستی شما نخواهد بود!</li>
-                </ol>
+                <h6 class="fw-bold text-success mb-3"><i class="fas fa-graduation-cap me-2"></i>راهنمای گام‌به‌گام راه‌اندازی اپلیکیشن فورواردر پیامک روی گوشی همراه نماینده:</h6>
+                <div class="alert alert-warning border-warning border-opacity-50 small mb-3">
+                    <strong>⚠️ توجه بسیار مهم پیرامون نام متغیر پیامک:</strong>
+                    بسیاری از کاربران به جای انتخاب متغیر خود برنامه، عبارت <code>[sms_body]</code> را تایپ می‌کنند که باعث ارسال کلمه خام <code>[sms_body]</code> به جای متن پیامک بانک می‌شود! لطفاً بر اساس برنامه‌ای که نصب کرده‌اید، دقیقاً مطابق راهنمای زیر پیکربندی نمایید:
+                </div>
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <div class="card h-100 border-primary border-opacity-25 bg-white shadow-sm">
+                            <div class="card-header bg-primary text-white py-2 fw-bold small">
+                                <i class="fab fa-android me-1"></i> پیکربندی در اپلیکیشن MacroDroid
+                            </div>
+                            <div class="card-body small">
+                                <div><b>۱. تریگر (Trigger):</b> پیامک دریافتی (SMS Received) از سرشماره‌های بانکی</div>
+                                <div class="mt-1"><b>۲. اکشن (Action):</b> ارسال درخواست HTTP Request با متد <code>POST</code></div>
+                                <div class="mt-1"><b>۳. آدرس (URL):</b> آدرس وب‌هوک اختصاصی بالا</div>
+                                <div class="mt-1"><b>۴. نوع محتوا (Content Type):</b> <code>application/json</code></div>
+                                <div class="mt-2"><b>۵. متن بدنه (Request Body):</b></div>
+                                <pre class="bg-light p-2 rounded text-start font-monospace small border mt-1 mb-1" dir="ltr"><code>{
+  "sender": "[sms_number]",
+  "message": "[sms_message]"
+}</code></pre>
+                                <div class="text-danger fw-bold mt-1" style="font-size: 0.78rem;">
+                                    📌 حتماً از <code>[sms_message]</code> استفاده کنید (نه [sms_body])
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100 border-success border-opacity-25 bg-white shadow-sm">
+                            <div class="card-header bg-success text-white py-2 fw-bold small">
+                                <i class="fas fa-paper-plane me-1"></i> پیکربندی در اپلیکیشن SMS Forwarder
+                            </div>
+                            <div class="card-body small">
+                                <div><b>۱. نوع ارسال (Sender Type):</b> Webhook / HTTP Post</div>
+                                <div class="mt-1"><b>۲. آدرس مقصد (Target URL):</b> آدرس وب‌هوک اختصاصی بالا</div>
+                                <div class="mt-1"><b>۳. هدرها (Headers):</b> <code>Content-Type: application/json</code></div>
+                                <div class="mt-2"><b>۴. بدنه درخواست (Request Body):</b></div>
+                                <pre class="bg-light p-2 rounded text-start font-monospace small border mt-1 mb-1" dir="ltr"><code>{
+  "sender": "[from]",
+  "message": "[content]"
+}</code></pre>
+                                <div class="text-success fw-bold mt-1" style="font-size: 0.78rem;">
+                                    📌 در SMS Forwarder از <code>[content]</code> استفاده فرمایید.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="small text-muted">
+                    <i class="fas fa-battery-half text-warning me-1"></i> <strong>تنظیم بهینه‌سازی باتری:</strong> در تنظیمات اندروید، گزینه Battery Optimization را برای برنامه فورواردر خاموش (Unrestricted) کنید تا سیستم‌عامل در زمان خاموش بودن صفحه، برنامه را متوقف نکند.
+                </div>
             </div>
         </div>
 
@@ -390,7 +626,7 @@
                             <th>متن پیامک</th>
                             <th style="width: 140px;" class="text-center">مبلغ استخراج‌شده</th>
                             <th style="width: 140px;" class="text-center">شناسه سفارش</th>
-                            <th style="width: 120px;" class="text-center">وضعیت</th>
+                            <th style="width: 140px;" class="text-center">وضعیت</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -412,6 +648,8 @@
                                     <span class="badge bg-success-subtle text-success border border-success px-2">✅ تایید خودکار</span>
                                 {% elif log['status'] == 'unmatched' %}
                                     <span class="badge bg-warning-subtle text-warning border border-warning px-2">⚠️ بدون فاکتور باز</span>
+                                {% elif log['status'] == 'placeholder_error' %}
+                                    <span class="badge bg-danger text-white border px-2" title="متغیر پیامک در برنامه جایگزین نشده است">❌ متغیر اشتباه گوشی</span>
                                 {% elif log['status'] == 'ignored' %}
                                     <span class="badge bg-secondary-subtle text-secondary border px-2">⚪ نامرتبط / برداشت</span>
                                 {% else %}
@@ -432,41 +670,337 @@
     </div>
 </div>
 
-<!-- مدال افزودن کارت بانکی -->
+<!-- مدال افزودن کارت بانکی جدید -->
 <div class="modal fade" id="addCardModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content text-start">
             <form action="{{ url_for('reseller_cards') }}" method="POST">
                 <input type="hidden" name="action" value="add_card">
                 <div class="modal-header bg-primary text-white py-3">
-                    <h5 class="modal-title fw-bold"><i class="fas fa-credit-card me-2"></i>افزودن کارت بانکی مقصد</h5>
+                    <h5 class="modal-title fw-bold"><i class="fas fa-credit-card me-2"></i>افزودن کارت بانکی مقصد نماینده</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body p-4">
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">شماره کارت ۱۶ رقمی <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control font-monospace text-center fs-5" name="card_number" placeholder="xxxx-xxxx-xxxx-xxxx" maxlength="19" dir="ltr" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">نام و نام خانوادگی صاحب حساب <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" name="card_holder" placeholder="مثال: علی رضایی" required>
-                    </div>
                     <div class="row g-3">
                         <div class="col-md-6">
-                            <label class="form-label fw-bold">نام بانک</label>
-                            <input type="text" class="form-control" name="bank_name" placeholder="مثال: ملی، ملت، سامان" required>
+                            <label class="form-label fw-bold">شماره کارت ۱۶ رقمی <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control font-monospace text-center fs-5" name="card_number" placeholder="xxxx-xxxx-xxxx-xxxx" maxlength="19" dir="ltr" required>
                         </div>
                         <div class="col-md-6">
+                            <label class="form-label fw-bold">نام و نام خانوادگی صاحب حساب <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="card_holder" placeholder="مثال: علی رضایی" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">نام بانک <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="bank_name" placeholder="مثال: ملی، ملت، سامان" required>
+                        </div>
+                        <div class="col-md-4">
                             <label class="form-label fw-bold">سقف واریز روزانه (تومان)</label>
-                            <input type="number" class="form-control" name="daily_limit" value="50000000">
+                            <input type="number" class="form-control font-monospace" name="daily_limit" value="50000000" step="1000000">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">موجودی اولیه (تومان)</label>
+                            <input type="number" class="form-control font-monospace" name="initial_balance" value="0" step="100000">
+                            <small class="text-muted" style="font-size: 11px;">موجودی فعلی کارت قبل از ثبت</small>
+                        </div>
+
+                        <div class="col-12">
+                            <div class="p-3 bg-light rounded-3 border">
+                                <label class="form-label fw-bold text-dark d-block mb-2">نقش کارت در روتاتور هوشمند ربات:</label>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" name="res_card_role_radio" id="resRoleNormal" value="normal" checked onchange="document.getElementById('resIsDefaultInp').value='0'; document.getElementById('resIsBackupInp').value='0';">
+                                    <label class="form-check-label" for="resRoleNormal">کارت عادی (بدون اولویت اختصاصی)</label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" name="res_card_role_radio" id="resRoleDefault" value="default" onchange="document.getElementById('resIsDefaultInp').value='1'; document.getElementById('resIsBackupInp').value='0';">
+                                    <label class="form-check-label text-warning-emphasis fw-bold" for="resRoleDefault">⭐ کارت پیش‌فرض (ارسال اولیه به خریدار)</label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" name="res_card_role_radio" id="resRoleBackup" value="backup" onchange="document.getElementById('resIsDefaultInp').value='0'; document.getElementById('resIsBackupInp').value='1';">
+                                    <label class="form-check-label text-info fw-bold" for="resRoleBackup">🛡️ کارت پشتیبان (جایگزین خودکار در صورت پر شدن سقف روزانه)</label>
+                                </div>
+                                <input type="hidden" name="is_default" id="resIsDefaultInp" value="0">
+                                <input type="hidden" name="is_backup" id="resIsBackupInp" value="0">
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">شماره شبا (بدون IR):</label>
+                            <div class="input-group" dir="ltr">
+                                <span class="input-group-text font-monospace">IR</span>
+                                <input type="text" name="shaba_number" class="form-control font-monospace" placeholder="120150000000000000000000" maxlength="24">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">شماره حساب:</label>
+                            <input type="text" name="account_number" class="form-control font-monospace text-start" placeholder="مثال: 0200123456001" dir="ltr">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">یادداشت داخلی (اختیاری):</label>
+                            <input type="text" name="notes" class="form-control" placeholder="مثال: کارت سرور، حساب شخصی، کارت دریافتی تلگرام...">
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">انصراف</button>
-                    <button type="submit" class="btn btn-primary px-4 fw-bold">ثبت کارت بانکی</button>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold">ثبت و ذخیره کارت</button>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal ویرایش کارت بانکی نماینده -->
+<div class="modal fade" id="editCardModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content text-start">
+            <form method="POST" action="{{ url_for('reseller_cards') }}">
+                <input type="hidden" name="action" value="card_edit">
+                <input type="hidden" name="card_id" id="resEditCardId">
+                <div class="modal-header bg-secondary text-white py-3">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-pencil me-2"></i>ویرایش اطلاعات کارت بانکی</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">شماره ۱۶ رقمی کارت:</label>
+                            <input type="text" name="card_number" id="resEditCardNumber" class="form-control text-center font-monospace fs-5" maxlength="19" required dir="ltr">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">نام و نام خانوادگی صاحب حساب:</label>
+                            <input type="text" name="card_holder" id="resEditCardHolder" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">نام بانک:</label>
+                            <input type="text" name="bank_name" id="resEditBankName" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">سقف مجاز روزانه (تومان):</label>
+                            <input type="number" name="daily_limit" id="resEditDailyLimit" class="form-control font-monospace" step="1000000">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">شماره شبا (بدون IR):</label>
+                            <div class="input-group" dir="ltr">
+                                <span class="input-group-text font-monospace">IR</span>
+                                <input type="text" name="shaba_number" id="resEditShabaNumber" class="form-control font-monospace" maxlength="24">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">شماره حساب:</label>
+                            <input type="text" name="account_number" id="resEditAccountNumber" class="form-control font-monospace text-start" dir="ltr">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">یادداشت داخلی:</label>
+                            <input type="text" name="notes" id="resEditNotes" class="form-control">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-success fw-bold"><i class="fas fa-save me-1"></i>ذخیره تغییرات</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal ثبت تراکنش دستی برای کارت نماینده (واریز / برداشت / هزینه / کارمزد) -->
+<div class="modal fade" id="cardAddTxModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content text-start">
+            <form method="POST" action="{{ url_for('reseller_cards') }}">
+                <input type="hidden" name="action" value="card_add_tx">
+                <input type="hidden" name="card_id" id="resTxCardId">
+                <div class="modal-header bg-dark text-white py-3">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-plus-minus me-2"></i>ثبت تراکنش دستی حساب و کارت</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="p-3 bg-light rounded-3 mb-3 border">
+                        <div class="small text-muted">کارت انتخابی:</div>
+                        <strong class="font-monospace text-primary fs-6" id="resTxCardNumDisplay"></strong>
+                        <div class="small fw-bold text-dark mt-1" id="resTxCardHolderDisplay"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">نوع تراکنش:</label>
+                        <select name="type" id="resTxTypeSelect" class="form-select" onchange="handleResTxTypeChange(this)">
+                            <option value="deposit">واریز به حساب (+ افزایش موجودی)</option>
+                            <option value="withdrawal">برداشت از حساب (- کاهش موجودی)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">دسته‌بندی و علت تراکنش:</label>
+                        <select name="category" id="resTxCategorySelect" class="form-select">
+                            <option value="واریز دستی">واریز دستی</option>
+                            <option value="برداشت نقدی">برداشت نقدی</option>
+                            <option value="هزینه سرور و زیرساخت">هزینه سرور و زیرساخت</option>
+                            <option value="کارمزد و مالیات بانکی">کارمزد و خدمات بانکی</option>
+                            <option value="تسویه نقدی">تسویه صندوق نقدی</option>
+                            <option value="سایر هزینه‌ها">سایر هزینه‌ها</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">مبلغ تراکنش (تومان):</label>
+                        <input type="number" name="amount" class="form-control font-monospace fs-5" min="1000" step="1000" placeholder="مثال: 5000000" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">عنوان یا بابت (اختیاری):</label>
+                        <input type="text" name="title" class="form-control" placeholder="مثال: خرید کانفیگ / انتقال شخصی">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">توضیحات تکمیلی:</label>
+                        <textarea name="description" class="form-control" rows="2" placeholder="شماره پیگیری، توضیحات اختیاری..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary fw-bold"><i class="fas fa-check me-1"></i>ثبت قطعی تراکنش</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal تسویه صندوق نقدی نماینده به کارت بانکی -->
+<div class="modal fade" id="settleCashModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content text-start">
+            <form method="POST" action="{{ url_for('reseller_cards') }}">
+                <input type="hidden" name="action" value="cash_settle">
+                <input type="hidden" name="log_id" id="resSettleLogId">
+                <div class="modal-header bg-warning text-dark py-3">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-cash-register me-2"></i>تسویه فیش نقدی و واریز به حساب</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="p-3 bg-light rounded-3 mb-3 border">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="text-muted small">مشتری:</span>
+                            <strong class="text-dark" id="resSettleCustomerDisplay"></strong>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span class="text-muted small">مبلغ نقدی:</span>
+                            <strong class="font-monospace text-success fs-5" id="resSettleAmountDisplay"></strong>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">کارت بانکی مقصد (جهت واریز و افزایش موجودی):</label>
+                        <select name="target_card_id" class="form-select" required>
+                            <option value="">-- انتخاب کارت مقصد --</option>
+                            {% for c in cards %}
+                            <option value="{{ c['id'] }}">
+                                {{ c['bank_name'] }} - {{ c['card_holder'] }} ({{ c['card_number'][-4:] }}****) - موجودی فعلی: {{ "{:,}".format(c.get('balance', 0)) }} ت
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted mt-1 d-block">با تسویه، موجودی کارت مقصد دقیقاً به میزان این مبلغ افزایش خواهد یافت.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">یادداشت تسویه (اختیاری):</label>
+                        <input type="text" name="settle_note" class="form-control" placeholder="مثال: انتقال کارت به کارت / واریز خودپرداز">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-warning fw-bold text-dark"><i class="fas fa-check me-1"></i>تایید و ثبت تسویه</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal جامع جزئیات، تفکیک دسته‌بندی و گردش حساب نماینده (Drill-Down Modal) -->
+<div class="modal fade" id="cardDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content text-start">
+            <div class="modal-header bg-light py-3 d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="avatar-sm rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center" style="width: 44px; height: 44px;">
+                        <i class="fas fa-credit-card fs-5"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0" id="resCardDetailsTitle">گردش حساب و جزئیات کارت</h5>
+                        <div class="small text-muted font-monospace" id="resCardDetailsSubtitle"></div>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <!-- خلاصه وضعیت کارت در بالای مودال -->
+                <div class="row g-3 mb-4">
+                    <div class="col-md-3">
+                        <div class="p-3 bg-light rounded-3 border">
+                            <span class="small text-muted d-block">موجودی شناور فعلی</span>
+                            <strong class="fs-5 font-monospace text-primary" id="resCardModalBalance">-</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="p-3 bg-light rounded-3 border">
+                            <span class="small text-muted d-block">تراکنش‌های امروز</span>
+                            <strong class="fs-5 font-monospace text-success" id="resCardModalTodayVol">-</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="p-3 bg-light rounded-3 border">
+                            <span class="small text-muted d-block">سقف روزانه</span>
+                            <strong class="fs-5 font-monospace text-dark" id="resCardModalDailyLimit">-</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="p-3 bg-light rounded-3 border">
+                            <span class="small text-muted d-block">نقش در روتاتور</span>
+                            <span id="resCardModalRoleBadge" class="badge bg-light text-dark border mt-1 fs-6">عادی</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- فیلتر بر اساس دسته‌بندی -->
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                    <div class="d-flex align-items-center gap-2">
+                        <label class="small fw-bold text-secondary mb-0">فیلتر دسته‌بندی:</label>
+                        <select class="form-select form-select-sm" id="resCardTxCategoryFilter" style="width: auto;" onchange="filterResCardTransactions(this.value)">
+                            <option value="all">همه دسته‌ها</option>
+                            <option value="واریز مشتری">واریز مشتری (خرید/تمدید)</option>
+                            <option value="فروش اشتراک">فروش اشتراک</option>
+                            <option value="تمدید اشتراک">تمدید اشتراک</option>
+                            <option value="واریز دستی">واریز دستی</option>
+                            <option value="برداشت نقدی">برداشت نقدی</option>
+                            <option value="هزینه سرور و زیرساخت">هزینه سرور و زیرساخت</option>
+                            <option value="کارمزد و مالیات بانکی">کارمزد و مالیات بانکی</option>
+                            <option value="تسویه نقدی">تسویه صندوق نقدی</option>
+                        </select>
+                    </div>
+                    <span class="badge bg-secondary font-monospace" id="resCardTxCountBadge">۰ تراکنش</span>
+                </div>
+
+                <!-- جدول تفکیکی تراکنش‌ها -->
+                <div class="table-responsive border rounded-3">
+                    <table class="table table-hover align-middle mb-0" style="font-size: 0.88rem;">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-3" style="width: 140px;">زمان</th>
+                                <th style="width: 130px;">نوع و دسته</th>
+                                <th>عنوان / شرح</th>
+                                <th style="width: 130px;">مبلغ</th>
+                                <th style="width: 130px;">مانده پس از تراکنش</th>
+                                <th style="width: 120px;" class="text-center">ثبت‌کننده</th>
+                            </tr>
+                        </thead>
+                        <tbody id="resCardTxTableBody">
+                            <tr>
+                                <td colspan="6" class="text-center py-4 text-muted">
+                                    <div class="spinner-border spinner-border-sm text-primary me-2"></div>
+                                    در حال بارگذاری تراکنش‌های کارت...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">بستن</button>
+            </div>
         </div>
     </div>
 </div>
@@ -474,6 +1008,8 @@
 
 {% block scripts %}
 <script>
+let currentResCardData = null;
+
 function copyFieldValue(elemId, label) {
     const input = document.getElementById(elemId);
     if (!input) return;
@@ -495,6 +1031,134 @@ function handleResellerGatewayTypeChange(selectEl) {
         if (box) box.style.display = 'none';
         if (hint) hint.innerText = 'کد مرچنت یا کلید وب‌سرویس دریافت شده از درگاه انتخابی';
     }
+}
+
+function openEditCardModal(card) {
+    document.getElementById('resEditCardId').value = card.id;
+    document.getElementById('resEditCardNumber').value = card.card_number || '';
+    document.getElementById('resEditCardHolder').value = card.card_holder || '';
+    document.getElementById('resEditBankName').value = card.bank_name || '';
+    document.getElementById('resEditDailyLimit').value = card.daily_limit || 50000000;
+    document.getElementById('resEditShabaNumber').value = card.shaba_number || '';
+    document.getElementById('resEditAccountNumber').value = card.account_number || '';
+    document.getElementById('resEditNotes').value = card.notes || '';
+    new bootstrap.Modal(document.getElementById('editCardModal')).show();
+}
+
+function openAddTxModal(cardId, cardNum, cardHolder) {
+    document.getElementById('resTxCardId').value = cardId;
+    document.getElementById('resTxCardNumDisplay').innerText = cardNum;
+    document.getElementById('resTxCardHolderDisplay').innerText = cardHolder;
+    new bootstrap.Modal(document.getElementById('cardAddTxModal')).show();
+}
+
+function handleResTxTypeChange(selectEl) {
+    const catSelect = document.getElementById('resTxCategorySelect');
+    if (selectEl.value === 'deposit') {
+        catSelect.value = 'واریز دستی';
+    } else {
+        catSelect.value = 'برداشت نقدی';
+    }
+}
+
+function openSettleCashModal(logId, amount, customerName) {
+    document.getElementById('resSettleLogId').value = logId;
+    document.getElementById('resSettleCustomerDisplay').innerText = customerName || 'نامشخص';
+    document.getElementById('resSettleAmountDisplay').innerText = Number(amount).toLocaleString('fa-IR') + ' تومان';
+    new bootstrap.Modal(document.getElementById('settleCashModal')).show();
+}
+
+function viewCardDetails(cardId) {
+    const modalEl = document.getElementById('cardDetailsModal');
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+
+    document.getElementById('resCardTxTableBody').innerHTML = `
+        <tr>
+            <td colspan="6" class="text-center py-4 text-muted">
+                <div class="spinner-border spinner-border-sm text-primary me-2"></div>
+                در حال بارگذاری اطلاعات و تراکنش‌های کارت...
+            </td>
+        </tr>`;
+
+    fetch(`/api/reseller/card/${cardId}/details`)
+        .then(r => r.json())
+        .then(res => {
+            if (!res.success) {
+                document.getElementById('resCardTxTableBody').innerHTML = `<tr><td colspan="6" class="text-center text-danger py-4">${res.error || 'خطا در بارگذاری'}</td></tr>`;
+                return;
+            }
+            currentResCardData = res.data;
+            renderResCardDetails(currentResCardData);
+        })
+        .catch(err => {
+            document.getElementById('resCardTxTableBody').innerHTML = `<tr><td colspan="6" class="text-center text-danger py-4">خطای ارتباط با سرور</td></tr>`;
+        });
+}
+
+function renderResCardDetails(data) {
+    const c = data.card;
+    document.getElementById('resCardDetailsTitle').innerText = `${c.bank_name} - ${c.card_holder}`;
+    document.getElementById('resCardDetailsSubtitle').innerText = `${c.card_number} ${c.shaba_number ? ' | IR' + c.shaba_number : ''}`;
+
+    document.getElementById('resCardModalBalance').innerText = Number(c.balance || 0).toLocaleString('fa-IR') + ' تومان';
+    document.getElementById('resCardModalTodayVol').innerText = Number(c.today_volume || 0).toLocaleString('fa-IR') + ' تومان';
+    document.getElementById('resCardModalDailyLimit').innerText = Number(c.daily_limit || 0).toLocaleString('fa-IR') + ' تومان';
+
+    let roleHtml = '<span class="badge bg-light text-muted border">عادی</span>';
+    if (c.is_default) {
+        roleHtml = '<span class="badge bg-warning text-dark border border-warning"><i class="fas fa-star me-1"></i>پیش‌فرض</span>';
+    } else if (c.is_backup) {
+        roleHtml = '<span class="badge bg-info-subtle text-info border border-info"><i class="fas fa-shield-halved me-1"></i>پشتیبان</span>';
+    }
+    document.getElementById('resCardModalRoleBadge').outerHTML = `<span id="resCardModalRoleBadge">${roleHtml}</span>`;
+
+    filterResCardTransactions('all');
+}
+
+function filterResCardTransactions(category) {
+    if (!currentResCardData) return;
+    let txs = currentResCardData.transactions || [];
+    if (category !== 'all') {
+        txs = txs.filter(t => t.category === category);
+    }
+    document.getElementById('resCardTxCountBadge').innerText = `${txs.length} تراکنش`;
+
+    const tbody = document.getElementById('resCardTxTableBody');
+    if (txs.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-muted">تراکنشی در این دسته‌بندی یافت نشد.</td></tr>`;
+        return;
+    }
+
+    let rows = '';
+    txs.forEach(t => {
+        const isDep = (t.type === 'deposit');
+        const badgeClass = isDep ? 'bg-success-subtle text-success border border-success' : 'bg-danger-subtle text-danger border border-danger';
+        const sign = isDep ? '+' : '-';
+        const amountClass = isDep ? 'text-success' : 'text-danger';
+
+        rows += `
+            <tr>
+                <td class="ps-3 font-monospace small text-muted" dir="ltr">${(t.created_at || '').substring(0, 19).replace('T', ' ')}</td>
+                <td>
+                    <span class="badge ${badgeClass} px-2 py-1">${t.category || (isDep ? 'واریز' : 'برداشت')}</span>
+                </td>
+                <td>
+                    <div class="fw-bold text-dark">${t.title || '-'}</div>
+                    ${t.description ? `<small class="text-muted d-block">${t.description}</small>` : ''}
+                </td>
+                <td>
+                    <strong class="font-monospace ${amountClass}">${sign} ${Number(t.amount || 0).toLocaleString('fa-IR')}</strong>
+                    <span class="small text-muted">ت</span>
+                </td>
+                <td>
+                    <span class="font-monospace fw-bold text-dark">${Number(t.balance_after || 0).toLocaleString('fa-IR')}</span>
+                    <span class="small text-muted">ت</span>
+                </td>
+                <td class="text-center small text-muted font-monospace">${t.actor || '-'}</td>
+            </tr>`;
+    });
+    tbody.innerHTML = rows;
 }
 </script>
 {% endblock %}
