@@ -1939,6 +1939,136 @@ function toggleAiApiBox() {
     </div>
 </div>
 
+<!-- کارت ۸: تنظیمات اختصاصی مینی‌اپ تلگرام و صفحه لودینگ (Telegram Mini App) -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="portals" id="card-telegram-miniapp">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-primary fw-bold">
+                <i class="fab fa-telegram text-primary me-2"></i> تنظیمات اختصاصی مینی‌اپ تلگرام و صفحه لودینگ
+            </h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-primary text-white"><i class="fas fa-mobile-alt me-1"></i>Telegram Mini App</span>
+        </div>
+    </div>
+    <div class="card-body p-4 settings-card-body">
+        <p class="text-muted">
+            از این بخش می‌توانید <strong>دکمه ثابت منوی چت مینی‌اپ تلگرام</strong> (دکمه دائمی کنار گیره پیوست در پایین ربات تلگرام) و <strong>صفحه لودینگ انیمیشنی لوکس (Splash Screen)</strong> به سبک BluPal را شخصی‌سازی و مدیریت فرمایید.
+        </p>
+
+        <form action="{{ url_for('settings') }}" method="POST" enctype="multipart/form-data">
+            <input type="hidden" name="action" value="save_mini_app_settings">
+            
+            <h6 class="fw-bold text-dark border-bottom pb-2 mb-3">
+                <i class="fas fa-bars text-primary me-2"></i> ۱. تنظیمات دکمه ثابت منوی چت تلگرام (Chat Menu Button)
+            </h6>
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <div class="form-check form-switch pt-2">
+                        <input class="form-check-input" type="checkbox" name="mini_app_menu_button_enabled" id="mini_app_menu_button_enabled" {% if mini_app_config.menu_button_enabled %}checked{% endif %}>
+                        <label class="form-check-label fw-bold" for="mini_app_menu_button_enabled">
+                            فعال‌سازی دکمه ثابت مینی‌اپ در پایین چت تلگرام
+                        </label>
+                        <div class="form-text text-muted">این دکمه به صورت پیوسته در نوار پایینی ربات تلگرام نمایش داده می‌شود.</div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">متن روی دکمه در تلگرام:</label>
+                    <input type="text" class="form-control" name="mini_app_menu_button_text" value="{{ mini_app_config.menu_button_text }}" placeholder="ورود به برنامه | HiddiPlus" required maxlength="64">
+                    <div class="form-text text-muted">عنوان متنی دکمه (مثال: ورود به برنامه | HiddiPlus یا درگاه | Open App).</div>
+                </div>
+
+                <div class="col-md-12">
+                    <label class="form-label fw-bold">آدرس سفارشی وب‌اپ (اختیاری):</label>
+                    <input type="url" class="form-control" name="mini_app_custom_url" value="{{ mini_app_config.custom_url }}" placeholder="https://pay.gotel.ir/webapp">
+                    <div class="form-text text-muted">در صورت خالی بودن، آدرس به صورت خودکار با پروتکل معتبر https:// از دامنه اصلی یا نماینده به همراه پارامترهای شناسایی تولید خواهد شد.</div>
+                </div>
+            </div>
+
+            <h6 class="fw-bold text-dark border-bottom pb-2 mb-3">
+                <i class="fas fa-spinner text-info me-2"></i> ۲. تنظیمات و شخصی‌سازی صفحه لودینگ (Splash Screen)
+            </h6>
+            <div class="row g-3 mb-4">
+                <div class="col-md-4">
+                    <div class="form-check form-switch pt-2">
+                        <input class="form-check-input" type="checkbox" name="mini_app_splash_enabled" id="mini_app_splash_enabled" {% if mini_app_config.splash_enabled %}checked{% endif %}>
+                        <label class="form-check-label fw-bold" for="mini_app_splash_enabled">
+                            نمایش صفحه لودینگ انیمیشنی هنگام باز شدن مینی‌اپ
+                        </label>
+                        <div class="form-text text-muted">اسپلش مدرن با پس‌زمینه آبی تیره، هاله نوری و پیشرفت بارگذاری مشابه BluPal.</div>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">عنوان بزرگ زیر لوگو:</label>
+                    <input type="text" class="form-control" name="mini_app_splash_title" value="{{ mini_app_config.splash_title }}" placeholder="HiddiPlus">
+                    <div class="form-text text-muted">نوشته بزرگ زیر نشان گرافیکی در لودینگ (مثلاً HiddiPlus).</div>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">زیرعنوان صفحه لودینگ:</label>
+                    <input type="text" class="form-control" name="mini_app_splash_subtitle" value="{{ mini_app_config.splash_subtitle }}" placeholder="سرویس اتصال هوشمند و پرسرعت">
+                    <div class="form-text text-muted">توضیح یا شعار کوتاه زیر عنوان اصلی.</div>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">مدت زمان نمایش (میلی‌ثانیه):</label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" name="mini_app_splash_duration" value="{{ mini_app_config.splash_duration }}" min="500" max="10000" step="100">
+                        <span class="input-group-text">ms</span>
+                    </div>
+                    <div class="form-text text-muted">پیش‌فرض: ۱۸۰۰ میلی‌ثانیه (۱.۸ ثانیه).</div>
+                </div>
+
+                <div class="col-md-5">
+                    <label class="form-label fw-bold">آپلود تصویر یا لوگوی جدید برای لودینگ:</label>
+                    <input type="file" class="form-control" name="splash_image_file" accept="image/*">
+                    <div class="form-text text-muted">فرمت‌های مجاز: JPG, PNG, WEBP. ابعاد پیشنهادی مربعی با کیفیت بالا.</div>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">پیش‌نمایش تصویر فعال لودینگ:</label>
+                    <div class="d-flex align-items-center gap-3 p-2 bg-dark rounded border" style="background-color: #081226 !important;">
+                        <img src="{{ mini_app_config.splash_image }}" alt="Splash Preview" style="width: 52px; height: 52px; object-fit: cover; border-radius: 12px; border: 1px solid rgba(0, 210, 255, 0.4); box-shadow: 0 0 10px rgba(0, 102, 255, 0.3);">
+                        <div class="small text-white-50 text-truncate">
+                            <span class="text-info fw-bold d-block">تصویر فعلی لودینگ</span>
+                            <span class="d-inline-block text-truncate" style="max-width: 170px;">{{ mini_app_config.splash_image }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex flex-wrap gap-2 pt-2">
+                <button type="submit" class="btn btn-primary px-4 fw-bold shadow-sm">
+                    <i class="fas fa-save me-1"></i> ذخیره تنظیمات مینی‌اپ
+                </button>
+            </div>
+        </form>
+
+        <hr class="my-4">
+
+        <!-- بخش همگام‌سازی فوری دکمه منوی تلگرام -->
+        <div class="p-3 bg-light rounded border d-flex flex-wrap align-items-center justify-content-between gap-3">
+            <div>
+                <h6 class="fw-bold mb-1 text-dark">
+                    <i class="fas fa-bolt text-warning me-1"></i> همگام‌سازی فوری دکمه منوی مینی‌اپ در تلگرام
+                </h6>
+                <p class="text-muted small mb-0">
+                    با کلیک روی این دکمه، وضعیت دکمه ثابت منو به طور مستقیم و آنی از طریق API تلگرام روی <strong>ربات اصلی مدیریت</strong> و <strong>تمامی ربات‌های فعال نمایندگان</strong> اعمال خواهد شد.
+                </p>
+            </div>
+            <form action="{{ url_for('settings') }}" method="POST">
+                <input type="hidden" name="action" value="sync_mini_app_menu_button">
+                <button type="submit" class="btn btn-outline-primary fw-bold shadow-sm">
+                    <i class="fas fa-sync-alt me-1"></i> ⚡ همگام‌سازی فوری دکمه در تمام ربات‌ها
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- ═══ بخش ۳: امنیت و شبکه ═══ -->
 <!-- کارت ۸: امنیت و آدرس ورود -->
 <div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="security" id="card-login-security">

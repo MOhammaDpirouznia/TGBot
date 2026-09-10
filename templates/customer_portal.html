@@ -930,9 +930,170 @@
             border-color: #3b82f6;
             transform: translateY(-2px);
         }
+
+        /* ─── صفحه لودینگ اختصاصی مینی‌اپ تلگرام (Mini App Luxury Splash Screen) ─── */
+        .portal-splash-screen {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 9999999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(circle at 50% 38%, #0d2346 0%, #061124 55%, #020611 100%);
+            overflow: hidden;
+            opacity: 1;
+            transform: scale(1);
+            transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1), transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .portal-splash-screen.fade-out {
+            opacity: 0;
+            transform: scale(1.04);
+            pointer-events: none;
+        }
+
+        .portal-splash-screen.hidden {
+            display: none !important;
+        }
+
+        .portal-splash-bg-glow {
+            position: absolute;
+            width: 420px;
+            height: 420px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(14, 165, 233, 0.22) 0%, rgba(37, 99, 235, 0.12) 45%, transparent 70%);
+            filter: blur(50px);
+            pointer-events: none;
+            animation: splashPulse 3.5s ease-in-out infinite alternate;
+        }
+
+        .portal-splash-content {
+            position: relative;
+            z-index: 10;
+            max-width: 320px;
+            width: 88%;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+
+        .portal-splash-logo-wrap {
+            position: relative;
+            width: 110px;
+            height: 110px;
+            margin-bottom: 20px;
+        }
+
+        .portal-splash-glow-ring {
+            position: absolute;
+            inset: -4px;
+            border-radius: 26px;
+            background: conic-gradient(from 0deg, #00d2ff, #2563eb, #38bdf8, #1d4ed8, #00d2ff);
+            filter: blur(10px);
+            opacity: 0.85;
+            animation: rotateSplashRing 3.5s linear infinite;
+        }
+
+        .portal-splash-logo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 22px;
+            position: relative;
+            z-index: 2;
+            box-shadow: 0 14px 35px rgba(0, 0, 0, 0.65);
+            border: 2px solid rgba(255, 255, 255, 0.22);
+        }
+
+        .portal-splash-title {
+            color: #ffffff;
+            font-size: 1.85rem;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+            text-shadow: 0 4px 16px rgba(0, 0, 0, 0.65);
+            font-family: 'Vazirmatn FD', sans-serif;
+        }
+
+        .portal-splash-subtitle {
+            color: #94a3b8;
+            font-size: 0.88rem;
+            font-weight: 500;
+            margin-bottom: 26px;
+            line-height: 1.5;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+        }
+
+        .portal-splash-loader-bar {
+            width: 160px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.12);
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
+        }
+
+        .portal-splash-loader-progress {
+            width: 50%;
+            height: 100%;
+            background: linear-gradient(90deg, #00d2ff, #3b82f6, #60a5fa);
+            border-radius: 12px;
+            animation: splashProgress 1.4s infinite cubic-bezier(0.65, 0, 0.35, 1);
+            box-shadow: 0 0 12px rgba(0, 210, 255, 0.75);
+        }
+
+        .portal-splash-status {
+            color: rgba(255, 255, 255, 0.45);
+            font-size: 0.76rem;
+            margin-top: 12px;
+            font-weight: 400;
+        }
+
+        @keyframes rotateSplashRing {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes splashProgress {
+            0% { transform: translateX(-120%); }
+            100% { transform: translateX(250%); }
+        }
+
+        @keyframes splashPulse {
+            0% { transform: scale(0.92); opacity: 0.6; }
+            100% { transform: scale(1.15); opacity: 0.95; }
+        }
     </style>
 </head>
 <body class="py-4 portal-layout-{{ portal_layout or 'classic' }}">
+    {% if mini_app_splash_enabled %}
+    <!-- ═══ صفحه لودینگ اختصاصی مینی‌اپ تلگرام (Mini App Luxury Splash Screen) ═══ -->
+    <div id="portalSplashScreen" class="portal-splash-screen" role="dialog" aria-modal="true" aria-label="Loading Screen">
+        <div class="portal-splash-bg-glow"></div>
+        <div class="portal-splash-content">
+            <div class="portal-splash-logo-wrap">
+                <div class="portal-splash-glow-ring"></div>
+                <img src="{{ mini_app_splash_image or '/static/images/hiddiplus_splash.jpg' }}" alt="HiddiPlus Logo" class="portal-splash-logo" onerror="this.onerror=null; this.src='/static/images/hiddiplus_splash.jpg';">
+            </div>
+            <h1 class="portal-splash-title">{{ mini_app_splash_title or 'HiddiPlus' }}</h1>
+            <p class="portal-splash-subtitle">{{ mini_app_splash_subtitle or 'سرویس اتصال هوشمند و پرسرعت' }}</p>
+            <div class="portal-splash-loader-bar">
+                <div class="portal-splash-loader-progress"></div>
+            </div>
+            <div class="portal-splash-status">
+                <i class="fas fa-shield-alt text-info me-1"></i> در حال بارگذاری و برقراری ارتباط امن...
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- کانتینر هاله‌های نوری پس‌زمینه (Aura Mesh Background) -->
     <div class="aura-mesh-container" aria-hidden="true">
         <div class="aura-blob aura-blob-1"></div>
@@ -3969,6 +4130,44 @@ window.tgHaptic = function(type = 'light') {
         }
     } catch(e) {}
 };
+
+// ─── مدیریت محو شدن انیمیشنی صفحه لودینگ مینی‌اپ (Splash Screen Dismissal) ───
+(function initMiniAppSplash() {
+    const splash = document.getElementById('portalSplashScreen');
+    if (!splash) return;
+
+    const duration = parseInt("{{ mini_app_splash_duration or 1800 }}", 10) || 1800;
+    let dismissed = false;
+
+    function dismissSplash() {
+        if (dismissed) return;
+        dismissed = true;
+        splash.classList.add('fade-out');
+        setTimeout(function() {
+            splash.classList.add('hidden');
+            splash.style.display = 'none';
+        }, 520);
+    }
+
+    const startTime = performance.now();
+    function onReady() {
+        const elapsed = performance.now() - startTime;
+        const remaining = Math.max(0, duration - elapsed);
+        setTimeout(dismissSplash, remaining);
+    }
+
+    if (document.readyState === 'complete') {
+        onReady();
+    } else {
+        window.addEventListener('load', onReady);
+    }
+
+    // تایم‌اوت ایمنی حداکثر ۳ ثانیه
+    setTimeout(dismissSplash, Math.max(duration + 1000, 3000));
+
+    // بستن آنی با کلیک کاربر در صورت تمایل
+    splash.addEventListener('click', dismissSplash);
+})();
 </script>
 </body>
 </html>

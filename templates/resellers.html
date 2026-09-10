@@ -410,8 +410,14 @@
                                             <i class="fas fa-user-gear me-1"></i> مدیریت «{{ r['name'] }}»
                                         </li>
                                         <li>
+                                            <a href="{{ url_for('admin_reseller_payments', reseller_id=r['id']) }}" class="dropdown-item d-flex align-items-center gap-2 text-primary fw-bold">
+                                                <i class="fas fa-file-invoice-dollar text-primary" style="width: 16px;"></i>
+                                                <span>سوابق پرداخت‌ها و ریست مالی</span>
+                                            </a>
+                                        </li>
+                                        <li>
                                             <button type="button" class="dropdown-item d-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#resellerPaymentModal{{ r['id'] }}">
-                                                <i class="fas fa-id-card text-primary" style="width: 16px;"></i>
+                                                <i class="fas fa-id-card text-secondary" style="width: 16px;"></i>
                                                 <span>مشاهده سوابق و پروفایل</span>
                                             </button>
                                         </li>
@@ -710,6 +716,11 @@
                             <span>تسویه بدهی اعتباری ({{ "{:,}".format(r.get('credit_debt') or 0) }} ت)</span>
                         </button>
                         {% endif %}
+
+                        <a href="{{ url_for('admin_reseller_payments', reseller_id=r['id']) }}" class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 shadow-xs px-3 py-1.5">
+                            <i class="fas fa-file-invoice-dollar"></i>
+                            <span>سوابق پرداخت و ریست مالی</span>
+                        </a>
 
                         {% if r.get('bot_token') %}
                         <form action="{{ url_for('admin_reseller_bot_toggle', reseller_id=r['id']) }}" method="POST" class="d-inline m-0">

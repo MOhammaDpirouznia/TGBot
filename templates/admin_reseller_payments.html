@@ -17,6 +17,9 @@
         <p class="text-muted mb-0">گزارش کامل واریزی‌ها، پیش‌خرید بسته‌های اعتباری، خریدهای اشتراک و تاریخچه مالی</p>
     </div>
     <div class="d-flex align-items-center gap-2">
+        <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#resetFinancesModal">
+            <i class="fas fa-trash-can-arrow-up me-1"></i> ریست مالی و پاکسازی تستی
+        </button>
         <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#settlePeriodModal">
             <i class="fas fa-handshake-simple me-1"></i> تسویه حساب و بستن دوره مالی
         </button>
@@ -218,6 +221,9 @@
                                                     <i class="fas fa-ban"></i>
                                                 </button>
                                             {% endif %}
+                                            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#walletTxDeleteModal{{ tx['id'] }}" title="حذف تراکنش و تعدیل تراز">
+                                                <i class="fas fa-trash-can"></i>
+                                            </button>
                                         {% endif %}
                                     </div>
                                 </td>
@@ -326,6 +332,9 @@
                                                     <i class="fas fa-ban"></i>
                                                 </button>
                                             {% endif %}
+                                            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#receiptDeleteModal{{ r['id'] }}" title="حذف فیش و تعدیل موجودی/بدهی">
+                                                <i class="fas fa-trash-can"></i>
+                                            </button>
                                         {% endif %}
                                     </div>
                                 </td>
@@ -534,6 +543,45 @@
                 </div>
             </form>
         </div>
+<!-- Modal حذف تراکنش کیف پول -->
+<div class="modal fade" id="walletTxDeleteModal{{ tx['id'] }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content text-start border-0 shadow-lg">
+            <form method="POST" action="{{ url_for('admin_reseller_wallet_tx_delete', rtx_id=tx['id']) }}">
+                <div class="modal-header bg-danger bg-opacity-10">
+                    <h5 class="modal-title fw-bold text-danger">
+                        <i class="fas fa-trash-can text-danger me-2"></i> حذف تراکنش کیف پول #{{ tx['id'] }}
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-danger mb-3 small">
+                        <strong>هشدار مالی:</strong> با حذف این تراکنش، اثر مالی آن روی موجودی یا بدهی نماینده تعدیل می‌شود و رکورد از لیست فعال حذف می‌گردد.
+                        {% if tx['type'] == 'deposit' %}
+                            <div class="mt-1">مبلغ <strong>{{ "{:,}".format(tx['amount'] or 0) }} تومان</strong> از موجودی کیف پول نماینده کسر خواهد شد.</div>
+                        {% elif tx['type'] in ['purchase_credit', 'renewal_credit'] or tx.get('payment_source') == 'credit' %}
+                            <div class="mt-1">مبلغ <strong>{{ "{:,}".format(tx['amount'] or 0) }} تومان</strong> از بدهی اعتباری نماینده کسر (تسویه) خواهد شد.</div>
+                        {% elif tx['type'] in ['purchase', 'renewal'] %}
+                            <div class="mt-1">مبلغ <strong>{{ "{:,}".format(tx['amount'] or 0) }} تومان</strong> به کیف پول نماینده مسترد خواهد شد.</div>
+                        {% endif %}
+                    </div>
+                    <div class="form-check form-switch mb-3 p-2 border rounded bg-light">
+                        <input class="form-check-input ms-2" type="checkbox" name="rollback_finances" value="1" id="rollbackWalletFinCheck{{ tx['id'] }}" checked>
+                        <label class="form-check-label fw-bold small text-dark" for="rollbackWalletFinCheck{{ tx['id'] }}">
+                            اعمال تعدیل خودکار روی موجودی / بدهی نماینده
+                        </label>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">علت حذف تراکنش:</label>
+                        <input type="text" name="reason" class="form-control" placeholder="مثال: تراکنش تستی / پاکسازی حساب" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-danger fw-bold">تایید و حذف تراکنش</button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 {% endif %}
@@ -729,6 +777,42 @@
                     <button type="submit" class="btn btn-warning fw-bold">تایید ابطال و کسر از درآمد</button>
                 </div>
             </form>
+<!-- Modal حذف فیش ثبت‌شده نماینده -->
+<div class="modal fade" id="receiptDeleteModal{{ r['id'] }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content text-start border-0 shadow-lg">
+            <form method="POST" action="{{ url_for('admin_reseller_receipt_delete', tx_id=r['id']) }}">
+                <div class="modal-header bg-danger bg-opacity-10">
+                    <h5 class="modal-title fw-bold text-danger">
+                        <i class="fas fa-trash-can text-danger me-2"></i> حذف فیش #{{ r['id'] }} ({{ r['order_id'] }})
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-danger mb-3 small">
+                        <strong>هشدار مالی:</strong> با حذف این فیش، رکورد آن از لیست فعال حذف شده و اثرات مالی آن تعدیل می‌گردد:
+                        {% if r.get('gateway') == 'bundle_reseller' or (r.get('order_id') and r['order_id'].startswith('R_BUNDLE')) %}
+                            <div class="mt-1">مبلغ <strong>{{ "{:,}".format(r['amount'] or 0) }} تومان</strong> از موجودی کیف پول نماینده کسر خواهد شد (حذف شارژ بسته تستی).</div>
+                        {% else %}
+                            <div class="mt-1">در صورت انجام خرید با اعتبار، از بدهی اعتباری نماینده کسر می‌گردد و در صورت پرداخت از کیف‌پول، وجه به کیف‌پول بازمی‌گردد.</div>
+                        {% endif %}
+                    </div>
+                    <div class="form-check form-switch mb-3 p-2 border rounded bg-light">
+                        <input class="form-check-input ms-2" type="checkbox" name="rollback_finances" value="1" id="rollbackReceiptFinCheck{{ r['id'] }}" checked>
+                        <label class="form-check-label fw-bold small text-dark" for="rollbackReceiptFinCheck{{ r['id'] }}">
+                            اعمال تعدیل خودکار روی موجودی / بدهی نماینده
+                        </label>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">علت حذف فیش:</label>
+                        <input type="text" name="reason" class="form-control" placeholder="مثال: فیش تستی / پاکسازی سوابق" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-danger fw-bold">تایید و حذف فیش</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -786,6 +870,95 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
                     <button type="submit" class="btn btn-danger fw-bold px-4">
                         <i class="fas fa-check-double me-1"></i> تایید و بستن دوره مالی
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal ریست کامل تراز مالی و پاکسازی داده‌های تستی -->
+<div class="modal fade text-start" id="resetFinancesModal" tabindex="-1" aria-labelledby="resetFinancesModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <form method="POST" action="{{ url_for('admin_reseller_reset_finances', reseller_id=reseller['id']) }}">
+                <div class="modal-header bg-danger text-white py-3">
+                    <h5 class="modal-title fw-bold" id="resetFinancesModalLabel">
+                        <i class="fas fa-trash-can-arrow-up me-2"></i> ریست تراز مالی و پاکسازی داده‌های تستی
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-danger py-2 mb-3 small">
+                        <i class="fas fa-triangle-exclamation me-1"></i>
+                        <strong>هشدار مهم:</strong> این ابزار برای پاکسازی پرداخت‌ها و رسیدهای تستی و صفر کردن کامل تراز مالی نماینده طراحی شده است. گزینه‌های مورد نظر را برای اجرا انتخاب فرمایید.
+                    </div>
+
+                    <div class="mb-3 border p-3 rounded bg-light">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted small">نماینده:</span>
+                            <strong class="text-dark">{{ reseller['name'] }} (@{{ reseller['username'] }})</strong>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted small">موجودی کیف پول فعلی:</span>
+                            <strong class="text-success font-monospace">{{ "{:,}".format(reseller.get('balance', 0)) }} تومان</strong>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted small">بدهی اعتباری فعلی:</span>
+                            <strong class="text-danger font-monospace">{{ "{:,}".format(reseller.get('credit_debt', 0)) }} تومان</strong>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span class="text-muted small">کل فیش‌ها و تراکنش‌ها:</span>
+                            <span class="badge bg-secondary">{{ history.get('receipt_transactions', [])|length }} فیش | {{ history.get('wallet_transactions', [])|length }} تراکنش کیف پول</span>
+                        </div>
+                    </div>
+
+                    <div class="form-check form-switch mb-2 p-2 border rounded bg-light">
+                        <input class="form-check-input ms-2" type="checkbox" name="reset_balance" value="1" id="resetBalCheck" checked>
+                        <label class="form-check-label fw-bold small text-dark" for="resetBalCheck">
+                            ۱. صفر کردن موجودی کیف پول نقدی (Balance = 0)
+                        </label>
+                    </div>
+
+                    <div class="form-check form-switch mb-2 p-2 border rounded bg-light">
+                        <input class="form-check-input ms-2" type="checkbox" name="reset_credit_debt" value="1" id="resetDebtCheck" checked>
+                        <label class="form-check-label fw-bold small text-dark" for="resetDebtCheck">
+                            ۲. صفر کردن کل بدهی اعتباری نماینده (Credit Debt = 0)
+                        </label>
+                    </div>
+
+                    <div class="form-check form-switch mb-2 p-2 border rounded bg-light">
+                        <input class="form-check-input ms-2" type="checkbox" name="purge_receipts" value="1" id="purgeReceiptsCheck" checked>
+                        <label class="form-check-label fw-bold small text-dark" for="purgeReceiptsCheck">
+                            ۳. پاکسازی و حذف رسیدها و فیش‌های ثبت‌شده این نماینده
+                        </label>
+                        <div class="text-muted ps-4" style="font-size: 0.72rem;">فیش‌های تستی ثبت‌شده در جدول فیش‌ها حذف و آرشیو می‌شوند.</div>
+                    </div>
+
+                    <div class="form-check form-switch mb-2 p-2 border rounded bg-light">
+                        <input class="form-check-input ms-2" type="checkbox" name="purge_wallet_txs" value="1" id="purgeWalletCheck" checked>
+                        <label class="form-check-label fw-bold small text-dark" for="purgeWalletCheck">
+                            ۴. پاکسازی و حذف سوابق تراکنش‌های کیف پول تستی
+                        </label>
+                        <div class="text-muted ps-4" style="font-size: 0.72rem;">تراکنش‌های شارژ و خرید تستی از لیست فعال کیف پول پاک می‌شوند.</div>
+                    </div>
+
+                    <div class="form-check form-switch mb-3 p-2 border rounded bg-light">
+                        <input class="form-check-input ms-2" type="checkbox" name="reset_cards" value="1" id="resetCardsCheck" checked>
+                        <label class="form-check-label fw-bold small text-dark" for="resetCardsCheck">
+                            ۵. صفر کردن تراز کارت‌های بانکی متصل به نماینده
+                        </label>
+                    </div>
+
+                    <div class="mb-2">
+                        <label class="form-label fw-bold small">یادداشت ریست مالی (اختیاری):</label>
+                        <input type="text" name="notes" class="form-control form-control-sm" placeholder="مثال: پاکسازی تست‌های اولیه و صفر کردن حساب برای شروع کار رسمی">
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-danger fw-bold px-4">
+                        <i class="fas fa-check-double me-1"></i> تایید و ریست کامل مالی
                     </button>
                 </div>
             </form>
