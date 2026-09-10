@@ -2639,6 +2639,36 @@ def check_custom_domain():
 # ─── مدیریت نسخه هوشمند فروشگاه (Store Version) ───
 _store_version_cache = {"version": None, "timestamp": 0}
 
+def _normalize_github_repo(raw_repo: str) -> str:
+    """استخراج استاندارد owner/repo از هر نوع ورودی کاربر (لینک کامل، اسلش، برچسب‌ها و ...)"""
+    if not raw_repo:
+        return ""
+    repo = str(raw_repo).strip()
+    if "github.com/" in repo:
+        repo = repo.split("github.com/")[-1]
+    repo = repo.split("?")[0].split("#")[0].strip("/")
+    parts = [p.strip() for p in repo.split("/") if p.strip()]
+    if len(parts) >= 2:
+        return f"{parts[0]}/{parts[1]}"
+    elif len(parts) == 1:
+        return parts[0]
+    return ""
+
+def _extract_github_version(data: dict) -> str:
+    """استخراج هوشمند نسخه معتبر از پاسخ گیت‌هاب (با اولویت نسخه‌های عددی)"""
+    if not isinstance(data, dict):
+        return ""
+    tag_name = (data.get("tag_name") or "").strip()
+    release_name = (data.get("name") or "").strip()
+    
+    def looks_like_version(s: str) -> bool:
+        return bool(re.search(r'\d+\.\d+', s) or (s.lower().startswith('v') and re.search(r'\d+', s)))
+    
+    # اگر تایتل ریلیز نسخه است (مثلاً v1.0.2) اما تگ اسم کدنام است (مثلاً Nexora)، تایتل انتخاب شود
+    if release_name and looks_like_version(release_name) and not looks_like_version(tag_name):
+        return release_name
+    return tag_name or release_name
+
 def get_store_version() -> str:
     """دریافت نسخه فروشگاه به صورت دستی یا هوشمند از گیت‌هاب"""
     source = db.get_setting("store_version_source", "manual")
@@ -2650,29 +2680,25 @@ def get_store_version() -> str:
     if _store_version_cache.get("version") and (now - _store_version_cache.get("timestamp", 0) < 900):
         return _store_version_cache["version"]
 
-    repo = (db.get_setting("store_github_repo", "") or "").strip()
+    raw_repo = (db.get_setting("store_github_repo", "") or "").strip()
+    repo = _normalize_github_repo(raw_repo)
     if not repo:
         return manual_version
 
-    if "github.com/" in repo:
-        repo = repo.split("github.com/")[-1].strip("/")
-
     try:
-        import urllib.request
         url = f"https://api.github.com/repos/{repo}/releases/latest"
         req = urllib.request.Request(url, headers={"User-Agent": "HiddiBot-System"})
         with urllib.request.urlopen(req, timeout=4) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-            tag = data.get("tag_name") or data.get("name")
-            if tag:
-                _store_version_cache["version"] = tag
+            ver = _extract_github_version(data)
+            if ver:
+                _store_version_cache["version"] = ver
                 _store_version_cache["timestamp"] = now
-                return tag
+                return ver
     except Exception as e:
         logger.debug(f"Could not fetch github latest release for {repo}: {e}")
 
     try:
-        import urllib.request
         url = f"https://api.github.com/repos/{repo}/tags"
         req = urllib.request.Request(url, headers={"User-Agent": "HiddiBot-System"})
         with urllib.request.urlopen(req, timeout=4) as resp:
@@ -4348,6 +4374,45 @@ def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: 
     conn.commit()
     conn.close()
 
+    # به‌روزرسانی خودکار موجودی و ثبت تراکنش کارت بانکی مقصد
+    target_card_id = smart_inv.get("target_card_id") if smart_inv else tx.get("target_card_id")
+    target_owner_type = "reseller" if r_id else "admin"
+    if not target_card_id:
+        c_num = smart_inv.get("card_number") if smart_inv else tx.get("card_number")
+        if c_num:
+            clean_c = re.sub(r"\D", "", str(c_num))
+            if len(clean_c) >= 4:
+                c_conn = db.get_connection()
+                tbl = "reseller_cards" if r_id else "bank_cards"
+                r_card = c_conn.execute(f"SELECT id FROM {tbl} WHERE card_number LIKE ? LIMIT 1", (f"%{clean_c[-10:]}%",)).fetchone()
+                c_conn.close()
+                if r_card:
+                    target_card_id = r_card["id"]
+
+    if not target_card_id:
+        best_c = db.get_best_active_card(owner_type=target_owner_type, reseller_id=r_id or 0)
+        if best_c and best_c.get("id"):
+            target_card_id = best_c["id"]
+
+    if target_card_id and amount > 0:
+        try:
+            db.add_card_transaction(
+                card_id=target_card_id,
+                owner_type=target_owner_type,
+                amount=amount,
+                tx_type="deposit",
+                category="subscription",
+                title=f"واریز آنلاین/پیامک اشتراک {pname}",
+                description=f"سفارش {order_id} (مشتری: {account_name})",
+                tracking_code=str(ref_id or order_id),
+                ref_type="transaction",
+                ref_id=str(payment_id),
+                created_by=processed_by,
+                reseller_id=r_id or 0
+            )
+        except Exception as e_ctx:
+            logger.error(f"Error logging card deposit for tx {order_id}: {e_ctx}")
+
     # پاداش رفرال
     if user_id:
         try:
@@ -4591,6 +4656,39 @@ def approve_payment(payment_id):
     )
     conn.commit()
     conn.close()
+
+    # شارژ خودکار و ثبت تراکنش در کارت بانکی مقصد
+    target_card_id = tx.get("target_card_id")
+    if not target_card_id and tx.get("card_number"):
+        clean_c = re.sub(r"\D", "", str(tx["card_number"]))
+        if len(clean_c) >= 4:
+            c_conn = db.get_connection()
+            r_card = c_conn.execute("SELECT id FROM bank_cards WHERE card_number LIKE ? LIMIT 1", (f"%{clean_c[-10:]}%",)).fetchone()
+            c_conn.close()
+            if r_card:
+                target_card_id = r_card["id"]
+    if not target_card_id:
+        best_c = db.get_best_active_card(owner_type="admin")
+        if best_c and best_c.get("id"):
+            target_card_id = best_c["id"]
+
+    if target_card_id and int(tx.get("amount") or 0) > 0:
+        try:
+            db.add_card_transaction(
+                card_id=target_card_id,
+                owner_type="admin",
+                amount=int(tx["amount"]),
+                tx_type="deposit",
+                category="subscription",
+                title=f"واریز تایید شده فیش {plan_name}",
+                description=f"تایید دستی فیش توسط {admin_name} (سفارش {tx.get('order_id')})",
+                tracking_code=str(tx.get("tracking_code") or payment_id),
+                ref_type="transaction",
+                ref_id=str(payment_id),
+                created_by=admin_name
+            )
+        except Exception as e_c_app:
+            logger.error(f"Error adding card tx on manual approve: {e_c_app}")
 
     # ثبت لاگ حسابرسی
     db.add_transaction_audit_log(
@@ -5446,7 +5544,8 @@ def subscriptions():
         all_pending_queue=all_pending_queue,
         panel_url=get_hiddify_url(),
         user_proxy=get_user_proxy(),
-        single_link_template=single_link_template
+        single_link_template=single_link_template,
+        cards=db.get_active_bank_cards()
     )
 
 
@@ -5639,6 +5738,7 @@ def admin_subscription_renew(sub_id: int):
     if debt_status != "unpaid":
         if cost_paid > 0:
             try:
+                payment_dest = request.form.get("payment_destination", "cash").strip()
                 r_order_id = f"RNW_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
                 db.save_transaction(
                     order_id=r_order_id,
@@ -5646,12 +5746,42 @@ def admin_subscription_renew(sub_id: int):
                     username=sub.get("account_name") or "",
                     plan_name=plan_name,
                     amount=cost_paid,
-                    gateway="cash_admin",
+                    gateway=payment_dest if payment_dest.startswith("card_") else "cash_admin",
                     tracking_code=f"RENEW_{session.get('username') or 'admin'}",
                     status="approved",
                     account_name=sub.get("account_name") or "",
                     source="admin"
                 )
+                if payment_dest.startswith("card_"):
+                    try:
+                        c_id = int(payment_dest.replace("card_", ""))
+                        db.add_card_transaction(
+                            card_id=c_id,
+                            owner_type="admin",
+                            tx_type="deposit",
+                            amount=cost_paid,
+                            category="تمدید اشتراک",
+                            title=f"تمدید اشتراک {sub.get('account_name')} ({plan_name})",
+                            ref_type="subscription",
+                            ref_id=str(sub_id),
+                            actor=session.get("username") or "admin"
+                        )
+                    except Exception as e_c:
+                        logger.error(f"Error depositing to target card in admin renew: {e_c}")
+                else:
+                    try:
+                        db.add_cash_desk_log(
+                            owner_type="admin",
+                            amount=cost_paid,
+                            source="تمدید اشتراک",
+                            customer_name=sub.get("account_name"),
+                            ref_type="subscription",
+                            ref_id=str(sub_id),
+                            note=f"دریافت نقدی تمدید توسط {session.get('username') or 'admin'}",
+                            actor=session.get("username") or "admin"
+                        )
+                    except Exception as e_c:
+                        logger.error(f"Error recording cash desk in admin renew: {e_c}")
                 db.add_accounting_record(
                     type="income",
                     category="تمدید اشتراک",
@@ -5660,7 +5790,7 @@ def admin_subscription_renew(sub_id: int):
                     source="admin_panel",
                     ref_type="subscription",
                     ref_id=str(sub_id),
-                    description=f"تمدید توسط مدیریت ({session.get('username') or 'admin'})",
+                    description=f"تمدید توسط مدیریت ({session.get('username') or 'admin'}) - مقصد: {payment_dest}",
                     date=get_now_iso()[:10]
                 )
             except Exception as e_rev:
@@ -8411,12 +8541,79 @@ def cards():
     if request.method == "POST":
         action = request.form.get("action", "add_card")
         if action == "add_card":
-            card_num = request.form.get("card_number")
-            holder = request.form.get("card_holder")
-            bank = request.form.get("bank_name")
-            limit = int(request.form.get("daily_limit", 50000000))
-            db.add_bank_card(card_num, holder, bank, limit)
+            card_num = request.form.get("card_number", "").strip()
+            holder = request.form.get("card_holder", "").strip()
+            bank = request.form.get("bank_name", "").strip()
+            limit = int(request.form.get("daily_limit", 50000000) or 50000000)
+            is_default = 1 if request.form.get("is_default") in ["1", "on", "true"] else 0
+            is_backup = 1 if request.form.get("is_backup") in ["1", "on", "true"] else 0
+            initial_balance = int(request.form.get("initial_balance", 0) or 0)
+            shaba_number = request.form.get("shaba_number", "").strip()
+            account_number = request.form.get("account_number", "").strip()
+            notes = request.form.get("notes", "").strip()
+            db.add_bank_card(
+                card_num, holder, bank, daily_limit=limit,
+                is_default=is_default, is_backup=is_backup,
+                initial_balance=initial_balance,
+                shaba_number=shaba_number,
+                account_number=account_number,
+                notes=notes
+            )
             flash("کارت بانکی جدید با موفقیت افزوده شد.", "success")
+        elif action == "card_set_role":
+            card_id = int(request.form.get("card_id", 0))
+            role_type = request.form.get("role_type", "") # "default", "backup", "normal"
+            is_default = 1 if role_type == "default" else 0
+            is_backup = 1 if role_type == "backup" else 0
+            db.set_card_role(card_id, owner_type="admin", is_default=is_default, is_backup=is_backup)
+            flash("نقش کارت (پیش‌فرض / پشتیبان) با موفقیت بروزرسانی شد.", "success")
+        elif action == "card_edit":
+            card_id = int(request.form.get("card_id", 0))
+            card_num = request.form.get("card_number", "").strip()
+            holder = request.form.get("card_holder", "").strip()
+            bank = request.form.get("bank_name", "").strip()
+            limit = int(request.form.get("daily_limit", 50000000) or 50000000)
+            shaba = request.form.get("shaba_number", "").strip()
+            acc_num = request.form.get("account_number", "").strip()
+            notes = request.form.get("notes", "").strip()
+            db.update_card_info(card_id, owner_type="admin", card_number=card_num, card_holder=holder, bank_name=bank, daily_limit=limit, shaba_number=shaba, account_number=acc_num, notes=notes)
+            flash("اطلاعات کارت با موفقیت بروزرسانی شد.", "success")
+        elif action == "card_add_tx":
+            card_id = int(request.form.get("card_id", 0))
+            tx_type = request.form.get("type", "deposit") # "deposit" or "withdrawal"
+            category = request.form.get("category", "واریز دستی")
+            amount = int(request.form.get("amount", 0) or 0)
+            title = request.form.get("title", "").strip()
+            description = request.form.get("description", "").strip()
+            if amount <= 0:
+                flash("مبلغ تراکنش باید بزرگتر از صفر باشد.", "danger")
+            else:
+                actor = session.get("username") or "admin"
+                res = db.add_card_transaction(
+                    card_id=card_id,
+                    owner_type="admin",
+                    tx_type=tx_type,
+                    amount=amount,
+                    category=category,
+                    title=title,
+                    description=description,
+                    actor=actor
+                )
+                if res.get("success"):
+                    flash(f"تراکنش با موفقیت ثبت شد. موجودی جدید: {res.get('new_balance', 0):,} تومان", "success")
+                else:
+                    flash(f"خطا در ثبت تراکنش: {res.get('error')}", "danger")
+        elif action == "cash_settle":
+            log_id = int(request.form.get("log_id", 0))
+            target_card_id = request.form.get("target_card_id")
+            target_card_id = int(target_card_id) if target_card_id and str(target_card_id).isdigit() else None
+            settle_note = request.form.get("settle_note", "").strip()
+            actor = session.get("username") or "admin"
+            res = db.settle_cash_desk_log(log_id, owner_type="admin", target_card_id=target_card_id, note=settle_note, actor=actor)
+            if res.get("success"):
+                flash("تسویه صندوق نقدی با موفقیت انجام و به حساب واریز گردید.", "success")
+            else:
+                flash(f"خطا در تسویه صندوق نقدی: {res.get('error')}", "danger")
         elif action == "save_online_gateway":
             enabled = bool(request.form.get("online_gateway_enabled"))
             gw_type = request.form.get("online_gateway_type", "zarinpal")
@@ -8445,6 +8642,16 @@ def cards():
         return redirect(url_for("cards"))
 
     cards_list = db.get_all_bank_cards()
+    for c in cards_list:
+        c_id = c["id"]
+        today_vol = db.get_card_daily_volume(c_id, owner_type="admin")
+        c["today_volume"] = today_vol
+        d_limit = c.get("daily_limit") or 50000000
+        c["usage_percent"] = min(100, int((today_vol / d_limit) * 100)) if d_limit > 0 else 0
+        c["remaining_limit"] = max(0, d_limit - today_vol)
+
+    financial_summary = db.get_cards_financial_summary(owner_type="admin")
+    cash_desk_logs = db.get_cash_desk_logs(owner_type="admin", status="all", limit=50)
     payment_methods = db.get_payment_methods()
     admin_gateway = db.get_admin_gateway()
     crypto_config = CryptoPaymentGateway.get_crypto_config(db)
@@ -8462,6 +8669,8 @@ def cards():
     return render_template(
         "cards.html",
         cards=cards_list,
+        financial_summary=financial_summary,
+        cash_desk_logs=cash_desk_logs,
         payment_methods=payment_methods,
         admin_gateway=admin_gateway,
         crypto_config=crypto_config,
@@ -8511,6 +8720,74 @@ def card_delete(card_id):
     return redirect(url_for("cards"))
 
 
+@app.route("/card/set-role/<int:card_id>/<role_type>")
+@permission_required("cards")
+def card_set_role(card_id, role_type):
+    """تنظیم سریع نقش کارت: پیش‌فرض (default)، پشتیبان (backup) یا عادی (normal)"""
+    is_default = 1 if role_type == "default" else 0
+    is_backup = 1 if role_type == "backup" else 0
+    db.set_card_role(card_id, owner_type="admin", is_default=is_default, is_backup=is_backup)
+    flash("نقش کارت با موفقیت بروزرسانی شد.", "success")
+    return redirect(url_for("cards"))
+
+
+@app.route("/api/admin/card/<int:card_id>/details", methods=["GET"])
+@permission_required("cards")
+def api_admin_card_details(card_id):
+    """دریافت جزییات کارت و لیست تفکیکی تراکنش‌های آن به همراه دسته‌بندی و مانده شناور"""
+    data = db.get_card_details_and_transactions(card_id, owner_type="admin")
+    if not data or not data.get("card"):
+        return jsonify({"success": False, "error": "کارت یافت نشد"}), 404
+    return jsonify({"success": True, "data": data})
+
+
+@app.route("/api/admin/card/<int:card_id>/add-transaction", methods=["POST"])
+@permission_required("cards")
+def api_admin_card_add_tx(card_id):
+    """ثبت تراکنش واریز/برداشت/هزینه/حقوق/کارمزد برای کارت مدیریت"""
+    tx_type = request.form.get("type", "deposit")
+    category = request.form.get("category", "واریز دستی")
+    amount = int(request.form.get("amount", 0) or 0)
+    title = request.form.get("title", "").strip()
+    description = request.form.get("description", "").strip()
+    if amount <= 0:
+        return jsonify({"success": False, "error": "مبلغ تراکنش باید بیشتر از صفر باشد"}), 400
+    actor = session.get("username") or "admin"
+    res = db.add_card_transaction(
+        card_id=card_id,
+        owner_type="admin",
+        tx_type=tx_type,
+        amount=amount,
+        category=category,
+        title=title,
+        description=description,
+        actor=actor
+    )
+    return jsonify(res)
+
+
+@app.route("/api/cash-desk/settle", methods=["POST"])
+def api_cash_desk_settle():
+    """تسویه لاگ صندوق نقدی و واریز به کارت مقصد"""
+    if not session.get("logged_in"):
+        return jsonify({"success": False, "error": "احراز هویت لازم است"}), 401
+    role = session.get("role")
+    reseller_id = session.get("reseller_id") if role == "reseller" else None
+    
+    log_id = int(request.form.get("log_id", 0) or 0)
+    target_card_id = request.form.get("target_card_id")
+    target_card_id = int(target_card_id) if target_card_id and str(target_card_id).isdigit() else None
+    note = request.form.get("note", "").strip()
+
+    if role == "reseller":
+        actor = f"reseller_{reseller_id}"
+        res = db.settle_cash_desk_log(log_id, owner_type="reseller", owner_id=reseller_id, target_card_id=target_card_id, note=note, actor=actor)
+    else:
+        actor = session.get("username") or "admin"
+        res = db.settle_cash_desk_log(log_id, owner_type="admin", target_card_id=target_card_id, note=note, actor=actor)
+    return jsonify(res)
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # مدیریت و ویرایش کامل پلن‌های فروش
 # ═══════════════════════════════════════════════════════════════════════
@@ -8535,10 +8812,13 @@ def admin_plans_page():
             target_type = request.form.get("target_type", "all")
             allowed_resellers = []
             is_exclusive_admin = False
+            is_exclusive_admin_bot = False
             is_exclusive_reseller = False
 
             if target_type == "admin":
                 is_exclusive_admin = True
+            elif target_type == "admin_bot":
+                is_exclusive_admin_bot = True
             elif target_type == "resellers":
                 allowed_resellers = [int(x) for x in request.form.getlist("allowed_resellers") if str(x).isdigit()]
                 is_exclusive_reseller = True
@@ -8555,7 +8835,8 @@ def admin_plans_page():
                 is_exclusive_admin=is_exclusive_admin,
                 plan_icon=plan_icon,
                 allowed_resellers=allowed_resellers,
-                is_exclusive_reseller=is_exclusive_reseller
+                is_exclusive_reseller=is_exclusive_reseller,
+                is_exclusive_admin_bot=is_exclusive_admin_bot
             )
             if res.get("success"):
                 new_pid = res.get("plan_id")
@@ -8600,7 +8881,7 @@ def admin_plans_page():
     # محاسبه پلن‌های پیش‌فرض نمایندگان با تخفیف پایه ۲۰ درصد (پلن‌های اختصاصی مدیریت و پلن‌های اختصاصی نمایندگان خاص حذف می‌شوند)
     default_reseller_plans = []
     for pid, p in plans.items():
-        if p.get("is_exclusive_admin") or p.get("allowed_resellers") or p.get("is_exclusive_reseller"):
+        if p.get("is_exclusive_admin") or p.get("is_exclusive_admin_bot") or p.get("allowed_resellers") or p.get("is_exclusive_reseller"):
             continue
         base_price = p.get("price", 0)
         default_reseller_plans.append({
@@ -8791,19 +9072,28 @@ def admin_plan_edit(plan_id):
 
     target_type = request.form.get("target_type")
     is_exclusive_admin = False
+    is_exclusive_admin_bot = False
     allowed_resellers = None
     is_exclusive_reseller = False
 
     if target_type == "admin":
         is_exclusive_admin = True
+        is_exclusive_admin_bot = False
+        allowed_resellers = []
+        is_exclusive_reseller = False
+    elif target_type == "admin_bot":
+        is_exclusive_admin = False
+        is_exclusive_admin_bot = True
         allowed_resellers = []
         is_exclusive_reseller = False
     elif target_type == "resellers":
         is_exclusive_admin = False
+        is_exclusive_admin_bot = False
         allowed_resellers = [int(x) for x in request.form.getlist("allowed_resellers") if str(x).isdigit()]
         is_exclusive_reseller = True
     elif target_type == "all":
         is_exclusive_admin = False
+        is_exclusive_admin_bot = False
         allowed_resellers = []
         is_exclusive_reseller = False
     else:
@@ -8817,6 +9107,7 @@ def admin_plan_edit(plan_id):
         "duration": duration,
         "is_active": is_active,
         "is_exclusive_admin": is_exclusive_admin,
+        "is_exclusive_admin_bot": is_exclusive_admin_bot,
         "plan_icon": plan_icon,
     }
     if allowed_resellers is not None:
@@ -9432,7 +9723,7 @@ def settings():
             store_name = request.form.get("store_name", "").strip()
             store_version = request.form.get("store_version", "").strip()
             store_version_source = request.form.get("store_version_source", "manual").strip()
-            store_github_repo = request.form.get("store_github_repo", "").strip()
+            store_github_repo = _normalize_github_repo(request.form.get("store_github_repo", "").strip())
             store_copyright = request.form.get("store_copyright", "").strip()
             store_primary_color = request.form.get("store_primary_color", "#4f46e5").strip()
             existing_store_logo = db.get_setting("store_logo", "")
@@ -9673,6 +9964,67 @@ def settings():
         chat_settings=chat_settings,
         available_palettes=get_all_palettes()
     )
+
+
+@app.route("/admin/github/test_version", methods=["POST"])
+@admin_required
+def admin_github_test_version():
+    """استعلام زنده و تست ارتباط با مخزن گیت‌هاب جهت دریافت خودکار نسخه"""
+    data = request.get_json(silent=True) or {}
+    raw_repo = data.get("repo", "")
+    repo = _normalize_github_repo(raw_repo)
+    if not repo or "/" not in repo:
+        return jsonify({"success": False, "message": "فرمت مخزن باید به شکل owner/repo باشد (مثلاً MohammadPirouznia/TGBot)."})
+
+    # ۱. استعلام از آخرین Release
+    try:
+        url = f"https://api.github.com/repos/{repo}/releases/latest"
+        req = urllib.request.Request(url, headers={"User-Agent": "HiddiBot-System"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            resp_data = json.loads(resp.read().decode("utf-8"))
+            ver = _extract_github_version(resp_data)
+            if ver:
+                _store_version_cache["version"] = ver
+                _store_version_cache["timestamp"] = time.time()
+                return jsonify({
+                    "success": True,
+                    "normalized_repo": repo,
+                    "version": ver,
+                    "tag_name": resp_data.get("tag_name"),
+                    "release_name": resp_data.get("name"),
+                    "type": "release"
+                })
+    except urllib.error.HTTPError as e:
+        if e.code != 404:
+            return jsonify({"success": False, "message": f"پاسخ گیت‌هاب: کد {e.code}"})
+    except Exception as e:
+        logger.debug(f"Error checking github release for {repo}: {e}")
+
+    # ۲. بررسی تگ‌ها در صورت نبود Release
+    try:
+        url = f"https://api.github.com/repos/{repo}/tags"
+        req = urllib.request.Request(url, headers={"User-Agent": "HiddiBot-System"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            resp_data = json.loads(resp.read().decode("utf-8"))
+            if resp_data and isinstance(resp_data, list) and len(resp_data) > 0:
+                tag = resp_data[0].get("name")
+                if tag:
+                    _store_version_cache["version"] = tag
+                    _store_version_cache["timestamp"] = time.time()
+                    return jsonify({
+                        "success": True,
+                        "normalized_repo": repo,
+                        "version": tag,
+                        "type": "tag"
+                    })
+    except Exception as e:
+        return jsonify({"success": False, "message": f"خطا در دریافت تگ‌ها: {str(e)}"})
+
+    return jsonify({
+        "success": False,
+        "normalized_repo": repo,
+        "message": f"مخزن {repo} یافت شد اما هیچ Release یا Tag فعالی روی آن تعریف نشده است."
+    })
 
 
 @app.route("/admin/sms/test", methods=["POST"])
@@ -9993,6 +10345,7 @@ def reseller_create_user():
 
         # ثبت فیش پرداخت و درآمد مشتری برای نماینده در صورت تسویه و عدم بدهکاری
         if payment_status not in ("unpaid", "debtor") and original_price > 0:
+            payment_dest = request.form.get("payment_destination", "cash").strip()
             try:
                 tx_order_id = f"RES_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
                 db.save_transaction(
@@ -10001,7 +10354,7 @@ def reseller_create_user():
                     username=account_name,
                     plan_name=plan_title,
                     amount=original_price,
-                    gateway="cash_reseller",
+                    gateway=payment_dest if payment_dest.startswith("card_") else "cash_reseller",
                     tracking_code=f"CASH_{reseller_creator}",
                     status="approved",
                     account_name=account_name,
@@ -10009,6 +10362,38 @@ def reseller_create_user():
                     reseller_id=reseller_id,
                     subscription_id=sub_id
                 )
+                if payment_dest.startswith("card_"):
+                    try:
+                        c_id = int(payment_dest.replace("card_", ""))
+                        db.add_card_transaction(
+                            card_id=c_id,
+                            owner_type="reseller",
+                            owner_id=reseller_id,
+                            tx_type="deposit",
+                            amount=original_price,
+                            category="فروش اشتراک",
+                            title=f"فروش اشتراک {account_name} ({plan_title})",
+                            ref_type="subscription",
+                            ref_id=str(sub_id),
+                            actor=reseller_creator
+                        )
+                    except Exception as e_c:
+                        logger.error(f"Error depositing to target card in reseller_create_user: {e_c}")
+                else:
+                    try:
+                        db.add_cash_desk_log(
+                            owner_type="reseller",
+                            owner_id=reseller_id,
+                            amount=original_price,
+                            source="فروش اشتراک",
+                            customer_name=account_name,
+                            ref_type="subscription",
+                            ref_id=str(sub_id),
+                            note=f"دریافت نقدی اشتراک {account_name} توسط {reseller_creator}",
+                            actor=reseller_creator
+                        )
+                    except Exception as e_c:
+                        logger.error(f"Error recording cash desk in reseller_create_user: {e_c}")
             except Exception as e_tx:
                 logger.error(f"Error saving customer payment in reseller_create_user: {e_tx}")
 
@@ -10115,7 +10500,8 @@ def reseller_create_user():
         credit_limit=credit_limit,
         credit_debt=credit_debt,
         available_credit=available_credit,
-        total_purchasing_power=total_purchasing_power
+        total_purchasing_power=total_purchasing_power,
+        cards=db.get_reseller_cards(reseller_id)
     )
 
 
@@ -10222,7 +10608,8 @@ def reseller_users():
         sort_by=sort_by,
         panel_url=get_hiddify_url(),
         user_proxy=get_user_proxy(),
-        single_link_template=single_link_template
+        single_link_template=single_link_template,
+        cards=db.get_reseller_cards(reseller_id)
     )
 
 
@@ -10587,6 +10974,7 @@ def reseller_renew_user(sub_id: int):
 
         # ثبت فیش پرداخت و درآمد مشتری در صورت تسویه و عدم بدهکاری
         if debt_status != "unpaid" and original_price > 0:
+            payment_dest = request.form.get("payment_destination", "cash").strip()
             try:
                 rx_order_id = f"RNW_RES_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
                 db.save_transaction(
@@ -10595,7 +10983,7 @@ def reseller_renew_user(sub_id: int):
                     username=sub.get("account_name") or "",
                     plan_name=plan_title,
                     amount=original_price,
-                    gateway="cash_reseller",
+                    gateway=payment_dest if payment_dest.startswith("card_") else "cash_reseller",
                     tracking_code=f"RENEW_{creator_user}",
                     status="approved",
                     account_name=sub.get("account_name") or "",
@@ -10604,6 +10992,38 @@ def reseller_renew_user(sub_id: int):
                     subscription_id=sub_id,
                     is_renewal=1
                 )
+                if payment_dest.startswith("card_"):
+                    try:
+                        c_id = int(payment_dest.replace("card_", ""))
+                        db.add_card_transaction(
+                            card_id=c_id,
+                            owner_type="reseller",
+                            owner_id=reseller_id,
+                            tx_type="deposit",
+                            amount=original_price,
+                            category="تمدید اشتراک",
+                            title=f"تمدید {sub.get('account_name')} ({plan_title})",
+                            ref_type="subscription",
+                            ref_id=str(sub_id),
+                            actor=creator_user
+                        )
+                    except Exception as e_c:
+                        logger.error(f"Error depositing to target card in reseller_renew_user: {e_c}")
+                else:
+                    try:
+                        db.add_cash_desk_log(
+                            owner_type="reseller",
+                            owner_id=reseller_id,
+                            amount=original_price,
+                            source="تمدید اشتراک",
+                            customer_name=sub.get("account_name"),
+                            ref_type="subscription",
+                            ref_id=str(sub_id),
+                            note=f"دریافت نقدی تمدید توسط {creator_user}",
+                            actor=creator_user
+                        )
+                    except Exception as e_c:
+                        logger.error(f"Error recording cash desk in reseller_renew_user: {e_c}")
             except Exception as e_rx:
                 logger.error(f"Error saving customer renew transaction in reseller_renew_user: {e_rx}")
 
@@ -12298,6 +12718,40 @@ def reseller_payment_approve(payment_id):
     conn.commit()
     conn.close()
 
+    # شارژ خودکار و ثبت تراکنش در کارت بانکی نماینده
+    target_card_id = tx.get("target_card_id")
+    if not target_card_id and tx.get("card_number"):
+        clean_c = re.sub(r"\D", "", str(tx["card_number"]))
+        if len(clean_c) >= 4:
+            c_conn = db.get_connection()
+            r_card = c_conn.execute("SELECT id FROM reseller_cards WHERE reseller_id = ? AND card_number LIKE ? LIMIT 1", (reseller_id, f"%{clean_c[-10:]}%")).fetchone()
+            c_conn.close()
+            if r_card:
+                target_card_id = r_card["id"]
+    if not target_card_id:
+        best_c = db.get_best_active_card(owner_type="reseller", reseller_id=reseller_id)
+        if best_c and best_c.get("id"):
+            target_card_id = best_c["id"]
+
+    if target_card_id and int(tx.get("amount") or 0) > 0:
+        try:
+            db.add_card_transaction(
+                card_id=target_card_id,
+                owner_type="reseller",
+                amount=int(tx["amount"]),
+                tx_type="deposit",
+                category="subscription",
+                title=f"واریز تایید شده فیش {plan_name}",
+                description=f"تایید دستی فیش توسط نماینده (سفارش {tx.get('order_id')})",
+                tracking_code=str(tx.get("tracking_code") or payment_id),
+                ref_type="transaction",
+                ref_id=str(payment_id),
+                created_by=reseller_name,
+                reseller_id=reseller_id
+            )
+        except Exception as e_rc_app:
+            logger.error(f"Error adding card tx on reseller manual approve: {e_rc_app}")
+
     # تکمیل وضعیت فاکتور هوشمند در صورت وجود
     try:
         if tx.get("order_id"):
@@ -12471,16 +12925,84 @@ def reseller_cards():
             card_number = request.form.get("card_number", "").strip()
             card_holder = request.form.get("card_holder", "").strip()
             bank_name = request.form.get("bank_name", "").strip()
-            daily_limit = int(request.form.get("daily_limit", 50000000))
+            daily_limit = int(request.form.get("daily_limit", 50000000) or 50000000)
+            is_default = 1 if request.form.get("is_default") in ["1", "on", "true"] else 0
+            is_backup = 1 if request.form.get("is_backup") in ["1", "on", "true"] else 0
+            initial_balance = int(request.form.get("initial_balance", 0) or 0)
+            shaba_number = request.form.get("shaba_number", "").strip()
+            account_number = request.form.get("account_number", "").strip()
+            notes = request.form.get("notes", "").strip()
 
             if not card_number or not card_holder:
                 flash("شماره کارت و نام صاحب حساب الزامی است.", "warning")
             else:
-                res = db.add_reseller_card(reseller_id, card_number, card_holder, bank_name, daily_limit)
+                res = db.add_reseller_card(
+                    reseller_id, card_number, card_holder, bank_name, daily_limit,
+                    is_default=is_default, is_backup=is_backup,
+                    initial_balance=initial_balance,
+                    shaba_number=shaba_number,
+                    account_number=account_number,
+                    notes=notes
+                )
                 if res.get("success"):
                     flash("کارت بانکی جدید با موفقیت اضافه شد.", "success")
                 else:
                     flash(f"خطا در ثبت کارت: {res.get('error')}", "danger")
+        elif action == "card_set_role":
+            card_id = int(request.form.get("card_id", 0))
+            role_type = request.form.get("role_type", "") # "default", "backup", "normal"
+            is_default = 1 if role_type == "default" else 0
+            is_backup = 1 if role_type == "backup" else 0
+            db.set_card_role(card_id, owner_type="reseller", owner_id=reseller_id, is_default=is_default, is_backup=is_backup)
+            flash("نقش کارت (پیش‌فرض / پشتیبان) با موفقیت بروزرسانی شد.", "success")
+        elif action == "card_edit":
+            card_id = int(request.form.get("card_id", 0))
+            card_num = request.form.get("card_number", "").strip()
+            holder = request.form.get("card_holder", "").strip()
+            bank = request.form.get("bank_name", "").strip()
+            limit = int(request.form.get("daily_limit", 50000000) or 50000000)
+            shaba = request.form.get("shaba_number", "").strip()
+            acc_num = request.form.get("account_number", "").strip()
+            notes = request.form.get("notes", "").strip()
+            db.update_card_info(card_id, owner_type="reseller", owner_id=reseller_id, card_number=card_num, card_holder=holder, bank_name=bank, daily_limit=limit, shaba_number=shaba, account_number=acc_num, notes=notes)
+            flash("اطلاعات کارت با موفقیت بروزرسانی شد.", "success")
+        elif action == "card_add_tx":
+            card_id = int(request.form.get("card_id", 0))
+            tx_type = request.form.get("type", "deposit") # "deposit" or "withdrawal"
+            category = request.form.get("category", "واریز دستی")
+            amount = int(request.form.get("amount", 0) or 0)
+            title = request.form.get("title", "").strip()
+            description = request.form.get("description", "").strip()
+            if amount <= 0:
+                flash("مبلغ تراکنش باید بزرگتر از صفر باشد.", "danger")
+            else:
+                actor = f"reseller_{reseller_id}"
+                res = db.add_card_transaction(
+                    card_id=card_id,
+                    owner_type="reseller",
+                    owner_id=reseller_id,
+                    tx_type=tx_type,
+                    amount=amount,
+                    category=category,
+                    title=title,
+                    description=description,
+                    actor=actor
+                )
+                if res.get("success"):
+                    flash(f"تراکنش با موفقیت ثبت شد. موجودی جدید: {res.get('new_balance', 0):,} تومان", "success")
+                else:
+                    flash(f"خطا در ثبت تراکنش: {res.get('error')}", "danger")
+        elif action == "cash_settle":
+            log_id = int(request.form.get("log_id", 0))
+            target_card_id = request.form.get("target_card_id")
+            target_card_id = int(target_card_id) if target_card_id and str(target_card_id).isdigit() else None
+            settle_note = request.form.get("settle_note", "").strip()
+            actor = f"reseller_{reseller_id}"
+            res = db.settle_cash_desk_log(log_id, owner_type="reseller", owner_id=reseller_id, target_card_id=target_card_id, note=settle_note, actor=actor)
+            if res.get("success"):
+                flash("تسویه صندوق نقدی با موفقیت انجام و به حساب واریز گردید.", "success")
+            else:
+                flash(f"خطا در تسویه صندوق نقدی: {res.get('error')}", "danger")
         elif action == "save_reseller_gateway":
             enabled = bool(request.form.get("gateway_enabled"))
             gw_type = request.form.get("gateway_type", "zarinpal")
@@ -12505,6 +13027,16 @@ def reseller_cards():
         return redirect(url_for("reseller_cards"))
 
     cards = db.get_reseller_cards(reseller_id)
+    for c in cards:
+        c_id = c["id"]
+        today_vol = db.get_card_daily_volume(c_id, owner_type="reseller", owner_id=reseller_id)
+        c["today_volume"] = today_vol
+        d_limit = c.get("daily_limit") or 50000000
+        c["usage_percent"] = min(100, int((today_vol / d_limit) * 100)) if d_limit > 0 else 0
+        c["remaining_limit"] = max(0, d_limit - today_vol)
+
+    financial_summary = db.get_cards_financial_summary(owner_type="reseller", owner_id=reseller_id)
+    cash_desk_logs = db.get_cash_desk_logs(owner_type="reseller", owner_id=reseller_id, status="all", limit=50)
     payment_methods = db.get_payment_methods(reseller_id=reseller_id)
     reseller_gateway = db.get_reseller_gateway(reseller_id)
     reseller_crypto = db.get_reseller_crypto_config(reseller_id)
@@ -12523,6 +13055,8 @@ def reseller_cards():
     return render_template(
         "reseller_cards.html",
         cards=cards,
+        financial_summary=financial_summary,
+        cash_desk_logs=cash_desk_logs,
         payment_methods=payment_methods,
         reseller_gateway=reseller_gateway,
         reseller_crypto=reseller_crypto,
@@ -12572,6 +13106,56 @@ def reseller_card_delete(card_id):
     db.delete_reseller_card(card_id, reseller_id)
     flash("کارت بانکی حذف شد.", "info")
     return redirect(url_for("reseller_cards"))
+
+
+@app.route("/reseller/card/<int:card_id>/set-role/<role_type>")
+@reseller_required
+def reseller_card_set_role(card_id, role_type):
+    """تنظیم سریع نقش کارت نماینده: default, backup, normal"""
+    reseller_id = session.get("reseller_id")
+    is_default = 1 if role_type == "default" else 0
+    is_backup = 1 if role_type == "backup" else 0
+    db.set_card_role(card_id, owner_type="reseller", owner_id=reseller_id, is_default=is_default, is_backup=is_backup)
+    flash("نقش کارت با موفقیت بروزرسانی شد.", "success")
+    return redirect(url_for("reseller_cards"))
+
+
+@app.route("/api/reseller/card/<int:card_id>/details", methods=["GET"])
+@reseller_required
+def api_reseller_card_details(card_id):
+    """دریافت جزییات کارت نماینده و تراکنش‌های تفکیکی آن"""
+    reseller_id = session.get("reseller_id")
+    data = db.get_card_details_and_transactions(card_id, owner_type="reseller", owner_id=reseller_id)
+    if not data or not data.get("card"):
+        return jsonify({"success": False, "error": "کارت یافت نشد"}), 404
+    return jsonify({"success": True, "data": data})
+
+
+@app.route("/api/reseller/card/<int:card_id>/add-transaction", methods=["POST"])
+@reseller_required
+def api_reseller_card_add_tx(card_id):
+    """ثبت تراکنش واریز/برداشت/هزینه/کارمزد برای کارت نماینده"""
+    reseller_id = session.get("reseller_id")
+    tx_type = request.form.get("type", "deposit")
+    category = request.form.get("category", "واریز دستی")
+    amount = int(request.form.get("amount", 0) or 0)
+    title = request.form.get("title", "").strip()
+    description = request.form.get("description", "").strip()
+    if amount <= 0:
+        return jsonify({"success": False, "error": "مبلغ تراکنش باید بیشتر از صفر باشد"}), 400
+    actor = f"reseller_{reseller_id}"
+    res = db.add_card_transaction(
+        card_id=card_id,
+        owner_type="reseller",
+        owner_id=reseller_id,
+        tx_type=tx_type,
+        amount=amount,
+        category=category,
+        title=title,
+        description=description,
+        actor=actor
+    )
+    return jsonify(res)
 
 
 # ─── ۳. سیستم تیکتینگ اختصاصی نماینده (Reseller Tickets) ───
@@ -13227,6 +13811,7 @@ def admin_create_customer():
             except Exception as e_acc:
                 logger.error(f"Error recording accounting record for wallet sale: {e_acc}")
         elif payment_method == "cash" and price > 0:
+            payment_dest = request.form.get("payment_destination", "cash").strip()
             order_id = f"ADM_{get_now_naive().strftime('%Y%m%d%H%M%S')}_{random.randint(100, 999)}"
             db.save_transaction(
                 order_id=order_id,
@@ -13234,12 +13819,43 @@ def admin_create_customer():
                 username=account_name,
                 plan_name=plan_name,
                 amount=price,
-                gateway="cash_admin",
+                gateway=payment_dest if payment_dest.startswith("card_") else "cash_admin",
                 tracking_code=f"CASH_{session.get('username')}",
                 status="approved",
                 account_name=account_name,
                 source="admin"
             )
+            if payment_dest.startswith("card_"):
+                try:
+                    c_id = int(payment_dest.replace("card_", ""))
+                    db.add_card_transaction(
+                        card_id=c_id,
+                        owner_type="admin",
+                        tx_type="deposit",
+                        amount=price,
+                        category="فروش اشتراک",
+                        title=f"فروش اشتراک {account_name} ({plan_name})",
+                        ref_type="subscription",
+                        ref_id=str(sub_id),
+                        actor=admin_creator
+                    )
+                except Exception as e_c:
+                    logger.error(f"Error depositing to target card in admin_create_customer: {e_c}")
+            else:
+                try:
+                    db.add_cash_desk_log(
+                        owner_type="admin",
+                        amount=price,
+                        source="فروش اشتراک",
+                        customer_name=account_name,
+                        ref_type="subscription",
+                        ref_id=str(sub_id),
+                        note=f"دریافت نقدی اشتراک {account_name} توسط {admin_creator}",
+                        actor=admin_creator
+                    )
+                except Exception as e_c:
+                    logger.error(f"Error recording cash desk in admin_create_customer: {e_c}")
+
             try:
                 db.add_accounting_record(
                     type="income",
@@ -13249,7 +13865,7 @@ def admin_create_customer():
                     source="admin_panel",
                     ref_type="subscription",
                     ref_id=str(sub_id),
-                    description=f"ثبت نقدی مشتری توسط {session.get('username') or 'admin'}",
+                    description=f"ثبت نقدی مشتری توسط {session.get('username') or 'admin'} - مقصد: {payment_dest}",
                     date=now[:10]
                 )
             except Exception as e_acc:
@@ -13329,7 +13945,7 @@ def admin_create_customer():
             debt_info=debt_info_text
         )
 
-    return render_template("admin_create_customer.html", plans=plans, admin_role=admin_role, share_percent=share_percent)
+    return render_template("admin_create_customer.html", plans=plans, admin_role=admin_role, share_percent=share_percent, cards=db.get_active_bank_cards())
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -14662,28 +15278,61 @@ def bank_sms_webhook():
     owner_type = owner["type"]
     owner_id = owner["id"]
 
-    if request.method == "GET":
+    # پشتیبانی از استعلام وضعیت با GET معمولی و یا ارسال پیامک با GET پارامتری
+    is_health_check = (request.method == "GET" and not request.args.get("message") and not request.args.get("text") and not request.args.get("sms") and not request.args.get("content"))
+    if is_health_check:
         return jsonify({
             "status": "ok",
             "message": "Bank SMS Webhook is active and connected.",
             "owner": owner
         })
 
-    # استخراج متن و فرستنده پیامک
+    # استخراج متن و فرستنده پیامک از تمام فرمت‌های رایج فورواردرها
     raw_message = (
         payload.get("message") or payload.get("text") or payload.get("sms") or 
-        payload.get("content") or payload.get("body") or request.form.get("message") or 
-        request.form.get("text") or request.form.get("sms") or ""
+        payload.get("content") or payload.get("body") or payload.get("msg") or
+        payload.get("sms_body") or payload.get("sms_message") or
+        request.form.get("message") or request.form.get("text") or 
+        request.form.get("sms") or request.form.get("content") or 
+        request.form.get("body") or request.form.get("msg") or
+        request.form.get("sms_body") or request.form.get("sms_message") or
+        request.args.get("message") or request.args.get("text") or
+        request.args.get("sms") or request.args.get("content") or ""
     )
     sender = (
         payload.get("sender") or payload.get("from") or payload.get("phone") or 
-        request.form.get("sender") or request.form.get("from") or ""
+        payload.get("number") or payload.get("sms_from") or
+        request.form.get("sender") or request.form.get("from") or 
+        request.form.get("phone") or request.form.get("number") or
+        request.args.get("sender") or request.args.get("from") or ""
     )
+
+    if not raw_message:
+        raw_body_text = request.get_data(as_text=True)
+        if raw_body_text and not raw_body_text.strip().startswith("{"):
+            raw_message = raw_body_text.strip()
 
     if not raw_message:
         return jsonify({"error": "Empty message body"}), 400
 
     logger.info(f"Received Bank SMS for {owner_type} #{owner_id} from {sender}: {raw_message}")
+
+    # تشخیص خطای رایج کاربران در ارسال متغیر بدون جایگزینی در برنامه گوشی (مانند [sms_body] یا %SMSRB%)
+    raw_clean = raw_message.strip()
+    is_placeholder = bool(re.match(r"^\[(?:sms_body|sms_message|msg|content|from|sms_number)\]$|^%?SMSR[BN]%?$", raw_clean, re.IGNORECASE))
+    if is_placeholder:
+        db.log_bank_sms(
+            owner_type=owner_type,
+            owner_id=owner_id,
+            sender_number=sender,
+            raw_message=raw_message,
+            status="placeholder_error"
+        )
+        return jsonify({
+            "status": "error",
+            "reason": "placeholder_not_replaced",
+            "message": f"خطا: متن دریافتی «{raw_message}» است و متغیر آن در اپلیکیشن گوشی جایگزین نشده است. برای MacroDroid از [sms_message] و برای SMS Forwarder از [content] استفاده فرمایید."
+        }), 200
 
     from bank_sms_parser import parse_bank_sms
     parsed = parse_bank_sms(raw_message, sender=sender)
