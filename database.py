@@ -11488,26 +11488,56 @@ class Database:
         finally:
             conn.close()
 
-    def set_card_role(self, card_id: int, role: str, owner_type: str = "admin", reseller_id: int = 0) -> dict:
+    def set_card_role(self, card_id: int, role: str = None, owner_type: str = "admin",
+                      reseller_id: int = 0, owner_id: int = None,
+                      is_default: int = None, is_backup: int = None, **kwargs) -> dict:
         """
-        تنظیم نقش کارت (پیش‌فرض، پشتیبان، عادی)
-        role: 'default', 'backup', 'normal'
+        تنظیم نقش کارت (پیش‌فرض اصلی، پشتیبان، عادی)
+        پشتیبانی منعطف از role ('default', 'backup', 'normal') یا پرچم‌های is_default و is_backup
         """
+        try:
+            card_id = int(card_id)
+        except (ValueError, TypeError):
+            return {"success": False, "error": "شناسه کارت نامعتبر است."}
+
+        effective_reseller_id = owner_id if owner_id is not None else reseller_id
+
+        # تشخیص و استانداردسازی نوع نقش
+        normalized_role = "normal"
+        if role is not None and str(role).strip():
+            r = str(role).lower().strip()
+            if r in ("default", "primary", "is_default", "1"):
+                normalized_role = "default"
+            elif r in ("backup", "is_backup"):
+                normalized_role = "backup"
+            else:
+                normalized_role = "normal"
+        else:
+            if is_default:
+                normalized_role = "default"
+            elif is_backup:
+                normalized_role = "backup"
+            else:
+                normalized_role = "normal"
+
         table = "bank_cards" if owner_type == "admin" else "reseller_cards"
         owner_filter = "" if owner_type == "admin" else " AND reseller_id = ?"
-        params = [reseller_id] if owner_type == "reseller" else []
+        reset_params = [effective_reseller_id] if owner_type == "reseller" else []
+        target_filter = "WHERE id = ?" + (" AND reseller_id = ?" if owner_type == "reseller" else "")
+        target_params = [card_id, effective_reseller_id] if owner_type == "reseller" else [card_id]
 
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            if role == "default":
-                cursor.execute(f"UPDATE {table} SET is_default = 0 WHERE 1=1 {owner_filter}", params)
-                cursor.execute(f"UPDATE {table} SET is_default = 1, is_backup = 0 WHERE id = ?", (card_id,))
-            elif role == "backup":
-                cursor.execute(f"UPDATE {table} SET is_backup = 0 WHERE 1=1 {owner_filter}", params)
-                cursor.execute(f"UPDATE {table} SET is_backup = 1, is_default = 0 WHERE id = ?", (card_id,))
+            if normalized_role == "default":
+                cursor.execute(f"UPDATE {table} SET is_default = 0 WHERE 1=1 {owner_filter}", reset_params)
+                cursor.execute(f"UPDATE {table} SET is_default = 1, is_backup = 0 {target_filter}", target_params)
+            elif normalized_role == "backup":
+                cursor.execute(f"UPDATE {table} SET is_backup = 0 WHERE 1=1 {owner_filter}", reset_params)
+                cursor.execute(f"UPDATE {table} SET is_backup = 1, is_default = 0 {target_filter}", target_params)
             else:  # 'normal'
-                cursor.execute(f"UPDATE {table} SET is_default = 0, is_backup = 0 WHERE id = ?", (card_id,))
+                cursor.execute(f"UPDATE {table} SET is_default = 0, is_backup = 0 {target_filter}", target_params)
+
             conn.commit()
             return {"success": True}
         except Exception as e:
@@ -14609,17 +14639,17 @@ class Database:
         # ۳. سایر نمایندگان یا کاربران عادی به هیچ عنوان پلن‌های اختصاصی را دریافت نخواهند کرد
         master_plans = {}
         for pid, p in raw_master_plans.items():
-            if p.get("is_exclusive_admin") or p.get("is_exclusive_admin_bot"):
+            # اگر پلن برای هیچ یک از کانال‌های نماینده (ربات نماینده یا پنل نماینده) فعال نباشد، رد می‌شود
+            if not (p.get("show_in_reseller_bot") or p.get("show_in_reseller_panel")):
                 continue
             allowed = p.get("allowed_resellers") or []
-            if allowed:
+            scope = p.get("reseller_scope") or ("selected" if allowed else "all")
+            if scope == "selected" or p.get("is_exclusive_reseller"):
                 try:
                     if int(reseller_id) in [int(x) for x in allowed]:
                         master_plans[pid] = p
                 except (ValueError, TypeError):
                     pass
-            elif p.get("is_exclusive_reseller"):
-                continue
             else:
                 master_plans[pid] = p
 
@@ -14755,24 +14785,28 @@ class Database:
                 "is_active": is_active,
                 "master_is_active": p.get("is_active", True),
                 "is_dedicated": is_dedicated,
-                "allowed_resellers": p.get("allowed_resellers", [])
+                "allowed_resellers": p.get("allowed_resellers", []),
+                "show_in_reseller_bot": bool(p.get("show_in_reseller_bot", True)),
+                "show_in_reseller_panel": bool(p.get("show_in_reseller_panel", True)),
+                "show_in_admin_bot": bool(p.get("show_in_admin_bot", False)),
+                "show_in_admin_panel": bool(p.get("show_in_admin_panel", True)),
+                "reseller_scope": p.get("reseller_scope", "all")
             })
 
         for pid_key, ov in overrides.items():
             pid_str = str(pid_key)
             if pid_str not in seen_pids:
                 p_meta = raw_master_plans.get(pid_str, {})
-                if p_meta.get("is_exclusive_admin") or p_meta.get("is_exclusive_admin_bot"):
+                if not (p_meta.get("show_in_reseller_bot") or p_meta.get("show_in_reseller_panel")):
                     continue
                 allowed = p_meta.get("allowed_resellers") or []
-                if allowed:
+                scope = p_meta.get("reseller_scope") or ("selected" if allowed else "all")
+                if scope == "selected" or p_meta.get("is_exclusive_reseller"):
                     try:
                         if int(reseller_id) not in [int(x) for x in allowed]:
                             continue
                     except (ValueError, TypeError):
                         continue
-                elif p_meta.get("is_exclusive_reseller"):
-                    continue
 
                 admin_custom_name = ov.get("custom_name") or pid_str
                 admin_custom_price = ov.get("custom_price") or 0
@@ -14845,7 +14879,12 @@ class Database:
                     "is_active": is_active,
                     "master_is_active": True,
                     "is_dedicated": is_dedicated,
-                    "allowed_resellers": allowed
+                    "allowed_resellers": allowed,
+                    "show_in_reseller_bot": bool(p_meta.get("show_in_reseller_bot", True)),
+                    "show_in_reseller_panel": bool(p_meta.get("show_in_reseller_panel", True)),
+                    "show_in_admin_bot": bool(p_meta.get("show_in_admin_bot", False)),
+                    "show_in_admin_panel": bool(p_meta.get("show_in_admin_panel", True)),
+                    "reseller_scope": p_meta.get("reseller_scope", "all")
                 })
 
         return result
@@ -14856,9 +14895,9 @@ class Database:
         return {str(p["plan_id"]): p for p in plans}
 
     def get_reseller_active_plans(self, reseller_id: int) -> List[dict]:
-        """دریافت فقط پلن‌های فعال برای نمایش به مشتریان ربات تلگرام نماینده"""
+        """دریافت فقط پلن‌های فعال برای نمایش به مشتریان ربات تلگرام نماینده (مخفی بودن پلن‌های مخصوص پنل دستی)"""
         all_plans = self.get_reseller_plans(reseller_id)
-        return [p for p in all_plans if p.get("is_active") and p.get("master_is_active")]
+        return [p for p in all_plans if p.get("is_active") and p.get("master_is_active") and p.get("show_in_reseller_bot", True)]
 
     def get_reseller_plan(self, reseller_id: int, plan_id: str) -> Optional[dict]:
         """دریافت مشخصات کامل یک پلن خاص برای نماینده"""

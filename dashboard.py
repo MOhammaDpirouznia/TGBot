@@ -8852,8 +8852,11 @@ def cards():
             role_type = request.form.get("role_type", "") # "default", "backup", "normal"
             is_default = 1 if role_type == "default" else 0
             is_backup = 1 if role_type == "backup" else 0
-            db.set_card_role(card_id, owner_type="admin", is_default=is_default, is_backup=is_backup)
-            flash("نقش کارت (پیش‌فرض / پشتیبان) با موفقیت بروزرسانی شد.", "success")
+            res = db.set_card_role(card_id, role=role_type, owner_type="admin", is_default=is_default, is_backup=is_backup)
+            if res.get("success"):
+                flash("نقش کارت (پیش‌فرض / پشتیبان) با موفقیت بروزرسانی شد.", "success")
+            else:
+                flash(f"خطا در بروزرسانی نقش کارت: {res.get('error', 'نامشخص')}", "danger")
         elif action == "card_edit":
             card_id = int(request.form.get("card_id", 0))
             card_num = request.form.get("card_number", "").strip()
@@ -9010,14 +9013,17 @@ def card_delete(card_id):
     return redirect(url_for("cards"))
 
 
-@app.route("/card/set-role/<int:card_id>/<role_type>")
+@app.route("/card/set-role/<int:card_id>/<role_type>", methods=["GET", "POST"])
 @permission_required("cards")
 def card_set_role(card_id, role_type):
     """تنظیم سریع نقش کارت: پیش‌فرض (default)، پشتیبان (backup) یا عادی (normal)"""
     is_default = 1 if role_type == "default" else 0
     is_backup = 1 if role_type == "backup" else 0
-    db.set_card_role(card_id, owner_type="admin", is_default=is_default, is_backup=is_backup)
-    flash("نقش کارت با موفقیت بروزرسانی شد.", "success")
+    res = db.set_card_role(card_id, role=role_type, owner_type="admin", is_default=is_default, is_backup=is_backup)
+    if res.get("success"):
+        flash("نقش کارت با موفقیت بروزرسانی شد.", "success")
+    else:
+        flash(f"خطا در بروزرسانی نقش کارت: {res.get('error', 'نامشخص')}", "danger")
     return redirect(url_for("cards"))
 
 
@@ -9278,38 +9284,68 @@ def admin_plans_page():
             duration = int(request.form.get("duration", 30))
             plan_icon = request.form.get("plan_icon", "").strip()
 
-            target_type = request.form.get("target_type", "all")
-            allowed_resellers = []
-            is_exclusive_admin = False
-            is_exclusive_admin_bot = False
-            is_exclusive_reseller = False
+            # بررسی و پردازش کانال‌های ۴گانه نمایش پلن
+            has_channel_inputs = any(k in request.form for k in ("show_in_admin_bot", "show_in_admin_panel", "show_in_reseller_bot", "show_in_reseller_panel"))
+            allowed_resellers = [int(x) for x in request.form.getlist("allowed_resellers") if str(x).isdigit()]
+            reseller_scope = request.form.get("reseller_scope", "selected" if allowed_resellers else "all")
 
-            if target_type == "admin":
-                is_exclusive_admin = True
-            elif target_type == "admin_bot":
-                is_exclusive_admin_bot = True
-            elif target_type == "resellers":
-                allowed_resellers = [int(x) for x in request.form.getlist("allowed_resellers") if str(x).isdigit()]
-                is_exclusive_reseller = True
+            if has_channel_inputs:
+                show_in_admin_bot = request.form.get("show_in_admin_bot") in ("1", "true", "on")
+                show_in_admin_panel = request.form.get("show_in_admin_panel") in ("1", "true", "on")
+                show_in_reseller_bot = request.form.get("show_in_reseller_bot") in ("1", "true", "on")
+                show_in_reseller_panel = request.form.get("show_in_reseller_panel") in ("1", "true", "on")
             else:
-                # اگر سوییچ قدیمی فرستاده شده باشد
-                if request.form.get("is_exclusive_admin") in ("on", "1", "true"):
-                    is_exclusive_admin = True
+                target_type = request.form.get("target_type", "all")
+                if target_type == "admin":
+                    show_in_admin_bot = False
+                    show_in_admin_panel = True
+                    show_in_reseller_bot = False
+                    show_in_reseller_panel = False
+                    reseller_scope = "selected"
+                elif target_type == "admin_bot":
+                    show_in_admin_bot = True
+                    show_in_admin_panel = True
+                    show_in_reseller_bot = False
+                    show_in_reseller_panel = False
+                    reseller_scope = "selected"
+                elif target_type == "resellers":
+                    show_in_admin_bot = False
+                    show_in_admin_panel = True
+                    show_in_reseller_bot = True
+                    show_in_reseller_panel = True
+                    reseller_scope = "selected"
+                elif target_type == "resellers_panel_only":
+                    show_in_admin_bot = False
+                    show_in_admin_panel = True
+                    show_in_reseller_bot = False
+                    show_in_reseller_panel = True
+                    reseller_scope = "selected"
+                else:
+                    show_in_admin_bot = True
+                    show_in_admin_panel = True
+                    show_in_reseller_bot = True
+                    show_in_reseller_panel = True
+                    reseller_scope = "all"
+
+            if reseller_scope == "all":
+                allowed_resellers = []
 
             res = add_plan(
                 name=name,
                 price=price,
                 data_limit=data_limit,
                 duration=duration,
-                is_exclusive_admin=is_exclusive_admin,
                 plan_icon=plan_icon,
                 allowed_resellers=allowed_resellers,
-                is_exclusive_reseller=is_exclusive_reseller,
-                is_exclusive_admin_bot=is_exclusive_admin_bot
+                show_in_admin_bot=show_in_admin_bot,
+                show_in_admin_panel=show_in_admin_panel,
+                show_in_reseller_bot=show_in_reseller_bot,
+                show_in_reseller_panel=show_in_reseller_panel,
+                reseller_scope=reseller_scope
             )
             if res.get("success"):
                 new_pid = res.get("plan_id")
-                if target_type == "resellers" and allowed_resellers and new_pid:
+                if (show_in_reseller_bot or show_in_reseller_panel) and allowed_resellers and new_pid:
                     custom_discount_raw = request.form.get("custom_discount_percent", "").strip()
                     custom_wholesale_raw = request.form.get("custom_wholesale_price", "").strip()
                     try:
@@ -9350,7 +9386,9 @@ def admin_plans_page():
     # محاسبه پلن‌های پیش‌فرض نمایندگان با تخفیف پایه ۲۰ درصد (پلن‌های اختصاصی مدیریت و پلن‌های اختصاصی نمایندگان خاص حذف می‌شوند)
     default_reseller_plans = []
     for pid, p in plans.items():
-        if p.get("is_exclusive_admin") or p.get("is_exclusive_admin_bot") or p.get("allowed_resellers") or p.get("is_exclusive_reseller"):
+        if not (p.get("show_in_reseller_bot") or p.get("show_in_reseller_panel")):
+            continue
+        if p.get("reseller_scope") == "selected" or p.get("allowed_resellers") or p.get("is_exclusive_reseller"):
             continue
         base_price = p.get("price", 0)
         default_reseller_plans.append({
@@ -9368,7 +9406,8 @@ def admin_plans_page():
     dedicated_reseller_plans = []
     for pid, p in plans.items():
         allowed = p.get("allowed_resellers") or []
-        if allowed or p.get("is_exclusive_reseller"):
+        scope = p.get("reseller_scope") or ("selected" if allowed else "all")
+        if (p.get("show_in_reseller_bot") or p.get("show_in_reseller_panel")) and (scope == "selected" or allowed or p.get("is_exclusive_reseller")):
             r_names = [resellers_map.get(r_id, {}).get("name", f"نماینده #{r_id}") for r_id in allowed]
             dedicated_reseller_plans.append({
                 "plan_id": pid,
@@ -9379,7 +9418,9 @@ def admin_plans_page():
                 "plan_icon": p.get("plan_icon", ""),
                 "is_active": p.get("is_active", True),
                 "allowed_resellers": allowed,
-                "reseller_names": r_names
+                "reseller_names": r_names,
+                "show_in_reseller_bot": p.get("show_in_reseller_bot", True),
+                "show_in_reseller_panel": p.get("show_in_reseller_panel", True)
             })
 
     return render_template(
@@ -9482,15 +9523,25 @@ def admin_reseller_add_dedicated_plan():
         flash("اطلاعات پلن اختصاصی نامعتبر است.", "danger")
         return redirect(url_for("admin_plans_page", tab="resellers", reseller_id=primary_reseller_id if primary_reseller_id else None))
 
+    if "has_channel_switches" in request.form:
+        show_in_reseller_bot = request.form.get("show_in_reseller_bot") in ("1", "true", "on")
+        show_in_reseller_panel = request.form.get("show_in_reseller_panel") in ("1", "true", "on")
+    else:
+        show_in_reseller_bot = request.form.get("show_in_reseller_bot") in ("1", "true", "on") if "show_in_reseller_bot" in request.form else True
+        show_in_reseller_panel = request.form.get("show_in_reseller_panel") in ("1", "true", "on") if "show_in_reseller_panel" in request.form else True
+
     res = add_plan(
         name=name,
         price=price,
         data_limit=data_limit,
         duration=duration,
-        is_exclusive_admin=False,
         plan_icon=plan_icon,
         allowed_resellers=list(selected_resellers),
-        is_exclusive_reseller=True
+        show_in_admin_bot=False,
+        show_in_admin_panel=True,
+        show_in_reseller_bot=show_in_reseller_bot,
+        show_in_reseller_panel=show_in_reseller_panel,
+        reseller_scope="selected"
     )
     if res.get("success"):
         new_pid = res.get("plan_id")
@@ -9530,7 +9581,7 @@ def admin_reseller_add_dedicated_plan():
 @app.route("/plans/edit/<plan_id>", methods=["POST"])
 @permission_required("plans_manage")
 def admin_plan_edit(plan_id):
-    """ویرایش کامل مشخصات پلن و تغییر شناسه و سطح دسترسی"""
+    """ویرایش کامل مشخصات پلن و تغییر شناسه و سطح دسترسی ۴ کانال"""
     new_plan_id = request.form.get("new_plan_id", "").strip().lower().replace(" ", "_")
     name = request.form.get("name", "").strip()
     price = int(request.form.get("price", 0))
@@ -9539,49 +9590,66 @@ def admin_plan_edit(plan_id):
     is_active = request.form.get("is_active") == "1"
     plan_icon = request.form.get("plan_icon", "").strip()
 
-    target_type = request.form.get("target_type")
-    is_exclusive_admin = False
-    is_exclusive_admin_bot = False
-    allowed_resellers = None
-    is_exclusive_reseller = False
-
-    if target_type == "admin":
-        is_exclusive_admin = True
-        is_exclusive_admin_bot = False
-        allowed_resellers = []
-        is_exclusive_reseller = False
-    elif target_type == "admin_bot":
-        is_exclusive_admin = False
-        is_exclusive_admin_bot = True
-        allowed_resellers = []
-        is_exclusive_reseller = False
-    elif target_type == "resellers":
-        is_exclusive_admin = False
-        is_exclusive_admin_bot = False
-        allowed_resellers = [int(x) for x in request.form.getlist("allowed_resellers") if str(x).isdigit()]
-        is_exclusive_reseller = True
-    elif target_type == "all":
-        is_exclusive_admin = False
-        is_exclusive_admin_bot = False
-        allowed_resellers = []
-        is_exclusive_reseller = False
-    else:
-        is_exclusive_admin = request.form.get("is_exclusive_admin") in ("on", "1", "true")
-        allowed_resellers = None
-
     update_kwargs = {
         "name": name,
         "price": price,
         "data_limit": data_limit,
         "duration": duration,
         "is_active": is_active,
-        "is_exclusive_admin": is_exclusive_admin,
-        "is_exclusive_admin_bot": is_exclusive_admin_bot,
         "plan_icon": plan_icon,
     }
-    if allowed_resellers is not None:
-        update_kwargs["allowed_resellers"] = allowed_resellers
-        update_kwargs["is_exclusive_reseller"] = is_exclusive_reseller
+
+    has_channel_inputs = any(k in request.form for k in ("show_in_admin_bot", "show_in_admin_panel", "show_in_reseller_bot", "show_in_reseller_panel"))
+    if has_channel_inputs:
+        update_kwargs["show_in_admin_bot"] = request.form.get("show_in_admin_bot") in ("1", "true", "on")
+        update_kwargs["show_in_admin_panel"] = request.form.get("show_in_admin_panel") in ("1", "true", "on")
+        update_kwargs["show_in_reseller_bot"] = request.form.get("show_in_reseller_bot") in ("1", "true", "on")
+        update_kwargs["show_in_reseller_panel"] = request.form.get("show_in_reseller_panel") in ("1", "true", "on")
+        reseller_scope = request.form.get("reseller_scope", "all")
+        update_kwargs["reseller_scope"] = reseller_scope
+        if reseller_scope == "selected":
+            update_kwargs["allowed_resellers"] = [int(x) for x in request.form.getlist("allowed_resellers") if str(x).isdigit()]
+        else:
+            update_kwargs["allowed_resellers"] = []
+    else:
+        target_type = request.form.get("target_type")
+        if target_type == "admin":
+            update_kwargs["show_in_admin_bot"] = False
+            update_kwargs["show_in_admin_panel"] = True
+            update_kwargs["show_in_reseller_bot"] = False
+            update_kwargs["show_in_reseller_panel"] = False
+            update_kwargs["allowed_resellers"] = []
+            update_kwargs["reseller_scope"] = "selected"
+        elif target_type == "admin_bot":
+            update_kwargs["show_in_admin_bot"] = True
+            update_kwargs["show_in_admin_panel"] = True
+            update_kwargs["show_in_reseller_bot"] = False
+            update_kwargs["show_in_reseller_panel"] = False
+            update_kwargs["allowed_resellers"] = []
+            update_kwargs["reseller_scope"] = "selected"
+        elif target_type == "resellers":
+            update_kwargs["show_in_admin_bot"] = False
+            update_kwargs["show_in_admin_panel"] = True
+            update_kwargs["show_in_reseller_bot"] = True
+            update_kwargs["show_in_reseller_panel"] = True
+            update_kwargs["allowed_resellers"] = [int(x) for x in request.form.getlist("allowed_resellers") if str(x).isdigit()]
+            update_kwargs["reseller_scope"] = "selected"
+        elif target_type == "resellers_panel_only":
+            update_kwargs["show_in_admin_bot"] = False
+            update_kwargs["show_in_admin_panel"] = True
+            update_kwargs["show_in_reseller_bot"] = False
+            update_kwargs["show_in_reseller_panel"] = True
+            update_kwargs["allowed_resellers"] = [int(x) for x in request.form.getlist("allowed_resellers") if str(x).isdigit()]
+            update_kwargs["reseller_scope"] = "selected"
+        elif target_type == "all":
+            update_kwargs["show_in_admin_bot"] = True
+            update_kwargs["show_in_admin_panel"] = True
+            update_kwargs["show_in_reseller_bot"] = True
+            update_kwargs["show_in_reseller_panel"] = True
+            update_kwargs["allowed_resellers"] = []
+            update_kwargs["reseller_scope"] = "all"
+        elif "is_exclusive_admin" in request.form:
+            update_kwargs["is_exclusive_admin"] = request.form.get("is_exclusive_admin") in ("on", "1", "true")
 
     if new_plan_id and new_plan_id != plan_id:
         update_kwargs["new_plan_id"] = new_plan_id
@@ -13444,8 +13512,11 @@ def reseller_cards():
             role_type = request.form.get("role_type", "") # "default", "backup", "normal"
             is_default = 1 if role_type == "default" else 0
             is_backup = 1 if role_type == "backup" else 0
-            db.set_card_role(card_id, owner_type="reseller", owner_id=reseller_id, is_default=is_default, is_backup=is_backup)
-            flash("نقش کارت (پیش‌فرض / پشتیبان) با موفقیت بروزرسانی شد.", "success")
+            res = db.set_card_role(card_id, role=role_type, owner_type="reseller", reseller_id=reseller_id, owner_id=reseller_id, is_default=is_default, is_backup=is_backup)
+            if res.get("success"):
+                flash("نقش کارت (پیش‌فرض / پشتیبان) با موفقیت بروزرسانی شد.", "success")
+            else:
+                flash(f"خطا در بروزرسانی نقش کارت: {res.get('error', 'نامشخص')}", "danger")
         elif action == "card_edit":
             card_id = int(request.form.get("card_id", 0))
             card_num = request.form.get("card_number", "").strip()
@@ -13602,15 +13673,18 @@ def reseller_card_delete(card_id):
     return redirect(url_for("reseller_cards"))
 
 
-@app.route("/reseller/card/<int:card_id>/set-role/<role_type>")
+@app.route("/reseller/card/<int:card_id>/set-role/<role_type>", methods=["GET", "POST"])
 @reseller_required
 def reseller_card_set_role(card_id, role_type):
     """تنظیم سریع نقش کارت نماینده: default, backup, normal"""
     reseller_id = session.get("reseller_id")
     is_default = 1 if role_type == "default" else 0
     is_backup = 1 if role_type == "backup" else 0
-    db.set_card_role(card_id, owner_type="reseller", owner_id=reseller_id, is_default=is_default, is_backup=is_backup)
-    flash("نقش کارت با موفقیت بروزرسانی شد.", "success")
+    res = db.set_card_role(card_id, role=role_type, owner_type="reseller", reseller_id=reseller_id, owner_id=reseller_id, is_default=is_default, is_backup=is_backup)
+    if res.get("success"):
+        flash("نقش کارت با موفقیت بروزرسانی شد.", "success")
+    else:
+        flash(f"خطا در بروزرسانی نقش کارت: {res.get('error', 'نامشخص')}", "danger")
     return redirect(url_for("reseller_cards"))
 
 
