@@ -1320,11 +1320,25 @@ class Database:
                     ref_type TEXT,
                     ref_id TEXT,
                     created_by TEXT,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    is_revoked INTEGER DEFAULT 0,
+                    revoked_at TEXT,
+                    revoked_by TEXT,
+                    revoke_reason TEXT
                 )
             """)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_card_tx_card ON card_transactions(card_id, owner_type)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_card_tx_created ON card_transactions(created_at)")
+            for col_c in [
+                "ALTER TABLE card_transactions ADD COLUMN is_revoked INTEGER DEFAULT 0",
+                "ALTER TABLE card_transactions ADD COLUMN revoked_at TEXT",
+                "ALTER TABLE card_transactions ADD COLUMN revoked_by TEXT",
+                "ALTER TABLE card_transactions ADD COLUMN revoke_reason TEXT"
+            ]:
+                try:
+                    cursor.execute(col_c)
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -2992,7 +3006,7 @@ class Database:
                             SET is_revoked=1, revoked_at=?, revoked_by=?, revoke_reason=?
                             WHERE id=?
                         """, (now_iso, reseller_name, reason, c_tx["id"]))
-                        cursor.execute("UPDATE reseller_cards SET balance = balance - ?, updated_at=? WHERE id=?", (c_tx["amount"], now_iso, c_tx["card_id"]))
+                        cursor.execute("UPDATE reseller_cards SET balance = balance - ? WHERE id=?", (c_tx["amount"], c_tx["card_id"]))
                 except Exception as e_ctx:
                     logger.warning(f"Error rolling back card transaction on reseller revoke: {e_ctx}")
 
@@ -8945,8 +8959,8 @@ class Database:
         params_tx = [reseller_id]
 
         if period_filter == "current" and last_settled:
-            date_cond_rtx = " AND created_at >= ?"
-            date_cond_tx = " AND created_at >= ?"
+            date_cond_rtx = " AND created_at > ? AND type != 'settlement'"
+            date_cond_tx = " AND created_at > ?"
             params_rtx.append(last_settled)
             params_tx.append(last_settled)
 
