@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+    <defs>
+        <linearGradient id="bg_grad_aurora_3304" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#134e4a" />
+            <stop offset="60%" stop-color="#0d9488" />
+            <stop offset="100%" stop-color="#2dd4bf" />
+        </linearGradient>
+        <radialGradient id="specular_3304" cx="35%" cy="30%" r="60%">
+            <stop offset="0%" stop-color="#ffffff" stop-opacity="0.35" />
+            <stop offset="100%" stop-color="#000000" stop-opacity="0.2" />
+        </radialGradient>
+        <filter id="glow_3304" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="2" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+        <linearGradient id="metal_grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#f8fafc" />
+            <stop offset="50%" stop-color="#cbd5e1" />
+            <stop offset="100%" stop-color="#64748b" />
+        </linearGradient>
+    </defs>
+    
+    <!-- پس‌زمینه دایره‌ای با سایه ملایم -->
+    <circle cx="60" cy="60" r="58" fill="url(#bg_grad_aurora_3304)" />
+    <circle cx="60" cy="60" r="58" fill="url(#specular_3304)" />
+    
+    <!-- حلقه حاشیه مدرن نئونی -->
+    <circle cx="60" cy="60" r="56" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-opacity="0.25" />
+
+    <!-- محتوای کاراکتر -->
+    
+        <!-- هودی و لباس تیره -->
+        <path d="M 28 92 C 40 76 80 76 92 92 L 98 118 L 22 118 Z" fill="#090d16" />
+        <!-- نقاب و سر -->
+        <circle cx="60" cy="54" r="26" fill="#1e293b" />
+        <!-- ماسک تهویه‌دار -->
+        <path d="M 40 56 L 60 76 L 80 56 Z" fill="#0f172a" stroke="#34d399" stroke-width="1.5" />
+        <line x1="52" y1="62" x2="68" y2="62" stroke="#34d399" stroke-width="1.5" />
+        <line x1="55" y1="68" x2="65" y2="68" stroke="#34d399" stroke-width="1.5" />
+        <!-- چشم‌های خشن نئونی -->
+        <polygon points="44,48 54,51 44,53" fill="#34d399" />
+        <polygon points="76,48 66,51 76,53" fill="#34d399" />
+        <circle cx="48" cy="51" r="1.5" fill="#ffffff" />
+        <circle cx="72" cy="51" r="1.5" fill="#ffffff" />
+        
+</svg>

@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+    <defs>
+        <linearGradient id="bg_grad_gold_2265" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#78350f" />
+            <stop offset="60%" stop-color="#d97706" />
+            <stop offset="100%" stop-color="#fbbf24" />
+        </linearGradient>
+        <radialGradient id="specular_2265" cx="35%" cy="30%" r="60%">
+            <stop offset="0%" stop-color="#ffffff" stop-opacity="0.35" />
+            <stop offset="100%" stop-color="#000000" stop-opacity="0.2" />
+        </radialGradient>
+        <filter id="glow_2265" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="2" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+        <linearGradient id="metal_grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#f8fafc" />
+            <stop offset="50%" stop-color="#cbd5e1" />
+            <stop offset="100%" stop-color="#64748b" />
+        </linearGradient>
+    </defs>
+    
+    <!-- پس‌زمینه دایره‌ای با سایه ملایم -->
+    <circle cx="60" cy="60" r="58" fill="url(#bg_grad_gold_2265)" />
+    <circle cx="60" cy="60" r="58" fill="url(#specular_2265)" />
+    
+    <!-- حلقه حاشیه مدرن نئونی -->
+    <circle cx="60" cy="60" r="56" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-opacity="0.25" />
+
+    <!-- محتوای کاراکتر -->
+    
+        <!-- گوش‌های هندسی -->
+        <polygon points="36,44 26,18 50,30" fill="#f97316" stroke="#ffffff" stroke-width="1" />
+        <polygon points="84,44 94,18 70,30" fill="#f97316" stroke="#ffffff" stroke-width="1" />
+        <polygon points="36,40 30,24 46,32" fill="#fed7aa" />
+        <polygon points="84,40 90,24 74,32" fill="#fed7aa" />
+        
+        <!-- سر -->
+        <circle cx="60" cy="58" r="26" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5" />
+        
+        <!-- چشم‌ها -->
+        <ellipse cx="48" cy="54" rx="5" ry="7" fill="#0f172a" />
+        <ellipse cx="72" cy="54" rx="5" ry="7" fill="#0f172a" />
+        <circle cx="50" cy="52" r="2.5" fill="#38bdf8" />
+        <circle cx="74" cy="52" r="2.5" fill="#38bdf8" />
+        <circle cx="51" cy="50" r="1" fill="#ffffff" />
+        <circle cx="75" cy="50" r="1" fill="#ffffff" />
+        
+        <!-- بینی و سبیل -->
+        <polygon points="60,63 56,60 64,60" fill="#e11d48" />
+        <line x1="34" y1="62" x2="48" y2="63" stroke="#64748b" stroke-width="1.5" stroke-linecap="round" />
+        <line x1="34" y1="67" x2="48" y2="66" stroke="#64748b" stroke-width="1.5" stroke-linecap="round" />
+        <line x1="86" y1="62" x2="72" y2="63" stroke="#64748b" stroke-width="1.5" stroke-linecap="round" />
+        <line x1="86" y1="67" x2="72" y2="66" stroke="#64748b" stroke-width="1.5" stroke-linecap="round" />
+        
+</svg>

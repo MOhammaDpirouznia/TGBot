@@ -34,5 +34,20 @@
     "description": "۱۸۰ گیگ | ۳۰ روز",
     "is_active": true,
     "created_at": "2026-08-28T11:30:27.200799+03:30"
+  },
+  "plan_5": {
+    "name": "پلن تست اختصاصی ربات و پنل مدیریت",
+    "price": 99000,
+    "data_limit": 25,
+    "duration": 30,
+    "description": "25 گیگ | 30 روز",
+    "is_active": true,
+    "is_exclusive_admin": false,
+    "is_exclusive_admin_bot": true,
+    "is_exclusive_reseller": false,
+    "allowed_resellers": [],
+    "plan_icon": "fas fa-robot",
+    "created_at": "2026-09-10T03:43:39.305453+03:30",
+    "updated_at": "2026-09-10T03:43:40.273296+03:30"
   }
 }

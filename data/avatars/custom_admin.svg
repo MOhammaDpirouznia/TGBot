@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+    <defs>
+        <linearGradient id="bg_grad_neon_2711" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#7928ca" />
+            <stop offset="60%" stop-color="#ff0080" />
+            <stop offset="100%" stop-color="#9333ea" />
+        </linearGradient>
+        <radialGradient id="specular_2711" cx="35%" cy="30%" r="60%">
+            <stop offset="0%" stop-color="#ffffff" stop-opacity="0.35" />
+            <stop offset="100%" stop-color="#000000" stop-opacity="0.2" />
+        </radialGradient>
+        <filter id="glow_2711" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="2" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+        <linearGradient id="metal_grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#f8fafc" />
+            <stop offset="50%" stop-color="#cbd5e1" />
+            <stop offset="100%" stop-color="#64748b" />
+        </linearGradient>
+    </defs>
+    
+    <!-- پس‌زمینه دایره‌ای با سایه ملایم -->
+    <circle cx="60" cy="60" r="58" fill="url(#bg_grad_neon_2711)" />
+    <circle cx="60" cy="60" r="58" fill="url(#specular_2711)" />
+    
+    <!-- حلقه حاشیه مدرن نئونی -->
+    <circle cx="60" cy="60" r="56" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-opacity="0.25" />
+
+    <!-- محتوای کاراکتر -->
+    
+        <!-- کلاه و لباس فضانوردی -->
+        <path d="M 30 92 C 42 78 78 78 90 92 L 96 118 L 24 118 Z" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.5" />
+        <circle cx="60" cy="52" r="30" fill="#f8fafc" stroke="#cbd5e1" stroke-width="2" />
+        <!-- ویزور طلایی/نئونی شیشه‌ای -->
+        <ellipse cx="60" cy="52" rx="22" ry="17" fill="#0f172a" />
+        <ellipse cx="60" cy="52" rx="20" ry="15" fill="url(#bg_grad_neon_2711)" opacity="0.85" />
+        <path d="M 45 42 Q 60 36 75 42" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.6" />
+        <circle cx="70" cy="46" r="2" fill="#ffffff" opacity="0.8" />
+        
+</svg>

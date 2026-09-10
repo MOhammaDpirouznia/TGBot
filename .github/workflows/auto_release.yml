@@ -1,0 +1,119 @@
+name: "Automatic Release & Versioning"
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: 'نوع ارتقای نسخه (Version Bump Type)'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch (مثلاً 1.0.2 -> 1.0.3)
+          - minor (مثلاً 1.0.2 -> 1.1.0)
+          - major (مثلاً 1.0.2 -> 2.0.0)
+      custom_version:
+        description: 'یا وارد کردن نسخه دلخواه (اختیاری، مثلاً v1.3.8)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate Next Version
+        id: calc_ver
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          INPUT_BUMP: ${{ github.event.inputs.version_bump }}
+          CUSTOM_VER: ${{ github.event.inputs.custom_version }}
+        run: |
+          python3 - << 'EOF'
+          import subprocess, re, sys, os
+
+          custom_ver = os.getenv("CUSTOM_VER", "").strip()
+          if custom_ver:
+              new_version = custom_ver if custom_ver.startswith("v") else f"v{custom_ver}"
+              print(f"Using custom version: {new_version}")
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write(f"new_tag={new_version}\n")
+              sys.exit(0)
+
+          # دریافت تمامی تگ‌های موجود در ریپازیتوری
+          subprocess.run(["git", "fetch", "--tags"], check=False)
+          result = subprocess.run(["git", "tag", "-l"], capture_output=True, text=True)
+          tags = [t.strip() for t in result.stdout.splitlines() if t.strip()]
+
+          def parse_ver(t):
+              m = re.search(r'v?(\d+)\.(\d+)(?:\.(\d+))?', t)
+              if m:
+                  return (int(m.group(1)), int(m.group(2)), int(m.group(3) or 0))
+              return (0, 0, 0)
+
+          valid_tags = [t for t in tags if parse_ver(t) != (0, 0, 0)]
+          if valid_tags:
+              valid_tags.sort(key=parse_ver, reverse=True)
+              latest_tag = valid_tags[0]
+          else:
+              latest_tag = None
+
+          commit_msg = os.getenv("COMMIT_MSG", "").lower()
+          input_bump = os.getenv("INPUT_BUMP", "").lower()
+
+          if "major" in input_bump or "[major]" in commit_msg or "breaking change" in commit_msg:
+              bump_type = "major"
+          elif "minor" in input_bump or "[minor]" in commit_msg or commit_msg.startswith("feat"):
+              bump_type = "minor"
+          else:
+              bump_type = "patch"
+
+          if latest_tag:
+              m = re.search(r'v?(\d+)\.(\d+)(?:\.(\d+))?', latest_tag)
+              major = int(m.group(1))
+              minor = int(m.group(2))
+              patch = int(m.group(3) or 0)
+              has_v = latest_tag.startswith("v")
+          else:
+              major, minor, patch = 1, 0, 2
+              has_v = True
+
+          if bump_type == "major":
+              major += 1
+              minor = 0
+              patch = 0
+          elif bump_type == "minor":
+              minor += 1
+              patch = 0
+          else:
+              patch += 1
+
+          prefix = "v" if has_v else "v"
+          new_version = f"{prefix}{major}.{minor}.{patch}"
+          print(f"Latest tag detected: {latest_tag}")
+          print(f"Calculated next version: {new_version} ({bump_type})")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"new_tag={new_version}\n")
+          EOF
+
+      - name: Create GitHub Release and Tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.calc_ver.outputs.new_tag }}
+        run: |
+          echo "Creating Release and Tag: $TAG"
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --generate-notes
