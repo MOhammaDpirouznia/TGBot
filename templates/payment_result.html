@@ -76,13 +76,19 @@
         <div class="status-icon failed">
             <i class="fas fa-times-circle"></i>
         </div>
-        <h4 class="fw-bold text-danger mb-1">تراکنش ناموفق</h4>
-        <p class="text-muted small mb-0">{{ message or 'پرداخت توسط درگاه یا کاربر لغو گردید.' }}</p>
+        <h4 class="fw-bold text-danger mb-1">پرداخت ناموفق بود</h4>
+        <p class="text-muted small mb-0">
+            {% if order_id %}
+            پرداخت شما برای شماره سفارش <span class="font-monospace fw-bold text-dark">{{ order_id }}</span> ناموفق بود یا لغو گردید.
+            {% else %}
+            {{ message or 'پرداخت توسط درگاه یا کاربر لغو گردید.' }}
+            {% endif %}
+        </p>
     </div>
     {% endif %}
 
     <div class="px-4 pb-4">
-        <div class="bg-light p-3 rounded-4 mb-4">
+        <div class="bg-light p-3 rounded-4 mb-3">
             <div class="detail-row">
                 <span class="text-muted">شماره سفارش:</span>
                 <span class="font-monospace fw-bold">{{ order_id or '-' }}</span>
@@ -105,21 +111,32 @@
                 <span class="font-monospace fw-bold text-success">{{ ref_id }}</span>
             </div>
             {% endif %}
+            {% if not success and message and order_id and ('ناموفق' not in message or order_id not in message) %}
+            <div class="detail-row">
+                <span class="text-muted">وضعیت:</span>
+                <span class="text-danger small fw-semibold">{{ message }}</span>
+            </div>
+            {% endif %}
         </div>
+
+        {% if not success %}
+        <div class="alert alert-warning border-0 rounded-3 small p-2 mb-3 text-center">
+            <i class="fas fa-info-circle me-1"></i>
+            در صورت کسر وجه از حساب، طبق قوانین بانکی ظرف حداکثر ۷۲ ساعت توسط بانک به حساب شما مسترد خواهد شد.
+        </div>
+        {% endif %}
 
         <div class="d-grid gap-2">
             {% if portal_url %}
             <a href="{{ portal_url }}" class="btn btn-success btn-lg rounded-pill fw-bold shadow-sm">
                 <i class="fas fa-arrow-right me-1"></i> بازگشت به پورتال مشتری
             </a>
-            {% endif %}
-            {% if reseller_portal_url %}
+            {% elif reseller_portal_url %}
             <a href="{{ reseller_portal_url }}" class="btn btn-primary btn-lg rounded-pill fw-bold shadow-sm">
                 <i class="fas fa-briefcase me-1"></i> بازگشت به پنل نمایندگی
             </a>
-            {% endif %}
-            {% if bot_username %}
-            <a href="https://t.me/{{ bot_username.lstrip('@') }}" class="btn {% if portal_url or reseller_portal_url %}btn-outline-primary{% else %}btn-primary{% endif %} btn-lg rounded-pill fw-bold">
+            {% elif bot_username %}
+            <a href="https://t.me/{{ bot_username.lstrip('@') }}" class="btn btn-primary btn-lg rounded-pill fw-bold">
                 <i class="fab fa-telegram me-1"></i> بازگشت به ربات تلگرام
             </a>
             {% endif %}

@@ -967,6 +967,28 @@
             <p class="text-secondary small">{{ portal_subtitle }}</p>
         </div>
 
+        {% set failed_order = request.args.get('failed_order') %}
+        {% if failed_order %}
+        <div class="alert alert-danger rounded-4 border-0 shadow-sm mb-4 d-flex align-items-center gap-3 p-3">
+            <div class="fs-2 text-danger"><i class="fas fa-circle-xmark"></i></div>
+            <div>
+                <div class="fw-bold fs-6 mb-1">پرداخت آنلاین ناموفق بود</div>
+                <div class="small opacity-90">پرداخت شما برای شماره سفارش <span class="font-monospace fw-bold">{{ failed_order }}</span> ناموفق بود یا لغو گردید. هیچ تغییری در اعتبار یا تاریخ اشتراک شما ایجاد نشد.</div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% set success_order = request.args.get('success_order') %}
+        {% if success_order %}
+        <div class="alert alert-success rounded-4 border-0 shadow-sm mb-4 d-flex align-items-center gap-3 p-3">
+            <div class="fs-2 text-success"><i class="fas fa-circle-check"></i></div>
+            <div>
+                <div class="fw-bold fs-6 mb-1">پرداخت با موفقیت انجام شد</div>
+                <div class="small opacity-90">سفارش شما با شناسه <span class="font-monospace fw-bold">{{ success_order }}</span> تایید شد و اشتراک شما با موفقیت تمدید گردید.</div>
+            </div>
+        </div>
+        {% endif %}
+
     {% set actual_sub_url = sub_url or sub_link %}
 
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
