@@ -1252,12 +1252,76 @@ class Database:
             "ALTER TABLE accounting_records ADD COLUMN edited_at TEXT",
             "ALTER TABLE admin_debts ADD COLUMN is_edited INTEGER DEFAULT 0",
             "ALTER TABLE admin_debts ADD COLUMN edited_by TEXT",
-            "ALTER TABLE admin_debts ADD COLUMN edited_at TEXT"
+            "ALTER TABLE admin_debts ADD COLUMN edited_at TEXT",
+            # ستون‌های ارتقای سیستم مدیریت کارت‌ها و حسابداری شناور
+            "ALTER TABLE bank_cards ADD COLUMN is_default INTEGER DEFAULT 0",
+            "ALTER TABLE bank_cards ADD COLUMN is_backup INTEGER DEFAULT 0",
+            "ALTER TABLE bank_cards ADD COLUMN balance INTEGER DEFAULT 0",
+            "ALTER TABLE bank_cards ADD COLUMN initial_balance INTEGER DEFAULT 0",
+            "ALTER TABLE bank_cards ADD COLUMN shaba_number TEXT",
+            "ALTER TABLE bank_cards ADD COLUMN account_number TEXT",
+            "ALTER TABLE bank_cards ADD COLUMN notes TEXT",
+            "ALTER TABLE reseller_cards ADD COLUMN is_default INTEGER DEFAULT 0",
+            "ALTER TABLE reseller_cards ADD COLUMN is_backup INTEGER DEFAULT 0",
+            "ALTER TABLE reseller_cards ADD COLUMN balance INTEGER DEFAULT 0",
+            "ALTER TABLE reseller_cards ADD COLUMN initial_balance INTEGER DEFAULT 0",
+            "ALTER TABLE reseller_cards ADD COLUMN shaba_number TEXT",
+            "ALTER TABLE reseller_cards ADD COLUMN account_number TEXT",
+            "ALTER TABLE reseller_cards ADD COLUMN notes TEXT"
         ]:
             try:
                 cursor.execute(col_sql)
             except Exception:
                 pass
+
+        # جدول دفتر ریزتراکنش‌های تفکیکی کارت‌های بانکی (مدیریت و نمایندگان)
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS card_transactions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    card_id INTEGER NOT NULL,
+                    owner_type TEXT DEFAULT 'admin',
+                    reseller_id INTEGER DEFAULT 0,
+                    type TEXT NOT NULL,
+                    amount INTEGER NOT NULL,
+                    balance_after INTEGER DEFAULT 0,
+                    category TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    tracking_code TEXT,
+                    ref_type TEXT,
+                    ref_id TEXT,
+                    created_by TEXT,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_card_tx_card ON card_transactions(card_id, owner_type)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_card_tx_created ON card_transactions(created_at)")
+        except Exception:
+            pass
+
+        # جدول صندوق نقدی و دفتر تسویه نقدی مدیریت و نمایندگان
+        try:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS cash_desk_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    owner_type TEXT DEFAULT 'admin',
+                    owner_id INTEGER DEFAULT 0,
+                    type TEXT NOT NULL,
+                    amount INTEGER NOT NULL,
+                    customer_name TEXT,
+                    plan_name TEXT,
+                    description TEXT,
+                    is_settled INTEGER DEFAULT 0,
+                    settled_at TEXT,
+                    settled_by TEXT,
+                    created_by TEXT,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_cash_desk_owner ON cash_desk_logs(owner_type, owner_id)")
+        except Exception:
+            pass
 
         try:
             cursor.execute("""
@@ -2542,25 +2606,47 @@ class Database:
         finally:
             conn.close()
 
-    def update_transaction(self, order_id, status, ref_id=None):
-        """بروزرسانی وضعیت تراکنش"""
+    def update_transaction(self, order_id, status: str = None, ref_id: str = None, tracking_code: str = None, **kwargs):
+        """بروزرسانی وضعیت و مشخصات تراکنش (منعطف و جامع)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
 
+        updates = []
+        params = []
+
+        if status is not None:
+            updates.append("status = ?")
+            params.append(status)
+
+        if ref_id is not None:
+            updates.append("ref_id = ?")
+            params.append(str(ref_id))
+
+        if tracking_code is not None:
+            updates.append("tracking_code = ?")
+            params.append(str(tracking_code))
+
+        allowed_columns = {
+            "account_name", "account_comment", "processed_by", "processed_at",
+            "gateway", "amount", "plan_name", "user_id", "reseller_id",
+            "is_renewal", "renew_sub_id", "is_debt_settlement"
+        }
+        for k, v in kwargs.items():
+            if k in allowed_columns and v is not None:
+                updates.append(f"{k} = ?")
+                params.append(v)
+
+        updates.append("updated_at = ?")
+        params.append(now)
+
+        params.append(order_id)
+
         try:
-            if ref_id:
-                cursor.execute("""
-                    UPDATE transactions SET status = ?, ref_id = ?, updated_at = ?
-                    WHERE order_id = ?
-                """, (status, ref_id, now, order_id))
-            else:
-                cursor.execute("""
-                    UPDATE transactions SET status = ?, updated_at = ?
-                    WHERE order_id = ?
-                """, (status, now, order_id))
+            sql = f"UPDATE transactions SET {', '.join(updates)} WHERE order_id = ?"
+            cursor.execute(sql, tuple(params))
             conn.commit()
-            logger.info(f"Transaction {order_id} updated to {status}")
+            logger.info(f"Transaction {order_id} updated: {updates}")
             return {"success": True}
         except Exception as e:
             logger.error(f"Error updating transaction {order_id}: {e}")
@@ -10733,7 +10819,7 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("SELECT * FROM reseller_cards WHERE reseller_id = ? ORDER BY id DESC", (reseller_id,))
+            cursor.execute("SELECT * FROM reseller_cards WHERE reseller_id = ? ORDER BY is_default DESC, is_backup DESC, id DESC", (reseller_id,))
             return [dict(r) for r in cursor.fetchall()]
         except Exception as e:
             logger.error(f"Error getting reseller cards: {e}")
@@ -10741,23 +10827,28 @@ class Database:
         finally:
             conn.close()
 
-    def get_active_reseller_card(self, reseller_id: int):
-        """دریافت کارت بانکی فعال نماینده جهت پرداخت"""
+    def get_active_reseller_card(self, reseller_id: int, incoming_amount: int = 0):
+        """دریافت کارت بانکی فعال نماینده جهت پرداخت با روتاتور هوشمند پیش‌فرض و پشتیبان بر اساس سقف روزانه"""
+        best = self.get_best_active_card(owner_type="reseller", reseller_id=reseller_id, incoming_amount=incoming_amount)
+        if best:
+            return best
+
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("SELECT * FROM reseller_cards WHERE reseller_id = ? AND is_active = 1 ORDER BY id DESC LIMIT 1", (reseller_id,))
-            row = cursor.fetchone()
-            if row:
-                return dict(row)
-            # بازگشت به کارت ثبت‌شده در پروفایل اصلی
+            # بازگشت به کارت ثبت‌شده در پروفایل اصلی نماینده
             cursor.execute("SELECT card_number, card_holder, bank_name FROM resellers WHERE id = ?", (reseller_id,))
             r_row = cursor.fetchone()
             if r_row and r_row["card_number"]:
                 return {
+                    "id": 0,
                     "card_number": r_row["card_number"],
                     "card_holder": r_row.get("card_holder") or "",
-                    "bank_name": r_row.get("bank_name") or "بانک"
+                    "bank_name": r_row.get("bank_name") or "بانک",
+                    "daily_limit": 50000000,
+                    "is_default": 1,
+                    "is_backup": 0,
+                    "balance": 0
                 }
             return None
         except Exception as e:
@@ -10766,17 +10857,49 @@ class Database:
         finally:
             conn.close()
 
-    def add_reseller_card(self, reseller_id: int, card_number: str, card_holder: str, bank_name: str, daily_limit: int = 50000000) -> dict:
-        """افزودن کارت بانکی جدید برای نماینده"""
+    def add_reseller_card(self, reseller_id: int, card_number: str, card_holder: str, bank_name: str,
+                          daily_limit: int = 50000000, is_default: int = 0, is_backup: int = 0,
+                          initial_balance: int = 0, shaba_number: str = None,
+                          account_number: str = None, notes: str = None) -> dict:
+        """افزودن کارت بانکی جدید برای نماینده با موجودی اولیه و نقش کارت"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
+            init_bal = max(0, int(initial_balance or 0))
+            def_val = 1 if is_default else 0
+            back_val = 1 if (is_backup and not def_val) else 0
+
+            # اگر کارت جدید پیش‌فرض باشد، کارت‌های قبلی را از پیش‌فرض بودن خارج می‌کنیم
+            if def_val:
+                cursor.execute("UPDATE reseller_cards SET is_default = 0 WHERE reseller_id = ?", (reseller_id,))
+            elif back_val:
+                cursor.execute("UPDATE reseller_cards SET is_backup = 0 WHERE reseller_id = ?", (reseller_id,))
+
             cursor.execute("""
-                INSERT INTO reseller_cards (reseller_id, card_number, card_holder, bank_name, daily_limit, is_active, created_at)
-                VALUES (?, ?, ?, ?, ?, 1, ?)
-            """, (reseller_id, card_number.strip(), card_holder.strip(), bank_name.strip(), daily_limit, now))
+                INSERT INTO reseller_cards (
+                    reseller_id, card_number, card_holder, bank_name, daily_limit,
+                    is_active, created_at, is_default, is_backup, balance,
+                    initial_balance, shaba_number, account_number, notes
+                ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                reseller_id, card_number.strip(), card_holder.strip(), bank_name.strip(),
+                daily_limit, now, def_val, back_val, init_bal, init_bal,
+                shaba_number.strip() if shaba_number else None,
+                account_number.strip() if account_number else None,
+                notes.strip() if notes else None
+            ))
             card_id = cursor.lastrowid
+
+            # در صورت وجود موجودی اولیه، ثبت سند افتتاحیه در دفتر ریزتراکنش‌ها
+            if init_bal > 0:
+                cursor.execute("""
+                    INSERT INTO card_transactions (
+                        card_id, owner_type, reseller_id, type, amount, balance_after,
+                        category, title, description, tracking_code, ref_type, created_by, created_at
+                    ) VALUES (?, 'reseller', ?, 'deposit', ?, ?, 'manual_deposit', 'ثبت موجودی اولیه کارت', 'افتتاح و تعیین موجودی اولیه کارت بانکی نماینده', 'INIT', 'card_init', 'system', ?)
+                """, (card_id, reseller_id, init_bal, init_bal, now))
+
             conn.commit()
             return {"success": True, "card_id": card_id}
         except Exception as e:
@@ -11130,39 +11253,76 @@ class Database:
     # ═══════════════════════════════════════════════════════════════════════
 
     def get_all_bank_cards(self):
-        """لیست تمام کارت‌های بانکی"""
+        """لیست تمام کارت‌های بانکی مدیریت مرتب‌شده بر اساس اولویت پیش‌فرض و پشتیبان"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM bank_cards ORDER BY created_at DESC")
+        cursor.execute("SELECT * FROM bank_cards ORDER BY is_default DESC, is_backup DESC, id DESC")
         rows = cursor.fetchall()
         conn.close()
         return [dict(r) for r in rows]
 
     def get_active_bank_cards(self):
-        """لیست کارت‌های بانکی فعال"""
+        """لیست کارت‌های بانکی فعال مدیریت"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM bank_cards WHERE is_active=1 ORDER BY created_at DESC")
+        cursor.execute("SELECT * FROM bank_cards WHERE is_active=1 ORDER BY is_default DESC, is_backup DESC, id DESC")
         rows = cursor.fetchall()
         conn.close()
         return [dict(r) for r in rows]
 
-    def add_bank_card(self, card_number: str, card_holder: str, bank_name: str, daily_limit: int = 50000000):
-        """افزودن کارت بانکی جدید"""
+    def add_bank_card(self, card_number: str, card_holder: str, bank_name: str,
+                      daily_limit: int = 50000000, is_default: int = 0, is_backup: int = 0,
+                      initial_balance: int = 0, shaba_number: str = None,
+                      account_number: str = None, notes: str = None):
+        """افزودن کارت بانکی جدید برای مدیریت با موجودی اولیه و نقش کارت"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
-        cursor.execute("""
-            INSERT INTO bank_cards (card_number, card_holder, bank_name, daily_limit, is_active, created_at)
-            VALUES (?, ?, ?, ?, 1, ?)
-        """, (card_number.strip(), card_holder.strip(), bank_name.strip(), daily_limit, now))
-        conn.commit()
-        conn.close()
         try:
-            self.export_full_backup_json()
-        except Exception:
-            pass
-        return {"success": True}
+            init_bal = max(0, int(initial_balance or 0))
+            def_val = 1 if is_default else 0
+            back_val = 1 if (is_backup and not def_val) else 0
+
+            # اگر کارت جدید پیش‌فرض باشد، کارت‌های قبلی را از پیش‌فرض خارج می‌کنیم
+            if def_val:
+                cursor.execute("UPDATE bank_cards SET is_default = 0")
+            elif back_val:
+                cursor.execute("UPDATE bank_cards SET is_backup = 0")
+
+            cursor.execute("""
+                INSERT INTO bank_cards (
+                    card_number, card_holder, bank_name, daily_limit, is_active,
+                    created_at, is_default, is_backup, balance, initial_balance,
+                    shaba_number, account_number, notes
+                ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                card_number.strip(), card_holder.strip(), bank_name.strip(),
+                daily_limit, now, def_val, back_val, init_bal, init_bal,
+                shaba_number.strip() if shaba_number else None,
+                account_number.strip() if account_number else None,
+                notes.strip() if notes else None
+            ))
+            card_id = cursor.lastrowid
+
+            # ثبت سند افتتاحیه در صورت وجود موجودی اولیه
+            if init_bal > 0:
+                cursor.execute("""
+                    INSERT INTO card_transactions (
+                        card_id, owner_type, reseller_id, type, amount, balance_after,
+                        category, title, description, tracking_code, ref_type, created_by, created_at
+                    ) VALUES (?, 'admin', 0, 'deposit', ?, ?, 'manual_deposit', 'ثبت موجودی اولیه کارت', 'افتتاح و تعیین موجودی اولیه کارت بانکی مدیریت', 'INIT', 'card_init', 'system', ?)
+                """, (card_id, init_bal, init_bal, now))
+
+            conn.commit()
+            try:
+                self.export_full_backup_json()
+            except Exception:
+                pass
+            return {"success": True, "card_id": card_id}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
 
     def toggle_bank_card(self, card_id: int, is_active: bool):
         """فعال یا غیرفعال کردن کارت"""
@@ -11189,6 +11349,423 @@ class Database:
         except Exception:
             pass
         return {"success": True}
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # سیستم جامع حسابداری شناور و روتاتور هوشمند کارت‌ها (Card Rotator & Ledger)
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def get_card_daily_volume(self, card_id: int, owner_type: str = "admin", date_str: str = None) -> int:
+        """محاسبه مجموع واریزی‌های یک کارت در روز جاری جهت کنترل سقف روزانه"""
+        if not date_str:
+            date_str = get_now_naive().strftime("%Y-%m-%d")
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT COALESCE(SUM(amount), 0) FROM card_transactions 
+                WHERE card_id = ? AND owner_type = ? AND type = 'deposit' AND created_at LIKE ?
+            """, (card_id, owner_type, f"{date_str}%"))
+            return cursor.fetchone()[0] or 0
+        finally:
+            conn.close()
+
+    def get_best_active_card(self, owner_type: str = "admin", reseller_id: int = 0, incoming_amount: int = 0) -> Optional[dict]:
+        """
+        انتخاب هوشمند کارت بانکی جهت ارسال به مشتری:
+        ۱. اولویت اول: کارت پیش‌فرض (در صورت داشتن ظرفیت سقف روزانه)
+        ۲. اولویت دوم: کارت پشتیبان (در صورت پر شدن سقف کارت پیش‌فرض)
+        ۳. اولویت سوم: سایر کارت‌های فعال با ظرفیت باقیمانده
+        ۴. برگشت به کارت پیش‌فرض/پشتیبان در صورت پر بودن تمام سقف‌ها
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            today_str = get_now_naive().strftime("%Y-%m-%d")
+            if owner_type == "admin":
+                cursor.execute("SELECT * FROM bank_cards WHERE is_active = 1 ORDER BY is_default DESC, is_backup DESC, id ASC")
+            else:
+                cursor.execute("SELECT * FROM reseller_cards WHERE reseller_id = ? AND is_active = 1 ORDER BY is_default DESC, is_backup DESC, id ASC", (reseller_id,))
+            
+            rows = [dict(r) for r in cursor.fetchall()]
+            if not rows:
+                if owner_type == "reseller":
+                    cursor.execute("SELECT card_number, card_holder, bank_name FROM resellers WHERE id = ?", (reseller_id,))
+                    r_row = cursor.fetchone()
+                    if r_row and r_row["card_number"]:
+                        return {
+                            "id": 0,
+                            "card_number": r_row["card_number"],
+                            "card_holder": r_row.get("card_holder") or "",
+                            "bank_name": r_row.get("bank_name") or "بانک",
+                            "daily_limit": 50000000,
+                            "is_default": 1,
+                            "is_backup": 0,
+                            "balance": 0
+                        }
+                return None
+
+            default_card = None
+            backup_card = None
+            other_eligible_cards = []
+
+            for c in rows:
+                c_id = c["id"]
+                cursor.execute("""
+                    SELECT COALESCE(SUM(amount), 0) FROM card_transactions 
+                    WHERE card_id = ? AND owner_type = ? AND type = 'deposit' AND created_at LIKE ?
+                """, (c_id, owner_type, f"{today_str}%"))
+                vol_today = cursor.fetchone()[0] or 0
+                c["daily_volume_today"] = vol_today
+                c_limit = c.get("daily_limit") or 50000000
+                has_capacity = (vol_today + incoming_amount) <= c_limit
+
+                if c.get("is_default") and not default_card:
+                    default_card = c
+                elif c.get("is_backup") and not backup_card:
+                    backup_card = c
+                else:
+                    if has_capacity:
+                        other_eligible_cards.append(c)
+
+            # ۱. بررسی کارت پیش‌فرض
+            if default_card:
+                def_limit = default_card.get("daily_limit") or 50000000
+                if (default_card["daily_volume_today"] + incoming_amount) <= def_limit:
+                    return default_card
+
+            # ۲. بررسی کارت پشتیبان (چون پیش‌فرض پر شده یا تعریف نشده)
+            if backup_card:
+                back_limit = backup_card.get("daily_limit") or 50000000
+                if (backup_card["daily_volume_today"] + incoming_amount) <= back_limit:
+                    return backup_card
+
+            # ۳. سایر کارت‌های فعال با ظرفیت آزاد
+            if other_eligible_cards:
+                return other_eligible_cards[0]
+
+            # ۴. در صورت پر بودن تمام کارت‌ها، کارت پیش‌فرض یا اولین کارت فعال را برگشت می‌دهیم
+            return default_card or backup_card or rows[0]
+        finally:
+            conn.close()
+
+    def set_card_role(self, card_id: int, role: str, owner_type: str = "admin", reseller_id: int = 0) -> dict:
+        """
+        تنظیم نقش کارت (پیش‌فرض، پشتیبان، عادی)
+        role: 'default', 'backup', 'normal'
+        """
+        table = "bank_cards" if owner_type == "admin" else "reseller_cards"
+        owner_filter = "" if owner_type == "admin" else " AND reseller_id = ?"
+        params = [reseller_id] if owner_type == "reseller" else []
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if role == "default":
+                cursor.execute(f"UPDATE {table} SET is_default = 0 WHERE 1=1 {owner_filter}", params)
+                cursor.execute(f"UPDATE {table} SET is_default = 1, is_backup = 0 WHERE id = ?", (card_id,))
+            elif role == "backup":
+                cursor.execute(f"UPDATE {table} SET is_backup = 0 WHERE 1=1 {owner_filter}", params)
+                cursor.execute(f"UPDATE {table} SET is_backup = 1, is_default = 0 WHERE id = ?", (card_id,))
+            else:  # 'normal'
+                cursor.execute(f"UPDATE {table} SET is_default = 0, is_backup = 0 WHERE id = ?", (card_id,))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def update_card_info(self, card_id: int, owner_type: str = "admin", **kwargs) -> dict:
+        """ویرایش مشخصات، اطلاعات شبا و تنظیم مانده حساب کارت"""
+        table = "bank_cards" if owner_type == "admin" else "reseller_cards"
+        allowed = ["card_number", "card_holder", "bank_name", "daily_limit", "shaba_number", "account_number", "notes", "initial_balance", "balance"]
+        updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
+        if not updates:
+            return {"success": False, "error": "فیلدی برای به‌روزرسانی ارسال نشده است."}
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            fields = ", ".join([f"{k}=?" for k in updates.keys()])
+            values = list(updates.values()) + [card_id]
+            cursor.execute(f"UPDATE {table} SET {fields} WHERE id = ?", values)
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def add_card_transaction(self, card_id: int, owner_type: str = "admin", amount: int = 0,
+                             tx_type: str = "deposit", category: str = "subscription",
+                             title: str = "", description: str = None, tracking_code: str = None,
+                             ref_type: str = None, ref_id: str = None, created_by: str = None,
+                             reseller_id: int = 0) -> dict:
+        """
+        ثبت تراکنش واریز/برداشت و به‌روزرسانی آنی مانده حساب شناور کارت
+        """
+        if not card_id or int(card_id) <= 0:
+            return {"success": False, "error": "شناسه کارت نامعتبر است."}
+
+        table = "bank_cards" if owner_type == "admin" else "reseller_cards"
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        amt = abs(int(amount or 0))
+
+        try:
+            cursor.execute(f"SELECT * FROM {table} WHERE id = ?", (card_id,))
+            card_row = cursor.fetchone()
+            if not card_row:
+                return {"success": False, "error": "کارت بانکی مورد نظر یافت نشد."}
+
+            card = dict(card_row)
+            curr_bal = int(card.get("balance") or 0)
+
+            if tx_type == "deposit":
+                new_balance = curr_bal + amt
+            else:  # withdrawal
+                new_balance = curr_bal - amt
+
+            cursor.execute(f"UPDATE {table} SET balance = ? WHERE id = ?", (new_balance, card_id))
+
+            cursor.execute("""
+                INSERT INTO card_transactions (
+                    card_id, owner_type, reseller_id, type, amount, balance_after,
+                    category, title, description, tracking_code, ref_type, ref_id,
+                    created_by, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                card_id, owner_type, reseller_id or card.get("reseller_id", 0),
+                tx_type, amt, new_balance, category,
+                title.strip() if title else ("واریز به کارت" if tx_type == "deposit" else "برداشت از کارت"),
+                description.strip() if description else None,
+                tracking_code.strip() if tracking_code else None,
+                ref_type, str(ref_id) if ref_id else None,
+                created_by or "system", now
+            ))
+            tx_id = cursor.lastrowid
+
+            # همگام‌سازی با سیستم حسابداری کل (accounting_records) برای مدیریت
+            if owner_type == "admin":
+                cat_map = {
+                    "salary": "حقوق و دستمزد",
+                    "server_cost": "سرور و زیرساخت",
+                    "bank_fee": "کارمزد بانکی",
+                    "withdrawal": "برداشت سود شخصی",
+                    "manual_deposit": "واریز متفرقه",
+                    "other": "سایر هزینه‌ها"
+                }
+                if tx_type == "withdrawal" and category in cat_map:
+                    try:
+                        cursor.execute("""
+                            INSERT INTO accounting_records 
+                            (type, category, title, amount, source, ref_type, ref_id, description, date, created_at)
+                            VALUES ('expense', ?, ?, ?, ?, 'card_tx', ?, ?, ?, ?)
+                        """, (cat_map[category], title or cat_map[category], amt, f"card_{card_id}", str(tx_id), description or f"کسر از کارت {card.get('bank_name')} ({card.get('card_number')[-4:]})", now[:10], now))
+                    except Exception as e_acc:
+                        logger.error(f"Error syncing card withdrawal to accounting: {e_acc}")
+                elif tx_type == "deposit" and category == "manual_deposit":
+                    try:
+                        cursor.execute("""
+                            INSERT INTO accounting_records 
+                            (type, category, title, amount, source, ref_type, ref_id, description, date, created_at)
+                            VALUES ('income', 'واریز دستی/متفرقه', ?, ?, ?, 'card_tx', ?, ?, ?, ?)
+                        """, (title or "واریز به حساب", amt, f"card_{card_id}", str(tx_id), description, now[:10], now))
+                    except Exception as e_acc:
+                        logger.error(f"Error syncing card deposit to accounting: {e_acc}")
+
+            conn.commit()
+            return {"success": True, "transaction_id": tx_id, "new_balance": new_balance}
+        except Exception as e:
+            logger.error(f"Error adding card transaction: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_card_details_and_transactions(self, card_id: int, owner_type: str = "admin", limit: int = 150, category: str = None, tx_type: str = None) -> dict:
+        """دریافت جزییات کارت، مانده شناور، گردش روز و ریزتراکنش‌های تفکیکی"""
+        table = "bank_cards" if owner_type == "admin" else "reseller_cards"
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(f"SELECT * FROM {table} WHERE id = ?", (card_id,))
+            card_row = cursor.fetchone()
+            if not card_row:
+                return {"success": False, "error": "کارت یافت نشد."}
+            card = dict(card_row)
+
+            query = "SELECT * FROM card_transactions WHERE card_id = ? AND owner_type = ?"
+            q_params = [card_id, owner_type]
+            if category and category != "all":
+                query += " AND category = ?"
+                q_params.append(category)
+            if tx_type and tx_type != "all":
+                query += " AND type = ?"
+                q_params.append(tx_type)
+            query += " ORDER BY id DESC LIMIT ?"
+            q_params.append(limit)
+
+            cursor.execute(query, q_params)
+            tx_rows = [dict(r) for r in cursor.fetchall()]
+
+            today_str = get_now_naive().strftime("%Y-%m-%d")
+            cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM card_transactions WHERE card_id = ? AND owner_type = ? AND type = 'deposit'", (card_id, owner_type))
+            total_deposits = cursor.fetchone()[0] or 0
+
+            cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM card_transactions WHERE card_id = ? AND owner_type = ? AND type = 'withdrawal'", (card_id, owner_type))
+            total_withdrawals = cursor.fetchone()[0] or 0
+
+            cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM card_transactions WHERE card_id = ? AND owner_type = ? AND type = 'deposit' AND created_at LIKE ?", (card_id, owner_type, f"{today_str}%"))
+            today_volume = cursor.fetchone()[0] or 0
+
+            daily_limit = card.get("daily_limit") or 50000000
+            usage_pct = min(100.0, round((today_volume / daily_limit) * 100, 1)) if daily_limit > 0 else 0
+
+            return {
+                "success": True,
+                "card": card,
+                "transactions": tx_rows,
+                "summary": {
+                    "total_deposits": total_deposits,
+                    "total_withdrawals": total_withdrawals,
+                    "today_volume": today_volume,
+                    "balance": card.get("balance", 0),
+                    "daily_limit": daily_limit,
+                    "daily_usage_percent": usage_pct
+                }
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_cards_financial_summary(self, owner_type: str = "admin", reseller_id: int = 0) -> dict:
+        """محاسبه شاخص‌های مالی مانده شناور، کل واریزها، مخارج و صندوق نقد"""
+        table = "bank_cards" if owner_type == "admin" else "reseller_cards"
+        owner_filter = "" if owner_type == "admin" else " WHERE reseller_id = ?"
+        params = [reseller_id] if owner_type == "reseller" else []
+        today_str = get_now_naive().strftime("%Y-%m-%d")
+        month_str = get_now_naive().strftime("%Y-%m")
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(f"SELECT COALESCE(SUM(balance), 0), COUNT(*) FROM {table} {owner_filter}", params)
+            row = cursor.fetchone()
+            total_cards_balance = row[0] or 0
+            cards_count = row[1] or 0
+
+            q_dep = """
+                SELECT COALESCE(SUM(amount), 0) FROM card_transactions 
+                WHERE owner_type = ? AND (reseller_id = ? OR ? = 0) AND type = 'deposit' AND created_at LIKE ?
+            """
+            cursor.execute(q_dep, (owner_type, reseller_id, reseller_id, f"{month_str}%"))
+            month_deposits = cursor.fetchone()[0] or 0
+
+            q_with = """
+                SELECT COALESCE(SUM(amount), 0) FROM card_transactions 
+                WHERE owner_type = ? AND (reseller_id = ? OR ? = 0) AND type = 'withdrawal' AND created_at LIKE ?
+            """
+            cursor.execute(q_with, (owner_type, reseller_id, reseller_id, f"{month_str}%"))
+            month_withdrawals = cursor.fetchone()[0] or 0
+
+            q_today = """
+                SELECT COALESCE(SUM(amount), 0) FROM card_transactions 
+                WHERE owner_type = ? AND (reseller_id = ? OR ? = 0) AND type = 'deposit' AND created_at LIKE ?
+            """
+            cursor.execute(q_today, (owner_type, reseller_id, reseller_id, f"{today_str}%"))
+            today_deposits = cursor.fetchone()[0] or 0
+
+            cursor.execute("""
+                SELECT COALESCE(SUM(amount), 0) FROM cash_desk_logs 
+                WHERE owner_type = ? AND (owner_id = ? OR ? = 0) AND is_settled = 0 AND type = 'income'
+            """, (owner_type, reseller_id, reseller_id))
+            unsettled_cash = cursor.fetchone()[0] or 0
+
+            net_floating_balance = total_cards_balance + unsettled_cash
+
+            return {
+                "total_cards_balance": total_cards_balance,
+                "unsettled_cash": unsettled_cash,
+                "net_floating_balance": net_floating_balance,
+                "month_deposits": month_deposits,
+                "month_withdrawals": month_withdrawals,
+                "today_deposits": today_deposits,
+                "cards_count": cards_count
+            }
+        finally:
+            conn.close()
+
+    def add_cash_desk_log(self, owner_type: str, owner_id: int, amount: int, tx_type: str = "income",
+                          customer_name: str = None, plan_name: str = None, description: str = None,
+                          created_by: str = None) -> dict:
+        """ثبت دریافت نقدی در صندوق جهت تسویه بعدی با مدیریت/پنل"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                INSERT INTO cash_desk_logs (owner_type, owner_id, type, amount, customer_name, plan_name, description, created_by, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (owner_type, owner_id, tx_type, int(amount), customer_name, plan_name, description, created_by, now))
+            row_id = cursor.lastrowid
+            conn.commit()
+            return {"success": True, "id": row_id}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_cash_desk_logs(self, owner_type: str = "admin", owner_id: int = 0, limit: int = 100) -> dict:
+        """لیست دریافتی‌های نقدی و مانده تسویه نشده صندوق نقد"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT * FROM cash_desk_logs 
+                WHERE owner_type = ? AND (owner_id = ? OR ? = 0)
+                ORDER BY id DESC LIMIT ?
+            """, (owner_type, owner_id, owner_id, limit))
+            logs = [dict(r) for r in cursor.fetchall()]
+
+            cursor.execute("""
+                SELECT COALESCE(SUM(amount), 0) FROM cash_desk_logs 
+                WHERE owner_type = ? AND (owner_id = ? OR ? = 0) AND is_settled = 0 AND type = 'income'
+            """, (owner_type, owner_id, owner_id))
+            unsettled_total = cursor.fetchone()[0] or 0
+
+            cursor.execute("""
+                SELECT COALESCE(SUM(amount), 0) FROM cash_desk_logs 
+                WHERE owner_type = ? AND (owner_id = ? OR ? = 0) AND is_settled = 1 AND type = 'income'
+            """, (owner_type, owner_id, owner_id))
+            settled_total = cursor.fetchone()[0] or 0
+
+            return {
+                "logs": logs,
+                "unsettled_total": unsettled_total,
+                "settled_total": settled_total
+            }
+        finally:
+            conn.close()
+
+    def settle_cash_desk_log(self, log_id: int, settled_by: str = None) -> dict:
+        """تسویه سند دریافت نقدی"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("""
+                UPDATE cash_desk_logs 
+                SET is_settled = 1, settled_at = ?, settled_by = ? 
+                WHERE id = ?
+            """, (now, settled_by or "admin", log_id))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
 
     # ═══════════════════════════════════════════════════════════════
     # سیستم حسابداری و مدیریت مالی پیشرفته (Accounting & Profit/Loss)
@@ -13191,7 +13768,7 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            # جستجوی فاکتور معلق منقضی‌نشده با این مبلغ دقیق
+            # ۱. جستجوی فاکتور معلق منقضی‌نشده با این مبلغ دقیق برای همین مالک
             cursor.execute("""
                 SELECT * FROM smart_invoices 
                 WHERE reseller_id=? AND final_amount=? AND status='pending' AND expires_at >= ?
@@ -13201,13 +13778,24 @@ class Database:
             if row:
                 return dict(row)
 
-            # اگر با مهلت تعیین شده پیدا نشد، بررسی تا ۶۰ دقیقه قبل برای مشتریانی که کمی با تاخیر واریز کردند
+            # ۲. اگر مالک ادمین است، فاکتورهای مشتریان نمایندگان که به کارت‌های ادمین واریز می‌کنند نیز بررسی شود
+            if owner_type == "admin":
+                cursor.execute("""
+                    SELECT * FROM smart_invoices 
+                    WHERE final_amount=? AND status='pending' AND expires_at >= ?
+                    ORDER BY id DESC LIMIT 1
+                """, (amount_toman, now_str))
+                row_adm = cursor.fetchone()
+                if row_adm:
+                    return dict(row_adm)
+
+            # ۳. بررسی بازه ۶۰ دقیقه اخیر برای واریزهایی که با تاخیر انجام شدند
             grace_dt = (get_now_naive() - timedelta(minutes=60)).isoformat()
             cursor.execute("""
                 SELECT * FROM smart_invoices 
-                WHERE reseller_id=? AND final_amount=? AND status='pending' AND created_at >= ?
+                WHERE (reseller_id=? OR ?='admin') AND final_amount=? AND status='pending' AND created_at >= ?
                 ORDER BY id DESC LIMIT 1
-            """, (reseller_id, amount_toman, grace_dt))
+            """, (reseller_id, owner_type, amount_toman, grace_dt))
             row2 = cursor.fetchone()
             return dict(row2) if row2 else None
         finally:
@@ -13347,7 +13935,7 @@ class Database:
         # ۳. سایر نمایندگان یا کاربران عادی به هیچ عنوان پلن‌های اختصاصی را دریافت نخواهند کرد
         master_plans = {}
         for pid, p in raw_master_plans.items():
-            if p.get("is_exclusive_admin"):
+            if p.get("is_exclusive_admin") or p.get("is_exclusive_admin_bot"):
                 continue
             allowed = p.get("allowed_resellers") or []
             if allowed:
@@ -13500,7 +14088,7 @@ class Database:
             pid_str = str(pid_key)
             if pid_str not in seen_pids:
                 p_meta = raw_master_plans.get(pid_str, {})
-                if p_meta.get("is_exclusive_admin"):
+                if p_meta.get("is_exclusive_admin") or p_meta.get("is_exclusive_admin_bot"):
                     continue
                 allowed = p_meta.get("allowed_resellers") or []
                 if allowed:
