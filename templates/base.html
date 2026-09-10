@@ -363,6 +363,12 @@
         .modal-backdrop {
             z-index: 1050 !important;
         }
+        body:not(.modal-open) .modal-backdrop {
+            display: none !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+            visibility: hidden !important;
+        }
         .modal-dialog {
             z-index: 1065 !important;
             max-width: 520px;
@@ -2820,6 +2826,42 @@
             });
         }
 
+        // ─── پاکسازی کامل و تضمینی تمامی لایه‌های مات و پس‌زمینه‌های جامانده (Modal Backdrop Cleanup) ───
+        function cleanupModalBackdrops() {
+            document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+            document.body.classList.remove('modal-open');
+            document.body.style.removeProperty('overflow');
+            document.body.style.removeProperty('padding-right');
+            document.body.style.overflow = '';
+            document.body.style.paddingRight = '';
+        }
+        window.cleanupModalBackdrops = cleanupModalBackdrops;
+
+        // رویداد سراسری بسته‌شدن هر مودال در بوت‌استرپ
+        document.addEventListener('hidden.bs.modal', function () {
+            setTimeout(() => {
+                const openModals = document.querySelectorAll('.modal.show');
+                if (openModals.length === 0) {
+                    cleanupModalBackdrops();
+                } else {
+                    const backdrops = document.querySelectorAll('.modal-backdrop');
+                    while (backdrops.length > 1) {
+                        backdrops[backdrops.length - 1].remove();
+                    }
+                }
+            }, 50);
+        });
+
+        // کلیک اضطراری روی بک‌دراپ در صورتی که هیچ مودالی باز نباشد اما تصویر مات شده باشد
+        document.addEventListener('click', function (e) {
+            if (e.target && e.target.classList && e.target.classList.contains('modal-backdrop')) {
+                const openModals = document.querySelectorAll('.modal.show');
+                if (openModals.length === 0) {
+                    cleanupModalBackdrops();
+                }
+            }
+        });
+
         document.addEventListener('DOMContentLoaded', () => {
             relocateModalsToBody();
             initTableSearch();
@@ -2835,12 +2877,6 @@
             }
             initFormRedirectPreserver();
         });
-        relocateModalsToBody();
-        initTableSearch();
-        initUniversalTableSorting();
-        initUniversalBulkActions();
-        initFormRedirectPreserver();
-        initLiveServerSearch();
     </script>
     {% block scripts %}{% endblock %}
 </body>

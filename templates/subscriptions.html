@@ -932,11 +932,9 @@
 
                     <!-- ۶. تسویه بدهی -->
                     {% if is_debtor %}
-                    <form method="POST" action="{{ url_for('admin_subscription_clear_debt', sub_id=sub['id']) }}" class="d-inline flex-grow-1" onsubmit="return confirm('آیا از تسویه کامل بدهی این مشتری اطمینان دارید؟');">
-                        <button type="submit" class="btn btn-success w-100 py-2 fw-bold">
-                            <i class="fas fa-check-double me-1"></i> تسویه کامل بدهی
-                        </button>
-                    </form>
+                    <button type="button" class="btn btn-success flex-grow-1 py-2 fw-bold" onclick="quickClearDebt({{ sub['id'] }}, '{{ sub['account_name'] }}')">
+                        <i class="fas fa-check-double me-1"></i> تسویه کامل بدهی
+                    </button>
                     {% if sub.get('telegram_id') and sub['telegram_id'] > 0 %}
                     <form method="POST" action="{{ url_for('subscription_send_debt_reminder', sub_id=sub['id']) }}" class="d-inline flex-grow-1" onsubmit="return confirm('آیا از ارسال پیام یادآوری بدهی به تلگرام این کاربر اطمینان دارید؟');">
                         <button type="submit" class="btn btn-outline-danger w-100 py-2">
@@ -2229,12 +2227,31 @@ function toggleAdminRenewDebtor(subId) {
     }
 }
 
+window._debtSettledReloadNeeded = false;
+
 function openCustomerDebtReport(subId, accountName) {
     const modalEl = document.getElementById('customerDebtReportModal');
     if (!modalEl) return;
-    const modal = new bootstrap.Modal(modalEl);
+
+    // بستن مودال جزئیات در صورت باز بودن تا دو مودال روی هم تداخل نکنند
+    const detailModalEl = document.getElementById('customerDetailModal' + subId);
+    if (detailModalEl) {
+        const dm = bootstrap.Modal.getInstance(detailModalEl);
+        if (dm) dm.hide();
+    }
+
     document.getElementById('debtReportModalTitle').innerText = 'گزارش و سوابق بدهی: ' + (accountName || 'اشتراک #' + subId);
     document.getElementById('debtReportModalSubtitle').innerText = 'شناسه اشتراک: #' + subId;
+
+    loadCustomerDebtReportData(subId, accountName);
+
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    if (!modalEl.classList.contains('show')) {
+        modal.show();
+    }
+}
+
+function loadCustomerDebtReportData(subId, accountName) {
     const body = document.getElementById('debtReportModalBody');
     const footerActions = document.getElementById('debtReportModalFooterActions');
     if (footerActions) footerActions.innerHTML = '';
@@ -2244,7 +2261,6 @@ function openCustomerDebtReport(subId, accountName) {
             <div class="text-muted">در حال بارگذاری صورت‌حساب‌ها و رسیدهای بدهی...</div>
         </div>
     `;
-    modal.show();
 
     fetch(`/api/subscription/${subId}/debt-report`)
         .then(res => res.json())
@@ -2373,11 +2389,9 @@ function openCustomerDebtReport(subId, accountName) {
 
             if (footerActions && curDebt > 0) {
                 footerActions.innerHTML = `
-                    <form method="POST" action="/admin/subscription/${subId}/clear-debt" class="m-0 d-inline" onsubmit="return confirm('آیا از تسویه کامل کلیه بدهی‌های این مشتری اطمینان دارید؟');">
-                        <button type="submit" class="btn btn-success fw-bold">
-                            <i class="fas fa-check-double me-1"></i> تسویه کامل تمام بدهی‌ها (${curDebt.toLocaleString('fa-IR')} ت)
-                        </button>
-                    </form>
+                    <button type="button" class="btn btn-success fw-bold shadow-sm" id="btnClearAllDebts" onclick="clearAllCustomerDebts(${subId}, '${accountName}')">
+                        <i class="fas fa-check-double me-1"></i> تسویه کامل تمام بدهی‌ها (${curDebt.toLocaleString('fa-IR')} ت)
+                    </button>
                 `;
             }
         })
@@ -2396,21 +2410,121 @@ function settleCustomerDebtRecord(subId, recordId, accountName) {
 
     fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
     })
     .then(res => res.json())
     .then(data => {
         if (data.success) {
-            alert('رسید بدهی با موفقیت تسویه شد.');
-            openCustomerDebtReport(subId, accountName);
+            window._debtSettledReloadNeeded = true;
+            alert('✅ رسید بدهی با موفقیت تسویه شد.');
+            loadCustomerDebtReportData(subId, accountName);
         } else {
-            alert('خطا در تسویه: ' + (data.error || 'خطای نامشخص'));
+            alert('❌ خطا در تسویه: ' + (data.error || 'خطای نامشخص'));
         }
     })
     .catch(err => {
-        alert('خطای ارتباط با سرور: ' + err.message);
+        alert('❌ خطای ارتباط با سرور: ' + err.message);
     });
 }
+
+function clearAllCustomerDebts(subId, accountName) {
+    if (!confirm('آیا از تسویه کامل کلیه بدهی‌های این مشتری اطمینان دارید؟')) return;
+
+    const isResellerPanel = window.location.pathname.includes('/reseller');
+    const endpoint = isResellerPanel 
+        ? `/reseller/subscription/${subId}/clear-debt` 
+        : `/admin/subscription/${subId}/clear-debt`;
+
+    const btn = document.getElementById('btnClearAllDebts');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال تسویه...';
+    }
+
+    fetch(endpoint, {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            alert('✅ تمام بدهی‌های این مشتری با موفقیت تسویه شد.');
+            const modalEl = document.getElementById('customerDebtReportModal');
+            if (modalEl) {
+                const modal = bootstrap.Modal.getInstance(modalEl);
+                if (modal) modal.hide();
+            }
+            if (typeof cleanupModalBackdrops === 'function') cleanupModalBackdrops();
+            window.location.reload();
+        } else {
+            alert('❌ خطا در تسویه بدهی: ' + (data.error || 'خطای ناشناخته'));
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-check-double me-1"></i> تسویه کامل تمام بدهی‌ها';
+            }
+        }
+    })
+    .catch(err => {
+        alert('❌ خطای ارتباط با سرور: ' + err.message);
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-check-double me-1"></i> تسویه کامل تمام بدهی‌ها';
+        }
+    });
+}
+
+function quickClearDebt(subId, accountName) {
+    if (!confirm('آیا از تسویه کامل بدهی این مشتری اطمینان دارید؟')) return;
+    
+    const isResellerPanel = window.location.pathname.includes('/reseller');
+    const endpoint = isResellerPanel 
+        ? `/reseller/subscription/${subId}/clear-debt` 
+        : `/admin/subscription/${subId}/clear-debt`;
+
+    fetch(endpoint, {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            alert('✅ بدهی مشتری «' + (accountName || ('#' + subId)) + '» با موفقیت تسویه شد.');
+            const detailModalEl = document.getElementById('customerDetailModal' + subId);
+            if (detailModalEl) {
+                bootstrap.Modal.getInstance(detailModalEl)?.hide();
+            }
+            if (typeof cleanupModalBackdrops === 'function') cleanupModalBackdrops();
+            window.location.reload();
+        } else {
+            alert('❌ خطا در تسویه بدهی: ' + (data.error || 'خطای نامشخص'));
+        }
+    })
+    .catch(err => {
+        alert('❌ خطای ارتباط با سرور: ' + err.message);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const reportModal = document.getElementById('customerDebtReportModal');
+    if (reportModal) {
+        reportModal.addEventListener('hidden.bs.modal', function () {
+            if (typeof cleanupModalBackdrops === 'function') cleanupModalBackdrops();
+            if (window._debtSettledReloadNeeded) {
+                window._debtSettledReloadNeeded = false;
+                window.location.reload();
+            }
+        });
+    }
+});
 function filterQueueModalTable(val) {
     val = (val || '').toLowerCase().trim();
     document.querySelectorAll('#allQueueModalTable .queue-modal-row').forEach(function(row) {
