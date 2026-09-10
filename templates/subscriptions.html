@@ -1081,7 +1081,7 @@
 
                     <div class="border-top pt-3">
                         <div class="form-check form-switch p-2 bg-success bg-opacity-10 rounded-3 border border-success">
-                            <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" name="is_free" id="adminIsFree{{ sub['id'] }}" value="1">
+                            <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" name="is_free" id="adminIsFree{{ sub['id'] }}" value="1" onchange="toggleAdminRenewFree('{{ sub['id'] }}')">
                             <label class="form-check-label fw-bold text-success cursor-pointer" for="adminIsFree{{ sub['id'] }}">
                                 🎁 تمدید رایگان (مبلغ ۰ تومان در سیستم حسابداری و تراکنش‌ها)
                             </label>
@@ -1092,7 +1092,7 @@
                     </div>
 
                     <!-- بخش وضعیت پرداخت و تسویه حساب مالی مشتری در تمدید -->
-                    <div class="border-top pt-3">
+                    <div class="border-top pt-3" id="adminRenewPaymentSection{{ sub['id'] }}">
                         <div class="p-3 bg-light rounded-3 border mb-2">
                             <h6 class="fw-bold text-dark mb-3"><i class="fas fa-hand-holding-dollar text-primary me-2"></i>وضعیت پرداخت هزینه توسط مشتری:</h6>
                             <div class="row g-3">
@@ -1102,6 +1102,16 @@
                                         <option value="paid" {% if sub.get('payment_status') != 'unpaid' and not sub.get('debt_amount') %}selected{% endif %}>🟢 مشتری وجه را پرداخت / تسویه کرده است</option>
                                         <option value="unpaid" {% if sub.get('payment_status') == 'unpaid' or sub.get('debt_amount', 0) > 0 %}selected{% endif %}>🔴 مشتری هنوز پرداخت نکرده است (بدهکار)</option>
                                     </select>
+                                </div>
+                                <div class="col-md-6" id="adminRenewPaymentDestBox{{ sub['id'] }}" style="{% if sub.get('payment_status') == 'unpaid' or sub.get('debt_amount', 0) > 0 %}display: none;{% endif %}">
+                                    <label class="form-label fw-bold text-success"><i class="fas fa-credit-card text-success me-1"></i>واریز به کارت بانکی یا صندوق:</label>
+                                    <select name="payment_destination" class="form-select border-success">
+                                        <option value="cash">💵 دریافت نقدی (ثبت در صندوق نقدی)</option>
+                                        {% for c in cards %}
+                                        <option value="card_{{ c['id'] }}">💳 {{ c.get('bank_name') or 'بانک' }} - {{ c['card_number'][-4:] }} ({{ c['card_holder'] }}) [موجودی: {{ "{:,}".format(c.get('balance', 0)) }} ت]</option>
+                                        {% endfor %}
+                                    </select>
+                                    <small class="text-muted" style="font-size: 11px;">مبلغ دریافتی مستقیم به موجودی این کارت یا صندوق افزوده می‌شود.</small>
                                 </div>
                                 <div class="col-md-6" id="adminRenewDebtAmountBox{{ sub['id'] }}" style="{% if sub.get('payment_status') != 'unpaid' and not sub.get('debt_amount') %}display: none;{% endif %}">
                                     <label class="form-label fw-bold text-danger">مبلغ بدهی مشتری در این تمدید (تومان):</label>
@@ -2174,12 +2184,22 @@ function updateAdminRenewDebtBreakdown(subId) {
     if (totalEl) totalEl.innerText = total.toLocaleString('fa-IR') + ' ت';
 }
 
+function toggleAdminRenewFree(subId) {
+    const isFree = document.getElementById('adminIsFree' + subId);
+    const paySec = document.getElementById('adminRenewPaymentSection' + subId);
+    if (paySec) {
+        paySec.style.display = (isFree && isFree.checked) ? 'none' : 'block';
+    }
+}
+
 function toggleAdminRenewDebtor(subId) {
     const sel = document.getElementById('adminRenewPaymentStatus' + subId);
     const box = document.getElementById('adminRenewDebtAmountBox' + subId);
-    if (!sel || !box) return;
+    const destBox = document.getElementById('adminRenewPaymentDestBox' + subId);
+    if (!sel) return;
     if (sel.value === 'unpaid') {
-        box.style.display = 'block';
+        if (box) box.style.display = 'block';
+        if (destBox) destBox.style.display = 'none';
         const debtInput = document.getElementById('adminRenewDebtAmountInput' + subId);
         if (debtInput && (!debtInput.value || debtInput.value === '0')) {
             handleAdminRenewPlanChange(subId);
@@ -2187,7 +2207,8 @@ function toggleAdminRenewDebtor(subId) {
             updateAdminRenewDebtBreakdown(subId);
         }
     } else {
-        box.style.display = 'none';
+        if (box) box.style.display = 'none';
+        if (destBox) destBox.style.display = 'block';
     }
 }
 

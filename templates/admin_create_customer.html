@@ -78,7 +78,7 @@
                                         </span>
                                         <div>
                                             <div class="fw-bold text-dark">
-                                                {% if p.get('is_exclusive_admin') %}<span class="badge bg-warning text-dark me-1" style="font-size: 0.68rem;">👑 مدیریت</span>{% endif %}{{ p['name'] }}
+                                                {% if p.get('is_exclusive_admin_bot') %}<span class="badge bg-info text-dark me-1" style="font-size: 0.68rem;"><i class="fas fa-robot me-1"></i>پنل و ربات</span>{% elif p.get('is_exclusive_admin') %}<span class="badge bg-warning text-dark me-1" style="font-size: 0.68rem;">👑 فقط مدیریت</span>{% endif %}{{ p['name'] }}
                                             </div>
                                             <small class="text-muted">{{ p['data_limit'] }} گیگابایت | {{ p['duration'] }} روزه</small>
                                         </div>
@@ -183,6 +183,28 @@
                                 <div class="fw-bold">رایگان / هدیه</div>
                                 <small class="text-muted" style="font-size: 11px;">بدون ثبت هزینه مالی</small>
                             </label>
+                        </div>
+                    </div>
+
+                    <!-- انتخاب کارت مقصد یا دریافت نقدی -->
+                    <div id="paymentDestinationCard" class="card bg-success-subtle border border-success mb-4 shadow-sm">
+                        <div class="card-body">
+                            <h6 class="fw-bold text-success-emphasis mb-2"><i class="fas fa-credit-card me-2"></i>کارت مقصد واریز یا دریافت نقدی (حسابداری):</h6>
+                            <div class="row g-2 align-items-center">
+                                <div class="col-md-7">
+                                    <select name="payment_destination" class="form-select border-success">
+                                        <option value="cash">💵 دریافت نقدی (ثبت در صندوق نقدی جهت تسویه بعدی)</option>
+                                        {% for c in cards %}
+                                        <option value="card_{{ c['id'] }}" {% if c.get('is_default') %}selected{% endif %}>
+                                            💳 کارت {{ c['bank_name'] }} - {{ c['card_holder'] }} ({{ c['card_number'][-4:] }}****) {% if c.get('is_default') %}⭐ [پیش‌فرض]{% elif c.get('is_backup') %}🛡️ [پشتیبان]{% endif %} - موجودی: {{ "{:,}".format(c.get('balance', 0)) }} ت
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-5">
+                                    <small class="text-muted">در صورت انتخاب کارت، موجودی شناور کارت مقصد افزایش می‌یابد؛ در صورت دریافت نقدی، در صندوق ثبت می‌شود.</small>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -330,6 +352,11 @@ function selectPaymentMethod(cardEl, method) {
 
     const debtorCard = document.getElementById('debtorFieldsCard');
     const finCard = document.getElementById('financialBreakdownCard');
+    const destCard = document.getElementById('paymentDestinationCard');
+
+    if (destCard) {
+        destCard.style.display = (method === 'cash') ? 'block' : 'none';
+    }
 
     if (method === 'debtor') {
         debtorCard.style.display = 'block';

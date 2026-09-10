@@ -71,8 +71,14 @@
                                 <i class="{{ icon_info.icon }}"></i>
                             </span>
                             {{ p.name }}
-                            {% if p.is_exclusive_admin %}
-                                <span class="badge bg-warning text-dark border border-warning ms-1" style="font-size: 0.72rem;"><i class="fas fa-crown me-1"></i>اختصاصی مدیریت</span>
+                            {% if p.is_exclusive_admin_bot %}
+                                <span class="badge text-white ms-1" style="font-size: 0.72rem; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);" title="مخفی از تمام نمایندگان - فقط پنل و ربات مدیریت">
+                                    <i class="fas fa-robot me-1"></i>اختصاصی پنل و ربات مدیریت
+                                </span>
+                            {% elif p.is_exclusive_admin %}
+                                <span class="badge bg-warning text-dark border border-warning ms-1" style="font-size: 0.72rem;" title="کاملاً مخفی از تمام ربات‌ها - فقط پنل مدیریت">
+                                    <i class="fas fa-crown me-1"></i>فقط پنل مدیریت
+                                </span>
                             {% elif p.allowed_resellers or p.is_exclusive_reseller %}
                                 {% set r_count = p.allowed_resellers|length if p.allowed_resellers else 0 %}
                                 <span class="badge text-white ms-1" style="font-size: 0.72rem; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);" title="فقط برای {{ r_count }} نماینده منتخب فعال است">
@@ -329,8 +335,24 @@
                             <input type="number" name="duration" class="form-control font-monospace" placeholder="مثال: 60" value="30" required min="1">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">آیکون دلخواه (اختیاری):</label>
-                            <input type="text" name="plan_icon" class="form-control font-monospace" placeholder="مثلاً: fas fa-crown">
+                            <label class="form-label fw-semibold d-flex justify-content-between align-items-center">
+                                <span>آیکون دلخواه (اختیاری):</span>
+                                <button type="button" class="btn btn-xs btn-outline-primary py-0 px-2 fw-semibold" style="font-size: 0.76rem;" onclick="openGlobalIconPicker('add_ded_plan_icon', 'add_ded_plan_icon_preview')">
+                                    <i class="fas fa-palette me-1"></i> پکیج آیکون‌ها
+                                </button>
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light" style="width: 42px; justify-content: center;">
+                                    <i class="fas fa-crown text-primary" id="add_ded_plan_icon_preview"></i>
+                                </span>
+                                <input type="text" name="plan_icon" id="add_ded_plan_icon" class="form-control font-monospace" placeholder="مثلاً: fas fa-crown" oninput="liveUpdateIconPreview('add_ded_plan_icon', 'add_ded_plan_icon_preview')">
+                                <button class="btn btn-outline-primary" type="button" onclick="openGlobalIconPicker('add_ded_plan_icon', 'add_ded_plan_icon_preview')" title="انتخاب از پکیج آماده">
+                                    <i class="fas fa-icons"></i>
+                                </button>
+                                <button class="btn btn-outline-secondary" type="button" onclick="clearIconInput('add_ded_plan_icon', 'add_ded_plan_icon_preview')" title="پاک کردن">
+                                    <i class="fas fa-wand-magic-sparkles"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -688,12 +710,25 @@
                         <input type="number" name="duration" class="form-control font-monospace" value="{{ p.duration or 30 }}" required min="1">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">آیکون دلخواه (اختیاری):</label>
+                        <label class="form-label fw-semibold d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-icons text-primary me-1"></i> آیکون دلخواه پلن:</span>
+                            <button type="button" class="btn btn-xs btn-outline-primary py-0 px-2 fw-semibold" style="font-size: 0.76rem;" onclick="openGlobalIconPicker('edit_plan_icon_{{ pid }}', 'edit_plan_icon_preview_{{ pid }}')">
+                                <i class="fas fa-palette me-1"></i> انتخاب از پکیج آیکون‌ها
+                            </button>
+                        </label>
                         <div class="input-group">
-                            <span class="input-group-text"><i class="{{ p.plan_icon or 'fas fa-shield-halved' }}"></i></span>
-                            <input type="text" name="plan_icon" class="form-control font-monospace" value="{{ p.plan_icon or '' }}" placeholder="مثلاً: fas fa-gem یا fas fa-crown (خالی = هوشمند)">
+                            <span class="input-group-text bg-light" style="width: 44px; justify-content: center;">
+                                <i class="{{ p.plan_icon or 'fas fa-shield-halved' }} fs-5 text-primary" id="edit_plan_icon_preview_{{ pid }}"></i>
+                            </span>
+                            <input type="text" name="plan_icon" id="edit_plan_icon_{{ pid }}" class="form-control font-monospace" value="{{ p.plan_icon or '' }}" placeholder="مثلاً: fas fa-gem یا انتخاب از پکیج (خالی = هوشمند)" oninput="liveUpdateIconPreview('edit_plan_icon_{{ pid }}', 'edit_plan_icon_preview_{{ pid }}')">
+                            <button class="btn btn-outline-primary" type="button" onclick="openGlobalIconPicker('edit_plan_icon_{{ pid }}', 'edit_plan_icon_preview_{{ pid }}')" title="انتخاب از پکیج آماده">
+                                <i class="fas fa-icons"></i>
+                            </button>
+                            <button class="btn btn-outline-secondary" type="button" onclick="clearIconInput('edit_plan_icon_{{ pid }}', 'edit_plan_icon_preview_{{ pid }}')" title="پاک کردن و بازگشت به تشخیص هوشمند">
+                                <i class="fas fa-wand-magic-sparkles"></i>
+                            </button>
                         </div>
-                        <small class="text-muted">در صورت خالی بودن، آیکون هوشمند بر اساس نوع و سطح پلن تخصیص داده می‌شود.</small>
+                        <small class="text-muted d-block mt-1">در صورت خالی بودن، آیکون هوشمند بر اساس نوع، سطح و نام فارسی پلن تخصیص داده می‌شود.</small>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold">وضعیت فروش</label>
@@ -709,7 +744,7 @@
                         
                         <div class="form-check mb-2">
                             <input class="form-check-input" type="radio" name="target_type" id="targetAll_{{ pid }}" value="all" 
-                                   {% if not p.is_exclusive_admin and not p.allowed_resellers and not p.is_exclusive_reseller %}checked{% endif %}
+                                   {% if not p.is_exclusive_admin and not p.is_exclusive_admin_bot and not p.allowed_resellers and not p.is_exclusive_reseller %}checked{% endif %}
                                    onchange="toggleResellerSelect('{{ pid }}')">
                             <label class="form-check-label fw-semibold" for="targetAll_{{ pid }}">
                                 🌐 <strong>پلن عمومی</strong> (نمایش در ربات اصلی و برای تمام همکاران و نمایندگان)
@@ -717,8 +752,17 @@
                         </div>
 
                         <div class="form-check mb-2">
+                            <input class="form-check-input" type="radio" name="target_type" id="targetAdminBot_{{ pid }}" value="admin_bot" 
+                                   {% if p.is_exclusive_admin_bot %}checked{% endif %}
+                                   onchange="toggleResellerSelect('{{ pid }}')">
+                            <label class="form-check-label fw-semibold" for="targetAdminBot_{{ pid }}" style="color: #0284c7;">
+                                🤖 <strong>پلن اختصاصی برای پنل و ربات مدیریت</strong> (مخفی از نمایندگان و ربات نمایندگان)
+                            </label>
+                        </div>
+
+                        <div class="form-check mb-2">
                             <input class="form-check-input" type="radio" name="target_type" id="targetAdmin_{{ pid }}" value="admin" 
-                                   {% if p.is_exclusive_admin %}checked{% endif %}
+                                   {% if p.is_exclusive_admin and not p.is_exclusive_admin_bot %}checked{% endif %}
                                    onchange="toggleResellerSelect('{{ pid }}')">
                             <label class="form-check-label fw-semibold text-warning-emphasis" for="targetAdmin_{{ pid }}">
                                 👑 <strong>پلن اختصاصی مدیریت ارشد</strong> (مخفی از ربات اصلی و تمام نمایندگان - فقط پنل مدیر)
@@ -792,8 +836,24 @@
                             <input type="number" name="duration" class="form-control font-monospace" placeholder="مثال: 30" value="30" required min="1">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">آیکون دلخواه (اختیاری):</label>
-                            <input type="text" name="plan_icon" class="form-control font-monospace" placeholder="مثلاً: fas fa-gem">
+                            <label class="form-label fw-semibold d-flex justify-content-between align-items-center">
+                                <span>آیکون دلخواه (اختیاری):</span>
+                                <button type="button" class="btn btn-xs btn-outline-primary py-0 px-2 fw-semibold" style="font-size: 0.76rem;" onclick="openGlobalIconPicker('add_plan_icon', 'add_plan_icon_preview')">
+                                    <i class="fas fa-palette me-1"></i> پکیج آیکون‌ها
+                                </button>
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light" style="width: 42px; justify-content: center;">
+                                    <i class="fas fa-shield-halved text-primary" id="add_plan_icon_preview"></i>
+                                </span>
+                                <input type="text" name="plan_icon" id="add_plan_icon" class="form-control font-monospace" placeholder="مثلاً: fas fa-gem (یا از پکیج)" oninput="liveUpdateIconPreview('add_plan_icon', 'add_plan_icon_preview')">
+                                <button class="btn btn-outline-primary" type="button" onclick="openGlobalIconPicker('add_plan_icon', 'add_plan_icon_preview')" title="انتخاب از پکیج آماده">
+                                    <i class="fas fa-icons"></i>
+                                </button>
+                                <button class="btn btn-outline-secondary" type="button" onclick="clearIconInput('add_plan_icon', 'add_plan_icon_preview')" title="پاک کردن">
+                                    <i class="fas fa-wand-magic-sparkles"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -806,6 +866,13 @@
                             <input class="form-check-input" type="radio" name="target_type" id="addTargetAll" value="all" checked onchange="toggleAddResellerSelect()">
                             <label class="form-check-label fw-semibold" for="addTargetAll">
                                 🌐 <strong>پلن عمومی</strong> (قابل مشاهده در ربات اصلی و برای تمام همکاران و نمایندگان)
+                            </label>
+                        </div>
+
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="radio" name="target_type" id="addTargetAdminBot" value="admin_bot" onchange="toggleAddResellerSelect()">
+                            <label class="form-check-label fw-semibold" for="addTargetAdminBot" style="color: #0284c7;">
+                                🤖 <strong>پلن اختصاصی برای پنل و ربات مدیریت</strong> (مخفی از نمایندگان و ربات نمایندگان)
                             </label>
                         </div>
 
@@ -1083,5 +1150,350 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     });
 });
+</script>
+
+<!-- مودال سراسری انتخاب بصری آیکون‌ها از پکیج آماده -->
+<div class="modal fade text-start" id="globalIconPickerModal" tabindex="-1" aria-labelledby="globalIconPickerModalLabel" aria-hidden="true" style="z-index: 1060;">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content shadow-lg border-0 rounded-4">
+            <div class="modal-header text-white py-3 px-4" style="background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="d-inline-flex align-items-center justify-content-center bg-white text-primary rounded-circle shadow-sm" style="width: 38px; height: 38px;">
+                        <i class="fas fa-palette fs-5"></i>
+                    </span>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0" id="globalIconPickerModalLabel">پکیج آماده و کاتالوگ آیکون‌های پلن</h5>
+                        <small class="text-white-50" style="font-size: 0.8rem;">با یک کلیک آیکون دلخواه را انتخاب کنید تا به صورت خودکار در فرم درج شود</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            
+            <div class="modal-body p-3 p-md-4">
+                <!-- کادر جستجوی بلادرنگ -->
+                <div class="mb-3">
+                    <div class="input-group shadow-sm">
+                        <span class="input-group-text bg-white border-end-0 text-muted"><i class="fas fa-search"></i></span>
+                        <input type="text" id="iconSearchInput" class="form-control border-start-0 ps-1" placeholder="جستجو بین آیکون‌ها (مثلاً: الماس، تاج، موشک، ستاره، اینترنت، gem, rocket, crown...)" oninput="filterIconCatalog(this.value)">
+                        <button class="btn btn-outline-secondary" type="button" onclick="clearIconSearch()" title="پاک کردن جستجو">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- تب‌های دسته‌بندی موضوعی -->
+                <ul class="nav nav-pills nav-fill flex-nowrap overflow-x-auto pb-2 mb-3 gap-1" id="iconCategoryTabs" style="white-space: nowrap;">
+                    <li class="nav-item">
+                        <button class="nav-link active py-1 px-3 small fw-bold" onclick="filterIconCategory('all', this)">همه آیکون‌ها</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link py-1 px-3 small fw-bold" onclick="filterIconCategory('badges', this)">👑 نشان‌ها و رتبه‌ها</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link py-1 px-3 small fw-bold" onclick="filterIconCategory('speed', this)">🚀 سرعت و قدرت</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link py-1 px-3 small fw-bold" onclick="filterIconCategory('security', this)">🛡️ امنیت و شبکه</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link py-1 px-3 small fw-bold" onclick="filterIconCategory('packages', this)">📦 بسته‌ها و زمان</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link py-1 px-3 small fw-bold" onclick="filterIconCategory('devices', this)">📱 دستگاه‌ها و عمومی</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link py-1 px-3 small fw-bold" onclick="filterIconCategory('emojis', this)">✨ ایموجی‌های تلگرام</button>
+                    </li>
+                </ul>
+
+                <!-- گرید نمایش آیکون‌ها -->
+                <div class="row row-cols-3 row-cols-sm-4 row-cols-md-6 g-2 p-1" id="iconPickerGrid" style="max-height: 380px; overflow-y: auto;">
+                    <!-- محتوا با جاوااسکریپت رندر می‌شود -->
+                </div>
+            </div>
+            
+            <div class="modal-footer bg-light py-2 px-4 d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="small text-muted">آیکون انتخابی فعلی:</span>
+                    <span class="badge bg-white text-dark border font-monospace px-2 py-1" id="currentSelectedIconBadge">خالی (هوشمند)</span>
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-warning" onclick="resetToSmartDetectionFromModal()">
+                        <i class="fas fa-wand-magic-sparkles me-1"></i> تنظیم روی تشخیص هوشمند
+                    </button>
+                    <button type="button" class="btn btn-sm btn-secondary px-3" data-bs-dismiss="modal">بستن</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.icon-card-btn:hover {
+    border-color: #2563eb !important;
+    background-color: rgba(37, 99, 235, 0.08) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15) !important;
+}
+.icon-card-btn:active {
+    transform: scale(0.96);
+}
+</style>
+
+<script>
+const ICON_CATALOG = [
+    // 👑 نشان‌ها و رتبه‌ها
+    { icon: 'fas fa-gem', name: 'الماس / زمرد', en: 'gem diamond emerald jewel zomorod', cat: 'badges' },
+    { icon: 'fas fa-crown', name: 'تاج سلطنتی', en: 'crown king royal vip taj', cat: 'badges' },
+    { icon: 'fas fa-trophy', name: 'جام قهرمانی', en: 'trophy champion winner cup jam', cat: 'badges' },
+    { icon: 'fas fa-award', name: 'نشان افتخار', en: 'award honor rank ribbon neshan', cat: 'badges' },
+    { icon: 'fas fa-medal', name: 'مدال برتر', en: 'medal gold silver bronze', cat: 'badges' },
+    { icon: 'fas fa-star', name: 'ستاره طلایی', en: 'star rating favorite top setareh', cat: 'badges' },
+    { icon: 'fas fa-wand-magic-sparkles', name: 'جادویی و ویژه', en: 'magic sparkles special pro jadoui', cat: 'badges' },
+    { icon: 'fas fa-certificate', name: 'گواهی اصالت', en: 'certificate verified badge motabar', cat: 'badges' },
+    { icon: 'fas fa-diamond', name: 'دیاموند / لوزی', en: 'diamond gem card', cat: 'badges' },
+
+    // 🚀 سرعت و قدرت
+    { icon: 'fas fa-rocket', name: 'موشک پرسرعت', en: 'rocket speed fast turbo space moshak', cat: 'speed' },
+    { icon: 'fas fa-bolt', name: 'رعد و برق', en: 'bolt zap lightning electricity energy raad bargh', cat: 'speed' },
+    { icon: 'fas fa-fire-flame-curved', name: 'شعله آتش', en: 'fire flame hot burning pro atash', cat: 'speed' },
+    { icon: 'fas fa-gauge-high', name: 'سرعت گیج بالا', en: 'gauge speed fast high meter turbo sorat', cat: 'speed' },
+    { icon: 'fas fa-plane', name: 'پرواز اکسپرس', en: 'plane flight jet travel express parvaz', cat: 'speed' },
+    { icon: 'fas fa-wind', name: 'باد و طوفان', en: 'wind breeze air flow fast bad', cat: 'speed' },
+    { icon: 'fas fa-tornado', name: 'تورنادو قدرتمند', en: 'tornado storm power fast toofan', cat: 'speed' },
+    { icon: 'fas fa-plug-circle-bolt', name: 'اتصال پرقدرت', en: 'plug power energy electric etesal', cat: 'speed' },
+
+    // 🛡️ امنیت و شبکه
+    { icon: 'fas fa-shield-halved', name: 'سپر امنیتی', en: 'shield security safe protect vpn separ amniat', cat: 'security' },
+    { icon: 'fas fa-lock', name: 'قفل اختصاصی', en: 'lock encrypted secure privacy key ghofl', cat: 'security' },
+    { icon: 'fas fa-key', name: 'کلید دسترسی', en: 'key access login secret kelid', cat: 'security' },
+    { icon: 'fas fa-wifi', name: 'وای‌فای و اتصال', en: 'wifi wireless connect internet network bi sim', cat: 'security' },
+    { icon: 'fas fa-globe', name: 'شبکه بین‌الملل', en: 'globe world earth international web jahan koreh', cat: 'security' },
+    { icon: 'fas fa-server', name: 'سرور اختصاصی', en: 'server host datacenter cloud dedicated', cat: 'security' },
+    { icon: 'fas fa-cloud', name: 'فضای ابری', en: 'cloud storage online sync abr abri', cat: 'security' },
+    { icon: 'fas fa-network-wired', name: 'شبکه لن و کابل', en: 'network ethernet internet cable wire shabakeh', cat: 'security' },
+    { icon: 'fas fa-fingerprint', name: 'اثر انگشت امن', en: 'fingerprint biometric security auth asar angosht', cat: 'security' },
+
+    // 📦 بسته‌ها و زمان
+    { icon: 'fas fa-cube', name: 'مکعب / پایه', en: 'cube box package basic starter mokaab paye', cat: 'packages' },
+    { icon: 'fas fa-box-open', name: 'جعبه باز', en: 'box open unbox product delivery jabeh', cat: 'packages' },
+    { icon: 'fas fa-cubes', name: 'چند بسته', en: 'cubes multi bundle pack basteh', cat: 'packages' },
+    { icon: 'fas fa-infinity', name: 'نامحدود بینهایت', en: 'infinity unlimited endless forever namahdood', cat: 'packages' },
+    { icon: 'fas fa-gift', name: 'هدیه و آفر', en: 'gift present surprise offer bonus hedyeh', cat: 'packages' },
+    { icon: 'fas fa-tag', name: 'برچسب قیمت', en: 'tag discount label price promo takhfif', cat: 'packages' },
+    { icon: 'fas fa-basket-shopping', name: 'سبد خرید', en: 'basket cart shopping store shop sabad', cat: 'packages' },
+    { icon: 'fas fa-seedling', name: 'جوانه / استارتر', en: 'seedling plant grow start starter basic javaneh shoro', cat: 'packages' },
+    { icon: 'fas fa-hourglass-half', name: 'ساعت شنی / زمان', en: 'hourglass time timer clock wait period saat', cat: 'packages' },
+    { icon: 'fas fa-calendar-check', name: 'تقویم معتبر', en: 'calendar date day month check verified taghvim', cat: 'packages' },
+
+    // 📱 دستگاه‌ها و عمومی
+    { icon: 'fas fa-mobile-screen', name: 'گوشی موبایل', en: 'mobile phone cell android iphone device gooshi', cat: 'devices' },
+    { icon: 'fas fa-laptop', name: 'لپ‌تاپ و رایانه', en: 'laptop computer pc macbook desktop rayaneh', cat: 'devices' },
+    { icon: 'fab fa-apple', name: 'سیب اپل / iOS', en: 'apple ios iphone mac ipad sib', cat: 'devices' },
+    { icon: 'fab fa-android', name: 'اندروید', en: 'android google phone tablet', cat: 'devices' },
+    { icon: 'fab fa-windows', name: 'ویندوز', en: 'windows microsoft pc os', cat: 'devices' },
+    { icon: 'fas fa-heart', name: 'قلب / محبوب', en: 'heart love like favorite popular ghalb', cat: 'devices' },
+    { icon: 'fas fa-thumbs-up', name: 'پسندیده / لایک', en: 'thumbs up like approve good best pasandideh', cat: 'devices' },
+    { icon: 'fas fa-circle-check', name: 'تایید شده', en: 'check circle verified ok success pass taeid', cat: 'devices' },
+    { icon: 'fas fa-users', name: 'کاربران / خانوادگی', en: 'users group family team community multi karbaran', cat: 'devices' },
+    { icon: 'fas fa-compass', name: 'قطب‌نما / راهنما', en: 'compass navigation direct explore guide ghotb nama', cat: 'devices' },
+    { icon: 'fas fa-bell', name: 'زنگوله / اعلان', en: 'bell notification alert ring zang', cat: 'devices' },
+
+    // ✨ ایموجی‌های آماده تلگرام
+    { icon: '💎', name: 'ایموجی الماس', en: 'diamond gem emoji telegram almas', cat: 'emojis', isEmoji: true },
+    { icon: '👑', name: 'ایموجی تاج', en: 'crown king emoji telegram taj', cat: 'emojis', isEmoji: true },
+    { icon: '🏆', name: 'ایموجی کاپ', en: 'trophy cup emoji telegram jam', cat: 'emojis', isEmoji: true },
+    { icon: '🥇', name: 'ایموجی مدال', en: 'medal gold emoji telegram', cat: 'emojis', isEmoji: true },
+    { icon: '⭐', name: 'ایموجی ستاره', en: 'star emoji telegram setareh', cat: 'emojis', isEmoji: true },
+    { icon: '🔥', name: 'ایموجی آتش', en: 'fire flame emoji telegram atash', cat: 'emojis', isEmoji: true },
+    { icon: '🚀', name: 'ایموجی موشک', en: 'rocket speed emoji telegram moshak', cat: 'emojis', isEmoji: true },
+    { icon: '⚡', name: 'ایموجی صاعقه', en: 'bolt zap electric emoji telegram bargh', cat: 'emojis', isEmoji: true },
+    { icon: '🛡️', name: 'ایموجی سپر', en: 'shield security emoji telegram separ', cat: 'emojis', isEmoji: true },
+    { icon: '📦', name: 'ایموجی بسته', en: 'box package emoji telegram basteh', cat: 'emojis', isEmoji: true },
+    { icon: '🌐', name: 'ایموجی کره زمین', en: 'globe earth web emoji telegram jahan', cat: 'emojis', isEmoji: true },
+    { icon: '♾️', name: 'ایموجی بینهایت', en: 'infinity unlimited emoji telegram namahdood', cat: 'emojis', isEmoji: true },
+    { icon: '🍏', name: 'ایموجی سیب', en: 'apple green emoji telegram sib', cat: 'emojis', isEmoji: true },
+    { icon: '❤️', name: 'ایموجی قلب', en: 'heart love emoji telegram ghalb', cat: 'emojis', isEmoji: true },
+    { icon: '✨', name: 'ایموجی درخشش', en: 'sparkles magic emoji telegram derakhshesh', cat: 'emojis', isEmoji: true },
+    { icon: '🔒', name: 'ایموجی قفل', en: 'lock secure emoji telegram ghofl', cat: 'emojis', isEmoji: true },
+    { icon: '🔑', name: 'ایموجی کلید', en: 'key secret emoji telegram kelid', cat: 'emojis', isEmoji: true },
+    { icon: '🎁', name: 'ایموجی کادو', en: 'gift present emoji telegram hedyeh', cat: 'emojis', isEmoji: true },
+    { icon: '🌱', name: 'ایموجی جوانه', en: 'seedling starter emoji telegram shoro', cat: 'emojis', isEmoji: true },
+    { icon: '📱', name: 'ایموجی موبایل', en: 'mobile phone emoji telegram gooshi', cat: 'emojis', isEmoji: true },
+];
+
+let activeTargetInputId = null;
+let activeTargetPreviewId = null;
+let currentCategoryFilter = 'all';
+let currentSearchQuery = '';
+
+function openGlobalIconPicker(inputId, previewId) {
+    activeTargetInputId = inputId;
+    activeTargetPreviewId = previewId;
+    
+    const inputEl = document.getElementById(inputId);
+    const currentVal = inputEl ? inputEl.value.trim() : '';
+    const badge = document.getElementById('currentSelectedIconBadge');
+    if (badge) {
+        badge.textContent = currentVal ? currentVal : 'خالی (تشخیص هوشمند)';
+    }
+
+    renderIconGrid();
+    
+    const modalEl = document.getElementById('globalIconPickerModal');
+    if (modalEl) {
+        let pickerModal = bootstrap.Modal.getInstance(modalEl);
+        if (!pickerModal) {
+            pickerModal = new bootstrap.Modal(modalEl);
+        }
+        pickerModal.show();
+    }
+}
+
+function selectIconFromPicker(iconVal, isEmoji = false) {
+    if (activeTargetInputId) {
+        const inputEl = document.getElementById(activeTargetInputId);
+        if (inputEl) {
+            inputEl.value = iconVal;
+        }
+    }
+    if (activeTargetPreviewId) {
+        const prevEl = document.getElementById(activeTargetPreviewId);
+        if (prevEl) {
+            if (isEmoji || !iconVal.startsWith('fa')) {
+                prevEl.className = 'fs-5 text-primary';
+                prevEl.textContent = iconVal;
+            } else {
+                prevEl.textContent = '';
+                prevEl.className = iconVal + ' fs-5 text-primary';
+            }
+        }
+    }
+    
+    const modalEl = document.getElementById('globalIconPickerModal');
+    if (modalEl) {
+        const pickerModal = bootstrap.Modal.getInstance(modalEl);
+        if (pickerModal) pickerModal.hide();
+    }
+}
+
+function clearIconInput(inputId, previewId) {
+    const inputEl = document.getElementById(inputId);
+    if (inputEl) inputEl.value = '';
+    const prevEl = document.getElementById(previewId);
+    if (prevEl) {
+        prevEl.textContent = '';
+        prevEl.className = 'fas fa-shield-halved fs-5 text-primary';
+    }
+}
+
+function resetToSmartDetectionFromModal() {
+    if (activeTargetInputId && activeTargetPreviewId) {
+        clearIconInput(activeTargetInputId, activeTargetPreviewId);
+    }
+    const modalEl = document.getElementById('globalIconPickerModal');
+    if (modalEl) {
+        const pickerModal = bootstrap.Modal.getInstance(modalEl);
+        if (pickerModal) pickerModal.hide();
+    }
+}
+
+function liveUpdateIconPreview(inputId, previewId) {
+    const inputEl = document.getElementById(inputId);
+    const prevEl = document.getElementById(previewId);
+    if (!inputEl || !prevEl) return;
+    const val = inputEl.value.trim();
+    if (!val) {
+        prevEl.textContent = '';
+        prevEl.className = 'fas fa-shield-halved fs-5 text-primary';
+        return;
+    }
+    if (val.length <= 4 && !val.includes('fa')) {
+        prevEl.className = 'fs-5 text-primary';
+        prevEl.textContent = val;
+    } else {
+        prevEl.textContent = '';
+        let iconCls = val;
+        if (!iconCls.startsWith('fa') && !iconCls.startsWith('bi')) {
+            iconCls = 'fas fa-' + iconCls;
+        }
+        prevEl.className = iconCls + ' fs-5 text-primary';
+    }
+}
+
+function filterIconCategory(cat, tabEl) {
+    currentCategoryFilter = cat;
+    document.querySelectorAll('#iconCategoryTabs .nav-link').forEach(btn => btn.classList.remove('active'));
+    if (tabEl) tabEl.classList.add('active');
+    renderIconGrid();
+}
+
+function filterIconCatalog(query) {
+    currentSearchQuery = (query || '').toLowerCase().trim();
+    renderIconGrid();
+}
+
+function clearIconSearch() {
+    const sInput = document.getElementById('iconSearchInput');
+    if (sInput) sInput.value = '';
+    currentSearchQuery = '';
+    renderIconGrid();
+}
+
+function renderIconGrid() {
+    const grid = document.getElementById('iconPickerGrid');
+    if (!grid) return;
+    
+    let filtered = ICON_CATALOG.filter(item => {
+        if (currentCategoryFilter !== 'all' && item.cat !== currentCategoryFilter) {
+            return false;
+        }
+        if (currentSearchQuery) {
+            const matchName = item.name.toLowerCase().includes(currentSearchQuery);
+            const matchEn = (item.en || '').toLowerCase().includes(currentSearchQuery);
+            const matchIcon = item.icon.toLowerCase().includes(currentSearchQuery);
+            if (!matchName && !matchEn && !matchIcon) return false;
+        }
+        return true;
+    });
+
+    if (filtered.length === 0) {
+        grid.innerHTML = `
+            <div class="col-12 text-center py-5 text-muted">
+                <i class="fas fa-search fs-2 mb-2 d-block opacity-50"></i>
+                <div>هیچ آیکونی با این مشخصات یافت نشد.</div>
+                <small>می‌توانید نام کلاس فونت‌آوسام یا ایموجی را مستقیماً در فرم وارد نمایید.</small>
+            </div>
+        `;
+        return;
+    }
+
+    let html = '';
+    filtered.forEach(item => {
+        const isEmoji = !!item.isEmoji;
+        const iconRender = isEmoji 
+            ? `<span style="font-size: 1.8rem; line-height: 1;">${item.icon}</span>` 
+            : `<i class="${item.icon} fs-3 text-primary mb-1"></i>`;
+        
+        const valueToPass = item.icon.replace(/'/g, "\\'");
+        
+        html += `
+            <div class="col">
+                <button type="button" class="btn btn-outline-light border text-dark w-100 h-100 p-2 d-flex flex-column align-items-center justify-content-center icon-card-btn shadow-sm rounded-3" 
+                        style="transition: all 0.2s ease; min-height: 84px;" 
+                        onclick="selectIconFromPicker('${valueToPass}', ${isEmoji})"
+                        title="${item.name} (${item.icon})">
+                    ${iconRender}
+                    <span class="small fw-semibold text-truncate w-100 text-center mt-1" style="font-size: 0.73rem;">${item.name}</span>
+                    <span class="badge bg-light text-secondary font-monospace mt-1 px-1 text-truncate w-100 text-center" style="font-size: 0.64rem;">
+                        ${isEmoji ? 'ایموجی' : item.icon.replace('fas fa-', '').replace('fab fa-', '')}
+                    </span>
+                </button>
+            </div>
+        `;
+    });
+
+    grid.innerHTML = html;
+}
 </script>
 {% endblock %}

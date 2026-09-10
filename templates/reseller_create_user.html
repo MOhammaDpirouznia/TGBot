@@ -67,6 +67,18 @@
                                     <option value="unpaid">🔴 مشتری هنوز پرداخت نکرده است (بدهکار)</option>
                                 </select>
                             </div>
+                            <div class="col-md-6" id="resellerPaymentDestBox">
+                                <label class="form-label fw-bold">کارت مقصد واریز یا دریافت نقدی:</label>
+                                <select name="payment_destination" class="form-select border-success">
+                                    <option value="cash">💵 دریافت نقدی (ثبت در صندوق نقدی جهت تسویه بعدی)</option>
+                                    {% for c in cards %}
+                                    <option value="card_{{ c['id'] }}" {% if c.get('is_default') %}selected{% endif %}>
+                                        💳 کارت {{ c['bank_name'] }} - {{ c['card_holder'] }} ({{ c['card_number'][-4:] }}****) {% if c.get('is_default') %}⭐ [پیش‌فرض]{% elif c.get('is_backup') %}🛡️ [پشتیبان]{% endif %} - مانده: {{ "{:,}".format(c.get('balance', 0)) }} ت
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                                <small class="text-muted">در صورت انتخاب کارت، به موجودی شناور کارت افزوده می‌شود.</small>
+                            </div>
                             <div class="col-md-6" id="resellerDebtAmountBox" style="display: none;">
                                 <label class="form-label fw-bold text-danger">مبلغ بدهی مشتری (تومان):</label>
                                 <input type="number" step="1000" name="debt_amount" id="resellerDebtAmountInput" class="form-control font-monospace border-danger" placeholder="مبلغ بدهی دلخواه...">
@@ -232,6 +244,8 @@
         const isDebtor = (sel.value === 'unpaid');
         document.getElementById('resellerDebtAmountBox').style.display = isDebtor ? 'block' : 'none';
         document.getElementById('resellerDebtNoteBox').style.display = isDebtor ? 'block' : 'none';
+        const destBox = document.getElementById('resellerPaymentDestBox');
+        if (destBox) destBox.style.display = isDebtor ? 'none' : 'block';
         const debtInput = document.getElementById('resellerDebtAmountInput');
         if (isDebtor && (!debtInput.value || debtInput.value === '0')) {
             debtInput.value = currentRetailPrice || currentFinalPrice;

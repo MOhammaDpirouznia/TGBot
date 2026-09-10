@@ -1064,6 +1064,16 @@
                                         <option value="unpaid" {% if sub.get('payment_status') == 'unpaid' or sub.get('debt_amount', 0) > 0 %}selected{% endif %}>🔴 مشتری هنوز پرداخت نکرده است (بدهکار)</option>
                                     </select>
                                 </div>
+                                <div class="col-md-6" id="resellerRenewPaymentDestBox{{ sub['id'] }}" style="{% if sub.get('payment_status') == 'unpaid' or sub.get('debt_amount', 0) > 0 %}display: none;{% endif %}">
+                                    <label class="form-label fw-bold text-success"><i class="fas fa-credit-card text-success me-1"></i>واریز به کارت بانکی یا صندوق:</label>
+                                    <select name="payment_destination" class="form-select border-success">
+                                        <option value="cash">💵 دریافت نقدی (ثبت در صندوق نقدی)</option>
+                                        {% for c in cards %}
+                                        <option value="card_{{ c['id'] }}">💳 {{ c.get('bank_name') or 'بانک' }} - {{ c['card_number'][-4:] }} ({{ c['card_holder'] }}) [موجودی: {{ "{:,}".format(c.get('balance', 0)) }} ت]</option>
+                                        {% endfor %}
+                                    </select>
+                                    <small class="text-muted" style="font-size: 11px;">مبلغ دریافتی مستقیم به موجودی این کارت یا صندوق افزوده می‌شود.</small>
+                                </div>
                                 <div class="col-md-6" id="resellerRenewDebtAmountBox{{ sub['id'] }}" style="{% if sub.get('payment_status') != 'unpaid' and not sub.get('debt_amount') %}display: none;{% endif %}">
                                     <label class="form-label fw-bold text-danger">مبلغ بدهی مشتری در این تمدید (تومان):</label>
                                     <input type="number" step="1000" name="debt_amount" id="resellerRenewDebtAmountInput{{ sub['id'] }}" class="form-control font-monospace border-danger" placeholder="مبلغ بدهی..." value="" data-existing-debt="{{ sub.get('debt_amount', 0) }}" oninput="updateResellerRenewDebtBreakdown('{{ sub['id'] }}')">
@@ -2004,9 +2014,11 @@ function updateResellerRenewDebtBreakdown(subId) {
 function toggleResellerRenewDebtor(subId) {
     const sel = document.getElementById('resellerRenewPaymentStatus' + subId);
     const box = document.getElementById('resellerRenewDebtAmountBox' + subId);
+    const destBox = document.getElementById('resellerRenewPaymentDestBox' + subId);
     if (!sel || !box) return;
     if (sel.value === 'unpaid') {
         box.style.display = 'block';
+        if (destBox) destBox.style.display = 'none';
         const debtInput = document.getElementById('resellerRenewDebtAmountInput' + subId);
         if (debtInput && (!debtInput.value || debtInput.value === '0')) {
             handleResellerRenewPlanChange(subId);
@@ -2015,6 +2027,7 @@ function toggleResellerRenewDebtor(subId) {
         }
     } else {
         box.style.display = 'none';
+        if (destBox) destBox.style.display = 'block';
     }
 }
 
