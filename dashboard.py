@@ -3744,7 +3744,114 @@ def bot_menu_settings():
             flash("دامنه‌های راهنمای اتصال و حل مشکلات اتصال با موفقیت ذخیره شدند.", "success")
             return redirect(url_for("bot_menu_settings", tab=request.form.get("active_tab", "admin")))
 
-        if bot_type == "reseller":
+        elif action == "save_admin_bot_config":
+            admin_bot_token = request.form.get("admin_bot_token", "").strip()
+            admin_brand_name = request.form.get("admin_brand_name", "").strip()
+            admin_channel_id = request.form.get("admin_channel_id", "").strip()
+            admin_support_username = request.form.get("admin_support_username", "").strip()
+            admin_start_message = request.form.get("admin_start_message", "").strip()
+            
+            admin_tids = request.form.getlist("admin_telegram_id[]")
+            admin_roles = request.form.getlist("admin_role[]")
+            admin_titles = request.form.getlist("admin_title[]")
+            bot_admins = []
+            for tid, role, title in zip(admin_tids, admin_roles, admin_titles):
+                tid_clean = re.sub(r"\D", "", str(tid or ""))
+                if tid_clean:
+                    bot_admins.append({"telegram_id": int(tid_clean), "role": role or "main", "title": str(title or "").strip()})
+
+            if admin_bot_token:
+                db.save_setting("bot_token", admin_bot_token)
+            db.save_setting("admin_brand_name", admin_brand_name)
+            db.save_setting("admin_channel_id", admin_channel_id)
+            db.save_setting("admin_support_username", admin_support_username)
+            db.save_setting("admin_start_message", admin_start_message)
+            db.save_setting("admin_telegram_admins", json.dumps(bot_admins, ensure_ascii=False))
+            flash("تنظیمات ربات اصلی مدیریت با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("bot_menu_settings", tab="admin_bot"))
+
+        elif action == "save_bundle_bot_config":
+            bundle_bot_token = request.form.get("bundle_bot_token", "").strip()
+            bundle_brand_name = request.form.get("bundle_brand_name", "").strip()
+            bundle_channel_id = request.form.get("bundle_channel_id", "").strip()
+            bundle_support_username = request.form.get("bundle_support_username", "").strip()
+            bundle_start_message = request.form.get("bundle_start_message", "").strip()
+
+            b_tids = request.form.getlist("bundle_admin_telegram_id[]")
+            b_roles = request.form.getlist("bundle_admin_role[]")
+            b_titles = request.form.getlist("bundle_admin_title[]")
+            bundle_admins = []
+            for tid, role, title in zip(b_tids, b_roles, b_titles):
+                tid_clean = re.sub(r"\D", "", str(tid or ""))
+                if tid_clean:
+                    bundle_admins.append({"telegram_id": int(tid_clean), "role": role or "main", "title": str(title or "").strip()})
+
+            if bundle_bot_token:
+                db.save_setting("bundle_bot_token", bundle_bot_token)
+            db.save_setting("bundle_brand_name", bundle_brand_name)
+            db.save_setting("bundle_channel_id", bundle_channel_id)
+            db.save_setting("bundle_support_username", bundle_support_username)
+            db.save_setting("bundle_start_message", bundle_start_message)
+            db.save_setting("bundle_bot_admins", json.dumps(bundle_admins, ensure_ascii=False))
+
+            try:
+                from bundle_sales_bot import bundle_sales_bot_runner
+                if db.get_setting("bundle_bot_active") == "1":
+                    bundle_sales_bot_runner.stop()
+                    bundle_sales_bot_runner.start()
+            except Exception as e_br:
+                logger.error(f"Error refreshing bundle sales bot: {e_br}")
+
+            flash("تنظیمات «ربات فروش بسته نمایندگی» با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("bot_menu_settings", tab="bundle_bot"))
+
+        elif action == "toggle_bundle_bot":
+            cur = db.get_setting("bundle_bot_active") or "0"
+            new_val = "0" if cur == "1" else "1"
+            db.save_setting("bundle_bot_active", new_val)
+            try:
+                from bundle_sales_bot import bundle_sales_bot_runner
+                if new_val == "1":
+                    bundle_sales_bot_runner.start()
+                    flash("«ربات فروش بسته نمایندگی» با موفقیت روشن و فعال شد.", "success")
+                else:
+                    bundle_sales_bot_runner.stop()
+                    flash("«ربات فروش بسته نمایندگی» متوقف و خاموش شد.", "warning")
+            except Exception as e_tb:
+                logger.error(f"Error toggling bundle bot: {e_tb}")
+                flash("وضعیت ربات ذخیره شد.", "info")
+            return redirect(url_for("bot_menu_settings", tab="bundle_bot"))
+
+        elif action == "save_sub_menu":
+            sub_bot_type = request.form.get("sub_bot_type", "admin").strip()
+            menu_key = request.form.get("menu_key", "payment").strip()
+            items = db.get_sub_menu_config(sub_bot_type, menu_key)
+            updated_items = []
+            for it in items:
+                i_id = it["id"]
+                title = request.form.get(f"title_{i_id}", it.get("title", ""))
+                row = int(request.form.get(f"row_{i_id}", it.get("row", 0)))
+                col = int(request.form.get(f"col_{i_id}", it.get("col", 0)))
+                enabled = request.form.get(f"enabled_{i_id}") == "1"
+                updated_items.append({
+                    **it,
+                    "title": title.strip(),
+                    "row": row,
+                    "col": col,
+                    "enabled": enabled
+                })
+            db.save_sub_menu_config(sub_bot_type, menu_key, updated_items)
+            flash("چیدمان زیرمنو با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("bot_menu_settings", tab=f"sub_{sub_bot_type}_{menu_key}"))
+
+        elif action == "reset_sub_menu":
+            sub_bot_type = request.form.get("sub_bot_type", "admin").strip()
+            menu_key = request.form.get("menu_key", "payment").strip()
+            db.reset_sub_menu_config(sub_bot_type, menu_key)
+            flash("چیدمان زیرمنو به حالت پیش‌فرض بازنشانی گردید.", "info")
+            return redirect(url_for("bot_menu_settings", tab=f"sub_{sub_bot_type}_{menu_key}"))
+
+        elif bot_type == "reseller":
             all_buttons = db.get_reseller_bot_menu_buttons()
             updated_list = []
             for btn in all_buttons:
@@ -3800,6 +3907,47 @@ def bot_menu_settings():
     tutorial_domain = db.get_setting("tutorial_domain", "")
     troubleshoot_domain = db.get_setting("troubleshoot_domain", "")
 
+    # تنظیمات ربات اصلی مدیریت
+    admin_bot_config = {
+        "token": db.get_setting("bot_token", ""),
+        "brand_name": db.get_setting("admin_brand_name", "") or db.get_setting("brand_name", ""),
+        "channel_id": db.get_setting("admin_channel_id", "") or db.get_setting("required_channel_id", ""),
+        "support_username": db.get_setting("admin_support_username", "") or db.get_setting("support_username", ""),
+        "start_message": db.get_setting("admin_start_message", "") or db.get_setting("start_message", ""),
+    }
+    raw_adm_admins = db.get_setting("admin_telegram_admins", "[]")
+    try:
+        admin_telegram_admins = json.loads(raw_adm_admins) if raw_adm_admins else []
+    except Exception:
+        admin_telegram_admins = []
+
+    # تنظیمات «ربات فروش بسته نمایندگی»
+    bundle_bot_config = {
+        "token": db.get_setting("bundle_bot_token", ""),
+        "brand_name": db.get_setting("bundle_brand_name", "") or "فروش بسته نمایندگی",
+        "channel_id": db.get_setting("bundle_channel_id", ""),
+        "support_username": db.get_setting("bundle_support_username", ""),
+        "start_message": db.get_setting("bundle_start_message", ""),
+        "is_active": db.get_setting("bundle_bot_active") == "1"
+    }
+    raw_bundle_admins = db.get_setting("bundle_bot_admins", "[]")
+    try:
+        bundle_bot_admins = json.loads(raw_bundle_admins) if raw_bundle_admins else []
+    except Exception:
+        bundle_bot_admins = []
+
+    bundle_is_running = False
+    try:
+        from bundle_sales_bot import bundle_sales_bot_runner
+        bundle_is_running = bundle_sales_bot_runner.is_running()
+    except Exception:
+        bundle_is_running = False
+
+    # زیرمنوها (روش‌های پرداخت، پشتیبانی، آموزش، کیف پول)
+    sub_menu_keys = ["payment", "support", "tutorials", "wallet"]
+    admin_sub_menus = {k: db.get_sub_menu_config("admin", k) for k in sub_menu_keys}
+    reseller_sub_menus = {k: db.get_sub_menu_config("reseller", k) for k in sub_menu_keys}
+
     return render_template(
         "bot_menu_settings.html",
         admin_buttons=admin_buttons,
@@ -3810,7 +3958,14 @@ def bot_menu_settings():
         troubleshoot_domain=troubleshoot_domain,
         active_tab=active_tab,
         buttons=admin_buttons,
-        menu_rows=admin_menu_rows
+        menu_rows=admin_menu_rows,
+        admin_bot_config=admin_bot_config,
+        admin_telegram_admins=admin_telegram_admins,
+        bundle_bot_config=bundle_bot_config,
+        bundle_bot_admins=bundle_bot_admins,
+        bundle_is_running=bundle_is_running,
+        admin_sub_menus=admin_sub_menus,
+        reseller_sub_menus=reseller_sub_menus
     )
 
 
@@ -5639,7 +5794,9 @@ def subscriptions():
         panel_url=get_hiddify_url(),
         user_proxy=get_user_proxy(),
         single_link_template=single_link_template,
-        cards=db.get_active_bank_cards()
+        cards=db.get_active_bank_cards(),
+        accounts=db.get_financial_accounts_summary("admin", 0).get("accounts", []),
+        default_account=db.get_customer_default_account("admin", 0)
     )
 
 
@@ -5780,6 +5937,42 @@ def admin_subscription_renew(sub_id: int):
             )
         except Exception as ex:
             logger.error(f"Error logging subscription history in admin renew: {ex}")
+
+        # ثبت واریز تمدید در کارت/حساب مقصد یا صندوق نقدی
+        if debt_status != "unpaid" and cost_paid > 0:
+            payment_dest = request.form.get("payment_destination", "cash").strip()
+            if payment_dest.startswith("card_") or payment_dest.startswith("account_"):
+                try:
+                    c_id = int(re.sub(r"\D", "", payment_dest))
+                    db.add_card_transaction(
+                        card_id=c_id,
+                        owner_type="admin",
+                        tx_type="deposit",
+                        amount=cost_paid,
+                        category="تمدید اشتراک",
+                        title=f"تمدید {sub.get('account_name')} ({plan_name})",
+                        ref_type="subscription",
+                        ref_id=str(sub_id),
+                        actor=session.get("username") or "admin"
+                    )
+                except Exception as e_c:
+                    logger.error(f"Error depositing to target card in admin_subscription_renew: {e_c}")
+            else:
+                try:
+                    desk_id = int(payment_dest.replace("cash_desk_", "")) if payment_dest.startswith("cash_desk_") else None
+                    db.add_cash_desk_log(
+                        owner_type="admin",
+                        amount=cost_paid,
+                        source="تمدید اشتراک",
+                        customer_name=sub.get("account_name"),
+                        ref_type="subscription",
+                        ref_id=str(sub_id),
+                        desk_id=desk_id,
+                        note=f"دریافت نقدی تمدید {sub.get('account_name')} توسط {session.get('username') or 'admin'}",
+                        actor=session.get("username") or "admin"
+                    )
+                except Exception as e_c:
+                    logger.error(f"Error recording cash desk in admin_subscription_renew: {e_c}")
 
         free_tag = " (تمدید رایگان با مبلغ ۰ تومان)" if is_free else ""
         debt_tag = f" (مشتری بدهکار ثبت شد: {this_period_debt:,} ت | مجموع بدهی: {total_debt:,} ت)" if debt_status == "unpaid" else " (وضعیت مالی: تسویه شده)"
@@ -8828,6 +9021,185 @@ def card_set_role(card_id, role_type):
     return redirect(url_for("cards"))
 
 
+# ─── کیف پول و مدیریت جامع حساب‌ها و درگاه‌های مدیریت (Admin Wallet) ───
+
+@app.route("/admin/wallet", methods=["GET"])
+@permission_required("cards")
+def admin_wallet():
+    """کیف پول، حساب‌ها و تراز نقدینگی جامع مدیریت"""
+    financial_summary = db.get_financial_accounts_summary("admin", 0)
+    accounts = financial_summary.get("accounts", [])
+    default_account = db.get_customer_default_account("admin", 0)
+    cash_desk_logs = db.get_cash_desk_logs(owner_type="admin", status="all", limit=50)
+    if isinstance(cash_desk_logs, dict) and "logs" in cash_desk_logs:
+        cash_desk_logs = cash_desk_logs["logs"]
+    
+    return render_template(
+        "admin_wallet.html",
+        financial_summary=financial_summary,
+        accounts=accounts,
+        default_account=default_account,
+        cash_desk_logs=cash_desk_logs
+    )
+
+
+@app.route("/admin/accounts/add", methods=["POST"])
+@permission_required("cards")
+def admin_account_add():
+    """تعریف حساب/کارت جدید، متصل به درگاه، صندوق نقدی یا حساب شریک/پس‌انداز"""
+    account_type = request.form.get("account_type", "bank_card").strip()
+    bank_name = request.form.get("bank_name", "").strip()
+    card_holder = request.form.get("card_holder", "").strip()
+    card_number = request.form.get("card_number", "").strip()
+    shaba_number = request.form.get("shaba_number", "").strip()
+    account_number = request.form.get("account_number", "").strip()
+    connected_gateway = request.form.get("connected_gateway", "").strip() or None
+    assigned_to = request.form.get("assigned_to", "").strip() or None
+    notes = request.form.get("notes", "").strip()
+    initial_balance = int(request.form.get("initial_balance", 0) or 0)
+    profit_percent = float(request.form.get("profit_percent", 0) or 0)
+    is_default_customer = 1 if request.form.get("is_default_customer") in ("1", "on", "true") else 0
+
+    if not card_holder and not bank_name:
+        flash("نام حساب / بانک / صندوق الزامی است.", "warning")
+        return redirect(url_for("admin_wallet"))
+
+    if not card_number:
+        card_number = f"ACC-{account_type.upper()}-{int(time.time()) % 100000}"
+
+    res = db.add_bank_card(
+        card_number=card_number,
+        card_holder=card_holder or bank_name,
+        bank_name=bank_name or card_holder,
+        daily_limit=int(request.form.get("daily_limit", 50000000) or 50000000),
+        is_default=0,
+        is_backup=0,
+        initial_balance=initial_balance,
+        shaba_number=shaba_number,
+        account_number=account_number,
+        notes=notes,
+        account_type=account_type,
+        connected_gateway=connected_gateway,
+        is_default_customer=is_default_customer,
+        profit_percent=profit_percent,
+        assigned_to=assigned_to
+    )
+    if res.get("success"):
+        flash("حساب / کارت جدید با موفقیت ثبت شد.", "success")
+    else:
+        flash(f"خطا در ثبت حساب: {res.get('error')}", "danger")
+    return redirect(url_for("admin_wallet"))
+
+
+@app.route("/admin/accounts/transfer", methods=["POST"])
+@permission_required("cards")
+def admin_account_transfer():
+    """انتقال وجه بین حساب‌ها، کارت‌ها و صندوق‌های مدیریت"""
+    source_id = int(request.form.get("source_id", 0))
+    target_id = int(request.form.get("target_id", 0))
+    amount = int(request.form.get("amount", 0) or 0)
+    note = request.form.get("note", "").strip()
+    actor = session.get("username") or "admin"
+
+    res = db.transfer_between_accounts(
+        source_id=source_id,
+        target_id=target_id,
+        amount=amount,
+        note=note,
+        actor=actor,
+        owner_type="admin",
+        reseller_id=0
+    )
+    if res.get("success"):
+        flash(f"انتقال مبلغ {amount:,} تومان با موفقیت انجام شد.", "success")
+    else:
+        flash(f"خطا در انتقال: {res.get('error')}", "danger")
+    return redirect(url_for("admin_wallet"))
+
+
+@app.route("/admin/accounts/close_cash", methods=["POST"])
+@permission_required("cards")
+def admin_account_close_cash():
+    """بستن یا تحویل صندوق نقدی و صفر کردن مانده"""
+    desk_id = int(request.form.get("desk_id", 0))
+    target_card_id = request.form.get("target_card_id")
+    target_card_id = int(target_card_id) if target_card_id and str(target_card_id).isdigit() else None
+    note = request.form.get("note", "").strip()
+    actor = session.get("username") or "admin"
+
+    res = db.close_cash_desk(
+        desk_id=desk_id,
+        owner_type="admin",
+        reseller_id=0,
+        target_card_id=target_card_id,
+        note=note,
+        actor=actor
+    )
+    if res.get("success"):
+        flash(f"صندوق نقدی با موفقیت صفر/تسویه شد. مبلغ {res.get('settled_amount', 0):,} تومان منتقل گردید.", "success")
+    else:
+        flash(f"خطا در بستن صندوق: {res.get('error')}", "danger")
+    return redirect(url_for("admin_wallet"))
+
+
+@app.route("/admin/accounts/allocate_profit", methods=["POST"])
+@permission_required("cards")
+def admin_account_allocate_profit():
+    """تخصیص سود ماهانه به حساب پس‌انداز یا شریک"""
+    account_id = int(request.form.get("account_id", 0))
+    source_id = request.form.get("source_id")
+    source_id = int(source_id) if source_id and str(source_id).isdigit() else None
+    profit_amount = int(request.form.get("profit_amount", 0) or 0)
+    note = request.form.get("note", "").strip()
+    actor = session.get("username") or "admin"
+
+    res = db.allocate_monthly_profit(
+        account_id=account_id,
+        owner_type="admin",
+        reseller_id=0,
+        profit_amount=profit_amount,
+        source_id=source_id,
+        note=note,
+        actor=actor
+    )
+    if res.get("success"):
+        flash(f"سود ماهانه به مبلغ {profit_amount:,} تومان با موفقیت واریز شد.", "success")
+    else:
+        flash(f"خطا در تخصیص سود: {res.get('error')}", "danger")
+    return redirect(url_for("admin_wallet"))
+
+
+@app.route("/admin/accounts/set_customer_default/<int:card_id>", methods=["POST"])
+@permission_required("cards")
+def admin_account_set_default(card_id: int):
+    """انتخاب حساب به عنوان حساب پیش‌فرض ثبت دستی و تمدید مشتریان"""
+    res = db.set_customer_default_account(card_id, owner_type="admin", reseller_id=0)
+    if res.get("success"):
+        flash("حساب با موفقیت به عنوان پیش‌فرض مشتریان انتخاب شد.", "success")
+    else:
+        flash("خطا در تنظیم حساب پیش‌فرض.", "danger")
+    return redirect(url_for("admin_wallet"))
+
+
+@app.route("/admin/accounts/export_csv/<int:card_id>", methods=["GET"])
+@permission_required("cards")
+def admin_account_export_csv(card_id: int):
+    """خروجی CSV گردش تراکنش‌های یک حساب برای مدیریت"""
+    csv_content = db.export_account_transactions_csv(card_id, owner_type="admin", reseller_id=0)
+    response = Response(csv_content, mimetype="text/csv")
+    response.headers["Content-Disposition"] = f"attachment; filename=admin_account_{card_id}_transactions.csv"
+    response.headers["Content-Type"] = "text/csv; charset=utf-8-sig"
+    return response
+
+
+@app.route("/admin/accounts/transactions/<int:card_id>", methods=["GET"])
+@permission_required("cards")
+def admin_account_transactions_json(card_id: int):
+    """دریافت لیست JSON تراکنش‌های حساب جهت نمایش در مودال"""
+    tx_list = db.get_card_transactions(card_id, owner_type="admin", limit=100)
+    return jsonify({"success": True, "transactions": tx_list})
+
+
 @app.route("/api/admin/card/<int:card_id>/details", methods=["GET"])
 @permission_required("cards")
 def api_admin_card_details(card_id):
@@ -10459,9 +10831,9 @@ def reseller_create_user():
                     reseller_id=reseller_id,
                     subscription_id=sub_id
                 )
-                if payment_dest.startswith("card_"):
+                if payment_dest.startswith("card_") or payment_dest.startswith("account_"):
                     try:
-                        c_id = int(payment_dest.replace("card_", ""))
+                        c_id = int(re.sub(r"\D", "", payment_dest))
                         db.add_card_transaction(
                             card_id=c_id,
                             owner_type="reseller",
@@ -10478,6 +10850,7 @@ def reseller_create_user():
                         logger.error(f"Error depositing to target card in reseller_create_user: {e_c}")
                 else:
                     try:
+                        desk_id = int(payment_dest.replace("cash_desk_", "")) if payment_dest.startswith("cash_desk_") else None
                         db.add_cash_desk_log(
                             owner_type="reseller",
                             owner_id=reseller_id,
@@ -10486,6 +10859,7 @@ def reseller_create_user():
                             customer_name=account_name,
                             ref_type="subscription",
                             ref_id=str(sub_id),
+                            desk_id=desk_id,
                             note=f"دریافت نقدی اشتراک {account_name} توسط {reseller_creator}",
                             actor=reseller_creator
                         )
@@ -10598,7 +10972,9 @@ def reseller_create_user():
         credit_debt=credit_debt,
         available_credit=available_credit,
         total_purchasing_power=total_purchasing_power,
-        cards=db.get_reseller_cards(reseller_id)
+        cards=db.get_reseller_cards(reseller_id),
+        accounts=db.get_financial_accounts_summary("reseller", reseller_id).get("accounts", []),
+        default_account=db.get_customer_default_account("reseller", reseller_id)
     )
 
 
@@ -10706,7 +11082,9 @@ def reseller_users():
         panel_url=get_hiddify_url(),
         user_proxy=get_user_proxy(),
         single_link_template=single_link_template,
-        cards=db.get_reseller_cards(reseller_id)
+        cards=db.get_reseller_cards(reseller_id),
+        accounts=db.get_financial_accounts_summary("reseller", reseller_id).get("accounts", []),
+        default_account=db.get_customer_default_account("reseller", reseller_id)
     )
 
 
@@ -11089,9 +11467,9 @@ def reseller_renew_user(sub_id: int):
                     subscription_id=sub_id,
                     is_renewal=1
                 )
-                if payment_dest.startswith("card_"):
+                if payment_dest.startswith("card_") or payment_dest.startswith("account_"):
                     try:
-                        c_id = int(payment_dest.replace("card_", ""))
+                        c_id = int(re.sub(r"\D", "", payment_dest))
                         db.add_card_transaction(
                             card_id=c_id,
                             owner_type="reseller",
@@ -11108,6 +11486,7 @@ def reseller_renew_user(sub_id: int):
                         logger.error(f"Error depositing to target card in reseller_renew_user: {e_c}")
                 else:
                     try:
+                        desk_id = int(payment_dest.replace("cash_desk_", "")) if payment_dest.startswith("cash_desk_") else None
                         db.add_cash_desk_log(
                             owner_type="reseller",
                             owner_id=reseller_id,
@@ -11116,6 +11495,7 @@ def reseller_renew_user(sub_id: int):
                             customer_name=sub.get("account_name"),
                             ref_type="subscription",
                             ref_id=str(sub_id),
+                            desk_id=desk_id,
                             note=f"دریافت نقدی تمدید توسط {creator_user}",
                             actor=creator_user
                         )
@@ -11794,8 +12174,15 @@ def reseller_transactions():
     debts = db.get_reseller_debts(reseller_id)
     stats = db.get_reseller_stats(reseller_id)
     bundles = db.get_reseller_credit_bundles(active_only=True)
+    financial_summary = db.get_financial_accounts_summary("reseller", reseller_id)
+    accounts = financial_summary.get("accounts", [])
+    default_account = db.get_customer_default_account("reseller", reseller_id)
+    cash_desk_logs = db.get_cash_desk_logs(owner_type="reseller", owner_id=reseller_id, status="all", limit=50)
+    if isinstance(cash_desk_logs, dict) and "logs" in cash_desk_logs:
+        cash_desk_logs = cash_desk_logs["logs"]
     admin_cards = db.get_active_bank_cards()
     admin_gateway = db.get_admin_gateway()
+
     return render_template(
         "reseller_transactions.html",
         transactions=tx_list,
@@ -11803,7 +12190,11 @@ def reseller_transactions():
         stats=stats,
         bundles=bundles,
         admin_cards=admin_cards,
-        admin_gateway=admin_gateway
+        admin_gateway=admin_gateway,
+        financial_summary=financial_summary,
+        accounts=accounts,
+        default_account=default_account,
+        cash_desk_logs=cash_desk_logs
     )
 
 
@@ -12514,25 +12905,27 @@ def reseller_bot_settings():
             "brand_name": brand_name,
             "start_message": start_message,
             "support_username": support_username,
-            "card_number": card_number,
-            "card_holder": card_holder,
-            "bank_name": bank_name,
             "vip_auto_enabled": vip_auto_enabled,
             "vip_auto_threshold": vip_auto_threshold,
             "vip_cashback_percent": vip_cashback_percent,
             "bot_admins": bot_admins_json
         }
+        if "card_number" in request.form:
+            update_kwargs["card_number"] = card_number
+            update_kwargs["card_holder"] = card_holder
+            update_kwargs["bank_name"] = bank_name
         if primary_admin_id:
             update_kwargs["telegram_id"] = primary_admin_id
 
         db.update_reseller_bot_settings(reseller_id, **update_kwargs)
 
-        # تنظیمات درگاه پرداخت آنلاین اختصاصی نماینده
-        is_gw_active = request.form.get("is_gateway_active") in ("on", "1")
-        gw_type = request.form.get("gateway_type", "zarinpal").strip().lower()
-        gw_key = request.form.get("gateway_key", "").strip()
-        gw_sandbox = request.form.get("gateway_sandbox") in ("on", "1")
-        db.update_reseller_gateway(reseller_id, is_gw_active, gw_type, gw_key, gw_sandbox)
+        # تنظیمات درگاه پرداخت آنلاین اختصاصی نماینده فقط در صورت ارسال از فرم
+        if "gateway_type" in request.form or "is_gateway_active" in request.form:
+            is_gw_active = request.form.get("is_gateway_active") in ("on", "1")
+            gw_type = request.form.get("gateway_type", "zarinpal").strip().lower()
+            gw_key = request.form.get("gateway_key", "").strip()
+            gw_sandbox = request.form.get("gateway_sandbox") in ("on", "1")
+            db.update_reseller_gateway(reseller_id, is_gw_active, gw_type, gw_key, gw_sandbox)
 
         # ریلود کانفیگ ربات نماینده در multibot_manager
         multibot_manager.restart_reseller_bot(reseller_id)
@@ -13219,6 +13612,173 @@ def reseller_card_set_role(card_id, role_type):
     db.set_card_role(card_id, owner_type="reseller", owner_id=reseller_id, is_default=is_default, is_backup=is_backup)
     flash("نقش کارت با موفقیت بروزرسانی شد.", "success")
     return redirect(url_for("reseller_cards"))
+
+
+# ─── عملیات حساب‌ها، صندوق‌ها و درگاه‌های نماینده ───
+
+@app.route("/reseller/accounts/add", methods=["POST"])
+@reseller_required
+def reseller_account_add():
+    """تعریف حساب/کارت جدید، متصل به درگاه، صندوق نقدی یا حساب شریک/پس‌انداز نماینده"""
+    reseller_id = session.get("reseller_id")
+    account_type = request.form.get("account_type", "bank_card").strip()
+    bank_name = request.form.get("bank_name", "").strip()
+    card_holder = request.form.get("card_holder", "").strip()
+    card_number = request.form.get("card_number", "").strip()
+    shaba_number = request.form.get("shaba_number", "").strip()
+    account_number = request.form.get("account_number", "").strip()
+    connected_gateway = request.form.get("connected_gateway", "").strip() or None
+    assigned_to = request.form.get("assigned_to", "").strip() or None
+    notes = request.form.get("notes", "").strip()
+    initial_balance = int(request.form.get("initial_balance", 0) or 0)
+    profit_percent = float(request.form.get("profit_percent", 0) or 0)
+    is_default_customer = 1 if request.form.get("is_default_customer") in ("1", "on", "true") else 0
+
+    if not card_holder and not bank_name:
+        flash("نام حساب / بانک / صندوق الزامی است.", "warning")
+        return redirect(url_for("reseller_transactions"))
+
+    if not card_number:
+        card_number = f"R{reseller_id}-{account_type.upper()}-{int(time.time()) % 100000}"
+
+    res = db.add_reseller_card(
+        reseller_id=reseller_id,
+        card_number=card_number,
+        card_holder=card_holder or bank_name,
+        bank_name=bank_name or card_holder,
+        daily_limit=int(request.form.get("daily_limit", 50000000) or 50000000),
+        is_default=0,
+        is_backup=0,
+        initial_balance=initial_balance,
+        shaba_number=shaba_number,
+        account_number=account_number,
+        notes=notes,
+        account_type=account_type,
+        connected_gateway=connected_gateway,
+        is_default_customer=is_default_customer,
+        profit_percent=profit_percent,
+        assigned_to=assigned_to
+    )
+    if res.get("success"):
+        flash("حساب / کارت جدید با موفقیت ثبت شد.", "success")
+    else:
+        flash(f"خطا در ثبت حساب: {res.get('error')}", "danger")
+    return redirect(url_for("reseller_transactions"))
+
+
+@app.route("/reseller/accounts/transfer", methods=["POST"])
+@reseller_required
+def reseller_account_transfer():
+    """انتقال وجه بین حساب‌ها، کارت‌ها و صندوق‌های نماینده"""
+    reseller_id = session.get("reseller_id")
+    source_id = int(request.form.get("source_id", 0))
+    target_id = int(request.form.get("target_id", 0))
+    amount = int(request.form.get("amount", 0) or 0)
+    note = request.form.get("note", "").strip()
+    actor = session.get("username") or f"reseller_{reseller_id}"
+
+    res = db.transfer_between_accounts(
+        source_id=source_id,
+        target_id=target_id,
+        amount=amount,
+        note=note,
+        actor=actor,
+        owner_type="reseller",
+        reseller_id=reseller_id
+    )
+    if res.get("success"):
+        flash(f"انتقال مبلغ {amount:,} تومان با موفقیت انجام شد.", "success")
+    else:
+        flash(f"خطا در انتقال: {res.get('error')}", "danger")
+    return redirect(url_for("reseller_transactions"))
+
+
+@app.route("/reseller/accounts/close_cash", methods=["POST"])
+@reseller_required
+def reseller_account_close_cash():
+    """بستن یا تحویل صندوق نقدی و صفر کردن مانده نماینده"""
+    reseller_id = session.get("reseller_id")
+    desk_id = int(request.form.get("desk_id", 0))
+    target_card_id = request.form.get("target_card_id")
+    target_card_id = int(target_card_id) if target_card_id and str(target_card_id).isdigit() else None
+    note = request.form.get("note", "").strip()
+    actor = session.get("username") or f"reseller_{reseller_id}"
+
+    res = db.close_cash_desk(
+        desk_id=desk_id,
+        owner_type="reseller",
+        reseller_id=reseller_id,
+        target_card_id=target_card_id,
+        note=note,
+        actor=actor
+    )
+    if res.get("success"):
+        flash(f"صندوق نقدی با موفقیت صفر/تسویه شد. مبلغ {res.get('settled_amount', 0):,} تومان منتقل گردید.", "success")
+    else:
+        flash(f"خطا در بستن صندوق: {res.get('error')}", "danger")
+    return redirect(url_for("reseller_transactions"))
+
+
+@app.route("/reseller/accounts/allocate_profit", methods=["POST"])
+@reseller_required
+def reseller_account_allocate_profit():
+    """تخصیص سود ماهانه به حساب پس‌انداز یا شریک نماینده"""
+    reseller_id = session.get("reseller_id")
+    account_id = int(request.form.get("account_id", 0))
+    source_id = request.form.get("source_id")
+    source_id = int(source_id) if source_id and str(source_id).isdigit() else None
+    profit_amount = int(request.form.get("profit_amount", 0) or 0)
+    note = request.form.get("note", "").strip()
+    actor = session.get("username") or f"reseller_{reseller_id}"
+
+    res = db.allocate_monthly_profit(
+        account_id=account_id,
+        owner_type="reseller",
+        reseller_id=reseller_id,
+        profit_amount=profit_amount,
+        source_id=source_id,
+        note=note,
+        actor=actor
+    )
+    if res.get("success"):
+        flash(f"سود ماهانه به مبلغ {profit_amount:,} تومان با موفقیت واریز شد.", "success")
+    else:
+        flash(f"خطا در تخصیص سود: {res.get('error')}", "danger")
+    return redirect(url_for("reseller_transactions"))
+
+
+@app.route("/reseller/accounts/set_customer_default/<int:card_id>", methods=["POST"])
+@reseller_required
+def reseller_account_set_default(card_id: int):
+    """انتخاب حساب به عنوان حساب پیش‌فرض ثبت دستی و تمدید مشتریان نماینده"""
+    reseller_id = session.get("reseller_id")
+    res = db.set_customer_default_account(card_id, owner_type="reseller", reseller_id=reseller_id)
+    if res.get("success"):
+        flash("حساب با موفقیت به عنوان پیش‌فرض مشتریان انتخاب شد.", "success")
+    else:
+        flash("خطا در تنظیم حساب پیش‌فرض.", "danger")
+    return redirect(url_for("reseller_transactions"))
+
+
+@app.route("/reseller/accounts/export_csv/<int:card_id>", methods=["GET"])
+@reseller_required
+def reseller_account_export_csv(card_id: int):
+    """خروجی CSV گردش تراکنش‌های یک حساب برای نماینده"""
+    reseller_id = session.get("reseller_id")
+    csv_content = db.export_account_transactions_csv(card_id, owner_type="reseller", reseller_id=reseller_id)
+    response = Response(csv_content, mimetype="text/csv")
+    response.headers["Content-Disposition"] = f"attachment; filename=reseller_account_{card_id}_transactions.csv"
+    response.headers["Content-Type"] = "text/csv; charset=utf-8-sig"
+    return response
+
+
+@app.route("/reseller/accounts/transactions/<int:card_id>", methods=["GET"])
+@reseller_required
+def reseller_account_transactions_json(card_id: int):
+    """دریافت لیست JSON تراکنش‌های حساب نماینده جهت نمایش در مودال"""
+    reseller_id = session.get("reseller_id")
+    tx_list = db.get_card_transactions(card_id, owner_type="reseller", limit=100, reseller_id=reseller_id)
+    return jsonify({"success": True, "transactions": tx_list})
 
 
 @app.route("/api/reseller/card/<int:card_id>/details", methods=["GET"])
@@ -13926,9 +14486,9 @@ def admin_create_customer():
                 account_name=account_name,
                 source="admin"
             )
-            if payment_dest.startswith("card_"):
+            if payment_dest.startswith("card_") or payment_dest.startswith("account_"):
                 try:
-                    c_id = int(payment_dest.replace("card_", ""))
+                    c_id = int(re.sub(r"\D", "", payment_dest))
                     db.add_card_transaction(
                         card_id=c_id,
                         owner_type="admin",
@@ -13944,6 +14504,7 @@ def admin_create_customer():
                     logger.error(f"Error depositing to target card in admin_create_customer: {e_c}")
             else:
                 try:
+                    desk_id = int(payment_dest.replace("cash_desk_", "")) if payment_dest.startswith("cash_desk_") else None
                     db.add_cash_desk_log(
                         owner_type="admin",
                         amount=price,
@@ -13951,6 +14512,7 @@ def admin_create_customer():
                         customer_name=account_name,
                         ref_type="subscription",
                         ref_id=str(sub_id),
+                        desk_id=desk_id,
                         note=f"دریافت نقدی اشتراک {account_name} توسط {admin_creator}",
                         actor=admin_creator
                     )
@@ -14046,7 +14608,10 @@ def admin_create_customer():
             debt_info=debt_info_text
         )
 
-    return render_template("admin_create_customer.html", plans=plans, admin_role=admin_role, share_percent=share_percent, cards=db.get_active_bank_cards())
+    fin_summary = db.get_financial_accounts_summary("admin", 0)
+    accounts = fin_summary.get("accounts", [])
+    default_account = db.get_customer_default_account("admin", 0)
+    return render_template("admin_create_customer.html", plans=plans, admin_role=admin_role, share_percent=share_percent, cards=db.get_active_bank_cards(), accounts=accounts, default_account=default_account)
 
 
 # ═══════════════════════════════════════════════════════════════════════

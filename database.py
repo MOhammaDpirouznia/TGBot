@@ -12,6 +12,8 @@ import uuid
 import secrets
 import random
 import logging
+import io
+import csv
 from typing import Optional, Dict, List, Any, Tuple, Union
 from datetime import datetime, timedelta, timezone
 from utils import get_now_naive, get_now_iso, TEHRAN_TZ
@@ -594,6 +596,11 @@ class Database:
 
         try:
             cursor.execute("ALTER TABLE transactions ADD COLUMN source TEXT DEFAULT 'telegram'")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN reseller_id INTEGER")
         except Exception:
             pass
 
@@ -1261,13 +1268,25 @@ class Database:
             "ALTER TABLE bank_cards ADD COLUMN shaba_number TEXT",
             "ALTER TABLE bank_cards ADD COLUMN account_number TEXT",
             "ALTER TABLE bank_cards ADD COLUMN notes TEXT",
+            # ستون‌های ارتقای سیستم کیف پول چندحسابه، درگاه‌های متصل، صندوق نقدی و حساب‌های سود
+            "ALTER TABLE bank_cards ADD COLUMN account_type TEXT DEFAULT 'bank_card'",
+            "ALTER TABLE bank_cards ADD COLUMN connected_gateway TEXT",
+            "ALTER TABLE bank_cards ADD COLUMN is_default_customer INTEGER DEFAULT 0",
+            "ALTER TABLE bank_cards ADD COLUMN profit_percent REAL DEFAULT 0",
+            "ALTER TABLE bank_cards ADD COLUMN assigned_to TEXT",
             "ALTER TABLE reseller_cards ADD COLUMN is_default INTEGER DEFAULT 0",
             "ALTER TABLE reseller_cards ADD COLUMN is_backup INTEGER DEFAULT 0",
             "ALTER TABLE reseller_cards ADD COLUMN balance INTEGER DEFAULT 0",
             "ALTER TABLE reseller_cards ADD COLUMN initial_balance INTEGER DEFAULT 0",
             "ALTER TABLE reseller_cards ADD COLUMN shaba_number TEXT",
             "ALTER TABLE reseller_cards ADD COLUMN account_number TEXT",
-            "ALTER TABLE reseller_cards ADD COLUMN notes TEXT"
+            "ALTER TABLE reseller_cards ADD COLUMN notes TEXT",
+            "ALTER TABLE reseller_cards ADD COLUMN account_type TEXT DEFAULT 'bank_card'",
+            "ALTER TABLE reseller_cards ADD COLUMN connected_gateway TEXT",
+            "ALTER TABLE reseller_cards ADD COLUMN is_default_customer INTEGER DEFAULT 0",
+            "ALTER TABLE reseller_cards ADD COLUMN profit_percent REAL DEFAULT 0",
+            "ALTER TABLE reseller_cards ADD COLUMN assigned_to TEXT",
+            "ALTER TABLE cash_desk_logs ADD COLUMN desk_id INTEGER DEFAULT 0"
         ]:
             try:
                 cursor.execute(col_sql)
@@ -4475,6 +4494,8 @@ class Database:
             return []
         finally:
             conn.close()
+
+    get_discount_codes = get_all_discount_codes
 
     def delete_discount_code(self, code):
         """حذف کد تخفیف"""
@@ -9900,11 +9921,11 @@ class Database:
         if account_name and account_name != "بدون نام":
             cursor.execute("""
                 SELECT * FROM transactions 
-                WHERE (account_name = ? OR renew_sub_id = ?)
-                  AND status IN ('approved', 'completed')
-                  AND (is_deleted = 0 OR is_deleted IS NULL)
-                  AND (gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
-                ORDER BY created_at ASC
+                WHERE (username = ? OR renew_sub_id = ?)
+                AND status IN ('approved', 'completed')
+                AND (is_deleted = 0 OR is_deleted IS NULL)
+                AND (gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
+            ORDER BY created_at ASC
             """, (account_name, sub_id))
         else:
             cursor.execute("""
@@ -10860,8 +10881,11 @@ class Database:
     def add_reseller_card(self, reseller_id: int, card_number: str, card_holder: str, bank_name: str,
                           daily_limit: int = 50000000, is_default: int = 0, is_backup: int = 0,
                           initial_balance: int = 0, shaba_number: str = None,
-                          account_number: str = None, notes: str = None) -> dict:
-        """افزودن کارت بانکی جدید برای نماینده با موجودی اولیه و نقش کارت"""
+                          account_number: str = None, notes: str = None,
+                          account_type: str = "bank_card", connected_gateway: str = None,
+                          is_default_customer: int = 0, profit_percent: float = 0,
+                          assigned_to: str = None) -> dict:
+        """افزودن کارت بانکی یا حساب مالی جدید برای نماینده با موجودی اولیه و نقش حساب"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -10869,25 +10893,31 @@ class Database:
             init_bal = max(0, int(initial_balance or 0))
             def_val = 1 if is_default else 0
             back_val = 1 if (is_backup and not def_val) else 0
+            def_cust = 1 if is_default_customer else 0
 
             # اگر کارت جدید پیش‌فرض باشد، کارت‌های قبلی را از پیش‌فرض بودن خارج می‌کنیم
             if def_val:
                 cursor.execute("UPDATE reseller_cards SET is_default = 0 WHERE reseller_id = ?", (reseller_id,))
             elif back_val:
                 cursor.execute("UPDATE reseller_cards SET is_backup = 0 WHERE reseller_id = ?", (reseller_id,))
+            if def_cust:
+                cursor.execute("UPDATE reseller_cards SET is_default_customer = 0 WHERE reseller_id = ?", (reseller_id,))
 
             cursor.execute("""
                 INSERT INTO reseller_cards (
                     reseller_id, card_number, card_holder, bank_name, daily_limit,
                     is_active, created_at, is_default, is_backup, balance,
-                    initial_balance, shaba_number, account_number, notes
-                ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)
+                    initial_balance, shaba_number, account_number, notes,
+                    account_type, connected_gateway, is_default_customer, profit_percent, assigned_to
+                ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 reseller_id, card_number.strip(), card_holder.strip(), bank_name.strip(),
                 daily_limit, now, def_val, back_val, init_bal, init_bal,
                 shaba_number.strip() if shaba_number else None,
                 account_number.strip() if account_number else None,
-                notes.strip() if notes else None
+                notes.strip() if notes else None,
+                account_type or "bank_card", connected_gateway or None,
+                def_cust, float(profit_percent or 0), assigned_to.strip() if assigned_to else None
             ))
             card_id = cursor.lastrowid
 
@@ -11273,8 +11303,11 @@ class Database:
     def add_bank_card(self, card_number: str, card_holder: str, bank_name: str,
                       daily_limit: int = 50000000, is_default: int = 0, is_backup: int = 0,
                       initial_balance: int = 0, shaba_number: str = None,
-                      account_number: str = None, notes: str = None):
-        """افزودن کارت بانکی جدید برای مدیریت با موجودی اولیه و نقش کارت"""
+                      account_number: str = None, notes: str = None,
+                      account_type: str = "bank_card", connected_gateway: str = None,
+                      is_default_customer: int = 0, profit_percent: float = 0,
+                      assigned_to: str = None):
+        """افزودن کارت بانکی یا حساب مالی جدید برای مدیریت با موجودی اولیه و نقش حساب"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -11282,25 +11315,31 @@ class Database:
             init_bal = max(0, int(initial_balance or 0))
             def_val = 1 if is_default else 0
             back_val = 1 if (is_backup and not def_val) else 0
+            def_cust = 1 if is_default_customer else 0
 
             # اگر کارت جدید پیش‌فرض باشد، کارت‌های قبلی را از پیش‌فرض خارج می‌کنیم
             if def_val:
                 cursor.execute("UPDATE bank_cards SET is_default = 0")
             elif back_val:
                 cursor.execute("UPDATE bank_cards SET is_backup = 0")
+            if def_cust:
+                cursor.execute("UPDATE bank_cards SET is_default_customer = 0")
 
             cursor.execute("""
                 INSERT INTO bank_cards (
                     card_number, card_holder, bank_name, daily_limit, is_active,
                     created_at, is_default, is_backup, balance, initial_balance,
-                    shaba_number, account_number, notes
-                ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)
+                    shaba_number, account_number, notes,
+                    account_type, connected_gateway, is_default_customer, profit_percent, assigned_to
+                ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 card_number.strip(), card_holder.strip(), bank_name.strip(),
                 daily_limit, now, def_val, back_val, init_bal, init_bal,
                 shaba_number.strip() if shaba_number else None,
                 account_number.strip() if account_number else None,
-                notes.strip() if notes else None
+                notes.strip() if notes else None,
+                account_type or "bank_card", connected_gateway or None,
+                def_cust, float(profit_percent or 0), assigned_to.strip() if assigned_to else None
             ))
             card_id = cursor.lastrowid
 
@@ -11479,7 +11518,7 @@ class Database:
     def update_card_info(self, card_id: int, owner_type: str = "admin", **kwargs) -> dict:
         """ویرایش مشخصات، اطلاعات شبا و تنظیم مانده حساب کارت"""
         table = "bank_cards" if owner_type == "admin" else "reseller_cards"
-        allowed = ["card_number", "card_holder", "bank_name", "daily_limit", "shaba_number", "account_number", "notes", "initial_balance", "balance"]
+        allowed = ["card_number", "card_holder", "bank_name", "daily_limit", "shaba_number", "account_number", "notes", "initial_balance", "balance", "account_type", "connected_gateway", "is_default_customer", "profit_percent", "assigned_to"]
         updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
         if not updates:
             return {"success": False, "error": "فیلدی برای به‌روزرسانی ارسال نشده است."}
@@ -11649,6 +11688,13 @@ class Database:
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
+
+    def get_card_transactions(self, card_id: int, owner_type: str = "admin", limit: int = 100, reseller_id: int = 0) -> list:
+        """دریافت لیست تراکنش‌های ثبت‌شده برای یک کارت/حساب بانکی"""
+        res = self.get_card_details_and_transactions(card_id=card_id, owner_type=owner_type, limit=limit, reseller_id=reseller_id, owner_id=reseller_id)
+        if isinstance(res, dict) and "transactions" in res:
+            return res["transactions"]
+        return []
 
     def get_cards_financial_summary(self, owner_type: str = "admin", reseller_id: int = 0,
                                     owner_id: int = None, **kwargs) -> dict:
@@ -11840,6 +11886,552 @@ class Database:
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
+
+    # ═══════════════════════════════════════════════════════════════
+    # سیستم مدیریت حساب‌ها، کارت‌ها، صندوق‌های نقدی و کیف پول چندگانه
+    # ═══════════════════════════════════════════════════════════════
+
+    def set_customer_default_account(self, card_id: int, owner_type: str = "admin", reseller_id: int = 0) -> dict:
+        """تنظیم حساب یا کارت پیش‌فرض جهت ساخت و تمدید دستی مشتریان در پنل"""
+        table = "bank_cards" if owner_type == "admin" else "reseller_cards"
+        owner_filter = "" if owner_type == "admin" else " AND reseller_id = ?"
+        params = [reseller_id] if owner_type == "reseller" else []
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(f"UPDATE {table} SET is_default_customer = 0 WHERE 1=1 {owner_filter}", params)
+            cursor.execute(f"UPDATE {table} SET is_default_customer = 1 WHERE id = ?", (card_id,))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_customer_default_account(self, owner_type: str = "admin", reseller_id: int = 0) -> dict:
+        """دریافت کارت یا حساب پیش‌فرض برای ساخت یا تمدید مشتری"""
+        table = "bank_cards" if owner_type == "admin" else "reseller_cards"
+        owner_filter = "" if owner_type == "admin" else " WHERE reseller_id = ?"
+        params = [reseller_id] if owner_type == "reseller" else []
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(f"SELECT * FROM {table} {owner_filter} ORDER BY is_default_customer DESC, is_default DESC, id ASC LIMIT 1", params)
+            row = cursor.fetchone()
+            return dict(row) if row else {}
+        finally:
+            conn.close()
+
+    def transfer_between_accounts(self, source_id: int, target_id: int, amount: int,
+                                  owner_type: str = "admin", reseller_id: int = 0,
+                                  description: str = None, actor: str = None) -> dict:
+        """جابجایی وجه بین دو کارت، حساب، صندوق نقدی یا حساب‌های پس‌انداز"""
+        if not source_id or not target_id or source_id == target_id:
+            return {"success": False, "error": "حساب مبدأ و مقصد نمی‌توانند یکسان یا خالی باشند."}
+        amt = abs(int(amount or 0))
+        if amt <= 0:
+            return {"success": False, "error": "مبلغ انتقال باید بیشتر از صفر باشد."}
+
+        table = "bank_cards" if owner_type == "admin" else "reseller_cards"
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(f"SELECT * FROM {table} WHERE id = ?", (source_id,))
+            src = cursor.fetchone()
+            cursor.execute(f"SELECT * FROM {table} WHERE id = ?", (target_id,))
+            tgt = cursor.fetchone()
+            if not src or not tgt:
+                return {"success": False, "error": "حساب مبدأ یا مقصد یافت نشد."}
+
+            src_name = src.get("bank_name") or src.get("card_holder") or f"حساب #{source_id}"
+            tgt_name = tgt.get("bank_name") or tgt.get("card_holder") or f"حساب #{target_id}"
+            user_actor = actor or "system"
+            now = get_now_iso()
+
+            # کسر از مبدأ
+            w_res = self.add_card_transaction(
+                card_id=source_id,
+                owner_type=owner_type,
+                amount=amt,
+                tx_type="withdrawal",
+                category="انتقال وجه",
+                title=f"انتقال وجه به {tgt_name}",
+                description=description or f"انتقال داخلی بین‌حسابی به حساب مقصد #{target_id}",
+                ref_type="transfer_out",
+                ref_id=str(target_id),
+                actor=user_actor,
+                reseller_id=reseller_id
+            )
+            if not w_res.get("success"):
+                return w_res
+
+            # واریز به مقصد
+            d_res = self.add_card_transaction(
+                card_id=target_id,
+                owner_type=owner_type,
+                amount=amt,
+                tx_type="deposit",
+                category="انتقال وجه",
+                title=f"دریافت وجه از {src_name}",
+                description=description or f"انتقال داخلی بین‌حسابی از حساب مبدأ #{source_id}",
+                ref_type="transfer_in",
+                ref_id=str(source_id),
+                actor=user_actor,
+                reseller_id=reseller_id
+            )
+            return {"success": True, "withdrawal": w_res, "deposit": d_res}
+        except Exception as e:
+            logger.error(f"Error transferring between accounts: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def close_cash_desk(self, desk_id: int, owner_type: str = "admin", reseller_id: int = 0,
+                        target_card_id: int = None, note: str = None, actor: str = None) -> dict:
+        """بستن و صفر کردن صندوق نقدی با امکان واریز مانده به کارت بانکی یا ثبت تسویه"""
+        table = "bank_cards" if owner_type == "admin" else "reseller_cards"
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute(f"SELECT * FROM {table} WHERE id = ?", (desk_id,))
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "error": "صندوق نقدی یافت نشد."}
+            desk = dict(row)
+            curr_bal = int(desk.get("balance") or 0)
+            desk_name = desk.get("bank_name") or desk.get("card_holder") or f"صندوق نقدی #{desk_id}"
+            user_actor = actor or "مدیریت"
+
+            if curr_bal > 0:
+                if target_card_id and int(target_card_id) > 0 and int(target_card_id) != desk_id:
+                    # انتقال وجه به کارت مقصد
+                    self.add_card_transaction(
+                        card_id=desk_id,
+                        owner_type=owner_type,
+                        amount=curr_bal,
+                        tx_type="withdrawal",
+                        category="بستن صندوق",
+                        title=f"بستن و صفر کردن صندوق ({desk_name})",
+                        description=note or f"تسویه صندوق و واریز به کارت #{target_card_id}",
+                        ref_type="cash_desk_close",
+                        ref_id=str(target_card_id),
+                        actor=user_actor,
+                        reseller_id=reseller_id
+                    )
+                    self.add_card_transaction(
+                        card_id=target_card_id,
+                        owner_type=owner_type,
+                        amount=curr_bal,
+                        tx_type="deposit",
+                        category="تسویه صندوق نقدی",
+                        title=f"واریز مانده تسویه {desk_name}",
+                        description=note or f"مانده صندوق نقدی #{desk_id} پس از بستن و صفر شدن",
+                        ref_type="cash_desk_close",
+                        ref_id=str(desk_id),
+                        actor=user_actor,
+                        reseller_id=reseller_id
+                    )
+                else:
+                    # برداشت نقدی و صفر کردن
+                    self.add_card_transaction(
+                        card_id=desk_id,
+                        owner_type=owner_type,
+                        amount=curr_bal,
+                        tx_type="withdrawal",
+                        category="بستن صندوق",
+                        title=f"بستن و تسویه صندوق ({desk_name})",
+                        description=note or "برداشت و بستن صندوق نقدی بدون کارت واسط",
+                        ref_type="cash_desk_close",
+                        ref_id=str(desk_id),
+                        actor=user_actor,
+                        reseller_id=reseller_id
+                    )
+
+            # اطمینان از صفر بودن موجودی صندوق
+            cursor.execute(f"UPDATE {table} SET balance = 0 WHERE id = ?", (desk_id,))
+
+            # تسویه تمامی لاگ‌های ثبت‌شده برای این صندوق
+            cursor.execute("""
+                UPDATE cash_desk_logs 
+                SET is_settled = 1, settled_at = ?, settled_by = ? 
+                WHERE owner_type = ? AND (owner_id = ? OR ? = 0) AND is_settled = 0
+            """, (now, user_actor, owner_type, reseller_id, reseller_id))
+            conn.commit()
+            return {"success": True, "settled_amount": curr_bal}
+        except Exception as e:
+            logger.error(f"Error closing cash desk: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def allocate_monthly_profit(self, account_id: int, owner_type: str = "admin", reseller_id: int = 0,
+                                profit_amount: int = 0, source_id: int = None, note: str = None, actor: str = None) -> dict:
+        """محاسبه و واریز درصد سود ماهیانه به حساب‌های پس‌انداز، ذخیره یا شریک"""
+        table = "bank_cards" if owner_type == "admin" else "reseller_cards"
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(f"SELECT * FROM {table} WHERE id = ?", (account_id,))
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "error": "حساب مورد نظر یافت نشد."}
+            acc = dict(row)
+            pct = float(acc.get("profit_percent") or 0)
+            p_amt = abs(int(profit_amount or 0))
+            if p_amt <= 0:
+                return {"success": False, "error": "مبلغ مبنای محاسبه سود باید بزرگتر از صفر باشد."}
+
+            alloc_amount = int((p_amt * pct / 100)) if pct > 0 else p_amt
+            if alloc_amount <= 0:
+                return {"success": False, "error": "مبلغ سود محاسبه‌شده صفر می‌باشد."}
+
+            acc_name = acc.get("bank_name") or acc.get("card_holder") or f"حساب #{account_id}"
+            user_actor = actor or "مدیریت"
+
+            # در صورت مشخص بودن حساب مبدأ، از آن کسر می‌گردد
+            if source_id and int(source_id) > 0 and int(source_id) != account_id:
+                self.add_card_transaction(
+                    card_id=source_id,
+                    owner_type=owner_type,
+                    amount=alloc_amount,
+                    tx_type="withdrawal",
+                    category="برداشت سود ماهیانه",
+                    title=f"کسر سهم سود ({pct}٪) برای {acc_name}",
+                    description=note or f"تخصیص سود دوره به حساب #{account_id}",
+                    ref_type="profit_dist",
+                    ref_id=str(account_id),
+                    actor=user_actor,
+                    reseller_id=reseller_id
+                )
+
+            # واریز به حساب هدف
+            d_res = self.add_card_transaction(
+                card_id=account_id,
+                owner_type=owner_type,
+                amount=alloc_amount,
+                tx_type="deposit",
+                category="سود ماهیانه",
+                title=f"واریز سهم سود ماهیانه ({pct}٪)",
+                description=note or f"واریز سود دوره از کل درآمد {p_amt:,} ت",
+                ref_type="profit_dist",
+                ref_id=str(source_id) if source_id else "auto",
+                actor=user_actor,
+                reseller_id=reseller_id
+            )
+            return {"success": True, "allocated_amount": alloc_amount, "transaction": d_res}
+        except Exception as e:
+            logger.error(f"Error allocating profit: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_financial_accounts_summary(self, owner_type: str = "admin", reseller_id: int = 0) -> dict:
+        """
+        دریافت لیست و خلاصه‌وضعیت تفکیکی حساب‌ها، کارت‌ها، درگاه‌ها و صندوق‌ها:
+        - مانده کل تجمیعی
+        - تفکیک کارت‌ها، درگاه‌ها، کریپتو، صندوق نقدی و حساب‌های سود/شریک
+        - محاسبه تراکنش‌های امروز و سقف مصرفی
+        """
+        table = "bank_cards" if owner_type == "admin" else "reseller_cards"
+        owner_filter = "" if owner_type == "admin" else " WHERE reseller_id = ?"
+        params = [reseller_id] if owner_type == "reseller" else []
+        today_str = get_now_naive().strftime("%Y-%m-%d")
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(f"SELECT * FROM {table} {owner_filter} ORDER BY is_default_customer DESC, is_default DESC, id ASC", params)
+            rows = [dict(r) for r in cursor.fetchall()]
+
+            accounts = []
+            total_balance = 0
+            cards_balance = 0
+            gateways_balance = 0
+            crypto_balance = 0
+            cash_balance = 0
+            savings_balance = 0
+
+            for acc in rows:
+                bal = int(acc.get("balance") or 0)
+                total_balance += bal
+                acc_type = str(acc.get("account_type") or "bank_card")
+                gw = str(acc.get("connected_gateway") or "")
+
+                # دسته‌بندی موجودی‌ها
+                if gw or acc_type in ("gateway_blupal", "gateway_zarinpal", "gateway_idpay", "gateway_nextpay"):
+                    gateways_balance += bal
+                elif acc_type == "crypto" or gw == "crypto":
+                    crypto_balance += bal
+                elif acc_type == "cash_desk":
+                    cash_balance += bal
+                elif acc_type in ("savings", "partner", "custom"):
+                    savings_balance += bal
+                else:
+                    cards_balance += bal
+
+                # برچسب و آیکون نوع حساب
+                type_label = "کارت بانکی"
+                icon_class = "fa-credit-card"
+                badge_class = "bg-primary"
+
+                if gw == "blupal" or acc_type == "gateway_blupal":
+                    type_label = "متصل به بلوپال"
+                    icon_class = "fa-bolt text-warning"
+                    badge_class = "bg-warning text-dark"
+                elif gw == "zarinpal" or acc_type == "gateway_zarinpal":
+                    type_label = "متصل به زرین‌پال"
+                    icon_class = "fa-gem text-warning"
+                    badge_class = "bg-warning text-dark"
+                elif gw == "idpay" or acc_type == "gateway_idpay":
+                    type_label = "متصل به آیدی‌پی"
+                    icon_class = "fa-money-bill-wave text-info"
+                    badge_class = "bg-info text-dark"
+                elif gw == "crypto" or acc_type == "crypto":
+                    type_label = "ولت کریپتو / تتر"
+                    icon_class = "fa-coins text-success"
+                    badge_class = "bg-success"
+                elif acc_type == "cash_desk":
+                    type_label = "صندوق نقدی"
+                    icon_class = "fa-cash-register text-warning"
+                    badge_class = "bg-warning text-dark"
+                elif acc_type == "savings":
+                    type_label = "حساب پس‌انداز"
+                    icon_class = "fa-piggy-bank text-info"
+                    badge_class = "bg-info text-dark"
+                elif acc_type == "partner":
+                    type_label = "حساب شریک"
+                    icon_class = "fa-handshake text-secondary"
+                    badge_class = "bg-secondary"
+                elif acc_type == "custom":
+                    type_label = "حساب اختصاصی"
+                    icon_class = "fa-wallet text-dark"
+                    badge_class = "bg-dark"
+
+                # محاسبه تراکنش امروز
+                c_id = acc["id"]
+                cursor.execute("""
+                    SELECT COALESCE(SUM(amount), 0) FROM card_transactions 
+                    WHERE card_id = ? AND owner_type = ? AND type = 'deposit' AND created_at LIKE ?
+                """, (c_id, owner_type, f"{today_str}%"))
+                today_vol = cursor.fetchone()[0] or 0
+
+                daily_lim = int(acc.get("daily_limit") or 50000000)
+                rem_lim = max(0, daily_lim - today_vol)
+                usage_pct = min(100.0, round((today_vol / daily_lim) * 100, 1)) if daily_lim > 0 else 0
+
+                acc["today_volume"] = today_vol
+                acc["remaining_limit"] = rem_lim
+                acc["usage_percent"] = usage_pct
+                acc["type_label"] = type_label
+                acc["icon_class"] = icon_class
+                acc["badge_class"] = badge_class
+                accounts.append(acc)
+
+            # مانده تسویه‌نشده صندوق‌ها
+            cursor.execute("""
+                SELECT COALESCE(SUM(amount), 0) FROM cash_desk_logs 
+                WHERE owner_type = ? AND (owner_id = ? OR ? = 0) AND is_settled = 0 AND type = 'income'
+            """, (owner_type, reseller_id, reseller_id))
+            unsettled_cash = cursor.fetchone()[0] or 0
+
+            return {
+                "accounts": accounts,
+                "total_balance": total_balance,
+                "cards_balance": cards_balance,
+                "gateways_balance": gateways_balance,
+                "crypto_balance": crypto_balance,
+                "cash_balance": cash_balance,
+                "savings_balance": savings_balance,
+                "unsettled_cash": unsettled_cash,
+                "net_floating_balance": total_balance + unsettled_cash,
+                "accounts_count": len(accounts)
+            }
+        finally:
+            conn.close()
+
+    def export_account_transactions_csv(self, card_id: int, owner_type: str = "admin", reseller_id: int = 0) -> str:
+        """تولید خروجی استاندارد CSV با کاراکتر BOM برای نمایش فارسی بدون مشکل در اکسل"""
+        details = self.get_card_details_and_transactions(card_id, owner_type=owner_type, limit=2000, reseller_id=reseller_id)
+        if not details.get("success"):
+            return ""
+        card = details.get("card", {})
+        txs = details.get("transactions", [])
+
+        output = io.StringIO()
+        output.write('\ufeff')  # BOM for Excel UTF-8
+        writer = csv.writer(output)
+        writer.writerow(["شناسه", "تاریخ و زمان", "نوع تراکنش", "مبلغ (تومان)", "مانده پس از تراکنش (تومان)", "دسته‌بندی", "عنوان", "توضیحات", "کد پیگیری", "ثبت‌کننده"])
+
+        for tx in txs:
+            t_fa = "واریز" if tx.get("type") == "deposit" else "برداشت"
+            writer.writerow([
+                tx.get("id"),
+                tx.get("created_at", ""),
+                t_fa,
+                tx.get("amount", 0),
+                tx.get("balance_after", 0),
+                tx.get("category", ""),
+                tx.get("title", ""),
+                tx.get("description") or "",
+                tx.get("tracking_code") or "",
+                tx.get("created_by") or ""
+            ])
+        return output.getvalue()
+
+    def record_gateway_income(self, gateway_type: str, amount: int, owner_type: str = "admin",
+                               reseller_id: int = 0, title: str = "", tracking_code: str = None,
+                               ref_type: str = "gateway", ref_id: str = None) -> dict:
+        """ثبت خودکار درآمد درگاه‌های آنلاین و کریپتو در حساب/کارت متصل به آن درگاه"""
+        table = "bank_cards" if owner_type == "admin" else "reseller_cards"
+        owner_filter = "" if owner_type == "admin" else " AND reseller_id = ?"
+        params = [gateway_type, gateway_type, f"%{gateway_type}%"]
+        if owner_type == "reseller":
+            params.append(reseller_id)
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(f"""
+                SELECT * FROM {table} 
+                WHERE (connected_gateway = ? OR account_type = ? OR bank_name LIKE ?) 
+                  AND is_active = 1 {owner_filter} 
+                ORDER BY id ASC LIMIT 1
+            """, params)
+            acc = cursor.fetchone()
+            if not acc:
+                # در صورت نیافتن، به کارت پیش‌فرض واریز می‌شود
+                cursor.execute(f"SELECT * FROM {table} WHERE is_default = 1 {owner_filter} LIMIT 1", [reseller_id] if owner_type == "reseller" else [])
+                acc = cursor.fetchone()
+
+            if acc:
+                card_id = acc["id"]
+                gw_name_map = {"blupal": "بلوپال", "zarinpal": "زرین‌پال", "idpay": "آیدی‌پی", "crypto": "تتر کریپتو"}
+                gw_label = gw_name_map.get(gateway_type, gateway_type)
+                return self.add_card_transaction(
+                    card_id=card_id,
+                    owner_type=owner_type,
+                    amount=amount,
+                    tx_type="deposit",
+                    category=f"درگاه {gw_label}",
+                    title=title or f"دریافت آنلاین از درگاه {gw_label}",
+                    tracking_code=tracking_code,
+                    ref_type=ref_type,
+                    ref_id=str(ref_id) if ref_id else None,
+                    actor="gateway",
+                    reseller_id=reseller_id
+                )
+            return {"success": False, "error": "حساب متصل یافت نشد"}
+        except Exception as e:
+            logger.error(f"Error recording gateway income: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    # ═══════════════════════════════════════════════════════════════
+    # تنظیمات و چیدمان زیرمنوهای ربات‌ها (روش پرداخت، پشتیبانی و...)
+    # ═══════════════════════════════════════════════════════════════
+
+    DEFAULT_SUB_MENUS = {
+        "payment": [
+            {"id": "card_to_card", "title": "💵 کارت به کارت (بانکی)", "enabled": True, "row": 0, "col": 0, "order": 1},
+            {"id": "wallet", "title": "⚡ پرداخت از کیف پول", "enabled": True, "row": 0, "col": 1, "order": 2},
+            {"id": "online_gateway", "title": "💳 درگاه پرداخت آنلاین", "enabled": True, "row": 1, "col": 0, "order": 3},
+            {"id": "crypto", "title": "💎 پرداخت با تتر / کریپتو", "enabled": True, "row": 1, "col": 1, "order": 4}
+        ],
+        "payment_methods": [
+            {"id": "card_to_card", "title": "💵 کارت به کارت (بانکی)", "enabled": True, "row": 0, "col": 0, "order": 1},
+            {"id": "wallet", "title": "⚡ پرداخت از کیف پول", "enabled": True, "row": 0, "col": 1, "order": 2},
+            {"id": "online_gateway", "title": "💳 درگاه پرداخت آنلاین", "enabled": True, "row": 1, "col": 0, "order": 3},
+            {"id": "crypto", "title": "💎 پرداخت با تتر / کریپتو", "enabled": True, "row": 1, "col": 1, "order": 4}
+        ],
+        "support": [
+            {"id": "ticket_new", "title": "📝 ارسال تیکت جدید", "enabled": True, "row": 0, "col": 0, "order": 1},
+            {"id": "ticket_list", "title": "📨 تیکت‌ها و پیام‌های من", "enabled": True, "row": 0, "col": 1, "order": 2},
+            {"id": "direct_support", "title": "📞 ارتباط مستقیم با پشتیبان", "enabled": True, "row": 1, "col": 0, "order": 3}
+        ],
+        "tutorials": [
+            {"id": "android", "title": "🤖 آموزش اندروید (v2rayNG)", "enabled": True, "row": 0, "col": 0, "order": 1},
+            {"id": "ios", "title": "🍏 آموزش آیفون (V2Box/Streisand)", "enabled": True, "row": 0, "col": 1, "order": 2},
+            {"id": "windows", "title": "💻 آموزش ویندوز (v2rayN)", "enabled": True, "row": 1, "col": 0, "order": 3},
+            {"id": "troubleshoot", "title": "🛠️ حل مشکلات و عیب‌یابی اتصال", "enabled": True, "row": 1, "col": 1, "order": 4}
+        ],
+        "wallet": [
+            {"id": "charge_card", "title": "💳 شارژ با کارت به کارت", "enabled": True, "row": 0, "col": 0, "order": 1},
+            {"id": "charge_crypto", "title": "💎 شارژ با تتر و کریپتو", "enabled": True, "row": 0, "col": 1, "order": 2},
+            {"id": "wallet_history", "title": "🧾 سوابق و گردش کیف پول", "enabled": True, "row": 1, "col": 0, "order": 3}
+        ]
+    }
+
+    def _parse_sub_menu_args(self, arg1, arg2=None, is_reseller=False, reseller_id=None):
+        if str(arg1).lower() in ("admin", "reseller"):
+            is_reseller = (str(arg1).lower() == "reseller")
+            menu_key = str(arg2 or "payment").strip().lower()
+        else:
+            menu_key = str(arg1 or "payment").strip().lower()
+            if isinstance(arg2, bool):
+                is_reseller = arg2
+        if menu_key == "payment_methods":
+            menu_key = "payment"
+        return menu_key, is_reseller, reseller_id
+
+    def get_sub_menu_config(self, *args, **kwargs) -> list:
+        """دریافت تنظیمات و چیدمان یک زیرمنو برای ربات مدیریت یا نماینده"""
+        arg1 = args[0] if len(args) > 0 else kwargs.get("bot_type", kwargs.get("menu_key", "payment"))
+        arg2 = args[1] if len(args) > 1 else kwargs.get("menu_key", kwargs.get("is_reseller", False))
+        is_reseller = kwargs.get("is_reseller", False)
+        reseller_id = kwargs.get("reseller_id", None)
+        menu_key, is_reseller, reseller_id = self._parse_sub_menu_args(arg1, arg2, is_reseller, reseller_id)
+
+        defaults = self.DEFAULT_SUB_MENUS.get(menu_key, [])
+        prefix = f"sub_menu_{menu_key}_r_{reseller_id}" if (is_reseller and reseller_id) else (f"sub_menu_{menu_key}_reseller" if is_reseller else f"sub_menu_{menu_key}_admin")
+        saved_raw = self.get_setting(prefix)
+        if saved_raw:
+            try:
+                saved = json.loads(saved_raw) if isinstance(saved_raw, str) else saved_raw
+                if isinstance(saved, list) and saved:
+                    for idx, it in enumerate(saved):
+                        if "row" not in it:
+                            it["row"] = idx // 2
+                        if "col" not in it:
+                            it["col"] = idx % 2
+                    return saved
+            except Exception:
+                pass
+        return copy.deepcopy(defaults)
+
+    def save_sub_menu_config(self, *args, **kwargs) -> bool:
+        """ذخیره تنظیمات و ترتیب زیرمنوهای ربات"""
+        arg1 = args[0] if len(args) > 0 else kwargs.get("bot_type", kwargs.get("menu_key", "payment"))
+        arg2 = args[1] if len(args) > 1 else kwargs.get("menu_key", kwargs.get("config", []))
+        config = args[2] if len(args) > 2 else kwargs.get("config", [])
+        if isinstance(arg2, list) and not config:
+            config = arg2
+            arg2 = None
+        is_reseller = kwargs.get("is_reseller", False)
+        reseller_id = kwargs.get("reseller_id", None)
+        menu_key, is_reseller, reseller_id = self._parse_sub_menu_args(arg1, arg2, is_reseller, reseller_id)
+
+        prefix = f"sub_menu_{menu_key}_r_{reseller_id}" if (is_reseller and reseller_id) else (f"sub_menu_{menu_key}_reseller" if is_reseller else f"sub_menu_{menu_key}_admin")
+        try:
+            self.set_setting(prefix, json.dumps(config, ensure_ascii=False))
+            return True
+        except Exception as e:
+            logger.error(f"Error saving sub menu config: {e}")
+            return False
+
+    def reset_sub_menu_config(self, *args, **kwargs) -> list:
+        """بازنشانی زیرمنو به حالت پیش‌فرض"""
+        arg1 = args[0] if len(args) > 0 else kwargs.get("bot_type", kwargs.get("menu_key", "payment"))
+        arg2 = args[1] if len(args) > 1 else kwargs.get("menu_key", kwargs.get("is_reseller", False))
+        is_reseller = kwargs.get("is_reseller", False)
+        reseller_id = kwargs.get("reseller_id", None)
+        menu_key, is_reseller, reseller_id = self._parse_sub_menu_args(arg1, arg2, is_reseller, reseller_id)
+
+        defaults = copy.deepcopy(self.DEFAULT_SUB_MENUS.get(menu_key, []))
+        prefix = f"sub_menu_{menu_key}_r_{reseller_id}" if (is_reseller and reseller_id) else (f"sub_menu_{menu_key}_reseller" if is_reseller else f"sub_menu_{menu_key}_admin")
+        self.set_setting(prefix, json.dumps(defaults, ensure_ascii=False))
+        return defaults
 
     # ═══════════════════════════════════════════════════════════════
     # سیستم حسابداری و مدیریت مالی پیشرفته (Accounting & Profit/Loss)
@@ -13579,6 +14171,12 @@ class Database:
 
     # ─── تنظیمات تایید خودکار کارت به کارت با پیامک بانک (Smart Bank SMS) ───
 
+    def get_bank_sms_config(self, owner_type: str = "admin", owner_id: int = 0) -> dict:
+        """دریافت تنظیمات تایید خودکار پیامک بانک برای مدیریت یا نماینده"""
+        if owner_type == "reseller" and owner_id > 0:
+            return self.get_reseller_bank_sms_config(owner_id)
+        return self.get_admin_bank_sms_config()
+
     def get_admin_bank_sms_config(self) -> dict:
         """دریافت تنظیمات تایید خودکار با پیامک بانک برای مدیریت اصلی"""
         enabled = str(self.get_setting("admin_bank_sms_enabled", "0")).lower() in ("1", "true")
@@ -13949,6 +14547,8 @@ class Database:
                             base = dict(default_map[m_id])
                             if isinstance(item, dict) and "enabled" in item:
                                 base["enabled"] = bool(item["enabled"])
+                            if isinstance(item, dict) and "name" in item and item["name"]:
+                                base["name"] = str(item["name"]).strip()
                             result.append(base)
                             seen.add(m_id)
                     for m_id, base in default_map.items():
