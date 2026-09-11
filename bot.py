@@ -3345,10 +3345,6 @@ async def show_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         tx_lines = "<i>هنوز تراکنشی ثبت نشده است.</i>\n"
 
-    webapp_url = db.get_setting("webapp_url", "") or os.getenv("DASHBOARD_URL", "")
-    if not webapp_url and os.getenv("RAILWAY_PUBLIC_DOMAIN"):
-        webapp_url = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}"
-
     vip_info = db.get_user_vip_info(user.id)
     vip_line = ""
     if vip_info.get("is_vip"):
@@ -3366,9 +3362,9 @@ async def show_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
 💡 <i>با داشتن موجودی در کیف پول، می‌توانید تمام پلن‌ها را در ۱ ثانیه و به صورت آنی فعال کنید.</i>
 """
     
-    keyboard = []
-    if webapp_url:
-        full_app_url = f"{webapp_url.rstrip('/')}/webapp?tg_id={user.id}&r=0"
+    from telegram_menu_helper import get_miniapp_url
+    full_app_url = get_miniapp_url(reseller_id=0, user_id=user.id)
+    if full_app_url:
         keyboard.append([InlineKeyboardButton("📱 باز کردن پنل هوشمند (Mini App)", web_app=WebAppInfo(url=full_app_url))])
 
     crypto_cfg = CryptoPaymentGateway.get_crypto_config(db)
@@ -3393,14 +3389,11 @@ async def show_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_webapp_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """ارسال دکمه و لینک ورود به مینی‌اپ اختصاصی کاربر"""
-    user = update.effective_user
-    webapp_url = db.get_setting("webapp_url", "") or os.getenv("DASHBOARD_URL", "")
-    if not webapp_url and os.getenv("RAILWAY_PUBLIC_DOMAIN"):
-        webapp_url = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}"
+    from telegram_menu_helper import get_miniapp_url
+    full_app_url = get_miniapp_url(reseller_id=0, user_id=user.id)
 
     keyboard = []
-    if webapp_url:
-        full_app_url = f"{webapp_url.rstrip('/')}/webapp?tg_id={user.id}&r=0"
+    if full_app_url:
         keyboard.append([InlineKeyboardButton("📱 ورود به پنل هوشمند (Mini App)", web_app=WebAppInfo(url=full_app_url))])
         keyboard.append([InlineKeyboardButton("🌐 باز کردن در مرورگر", url=full_app_url)])
         text = (

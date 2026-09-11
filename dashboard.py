@@ -414,6 +414,90 @@ def serve_avatar_static_file(filename):
     abort(404)
 
 
+DEFAULT_HIDDIPLUS_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <radialGradient id="hpBgGrad" cx="50%" cy="45%" r="65%">
+      <stop offset="0%" stop-color="#143770"/>
+      <stop offset="55%" stop-color="#091834"/>
+      <stop offset="100%" stop-color="#020612"/>
+    </radialGradient>
+    <linearGradient id="hpCyanBlue" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f2fe"/>
+      <stop offset="45%" stop-color="#00c0ff"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="hpLoopGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="50%" stop-color="#00d2ff"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </linearGradient>
+    <filter id="hpNeonGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="110" fill="url(#hpBgGrad)"/>
+  <rect width="504" height="504" x="4" y="4" rx="106" fill="none" stroke="url(#hpCyanBlue)" stroke-width="2.5" stroke-opacity="0.4"/>
+  <circle cx="256" cy="205" r="145" fill="none" stroke="#00d2ff" stroke-width="1.5" stroke-dasharray="8 8" opacity="0.25"/>
+  <circle cx="256" cy="205" r="105" fill="none" stroke="#2563eb" stroke-width="1.5" opacity="0.3"/>
+  <circle cx="256" cy="205" r="60" fill="#00c0ff" opacity="0.18" filter="url(#hpNeonGlow)"/>
+  <g filter="url(#hpNeonGlow)">
+    <rect x="135" y="110" width="36" height="190" rx="18" fill="url(#hpCyanBlue)"/>
+    <rect x="135" y="192" width="125" height="34" rx="17" fill="url(#hpCyanBlue)"/>
+    <rect x="225" y="110" width="36" height="190" rx="18" fill="url(#hpCyanBlue)"/>
+    <path d="M 245 110 H 310 C 358 110 388 138 388 180 C 388 222 358 250 310 250 H 245" fill="none" stroke="url(#hpLoopGrad)" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <circle cx="310" cy="180" r="11" fill="#ffffff" filter="url(#hpNeonGlow)" opacity="0.95"/>
+  <text x="256" y="375" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="44" font-weight="800" fill="#ffffff" text-anchor="middle" letter-spacing="1">Hiddi<tspan fill="#38bdf8">Plus</tspan></text>
+  <text x="256" y="412" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="600" fill="#94a3b8" text-anchor="middle" letter-spacing="4">SMART CONNECTION</text>
+</svg>"""
+
+
+@app.route("/api/miniapp/logo")
+def miniapp_logo():
+    """
+    سرویس‌دهی تضمینی تصویر لوگوی لودینگ مینی‌اپ بدون احتمال خطای ۴۰۴ یا نمایش آیکون شکسته.
+    در صورت عدم وجود فایل فیزیکی روی سرور، وکتور اختصاصی نئونی hp را رندر می‌کند.
+    """
+    if request.args.get("fallback") or request.args.get("default") == "svg":
+        return Response(DEFAULT_HIDDIPLUS_SVG, mimetype="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
+
+    # ۱. تصویر سفارشی ذخیره شده در تنظیمات دیتابیس
+    custom_setting = db.get_setting("mini_app_splash_image")
+    if custom_setting:
+        raw = str(custom_setting).strip()
+        clean_path = raw.split("?")[0].lstrip("/")
+        for check_path in [
+            Path(clean_path),
+            AVATAR_CACHE_DIR / Path(clean_path).name,
+            Path("static/images") / Path(clean_path).name,
+        ]:
+            if check_path.exists() and check_path.is_file() and check_path.stat().st_size > 0:
+                ext = check_path.suffix.lower()
+                mime = "image/svg+xml" if ext == ".svg" else ("image/png" if ext == ".png" else "image/jpeg")
+                return Response(check_path.read_bytes(), mimetype=mime, headers={"Cache-Control": "public, max-age=86400"})
+
+    # ۲. بررسی فایل‌های تصویری موجود در پوشه‌های static یا avatars
+    for candidate in [
+        Path("static/images/hiddiplus_logo.jpg"),
+        Path("static/images/hiddiplus_splash.jpg"),
+        AVATAR_CACHE_DIR / "hiddiplus_logo.jpg",
+        AVATAR_CACHE_DIR / "hiddiplus_splash.jpg",
+        Path("static/images/hiddiplus_logo.svg"),
+        AVATAR_CACHE_DIR / "hiddiplus_logo.svg",
+    ]:
+        if candidate.exists() and candidate.is_file() and candidate.stat().st_size > 0:
+            ext = candidate.suffix.lower()
+            mime = "image/svg+xml" if ext == ".svg" else ("image/png" if ext == ".png" else "image/jpeg")
+            return Response(candidate.read_bytes(), mimetype=mime, headers={"Cache-Control": "public, max-age=86400"})
+
+    # ۳. فالبک قطعی درون کدی با هدر کش
+    return Response(DEFAULT_HIDDIPLUS_SVG, mimetype="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
+
+
 @app.template_filter("avatar_url")
 @app.template_global("avatar_url")
 def avatar_url_helper(identifier=None):
@@ -10491,6 +10575,9 @@ def settings():
             btn_text = request.form.get("mini_app_menu_button_text", "").strip() or "ورود به برنامه | HiddiPlus"
             custom_url = request.form.get("mini_app_custom_url", "").strip()
 
+            if custom_url and ("gotel.ir" in custom_url.lower() or "pay.gotel.ir" in custom_url.lower()):
+                custom_url = ""
+
             splash_enabled = "1" if request.form.get("mini_app_splash_enabled") else "0"
             splash_title = request.form.get("mini_app_splash_title", "").strip() or "HiddiPlus"
             splash_subtitle = request.form.get("mini_app_splash_subtitle", "").strip() or "سرویس اتصال هوشمند و پرسرعت"
@@ -10517,7 +10604,7 @@ def settings():
 
             try:
                 from telegram_menu_helper import sync_all_bots_menu_button
-                sync_res = sync_all_bots_menu_button()
+                sync_res = sync_all_bots_menu_button(host_url=request.host_url)
                 if sync_res.get("success"):
                     flash(f"تنظیمات مینی‌اپ ذخیره شد و دکمه تلگرام در ربات اصلی و {sync_res.get('resellers_synced', 0)} ربات نماینده به‌روزرسانی گردید.", "success")
                 else:
@@ -10529,7 +10616,7 @@ def settings():
         elif action == "sync_mini_app_menu_button":
             try:
                 from telegram_menu_helper import sync_all_bots_menu_button
-                sync_res = sync_all_bots_menu_button()
+                sync_res = sync_all_bots_menu_button(host_url=request.host_url)
                 if sync_res.get("success"):
                     flash(f"⚡ دکمه منوی مینی‌اپ با موفقیت در ربات اصلی و {sync_res.get('resellers_synced', 0)} ربات فعال نماینده همگام‌سازی شد.", "success")
                 else:

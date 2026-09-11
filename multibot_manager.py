@@ -199,19 +199,15 @@ class ResellerBotInstance:
             """ساخت کیبورد اصلی ربات نماینده مطابق با چیدمان ذخیره شده در پنل مدیریت با اتصال مینی‌اپ اختصاصی نماینده"""
             menu_rows = db.get_bot_menu_keyboard_rows(is_reseller=True)
             kb_list = []
-            webapp_url = db.get_setting("webapp_url", "") or os.getenv("DASHBOARD_URL", "")
-            if not webapp_url and os.getenv("RAILWAY_PUBLIC_DOMAIN"):
-                webapp_url = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}"
-
             for r in menu_rows:
                 row_btns = []
                 for b in r:
                     b_id = b.get("id")
                     b_title = b.get("title") or t(f"btn_{b_id}", lang)
                     if b_id in ("mini_app", "webapp"):
-                        if webapp_url:
-                            uid_param = f"tg_id={user_id}&" if user_id else ""
-                            full_app_url = f"{webapp_url.rstrip('/')}/webapp?{uid_param}r={r_id}"
+                        from telegram_menu_helper import get_miniapp_url
+                        full_app_url = get_miniapp_url(reseller_id=r_id, user_id=user_id)
+                        if full_app_url:
                             row_btns.append(KeyboardButton(b_title, web_app=WebAppInfo(url=full_app_url)))
                         else:
                             row_btns.append(KeyboardButton(b_title))
@@ -2878,11 +2874,9 @@ class ResellerBotInstance:
                     return
 
                 if b_id in ("mini_app", "webapp"):
-                    webapp_url = db.get_setting("webapp_url", "") or os.getenv("DASHBOARD_URL", "")
-                    if not webapp_url and os.getenv("RAILWAY_PUBLIC_DOMAIN"):
-                        webapp_url = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}"
-                    if webapp_url:
-                        full_app_url = f"{webapp_url.rstrip('/')}/webapp?tg_id={user.id}&r={r_id}"
+                    from telegram_menu_helper import get_miniapp_url
+                    full_app_url = get_miniapp_url(reseller_id=r_id, user_id=user.id)
+                    if full_app_url:
                         kb = InlineKeyboardMarkup([
                             [InlineKeyboardButton("📱 ورود به پنل کاربری هوشمند (Mini App)", web_app=WebAppInfo(url=full_app_url))]
                         ])

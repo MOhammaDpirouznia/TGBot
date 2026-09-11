@@ -580,11 +580,9 @@ def get_main_keyboard(user_id: int, admin_id: int, lang: str = "fa", webapp_url:
                     b_id = btn.get("id")
                     b_title = btn.get("title") or t(f"btn_{b_id}", lang)
                     if b_id in ("mini_app", "webapp"):
-                        base_app = webapp_url or db.get_setting("webapp_url", "") or os.getenv("DASHBOARD_URL", "")
-                        if not base_app and os.getenv("RAILWAY_PUBLIC_DOMAIN"):
-                            base_app = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}"
-                        if base_app:
-                            app_url = f"{base_app.rstrip('/')}/webapp?tg_id={user_id}&r=0"
+                        from telegram_menu_helper import get_miniapp_url
+                        app_url = get_miniapp_url(reseller_id=0, user_id=user_id)
+                        if app_url:
                             kb_row.append(KeyboardButton(b_title, web_app=WebAppInfo(url=app_url)))
                         else:
                             kb_row.append(KeyboardButton(b_title))
