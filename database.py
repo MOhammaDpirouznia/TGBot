@@ -15280,14 +15280,74 @@ class Database:
     # ═══════════════════════════════════════════════════════════════
 
     DEFAULT_PAYMENT_METHODS = [
-        {"id": "card_to_card", "name": "کارت به کارت (بانکی)", "icon": "fa-credit-card", "color": "primary", "enabled": True, "desc": "واریز به شماره کارت‌های فعال با بررسی و تایید فیش"},
-        {"id": "wallet", "name": "پرداخت از کیف پول", "icon": "fa-wallet", "color": "success", "enabled": True, "desc": "کسر آنی مبلغ از موجودی کیف پول و فعال‌سازی لحظه‌ای اشتراک"},
-        {"id": "online_gateway", "name": "درگاه پرداخت آنلاین (شاپرک / بلوپال)", "icon": "fa-globe", "color": "info", "enabled": True, "desc": "اتصال خودکار به درگاه‌های زرین‌پال، آیدی‌پی، نکست‌پی یا کارت‌به‌کارت هوشمند بلوپال"},
-        {"id": "crypto", "name": "ارز دیجیتال (تتر / کریپتو)", "icon": "fa-gem", "color": "warning", "enabled": True, "desc": "پرداخت با تتر (USDT TRC20 / TON) با محاسبه خودکار نرخ روز"},
+        {
+            "id": "card_to_card", 
+            "name": "کارت به کارت (بانکی)", 
+            "portal_title": "کارت به کارت (واریز بانکی)",
+            "icon": "fas fa-credit-card", 
+            "color": "primary", 
+            "enabled": True, 
+            "desc": "واریز به شماره کارت با تایید خودکار پیامک بانک",
+            "desc_auto": "واریز به شماره کارت با تایید خودکار پیامک بانک",
+            "badge_auto": "تایید خودکار",
+            "badge_class_auto": "bg-primary",
+            "btn_text_auto": "صدور فاکتور و پرداخت کارت به کارت (هوشمند)",
+            "desc_no_auto": "واریز به شماره کارت‌های فعال با بررسی و تایید فیش",
+            "badge_no_auto": "واریز بانکی",
+            "badge_class_no_auto": "bg-secondary",
+            "btn_text_no_auto": "صدور فاکتور و پرداخت کارت به کارت"
+        },
+        {
+            "id": "wallet", 
+            "name": "پرداخت از کیف پول", 
+            "portal_title": "پرداخت از موجودی کیف پول",
+            "icon": "fas fa-wallet", 
+            "color": "success", 
+            "enabled": True, 
+            "desc": "کسر آنی از کیف پول کاربری و فعال‌سازی لحظه‌ای اشتراک",
+            "badge": "کسر آنی",
+            "badge_class": "bg-success",
+            "btn_text": "پرداخت و کسر از کیف پول تلگرام"
+        },
+        {
+            "id": "online_gateway", 
+            "name": "درگاه پرداخت آنلاین (شاپرک / بلوپال)", 
+            "portal_title": "درگاه پرداخت آنلاین شاپرک",
+            "icon": "fas fa-globe", 
+            "color": "info", 
+            "enabled": True, 
+            "desc": "اتصال خودکار به درگاه‌های زرین‌پال، آیدی‌پی، نکست‌پی یا کارت‌به‌کارت هوشمند بلوپال",
+            "badge": "پرداخت آنی",
+            "badge_class": "bg-info",
+            "blupal_title": "درگاه پرداخت هوشمند (بلوپال)",
+            "blupal_desc": "پرداخت شتابی با درگاه کارت به کارت هوشمند بلوپال",
+            "blupal_badge": "پرداخت آنی",
+            "blupal_badge_class": "bg-info",
+            "blupal_btn_text": "ورود به درگاه پرداخت هوشمند بلوپال",
+            "blupal_icon": "fas fa-bolt",
+            "shaparak_title": "درگاه پرداخت اینترنتی شاپرک",
+            "shaparak_desc": "پرداخت آنلاین و آنی با کلیه کارت‌های بانکی عضو شتاب",
+            "shaparak_badge": "پرداخت آنی",
+            "shaparak_badge_class": "bg-success",
+            "shaparak_btn_text": "اتصال به درگاه بانکی شاپرک و تمدید آنلاین",
+            "shaparak_icon": "fas fa-globe"
+        },
+        {
+            "id": "crypto", 
+            "name": "ارز دیجیتال (تتر / کریپتو)", 
+            "portal_title": "پرداخت با تتر (USDT)",
+            "icon": "fab fa-bitcoin", 
+            "color": "warning", 
+            "enabled": True, 
+            "desc": "پرداخت با تتر (USDT TRC20 / TON) با محاسبه خودکار نرخ روز",
+            "badge": "TRC20 / TON",
+            "badge_class": "bg-warning text-dark",
+            "btn_text": "صدور فاکتور پرداخت با ارز دیجیتال (تتر USDT)"
+        },
     ]
 
     def get_payment_methods(self, reseller_id: Optional[int] = None) -> List[dict]:
-        """دریافت لیست و ترتیب اولویت روش‌های پرداخت برای بات و پنل"""
+        """دریافت لیست و ترتیب اولویت روش‌های پرداخت برای بات و پنل همراه با شخصی‌سازی‌ها"""
         setting_key = f"payment_methods_order_r_{reseller_id}" if reseller_id else "payment_methods_order"
         raw = self.get_setting(setting_key)
         if raw:
@@ -15301,10 +15361,12 @@ class Database:
                         m_id = item.get("id") if isinstance(item, dict) else str(item)
                         if m_id in default_map and m_id not in seen:
                             base = dict(default_map[m_id])
-                            if isinstance(item, dict) and "enabled" in item:
-                                base["enabled"] = bool(item["enabled"])
-                            if isinstance(item, dict) and "name" in item and item["name"]:
-                                base["name"] = str(item["name"]).strip()
+                            if isinstance(item, dict):
+                                for k, v in item.items():
+                                    if v is not None and v != "":
+                                        base[k] = v
+                                if "enabled" in item:
+                                    base["enabled"] = bool(item["enabled"])
                             result.append(base)
                             seen.add(m_id)
                     for m_id, base in default_map.items():
@@ -15324,6 +15386,34 @@ class Database:
         except Exception as e:
             logger.error(f"Error saving payment methods: {e}")
             return False
+
+    def update_payment_method_config(self, method_id: str, new_config: dict, reseller_id: Optional[int] = None) -> bool:
+        """ویرایش و شخصی‌سازی فیلدهای مختلف یک روش پرداخت"""
+        methods = self.get_payment_methods(reseller_id)
+        found = False
+        for m in methods:
+            if m["id"] == method_id:
+                for k, v in new_config.items():
+                    if k != "id":
+                        m[k] = v
+                found = True
+                break
+        if found:
+            return self.save_payment_methods(methods, reseller_id)
+        return False
+
+    def reset_payment_method_config(self, method_id: str, reseller_id: Optional[int] = None) -> bool:
+        """بازنشانی تنظیمات یک روش پرداخت به حالت پیش‌فرض سامانه"""
+        methods = self.get_payment_methods(reseller_id)
+        default_map = {m["id"]: m for m in self.DEFAULT_PAYMENT_METHODS}
+        if method_id in default_map:
+            for i, m in enumerate(methods):
+                if m["id"] == method_id:
+                    enabled = m.get("enabled", True)
+                    methods[i] = dict(default_map[method_id])
+                    methods[i]["enabled"] = enabled
+                    return self.save_payment_methods(methods, reseller_id)
+        return False
 
     def move_payment_method(self, method_id: str, direction: str, reseller_id: Optional[int] = None) -> List[dict]:
         """جابجایی عمودی یک روش پرداخت به بالا یا پایین"""

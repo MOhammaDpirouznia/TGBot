@@ -9140,6 +9140,40 @@ def admin_payment_method_toggle(method_id):
     return redirect(url_for("cards"))
 
 
+@app.route("/admin/payment_methods/edit/<method_id>", methods=["POST"])
+@permission_required("cards")
+def admin_payment_method_edit(method_id):
+    """ویرایش و شخصی‌سازی پیشرفته متون، عنوان، آیکون و رنگ روش پرداخت برای مدیریت"""
+    new_cfg = {}
+    field_keys = [
+        "name", "portal_title", "icon", "color", "desc", "badge", "badge_class", "btn_text",
+        "desc_auto", "badge_auto", "badge_class_auto", "btn_text_auto",
+        "portal_title_no_auto", "desc_no_auto", "badge_no_auto", "badge_class_no_auto", "btn_text_no_auto",
+        "blupal_title", "blupal_desc", "blupal_badge", "blupal_badge_class", "blupal_btn_text", "blupal_icon",
+        "shaparak_title", "shaparak_desc", "shaparak_badge", "shaparak_badge_class", "shaparak_btn_text", "shaparak_icon"
+    ]
+    for key in field_keys:
+        val = request.form.get(key)
+        if val is not None:
+            new_cfg[key] = val.strip()
+
+    if "enabled" in request.form:
+        new_cfg["enabled"] = request.form.get("enabled") in ["1", "on", "true"]
+
+    db.update_payment_method_config(method_id, new_cfg)
+    flash(f"تنظیمات و شخصی‌سازی‌های روش پرداخت با موفقیت ذخیره گردید.", "success")
+    return redirect(url_for("cards"))
+
+
+@app.route("/admin/payment_methods/reset/<method_id>", methods=["POST"])
+@permission_required("cards")
+def admin_payment_method_reset(method_id):
+    """بازنشانی متون و تنظیمات روش پرداخت به پیش‌فرض سامانه"""
+    db.reset_payment_method_config(method_id)
+    flash(f"تنظیمات روش پرداخت با موفقیت به پیش‌فرض سامانه بازگردانی شد.", "info")
+    return redirect(url_for("cards"))
+
+
 @app.route("/card/toggle/<int:card_id>")
 @permission_required("cards")
 def card_toggle(card_id):
@@ -16682,11 +16716,24 @@ def customer_check_discount(token: str = None):
         })
 
 
+def normalize_fa_icon(icon_str: str, default: str = "fas fa-credit-card") -> str:
+    """اطمینان از داشتن پیشوند استاندارد فونت‌اوسم (مانند fas یا fab) جهت جلوگیری از عدم رندر آیکون"""
+    if not icon_str:
+        return default
+    icon_str = icon_str.strip()
+    prefixes = ("fas ", "far ", "fab ", "fa-solid ", "fa-regular ", "fa-brands ", "fad ")
+    if any(icon_str.startswith(p) for p in prefixes):
+        return icon_str
+    if icon_str.startswith("fa-"):
+        return f"fas {icon_str}"
+    return f"fas fa-{icon_str}"
+
+
 def get_portal_payment_methods(sub: dict = None, reseller_id: int = None, user_id: int = None) -> list:
     """
     دریافت لیست و اولویت روش‌های پرداخت فعال اختصاصی برای مشتری این اشتراک یا خرید جدید
-    با تفکیک و ایزولاسیون کامل بین نماینده و مدیریت اصلی.
-    هر روشی که غیرفعال باشد هرگز نمایش داده نمی‌شود.
+    با تفکیک و ایزولاسیون کامل بین نماینده و مدیریت اصلی و اعمال تنظیمات پیشرفته و شخصی‌سازی‌ها.
+    اگر قابلیت تایید خودکار کارت به کارت فعال نباشد، متن‌های تایید خودکار هرگز درج نمی‌شوند.
     """
     if sub:
         if reseller_id is None:
@@ -16699,13 +16746,17 @@ def get_portal_payment_methods(sub: dict = None, reseller_id: int = None, user_i
 
     ordered_methods = db.get_payment_methods(reseller_id=reseller_id if reseller_id else None)
 
-    # دریافت اطلاعات پرداخت اختصاصی مالک اشتراک
+    # دریافت اطلاعات پرداخت اختصاصی مالک اشتراک و وضعیت تایید خودکار
+    sms_cfg = {}
     if reseller_id:
         r_cards = db.get_reseller_cards(reseller_id)
         active_cards = [c for c in r_cards if c.get("is_active")]
         if not active_cards:
             adm_cards = db.get_all_bank_cards()
             active_cards = [c for c in adm_cards if c.get("is_active")]
+            sms_cfg = db.get_admin_bank_sms_config()
+        else:
+            sms_cfg = db.get_reseller_bank_sms_config(reseller_id)
         gw_cfg = db.get_reseller_gateway(reseller_id)
         if not gw_cfg.get("enabled") or not gw_cfg.get("key"):
             gw_cfg = db.get_admin_gateway()
@@ -16713,11 +16764,13 @@ def get_portal_payment_methods(sub: dict = None, reseller_id: int = None, user_i
     else:
         adm_cards = db.get_all_bank_cards()
         active_cards = [c for c in adm_cards if c.get("is_active")]
+        sms_cfg = db.get_admin_bank_sms_config()
         gw_cfg = db.get_admin_gateway()
         from payment import CryptoPaymentGateway
         crypto_cfg = CryptoPaymentGateway.get_crypto_config(db)
 
-    user_id = sub.get("telegram_id") or 0
+    is_auto_confirm_active = bool(sms_cfg.get("enabled")) if isinstance(sms_cfg, dict) else False
+
     user_wallet = db.get_user_wallet_balance(user_id) if user_id else 0
 
     active_methods = []
@@ -16728,56 +16781,102 @@ def get_portal_payment_methods(sub: dict = None, reseller_id: int = None, user_i
         m_id = m.get("id")
         if m_id == "card_to_card":
             if active_cards:
+                if is_auto_confirm_active:
+                    c2c_title = m.get("portal_title") or m.get("name") or "کارت به کارت (واریز بانکی)"
+                    c2c_desc = m.get("desc_auto") or m.get("desc") or "واریز به شماره کارت با تایید خودکار پیامک بانک"
+                    c2c_badge = m.get("badge_auto") or m.get("badge") or "تایید خودکار"
+                    c2c_badge_class = m.get("badge_class_auto") or "bg-primary"
+                    c2c_btn_text = m.get("btn_text_auto") or m.get("btn_text") or "صدور فاکتور و پرداخت کارت به کارت (هوشمند)"
+                else:
+                    c2c_title = m.get("portal_title_no_auto") or m.get("portal_title") or m.get("name") or "کارت به کارت (واریز بانکی)"
+                    c2c_desc = m.get("desc_no_auto") or "واریز به شماره کارت‌های فعال با بررسی و تایید فیش"
+                    c2c_badge = m.get("badge_no_auto") or "واریز بانکی"
+                    c2c_badge_class = m.get("badge_class_no_auto") or "bg-secondary"
+                    c2c_btn_text = m.get("btn_text_no_auto") or "صدور فاکتور و پرداخت کارت به کارت"
+
                 active_methods.append({
                     "id": "card_to_card",
-                    "name": "کارت به کارت (بانکی)",
-                    "title": "کارت به کارت (واریز بانکی)",
-                    "desc": "واریز به شماره کارت با تایید خودکار پیامک بانک",
-                    "icon": "fa-credit-card",
-                    "color": "primary",
-                    "badge": "تایید خودکار"
+                    "name": m.get("name") or "کارت به کارت (بانکی)",
+                    "title": c2c_title,
+                    "desc": c2c_desc,
+                    "icon": normalize_fa_icon(m.get("icon"), "fas fa-credit-card"),
+                    "color": m.get("color") or "primary",
+                    "badge": c2c_badge,
+                    "badge_class": c2c_badge_class,
+                    "btn_text": c2c_btn_text,
+                    "is_auto_confirm": is_auto_confirm_active
                 })
         elif m_id == "online_gateway":
             if gw_cfg.get("enabled") and gw_cfg.get("key"):
                 gw_type = gw_cfg.get("type", "zarinpal")
                 if gw_type == "blupal":
-                    gw_title = "درگاه پرداخت هوشمند (بلوپال)"
-                    gw_desc = "پرداخت شتابی با درگاه کارت به کارت هوشمند بلوپال"
+                    gw_title = m.get("blupal_title") or m.get("portal_title") or "درگاه پرداخت هوشمند (بلوپال)"
+                    gw_desc = m.get("blupal_desc") or m.get("desc") or "پرداخت شتابی با درگاه کارت به کارت هوشمند بلوپال"
+                    gw_badge = m.get("blupal_badge") or m.get("badge") or "پرداخت آنی"
+                    gw_badge_class = m.get("blupal_badge_class") or m.get("badge_class") or "bg-info"
+                    gw_btn_text = m.get("blupal_btn_text") or m.get("btn_text") or "ورود به درگاه پرداخت هوشمند بلوپال"
+                    gw_icon = normalize_fa_icon(m.get("blupal_icon") or m.get("icon"), "fas fa-bolt")
+                    gw_color = m.get("color") or "info"
                 else:
                     gw_label = "زرین‌پال" if gw_type == "zarinpal" else ("آیدی‌پی" if gw_type == "idpay" else "شاپرک")
-                    gw_title = f"درگاه پرداخت اینترنتی ({gw_label})"
-                    gw_desc = "پرداخت آنلاین و آنی با کلیه کارت‌های بانکی عضو شتاب"
+                    gw_title = m.get("shaparak_title") or m.get("portal_title") or f"درگاه پرداخت اینترنتی ({gw_label})"
+                    gw_desc = m.get("shaparak_desc") or m.get("desc") or "پرداخت آنلاین و آنی با کلیه کارت‌های بانکی عضو شتاب"
+                    gw_badge = m.get("shaparak_badge") or m.get("badge") or "پرداخت آنی"
+                    gw_badge_class = m.get("shaparak_badge_class") or m.get("badge_class") or "bg-success"
+                    gw_btn_text = m.get("shaparak_btn_text") or m.get("btn_text") or "اتصال به درگاه بانکی شاپرک و تمدید آنلاین"
+                    gw_icon = normalize_fa_icon(m.get("shaparak_icon") or m.get("icon"), "fas fa-globe")
+                    gw_color = m.get("color") or "success"
 
                 active_methods.append({
                     "id": "online_gateway",
                     "name": gw_title,
                     "title": gw_title,
                     "desc": gw_desc,
-                    "icon": "fa-globe",
-                    "color": "success",
-                    "badge": "پرداخت آنی"
+                    "icon": gw_icon,
+                    "color": gw_color,
+                    "badge": gw_badge,
+                    "badge_class": gw_badge_class,
+                    "btn_text": gw_btn_text
                 })
         elif m_id == "crypto":
             if crypto_cfg.get("enabled") and (crypto_cfg.get("wallet_address") or crypto_cfg.get("api_key")):
+                c_title = m.get("portal_title") or m.get("name") or "پرداخت با تتر (USDT)"
+                c_desc = m.get("desc") or f"شبکه USDT (TRC20 / TON) - نرخ: {crypto_cfg.get('usdt_rate', 90000):,} ت"
+                c_btn_text = m.get("btn_text") or "صدور فاکتور پرداخت با ارز دیجیتال (تتر USDT)"
+                c_badge = m.get("badge") or "TRC20 / TON"
+                c_badge_class = m.get("badge_class") or "bg-warning text-dark"
                 active_methods.append({
                     "id": "crypto",
-                    "name": "ارز دیجیتال (تتر / کریپتو)",
-                    "title": "پرداخت با تتر (USDT)",
-                    "desc": f"شبکه USDT (TRC20 / TON) - نرخ: {crypto_cfg.get('usdt_rate', 90000):,} ت",
-                    "icon": "fa-gem",
-                    "color": "warning",
-                    "badge": "TRC20 / TON"
+                    "name": m.get("name") or "ارز دیجیتال (تتر / کریپتو)",
+                    "title": c_title,
+                    "desc": c_desc,
+                    "icon": normalize_fa_icon(m.get("icon"), "fab fa-bitcoin"),
+                    "color": m.get("color") or "warning",
+                    "badge": c_badge,
+                    "badge_class": c_badge_class,
+                    "btn_text": c_btn_text
                 })
         elif m_id == "wallet":
             if user_id and user_id > 0:
+                w_title = m.get("portal_title") or m.get("name") or "پرداخت از موجودی کیف پول"
+                w_desc = m.get("desc") or f"کسر آنی از کیف پول کاربری (موجودی: {user_wallet:,} تومان)"
+                if "{balance}" in w_desc:
+                    w_desc = w_desc.replace("{balance}", f"{user_wallet:,}")
+                w_btn_text = m.get("btn_text") or "پرداخت و کسر از کیف پول تلگرام"
+                w_badge = m.get("badge") or f"{user_wallet:,} ت"
+                if "{balance}" in w_badge:
+                    w_badge = w_badge.replace("{balance}", f"{user_wallet:,}")
+                w_badge_class = m.get("badge_class") or "bg-success"
                 active_methods.append({
                     "id": "wallet",
-                    "name": "کیف پول",
-                    "title": "پرداخت از موجودی کیف پول",
-                    "desc": f"کسر آنی از کیف پول کاربری (موجودی: {user_wallet:,} تومان)",
-                    "icon": "fa-wallet",
-                    "color": "info",
-                    "badge": f"{user_wallet:,} ت",
+                    "name": m.get("name") or "کیف پول",
+                    "title": w_title,
+                    "desc": w_desc,
+                    "icon": normalize_fa_icon(m.get("icon"), "fas fa-wallet"),
+                    "color": m.get("color") or "success",
+                    "badge": w_badge,
+                    "badge_class": w_badge_class,
+                    "btn_text": w_btn_text,
                     "balance": user_wallet
                 })
 
@@ -16994,6 +17093,8 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
 
     # روش‌های پرداخت فعال اختصاصی برای مشتری بر اساس مالک اشتراک
     portal_payment_methods = get_portal_payment_methods(sub=sub, reseller_id=reseller_id, user_id=telegram_id)
+    c2c_method = next((m for m in portal_payment_methods if m["id"] == "card_to_card"), None)
+    is_auto_confirm_active = c2c_method.get("is_auto_confirm", False) if c2c_method else False
     user_wallet = db.get_user_wallet_balance(telegram_id) if telegram_id else 0
 
     if reseller_id:
@@ -17046,6 +17147,7 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
         portal_layout=portal_layout,
         portal_plan_style=portal_plan_style,
         portal_payment_methods=portal_payment_methods,
+        is_auto_confirm_active=is_auto_confirm_active,
         gw_cfg=gw_cfg,
         user_wallet=user_wallet,
         user_subscriptions=user_subscriptions,
