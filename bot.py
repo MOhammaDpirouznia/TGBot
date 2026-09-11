@@ -3969,9 +3969,41 @@ async def admin_order_pay_action_callback(update: Update, context: ContextTypes.
         if tx.get("gateway") == "bundle_reseller" or str(order_id).startswith("R_BUNDLE"):
             r_id = tx.get("reseller_id")
             amount = tx.get("amount", 0)
-            pname = tx.get("plan_name", "بسته اعتباری")
             res_b = db.apply_reseller_bundle_credit(r_id, amount, pname, tx.get("id"))
             db.update_transaction(order_id, status="approved")
+
+            # واریز خودکار به کارت بانکی مقصد مدیر
+            target_card_id = tx.get("target_card_id")
+            if not target_card_id and tx.get("card_number"):
+                clean_c = re.sub(r"\D", "", str(tx["card_number"]))
+                if len(clean_c) >= 4:
+                    c_conn = db.get_connection()
+                    r_card = c_conn.execute("SELECT id FROM bank_cards WHERE card_number LIKE ? LIMIT 1", (f"%{clean_c[-10:]}%",)).fetchone()
+                    c_conn.close()
+                    if r_card:
+                        target_card_id = r_card["id"]
+            if not target_card_id:
+                best_c = db.get_best_active_card(owner_type="admin")
+                if best_c and best_c.get("id"):
+                    target_card_id = best_c["id"]
+
+            if target_card_id and amount > 0:
+                try:
+                    db.add_card_transaction(
+                        card_id=target_card_id,
+                        owner_type="admin",
+                        amount=amount,
+                        tx_type="deposit",
+                        category="reseller_bundle",
+                        title=f"فروش بسته اعتباری نماینده ({pname})",
+                        description=f"واریز بابت خرید بسته اعتباری نماینده (سفارش {order_id})",
+                        tracking_code=str(tx.get("tracking_code") or tx.get("id")),
+                        ref_type="reseller_bundle",
+                        ref_id=str(tx.get("id")),
+                        created_by="ربات مدیریت"
+                    )
+                except Exception as e_c:
+                    logger.error(f"Error depositing bundle to admin card in bot: {e_c}")
 
             credit_added = res_b.get("credit_added", amount) if isinstance(res_b, dict) else amount
             new_balance = res_b.get("new_balance", 0) if isinstance(res_b, dict) else 0
@@ -4780,20 +4812,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
             phone_display = phone or "ثبت نشده (ندارد)"
 
+            selling_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or wholesale_cost
+            cards = db.get_reseller_cards(r_id) if r_id else db.get_active_bank_cards()
+
             preview_txt = (
-                f"📋 **پیش‌نمایش و تایید نهایی مشخصات مشتری (گام ۳ از ۳)**\n\n"
+                f"📋 **پیش‌نمایش و انتخاب شیوه تسویه حساب (گام ۳ از ۳)**\n\n"
                 f"👤 نام اکانت: `{clean_name}`\n"
                 f"📱 شماره تماس: `{phone_display}`\n"
                 f"📦 پلن انتخابی: **{pname}**\n"
                 f"📊 حجم: **{vol_str}** | ⏳ مدت: **{days} روز**\n"
-                f"💰 هزینه کسر از کیف پول پنل: **{wholesale_cost:,} تومان**\n\n"
-                f"آیا مشخصات فوق مورد تایید است و اشتراک صادر گردد؟"
+                f"💵 مبلغ فروش به مشتری: **{selling_price:,} تومان**\n"
+                f"💰 کسر از کیف پول پنل: **{wholesale_cost:,} تومان**\n\n"
+                f"لطفاً شیوه دریافت وجه یا وضعیت بدهی مشتری را انتخاب فرمایید:"
             )
-            kb = InlineKeyboardMarkup([
-                [InlineKeyboardButton("✅ تایید نهایی و صدور اکانت", callback_data="res_adm_cconfirm")],
-                [InlineKeyboardButton("❌ انصراف", callback_data="res_adm_create_user")]
-            ])
-            await update.message.reply_text(preview_txt, reply_markup=kb, parse_mode="Markdown")
+            buttons = [
+                [InlineKeyboardButton("🔴 ثبت به عنوان مشتری بدهکار", callback_data="res_adm_cpay_debt")],
+            ]
+            for c in cards:
+                c_num = str(c.get("card_number", ""))
+                c_last4 = c_num[-4:] if len(c_num) >= 4 else c_num
+                b_name = c.get("bank_name") or "بانک"
+                buttons.append([InlineKeyboardButton(f"💳 {b_name} (...{c_last4})", callback_data=f"res_adm_cpay_card_{c['id']}")])
+            buttons.append([InlineKeyboardButton("💵 دریافت نقدی / صندوق", callback_data="res_adm_cpay_cash")])
+            buttons.append([InlineKeyboardButton("❌ انصراف", callback_data="res_adm_create_user")])
+
+            await update.message.reply_text(preview_txt, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown")
             return ADMIN_MENU
 
         # ۳. ایجاد کد تخفیف جدید
@@ -5984,7 +6027,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
             return ADMIN_MENU
 
-        elif data == "res_adm_cconfirm":
+        elif data == "res_adm_cconfirm" or data.startswith("res_adm_cpay_"):
             if r_role == "finance":
                 await query.answer("⛔ شما به عنوان مدیر مالی مجاز به صدور مشتری نیستید.", show_alert=True)
                 return ADMIN_MENU
@@ -6007,6 +6050,34 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             vol = plan.get("data_limit", 30)
             days = plan.get("duration", 30)
             w_price = plan.get("wholesale_price", 0)
+            selling_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or w_price
+
+            # تعیین وضعیت پرداخت و کارت مقصد
+            target_card_id = None
+            if data == "res_adm_cpay_debt":
+                payment_status = "debtor"
+                debt_amount = selling_price
+                payment_source = "debt"
+                pay_label = f"🔴 بدهکار ({selling_price:,} تومان)"
+            elif data.startswith("res_adm_cpay_card_"):
+                target_card_id = int(data.replace("res_adm_cpay_card_", ""))
+                payment_status = "paid"
+                debt_amount = 0
+                payment_source = "card"
+                c_cards = db.get_reseller_cards(r_id) if r_id else db.get_active_bank_cards()
+                c_obj = next((c for c in c_cards if c["id"] == target_card_id), None)
+                c_name = f"{c_obj.get('bank_name')} (...{str(c_obj.get('card_number', ''))[-4:]})" if c_obj else "کارت بانکی"
+                pay_label = f"💳 واریز به {c_name}"
+            elif data == "res_adm_cpay_cash":
+                payment_status = "paid"
+                debt_amount = 0
+                payment_source = "cash"
+                pay_label = "💵 دریافت نقدی / صندوق"
+            else:
+                payment_status = "paid"
+                debt_amount = 0
+                payment_source = "cash"
+                pay_label = "💵 نقدی"
 
             r_stats = db.get_reseller_stats(r_id) or {}
             power = r_stats.get("total_purchasing_power", 0)
@@ -6031,42 +6102,44 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             try:
                 from multibot_manager import get_reseller_hidify_client
                 r_client = get_reseller_hidify_client(r_id)
+                user_comment = f"[RESELLER_ID: #{r_id}] {desired_name}"
+                if phone:
+                    user_comment += f" | Phone: {phone}"
+
                 h_res = await r_client.create_user(
                     name=desired_name,
                     usage_limit_gb=vol if vol > 0 else None,
                     package_days=days,
                     enable=True,
-                    comment=f"[RESELLER_ID: #{r_id}] {desired_name}"
+                    comment=user_comment
                 )
-                uuid_val = h_res.get("uuid") if h_res else None
+                uuid_val = h_res.get("uuid") if (isinstance(h_res, dict) and "error" not in h_res) else None
                 if not uuid_val:
+                    err_msg = h_res.get("error") if isinstance(h_res, dict) else "پاسخ نامعتبر از سرور هیدیفای"
                     await query.edit_message_text(
-                        "❌ **خطا در برقراری ارتباط با سرور هیدیفای!**\n\nهیچ اشتراکی صادر نشد و هزینه‌ای از حساب شما کسر نگردید. لطفاً مجدداً امتحان فرمایید.",
+                        f"❌ **خطا در برقراری ارتباط با سرور هیدیفای!**\n\n`{err_msg}`\n\nهیچ اشتراکی صادر نشد و هزینه‌ای از حساب شما کسر نگردید. لطفاً مجدداً امتحان فرمایید.",
                         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به منو", callback_data="res_adm_menu")]]),
                         parse_mode="Markdown"
                     )
                     return ADMIN_MENU
 
-                creator_user = None
-                team_mem = db.get_admin_manager_by_telegram_id(user.id)
-                if team_mem and team_mem.get("reseller_id") == r_id:
-                    creator_user = team_mem.get("username") or team_mem.get("display_name")
-                if not creator_user:
-                    res_obj = db.get_reseller(r_id) or {}
-                    creator_user = res_obj.get("username") or f"reseller_{r_id}"
+                creator_user = db.get_bot_creator_display_name(user.id, r_id)
+                profit_margin = 0 if payment_status == "debtor" else max(0, selling_price - w_price)
+                reseller_selling = 0 if payment_status == "debtor" else selling_price
 
                 db.deduct_reseller_balance(
                     reseller_id=r_id,
                     amount=w_price,
                     plan_name=pname,
                     account_name=desired_name,
-                    description=f"ساخت دستی کاربر {desired_name} با پلن {pname}",
-                    created_by=creator_user
+                    description=f"ساخت دستی کاربر {desired_name} با پلن {pname} توسط {creator_user}",
+                    created_by=creator_user,
+                    selling_price=reseller_selling,
+                    profit_margin=profit_margin
                 )
-                sub_url = f"{HIDIFY_PANEL_URL}/{HIDIFY_PROXY_PATH}/{uuid_val}/"
 
-                sub_id = db.save_subscription(
-                    telegram_id=user.id,
+                sub_res = db.save_subscription(
+                    telegram_id=0,
                     hidify_uuid=uuid_val,
                     plan_id=pid,
                     plan_name=pname,
@@ -6074,11 +6147,87 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     duration=days,
                     status="active",
                     account_name=desired_name,
-                    account_comment=f"Created by Reseller #{r_id}",
+                    account_comment=user_comment,
                     reseller_id=r_id,
+                    user_limit=1,
+                    cost_paid=w_price,
                     created_by=creator_user,
-                    phone_number=phone
+                    phone_number=phone,
+                    payment_status=payment_status,
+                    debt_amount=debt_amount,
+                    debt_notes=f"ثبت بدهی هنگام صدور توسط {creator_user}" if payment_status == "debtor" else None,
+                    payment_source=payment_source
                 )
+                sub_id = sub_res.get("subscription_id") if isinstance(sub_res, dict) else sub_res
+
+                if payment_status == "debtor":
+                    db.add_customer_debt_record(
+                        subscription_id=sub_id,
+                        account_name=desired_name,
+                        telegram_id=0,
+                        reseller_id=r_id,
+                        action_type="create_debt",
+                        plan_name=pname,
+                        amount=selling_price,
+                        notes=f"ثبت بدهی در ساخت اشتراک توسط {creator_user}",
+                        created_by=creator_user,
+                        previous_debt=0
+                    )
+                elif target_card_id and selling_price > 0:
+                    try:
+                        db.add_card_transaction(
+                            card_id=target_card_id,
+                            owner_type="reseller" if r_id else "admin",
+                            owner_id=r_id or 0,
+                            reseller_id=r_id or 0,
+                            amount=selling_price,
+                            tx_type="deposit",
+                            category="فروش اشتراک",
+                            title=f"فروش اشتراک {desired_name}",
+                            description=f"دریافت وجه فروش {pname} توسط {creator_user}",
+                            ref_type="subscription",
+                            ref_id=str(sub_id),
+                            actor=creator_user
+                        )
+                    except Exception as e_c:
+                        logger.error(f"Error depositing to card in bot: {e_c}")
+
+                # ثبت تراکنش و تاریخچه
+                try:
+                    db.save_transaction(
+                        order_id=f"BOT_RES_{r_id}_{int(datetime.now().timestamp())}",
+                        user_id=0,
+                        username=desired_name,
+                        plan_name=pname,
+                        amount=selling_price,
+                        gateway=f"card_{target_card_id}" if payment_source == "card" else ("cash_reseller" if payment_source == "cash" else "debt"),
+                        tracking_code=f"BOT_{creator_user}",
+                        status="approved",
+                        account_name=desired_name,
+                        source="reseller_bot",
+                        reseller_id=r_id,
+                        subscription_id=sub_id
+                    )
+                    db.save_subscription_history(
+                        subscription_id=sub_id,
+                        telegram_id=0,
+                        hidify_uuid=uuid_val,
+                        account_name=desired_name,
+                        plan_name=pname,
+                        previous_usage_gb=0,
+                        previous_limit_gb=vol,
+                        period_days=days,
+                        renewal_type="new_subscription",
+                        reseller_id=r_id,
+                        plan_price=selling_price,
+                        cost_paid=w_price,
+                        start_date=get_now_iso()
+                    )
+                except Exception as e_rec:
+                    logger.error(f"Error logging bot tx/history: {e_rec}")
+
+                proxy_path = (USER_PROXY_PATH or HIDIFY_PROXY_PATH or "user").strip("/")
+                sub_url = f"{HIDIFY_PANEL_URL.rstrip('/')}/{proxy_path}/{uuid_val}/"
 
                 context.user_data.pop("res_create_plan_id", None)
                 context.user_data.pop("res_create_account_name", None)
@@ -6092,7 +6241,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     f"👤 نام اکانت: `{desired_name}`{phone_txt}\n"
                     f"📦 پلن: **{pname}**\n"
                     f"📊 حجم: **{vol if vol > 0 else 'نامحدود'} گیگابایت** | ⏳ مدت: **{days} روز**\n"
-                    f"💰 هزینه کسر شده: **{w_price:,} تومان**\n"
+                    f"💳 وضعیت تسویه: **{pay_label}**\n"
                     f"✍️ صادرکننده: **{creator_user}**\n\n"
                     f"🔗 **لینک اتصال:**\n`{sub_url}`"
                 )
@@ -6229,28 +6378,85 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 return ADMIN_MENU
 
             wholesale_cost = plan.get("wholesale_price", 0)
+            selling_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or wholesale_cost
             r_stats = db.get_reseller_stats(r_id) or {}
             power = r_stats.get("total_purchasing_power", 0)
             if power < wholesale_cost:
                 await query.answer(f"❌ توان خرید کافی نیست! مورد نیاز: {wholesale_cost:,} ت", show_alert=True)
                 return ADMIN_MENU
 
-            # کسر هزینه و تمدید در هیدیفای
+            pname = plan.get("display_name") or plan.get("master_name", "اشتراک")
+            vol = plan.get("data_limit", 30)
+            days = plan.get("duration", 30)
+            acct_name = sub.get("account_name") or f"sub_{sub_id}"
+            vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
+            cards = db.get_reseller_cards(r_id) if r_id else db.get_active_bank_cards()
+
+            p_text = (
+                f"🔄 **تایید تمدید و شیوه تسویه حساب «{acct_name}»**\n\n"
+                f"📦 پلن: **{pname}** ({vol_str} - {days} روز)\n"
+                f"💵 مبلغ دریافتی از مشتری: **{selling_price:,} تومان**\n"
+                f"💰 کسر از کیف پول پنل: **{wholesale_cost:,} تومان**\n\n"
+                f"لطفاً نحوه تسویه وجه یا وضعیت بدهی مشتری را انتخاب فرمایید:"
+            )
+            buttons = [
+                [InlineKeyboardButton("🔴 ثبت به عنوان مشتری بدهکار", callback_data=f"res_adm_renpay_debt_{sub_id}_{plan_id}")],
+            ]
+            for c in cards:
+                c_num = str(c.get("card_number", ""))
+                c_last4 = c_num[-4:] if len(c_num) >= 4 else c_num
+                b_name = c.get("bank_name") or "بانک"
+                buttons.append([InlineKeyboardButton(f"💳 {b_name} (...{c_last4})", callback_data=f"res_adm_renpay_card_{sub_id}_{plan_id}_{c['id']}")])
+            buttons.append([InlineKeyboardButton("💵 دریافت نقدی / صندوق", callback_data=f"res_adm_renpay_cash_{sub_id}_{plan_id}")])
+            buttons.append([InlineKeyboardButton("🔙 انصراف", callback_data=f"res_adm_rsub_{sub_id}")])
+            await query.edit_message_text(p_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data.startswith("res_adm_renpay_"):
+            # res_adm_renpay_debt_{sub_id}_{plan_id}
+            # res_adm_renpay_card_{sub_id}_{plan_id}_{card_id}
+            # res_adm_renpay_cash_{sub_id}_{plan_id}
+            parts = data.replace("res_adm_renpay_", "").split("_")
+            mode = parts[0]
+            sub_id = int(parts[1])
+            plan_id = parts[2]
+            target_card_id = int(parts[3]) if (mode == "card" and len(parts) > 3) else None
+
+            sub = db.get_subscription(sub_id)
+            if not sub or int(sub.get("reseller_id") or 0) != int(r_id):
+                await query.answer("❌ اشتراک نامعتبر است.", show_alert=True)
+                return ADMIN_MENU
+
+            plans_dict = db.get_reseller_plans_dict(r_id)
+            plan = plans_dict.get(plan_id)
+            if not plan:
+                await query.answer("❌ پلن یافت نشد.", show_alert=True)
+                return ADMIN_MENU
+
+            wholesale_cost = plan.get("wholesale_price", 0)
+            selling_price = plan.get("display_price") or plan.get("price") or plan.get("master_price") or wholesale_cost
+            r_stats = db.get_reseller_stats(r_id) or {}
+            power = r_stats.get("total_purchasing_power", 0)
+            if power < wholesale_cost:
+                await query.answer(f"❌ توان خرید کافی نیست! مورد نیاز: {wholesale_cost:,} ت", show_alert=True)
+                return ADMIN_MENU
+
             vol = plan.get("data_limit", 30)
             days = plan.get("duration", 30)
             pname = plan.get("display_name") or plan.get("master_name", "اشتراک")
             acct_name = sub.get("account_name") or f"sub_{sub_id}"
 
-            creator_user = None
-            team_mem = db.get_admin_manager_by_telegram_id(user.id)
-            if team_mem and team_mem.get("reseller_id") == r_id:
-                creator_user = team_mem.get("username") or team_mem.get("display_name")
-            if not creator_user:
-                res_obj = db.get_reseller(r_id) or {}
-                creator_user = res_obj.get("username") or f"reseller_{r_id}"
+            creator_user = db.get_bot_creator_display_name(user.id, r_id)
+            profit_margin = 0 if mode == "debt" else max(0, selling_price - wholesale_cost)
+            reseller_selling = 0 if mode == "debt" else selling_price
 
-            db.deduct_reseller_balance(r_id, wholesale_cost, pname, acct_name, created_by=creator_user)
-            
+            db.deduct_reseller_balance(
+                r_id, wholesale_cost, pname, acct_name, 
+                created_by=creator_user,
+                selling_price=reseller_selling,
+                profit_margin=profit_margin
+            )
+
             if sub.get("hidify_uuid"):
                 try:
                     from multibot_manager import get_reseller_hidify_client
@@ -6264,15 +6470,115 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 except Exception as e_ren:
                     logger.error(f"Error renewing sub in hidify: {e_ren}")
 
-            db.update_subscription(
-                sub_id,
-                plan_id=plan_id,
-                plan_name=pname,
-                data_limit=float(vol),
-                duration=int(days),
-                data_used=0.0,
-                status="active"
-            )
+            if mode == "debt":
+                payment_status = "debtor"
+                old_debt = int(sub.get("debt_amount") or 0)
+                new_debt = old_debt + selling_price
+                db.update_subscription(
+                    sub_id,
+                    plan_id=plan_id,
+                    plan_name=pname,
+                    data_limit=float(vol),
+                    duration=int(days),
+                    data_used=0.0,
+                    status="active",
+                    payment_status="debtor",
+                    debt_amount=new_debt,
+                    debt_notes=f"بدهی تمدید پلن {pname} توسط {creator_user}"
+                )
+                db.add_customer_debt_record(
+                    subscription_id=sub_id,
+                    account_name=acct_name,
+                    telegram_id=sub.get("telegram_id") or 0,
+                    reseller_id=r_id,
+                    action_type="renew_debt",
+                    plan_name=pname,
+                    amount=selling_price,
+                    notes=f"ثبت بدهی هنگام تمدید در ربات توسط {creator_user}",
+                    created_by=creator_user,
+                    previous_debt=old_debt
+                )
+                pay_label = f"🔴 بدهکار (+{selling_price:,} ت | مجموع بدهی: {new_debt:,} ت)"
+            elif mode == "card" and target_card_id:
+                payment_status = "paid"
+                c_cards = db.get_reseller_cards(r_id) if r_id else db.get_active_bank_cards()
+                c_obj = next((c for c in c_cards if c["id"] == target_card_id), None)
+                c_name = f"{c_obj.get('bank_name')} (...{str(c_obj.get('card_number', ''))[-4:]})" if c_obj else "کارت بانکی"
+                pay_label = f"💳 واریز به {c_name}"
+                try:
+                    db.add_card_transaction(
+                        card_id=target_card_id,
+                        owner_type="reseller" if r_id else "admin",
+                        owner_id=r_id or 0,
+                        reseller_id=r_id or 0,
+                        amount=selling_price,
+                        tx_type="deposit",
+                        category="فروش اشتراک",
+                        title=f"تمدید اشتراک {acct_name}",
+                        description=f"دریافت وجه تمدید {pname} به کارت توسط {creator_user}",
+                        ref_type="subscription",
+                        ref_id=str(sub_id),
+                        actor=creator_user
+                    )
+                except Exception as e_c:
+                    logger.error(f"Error depositing to card on renew in bot: {e_c}")
+
+                db.update_subscription(
+                    sub_id,
+                    plan_id=plan_id,
+                    plan_name=pname,
+                    data_limit=float(vol),
+                    duration=int(days),
+                    data_used=0.0,
+                    status="active"
+                )
+            else:
+                pay_label = "💵 دریافت نقدی / صندوق"
+                db.update_subscription(
+                    sub_id,
+                    plan_id=plan_id,
+                    plan_name=pname,
+                    data_limit=float(vol),
+                    duration=int(days),
+                    data_used=0.0,
+                    status="active"
+                )
+
+            # ثبت تاریخچه و تراکنش
+            try:
+                db.save_transaction(
+                    order_id=f"BOT_REN_{r_id}_{int(datetime.now().timestamp())}",
+                    user_id=sub.get("telegram_id") or 0,
+                    username=acct_name,
+                    plan_name=pname,
+                    amount=selling_price,
+                    gateway=f"card_{target_card_id}" if mode == "card" else ("cash_reseller" if mode == "cash" else "debt"),
+                    tracking_code=f"BOT_REN_{creator_user}",
+                    status="approved",
+                    account_name=acct_name,
+                    is_renewal=1,
+                    renew_sub_id=sub_id,
+                    source="reseller_bot",
+                    reseller_id=r_id,
+                    subscription_id=sub_id
+                )
+                db.save_subscription_history(
+                    subscription_id=sub_id,
+                    telegram_id=sub.get("telegram_id") or 0,
+                    hidify_uuid=sub.get("hidify_uuid") or "",
+                    account_name=acct_name,
+                    plan_name=pname,
+                    previous_usage_gb=round(sub.get("data_used", 0), 1),
+                    previous_limit_gb=round(sub.get("data_limit", 0), 1),
+                    period_days=days,
+                    renewal_type="bot_renewal",
+                    reseller_id=r_id,
+                    plan_price=selling_price,
+                    cost_paid=wholesale_cost,
+                    start_date=get_now_iso()
+                )
+            except Exception as e_rec:
+                logger.error(f"Error recording renew tx/history in bot: {e_rec}")
 
             # اطلاع‌رسانی به مشتری اگر تلگرام دارد
             if sub.get("telegram_id") and int(sub["telegram_id"]) > 0:
@@ -6291,7 +6597,9 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await query.edit_message_text(
                 f"✅ **اشتراک «{acct_name}» با موفقیت تمدید شد!**\n\n"
                 f"📦 پلن: **{pname}** ({vol}GB - {days} روز)\n"
-                f"💰 هزینه کسر شده از موجودی پنل: **{wholesale_cost:,} تومان**\n"
+                f"💰 کسر از پنل: **{wholesale_cost:,} تومان**\n"
+                f"💳 وضعیت تسویه: **{pay_label}**\n"
+                f"✍️ صادرکننده: **{creator_user}**\n"
                 f"🔄 ترافیک مصرفی ریست شد و اعتبار جدید اعمال گردید.",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="res_adm_menu")]]),
                 parse_mode="Markdown"

@@ -2483,21 +2483,47 @@ class Database:
     # ═══════════════════════════════════════════════════════════════
 
     def save_subscription(self, telegram_id, hidify_uuid, plan_id, plan_name, data_limit, duration, data_used=0, status="active", account_name=None, account_comment=None, reseller_id=None, user_limit=1, cost_paid=0, created_by=None, **kwargs):
-        """ذخیره اشتراک جدید"""
+        """ذخیره اشتراک جدید با پشتیبانی از شماره تلفن، وضعیت بدهی و ایجاد خودکار پروفایل کاربر"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         expire_date = (get_now_naive() + timedelta(days=duration)).isoformat()
         creator = created_by or kwargs.get("created_by")
+        phone = kwargs.get("phone_number") or kwargs.get("phone")
+        payment_status = kwargs.get("payment_status", "paid")
+        debt_amount = int(kwargs.get("debt_amount", 0) or 0)
+        debt_notes = kwargs.get("debt_notes")
+        debt_created_at = kwargs.get("debt_created_at") or (now if debt_amount > 0 else None)
+        payment_source = kwargs.get("payment_source", "wallet")
 
         try:
             cursor.execute("""
                 INSERT INTO subscriptions
-                (telegram_id, hidify_uuid, plan_id, plan_name, account_name, account_comment, data_limit, data_used, duration, start_date, expire_date, status, reseller_id, user_limit, cost_paid, created_by, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (telegram_id, hidify_uuid, plan_id, plan_name, account_name, account_comment, data_limit, data_used, duration, now, expire_date, status, reseller_id, int(user_limit or 1), int(cost_paid or 0), creator, now, now))
+                (telegram_id, hidify_uuid, plan_id, plan_name, account_name, account_comment, phone_number,
+                 data_limit, data_used, duration, start_date, expire_date, status, reseller_id, user_limit, cost_paid,
+                 payment_status, debt_amount, debt_notes, debt_created_at, payment_source, created_by, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                telegram_id or 0, hidify_uuid, plan_id, plan_name, account_name, account_comment, phone,
+                data_limit, data_used, duration, now, expire_date, status, reseller_id, int(user_limit or 1), int(cost_paid or 0),
+                payment_status, debt_amount, debt_notes, debt_created_at, payment_source, creator, now, now
+            ))
             conn.commit()
             subscription_id = cursor.lastrowid
+
+            # ثبت یا به‌روزرسانی در جدول users
+            if telegram_id and int(telegram_id) > 0:
+                cursor.execute("SELECT id FROM users WHERE telegram_id = ?", (int(telegram_id),))
+                u_row = cursor.fetchone()
+                if not u_row:
+                    cursor.execute("""
+                        INSERT INTO users (telegram_id, username, phone_number, is_verified, reseller_id, created_at, updated_at)
+                        VALUES (?, ?, ?, 1, ?, ?, ?)
+                    """, (int(telegram_id), account_name, phone, reseller_id, now, now))
+                elif phone:
+                    cursor.execute("UPDATE users SET phone_number = COALESCE(phone_number, ?), updated_at = ? WHERE telegram_id = ?", (phone, now, int(telegram_id)))
+                conn.commit()
+
             logger.info(f"Subscription {subscription_id} saved for user {telegram_id} (reseller_id={reseller_id}, created_by={creator}, user_limit={user_limit})")
             return {"success": True, "subscription_id": subscription_id}
         except Exception as e:
@@ -7003,19 +7029,51 @@ class Database:
             """, (new_debt, new_status, new_debt, now, subscription_id))
 
             conn.commit()
-            return {"success": True, "new_debt": new_debt, "new_status": new_status}
+
+            # در صورت انتخاب کارت مقصد، واریز مبلغ به کارت ثبت شود
+            settled_amount = current_debt - new_debt
+            target_card_id = kwargs.get("target_card_id")
+            if target_card_id and int(target_card_id) > 0 and settled_amount > 0:
+                effective_reseller_id = sub.get("reseller_id")
+                owner_type = "reseller" if (effective_reseller_id and int(effective_reseller_id) > 0) else "admin"
+                acc_name = sub.get("account_name") or f"sub_{subscription_id}"
+                self.add_card_transaction(
+                    card_id=int(target_card_id),
+                    owner_type=owner_type,
+                    owner_id=effective_reseller_id or 0,
+                    reseller_id=effective_reseller_id or 0,
+                    tx_type="deposit",
+                    amount=settled_amount,
+                    category="تسویه بدهی مشتری",
+                    title=f"تسویه بدهی {acc_name}",
+                    description=f"تسویه بخشی از بدهی مشتری {acc_name} به مبلغ {settled_amount:,} ت توسط {settled_by}",
+                    ref_type="subscription",
+                    ref_id=str(subscription_id),
+                    actor=settled_by
+                )
+
+            return {"success": True, "new_debt": new_debt, "new_status": new_status, "settled_amount": settled_amount}
         except Exception as e:
             logger.error(f"Error settling debt for sub {subscription_id}: {e}")
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
 
-    def clear_subscription_debt(self, sub_id: int, reseller_id: int = None, settled_by: str = "مدیریت", order_id: str = None):
-        """تسویه کامل بدهی مشتری و ثبت وضعیت پرداخت شده در اشتراک و رسیدها"""
+    def clear_subscription_debt(self, sub_id: int, reseller_id: int = None, settled_by: str = "مدیریت", order_id: str = None, target_card_id: int = None):
+        """تسویه کامل بدهی مشتری و ثبت وضعیت پرداخت شده در اشتراک، رسیدها و واریز به کارت بانکی مقصد در صورت انتخاب"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
+            cursor.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,))
+            sub_row = cursor.fetchone()
+            if not sub_row:
+                return {"success": False, "error": "اشتراک یافت نشد"}
+            sub = dict(sub_row)
+            prev_debt = int(sub.get("debt_amount") or 0)
+            effective_reseller_id = sub.get("reseller_id") or reseller_id
+            acc_name = sub.get("account_name") or f"sub_{sub_id}"
+
             query = "UPDATE subscriptions SET payment_status = 'paid', debt_amount = 0, debt_notes = NULL, updated_at = ? WHERE id = ?"
             params = [now, sub_id]
             if reseller_id:
@@ -7031,9 +7089,79 @@ class Database:
             """, (now, settled_by or "مدیریت", order_id, now, sub_id))
 
             conn.commit()
-            return {"success": True}
+
+            # واریز مبلغ بدهی تسویه‌شده به کارت مقصد انتخابی
+            if target_card_id and int(target_card_id) > 0 and prev_debt > 0:
+                owner_type = "reseller" if (effective_reseller_id and int(effective_reseller_id) > 0) else "admin"
+                self.add_card_transaction(
+                    card_id=int(target_card_id),
+                    owner_type=owner_type,
+                    owner_id=effective_reseller_id or 0,
+                    reseller_id=effective_reseller_id or 0,
+                    tx_type="deposit",
+                    amount=prev_debt,
+                    category="تسویه بدهی مشتری",
+                    title=f"تسویه بدهی {acc_name}",
+                    description=f"تسویه نقدی/کارت بدهی مشتری {acc_name} به مبلغ {prev_debt:,} ت توسط {settled_by}",
+                    ref_type="subscription",
+                    ref_id=str(sub_id),
+                    actor=settled_by
+                )
+
+            return {"success": True, "settled_amount": prev_debt}
         except Exception as e:
             logger.error(f"Error clearing subscription debt: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def add_customer_debt(self, subscription_id: int, amount: int, notes: str = None, actor: str = "مدیریت", reseller_id: int = None) -> dict:
+        """ثبت مستقیم بدهی جدید روی اشتراک مشتری و ثبت در تاریخچه بدهی‌ها"""
+        if not amount or int(amount) <= 0:
+            return {"success": False, "error": "مبلغ بدهی باید بزرگتر از صفر باشد."}
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        amt = abs(int(amount))
+        try:
+            query = "SELECT * FROM subscriptions WHERE id = ?"
+            params = [subscription_id]
+            if reseller_id:
+                query += " AND reseller_id = ?"
+                params.append(reseller_id)
+            cursor.execute(query, params)
+            sub_row = cursor.fetchone()
+            if not sub_row:
+                return {"success": False, "error": "اشتراک مورد نظر یافت نشد."}
+            sub = dict(sub_row)
+            old_debt = int(sub.get("debt_amount") or 0)
+            new_debt = old_debt + amt
+            effective_reseller_id = sub.get("reseller_id") or reseller_id
+            acc_name = sub.get("account_name") or f"sub_{subscription_id}"
+
+            cursor.execute("""
+                UPDATE subscriptions 
+                SET debt_amount = ?, payment_status = 'debtor', debt_notes = COALESCE(?, debt_notes), debt_created_at = COALESCE(debt_created_at, ?), updated_at = ?
+                WHERE id = ?
+            """, (new_debt, notes, now, now, subscription_id))
+
+            # ثبت رسید بدهی
+            self.add_customer_debt_record(
+                subscription_id=subscription_id,
+                account_name=acc_name,
+                telegram_id=sub.get("telegram_id") or 0,
+                reseller_id=effective_reseller_id,
+                action_type="manual_debt",
+                plan_name=sub.get("plan_name") or "ثبت بدهی مستقیم",
+                amount=amt,
+                notes=notes or "ثبت مستقیم بدهی برای مشتری",
+                created_by=actor,
+                previous_debt=old_debt
+            )
+            conn.commit()
+            return {"success": True, "old_debt": old_debt, "new_debt": new_debt}
+        except Exception as e:
+            logger.error(f"Error adding customer debt: {e}")
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
@@ -7268,15 +7396,25 @@ class Database:
                 cursor.execute("""
                     SELECT account_name as username, 0 as telegram_id, SUM(amount) as total_spent, COUNT(*) as tx_count
                     FROM reseller_transactions
-                    WHERE reseller_id = ? AND type = 'purchase' AND created_at LIKE ?
+                    WHERE reseller_id = ? AND type = 'purchase'
+                      AND account_name IS NOT NULL AND account_name != '-' AND account_name != ''
+                      AND created_at LIKE ?
                     GROUP BY account_name
                     ORDER BY total_spent DESC LIMIT 5
                 """, (reseller_id, f"{current_month}%"))
             else:
                 cursor.execute("""
-                    SELECT user_id as telegram_id, username, SUM(amount) as total_spent, COUNT(*) as tx_count
+                    SELECT user_id as telegram_id,
+                           COALESCE(NULLIF(username, ''), 'کاربر') as username,
+                           SUM(amount) as total_spent,
+                           COUNT(*) as tx_count
                     FROM transactions
-                    WHERE status IN ('approved', 'completed') AND created_at LIKE ?
+                    WHERE status IN ('approved', 'completed')
+                      AND user_id IS NOT NULL AND user_id > 0
+                      AND gateway != 'bundle_reseller'
+                      AND order_id NOT LIKE 'R_BUNDLE%'
+                      AND (reseller_id IS NULL OR reseller_id = 0)
+                      AND created_at LIKE ?
                     GROUP BY user_id
                     ORDER BY total_spent DESC LIMIT 5
                 """, (f"{current_month}%",))
@@ -7288,15 +7426,25 @@ class Database:
                 cursor.execute("""
                     SELECT account_name as username, 0 as telegram_id, SUM(amount) as total_spent, COUNT(*) as tx_count
                     FROM reseller_transactions
-                    WHERE reseller_id = ? AND type = 'purchase' AND created_at LIKE ?
+                    WHERE reseller_id = ? AND type = 'purchase'
+                      AND account_name IS NOT NULL AND account_name != '-' AND account_name != ''
+                      AND created_at LIKE ?
                     GROUP BY account_name
                     ORDER BY total_spent DESC LIMIT 5
                 """, (reseller_id, f"{current_year}%"))
             else:
                 cursor.execute("""
-                    SELECT user_id as telegram_id, username, SUM(amount) as total_spent, COUNT(*) as tx_count
+                    SELECT user_id as telegram_id,
+                           COALESCE(NULLIF(username, ''), 'کاربر') as username,
+                           SUM(amount) as total_spent,
+                           COUNT(*) as tx_count
                     FROM transactions
-                    WHERE status IN ('approved', 'completed') AND created_at LIKE ?
+                    WHERE status IN ('approved', 'completed')
+                      AND user_id IS NOT NULL AND user_id > 0
+                      AND gateway != 'bundle_reseller'
+                      AND order_id NOT LIKE 'R_BUNDLE%'
+                      AND (reseller_id IS NULL OR reseller_id = 0)
+                      AND created_at LIKE ?
                     GROUP BY user_id
                     ORDER BY total_spent DESC LIMIT 5
                 """, (f"{current_year}%",))
@@ -11445,6 +11593,63 @@ class Database:
         finally:
             conn.close()
 
+    def get_admin_user_by_telegram_id(self, telegram_id: int) -> Optional[dict]:
+        """دریافت هرگونه مدیر، کارمند یا عضو تیم نمایندگی بر اساس آیدی عددی تلگرام"""
+        if not telegram_id:
+            return None
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT * FROM admin_users
+                WHERE telegram_id = ? AND is_active = 1
+                LIMIT 1
+            """, (int(telegram_id) if str(telegram_id).isdigit() else 0,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error in get_admin_user_by_telegram_id: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def get_bot_creator_display_name(self, telegram_id: int, reseller_id: int = None) -> str:
+        """تشخیص دقیق و هوشمند نام صادرکننده در ربات تلگرام (مدیر کل، مدیر زیرمجموعه نماینده یا خود نماینده)"""
+        if not telegram_id:
+            return "سیستم"
+        try:
+            # ۱. بررسی جدول admin_users (برای کارمندان و مدیران زیرمجموعه نماینده یا مدیران ارشد)
+            team_mem = self.get_admin_user_by_telegram_id(telegram_id)
+            if team_mem:
+                return team_mem.get("display_name") or team_mem.get("username") or "مدیر"
+
+            # ۲. بررسی لیست ادمین‌های ربات نماینده
+            if reseller_id:
+                admins = self.get_reseller_bot_admins(reseller_id)
+                for a in admins:
+                    if str(a.get("telegram_id", "")).strip() == str(telegram_id).strip():
+                        return a.get("title") or a.get("username") or "مدیر تیم"
+
+                # ۳. بررسی آیا خود نماینده اصلی است
+                reseller = self.get_reseller(reseller_id)
+                if reseller and str(reseller.get("telegram_id", "")).strip() == str(telegram_id).strip():
+                    return reseller.get("name") or reseller.get("username") or f"نماینده #{reseller_id}"
+
+            # ۴. بررسی مدیران سیستم
+            mgr = self.get_admin_manager_by_telegram_id(telegram_id)
+            if mgr:
+                return mgr.get("display_name") or mgr.get("username") or "مدیریت ارشد"
+
+            if reseller_id:
+                res = self.get_reseller(reseller_id)
+                if res:
+                    return res.get("name") or res.get("username") or f"نماینده #{reseller_id}"
+
+            return "مدیریت"
+        except Exception as e:
+            logger.error(f"Error getting bot creator display name: {e}")
+            return "مدیریت"
+
     def get_reseller_users(self, reseller_id: int) -> list:
         """دریافت لیست کاربران اختصاصی ثبت‌نام شده از ربات یا کانال نماینده"""
         conn = self.get_connection()
@@ -11466,7 +11671,7 @@ class Database:
             conn.close()
 
     def get_reseller_financial_summary(self, reseller_id: int) -> dict:
-        """محاسبه دقیق سود و تراز مالی نماینده (سود حاصل از تخفیف همکاری نسبت به فروش خرد)"""
+        """محاسبه دقیق سود، مخارج و تراز مالی نماینده (شامل خرید بسته‌های اعتباری و سود حاصل از تخفیف همکاری)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -11486,7 +11691,23 @@ class Database:
             """, (reseller_id,))
             total_deposited = cursor.fetchone()[0] or 0
 
-            # ۳. تخفیف و موجودی نماینده
+            # ۳. مخارج خرید بسته‌های اعتباری و شارژ پنل
+            cursor.execute("""
+                SELECT COALESCE(SUM(amount), 0) FROM transactions 
+                WHERE reseller_id = ? AND status IN ('approved', 'completed')
+                  AND (gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')
+            """, (reseller_id,))
+            total_bundle_cost = cursor.fetchone()[0] or 0
+
+            cursor.execute("""
+                SELECT COALESCE(SUM(amount), 0) FROM card_transactions 
+                WHERE reseller_id = ? AND owner_type = 'reseller' AND type = 'withdrawal'
+            """, (reseller_id,))
+            total_card_withdrawals = cursor.fetchone()[0] or 0
+
+            total_expenses = max(total_bundle_cost, total_card_withdrawals)
+
+            # ۴. تخفیف و موجودی نماینده
             cursor.execute("SELECT discount_percent, balance, name, username FROM resellers WHERE id = ?", (reseller_id,))
             r_info = cursor.fetchone()
             discount_pct = r_info["discount_percent"] if (r_info and r_info["discount_percent"] is not None) else 20
@@ -11494,7 +11715,7 @@ class Database:
             reseller_name = r_info["name"] if r_info else "همکار"
             reseller_uname = r_info["username"] if r_info else None
 
-            # ۴. محاسبه سود و ارزش ریالی فروش (بر اساس حاشیه سود ثبت‌شده یا تخمین تخفیف)
+            # ۵. محاسبه سود و ارزش ریالی فروش (بر اساس حاشیه سود ثبت‌شده یا تخمین تخفیف)
             cursor.execute("""
                 SELECT COALESCE(SUM(profit_margin), 0), COALESCE(SUM(selling_price), 0)
                 FROM reseller_transactions
@@ -11540,6 +11761,8 @@ class Database:
                 "reseller_name": reseller_name,
                 "total_wholesale_cost": total_wholesale_cost,
                 "total_deposited": total_deposited,
+                "total_bundle_cost": total_bundle_cost,
+                "total_expenses": total_expenses,
                 "estimated_retail_value": estimated_retail_value,
                 "estimated_profit": estimated_profit,
                 "discount_percent": discount_pct,
@@ -11551,6 +11774,8 @@ class Database:
                 "reseller_name": "",
                 "total_wholesale_cost": 0,
                 "total_deposited": 0,
+                "total_bundle_cost": 0,
+                "total_expenses": 0,
                 "estimated_retail_value": 0,
                 "estimated_profit": 0,
                 "discount_percent": 0,
@@ -13728,7 +13953,7 @@ class Database:
                 SELECT COALESCE(SUM(amount), 0), COUNT(*)
                 FROM transactions
                 WHERE status IN ('approved', 'completed')
-                  AND ((reseller_id IS NULL OR reseller_id = 0) AND gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
+                  AND ((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')
                   {date_cond_tx}
             """)
             admin_tx = cursor.fetchone()
@@ -13739,7 +13964,7 @@ class Database:
                 SELECT COALESCE(SUM(amount), 0)
                 FROM transactions
                 WHERE status IN ('approved', 'completed')
-                  AND ((reseller_id IS NULL OR reseller_id = 0) AND gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
+                  AND ((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')
             """)
             admin_lifetime_revenue = cursor.fetchone()[0] or 0
 
@@ -13784,7 +14009,7 @@ class Database:
                 SELECT strftime('%Y-%m', created_at) as month, SUM(amount) as total, COUNT(*) as count
                 FROM transactions 
                 WHERE status IN ('approved', 'completed')
-                  AND ((reseller_id IS NULL OR reseller_id = 0) AND gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
+                  AND ((reseller_id IS NULL OR reseller_id = 0) OR gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%')
                 GROUP BY strftime('%Y-%m', created_at) ORDER BY month DESC LIMIT 12
             """)
             admin_monthly_trend = [dict(r) for r in cursor.fetchall()]
@@ -14769,6 +14994,28 @@ class Database:
             """, (reseller_id, credit_to_add, bundle["title"], desc, now))
 
             conn.commit()
+
+            # ثبت مخارج در کارت یا حساب نماینده در صورت وجود
+            try:
+                cursor.execute("SELECT id FROM reseller_cards WHERE reseller_id = ? AND is_active = 1 ORDER BY is_default DESC, id ASC LIMIT 1", (reseller_id,))
+                rc_row = cursor.fetchone()
+                if rc_row and rc_row[0]:
+                    self.add_card_transaction(
+                        card_id=rc_row[0],
+                        owner_type="reseller",
+                        reseller_id=reseller_id,
+                        amount=bundle["price"],
+                        tx_type="withdrawal",
+                        category="خرید بسته و شارژ موجودی",
+                        title=f"خرید {bundle['title']}",
+                        description=f"هزینه خرید بسته اعتباری و شارژ کیف پول ({bundle['title']})",
+                        ref_type="bundle_purchase",
+                        ref_id=str(bundle_id),
+                        created_by="سیستم"
+                    )
+            except Exception as e_rc:
+                logger.warning(f"Could not record reseller card withdrawal for bundle purchase: {e_rc}")
+
             return {"success": True, "old_balance": old_balance, "new_balance": new_balance, "bundle": bundle}
         except Exception as e:
             logger.error(f"Error applying reseller bundle: {e}")
@@ -16318,6 +16565,28 @@ class Database:
             """, (reseller_id, credit_to_add, bundle_title, desc, now))
 
             conn.commit()
+
+            # ثبت مخارج در کارت یا حساب نماینده در صورت وجود
+            try:
+                cursor.execute("SELECT id FROM reseller_cards WHERE reseller_id = ? AND is_active = 1 ORDER BY is_default DESC, id ASC LIMIT 1", (reseller_id,))
+                rc_row = cursor.fetchone()
+                if rc_row and rc_row[0]:
+                    self.add_card_transaction(
+                        card_id=rc_row[0],
+                        owner_type="reseller",
+                        reseller_id=reseller_id,
+                        amount=amount,
+                        tx_type="withdrawal",
+                        category="خرید بسته و شارژ موجودی",
+                        title=f"خرید بسته {bundle_title}",
+                        description=f"هزینه خرید بسته اعتباری و شارژ کیف پول ({bundle_title})",
+                        ref_type="bundle_purchase",
+                        ref_id=str(tx_id or ""),
+                        created_by="سیستم"
+                    )
+            except Exception as e_rc:
+                logger.warning(f"Could not record reseller card withdrawal for bundle credit: {e_rc}")
+
             return {"success": True, "old_balance": old_balance, "new_balance": new_balance, "credit_added": credit_to_add}
         except Exception as e:
             logger.error(f"Error applying reseller bundle credit: {e}")

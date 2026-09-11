@@ -4783,7 +4783,51 @@ def approve_payment(payment_id):
         amount = tx.get("amount", 0)
         pname = tx.get("plan_name", "بسته اعتباری")
         res = db.apply_reseller_bundle_credit(r_id, amount, pname, tx.get("id"))
-        db.update_transaction(tx["order_id"], status="approved")
+        
+        admin_name = session.get("name") or session.get("username") or "مدیر ارشد"
+        admin_id = session.get("admin_id")
+        now_iso = get_now_iso()
+        
+        conn = db.get_connection()
+        conn.execute(
+            "UPDATE transactions SET status='approved', processed_by=?, processed_at=?, updated_at=? WHERE id=?", 
+            (admin_name, now_iso, now_iso, tx["id"])
+        )
+        conn.commit()
+        conn.close()
+
+        # واریز مبلغ پرداختی بسته به کارت بانکی مقصد مدیر به عنوان درآمد
+        target_card_id = tx.get("target_card_id")
+        if not target_card_id and tx.get("card_number"):
+            clean_c = re.sub(r"\D", "", str(tx["card_number"]))
+            if len(clean_c) >= 4:
+                c_conn = db.get_connection()
+                r_card = c_conn.execute("SELECT id FROM bank_cards WHERE card_number LIKE ? LIMIT 1", (f"%{clean_c[-10:]}%",)).fetchone()
+                c_conn.close()
+                if r_card:
+                    target_card_id = r_card["id"]
+        if not target_card_id:
+            best_c = db.get_best_active_card(owner_type="admin")
+            if best_c and best_c.get("id"):
+                target_card_id = best_c["id"]
+
+        if target_card_id and amount > 0:
+            try:
+                db.add_card_transaction(
+                    card_id=target_card_id,
+                    owner_type="admin",
+                    amount=amount,
+                    tx_type="deposit",
+                    category="reseller_bundle",
+                    title=f"فروش بسته اعتباری نماینده ({pname})",
+                    description=f"واریز بابت خرید بسته اعتباری نماینده {tx.get('username') or r_id} (سفارش {tx.get('order_id')})",
+                    tracking_code=str(tx.get("tracking_code") or tx.get("id")),
+                    ref_type="reseller_bundle",
+                    ref_id=str(tx.get("id")),
+                    created_by=admin_name
+                )
+            except Exception as e_c:
+                logger.error(f"Error depositing reseller bundle payment to admin card: {e_c}")
         
         credit_added = res.get("credit_added", amount) if isinstance(res, dict) else amount
         new_balance = res.get("new_balance", 0) if isinstance(res, dict) else 0
@@ -4814,8 +4858,6 @@ def approve_payment(payment_id):
                 logger.error(f"Error sending telegram msg to reseller {r_id}: {e}")
 
         # ۳. لاگ حسابرسی
-        admin_id = session.get("admin_id")
-        admin_name = session.get("username")
         db.add_transaction_audit_log(
             tx["id"], admin_id, admin_name,
             action="approve_reseller_bundle",
@@ -8492,12 +8534,15 @@ def reject_quota_change(ticket_id):
 @app.route("/admin/subscription/<int:sub_id>/clear-debt", methods=["POST"])
 @permission_required("sub_manage")
 def admin_subscription_clear_debt(sub_id):
-    """تسویه کامل و سریع بدهی اشتراک توسط مدیر"""
+    """تسویه کامل و سریع بدهی اشتراک توسط مدیر با واریز به کارت مقصد انتخابی"""
     settled_by = session.get("username") or "admin"
-    res = db.clear_subscription_debt(sub_id, settled_by=settled_by)
+    raw_card = request.form.get("target_card_id") or (request.json.get("target_card_id") if request.is_json else None)
+    target_card_id = int(raw_card) if (raw_card and str(raw_card).isdigit()) else None
+
+    res = db.clear_subscription_debt(sub_id, settled_by=settled_by, target_card_id=target_card_id)
     if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
         if res.get("success"):
-            return jsonify({"success": True, "message": "تمام بدهی‌های مشتری با موفقیت تسویه شد."})
+            return jsonify({"success": True, "message": "تمام بدهی‌های مشتری با موفقیت تسویه و در حساب مقصد ثبت شد."})
         return jsonify({"success": False, "error": res.get("error", "خطا در تسویه بدهی")}), 400
     if res.get("success"):
         flash("تمام بدهی‌های مشتری با موفقیت تسویه شد و اشتراک به عنوان پرداخت شده علامت‌گذاری گردید.", "success")
@@ -8509,18 +8554,70 @@ def admin_subscription_clear_debt(sub_id):
 @app.route("/reseller/subscription/<int:sub_id>/clear-debt", methods=["POST"])
 @reseller_required
 def reseller_subscription_clear_debt(sub_id):
-    """تسویه کامل و سریع بدهی مشتری توسط نماینده"""
+    """تسویه کامل و سریع بدهی مشتری توسط نماینده با واریز به کارت مقصد انتخابی"""
     reseller_id = session.get("reseller_id")
     settled_by = session.get("username") or f"reseller_{reseller_id}"
-    res = db.clear_subscription_debt(sub_id, reseller_id=reseller_id, settled_by=settled_by)
+    raw_card = request.form.get("target_card_id") or (request.json.get("target_card_id") if request.is_json else None)
+    target_card_id = int(raw_card) if (raw_card and str(raw_card).isdigit()) else None
+
+    res = db.clear_subscription_debt(sub_id, reseller_id=reseller_id, settled_by=settled_by, target_card_id=target_card_id)
     if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
         if res.get("success"):
-            return jsonify({"success": True, "message": "تمام بدهی‌های مشتری با موفقیت تسویه شد."})
+            return jsonify({"success": True, "message": "تمام بدهی‌های مشتری با موفقیت تسویه و در حساب ثبت شد."})
         return jsonify({"success": False, "error": res.get("error", "خطا در تسویه بدهی")}), 400
     if res.get("success"):
         flash("تمام بدهی‌های مشتری با موفقیت تسویه شد و وضعیت اشتراک به پرداخت شده تغییر یافت.", "success")
     else:
         flash(f"خطا در تسویه بدهی: {res.get('error')}", "danger")
+    return redirect(request.form.get("redirect_url") or request.form.get("next") or request.referrer or url_for("reseller_users"))
+
+
+@app.route("/admin/subscription/<int:sub_id>/add-debt", methods=["POST"])
+@permission_required("sub_manage")
+def admin_subscription_add_debt(sub_id):
+    """ثبت مستقیم بدهی جدید برای مشتری توسط مدیر"""
+    amount_raw = request.form.get("amount") or (request.json.get("amount") if request.is_json else 0)
+    notes = request.form.get("notes") or (request.json.get("notes") if request.is_json else "")
+    actor = session.get("name") or session.get("username") or "مدیریت"
+    try:
+        amount = int(re.sub(r"\D", "", str(amount_raw)))
+    except Exception:
+        amount = 0
+
+    res = db.add_customer_debt(sub_id, amount=amount, notes=notes, actor=actor)
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+        if res.get("success"):
+            return jsonify({"success": True, "message": f"بدهی به مبلغ {amount:,} تومان با موفقیت ثبت شد.", "data": res})
+        return jsonify({"success": False, "error": res.get("error", "خطا در ثبت بدهی")}), 400
+    if res.get("success"):
+        flash(f"بدهی به مبلغ {amount:,} تومان با موفقیت برای مشتری ثبت شد.", "success")
+    else:
+        flash(f"خطا در ثبت بدهی: {res.get('error')}", "danger")
+    return redirect(request.form.get("redirect_url") or request.form.get("next") or request.referrer or url_for("subscriptions"))
+
+
+@app.route("/reseller/subscription/<int:sub_id>/add-debt", methods=["POST"])
+@reseller_required
+def reseller_subscription_add_debt(sub_id):
+    """ثبت مستقیم بدهی جدید برای مشتری توسط نماینده"""
+    reseller_id = session.get("reseller_id")
+    amount_raw = request.form.get("amount") or (request.json.get("amount") if request.is_json else 0)
+    notes = request.form.get("notes") or (request.json.get("notes") if request.is_json else "")
+    actor = session.get("name") or session.get("username") or f"reseller_{reseller_id}"
+    try:
+        amount = int(re.sub(r"\D", "", str(amount_raw)))
+    except Exception:
+        amount = 0
+
+    res = db.add_customer_debt(sub_id, amount=amount, notes=notes, actor=actor, reseller_id=reseller_id)
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+        if res.get("success"):
+            return jsonify({"success": True, "message": f"بدهی به مبلغ {amount:,} تومان با موفقیت ثبت شد.", "data": res})
+        return jsonify({"success": False, "error": res.get("error", "خطا در ثبت بدهی")}), 400
+    if res.get("success"):
+        flash(f"بدهی به مبلغ {amount:,} تومان با موفقیت برای مشتری ثبت شد.", "success")
+    else:
+        flash(f"خطا در ثبت بدهی: {res.get('error')}", "danger")
     return redirect(request.form.get("redirect_url") or request.form.get("next") or request.referrer or url_for("reseller_users"))
 
 
@@ -8556,13 +8653,16 @@ def api_customer_debt_report(sub_id: int):
 @app.route("/admin/subscription/<int:sub_id>/settle-debt-record/<int:record_id>", methods=["POST"])
 @permission_required("sub_manage")
 def admin_settle_debt_record(sub_id: int, record_id: int):
-    """تسویه یک رسید بدهی مشخص توسط مدیر"""
+    """تسویه یک رسید بدهی مشخص توسط مدیر با واریز به کارت مقصد"""
     sub = db.get_subscription(sub_id)
     if not sub:
         return jsonify({"success": False, "error": "اشتراک یافت نشد"}), 404
 
     settled_by = session.get("username") or "admin"
-    res = db.settle_customer_debt_record(sub_id, record_id=record_id, settled_by=settled_by)
+    raw_card = request.form.get("target_card_id") or (request.json.get("target_card_id") if request.is_json else None)
+    target_card_id = int(raw_card) if (raw_card and str(raw_card).isdigit()) else None
+
+    res = db.settle_customer_debt_record(sub_id, record_id=record_id, settled_by=settled_by, target_card_id=target_card_id)
     if res.get("success"):
         return jsonify({"success": True, "message": "رسید بدهی با موفقیت تسویه شد.", "data": res})
     else:
@@ -8572,14 +8672,17 @@ def admin_settle_debt_record(sub_id: int, record_id: int):
 @app.route("/reseller/subscription/<int:sub_id>/settle-debt-record/<int:record_id>", methods=["POST"])
 @reseller_required
 def reseller_settle_debt_record(sub_id: int, record_id: int):
-    """تسویه یک رسید بدهی مشخص توسط نماینده"""
+    """تسویه یک رسید بدهی مشخص توسط نماینده با واریز به کارت مقصد"""
     reseller_id = session.get("reseller_id")
     sub = db.get_reseller_subscription(reseller_id, sub_id)
     if not sub:
         return jsonify({"success": False, "error": "اشتراک یافت نشد یا متعلق به شما نیست"}), 404
 
     settled_by = session.get("username") or f"reseller_{reseller_id}"
-    res = db.settle_customer_debt_record(sub_id, record_id=record_id, settled_by=settled_by)
+    raw_card = request.form.get("target_card_id") or (request.json.get("target_card_id") if request.is_json else None)
+    target_card_id = int(raw_card) if (raw_card and str(raw_card).isdigit()) else None
+
+    res = db.settle_customer_debt_record(sub_id, record_id=record_id, settled_by=settled_by, target_card_id=target_card_id)
     if res.get("success"):
         return jsonify({"success": True, "message": "رسید بدهی با موفقیت تسویه شد.", "data": res})
     else:
