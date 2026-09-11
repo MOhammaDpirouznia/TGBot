@@ -59,16 +59,26 @@
                         <td>
                             <div class="d-flex align-items-center gap-2">
                                 <div class="avatar-sm rounded-circle bg-{{ m.get('color', 'primary') }}-subtle text-{{ m.get('color', 'primary') }} d-flex align-items-center justify-content-center" style="width: 38px; height: 38px;">
-                                    <i class="fas {{ m.get('icon', 'fa-credit-card') }} fs-6"></i>
+                                    <i class="{{ m.get('icon', 'fas fa-credit-card') }} fs-6"></i>
                                 </div>
                                 <div>
-                                    <strong class="text-dark">{{ m['name'] }}</strong>
+                                    <strong class="text-dark">{{ m.get('portal_title') or m['name'] }}</strong>
                                     <div class="text-muted small font-monospace"><code>{{ m['id'] }}</code></div>
                                 </div>
                             </div>
                         </td>
                         <td>
-                            <small class="text-muted">{{ m.get('desc', '-') }}</small>
+                            <small class="text-muted">
+                                {% if m['id'] == 'card_to_card' %}
+                                    <span class="d-block text-truncate" style="max-width: 320px;">⚡ تایید خودکار: {{ m.get('desc_auto', m.get('desc', '-')) }}</span>
+                                    <span class="d-block text-muted opacity-75 text-truncate" style="max-width: 320px;">💳 بدون تایید خودکار: {{ m.get('desc_no_auto', '-') }}</span>
+                                {% elif m['id'] == 'online_gateway' %}
+                                    <span class="d-block text-truncate" style="max-width: 320px;">🌐 شاپرک: {{ m.get('shaparak_desc', m.get('desc', '-')) }}</span>
+                                    <span class="d-block text-info text-truncate" style="max-width: 320px;">⚡ بلوپال: {{ m.get('blupal_desc', '-') }}</span>
+                                {% else %}
+                                    {{ m.get('desc', '-') }}
+                                {% endif %}
+                            </small>
                         </td>
                         <td class="text-center">
                             {% if m.get('enabled', True) %}
@@ -78,11 +88,17 @@
                             {% endif %}
                         </td>
                         <td class="text-end pe-3">
-                            <a href="{{ url_for('admin_payment_method_toggle', method_id=m['id']) }}" 
-                               class="btn btn-sm {% if m.get('enabled', True) %}btn-outline-warning{% else %}btn-outline-success{% endif %}">
-                                <i class="fas fa-power-off me-1"></i>
-                                {{ 'غیرفعال‌سازی' if m.get('enabled', True) else 'فعال‌سازی' }}
-                            </a>
+                            <div class="d-inline-flex align-items-center gap-1">
+                                <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editMethodModal_{{ m['id'] }}" title="تنظیمات، گزینه‌های پیشرفته و ویرایش متن‌ها">
+                                    <i class="fas fa-sliders me-1"></i>
+                                    تنظیمات و شخصی‌سازی
+                                </button>
+                                <a href="{{ url_for('admin_payment_method_toggle', method_id=m['id']) }}" 
+                                   class="btn btn-sm {% if m.get('enabled', True) %}btn-outline-warning{% else %}btn-outline-success{% endif %}">
+                                    <i class="fas fa-power-off me-1"></i>
+                                    {{ 'غیرفعال‌سازی' if m.get('enabled', True) else 'فعال‌سازی' }}
+                                </a>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
@@ -91,6 +107,247 @@
         </div>
     </div>
 </div>
+
+<!-- مودال‌های شخصی‌سازی و تنظیمات پیشرفته روش‌های پرداخت -->
+{% for m in payment_methods %}
+<div class="modal fade" id="editMethodModal_{{ m['id'] }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content shadow-lg border-0 rounded-4">
+            <div class="modal-header bg-light py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="avatar-sm rounded-circle bg-{{ m.get('color', 'primary') }}-subtle text-{{ m.get('color', 'primary') }} d-flex align-items-center justify-content-center" style="width: 36px; height: 36px;">
+                        <i class="{{ m.get('icon', 'fas fa-credit-card') }} fs-6"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0">تنظیمات و شخصی‌سازی روش «{{ m['name'] }}»</h5>
+                        <small class="text-muted font-monospace">شناسه سامانه: <code>{{ m['id'] }}</code></small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <form method="POST" action="{{ url_for('admin_payment_method_edit', method_id=m['id']) }}" id="editMethodForm_{{ m['id'] }}">
+                <div class="modal-body p-4">
+                    <!-- ردیف ۱: مشخصات کلی روش پرداخت -->
+                    <div class="card border border-light-subtle shadow-none bg-light bg-opacity-50 rounded-3 mb-4 p-3">
+                        <div class="fw-bold text-dark mb-3 small d-flex align-items-center gap-2">
+                            <i class="fas fa-id-card text-primary"></i>
+                            اطلاعات پایه و نحوه نمایش در سامانه
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold text-dark">عنوان روش در پنل مدیریت و ربات:</label>
+                                <input type="text" name="name" class="form-control" value="{{ m.get('name', '') }}" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold text-dark">عنوان نمایشی در پورتال مشتری:</label>
+                                <input type="text" name="portal_title" class="form-control" value="{{ m.get('portal_title', m.get('name', '')) }}" placeholder="مثلاً: کارت به کارت (واریز بانکی)">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold text-dark">آیکون روش پرداخت (کلاس FontAwesome):</label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-white" id="iconPreview_{{ m['id'] }}">
+                                        <i class="{{ m.get('icon', 'fas fa-credit-card') }}"></i>
+                                    </span>
+                                    <input type="text" name="icon" id="iconInput_{{ m['id'] }}" class="form-control font-monospace" value="{{ m.get('icon', 'fas fa-credit-card') }}" oninput="document.querySelector('#iconPreview_{{ m['id'] }} i').className = this.value;">
+                                </div>
+                                <div class="mt-1 d-flex gap-1 flex-wrap">
+                                    <span class="badge bg-light text-secondary border cursor-pointer" onclick="document.getElementById('iconInput_{{ m['id'] }}').value='fas fa-credit-card'; document.querySelector('#iconPreview_{{ m['id'] }} i').className='fas fa-credit-card';" style="cursor: pointer;">کارت 💳</span>
+                                    <span class="badge bg-light text-secondary border cursor-pointer" onclick="document.getElementById('iconInput_{{ m['id'] }}').value='fas fa-money-bill-transfer'; document.querySelector('#iconPreview_{{ m['id'] }} i').className='fas fa-money-bill-transfer';" style="cursor: pointer;">انتقال 🔁</span>
+                                    <span class="badge bg-light text-secondary border cursor-pointer" onclick="document.getElementById('iconInput_{{ m['id'] }}').value='fas fa-globe'; document.querySelector('#iconPreview_{{ m['id'] }} i').className='fas fa-globe';" style="cursor: pointer;">شاپرک 🌐</span>
+                                    <span class="badge bg-light text-secondary border cursor-pointer" onclick="document.getElementById('iconInput_{{ m['id'] }}').value='fas fa-bolt'; document.querySelector('#iconPreview_{{ m['id'] }} i').className='fas fa-bolt';" style="cursor: pointer;">هوشمند ⚡</span>
+                                    <span class="badge bg-light text-secondary border cursor-pointer" onclick="document.getElementById('iconInput_{{ m['id'] }}').value='fas fa-wallet'; document.querySelector('#iconPreview_{{ m['id'] }} i').className='fas fa-wallet';" style="cursor: pointer;">کیف پول 👛</span>
+                                    <span class="badge bg-light text-secondary border cursor-pointer" onclick="document.getElementById('iconInput_{{ m['id'] }}').value='fab fa-bitcoin'; document.querySelector('#iconPreview_{{ m['id'] }} i').className='fab fa-bitcoin';" style="cursor: pointer;">کریپتو 🪙</span>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold text-dark">رنگ تم و استایل:</label>
+                                <select name="color" class="form-select">
+                                    <option value="primary" {% if m.get('color') == 'primary' %}selected{% endif %}>آبی (Primary)</option>
+                                    <option value="info" {% if m.get('color') == 'info' %}selected{% endif %}>فیروزه‌ای (Info)</option>
+                                    <option value="success" {% if m.get('color') == 'success' %}selected{% endif %}>سبز (Success)</option>
+                                    <option value="warning" {% if m.get('color') == 'warning' %}selected{% endif %}>طلایی / نارنجی (Warning)</option>
+                                    <option value="danger" {% if m.get('color') == 'danger' %}selected{% endif %}>قرمز (Danger)</option>
+                                    <option value="secondary" {% if m.get('color') == 'secondary' %}selected{% endif %}>خاکستری (Secondary)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if m['id'] == 'card_to_card' %}
+                    <!-- تنظیمات هوشمند و پیشرفته اختصاصی کارت به کارت -->
+                    <div class="alert alert-info py-2 px-3 small border-0 d-flex align-items-center gap-2 mb-3" style="background: rgba(14, 165, 233, 0.1); color: #0369a1;">
+                        <i class="fas fa-circle-info fs-5 flex-shrink-0"></i>
+                        <div>
+                            <strong>مدیریت هوشمند متون تایید خودکار:</strong> در صورتی که قابلیت تایید خودکار پیامک بانک برای این مالک/نماینده فعال باشد، متون بخش ۱ و در صورت غیرفعال بودن، متون بخش ۲ به مشتری نمایش داده می‌شوند.
+                        </div>
+                    </div>
+
+                    <!-- حالت ۱: فعال بودن تایید خودکار -->
+                    <div class="card border border-primary border-opacity-25 rounded-3 mb-3 p-3 bg-primary bg-opacity-10">
+                        <div class="fw-bold text-primary mb-2 small d-flex align-items-center gap-1">
+                            <i class="fas fa-bolt"></i>
+                            متون در زمان <u>فعال بودن</u> تایید خودکار با پیامک بانک:
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-12">
+                                <label class="form-label small text-dark mb-1">توضیحات در کارت پورتال:</label>
+                                <input type="text" name="desc_auto" class="form-control form-control-sm" value="{{ m.get('desc_auto', 'واریز به شماره کارت با تایید خودکار پیامک بانک') }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-dark mb-1">متن نشان / بج:</label>
+                                <input type="text" name="badge_auto" class="form-control form-control-sm" value="{{ m.get('badge_auto', 'تایید خودکار') }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-dark mb-1">متن دکمه نهایی تمدید/خرید:</label>
+                                <input type="text" name="btn_text_auto" class="form-control form-control-sm" value="{{ m.get('btn_text_auto', 'صدور فاکتور و پرداخت کارت به کارت (هوشمند)') }}">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- حالت ۲: غیرفعال بودن تایید خودکار -->
+                    <div class="card border border-secondary border-opacity-25 rounded-3 mb-2 p-3 bg-light">
+                        <div class="fw-bold text-secondary mb-2 small d-flex align-items-center gap-1">
+                            <i class="fas fa-receipt"></i>
+                            متون در زمان <u>غیرفعال بودن</u> تایید خودکار (کارت به کارت عادی با ارسال فیش):
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-12">
+                                <label class="form-label small text-dark mb-1">توضیحات در کارت پورتال:</label>
+                                <input type="text" name="desc_no_auto" class="form-control form-control-sm" value="{{ m.get('desc_no_auto', 'واریز به شماره کارت‌های فعال با بررسی و تایید فیش') }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-dark mb-1">متن نشان / بج:</label>
+                                <input type="text" name="badge_no_auto" class="form-control form-control-sm" value="{{ m.get('badge_no_auto', 'واریز بانکی') }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-dark mb-1">متن دکمه نهایی تمدید/خرید:</label>
+                                <input type="text" name="btn_text_no_auto" class="form-control form-control-sm" value="{{ m.get('btn_text_no_auto', 'صدور فاکتور و پرداخت کارت به کارت') }}">
+                            </div>
+                        </div>
+                    </div>
+
+                    {% elif m['id'] == 'online_gateway' %}
+                    <!-- تنظیمات پیشرفته درگاه آنلاین: تفکیک بلوپال و شاپرک -->
+                    <div class="card border border-info border-opacity-25 rounded-3 mb-3 p-3 bg-info bg-opacity-10">
+                        <div class="fw-bold text-info mb-2 small d-flex align-items-center gap-1">
+                            <i class="fas fa-bolt"></i>
+                            تنظیمات اختصاصی درگاه کارت به کارت هوشمند بلوپال (BluPal):
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="form-label small text-dark mb-1">عنوان بلوپال در پورتال:</label>
+                                <input type="text" name="blupal_title" class="form-control form-control-sm" value="{{ m.get('blupal_title', 'درگاه پرداخت هوشمند (بلوپال)') }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-dark mb-1">متن بج بلوپال:</label>
+                                <input type="text" name="blupal_badge" class="form-control form-control-sm" value="{{ m.get('blupal_badge', 'پرداخت آنی') }}">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small text-dark mb-1">توضیحات بلوپال در پورتال:</label>
+                                <input type="text" name="blupal_desc" class="form-control form-control-sm" value="{{ m.get('blupal_desc', 'پرداخت شتابی با درگاه کارت به کارت هوشمند بلوپال') }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-dark mb-1">متن دکمه بلوپال:</label>
+                                <input type="text" name="blupal_btn_text" class="form-control form-control-sm" value="{{ m.get('blupal_btn_text', 'ورود به درگاه پرداخت هوشمند بلوپال') }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-dark mb-1">آیکون بلوپال:</label>
+                                <input type="text" name="blupal_icon" class="form-control form-control-sm font-monospace" value="{{ m.get('blupal_icon', 'fas fa-bolt') }}">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card border border-success border-opacity-25 rounded-3 mb-2 p-3 bg-success bg-opacity-10">
+                        <div class="fw-bold text-success mb-2 small d-flex align-items-center gap-1">
+                            <i class="fas fa-globe"></i>
+                            تنظیمات درگاه اینترنتی شاپرک (زرین‌پال / آیدی‌پی / نکست‌پی):
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="form-label small text-dark mb-1">عنوان شاپرک در پورتال:</label>
+                                <input type="text" name="shaparak_title" class="form-control form-control-sm" value="{{ m.get('shaparak_title', 'درگاه پرداخت اینترنتی شاپرک') }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-dark mb-1">متن بج شاپرک:</label>
+                                <input type="text" name="shaparak_badge" class="form-control form-control-sm" value="{{ m.get('shaparak_badge', 'پرداخت آنی') }}">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small text-dark mb-1">توضیحات شاپرک در پورتال:</label>
+                                <input type="text" name="shaparak_desc" class="form-control form-control-sm" value="{{ m.get('shaparak_desc', 'پرداخت آنلاین و آنی با کلیه کارت‌های بانکی عضو شتاب') }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-dark mb-1">متن دکمه شاپرک:</label>
+                                <input type="text" name="shaparak_btn_text" class="form-control form-control-sm" value="{{ m.get('shaparak_btn_text', 'اتصال به درگاه بانکی شاپرک و تمدید آنلاین') }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-dark mb-1">آیکون شاپرک:</label>
+                                <input type="text" name="shaparak_icon" class="form-control form-control-sm font-monospace" value="{{ m.get('shaparak_icon', 'fas fa-globe') }}">
+                            </div>
+                        </div>
+                    </div>
+
+                    {% elif m['id'] == 'wallet' %}
+                    <!-- تنظیمات کیف پول -->
+                    <div class="card border border-success border-opacity-25 rounded-3 mb-2 p-3 bg-success bg-opacity-10">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label small text-dark mb-1">توضیحات در کارت پورتال:</label>
+                                <input type="text" name="desc" class="form-control" value="{{ m.get('desc', 'کسر آنی از کیف پول کاربری (موجودی: {balance} تومان)') }}">
+                                <small class="text-muted" style="font-size: 0.72rem;">نکته: عبارت <code>{balance}</code> به صورت خودکار با موجودی زنده کاربر جایگزین می‌شود.</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-dark mb-1">متن دکمه نهایی پرداخت:</label>
+                                <input type="text" name="btn_text" class="form-control" value="{{ m.get('btn_text', 'پرداخت و کسر از کیف پول تلگرام') }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-dark mb-1">قالب متن نشان / بج:</label>
+                                <input type="text" name="badge" class="form-control" value="{{ m.get('badge', '{balance} ت') }}">
+                            </div>
+                        </div>
+                    </div>
+
+                    {% elif m['id'] == 'crypto' %}
+                    <!-- تنظیمات ارز دیجیتال -->
+                    <div class="card border border-warning border-opacity-25 rounded-3 mb-2 p-3 bg-warning bg-opacity-10">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label small text-dark mb-1">توضیحات در کارت پورتال:</label>
+                                <input type="text" name="desc" class="form-control" value="{{ m.get('desc', 'پرداخت با تتر (USDT TRC20 / TON) با محاسبه خودکار نرخ روز') }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-dark mb-1">متن نشان / بج:</label>
+                                <input type="text" name="badge" class="form-control" value="{{ m.get('badge', 'TRC20 / TON') }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-dark mb-1">متن دکمه نهایی پرداخت:</label>
+                                <input type="text" name="btn_text" class="form-control" value="{{ m.get('btn_text', 'صدور فاکتور پرداخت با ارز دیجیتال (تتر USDT)') }}">
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="modal-footer bg-light py-2 d-flex justify-content-between">
+                    <div>
+                        <button type="submit" form="resetMethodForm_{{ m['id'] }}" class="btn btn-outline-danger btn-sm" onclick="return confirm('آیا از بازنشانی کلیه متن‌ها و تنظیمات این روش به حالت اولیه پیش‌فرض سامانه اطمینان دارید؟');">
+                            <i class="fas fa-rotate-left me-1"></i> بازنشانی به پیش‌فرض
+                        </button>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">انصراف</button>
+                        <button type="submit" class="btn btn-primary btn-sm px-3 fw-bold shadow-sm">
+                            <i class="fas fa-save me-1"></i> ذخیره شخصی‌سازی‌ها
+                        </button>
+                    </div>
+                </div>
+            </form>
+
+            <form id="resetMethodForm_{{ m['id'] }}" method="POST" action="{{ url_for('admin_payment_method_reset', method_id=m['id']) }}" class="d-none"></form>
+        </div>
+    </div>
+</div>
+{% endfor %}
 
 <!-- ردیف ۲: خلاصه مالی و حسابداری موجودی شناور کارت‌ها و صندوق نقدی -->
 <div class="row g-3 mb-4">

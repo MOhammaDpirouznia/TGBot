@@ -241,6 +241,229 @@
         [data-bs-theme="light"] .bg-black.bg-opacity-50 {
             background-color: rgba(0, 0, 0, 0.04) !important;
         }
+
+        /* ─── استایل اختصاصی نوار و کارت‌های تعویض اشتراک‌های فعال کاربر ─── */
+        .portal-subs-card {
+            border-radius: 20px;
+            transition: all 0.3s ease;
+        }
+        [data-bs-theme="light"] .portal-subs-card {
+            background: rgba(255, 255, 255, 0.95) !important;
+            border: 1px solid rgba(203, 213, 225, 0.8) !important;
+            box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.05) !important;
+        }
+        [data-bs-theme="light"] .portal-subs-title {
+            color: #0f172a !important;
+        }
+        [data-bs-theme="dark"] .portal-subs-card {
+            background: rgba(15, 23, 42, 0.7) !important;
+            border: 1px solid rgba(59, 130, 246, 0.25) !important;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4) !important;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+        }
+        [data-bs-theme="dark"] .portal-subs-title {
+            color: #ffffff !important;
+        }
+
+        .portal-subs-scroll {
+            display: flex;
+            gap: 0.65rem;
+            overflow-x: auto;
+            padding-bottom: 6px;
+            scrollbar-width: thin;
+            -webkit-overflow-scrolling: touch;
+        }
+        .portal-subs-scroll::-webkit-scrollbar {
+            height: 5px;
+        }
+        .portal-subs-scroll::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.04);
+            border-radius: 10px;
+        }
+        [data-bs-theme="dark"] .portal-subs-scroll::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .portal-subs-scroll::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.45);
+            border-radius: 10px;
+        }
+        .portal-subs-scroll::-webkit-scrollbar-thumb:hover {
+            background: var(--primary, #2563eb);
+        }
+
+        .portal-sub-pill {
+            min-width: 145px;
+            max-width: 180px;
+            padding: 0.65rem 0.9rem;
+            border-radius: 14px;
+            text-decoration: none !important;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            user-select: none;
+            flex-shrink: 0;
+        }
+        .portal-sub-pill .sub-name {
+            font-size: 0.88rem;
+            font-family: var(--bs-font-monospace, monospace);
+        }
+        .portal-sub-pill .sub-meta {
+            font-size: 0.73rem;
+        }
+
+        /* حالت غیرفعال در تم روشن (Light Mode) */
+        [data-bs-theme="light"] .portal-sub-pill:not(.active) {
+            background: #f8fafc !important;
+            border: 1px solid #e2e8f0 !important;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+        }
+        [data-bs-theme="light"] .portal-sub-pill:not(.active) .sub-name {
+            color: #0f172a !important;
+            font-weight: 700;
+        }
+        [data-bs-theme="light"] .portal-sub-pill:not(.active) .sub-meta {
+            color: #64748b !important;
+        }
+        [data-bs-theme="light"] .portal-sub-pill:not(.active):hover {
+            background: #ffffff !important;
+            border-color: var(--primary, #2563eb) !important;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px -2px rgba(37, 99, 235, 0.12);
+        }
+
+        /* حالت غیرفعال در تم تیره (Dark Mode) */
+        [data-bs-theme="dark"] .portal-sub-pill:not(.active) {
+            background: rgba(255, 255, 255, 0.05) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        }
+        [data-bs-theme="dark"] .portal-sub-pill:not(.active) .sub-name {
+            color: #f1f5f9 !important;
+            font-weight: 700;
+        }
+        [data-bs-theme="dark"] .portal-sub-pill:not(.active) .sub-meta {
+            color: rgba(255, 255, 255, 0.6) !important;
+        }
+        [data-bs-theme="dark"] .portal-sub-pill:not(.active):hover {
+            background: rgba(255, 255, 255, 0.1) !important;
+            border-color: rgba(96, 165, 250, 0.5) !important;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+        }
+
+        /* کارت انتخاب شده در هر دو تم */
+        .portal-sub-pill.active {
+            background: linear-gradient(135deg, var(--primary, #2563eb), #1d4ed8) !important;
+            border: 1px solid rgba(255, 255, 255, 0.3) !important;
+            box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35) !important;
+            transform: translateY(-1px);
+        }
+        .portal-sub-pill.active .sub-name {
+            color: #ffffff !important;
+            font-weight: 800;
+        }
+        .portal-sub-pill.active .sub-meta {
+            color: rgba(255, 255, 255, 0.9) !important;
+        }
+
+        /* ─── استایل کارت‌ها و آواتارهای انتخاب روش پرداخت در پورتال ─── */
+        .portal-method-card {
+            border-radius: 16px;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+        }
+
+        [data-bs-theme="light"] .portal-method-card {
+            background: #ffffff !important;
+            border: 1px solid #e2e8f0 !important;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
+        }
+        [data-bs-theme="light"] .portal-method-card .method-title {
+            color: #0f172a !important;
+        }
+        [data-bs-theme="light"] .portal-method-card .method-desc {
+            color: #64748b !important;
+        }
+        [data-bs-theme="light"] .portal-method-card:hover {
+            border-color: rgba(37, 99, 235, 0.4) !important;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+        }
+        [data-bs-theme="light"] .portal-method-card.selected {
+            background: #f0f7ff !important;
+            border: 2px solid var(--primary, #2563eb) !important;
+            box-shadow: 0 6px 20px rgba(37, 99, 235, 0.12) !important;
+        }
+
+        [data-bs-theme="dark"] .portal-method-card {
+            background: rgba(255, 255, 255, 0.04) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        }
+        [data-bs-theme="dark"] .portal-method-card .method-title {
+            color: #f8fafc !important;
+        }
+        [data-bs-theme="dark"] .portal-method-card .method-desc {
+            color: rgba(255, 255, 255, 0.65) !important;
+        }
+        [data-bs-theme="dark"] .portal-method-card:hover {
+            background: rgba(255, 255, 255, 0.07) !important;
+            border-color: rgba(96, 165, 250, 0.4) !important;
+            transform: translateY(-2px);
+        }
+        [data-bs-theme="dark"] .portal-method-card.selected {
+            background: rgba(37, 99, 235, 0.14) !important;
+            border: 2px solid var(--primary, #2563eb) !important;
+            box-shadow: 0 6px 20px rgba(37, 99, 235, 0.25) !important;
+        }
+
+        .portal-method-avatar {
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.15rem;
+            flex-shrink: 0;
+            transition: transform 0.2s ease;
+        }
+        .portal-method-card:hover .portal-method-avatar {
+            transform: scale(1.08);
+        }
+
+        .avatar-primary {
+            background: rgba(37, 99, 235, 0.12) !important;
+            color: #2563eb !important;
+            border: 1px solid rgba(37, 99, 235, 0.25) !important;
+        }
+        .avatar-info {
+            background: rgba(14, 165, 233, 0.12) !important;
+            color: #0284c7 !important;
+            border: 1px solid rgba(14, 165, 233, 0.25) !important;
+        }
+        .avatar-success {
+            background: rgba(16, 185, 129, 0.12) !important;
+            color: #059669 !important;
+            border: 1px solid rgba(16, 185, 129, 0.25) !important;
+        }
+        .avatar-warning {
+            background: rgba(245, 158, 11, 0.14) !important;
+            color: #d97706 !important;
+            border: 1px solid rgba(245, 158, 11, 0.3) !important;
+        }
+        .avatar-danger {
+            background: rgba(239, 68, 68, 0.12) !important;
+            color: #dc2626 !important;
+            border: 1px solid rgba(239, 68, 68, 0.25) !important;
+        }
+        .avatar-secondary {
+            background: rgba(100, 116, 139, 0.12) !important;
+            color: #64748b !important;
+            border: 1px solid rgba(100, 116, 139, 0.25) !important;
+        }
         .progress-glow {
             box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
         }
@@ -1141,9 +1364,9 @@
 
         {% if user_subscriptions and user_subscriptions|length > 1 %}
         <!-- سلکتور جابجایی بین اشتراک‌های کاربر در مینی‌اپ و پرتال -->
-        <div class="glass-card p-3 mb-4 border border-primary border-opacity-30 shadow-sm">
+        <div class="portal-subs-card p-3 mb-4 shadow-sm">
             <div class="d-flex align-items-center justify-content-between mb-2">
-                <span class="small fw-bold text-white d-flex align-items-center gap-2">
+                <span class="small fw-bold portal-subs-title d-flex align-items-center gap-2">
                     <i class="fas fa-layer-group text-primary"></i>
                     اشتراک‌های فعال شما ({{ user_subscriptions|length }} اشتراک)
                 </span>
@@ -1153,18 +1376,18 @@
                 </button>
                 {% endif %}
             </div>
-            <div class="d-flex gap-2 overflow-x-auto pb-1" style="scrollbar-width: thin;">
+            <div class="portal-subs-scroll">
                 {% for usub in user_subscriptions %}
                     {% set usub_token = usub.get('hidify_uuid') or usub.get('id') %}
                     {% set is_active_selected = (token and (token == usub.get('hidify_uuid') or token|string == usub.get('id')|string)) or (loop.first and not token) %}
                     <a href="{% if is_webapp %}{{ url_for('telegram_webapp', tg_id=telegram_id, r=reseller_id, token=usub_token) }}{% else %}{{ url_for('customer_portal', token=usub_token) }}{% endif %}" 
-                       class="btn btn-sm text-nowrap rounded-3 px-3 py-2 text-start transition-all {% if is_active_selected %}btn-primary shadow border-0{% else %}btn-outline-secondary text-white border-opacity-25 bg-black bg-opacity-20{% endif %}"
-                       style="min-width: 140px;" onclick="window.tgHaptic && window.tgHaptic('light');">
-                        <div class="fw-bold font-monospace text-truncate d-flex align-items-center gap-1" style="max-width: 130px;">
-                            {% if is_active_selected %}<i class="fas fa-check-circle small"></i>{% endif %}
+                       class="portal-sub-pill {% if is_active_selected %}active{% endif %}"
+                       onclick="window.tgHaptic && window.tgHaptic('light');">
+                        <div class="sub-name text-truncate d-flex align-items-center gap-1">
+                            {% if is_active_selected %}<i class="fas fa-check-circle small text-white"></i>{% endif %}
                             {{ usub.get('account_name') or ('اشتراک ' ~ loop.index) }}
                         </div>
-                        <div class="small opacity-75 mt-1" style="font-size: 0.72rem;">
+                        <div class="sub-meta small mt-1">
                             {{ usub.get('remaining_days', usub.get('duration', 0)) }} روز • {{ usub.get('traffic_limit', 0) }} گیگ
                         </div>
                     </a>
@@ -1611,18 +1834,28 @@
         </div>
 
         {% else %}
-        <!-- حالت فاکتور کارت به کارت هوشمند با تایید پیامک بانک -->
+        <!-- حالت فاکتور کارت به کارت -->
         <div class="d-flex justify-content-between align-items-center mb-3">
+            {% if is_auto_confirm_active %}
             <h5 class="fw-bold text-warning mb-0"><i class="fas fa-bolt me-2"></i>فاکتور تمدید هوشمند (تایید خودکار)</h5>
+            {% else %}
+            <h5 class="fw-bold text-primary mb-0"><i class="fas fa-credit-card me-2"></i>فاکتور پرداخت کارت به کارت (واریز بانکی)</h5>
+            {% endif %}
             <span class="badge bg-warning text-dark font-monospace" id="countdownTimer">--:--</span>
         </div>
 
+        {% if is_auto_confirm_active %}
         <div class="alert alert-warning text-dark small border-0 mb-3">
             ⚠️ <strong>بسیار مهم:</strong> سیستم دارای قابلیت تایید خودکار از طریق پیامک بانک است. لطفاً <strong>دقیقاً مبلغ زیر (شامل ارقام خرد)</strong> را واریز نمایید تا اشتراک شما درجا و بدون نیاز به ارسال فیش تمدید شود.
         </div>
+        {% else %}
+        <div class="alert alert-info small border-0 mb-3" style="background: rgba(14, 165, 233, 0.12); color: #0284c7;">
+            ℹ️ <strong>راهنمای واریز:</strong> لطفاً مبلغ فاکتور را به شماره کارت زیر انتقال دهید. پس از واریز، جهت تایید و فعال‌سازی اشتراک، تصویر رسید یا مشخصات واریز را از طریق بخش گفتگو یا پشتیبانی ارسال فرمایید.
+        </div>
+        {% endif %}
 
         <!-- کادر مبلغ دقیق -->
-        <div class="bg-black bg-opacity-40 p-3 rounded-3 text-center mb-3 border border-warning border-opacity-50">
+        <div class="p-3 rounded-3 text-center mb-3 border {% if is_auto_confirm_active %}border-warning border-opacity-50{% else %}border-primary border-opacity-30{% endif %}" style="background: rgba(0, 0, 0, 0.08);">
             <span class="text-secondary small d-block mb-1">دقیقاً مبلغ واریزی (به ریال):</span>
             <div class="d-flex justify-content-center align-items-center gap-2 flex-wrap">
                 <span class="fs-2 fw-bold text-success font-monospace" id="amountVal">{{ "{:,}".format(invoice['final_amount'] * 10) }}</span>
@@ -1634,14 +1867,16 @@
             <div class="text-secondary small mt-1">
                 معادل: <strong class="text-white">{{ "{:,}".format(invoice['final_amount']) }} تومان</strong>
             </div>
+            {% if is_auto_confirm_active %}
             <div class="alert alert-warning py-2 px-3 mt-3 mb-0 text-start small border-0 bg-opacity-25" style="font-size: 0.82rem;">
                 <i class="fas fa-lightbulb text-warning me-1"></i>
                 <strong>راهنمای کپی مبلغ:</strong> به دلیل وجود ارقام خرد در مبلغ (جهت فعال‌سازی خودکار و آنی)، لطفاً مبلغ را با دکمه <b>«کپی مبلغ (به ریال)»</b> بردارید و در همراه بانک پیست نمایید تا از هرگونه اشتباه تایپی جلوگیری شود.
             </div>
+            {% endif %}
         </div>
 
         <!-- کادر کارت بانکی مقصد -->
-        <div class="bg-black bg-opacity-25 p-3 rounded-3 mb-3">
+        <div class="p-3 rounded-3 mb-3" style="background: rgba(0, 0, 0, 0.08);">
             <div class="d-flex justify-content-between text-secondary small mb-1">
                 <span>واریز به کارت: {{ invoice['bank_name'] or 'بانک' }}</span>
                 <span>{{ invoice['card_holder'] }}</span>
@@ -1658,7 +1893,11 @@
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 pt-2 border-top border-secondary border-opacity-25">
             <div class="d-flex align-items-center gap-2" id="waitingStatus">
                 <div class="spinner-border spinner-border-sm text-warning me-2" role="status"></div>
+                {% if is_auto_confirm_active %}
                 <span class="text-secondary small">در انتظار واریز وجه و دریافت پیامک بانک...</span>
+                {% else %}
+                <span class="text-secondary small">در انتظار واریز و ثبت رسید توسط کاربر...</span>
+                {% endif %}
             </div>
             <div>
                 <a href="{{ url_for('customer_cancel_invoice', token=token, order_id=invoice['order_id']) }}" class="btn btn-sm btn-outline-danger rounded-pill px-3" onclick="return confirm('آیا مایلید این فاکتور را لغو کرده و روش پرداخت دیگری انتخاب نمایید؟');">
@@ -1779,20 +2018,20 @@
                     {% for m in portal_payment_methods %}
                     <div class="col-12 col-md-6 d-flex">
                         <label class="w-100 mb-0 d-flex flex-column payment-method-card-label" style="cursor: pointer;">
-                            <input type="radio" name="payment_method" value="{{ m['id'] }}" class="portal-method-radio" style="position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px;" {% if loop.first %}checked{% endif %} onchange="onPaymentMethodSelected('{{ m['id'] }}', this)">
-                            <div class="portal-method-card p-3 rounded-3 border h-100 d-flex flex-column justify-content-between transition-all {% if loop.first %}selected border-primary bg-primary bg-opacity-10 shadow-sm{% else %}border-secondary border-opacity-25 bg-black bg-opacity-25{% endif %}" id="method_card_{{ m['id'] }}">
+                            <input type="radio" name="payment_method" value="{{ m['id'] }}" class="portal-method-radio" style="position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px;" {% if loop.first %}checked{% endif %} onchange="onPaymentMethodSelected('{{ m['id'] }}', this)" data-btn-text="{{ m.get('btn_text', '') }}" data-icon="{{ m.get('icon', 'fas fa-credit-card') }}">
+                            <div class="portal-method-card p-3 border h-100 d-flex flex-column justify-content-between transition-all {% if loop.first %}selected{% endif %}" id="method_card_{{ m['id'] }}">
                                 <div class="d-flex justify-content-between align-items-start mb-2">
                                     <div class="d-flex align-items-center gap-2">
-                                        <div class="avatar-sm rounded-circle bg-black bg-opacity-30 d-flex align-items-center justify-content-center text-primary flex-shrink-0" style="width: 36px; height: 36px; font-size: 1.1rem;">
+                                        <div class="portal-method-avatar avatar-{{ m.get('color', 'primary') }} shadow-sm">
                                             <i class="{{ m.get('icon', 'fas fa-credit-card') }}"></i>
                                         </div>
                                         <div>
-                                            <strong class="text-white d-block small fw-bold">{{ m['title'] }}</strong>
+                                            <strong class="method-title d-block small fw-bold">{{ m['title'] }}</strong>
                                         </div>
                                     </div>
                                     <span class="badge {{ m.get('badge_class', 'bg-primary') }} font-monospace" style="font-size: 0.72rem;">{{ m['badge'] }}</span>
                                 </div>
-                                <div class="text-secondary small" style="font-size: 0.78rem;">
+                                <div class="method-desc small" style="font-size: 0.78rem;">
                                     {{ m['desc'] }}
                                 </div>
                             </div>
@@ -1804,36 +2043,12 @@
             </div>
 
             <button type="submit" class="btn btn-primary w-100 py-3 fw-bold rounded-pill shadow" id="portalSubmitRenewalBtn" {% if not portal_payment_methods %}disabled{% endif %} onclick="window.tgHaptic && window.tgHaptic('medium');">
-                <i class="fas fa-credit-card me-2" id="portalSubmitBtnIcon"></i>
+                <i class="{{ portal_payment_methods[0].get('icon', 'fas fa-credit-card') if portal_payment_methods else 'fas fa-credit-card' }} me-2" id="portalSubmitBtnIcon"></i>
                 <span id="portalSubmitBtnText">
-                    {% if is_new_customer %}
-                        {% if portal_payment_methods and portal_payment_methods[0]['id'] == 'online_gateway' %}
-                            اتصال به درگاه بانکی شاپرک و خرید اشتراک
-                        {% elif portal_payment_methods and portal_payment_methods[0]['id'] == 'card_to_card' %}
-                            صدور فاکتور و خرید کارت به کارت (هوشمند)
-                        {% elif portal_payment_methods and portal_payment_methods[0]['id'] == 'crypto' %}
-                            صدور فاکتور خرید با ارز دیجیتال (تتر USDT)
-                        {% elif portal_payment_methods and portal_payment_methods[0]['id'] == 'wallet' %}
-                            خرید اشتراک و کسر از کیف پول
-                        {% else %}
-                            خرید و صدور اشتراک جدید
-                        {% endif %}
+                    {% if portal_payment_methods %}
+                        {{ portal_payment_methods[0].get('btn_text') }}
                     {% else %}
-                        {% if portal_payment_methods and portal_payment_methods[0]['id'] == 'online_gateway' %}
-                            {% if gw_cfg and gw_cfg.get('type') == 'blupal' %}
-                                ورود به درگاه پرداخت هوشمند بلوپال
-                            {% else %}
-                                اتصال به درگاه بانکی شاپرک و تمدید آنلاین
-                            {% endif %}
-                        {% elif portal_payment_methods and portal_payment_methods[0]['id'] == 'card_to_card' %}
-                            صدور فاکتور و پرداخت کارت به کارت (هوشمند)
-                        {% elif portal_payment_methods and portal_payment_methods[0]['id'] == 'crypto' %}
-                            صدور فاکتور پرداخت با ارز دیجیتال (تتر USDT)
-                        {% elif portal_payment_methods and portal_payment_methods[0]['id'] == 'wallet' %}
-                            پرداخت و کسر از کیف پول تلگرام
-                        {% else %}
-                            صدور فاکتور و تمدید اشتراک
-                        {% endif %}
+                        صدور فاکتور و تمدید اشتراک
                     {% endif %}
                 </span>
             </button>
@@ -2294,16 +2509,18 @@
                             {% for m in portal_payment_methods %}
                             <div class="col-12 col-md-6 d-flex">
                                 <label class="w-100 mb-0 d-flex flex-column" style="cursor: pointer;">
-                                    <input type="radio" name="payment_method" value="{{ m['id'] }}" class="d-none modal-method-radio" {% if loop.first %}checked{% endif %} onchange="onModalMethodSelected('{{ m['id'] }}')">
-                                    <div class="p-3 rounded-3 border h-100 d-flex flex-column justify-content-between transition-all {% if loop.first %}border-primary bg-primary bg-opacity-10{% else %}border-secondary border-opacity-25 bg-black bg-opacity-25{% endif %}" id="modal_method_card_{{ m['id'] }}">
+                                    <input type="radio" name="payment_method" value="{{ m['id'] }}" class="d-none modal-method-radio" {% if loop.first %}checked{% endif %} onchange="onModalMethodSelected('{{ m['id'] }}', this)" data-btn-text="{{ m.get('btn_text', '') }}" data-icon="{{ m.get('icon', 'fas fa-credit-card') }}">
+                                    <div class="portal-method-card p-3 border h-100 d-flex flex-column justify-content-between transition-all {% if loop.first %}selected{% endif %}" id="modal_method_card_{{ m['id'] }}">
                                         <div class="d-flex justify-content-between align-items-center mb-1">
                                             <div class="d-flex align-items-center gap-2">
-                                                <i class="{{ m.get('icon', 'fas fa-credit-card') }} text-primary"></i>
-                                                <strong class="text-white small fw-bold">{{ m['title'] }}</strong>
+                                                <div class="portal-method-avatar avatar-{{ m.get('color', 'primary') }}" style="width: 32px; height: 32px; font-size: 0.95rem; border-radius: 8px;">
+                                                    <i class="{{ m.get('icon', 'fas fa-credit-card') }}"></i>
+                                                </div>
+                                                <strong class="method-title small fw-bold">{{ m['title'] }}</strong>
                                             </div>
                                             <span class="badge {{ m.get('badge_class', 'bg-primary') }} font-monospace" style="font-size: 0.7rem;">{{ m['badge'] }}</span>
                                         </div>
-                                        <small class="text-secondary" style="font-size: 0.75rem;">{{ m['desc'] }}</small>
+                                        <small class="method-desc" style="font-size: 0.75rem;">{{ m['desc'] }}</small>
                                     </div>
                                 </label>
                             </div>
@@ -3029,18 +3246,6 @@ function applyModalNewDiscount() {
     });
 }
 
-function onModalMethodSelected(methodId) {
-    document.querySelectorAll('[id^="modal_method_card_"]').forEach(el => {
-        el.classList.remove('border-primary', 'bg-primary', 'bg-opacity-10');
-        el.classList.add('border-secondary', 'border-opacity-25', 'bg-black', 'bg-opacity-25');
-    });
-    const selected = document.getElementById('modal_method_card_' + methodId);
-    if (selected) {
-        selected.classList.remove('border-secondary', 'border-opacity-25', 'bg-black', 'bg-opacity-25');
-        selected.classList.add('border-primary', 'bg-primary', 'bg-opacity-10');
-    }
-}
-
 // انتخاب پلن‌ها با کلیک و محاسبه قیمت
 document.querySelectorAll('.portal-plans-wrapper').forEach(wrapper => {
     wrapper.querySelectorAll('.plan-card').forEach(card => {
@@ -3097,24 +3302,33 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ─── مدیریت و پویایی روش‌های پرداخت پورتال مشتری ───
+const portalMethodsMap = {{ portal_payment_methods|tojson if portal_payment_methods else '[]' }};
+
+function onModalMethodSelected(methodId, inputElem) {
+    document.querySelectorAll('[id^="modal_method_card_"]').forEach(el => {
+        el.classList.remove('selected');
+    });
+    const selected = document.getElementById('modal_method_card_' + methodId);
+    if (selected) {
+        selected.classList.add('selected');
+    }
+}
+
 function onPaymentMethodSelected(methodId, inputElem) {
     const form = inputElem ? inputElem.closest('form') : document;
     form.querySelectorAll('.portal-method-card').forEach(card => {
-        card.classList.remove('selected', 'border-primary', 'bg-primary', 'bg-opacity-10', 'shadow-sm');
-        card.classList.add('border-secondary', 'border-opacity-25', 'bg-black', 'bg-opacity-25');
+        card.classList.remove('selected');
     });
 
     if (inputElem) {
         const parentCard = inputElem.closest('label').querySelector('.portal-method-card');
         if (parentCard) {
-            parentCard.classList.remove('border-secondary', 'border-opacity-25', 'bg-black', 'bg-opacity-25');
-            parentCard.classList.add('selected', 'border-primary', 'bg-primary', 'bg-opacity-10', 'shadow-sm');
+            parentCard.classList.add('selected');
         }
     } else {
         const targetCard = document.getElementById('method_card_' + methodId);
         if (targetCard) {
-            targetCard.classList.remove('border-secondary', 'border-opacity-25', 'bg-black', 'bg-opacity-25');
-            targetCard.classList.add('selected', 'border-primary', 'bg-primary', 'bg-opacity-10', 'shadow-sm');
+            targetCard.classList.add('selected');
         }
     }
 
@@ -3122,22 +3336,25 @@ function onPaymentMethodSelected(methodId, inputElem) {
     const btnIcon = form.querySelector('#portalSubmitBtnIcon') || document.getElementById('portalSubmitBtnIcon');
     if (!btnText) return;
 
-    if (methodId === 'online_gateway') {
-        const isBluPal = {{ 'true' if (gw_cfg and gw_cfg.get('type') == 'blupal') else 'false' }};
-        btnText.innerText = isBluPal ? 'ورود به درگاه پرداخت هوشمند بلوپال' : 'اتصال به درگاه بانکی شاپرک و تمدید آنلاین';
-        if (btnIcon) btnIcon.className = 'fas fa-globe me-2';
-    } else if (methodId === 'card_to_card') {
-        btnText.innerText = 'صدور فاکتور و پرداخت کارت به کارت (هوشمند)';
-        if (btnIcon) btnIcon.className = 'fas fa-receipt me-2';
-    } else if (methodId === 'crypto') {
-        btnText.innerText = 'صدور فاکتور پرداخت با ارز دیجیتال (تتر USDT)';
-        if (btnIcon) btnIcon.className = 'fab fa-bitcoin me-2';
-    } else if (methodId === 'wallet') {
-        btnText.innerText = 'پرداخت آنی و کسر از کیف پول تلگرام';
-        if (btnIcon) btnIcon.className = 'fas fa-wallet me-2';
-    } else {
-        btnText.innerText = 'صدور فاکتور و تمدید اشتراک';
-        if (btnIcon) btnIcon.className = 'fas fa-credit-card me-2';
+    let targetBtnText = '';
+    let targetIcon = '';
+
+    if (inputElem && inputElem.dataset && inputElem.dataset.btnText) {
+        targetBtnText = inputElem.dataset.btnText;
+        targetIcon = inputElem.dataset.icon;
+    } else if (portalMethodsMap && portalMethodsMap.length) {
+        const mObj = portalMethodsMap.find(m => m.id === methodId);
+        if (mObj) {
+            targetBtnText = mObj.btn_text;
+            targetIcon = mObj.icon;
+        }
+    }
+
+    if (targetBtnText) {
+        btnText.innerText = targetBtnText;
+    }
+    if (btnIcon && targetIcon) {
+        btnIcon.className = targetIcon + ' me-2';
     }
 }
 
@@ -3145,11 +3362,9 @@ function onDebtPaymentMethodChange(radio) {
     const form = radio.closest('form') || document;
     form.querySelectorAll('.debt-payment-method-card').forEach(card => {
         card.classList.remove('border-danger', 'bg-danger', 'bg-opacity-10', 'text-white');
-        card.classList.add('border-secondary', 'border-opacity-25', 'bg-black', 'bg-opacity-25', 'text-secondary');
     });
     const label = radio.closest('.debt-payment-method-card');
     if (label) {
-        label.classList.remove('border-secondary', 'border-opacity-25', 'bg-black', 'bg-opacity-25', 'text-secondary');
         label.classList.add('border-danger', 'bg-danger', 'bg-opacity-10', 'text-white');
     }
     const btnText = form.querySelector('#debtSubmitBtnText') || document.getElementById('debtSubmitBtnText');
@@ -3929,10 +4144,14 @@ function showInvoiceExpired() {
     invSection.innerHTML = `
         <div class="d-flex align-items-center gap-2 mb-2 text-danger">
             <i class="fas fa-clock-rotate-left fs-3"></i>
-            <h5 class="fw-bold mb-0">مهلت پرداخت به پایان رسید (عدم تایید خودکار)</h5>
+            <h5 class="fw-bold mb-0">{% if is_auto_confirm_active %}مهلت پرداخت به پایان رسید (عدم تایید خودکار){% else %}مهلت پرداخت فاکتور به پایان رسید{% endif %}</h5>
         </div>
         <p class="text-white small mb-3">
+            {% if is_auto_confirm_active %}
             مهلت زمان واریز این فاکتور به پایان رسید و تایید خودکار صورت نگرفت. در صورتی که مبلغ را واریز کرده‌اید، نگران نباشید؛ لطفاً جهت تکمیل و ثبت تمدید با پشتیبانی تماس بگیرید یا در گفتگوی آنلاین پیام دهید:
+            {% else %}
+            مهلت زمان این فاکتور به پایان رسید. در صورتی که مبلغ را واریز کرده‌اید، لطفاً اطلاعات یا رسید واریز را از طریق پشتیبانی ارسال فرمایید:
+            {% endif %}
         </p>
         <div class="d-flex flex-wrap gap-2 mb-3">
             {% if support_phone %}
