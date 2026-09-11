@@ -251,7 +251,7 @@
                         <th class="sortable-th" data-column="4">پلن و حجم</th>
                         <th class="sortable-th" data-column="5">مدت اعتبار</th>
                         <th class="sortable-th" data-column="6">وضعیت اتصال</th>
-                        <th class="sortable-th" data-column="7">تاریخ صدور</th>
+                        <th class="sortable-th" data-column="7">تاریخ</th>
                         <th class="sortable-th" data-column="8">صادر کننده</th>
                         <th class="text-end pe-3">عملیات و مدیریت</th>
                     </tr>
@@ -420,15 +420,21 @@
                                 {% endif %}
                             {% endif %}
                         </td>
-                        <td data-value="{{ sub['created_at'] or '' }}">
-                            {% if sub.get('created_at') %}
+                        <td data-value="{{ sub.get('updated_at') or sub.get('created_at') or '' }}">
+                            {% set activity_date = sub.get('updated_at') or sub.get('created_at') %}
+                            {% if activity_date %}
                                 <div class="d-flex flex-column text-nowrap">
                                     <span class="fw-semibold text-primary font-monospace" style="font-size: 11px;">
-                                        {{ sub['created_at']|shamsi_date }}
+                                        {{ activity_date|shamsi_date }}
                                     </span>
                                     <span class="text-secondary opacity-75 font-monospace" style="font-size: 10px;">
-                                        {{ sub['created_at']|gregorian_clean }}
+                                        {{ activity_date|gregorian_clean }}
                                     </span>
+                                    {% if sub.get('updated_at') and sub.get('updated_at') != sub.get('created_at') %}
+                                        <span class="badge bg-light text-muted border px-1 mt-0.5" style="font-size: 8.5px; width: fit-content;" title="آخرین تغییر / تمدید">تمدید / ویرایش</span>
+                                    {% else %}
+                                        <span class="badge bg-success-subtle text-success border border-success-subtle px-1 mt-0.5" style="font-size: 8.5px; width: fit-content;" title="مشتری تازه صادر شده">جدید</span>
+                                    {% endif %}
                                 </div>
                             {% else %}
                                 <span class="text-muted small font-monospace">-</span>
@@ -859,8 +865,13 @@
                             {% endif %}
                         </div>
                         <div class="col-md col-6">
-                            <small class="text-muted d-block">تاریخ ایجاد</small>
-                            <strong class="font-monospace text-muted">{{ sub['created_at'][:10] if sub['created_at'] else '-' }}</strong>
+                            <small class="text-muted d-block">تاریخ صدور</small>
+                            <strong class="text-primary font-monospace" style="font-size: 0.85rem;">
+                                {{ sub['created_at']|shamsi_date if sub.get('created_at') else '-' }}
+                            </strong>
+                            {% if sub.get('created_at') %}
+                                <small class="text-muted d-block font-monospace" style="font-size: 10px;">{{ sub['created_at']|gregorian_clean }}</small>
+                            {% endif %}
                         </div>
                     </div>
                 </div>

@@ -285,7 +285,7 @@
                         <th class="sortable-th" data-column="5">مدت اعتبار</th>
                         <th class="sortable-th" data-column="6">وضعیت اتصال</th>
                         <th class="sortable-th" data-column="7">صادر کننده</th>
-                        <th class="sortable-th" data-column="8">تاریخ صدور</th>
+                        <th class="sortable-th" data-column="8">تاریخ</th>
                         <th class="text-end pe-3">عملیات و مدیریت</th>
                     </tr>
                 </thead>
@@ -459,15 +459,21 @@
                                 <span>{{ issuer.get('text', 'مدیریت') }}</span>
                             </span>
                         </td>
-                        <td data-value="{{ sub['created_at'] or '' }}">
-                            {% if sub.get('created_at') %}
+                        <td data-value="{{ sub.get('updated_at') or sub.get('created_at') or '' }}">
+                            {% set activity_date = sub.get('updated_at') or sub.get('created_at') %}
+                            {% if activity_date %}
                                 <div class="d-flex flex-column text-nowrap">
                                     <span class="fw-semibold text-primary font-monospace" style="font-size: 11px;">
-                                        {{ sub['created_at']|shamsi_date }}
+                                        {{ activity_date|shamsi_date }}
                                     </span>
                                     <span class="text-secondary opacity-75 font-monospace" style="font-size: 10px;">
-                                        {{ sub['created_at']|gregorian_clean }}
+                                        {{ activity_date|gregorian_clean }}
                                     </span>
+                                    {% if sub.get('updated_at') and sub.get('updated_at') != sub.get('created_at') %}
+                                        <span class="badge bg-light text-muted border px-1 mt-0.5" style="font-size: 8.5px; width: fit-content;" title="آخرین تغییر / تمدید">تمدید / ویرایش</span>
+                                    {% else %}
+                                        <span class="badge bg-success-subtle text-success border border-success-subtle px-1 mt-0.5" style="font-size: 8.5px; width: fit-content;" title="مشتری تازه صادر شده">جدید</span>
+                                    {% endif %}
                                 </div>
                             {% else %}
                                 <span class="text-muted small font-monospace">-</span>
@@ -862,11 +868,11 @@
                 <!-- بخش مشخصات فنی و تراز مصرف -->
                 <div class="card bg-light border-0 rounded-3 p-3 mb-4">
                     <div class="row g-3 text-center">
-                        <div class="col-sm-3 col-6">
+                        <div class="col-md col-6">
                             <small class="text-muted d-block">حجم مصرفی</small>
                             <strong class="font-monospace text-primary" dir="ltr">{{ "%.2f"|format(sub['data_used']|float or 0) }} / {{ "%.1f"|format(sub['data_limit']|float or 0) }} GB</strong>
                         </div>
-                        <div class="col-sm-3 col-6">
+                        <div class="col-md col-6">
                             <small class="text-muted d-block">اعتبار باقی‌مانده</small>
                             {% if sub.get('is_expired') or sub.get('remaining_days', 30) < 0 %}
                                 <strong class="font-monospace text-danger">{{ sub.get('expiry_text') }}</strong>
@@ -876,7 +882,7 @@
                                 <strong class="font-monospace text-success">{{ sub.get('remaining_days', sub['duration']) }} روز دیگر</strong>
                             {% endif %}
                         </div>
-                        <div class="col-sm-3 col-6">
+                        <div class="col-md col-6">
                             <small class="text-muted d-block">وضعیت مالی</small>
                             {% if is_debtor %}
                                 <strong class="text-danger font-monospace">{{ "{:,}".format(sub.get('debt_amount')|int) }} ت بدهی</strong>
@@ -884,12 +890,21 @@
                                 <strong class="text-success">تسویه شده</strong>
                             {% endif %}
                         </div>
-                        <div class="col-sm-3 col-6">
+                        <div class="col-md col-6">
                             <small class="text-muted d-block">صادر کننده</small>
                             <strong class="text-dark d-inline-flex align-items-center gap-1">
                                 <i class="fas {{ sub.get('issuer_info', {}).get('icon', 'fa-user') }} text-secondary small"></i>
                                 <span>{{ sub.get('issuer_info', {}).get('text') or ('نماینده #' ~ sub['reseller_id'] if sub['reseller_id'] else 'مدیریت') }}</span>
                             </strong>
+                        </div>
+                        <div class="col-md col-12">
+                            <small class="text-muted d-block">تاریخ صدور</small>
+                            <strong class="text-primary font-monospace" style="font-size: 0.85rem;">
+                                {{ sub['created_at']|shamsi_date if sub.get('created_at') else '-' }}
+                            </strong>
+                            {% if sub.get('created_at') %}
+                                <small class="text-muted d-block font-monospace" style="font-size: 10px;">{{ sub['created_at']|gregorian_clean }}</small>
+                            {% endif %}
                         </div>
                     </div>
                 </div>

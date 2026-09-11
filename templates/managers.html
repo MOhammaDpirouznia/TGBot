@@ -104,7 +104,14 @@
                                         {% endif %}
                                     </div>
                                     {% if m['telegram_id'] %}
-                                        <small class="text-muted"><code>ID: {{ m['telegram_id'] }}</code></small>
+                                        <div class="d-flex align-items-center gap-1 mt-1">
+                                            <small class="text-muted"><code>ID: {{ m['telegram_id'] }}</code></small>
+                                            {% if m['bot_access'] %}
+                                                <span class="badge bg-success-subtle text-success border border-success" style="font-size: 0.65rem;"><i class="fab fa-telegram me-1"></i>دسترسی ربات</span>
+                                            {% else %}
+                                                <span class="badge bg-light text-muted border" style="font-size: 0.65rem;"><i class="fas fa-ban me-1"></i>بدون ربات</span>
+                                            {% endif %}
+                                        </div>
                                     {% endif %}
                                 </div>
                             </div>
@@ -183,6 +190,13 @@
                         <label class="form-label fw-bold">آیدی عددی تلگرام (اختیاری):</label>
                         <input type="number" name="telegram_id" class="form-control font-monospace" placeholder="مثال: 12345678">
                     </div>
+                    <div class="mb-3 form-check form-switch bg-light p-3 rounded border">
+                        <input class="form-check-input ms-0 me-2" type="checkbox" name="bot_access" value="1" id="addBotAccess" checked>
+                        <label class="form-check-label fw-bold" for="addBotAccess">
+                            <i class="fab fa-telegram text-primary me-1"></i> اجازه دسترسی و مدیریت با ربات
+                        </label>
+                        <div class="form-text small text-muted mt-1">در صورت فعال بودن و وارد کردن آیدی عددی تلگرام، این مدیر می‌تواند با نقش خود به ربات تلگرام متصل شده و مدیریت انجام دهد.</div>
+                    </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">شماره همراه (اختیاری):</label>
                         <input type="text" name="phone" class="form-control font-monospace" placeholder="مثال: 09123456789">
@@ -241,6 +255,13 @@
                     <div class="mb-3">
                         <label class="form-label fw-bold">آیدی عددی تلگرام (اختیاری):</label>
                         <input type="number" name="telegram_id" class="form-control font-monospace" placeholder="مثال: 12345678" value="{{ m['telegram_id'] or '' }}">
+                    </div>
+                    <div class="mb-3 form-check form-switch bg-light p-3 rounded border">
+                        <input class="form-check-input ms-0 me-2" type="checkbox" name="bot_access" value="1" id="editBotAccess{{ m['id'] }}" {% if m['bot_access'] %}checked{% endif %}>
+                        <label class="form-check-label fw-bold" for="editBotAccess{{ m['id'] }}">
+                            <i class="fab fa-telegram text-primary me-1"></i> اجازه دسترسی و مدیریت با ربات
+                        </label>
+                        <div class="form-text small text-muted mt-1">در صورت فعال بودن و ثبت آیدی تلگرام، کاربر با همین نقش به ربات مدیریت دسترسی خواهد داشت.</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">شماره همراه (اختیاری):</label>
