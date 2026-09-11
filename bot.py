@@ -3389,8 +3389,10 @@ async def show_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_webapp_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """ارسال دکمه و لینک ورود به مینی‌اپ اختصاصی کاربر"""
+    user = update.effective_user
+    uid = user.id if user else 0
     from telegram_menu_helper import get_miniapp_url
-    full_app_url = get_miniapp_url(reseller_id=0, user_id=user.id)
+    full_app_url = get_miniapp_url(reseller_id=0, user_id=uid)
 
     keyboard = []
     if full_app_url:

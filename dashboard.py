@@ -10575,8 +10575,12 @@ def settings():
             btn_text = request.form.get("mini_app_menu_button_text", "").strip() or "ورود به برنامه | HiddiPlus"
             custom_url = request.form.get("mini_app_custom_url", "").strip()
 
-            if custom_url and ("gotel.ir" in custom_url.lower() or "pay.gotel.ir" in custom_url.lower()):
-                custom_url = ""
+            if custom_url:
+                custom_url = custom_url.strip().rstrip('/')
+                if custom_url.startswith("http://"):
+                    custom_url = "https://" + custom_url[7:]
+                elif not custom_url.startswith("https://"):
+                    custom_url = "https://" + custom_url
 
             splash_enabled = "1" if request.form.get("mini_app_splash_enabled") else "0"
             splash_title = request.form.get("mini_app_splash_title", "").strip() or "HiddiPlus"

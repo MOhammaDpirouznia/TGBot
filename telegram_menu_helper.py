@@ -26,11 +26,11 @@ def get_miniapp_base_url(reseller_id: int = 0, host_url: Optional[str] = None) -
         if not raw or not str(raw).strip():
             return None
         val = str(raw).strip().rstrip('/')
-        # فیلتر دامنه‌های نامعتبر، لوکال یا تستی قدیمی
         val_lower = val.lower()
-        if "pay.gotel.ir" in val_lower or "gotel.ir" in val_lower:
+        # فیلتر آدرس‌های نامعتبر لوکال یا دامنه مرده و اشتباه pay.gotel.ir
+        if "localhost" in val_lower or "127.0.0.1" in val or "0.0.0.0" in val:
             return None
-        if "localhost" in val_lower or "127.0.0.1" in val:
+        if "pay.gotel.ir" in val_lower:
             return None
         if val.startswith("http://"):
             return "https://" + val[7:]
@@ -38,7 +38,12 @@ def get_miniapp_base_url(reseller_id: int = 0, host_url: Optional[str] = None) -
             return "https://" + val
         return val
 
-    # ۱. بررسی دامنه اختصاصی نماینده در صورت وجود
+    # ۱. آدرس سفارشی وب‌اپ ذخیره شده در تنظیمات پنل ادمین (mini_app_custom_url)
+    custom_override = _clean_https(db.get_setting("mini_app_custom_url"))
+    if custom_override:
+        return custom_override
+
+    # ۲. بررسی دامنه اختصاصی نماینده در صورت وجود
     if reseller_id and int(reseller_id) > 0:
         try:
             r_info = db.get_reseller(int(reseller_id)) or {}
@@ -48,49 +53,46 @@ def get_miniapp_base_url(reseller_id: int = 0, host_url: Optional[str] = None) -
         except Exception:
             pass
 
-    # ۲. آدرس سفارشی وب‌اپ ذخیره شده در تنظیمات پنل ادمین (mini_app_custom_url)
-    custom_override = _clean_https(db.get_setting("mini_app_custom_url"))
-    if custom_override:
-        return custom_override
-
     # ۳. تنظیم صریح webapp_url در دیتابیس
     db_webapp = _clean_https(db.get_setting("webapp_url"))
     if db_webapp:
         return db_webapp
 
-    # ۴. متغیر محیطی DASHBOARD_URL
-    env_dash = _clean_https(os.getenv("DASHBOARD_URL"))
-    if env_dash:
-        return env_dash
-
-    # ۵. متغیر محیطی سرور ریلوِی (RAILWAY_PUBLIC_DOMAIN)
-    railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip()
-    if railway_domain:
-        r_clean = _clean_https(railway_domain)
-        if r_clean:
-            return r_clean
-
-    # ۶. متغیر محیطی رندر یا PaaS دیگر (RENDER_EXTERNAL_URL)
-    env_render = _clean_https(os.getenv("RENDER_EXTERNAL_URL"))
-    if env_render:
-        return env_render
-
-    # ۷. دامنه custom_domain یا متغیر محیطی PANEL_DOMAIN
+    # ۴. دامنه custom_domain یا متغیر محیطی PANEL_DOMAIN
     db_custom_domain = _clean_https(db.get_setting("custom_domain"))
     if db_custom_domain:
         return db_custom_domain
+
+    # ۵. استخراج دامنه از روی دامنه آموزش‌ها (tutorial_domain مانند https://i.gotel.ir/help)
+    tut_d = db.get_setting("tutorial_domain") or db.get_setting("troubleshoot_domain") or ""
+    if tut_d:
+        clean_tut = _clean_https(tut_d)
+        if clean_tut:
+            try:
+                from urllib.parse import urlparse
+                p = urlparse(clean_tut)
+                if p.netloc and "pay.gotel.ir" not in p.netloc.lower():
+                    return f"https://{p.netloc}"
+            except Exception:
+                pass
 
     env_panel_domain = _clean_https(os.getenv("PANEL_DOMAIN"))
     if env_panel_domain:
         return env_panel_domain
 
-    # ۸. هاست ریکوئست ورودی در صورت فراخوانی از محیط وب
+    # ۶. متغیر محیطی DASHBOARD_URL
+    env_dash = _clean_https(os.getenv("DASHBOARD_URL"))
+    if env_dash:
+        return env_dash
+
+    # ۷. هاست ریکوئست ورودی در صورت فراخوانی از محیط وب
     if host_url:
         req_clean = _clean_https(host_url)
         if req_clean:
             return req_clean
 
-    return ""
+    # ۸. دامنه پیش‌فرض اصلی سرور پروژه
+    return "https://i.gotel.ir"
 
 
 def get_miniapp_url(reseller_id: int = 0, user_id: Optional[int] = None, host_url: Optional[str] = None) -> str:
@@ -98,10 +100,7 @@ def get_miniapp_url(reseller_id: int = 0, user_id: Optional[int] = None, host_ur
     تولید آدرس معتبر HTTPS برای مینی‌اپ تلگرام با تفکیک نماینده و کاربر.
     تلگرام صرفاً آدرس‌های دارای پروتکل امن https:// را برای MenuButtonWebApp می‌پذیرد.
     """
-    base = get_miniapp_base_url(reseller_id=reseller_id, host_url=host_url)
-    if not base:
-        logger.warning(f"Could not determine valid HTTPS Mini App base URL (reseller_id={reseller_id})")
-        return ""
+    base = get_miniapp_base_url(reseller_id=reseller_id, host_url=host_url) or "https://i.gotel.ir"
 
     # حذف پسوندهای احتمالی و اطمینان از قرارگیری /webapp در مسیر
     base_clean = base.rstrip('/')
