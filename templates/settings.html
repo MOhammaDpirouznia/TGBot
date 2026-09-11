@@ -1982,7 +1982,7 @@ function toggleAiApiBox() {
 
                 <div class="col-md-12">
                     <label class="form-label fw-bold">آدرس سفارشی وب‌اپ (اختیاری):</label>
-                    <input type="url" class="form-control" name="mini_app_custom_url" value="{{ mini_app_config.custom_url }}" placeholder="https://pay.gotel.ir/webapp">
+                    <input type="url" class="form-control" name="mini_app_custom_url" value="{{ mini_app_config.custom_url }}" placeholder="https://yourdomain.com/webapp">
                     <div class="form-text text-muted">در صورت خالی بودن، آدرس به صورت خودکار با پروتکل معتبر https:// از دامنه اصلی یا نماینده به همراه پارامترهای شناسایی تولید خواهد شد.</div>
                 </div>
             </div>
@@ -2031,7 +2031,7 @@ function toggleAiApiBox() {
                 <div class="col-md-4">
                     <label class="form-label fw-bold">پیش‌نمایش تصویر فعال لودینگ:</label>
                     <div class="d-flex align-items-center gap-3 p-2 bg-dark rounded border" style="background-color: #081226 !important;">
-                        <img src="{{ mini_app_config.splash_image }}" alt="Splash Preview" style="width: 52px; height: 52px; object-fit: cover; border-radius: 12px; border: 1px solid rgba(0, 210, 255, 0.4); box-shadow: 0 0 10px rgba(0, 102, 255, 0.3);">
+                        <img src="{{ url_for('miniapp_logo') }}" alt="Splash Preview" style="width: 52px; height: 52px; object-fit: cover; border-radius: 12px; border: 1px solid rgba(0, 210, 255, 0.4); box-shadow: 0 0 10px rgba(0, 102, 255, 0.3);" onerror="this.onerror=null; this.src='{{ url_for('miniapp_logo') }}?fallback=1';">
                         <div class="small text-white-50 text-truncate">
                             <span class="text-info fw-bold d-block">تصویر فعلی لودینگ</span>
                             <span class="d-inline-block text-truncate" style="max-width: 170px;">{{ mini_app_config.splash_image }}</span>

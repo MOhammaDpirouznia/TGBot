@@ -1080,7 +1080,7 @@
         <div class="portal-splash-content">
             <div class="portal-splash-logo-wrap">
                 <div class="portal-splash-glow-ring"></div>
-                <img src="{{ mini_app_splash_image or '/static/images/hiddiplus_splash.jpg' }}" alt="HiddiPlus Logo" class="portal-splash-logo" onerror="this.onerror=null; this.src='/static/images/hiddiplus_splash.jpg';">
+                <img src="{{ url_for('miniapp_logo') }}" alt="HiddiPlus Logo" class="portal-splash-logo" onerror="this.onerror=null; this.src='{{ url_for('miniapp_logo') }}?fallback=1';">
             </div>
             <h1 class="portal-splash-title">{{ mini_app_splash_title or 'HiddiPlus' }}</h1>
             <p class="portal-splash-subtitle">{{ mini_app_splash_subtitle or 'سرویس اتصال هوشمند و پرسرعت' }}</p>
@@ -4088,6 +4088,18 @@ relocateModalsToBody();
         if (tg) {
             tg.ready();
             tg.expand();
+
+            // در صورتی که کاربر از دکمه منوی ثابت تلگرام وارد شده باشد و tg_id در آدرس نباشد
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                if (!urlParams.get('tg_id') && !urlParams.get('id') && !urlParams.get('token') && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) {
+                    urlParams.set('tg_id', tg.initDataUnsafe.user.id);
+                    window.location.replace(window.location.pathname + '?' + urlParams.toString() + window.location.hash);
+                    return;
+                }
+            } catch(e) {
+                console.debug("Auto-detect tg_id error:", e);
+            }
             
             // همگام‌سازی تم تلگرام با پورتال
             if (tg.colorScheme) {
