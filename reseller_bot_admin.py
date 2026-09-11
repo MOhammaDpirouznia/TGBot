@@ -251,8 +251,20 @@ def get_bundle_payment_methods_payload(bundle_id: str, reseller_id: int) -> Tupl
     bonus_txt = f" (+{bonus}٪ شارژ هدیه)" if bonus > 0 else ""
 
     admin_gw = db.get_admin_gateway()
-    has_online = bool(admin_gw.get("enabled") and admin_gw.get("key"))
-    gw_name = "بلوپال" if admin_gw.get("type") == "blupal" else ("زرین‌پال" if admin_gw.get("type") == "zarinpal" else "درگاه آنلاین شتابی")
+    payment_methods = db.get_payment_methods()
+    online_m = next((m for m in payment_methods if m.get("id") == "online_gateway"), None)
+    online_in_methods = bool(online_m.get("enabled", True)) if online_m else True
+    has_online = bool(admin_gw.get("enabled") or online_in_methods)
+
+    gw_type = admin_gw.get("type", "blupal")
+    if gw_type == "blupal":
+        gw_name = "بلوپال"
+    elif gw_type == "zarinpal":
+        gw_name = "زرین‌پال"
+    elif gw_type == "idpay":
+        gw_name = "آیدی‌پی"
+    else:
+        gw_name = "شاپرک"
 
     admin_sms_cfg = db.get_admin_bank_sms_config()
     admin_cards = db.get_active_bank_cards()

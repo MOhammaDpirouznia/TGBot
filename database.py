@@ -8896,11 +8896,15 @@ class Database:
         finally:
             conn.close()
 
-    def deduct_reseller_balance(self, reseller_id: int, amount: int, plan_name: str, account_name: str,
+    def deduct_reseller_balance(self, reseller_id: int, amount: int, plan_name: str = "اشتراک", account_name: str = "",
                                 description: str = "خرید اشتراک برای مشتری", payment_source: str = "auto",
                                 subscription_id: int = None, selling_price: int = None, profit_margin: int = None,
                                 created_by: str = None):
         """کسر هزینه با پشتیبانی از انتخاب دقیق مبدأ پرداخت (کیف پول نقدی یا اعتبار خرید)، ثبت صادرکننده و ثبت حاشیه سود"""
+        if not account_name:
+            account_name = str(description or "").strip() or f"reseller_{reseller_id}_user"
+        if not plan_name:
+            plan_name = "اشتراک"
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()

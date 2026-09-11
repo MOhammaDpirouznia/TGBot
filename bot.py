@@ -5811,15 +5811,13 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             if not bundle:
                 await query.answer("❌ بسته یافت نشد.", show_alert=True)
                 return ADMIN_MENU
-            admin_gw = db.get_customer_payment_gateways("admin", 0)
-            active_gws = [gw for gw in admin_gw if gw.get("is_active") and gw.get("api_key")]
-            if not active_gws:
-                await query.answer("⚠️ درگاه آنلاین ادمین در حال حاضر فعال نیست. لطفاً از روش کارت به کارت استفاده فرمایید.", show_alert=True)
+            admin_gw = db.get_admin_gateway()
+            gw_key = admin_gw.get("key", "")
+            if not gw_key:
+                await query.answer("⚠️ درگاه آنلاین ادمین در حال حاضر فعال نیست یا کلید درگاه تنظیم نشده است. لطفاً از روش کارت به کارت استفاده فرمایید.", show_alert=True)
                 return ADMIN_MENU
-            gw = active_gws[0]
-            gw_type = gw.get("gateway_type")
-            gw_key = gw.get("api_key")
-            sandbox = bool(gw.get("is_sandbox", 0))
+            gw_type = admin_gw.get("type", "zarinpal")
+            sandbox = bool(admin_gw.get("sandbox", 0))
             price = bundle.get("price", 0)
             order_id = f"R_BUNDLE_ONL_{r_id}_{int(datetime.now().timestamp())}"
             domain = db.get_setting("custom_domain") or os.getenv("PANEL_DOMAIN", "http://localhost:5000")
@@ -5849,7 +5847,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             elif gw_type == "blupal":
                 from payment import BluPal
                 bp = BluPal(api_key=gw_key, sandbox=sandbox)
-                res = bp.create_payment(amount=price, description=f"خرید بسته {bundle.get('title', '')}", callback_url=callback_url)
+                res = bp.create_payment(amount=price, order_id=order_id, description=f"خرید بسته {bundle.get('title', '')}", callback_url=callback_url)
                 if res.get("success"):
                     pay_url = res.get("payment_url")
                 else:
@@ -6057,7 +6055,14 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     res_obj = db.get_reseller(r_id) or {}
                     creator_user = res_obj.get("username") or f"reseller_{r_id}"
 
-                db.deduct_reseller_balance(r_id, w_price, f"ساخت دستی کاربر {desired_name} با پلن {pname}", created_by=creator_user)
+                db.deduct_reseller_balance(
+                    reseller_id=r_id,
+                    amount=w_price,
+                    plan_name=pname,
+                    account_name=desired_name,
+                    description=f"ساخت دستی کاربر {desired_name} با پلن {pname}",
+                    created_by=creator_user
+                )
                 sub_url = f"{HIDIFY_PANEL_URL}/{HIDIFY_PROXY_PATH}/{uuid_val}/"
 
                 sub_id = db.save_subscription(

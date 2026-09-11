@@ -2226,7 +2226,7 @@ class ResellerBotInstance:
                 elif gw_type == "blupal":
                     from payment import BluPal
                     bp = BluPal(api_key=gw_key, sandbox=sandbox)
-                    res = bp.create_payment(amount=price, description=f"خرید بسته {bundle['title']}", callback_url=callback_url)
+                    res = bp.create_payment(amount=price, order_id=order_id, description=f"خرید بسته {bundle['title']}", callback_url=callback_url)
                     if res.get("success"):
                         pay_url = res.get("payment_url")
                     else:
@@ -2462,7 +2462,14 @@ class ResellerBotInstance:
                         reseller = db.get_reseller(r_id) or {}
                         creator_user = reseller.get("username") or f"reseller_{r_id}"
 
-                    db.deduct_reseller_balance(r_id, w_price, f"ساخت دستی کاربر {desired_name} با پلن {pname}", created_by=creator_user)
+                    db.deduct_reseller_balance(
+                        reseller_id=r_id,
+                        amount=w_price,
+                        plan_name=pname,
+                        account_name=desired_name,
+                        description=f"ساخت دستی کاربر {desired_name} با پلن {pname}",
+                        created_by=creator_user
+                    )
                     sub_url = f"{HIDIFY_PANEL_URL}/{HIDIFY_PROXY_PATH}/{uuid_val}/"
 
                     sub_id = db.save_subscription(
