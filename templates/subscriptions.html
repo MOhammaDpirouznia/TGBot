@@ -945,9 +945,14 @@
                         <i class="fas fa-file-invoice-dollar me-1"></i> گزارش بدهی
                     </button>
 
+                    <!-- دکمه ثبت بدهی جدید -->
+                    <button type="button" class="btn btn-outline-danger flex-grow-1 py-2" onclick="openAddDebtModal({{ sub['id'] }}, '{{ sub['account_name'] }}')">
+                        <i class="fas fa-plus-circle me-1"></i> ثبت بدهی جدید
+                    </button>
+
                     <!-- ۶. تسویه بدهی -->
                     {% if is_debtor %}
-                    <button type="button" class="btn btn-success flex-grow-1 py-2 fw-bold" onclick="quickClearDebt({{ sub['id'] }}, '{{ sub['account_name'] }}')">
+                    <button type="button" class="btn btn-success flex-grow-1 py-2 fw-bold" onclick="openSettleDebtModal({{ sub['id'] }}, '{{ sub['account_name'] }}', {{ sub.get('debt_amount', 0) }}, 'full')">
                         <i class="fas fa-check-double me-1"></i> تسویه کامل بدهی
                     </button>
                     {% if sub.get('telegram_id') and sub['telegram_id'] > 0 %}
@@ -1863,6 +1868,128 @@
     </div>
 </div>
 
+<!-- ─── Modal تسویه بدهی و انتخاب کارت مقصد ─── -->
+<div class="modal fade text-start" id="settleDebtModal" tabindex="-1" aria-labelledby="settleDebtModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-success text-white py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="fas fa-hand-holding-dollar fs-4"></i>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0" id="settleDebtModalLabel">تسویه بدهی مشتری</h5>
+                        <small class="opacity-75" id="settleDebtModalSubTitle">ثبت دریافت وجه و واریز به کارت / حساب</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <input type="hidden" id="settleDebtSubId" value="">
+                <input type="hidden" id="settleDebtType" value="full">
+                <input type="hidden" id="settleDebtRecordId" value="">
+                <input type="hidden" id="settleDebtAccountName" value="">
+
+                <div class="p-3 bg-light rounded-3 border mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted"><i class="fas fa-user me-1"></i> نام مشتری:</span>
+                        <strong class="font-monospace text-dark" id="settleDebtAccountDisplay">-</strong>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="text-muted"><i class="fas fa-coins me-1"></i> مبلغ قابل تسویه:</span>
+                        <span class="fs-5 fw-bold text-success font-monospace" id="settleDebtAmountDisplay">۰ تومان</span>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-dark mb-1">
+                        <i class="fas fa-credit-card text-success me-1"></i> شیوه دریافت و حساب مقصد واریز:
+                    </label>
+                    <select id="settleDebtTargetCard" class="form-select border-success fw-bold">
+                        {% if default_account %}
+                        <option value="{{ default_account['id'] }}" selected>
+                            ⭐ [پیش‌فرض] {{ default_account.get('bank_name') }} - {{ default_account.get('card_holder') }} ({{ default_account.get('card_number', '')[-4:] }})
+                        </option>
+                        {% endif %}
+                        <option value="cash" {% if not default_account %}selected{% endif %}>💵 دریافت نقدی (ثبت در صندوق نقدی)</option>
+                        {% for acc in (accounts or cards) %}
+                            {% if not default_account or acc['id'] != default_account['id'] %}
+                            <option value="{{ acc['id'] }}">
+                                {% if acc.get('account_type') == 'cash_desk' %}
+                                    🏢 صندوق {{ acc.get('bank_name') }} (مسئول: {{ acc.get('assigned_to', '-') }})
+                                {% elif 'gateway' in acc.get('account_type', '') %}
+                                    ⚡ درگاه {{ acc.get('bank_name') }} ({{ acc.get('connected_gateway', '') }})
+                                {% elif acc.get('account_type') == 'crypto_wallet' %}
+                                    💎 ولت کریپتو {{ acc.get('bank_name') }}
+                                {% else %}
+                                    💳 {{ acc.get('bank_name') or 'بانک' }} - {{ acc.get('card_number', '')[-4:] }} ({{ acc.get('card_holder') }})
+                                {% endif %}
+                            </option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                    <small class="text-muted d-block mt-1" style="font-size: 11px;">
+                        <i class="fas fa-info-circle text-primary me-1"></i> در صورت انتخاب کارت، مبلغ تسویه‌شده به عنوان تراکنش واریز به موجودی کارت افزوده خواهد شد.
+                    </small>
+                </div>
+            </div>
+            <div class="modal-footer bg-light py-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">انصراف</button>
+                <button type="button" class="btn btn-success btn-sm px-4 fw-bold" id="btnConfirmSettleDebt" onclick="executeSettleDebtAction()">
+                    <i class="fas fa-check me-1"></i> تایید تسویه و ثبت در سیستم
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Modal ثبت بدهی جدید برای مشتری ─── -->
+<div class="modal fade text-start" id="addCustomerDebtModal" tabindex="-1" aria-labelledby="addCustomerDebtModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-danger text-white py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="fas fa-plus-circle fs-4"></i>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0" id="addCustomerDebtModalLabel">ثبت بدهی جدید</h5>
+                        <small class="opacity-75" id="addCustomerDebtModalSubTitle">افزودن صورت‌حساب بدهی به حساب مشتری</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <input type="hidden" id="addDebtSubId" value="">
+                <input type="hidden" id="addDebtAccountName" value="">
+
+                <div class="p-3 bg-light rounded-3 border mb-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="text-muted"><i class="fas fa-user me-1"></i> نام مشتری:</span>
+                        <strong class="font-monospace text-dark" id="addDebtAccountDisplay">-</strong>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-danger mb-1">
+                        <i class="fas fa-coins me-1"></i> مبلغ بدهی جدید (تومان): <span class="text-danger">*</span>
+                    </label>
+                    <input type="number" step="1000" id="addDebtAmountInput" class="form-control font-monospace border-danger fw-bold" placeholder="مثال: 150000" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-dark mb-1">
+                        <i class="fas fa-comment-dots me-1"></i> بابت / توضیحات بدهی:
+                    </label>
+                    <input type="text" id="addDebtNotesInput" class="form-control form-control-sm" placeholder="مثال: خرید گیگ اضافه، هزینه تمدید ماه قبل، و...">
+                </div>
+            </div>
+            <div class="modal-footer bg-light py-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">انصراف</button>
+                <button type="button" class="btn btn-danger btn-sm px-4 fw-bold" id="btnConfirmAddDebt" onclick="executeAddCustomerDebtAction()">
+                    <i class="fas fa-plus me-1"></i> ثبت قطعی بدهی
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ─── ۶. Modal عمومی تاریخچه دوره‌ها و سوابق مصرف (Universal History Modal) ─── -->
 <div class="modal fade text-start" id="subscriptionHistoryModal" tabindex="-1" aria-labelledby="historyModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
@@ -2382,7 +2509,7 @@ function loadCustomerDebtReportData(subId, accountName) {
                             <td class="small text-muted">${r.notes || '-'}</td>
                             <td class="text-center">
                                 ${!isPaid ? `
-                                    <button type="button" class="btn btn-xs btn-success py-1 px-2 fw-bold" onclick="settleCustomerDebtRecord(${subId}, ${r.id}, '${accountName}')" title="تسویه اختصاصی این فاکتور">
+                                    <button type="button" class="btn btn-xs btn-success py-1 px-2 fw-bold" onclick="openSettleDebtModal(${subId}, '${accountName}', ${r.amount || 0}, 'record', ${r.id})" title="تسویه اختصاصی این فاکتور">
                                         <i class="fas fa-check me-1"></i> تسویه
                                     </button>
                                 ` : `
@@ -2402,12 +2529,20 @@ function loadCustomerDebtReportData(subId, accountName) {
 
             body.innerHTML = html;
 
-            if (footerActions && curDebt > 0) {
-                footerActions.innerHTML = `
-                    <button type="button" class="btn btn-success fw-bold shadow-sm" id="btnClearAllDebts" onclick="clearAllCustomerDebts(${subId}, '${accountName}')">
-                        <i class="fas fa-check-double me-1"></i> تسویه کامل تمام بدهی‌ها (${curDebt.toLocaleString('fa-IR')} ت)
+            if (footerActions) {
+                let footerBtns = `
+                    <button type="button" class="btn btn-outline-danger fw-bold shadow-sm" onclick="openAddDebtModal(${subId}, '${accountName}')">
+                        <i class="fas fa-plus me-1"></i> ثبت بدهی جدید
                     </button>
                 `;
+                if (curDebt > 0) {
+                    footerBtns += `
+                        <button type="button" class="btn btn-success fw-bold shadow-sm ms-2" id="btnClearAllDebts" onclick="openSettleDebtModal(${subId}, '${accountName}', ${curDebt}, 'full')">
+                            <i class="fas fa-check-double me-1"></i> تسویه کامل تمام بدهی‌ها (${curDebt.toLocaleString('fa-IR')} ت)
+                        </button>
+                    `;
+                }
+                footerActions.innerHTML = footerBtns;
             }
         })
         .catch(err => {
@@ -2415,73 +2550,74 @@ function loadCustomerDebtReportData(subId, accountName) {
         });
 }
 
-function settleCustomerDebtRecord(subId, recordId, accountName) {
-    if (!confirm('آیا از تسویه این رسید بدهی اطمینان دارید؟ مبلغ این رسید از بدهی کل کسر خواهد شد.')) return;
-    
-    const isResellerPanel = window.location.pathname.includes('/reseller');
-    const endpoint = isResellerPanel 
-        ? `/reseller/subscription/${subId}/settle-debt-record/${recordId}` 
-        : `/admin/subscription/${subId}/settle-debt-record/${recordId}`;
+function openSettleDebtModal(subId, accountName, amount, settleType = 'full', recordId = null) {
+    document.getElementById('settleDebtSubId').value = subId;
+    document.getElementById('settleDebtType').value = settleType;
+    document.getElementById('settleDebtRecordId').value = recordId || '';
+    document.getElementById('settleDebtAccountName').value = accountName || '';
+    document.getElementById('settleDebtAccountDisplay').innerText = accountName || ('#' + subId);
+    document.getElementById('settleDebtAmountDisplay').innerText = (amount ? Number(amount).toLocaleString('fa-IR') : '۰') + ' تومان';
 
-    fetch(endpoint, {
-        method: 'POST',
-        headers: { 
-            'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest'
-        }
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.success) {
-            window._debtSettledReloadNeeded = true;
-            alert('✅ رسید بدهی با موفقیت تسویه شد.');
-            loadCustomerDebtReportData(subId, accountName);
-        } else {
-            alert('❌ خطا در تسویه: ' + (data.error || 'خطای نامشخص'));
-        }
-    })
-    .catch(err => {
-        alert('❌ خطای ارتباط با سرور: ' + err.message);
-    });
+    const modalEl = document.getElementById('settleDebtModal');
+    if (modalEl) {
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
 }
 
-function clearAllCustomerDebts(subId, accountName) {
-    if (!confirm('آیا از تسویه کامل کلیه بدهی‌های این مشتری اطمینان دارید؟')) return;
+function executeSettleDebtAction() {
+    const subId = document.getElementById('settleDebtSubId').value;
+    const settleType = document.getElementById('settleDebtType').value;
+    const recordId = document.getElementById('settleDebtRecordId').value;
+    const accountName = document.getElementById('settleDebtAccountName').value;
+    const targetCardVal = document.getElementById('settleDebtTargetCard').value;
+
+    const targetCardId = (targetCardVal && targetCardVal !== 'cash') ? parseInt(targetCardVal) : null;
 
     const isResellerPanel = window.location.pathname.includes('/reseller');
-    const endpoint = isResellerPanel 
-        ? `/reseller/subscription/${subId}/clear-debt` 
-        : `/admin/subscription/${subId}/clear-debt`;
+    let endpoint = '';
+    if (settleType === 'record' && recordId) {
+        endpoint = isResellerPanel
+            ? `/reseller/subscription/${subId}/settle-debt-record/${recordId}`
+            : `/admin/subscription/${subId}/settle-debt-record/${recordId}`;
+    } else {
+        endpoint = isResellerPanel
+            ? `/reseller/subscription/${subId}/clear-debt`
+            : `/admin/subscription/${subId}/clear-debt`;
+    }
 
-    const btn = document.getElementById('btnClearAllDebts');
+    const btn = document.getElementById('btnConfirmSettleDebt');
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال تسویه...';
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال ثبت...';
     }
 
     fetch(endpoint, {
         method: 'POST',
-        headers: { 
+        headers: {
             'Content-Type': 'application/json',
             'X-Requested-With': 'XMLHttpRequest'
-        }
+        },
+        body: JSON.stringify({ target_card_id: targetCardId })
     })
     .then(res => res.json())
     .then(data => {
         if (data.success) {
-            alert('✅ تمام بدهی‌های این مشتری با موفقیت تسویه شد.');
-            const modalEl = document.getElementById('customerDebtReportModal');
-            if (modalEl) {
-                const modal = bootstrap.Modal.getInstance(modalEl);
-                if (modal) modal.hide();
+            const modalEl = document.getElementById('settleDebtModal');
+            if (modalEl) bootstrap.Modal.getInstance(modalEl)?.hide();
+
+            if (settleType === 'record') {
+                window._debtSettledReloadNeeded = true;
+                alert('✅ رسید بدهی با موفقیت تسویه و واریز ثبت شد.');
+                loadCustomerDebtReportData(subId, accountName);
+            } else {
+                alert('✅ بدهی مشتری با موفقیت تسویه و واریز ثبت شد.');
+                window.location.reload();
             }
-            if (typeof cleanupModalBackdrops === 'function') cleanupModalBackdrops();
-            window.location.reload();
         } else {
-            alert('❌ خطا در تسویه بدهی: ' + (data.error || 'خطای ناشناخته'));
+            alert('❌ خطا در تسویه بدهی: ' + (data.error || 'خطای نامشخص'));
             if (btn) {
                 btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-check-double me-1"></i> تسویه کامل تمام بدهی‌ها';
+                btn.innerHTML = '<i class="fas fa-check me-1"></i> تایید تسویه و ثبت در سیستم';
             }
         }
     })
@@ -2489,43 +2625,84 @@ function clearAllCustomerDebts(subId, accountName) {
         alert('❌ خطای ارتباط با سرور: ' + err.message);
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-check-double me-1"></i> تسویه کامل تمام بدهی‌ها';
+            btn.innerHTML = '<i class="fas fa-check me-1"></i> تایید تسویه و ثبت در سیستم';
         }
     });
 }
 
-function quickClearDebt(subId, accountName) {
-    if (!confirm('آیا از تسویه کامل بدهی این مشتری اطمینان دارید؟')) return;
-    
+function openAddDebtModal(subId, accountName) {
+    document.getElementById('addDebtSubId').value = subId;
+    document.getElementById('addDebtAccountName').value = accountName || '';
+    document.getElementById('addDebtAccountDisplay').innerText = accountName || ('#' + subId);
+    document.getElementById('addDebtAmountInput').value = '';
+    document.getElementById('addDebtNotesInput').value = '';
+
+    const modalEl = document.getElementById('addCustomerDebtModal');
+    if (modalEl) {
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+}
+
+function executeAddCustomerDebtAction() {
+    const subId = document.getElementById('addDebtSubId').value;
+    const accountName = document.getElementById('addDebtAccountName').value;
+    const amount = document.getElementById('addDebtAmountInput').value;
+    const notes = document.getElementById('addDebtNotesInput').value;
+
+    if (!amount || parseInt(amount) <= 0) {
+        alert('لطفاً مبلغ بدهی معتبری وارد فرمایید.');
+        return;
+    }
+
     const isResellerPanel = window.location.pathname.includes('/reseller');
-    const endpoint = isResellerPanel 
-        ? `/reseller/subscription/${subId}/clear-debt` 
-        : `/admin/subscription/${subId}/clear-debt`;
+    const endpoint = isResellerPanel
+        ? `/reseller/subscription/${subId}/add-debt`
+        : `/admin/subscription/${subId}/add-debt`;
+
+    const btn = document.getElementById('btnConfirmAddDebt');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال ثبت...';
+    }
 
     fetch(endpoint, {
         method: 'POST',
-        headers: { 
+        headers: {
             'Content-Type': 'application/json',
             'X-Requested-With': 'XMLHttpRequest'
-        }
+        },
+        body: JSON.stringify({ amount: parseInt(amount), notes: notes })
     })
     .then(res => res.json())
     .then(data => {
         if (data.success) {
-            alert('✅ بدهی مشتری «' + (accountName || ('#' + subId)) + '» با موفقیت تسویه شد.');
-            const detailModalEl = document.getElementById('customerDetailModal' + subId);
-            if (detailModalEl) {
-                bootstrap.Modal.getInstance(detailModalEl)?.hide();
-            }
-            if (typeof cleanupModalBackdrops === 'function') cleanupModalBackdrops();
+            const modalEl = document.getElementById('addCustomerDebtModal');
+            if (modalEl) bootstrap.Modal.getInstance(modalEl)?.hide();
+            alert('✅ بدهی جدید با موفقیت برای مشتری ثبت گردید.');
             window.location.reload();
         } else {
-            alert('❌ خطا در تسویه بدهی: ' + (data.error || 'خطای نامشخص'));
+            alert('❌ خطا در ثبت بدهی: ' + (data.error || 'خطای نامشخص'));
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-plus me-1"></i> ثبت قطعی بدهی';
+            }
         }
     })
     .catch(err => {
         alert('❌ خطای ارتباط با سرور: ' + err.message);
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-plus me-1"></i> ثبت قطعی بدهی';
+        }
     });
+}
+
+function clearAllCustomerDebts(subId, accountName, amount = 0) {
+    openSettleDebtModal(subId, accountName, amount, 'full');
+}
+
+function quickClearDebt(subId, accountName, amount = 0) {
+    openSettleDebtModal(subId, accountName, amount, 'full');
 }
 
 document.addEventListener('DOMContentLoaded', () => {
