@@ -801,6 +801,12 @@ class Database:
         except Exception:
             pass
 
+        # ستون دسترسی و مدیریت با ربات برای مدیران و اعضای تیم
+        try:
+            cursor.execute("ALTER TABLE admin_users ADD COLUMN bot_access INTEGER DEFAULT 0")
+        except Exception:
+            pass
+
         # جدول کارت‌های بانکی اختصاصی نماینده
         try:
             cursor.execute("""
@@ -1755,10 +1761,10 @@ class Database:
 
                 name_clean = str(name).strip() if (name and str(name).strip()) else None
                 extracted_reseller_id = None
-                if "[RESELLER_ID:" in comment or "Reseller #" in comment:
+                if "[RESELLER_ID:" in comment or "Reseller #" in comment or "[RESELLER_MANUAL:" in comment:
                     try:
                         import re
-                        m_res = re.search(r"\[RESELLER_ID:\s*#?(\d+)\]", comment) or re.search(r"Reseller\s*#(\d+)", comment)
+                        m_res = re.search(r"\[RESELLER_(?:ID|MANUAL):\s*#?(\d+)\]", comment) or re.search(r"Reseller\s*#(\d+)", comment)
                         if m_res:
                             extracted_reseller_id = int(m_res.group(1))
                     except Exception:
@@ -1857,7 +1863,7 @@ class Database:
                     is_still_online = False
 
                 if not is_still_online:
-                    cursor.execute("UPDATE subscriptions SET is_online = 0, updated_at = ? WHERE id = ?", (now_iso, sub_id))
+                    cursor.execute("UPDATE subscriptions SET is_online = 0 WHERE id = ?", (sub_id,))
                     updated_online += 1
 
             # ۲. بروزرسانی خودکار اشتراک‌هایی که موعد انقضای آن‌ها سپری شده اما هنوز active هستند
@@ -9354,10 +9360,10 @@ class Database:
         }
 
     def get_reseller_subscriptions(self, reseller_id: int):
-        """لیست کاربران و اشتراک‌های یک نماینده (بدون موارد سطل زباله)"""
+        """لیست کاربران و اشتراک‌های یک نماینده (بدون موارد سطل زباله) با مرتب‌سازی پیش‌فرض آخرین تغییرات"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM subscriptions WHERE reseller_id=? AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY created_at DESC", (reseller_id,))
+        cursor.execute("SELECT * FROM subscriptions WHERE reseller_id=? AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY COALESCE(updated_at, created_at) DESC", (reseller_id,))
         rows = cursor.fetchall()
         conn.close()
         return [dict(r) for r in rows]
@@ -11304,7 +11310,7 @@ class Database:
             conn.close()
 
     def get_reseller_bot_admins(self, reseller_id: int) -> list:
-        """دریافت لیست ادمین‌های ربات تلگرام نماینده با تفکیک نقش‌ها"""
+        """دریافت لیست ادمین‌های ربات تلگرام نماینده با تفکیک نقش‌ها (شامل اعضای تیم با اجازه دسترسی ربات)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -11328,6 +11334,24 @@ class Database:
                     "role": "main",
                     "title": "ادمین اصلی (پروفایل)"
                 })
+
+            # استعلام اعضای تیم این نماینده از جدول admin_users که تیک اجازه ربات دارند
+            cursor.execute("""
+                SELECT id, username, display_name, role, telegram_id
+                FROM admin_users
+                WHERE reseller_id = ? AND is_active = 1 AND bot_access = 1 AND telegram_id IS NOT NULL
+            """, (reseller_id,))
+            team_rows = cursor.fetchall()
+            for tu in team_rows:
+                tg_val = tu["telegram_id"]
+                if tg_val and not any(str(a.get("telegram_id")) == str(tg_val) for a in admins):
+                    admins.append({
+                        "telegram_id": tg_val,
+                        "role": tu["role"] or "support",
+                        "title": f"{tu['display_name']} ({tu['role']})",
+                        "username": tu["username"],
+                        "member_id": tu["id"]
+                    })
             return admins
         except Exception as e:
             logger.error(f"Error getting reseller bot admins: {e}")
@@ -11339,7 +11363,7 @@ class Database:
         """
         بررسی آیا کاربر ادمین ربات این نماینده است یا خیر؟
         بازگشت: (is_admin: bool, role: str)
-        نقش‌ها: main (ادمین اصلی), finance (مدیر مالی), support (پشتیبان), sales (فروش)
+        نقش‌ها: main (ادمین اصلی), partner (شریک), manager2 (مدیر دوم), finance (مدیر مالی), support (پشتیبان), sales (فروش)
         """
         if not telegram_id or not reseller_id:
             return False, ""
@@ -11365,6 +11389,18 @@ class Database:
         cursor = conn.cursor()
         tg_str = str(telegram_id).strip()
         try:
+            # ۱. بررسی اعضای تیم ثبت‌شده در جدول admin_users با تیک دسترسی ربات
+            cursor.execute("""
+                SELECT id, reseller_id, role, display_name, username
+                FROM admin_users
+                WHERE telegram_id = ? AND reseller_id IS NOT NULL AND reseller_id > 0 AND is_active = 1 AND bot_access = 1
+                LIMIT 1
+            """, (int(telegram_id) if str(telegram_id).isdigit() else 0,))
+            team_user = cursor.fetchone()
+            if team_user:
+                return True, team_user["reseller_id"], team_user["role"]
+
+            # ۲. بررسی مستقیم نماینده یا آرایه bot_admins
             cursor.execute("SELECT id, telegram_id, bot_admins FROM resellers WHERE status = 'active'")
             for r in cursor.fetchall():
                 r_id = r["id"]
@@ -11382,6 +11418,26 @@ class Database:
         except Exception as e:
             logger.error(f"Error in is_telegram_user_any_reseller_admin: {e}")
             return False, 0, ""
+        finally:
+            conn.close()
+
+    def get_admin_manager_by_telegram_id(self, telegram_id: int) -> Optional[dict]:
+        """دریافت مدیر یا کارمند پنل مدیریت کل بر اساس آیدی عددی تلگرام و تیک اجازه دسترسی ربات"""
+        if not telegram_id:
+            return None
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT * FROM admin_users
+                WHERE telegram_id = ? AND (reseller_id IS NULL OR reseller_id = 0) AND is_active = 1 AND bot_access = 1
+                LIMIT 1
+            """, (int(telegram_id) if str(telegram_id).isdigit() else 0,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error in get_admin_manager_by_telegram_id: {e}")
+            return None
         finally:
             conn.close()
 
@@ -11873,8 +11929,8 @@ class Database:
 
     def create_reseller_team_member(self, reseller_id: int, username: str, password: str,
                                     display_name: str, role: str = "support", phone: str = None,
-                                    share_percent: int = 0) -> dict:
-        """ایجاد مدیر زیرمجموعه جدید برای نماینده با نقش‌های manager2, partner, finance, support"""
+                                    share_percent: int = 0, telegram_id: int = None, bot_access: int = 0) -> dict:
+        """ایجاد مدیر زیرمجموعه جدید برای نماینده با نقش‌های manager2, partner, finance, support و آیدی تلگرام و دسترسی ربات"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -11899,9 +11955,9 @@ class Database:
 
             cursor.execute("""
                 INSERT INTO admin_users 
-                (username, password_hash, display_name, role, permissions, is_active, created_at, phone, share_percent, reseller_id)
-                VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
-            """, (clean_username, password_hash, display_name.strip(), role, permissions, now, phone.strip() if phone else None, int(share_percent or 0), reseller_id))
+                (username, password_hash, display_name, role, permissions, is_active, created_at, phone, share_percent, reseller_id, telegram_id, bot_access)
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
+            """, (clean_username, password_hash, display_name.strip(), role, permissions, now, phone.strip() if phone else None, int(share_percent or 0), reseller_id, int(telegram_id) if telegram_id else None, 1 if bot_access else 0))
             member_id = cursor.lastrowid
             conn.commit()
             return {"success": True, "member_id": member_id}
@@ -11915,7 +11971,7 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            allowed = ["display_name", "role", "phone", "share_percent", "is_active"]
+            allowed = ["display_name", "role", "phone", "share_percent", "is_active", "telegram_id", "bot_access", "permissions"]
             fields = []
             params = []
             for k, v in kwargs.items():
@@ -13931,17 +13987,18 @@ class Database:
 
     def create_admin_user(self, username: str, password: str, display_name: str,
                           role: str = "super_admin", permissions: str = "*", is_active: bool = True,
-                          telegram_id: int = None, phone: str = None, share_percent: int = 0) -> dict:
-        """افزودن مدیر جدید با نقش و دسترسی‌های مشخص، آیدی تلگرام، شماره تماس و درصد شراکت"""
+                          telegram_id: int = None, phone: str = None, share_percent: int = 0,
+                          bot_access: int = 0) -> dict:
+        """افزودن مدیر جدید با نقش و دسترسی‌های مشخص، آیدی تلگرام، شماره تماس، درصد شراکت و دسترسی ربات"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         password_hash = self.hash_password(password)
         try:
             cursor.execute("""
-                INSERT INTO admin_users (username, password_hash, display_name, role, permissions, is_active, created_at, telegram_id, phone, share_percent, debt_balance)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-            """, (username.strip(), password_hash, display_name.strip(), role, permissions, 1 if is_active else 0, now, telegram_id, phone.strip() if phone else None, int(share_percent or 0)))
+                INSERT INTO admin_users (username, password_hash, display_name, role, permissions, is_active, created_at, telegram_id, phone, share_percent, debt_balance, bot_access)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+            """, (username.strip(), password_hash, display_name.strip(), role, permissions, 1 if is_active else 0, now, telegram_id, phone.strip() if phone else None, int(share_percent or 0), 1 if bot_access else 0))
             admin_id = cursor.lastrowid
             conn.commit()
             return {"success": True, "admin_id": admin_id}
@@ -13953,7 +14010,7 @@ class Database:
             conn.close()
 
     def update_admin_user(self, admin_id: int, **kwargs) -> dict:
-        """ویرایش اطلاعات، نقش، دسترسی‌ها و درصد شراکت یک مدیر"""
+        """ویرایش اطلاعات، نقش، دسترسی‌ها، درصد شراکت و دسترسی ربات یک مدیر"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -13963,7 +14020,7 @@ class Database:
                 if key == "password" and val:
                     fields.append("password_hash=?")
                     params.append(self.hash_password(val))
-                elif key in ["username", "display_name", "role", "permissions", "is_active", "telegram_id", "phone", "custom_avatar", "share_percent", "debt_balance"]:
+                elif key in ["username", "display_name", "role", "permissions", "is_active", "telegram_id", "phone", "custom_avatar", "share_percent", "debt_balance", "bot_access"]:
                     fields.append(f"{key}=?")
                     params.append(val)
 

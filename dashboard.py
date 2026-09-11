@@ -5715,13 +5715,22 @@ def subscriptions():
     total_count = conn.execute(count_query, params).fetchone()[0]
 
     sort_by = request.args.get("sort", "newest").strip()
-    order_clause = "created_at DESC"
     if status_filter == "deleted":
         order_clause = "deleted_at DESC"
         if sort_by == "oldest":
             order_clause = "deleted_at ASC"
         elif sort_by == "days_left_asc":
             order_clause = "deleted_at ASC"
+        elif sort_by == "usage_desc":
+            order_clause = "data_used DESC"
+        elif sort_by == "limit_desc":
+            order_clause = "data_limit DESC"
+        elif sort_by == "name_asc":
+            order_clause = "account_name COLLATE NOCASE ASC"
+    else:
+        order_clause = "COALESCE(updated_at, created_at) DESC, id DESC"
+        if sort_by == "oldest":
+            order_clause = "COALESCE(updated_at, created_at) ASC, id ASC"
         elif sort_by == "usage_desc":
             order_clause = "data_used DESC"
         elif sort_by == "limit_desc":
@@ -11362,6 +11371,9 @@ def reseller_users():
             item["refund_info"] = refund_calc
             subs.append(item)
 
+        if sort_by == "oldest":
+            subs.sort(key=lambda x: (x.get("updated_at") or x.get("created_at") or "", x.get("id", 0)))
+
     total_count = len(subs)
     total_pages = max(1, (total_count + per_page - 1) // per_page)
     if page > total_pages:
@@ -14504,10 +14516,17 @@ def reseller_team():
         phone = request.form.get("phone", "").strip()
         share_percent = 0 if role == "manager2" else int(request.form.get("share_percent", 0))
 
+        telegram_id_raw = request.form.get("telegram_id", "").strip()
+        telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else None
+        bot_access = 1 if request.form.get("bot_access") in ("1", "on", "true") else 0
+
         if not username or not password or not display_name:
             flash("نام کاربری، رمز عبور و نام نمایشی الزامی هستند.", "warning")
         else:
-            res = db.create_reseller_team_member(reseller_id, username, password, display_name, role, phone, share_percent)
+            res = db.create_reseller_team_member(
+                reseller_id, username, password, display_name, role, phone, share_percent,
+                telegram_id=telegram_id, bot_access=bot_access
+            )
             if res.get("success"):
                 role_label = "مدیر دوم" if role == "manager2" else role
                 flash(f"عضو جدید «{display_name}» با نقش {role_label} افزوده شد.", "success")
@@ -14518,6 +14537,52 @@ def reseller_team():
     team_members = db.get_reseller_team_with_sessions(reseller_id)
     is_main_reseller = (session.get("role") == "reseller" and not session.get("sub_role"))
     return render_template("reseller_team.html", team_members=team_members, is_main_reseller=is_main_reseller)
+
+
+@app.route("/reseller/team/<int:member_id>/edit", methods=["POST"])
+@reseller_required
+def reseller_team_edit(member_id):
+    """ویرایش مشخصات و دسترسی‌های عضو تیم نماینده"""
+    reseller_id = session.get("reseller_id")
+    if session.get("sub_role"):
+        flash("فقط مدیر اصلی حساب نمایندگی مجاز به ویرایش اعضای تیم می‌باشد.", "danger")
+        return redirect(get_redirect_target("reseller_team"))
+
+    display_name = request.form.get("display_name", "").strip()
+    password = request.form.get("password", "").strip()
+    role = request.form.get("role", "support").strip()
+    phone = request.form.get("phone", "").strip()
+    share_percent = 0 if role == "manager2" else int(request.form.get("share_percent", 0))
+    telegram_id_raw = request.form.get("telegram_id", "").strip()
+    telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else None
+    bot_access = 1 if request.form.get("bot_access") in ("1", "on", "true") else 0
+
+    permissions = "all"
+    if role == "support":
+        permissions = "tickets,users,subscriptions"
+    elif role == "finance":
+        permissions = "payments,transactions,reports"
+    elif role in ("partner", "manager2", "manager", "co_admin"):
+        permissions = "all"
+
+    update_kwargs = {
+        "display_name": display_name,
+        "role": role,
+        "phone": phone,
+        "share_percent": share_percent,
+        "telegram_id": telegram_id,
+        "bot_access": bot_access,
+        "permissions": permissions,
+    }
+    if password and len(password) > 0:
+        update_kwargs["password"] = password
+
+    res = db.update_reseller_team_member(member_id, reseller_id, **update_kwargs)
+    if res.get("success"):
+        flash("مشخصات عضو تیم با موفقیت بروزرسانی شد.", "success")
+    else:
+        flash(f"خطا در ویرایش عضو: {res.get('error')}", "danger")
+    return redirect(get_redirect_target("reseller_team"))
 
 
 @app.route("/reseller/team/<int:member_id>/toggle", methods=["POST"])
@@ -15032,7 +15097,7 @@ def admin_managers():
         perms_map = {
             "super_admin": "*",
             "partner": "dashboard,users,subs,plans,tickets,reports,create_customer,accounting",
-            "finance": "dashboard,payments,accounting,cards,reports,create_customer",
+            "finance": "dashboard,payments,accounting,cards,reports",
             "support": "dashboard,users,subs,tickets,broadcast,create_customer",
             "viewer": "dashboard,users,subs,reports,logs",
         }
@@ -15041,6 +15106,7 @@ def admin_managers():
         telegram_id_raw = request.form.get("telegram_id", "").strip()
         telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else None
         phone = request.form.get("phone", "").strip()
+        bot_access = 1 if request.form.get("bot_access") in ("1", "on", "true") else 0
 
         if username and password and display_name:
             res = db.create_admin_user(
@@ -15051,7 +15117,8 @@ def admin_managers():
                 permissions=permissions,
                 telegram_id=telegram_id,
                 phone=phone,
-                share_percent=share_percent
+                share_percent=share_percent,
+                bot_access=bot_access
             )
             if res.get("success"):
                 flash(f"مدیر جدید «{display_name}» با موفقیت افزوده شد.", "success")
@@ -15078,11 +15145,12 @@ def admin_manager_edit(admin_id):
     telegram_id_raw = request.form.get("telegram_id", "").strip()
     telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else None
     phone = request.form.get("phone", "").strip()
+    bot_access = 1 if request.form.get("bot_access") in ("1", "on", "true") else 0
 
     perms_map = {
         "super_admin": "*",
         "partner": "dashboard,users,subs,plans,tickets,reports,create_customer,accounting",
-        "finance": "dashboard,payments,accounting,cards,reports,create_customer",
+        "finance": "dashboard,payments,accounting,cards,reports",
         "support": "dashboard,users,subs,tickets,broadcast,create_customer",
         "viewer": "dashboard,users,subs,reports,logs",
     }
@@ -15096,6 +15164,7 @@ def admin_manager_edit(admin_id):
         "telegram_id": telegram_id,
         "phone": phone,
         "share_percent": share_percent,
+        "bot_access": bot_access,
     }
     if password and len(password) > 0:
         update_kwargs["password"] = password

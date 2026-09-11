@@ -121,63 +121,120 @@ def get_admin_advanced_stats_text() -> str:
 """
 
 
-def get_admin_advanced_keyboard(is_bundle_bot: bool = False) -> InlineKeyboardMarkup:
-    """تولید کیبورد اصلی مدیریت پیشرفته تلگرام برای مدیران"""
+def get_admin_advanced_keyboard(is_bundle_bot: bool = False, role: str = "super_admin") -> InlineKeyboardMarkup:
+    """تولید کیبورد اصلی مدیریت پیشرفته تلگرام برای مدیران با در نظر گرفتن نقش"""
     back_cb = "adm_bundle_close" if is_bundle_bot else "admin_back"
     
     if is_bundle_bot:
-        keyboard = [
-            [InlineKeyboardButton("📊 آمار ۳۶۰ درجه سامانه و بسته‌ها", callback_data="adm_adv_stats")],
-            [
-                InlineKeyboardButton("💳 فیش‌های بسته‌ها (در انتظار)", callback_data="adm_adv_payments"),
-                InlineKeyboardButton("📦 بسته‌های شارژ نمایندگی", callback_data="adm_adv_bundles"),
-            ],
-            [
-                InlineKeyboardButton("👥 شارژ مستقیم کیف پول نماینده", callback_data="adm_adv_resellers"),
-                InlineKeyboardButton("🎁 کدهای تخفیف بسته‌ها", callback_data="adm_adv_discounts"),
-            ],
-            [
-                InlineKeyboardButton("👤 ساخت اشتراک دستی", callback_data="adm_adv_create_user"),
-                InlineKeyboardButton("🔄 تمدید مشتری (جستجو)", callback_data="adm_adv_renew_user"),
-            ],
-            [
-                InlineKeyboardButton("📈 گزارشات مالی و فروش", callback_data="adm_adv_reports"),
-                InlineKeyboardButton("📢 پیام همگانی به نمایندگان", callback_data="adm_adv_broadcast"),
-            ],
-            [
-                InlineKeyboardButton("⚙️ وضعیت حساب‌ها و درگاه‌ها", callback_data="adm_adv_settings"),
-            ],
-            [
-                InlineKeyboardButton("🔙 بازگشت به منوی کاربری", callback_data=back_cb)
+        if role == "finance":
+            keyboard = [
+                [InlineKeyboardButton("📊 آمار ۳۶۰ درجه سامانه و بسته‌ها", callback_data="adm_adv_stats")],
+                [
+                    InlineKeyboardButton("💳 فیش‌های بسته‌ها (در انتظار)", callback_data="adm_adv_payments"),
+                    InlineKeyboardButton("📦 بسته‌های شارژ نمایندگی", callback_data="adm_adv_bundles"),
+                ],
+                [
+                    InlineKeyboardButton("👥 شارژ مستقیم کیف پول نماینده", callback_data="adm_adv_resellers"),
+                    InlineKeyboardButton("🎁 کدهای تخفیف بسته‌ها", callback_data="adm_adv_discounts"),
+                ],
+                [
+                    InlineKeyboardButton("📈 گزارشات مالی و فروش", callback_data="adm_adv_reports"),
+                    InlineKeyboardButton("⚙️ وضعیت حساب‌ها و درگاه‌ها", callback_data="adm_adv_settings"),
+                ],
+                [
+                    InlineKeyboardButton("🔙 بازگشت به منوی کاربری", callback_data=back_cb)
+                ]
             ]
-        ]
+        else:
+            keyboard = [
+                [InlineKeyboardButton("📊 آمار ۳۶۰ درجه سامانه و بسته‌ها", callback_data="adm_adv_stats")],
+                [
+                    InlineKeyboardButton("💳 فیش‌های بسته‌ها (در انتظار)", callback_data="adm_adv_payments"),
+                    InlineKeyboardButton("📦 بسته‌های شارژ نمایندگی", callback_data="adm_adv_bundles"),
+                ],
+                [
+                    InlineKeyboardButton("👥 شارژ مستقیم کیف پول نماینده", callback_data="adm_adv_resellers"),
+                    InlineKeyboardButton("🎁 کدهای تخفیف بسته‌ها", callback_data="adm_adv_discounts"),
+                ],
+                [
+                    InlineKeyboardButton("👤 ساخت اشتراک دستی", callback_data="adm_adv_create_user"),
+                    InlineKeyboardButton("🔄 تمدید مشتری (جستجو)", callback_data="adm_adv_renew_user"),
+                ],
+                [
+                    InlineKeyboardButton("📈 گزارشات مالی و فروش", callback_data="adm_adv_reports"),
+                    InlineKeyboardButton("📢 پیام همگانی به نمایندگان", callback_data="adm_adv_broadcast"),
+                ],
+                [
+                    InlineKeyboardButton("⚙️ وضعیت حساب‌ها و درگاه‌ها", callback_data="adm_adv_settings"),
+                ],
+                [
+                    InlineKeyboardButton("🔙 بازگشت به منوی کاربری", callback_data=back_cb)
+                ]
+            ]
     else:
-        keyboard = [
-            [InlineKeyboardButton("📊 آمار دقیق و جامع سامانه", callback_data="adm_adv_stats")],
-            [
-                InlineKeyboardButton("💳 مدیریت پرداخت‌ها و فیش‌ها", callback_data="adm_adv_payments"),
-                InlineKeyboardButton("📨 تیکت‌های پشتیبانی", callback_data="adm_adv_tickets"),
-            ],
-            [
-                InlineKeyboardButton("👤 ساخت مشتری جدید", callback_data="adm_adv_create_user"),
-                InlineKeyboardButton("🔄 تمدید مشتری (جستجو)", callback_data="adm_adv_renew_user"),
-            ],
-            [
-                InlineKeyboardButton("🎁 کدهای تخفیف", callback_data="adm_adv_discounts"),
-                InlineKeyboardButton("📈 گزارشات کاربردی", callback_data="adm_adv_reports"),
-            ],
-            [
-                InlineKeyboardButton("📢 ارسال پیام همگانی", callback_data="adm_adv_broadcast"),
-                InlineKeyboardButton("⚙️ وضعیت درگاه‌ها و حساب‌ها", callback_data="adm_adv_settings"),
-            ],
-            [
-                InlineKeyboardButton("💳 مدیریت کارت‌ها", callback_data="admin_cards"),
-                InlineKeyboardButton("📦 مدیریت پلن‌ها", callback_data="admin_plans"),
-            ],
-            [
-                InlineKeyboardButton("🔙 بازگشت به منوی کاربری", callback_data=back_cb)
+        if role == "finance":
+            keyboard = [
+                [InlineKeyboardButton("📊 آمار دقیق و جامع سامانه", callback_data="adm_adv_stats")],
+                [
+                    InlineKeyboardButton("💳 مدیریت پرداخت‌ها و فیش‌ها", callback_data="adm_adv_payments"),
+                    InlineKeyboardButton("📈 گزارشات کاربردی", callback_data="adm_adv_reports"),
+                ],
+                [
+                    InlineKeyboardButton("💳 مدیریت کارت‌ها", callback_data="admin_cards"),
+                    InlineKeyboardButton("⚙️ وضعیت درگاه‌ها و حساب‌ها", callback_data="adm_adv_settings"),
+                ],
+                [
+                    InlineKeyboardButton("🔙 بازگشت به منوی کاربری", callback_data=back_cb)
+                ]
             ]
-        ]
+        elif role == "support":
+            keyboard = [
+                [InlineKeyboardButton("📊 آمار دقیق و جامع سامانه", callback_data="adm_adv_stats")],
+                [
+                    InlineKeyboardButton("📨 تیکت‌های پشتیبانی", callback_data="adm_adv_tickets"),
+                    InlineKeyboardButton("📢 ارسال پیام همگانی", callback_data="adm_adv_broadcast"),
+                ],
+                [
+                    InlineKeyboardButton("👤 ساخت مشتری جدید", callback_data="adm_adv_create_user"),
+                    InlineKeyboardButton("🔄 تمدید مشتری (جستجو)", callback_data="adm_adv_renew_user"),
+                ],
+                [
+                    InlineKeyboardButton("🔙 بازگشت به منوی کاربری", callback_data=back_cb)
+                ]
+            ]
+        elif role == "viewer":
+            keyboard = [
+                [InlineKeyboardButton("📊 آمار دقیق و جامع سامانه", callback_data="adm_adv_stats")],
+                [InlineKeyboardButton("📈 گزارشات کاربردی", callback_data="adm_adv_reports")],
+                [InlineKeyboardButton("🔙 بازگشت به منوی کاربری", callback_data=back_cb)]
+            ]
+        else:
+            keyboard = [
+                [InlineKeyboardButton("📊 آمار دقیق و جامع سامانه", callback_data="adm_adv_stats")],
+                [
+                    InlineKeyboardButton("💳 مدیریت پرداخت‌ها و فیش‌ها", callback_data="adm_adv_payments"),
+                    InlineKeyboardButton("📨 تیکت‌های پشتیبانی", callback_data="adm_adv_tickets"),
+                ],
+                [
+                    InlineKeyboardButton("👤 ساخت مشتری جدید", callback_data="adm_adv_create_user"),
+                    InlineKeyboardButton("🔄 تمدید مشتری (جستجو)", callback_data="adm_adv_renew_user"),
+                ],
+                [
+                    InlineKeyboardButton("🎁 کدهای تخفیف", callback_data="adm_adv_discounts"),
+                    InlineKeyboardButton("📈 گزارشات کاربردی", callback_data="adm_adv_reports"),
+                ],
+                [
+                    InlineKeyboardButton("📢 ارسال پیام همگانی", callback_data="adm_adv_broadcast"),
+                    InlineKeyboardButton("⚙️ وضعیت درگاه‌ها و حساب‌ها", callback_data="adm_adv_settings"),
+                ],
+                [
+                    InlineKeyboardButton("💳 مدیریت کارت‌ها", callback_data="admin_cards"),
+                    InlineKeyboardButton("📦 مدیریت پلن‌ها", callback_data="admin_plans"),
+                ],
+                [
+                    InlineKeyboardButton("🔙 بازگشت به منوی کاربری", callback_data=back_cb)
+                ]
+            ]
     return InlineKeyboardMarkup(keyboard)
 
 

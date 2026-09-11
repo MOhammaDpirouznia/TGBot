@@ -234,8 +234,130 @@ def get_reseller_bundles_payload(reseller_id: int) -> Tuple[str, InlineKeyboardM
     return text, InlineKeyboardMarkup(buttons)
 
 
+def get_bundle_payment_methods_payload(bundle_id: str, reseller_id: int) -> Tuple[str, InlineKeyboardMarkup]:
+    """نمایش منوی انتخاب روش پرداخت فعال برای بسته شارژ نماینده (آنلاین، کارت هوشمند پیامکی، کارت دستی)"""
+    bundle = db.get_reseller_credit_bundle(bundle_id)
+    if not bundle:
+        bundles = {b["id"]: b for b in db.get_reseller_credit_bundles()}
+        bundle = bundles.get(bundle_id)
+        
+    if not bundle:
+        return "❌ بسته مورد نظر یافت نشد.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_bundles")]])
+        
+    price = bundle.get("price", 0)
+    credit = bundle.get("credit", price)
+    title = bundle.get("title", "بسته اعتباری")
+    bonus = bundle.get("bonus_percent", 0)
+    bonus_txt = f" (+{bonus}٪ شارژ هدیه)" if bonus > 0 else ""
+
+    admin_gw = db.get_admin_gateway()
+    has_online = bool(admin_gw.get("enabled") and admin_gw.get("key"))
+    gw_name = "بلوپال" if admin_gw.get("type") == "blupal" else ("زرین‌پال" if admin_gw.get("type") == "zarinpal" else "درگاه آنلاین شتابی")
+
+    admin_sms_cfg = db.get_admin_bank_sms_config()
+    admin_cards = db.get_active_bank_cards()
+    has_sms = bool(admin_sms_cfg.get("enabled") and admin_cards)
+
+    text = f"""💰 **انتخاب روش پرداخت برای شارژ پنل نمایندگی**
+
+📦 **بسته انتخابی:** {title}
+💵 **مبلغ قابل پرداخت:** **{price:,} تومان**
+🎁 **اعتبار دریافتی در پنل:** **{credit:,} تومان**{bonus_txt}
+
+لطفاً یکی از روش‌های پرداخت فعال زیر را جهت شارژ پنل انتخاب فرمایید:
+"""
+    buttons = []
+    if has_online:
+        buttons.append([InlineKeyboardButton(f"💳 پرداخت آنلاین شتابی ({gw_name})", callback_data=f"res_adm_bdl_onl_{bundle_id}")])
+    if has_sms:
+        buttons.append([InlineKeyboardButton("⚡ کارت‌به‌کارت هوشمند (تایید خودکار با پیامک)", callback_data=f"res_adm_bdl_sms_{bundle_id}")])
+    buttons.append([InlineKeyboardButton("📝 کارت‌به‌کارت سنتی (ارسال فیش واریزی)", callback_data=f"res_adm_bdl_card_{bundle_id}")])
+    buttons.append([InlineKeyboardButton("🔙 بازگشت به لیست بسته‌ها", callback_data="res_adm_bundles")])
+
+    return text, InlineKeyboardMarkup(buttons)
+
+
+def get_bundle_smart_sms_payload(bundle_id: str, reseller_id: int) -> Tuple[str, InlineKeyboardMarkup]:
+    """صدور فاکتور هوشمند با ارقام خرد و تایید خودکار پیامک بانک برای بسته شارژ نماینده"""
+    bundle = db.get_reseller_credit_bundle(bundle_id)
+    if not bundle:
+        bundles = {b["id"]: b for b in db.get_reseller_credit_bundles()}
+        bundle = bundles.get(bundle_id)
+        
+    if not bundle:
+        return "❌ بسته مورد نظر یافت نشد.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_bundles")]])
+        
+    admin_cards = db.get_active_bank_cards()
+    if not admin_cards:
+        return "❌ در حال حاضر هیچ کارت بانکی فعالی برای مدیریت ثبت نشده است.", InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data=f"res_adm_bdl_{bundle_id}")]])
+
+    target_card = admin_cards[0]
+    price = bundle["price"]
+    sms_cfg = db.get_admin_bank_sms_config()
+    digits = sms_cfg.get("digits", 3) if isinstance(sms_cfg, dict) else 3
+    timeout = sms_cfg.get("timeout", 20) if isinstance(sms_cfg, dict) else 20
+
+    invoice = db.create_smart_invoice(
+        sub_id=0,
+        plan_id=bundle_id,
+        reseller_id=0,
+        base_amount=price,
+        target_card=target_card,
+        digits=digits,
+        timeout_minutes=timeout,
+        instant_activation=True
+    )
+
+    now_iso = get_now_iso()
+    reseller = db.get_reseller(reseller_id) or {}
+    username = reseller.get("username", f"reseller_{reseller_id}")
+
+    conn = db.get_connection()
+    conn.execute("""
+        INSERT OR REPLACE INTO transactions (
+            order_id, user_id, username, plan_name, amount, status, gateway,
+            tracking_code, reseller_id, is_renewal, account_name, source, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, 'pending', 'bundle_reseller', ?, ?, 0, ?, 'reseller_bot', ?, ?)
+    """, (
+        invoice["order_id"], reseller.get("telegram_id") or reseller_id, username,
+        f"بسته {bundle['title']}", invoice["final_amount"],
+        f"کارت {target_card.get('card_number', '')}", reseller_id,
+        username, now_iso, now_iso
+    ))
+    conn.commit()
+    conn.close()
+
+    raw_c = re.sub(r"\D", "", str(target_card.get("card_number") or ""))
+    holder = target_card.get("card_holder") or "مدیریت"
+    bank = target_card.get("bank_name") or "بانک"
+    final_amt = invoice["final_amount"]
+
+    text = f"""⚡ **کارت‌به‌کارت هوشمند با تایید خودکار (پیامک بانک)**
+
+📦 **بسته:** {bundle.get('title')}
+💰 **مبلغ دقیق واریزی (شامل ارقام خرد هوشمند):**
+👉 **`{final_amt:,}` تومان** 👈
+
+💳 **شماره کارت مقصد (مدیریت):**
+`{raw_c}`
+👤 به نام: **{holder}** | بانک: **{bank}**
+⏳ مهلت واریز: **{timeout} دقیقه**
+
+⚠️ **نکات بسیار مهم:**
+۱. حتماً مبلغ را **دقیقاً به میزان `{final_amt:,}` تومان** (با ارقام خرد انتهایی) انتقال دهید.
+۲. سامانه به محض دریافت پیامک واریز از بانک مقصد، **به صورت خودکار و در لحظه** کیف پول پنل شما را شارژ خواهد نمود و نیازی به ارسال فیش نیست!
+"""
+    buttons = [
+        [InlineKeyboardButton("📋 کپی شماره کارت", copy_text=CopyTextButton(raw_c))],
+        [InlineKeyboardButton("📋 کپی مبلغ دقیق", copy_text=CopyTextButton(str(final_amt)))],
+        [InlineKeyboardButton("🔄 استعلام وضعیت شارژ", callback_data="res_adm_menu")],
+        [InlineKeyboardButton("🔙 بازگشت به روش‌های پرداخت", callback_data=f"res_adm_bdl_{bundle_id}")]
+    ]
+    return text, InlineKeyboardMarkup(buttons)
+
+
 def get_bundle_payment_details_payload(bundle_id: str, reseller_id: int) -> Tuple[str, InlineKeyboardMarkup]:
-    """نمایش مشخصات پرداخت کارت به کارت برای بسته شارژ نماینده"""
+    """نمایش مشخصات پرداخت کارت به کارت دستی برای بسته شارژ نماینده"""
     bundle = db.get_reseller_credit_bundle(bundle_id)
     if not bundle:
         bundles = {b["id"]: b for b in db.get_reseller_credit_bundles()}
@@ -264,7 +386,7 @@ def get_bundle_payment_details_payload(bundle_id: str, reseller_id: int) -> Tupl
     holder = primary_card.get("card_holder") or "مدیریت"
     bank = primary_card.get("bank_name") or "بانک"
     
-    text = f"""💳 **اطلاعات واریز جهت شارژ پنل نمایندگی**
+    text = f"""📝 **اطلاعات واریز کارت‌به‌کارت دستی جهت شارژ پنل نمایندگی**
 
 📦 **بسته انتخابی:** {title}
 💰 **مبلغ قابل واریز:** **{price:,} تومان**
@@ -278,12 +400,12 @@ def get_bundle_payment_details_payload(bundle_id: str, reseller_id: int) -> Tupl
 ⚠️ **راهنمای ثبت پرداخت:**
 ۱. مبلغ دقیق را به شماره کارت بالا واریز فرمایید.
 ۲. سپس دکمه **«📸 ارسال تصویر فیش واریزی»** را بزنید و عکس یا کد رهگیری را بفرستید.
-به محض تایید توسط مدیریت، کیف پول پنل شما شارژ خواهد شد.
+به محض بررسی و تایید توسط مدیریت، کیف پول پنل شما شارژ خواهد شد.
 """
     buttons = [
         [InlineKeyboardButton("📋 کپی شماره کارت", copy_text=CopyTextButton(raw_c))],
         [InlineKeyboardButton("📸 ارسال تصویر فیش واریزی", callback_data=f"res_adm_send_rcpt_{bundle_id}")],
-        [InlineKeyboardButton("🔙 بازگشت به لیست بسته‌ها", callback_data="res_adm_bundles")]
+        [InlineKeyboardButton("🔙 بازگشت به روش‌های پرداخت", callback_data=f"res_adm_bdl_{bundle_id}")]
     ]
     return text, InlineKeyboardMarkup(buttons)
 
