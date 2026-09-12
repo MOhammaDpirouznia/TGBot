@@ -960,7 +960,7 @@
                     </button>
                     <!-- دکمه صف تمدید -->
                     <button type="button" class="btn {% if sub.get('has_queue') %}btn-info text-dark fw-bold shadow-sm{% else %}btn-outline-info{% endif %} flex-grow-1 py-2" data-bs-toggle="modal" data-bs-target="#customerQueueModal{{ sub['id'] }}">
-                        <i class="fas fa-layer-group me-1"></i> صف تمدید {% if sub.get('has_queue') %}<span class="badge bg-danger text-white ms-1">۱ بسته</span>{% endif %}
+                        <i class="fas fa-layer-group me-1"></i> صف تمدید {% if sub.get('has_queue') %}<span class="badge bg-danger text-white ms-1">{{ sub.get('queue_count') or 1 }} بسته</span>{% endif %}
                     </button>
                     <!-- ۲. دکمه شارژ حجم اضافه -->
                     <button type="button" class="btn btn-outline-primary flex-grow-1 py-2 fw-bold" data-bs-toggle="modal" data-bs-target="#topupModal{{ sub['id'] }}">
