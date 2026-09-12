@@ -5770,9 +5770,9 @@ def subscriptions():
         elif sort_by == "name_asc":
             order_clause = "account_name COLLATE NOCASE ASC"
     else:
-        order_clause = "COALESCE(updated_at, created_at) DESC, id DESC"
+        order_clause = "COALESCE(last_lifecycle_event_at, created_at) DESC, id DESC"
         if sort_by == "oldest":
-            order_clause = "COALESCE(updated_at, created_at) ASC, id ASC"
+            order_clause = "COALESCE(last_lifecycle_event_at, created_at) ASC, id ASC"
         elif sort_by == "usage_desc":
             order_clause = "data_used DESC"
         elif sort_by == "limit_desc":
@@ -5966,11 +5966,11 @@ def admin_subscription_renew(sub_id: int):
         cursor.execute("""
             UPDATE subscriptions
             SET plan_id=?, plan_name=?, data_limit=?, data_used=0, duration=?,
-                start_date=?, expire_date=?, status='active', updated_at=?, cost_paid=?,
+                start_date=?, expire_date=?, status='active', updated_at=?, last_lifecycle_event_at=?, cost_paid=?,
                 payment_status=?, debt_amount=?, debt_notes=?,
                 debt_created_at = CASE WHEN ? = 'unpaid' THEN COALESCE(debt_created_at, ?) ELSE NULL END
             WHERE id=?
-        """, (plan_key, plan_name, data_limit, duration, new_start_date, new_expire_date, now, 0 if debt_status == "unpaid" else cost_paid,
+        """, (plan_key, plan_name, data_limit, duration, new_start_date, new_expire_date, now, now, 0 if debt_status == "unpaid" else cost_paid,
               debt_status, total_debt, renewal_notes or None, debt_status, debt_created, sub_id))
         conn.commit()
         conn.close()
@@ -6610,7 +6610,8 @@ def admin_subscription_toggle(sub_id):
 
     conn = db.get_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE subscriptions SET status = ?, disable_reason = ?, updated_at = ? WHERE id = ?", (new_status, dis_reason, get_now_iso(), sub_id))
+    now_iso = get_now_iso()
+    cursor.execute("UPDATE subscriptions SET status = ?, disable_reason = ?, updated_at = ?, last_lifecycle_event_at = ? WHERE id = ?", (new_status, dis_reason, now_iso, now_iso, sub_id))
     conn.commit()
     conn.close()
 
@@ -8669,6 +8670,194 @@ def admin_settle_debt_record(sub_id: int, record_id: int):
         return jsonify({"success": False, "error": res.get("error", "خطا در تسویه بدهی")}), 400
 
 
+@app.route("/api/send_customer_sms", methods=["POST"])
+def api_send_customer_sms():
+    """ارسال پیامک اختصاصی برای مشتری (پورتال، سابسکریپشن، هردو، یا قبض بدهی)"""
+    is_admin = bool(session.get("logged_in") and (session.get("role") in ("admin", "super_admin", "partner") or session.get("is_admin") or session.get("user_id") == 1))
+    reseller_id = session.get("reseller_id")
+    if not is_admin and not reseller_id:
+        return jsonify({"success": False, "message": "دسترسی غیرمجاز. لطفاً وارد سیستم شوید."}), 403
+
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    sub_id = data.get("sub_id")
+    if not sub_id:
+        return jsonify({"success": False, "message": "شناسه اشتراک الزامی است."}), 400
+
+    try:
+        sub_id = int(sub_id)
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "message": "شناسه اشتراک نامعتبر است."}), 400
+
+    sub = db.get_subscription(sub_id)
+    if not sub:
+        return jsonify({"success": False, "message": "اشتراک مورد نظر یافت نشد."}), 404
+
+    # اعتبارسنجی سطح دسترسی نماینده
+    if not is_admin and reseller_id and sub.get("reseller_id") != reseller_id:
+        return jsonify({"success": False, "message": "شما مجاز به ارسال پیامک برای این مشتری نیستید."}), 403
+
+    phone = (data.get("phone") or "").strip()
+    if not phone:
+        phone = sub.get("phone_number") or ""
+
+    if not phone:
+        return jsonify({"success": False, "message": "شماره موبایل مشتری ثبت نشده است. لطفاً شماره را وارد کنید."}), 400
+
+    # اگر شماره در دیتابیس ثبت نبود و الان وارد شده، ذخیره شود
+    if phone and not sub.get("phone_number"):
+        try:
+            conn = db.get_connection()
+            conn.execute("UPDATE subscriptions SET phone_number=? WHERE id=?", (phone, sub_id))
+            conn.commit()
+            conn.close()
+            sub["phone_number"] = phone
+        except Exception:
+            pass
+
+    sms_type = data.get("sms_type", "portal_link")
+    type_map = {
+        "portal": "portal_link",
+        "portal_link": "portal_link",
+        "sub": "sub_link",
+        "sub_link": "sub_link",
+        "both": "both_links",
+        "both_links": "both_links",
+        "debtor": "debt_invoice",
+        "debt_invoice": "debt_invoice",
+        "custom": "custom"
+    }
+    standard_type = type_map.get(sms_type, "portal_link")
+    custom_message = data.get("custom_text") or data.get("custom_message")
+
+    # استخراج لینک‌ها و اطلاعات اشتراک
+    user_uuid = sub.get("hidify_uuid") or ""
+    h_url = get_hiddify_url()
+    u_proxy = get_user_proxy()
+    sub_url = f"{h_url}/{u_proxy}/{user_uuid}/" if user_uuid and h_url else (sub.get("sub_url") or "")
+    portal_token = user_uuid or str(sub_id)
+    portal_url = get_customer_portal_url(portal_token, _external=True)
+
+    # تعیین فرستنده و برندینگ
+    sub_reseller_id = sub.get("reseller_id")
+    effective_reseller_id = reseller_id if not is_admin else sub_reseller_id
+
+    brand_name = ""
+    if effective_reseller_id:
+        r_info = db.get_reseller(effective_reseller_id) or {}
+        brand_name = r_info.get("brand_name") or r_info.get("name") or ""
+    if not brand_name:
+        brand_name = db.get_setting("store_name", "سرویس اتصال اینترنت") or "سرویس اتصال اینترنت"
+
+    debt_amount = sub.get("debt_amount") or 0
+    formatted_debt = f"{debt_amount:,}".replace(",", "،") if debt_amount else "0"
+
+    template_data = {
+        "name": sub.get("account_name") or "مشتری گرامی",
+        "brand_name": brand_name,
+        "portal_url": portal_url,
+        "sub_url": sub_url,
+        "payment_url": portal_url,
+        "debt_amount": formatted_debt,
+        "plan_name": sub.get("plan_name") or "اشتراک",
+        "data_limit": str(sub.get("data_limit") or "-"),
+        "duration": str(sub.get("duration") or "-")
+    }
+
+    ok, msg = sms_service.send_customer_templated_sms(
+        phone=phone,
+        template_type=standard_type,
+        data=template_data,
+        custom_message=custom_message,
+        db_instance=db,
+        reseller_id=effective_reseller_id
+    )
+
+    return jsonify({"success": ok, "message": msg, "phone": phone})
+
+
+@app.route("/api/preview_customer_sms", methods=["POST"])
+def api_preview_customer_sms():
+    """پیش‌نمایش زنده متن پیامک ارسالی به مشتری بر اساس قالب‌های فعال"""
+    is_admin = bool(session.get("logged_in") and (session.get("role") in ("admin", "super_admin", "partner") or session.get("is_admin") or session.get("user_id") == 1))
+    reseller_id = session.get("reseller_id")
+    if not is_admin and not reseller_id:
+        return jsonify({"success": False, "message": "دسترسی غیرمجاز"}), 403
+
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    sub_id = data.get("sub_id")
+    if not sub_id:
+        return jsonify({"success": False, "message": "شناسه اشتراک الزامی است."}), 400
+
+    try:
+        sub_id = int(sub_id)
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "message": "شناسه اشتراک نامعتبر است."}), 400
+
+    sub = db.get_subscription(sub_id)
+    if not sub:
+        return jsonify({"success": False, "message": "اشتراک یافت نشد."}), 404
+
+    sms_type = data.get("sms_type", "portal_link")
+    type_map = {
+        "portal": "portal_link",
+        "portal_link": "portal_link",
+        "sub": "sub_link",
+        "sub_link": "sub_link",
+        "both": "both_links",
+        "both_links": "both_links",
+        "debtor": "debt_invoice",
+        "debt_invoice": "debt_invoice"
+    }
+    standard_type = type_map.get(sms_type, "portal_link")
+
+    user_uuid = sub.get("hidify_uuid") or ""
+    h_url = get_hiddify_url()
+    u_proxy = get_user_proxy()
+    sub_url = f"{h_url}/{u_proxy}/{user_uuid}/" if user_uuid and h_url else (sub.get("sub_url") or "")
+    portal_token = user_uuid or str(sub_id)
+    portal_url = get_customer_portal_url(portal_token, _external=True)
+
+    sub_reseller_id = sub.get("reseller_id")
+    effective_reseller_id = reseller_id if not is_admin else sub_reseller_id
+
+    brand_name = ""
+    if effective_reseller_id:
+        r_info = db.get_reseller(effective_reseller_id) or {}
+        brand_name = r_info.get("brand_name") or r_info.get("name") or ""
+    if not brand_name:
+        brand_name = db.get_setting("store_name", "سرویس اتصال اینترنت") or "سرویس اتصال اینترنت"
+
+    debt_amount = sub.get("debt_amount") or 0
+    formatted_debt = f"{debt_amount:,}".replace(",", "،") if debt_amount else "0"
+
+    template_data = {
+        "name": sub.get("account_name") or "مشتری گرامی",
+        "brand_name": brand_name,
+        "portal_url": portal_url,
+        "sub_url": sub_url,
+        "payment_url": portal_url,
+        "debt_amount": formatted_debt,
+        "plan_name": sub.get("plan_name") or "اشتراک",
+        "data_limit": str(sub.get("data_limit") or "-"),
+        "duration": str(sub.get("duration") or "-")
+    }
+
+    templates = db.get_sms_templates(reseller_id=effective_reseller_id)
+    raw_template = templates.get(standard_type)
+    if not raw_template:
+        default_templates = {
+            "portal_link": "کاربر گرامی {name}، جهت مشاهده وضعیت اشتراک، لینک‌های اتصال و تمدید آنلاین به لینک اختصاصی زیر مراجعه فرمایید:\n{portal_url}\n{brand_name}",
+            "sub_link": "کاربر گرامی {name}، لینک اختصاصی اتصال شما:\n{sub_url}\n{brand_name}",
+            "both_links": "کاربر گرامی {name}، اشتراک شما آماده است.\nپورتال و مدیریت: {portal_url}\nلینک اتصال مستقیم: {sub_url}\n{brand_name}",
+            "debt_invoice": "کاربر گرامی {name}، صورتحساب بدهی اشتراک شما صادر شده است.\nمبلغ بدهی: {debt_amount} تومان\nجهت مشاهده و پرداخت آنلاین به لینک زیر مراجعه نمایید:\n{payment_url}\n{brand_name}"
+        }
+        raw_template = default_templates.get(standard_type, "{portal_url}")
+
+    preview_text = sms_service.format_sms_template(raw_template, template_data)
+    return jsonify({"success": True, "preview": preview_text, "raw_template": raw_template})
+
+
+
 @app.route("/reseller/subscription/<int:sub_id>/settle-debt-record/<int:record_id>", methods=["POST"])
 @reseller_required
 def reseller_settle_debt_record(sub_id: int, record_id: int):
@@ -10468,6 +10657,20 @@ def settings():
 
             flash("تنظیمات درگاه پیامک با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
+        elif action == "save_sms_templates":
+            portal_tpl = request.form.get("sms_template_portal", "").strip()
+            sub_tpl = request.form.get("sms_template_sub", "").strip()
+            both_tpl = request.form.get("sms_template_both", "").strip()
+            debtor_tpl = request.form.get("sms_template_debtor", "").strip()
+
+            db.save_sms_templates(None, {
+                "portal_link": portal_tpl,
+                "sub_link": sub_tpl,
+                "both_links": both_tpl,
+                "debt_invoice": debtor_tpl
+            })
+            flash("قالب‌های پیش‌فرض پیامک مشتریان با موفقیت ذخیره شدند.", "success")
+            return redirect(url_for("settings"))
         elif action == "save_crypto_settings":
             crypto_enabled = "true" if request.form.get("crypto_enabled") == "on" else "false"
             crypto_provider = request.form.get("crypto_provider", "oxapay").strip().lower()
@@ -10862,7 +11065,8 @@ def settings():
         palette_settings=palette_settings,
         chat_settings=chat_settings,
         available_palettes=get_all_palettes(),
-        mini_app_config=mini_app_config
+        mini_app_config=mini_app_config,
+        sms_templates=db.get_sms_templates(None)
     )
 
 
@@ -11370,6 +11574,9 @@ def reseller_create_user():
 
         flash(f"اشتراک «{account_name}» با موفقیت ساخته شد و {source_msg}{debt_msg}", "success")
 
+        portal_token = user_uuid or str(sub_id)
+        portal_url = get_customer_portal_url(portal_token, _external=True)
+
         return render_template(
             "reseller_created_success.html",
             account_name=account_name,
@@ -11377,6 +11584,8 @@ def reseller_create_user():
             sub_id=sub_id,
             sub_url=subscription_url,
             single_url=single_url,
+            portal_url=portal_url,
+            phone_number=phone_number,
             final_price=final_price,
             current_reseller_balance=current_reseller_balance,
             payment_source=actual_payment_source,
@@ -11475,7 +11684,7 @@ def reseller_users():
             subs.append(item)
 
         if sort_by == "oldest":
-            subs.sort(key=lambda x: (x.get("updated_at") or x.get("created_at") or "", x.get("id", 0)))
+            subs.sort(key=lambda x: (x.get("last_lifecycle_event_at") or x.get("created_at") or "", x.get("id", 0)))
 
     total_count = len(subs)
     total_pages = max(1, (total_count + per_page - 1) // per_page)
@@ -13407,6 +13616,76 @@ def reseller_bot_toggle():
         flash("ربات اختصاصی شما با موفقیت متوقف شد.", "info")
 
     return redirect(url_for("reseller_bot_settings"))
+ 
+
+# ─── تنظیمات پنل پیامک و قالب‌های پیامکی نماینده (Reseller SMS Gateway & Templates) ───
+
+@app.route("/reseller/sms-settings", methods=["GET", "POST"])
+@reseller_required
+def reseller_sms_settings():
+    reseller_id = session.get("reseller_id")
+    reseller = db.get_reseller(reseller_id) or {}
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        if action == "save_sms_gateway":
+            sms_enabled = request.form.get("sms_enabled") == "on"
+            sms_provider = request.form.get("sms_provider", "ippanel").strip().lower()
+            sms_api_key = request.form.get("sms_api_key", "").strip()
+            sms_originator = request.form.get("sms_originator", "").strip()
+            sms_url = request.form.get("sms_url", "").strip()
+
+            db.save_reseller_sms_config(
+                reseller_id=reseller_id,
+                sms_enabled=sms_enabled,
+                sms_provider=sms_provider,
+                sms_api_key=sms_api_key,
+                sms_originator=sms_originator,
+                sms_url=sms_url
+            )
+            flash("تنظیمات درگاه پیامک اختصاصی شما با موفقیت ذخیره گردید.", "success")
+            return redirect(url_for("reseller_sms_settings"))
+
+        elif action == "save_sms_templates":
+            portal_tpl = request.form.get("sms_template_portal", "").strip()
+            sub_tpl = request.form.get("sms_template_sub", "").strip()
+            both_tpl = request.form.get("sms_template_both", "").strip()
+            debtor_tpl = request.form.get("sms_template_debtor", "").strip()
+
+            db.save_sms_templates(reseller_id, {
+                "portal_link": portal_tpl,
+                "sub_link": sub_tpl,
+                "both_links": both_tpl,
+                "debt_invoice": debtor_tpl
+            })
+            flash("قالب‌های پیامک مشتریان با موفقیت ذخیره گردید.", "success")
+            return redirect(url_for("reseller_sms_settings"))
+
+    sms_config = db.get_reseller_sms_config(reseller_id)
+    sms_templates = db.get_sms_templates(reseller_id)
+    return render_template(
+        "reseller_sms_settings.html",
+        reseller=reseller,
+        sms_config=sms_config,
+        sms_templates=sms_templates
+    )
+
+
+@app.route("/reseller/sms-test", methods=["POST"])
+@reseller_required
+def reseller_sms_test():
+    reseller_id = session.get("reseller_id")
+    phone = request.form.get("test_phone", "").strip()
+    if not phone:
+        return jsonify({"success": False, "message": "شماره موبایل گیرنده تست الزامی است."})
+
+    reseller = db.get_reseller(reseller_id) or {}
+    brand_name = reseller.get("brand_name") or reseller.get("name") or "فروشگاه شما"
+    msg = f"این یک پیامک آزمایشی از سامانه پیامک اختصاصی شما ({brand_name}) است."
+    
+    ok, response_msg = sms_service.send_sms(phone, msg, db_instance=db, reseller_id=reseller_id)
+    return jsonify({"success": ok, "message": response_msg})
+
 
 
 # ─── ۱. مدیریت و تایید فیش‌های پرداخت مشتریان در پورتال نماینده (Customer Receipts) ───
@@ -15161,11 +15440,16 @@ def admin_create_customer():
             pass
 
         flash(f"✅ اشتراک «{account_name}» با موفقیت ایجاد شد!{debt_info_text}", "success")
+        portal_token = user_uuid or str(sub_id)
+        portal_url = get_customer_portal_url(portal_token, _external=True)
+
         return render_template(
             "admin_customer_created.html",
             sub_id=sub_id,
             sub_url=sub_url,
             single_url=single_url,
+            portal_url=portal_url,
+            phone_number=phone_number,
             account_name=account_name,
             plan_name=plan_name,
             data_limit=data_limit,

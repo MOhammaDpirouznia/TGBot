@@ -604,6 +604,21 @@ class Database:
         except Exception:
             pass
 
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN account_name TEXT")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN account_comment TEXT")
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN subscription_id INTEGER")
+        except Exception:
+            pass
+
         # تصحیح و همگام‌سازی خودکار مبدأ و نام مشتری برای تراکنش‌های پیشین
         try:
             cursor.execute("""
@@ -1302,12 +1317,33 @@ class Database:
             "ALTER TABLE card_transactions ADD COLUMN revoked_at TEXT",
             "ALTER TABLE card_transactions ADD COLUMN revoked_by TEXT",
             "ALTER TABLE card_transactions ADD COLUMN revoke_reason TEXT",
-            "ALTER TABLE reseller_transactions ADD COLUMN is_deleted INTEGER DEFAULT 0"
+            "ALTER TABLE reseller_transactions ADD COLUMN is_deleted INTEGER DEFAULT 0",
+            # ستون‌های ارتقای رهگیری رویدادهای اشتراک، قفل همزمانی فیش‌ها و درگاه پیامک نمایندگان
+            "ALTER TABLE subscriptions ADD COLUMN last_lifecycle_event_at TEXT",
+            "ALTER TABLE transactions ADD COLUMN admin_messages TEXT",
+            "ALTER TABLE transactions ADD COLUMN locked_by TEXT",
+            "ALTER TABLE transactions ADD COLUMN locked_at TEXT",
+            "ALTER TABLE resellers ADD COLUMN sms_enabled INTEGER DEFAULT 0",
+            "ALTER TABLE resellers ADD COLUMN sms_provider TEXT DEFAULT 'ippanel'",
+            "ALTER TABLE resellers ADD COLUMN sms_api_key TEXT",
+            "ALTER TABLE resellers ADD COLUMN sms_originator TEXT",
+            "ALTER TABLE resellers ADD COLUMN sms_url TEXT",
+            "ALTER TABLE resellers ADD COLUMN sms_templates TEXT"
         ]:
             try:
                 cursor.execute(col_sql)
             except Exception:
                 pass
+
+        # راه‌اندازی اولیه last_lifecycle_event_at برای اشتراک‌های موجود
+        try:
+            cursor.execute("""
+                UPDATE subscriptions
+                SET last_lifecycle_event_at = COALESCE(updated_at, created_at)
+                WHERE last_lifecycle_event_at IS NULL
+            """)
+        except Exception:
+            pass
 
         # جدول دفتر ریزتراکنش‌های تفکیکی کارت‌های بانکی (مدیریت و نمایندگان)
         try:
@@ -1771,6 +1807,10 @@ class Database:
                         pass
 
                 if existing_sub:
+                    # بررسی تغییر وضعیت به منقضی یا غیرفعال
+                    old_status = existing_sub["status"] if "status" in existing_sub.keys() else "active"
+                    status_changed_to_inactive = (old_status == "active" and status in ("expired", "disabled"))
+
                     # بروزرسانی مصرف، سقف حجم، تعداد روزها (duration / package_days)، تاریخ‌ها و وضعیت
                     cursor.execute("""
                         UPDATE subscriptions SET
@@ -1784,21 +1824,22 @@ class Database:
                             reseller_id = COALESCE(reseller_id, ?),
                             is_online = ?,
                             last_online = COALESCE(?, last_online),
-                            updated_at = ?
+                            updated_at = ?,
+                            last_lifecycle_event_at = CASE WHEN ? = 1 THEN ? ELSE COALESCE(last_lifecycle_event_at, created_at) END
                         WHERE hidify_uuid = ?
-                    """, (current_usage, usage_limit, package_days, start_date, expiry_time, status, name_clean, extracted_reseller_id, is_online_val, last_online_val, now, uuid))
+                    """, (current_usage, usage_limit, package_days, start_date, expiry_time, status, name_clean, extracted_reseller_id, is_online_val, last_online_val, now, 1 if status_changed_to_inactive else 0, now, uuid))
                 else:
                     # درج اشتراک جدید بازیابی شده
                     cursor.execute("""
                         INSERT INTO subscriptions (
                             telegram_id, hidify_uuid, plan_id, plan_name, account_name,
                             account_comment, data_limit, data_used, duration, start_date,
-                            expire_date, status, reseller_id, is_online, last_online, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            expire_date, status, reseller_id, is_online, last_online, created_at, updated_at, last_lifecycle_event_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         telegram_id, uuid, plan_id, plan_name, name,
                         comment, usage_limit, current_usage, package_days, start_date,
-                        expiry_time, status, extracted_reseller_id, is_online_val, last_online_val, now, now
+                        expiry_time, status, extracted_reseller_id, is_online_val, last_online_val, now, now, now
                     ))
                     restored_subs += 1
 
@@ -1909,7 +1950,7 @@ class Database:
                     is_exp = True
 
                 if is_exp:
-                    cursor.execute("UPDATE subscriptions SET status = 'expired', is_online = 0, updated_at = ? WHERE id = ?", (now_iso, sub_id))
+                    cursor.execute("UPDATE subscriptions SET status = 'expired', is_online = 0, updated_at = ?, last_lifecycle_event_at = ? WHERE id = ?", (now_iso, now_iso, sub_id))
                     updated_expired += 1
 
             conn.commit()
@@ -2501,12 +2542,12 @@ class Database:
                 INSERT INTO subscriptions
                 (telegram_id, hidify_uuid, plan_id, plan_name, account_name, account_comment, phone_number,
                  data_limit, data_used, duration, start_date, expire_date, status, reseller_id, user_limit, cost_paid,
-                 payment_status, debt_amount, debt_notes, debt_created_at, payment_source, created_by, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 payment_status, debt_amount, debt_notes, debt_created_at, payment_source, created_by, created_at, updated_at, last_lifecycle_event_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 telegram_id or 0, hidify_uuid, plan_id, plan_name, account_name, account_comment, phone,
                 data_limit, data_used, duration, now, expire_date, status, reseller_id, int(user_limit or 1), int(cost_paid or 0),
-                payment_status, debt_amount, debt_notes, debt_created_at, payment_source, creator, now, now
+                payment_status, debt_amount, debt_notes, debt_created_at, payment_source, creator, now, now, now
             ))
             conn.commit()
             subscription_id = cursor.lastrowid
@@ -9515,7 +9556,7 @@ class Database:
         """لیست کاربران و اشتراک‌های یک نماینده (بدون موارد سطل زباله) با مرتب‌سازی پیش‌فرض آخرین تغییرات"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM subscriptions WHERE reseller_id=? AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY COALESCE(updated_at, created_at) DESC", (reseller_id,))
+        cursor.execute("SELECT * FROM subscriptions WHERE reseller_id=? AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY COALESCE(last_lifecycle_event_at, created_at) DESC, id DESC", (reseller_id,))
         rows = cursor.fetchall()
         conn.close()
         return [dict(r) for r in rows]
@@ -10143,9 +10184,10 @@ class Database:
                 cursor.execute("""
                     UPDATE subscriptions
                     SET plan_id=?, plan_name=?, data_limit=?, data_used=0, duration=?, status='active',
-                        start_date=?, expire_date=?, updated_at=?, cost_paid=?, payment_source=?, last_renewed_by=?
+                        start_date=?, expire_date=?, updated_at=?, cost_paid=?, payment_source=?, last_renewed_by=?,
+                        last_lifecycle_event_at=?
                     WHERE id=? AND reseller_id=?
-                """, (plan_id, plan_name, data_limit, duration, new_start_date, new_expire_date, now, cost, actual_source, creator_val, sub_id, reseller_id))
+                """, (plan_id, plan_name, data_limit, duration, new_start_date, new_expire_date, now, cost, actual_source, creator_val, now, sub_id, reseller_id))
                 conn.commit()
                 return {"success": True, "mode": "instant", "payment_source": actual_source}
             else:
@@ -16593,6 +16635,235 @@ class Database:
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
+
+    # ═══════════════════════════════════════════════════════════════
+    # قفل اتمیک همزمانی فیش‌های تلگرام و ردگیری پیام‌های ارسالی مدیران
+    # ═══════════════════════════════════════════════════════════════
+
+    def lock_transaction_for_processing(self, order_id: str, locked_by: str = "مدیر") -> dict:
+        """
+        قفل اتمیک تراکنش جهت جلوگیری از تایید همزمان یا کلیک مکرر مدیران (Concurrency Lock)
+        وضعیت تراکنش را در صورتی که pending باشد به processing تغییر می‌دهد.
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        try:
+            cursor.execute("SELECT * FROM transactions WHERE order_id = ?", (order_id,))
+            tx = cursor.fetchone()
+            if not tx:
+                return {"success": False, "status": "not_found", "message": "تراکنش یافت نشد."}
+
+            tx_dict = dict(tx)
+            status = tx_dict.get("status")
+            if status == "approved":
+                return {"success": False, "status": "approved", "tx": tx_dict, "message": "این تراکنش قبلاً تایید و اشتراک آن صادر گردیده است."}
+            elif status == "rejected":
+                return {"success": False, "status": "rejected", "tx": tx_dict, "message": "این تراکنش قبلاً توسط یکی از مدیران رد شده است."}
+            elif status == "processing":
+                locked_time = tx_dict.get("locked_at")
+                if locked_time:
+                    try:
+                        clean_time = str(locked_time).replace("Z", "").split(".")[0].replace("T", " ")
+                        l_dt = datetime.strptime(clean_time[:19], "%Y-%m-%d %H:%M:%S")
+                        now_dt = get_now_naive()
+                        if (now_dt - l_dt).total_seconds() < 90:
+                            return {
+                                "success": False, 
+                                "status": "processing", 
+                                "tx": tx_dict, 
+                                "message": f"این فیش در حال حاضر توسط {tx_dict.get('locked_by') or 'یکی از مدیران'} در حال بررسی و صدور است..."
+                            }
+                    except Exception:
+                        pass
+
+            # تلاش برای قفل اتمیک با وضعیت pending
+            cursor.execute("""
+                UPDATE transactions 
+                SET status = 'processing', locked_by = ?, locked_at = ?, updated_at = ?
+                WHERE order_id = ? AND (status = 'pending' OR status = 'processing')
+            """, (locked_by, now, now, order_id))
+            conn.commit()
+
+            if cursor.rowcount > 0:
+                cursor.execute("SELECT * FROM transactions WHERE order_id = ?", (order_id,))
+                fresh_row = cursor.fetchone()
+                return {"success": True, "status": "locked", "tx": dict(fresh_row) if fresh_row else tx_dict}
+            else:
+                cursor.execute("SELECT * FROM transactions WHERE order_id = ?", (order_id,))
+                fresh_row = cursor.fetchone()
+                cur_st = fresh_row["status"] if fresh_row else "unknown"
+                return {"success": False, "status": cur_st, "tx": dict(fresh_row) if fresh_row else None, "message": "تراکنش هم‌اکنون توسط مدیر دیگری بررسی شده است."}
+        except Exception as e:
+            logger.error(f"Error locking transaction {order_id}: {e}")
+            return {"success": False, "status": "error", "message": str(e)}
+        finally:
+            conn.close()
+
+    def add_transaction_admin_message(self, order_id: str, chat_id: int, message_id: int):
+        """ذخیره شناسه پیام‌های ارسالی به تلگرام مدیران جهت امکان ادیت همگانی پس از تایید یا رد"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT admin_messages FROM transactions WHERE order_id = ?", (order_id,))
+            row = cursor.fetchone()
+            msgs = []
+            if row and row["admin_messages"]:
+                try:
+                    msgs = json.loads(row["admin_messages"])
+                except Exception:
+                    msgs = []
+            
+            # جلوگیری از اضافه شدن رکورد تکراری
+            for m in msgs:
+                if m.get("chat_id") == chat_id and m.get("message_id") == message_id:
+                    return
+            msgs.append({"chat_id": chat_id, "message_id": message_id})
+            cursor.execute("UPDATE transactions SET admin_messages = ?, updated_at = ? WHERE order_id = ?", (json.dumps(msgs), get_now_iso(), order_id))
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Error saving admin message for {order_id}: {e}")
+        finally:
+            conn.close()
+
+    def get_transaction_admin_messages(self, order_id: str) -> list:
+        """بازیابی لیست پیام‌های ارسالی به مدیران برای یک فیش پرداخت"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT admin_messages FROM transactions WHERE order_id = ?", (order_id,))
+            row = cursor.fetchone()
+            if row and row["admin_messages"]:
+                try:
+                    return json.loads(row["admin_messages"])
+                except Exception:
+                    return []
+            return []
+        except Exception:
+            return []
+        finally:
+            conn.close()
+
+    # ═══════════════════════════════════════════════════════════════
+    # تنظیمات درگاه اختصاصی پیامک نماینده و قالب‌های پیام‌های آماده
+    # ═══════════════════════════════════════════════════════════════
+
+    def get_reseller_sms_config(self, reseller_id: int) -> dict:
+        """دریافت تنظیمات درگاه پیامک اختصاصی نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT sms_enabled, sms_provider, sms_api_key, sms_originator, sms_url, sms_templates
+                FROM resellers WHERE id = ?
+            """, (reseller_id,))
+            row = cursor.fetchone()
+            if not row:
+                return {
+                    "enabled": False,
+                    "provider": "ippanel",
+                    "api_key": "",
+                    "originator": "",
+                    "url": "",
+                    "templates": {}
+                }
+            templates = {}
+            if "sms_templates" in row.keys() and row["sms_templates"]:
+                try:
+                    templates = json.loads(row["sms_templates"])
+                except Exception:
+                    templates = {}
+            return {
+                "enabled": bool(row["sms_enabled"]) if "sms_enabled" in row.keys() and row["sms_enabled"] else False,
+                "provider": (row["sms_provider"] if "sms_provider" in row.keys() and row["sms_provider"] else "ippanel") or "ippanel",
+                "api_key": (row["sms_api_key"] if "sms_api_key" in row.keys() and row["sms_api_key"] else "") or "",
+                "originator": (row["sms_originator"] if "sms_originator" in row.keys() and row["sms_originator"] else "") or "",
+                "url": (row["sms_url"] if "sms_url" in row.keys() and row["sms_url"] else "") or "",
+                "templates": templates
+            }
+        except Exception as e:
+            logger.error(f"Error getting reseller SMS config: {e}")
+            return {"enabled": False, "provider": "ippanel", "api_key": "", "originator": "", "url": "", "templates": {}}
+        finally:
+            conn.close()
+
+    def save_reseller_sms_config(self, reseller_id: int, config: dict) -> bool:
+        """ذخیره تنظیمات درگاه پیامک اختصاصی نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            templates_json = json.dumps(config.get("templates", {})) if isinstance(config.get("templates"), dict) else (config.get("templates") or None)
+            cursor.execute("""
+                UPDATE resellers SET
+                    sms_enabled = ?,
+                    sms_provider = ?,
+                    sms_api_key = ?,
+                    sms_originator = ?,
+                    sms_url = ?,
+                    sms_templates = COALESCE(?, sms_templates),
+                    updated_at = ?
+                WHERE id = ?
+            """, (
+                1 if config.get("enabled") else 0,
+                config.get("provider", "ippanel"),
+                str(config.get("api_key") or "").strip(),
+                str(config.get("originator") or "").strip(),
+                str(config.get("url") or "").strip(),
+                templates_json,
+                get_now_iso(),
+                reseller_id
+            ))
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error saving reseller SMS config: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def get_sms_templates(self, reseller_id: int = None) -> dict:
+        """دریافت قالب‌های پیام‌های آماده (برای ادمین یا نماینده)"""
+        default_templates = {
+            "portal_link": "کاربر گرامی {name}، جهت مشاهده وضعیت اشتراک، لینک‌های اتصال و تمدید آنلاین به لینک اختصاصی زیر مراجعه فرمایید:\n{portal_url}\n{brand_name}",
+            "sub_link": "کاربر گرامی {name}، لینک اختصاصی اتصال شما:\n{sub_url}\n{brand_name}",
+            "both_links": "کاربر گرامی {name}، اشتراک شما آماده است.\nپورتال و مدیریت: {portal_url}\nلینک اتصال مستقیم: {sub_url}\n{brand_name}",
+            "debt_invoice": "کاربر گرامی {name}، صورتحساب بدهی اشتراک شما صادر شده است.\nمبلغ بدهی: {debt_amount} تومان\nجهت مشاهده و پرداخت آنلاین به لینک زیر مراجعه نمایید:\n{payment_url}\n{brand_name}"
+        }
+        if reseller_id:
+            cfg = self.get_reseller_sms_config(reseller_id)
+            user_tmps = cfg.get("templates") or {}
+            for k, v in user_tmps.items():
+                if v and str(v).strip():
+                    default_templates[k] = str(v).strip()
+            return default_templates
+        else:
+            admin_tmps_val = self.get_setting("admin_sms_templates")
+            if admin_tmps_val:
+                admin_tmps = {}
+                if isinstance(admin_tmps_val, dict):
+                    admin_tmps = admin_tmps_val
+                elif isinstance(admin_tmps_val, str):
+                    try:
+                        admin_tmps = json.loads(admin_tmps_val)
+                    except Exception:
+                        admin_tmps = {}
+                for k, v in admin_tmps.items():
+                    if v and str(v).strip():
+                        default_templates[k] = str(v).strip()
+            return default_templates
+
+    def save_sms_templates(self, templates: dict, reseller_id: int = None) -> bool:
+        """ذخیره قالب‌های پیام‌های آماده برای ادمین یا نماینده"""
+        try:
+            if reseller_id:
+                cfg = self.get_reseller_sms_config(reseller_id)
+                cfg["templates"] = templates
+                return self.save_reseller_sms_config(reseller_id, cfg)
+            else:
+                return self.set_setting("admin_sms_templates", json.dumps(templates))
+        except Exception as e:
+            logger.error(f"Error saving SMS templates: {e}")
+            return False
 
 
 # نمونه singleton

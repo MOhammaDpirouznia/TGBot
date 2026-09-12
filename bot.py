@@ -5014,6 +5014,12 @@ async def admin_approve_payment(update: Update, context: ContextTypes.DEFAULT_TY
     if not target_tx and user_transactions:
         target_tx = user_transactions[0]
 
+    if target_tx and target_tx.get("order_id"):
+        lock_res = db.lock_transaction_for_processing(target_tx["order_id"], locked_by=str(update.effective_user.id))
+        if not lock_res.get("success"):
+            await query.answer(lock_res.get("message", "⚠️ این تراکنش در حال حاضر در حال پردازش است یا قبلاً تایید/رد شده است!"), show_alert=True)
+            return
+
     if target_tx and target_tx.get("status") == "approved":
         await query.answer("⚠️ این تراکنش قبلاً تایید و اشتراک آن ساخته شده است!", show_alert=True)
         price_fmt = f"{plan.get('price', 0):,}".replace(",", "،")
@@ -5177,6 +5183,12 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
             break
     if not target_tx and user_transactions:
         target_tx = user_transactions[0]
+
+    if target_tx and target_tx.get("order_id"):
+        lock_res = db.lock_transaction_for_processing(target_tx["order_id"], locked_by=str(update.effective_user.id))
+        if not lock_res.get("success"):
+            await query.answer(lock_res.get("message", "⚠️ این تمدید در حال حاضر در حال پردازش است یا قبلاً تایید/رد شده است!"), show_alert=True)
+            return
 
     if target_tx and target_tx.get("status") == "approved":
         await query.answer("⚠️ این تمدید قبلاً تایید و اعمال شده است!", show_alert=True)
@@ -5388,10 +5400,20 @@ async def admin_reject_payment(update: Update, context: ContextTypes.DEFAULT_TYP
     # بروزرسانی تراکنش
     try:
         user_transactions = db.get_user_transactions(user_id)
+        target_trans = None
         for trans in user_transactions:
             if trans.get("status") == "pending":
-                db.update_transaction(trans["order_id"], "rejected")
+                target_trans = trans
                 break
+        if target_trans and target_trans.get("order_id"):
+            lock_res = db.lock_transaction_for_processing(target_trans["order_id"], locked_by=str(update.effective_user.id))
+            if not lock_res.get("success"):
+                await query.answer(lock_res.get("message", "⚠️ این تراکنش قبلاً پردازش شده یا در حال پردازش است!"), show_alert=True)
+                return
+            db.update_transaction(target_trans["order_id"], "rejected")
+        elif not target_trans:
+            await query.answer("⚠️ تراکنش معلقی برای این کاربر یافت نشد!", show_alert=True)
+            return
     except Exception as e:
         logger.error(f"Error updating transaction: {e}")
 
