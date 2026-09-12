@@ -5852,8 +5852,19 @@ def subscriptions():
     admins_map = {a["username"].lower(): a for a in db.get_admin_users() if a.get("username")}
 
     # پیش‌واکشی گروهی (Batch Fetch) اطلاعات صف و VIP جهت کاهش ۹۵٪ کوئری‌های تکراری
-    sub_ids = [s["id"] for s in sub_list]
-    tg_ids = [int(s["telegram_id"]) for s in sub_list if s.get("telegram_id")]
+    sub_ids = []
+    tg_ids = []
+    for s in sub_list:
+        sd = dict(s) if hasattr(s, "keys") else s
+        sid = sd.get("id") if isinstance(sd, dict) else s["id"]
+        if sid:
+            sub_ids.append(sid)
+        stg = sd.get("telegram_id") if isinstance(sd, dict) else None
+        if stg:
+            try:
+                tg_ids.append(int(stg))
+            except (ValueError, TypeError):
+                pass
 
     vip_users_set = set()
     if tg_ids:
@@ -11743,8 +11754,19 @@ def reseller_users():
         raw_subs = db.get_reseller_subscriptions(reseller_id)
         
         # پیش‌واکشی گروهی برای کاهش کوئری‌های تکراری
-        sub_ids = [s["id"] for s in raw_subs]
-        tg_ids = [int(s["telegram_id"]) for s in raw_subs if s.get("telegram_id")]
+        sub_ids = []
+        tg_ids = []
+        for s in raw_subs:
+            sd = dict(s) if hasattr(s, "keys") else s
+            sid = sd.get("id") if isinstance(sd, dict) else s["id"]
+            if sid:
+                sub_ids.append(sid)
+            stg = sd.get("telegram_id") if isinstance(sd, dict) else None
+            if stg:
+                try:
+                    tg_ids.append(int(stg))
+                except (ValueError, TypeError):
+                    pass
         vip_users_set = set()
         if tg_ids:
             try:

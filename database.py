@@ -23,6 +23,9 @@ from session_analyzer import parse_user_agent_details
 
 logger = logging.getLogger(__name__)
 
+# کش سبک ۶۰ ثانیه‌ای برای دامنه‌های اختصاصی نمایندگان جهت جلوگیری از کوئری تکراری دیتابیس در هر درخواست
+_reseller_domain_cache: Dict[str, Any] = {}
+
 # مسیر دیتابیس - از Railway persistent storage یا متغیر محیطی استفاده میکنه
 # Railway: اگر Volume دارید، DATA_DIR=/data تنظیم کنید
 # در غیر این صورت، دیتابیس در مسیر پروژه ذخیره میشه
@@ -11863,8 +11866,6 @@ class Database:
             }
         finally:
             conn.close()
-
-    _reseller_domain_cache = {}
 
     def get_reseller_by_domain(self, domain: str):
         """یافتن نماینده بر اساس دامنه اختصاصی پنل یا دامنه اختصاصی آموزش‌ها (همراه با کش سبک ۶۰ ثانیه‌ای)"""
