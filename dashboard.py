@@ -2444,7 +2444,12 @@ def enrich_subscription_details(sub: dict, resellers_map: dict = None, admins_ma
         item["is_vip"] = False
 
     if queue_map is not None:
-        q_items = queue_map.get(item.get("id"), [])
+        raw_id = item.get("id")
+        try:
+            int_id = int(raw_id) if raw_id is not None else None
+        except (ValueError, TypeError):
+            int_id = raw_id
+        q_items = queue_map.get(int_id) or queue_map.get(raw_id) or []
         item["pending_queues"] = q_items
         item["pending_queue"] = q_items[0] if q_items else None
         item["has_queue"] = bool(q_items)
@@ -5879,18 +5884,28 @@ def subscriptions():
 
     queue_map = {}
     if sub_ids:
+        conn_q = None
         try:
             conn_q = db.get_connection()
             placeholders = ",".join("?" * len(sub_ids))
-            q_rows = conn_q.execute(f"SELECT * FROM subscription_queue WHERE subscription_id IN ({placeholders}) AND status = 'pending' ORDER BY priority ASC, id ASC", sub_ids).fetchall()
+            q_rows = conn_q.execute(f"SELECT * FROM subscription_queue WHERE subscription_id IN ({placeholders}) AND status = 'pending' ORDER BY COALESCE(queue_order, id) ASC, id ASC", sub_ids).fetchall()
             for qr in q_rows:
                 sid = qr["subscription_id"]
-                if sid not in queue_map:
-                    queue_map[sid] = []
-                queue_map[sid].append(dict(qr))
-            conn_q.close()
-        except Exception:
-            pass
+                try:
+                    sid_int = int(sid)
+                except (ValueError, TypeError):
+                    sid_int = sid
+                if sid_int not in queue_map:
+                    queue_map[sid_int] = []
+                queue_map[sid_int].append(dict(qr))
+        except Exception as e_qm:
+            logger.error(f"Error fetching subscription queue map in subscriptions: {e_qm}")
+        finally:
+            if conn_q:
+                try:
+                    conn_q.close()
+                except Exception:
+                    pass
 
     for s in sub_list:
         s_dict = enrich_subscription_details(
@@ -11780,18 +11795,28 @@ def reseller_users():
 
         queue_map = {}
         if sub_ids:
+            conn_q = None
             try:
                 conn_q = db.get_connection()
                 placeholders = ",".join("?" * len(sub_ids))
-                q_rows = conn_q.execute(f"SELECT * FROM subscription_queue WHERE subscription_id IN ({placeholders}) AND status = 'pending' ORDER BY priority ASC, id ASC", sub_ids).fetchall()
+                q_rows = conn_q.execute(f"SELECT * FROM subscription_queue WHERE subscription_id IN ({placeholders}) AND status = 'pending' ORDER BY COALESCE(queue_order, id) ASC, id ASC", sub_ids).fetchall()
                 for qr in q_rows:
                     sid = qr["subscription_id"]
-                    if sid not in queue_map:
-                        queue_map[sid] = []
-                    queue_map[sid].append(dict(qr))
-                conn_q.close()
-            except Exception:
-                pass
+                    try:
+                        sid_int = int(sid)
+                    except (ValueError, TypeError):
+                        sid_int = sid
+                    if sid_int not in queue_map:
+                        queue_map[sid_int] = []
+                    queue_map[sid_int].append(dict(qr))
+            except Exception as e_qm:
+                logger.error(f"Error fetching reseller subscription queue map in reseller_users: {e_qm}")
+            finally:
+                if conn_q:
+                    try:
+                        conn_q.close()
+                    except Exception:
+                        pass
 
         subs = []
         for s in raw_subs:
