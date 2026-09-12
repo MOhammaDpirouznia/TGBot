@@ -1343,6 +1343,7 @@ class Database:
             "ALTER TABLE subscriptions ADD COLUMN last_lifecycle_event_at TEXT",
             "ALTER TABLE subscriptions ADD COLUMN last_renewed_at TEXT",
             "ALTER TABLE transactions ADD COLUMN admin_messages TEXT",
+            "ALTER TABLE support_tickets ADD COLUMN admin_messages TEXT",
             "ALTER TABLE transactions ADD COLUMN locked_by TEXT",
             "ALTER TABLE transactions ADD COLUMN locked_at TEXT",
             "ALTER TABLE resellers ADD COLUMN sms_enabled INTEGER DEFAULT 0",
@@ -16781,6 +16782,51 @@ class Database:
         cursor = conn.cursor()
         try:
             cursor.execute("SELECT admin_messages FROM transactions WHERE order_id = ?", (order_id,))
+            row = cursor.fetchone()
+            if row and row["admin_messages"]:
+                try:
+                    return json.loads(row["admin_messages"])
+                except Exception:
+                    return []
+            return []
+        except Exception:
+            return []
+        finally:
+            conn.close()
+
+    def add_ticket_admin_message(self, ticket_id: int, chat_id: int, message_id: int):
+        """ذخیره شناسه پیام‌های ارسالی به تلگرام مدیران برای یک تیکت پشتیبانی جهت امکان ادیت همگانی"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT admin_messages FROM support_tickets WHERE id = ?", (ticket_id,))
+            row = cursor.fetchone()
+            msgs = []
+            if row and row["admin_messages"]:
+                try:
+                    msgs = json.loads(row["admin_messages"])
+                except Exception:
+                    msgs = []
+            
+            # جلوگیری از تکرار و به‌روزرسانی message_id برای هر مدیر (chat_id)
+            existing_idx = next((i for i, m in enumerate(msgs) if m.get("chat_id") == chat_id), None)
+            if existing_idx is not None:
+                msgs[existing_idx]["message_id"] = message_id
+            else:
+                msgs.append({"chat_id": chat_id, "message_id": message_id})
+            cursor.execute("UPDATE support_tickets SET admin_messages = ?, updated_at = ? WHERE id = ?", (json.dumps(msgs), get_now_iso(), ticket_id))
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Error saving ticket admin message for ticket {ticket_id}: {e}")
+        finally:
+            conn.close()
+
+    def get_ticket_admin_messages(self, ticket_id: int) -> list:
+        """بازیابی لیست پیام‌های ارسالی به مدیران برای یک تیکت پشتیبانی"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT admin_messages FROM support_tickets WHERE id = ?", (ticket_id,))
             row = cursor.fetchone()
             if row and row["admin_messages"]:
                 try:

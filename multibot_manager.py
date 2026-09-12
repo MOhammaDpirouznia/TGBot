@@ -87,7 +87,159 @@ def get_reseller_hidify_client(reseller_id: int) -> HidifyClient:
     reseller_key = db.get_reseller_hiddify_key(reseller_id)
     if reseller_key and reseller_key != HIDIFY_API_KEY:
         return HidifyClient(HIDIFY_PANEL_URL, reseller_key, HIDIFY_PROXY_PATH)
-    return hidify_client
+async def safe_edit_admin_message(bot, chat_id: int, message_id: int, new_text: str, reply_markup=None) -> bool:
+    """ویرایش امن پیام ادمین با پشتیبانی از هر دو نوع متن و عکس کپشن‌دار"""
+    try:
+        await bot.edit_message_caption(
+            chat_id=chat_id,
+            message_id=message_id,
+            caption=new_text,
+            reply_markup=reply_markup,
+            parse_mode="HTML"
+        )
+        return True
+    except Exception:
+        try:
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=new_text,
+                reply_markup=reply_markup,
+                parse_mode="HTML"
+            )
+            return True
+        except Exception:
+            return False
+
+
+async def sync_admin_receipt_action(bot, order_id: str, caller_id: int, caller_name: str, action: str = "approved", caller_msg: str = None, r_id: int = None):
+    """
+    همگام‌سازی وضعیت فیش پرداخت میان تمام مدیران:
+    - برای مدیری که اقدام را انجام داده: پیام با جزئیات کامل موفقیت ادیت می‌شود
+    - برای سایر مدیران: پیام با متن کوتاه 'توسط مدیر X تایید/رد شد' بدون دکمه ویرایش می‌شود
+    - در صورت بروز خطا در ویرایش یا نبودن پیام در رکورد، پیام متنی به صورت fallback ارسال می‌شود
+    """
+    if not r_id:
+        tx = db.get_transaction_by_order_id(order_id)
+        if tx:
+            r_id = tx.get("reseller_id")
+
+    target_ids = set()
+    if r_id:
+        admins = db.get_reseller_bot_admins(r_id)
+        for adm in admins:
+            r_role = adm.get("role") or "main"
+            if r_role in ("main", "finance") or "main" in ("main", "finance"):
+                try:
+                    target_ids.add(int(adm.get("telegram_id")))
+                except (ValueError, TypeError):
+                    pass
+        reseller_info = db.get_reseller(r_id) or {}
+        reseller_tg = reseller_info.get("telegram_id")
+        if reseller_tg:
+            try:
+                target_ids.add(int(reseller_tg))
+            except (ValueError, TypeError):
+                pass
+
+    status_str = "تایید" if action == "approved" else "رد"
+    other_text = f"🔔 <b>رسید پرداخت با کد سفارش: <code>{order_id}</code> توسط مدیر {html.escape(caller_name)} {status_str} شد.</b>"
+    c_msg = caller_msg or (f"✅ <b>رسید پرداخت با کد سفارش: <code>{order_id}</code> توسط شما {status_str} شد.</b>")
+
+    admin_msgs = db.get_transaction_admin_messages(order_id)
+    handled_chat_ids = set()
+
+    for am in admin_msgs:
+        c_id = am.get("chat_id")
+        m_id = am.get("message_id")
+        if not c_id or not m_id:
+            continue
+        handled_chat_ids.add(int(c_id))
+        if is_caller:
+            if caller_msg:
+                await safe_edit_admin_message(bot, chat_id=int(c_id), message_id=int(m_id), new_text=caller_msg, reply_markup=None)
+            continue
+
+        success = await safe_edit_admin_message(bot, chat_id=int(c_id), message_id=int(m_id), new_text=other_text, reply_markup=None)
+        if not success:
+            try:
+                await bot.send_message(chat_id=int(c_id), text=other_text, parse_mode="HTML")
+            except Exception as ex:
+                logger.debug(f"Fallback receipt notify failed for admin {c_id}: {ex}")
+
+    for tid in target_ids:
+        if tid not in handled_chat_ids and int(tid) != int(caller_id):
+            try:
+                await bot.send_message(chat_id=tid, text=other_text, parse_mode="HTML")
+            except Exception as ex:
+                logger.debug(f"Direct fallback receipt notify failed for admin {tid}: {ex}")
+
+
+async def sync_admin_ticket_action(bot, ticket_id: int, caller_id: int, caller_name: str, action: str = "replied", reply_snippet: str = None, caller_msg: str = None, r_id: int = None):
+    """
+    همگام‌سازی وضعیت تیکت پشتیبانی میان تمام مدیران:
+    - برای مدیری که پاسخ داده/بسته: پیام مربوط به خودش با جزئیات ادیت می‌شود
+    - برای سایر مدیران: پیام تیکت ویرایش شده و اعلام می‌شود که مدیر X پاسخ داد یا بست
+    - در صورت بروز هرگونه خطا در ادیت، پیام متنی به صورت fallback ارسال می‌شود
+    """
+    ticket = db.get_ticket(ticket_id)
+    if not r_id and ticket:
+        r_id = ticket.get("reseller_id")
+
+    target_ids = set()
+    if r_id:
+        admins = db.get_reseller_bot_admins(r_id)
+        for adm in admins:
+            r_role = adm.get("role") or "main"
+            if r_role in ("main", "support") or "main" in ("main", "support"):
+                try:
+                    target_ids.add(int(adm.get("telegram_id")))
+                except (ValueError, TypeError):
+                    pass
+        reseller_info = db.get_reseller(r_id) or {}
+        reseller_tg = reseller_info.get("telegram_id")
+        if reseller_tg:
+            try:
+                target_ids.add(int(reseller_tg))
+            except (ValueError, TypeError):
+                pass
+
+    if action == "closed":
+        other_text = f"🔒 <b>تیکت شماره #{ticket_id} توسط مدیر {html.escape(caller_name)} بسته شد.</b>"
+    else:
+        snip = f"\n«{html.escape(reply_snippet[:150])}»" if reply_snippet else ""
+        other_text = f"🔔 <b>تیکت شماره #{ticket_id} توسط مدیر {html.escape(caller_name)} پاسخ داده شد.{snip}</b>"
+
+    c_msg = caller_msg or (f"✅ <b>تیکت شماره #{ticket_id} توسط شما رسیدگی شد.</b>")
+
+    admin_msgs = db.get_ticket_admin_messages(ticket_id)
+    handled_chat_ids = set()
+
+    for am in admin_msgs:
+        c_id = am.get("chat_id")
+        m_id = am.get("message_id")
+        if not c_id or not m_id:
+            continue
+        handled_chat_ids.add(int(c_id))
+        is_caller = (int(c_id) == int(caller_id))
+        if is_caller:
+            if caller_msg:
+                await safe_edit_admin_message(bot, chat_id=int(c_id), message_id=int(m_id), new_text=caller_msg, reply_markup=None)
+            continue
+
+        success = await safe_edit_admin_message(bot, chat_id=int(c_id), message_id=int(m_id), new_text=other_text, reply_markup=None)
+        if not success:
+            try:
+                await bot.send_message(chat_id=int(c_id), text=other_text, parse_mode="HTML")
+            except Exception as ex:
+                logger.debug(f"Fallback ticket notify failed for admin {c_id}: {ex}")
+
+    for tid in target_ids:
+        if tid not in handled_chat_ids and int(tid) != int(caller_id):
+            try:
+                await bot.send_message(chat_id=tid, text=other_text, parse_mode="HTML")
+            except Exception as ex:
+                logger.debug(f"Direct fallback ticket notify failed for admin {tid}: {ex}")
 
 
 class ResellerBotInstance:
@@ -171,7 +323,7 @@ class ResellerBotInstance:
                 return False, ""
             return True, role
 
-        async def notify_reseller_admins(bot, roles: list, text: str, photo=None, reply_markup=None, order_id: str = None):
+        async def notify_reseller_admins(bot, roles: list, text: str, photo=None, reply_markup=None, order_id: str = None, ticket_id: int = None):
             """ارسال اعلان هوشمند به مدیران مرتبط با نقش‌های اعلام‌شده همراه با ثبت پیام‌ها جهت ادیت همگانی"""
             admins = db.get_reseller_bot_admins(r_id)
             target_ids = set()
@@ -201,6 +353,8 @@ class ResellerBotInstance:
                         sent_msgs.append({"chat_id": tid, "message_id": m.message_id})
                         if order_id:
                             db.add_transaction_admin_message(order_id, tid, m.message_id)
+                        if ticket_id:
+                            db.add_ticket_admin_message(ticket_id, tid, m.message_id)
                 except Exception as ex:
                     logger.debug(f"Failed to notify reseller admin {tid}: {ex}")
             return sent_msgs
@@ -241,25 +395,7 @@ class ResellerBotInstance:
                 m_id = am.get("message_id")
                 if not c_id or not m_id:
                     continue
-                try:
-                    await bot.edit_message_caption(
-                        chat_id=c_id,
-                        message_id=m_id,
-                        caption=new_text,
-                        reply_markup=None,
-                        parse_mode="HTML"
-                    )
-                except Exception:
-                    try:
-                        await bot.edit_message_text(
-                            chat_id=c_id,
-                            message_id=m_id,
-                            text=new_text,
-                            reply_markup=None,
-                            parse_mode="HTML"
-                        )
-                    except Exception:
-                        pass
+                await safe_edit_admin_message(bot, chat_id=int(c_id), message_id=int(m_id), new_text=new_text, reply_markup=None)
 
         def get_reseller_main_keyboard(lang: str = "fa", is_reseller_admin: bool = False, user_id: int = None) -> ReplyKeyboardMarkup:
             """ساخت کیبورد اصلی ربات نماینده مطابق با چیدمان ذخیره شده در پنل مدیریت با اتصال مینی‌اپ اختصاصی نماینده"""
@@ -616,10 +752,23 @@ class ResellerBotInstance:
                 context.user_data["buying_plan_id"] = plan_id
                 context.user_data["buying_price"] = price
 
-                msg = f"🛒 <b>پیش‌فاکتور خرید اشتراک</b>\n\n"
-                msg += f"📦 پلن: <b>{pname}</b>\n"
-                msg += f"👤 نام اکانت: <code>{html.escape(account_name)}</code>\n"
-                msg += f"📊 حجم: <b>{vol_str}</b> | ⏳ مدت: <b>{days} روز</b>\n"
+                is_renewal = bool(context.user_data.get("is_renewal"))
+                instant_act = context.user_data.get("instant_activation", True)
+                renew_sub_id = context.user_data.get("renew_sub_id")
+
+                if is_renewal:
+                    mode_lbl = "⚡ فعال‌سازی آنی" if instant_act else "⏳ قرارگیری در صف تمدید (رزرو خودکار)"
+                    msg = f"🔄 <b>پیش‌فاکتور تمدید اشتراک</b>\n\n"
+                    msg += f"📦 پلن: <b>{pname}</b>\n"
+                    msg += f"👤 نام اکانت: <code>{html.escape(account_name)}</code>\n"
+                    msg += f"📊 حجم: <b>{vol_str}</b> | ⏳ مدت: <b>{days} روز</b>\n"
+                    msg += f"🔄 نحوه اعمال: <b>{mode_lbl}</b>\n"
+                else:
+                    msg = f"🛒 <b>پیش‌فاکتور خرید اشتراک</b>\n\n"
+                    msg += f"📦 پلن: <b>{pname}</b>\n"
+                    msg += f"👤 نام اکانت: <code>{html.escape(account_name)}</code>\n"
+                    msg += f"📊 حجم: <b>{vol_str}</b> | ⏳ مدت: <b>{days} روز</b>\n"
+
                 if disc_amount > 0:
                     msg += f"💵 مبلغ اصلی: <s>{base_price:,}</s> تومان\n"
                     msg += f"🎟️ کد تخفیف ({applied_code}): <b>{disc_amount:,}- تومان</b>\n"
@@ -659,7 +808,10 @@ class ResellerBotInstance:
                         buttons.append([InlineKeyboardButton("💵 کارت به کارت (بانکی)", callback_data=f"r_pcard_{plan_id}")])
 
                 # تغییر نام یا انصراف
-                buttons.append([InlineKeyboardButton("◀️ تغییر نام اکانت", callback_data=f"r_buy_{plan_id}"), InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy")])
+                if is_renewal and renew_sub_id:
+                    buttons.append([InlineKeyboardButton("◀️ تغییر نحوه تمدید / پلن", callback_data=f"r_renew_choose_{renew_sub_id}_{plan_id}"), InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy")])
+                else:
+                    buttons.append([InlineKeyboardButton("◀️ تغییر نام اکانت", callback_data=f"r_buy_{plan_id}"), InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy")])
 
                 kb = InlineKeyboardMarkup(buttons)
                 await query.edit_message_text(msg, reply_markup=kb, parse_mode="HTML")
@@ -734,6 +886,10 @@ class ResellerBotInstance:
                     await query.edit_message_text(msg, reply_markup=kb, parse_mode="HTML")
                     return
 
+                is_renewal = bool(context.user_data.get("is_renewal"))
+                renew_sub_id = context.user_data.get("renew_sub_id") or 0
+                instant_act = context.user_data.get("instant_activation", True)
+
                 # صدور فاکتور هوشمند با ارقام خرد یکتا برای تایید آنی با پیامک بانک اختصاصی نماینده
                 sms_cfg = db.get_reseller_bank_sms_config(r_id)
                 digits = sms_cfg.get("digits", 3) or 3
@@ -741,14 +897,14 @@ class ResellerBotInstance:
                 target_c = active_card or {"card_number": card_num, "card_holder": card_holder, "bank_name": bank_name}
 
                 invoice = db.create_smart_invoice(
-                    sub_id=0,
+                    sub_id=renew_sub_id if is_renewal else 0,
                     plan_id=plan_id,
                     reseller_id=r_id,
                     base_amount=price,
                     target_card=target_c,
                     digits=digits,
                     timeout_minutes=timeout,
-                    instant_activation=True
+                    instant_activation=instant_act
                 )
                 final_amount_toman = invoice["final_amount"]
                 rial_price = final_amount_toman * 10
@@ -766,14 +922,21 @@ class ResellerBotInstance:
                     "amount": final_amount_toman,
                     "account_name": account_name,
                     "card_num": card_num,
-                    "reseller_id": r_id
+                    "reseller_id": r_id,
+                    "is_renewal": is_renewal,
+                    "renew_sub_id": renew_sub_id,
+                    "instant_activation": instant_act
                 }
 
-                msg = f"💳 <b>پرداخت خودکار کارت به کارت</b>\n\n"
+                title_p = "پرداخت تمدید اشتراک" if is_renewal else "پرداخت خودکار کارت به کارت"
+                msg = f"💳 <b>{title_p}</b>\n\n"
                 msg += f"📦 پلن: <b>{pname}</b>\n"
                 msg += f"👤 نام اکانت: <code>{html.escape(account_name)}</code>\n"
-                msg += f"📊 حجم: <b>{vol_str}</b> | ⏳ مدت: <b>{days} روز</b>\n\n"
-                msg += f"💰 <b>مبلغ دقیق قابل واریز (به ریال):</b>\n"
+                msg += f"📊 حجم: <b>{vol_str}</b> | ⏳ مدت: <b>{days} روز</b>\n"
+                if is_renewal:
+                    mode_lbl = "⚡ فعال‌سازی آنی" if instant_act else "⏳ قرارگیری در صف تمدید (رزرو خودکار)"
+                    msg += f"🔄 نحوه تمدید: <b>{mode_lbl}</b>\n"
+                msg += f"\n💰 <b>مبلغ دقیق قابل واریز (به ریال):</b>\n"
                 msg += f"<code>{rial_price}</code> ریال (<b>{rial_fmt} ریال</b>)\n"
                 msg += f"<i>معادل: {toman_fmt} تومان</i>\n\n"
 
@@ -854,8 +1017,16 @@ class ResellerBotInstance:
                 elif data == "r_ponl_soon":
                     await query.answer("💳 درگاه پرداخت آنلاین به زودی فعال خواهد شد. لطفاً از روش کارت به کارت استفاده فرمایید.", show_alert=True)
                 elif data == "r_cancel_buy":
+                    context.user_data.pop("is_renewal", None)
+                    context.user_data.pop("renew_sub_id", None)
+                    context.user_data.pop("instant_activation", None)
+                    context.user_data.pop("buying_plan_id", None)
+                    context.user_data.pop("buying_price", None)
+                    context.user_data.pop("buying_account_name", None)
+                    context.user_data.pop("waiting_for_card_receipt", None)
+                    context.user_data.pop("pending_card_invoice", None)
                     await query.answer()
-                    await query.edit_message_text("❌ عملیات خرید لغو شد.")
+                    await query.edit_message_text("❌ عملیات خرید یا تمدید لغو شد.")
             except Exception as e:
                 logger.error(f"Error in copy_action_callback in reseller bot: {e}")
 
@@ -893,9 +1064,93 @@ class ResellerBotInstance:
             pname = plan.get("display_name") or plan.get("master_name", "اشتراک")
             vol = plan.get("data_limit", 30)
             days = plan.get("duration", 30)
-            account_name = context.user_data.get("buying_account_name") or f"r{r_id}_u{user.id}_{int(datetime.now().timestamp()) % 10000}"
+            is_renewal = bool(context.user_data.get("is_renewal"))
+            renew_sub_id = context.user_data.get("renew_sub_id")
+            instant_act = context.user_data.get("instant_activation", True)
+
+            desc = f"تمدید اشتراک {pname}" if is_renewal else f"خرید آنی اشتراک {pname}"
+            deduct_res = db.deduct_wallet_balance(user.id, price, desc)
+            if not deduct_res.get("success"):
+                await query.answer("❌ خطا در کسر موجودی: " + str(deduct_res.get("error")), show_alert=True)
+                return
 
             bot_profit = max(0, price - wholesale_cost)
+
+            if is_renewal and renew_sub_id:
+                target_sub = db.get_reseller_subscription(r_id, renew_sub_id) or db.get_subscription(renew_sub_id)
+                account_name = (target_sub.get("account_name") if target_sub else None) or context.user_data.get("buying_account_name") or f"r{r_id}_u{user.id}"
+
+                await query.edit_message_text("⏳ در حال پردازش و ثبت تمدید اشتراک شما...")
+
+                if instant_act and target_sub and target_sub.get("hidify_uuid"):
+                    try:
+                        r_client = get_reseller_hidify_client(r_id)
+                        await r_client.update_user(
+                            uuid=target_sub["hidify_uuid"],
+                            usage_limit_gb=float(vol) if vol > 0 else None,
+                            package_days=int(days),
+                            enable=True
+                        )
+                    except Exception as e_ren:
+                        logger.error(f"Error renewing user in Hiddify via wallet: {e_ren}")
+
+                db.renew_reseller_subscription(
+                    reseller_id=r_id,
+                    sub_id=renew_sub_id,
+                    plan_id=str(plan_id),
+                    plan_name=pname,
+                    cost=wholesale_cost,
+                    data_limit=float(vol),
+                    duration=int(days),
+                    instant_activate=instant_act,
+                    payment_source="wallet",
+                    selling_price=price,
+                    profit_margin=bot_profit,
+                    created_by=f"Customer Wallet (User {user.id})"
+                )
+
+                # پاک‌سازی استیت
+                context.user_data.pop("is_renewal", None)
+                context.user_data.pop("renew_sub_id", None)
+                context.user_data.pop("instant_activation", None)
+
+                brand = self.reseller_data.get("brand_name") or "ما"
+                if not instant_act:
+                    cust_msg = (
+                        f"🎉 <b>بسته تمدیدی با موفقیت از کیف پول خریداری شد!</b>\n\n"
+                        f"📦 پلن تمدیدی: <b>{html.escape(str(pname))}</b>\n"
+                        f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
+                        f"📊 حجم: <b>{vol if vol > 0 else 'نامحدود'} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>\n"
+                        f"💰 کسر شده از کیف پول: <b>{price:,} تومان</b>\n\n"
+                        f"⏳ <b>این بسته در صف رزرو اشتراک شما قرار گرفت.</b>\n"
+                        f"حجم و زمان فعلی شما محفوظ مانده و پس از اتمام بسته فعلی به صورت کاملاً خودکار فعال خواهد شد."
+                    )
+                    kb_btns = [
+                        [InlineKeyboardButton("📋 مشاهده اشتراک و صف تمدید", callback_data=f"r_sub_detail_{renew_sub_id}")],
+                        [InlineKeyboardButton("📱 منوی اصلی", callback_data="r_check_sub")]
+                    ]
+                    await query.edit_message_text(cust_msg, reply_markup=InlineKeyboardMarkup(kb_btns), parse_mode="HTML")
+                else:
+                    uuid_val = target_sub.get("hidify_uuid") if target_sub else None
+                    sub_url = f"{HIDIFY_PANEL_URL}/{HIDIFY_PROXY_PATH}/{uuid_val}/" if (uuid_val and HIDIFY_PANEL_URL) else ""
+                    cust_msg = (
+                        f"🎉 <b>اشتراک {brand} با موفقیت تمدید و فعال شد:</b>\n\n"
+                        f"📦 پلن: <b>{pname}</b>\n"
+                        f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
+                        f"📊 حجم جدید: <b>{vol if vol > 0 else 'نامحدود'} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>\n"
+                        f"💰 کسر شده از کیف پول: <b>{price:,} تومان</b>\n\n"
+                        + (f"🔗 <b>لینک اتصال اختصاصی شما:</b>\n<code>{sub_url}</code>\n\n" if sub_url else "")
+                        + "💡 بسته جدید فوراً فعال و دوره مصرف شما از نو آغاز گردید."
+                    )
+                    kb_btns = []
+                    if renew_sub_id:
+                        kb_btns.append([InlineKeyboardButton("📱 دریافت بارکد QR", callback_data=f"r_sub_qr_{renew_sub_id}")])
+                    if uuid_val:
+                        kb_btns.append([InlineKeyboardButton("📥 دریافت کانفیگ تکی", callback_data=f"r_single_link_{uuid_val}_{renew_sub_id}")])
+                    await query.edit_message_text(cust_msg, reply_markup=InlineKeyboardMarkup(kb_btns) if kb_btns else None, parse_mode="HTML")
+                return
+
+            account_name = context.user_data.get("buying_account_name") or f"r{r_id}_u{user.id}_{int(datetime.now().timestamp()) % 10000}"
             db.deduct_reseller_balance(
                 r_id, wholesale_cost, pname, account_name,
                 selling_price=price, profit_margin=bot_profit, created_by="bot"
@@ -915,7 +1170,7 @@ class ResellerBotInstance:
             uuid_val = created.get("uuid") if created else None
             sub_url = f"{HIDIFY_PANEL_URL}/{HIDIFY_PROXY_PATH}/{uuid_val}/" if uuid_val else ""
 
-            sub_id = db.save_subscription(
+            sub_save_res = db.save_subscription(
                 telegram_id=user.id,
                 hidify_uuid=uuid_val,
                 plan_id=plan_id,
@@ -928,6 +1183,7 @@ class ResellerBotInstance:
                 reseller_id=r_id,
                 created_by="bot"
             )
+            sub_id = sub_save_res.get("subscription_id") if isinstance(sub_save_res, dict) else sub_save_res
 
             brand = self.reseller_data.get("brand_name") or "ما"
             cust_msg = f"🎉 <b>اشتراک {brand} با موفقیت فعال شد:</b>\n\n"
@@ -941,6 +1197,8 @@ class ResellerBotInstance:
             kb_btns = []
             if sub_id:
                 kb_btns.append([InlineKeyboardButton("📱 دریافت بارکد QR", callback_data=f"r_sub_qr_{sub_id}")])
+            if uuid_val:
+                kb_btns.append([InlineKeyboardButton("📥 دریافت کانفیگ تکی", callback_data=f"r_single_link_{uuid_val}_{sub_id or 0}")])
             await query.edit_message_text(cust_msg, reply_markup=InlineKeyboardMarkup(kb_btns) if kb_btns else None, parse_mode="HTML")
 
         async def pay_online_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1131,16 +1389,21 @@ class ResellerBotInstance:
                 pname = plan.get("name", "پلن انتخابی")
 
             now_iso = get_now_iso()
+            is_renewal_val = 1 if context.user_data.get("is_renewal") else 0
+            renew_sub_id_val = context.user_data.get("renew_sub_id")
+            instant_act_val = context.user_data.get("instant_activation", True)
+            act_comment = f"instant_act:{1 if instant_act_val else 0} renewal_sub_id:{renew_sub_id_val or 0}"
+
             conn = db.get_connection()
             conn.execute("""
                 INSERT OR REPLACE INTO transactions (
                     order_id, user_id, username, plan_name, amount, status, gateway,
-                    tracking_code, reseller_id, is_renewal, account_name, source,
+                    tracking_code, reseller_id, is_renewal, account_name, account_comment, source,
                     receipt_image, receipt_file_type, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, 'pending', 'card_reseller', ?, ?, 0, ?, 'reseller_bot', ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, 'pending', 'card_reseller', ?, ?, ?, ?, ?, 'reseller_bot', ?, ?, ?, ?)
             """, (
                 order_id, user.id, user.username or user.first_name, pname,
-                price, f"فیش عکس {order_id}", r_id, account_name,
+                price, f"فیش عکس {order_id}", r_id, is_renewal_val, account_name, act_comment,
                 saved_receipt_filename or photo_file_id, "photo", now_iso, now_iso
             ))
             conn.commit()
@@ -1179,432 +1442,581 @@ class ResellerBotInstance:
                 return
 
             data = query.data
+
             if data.startswith("rapprove_"):
-                parts = data.split("_")
-                order_id = parts[1]
-                target_uid = int(parts[2])
-                plan_id = parts[3]
-
-                # ۱. پاسخ آنی به کاربر جهت جلوگیری از تاخیر ظاهری و کلیک‌های متوالی
-                await query.answer("⏳ در حال بررسی و صدور خودکار اشتراک... لطفاً شکیبا باشید", show_alert=False)
-
-                # ۲. قفل اتمیک در دیتابیس جهت مهار تایید همزمان توسط دو یا چند مدیر
-                lock_res = db.lock_transaction_for_processing(order_id, locked_by=caller_name)
-                if not lock_res.get("success"):
-                    st = lock_res.get("status")
-                    await query.answer(lock_res.get("message", "⚠️ این فیش قبلاً تعیین‌تکلیف شده است."), show_alert=True)
-                    if st == "approved":
-                        try:
-                            await query.edit_message_caption(caption="✅ <b>این فیش قبلاً تایید و اشتراک آن صادر گردیده است.</b>", parse_mode="HTML", reply_markup=None)
-                        except Exception:
-                            try:
-                                await query.edit_message_text(text="✅ <b>این فیش قبلاً تایید و اشتراک آن صادر گردیده است.</b>", parse_mode="HTML", reply_markup=None)
-                            except Exception:
-                                pass
-                    elif st == "rejected":
-                        try:
-                            await query.edit_message_caption(caption="❌ <b>این فیش قبلاً توسط یکی از مدیران رد شده است.</b>", parse_mode="HTML", reply_markup=None)
-                        except Exception:
-                            try:
-                                await query.edit_message_text(text="❌ <b>این فیش قبلاً توسط یکی از مدیران رد شده است.</b>", parse_mode="HTML", reply_markup=None)
-                            except Exception:
-                                pass
-                    return
-
-                plan = db.get_reseller_plan(r_id, plan_id) or {}
-                pname = plan.get("display_name") or plan.get("master_name", "اشتراک")
-                vol = plan.get("data_limit", 30)
-                days = plan.get("duration", 30)
-                price = plan.get("display_price", 0)
-                wholesale_cost = plan.get("wholesale_price", price)
-
-                tx_data = lock_res.get("tx") or db.get_transaction_by_order_id(order_id) or {}
-                account_name = tx_data.get("account_name") or f"r{r_id}_u{target_uid}_{int(datetime.now().timestamp()) % 10000}"
-
-                deduct_res = db.deduct_reseller_balance(r_id, wholesale_cost, pname, account_name)
-
-                if not deduct_res.get("success"):
-                    # بازگرداندن وضعیت تراکنش به pending در صورت عدم موجودی
-                    db.update_transaction(order_id, status="pending")
-                    await query.edit_message_caption(
-                        caption=f"❌ **خطا در تایید:** موجودی کیف پول نماینده کافی نیست!\n"
-                                f"مبلغ عمده مورد نیاز: {wholesale_cost:,} تومان\n"
-                                f"لطفاً ابتدا کیف پول خود را در پنل وب شارژ فرمایید.",
-                        parse_mode="Markdown"
-                    )
-                    return
-
-                h_res = None
                 try:
-                    r_client = get_reseller_hidify_client(r_id)
-                    h_res = await r_client.create_user(
-                        name=account_name,
-                        package_days=int(days),
-                        usage_limit_gb=float(vol) if vol > 0 else None,
-                        comment=f"[RESELLER_ID: #{r_id}] TG: {target_uid} | {account_name}"
-                    )
-                except Exception as e:
-                    logger.error(f"Hiddify creation error: {e}")
+                    parts = data.split("_")
+                    order_id = parts[1]
+                    target_uid = int(parts[2])
+                    plan_id = parts[3]
 
-                uuid_val = h_res.get("uuid") if h_res else None
-                sub_url = ""
-                if uuid_val:
-                    sub_url = f"{HIDIFY_PANEL_URL}/{HIDIFY_PROXY_PATH}/{uuid_val}/"
-                else:
-                    sub_url = f"https://vpn.service/sub/{account_name}"
-
-                sub_id = db.save_subscription(
-                    telegram_id=target_uid,
-                    hidify_uuid=uuid_val,
-                    plan_id=plan_id,
-                    plan_name=pname,
-                    data_limit=float(vol),
-                    duration=int(days),
-                    status="active",
-                    account_name=account_name,
-                    account_comment=f"Reseller #{r_id} Bot",
-                    reseller_id=r_id,
-                    created_by="bot"
-                )
-
-                db.update_transaction(order_id, status="approved", processed_by=caller_name, processed_at=get_now_iso())
-
-                brand = self.reseller_data.get("brand_name") or "ما"
-                cashback_note = ""
-                try:
-                    vip_info = db.get_user_vip_info(target_uid)
-                    if vip_info.get("is_vip") and vip_info.get("cashback_percent", 0) > 0:
-                        cb_pct = vip_info.get("cashback_percent", 10)
-                        cb_amount = int((price * cb_pct) / 100)
-                        if cb_amount > 0:
-                            cb_res = db.add_wallet_balance(
-                                target_uid,
-                                cb_amount,
-                                f"هدیه کش‌بک خرید VIP ({cb_pct}%) از {brand}",
-                                ref_id=str(order_id),
-                                tx_type="cashback"
-                            )
-                            new_b = cb_res.get("new_balance", 0)
-                            cashback_note += f"\n\n🎁 **هدیه کش‌بک VIP:** مبلغ {cb_amount:,} تومان ({cb_pct}٪) به کیف پول شما واریز شد.\n💰 موجودی کیف پول: {new_b:,} تومان"
-                except Exception as e_cb:
-                    logger.error(f"Error in reseller bot VIP cashback: {e_cb}")
-
-                try:
-                    ug_res = db.check_and_upgrade_user_vip(target_uid, reseller_id=r_id)
-                    if ug_res.get("upgraded"):
-                        cb_rate = ug_res.get("cashback_percent", 10)
-                        t_sp = ug_res.get("total_spent", 0)
-                        cashback_note += f"\n\n🎉 **تبریک! شما به عنوان مشتری طلایی (⭐️ VIP) فروشگاه {brand} ارتقا یافتید!**\nبا رسیدن مجموع خرید شما به {t_sp:,} تومان، از این پس از {cb_rate}٪ کش‌بک در هر خرید و اولویت در پشتیبانی برخوردار خواهید بود. 🌹"
-                except Exception as e_ug:
-                    logger.error(f"Error checking reseller bot VIP auto upgrade: {e_ug}")
-
-                # ۳. ادیت خودکار پیام تلگرام تمامی مدیران برای حذف دکمه‌ها و نمایش نام تاییدکننده
-                done_msg = (
-                    f"✅ <b>فیش پرداخت با موفقیت تایید و اشتراک صادر شد.</b>\n\n"
-                    f"👤 بررسی شده توسط: <b>{html.escape(caller_name)}</b>\n"
-                    f"⏰ زمان: {get_now_shamsi()}\n"
-                    f"📦 پلن: <b>{html.escape(str(pname))}</b>\n"
-                    f"💰 هزینه عمده: <b>{wholesale_cost:,} تومان</b>\n"
-                    f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>"
-                )
-                await update_all_admin_receipt_messages(context.bot, order_id, done_msg)
-
-                # اطلاع‌رسانی به سایر مدیران
-                other_adm_app_msg = (
-                    f"🔔 <b>مدیر {html.escape(caller_name)} رسید پرداخت با کد سفارش: <code>{order_id}</code> را تایید کرد و دیگر این رسید پرداخت نیاز به رسیدگی ندارد.</b>"
-                )
-                await notify_other_reseller_admins(context.bot, caller_id, ["main", "finance"], other_adm_app_msg)
-
-                # ۴. ارسال خودکار تصویر QR Code سابسکریپشن و دکمه دریافت کانفیگ تکی به مشتری
-                try:
-                    cust_msg = f"🎉 <b>رسید پرداخت شما با کد سفارش: {order_id} تایید شد!</b>\n\n"
-                    cust_msg += f"📦 پلن: <b>{html.escape(str(pname))}</b>\n"
-                    cust_msg += f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
-                    cust_msg += f"📊 حجم: <b>{vol} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>\n\n"
-                    cust_msg += f"🔗 <b>لینک سابسکریپشن اختصاصی شما:</b>\n<code>{sub_url}</code>{cashback_note}\n\n"
-                    cust_msg += "💡 جهت اتصال، لینک بالا را کپی کرده یا بارکد QR زیر را در نرم‌افزار اسکن فرمایید."
-
-                    kb_btns = [
-                        [InlineKeyboardButton("🚀 اتصال سریع به برنامه", url=sub_url)],
-                    ]
-                    if uuid_val:
-                        kb_btns.append([
-                            InlineKeyboardButton("📥 دریافت کانفیگ تکی", callback_data=f"r_single_link_{uuid_val}_{sub_id or 0}")
-                        ])
-                    kb_btns.append([
-                        InlineKeyboardButton("📱 راهنمای کپی و اتصال", callback_data="r_copy_help")
-                    ])
-
-                    qr_bytes = generate_qr_code_bytes(sub_url)
-                    if qr_bytes:
-                        await context.bot.send_photo(
-                            chat_id=target_uid,
-                            photo=qr_bytes,
-                            caption=cust_msg,
-                            reply_markup=InlineKeyboardMarkup(kb_btns),
-                            parse_mode="HTML"
-                        )
-                    else:
-                        await context.bot.send_message(
-                            chat_id=target_uid,
-                            text=cust_msg,
-                            reply_markup=InlineKeyboardMarkup(kb_btns),
-                            parse_mode="HTML"
-                        )
-                except Exception as e:
-                    logger.error(f"Failed to deliver config with QR to customer {target_uid}: {e}")
-
-            elif data.startswith("rreject_"):
-                parts = data.split("_")
-                order_id = parts[1]
-                target_uid = int(parts[2])
-
-                # پاسخ آنی
-                await query.answer("⏳ در حال ثبت رد پرداخت...", show_alert=False)
-
-                # قفل اتمیک
-                lock_res = db.lock_transaction_for_processing(order_id, locked_by=caller_name)
-                if not lock_res.get("success"):
-                    await query.answer(lock_res.get("message", "⚠️ این فیش قبلاً تعیین‌تکلیف شده است."), show_alert=True)
-                    return
-
-                db.update_transaction(order_id, status="rejected", processed_by=caller_name, processed_at=get_now_iso())
-                rej_msg = f"❌ <b>پرداخت توسط {html.escape(caller_name)} رد شد.</b>\n⏰ زمان: {get_now_shamsi()}"
-                await update_all_admin_receipt_messages(context.bot, order_id, rej_msg)
-
-                # اطلاع‌رسانی به سایر مدیران
-                other_adm_rej_msg = (
-                    f"🔔 <b>مدیر {html.escape(caller_name)} رسید پرداخت با کد سفارش: <code>{order_id}</code> را رد کرد و دیگر این رسید پرداخت نیاز به رسیدگی ندارد.</b>"
-                )
-                await notify_other_reseller_admins(context.bot, caller_id, ["main", "finance"], other_adm_rej_msg)
-
-                try:
-                    await context.bot.send_message(
-                        chat_id=target_uid,
-                        text=f"❌ <b>رسید پرداخت شما با کد سفارش: {order_id} تایید نشد.</b>\n\nدر صورت بروز هرگونه ابهام، با پشتیبانی در ارتباط باشید.",
-                        parse_mode="HTML"
-                    )
-                except Exception:
-                    pass
-
-            elif data.startswith("res_pay_app_"):
-                order_id = data.replace("res_pay_app_", "")
-                await query.answer("⏳ در حال بررسی و تایید سفارش... لطفاً شکیبا باشید", show_alert=False)
-
-                # قفل اتمیک
-                lock_res = db.lock_transaction_for_processing(order_id, locked_by=caller_name)
-                if not lock_res.get("success"):
-                    await query.answer(lock_res.get("message", "⚠️ این تراکنش قبلاً رسیدگی شده است."), show_alert=True)
-                    return
-
-                tx_data = lock_res.get("tx") or db.get_transaction_by_order_id(order_id) or {}
-                user_id = tx_data.get("user_id") or 0
-                plan_name = tx_data.get("plan_name", "اشتراک")
-                plans = db.get_reseller_plans(r_id)
-                selected_plan = next((p for p in plans if p.get("name") == plan_name or p.get("display_name") == plan_name or p.get("master_name") == plan_name or str(p.get("id")) == str(tx_data.get("plan_id"))), None)
-                if not selected_plan and plans:
-                    selected_plan = plans[0]
-
-                vol = selected_plan.get("display_data_limit") if selected_plan and selected_plan.get("display_data_limit") is not None else (selected_plan.get("data_limit") if selected_plan else 30)
-                days = selected_plan.get("display_duration") if selected_plan and selected_plan.get("display_duration") is not None else (selected_plan.get("duration") if selected_plan else 30)
-                original_price = selected_plan.get("display_price") or selected_plan.get("price") if selected_plan else tx_data.get("amount", 0)
-
-                stats = db.get_reseller_stats(r_id)
-                discount = stats.get("discount_percent", 20)
-                master_base = (selected_plan.get("master_price") or original_price) if selected_plan else original_price
-                wholesale_cost = selected_plan.get("wholesale_price") if selected_plan and selected_plan.get("wholesale_price") is not None else (master_base - int((master_base * discount) / 100))
-
-                if stats["balance"] < wholesale_cost:
-                    db.update_transaction(order_id, status="pending")
-                    await query.answer(f"❌ موجودی کیف پول شما کافی نیست!\nموجودی: {stats['balance']:,} تومان | نیاز: {wholesale_cost:,} تومان", show_alert=True)
-                    return
-
-                is_renewal = bool(tx_data.get("is_renewal"))
-                renew_sub_id = tx_data.get("renew_sub_id")
-                target_sub = None
-                if is_renewal and renew_sub_id:
-                    target_sub = db.get_reseller_subscription(r_id, renew_sub_id) or db.get_subscription(renew_sub_id)
-
-                res_profit = max(0, original_price - wholesale_cost)
-                account_name = tx_data.get("account_name") or (target_sub.get("account_name") if target_sub else f"r{r_id}_u{user_id}_{int(datetime.now().timestamp()) % 10000}")
-                sub_url = ""
-
-                db.deduct_reseller_balance(r_id, wholesale_cost, plan_name, account_name, selling_price=original_price, profit_margin=res_profit, created_by=f"Telegram Bot ({caller_name})")
-
-                sub_db_id = None
-                uuid_created = None
-
-                if target_sub:
-                    sub_db_id = target_sub["id"]
-                    smart_inv = db.get_smart_invoice_by_order_id(order_id)
-                    instant_act = bool(smart_inv.get("instant_activation", 1)) if smart_inv else True
-                    if instant_act and target_sub.get("hidify_uuid"):
-                        try:
-                            r_client = get_reseller_hidify_client(r_id)
-                            await r_client.update_user(
-                                uuid=target_sub["hidify_uuid"],
-                                usage_limit_gb=float(vol) if vol > 0 else None,
-                                package_days=int(days),
-                                enable=True
-                            )
-                        except Exception as e_ren:
-                            logger.error(f"Error renewing user in Hiddify: {e_ren}")
-
-                    plan_id_val = str(selected_plan.get("id") or 1) if selected_plan else "1"
-                    db.renew_reseller_subscription(
-                        reseller_id=r_id,
-                        sub_id=target_sub["id"],
-                        plan_id=plan_id_val,
-                        cost=wholesale_cost,
-                        instant_activate=instant_act,
-                        payment_source="wallet",
-                        selling_price=original_price,
-                        profit_margin=res_profit,
-                        creator=f"Telegram Bot ({caller_name})"
-                    )
-                    sub_uuid = target_sub.get("hidify_uuid") or str(target_sub["id"])
-                    uuid_created = sub_uuid
-                    if HIDIFY_PANEL_URL and sub_uuid:
-                        sub_url = f"{HIDIFY_PANEL_URL}/{HIDIFY_PROXY_PATH}/{sub_uuid}/"
-                else:
-                    h_res = None
+                    # ۱. پاسخ سریع جهت رفع لودینگ تلگرام
                     try:
-                        r_client = get_reseller_hidify_client(r_id)
-                        h_res = await r_client.create_user(
-                            name=account_name,
-                            package_days=int(days),
-                            usage_limit_gb=float(vol) if vol > 0 else None,
-                            comment=f"[RESELLER_ID: #{r_id}] TG: {user_id} | {account_name}"
-                        )
-                    except Exception as e:
-                        logger.error(f"Hiddify creation error: {e}")
-
-                    uuid_val = h_res.get("uuid") if h_res else None
-                    uuid_created = uuid_val
-                    if uuid_val and HIDIFY_PANEL_URL:
-                        sub_url = f"{HIDIFY_PANEL_URL}/{HIDIFY_PROXY_PATH}/{uuid_val}/"
-                    else:
-                        sub_url = f"https://vpn.service/sub/{account_name}"
-
-                    plan_id_val = str(selected_plan.get("id") or 1) if selected_plan else "1"
-                    sub_res = db.save_subscription(
-                        telegram_id=user_id,
-                        hidify_uuid=uuid_val,
-                        plan_id=plan_id_val,
-                        plan_name=plan_name,
-                        data_limit=float(vol),
-                        duration=int(days),
-                        status="active",
-                        account_name=account_name,
-                        account_comment=f"Reseller #{r_id} Bot",
-                        reseller_id=r_id,
-                        created_by="bot"
-                    )
-                    sub_db_id = sub_res.get("subscription_id") if isinstance(sub_res, dict) else None
-
-                now_iso = get_now_iso()
-                conn = db.get_connection()
-                cursor = conn.cursor()
-                cursor.execute(
-                    "UPDATE transactions SET status='approved', processed_by=?, processed_at=?, updated_at=? WHERE (order_id=? OR id=?) AND reseller_id=?",
-                    (f"Telegram Bot ({caller_name})", now_iso, now_iso, order_id, order_id, r_id)
-                )
-                conn.commit()
-                conn.close()
-
-                if str(order_id).startswith("INV"):
-                    try:
-                        db.mark_smart_invoice_paid(order_id, tracking_code=str(tx_data.get("tracking_code") or order_id))
+                        await query.answer("⏳ در حال بررسی و صدور خودکار اشتراک... لطفاً شکیبا باشید", show_alert=False)
                     except Exception:
                         pass
 
-                # ادیت تمام پیام‌های ارسالی به مدیران
-                done_adm_text = (
-                    f"✅ <b>سفارش {order_id} توسط {html.escape(caller_name)} تایید گردید.</b>\n"
-                    f"📦 پلن: <b>{html.escape(str(plan_name))}</b> | اکانت: <code>{html.escape(str(account_name))}</code>"
-                )
-                await update_all_admin_receipt_messages(context.bot, order_id, done_adm_text)
+                    # ۲. قفل اتمیک در دیتابیس جهت مهار تایید همزمان توسط دو یا چند مدیر
+                    lock_res = db.lock_transaction_for_processing(order_id, locked_by=caller_name)
+                    if not lock_res.get("success"):
+                        st = lock_res.get("status")
+                        await query.answer(lock_res.get("message", "⚠️ این فیش قبلاً تعیین‌تکلیف شده است."), show_alert=True)
+                        txt = "✅ <b>این فیش قبلاً تایید و اشتراک آن صادر گردیده است.</b>" if st == "approved" else "❌ <b>این فیش قبلاً توسط یکی از مدیران رد شده است.</b>"
+                        await safe_edit_admin_message(context.bot, query.message.chat_id, query.message.message_id, txt, reply_markup=None)
+                        return
 
-                # اطلاع‌رسانی به سایر مدیران
-                other_adm_text = (
-                    f"🔔 <b>مدیر {html.escape(caller_name)} رسید پرداخت با کد سفارش: <code>{order_id}</code> را تایید کرد و دیگر این رسید پرداخت نیاز به رسیدگی ندارد.</b>"
-                )
-                await notify_other_reseller_admins(context.bot, caller_id, ["main", "finance"], other_adm_text)
+                    tx_data = lock_res.get("tx") or db.get_transaction_by_order_id(order_id) or {}
+                    is_renewal = bool(tx_data.get("is_renewal"))
+                    renew_sub_id = tx_data.get("renew_sub_id")
+                    comm = tx_data.get("account_comment") or ""
+                    if not renew_sub_id and "renewal_sub_id:" in comm:
+                        try:
+                            for part in comm.split():
+                                if part.startswith("renewal_sub_id:"):
+                                    renew_sub_id = int(part.split(":")[1])
+                                    is_renewal = True
+                        except Exception:
+                            pass
 
-                brand = self.reseller_data.get("brand_name") or "پشتیبانی"
-                if user_id and int(user_id) > 0:
-                    try:
-                        c_msg = (
-                            f"🎉 <b>رسید پرداخت شما با کد سفارش: {order_id} تایید شد!</b>\n\n"
-                            f"📦 پلن: <b>{html.escape(str(plan_name))}</b>\n"
-                            f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
-                            f"📊 حجم: <b>{vol} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>\n\n"
-                            + (f"🔗 لینک اتصال اختصاصی:\n<code>{sub_url}</code>\n\n" if sub_url else "")
-                            + "💡 جهت اتصال، لینک بالا را کپی کرده یا بارکد QR زیر را اسکن فرمایید."
+                    smart_inv = db.get_smart_invoice_by_order_id(order_id)
+                    instant_act = True
+                    if smart_inv and smart_inv.get("instant_activation") is not None:
+                        instant_act = bool(smart_inv["instant_activation"])
+                    elif "instant_act:0" in comm:
+                        instant_act = False
+
+                    plan = db.get_reseller_plan(r_id, plan_id) or {}
+                    pname = plan.get("display_name") or plan.get("master_name", "اشتراک")
+                    vol = plan.get("data_limit", 30)
+                    days = plan.get("duration", 30)
+                    price = plan.get("display_price", 0)
+                    wholesale_cost = plan.get("wholesale_price", price)
+
+                    target_sub = None
+                    if is_renewal and renew_sub_id:
+                        target_sub = db.get_reseller_subscription(r_id, renew_sub_id) or db.get_subscription(renew_sub_id)
+
+                    account_name = tx_data.get("account_name") or (target_sub.get("account_name") if target_sub else f"r{r_id}_u{target_uid}_{int(datetime.now().timestamp()) % 10000}")
+                    res_profit = max(0, price - wholesale_cost)
+
+                    # ۳. بررسی موجودی کیف پول نماینده
+                    stats = db.get_reseller_stats(r_id)
+                    if stats.get("balance", 0) < wholesale_cost:
+                        db.update_transaction(order_id, status="pending")
+                        err_msg = (
+                            f"❌ <b>خطا در تایید:</b> موجودی کیف پول نماینده کافی نیست!\n\n"
+                            f"💰 مبلغ عمده مورد نیاز: <b>{wholesale_cost:,} تومان</b>\n"
+                            f"💳 موجودی فعلی کیف پول: <b>{stats.get('balance', 0):,} تومان</b>\n\n"
+                            f"لطفاً ابتدا کیف پول خود را در پنل وب شارژ فرمایید."
                         )
-                        kb_btns = []
-                        if sub_url:
-                            kb_btns.append([InlineKeyboardButton("🚀 اتصال سریع", url=sub_url)])
-                        if uuid_created:
-                            kb_btns.append([InlineKeyboardButton("📥 دریافت کانفیگ تکی", callback_data=f"r_single_link_{uuid_created}_{sub_db_id or 0}")])
-                        kb_btns.append([InlineKeyboardButton("📱 راهنمای کپی و اتصال", callback_data="r_copy_help")])
+                        await safe_edit_admin_message(context.bot, query.message.chat_id, query.message.message_id, err_msg, reply_markup=None)
+                        await query.answer("❌ موجودی کیف پول نماینده برای تایید این سفارش کافی نیست!", show_alert=True)
+                        return
 
-                        qr_bytes = generate_qr_code_bytes(sub_url) if sub_url else None
-                        if qr_bytes:
-                            await context.bot.send_photo(
-                                chat_id=int(user_id),
-                                photo=qr_bytes,
-                                caption=c_msg,
+                    sub_db_id = None
+                    uuid_val = None
+                    sub_url = ""
+                    mode_note = ""
+
+                    if is_renewal and target_sub:
+                        sub_db_id = target_sub["id"]
+                        uuid_val = target_sub.get("hidify_uuid") or str(target_sub["id"])
+                        if HIDIFY_PANEL_URL and uuid_val:
+                            sub_url = f"{HIDIFY_PANEL_URL}/{HIDIFY_PROXY_PATH}/{uuid_val}/"
+
+                        if instant_act and target_sub.get("hidify_uuid"):
+                            try:
+                                r_client = get_reseller_hidify_client(r_id)
+                                await r_client.update_user(
+                                    uuid=target_sub["hidify_uuid"],
+                                    usage_limit_gb=float(vol) if vol > 0 else None,
+                                    package_days=int(days),
+                                    enable=True
+                                )
+                            except Exception as e_ren:
+                                logger.error(f"Error renewing user in Hiddify: {e_ren}")
+
+                        db.renew_reseller_subscription(
+                            reseller_id=r_id,
+                            sub_id=target_sub["id"],
+                            plan_id=str(plan_id),
+                            plan_name=pname,
+                            cost=wholesale_cost,
+                            data_limit=float(vol),
+                            duration=int(days),
+                            instant_activate=instant_act,
+                            payment_source="wallet",
+                            selling_price=price,
+                            profit_margin=res_profit,
+                            created_by=f"Telegram Bot ({caller_name})"
+                        )
+                        mode_note = "⚡ فعال‌سازی آنی" if instant_act else "⏳ قرارگیری در صف رزرو"
+                    else:
+                        deduct_res = db.deduct_reseller_balance(r_id, wholesale_cost, pname, account_name, selling_price=price, profit_margin=res_profit, created_by=f"Telegram Bot ({caller_name})")
+                        h_res = None
+                        try:
+                            r_client = get_reseller_hidify_client(r_id)
+                            h_res = await r_client.create_user(
+                                name=account_name,
+                                package_days=int(days),
+                                usage_limit_gb=float(vol) if vol > 0 else None,
+                                comment=f"[RESELLER_ID: #{r_id}] TG: {target_uid} | {account_name}"
+                            )
+                        except Exception as e:
+                            logger.error(f"Hiddify creation error: {e}")
+
+                        uuid_val = h_res.get("uuid") if h_res else None
+                        if uuid_val and HIDIFY_PANEL_URL:
+                            sub_url = f"{HIDIFY_PANEL_URL}/{HIDIFY_PROXY_PATH}/{uuid_val}/"
+                        else:
+                            sub_url = f"https://vpn.service/sub/{account_name}"
+
+                        sub_res = db.save_subscription(
+                            telegram_id=target_uid,
+                            hidify_uuid=uuid_val,
+                            plan_id=str(plan_id),
+                            plan_name=pname,
+                            data_limit=float(vol),
+                            duration=int(days),
+                            status="active",
+                            account_name=account_name,
+                            account_comment=f"Reseller #{r_id} Bot",
+                            reseller_id=r_id,
+                            created_by="bot"
+                        )
+                        sub_db_id = sub_res.get("subscription_id") if isinstance(sub_res, dict) else sub_res
+
+                    now_iso = get_now_iso()
+                    conn = db.get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "UPDATE transactions SET status='approved', processed_by=?, processed_at=?, updated_at=? WHERE (order_id=? OR id=?) AND reseller_id=?",
+                        (f"Telegram Bot ({caller_name})", now_iso, now_iso, order_id, order_id, r_id)
+                    )
+                    conn.commit()
+                    conn.close()
+
+                    if str(order_id).startswith("INV"):
+                        try:
+                            db.mark_smart_invoice_paid(order_id, tracking_code=str(tx_data.get("tracking_code") or order_id))
+                        except Exception:
+                            pass
+
+                    # ۴. کش‌بک و ارتقای سطح VIP کاربر
+                    cashback_note = ""
+                    try:
+                        vip_info = db.get_user_vip_info(target_uid)
+                        if vip_info.get("is_vip") and vip_info.get("cashback_percent", 0) > 0:
+                            cb_pct = vip_info.get("cashback_percent", 10)
+                            cb_amount = int((price * cb_pct) / 100)
+                            if cb_amount > 0:
+                                cb_res = db.add_wallet_balance(
+                                    target_uid,
+                                    cb_amount,
+                                    f"هدیه کش‌بک خرید VIP ({cb_pct}%)",
+                                    ref_id=str(order_id),
+                                    tx_type="cashback"
+                                )
+                                new_b = cb_res.get("new_balance", 0)
+                                cashback_note += f"\n\n🎁 **هدیه کش‌بک VIP:** مبلغ {cb_amount:,} تومان ({cb_pct}٪) به کیف پول شما واریز شد.\n💰 موجودی کیف پول: {new_b:,} تومان"
+                    except Exception as e_cb:
+                        logger.error(f"Error in reseller bot VIP cashback: {e_cb}")
+
+                    try:
+                        ug_res = db.check_and_upgrade_user_vip(target_uid, reseller_id=r_id)
+                        if ug_res.get("upgraded"):
+                            cb_rate = ug_res.get("cashback_percent", 10)
+                            t_sp = ug_res.get("total_spent", 0)
+                            cashback_note += f"\n\n🎉 **تبریک! شما به عنوان مشتری طلایی (⭐️ VIP) ارتقا یافتید!**\nبا رسیدن مجموع خرید شما به {t_sp:,} تومان، از این پس از {cb_rate}٪ کش‌بک در هر خرید برخوردار خواهید بود. 🌹"
+                    except Exception as e_ug:
+                        logger.error(f"Error checking reseller bot VIP auto upgrade: {e_ug}")
+
+                    # ۵. ادیت خودکار پیام تلگرام تمامی مدیران همراه با فال‌بک
+                    done_msg = (
+                        f"✅ <b>رسید پرداخت با موفقیت تایید شد.</b>\n\n"
+                        f"👤 تاییدکننده: <b>{html.escape(caller_name)}</b>\n"
+                        f"⏰ زمان: {get_now_shamsi()}\n"
+                        f"📦 پلن: <b>{html.escape(str(pname))}</b>\n"
+                        f"💰 هزینه عمده: <b>{wholesale_cost:,} تومان</b>\n"
+                        f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
+                        f"🔖 کد سفارش: <code>{order_id}</code>"
+                        + (f"\n🔄 حالت تمدید: <b>{mode_note}</b>" if mode_note else "")
+                    )
+                    await sync_admin_receipt_action(context.bot, order_id, caller_id, caller_name, action="approved", caller_msg=done_msg)
+
+                    # ۶. ارسال خودکار پیام و کانفیگ/QR به مشتری
+                    try:
+                        if is_renewal and not instant_act:
+                            cust_msg = (
+                                f"🎉 <b>رسید پرداخت شما با کد سفارش: {order_id} تایید شد!</b>\n\n"
+                                f"📦 پلن تمدیدی: <b>{html.escape(str(pname))}</b>\n"
+                                f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
+                                f"📊 حجم: <b>{vol} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>\n\n"
+                                f"⏳ <b>این بسته با موفقیت در صف رزرو اشتراک شما قرار گرفت.</b>\n"
+                                f"💡 حجم و روزهای باقیمانده فعلی شما کاملاً محفوظ است و به محض رسیدن مصرف به ۹۹.۹٪ یا اتمام مدت زمان، بسته جدید به صورت کاملاً خودکار فعال خواهد شد.\n"
+                                f"(همچنین می‌توانید در بخش «سرویس‌های من» در هر زمان آن را به صورت دستی فعال فرمایید){cashback_note}"
+                            )
+                            kb_btns = [
+                                [InlineKeyboardButton("📋 مشاهده وضعیت اشتراک و صف", callback_data=f"r_sub_detail_{sub_db_id}")],
+                            ]
+                            await context.bot.send_message(
+                                chat_id=target_uid,
+                                text=cust_msg,
                                 reply_markup=InlineKeyboardMarkup(kb_btns),
                                 parse_mode="HTML"
                             )
                         else:
-                            await context.bot.send_message(
-                                chat_id=int(user_id),
-                                text=c_msg,
-                                reply_markup=InlineKeyboardMarkup(kb_btns) if kb_btns else None,
-                                parse_mode="HTML"
-                            )
-                    except Exception as e_u:
-                        logger.error(f"Failed to notify customer in res_pay_app: {e_u}")
+                            cust_msg = f"🎉 <b>رسید پرداخت شما با کد سفارش: {order_id} تایید شد!</b>\n\n"
+                            cust_msg += f"📦 پلن: <b>{html.escape(str(pname))}</b>\n"
+                            cust_msg += f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
+                            cust_msg += f"📊 حجم: <b>{vol} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>\n\n"
+                            cust_msg += f"🔗 <b>لینک سابسکریپشن اختصاصی شما:</b>\n<code>{sub_url}</code>{cashback_note}\n\n"
+                            cust_msg += "💡 جهت اتصال، لینک بالا را کپی کرده یا بارکد QR زیر را در نرم‌افزار اسکن فرمایید."
 
-            elif data.startswith("res_pay_rej_"):
-                order_id = data.replace("res_pay_rej_", "")
-                await query.answer("⏳ در حال ثبت رد پرداخت...", show_alert=False)
+                            kb_btns = [
+                                [InlineKeyboardButton("🚀 اتصال سریع به برنامه", url=sub_url)],
+                            ]
+                            if uuid_val:
+                                kb_btns.append([
+                                    InlineKeyboardButton("📥 دریافت کانفیگ تکی", callback_data=f"r_single_link_{uuid_val}_{sub_db_id or 0}")
+                                ])
+                            kb_btns.append([
+                                InlineKeyboardButton("📱 راهنمای کپی و اتصال", callback_data="r_copy_help")
+                            ])
 
-                lock_res = db.lock_transaction_for_processing(order_id, locked_by=caller_name)
-                if not lock_res.get("success"):
-                    await query.answer(lock_res.get("message", "⚠️ این تراکنش قبلاً تعیین‌تکلیف شده است."), show_alert=True)
-                    return
+                            qr_bytes = generate_qr_code_bytes(sub_url) if sub_url else None
+                            if qr_bytes:
+                                await context.bot.send_photo(
+                                    chat_id=target_uid,
+                                    photo=qr_bytes,
+                                    caption=cust_msg,
+                                    reply_markup=InlineKeyboardMarkup(kb_btns),
+                                    parse_mode="HTML"
+                                )
+                            else:
+                                await context.bot.send_message(
+                                    chat_id=target_uid,
+                                    text=cust_msg,
+                                    reply_markup=InlineKeyboardMarkup(kb_btns),
+                                    parse_mode="HTML"
+                                )
+                    except Exception as e_cust:
+                        logger.error(f"Failed to deliver config with QR to customer {target_uid}: {e_cust}")
 
-                now_iso = get_now_iso()
-                conn = db.get_connection()
-                cursor = conn.cursor()
-                cursor.execute(
-                    "UPDATE transactions SET status='rejected', processed_by=?, processed_at=?, updated_at=? WHERE (order_id=? OR id=?) AND reseller_id=?",
-                    (f"Telegram Bot ({caller_name})", now_iso, now_iso, order_id, order_id, r_id)
-                )
-                conn.commit()
-                conn.close()
+                    # ۷. اعلان موفقیت مستقیم به مدیر کلیک‌کننده
+                    try:
+                        await query.answer("✅ پرداخت تایید شد و مشخصات اشتراک برای مشتری ارسال گردید.", show_alert=True)
+                    except Exception:
+                        pass
 
-                rej_adm_text = f"❌ <b>پرداخت سفارش {order_id} توسط {html.escape(caller_name)} رد شد.</b>"
-                await update_all_admin_receipt_messages(context.bot, order_id, rej_adm_text)
+                except Exception as ex_rapp:
+                    logger.error(f"Error in rapprove_ handler: {ex_rapp}", exc_info=True)
+                    try:
+                        await query.answer(f"❌ خطا در پردازش تایید: {str(ex_rapp)[:100]}", show_alert=True)
+                    except Exception:
+                        pass
 
-                # اطلاع‌رسانی به سایر مدیران
-                other_adm_rej_msg = (
-                    f"🔔 <b>مدیر {html.escape(caller_name)} رسید پرداخت با کد سفارش: <code>{order_id}</code> را رد کرد و دیگر این رسید پرداخت نیاز به رسیدگی ندارد.</b>"
-                )
-                await notify_other_reseller_admins(context.bot, caller_id, ["main", "finance"], other_adm_rej_msg)
+            elif data.startswith("rreject_"):
+                try:
+                    parts = data.split("_")
+                    order_id = parts[1]
+                    target_uid = int(parts[2])
 
-                tx_data = db.get_transaction_by_order_id(order_id)
-                user_id = tx_data.get("user_id") if tx_data else None
-                if user_id and int(user_id) > 0:
+                    await query.answer("⏳ در حال ثبت رد پرداخت...", show_alert=False)
+
+                    lock_res = db.lock_transaction_for_processing(order_id, locked_by=caller_name)
+                    if not lock_res.get("success"):
+                        await query.answer(lock_res.get("message", "⚠️ این فیش قبلاً تعیین‌تکلیف شده است."), show_alert=True)
+                        return
+
+                    db.update_transaction(order_id, status="rejected", processed_by=caller_name, processed_at=get_now_iso())
+                    rej_msg = f"❌ <b>رسید پرداخت با کد سفارش: <code>{order_id}</code> توسط مدیر {html.escape(caller_name)} رد شد.</b>\n⏰ زمان: {get_now_shamsi()}"
+                    await sync_admin_receipt_action(context.bot, order_id, caller_id, caller_name, action="rejected", caller_msg=rej_msg)
+
                     try:
                         await context.bot.send_message(
-                            chat_id=int(user_id),
-                            text=f"❌ <b>رسید پرداخت شما با کد سفارش: {order_id} تایید نشد.</b>\n\nجهت راهنمایی با پشتیبانی تماس بگیرید.",
+                            chat_id=target_uid,
+                            text=f"❌ <b>رسید پرداخت شما با کد سفارش: {order_id} تایید نشد.</b>\n\nدر صورت بروز هرگونه ابهام، با پشتیبانی در ارتباط باشید.",
                             parse_mode="HTML"
                         )
+                    except Exception:
+                        pass
+
+                    await query.answer("❌ پرداخت رد شد و به مشتری اطلاع‌رسانی گردید.", show_alert=True)
+                except Exception as ex_rrej:
+                    logger.error(f"Error in rreject_ handler: {ex_rrej}", exc_info=True)
+                    try:
+                        await query.answer(f"❌ خطا در رد پرداخت: {str(ex_rrej)[:100]}", show_alert=True)
+                    except Exception:
+                        pass
+
+            elif data.startswith("res_pay_app_"):
+                try:
+                    order_id = data.replace("res_pay_app_", "")
+                    await query.answer("⏳ در حال بررسی و تایید سفارش... لطفاً شکیبا باشید", show_alert=False)
+
+                    lock_res = db.lock_transaction_for_processing(order_id, locked_by=caller_name)
+                    if not lock_res.get("success"):
+                        await query.answer(lock_res.get("message", "⚠️ این تراکنش قبلاً رسیدگی شده است."), show_alert=True)
+                        return
+
+                    tx_data = lock_res.get("tx") or db.get_transaction_by_order_id(order_id) or {}
+                    user_id = tx_data.get("user_id") or 0
+                    plan_name = tx_data.get("plan_name", "اشتراک")
+                    plans = db.get_reseller_plans(r_id)
+                    selected_plan = next((p for p in plans if p.get("name") == plan_name or p.get("display_name") == plan_name or p.get("master_name") == plan_name or str(p.get("id")) == str(tx_data.get("plan_id"))), None)
+                    if not selected_plan and plans:
+                        selected_plan = plans[0]
+
+                    vol = selected_plan.get("display_data_limit") if selected_plan and selected_plan.get("display_data_limit") is not None else (selected_plan.get("data_limit") if selected_plan else 30)
+                    days = selected_plan.get("display_duration") if selected_plan and selected_plan.get("display_duration") is not None else (selected_plan.get("duration") if selected_plan else 30)
+                    original_price = selected_plan.get("display_price") or selected_plan.get("price") if selected_plan else tx_data.get("amount", 0)
+
+                    stats = db.get_reseller_stats(r_id)
+                    discount = stats.get("discount_percent", 20)
+                    master_base = (selected_plan.get("master_price") or original_price) if selected_plan else original_price
+                    wholesale_cost = selected_plan.get("wholesale_price") if selected_plan and selected_plan.get("wholesale_price") is not None else (master_base - int((master_base * discount) / 100))
+
+                    if stats.get("balance", 0) < wholesale_cost:
+                        db.update_transaction(order_id, status="pending")
+                        err_msg = (
+                            f"❌ <b>خطا در تایید:</b> موجودی کیف پول نماینده کافی نیست!\n\n"
+                            f"💰 مبلغ عمده مورد نیاز: <b>{wholesale_cost:,} تومان</b>\n"
+                            f"💳 موجودی فعلی: <b>{stats.get('balance', 0):,} تومان</b>"
+                        )
+                        await safe_edit_admin_message(context.bot, query.message.chat_id, query.message.message_id, err_msg, reply_markup=None)
+                        await query.answer("❌ موجودی کیف پول شما کافی نیست!", show_alert=True)
+                        return
+
+                    is_renewal = bool(tx_data.get("is_renewal"))
+                    renew_sub_id = tx_data.get("renew_sub_id")
+                    comm = tx_data.get("account_comment") or ""
+                    if not renew_sub_id and "renewal_sub_id:" in comm:
+                        try:
+                            for part in comm.split():
+                                if part.startswith("renewal_sub_id:"):
+                                    renew_sub_id = int(part.split(":")[1])
+                                    is_renewal = True
+                        except Exception:
+                            pass
+
+                    target_sub = None
+                    if is_renewal and renew_sub_id:
+                        target_sub = db.get_reseller_subscription(r_id, renew_sub_id) or db.get_subscription(renew_sub_id)
+
+                    res_profit = max(0, original_price - wholesale_cost)
+                    account_name = tx_data.get("account_name") or (target_sub.get("account_name") if target_sub else f"r{r_id}_u{user_id}_{int(datetime.now().timestamp()) % 10000}")
+                    sub_url = ""
+                    sub_db_id = None
+                    uuid_created = None
+                    mode_note = ""
+
+                    smart_inv = db.get_smart_invoice_by_order_id(order_id)
+                    instant_act = True
+                    if smart_inv and smart_inv.get("instant_activation") is not None:
+                        instant_act = bool(smart_inv["instant_activation"])
+                    elif "instant_act:0" in comm:
+                        instant_act = False
+
+                    if target_sub:
+                        sub_db_id = target_sub["id"]
+                        uuid_created = target_sub.get("hidify_uuid") or str(target_sub["id"])
+                        if HIDIFY_PANEL_URL and uuid_created:
+                            sub_url = f"{HIDIFY_PANEL_URL}/{HIDIFY_PROXY_PATH}/{uuid_created}/"
+
+                        if instant_act and target_sub.get("hidify_uuid"):
+                            try:
+                                r_client = get_reseller_hidify_client(r_id)
+                                await r_client.update_user(
+                                    uuid=target_sub["hidify_uuid"],
+                                    usage_limit_gb=float(vol) if vol > 0 else None,
+                                    package_days=int(days),
+                                    enable=True
+                                )
+                            except Exception as e_ren:
+                                logger.error(f"Error renewing user in Hiddify: {e_ren}")
+
+                        plan_id_val = str(selected_plan.get("id") or 1) if selected_plan else "1"
+                        db.renew_reseller_subscription(
+                            reseller_id=r_id,
+                            sub_id=target_sub["id"],
+                            plan_id=plan_id_val,
+                            plan_name=plan_name,
+                            cost=wholesale_cost,
+                            data_limit=float(vol),
+                            duration=int(days),
+                            instant_activate=instant_act,
+                            payment_source="wallet",
+                            selling_price=original_price,
+                            profit_margin=res_profit,
+                            created_by=f"Telegram Bot ({caller_name})"
+                        )
+                        mode_note = "⚡ فعال‌سازی آنی" if instant_act else "⏳ قرارگیری در صف رزرو"
+                    else:
+                        db.deduct_reseller_balance(r_id, wholesale_cost, plan_name, account_name, selling_price=original_price, profit_margin=res_profit, created_by=f"Telegram Bot ({caller_name})")
+                        h_res = None
+                        try:
+                            r_client = get_reseller_hidify_client(r_id)
+                            h_res = await r_client.create_user(
+                                name=account_name,
+                                package_days=int(days),
+                                usage_limit_gb=float(vol) if vol > 0 else None,
+                                comment=f"[RESELLER_ID: #{r_id}] TG: {user_id} | {account_name}"
+                            )
+                        except Exception as e:
+                            logger.error(f"Hiddify creation error: {e}")
+
+                        uuid_val = h_res.get("uuid") if h_res else None
+                        uuid_created = uuid_val
+                        if uuid_val and HIDIFY_PANEL_URL:
+                            sub_url = f"{HIDIFY_PANEL_URL}/{HIDIFY_PROXY_PATH}/{uuid_val}/"
+                        else:
+                            sub_url = f"https://vpn.service/sub/{account_name}"
+
+                        plan_id_val = str(selected_plan.get("id") or 1) if selected_plan else "1"
+                        sub_res = db.save_subscription(
+                            telegram_id=user_id,
+                            hidify_uuid=uuid_val,
+                            plan_id=plan_id_val,
+                            plan_name=plan_name,
+                            data_limit=float(vol),
+                            duration=int(days),
+                            status="active",
+                            account_name=account_name,
+                            account_comment=f"Reseller #{r_id} Bot",
+                            reseller_id=r_id,
+                            created_by="bot"
+                        )
+                        sub_db_id = sub_res.get("subscription_id") if isinstance(sub_res, dict) else sub_res
+
+                    now_iso = get_now_iso()
+                    conn = db.get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "UPDATE transactions SET status='approved', processed_by=?, processed_at=?, updated_at=? WHERE (order_id=? OR id=?) AND reseller_id=?",
+                        (f"Telegram Bot ({caller_name})", now_iso, now_iso, order_id, order_id, r_id)
+                    )
+                    conn.commit()
+                    conn.close()
+
+                    if str(order_id).startswith("INV"):
+                        try:
+                            db.mark_smart_invoice_paid(order_id, tracking_code=str(tx_data.get("tracking_code") or order_id))
+                        except Exception:
+                            pass
+
+                    done_adm_text = (
+                        f"✅ <b>سفارش {order_id} با موفقیت تایید شد.</b>\n\n"
+                        f"👤 بررسی شده توسط: <b>{html.escape(caller_name)}</b>\n"
+                        f"📦 پلن: <b>{html.escape(str(plan_name))}</b> | اکانت: <code>{html.escape(str(account_name))}</code>\n"
+                        f"💰 هزینه عمده: <b>{wholesale_cost:,} تومان</b>"
+                        + (f"\n🔄 حالت تمدید: <b>{mode_note}</b>" if mode_note else "")
+                    )
+                    await sync_admin_receipt_action(context.bot, order_id, caller_id, caller_name, action="approved", caller_msg=done_adm_text)
+
+                    if user_id and int(user_id) > 0:
+                        try:
+                            if is_renewal and not instant_act:
+                                c_msg = (
+                                    f"🎉 <b>رسید پرداخت شما با کد سفارش: {order_id} تایید شد!</b>\n\n"
+                                    f"📦 پلن تمدیدی: <b>{html.escape(str(plan_name))}</b>\n"
+                                    f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
+                                    f"📊 حجم: <b>{vol} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>\n\n"
+                                    f"⏳ <b>این بسته با موفقیت در صف رزرو اشتراک شما قرار گرفت.</b>\n"
+                                    f"حجم و زمان اشتراک فعلی شما حفظ شده و بسته جدید به صورت خودکار پس از اتمام بسته فعلی فعال خواهد شد."
+                                )
+                                kb_btns = [
+                                    [InlineKeyboardButton("📋 مشاهده اشتراک و صف تمدید", callback_data=f"r_sub_detail_{sub_db_id}")]
+                                ]
+                                await context.bot.send_message(
+                                    chat_id=int(user_id),
+                                    text=c_msg,
+                                    reply_markup=InlineKeyboardMarkup(kb_btns),
+                                    parse_mode="HTML"
+                                )
+                            else:
+                                c_msg = (
+                                    f"🎉 <b>رسید پرداخت شما با کد سفارش: {order_id} تایید شد!</b>\n\n"
+                                    f"📦 پلن: <b>{html.escape(str(plan_name))}</b>\n"
+                                    f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
+                                    f"📊 حجم: <b>{vol} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>\n\n"
+                                    + (f"🔗 لینک اتصال اختصاصی:\n<code>{sub_url}</code>\n\n" if sub_url else "")
+                                    + "💡 جهت اتصال، لینک بالا را کپی کرده یا بارکد QR زیر را اسکن فرمایید."
+                                )
+                                kb_btns = []
+                                if sub_url:
+                                    kb_btns.append([InlineKeyboardButton("🚀 اتصال سریع", url=sub_url)])
+                                if uuid_created:
+                                    kb_btns.append([InlineKeyboardButton("📥 دریافت کانفیگ تکی", callback_data=f"r_single_link_{uuid_created}_{sub_db_id or 0}")])
+                                kb_btns.append([InlineKeyboardButton("📱 راهنمای کپی و اتصال", callback_data="r_copy_help")])
+
+                                qr_bytes = generate_qr_code_bytes(sub_url) if sub_url else None
+                                if qr_bytes:
+                                    await context.bot.send_photo(
+                                        chat_id=int(user_id),
+                                        photo=qr_bytes,
+                                        caption=c_msg,
+                                        reply_markup=InlineKeyboardMarkup(kb_btns),
+                                        parse_mode="HTML"
+                                    )
+                                else:
+                                    await context.bot.send_message(
+                                        chat_id=int(user_id),
+                                        text=c_msg,
+                                        reply_markup=InlineKeyboardMarkup(kb_btns) if kb_btns else None,
+                                        parse_mode="HTML"
+                                    )
+                        except Exception as e_u:
+                            logger.error(f"Failed to notify customer in res_pay_app: {e_u}")
+
+                    await query.answer("✅ پرداخت تایید شد و مشخصات اشتراک برای مشتری ارسال گردید.", show_alert=True)
+                except Exception as ex_app:
+                    logger.error(f"Error in res_pay_app: {ex_app}", exc_info=True)
+                    try:
+                        await query.answer(f"❌ خطا در تایید پرداخت: {str(ex_app)[:100]}", show_alert=True)
+                    except Exception:
+                        pass
+
+            elif data.startswith("res_pay_rej_"):
+                try:
+                    order_id = data.replace("res_pay_rej_", "")
+                    await query.answer("⏳ در حال ثبت رد پرداخت...", show_alert=False)
+
+                    lock_res = db.lock_transaction_for_processing(order_id, locked_by=caller_name)
+                    if not lock_res.get("success"):
+                        await query.answer(lock_res.get("message", "⚠️ این تراکنش قبلاً تعیین‌تکلیف شده است."), show_alert=True)
+                        return
+
+                    now_iso = get_now_iso()
+                    conn = db.get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "UPDATE transactions SET status='rejected', processed_by=?, processed_at=?, updated_at=? WHERE (order_id=? OR id=?) AND reseller_id=?",
+                        (f"Telegram Bot ({caller_name})", now_iso, now_iso, order_id, order_id, r_id)
+                    )
+                    conn.commit()
+                    conn.close()
+
+                    rej_adm_text = f"❌ <b>پرداخت سفارش {order_id} توسط مدیر {html.escape(caller_name)} رد شد.</b>"
+                    await sync_admin_receipt_action(context.bot, order_id, caller_id, caller_name, action="rejected", caller_msg=rej_adm_text)
+
+                    tx_data = db.get_transaction_by_order_id(order_id)
+                    user_id = tx_data.get("user_id") if tx_data else None
+                    if user_id and int(user_id) > 0:
+                        try:
+                            await context.bot.send_message(
+                                chat_id=int(user_id),
+                                text=f"❌ <b>رسید پرداخت شما با کد سفارش: {order_id} تایید نشد.</b>\n\nجهت راهنمایی با پشتیبانی تماس بگیرید.",
+                                parse_mode="HTML"
+                            )
+                        except Exception:
+                            pass
+
+                    await query.answer("❌ پرداخت رد شد و به مشتری اطلاع داده شد.", show_alert=True)
+                except Exception as ex_rej:
+                    logger.error(f"Error in res_pay_rej: {ex_rej}", exc_info=True)
+                    try:
+                        await query.answer(f"❌ خطا در رد سفارش: {str(ex_rej)[:100]}", show_alert=True)
                     except Exception:
                         pass
 
@@ -1718,19 +2130,8 @@ class ResellerBotInstance:
                 
                 orig_text = query.message.text_html or query.message.caption_html or query.message.text or ""
                 done_msg = f"{orig_text}\n\n✅ <b>پاسخ آماده برای تیکت #{ticket_id} ارسال شد:</b>\n«{chosen_text}»"
-                if query.message.photo or query.message.document:
-                    await query.edit_message_caption(caption=done_msg, parse_mode="HTML")
-                else:
-                    await query.edit_message_text(text=done_msg, parse_mode="HTML")
-
-                # اطلاع‌رسانی به سایر مدیران پشتیبانی
                 c_adm_name = user.first_name or f"مدیر {user.id}"
-                other_adm_tkt = (
-                    f"🔔 <b>مدیر {html.escape(c_adm_name)} به تیکت شماره #{ticket_id} پاسخ داد:</b>\n"
-                    f"«{html.escape(chosen_text)}»\n\n"
-                    f"این تیکت تعیین‌تکلیف شد و دیگر نیازی به رسیدگی ندارد."
-                )
-                await notify_other_reseller_admins(context.bot, user.id, ["main", "support"], other_adm_tkt)
+                await sync_admin_ticket_action(context.bot, ticket_id, user.id, c_adm_name, action="replied", reply_snippet=chosen_text, caller_msg=done_msg)
 
             elif data.startswith("res_canned_cancel_"):
                 ticket_id = int(data.replace("res_canned_cancel_", ""))
@@ -1750,15 +2151,8 @@ class ResellerBotInstance:
                 db.close_ticket(ticket_id)
                 orig_text = query.message.text_html or query.message.caption_html or query.message.text or ""
                 done_msg = f"{orig_text}\n\n🔒 <b>تیکت #{ticket_id} با موفقیت بسته شد.</b>"
-                if query.message.photo or query.message.document:
-                    await query.edit_message_caption(caption=done_msg, parse_mode="HTML")
-                else:
-                    await query.edit_message_text(text=done_msg, parse_mode="HTML")
-
-                # اطلاع‌رسانی به سایر مدیران
                 c_adm_name = user.first_name or f"مدیر {user.id}"
-                other_adm_cls = f"🔒 <b>مدیر {html.escape(c_adm_name)} تیکت شماره #{ticket_id} را بست.</b>"
-                await notify_other_reseller_admins(context.bot, user.id, ["main", "support"], other_adm_cls)
+                await sync_admin_ticket_action(context.bot, ticket_id, user.id, c_adm_name, action="closed", caller_msg=done_msg)
 
         async def reseller_reply_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """دستور ارسال پاسخ تیکت: /reply_ticket [شماره تیکت] [متن پاسخ]"""
@@ -1801,14 +2195,9 @@ class ResellerBotInstance:
                     logger.error(f"Error sending reply to customer {cust_tg}: {e_c}")
             await update.message.reply_text(f"✅ پاسخ شما به تیکت #{ticket_id} با موفقیت ثبت و ارسال شد.")
 
-            # اطلاع‌رسانی به سایر مدیران
+            # ادیت پیام تیکت برای سایر مدیران به همراه فال‌بک
             c_adm_name = user.first_name or f"مدیر {user.id}"
-            other_adm_tkt = (
-                f"🔔 <b>مدیر {html.escape(c_adm_name)} به تیکت شماره #{ticket_id} پاسخ داد:</b>\n"
-                f"«{html.escape(reply_text[:120])}»\n\n"
-                f"این تیکت تعیین‌تکلیف شد و دیگر نیازی به رسیدگی ندارد."
-            )
-            await notify_other_reseller_admins(context.bot, user.id, ["main", "support"], other_adm_tkt)
+            await sync_admin_ticket_action(context.bot, ticket_id, user.id, c_adm_name, action="replied", reply_snippet=reply_text)
 
         async def my_subs_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """نمایش کامل وضعیت اشتراک‌های کاربر با استعلام زنده از سرور هیدیفای نماینده"""
@@ -2063,13 +2452,83 @@ class ResellerBotInstance:
                     emoji = get_plan_telegram_emoji(p, pid)
 
                     btn_text = f"{emoji} {pname} | {vol_str} - {days} روز ({price:,} تومان)"
-                    buttons.append([InlineKeyboardButton(btn_text, callback_data=f"r_conf_{pid}")])
+                    buttons.append([InlineKeyboardButton(btn_text, callback_data=f"r_renew_choose_{sub_id}_{pid}")])
 
                 buttons.append([InlineKeyboardButton("◀️ انصراف", callback_data="r_cancel_buy")])
 
                 await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
             except Exception as e:
                 logger.error(f"Error in sub_renew_callback reseller {r_id}: {e}")
+
+        async def reseller_renew_mode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """انتخاب نحوه تمدید اشتراک: فعال‌سازی آنی یا قرارگیری در صف تمدید (رزرو خودکار)"""
+            query = update.callback_query
+            await query.answer()
+            data = query.data
+            try:
+                if data.startswith("r_renew_choose_"):
+                    parts = data.split("_")
+                    sub_id = int(parts[3])
+                    plan_id = parts[4]
+
+                    user_subs = db.get_user_subscriptions(update.effective_user.id, reseller_id=r_id)
+                    target_sub = next((s for s in user_subs if s["id"] == sub_id), None)
+                    plan = db.get_reseller_plan(r_id, plan_id)
+                    if not target_sub or not plan:
+                        await query.answer("❌ اشتراک یا پلن انتخابی یافت نشد.", show_alert=True)
+                        return
+
+                    context.user_data["renew_sub_id"] = sub_id
+                    context.user_data["is_renewal"] = True
+                    context.user_data["buying_account_name"] = target_sub.get("account_name")
+
+                    pname = html.escape(str(plan.get("display_name") or plan.get("master_name", "پلن")))
+                    price = plan.get("display_price", 0)
+                    vol = plan.get("data_limit", 0)
+                    days = plan.get("duration", 30)
+                    vol_str = f"{vol} گیگابایت" if vol > 0 else "نامحدود"
+                    acc_title = html.escape(str(target_sub.get("account_name") or "اشتراک"))
+
+                    text = (
+                        f"🔄 <b>نحوه تمدید اشتراک «{acc_title}»:</b>\n\n"
+                        f"📦 پلن انتخابی: <b>{pname}</b> ({vol_str} | {days} روز)\n"
+                        f"💰 مبلغ: <b>{price:,} تومان</b>\n\n"
+                        f"لطفاً روش اعمال این تمدید را مشخص فرمایید:\n\n"
+                        f"⚡ <b>فعال‌سازی آنی:</b>\n"
+                        f"بسته بلافاصله پس از پرداخت فعال می‌شود؛ دوره مصرف و زمان اشتراک ریست شده و حجم/روزهای باقیمانده فعلی صفر می‌گردد.\n\n"
+                        f"⏳ <b>قرارگیری در صف تمدید (پیشنهادی):</b>\n"
+                        f"بسته در صف رزرو اشتراک شما ذخیره می‌شود بدون اینکه حجم یا زمان فعلی شما بسوزد. به محض رسیدن مصرف به ۹۹.۹٪ یا پایان اعتبار فعلی، بسته رزرو شده خودکار فعال خواهد شد."
+                    )
+                    buttons = [
+                        [InlineKeyboardButton("⏳ قرارگیری در صف تمدید (رزرو خودکار)", callback_data=f"r_ren_set_queue_{sub_id}_{plan_id}")],
+                        [InlineKeyboardButton("⚡ فعال‌سازی آنی (ریست دوره فعلی)", callback_data=f"r_ren_set_instant_{sub_id}_{plan_id}")],
+                        [InlineKeyboardButton("◀️ بازگشت به لیست پلن‌ها", callback_data=f"r_renew_{sub_id}")]
+                    ]
+                    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+                    return
+
+                elif data.startswith("r_ren_set_"):
+                    is_instant = data.startswith("r_ren_set_instant_")
+                    prefix = "r_ren_set_instant_" if is_instant else "r_ren_set_queue_"
+                    remain = data.replace(prefix, "")
+                    parts = remain.split("_")
+                    sub_id = int(parts[0])
+                    plan_id = parts[1]
+
+                    context.user_data["is_renewal"] = True
+                    context.user_data["renew_sub_id"] = sub_id
+                    context.user_data["instant_activation"] = is_instant
+
+                    user_subs = db.get_user_subscriptions(update.effective_user.id, reseller_id=r_id)
+                    target_sub = next((s for s in user_subs if s["id"] == sub_id), None)
+                    if target_sub:
+                        context.user_data["buying_account_name"] = target_sub.get("account_name")
+
+                    query.data = f"r_conf_{plan_id}"
+                    return await buy_plan_confirm_callback(update, context)
+            except Exception as e:
+                logger.error(f"Error in reseller_renew_mode_callback reseller {r_id}: {e}", exc_info=True)
+                await query.answer("❌ خطا در پردازش درخواست تمدید", show_alert=True)
 
         async def reseller_queue_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """مدیریت بسته‌های در صف تمدید و فعال‌سازی آنی با اخطار و تاییدیه توسط کاربر"""
@@ -2271,11 +2730,30 @@ class ResellerBotInstance:
                 await update.message.reply_text(msg, reply_markup=kb, parse_mode="HTML")
 
         async def reseller_quick_ticket_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            """ثبت سریع تیکت پشتیبانی توسط مشتری با پیام‌های پرکاربرد"""
+            """ثبت سریع تیکت پشتیبانی توسط مشتری با گزینه‌های کپی و ویرایش یا ارسال مستقیم"""
             query = update.callback_query
             user = update.effective_user
             data = query.data
             await query.answer()
+
+            quick_map = {
+                "disconnect": (
+                    "🔴 قطعی و عدم اتصال سرویس",
+                    "سلام و وقت بخیر، سرویس من متصل نمی‌شود و با قطعی مواجه هستم. لطفاً بررسی و راهنمایی بفرمایید."
+                ),
+                "speed": (
+                    "📉 کندی شدید سرعت اینترنت",
+                    "سلام، سرعت اتصال سرویس من بسیار پایین آمده و پینگ بالایی دارد. لطفاً بررسی فرمایید."
+                ),
+                "server": (
+                    "🔄 درخواست سرور یا کانفیگ جدید",
+                    "سلام، کانفیگ‌های فعلی برای اپراتور من به سختی متصل می‌شوند. لطفاً لینک یا سرور جایگزین ارسال فرمایید."
+                ),
+                "billing": (
+                    "💳 سوال درباره تمدید یا واریزی",
+                    "سلام، در مورد تمدید اشتراک یا وضعیت فیش واریزی خود سوال دارم، لطفاً رسیدگی فرمایید."
+                ),
+            }
 
             if data == "r_quick_tkt_custom":
                 context.user_data["waiting_customer_ticket"] = True
@@ -2292,74 +2770,105 @@ class ResellerBotInstance:
 
             elif data == "r_quick_tkt_cancel":
                 context.user_data.pop("waiting_customer_ticket", None)
+                context.user_data.pop("customer_ticket_subject", None)
                 await query.edit_message_text("❌ ارسال پیام به پشتیبانی لغو شد.")
                 return
 
-            quick_map = {
-                "r_quick_tkt_disconnect": (
-                    "🔴 قطعی و عدم اتصال سرویس",
-                    "سلام و وقت بخیر، سرویس من متصل نمی‌شود و با قطعی مواجه هستم. لطفاً بررسی و راهنمایی بفرمایید."
-                ),
-                "r_quick_tkt_speed": (
-                    "📉 کندی شدید سرعت اینترنت",
-                    "سلام، سرعت اتصال سرویس من بسیار پایین آمده و پینگ بالایی دارد. لطفاً بررسی فرمایید."
-                ),
-                "r_quick_tkt_server": (
-                    "🔄 درخواست سرور یا کانفیگ جدید",
-                    "سلام، کانفیگ‌های فعلی برای اپراتور من به سختی متصل می‌شوند. لطفاً لینک یا سرور جایگزین ارسال فرمایید."
-                ),
-                "r_quick_tkt_billing": (
-                    "💳 سوال درباره تمدید یا واریزی",
-                    "سلام، در مورد تمدید اشتراک یا وضعیت فیش واریزی خود سوال دارم، لطفاً رسیدگی فرمایید."
-                ),
-            }
+            elif data == "r_qback":
+                return await support_handler(update, context)
 
-            topic_info = quick_map.get(data)
-            if not topic_info:
+            # ۱. وقتی کاربر یکی از ۴ دکمه سریع را می‌زند: پیش‌نمایش + دو گزینه
+            for key in ("disconnect", "speed", "server", "billing"):
+                if data == f"r_quick_tkt_{key}":
+                    subj, content = quick_map[key]
+                    preview_text = (
+                        f"📋 <b>موضوع تیکت انتخابی:</b> {subj}\n\n"
+                        f"📝 <b>متن پیام پیشنهادی:</b>\n"
+                        f"<code>{html.escape(content)}</code>\n\n"
+                        f"لطفاً نحوه ارسال پیام خود را انتخاب فرمایید:\n"
+                        f"• <b>🚀 ارسال مستقیم:</b> همین متن آماده بلافاصله برای کارشناسان پشتیبانی ارسال و ثبت می‌شود.\n"
+                        f"• <b>📋 کپی و ویرایش پیام:</b> متن آماده جهت ویرایش در اختیار شما قرار می‌گیرد تا بتوانید متن را به دلخواه شخصی‌سازی کرده و بفرستید."
+                    )
+                    choice_kb = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🚀 ارسال مستقیم", callback_data=f"r_qsend_{key}")],
+                        [InlineKeyboardButton("📋 کپی و ویرایش پیام", callback_data=f"r_qedit_{key}")],
+                        [InlineKeyboardButton("◀️ بازگشت به منوی پشتیبانی", callback_data="r_qback")]
+                    ])
+                    await query.edit_message_text(preview_text, reply_markup=choice_kb, parse_mode="HTML")
+                    return
+
+            # ۲. گزینه «کپی و ویرایش پیام»
+            if data.startswith("r_qedit_"):
+                key = data.replace("r_qedit_", "")
+                topic_info = quick_map.get(key)
+                if not topic_info:
+                    return
+                subj, content = topic_info
+                is_vip = db.is_user_vip(user.id)
+                full_subj = f"{'⭐️ [VIP] ' if is_vip else ''}{subj}"
+
+                context.user_data["waiting_customer_ticket"] = True
+                context.user_data["customer_ticket_subject"] = full_subj
+
+                edit_prompt = (
+                    f"📋 <b>ویرایش و ارسال تیکت: {subj}</b>\n\n"
+                    f"👇 لطفاً متن زیر را لمس فرمایید تا کپی شود، سپس آن را در کادر پیام paste کرده، ویرایش نموده و ارسال کنید:\n\n"
+                    f"<code>{html.escape(content)}</code>"
+                )
+                cancel_kb = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("◀️ انصراف", callback_data="r_quick_tkt_cancel")]
+                ])
+                await query.edit_message_text(edit_prompt, reply_markup=cancel_kb, parse_mode="HTML")
                 return
 
-            subj, content = topic_info
-            is_vip = db.is_user_vip(user.id)
-            full_subj = f"{'⭐️ [VIP] ' if is_vip else ''}{subj}"
+            # ۳. گزینه «ارسال مستقیم»
+            elif data.startswith("r_qsend_"):
+                key = data.replace("r_qsend_", "")
+                topic_info = quick_map.get(key)
+                if not topic_info:
+                    return
+                subj, content = topic_info
+                is_vip = db.is_user_vip(user.id)
+                full_subj = f"{'⭐️ [VIP] ' if is_vip else ''}{subj}"
 
-            t_res = db.create_ticket(
-                user_id=user.id,
-                username=user.username or user.first_name,
-                subject=full_subj,
-                message=content,
-                reseller_id=r_id
-            )
-            t_id = t_res.get("ticket_id", 0)
+                t_res = db.create_ticket(
+                    user_id=user.id,
+                    username=user.username or user.first_name,
+                    subject=full_subj,
+                    message=content,
+                    reseller_id=r_id
+                )
+                t_id = t_res.get("ticket_id", 0)
 
-            confirm_text = (
-                f"✅ <b>پیام پشتیبانی شما با موفقیت ثبت شد!</b>\n\n"
-                f"🔖 شماره پیگیری تیکت: <b>#{t_id}</b>\n"
-                f"📌 موضوع: <b>{subj}</b>\n\n"
-                f"📝 متن پیام ارسالی:\n«{content}»\n\n"
-                f"کارشناسان ما به زودی پیام شما را بررسی کرده و پاسخ را در همین ربات برای شما ارسال خواهند کرد."
-            )
-            await query.edit_message_text(confirm_text, parse_mode="HTML")
+                confirm_text = (
+                    f"✅ <b>پیام پشتیبانی شما با موفقیت ثبت شد!</b>\n\n"
+                    f"🔖 شماره پیگیری تیکت: <b>#{t_id}</b>\n"
+                    f"📌 موضوع: <b>{subj}</b>\n\n"
+                    f"📝 متن پیام ارسالی:\n«{content}»\n\n"
+                    f"کارشناسان ما به زودی پیام شما را بررسی کرده و پاسخ را در همین ربات برای شما ارسال خواهند کرد."
+                )
+                await query.edit_message_text(confirm_text, parse_mode="HTML")
 
-            # اطلاع‌رسانی به مدیران پشتیبانی
-            vip_alert = "🚨 ⭐️ <b>[تیکت فوری - مشتری ویژه VIP]</b>" if is_vip else "📨 <b>تیکت پشتیبانی جدید</b>"
-            notif_msg = (
-                f"{vip_alert}\n\n"
-                f"👤 مشتری: {html.escape(str(user.first_name))} (ID: <code>{user.id}</code>)\n"
-                f"💬 یوزرنیم: @{user.username or 'ندارد'}\n"
-                f"📌 موضوع: <b>{html.escape(full_subj)}</b>\n"
-                f"📝 متن پیام:\n{html.escape(content)}\n\n"
-                f"🔖 شماره تیکت: #{t_id}"
-            )
-            r_kb = InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton("✍️ پاسخ متنی", callback_data=f"res_reply_tkt_{t_id}"),
-                    InlineKeyboardButton("⚡ پاسخ‌های آماده", callback_data=f"res_canned_tkt_{t_id}")
-                ],
-                [
-                    InlineKeyboardButton("🔒 بستن تیکت", callback_data=f"res_close_tkt_{t_id}")
-                ]
-            ])
-            await notify_reseller_admins(context.bot, ["main", "support"], notif_msg, reply_markup=r_kb)
+                vip_alert = "🚨 ⭐️ <b>[تیکت فوری - مشتری ویژه VIP]</b>" if is_vip else "📨 <b>تیکت پشتیبانی جدید</b>"
+                notif_msg = (
+                    f"{vip_alert}\n\n"
+                    f"👤 مشتری: {html.escape(str(user.first_name))} (ID: <code>{user.id}</code>)\n"
+                    f"💬 یوزرنیم: @{user.username or 'ندارد'}\n"
+                    f"📌 موضوع: <b>{html.escape(full_subj)}</b>\n"
+                    f"📝 متن پیام:\n{html.escape(content)}\n\n"
+                    f"🔖 شماره تیکت: #{t_id}"
+                )
+                r_kb = InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton("✍️ پاسخ متنی", callback_data=f"res_reply_tkt_{t_id}"),
+                        InlineKeyboardButton("⚡ پاسخ‌های آماده", callback_data=f"res_canned_tkt_{t_id}")
+                    ],
+                    [
+                        InlineKeyboardButton("🔒 بستن تیکت", callback_data=f"res_close_tkt_{t_id}")
+                    ]
+                ])
+                await notify_reseller_admins(context.bot, ["main", "support"], notif_msg, reply_markup=r_kb, ticket_id=t_id)
+                return
 
         async def guide_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """راهنمای اتصال و لینک آموزش‌های تصویری و حل مشکلات اتصال"""
@@ -2843,8 +3352,7 @@ class ResellerBotInstance:
                 t_id = int(data.replace("res_adm_tcls_", ""))
                 db.close_ticket(t_id)
                 c_adm_name = user.first_name or f"مدیر {user.id}"
-                other_adm_cls = f"🔒 <b>مدیر {html.escape(c_adm_name)} تیکت شماره #{t_id} را بست.</b>"
-                await notify_other_reseller_admins(context.bot, user.id, ["main", "support"], other_adm_cls)
+                await sync_admin_ticket_action(context.bot, t_id, user.id, c_adm_name, action="closed")
                 await query.edit_message_text(
                     f"🔒 تیکت #{t_id} با موفقیت بسته شد.",
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لیست تیکت‌ها", callback_data="res_adm_tickets")]])
@@ -3527,14 +4035,9 @@ class ResellerBotInstance:
                         logger.error(f"Error sending reply to customer {cust_tg}: {e_c}")
                 await update.message.reply_text(f"✅ پاسخ شما به تیکت #{ticket_id} با موفقیت ثبت و ارسال شد.")
 
-                # اطلاع‌رسانی به سایر مدیران
+                # ادیت خودکار پیام تیکت برای سایر مدیران همراه با فال‌بک
                 c_adm_name = user.first_name or f"مدیر {user.id}"
-                other_adm_tkt = (
-                    f"🔔 <b>مدیر {html.escape(c_adm_name)} به تیکت شماره #{ticket_id} پاسخ داد:</b>\n"
-                    f"«{html.escape(text[:120])}»\n\n"
-                    f"این تیکت تعیین‌تکلیف شد و دیگر نیازی به رسیدگی ندارد."
-                )
-                await notify_other_reseller_admins(context.bot, user.id, ["main", "support"], other_adm_tkt)
+                await sync_admin_ticket_action(context.bot, ticket_id, user.id, c_adm_name, action="replied", reply_snippet=text)
                 return
 
             # ۰.۱. دسترسی به پنل مدیریت نماینده
@@ -3792,15 +4295,24 @@ class ResellerBotInstance:
                         pname = plan.get("name", "پلن انتخابی")
 
                     now_iso = get_now_iso()
+                    is_renewal_val = 1 if (p_inv.get("is_renewal") or context.user_data.get("is_renewal")) else 0
+                    renew_sub_id_val = p_inv.get("renew_sub_id") or context.user_data.get("renew_sub_id")
+                    instant_act_val = p_inv.get("instant_activation") if p_inv.get("instant_activation") is not None else context.user_data.get("instant_activation", True)
+                    act_comment = f"instant_act:{1 if instant_act_val else 0} renewal_sub_id:{renew_sub_id_val or 0}"
+
+                    context.user_data.pop("is_renewal", None)
+                    context.user_data.pop("renew_sub_id", None)
+                    context.user_data.pop("instant_activation", None)
+
                     conn = db.get_connection()
                     conn.execute("""
                         INSERT OR REPLACE INTO transactions (
                             order_id, user_id, username, plan_name, amount, status, gateway,
-                            tracking_code, reseller_id, is_renewal, account_name, source, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, 'pending', 'card_reseller', ?, ?, 0, ?, 'reseller_bot', ?, ?)
+                            tracking_code, reseller_id, is_renewal, account_name, account_comment, source, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, 'pending', 'card_reseller', ?, ?, ?, ?, ?, 'reseller_bot', ?, ?)
                     """, (
                         order_id, user.id, user.username or user.first_name, pname,
-                        price, text[:100], r_id, account_name, now_iso, now_iso
+                        price, text[:100], r_id, is_renewal_val, account_name, act_comment, now_iso, now_iso
                     ))
                     conn.commit()
                     conn.close()
@@ -3865,10 +4377,11 @@ class ResellerBotInstance:
             # ۰.۹. بررسی پیام دلخواه پشتیبانی ارسالی توسط مشتری
             if context.user_data.get("waiting_customer_ticket"):
                 context.user_data.pop("waiting_customer_ticket", None)
+                custom_subj = context.user_data.pop("customer_ticket_subject", None)
                 content = text.strip()
                 if content:
                     is_vip = db.is_user_vip(user.id)
-                    subj = "⭐️ تیکت مشتری VIP" if is_vip else "پیام مشتری از ربات"
+                    subj = custom_subj or ("⭐️ تیکت مشتری VIP" if is_vip else "پیام مشتری از ربات")
                     t_res = db.create_ticket(
                         user_id=user.id,
                         username=user.username or user.first_name,
@@ -3884,6 +4397,7 @@ class ResellerBotInstance:
                         f"{vip_alert}\n\n"
                         f"👤 مشتری: {html.escape(str(user.first_name))} (ID: <code>{user.id}</code>)\n"
                         f"💬 یوزرنیم: @{user.username or 'ندارد'}\n"
+                        f"📌 موضوع: <b>{html.escape(subj)}</b>\n"
                         f"📝 متن پیام:\n{html.escape(content)}\n\n"
                         f"🔖 شماره تیکت: #{t_id}"
                     )
@@ -3896,7 +4410,7 @@ class ResellerBotInstance:
                             InlineKeyboardButton("🔒 بستن تیکت", callback_data=f"res_close_tkt_{t_id}")
                         ]
                     ])
-                    await notify_reseller_admins(context.bot, ["main", "support"], notif_msg, reply_markup=r_kb)
+                    await notify_reseller_admins(context.bot, ["main", "support"], notif_msg, reply_markup=r_kb, ticket_id=t_id)
                     return
 
             # ۱. بررسی دریافت نام دلخواه اکانت
@@ -3945,6 +4459,7 @@ class ResellerBotInstance:
                         f"{vip_alert}\n\n"
                         f"👤 مشتری: {html.escape(str(user.first_name))} (ID: <code>{user.id}</code>)\n"
                         f"💬 یوزرنیم: @{user.username or 'ندارد'}\n"
+                        f"📌 موضوع: <b>{html.escape(subj)}</b>\n"
                         f"📝 متن پیام:\n{html.escape(content)}\n\n"
                         f"🔖 شماره تیکت: #{t_id}"
                     )
@@ -3957,7 +4472,7 @@ class ResellerBotInstance:
                             InlineKeyboardButton("🔒 بستن تیکت", callback_data=f"res_close_tkt_{t_id}")
                         ]
                     ])
-                    await notify_reseller_admins(context.bot, ["main", "support"], notif_msg, reply_markup=r_kb)
+                    await notify_reseller_admins(context.bot, ["main", "support"], notif_msg, reply_markup=r_kb, ticket_id=t_id)
                 else:
                     await update.message.reply_text("⚠️ لطفاً متن پیام خود را بعد از عبارت <code>تیکت:</code> بنویسید.", parse_mode="HTML")
                 return
@@ -4053,13 +4568,15 @@ class ResellerBotInstance:
         app.add_handler(CallbackQueryHandler(pay_online_callback, pattern="^r_ponl_"))
         app.add_handler(CallbackQueryHandler(copy_action_callback, pattern="^(r_copy_card_|r_copy_rial_|r_copy_amt_|r_pwal_insuf|r_ponl_soon|r_cancel_buy)"))
         app.add_handler(CallbackQueryHandler(sub_qr_callback, pattern="^r_sub_qr_"))
-        app.add_handler(CallbackQueryHandler(sub_renew_callback, pattern="^r_renew_"))
+        app.add_handler(CallbackQueryHandler(sub_renew_callback, pattern="^r_renew_\\d+$"))
+        app.add_handler(CallbackQueryHandler(reseller_renew_mode_callback, pattern="^(r_renew_choose_|r_ren_set_)"))
         app.add_handler(CallbackQueryHandler(start_handler, pattern="^r_check_sub$"))
+        app.add_handler(CallbackQueryHandler(my_subs_handler, pattern="^(r_sub_detail_|r_my_subs)"))
         app.add_handler(CallbackQueryHandler(reseller_ticket_callbacks, pattern="^(res_reply_tkt_|res_canned_tkt_|res_canned_send_|res_canned_cancel_|res_close_tkt_)"))
         app.add_handler(CallbackQueryHandler(reseller_approve_callback, pattern="^(rapprove_|rreject_|res_pay_app_|res_pay_rej_)"))
         app.add_handler(CallbackQueryHandler(reseller_single_link_callback, pattern="^r_single_link_"))
         app.add_handler(CallbackQueryHandler(reseller_queue_action_callback, pattern="^(r_act_queue_|r_conf_act_queue_|r_cancel_act_queue)"))
-        app.add_handler(CallbackQueryHandler(reseller_quick_ticket_callback, pattern="^r_quick_tkt_"))
+        app.add_handler(CallbackQueryHandler(reseller_quick_ticket_callback, pattern="^(r_quick_tkt_|r_qsend_|r_qedit_|r_qback)"))
         app.add_handler(CallbackQueryHandler(reseller_admin_callback_handler, pattern="^res_adm_"))
         app.add_handler(CallbackQueryHandler(reseller_wizard_callback_handler, pattern="^wiz_"))
         app.add_handler(MessageHandler(filters.CONTACT, contact_handler))
