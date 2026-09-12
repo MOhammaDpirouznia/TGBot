@@ -1320,6 +1320,7 @@ class Database:
             "ALTER TABLE reseller_transactions ADD COLUMN is_deleted INTEGER DEFAULT 0",
             # ستون‌های ارتقای رهگیری رویدادهای اشتراک، قفل همزمانی فیش‌ها و درگاه پیامک نمایندگان
             "ALTER TABLE subscriptions ADD COLUMN last_lifecycle_event_at TEXT",
+            "ALTER TABLE subscriptions ADD COLUMN last_renewed_at TEXT",
             "ALTER TABLE transactions ADD COLUMN admin_messages TEXT",
             "ALTER TABLE transactions ADD COLUMN locked_by TEXT",
             "ALTER TABLE transactions ADD COLUMN locked_at TEXT",
@@ -1335,12 +1336,22 @@ class Database:
             except Exception:
                 pass
 
-        # راه‌اندازی اولیه last_lifecycle_event_at برای اشتراک‌های موجود
+        # همگام‌سازی و اصلاح یکپارچه تاریخ‌های تمدید و ساخت اشتراک‌ها (حذف انقضا از اولویت‌بندی)
         try:
+            # ۱. استخراج تاریخ آخرین تمدید واقعی از جدول سوابق دوره‌ها
             cursor.execute("""
                 UPDATE subscriptions
-                SET last_lifecycle_event_at = COALESCE(updated_at, created_at)
-                WHERE last_lifecycle_event_at IS NULL
+                SET last_renewed_at = (
+                    SELECT MAX(renewed_at)
+                    FROM subscription_history
+                    WHERE subscription_history.subscription_id = subscriptions.id
+                )
+                WHERE last_renewed_at IS NULL
+            """)
+            # ۲. تنظیم دقیق last_lifecycle_event_at منحصراً بر اساس تمدید یا ساخت
+            cursor.execute("""
+                UPDATE subscriptions
+                SET last_lifecycle_event_at = COALESCE(last_renewed_at, created_at)
             """)
         except Exception:
             pass
@@ -1825,9 +1836,9 @@ class Database:
                             is_online = ?,
                             last_online = COALESCE(?, last_online),
                             updated_at = ?,
-                            last_lifecycle_event_at = CASE WHEN ? = 1 THEN ? ELSE COALESCE(last_lifecycle_event_at, created_at) END
+                            last_lifecycle_event_at = COALESCE(last_lifecycle_event_at, created_at)
                         WHERE hidify_uuid = ?
-                    """, (current_usage, usage_limit, package_days, start_date, expiry_time, status, name_clean, extracted_reseller_id, is_online_val, last_online_val, now, 1 if status_changed_to_inactive else 0, now, uuid))
+                    """, (current_usage, usage_limit, package_days, start_date, expiry_time, status, name_clean, extracted_reseller_id, is_online_val, last_online_val, now, uuid))
                 else:
                     # درج اشتراک جدید بازیابی شده
                     cursor.execute("""
@@ -1950,7 +1961,7 @@ class Database:
                     is_exp = True
 
                 if is_exp:
-                    cursor.execute("UPDATE subscriptions SET status = 'expired', is_online = 0, updated_at = ?, last_lifecycle_event_at = ? WHERE id = ?", (now_iso, now_iso, sub_id))
+                    cursor.execute("UPDATE subscriptions SET status = 'expired', is_online = 0, updated_at = ? WHERE id = ?", (now_iso, sub_id))
                     updated_expired += 1
 
             conn.commit()
@@ -6535,6 +6546,15 @@ class Database:
                 int(plan_price or 0), int(cost_paid or 0), start_date, expire_date,
                 int(is_manual or 0), int(period_offset or 1), period_label, note, created_by
             ))
+            if subscription_id:
+                try:
+                    cursor.execute("""
+                        UPDATE subscriptions
+                        SET last_renewed_at = ?, last_lifecycle_event_at = ?
+                        WHERE id = ?
+                    """, (now_str, now_str, subscription_id))
+                except Exception:
+                    pass
             conn.commit()
             return True
         except Exception as e:
@@ -7530,7 +7550,7 @@ class Database:
                     SELECT s.*, u.created_at as user_registered_at, u.username
                     FROM subscriptions s
                     LEFT JOIN users u ON s.telegram_id = u.telegram_id
-                    ORDER BY s.updated_at DESC LIMIT 30
+                    ORDER BY COALESCE(s.last_renewed_at, s.last_lifecycle_event_at, s.created_at) DESC, s.id DESC LIMIT 30
                 """)
                 res["timeline_subscriptions"] = [dict(r) for r in cursor.fetchall()]
 
@@ -9410,7 +9430,7 @@ class Database:
                 WHERE s.reseller_id = ?
                   AND (s.is_deleted = 0 OR s.is_deleted IS NULL)
                   AND s.id NOT IN (SELECT subscription_id FROM reseller_transactions WHERE reseller_id = ? AND subscription_id IS NOT NULL)
-                ORDER BY COALESCE(s.updated_at, s.created_at) DESC
+                ORDER BY COALESCE(s.last_renewed_at, s.last_lifecycle_event_at, s.created_at) DESC
                 LIMIT ?
             """, (reseller_id, reseller_id, limit))
             sub_rows = cursor.fetchall()
@@ -9428,8 +9448,8 @@ class Database:
                     issuer = reseller_uname
                     issuer_type = "reseller"
 
-                is_renewed = sd.get("updated_at") and sd.get("created_at") and sd["updated_at"] > sd["created_at"]
-                act_time = sd.get("updated_at") or sd.get("created_at") or ""
+                is_renewed = bool(sd.get("last_renewed_at"))
+                act_time = sd.get("last_renewed_at") or sd.get("last_lifecycle_event_at") or sd.get("created_at") or ""
 
                 activities.append({
                     "id": f"sub_{sd['id']}",
@@ -9556,7 +9576,7 @@ class Database:
         """لیست کاربران و اشتراک‌های یک نماینده (بدون موارد سطل زباله) با مرتب‌سازی پیش‌فرض آخرین تغییرات"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM subscriptions WHERE reseller_id=? AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY COALESCE(last_lifecycle_event_at, created_at) DESC, id DESC", (reseller_id,))
+        cursor.execute("SELECT * FROM subscriptions WHERE reseller_id=? AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY COALESCE(last_renewed_at, last_lifecycle_event_at, created_at) DESC, id DESC", (reseller_id,))
         rows = cursor.fetchall()
         conn.close()
         return [dict(r) for r in rows]
@@ -10185,9 +10205,9 @@ class Database:
                     UPDATE subscriptions
                     SET plan_id=?, plan_name=?, data_limit=?, data_used=0, duration=?, status='active',
                         start_date=?, expire_date=?, updated_at=?, cost_paid=?, payment_source=?, last_renewed_by=?,
-                        last_lifecycle_event_at=?
+                        last_renewed_at=?, last_lifecycle_event_at=?
                     WHERE id=? AND reseller_id=?
-                """, (plan_id, plan_name, data_limit, duration, new_start_date, new_expire_date, now, cost, actual_source, creator_val, now, sub_id, reseller_id))
+                """, (plan_id, plan_name, data_limit, duration, new_start_date, new_expire_date, now, cost, actual_source, creator_val, now, now, sub_id, reseller_id))
                 conn.commit()
                 return {"success": True, "mode": "instant", "payment_source": actual_source}
             else:

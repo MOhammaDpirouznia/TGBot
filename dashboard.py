@@ -1862,9 +1862,10 @@ def activate_single_queue_item(queue_id: int, triggered_by: str = "مدیریت"
         cursor.execute("""
             UPDATE subscriptions
             SET plan_id=?, plan_name=?, data_limit=?, data_used=0, duration=?, status='active',
-                start_date=?, expire_date=?, updated_at=?, last_renewed_by=?
+                start_date=?, expire_date=?, updated_at=?, last_renewed_by=?,
+                last_renewed_at=?, last_lifecycle_event_at=?
             WHERE id=?
-        """, (plan_id, plan_name, new_limit, new_duration, new_start_str, new_expire_str, now_str, triggered_by, sub_id))
+        """, (plan_id, plan_name, new_limit, new_duration, new_start_str, new_expire_str, now_str, triggered_by, now_str, now_str, sub_id))
         conn.commit()
 
         # ۳. ثبت در سوابق مصرف
@@ -5966,11 +5967,12 @@ def admin_subscription_renew(sub_id: int):
         cursor.execute("""
             UPDATE subscriptions
             SET plan_id=?, plan_name=?, data_limit=?, data_used=0, duration=?,
-                start_date=?, expire_date=?, status='active', updated_at=?, last_lifecycle_event_at=?, cost_paid=?,
+                start_date=?, expire_date=?, status='active', updated_at=?,
+                last_renewed_at=?, last_lifecycle_event_at=?, cost_paid=?,
                 payment_status=?, debt_amount=?, debt_notes=?,
                 debt_created_at = CASE WHEN ? = 'unpaid' THEN COALESCE(debt_created_at, ?) ELSE NULL END
             WHERE id=?
-        """, (plan_key, plan_name, data_limit, duration, new_start_date, new_expire_date, now, now, 0 if debt_status == "unpaid" else cost_paid,
+        """, (plan_key, plan_name, data_limit, duration, new_start_date, new_expire_date, now, now, now, 0 if debt_status == "unpaid" else cost_paid,
               debt_status, total_debt, renewal_notes or None, debt_status, debt_created, sub_id))
         conn.commit()
         conn.close()
@@ -6254,9 +6256,10 @@ def admin_subscriptions_bulk_renew():
             cursor.execute("""
                 UPDATE subscriptions
                 SET plan_id=?, plan_name=?, data_limit=?, data_used=0, duration=?,
-                    start_date=?, expire_date=?, status='active', updated_at=?, cost_paid=?
+                    start_date=?, expire_date=?, status='active', updated_at=?,
+                    last_renewed_at=?, last_lifecycle_event_at=?, cost_paid=?
                 WHERE id=?
-            """, (p_key, p_name, p_limit, p_dur, new_start_date, new_expire_date, now, p_cost, s_id))
+            """, (p_key, p_name, p_limit, p_dur, new_start_date, new_expire_date, now, now, now, p_cost, s_id))
             conn.commit()
 
             try:
@@ -6611,7 +6614,7 @@ def admin_subscription_toggle(sub_id):
     conn = db.get_connection()
     cursor = conn.cursor()
     now_iso = get_now_iso()
-    cursor.execute("UPDATE subscriptions SET status = ?, disable_reason = ?, updated_at = ?, last_lifecycle_event_at = ? WHERE id = ?", (new_status, dis_reason, now_iso, now_iso, sub_id))
+    cursor.execute("UPDATE subscriptions SET status = ?, disable_reason = ?, updated_at = ? WHERE id = ?", (new_status, dis_reason, now_iso, sub_id))
     conn.commit()
     conn.close()
 
@@ -11684,7 +11687,9 @@ def reseller_users():
             subs.append(item)
 
         if sort_by == "oldest":
-            subs.sort(key=lambda x: (x.get("last_lifecycle_event_at") or x.get("created_at") or "", x.get("id", 0)))
+            subs.sort(key=lambda x: (x.get("last_renewed_at") or x.get("last_lifecycle_event_at") or x.get("created_at") or "", x.get("id", 0)))
+        else:
+            subs.sort(key=lambda x: (x.get("last_renewed_at") or x.get("last_lifecycle_event_at") or x.get("created_at") or "", x.get("id", 0)), reverse=True)
 
     total_count = len(subs)
     total_pages = max(1, (total_count + per_page - 1) // per_page)

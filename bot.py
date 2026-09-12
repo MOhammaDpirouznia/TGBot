@@ -5305,6 +5305,8 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
             "duration": new_duration,
             "expire_date": new_expire_date,
             "status": "active",
+            "last_renewed_at": get_now_iso(),
+            "last_lifecycle_event_at": get_now_iso(),
         }
         if renewal_type == "replace":
             update_fields["start_date"] = new_start_date
