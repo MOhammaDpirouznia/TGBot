@@ -40,19 +40,37 @@ class NotificationScheduler:
             return
         self.running = True
         self.task = asyncio.create_task(self._run_loop())
-        logger.info("Notification scheduler started")
+        self.queue_task = asyncio.create_task(self._run_queue_check_loop())
+        logger.info("Notification scheduler and queue check worker started")
     
     async def stop(self):
         """توقف برنامه‌ریز"""
         self.running = False
-        if self.task:
-            self.task.cancel()
-            try:
-                await self.task
-            except asyncio.CancelledError:
-                pass
+        for t in [self.task, getattr(self, "queue_task", None)]:
+            if t:
+                t.cancel()
+                try:
+                    await t
+                except asyncio.CancelledError:
+                    pass
         logger.info("Notification scheduler stopped")
     
+    async def _run_queue_check_loop(self):
+        """حلقه اختصاصی بررسی بلادرنگ صف تمدید هر ۶۰ ثانیه"""
+        await asyncio.sleep(10)
+        while self.running:
+            try:
+                from dashboard import process_subscription_queue
+                await asyncio.to_thread(process_subscription_queue)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in queue check loop: {e}")
+            try:
+                await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                break
+
     async def _run_loop(self):
         """حلقه اصلی بررسی اعلان‌ها"""
         while self.running:

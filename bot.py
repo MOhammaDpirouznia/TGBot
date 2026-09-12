@@ -1697,7 +1697,135 @@ async def handle_payment_method(update: Update, context: ContextTypes.DEFAULT_TY
         except Exception:
             pass
 
-        # ساخت اکانت در هیدیفای
+        is_ren = context.user_data.get("is_renewal", False)
+        ren_sub_id = context.user_data.get("renew_subscription_id")
+
+        if is_ren and ren_sub_id:
+            target_sub = db.get_subscription(ren_sub_id)
+            if target_sub:
+                user_uuid = target_sub.get("hidify_uuid", "")
+                old_limit = float(target_sub.get("data_limit") or 0)
+                old_used = float(target_sub.get("data_used") or 0)
+
+                is_sub_active = False
+                if target_sub.get("status") == "active":
+                    exp_d = target_sub.get("expire_date")
+                    if exp_d:
+                        try:
+                            exp_dt = datetime.fromisoformat(str(exp_d).replace("Z", ""))
+                            if exp_dt > get_now_naive():
+                                is_sub_active = True
+                        except Exception:
+                            pass
+                    if old_limit > 0 and old_used >= (old_limit * 0.995):
+                        is_sub_active = False
+
+                if is_sub_active:
+                    q_res = db.add_to_subscription_queue(
+                        subscription_id=ren_sub_id,
+                        plan_id=str(plan_id),
+                        plan_name=plan.get("name", "تمدید"),
+                        data_limit=float(plan.get("data_limit", 0)),
+                        duration=int(plan.get("duration", 30)),
+                        cost=price,
+                        reseller_id=target_sub.get("reseller_id"),
+                        telegram_id=user.id,
+                        hidify_uuid=user_uuid,
+                        note="خرید تمدید از کیف پول در تلگرام"
+                    )
+                    queued_order = q_res.get("queue_order", 1) if isinstance(q_res, dict) else 1
+
+                    try:
+                        db.save_transaction(
+                            user_id=user.id,
+                            amount=price,
+                            plan_id=plan_id,
+                            plan_name=plan.get("name", ""),
+                            status="approved",
+                            gateway="wallet",
+                            is_renewal=True,
+                            renew_sub_id=ren_sub_id
+                        )
+                    except Exception:
+                        pass
+
+                    try:
+                        await context.bot.send_message(
+                            chat_id=ADMIN_ID,
+                            text=f"⚡ <b>رزرو تمدید در صف از کیف پول</b>\n\n👤 کاربر: <code>{user.id}</code> (@{user.username})\n📋 پلن: <b>{plan.get('name')}</b>\n🔢 نوبت در صف: <b>نوبت {queued_order}</b>\n💵 مبلغ: <b>{price_formatted} تومان</b>",
+                            parse_mode="HTML"
+                        )
+                    except Exception:
+                        pass
+
+                    c_msg = (
+                        f"🎉 <b>تمدید اشتراک با موفقیت انجام شد و در صف تمدید قرار گرفت!</b>\n\n"
+                        f"💳 مبلغ <b>{price_formatted} تومان</b> از کیف پول شما کسر گردید.\n"
+                        f"🔢 <b>نوبت فعال‌سازی:</b> نوبت {queued_order}\n"
+                        f"📦 بسته رزرو شده: <b>{plan.get('name')}</b>\n"
+                        f"📊 حجم: <b>{plan.get('data_limit', 0)} گیگابایت</b> | ⏳ مدت: <b>{plan.get('duration', 30)} روز</b>\n\n"
+                        f"🔄 <b>زمان فعال‌سازی خودکار:</b> پس از مصرف ۹۹.۵٪ حجم بسته فعلی یا در ساعت ۲۳:۵۵ روز پایانی\n"
+                        f"⚡ در صورت تمایل می‌توانید در بخش «وضعیت اشتراک» این بسته را به صورت آنی فعال نمایید."
+                    )
+                    await query.edit_message_text(c_msg, parse_mode="HTML")
+                    return CHOOSING
+
+                else:
+                    # اشتراک منقضی است -> بروزرسانی فوری
+                    try:
+                        await hidify.update_user(
+                            uuid=user_uuid,
+                            usage_limit_gb=float(plan.get("data_limit", 0)) if plan.get("data_limit", 0) > 0 else None,
+                            package_days=int(plan.get("duration", 30)),
+                            enable=True
+                        )
+                    except Exception as e_h:
+                        logger.error(f"Error updating user in hidify on wallet renew: {e_h}")
+
+                    db.update_subscription(
+                        ren_sub_id,
+                        plan_name=plan.get("name"),
+                        data_limit=plan.get("data_limit", 0),
+                        duration=plan.get("duration", 30),
+                        data_used=0,
+                        status="active",
+                        last_renewed_at=get_now_iso()
+                    )
+
+                    try:
+                        db.save_transaction(
+                            user_id=user.id,
+                            amount=price,
+                            plan_id=plan_id,
+                            plan_name=plan.get("name", ""),
+                            status="approved",
+                            gateway="wallet",
+                            is_renewal=True,
+                            renew_sub_id=ren_sub_id
+                        )
+                    except Exception:
+                        pass
+
+                    base_url = (HIDIFY_PANEL_URL or "").rstrip("/")
+                    proxy_path = (USER_PROXY_PATH or HIDIFY_PROXY_PATH or "").strip("/")
+                    subscription_url = f"{base_url}/{proxy_path}/{user_uuid}/"
+                    details = (
+                        f"✅ مبلغ <b>{price_formatted} تومان</b> از کیف پول شما کسر و اشتراک منقضی مجدداً فعال شد!\n\n"
+                        f"📋 پلن: <b>{plan.get('name')}</b>\n"
+                        f"📊 حجم: <b>{plan.get('data_limit', 'نامحدود')} گیگابایت</b>\n"
+                        f"⏰ مدت اعتبار: <b>{plan.get('duration', 30)} روز</b>\n"
+                        f"💳 مانده موجودی: <b>{deduct_res.get('new_balance'):,} تومان</b>"
+                    )
+                    await send_subscription_card(
+                        context.bot,
+                        chat_id=user.id,
+                        sub_url=subscription_url,
+                        title="🎉 <b>اشتراک شما با موفقیت فعال شد!</b>",
+                        details=details
+                    )
+                    return CHOOSING
+
+        # ساخت اکانت جدید در هیدیفای (در صورتی که تمدید نباشد)
         username = f"tg_{user.id}"
         try:
             result = await hidify.create_user(
@@ -2413,21 +2541,24 @@ async def show_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return CHOOSING
 
     user = update.effective_user
+    msg_obj = update.message or (update.callback_query.message if update.callback_query else None)
     try:
         subscriptions = db.get_user_subscriptions(user.id, is_admin_bot=True)
     except Exception as e:
         logger.error(f"Error getting subscriptions: {e}")
-        await update.message.reply_text("❌ خطا در دریافت اطلاعات اشتراک!")
+        if msg_obj:
+            await msg_obj.reply_text("❌ خطا در دریافت اطلاعات اشتراک!")
         return CHOOSING
 
     if not subscriptions:
-        await update.message.reply_text(
-            "❌ شما هنوز اشتراکی ندارید!\n\n"
-            "برای خرید اشتراک، روی «🛒 خرید اشتراک» کلیک کنید."
-        )
+        if msg_obj:
+            await msg_obj.reply_text(
+                "❌ شما هنوز اشتراکی ندارید!\n\n"
+                "برای خرید اشتراک، روی «🛒 خرید اشتراک» کلیک کنید."
+            )
         return CHOOSING
 
-    status_msg = await update.message.reply_text("⏳ در حال استعلام لحظه‌ای حجم و روزهای مانده از سرور...")
+    status_msg = await msg_obj.reply_text("⏳ در حال استعلام لحظه‌ای حجم و روزهای مانده از سرور...") if msg_obj else None
 
     vip_info = db.get_user_vip_info(user.id)
     if vip_info.get("is_vip"):
@@ -2539,7 +2670,7 @@ async def show_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     queue_text = (
                         f"   ⏳ **بسته رزرو (در صف فعال‌سازی خودکار):**\n"
                         f"      📦 پلن: {q.get('plan_name')} ({q.get('data_limit')} گیگ - {q.get('duration')} روز)\n"
-                        f"      🔄 زمان فعال‌سازی: پس از مصرف ۹۹٪ حجم یا در روز پایانی اشتراک فعلی\n"
+                        f"      🔄 زمان فعال‌سازی خودکار: پس از مصرف ۹۹.۵٪ حجم یا در ساعت ۲۳:۵۵ روز پایانی اشتراک فعلی\n"
                     )
                 else:
                     q_lines = [
@@ -2549,7 +2680,7 @@ async def show_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     queue_text = (
                         f"   ⏳ **بسته‌های رزرو (در صف فعال‌سازی خودکار - {len(queued_items)} بسته به نوبت):**\n"
                         + "\n".join(q_lines) + "\n"
-                        f"      🔄 زمان فعال‌سازی: به ترتیب نوبت پس از اتمام ۹۹٪ حجم یا روز پایانی هر بسته\n"
+                        f"      🔄 زمان فعال‌سازی: به ترتیب نوبت پس از اتمام ۹۹.۵٪ حجم یا در ساعت ۲۳:۵۵ روز پایانی هر بسته\n"
                     )
         except Exception as e_q:
             logger.debug(f"Error checking pending queue for sub {sub.get('id')}: {e_q}")
@@ -2562,15 +2693,198 @@ async def show_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{queue_text}\n"
         )
 
+    queue_buttons = []
+    for sub in subscriptions:
+        sub_id = sub.get("id")
+        q_items = db.get_pending_queue_items(sub_id) if sub_id else []
+        if q_items:
+            s_name = sub.get("account_name") or f"اشتراک #{sub_id}"
+            if len(q_items) == 1:
+                q = q_items[0]
+                queue_buttons.append([
+                    InlineKeyboardButton(f"⚡ فعال‌سازی آنی بسته رزرو ({s_name})", callback_data=f"usr_qact_{q['id']}")
+                ])
+            else:
+                first_q = q_items[0]
+                queue_buttons.append([
+                    InlineKeyboardButton(f"⚡ فعال‌سازی آنی نوبت ۱ ({s_name})", callback_data=f"usr_qact_{first_q['id']}")
+                ])
+                queue_buttons.append([
+                    InlineKeyboardButton(f"🔀 تغییر اولویت و چینش صف ({s_name})", callback_data=f"usr_qman_{sub_id}")
+                ])
+
+    reply_markup = InlineKeyboardMarkup(queue_buttons) if queue_buttons else None
     try:
-        await status_msg.edit_text(text, parse_mode="Markdown")
+        await status_msg.edit_text(text, parse_mode="Markdown", reply_markup=reply_markup)
     except Exception as e:
         logger.error(f"Error sending status: {e}")
         try:
-            await update.message.reply_text(text, parse_mode="Markdown")
+            if update.message:
+                await update.message.reply_text(text, parse_mode="Markdown", reply_markup=reply_markup)
+            elif update.callback_query:
+                await update.callback_query.message.reply_text(text, parse_mode="Markdown", reply_markup=reply_markup)
         except:
             pass
     return CHOOSING
+
+
+async def customer_queue_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """مدیریت صف تمدید توسط مشتری در ربات تلگرام: فعال‌سازی آنی با تاییدیه، تغییر ترتیب و اولویت"""
+    query = update.callback_query
+    data = query.data
+    user = update.effective_user
+    if not user:
+        return
+
+    if data.startswith("usr_qact_"):
+        await query.answer()
+        try:
+            queue_id = int(data.replace("usr_qact_", ""))
+        except ValueError:
+            return
+
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT q.*, s.account_name, s.data_used, s.data_limit, s.duration as sub_duration 
+            FROM subscription_queue q 
+            JOIN subscriptions s ON q.subscription_id = s.id 
+            WHERE q.id=? AND q.status='pending'
+        """, (queue_id,))
+        item = cursor.fetchone()
+        conn.close()
+
+        if not item:
+            await query.answer("⚠️ این بسته در صف یافت نشد یا قبلاً فعال شده است.", show_alert=True)
+            return
+
+        q_dict = dict(item)
+        sub_id = q_dict.get("subscription_id")
+        pname = q_dict.get("plan_name") or "بسته تمدیدی"
+        acc_name = q_dict.get("account_name") or f"sub_{sub_id}"
+        vol = q_dict.get("data_limit", 0)
+        days = q_dict.get("duration", 30)
+
+        warn_text = (
+            f"⚠️ **هشدار فعال‌سازی آنی بسته رزرو**\n\n"
+            f"👤 اکانت: `{acc_name}`\n"
+            f"📦 بسته انتخابی: **{pname}** ({vol} گیگابایت | {days} روز)\n\n"
+            f"🔴 **اخطار مهم:**\n"
+            f"با فعال‌سازی آنی این بسته، حجم و روزهای باقیمانده از اشتراک فعلی شما بلافاصله از بین رفته و بسته جدید با حجم و زمان تازه فعال می‌شود.\n\n"
+            f"آیا از فعال‌سازی آنی اطمینان دارید؟"
+        )
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ بله، فعال‌سازی آنی شود", callback_data=f"usr_qconf_{queue_id}")],
+            [InlineKeyboardButton("❌ انصراف و بازگشت", callback_data=f"usr_qcancel_{sub_id}")]
+        ])
+        await query.edit_message_text(warn_text, reply_markup=kb, parse_mode="Markdown")
+
+    elif data.startswith("usr_qconf_"):
+        try:
+            queue_id = int(data.replace("usr_qconf_", ""))
+        except ValueError:
+            return
+
+        await query.answer("⏳ در حال فعال‌سازی آنی بسته... لطفاً شکیبا باشید")
+
+        from dashboard import activate_single_queue_item
+        res = activate_single_queue_item(queue_id, triggered_by=f"مشتری تلگرام ({user.id})")
+        if res.get("success"):
+            await query.answer("✅ بسته رزرو با موفقیت فعال شد!", show_alert=True)
+            succ_text = (
+                f"🎉 **بسته رزرو با موفقیت به صورت آنی فعال شد!**\n\n"
+                f"📦 پلن: **{res.get('plan_name')}**\n"
+                f"👤 اکانت: `{res.get('account_name')}`\n\n"
+                f"سرویس شما با حجم و مدت زمان جدید در سرور بروزرسانی شد."
+            )
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("📊 مشاهده وضعیت لحظه‌ای اشتراک", callback_data="usr_refresh_status")]
+            ])
+            await query.edit_message_text(succ_text, reply_markup=kb, parse_mode="Markdown")
+        else:
+            err_msg = res.get("error", "خطای ناشناخته")
+            await query.answer(f"❌ خطا: {err_msg}", show_alert=True)
+
+    elif data.startswith("usr_qman_"):
+        await query.answer()
+        try:
+            sub_id = int(data.replace("usr_qman_", ""))
+        except ValueError:
+            return
+
+        q_items = db.get_pending_queue_items(sub_id)
+        if not q_items or len(q_items) < 2:
+            await query.answer("صف تمدید کمتر از ۲ بسته دارد و نیاز به تغییر چینش ندارد.", show_alert=True)
+            return
+
+        sub = db.get_subscription(sub_id)
+        acc_name = sub.get("account_name") if sub else f"اشتراک #{sub_id}"
+
+        txt = (
+            f"🔀 **مدیریت و اولویت‌بندی صف تمدید**\n"
+            f"اکانت: `{acc_name}`\n\n"
+            f"بسته‌ها به ترتیبی که در زیر آمده‌اند به نوبت فعال خواهند شد (نوبت ۱ اولویت اول است).\n"
+            f"برای تغییر ترتیب فعال‌سازی، از دکمه‌های ⬆️ و ⬇️ استفاده فرمایید:\n\n"
+        )
+        kb_rows = []
+        for idx, q in enumerate(q_items, 1):
+            pname = q.get("plan_name") or "بسته"
+            vol = q.get("data_limit", 0)
+            days = q.get("duration", 30)
+            txt += f"**نوبت {idx}:** {pname} ({vol}GB | {days} روز)\n"
+            btn_move = []
+            if idx > 1:
+                btn_move.append(InlineKeyboardButton(f"⬆️ نوبت {idx} به بالا", callback_data=f"usr_qmove_{q['id']}_up_{sub_id}"))
+            if idx < len(q_items):
+                btn_move.append(InlineKeyboardButton(f"⬇️ نوبت {idx} به پایین", callback_data=f"usr_qmove_{q['id']}_down_{sub_id}"))
+            if btn_move:
+                kb_rows.append(btn_move)
+
+        kb_rows.append([InlineKeyboardButton("🔙 بازگشت به وضعیت اشتراک", callback_data="usr_refresh_status")])
+        await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb_rows), parse_mode="Markdown")
+
+    elif data.startswith("usr_qmove_"):
+        parts = data.replace("usr_qmove_", "").split("_")
+        if len(parts) >= 3:
+            q_id = int(parts[0])
+            direction = parts[1]
+            sub_id = int(parts[2])
+            db.reorder_subscription_queue(sub_id, q_id, direction)
+            await query.answer("✅ اولویت جابجا شد.")
+
+            # Re-render queue management menu
+            q_items = db.get_pending_queue_items(sub_id)
+            sub = db.get_subscription(sub_id)
+            acc_name = sub.get("account_name") if sub else f"اشتراک #{sub_id}"
+            txt = (
+                f"🔀 **مدیریت و اولویت‌بندی صف تمدید**\n"
+                f"اکانت: `{acc_name}`\n\n"
+                f"بسته‌ها به ترتیبی که در زیر آمده‌اند به نوبت فعال خواهند شد (نوبت ۱ اولویت اول است).\n"
+                f"برای تغییر ترتیب فعال‌سازی، از دکمه‌های ⬆️ و ⬇️ استفاده فرمایید:\n\n"
+            )
+            kb_rows = []
+            for idx, q in enumerate(q_items, 1):
+                pname = q.get("plan_name") or "بسته"
+                vol = q.get("data_limit", 0)
+                days = q.get("duration", 30)
+                txt += f"**نوبت {idx}:** {pname} ({vol}GB | {days} روز)\n"
+                btn_move = []
+                if idx > 1:
+                    btn_move.append(InlineKeyboardButton(f"⬆️ نوبت {idx} به بالا", callback_data=f"usr_qmove_{q['id']}_up_{sub_id}"))
+                if idx < len(q_items):
+                    btn_move.append(InlineKeyboardButton(f"⬇️ نوبت {idx} به پایین", callback_data=f"usr_qmove_{q['id']}_down_{sub_id}"))
+                if btn_move:
+                    kb_rows.append(btn_move)
+
+            kb_rows.append([InlineKeyboardButton("🔙 بازگشت به وضعیت اشتراک", callback_data="usr_refresh_status")])
+            try:
+                await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb_rows), parse_mode="Markdown")
+            except Exception:
+                pass
+
+    elif data.startswith("usr_qcancel_") or data == "usr_refresh_status":
+        await query.answer()
+        return await show_status(update, context)
 
 
 async def show_payments_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4064,42 +4378,75 @@ async def admin_order_pay_action_callback(update: Update, context: ContextTypes.
                 return
             db.deduct_reseller_balance(r_id, wh_p, plan_name, account_name, selling_price=orig_p, profit_margin=max(0, orig_p - wh_p), created_by="Telegram Bot")
 
+        queued_renewal = False
+        queued_order = 1
         if is_renewal and renew_sub_id:
             target_sub = db.get_subscription(renew_sub_id)
             if target_sub:
                 user_uuid = target_sub.get("hidify_uuid", "")
                 old_limit = float(target_sub.get("data_limit") or 0)
                 old_used = float(target_sub.get("data_used") or 0)
-                try:
-                    await hidify.update_user(
-                        uuid=user_uuid,
-                        usage_limit_gb=float(data_limit),
-                        package_days=int(duration),
-                        enable=True
-                    )
-                except Exception as e_ren:
-                    logger.error(f"Error renewing user in Hiddify: {e_ren}")
 
-                db.save_subscription_history(
-                    subscription_id=renew_sub_id,
-                    telegram_id=user_id or target_sub.get("telegram_id") or 0,
-                    hidify_uuid=user_uuid,
-                    account_name=account_name,
-                    plan_name=plan_name,
-                    previous_usage_gb=old_used,
-                    previous_limit_gb=old_limit,
-                    period_days=duration,
-                    renewal_type="direct",
-                    reseller_id=target_sub.get("reseller_id")
-                )
-                db.update_subscription(
-                    renew_sub_id,
-                    plan_name=plan_name,
-                    data_limit=data_limit,
-                    duration=duration,
-                    data_used=0,
-                    status="active"
-                )
+                # بررسی اینکه آیا اشتراک فعال است تا در صف تمدید قرار گیرد
+                is_sub_active = False
+                if target_sub.get("status") == "active":
+                    exp_d = target_sub.get("expire_date")
+                    if exp_d:
+                        try:
+                            exp_dt = datetime.fromisoformat(str(exp_d).replace("Z", ""))
+                            if exp_dt > get_now_naive():
+                                is_sub_active = True
+                        except Exception:
+                            pass
+                    if old_limit > 0 and old_used >= (old_limit * 0.995):
+                        is_sub_active = False
+
+                if is_sub_active:
+                    q_res = db.add_to_subscription_queue(
+                        subscription_id=renew_sub_id,
+                        plan_id=str(tx.get("plan_id") or "renewal_plan"),
+                        plan_name=plan_name,
+                        data_limit=float(data_limit),
+                        duration=int(duration),
+                        cost=tx.get("amount", 0),
+                        reseller_id=target_sub.get("reseller_id") or r_id,
+                        telegram_id=user_id or target_sub.get("telegram_id") or 0,
+                        hidify_uuid=user_uuid,
+                        note=f"رزرو شده در صف تمدید (سفارش {order_id})"
+                    )
+                    queued_renewal = True
+                    queued_order = q_res.get("queue_order", 1) if isinstance(q_res, dict) else 1
+                else:
+                    try:
+                        await hidify.update_user(
+                            uuid=user_uuid,
+                            usage_limit_gb=float(data_limit),
+                            package_days=int(duration),
+                            enable=True
+                        )
+                    except Exception as e_ren:
+                        logger.error(f"Error renewing user in Hiddify: {e_ren}")
+
+                    db.save_subscription_history(
+                        subscription_id=renew_sub_id,
+                        telegram_id=user_id or target_sub.get("telegram_id") or 0,
+                        hidify_uuid=user_uuid,
+                        account_name=account_name,
+                        plan_name=plan_name,
+                        previous_usage_gb=old_used,
+                        previous_limit_gb=old_limit,
+                        period_days=duration,
+                        renewal_type="direct",
+                        reseller_id=target_sub.get("reseller_id")
+                    )
+                    db.update_subscription(
+                        renew_sub_id,
+                        plan_name=plan_name,
+                        data_limit=data_limit,
+                        duration=duration,
+                        data_used=0,
+                        status="active"
+                    )
                 if user_uuid:
                     h_url = db.get_setting("hiddify_url") or ""
                     u_proxy = db.get_setting("user_proxy_path") or ""
@@ -4148,17 +4495,30 @@ async def admin_order_pay_action_callback(update: Update, context: ContextTypes.
 
         if user_id and int(user_id) > 0:
             try:
-                c_msg = (
-                    f"🎉 <b>پرداخت شما تایید شد و اشتراک فعال گردید!</b>\n\n"
-                    f"📦 پلن: <b>{plan_name}</b>\n"
-                    f"📊 حجم: <b>{data_limit} گیگابایت</b> | ⏳ مدت: <b>{duration} روز</b>\n"
-                    + (f"🔗 لینک اشتراک شما:\n<code>{sub_url}</code>\n" if sub_url else "")
-                )
+                if queued_renewal:
+                    c_msg = (
+                        f"🎉 <b>تمدید اشتراک شما با موفقیت تایید و در صف تمدید رزرو شد!</b>\n\n"
+                        f"🔢 <b>نوبت فعال‌سازی:</b> نوبت {queued_order}\n"
+                        f"📦 پلن رزرو: <b>{plan_name}</b>\n"
+                        f"📊 حجم: <b>{data_limit} گیگابایت</b> | ⏳ مدت: <b>{duration} روز</b>\n\n"
+                        f"🔄 <b>زمان فعال‌سازی خودکار:</b> پس از مصرف ۹۹.۵٪ حجم یا در ساعت ۲۳:۵۵ روز پایانی بسته فعلی\n"
+                        f"⚡ در صورت تمایل می‌توانید در منوی «وضعیت اشتراک» این بسته را به صورت آنی فعال نمایید."
+                    )
+                else:
+                    c_msg = (
+                        f"🎉 <b>پرداخت شما تایید شد و اشتراک فعال گردید!</b>\n\n"
+                        f"📦 پلن: <b>{plan_name}</b>\n"
+                        f"📊 حجم: <b>{data_limit} گیگابایت</b> | ⏳ مدت: <b>{duration} روز</b>\n"
+                        + (f"🔗 لینک اشتراک شما:\n<code>{sub_url}</code>\n" if sub_url else "")
+                    )
                 await context.bot.send_message(chat_id=int(user_id), text=c_msg, parse_mode="HTML")
             except Exception as e_not:
                 logger.error(f"Failed to notify user of payment approval: {e_not}")
 
-        done_text = f"{orig_text}\n\n✅ <b>پرداخت سفارش {order_id} تایید و اشتراک فعال شد.</b>"
+        if queued_renewal:
+            done_text = f"{orig_text}\n\n✅ <b>پرداخت سفارش {order_id} تایید و بسته در نوبت {queued_order} صف تمدید رزرو شد.</b>"
+        else:
+            done_text = f"{orig_text}\n\n✅ <b>پرداخت سفارش {order_id} تایید و اشتراک فعال شد.</b>"
         await edit_admin_message_safe(query, done_text, reply_markup=None, parse_mode="HTML")
 
     elif data.startswith("adm_pay_rej_") or data.startswith("res_pay_rej_"):
@@ -5235,96 +5595,103 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
         else:
             is_exp = True
 
-        if old_data_limit > 0 and old_data_used >= old_data_limit:
+        if old_data_limit > 0 and old_data_used >= (old_data_limit * 0.995):
             is_exp = True
     else:
         is_exp = True
 
-    if is_exp:
+    queued_renewal = False
+    queued_order = 1
+    renewal_type = "replace"
+    new_data_limit = plan.get("data_limit") if plan.get("data_limit", 0) > 0 else None
+    new_duration = plan.get("duration", 30)
+
+    if not is_exp and sub_id and target_sub:
+        # اشتراک هنوز فعال است -> بسته در صف تمدید رزرو می‌شود
+        q_res = db.add_to_subscription_queue(
+            subscription_id=sub_id,
+            plan_id=str(plan_id),
+            plan_name=plan.get("name", "تمدید"),
+            data_limit=float(plan.get("data_limit", 0)),
+            duration=int(plan.get("duration", 30)),
+            cost=plan.get("price", 0),
+            reseller_id=target_sub.get("reseller_id"),
+            telegram_id=user_id,
+            hidify_uuid=user_uuid,
+            note="رزرو شده توسط تایید تمدید ادمین در تلگرام"
+        )
+        queued_renewal = True
+        queued_order = q_res.get("queue_order", 1) if isinstance(q_res, dict) else 1
+    else:
+        # اشتراک منقضی یا تمام شده است -> فعال‌سازی فوری روی هیدیفای
         new_plan_name = plan["name"]
-        new_data_limit = plan["data_limit"] if plan["data_limit"] > 0 else None
-        new_duration = plan["duration"]
         new_data_used = 0
         new_start_date = get_now_naive().strftime("%Y-%m-%d")
         new_expire_date = (get_now_naive() + timedelta(days=plan["duration"])).isoformat()
         renewal_type = "replace"
-    else:
-        new_plan_name = (target_sub.get("plan_name") if target_sub and old_data_limit > plan["data_limit"] else plan["name"])
-        new_data_limit = (old_data_limit + plan["data_limit"]) if plan["data_limit"] > 0 else None
-        new_duration = old_duration + plan["duration"]
-        new_data_used = old_data_used
-        new_start_date = None
-        if old_expire_ts > now_ts:
-            new_expire_ts = old_expire_ts + (plan["duration"] * 86400)
-        else:
-            new_expire_ts = now_ts + (plan["duration"] * 86400)
-        new_expire_date = datetime.fromtimestamp(new_expire_ts).isoformat()
-        renewal_type = "extend"
 
-    # ثبت در تاریخچه مصرف دوره‌های گذشته
-    if target_sub:
-        db.save_subscription_history(
-            subscription_id=sub_id,
-            telegram_id=user_id,
-            hidify_uuid=user_uuid,
-            account_name=target_sub.get("account_name") or f"tg_{user_id}",
-            plan_name=target_sub.get("plan_name") or plan["name"],
-            previous_usage_gb=old_data_used,
-            previous_limit_gb=old_data_limit,
-            period_days=target_sub.get("duration") or plan["duration"],
-            renewal_type=renewal_type,
-            reseller_id=target_sub.get("reseller_id")
-        )
+        # ثبت در تاریخچه مصرف دوره‌های گذشته
+        if target_sub:
+            db.save_subscription_history(
+                subscription_id=sub_id,
+                telegram_id=user_id,
+                hidify_uuid=user_uuid,
+                account_name=target_sub.get("account_name") or f"tg_{user_id}",
+                plan_name=target_sub.get("plan_name") or plan["name"],
+                previous_usage_gb=old_data_used,
+                previous_limit_gb=old_data_limit,
+                period_days=target_sub.get("duration") or plan["duration"],
+                renewal_type=renewal_type,
+                reseller_id=target_sub.get("reseller_id")
+            )
 
-    # ۲. بروزرسانی در Hiddify
-    update_payload = {}
-    if new_data_limit is not None:
-        update_payload["usage_limit_GB"] = new_data_limit
-    update_payload["package_days"] = new_duration
-    if renewal_type == "replace":
+        # ۲. بروزرسانی در Hiddify
+        update_payload = {}
+        if new_data_limit is not None:
+            update_payload["usage_limit_GB"] = new_data_limit
+        update_payload["package_days"] = new_duration
         update_payload["current_usage_GB"] = 0
         if new_start_date:
             update_payload["start_date"] = new_start_date
 
-    try:
-        res = await hidify.update_user(user_uuid, **update_payload)
-        if "error" in res:
-            logger.warning(f"Hidify update user error: {res['error']}")
-    except Exception as e:
-        logger.error(f"Error updating user in hidify: {e}")
-        await edit_admin_message_safe(query, f"❌ خطا در اتصال به هیدیفای:\n{str(e)[:200]}")
-        return
+        try:
+            res = await hidify.update_user(user_uuid, **update_payload)
+            if "error" in res:
+                logger.warning(f"Hidify update user error: {res['error']}")
+        except Exception as e:
+            logger.error(f"Error updating user in hidify: {e}")
+            await edit_admin_message_safe(query, f"❌ خطا در اتصال به هیدیفای:\n{str(e)[:200]}")
+            return
 
-    # ۳. بروزرسانی اشتراک در دیتابیس
-    if sub_id and target_sub:
-        update_fields = {
-            "plan_id": plan_id,
-            "plan_name": new_plan_name,
-            "data_limit": new_data_limit if new_data_limit else 0,
-            "data_used": new_data_used,
-            "duration": new_duration,
-            "expire_date": new_expire_date,
-            "status": "active",
-            "last_renewed_at": get_now_iso(),
-            "last_lifecycle_event_at": get_now_iso(),
-        }
-        if renewal_type == "replace":
-            update_fields["start_date"] = new_start_date
-        db.update_subscription(sub_id, **update_fields)
-    else:
-        db.save_subscription(
-            telegram_id=user_id,
-            hidify_uuid=user_uuid,
-            plan_id=plan_id,
-            plan_name=new_plan_name,
-            data_limit=new_data_limit if new_data_limit else 0,
-            duration=new_duration,
-            data_used=new_data_used,
-            status="active",
-            account_name=target_sub.get("account_name") if target_sub else f"tg_{user_id}",
-            account_comment=target_sub.get("account_comment") if target_sub else None,
-            created_by="admin_bot",
-        )
+        # ۳. بروزرسانی اشتراک در دیتابیس
+        if sub_id and target_sub:
+            update_fields = {
+                "plan_id": plan_id,
+                "plan_name": new_plan_name,
+                "data_limit": new_data_limit if new_data_limit else 0,
+                "data_used": new_data_used,
+                "duration": new_duration,
+                "expire_date": new_expire_date,
+                "status": "active",
+                "start_date": new_start_date,
+                "last_renewed_at": get_now_iso(),
+                "last_lifecycle_event_at": get_now_iso(),
+            }
+            db.update_subscription(sub_id, **update_fields)
+        else:
+            db.save_subscription(
+                telegram_id=user_id,
+                hidify_uuid=user_uuid,
+                plan_id=plan_id,
+                plan_name=new_plan_name,
+                data_limit=new_data_limit if new_data_limit else 0,
+                duration=new_duration,
+                data_used=new_data_used,
+                status="active",
+                account_name=target_sub.get("account_name") if target_sub else f"tg_{user_id}",
+                account_comment=target_sub.get("account_comment") if target_sub else None,
+                created_by="admin_bot",
+            )
 
     # ۴. بروزرسانی وضعیت تراکنش
     try:
@@ -5357,33 +5724,56 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     # ۶. ویرایش امن پیام ادمین
     price_formatted = f"{plan.get('price', 0):,}".replace(",", "،")
-    renew_type_fa = "ریست حجم و تمدید مجدد" if renewal_type == "replace" else "افزایش حجم و تمدید مدت"
-    admin_success_text = (
-        f"✅ **تمدید اشتراک با موفقیت تایید شد!**\n\n"
-        f"👤 کاربر: `{user_id}`\n"
-        f"📋 پلن: {plan.get('name', 'نامشخص')}\n"
-        f"💰 مبلغ: {price_formatted} تومان\n"
-        f"🔄 نوع تمدید: {renew_type_fa}"
-    )
+    if queued_renewal:
+        admin_success_text = (
+            f"✅ **تمدید تایید شد و به صف رزرو اضافه گردید!**\n\n"
+            f"👤 کاربر: `{user_id}`\n"
+            f"📋 پلن: {plan.get('name', 'نامشخص')}\n"
+            f"💰 مبلغ: {price_formatted} تومان\n"
+            f"🔢 نوبت در صف: **نوبت {queued_order}**\n"
+            f"🔄 زمان فعال‌سازی: پس از مصرف ۹۹.۵٪ یا ساعت ۲۳:۵۵ روز پایانی"
+        )
+    else:
+        admin_success_text = (
+            f"✅ **تمدید اشتراک با موفقیت تایید شد!**\n\n"
+            f"👤 کاربر: `{user_id}`\n"
+            f"📋 پلن: {plan.get('name', 'نامشخص')}\n"
+            f"💰 مبلغ: {price_formatted} تومان\n"
+            f"🔄 نوع تمدید: ریست حجم و فعال‌سازی فوری"
+        )
     await edit_admin_message_safe(query, admin_success_text)
 
     # ۷. پیام و کارت اشتراک به کاربر
-    base_url = (HIDIFY_PANEL_URL or "").rstrip("/")
-    proxy_path = (USER_PROXY_PATH or HIDIFY_PROXY_PATH or "").strip("/")
-    subscription_url = f"{base_url}/{proxy_path}/{user_uuid}/"
-    details = (
-        f"✅ اشتراک شما با موفقیت تمدید شد!\n\n"
-        f"📋 پلن: **{plan.get('name', 'نامشخص')}**\n"
-        f"📊 حجم جدید: **{new_data_limit if new_data_limit else 'نامحدود'} گیگابایت**\n"
-        f"⏰ مدت کل: **{new_duration} روز**"
-    )
-    await send_subscription_card(
-        context.bot,
-        chat_id=user_id,
-        sub_url=subscription_url,
-        title="🎉 **تمدید اشتراک شما انجام شد!**",
-        details=details
-    )
+    if queued_renewal:
+        user_q_msg = (
+            f"🎉 <b>تمدید اشتراک شما با موفقیت تایید و در صف تمدید رزرو شد!</b>\n\n"
+            f"🔢 <b>نوبت فعال‌سازی:</b> نوبت {queued_order}\n"
+            f"📦 پلن: <b>{plan.get('name', 'نامشخص')}</b>\n"
+            f"📊 حجم: <b>{plan.get('data_limit', 0)} گیگابایت</b> | ⏳ مدت: <b>{plan.get('duration', 30)} روز</b>\n\n"
+            f"🔄 <b>زمان فعال‌سازی خودکار:</b> پس از مصرف ۹۹.۵٪ حجم بسته فعلی یا در ساعت ۲۳:۵۵ روز پایانی\n"
+            f"⚡ در صورت تمایل می‌توانید در بخش «وضعیت اشتراک» این بسته را به صورت آنی فعال فرمایید."
+        )
+        try:
+            await context.bot.send_message(chat_id=user_id, text=user_q_msg, parse_mode="HTML")
+        except Exception as e_tg:
+            logger.error(f"Error notifying user of queued renewal: {e_tg}")
+    else:
+        base_url = (HIDIFY_PANEL_URL or "").rstrip("/")
+        proxy_path = (USER_PROXY_PATH or HIDIFY_PROXY_PATH or "").strip("/")
+        subscription_url = f"{base_url}/{proxy_path}/{user_uuid}/"
+        details = (
+            f"✅ اشتراک شما با موفقیت تمدید شد!\n\n"
+            f"📋 پلن: **{plan.get('name', 'نامشخص')}**\n"
+            f"📊 حجم جدید: **{new_data_limit if new_data_limit else 'نامحدود'} گیگابایت**\n"
+            f"⏰ مدت کل: **{new_duration} روز**"
+        )
+        await send_subscription_card(
+            context.bot,
+            chat_id=user_id,
+            sub_url=subscription_url,
+            title="🎉 **تمدید اشتراک شما انجام شد!**",
+            details=details
+        )
 
 
 async def admin_reject_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5785,8 +6175,57 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             p_text = f"🔄 **تمدید اشتراک «{r_name}»**\n\n"
             p_text += f"📊 مصرف فعلی: **{u_gb}GB** از **{l_gb}GB**\n"
             p_text += f"⏰ مدت فعلی: **{sub.get('duration', 30)} روز**\n\n"
-            p_text += "لطفاً پلن مورد نظر برای تمدید را انتخاب فرمایید:"
             btns = []
+            q_items = db.get_pending_queue_items(sub_id)
+            if q_items:
+                p_text += "⏳ **بسته‌های در صف تمدید (رزرو):**\n"
+                for q in q_items:
+                    q_pname = q.get('plan_name') or f"{q.get('data_limit', 0)}GB"
+                    p_text += f"   🔹 نوبت {q.get('queue_order', 1)}: {q_pname} ({q.get('data_limit')}GB - {q.get('duration')} روز)\n"
+                    btns.append([InlineKeyboardButton(f"⚡ فعال‌سازی فوری نوبت {q.get('queue_order', 1)} ({q_pname})", callback_data=f"adm_act_queue_{q.get('id')}_{sub_id}")])
+                p_text += "\n"
+            p_text += "لطفاً پلن مورد نظر برای تمدید را انتخاب فرمایید:"
+            for p in plans:
+                pid = p.get("id") or p.get("plan_id")
+                pname = p.get("name") or p.get("title") or pid
+                price = p.get("price", 0)
+                btns.append([InlineKeyboardButton(f"📦 {pname} ({price:,} ت)", callback_data=f"adm_adv_rnw_{sub_id}_{pid}")])
+            btns.append([InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="adm_adv_menu")])
+            await query.edit_message_text(p_text, reply_markup=InlineKeyboardMarkup(btns), parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data.startswith("adm_act_queue_"):
+            parts = data.replace("adm_act_queue_", "").split("_")
+            q_id = int(parts[0])
+            sub_id = int(parts[1])
+            from dashboard import activate_single_queue_item
+            res = activate_single_queue_item(q_id, triggered_by="مدیر در تلگرام")
+            if res.get("success"):
+                await query.answer("✅ بسته رزرو با موفقیت فعال شد!", show_alert=True)
+            else:
+                err_msg = res.get("error", "خطای ناشناخته")
+                await query.answer(f"❌ خطا: {err_msg}", show_alert=True)
+            sub = db.get_subscription(sub_id)
+            if not sub:
+                await query.edit_message_text("❌ اشتراک یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="adm_adv_menu")]]))
+                return ADMIN_MENU
+            plans = get_all_plans()
+            r_name = sub.get("account_name") or f"sub_{sub_id}"
+            u_gb = round(sub.get("data_used", 0), 1)
+            l_gb = round(sub.get("data_limit", 0), 1)
+            p_text = f"🔄 **تمدید اشتراک «{r_name}»**\n\n"
+            p_text += f"📊 مصرف فعلی: **{u_gb}GB** از **{l_gb}GB**\n"
+            p_text += f"⏰ مدت فعلی: **{sub.get('duration', 30)} روز**\n\n"
+            btns = []
+            q_items = db.get_pending_queue_items(sub_id)
+            if q_items:
+                p_text += "⏳ **بسته‌های در صف تمدید (رزرو):**\n"
+                for q in q_items:
+                    q_pname = q.get('plan_name') or f"{q.get('data_limit', 0)}GB"
+                    p_text += f"   🔹 نوبت {q.get('queue_order', 1)}: {q_pname} ({q.get('data_limit')}GB - {q.get('duration')} روز)\n"
+                    btns.append([InlineKeyboardButton(f"⚡ فعال‌سازی فوری نوبت {q.get('queue_order', 1)} ({q_pname})", callback_data=f"adm_act_queue_{q.get('id')}_{sub_id}")])
+                p_text += "\n"
+            p_text += "لطفاً پلن مورد نظر برای تمدید را انتخاب فرمایید:"
             for p in plans:
                 pid = p.get("id") or p.get("plan_id")
                 pname = p.get("name") or p.get("title") or pid
@@ -6370,9 +6809,63 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             p_text = f"🔄 **تمدید اشتراک «{r_name}»**\n\n"
             p_text += f"📊 مصرف فعلی: **{u_gb}GB** از **{l_gb}GB**\n"
             p_text += f"⏰ مدت فعلی: **{sub.get('duration', 30)} روز**\n\n"
-            p_text += "لطفاً پلن مورد نظر برای تمدید را انتخاب فرمایید:"
             
             buttons = []
+            q_items = db.get_pending_queue_items(sub_id)
+            if q_items:
+                p_text += "⏳ **بسته‌های در صف تمدید (رزرو):**\n"
+                for q in q_items:
+                    q_pname = q.get('plan_name') or f"{q.get('data_limit', 0)}GB"
+                    p_text += f"   🔹 نوبت {q.get('queue_order', 1)}: {q_pname} ({q.get('data_limit')}GB - {q.get('duration')} روز)\n"
+                    buttons.append([InlineKeyboardButton(f"⚡ فعال‌سازی فوری نوبت {q.get('queue_order', 1)} ({q_pname})", callback_data=f"res_act_queue_{q.get('id')}_{sub_id}")])
+                p_text += "\n"
+
+            p_text += "لطفاً پلن مورد نظر برای تمدید را انتخاب فرمایید:"
+            for p in plans:
+                pid = p["plan_id"]
+                pname = p.get("display_name") or p.get("master_name", "پلن")
+                vol = p.get("data_limit", 30)
+                days = p.get("duration", 30)
+                w_price = p.get("wholesale_price", 0)
+                vol_str = f"{vol}GB" if vol > 0 else "نامحدود"
+                btn_txt = f"📦 {pname} ({vol_str} - {days}روز) | 💰 {w_price:,} ت"
+                buttons.append([InlineKeyboardButton(btn_txt, callback_data=f"res_adm_cfren_{sub_id}_{pid}")])
+            buttons.append([InlineKeyboardButton("🔙 بازگشت به منوی مدیریت", callback_data="res_adm_menu")])
+            await query.edit_message_text(p_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown")
+            return ADMIN_MENU
+
+        elif data.startswith("res_act_queue_"):
+            parts = data.replace("res_act_queue_", "").split("_")
+            q_id = int(parts[0])
+            sub_id = int(parts[1])
+            from dashboard import activate_single_queue_item
+            res = activate_single_queue_item(q_id, triggered_by=f"نماینده در تلگرام ({user.id})")
+            if res.get("success"):
+                await query.answer("✅ بسته رزرو با موفقیت فعال شد!", show_alert=True)
+            else:
+                err_msg = res.get("error", "خطای ناشناخته")
+                await query.answer(f"❌ خطا: {err_msg}", show_alert=True)
+            sub = db.get_subscription(sub_id)
+            if not sub or int(sub.get("reseller_id") or 0) != int(r_id):
+                await query.edit_message_text("❌ اشتراک یافت نشد یا متعلق به شما نیست.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="res_adm_menu")]]))
+                return ADMIN_MENU
+            plans = db.get_reseller_plans(r_id)
+            r_name = sub.get("account_name") or f"sub_{sub_id}"
+            u_gb = round(sub.get("data_used", 0), 1)
+            l_gb = round(sub.get("data_limit", 0), 1)
+            p_text = f"🔄 **تمدید اشتراک «{r_name}»**\n\n"
+            p_text += f"📊 مصرف فعلی: **{u_gb}GB** از **{l_gb}GB**\n"
+            p_text += f"⏰ مدت فعلی: **{sub.get('duration', 30)} روز**\n\n"
+            buttons = []
+            q_items = db.get_pending_queue_items(sub_id)
+            if q_items:
+                p_text += "⏳ **بسته‌های در صف تمدید (رزرو):**\n"
+                for q in q_items:
+                    q_pname = q.get('plan_name') or f"{q.get('data_limit', 0)}GB"
+                    p_text += f"   🔹 نوبت {q.get('queue_order', 1)}: {q_pname} ({q.get('data_limit')}GB - {q.get('duration')} روز)\n"
+                    buttons.append([InlineKeyboardButton(f"⚡ فعال‌سازی فوری نوبت {q.get('queue_order', 1)} ({q_pname})", callback_data=f"res_act_queue_{q.get('id')}_{sub_id}")])
+                p_text += "\n"
+            p_text += "لطفاً پلن مورد نظر برای تمدید را انتخاب فرمایید:"
             for p in plans:
                 pid = p["plan_id"]
                 pname = p.get("display_name") or p.get("master_name", "پلن")
@@ -7826,6 +8319,7 @@ def main():
             CallbackQueryHandler(ticket_list, pattern="^ticket_list$"),
             CallbackQueryHandler(import_sub_start, pattern="^btn_import_sub$"),
             CallbackQueryHandler(handle_renew, pattern="^renew_"),
+            CallbackQueryHandler(customer_queue_action_callback, pattern="^(usr_qact_|usr_qconf_|usr_qman_|usr_qmove_|usr_qcancel_|usr_refresh_status)"),
             CallbackQueryHandler(admin_reply_ticket_callback, pattern="^admin_reply_ticket_"),
             CallbackQueryHandler(admin_ticket_action_callback, pattern="^(adm_reply_tkt_|adm_canned_tkt_|adm_canned_send_|adm_canned_cancel_|adm_close_tkt_|res_reply_tkt_|res_canned_tkt_|res_canned_send_|res_canned_cancel_|res_close_tkt_)"),
             CallbackQueryHandler(admin_quota_action_callback, pattern="^(adm_quota_app_|adm_quota_rej_)"),
@@ -7839,6 +8333,7 @@ def main():
                 CallbackQueryHandler(ticket_list, pattern="^ticket_list$"),
                 CallbackQueryHandler(import_sub_start, pattern="^btn_import_sub$"),
                 CallbackQueryHandler(handle_renew, pattern="^renew_"),
+                CallbackQueryHandler(customer_queue_action_callback, pattern="^(usr_qact_|usr_qconf_|usr_qman_|usr_qmove_|usr_qcancel_|usr_refresh_status)"),
                 CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"),
                 CallbackQueryHandler(admin_reply_ticket_callback, pattern="^admin_reply_ticket_"),
                 CallbackQueryHandler(admin_ticket_action_callback, pattern="^(adm_reply_tkt_|adm_canned_tkt_|adm_canned_send_|adm_canned_cancel_|adm_close_tkt_|res_reply_tkt_|res_canned_tkt_|res_canned_send_|res_canned_cancel_|res_close_tkt_)"),
@@ -8058,6 +8553,9 @@ def main():
     application.add_handler(CallbackQueryHandler(admin_approve_renew, pattern="^admin_approve_renew_"))
     application.add_handler(CallbackQueryHandler(admin_approve_payment, pattern="^admin_approve_"))
     application.add_handler(CallbackQueryHandler(admin_reject_payment, pattern="^admin_reject_"))
+
+    # هندلرهای صف تمدید مشتری
+    application.add_handler(CallbackQueryHandler(customer_queue_action_callback, pattern="^(usr_qact_|usr_qconf_|usr_qman_|usr_qmove_|usr_qcancel_|usr_refresh_status)"))
 
     # ویزارد تعاملی قدم‌به‌قدم عیب‌یابی و آموزش اتصال
     application.add_handler(CallbackQueryHandler(wizard_callback_handler, pattern="^wiz_"))

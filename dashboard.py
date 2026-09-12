@@ -1670,14 +1670,19 @@ def hidify_sync_renew_user(uuid: str, new_limit_gb: float, new_duration_days: in
         return {"renewal_type": "fallback", "new_limit": new_limit_gb, "new_days": new_duration_days, "res": res}
 
 
+_queue_process_lock = threading.Lock()
+
+
 def process_subscription_queue() -> dict:
     """
     بررسی هوشمند و خودکار صف تمدید و فعال‌سازی بلادرنگ بسته‌های رزرو:
     شرایط فعال‌سازی:
-    ۱. مصرف ۹۹٪ از سقف حجم بسته فعلی (data_used >= data_limit * 0.99)
-    ۲. رسیدن به روز پایانی بسته فعلی (کمتر یا مساوی ۲۴ ساعت مانده به انقضا)
+    ۱. مصرف ۹۹.۵٪ از سقف حجم بسته فعلی (data_used >= data_limit * 0.995)
+    ۲. رسیدن به ساعت ۲۳:۵۵ روز پایانی بسته فعلی
     هنگام فعال‌سازی: ریست کامل حجم (0) و روزها در هیدیفای، بروزرسانی دیتابیس، ثبت سابقه در آرشیو و ارسال نوتیفیکیشن
     """
+    if not _queue_process_lock.acquire(blocking=False):
+        return {"processed": 0, "activated": 0, "status": "already_running"}
     try:
         pending_items = db.get_all_pending_queue_items()
         if not pending_items:
@@ -1721,31 +1726,32 @@ def process_subscription_queue() -> dict:
                 except Exception as ex:
                     logger.warning(f"Live queue check error for {uuid}: {ex}")
 
-            # ۱. شرط اول: رسیدن به ۹۹٪ حجم
-            is_volume_99 = (curr_limit > 0 and curr_used >= (curr_limit * 0.99))
+            # ۱. شرط اول: رسیدن به ۹۹.۵٪ حجم
+            is_volume_99_5 = (curr_limit > 0 and curr_used >= (curr_limit * 0.995))
 
-            # ۲. شرط دوم: رسیدن به آخرین روز بسته فعلی (<= 1 روز مانده)
-            is_last_day = False
-            if curr_start and curr_duration:
+            # ۲. شرط دوم: ساعت ۲۳:۵۵ روز پایانی بسته فعلی
+            is_last_day_2355 = False
+            exp_day = None
+            if curr_expire:
                 try:
-                    st_date = datetime.fromisoformat(str(curr_start)[:10])
-                    exp_date = st_date + timedelta(days=curr_duration)
-                    days_left = (exp_date.date() - now.date()).days
-                    if days_left <= 1:
-                        is_last_day = True
+                    exp_day = datetime.fromisoformat(str(curr_expire).replace("Z", "")[:10]).date()
                 except Exception:
                     pass
-            elif curr_expire:
+            if not exp_day and curr_start and curr_duration:
                 try:
-                    exp_date = datetime.fromisoformat(str(curr_expire)[:10])
-                    days_left = (exp_date.date() - now.date()).days
-                    if days_left <= 1:
-                        is_last_day = True
+                    st_date = datetime.fromisoformat(str(curr_start)[:10]).date()
+                    exp_day = st_date + timedelta(days=curr_duration)
                 except Exception:
                     pass
 
-            if is_volume_99 or is_last_day:
-                trigger_reason = "مصرف ۹۹٪ حجم بسته" if is_volume_99 else "رسیدن به روز پایانی بسته"
+            if exp_day:
+                # ساعت ۲۳:۵۵ روز پایانی بسته
+                switch_dt = datetime(exp_day.year, exp_day.month, exp_day.day, 23, 55, 0)
+                if now >= switch_dt:
+                    is_last_day_2355 = True
+
+            if is_volume_99_5 or is_last_day_2355:
+                trigger_reason = "مصرف ۹۹.۵٪ حجم بسته" if is_volume_99_5 else "رسیدن به ساعت ۲۳:۵۵ روز پایانی بسته"
                 logger.info(f"Auto-activating queued renewal for sub {sub_id} ({item.get('account_name')}): {trigger_reason}")
 
                 # الف. فعال‌سازی در هیدیفای با ریست کامل حجم و روز
@@ -1794,8 +1800,11 @@ def process_subscription_queue() -> dict:
                 db.mark_queue_item_activated(item["id"])
                 activated_count += 1
 
-                # هـ. ارسال نوتیفیکیشن تلگرام
+                # هـ. ارسال نوتیفیکیشن تلگرام با توکن مناسب (نماینده یا مدیریت)
                 tg_id = item.get("telegram_id") or item.get("sub_tg_id")
+                r_id = item.get("reseller_id")
+                r_info = db.get_reseller(r_id) if r_id else None
+                r_bot_token = r_info.get("bot_token") if r_info else None
                 if tg_id and int(tg_id) > 0:
                     try:
                         send_telegram_msg(
@@ -1804,7 +1813,8 @@ def process_subscription_queue() -> dict:
                             f"بسته رزرو شده «{plan_name}» به صورت خودکار برای اشتراک <b>{item.get('account_name')}</b> فعال گردید.\n\n"
                             f"📊 حجم جدید: <b>{new_limit} گیگابایت</b>\n"
                             f"⏱ مدت اعتبار: <b>{new_duration} روز</b>\n"
-                            f"🔄 وضعیت: حجم مصرفی صفر شد و سرویس شما بدون قطعی ادامه دارد."
+                            f"🔄 وضعیت: حجم مصرفی صفر شد و سرویس شما بدون قطعی ادامه دارد.",
+                            bot_token=r_bot_token
                         )
                     except Exception as ex:
                         logger.debug(f"Could not send telegram alert for queued renewal: {ex}")
@@ -1813,6 +1823,11 @@ def process_subscription_queue() -> dict:
     except Exception as e:
         logger.error(f"Error in process_subscription_queue: {e}")
         return {"processed": 0, "activated": 0, "error": str(e)}
+    finally:
+        try:
+            _queue_process_lock.release()
+        except Exception:
+            pass
 
 
 def activate_single_queue_item(queue_id: int, triggered_by: str = "مدیریت") -> dict:
@@ -1892,6 +1907,9 @@ def activate_single_queue_item(queue_id: int, triggered_by: str = "مدیریت"
 
         # ۵. ارسال نوتیفیکیشن تلگرام
         tg_id = item.get("telegram_id") or sub.get("telegram_id")
+        r_id = item.get("reseller_id") or sub.get("reseller_id")
+        r_info = db.get_reseller(r_id) if r_id else None
+        r_bot_token = r_info.get("bot_token") if r_info else None
         if tg_id and int(tg_id) > 0:
             try:
                 send_telegram_msg(
@@ -1900,7 +1918,8 @@ def activate_single_queue_item(queue_id: int, triggered_by: str = "مدیریت"
                     f"بسته رزرو شده «{plan_name}» هم‌اکنون برای اشتراک <b>{sub.get('account_name')}</b> فعال گردید.\n\n"
                     f"📊 حجم جدید: <b>{new_limit} گیگابایت</b>\n"
                     f"⏱ مدت اعتبار: <b>{new_duration} روز</b>\n"
-                    f"🔄 وضعیت: حجم مصرفی صفر شد و سرویس شما فعال است."
+                    f"🔄 وضعیت: حجم مصرفی صفر شد و سرویس شما فعال است.",
+                    bot_token=r_bot_token
                 )
             except Exception as ex:
                 logger.debug(f"Could not send telegram alert for manual queue activation: {ex}")
@@ -4509,6 +4528,8 @@ def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: 
     duration = selected_plan["duration"] if selected_plan else 30
     account_name = tx.get("account_name") or f"tg_{user_id}"
     user_uuid = ""
+    queued_renewal = False
+    queued_order = 1
     instant_activation = True
     if smart_inv and smart_inv.get("instant_activation") is not None:
         instant_activation = bool(smart_inv["instant_activation"])
@@ -4534,9 +4555,42 @@ def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: 
             old_used = float(target_sub.get("data_used") or 0)
             old_plan_name = target_sub.get("plan_name") or ""
 
-            if not instant_activation:
+            # بررسی فعال بودن بسته فعلی
+            is_sub_active = False
+            if target_sub.get("status") == "active":
+                vol_ok = (old_limit == 0 or old_used < (old_limit * 0.995))
+                time_ok = True
+                curr_start = target_sub.get("start_date")
+                curr_dur = int(target_sub.get("duration") or 30)
+                curr_exp = target_sub.get("expire_date")
+                now_dt = get_now_naive()
+                if curr_start and curr_dur:
+                    try:
+                        st = datetime.fromisoformat(str(curr_start)[:10]).date()
+                        time_ok = (now_dt.date() < (st + timedelta(days=curr_dur)))
+                    except Exception:
+                        pass
+                elif curr_exp:
+                    try:
+                        time_ok = (now_dt.date() < datetime.fromisoformat(str(curr_exp).replace("Z", "")[:10]).date())
+                    except Exception:
+                        pass
+                is_sub_active = (vol_ok and time_ok)
+
+            # اگر مشتری دارای بسته فعال است، بسته تمدیدی طبق نیازمندی در صف رزرو قرار می‌گیرد
+            should_queue = False
+            if smart_inv and smart_inv.get("instant_activation") is not None:
+                should_queue = not bool(smart_inv["instant_activation"])
+            else:
+                comm = tx.get("account_comment") or ""
+                if "instant_act:0" in comm or "queue_renewal" in comm:
+                    should_queue = True
+                elif is_sub_active:
+                    should_queue = True
+
+            if should_queue:
                 # بسته به صف رزرو اضافه می‌شود تا پس از اتمام بسته فعلی فعال شود
-                db.add_to_subscription_queue(
+                q_res = db.add_to_subscription_queue(
                     subscription_id=renew_sub_id,
                     plan_id="renewal_plan",
                     plan_name=pname,
@@ -4546,9 +4600,11 @@ def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: 
                     reseller_id=target_sub.get("reseller_id") or r_id,
                     telegram_id=user_id or target_sub.get("telegram_id") or 0,
                     hidify_uuid=user_uuid,
-                    note=f"رزرو شده از طریق پورتال تمدید مشتری (سفارش {order_id})"
+                    note=f"رزرو شده در صف تمدید (سفارش {order_id})"
                 )
-                logger.info(f"Subscription {renew_sub_id} renewal queued successfully (instant_activation=False).")
+                queued_renewal = True
+                queued_order = q_res.get("queue_order", 1) if isinstance(q_res, dict) else 1
+                logger.info(f"Subscription {renew_sub_id} renewal queued successfully (order={queued_order}).")
             else:
                 renew_res = hidify_sync_renew_user(user_uuid, float(data_limit), int(duration))
                 final_limit = renew_res.get("new_limit", data_limit)
@@ -4708,8 +4764,18 @@ def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: 
     u_proxy = get_user_proxy()
     if user_uuid and h_url and user_id:
         sub_url = f"{h_url}/{u_proxy}/{user_uuid}/"
-        card_title = "🎉 **پرداخت آنلاین تایید شد و اشتراک شما فعال گردید!**" if not is_renewal else "🔄 **اشتراک شما با موفقیت تمدید شد!**"
-        card_details = f"📋 پلن: **{pname}**\n📊 حجم: **{data_limit} گیگابایت**\n⏰ مدت: **{duration} روز**"
+        if queued_renewal:
+            card_title = "⏳ **بسته تمدیدی شما با موفقیت در صف رزرو قرار گرفت!**"
+            card_details = (
+                f"📦 پلن: **{pname}**\n"
+                f"📊 حجم: **{data_limit} گیگابایت** | ⏰ مدت: **{duration} روز**\n"
+                f"🔢 **نوبت فعال‌سازی در صف:** {queued_order}\n\n"
+                f"🔄 این بسته پس از مصرف ۹۹.۵٪ حجم یا در ساعت ۲۳:۵۵ روز پایانی بسته فعلی، به صورت خودکار فعال خواهد شد.\n"
+                f"⚡ همچنین هر زمان مایل باشید می‌توانید از طریق پورتال یا ربات آن را فوراً فعال نمایید."
+            )
+        else:
+            card_title = "🎉 **پرداخت آنلاین تایید شد و اشتراک شما فعال گردید!**" if not is_renewal else "🔄 **اشتراک شما با موفقیت تمدید شد!**"
+            card_details = f"📋 پلن: **{pname}**\n📊 حجم: **{data_limit} گیگابایت**\n⏰ مدت: **{duration} روز**"
         try:
             send_subscription_card_sync(user_id, sub_url, card_title, card_details)
         except Exception as e_card:
@@ -19323,6 +19389,21 @@ def run_dashboard(host="0.0.0.0", port=None, debug=False):
         threading.Thread(target=_run_periodic_purge, daemon=True, name="PurgeExpiredSubs").start()
     except Exception:
         pass
+
+    # بررسی دوره‌ای هوشمند صف تمدید (هر ۶۰ ثانیه)
+    def _run_periodic_queue_processor():
+        time.sleep(5)  # تاخیر اولیه مختصر جهت بالا آمدن کامل سرور
+        while True:
+            try:
+                process_subscription_queue()
+            except Exception as ex:
+                logger.error(f"Error in periodic queue processor: {ex}")
+            time.sleep(60)
+
+    try:
+        threading.Thread(target=_run_periodic_queue_processor, daemon=True, name="SubscriptionQueueProcessor").start()
+    except Exception as eq:
+        logger.error(f"Error starting queue processor thread: {eq}")
 
     app.run(host=host, port=port, debug=debug, use_reloader=False)
 

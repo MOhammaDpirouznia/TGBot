@@ -2367,6 +2367,10 @@ class ResellerBotInstance:
                         sub_buttons.append([
                             InlineKeyboardButton(f"⚡ فعال‌سازی آنی بسته ({q_pname})", callback_data=f"r_act_queue_{q_id}")
                         ])
+                    if len(queue_items) >= 2:
+                        sub_buttons.append([
+                            InlineKeyboardButton("🔀 تغییر اولویت و ترتیب صف", callback_data=f"r_qman_{sub_db_id}")
+                        ])
 
                 sub_buttons.append([
                     InlineKeyboardButton("📖 راهنمای اتصال", url=tutorial_url),
@@ -2695,6 +2699,77 @@ class ResellerBotInstance:
                     "ℹ️ فرآیند فعال‌سازی آنی لغو شد. بسته تمدیدی همچنان در صف رزرو باقی خواهد ماند.",
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📋 بازگشت به اشتراک‌های من", callback_data="r_check_sub")]])
                 )
+
+            elif data.startswith("r_qman_"):
+                await query.answer()
+                try:
+                    sub_id = int(data.replace("r_qman_", ""))
+                except ValueError:
+                    return
+                q_items = db.get_pending_queue_items(sub_id)
+                if not q_items or len(q_items) < 2:
+                    await query.answer("صف تمدید کمتر از ۲ بسته دارد و نیاز به جابجایی ندارد.", show_alert=True)
+                    return
+                sub = db.get_subscription(sub_id)
+                acc_name = html.escape(str(sub.get("account_name") or f"sub_{sub_id}"))
+                txt = (
+                    f"🔀 <b>مدیریت و اولویت‌بندی صف تمدید</b>\n"
+                    f"اکانت: <code>{acc_name}</code>\n\n"
+                    f"بسته‌ها به ترتیبی که در زیر آمده‌اند به نوبت فعال خواهند شد (نوبت ۱ در ابتدا فعال می‌شود).\n"
+                    f"برای تغییر اولویت و جابجایی، از دکمه‌های ⬆️ و ⬇️ استفاده نمایید:\n\n"
+                )
+                kb_rows = []
+                for idx, q in enumerate(q_items, 1):
+                    pname = html.escape(str(q.get("plan_name") or "بسته"))
+                    vol = q.get("data_limit", 0)
+                    days = q.get("duration", 30)
+                    txt += f"<b>نوبت {idx}:</b> {pname} ({vol}GB | {days} روز)\n"
+                    btn_move = []
+                    if idx > 1:
+                        btn_move.append(InlineKeyboardButton(f"⬆️ نوبت {idx} به بالا", callback_data=f"r_qmove_{q['id']}_up_{sub_id}"))
+                    if idx < len(q_items):
+                        btn_move.append(InlineKeyboardButton(f"⬇️ نوبت {idx} به پایین", callback_data=f"r_qmove_{q['id']}_down_{sub_id}"))
+                    if btn_move:
+                        kb_rows.append(btn_move)
+                kb_rows.append([InlineKeyboardButton("🔙 بازگشت به اشتراک‌های من", callback_data="r_check_sub")])
+                await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb_rows), parse_mode="HTML")
+
+            elif data.startswith("r_qmove_"):
+                parts = data.replace("r_qmove_", "").split("_")
+                if len(parts) >= 3:
+                    q_id = int(parts[0])
+                    direction = parts[1]
+                    sub_id = int(parts[2])
+                    db.reorder_subscription_queue(sub_id, q_id, direction)
+                    await query.answer("✅ اولویت جابجا شد.")
+
+                    q_items = db.get_pending_queue_items(sub_id)
+                    sub = db.get_subscription(sub_id)
+                    acc_name = html.escape(str(sub.get("account_name") or f"sub_{sub_id}"))
+                    txt = (
+                        f"🔀 <b>مدیریت و اولویت‌بندی صف تمدید</b>\n"
+                        f"اکانت: <code>{acc_name}</code>\n\n"
+                        f"بسته‌ها به ترتیبی که در زیر آمده‌اند به نوبت فعال خواهند شد (نوبت ۱ در ابتدا فعال می‌شود).\n"
+                        f"برای تغییر اولویت و جابجایی، از دکمه‌های ⬆️ و ⬇️ استفاده نمایید:\n\n"
+                    )
+                    kb_rows = []
+                    for idx, q in enumerate(q_items, 1):
+                        pname = html.escape(str(q.get("plan_name") or "بسته"))
+                        vol = q.get("data_limit", 0)
+                        days = q.get("duration", 30)
+                        txt += f"<b>نوبت {idx}:</b> {pname} ({vol}GB | {days} روز)\n"
+                        btn_move = []
+                        if idx > 1:
+                            btn_move.append(InlineKeyboardButton(f"⬆️ نوبت {idx} به بالا", callback_data=f"r_qmove_{q['id']}_up_{sub_id}"))
+                        if idx < len(q_items):
+                            btn_move.append(InlineKeyboardButton(f"⬇️ نوبت {idx} به پایین", callback_data=f"r_qmove_{q['id']}_down_{sub_id}"))
+                        if btn_move:
+                            kb_rows.append(btn_move)
+                    kb_rows.append([InlineKeyboardButton("🔙 بازگشت به اشتراک‌های من", callback_data="r_check_sub")])
+                    try:
+                        await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb_rows), parse_mode="HTML")
+                    except Exception:
+                        pass
 
         async def support_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """ارسال پیام پشتیبانی و دکمه‌های تیکت سریع با پیام‌های پراستفاده و کارآمد"""
@@ -4575,7 +4650,7 @@ class ResellerBotInstance:
         app.add_handler(CallbackQueryHandler(reseller_ticket_callbacks, pattern="^(res_reply_tkt_|res_canned_tkt_|res_canned_send_|res_canned_cancel_|res_close_tkt_)"))
         app.add_handler(CallbackQueryHandler(reseller_approve_callback, pattern="^(rapprove_|rreject_|res_pay_app_|res_pay_rej_)"))
         app.add_handler(CallbackQueryHandler(reseller_single_link_callback, pattern="^r_single_link_"))
-        app.add_handler(CallbackQueryHandler(reseller_queue_action_callback, pattern="^(r_act_queue_|r_conf_act_queue_|r_cancel_act_queue)"))
+        app.add_handler(CallbackQueryHandler(reseller_queue_action_callback, pattern="^(r_act_queue_|r_conf_act_queue_|r_cancel_act_queue|r_qman_|r_qmove_)"))
         app.add_handler(CallbackQueryHandler(reseller_quick_ticket_callback, pattern="^(r_quick_tkt_|r_qsend_|r_qedit_|r_qback)"))
         app.add_handler(CallbackQueryHandler(reseller_admin_callback_handler, pattern="^res_adm_"))
         app.add_handler(CallbackQueryHandler(reseller_wizard_callback_handler, pattern="^wiz_"))
