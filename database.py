@@ -14,6 +14,7 @@ import random
 import logging
 import io
 import csv
+import time
 from typing import Optional, Dict, List, Any, Tuple, Union
 from datetime import datetime, timedelta, timezone
 from utils import get_now_naive, get_now_iso, TEHRAN_TZ
@@ -478,6 +479,23 @@ class Database:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_activity_logs_action ON system_activity_logs(action)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_activity_logs_actor ON system_activity_logs(actor_type, actor_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_activity_logs_target ON system_activity_logs(target_type, target_id)")
+            # ایندکس‌های حیاتی جهت افزایش چشمگیر سرعت لودینگ داشبورد، مشتریان و تراکنش‌ها
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_subs_reseller_status ON subscriptions(reseller_id, status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_subs_is_deleted ON subscriptions(is_deleted)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_subs_is_online ON subscriptions(is_online)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_subs_is_vip ON subscriptions(is_vip)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_subs_telegram_id ON subscriptions(telegram_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_subs_hidify_uuid ON subscriptions(hidify_uuid)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_subs_created_at ON subscriptions(created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_subs_lifecycle ON subscriptions(last_lifecycle_event_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_subs_account_name ON subscriptions(account_name)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_tx_reseller_status ON transactions(reseller_id, status, created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_tx_user_id ON transactions(user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_tx_sub_id ON transactions(subscription_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_tx_username ON transactions(username)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_reseller ON users(reseller_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_reseller_tx_reseller ON reseller_transactions(reseller_id, type, created_at)")
         except Exception:
             pass
 
@@ -11846,11 +11864,18 @@ class Database:
         finally:
             conn.close()
 
+    _reseller_domain_cache = {}
+
     def get_reseller_by_domain(self, domain: str):
-        """یافتن نماینده بر اساس دامنه اختصاصی پنل یا دامنه اختصاصی آموزش‌ها"""
+        """یافتن نماینده بر اساس دامنه اختصاصی پنل یا دامنه اختصاصی آموزش‌ها (همراه با کش سبک ۶۰ ثانیه‌ای)"""
         if not domain:
             return None
         clean_domain = domain.split(":")[0].strip().lower()
+        now = time.time()
+        cached = _reseller_domain_cache.get(clean_domain)
+        if cached and (now - cached.get("ts", 0) < 60):
+            return cached.get("data")
+
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -11859,7 +11884,9 @@ class Database:
                 WHERE (LOWER(custom_domain) = ? OR LOWER(tutorial_domain) = ?) AND status = 'active'
             """, (clean_domain, clean_domain))
             row = cursor.fetchone()
-            return dict(row) if row else None
+            res = dict(row) if row else None
+            _reseller_domain_cache[clean_domain] = {"data": res, "ts": now}
+            return res
         except Exception as e:
             logger.error(f"Error fetching reseller by domain: {e}")
             return None
@@ -11868,6 +11895,7 @@ class Database:
 
     def update_reseller_branding(self, reseller_id: int, **kwargs) -> dict:
         """بروزرسانی مشخصات هویت بصری، لوگو، دامنه و عنوان فروشگاه نماینده"""
+        _reseller_domain_cache.clear()
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()

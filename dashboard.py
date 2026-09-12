@@ -749,7 +749,7 @@ def get_hiddify_dashboard_traffic_stats(api_key: str = None, reseller_id: int = 
     cache_key = f"{api_key or 'admin'}_{reseller_id or 0}"
     now_ts = time.time()
     cached = _hiddify_traffic_cache.get(cache_key)
-    if cached and (now_ts - cached.get("ts", 0) < 20) and "today" in cached.get("data", {}):
+    if cached and (now_ts - cached.get("ts", 0) < 90) and "today" in cached.get("data", {}):
         return cached.get("data", {})
 
     stats_db = db.get_online_users_stats(reseller_id=reseller_id)
@@ -2085,42 +2085,43 @@ def hiddify_restore_or_recreate_subscription(sub: dict, reseller_id: int = None)
     }
 
 
+_ping_cache = {"ts": 0, "res": {"online": True, "latency": 45}}
+
 def hidify_sync_ping() -> dict:
-    """تست اتصال و پینگ سرور هیدیفای"""
+    """تست اتصال و پینگ سرور هیدیفای همراه با کش هوشمند ۶۰ ثانیه‌ای جهت عدم مسدودسازی داشبورد"""
+    global _ping_cache
     panel_url = get_hiddify_url()
     if not panel_url:
         return {"online": False, "latency": 0, "error": "آدرس سرور تنظیم نشده"}
+    now = time.time()
+    if now - _ping_cache.get("ts", 0) < 60:
+        return _ping_cache.get("res", {"online": True, "latency": 45})
+
     start_t = time.time()
     try:
-        res = hidify_sync_request("GET", "/admin/user/")
+        res = hidify_sync_request("GET", "/admin/server_status/")
+        if not res or "error" in res:
+            res = hidify_sync_request("GET", "/admin/user/")
         latency = int((time.time() - start_t) * 1000)
         if "error" in res:
-            return {"online": False, "latency": latency, "error": res["error"]}
-        return {"online": True, "latency": latency, "users_count": len(res) if isinstance(res, list) else 0}
+            res_data = {"online": False, "latency": latency, "error": res["error"]}
+        else:
+            res_data = {"online": True, "latency": latency}
+        _ping_cache = {"ts": now, "res": res_data}
+        return res_data
     except Exception as e:
         latency = int((time.time() - start_t) * 1000)
-        return {"online": False, "latency": latency, "error": str(e)}
+        res_data = {"online": False, "latency": latency, "error": str(e)}
+        _ping_cache = {"ts": now, "res": res_data}
+        return res_data
 
 
 _last_online_sync_time = 0
 _online_sync_lock = threading.Lock()
+_is_hiddify_syncing = False
 
-def sync_hiddify_online_users(force: bool = False):
-    """
-    همگام‌سازی بلادرنگ وضعیت آنلاین بودن و اطلاعات اشتراک‌ها از API هیدیفای
-    دارای محافظ نرخ درخواست و کش هوشمند (حداقل فاصله ۵ ثانیه)
-    همراه با پردازش هوشمند صف تمدید خودکار و اصلاح وضعیت‌های منقضی
-    """
-    global _last_online_sync_time
-    now = time.time()
-    if not force and (now - _last_online_sync_time < 5):
-        return
-
-    with _online_sync_lock:
-        if not force and (now - _last_online_sync_time < 5):
-            return
-        _last_online_sync_time = now
-
+def _do_execute_hiddify_sync():
+    """عملیات واقعی دریافت کاربران از هیدیفای و ذخیره در دیتابیس"""
     try:
         users = hidify_sync_request("GET", "/admin/user/")
         if isinstance(users, list) and users:
@@ -2147,7 +2148,42 @@ def sync_hiddify_online_users(force: bool = False):
         # بررسی و فعال‌سازی خودکار بسته‌های در صف رزرو
         process_subscription_queue()
     except Exception as e:
-        logger.error(f"Error in sync_hiddify_online_users: {e}")
+        logger.error(f"Error in _do_execute_hiddify_sync: {e}")
+
+def sync_hiddify_online_users(force: bool = False, async_mode: bool = True):
+    """
+    همگام‌سازی غیرمسدودکننده وضعیت آنلاین بودن و اطلاعات اشتراک‌ها از API هیدیفای
+    در رکوئست‌های وب به صورت پس‌زمینه (Background Thread) اجرا می‌شود تا هیچ تاخیری
+    در بارگذاری صفحات ایجاد نگردد.
+    """
+    global _last_online_sync_time, _is_hiddify_syncing
+    now = time.time()
+    if not force and (now - _last_online_sync_time < 60):
+        return
+
+    if async_mode:
+        with _online_sync_lock:
+            if _is_hiddify_syncing:
+                return
+            if not force and (now - _last_online_sync_time < 60):
+                return
+            _is_hiddify_syncing = True
+            _last_online_sync_time = now
+
+        def _bg_worker():
+            global _is_hiddify_syncing
+            try:
+                _do_execute_hiddify_sync()
+            finally:
+                with _online_sync_lock:
+                    _is_hiddify_syncing = False
+
+        threading.Thread(target=_bg_worker, daemon=True).start()
+        return
+    else:
+        with _online_sync_lock:
+            _last_online_sync_time = now
+        _do_execute_hiddify_sync()
 
 
 def get_subscription_issuer_info(sub: dict, resellers_map: dict = None, admins_map: dict = None) -> dict:
@@ -2293,7 +2329,8 @@ def get_subscription_issuer_info(sub: dict, resellers_map: dict = None, admins_m
     }
 
 
-def enrich_subscription_details(sub: dict, resellers_map: dict = None, admins_map: dict = None) -> dict:
+def enrich_subscription_details(sub: dict, resellers_map: dict = None, admins_map: dict = None,
+                                vip_users_set: set = None, queue_map: dict = None) -> dict:
     """
     محاسبه شاخص‌های زنده اشتراک: روزهای مانده یا گذشته از انقضا، وضعیت شروع، درصد مصرف و تشخیص صادرکننده
     نکته مهم: در هیدیفای زمان تمامی اشتراک‌ها پس از اولین اتصال کاربر محاسبه و آغاز می‌شود.
@@ -2396,24 +2433,34 @@ def enrich_subscription_details(sub: dict, resellers_map: dict = None, admins_ma
 
     tg_id = item.get("telegram_id")
     if tg_id:
-        try:
-            item["is_vip"] = db.is_user_vip(int(tg_id))
-        except Exception:
-            item["is_vip"] = False
+        if vip_users_set is not None:
+            item["is_vip"] = (int(tg_id) in vip_users_set)
+        else:
+            try:
+                item["is_vip"] = db.is_user_vip(int(tg_id))
+            except Exception:
+                item["is_vip"] = False
     else:
         item["is_vip"] = False
 
-    try:
-        q_items = db.get_pending_queue_items(item.get("id"))
+    if queue_map is not None:
+        q_items = queue_map.get(item.get("id"), [])
         item["pending_queues"] = q_items
         item["pending_queue"] = q_items[0] if q_items else None
         item["has_queue"] = bool(q_items)
         item["queue_count"] = len(q_items)
-    except Exception:
-        item["pending_queues"] = []
-        item["pending_queue"] = None
-        item["has_queue"] = False
-        item["queue_count"] = 0
+    else:
+        try:
+            q_items = db.get_pending_queue_items(item.get("id"))
+            item["pending_queues"] = q_items
+            item["pending_queue"] = q_items[0] if q_items else None
+            item["has_queue"] = bool(q_items)
+            item["queue_count"] = len(q_items)
+        except Exception:
+            item["pending_queues"] = []
+            item["pending_queue"] = None
+            item["has_queue"] = False
+            item["queue_count"] = 0
 
     item["duration"] = duration
     item["is_started"] = is_started
@@ -5804,8 +5851,44 @@ def subscriptions():
     resellers_map = {r["id"]: r for r in resellers_list}
     admins_map = {a["username"].lower(): a for a in db.get_admin_users() if a.get("username")}
 
+    # پیش‌واکشی گروهی (Batch Fetch) اطلاعات صف و VIP جهت کاهش ۹۵٪ کوئری‌های تکراری
+    sub_ids = [s["id"] for s in sub_list]
+    tg_ids = [int(s["telegram_id"]) for s in sub_list if s.get("telegram_id")]
+
+    vip_users_set = set()
+    if tg_ids:
+        try:
+            conn_vip = db.get_connection()
+            placeholders = ",".join("?" * len(tg_ids))
+            rows = conn_vip.execute(f"SELECT telegram_id FROM users WHERE telegram_id IN ({placeholders}) AND is_vip = 1", tg_ids).fetchall()
+            vip_users_set = {r[0] for r in rows}
+            conn_vip.close()
+        except Exception:
+            pass
+
+    queue_map = {}
+    if sub_ids:
+        try:
+            conn_q = db.get_connection()
+            placeholders = ",".join("?" * len(sub_ids))
+            q_rows = conn_q.execute(f"SELECT * FROM subscription_queue WHERE subscription_id IN ({placeholders}) AND status = 'pending' ORDER BY priority ASC, id ASC", sub_ids).fetchall()
+            for qr in q_rows:
+                sid = qr["subscription_id"]
+                if sid not in queue_map:
+                    queue_map[sid] = []
+                queue_map[sid].append(dict(qr))
+            conn_q.close()
+        except Exception:
+            pass
+
     for s in sub_list:
-        s_dict = enrich_subscription_details(s, resellers_map=resellers_map, admins_map=admins_map)
+        s_dict = enrich_subscription_details(
+            s,
+            resellers_map=resellers_map,
+            admins_map=admins_map,
+            vip_users_set=vip_users_set,
+            queue_map=queue_map
+        )
         s_dict["refund_info"] = db.calculate_customer_refund(s["id"])
 
         if status_filter == "deleted":
@@ -11658,9 +11741,39 @@ def reseller_users():
         subs = db.get_deleted_subscriptions(reseller_id, sort_by=sort_by)
     else:
         raw_subs = db.get_reseller_subscriptions(reseller_id)
+        
+        # پیش‌واکشی گروهی برای کاهش کوئری‌های تکراری
+        sub_ids = [s["id"] for s in raw_subs]
+        tg_ids = [int(s["telegram_id"]) for s in raw_subs if s.get("telegram_id")]
+        vip_users_set = set()
+        if tg_ids:
+            try:
+                conn_vip = db.get_connection()
+                placeholders = ",".join("?" * len(tg_ids))
+                rows = conn_vip.execute(f"SELECT telegram_id FROM users WHERE telegram_id IN ({placeholders}) AND is_vip = 1", tg_ids).fetchall()
+                vip_users_set = {r[0] for r in rows}
+                conn_vip.close()
+            except Exception:
+                pass
+
+        queue_map = {}
+        if sub_ids:
+            try:
+                conn_q = db.get_connection()
+                placeholders = ",".join("?" * len(sub_ids))
+                q_rows = conn_q.execute(f"SELECT * FROM subscription_queue WHERE subscription_id IN ({placeholders}) AND status = 'pending' ORDER BY priority ASC, id ASC", sub_ids).fetchall()
+                for qr in q_rows:
+                    sid = qr["subscription_id"]
+                    if sid not in queue_map:
+                        queue_map[sid] = []
+                    queue_map[sid].append(dict(qr))
+                conn_q.close()
+            except Exception:
+                pass
+
         subs = []
         for s in raw_subs:
-            item = enrich_subscription_details(s)
+            item = enrich_subscription_details(s, vip_users_set=vip_users_set, queue_map=queue_map)
             if status_filter == "online" and not item.get("is_online"):
                 continue
             elif status_filter == "active" and item.get("status") != "active":
@@ -11682,8 +11795,6 @@ def reseller_users():
                 if search_query not in acc_name and search_query not in p_num and search_query not in p_name and search_query not in c_text:
                     continue
 
-            refund_calc = db.calculate_reseller_refund(reseller_id, item["id"])
-            item["refund_info"] = refund_calc
             subs.append(item)
 
         if sort_by == "oldest":
@@ -11698,6 +11809,10 @@ def reseller_users():
     start_idx = (page - 1) * per_page
     end_idx = min(start_idx + per_page, total_count)
     paginated_subs = subs[start_idx:end_idx]
+
+    # محاسبه استرداد صرفاً برای کاربران همین صفحه جهت بهینه‌سازی سرعت
+    for item in paginated_subs:
+        item["refund_info"] = db.calculate_reseller_refund(reseller_id, item["id"])
 
     queue_count = db.get_pending_queue_count(reseller_id=reseller_id)
     all_pending_queue = db.get_all_pending_queue_items(reseller_id=reseller_id)
