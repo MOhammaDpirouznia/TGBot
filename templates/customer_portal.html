@@ -1489,7 +1489,7 @@
 
         <div class="small text-secondary mb-3">
             <i class="fas fa-circle-info text-info me-1"></i>
-            بسته‌های زیر به ترتیب نوبت، پس از مصرف <strong>۹۹٪ حجم</strong> بسته فعلی یا در <strong>روز پایانی مهلت اعتبار</strong>، به صورت خودکار و بدون قطعی فعال خواهند شد. شما می‌توانید نوبت بسته‌ها را به دلخواه جابجا کرده و یا هر بسته را همین حالا به صورت آنی فعال نمایید.
+            بسته‌های زیر به ترتیب نوبت، پس از مصرف <strong>۹۹.۵٪ حجم</strong> بسته فعلی یا در <strong>ساعت ۲۳:۵۵ روز پایانی مهلت اعتبار</strong>، به صورت خودکار و بدون قطعی فعال خواهند شد. شما می‌توانید اولویت فعال‌سازی بسته‌ها را به دلخواه جابجا کرده و یا هر بسته را همین حالا به صورت آنی فعال نمایید.
         </div>
 
         <!-- لیست کارتهای بسته‌های در صف -->
@@ -2200,6 +2200,7 @@
             <div class="col-lg-5">
                 <div class="portal-sticky-sidebar d-flex flex-column gap-3">
                     {{ macro_sub_card() }}
+                    {{ macro_queue_card() }}
                     {{ macro_server_status() }}
                     {{ macro_support_card() }}
                 </div>
@@ -2237,6 +2238,7 @@
 
             <div id="tabSubStatus" class="portal-tab-pane {% if not (invoice and invoice.get('status') == 'pending') %}active{% endif %}">
                 {{ macro_sub_card() }}
+                {{ macro_queue_card() }}
             </div>
 
             <div id="tabRenewPlans" class="portal-tab-pane {% if invoice and invoice.get('status') == 'pending' %}active{% endif %}">
@@ -2364,6 +2366,7 @@
         {{ macro_server_status() }}
         {{ macro_debt_card() }}
         {{ macro_sub_card() }}
+        {{ macro_queue_card() }}
         {{ macro_invoice_card() }}
         {{ macro_renewal_card() }}
         {{ macro_support_card() }}
