@@ -433,7 +433,7 @@
                         <th>وضعیت</th>
                         <th>تاریخ عضویت</th>
                         <th>تاریخ خرید اولیه</th>
-                        <th>آخرین بروزرسانی / تمدید</th>
+                        <th>آخرین رویداد (تمدید / ساخت)</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -463,7 +463,19 @@
                         </td>
                         <td><small>{{ s['user_registered_at'][:10] if s['user_registered_at'] else '-' }}</small></td>
                         <td><small>{{ s['created_at'][:16].replace('T', ' ') if s['created_at'] else '-' }}</small></td>
-                        <td><small class="text-primary">{{ s['updated_at'][:16].replace('T', ' ') if s['updated_at'] else '-' }}</small></td>
+                        <td>
+                            {% if s.get('last_renewed_at') %}
+                                <div class="d-flex align-items-center gap-1">
+                                    <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle" style="font-size: 10px;">تمدید شده</span>
+                                    <small class="text-primary font-monospace">{{ s['last_renewed_at'][:16].replace('T', ' ') }}</small>
+                                </div>
+                            {% else %}
+                                <div class="d-flex align-items-center gap-1">
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle" style="font-size: 10px;">ساخت اولیه</span>
+                                    <small class="text-muted font-monospace">{{ s['created_at'][:16].replace('T', ' ') if s.get('created_at') else '-' }}</small>
+                                </div>
+                            {% endif %}
+                        </td>
                     </tr>
                     {% endfor %}
                     {% if not timeline_subscriptions %}

@@ -459,20 +459,20 @@
                                 <span>{{ issuer.get('text', 'مدیریت') }}</span>
                             </span>
                         </td>
-                        <td data-value="{{ sub.get('updated_at') or sub.get('created_at') or '' }}">
-                            {% set activity_date = sub.get('updated_at') or sub.get('created_at') %}
-                            {% if activity_date %}
+                        {% set event_date = sub.get('last_renewed_at') or sub.get('last_lifecycle_event_at') or sub.get('created_at') %}
+                        <td data-value="{{ event_date or '' }}">
+                            {% if event_date %}
                                 <div class="d-flex flex-column text-nowrap">
                                     <span class="fw-semibold text-primary font-monospace" style="font-size: 11px;">
-                                        {{ activity_date|shamsi_date }}
+                                        {{ event_date|shamsi_date }}
                                     </span>
                                     <span class="text-secondary opacity-75 font-monospace" style="font-size: 10px;">
-                                        {{ activity_date|gregorian_clean }}
+                                        {{ event_date|gregorian_clean }}
                                     </span>
-                                    {% if sub.get('updated_at') and sub.get('updated_at') != sub.get('created_at') %}
-                                        <span class="badge bg-light text-muted border px-1 mt-0.5" style="font-size: 8.5px; width: fit-content;" title="آخرین تغییر / تمدید">تمدید / ویرایش</span>
+                                    {% if sub.get('last_renewed_at') or (sub.get('last_lifecycle_event_at') and sub.get('last_lifecycle_event_at') != sub.get('created_at')) %}
+                                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-1 mt-0.5" style="font-size: 8.5px; width: fit-content;" title="آخرین تمدید اشتراک">تمدید</span>
                                     {% else %}
-                                        <span class="badge bg-success-subtle text-success border border-success-subtle px-1 mt-0.5" style="font-size: 8.5px; width: fit-content;" title="مشتری تازه صادر شده">جدید</span>
+                                        <span class="badge bg-success-subtle text-success border border-success-subtle px-1 mt-0.5" style="font-size: 8.5px; width: fit-content;" title="مشتری تازه ساخته شده">ساخت جدید</span>
                                     {% endif %}
                                 </div>
                             {% else %}
