@@ -1588,7 +1588,7 @@
 
                 <!-- منوی کشویی تنظیمات -->
                 {% if not sub_role or sub_role in ['partner', 'manager2'] %}
-                {% set is_settings_active = request.endpoint in ['reseller_plans', 'reseller_bot_settings', 'reseller_cards', 'reseller_team', 'reseller_branding'] %}
+                {% set is_settings_active = request.endpoint in ['reseller_plans', 'reseller_bot_settings', 'reseller_cards', 'reseller_team', 'reseller_branding', 'reseller_sms_settings'] %}
                 <button class="sidebar-dropdown-toggle {% if is_settings_active %}has-active{% endif %}" 
                         type="button" 
                         data-bs-toggle="collapse" 
@@ -1608,6 +1608,9 @@
                         </a>
                         <a class="submenu-item {% if request.endpoint == 'reseller_bot_settings' %}active{% endif %}" href="{{ url_for('reseller_bot_settings') }}">
                             <i class="fas fa-robot text-primary"></i> ربات تلگرام
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'reseller_sms_settings' %}active{% endif %}" href="{{ url_for('reseller_sms_settings') }}">
+                            <i class="fas fa-comment-sms text-info"></i> سامانه پیامک و قالب‌ها
                         </a>
                         <a class="submenu-item {% if request.endpoint == 'reseller_cards' %}active{% endif %}" href="{{ url_for('reseller_cards') }}">
                             <i class="fas fa-credit-card text-success"></i> تنظیمات پرداخت

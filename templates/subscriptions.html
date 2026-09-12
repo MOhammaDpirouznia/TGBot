@@ -514,6 +514,12 @@
                                     <span class="d-none d-lg-inline">پورتال مشتری</span>
                                 </button>
 
+                                <!-- ۳.۵. دکمه ارسال پیامک اختصاصی -->
+                                <button type="button" class="btn btn-sm btn-outline-warning d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" onclick="openCustomerSmsModal({{ sub['id'] }}, '{{ sub['account_name'] }}', '{{ sub['phone_number'] or '' }}', {{ 1 if is_debtor else 0 }}, {{ sub.get('debt_amount')|int if is_debtor else 0 }})" title="ارسال پیامک اختصاصی به مشتری">
+                                    <i class="fas fa-comment-sms"></i>
+                                    <span class="d-none d-xl-inline">پیامک</span>
+                                </button>
+
                                 <!-- ۴. دکمه اصلی و جامع: مدیریت، بارکدها و لینک‌ها -->
                                 <button type="button" class="btn btn-sm btn-primary d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" data-bs-toggle="modal" data-bs-target="#customerDetailModal{{ sub['id'] }}" title="مشاهده بارکدها، لینک‌های اتصال و مدیریت کامل اشتراک">
                                     <i class="fas fa-qrcode"></i>
@@ -856,6 +862,9 @@
                             <a href="{{ portal_url }}" target="_blank" class="btn btn-outline-primary" title="مشاهده پورتال"><i class="fas fa-external-link-alt"></i></a>
                         </div>
                         <div class="d-flex flex-wrap gap-2 justify-content-end">
+                            <button type="button" class="btn btn-sm btn-warning fw-bold shadow-sm" onclick="openCustomerSmsModal({{ sub['id'] }}, '{{ sub['account_name'] }}', '{{ sub['phone_number'] or '' }}', {{ 1 if is_debtor else 0 }}, {{ sub.get('debt_amount')|int if is_debtor else 0 }})">
+                                <i class="fas fa-comment-sms me-1"></i> ارسال پیامک به مشتری
+                            </button>
                             <form method="POST" action="{{ url_for('admin_send_renewal_link', sub_id=sub['id']) }}" class="m-0" onsubmit="return confirm('آیا می‌خواهید پیامک و پیام تلگرام حاوی لینک تمدید برای مشتری «{{ sub['account_name'] }}» ارسال شود؟');">
                                 <button type="submit" class="btn btn-sm btn-success fw-bold shadow-sm">
                                     <i class="fas fa-paper-plane me-1"></i> ارسال لینک تمدید به مشتری (پیامک / تلگرام)
@@ -1840,6 +1849,89 @@
     </div>
 </div>
 
+<!-- ─── Modal ارسال پیامک به مشتری (Customer SMS Modal) ─── -->
+<div class="modal fade text-start" id="customerSmsModal" tabindex="-1" aria-labelledby="customerSmsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content rounded-4 border-0 shadow-lg">
+            <div class="modal-header bg-dark text-white py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="fas fa-comment-sms text-warning fs-5"></i>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0" id="smsModalCustomerTitle">ارسال پیامک به مشتری</h5>
+                        <small class="text-white-50" id="smsModalCustomerSubtitle"></small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="بستن"></button>
+            </div>
+            <div class="modal-body p-4">
+                <input type="hidden" id="smsModalSubId" value="">
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-muted">شماره موبایل دریافت‌کننده:</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light"><i class="fas fa-phone text-muted"></i></span>
+                        <input type="tel" class="form-control font-monospace text-center" id="smsModalPhoneInput" placeholder="09xxxxxxxxx" style="direction: ltr;">
+                    </div>
+                    <div class="form-text small">شماره موبایل مشتری جهت دریافت پیامک را تایید یا ویرایش فرمایید.</div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-muted">انتخاب نوع پیامک:</label>
+                    <div class="d-flex flex-column gap-2" id="smsTypeOptionsContainer">
+                        <label class="btn btn-outline-primary text-start d-flex align-items-center gap-2 py-2 px-3 rounded-3 active cursor-pointer">
+                            <input type="radio" name="customer_sms_choice" value="portal_link" class="form-check-input mt-0" checked onchange="fetchTableSmsPreview()">
+                            <div>
+                                <div class="fw-bold">🌐 فقط لینک پورتال مشتری</div>
+                                <small class="text-muted d-block">شامل لینک دائمی پورتال و استعلام آنلاین</small>
+                            </div>
+                        </label>
+                        <label class="btn btn-outline-primary text-start d-flex align-items-center gap-2 py-2 px-3 rounded-3 cursor-pointer">
+                            <input type="radio" name="customer_sms_choice" value="sub_link" class="form-check-input mt-0" onchange="fetchTableSmsPreview()">
+                            <div>
+                                <div class="fw-bold">🚀 فقط لینک مستقیم سابسکریپشن</div>
+                                <small class="text-muted d-block">شامل لینک اتصال مستقیم به برنامه‌ها</small>
+                            </div>
+                        </label>
+                        <label class="btn btn-outline-primary text-start d-flex align-items-center gap-2 py-2 px-3 rounded-3 cursor-pointer">
+                            <input type="radio" name="customer_sms_choice" value="both_links" class="form-check-input mt-0" onchange="fetchTableSmsPreview()">
+                            <div>
+                                <div class="fw-bold">🎁 هر دو لینک (پورتال + سابسکریپشن)</div>
+                                <small class="text-muted d-block">پکیج کامل اتصال و مدیریت</small>
+                            </div>
+                        </label>
+                        <label class="btn btn-outline-danger text-start d-flex align-items-center gap-2 py-2 px-3 rounded-3 cursor-pointer" id="smsChoiceDebtorOption" style="display: none;">
+                            <input type="radio" name="customer_sms_choice" value="debt_invoice" class="form-check-input mt-0" onchange="fetchTableSmsPreview()">
+                            <div>
+                                <div class="fw-bold text-danger">💳 صورتحساب بدهی و لینک پرداخت</div>
+                                <small class="text-muted d-block" id="smsChoiceDebtSubtitle">ارسال مبلغ بدهی به همراه لینک پرداخت</small>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label class="form-label fw-bold small text-muted mb-0">پیش‌نمایش متن پیامک:</label>
+                        <button type="button" class="btn btn-link btn-sm text-decoration-none py-0 px-1" onclick="toggleTableCustomSmsEdit()">
+                            <i class="fas fa-pen-to-square me-1"></i> <span id="tableCustomEditLabel">ویرایش متن</span>
+                        </button>
+                    </div>
+                    <textarea class="form-control small font-monospace bg-light" id="smsModalPreviewBox" rows="4" readonly style="direction: rtl; font-size: 12px;"></textarea>
+                </div>
+
+                <div id="smsModalAlert" class="alert d-none py-2 px-3 small rounded-3 mb-0"></div>
+            </div>
+            <div class="modal-footer bg-light py-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm px-3" data-bs-dismiss="modal">انصراف</button>
+                <button type="button" class="btn btn-success btn-sm px-4 fw-bold" id="btnModalConfirmSendSms" onclick="dispatchTableCustomerSms()">
+                    <span id="smsModalSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status"></span>
+                    <i class="fas fa-paper-plane me-1"></i> تایید و ارسال پیامک
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ─── Modal جامع گزارش بدهی‌های مشتری (Customer Debt Report Modal) ─── -->
 <div class="modal fade text-start" id="customerDebtReportModal" tabindex="-1" aria-labelledby="debtReportModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
@@ -2366,6 +2458,166 @@ function toggleAdminRenewDebtor(subId) {
     } else {
         if (box) box.style.display = 'none';
         if (destBox) destBox.style.display = 'block';
+    }
+}
+
+let isTableEditingCustomSms = false;
+
+function openCustomerSmsModal(subId, accountName, phone, isDebtor, debtAmount) {
+    const modalEl = document.getElementById('customerSmsModal');
+    if (!modalEl) return;
+
+    // بستن مودال جزئیات در صورت باز بودن تا دو مودال تداخل نکنند
+    const detailModalEl = document.getElementById('customerDetailModal' + subId);
+    if (detailModalEl) {
+        const dm = bootstrap.Modal.getInstance(detailModalEl);
+        if (dm) dm.hide();
+    }
+
+    document.getElementById('smsModalSubId').value = subId;
+    document.getElementById('smsModalCustomerTitle').innerText = 'ارسال پیامک به ' + (accountName || 'مشتری');
+    document.getElementById('smsModalCustomerSubtitle').innerText = 'شناسه اشتراک: #' + subId;
+    document.getElementById('smsModalPhoneInput').value = phone || '';
+    
+    const alertBox = document.getElementById('smsModalAlert');
+    if (alertBox) alertBox.classList.add('d-none');
+
+    // ریست ویرایش دستی
+    isTableEditingCustomSms = false;
+    const box = document.getElementById('smsModalPreviewBox');
+    const label = document.getElementById('tableCustomEditLabel');
+    if (box) {
+        box.setAttribute('readonly', 'true');
+        box.classList.add('bg-light');
+    }
+    if (label) label.textContent = 'ویرایش متن';
+
+    // وضعیت گزینه بدهی
+    const debtorOption = document.getElementById('smsChoiceDebtorOption');
+    const debtSub = document.getElementById('smsChoiceDebtSubtitle');
+    if (debtorOption) {
+        if (isDebtor || (debtAmount && Number(debtAmount) > 0)) {
+            debtorOption.style.display = 'flex';
+            if (debtSub && debtAmount) {
+                debtSub.textContent = 'مبلغ بدهی: ' + Number(debtAmount).toLocaleString('fa-IR') + ' تومان + لینک پرداخت';
+            }
+        } else {
+            debtorOption.style.display = 'none';
+        }
+    }
+
+    // انتخاب پیش‌فرض: اگر بدهکار است بدهی، در غیر این صورت هر دو لینک یا پورتال
+    const radios = document.querySelectorAll('input[name="customer_sms_choice"]');
+    if (isDebtor || (debtAmount && Number(debtAmount) > 0)) {
+        radios.forEach(r => { if (r.value === 'debt_invoice') r.checked = true; });
+    } else {
+        radios.forEach(r => { if (r.value === 'both_links') r.checked = true; });
+    }
+
+    fetchTableSmsPreview();
+
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+}
+
+function toggleTableCustomSmsEdit() {
+    const box = document.getElementById('smsModalPreviewBox');
+    const label = document.getElementById('tableCustomEditLabel');
+    if (!box) return;
+    isTableEditingCustomSms = !isTableEditingCustomSms;
+    if (isTableEditingCustomSms) {
+        box.removeAttribute('readonly');
+        box.classList.remove('bg-light');
+        box.focus();
+        label.textContent = 'قفل متن';
+    } else {
+        box.setAttribute('readonly', 'true');
+        box.classList.add('bg-light');
+        label.textContent = 'ویرایش متن';
+    }
+}
+
+async function fetchTableSmsPreview() {
+    if (isTableEditingCustomSms) return;
+    const subId = document.getElementById('smsModalSubId').value;
+    const checked = document.querySelector('input[name="customer_sms_choice"]:checked');
+    const smsType = checked ? checked.value : 'portal_link';
+    const previewBox = document.getElementById('smsModalPreviewBox');
+    if (!previewBox || !subId) return;
+
+    previewBox.value = 'در حال دریافت پیش‌نمایش...';
+    try {
+        const resp = await fetch('/api/preview_customer_sms', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sub_id: subId, sms_type: smsType })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            previewBox.value = data.preview;
+        } else {
+            previewBox.value = 'خطا در بارگذاری پیش‌نمایش';
+        }
+    } catch (e) {
+        previewBox.value = 'خطا در ارتباط با سرور';
+    }
+}
+
+async function dispatchTableCustomerSms() {
+    const subId = document.getElementById('smsModalSubId').value;
+    const phoneInput = document.getElementById('smsModalPhoneInput');
+    const phone = phoneInput ? phoneInput.value.trim() : '';
+    const alertBox = document.getElementById('smsModalAlert');
+    const spinner = document.getElementById('smsModalSpinner');
+    const btn = document.getElementById('btnModalConfirmSendSms');
+    const previewBox = document.getElementById('smsModalPreviewBox');
+    const checked = document.querySelector('input[name="customer_sms_choice"]:checked');
+    const smsType = checked ? checked.value : 'portal_link';
+
+    if (!phone) {
+        alertBox.className = 'alert alert-danger py-2 px-3 small rounded-3 mb-0';
+        alertBox.textContent = 'لطفاً شماره موبایل مشتری را وارد فرمایید.';
+        alertBox.classList.remove('d-none');
+        return;
+    }
+
+    alertBox.classList.add('d-none');
+    spinner.classList.remove('d-none');
+    btn.disabled = true;
+
+    try {
+        const resp = await fetch('/api/send_customer_sms', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sub_id: subId,
+                phone: phone,
+                sms_type: smsType,
+                custom_text: isTableEditingCustomSms ? previewBox.value.trim() : null
+            })
+        });
+        const res = await resp.json();
+        if (res.success) {
+            alertBox.className = 'alert alert-success py-2 px-3 small rounded-3 mb-0';
+            alertBox.textContent = '✅ پیامک با موفقیت به مشتری ارسال شد.';
+            alertBox.classList.remove('d-none');
+            setTimeout(() => {
+                const modalEl = document.getElementById('customerSmsModal');
+                const modal = bootstrap.Modal.getInstance(modalEl);
+                if (modal) modal.hide();
+            }, 1800);
+        } else {
+            alertBox.className = 'alert alert-danger py-2 px-3 small rounded-3 mb-0';
+            alertBox.textContent = '❌ خطا: ' + (res.message || 'ارسال پیامک ناموفق بود.');
+            alertBox.classList.remove('d-none');
+        }
+    } catch (e) {
+        alertBox.className = 'alert alert-danger py-2 px-3 small rounded-3 mb-0';
+        alertBox.textContent = '❌ خطای شبکه یا ارتباط با سرور!';
+        alertBox.classList.remove('d-none');
+    } finally {
+        spinner.classList.add('d-none');
+        btn.disabled = false;
     }
 }
 

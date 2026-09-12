@@ -2942,6 +2942,45 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             </div>
         </div>
+
+        <hr class="my-4">
+
+        <!-- بخش قالب‌های پیامک مشتریان -->
+        <div class="bg-white border rounded p-3">
+            <h6 class="fw-bold text-dark mb-2"><i class="fas fa-file-pen text-warning me-1"></i> قالب‌های پیش‌فرض پیامک ارسالی به مشتریان:</h6>
+            <div class="alert alert-info py-2 px-3 small rounded-3 mb-3">
+                <div class="fw-bold mb-1"><i class="fas fa-code me-1"></i> متغیرهای قابل استفاده در متن پیامک:</div>
+                <div class="small">
+                    <code>{name}</code> : نام مشتری | <code>{brand_name}</code> : نام فروشگاه | <code>{portal_url}</code> : پورتال مشتری | <code>{sub_url}</code> : لینک سابسکریپشن | <code>{payment_url}</code> : لینک پرداخت | <code>{debt_amount}</code> : مبلغ بدهی | <code>{plan_name}</code> : نام پلن
+                </div>
+            </div>
+            <form action="{{ url_for('settings') }}" method="POST">
+                <input type="hidden" name="action" value="save_sms_templates">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold"><i class="fas fa-globe me-1 text-info"></i> ۱. قالب لینک پورتال مشتری:</label>
+                        <textarea name="sms_template_portal" class="form-control font-monospace small" rows="3" style="direction: rtl;">{{ sms_templates.get('portal_link') if sms_templates else '' }}</textarea>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold"><i class="fas fa-qrcode me-1 text-primary"></i> ۲. قالب لینک مستقیم سابسکریپشن:</label>
+                        <textarea name="sms_template_sub" class="form-control font-monospace small" rows="3" style="direction: rtl;">{{ sms_templates.get('sub_link') if sms_templates else '' }}</textarea>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold"><i class="fas fa-layer-group me-1 text-success"></i> ۳. قالب هر دو لینک (پورتال + ساب):</label>
+                        <textarea name="sms_template_both" class="form-control font-monospace small" rows="3" style="direction: rtl;">{{ sms_templates.get('both_links') if sms_templates else '' }}</textarea>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold"><i class="fas fa-receipt me-1 text-danger"></i> ۴. قالب صورتحساب و لینک پرداخت بدهی:</label>
+                        <textarea name="sms_template_debtor" class="form-control font-monospace small" rows="3" style="direction: rtl;">{{ sms_templates.get('debt_invoice') if sms_templates else '' }}</textarea>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <button type="submit" class="btn btn-sm btn-warning px-3 fw-bold">
+                        <i class="fas fa-save me-1"></i> ذخیره قالب‌های پیش‌فرض پیامک
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 
