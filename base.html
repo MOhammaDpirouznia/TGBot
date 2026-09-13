@@ -1,0 +1,2889 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>{% block title %}پنل مدیریت ربات VPN{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    {% if branding.get('favicon_url') %}
+    <link rel="icon" href="{{ branding.get('favicon_url') }}">
+    {% elif branding.get('logo_url') %}
+    <link rel="icon" href="{{ branding.get('logo_url') }}">
+    {% endif %}
+    <style>
+        {% if palette_css %}
+        {{ palette_css|safe }}
+        {% endif %}
+
+        :root {
+            {% if branding.get('primary_color') %}
+            --primary: {{ branding.get('primary_color') }};
+            --primary-hover: {{ branding.get('primary_color') }};
+            --bs-primary: {{ branding.get('primary_color') }};
+            --sidebar-brand: {{ branding.get('primary_color') }};
+            {% else %}
+            --primary: var(--palette-primary, #2563eb);
+            --primary-hover: var(--palette-primary-hover, #1d4ed8);
+            --bs-primary: var(--palette-primary, #2563eb);
+            --sidebar-brand: var(--palette-primary, #2563eb);
+            {% endif %}
+            --secondary: var(--palette-accent, #0ea5e9);
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --dark: #0f172a;
+            --dark-card: #1e293b;
+            --sidebar-bg: rgba(241, 245, 249, 0.85);
+            --sidebar-border: var(--palette-card-border-subtle, #dbe4ee);
+            --sidebar-text: #334155;
+            --sidebar-text-muted: #64748b;
+            --sidebar-hover-bg: rgba(219, 228, 238, 0.7);
+            --body-bg: var(--palette-body-bg, #f8fafc);
+            --card-bg: var(--palette-card-bg, rgba(255, 255, 255, 0.78));
+            --card-border: var(--palette-card-border, rgba(255, 255, 255, 0.85));
+            --text-main: var(--palette-text-main, #0f172a);
+            --text-muted: var(--palette-text-muted, #64748b);
+        }
+
+        .btn-primary {
+            background-color: var(--primary) !important;
+            border-color: var(--primary) !important;
+        }
+        .btn-primary:hover, .btn-primary:focus, .btn-primary:active {
+            background-color: var(--primary) !important;
+            border-color: var(--primary) !important;
+            filter: brightness(0.92);
+        }
+        .text-primary {
+            color: var(--primary) !important;
+        }
+        .border-primary {
+            border-color: var(--primary) !important;
+        }
+
+        [data-bs-theme="dark"] {
+            --body-bg: var(--palette-body-bg, #070b14);
+            --card-bg: var(--palette-card-bg, rgba(15, 23, 42, 0.74));
+            --card-border: var(--palette-card-border, rgba(255, 255, 255, 0.09));
+            --sidebar-bg: rgba(9, 13, 22, 0.85);
+            --sidebar-border: rgba(255, 255, 255, 0.08);
+            --sidebar-text: #94a3b8;
+            --sidebar-text-muted: #64748b;
+            --sidebar-hover-bg: rgba(255, 255, 255, 0.06);
+            --sidebar-brand: #ffffff;
+            --text-main: var(--palette-text-main, #f8fafc);
+            --text-muted: var(--palette-text-muted, #94a3b8);
+        }
+
+        html {
+            background-color: var(--body-bg);
+            min-height: 100vh;
+        }
+
+        body {
+            font-family: 'Vazirmatn', sans-serif;
+            background-color: transparent;
+            color: var(--text-main);
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            max-width: 100vw;
+            overflow-x: hidden;
+            transition: background-color 0.25s ease, color 0.25s ease;
+        }
+
+        /* ─── هاله‌های نوری شناور پس‌زمینه (Aura Mesh Glowing Blobs) ─── */
+        .aura-mesh-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            pointer-events: none;
+            z-index: -1;
+            opacity: var(--aura-opacity, 1);
+            transition: opacity 0.5s ease;
+        }
+
+        .aura-blob {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(var(--aura-blur, 85px));
+            -webkit-filter: blur(var(--aura-blur, 85px));
+            will-change: transform;
+            mix-blend-mode: var(--aura-blend, normal);
+            pointer-events: none;
+        }
+
+        .aura-blob-1 {
+            top: -120px;
+            right: -80px;
+            width: 540px;
+            height: 540px;
+            background: radial-gradient(circle, var(--aura-blob-1, rgba(0,210,255,0.35)) 0%, rgba(255,255,255,0) 70%);
+            animation: auraAnim1 22s ease-in-out infinite alternate;
+        }
+
+        .aura-blob-2 {
+            bottom: -160px;
+            left: -80px;
+            width: 660px;
+            height: 660px;
+            background: radial-gradient(circle, var(--aura-blob-2, rgba(217,70,239,0.3)) 0%, rgba(255,255,255,0) 70%);
+            animation: auraAnim2 26s ease-in-out infinite alternate;
+        }
+
+        .aura-blob-3 {
+            top: 35%;
+            left: 40%;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, var(--aura-blob-3, rgba(59,130,246,0.25)) 0%, rgba(255,255,255,0) 70%);
+            animation: auraAnim3 30s ease-in-out infinite alternate;
+        }
+
+        @keyframes auraAnim1 {
+            0% { transform: translate3d(0, 0, 0) scale(1); }
+            50% { transform: translate3d(-50px, 40px, 0) scale(1.08); }
+            100% { transform: translate3d(35px, -25px, 0) scale(0.94); }
+        }
+
+        @keyframes auraAnim2 {
+            0% { transform: translate3d(0, 0, 0) scale(1); }
+            50% { transform: translate3d(60px, -50px, 0) scale(1.12); }
+            100% { transform: translate3d(-40px, 30px, 0) scale(0.92); }
+        }
+
+        @keyframes auraAnim3 {
+            0% { transform: translate3d(0, 0, 0) scale(1); }
+            50% { transform: translate3d(-35px, -45px, 0) scale(1.15); }
+            100% { transform: translate3d(45px, 35px, 0) scale(0.9); }
+        }
+
+        {% if palette_config and palette_config.animation == 'static' %}
+        .aura-blob { animation: none !important; }
+        {% elif palette_config and (palette_config.animation == 'off' or palette_config.intensity == 'off') %}
+        .aura-mesh-container { display: none !important; }
+        {% endif %}
+
+        /* ─── کارت‌های شیشه‌ای مات مدرن (Frosted Glassmorphism Cards) ─── */
+        .card {
+            background-color: var(--card-bg) !important;
+            backdrop-filter: blur(var(--glass-blur, 16px)) saturate(180%);
+            -webkit-backdrop-filter: blur(var(--glass-blur, 16px)) saturate(180%);
+            border: 1px solid var(--card-border) !important;
+            box-shadow: var(--palette-card-shadow, 0 10px 25px -5px rgba(0,0,0,0.05)) !important;
+            border-radius: 18px;
+            transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+        }
+
+        .sidebar {
+            backdrop-filter: blur(20px) saturate(160%);
+            -webkit-backdrop-filter: blur(20px) saturate(160%);
+            border-left: 1px solid var(--sidebar-border);
+            z-index: 1020;
+        }
+
+        [data-bs-theme="dark"] .card-header,
+        [data-bs-theme="dark"] .card-footer {
+            background-color: rgba(255, 255, 255, 0.02) !important;
+            border-color: var(--card-border) !important;
+            color: var(--text-main);
+        }
+
+        [data-bs-theme="light"] .card-header,
+        [data-bs-theme="light"] .card-footer {
+            background-color: rgba(255, 255, 255, 0.4) !important;
+            border-color: var(--palette-card-border-subtle, rgba(0,0,0,0.06)) !important;
+        }
+
+        [data-bs-theme="dark"] .table {
+            color: var(--text-main);
+            --bs-table-bg: transparent;
+            --bs-table-hover-bg: rgba(255, 255, 255, 0.04);
+            border-color: var(--card-border);
+        }
+
+        [data-bs-theme="light"] .table {
+            color: var(--text-main);
+            --bs-table-bg: transparent;
+            --bs-table-hover-bg: rgba(0, 0, 0, 0.025);
+            border-color: var(--palette-card-border-subtle, rgba(0,0,0,0.06));
+        }
+
+        /* ─── استایل هوشمند و ملایم برای ردیف‌های مشتریان (VIP، تیکت‌دار و بدهکار) ─── */
+        /* حالت روشن (Light Mode) */
+        .table > tbody > tr.customer-row-vip > td,
+        .table > tbody > tr.customer-row-vip > th,
+        tr.customer-row-vip > td,
+        tr.customer-row-vip > th,
+        tr.customer-row-vip {
+            background-color: rgba(245, 158, 11, 0.07) !important;
+            --bs-table-bg: rgba(245, 158, 11, 0.07) !important;
+        }
+        .table-hover > tbody > tr.customer-row-vip:hover > td,
+        .table-hover > tbody > tr.customer-row-vip:hover > th,
+        tr.customer-row-vip:hover > td {
+            background-color: rgba(245, 158, 11, 0.13) !important;
+            --bs-table-hover-bg: rgba(245, 158, 11, 0.13) !important;
+        }
+
+        .table > tbody > tr.customer-row-ticket > td,
+        .table > tbody > tr.customer-row-ticket > th,
+        tr.customer-row-ticket > td,
+        tr.customer-row-ticket > th,
+        tr.customer-row-ticket {
+            background-color: rgba(14, 165, 233, 0.07) !important;
+            --bs-table-bg: rgba(14, 165, 233, 0.07) !important;
+        }
+        .table-hover > tbody > tr.customer-row-ticket:hover > td,
+        .table-hover > tbody > tr.customer-row-ticket:hover > th,
+        tr.customer-row-ticket:hover > td {
+            background-color: rgba(14, 165, 233, 0.13) !important;
+            --bs-table-hover-bg: rgba(14, 165, 233, 0.13) !important;
+        }
+
+        .table > tbody > tr.customer-row-debtor > td,
+        .table > tbody > tr.customer-row-debtor > th,
+        tr.customer-row-debtor > td,
+        tr.customer-row-debtor > th,
+        tr.customer-row-debtor {
+            background-color: rgba(239, 68, 68, 0.07) !important;
+            --bs-table-bg: rgba(239, 68, 68, 0.07) !important;
+        }
+        .table-hover > tbody > tr.customer-row-debtor:hover > td,
+        .table-hover > tbody > tr.customer-row-debtor:hover > th,
+        tr.customer-row-debtor:hover > td {
+            background-color: rgba(239, 68, 68, 0.13) !important;
+            --bs-table-hover-bg: rgba(239, 68, 68, 0.13) !important;
+        }
+
+        /* حالت تاریک (Dark Mode) - ملایم، کم‌رنگ و سازگار با تم تیره بدون خیره‌کنندگی */
+        [data-bs-theme="dark"] .table > tbody > tr.customer-row-vip > td,
+        [data-bs-theme="dark"] .table > tbody > tr.customer-row-vip > th,
+        [data-bs-theme="dark"] tr.customer-row-vip > td,
+        [data-bs-theme="dark"] tr.customer-row-vip > th,
+        [data-bs-theme="dark"] tr.customer-row-vip {
+            background-color: rgba(245, 158, 11, 0.11) !important;
+            --bs-table-bg: rgba(245, 158, 11, 0.11) !important;
+        }
+        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-vip:hover > td,
+        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-vip:hover > th,
+        [data-bs-theme="dark"] tr.customer-row-vip:hover > td {
+            background-color: rgba(245, 158, 11, 0.18) !important;
+            --bs-table-hover-bg: rgba(245, 158, 11, 0.18) !important;
+        }
+
+        [data-bs-theme="dark"] .table > tbody > tr.customer-row-ticket > td,
+        [data-bs-theme="dark"] .table > tbody > tr.customer-row-ticket > th,
+        [data-bs-theme="dark"] tr.customer-row-ticket > td,
+        [data-bs-theme="dark"] tr.customer-row-ticket > th,
+        [data-bs-theme="dark"] tr.customer-row-ticket {
+            background-color: rgba(14, 165, 233, 0.11) !important;
+            --bs-table-bg: rgba(14, 165, 233, 0.11) !important;
+        }
+        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-ticket:hover > td,
+        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-ticket:hover > th,
+        [data-bs-theme="dark"] tr.customer-row-ticket:hover > td {
+            background-color: rgba(14, 165, 233, 0.18) !important;
+            --bs-table-hover-bg: rgba(14, 165, 233, 0.18) !important;
+        }
+
+        [data-bs-theme="dark"] .table > tbody > tr.customer-row-debtor > td,
+        [data-bs-theme="dark"] .table > tbody > tr.customer-row-debtor > th,
+        [data-bs-theme="dark"] tr.customer-row-debtor > td,
+        [data-bs-theme="dark"] tr.customer-row-debtor > th,
+        [data-bs-theme="dark"] tr.customer-row-debtor {
+            background-color: rgba(239, 68, 68, 0.11) !important;
+            --bs-table-bg: rgba(239, 68, 68, 0.11) !important;
+        }
+        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-debtor:hover > td,
+        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-debtor:hover > th,
+        [data-bs-theme="dark"] tr.customer-row-debtor:hover > td {
+            background-color: rgba(239, 68, 68, 0.18) !important;
+            --bs-table-hover-bg: rgba(239, 68, 68, 0.18) !important;
+        }
+
+        [data-bs-theme="dark"] .table th {
+            color: #94a3b8;
+            background-color: rgba(255, 255, 255, 0.02);
+            border-color: var(--card-border);
+        }
+
+        [data-bs-theme="dark"] .form-control,
+        [data-bs-theme="dark"] .form-select,
+        [data-bs-theme="dark"] textarea.form-control,
+        [data-bs-theme="dark"] .input-group-text {
+            background-color: #0f172a !important;
+            border-color: #334155 !important;
+            color: #f8fafc !important;
+        }
+
+        [data-bs-theme="dark"] .form-control:focus,
+        [data-bs-theme="dark"] textarea.form-control:focus {
+            background-color: #131d35 !important;
+            border-color: #6366f1 !important;
+            color: #ffffff !important;
+            box-shadow: 0 0 0 0.25rem rgba(99, 102, 241, 0.25);
+        }
+
+        [data-bs-theme="dark"] .bg-light,
+        [data-bs-theme="dark"] .alert-light {
+            background-color: rgba(255, 255, 255, 0.03) !important;
+            border-color: #334155 !important;
+            color: #f8fafc !important;
+        }
+
+        [data-bs-theme="dark"] .bg-white {
+            background-color: var(--card-bg) !important;
+            color: #f8fafc !important;
+        }
+
+        [data-bs-theme="dark"] .text-dark {
+            color: #f8fafc !important;
+        }
+
+        [data-bs-theme="dark"] .border-dashed {
+            border-color: #334155 !important;
+        }
+
+        /* ─── بهینه‌سازی اختصاصی لایه‌بندی و مودال‌ها (حل تداخل z-index و مات شدن پس‌زمینه) ─── */
+        .modal {
+            z-index: 1060 !important;
+            -webkit-overflow-scrolling: touch !important;
+        }
+        .modal-backdrop {
+            z-index: 1050 !important;
+        }
+        body:not(.modal-open) .modal-backdrop {
+            display: none !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+            visibility: hidden !important;
+        }
+        .modal-dialog {
+            z-index: 1065 !important;
+            max-width: 520px;
+            margin: 1.5rem auto;
+        }
+        .modal-dialog.modal-lg {
+            max-width: 860px;
+        }
+        .modal-dialog.modal-xl {
+            max-width: 1200px;
+        }
+        @media (max-width: 576px) {
+            .modal-dialog,
+            .modal-dialog.modal-lg,
+            .modal-dialog.modal-xl {
+                margin: 0.75rem auto;
+                max-width: calc(100vw - 1.5rem);
+            }
+        }
+        body {
+            padding-bottom: env(safe-area-inset-bottom, 0);
+        }
+
+        [data-bs-theme="dark"] .modal-content {
+            background-color: var(--card-bg) !important;
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid var(--card-border) !important;
+            color: var(--text-main) !important;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6) !important;
+        }
+
+        [data-bs-theme="light"] .modal-content {
+            background-color: rgba(255, 255, 255, 0.98) !important;
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(0, 0, 0, 0.1) !important;
+            color: #0f172a !important;
+            box-shadow: 0 20px 45px rgba(0, 0, 0, 0.15) !important;
+        }
+
+        [data-bs-theme="dark"] .modal-footer,
+        [data-bs-theme="dark"] .modal-body.bg-light {
+            background-color: rgba(0, 0, 0, 0.25) !important;
+        }
+
+        /* ─── استایل‌های پیشرفته سیستم تیکتینگ و گفتگو (سازگار با تم روشن و تاریک) ─── */
+        .ticket-chat-box {
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+        }
+        [data-bs-theme="dark"] .ticket-chat-box {
+            background-color: #0b1329 !important;
+            border-color: #1e293b !important;
+        }
+
+        .ticket-msg-user {
+            background-color: #ffffff;
+            color: #1e293b;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px 12px 12px 2px !important;
+        }
+        [data-bs-theme="dark"] .ticket-msg-user {
+            background-color: #1e293b !important;
+            color: #f8fafc !important;
+            border-color: #334155 !important;
+        }
+
+        .ticket-msg-support {
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            color: #ffffff !important;
+            border-radius: 12px 12px 2px 12px !important;
+        }
+        [data-bs-theme="dark"] .ticket-msg-support {
+            background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
+            color: #ffffff !important;
+        }
+
+        .ticket-quick-replies-bar {
+            background-color: #ffffff;
+            border-color: #e2e8f0 !important;
+        }
+        [data-bs-theme="dark"] .ticket-quick-replies-bar {
+            background-color: #0f172a !important;
+            border-color: #1e293b !important;
+        }
+
+        .ticket-quick-chip {
+            background-color: #f1f5f9;
+            color: #334155;
+            border: 1px solid #cbd5e1;
+            transition: all 0.15s ease-in-out;
+            font-size: 0.8rem;
+        }
+        .ticket-quick-chip:hover {
+            background-color: #e2e8f0;
+            color: #0f172a;
+        }
+        [data-bs-theme="dark"] .ticket-quick-chip {
+            background-color: #1e293b !important;
+            color: #cbd5e1 !important;
+            border-color: #334155 !important;
+        }
+        [data-bs-theme="dark"] .ticket-quick-chip:hover {
+            background-color: #334155 !important;
+            color: #ffffff !important;
+        }
+
+        .ticket-user-summary-card {
+            background-color: #f8fafc;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        [data-bs-theme="dark"] .ticket-user-summary-card {
+            background-color: #0f172a !important;
+            border-color: #1e293b !important;
+        }
+
+        .ticket-info-pill {
+            background-color: #ffffff;
+            color: #334155;
+            border: 1px solid #e2e8f0;
+        }
+        [data-bs-theme="dark"] .ticket-info-pill {
+            background-color: #1e293b !important;
+            color: #f1f5f9 !important;
+            border-color: #334155 !important;
+        }
+
+        .ticket-reply-box {
+            background-color: #ffffff;
+        }
+        [data-bs-theme="dark"] .ticket-reply-box {
+            background-color: #0f172a !important;
+        }
+
+        .ticket-user-title {
+            color: #0f172a;
+        }
+        [data-bs-theme="dark"] .ticket-user-title {
+            color: #f8fafc !important;
+        }
+
+        .ticket-badge-pill {
+            background-color: #f1f5f9;
+            color: #0f172a;
+            border: 1px solid #cbd5e1;
+        }
+        [data-bs-theme="dark"] .ticket-badge-pill {
+            background-color: #1e293b !important;
+            color: #f8fafc !important;
+            border-color: #334155 !important;
+        }
+
+        .sidebar {
+            background: var(--sidebar-bg);
+            height: 100vh;
+            height: 100dvh;
+            max-height: 100vh;
+            max-height: 100dvh;
+            width: 215px;
+            position: fixed;
+            top: 0;
+            right: 0;
+            z-index: 1040;
+            display: flex;
+            flex-direction: column;
+            box-shadow: -4px 0 15px rgba(0,0,0,0.06);
+            border-left: 1px solid var(--sidebar-border);
+            transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden;
+        }
+
+        /* ══════════════════════════════════════════════════════════════
+           استایل‌های ۵ گانه سربرگ هویت بصری سایدبار (Brand Header Styles)
+           ══════════════════════════════════════════════════════════════ */
+        .sidebar-brand-wrapper {
+            flex-shrink: 0;
+            transition: all 0.25s ease;
+        }
+
+        .sidebar-brand-wrapper .brand {
+            display: flex;
+            align-items: center;
+            text-decoration: none;
+            color: var(--sidebar-brand);
+            transition: all 0.25s ease;
+            flex-shrink: 0 !important;
+        }
+
+        .sidebar-brand-wrapper .brand-logo-img {
+            object-fit: contain;
+            flex-shrink: 0;
+            transition: transform 0.25s ease;
+        }
+
+        .sidebar-brand-wrapper .brand:hover .brand-logo-img {
+            transform: scale(1.05);
+        }
+
+        .sidebar-brand-wrapper .brand-logo-fallback {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            background: rgba(var(--bs-primary-rgb, 79, 70, 229), 0.12);
+            color: var(--primary);
+            border-radius: 10px;
+        }
+        .sidebar-brand-wrapper .brand-logo-fallback i {
+            font-size: 1.4rem;
+        }
+
+        .sidebar-brand-wrapper .brand-text-block {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+        }
+
+        .sidebar-brand-wrapper .brand-title {
+            font-weight: 700;
+            line-height: 1.3;
+            color: var(--text-main);
+        }
+
+        .sidebar-brand-wrapper .brand-version {
+            margin-top: 3px;
+        }
+
+        .sidebar-brand-wrapper .brand-version-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-family: monospace;
+            font-weight: 600;
+            letter-spacing: 0.2px;
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            border-radius: 8px;
+            background: rgba(148, 163, 184, 0.12);
+            color: var(--text-muted);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            white-space: nowrap;
+        }
+
+        .sidebar-brand-wrapper .version-icon-img {
+            width: 13px;
+            height: 13px;
+            object-fit: contain;
+            vertical-align: middle;
+        }
+
+        /* ─── استایل ۱: کارت شیشه‌ای مدرن (Style 1: Modern Glass Card) ─── */
+        .sidebar-brand-wrapper.style_glass {
+            padding: 10px 12px;
+        }
+        .sidebar-brand-wrapper.style_glass .brand {
+            gap: 12px;
+            padding: 12px 14px;
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(16px) saturate(180%);
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.12);
+        }
+        [data-bs-theme="light"] .sidebar-brand-wrapper.style_glass .brand {
+            background: rgba(255, 255, 255, 0.7);
+            border-color: rgba(79, 70, 229, 0.15);
+            box-shadow: 0 4px 18px -2px rgba(79, 70, 229, 0.08);
+        }
+        .sidebar-brand-wrapper.style_glass .brand-logo-img,
+        .sidebar-brand-wrapper.style_glass .brand-logo-fallback {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+        [data-bs-theme="light"] .sidebar-brand-wrapper.style_glass .brand-logo-img {
+            border-color: rgba(0, 0, 0, 0.08);
+            background: #fff;
+            padding: 2px;
+        }
+        .sidebar-brand-wrapper.style_glass .brand-title {
+            font-size: 1.02rem;
+        }
+        .sidebar-brand-wrapper.style_glass .brand-version-chip {
+            background: rgba(var(--bs-primary-rgb, 79, 70, 229), 0.1);
+            color: var(--primary);
+            border-color: rgba(var(--bs-primary-rgb, 79, 70, 229), 0.25);
+            border-radius: 20px;
+        }
+
+        /* ─── استایل ۲: کلاسیک مینیمال (Style 2: Classic Minimal) ─── */
+        .sidebar-brand-wrapper.style_minimal {
+            padding: 0;
+            border-bottom: 1px solid var(--sidebar-border);
+        }
+        .sidebar-brand-wrapper.style_minimal .brand {
+            gap: 12px;
+            padding: 14px 16px;
+        }
+        .sidebar-brand-wrapper.style_minimal .brand-logo-img,
+        .sidebar-brand-wrapper.style_minimal .brand-logo-fallback {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+        }
+        .sidebar-brand-wrapper.style_minimal .brand-title {
+            font-size: 0.98rem;
+        }
+        .sidebar-brand-wrapper.style_minimal .brand-version-chip {
+            background: transparent;
+            border: 1px solid var(--sidebar-border);
+            padding: 2px 6px;
+            font-size: 0.68rem;
+        }
+
+        /* ─── استایل ۳: متمرکز و عمودی شیک (Style 3: Centered Vertical) ─── */
+        .sidebar-brand-wrapper.style_centered {
+            padding: 12px 14px;
+        }
+        .sidebar-brand-wrapper.style_centered .brand {
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: 8px;
+            padding: 16px 12px 14px;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--sidebar-border);
+        }
+        [data-bs-theme="light"] .sidebar-brand-wrapper.style_centered .brand {
+            background: rgba(255, 255, 255, 0.55);
+        }
+        .sidebar-brand-wrapper.style_centered .brand-logo-img,
+        .sidebar-brand-wrapper.style_centered .brand-logo-fallback {
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            box-shadow: 0 0 0 3px rgba(var(--bs-primary-rgb, 79, 70, 229), 0.2);
+        }
+        .sidebar-brand-wrapper.style_centered .brand-text-block {
+            align-items: center;
+            width: 100%;
+        }
+        .sidebar-brand-wrapper.style_centered .brand-title {
+            font-size: 1.05rem;
+            font-weight: 800;
+        }
+        .sidebar-brand-wrapper.style_centered .brand-version-chip {
+            border-radius: 20px;
+            padding: 2px 10px;
+            font-size: 0.69rem;
+            background: rgba(var(--bs-primary-rgb, 79, 70, 229), 0.08);
+            border-color: rgba(var(--bs-primary-rgb, 79, 70, 229), 0.2);
+            color: var(--primary);
+        }
+
+        /* ─── استایل ۴: سایبری و نئونی مدرن (Style 4: Cyber Glow) ─── */
+        .sidebar-brand-wrapper.style_cyber {
+            padding: 10px 12px;
+        }
+        .sidebar-brand-wrapper.style_cyber .brand {
+            gap: 12px;
+            padding: 12px 14px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 27, 75, 0.85));
+            border: 1px solid rgba(var(--bs-primary-rgb, 79, 70, 229), 0.5);
+            box-shadow: 0 0 16px rgba(var(--bs-primary-rgb, 79, 70, 229), 0.2), inset 0 0 8px rgba(var(--bs-primary-rgb, 79, 70, 229), 0.1);
+        }
+        [data-bs-theme="light"] .sidebar-brand-wrapper.style_cyber .brand {
+            background: linear-gradient(135deg, rgba(241, 245, 249, 0.95), rgba(224, 231, 255, 0.85));
+            border-color: var(--primary);
+            box-shadow: 0 0 14px rgba(var(--bs-primary-rgb, 79, 70, 229), 0.18);
+        }
+        .sidebar-brand-wrapper.style_cyber .brand-logo-img,
+        .sidebar-brand-wrapper.style_cyber .brand-logo-fallback {
+            width: 38px;
+            height: 38px;
+            border-radius: 8px;
+            border: 1.5px solid var(--primary);
+            box-shadow: 0 0 8px rgba(var(--bs-primary-rgb, 79, 70, 229), 0.35);
+        }
+        .sidebar-brand-wrapper.style_cyber .brand-title {
+            font-size: 1.02rem;
+            font-weight: 800;
+            letter-spacing: 0.3px;
+        }
+        .sidebar-brand-wrapper.style_cyber .brand-version-chip {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--primary);
+            color: #38bdf8;
+            border-radius: 6px;
+            text-transform: uppercase;
+        }
+        [data-bs-theme="light"] .sidebar-brand-wrapper.style_cyber .brand-version-chip {
+            background: rgba(255, 255, 255, 0.8);
+            color: var(--primary);
+        }
+
+        /* ─── استایل ۵: افقی فشرده (Style 5: Inline Compact) ─── */
+        .sidebar-brand-wrapper.style_compact {
+            padding: 0;
+            border-bottom: 1px solid var(--sidebar-border);
+        }
+        .sidebar-brand-wrapper.style_compact .brand {
+            gap: 10px;
+            padding: 10px 14px;
+        }
+        .sidebar-brand-wrapper.style_compact .brand-logo-img,
+        .sidebar-brand-wrapper.style_compact .brand-logo-fallback {
+            width: 30px;
+            height: 30px;
+            border-radius: 6px;
+        }
+        .sidebar-brand-wrapper.style_compact .brand-title {
+            font-size: 0.92rem;
+            line-height: 1.2;
+        }
+        .sidebar-brand-wrapper.style_compact .brand-version {
+            margin-top: 1px;
+        }
+        .sidebar-brand-wrapper.style_compact .brand-version-chip {
+            padding: 1px 5px;
+            font-size: 0.65rem;
+            border-radius: 4px;
+            border: none;
+            background: rgba(var(--bs-primary-rgb, 79, 70, 229), 0.08);
+            color: var(--primary);
+        }
+
+        .sidebar .nav {
+            padding: 6px 8px;
+            display: flex !important;
+            flex-direction: column !important;
+            flex-wrap: nowrap !important;
+            width: 100% !important;
+            flex: 1 1 0px !important;
+            min-height: 0 !important;
+            max-height: 100% !important;
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .sidebar .nav::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .sidebar .nav::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .sidebar .nav::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.3);
+            border-radius: 4px;
+        }
+
+        .sidebar .nav::-webkit-scrollbar-thumb:hover {
+            background: rgba(148, 163, 184, 0.55);
+        }
+
+        .sidebar .nav-category {
+            width: 100% !important;
+            flex-shrink: 0 !important;
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--sidebar-text-muted);
+            padding: 8px 8px 2px;
+            font-weight: 700;
+        }
+
+        .sidebar .nav-link {
+            width: 100% !important;
+            flex-shrink: 0 !important;
+            color: var(--sidebar-text);
+            padding: 7px 9px;
+            border-radius: 8px;
+            margin-bottom: 2px;
+            font-size: 0.83rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.15s ease;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .sidebar .nav-link i {
+            font-size: 0.95rem;
+            width: 18px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .sidebar .nav-link:hover {
+            color: var(--primary);
+            background: var(--sidebar-hover-bg);
+            transform: translateX(-3px);
+        }
+
+        .sidebar .nav-link.active {
+            color: #ffffff !important;
+            background: var(--primary) !important;
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
+        }
+
+        /* ─── زیرمنوهای کشویی و آکاردئونی سایدبار (Sidebar Dropdowns) ─── */
+        .sidebar .sidebar-dropdown-toggle {
+            width: 100% !important;
+            flex-shrink: 0 !important;
+            color: var(--sidebar-text);
+            padding: 7px 9px;
+            border-radius: 8px;
+            margin-bottom: 2px;
+            font-size: 0.83rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: transparent;
+            border: none;
+            outline: none;
+            transition: all 0.15s ease;
+            text-decoration: none;
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+            text-align: right;
+        }
+
+        .sidebar .sidebar-dropdown-toggle:hover {
+            color: var(--primary);
+            background: var(--sidebar-hover-bg);
+            transform: translateX(-3px);
+        }
+
+        .sidebar .sidebar-dropdown-toggle.has-active {
+            color: var(--primary);
+            font-weight: 700;
+            background: rgba(79, 70, 229, 0.08);
+        }
+
+        .sidebar .dropdown-chevron {
+            font-size: 0.72rem;
+            transition: transform 0.25s ease;
+            color: var(--sidebar-text-muted);
+        }
+
+        .sidebar .sidebar-dropdown-toggle[aria-expanded="true"] .dropdown-chevron {
+            transform: rotate(180deg);
+            color: var(--primary);
+        }
+
+        .sidebar .submenu-collapse {
+            width: 100%;
+        }
+
+        .sidebar .submenu-inner {
+            margin: 2px 8px 6px 14px;
+            padding-right: 12px;
+            border-right: 2px solid rgba(148, 163, 184, 0.25);
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .sidebar .submenu-item {
+            width: 100% !important;
+            font-size: 0.82rem !important;
+            font-weight: 500;
+            padding: 6px 10px !important;
+            border-radius: 6px !important;
+            color: var(--sidebar-text) !important;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+            transition: all 0.15s ease;
+        }
+
+        .sidebar .submenu-item i {
+            font-size: 0.88rem;
+            width: 18px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .sidebar .submenu-item:hover {
+            color: var(--primary) !important;
+            background: var(--sidebar-hover-bg) !important;
+            transform: translateX(-2px);
+        }
+
+        .sidebar .submenu-item.active {
+            color: #ffffff !important;
+            background: var(--primary) !important;
+            font-weight: 700;
+            box-shadow: 0 2px 8px rgba(79, 70, 229, 0.25);
+        }
+
+        /* ─── کارت‌های آماری شاخص‌ها (Stat Cards) ─── */
+        .stat-card {
+            padding: 20px 22px !important;
+            display: flex !important;
+            flex-direction: row !important;
+            justify-content: space-between !important;
+            align-items: center !important;
+            border-radius: 12px;
+            border: 1px solid var(--card-border);
+            background: var(--card-bg);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+            min-height: 110px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+        }
+
+        .stat-card > div:first-child {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: flex-start;
+            text-align: right;
+            gap: 4px;
+            min-width: 0;
+            flex: 1 1 auto;
+        }
+
+        .stat-card .stat-icon {
+            width: 52px;
+            height: 52px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.55rem;
+            flex-shrink: 0;
+            margin-right: 14px;
+        }
+
+        .stat-card h3 {
+            margin: 2px 0 3px 0 !important;
+            font-size: 1.65rem !important;
+            font-weight: 800 !important;
+            line-height: 1.25 !important;
+        }
+
+        .stat-card h4 {
+            margin: 2px 0 3px 0 !important;
+            font-size: 1.3rem !important;
+            font-weight: 800 !important;
+            line-height: 1.25 !important;
+        }
+
+        .sidebar-footer {
+            flex-shrink: 0 !important;
+            padding: 8px 10px;
+            border-top: 1px solid var(--sidebar-border);
+            background: rgba(0,0,0,0.03);
+        }
+
+        [data-bs-theme="dark"] .sidebar-footer {
+            background: rgba(0,0,0,0.25);
+        }
+
+        .sidebar-backdrop {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(3px);
+            z-index: 1035;
+            transition: opacity 0.25s ease;
+        }
+
+        .sidebar-backdrop.show {
+            display: block;
+        }
+
+        .mobile-top-bar {
+            background: var(--card-bg);
+            border-color: var(--card-border) !important;
+            position: sticky;
+            top: 0;
+            z-index: 1020;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+        }
+
+        .user-pill {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 10px;
+            border-radius: 10px;
+            background: var(--sidebar-hover-bg);
+            color: var(--sidebar-brand);
+        }
+
+        .user-avatar {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: var(--primary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1rem;
+        }
+
+        /* استایل اختصاصی زرد برای لینک‌های تکی */
+        .btn-outline-warning {
+            color: #ca8a04 !important;
+            border-color: #facc15 !important;
+            font-weight: 700 !important;
+        }
+        .btn-outline-warning:hover {
+            background-color: #facc15 !important;
+            color: #000000 !important;
+        }
+        [data-bs-theme="dark"] .btn-outline-warning {
+            color: #facc15 !important;
+            border-color: #eab308 !important;
+        }
+        .text-single-yellow {
+            color: #eab308 !important;
+            font-weight: 700 !important;
+        }
+
+        .main-content {
+            margin-right: 215px;
+            padding: 20px 18px;
+            min-height: 100vh;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            transition: margin-right 0.3s ease;
+        }
+
+        /* ─── نوار جستجوی پیشرفته جداول (Instant Table Search) ─── */
+        .table-search-wrapper {
+            position: relative;
+            min-width: 240px;
+            max-width: 380px;
+            width: 100%;
+        }
+
+        .table-search-input {
+            padding-right: 38px !important;
+            padding-left: 32px !important;
+            border-radius: 10px;
+            font-size: 0.88rem;
+            transition: all 0.2s ease;
+            background-color: var(--card-bg);
+            border: 1px solid var(--card-border);
+            color: var(--text-main);
+        }
+
+        .table-search-input:focus {
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+            border-color: var(--primary);
+        }
+
+        .table-search-icon {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            pointer-events: none;
+            font-size: 0.9rem;
+        }
+
+        .table-search-clear {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            cursor: pointer;
+            display: none;
+            font-size: 0.85rem;
+            background: none;
+            border: none;
+            padding: 2px 4px;
+        }
+
+        .table-search-clear:hover {
+            color: var(--danger);
+        }
+
+        /* ─── استایل‌های ستون‌های قابل مرتب‌سازی جداول (Sortable Table Headers) ─── */
+        .sortable-th {
+            cursor: pointer !important;
+            user-select: none;
+            white-space: nowrap;
+            transition: background-color 0.2s ease, color 0.2s ease;
+            position: relative;
+        }
+        .sortable-th:hover {
+            background-color: rgba(79, 70, 229, 0.08) !important;
+            color: var(--primary) !important;
+        }
+        .sortable-th i.fas {
+            transition: transform 0.2s ease, color 0.2s ease;
+        }
+        [data-bs-theme="dark"] .sortable-th:hover {
+            background-color: rgba(255, 255, 255, 0.06) !important;
+            color: #818cf8 !important;
+        }
+
+        /* ─── استایل‌های تفکیک رنگی تیکت‌ها بر اساس وضعیت (Ticket Status Highlights) ─── */
+        .ticket-row-open {
+            background-color: rgba(245, 158, 11, 0.09) !important;
+            border-right: 4px solid #f59e0b !important;
+        }
+        .ticket-row-open:hover {
+            background-color: rgba(245, 158, 11, 0.16) !important;
+        }
+        .ticket-row-inprogress {
+            background-color: rgba(6, 182, 212, 0.06) !important;
+            border-right: 4px solid #06b6d4 !important;
+        }
+        .ticket-row-inprogress:hover {
+            background-color: rgba(6, 182, 212, 0.12) !important;
+        }
+        .ticket-row-replied {
+            background-color: rgba(16, 185, 129, 0.05) !important;
+            border-right: 4px solid #10b981 !important;
+        }
+        .ticket-row-replied:hover {
+            background-color: rgba(16, 185, 129, 0.11) !important;
+        }
+        .ticket-row-closed {
+            background-color: rgba(100, 116, 139, 0.03) !important;
+            border-right: 4px solid #94a3b8 !important;
+            opacity: 0.85;
+        }
+        .ticket-row-closed:hover {
+            background-color: rgba(100, 116, 139, 0.08) !important;
+            opacity: 1;
+        }
+
+        /* تم تاریک برای سطرهای تیکت */
+        [data-bs-theme="dark"] .ticket-row-open {
+            background-color: rgba(245, 158, 11, 0.14) !important;
+            border-right-color: #fbbf24 !important;
+        }
+        [data-bs-theme="dark"] .ticket-row-open:hover {
+            background-color: rgba(245, 158, 11, 0.22) !important;
+        }
+        [data-bs-theme="dark"] .ticket-row-inprogress {
+            background-color: rgba(6, 182, 212, 0.12) !important;
+            border-right-color: #22d3ee !important;
+        }
+        [data-bs-theme="dark"] .ticket-row-inprogress:hover {
+            background-color: rgba(6, 182, 212, 0.18) !important;
+        }
+        [data-bs-theme="dark"] .ticket-row-replied {
+            background-color: rgba(16, 185, 129, 0.10) !important;
+            border-right-color: #34d399 !important;
+        }
+        [data-bs-theme="dark"] .ticket-row-replied:hover {
+            background-color: rgba(16, 185, 129, 0.16) !important;
+        }
+        [data-bs-theme="dark"] .ticket-row-closed {
+            background-color: rgba(15, 23, 42, 0.5) !important;
+            border-right-color: #475569 !important;
+            opacity: 0.75;
+        }
+        [data-bs-theme="dark"] .ticket-row-closed:hover {
+            background-color: rgba(30, 41, 59, 0.7) !important;
+            opacity: 1;
+        }
+
+        /* افکت ضربان بج تیکت جدید */
+        @keyframes pulseAlert {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 7px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        @keyframes pulseWarning {
+            0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+            70% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+        }
+        .pulse-indicator {
+            animation: pulseWarning 2s infinite;
+        }
+        .pulse-indicator-badge {
+            animation: pulseAlert 2s infinite;
+        }
+
+        /* ─── نوار ابزار شناور مدیریت گروهی (Bulk Actions Toolbar) ─── */
+        .bulk-actions-bar {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(120px);
+            z-index: 1040;
+            background: rgba(15, 23, 42, 0.94);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 50rem;
+            padding: 8px 18px;
+            box-shadow: 0 14px 35px rgba(0, 0, 0, 0.45);
+            transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+            opacity: 0;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            max-width: 95vw;
+        }
+        .bulk-actions-bar.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+            pointer-events: auto;
+        }
+        [data-bs-theme="dark"] .bulk-actions-bar {
+            background: rgba(30, 41, 59, 0.95);
+            border-color: rgba(255, 255, 255, 0.12);
+        }
+        @media (max-width: 768px) {
+            .bulk-actions-bar {
+                bottom: 14px;
+                border-radius: 16px;
+                padding: 10px 14px;
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 8px;
+            }
+        }
+        tr.table-active-row-selected {
+            background-color: rgba(59, 130, 246, 0.08) !important;
+        }
+        [data-bs-theme="dark"] tr.table-active-row-selected {
+            background-color: rgba(59, 130, 246, 0.16) !important;
+        }
+
+        .table-responsive {
+            -webkit-overflow-scrolling: touch;
+            border-radius: 10px;
+        }
+
+        @media (max-width: 992px) {
+            .sidebar {
+                right: -285px !important;
+                transform: none !important;
+                box-shadow: none !important;
+            }
+            .sidebar.show {
+                right: 0 !important;
+                transform: none !important;
+                box-shadow: -6px 0 25px rgba(0, 0, 0, 0.35) !important;
+            }
+            .main-content {
+                margin-right: 0 !important;
+                padding: 14px 12px !important;
+                width: 100% !important;
+                max-width: 100vw !important;
+                overflow-x: hidden !important;
+            }
+            .table-search-wrapper {
+                max-width: 100%;
+                margin-bottom: 8px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .page-header {
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 12px !important;
+                margin-bottom: 1.25rem !important;
+            }
+            .page-header > div:last-child {
+                display: flex !important;
+                flex-wrap: wrap !important;
+                gap: 6px !important;
+                width: 100% !important;
+            }
+            .page-header > div:last-child .btn,
+            .page-header > div:last-child .badge {
+                flex: 1 1 auto !important;
+                min-width: 130px !important;
+                text-align: center !important;
+                justify-content: center !important;
+                display: inline-flex !important;
+                align-items: center !important;
+            }
+            .stat-card {
+                padding: 14px 16px !important;
+                min-height: 85px !important;
+            }
+            .stat-card .stat-icon {
+                width: 44px !important;
+                height: 44px !important;
+                font-size: 1.3rem !important;
+                margin-right: 0 !important;
+                margin-left: 10px !important;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .page-title {
+                font-size: 1.15rem !important;
+            }
+            .stat-card {
+                padding: 12px 14px !important;
+                min-height: 75px !important;
+            }
+            .stat-card .stat-icon {
+                width: 40px !important;
+                height: 40px !important;
+                font-size: 1.2rem !important;
+                margin-right: 0 !important;
+                margin-left: 8px !important;
+            }
+            .stat-card h3 {
+                font-size: 1.25rem !important;
+            }
+            .card-header {
+                flex-direction: column;
+                align-items: flex-start !important;
+                gap: 10px;
+            }
+            .card-header .table-search-wrapper {
+                width: 100%;
+            }
+            .table th, .table td {
+                padding: 6px 8px;
+                font-size: 0.82rem;
+            }
+            .btn-sm {
+                padding: 4px 8px;
+                font-size: 0.8rem;
+            }
+        }
+
+        /* نوار پیشرفت مصرف حجم واضح و باکیفیت در هر دو حالت روشن و تاریک */
+        .custom-usage-progress {
+            height: 8px !important;
+            border-radius: 999px !important;
+            background-color: #cbd5e1 !important; /* رنگ مشخص، پررنگ و شیک در تم روشن */
+            border: 1px solid rgba(0, 0, 0, 0.15) !important;
+            overflow: hidden !important;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.12) !important;
+            min-width: 90px;
+        }
+        [data-bs-theme="dark"] .custom-usage-progress {
+            background-color: #1e293b !important;
+            border-color: rgba(255, 255, 255, 0.15) !important;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.4) !important;
+        }
+        .custom-usage-progress .progress-bar {
+            min-width: 4px;
+            border-radius: 999px !important;
+            transition: width 0.4s ease;
+        }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <!-- کانتینر هاله‌های نوری پس‌زمینه (Aura Mesh Background) -->
+    <div class="aura-mesh-container" aria-hidden="true">
+        <div class="aura-blob aura-blob-1"></div>
+        <div class="aura-blob aura-blob-2"></div>
+        <div class="aura-blob aura-blob-3"></div>
+    </div>
+
+    {% if session.get('logged_in') %}
+    <!-- Mobile Top Header Bar -->
+    <div class="mobile-top-bar d-lg-none d-flex align-items-center justify-content-between px-3 py-2 border-bottom">
+        <button type="button" class="btn btn-outline-secondary btn-sm px-2 py-1" onclick="toggleSidebar()" aria-label="منوی پنل">
+            <i class="fas fa-bars fs-5"></i>
+        </button>
+        <div class="fw-bold d-flex align-items-center gap-2">
+            {% if branding.get('logo_url') %}
+                <img src="{{ branding.get('logo_url') }}" alt="لوگو" style="width: 26px; height: 26px; object-fit: contain; border-radius: 6px;">
+            {% else %}
+                <i class="fas fa-shield-halved text-primary"></i>
+            {% endif %}
+            <span class="small">{{ branding.get('brand_title') or 'پنل مدیریت VPN' }}</span>
+        </div>
+        <button type="button" class="btn btn-outline-secondary btn-sm px-2 py-1" onclick="toggleTheme()" aria-label="تغییر تم">
+            <i class="fas fa-circle-half-stroke"></i>
+        </button>
+    </div>
+
+    <!-- Sidebar Backdrop for Mobile -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar()"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        {% set header_style = branding.get('brand_header_style', 'style_glass') %}
+        <div class="sidebar-brand-wrapper {{ header_style }}">
+            <a href="{% if session.get('role') == 'reseller' %}{{ url_for('reseller_dashboard') }}{% else %}{{ url_for('dashboard') }}{% endif %}" class="brand brand-{{ header_style }}">
+                {% if branding.get('logo_url') %}
+                    <img src="{{ branding.get('logo_url') }}" alt="لوگو" class="brand-logo-img">
+                {% else %}
+                    <div class="brand-logo-fallback">
+                        <i class="fas fa-shield-halved"></i>
+                    </div>
+                {% endif %}
+                <div class="brand-text-block">
+                    <div class="brand-title text-truncate" title="{{ branding.get('brand_title') or 'پنل مدیریت VPN' }}">{{ branding.get('brand_title') or 'پنل مدیریت VPN' }}</div>
+                    <div class="brand-version">
+                        <span class="badge brand-version-chip">
+                            {% if branding.get('version_custom_icon') %}
+                                <img src="{{ branding.get('version_custom_icon') }}" alt="نسخه" class="version-icon-img">
+                            {% else %}
+                                {% set v_icon = branding.get('version_icon_type', 'branch') %}
+                                {% if v_icon == 'tag' %}<i class="fas fa-tag text-primary"></i>
+                                {% elif v_icon == 'cube' %}<i class="fas fa-cube text-primary"></i>
+                                {% elif v_icon == 'rocket' %}<i class="fas fa-rocket text-primary"></i>
+                                {% elif v_icon == 'sparkles' %}<i class="fas fa-wand-magic-sparkles text-primary"></i>
+                                {% elif v_icon == 'shield' %}<i class="fas fa-shield-halved text-primary"></i>
+                                {% elif v_icon == 'terminal' %}<i class="fas fa-terminal text-primary"></i>
+                                {% elif v_icon == 'bolt' %}<i class="fas fa-bolt text-primary"></i>
+                                {% elif v_icon == 'microchip' %}<i class="fas fa-microchip text-primary"></i>
+                                {% elif v_icon == 'star' %}<i class="fas fa-star text-primary"></i>
+                                {% else %}<i class="fas fa-code-branch text-primary"></i>
+                                {% endif %}
+                            {% endif %}
+                            <span>نسخه: {{ branding.get('store_version') or 'v0.0.1 Beta' }}</span>
+                        </span>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <nav class="nav flex-column flex-nowrap w-100">
+            {% if session.get('role') == 'reseller' %}
+                <!-- منوی پنل نمایندگی با پشتیبانی از نقش‌های زیرمدیران -->
+                <div class="nav-category">
+                    {{ branding.get('brand_title') or 'پنل همکاران' }}
+                </div>
+
+                <a class="nav-link {% if request.endpoint == 'reseller_dashboard' %}active{% endif %}" href="{{ url_for('reseller_dashboard') }}">
+                    <i class="fas fa-chart-pie" style="color: #6366f1;"></i> داشبورد
+                </a>
+
+                {% if not sub_role or sub_role in ['partner', 'finance', 'manager2'] %}
+                <a class="nav-link {% if request.endpoint == 'reseller_customer_payments' %}active{% endif %}" href="{{ url_for('reseller_customer_payments') }}">
+                    <i class="fas fa-receipt text-warning"></i> پرداخت‌ها
+                </a>
+                {% endif %}
+
+                {% if not sub_role or sub_role in ['partner', 'support', 'manager2'] %}
+                <a class="nav-link {% if request.endpoint == 'reseller_create_user' %}active{% endif %}" href="{{ url_for('reseller_create_user') }}">
+                    <i class="fas fa-user-plus text-success"></i> مشتری جدید
+                </a>
+                <a class="nav-link {% if request.endpoint == 'reseller_users' %}active{% endif %}" href="{{ url_for('reseller_users') }}">
+                    <i class="fas fa-users text-primary"></i> مشتریان
+                </a>
+                <a class="nav-link {% if request.endpoint == 'reseller_tickets' %}active{% endif %}" href="{{ url_for('reseller_tickets') }}">
+                    <i class="fas fa-headset text-info"></i> تیکت‌ها و پشتیبانی
+                </a>
+                <a class="nav-link {% if request.endpoint == 'reseller_broadcast' %}active{% endif %}" href="{{ url_for('reseller_broadcast') }}">
+                    <i class="fas fa-bullhorn text-warning"></i> پیام همگانی
+                </a>
+                {% endif %}
+
+                {% if not sub_role or sub_role in ['partner', 'finance', 'manager2'] %}
+                <a class="nav-link {% if request.endpoint == 'reseller_transactions' %}active{% endif %}" href="{{ url_for('reseller_transactions') }}">
+                    <i class="fas fa-wallet text-success"></i> کیف پول
+                </a>
+
+                <!-- منوی کشویی امور مالی و گزارشات -->
+                {% set is_finance_active = request.endpoint in ['reseller_payments', 'reseller_discounts', 'reseller_reports', 'reseller_affiliates'] %}
+                <button class="sidebar-dropdown-toggle {% if is_finance_active %}has-active{% endif %}" 
+                        type="button" 
+                        data-bs-toggle="collapse" 
+                        data-bs-target="#resellerFinanceCollapse" 
+                        aria-expanded="{% if is_finance_active %}true{% else %}false{% endif %}" 
+                        aria-controls="resellerFinanceCollapse">
+                    <span class="d-flex align-items-center gap-2">
+                        <i class="fas fa-coins text-warning"></i>
+                        <span>امور مالی و گزارشات</span>
+                    </span>
+                    <i class="fas fa-chevron-down dropdown-chevron"></i>
+                </button>
+                <div class="collapse submenu-collapse {% if is_finance_active %}show{% endif %}" id="resellerFinanceCollapse">
+                    <div class="submenu-inner">
+                        <a class="submenu-item {% if request.endpoint == 'reseller_payments' %}active{% endif %}" href="{{ url_for('reseller_payments') }}">
+                            <i class="fas fa-file-invoice-dollar text-primary"></i> سوابق مالی
+                        </a>
+                        {% if not sub_role or sub_role in ['partner', 'manager2'] %}
+                        <a class="submenu-item {% if request.endpoint == 'reseller_discounts' %}active{% endif %}" href="{{ url_for('reseller_discounts') }}">
+                            <i class="fas fa-ticket text-danger"></i> کدهای تخفیف
+                        </a>
+                        {% endif %}
+                        <a class="submenu-item {% if request.endpoint == 'reseller_reports' %}active{% endif %}" href="{{ url_for('reseller_reports') }}">
+                            <i class="fas fa-chart-line text-success"></i> گزارشات و هوش مالی
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'reseller_affiliates' %}active{% endif %}" href="{{ url_for('reseller_affiliates') }}">
+                            <i class="fas fa-users-rays text-warning"></i> زیرمجموعه‌گیری و پورسانت
+                        </a>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- منوی کشویی تنظیمات -->
+                {% if not sub_role or sub_role in ['partner', 'manager2'] %}
+                {% set is_settings_active = request.endpoint in ['reseller_plans', 'reseller_bot_settings', 'reseller_cards', 'reseller_team', 'reseller_branding', 'reseller_sms_settings'] %}
+                <button class="sidebar-dropdown-toggle {% if is_settings_active %}has-active{% endif %}" 
+                        type="button" 
+                        data-bs-toggle="collapse" 
+                        data-bs-target="#resellerSettingsCollapse" 
+                        aria-expanded="{% if is_settings_active %}true{% else %}false{% endif %}" 
+                        aria-controls="resellerSettingsCollapse">
+                    <span class="d-flex align-items-center gap-2">
+                        <i class="fas fa-gear text-info"></i>
+                        <span>تنظیمات</span>
+                    </span>
+                    <i class="fas fa-chevron-down dropdown-chevron"></i>
+                </button>
+                <div class="collapse submenu-collapse {% if is_settings_active %}show{% endif %}" id="resellerSettingsCollapse">
+                    <div class="submenu-inner">
+                        <a class="submenu-item {% if request.endpoint == 'reseller_plans' %}active{% endif %}" href="{{ url_for('reseller_plans') }}">
+                            <i class="fas fa-layer-group text-info"></i> مدیریت بسته‌ها و پلن‌ها
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'reseller_bot_settings' %}active{% endif %}" href="{{ url_for('reseller_bot_settings') }}">
+                            <i class="fas fa-robot text-primary"></i> ربات تلگرام
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'reseller_sms_settings' %}active{% endif %}" href="{{ url_for('reseller_sms_settings') }}">
+                            <i class="fas fa-comment-sms text-info"></i> سامانه پیامک و قالب‌ها
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'reseller_cards' %}active{% endif %}" href="{{ url_for('reseller_cards') }}">
+                            <i class="fas fa-credit-card text-success"></i> تنظیمات پرداخت
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'reseller_team' %}active{% endif %}" href="{{ url_for('reseller_team') }}">
+                            <i class="fas fa-users-gear" style="color: #8b5cf6;"></i> مدیریت تیم و دسترسی‌ها
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'reseller_branding' %}active{% endif %}" href="{{ url_for('reseller_branding') }}">
+                            <i class="fas fa-palette text-warning"></i> هویت بصری و شخصی‌سازی
+                        </a>
+                    </div>
+                </div>
+                {% endif %}
+
+                <a class="nav-link {% if request.endpoint == 'reseller_profile' %}active{% endif %}" href="{{ url_for('reseller_profile') }}">
+                    <i class="fas fa-user-gear" style="color: #64748b;"></i> حساب کاربری و مشخصات
+                </a>
+            {% else %}
+                <!-- منوی مدیریت کل بر اساس سطح دسترسی (RBAC) -->
+                <div class="nav-category">عملیات اصلی و روزانه</div>
+
+                <!-- ۱. داشبورد اصلی -->
+                {% if has_permission('dashboard') %}
+                <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
+                    <i class="fas fa-chart-pie" style="color: #6366f1;"></i> داشبورد اصلی
+                </a>
+                {% endif %}
+
+                <!-- ۲. مشتریان -->
+                {% if has_permission('subscriptions_view') %}
+                <a class="nav-link {% if request.endpoint == 'subscriptions' %}active{% endif %}" href="{{ url_for('subscriptions') }}">
+                    <i class="fas fa-users-gear" style="color: #ec4899;"></i> مشتریان
+                </a>
+                {% endif %}
+
+                <!-- ۳. مشتری جدید -->
+                {% if has_permission('create_customer') %}
+                <a class="nav-link {% if request.endpoint == 'admin_create_customer' %}active{% endif %}" href="{{ url_for('admin_create_customer') }}">
+                    <i class="fas fa-user-plus text-success"></i> مشتری جدید
+                </a>
+                {% endif %}
+
+                <!-- ۴. پرداخت‌ها -->
+                {% if has_permission('payments_view') %}
+                <a class="nav-link {% if request.endpoint == 'payments' %}active{% endif %}" href="{{ url_for('payments') }}">
+                    <i class="fas fa-receipt text-warning"></i> پرداخت‌ها
+                    <span id="sidebarPendingBadge" class="badge bg-danger ms-auto rounded-pill" style="display: none; font-size: 0.75rem;">0</span>
+                </a>
+                {% endif %}
+
+                <!-- ۵. تیکت‌ها -->
+                {% if has_permission('tickets') %}
+                <a class="nav-link {% if request.endpoint == 'tickets' %}active{% endif %}" href="{{ url_for('tickets') }}">
+                    <i class="fas fa-headset text-info"></i> تیکت‌ها
+                    <span id="sidebarTicketsBadge" class="badge bg-warning text-dark ms-auto rounded-pill" style="display: none; font-size: 0.75rem;">0</span>
+                </a>
+                {% endif %}
+
+                <div class="nav-category">بخش‌های تکمیلی و مدیریت</div>
+
+                <!-- دسته‌بندی ۱: مدیریت نمایندگان و همکاران -->
+                {% if has_permission('manage_resellers') %}
+                {% set is_resellers_group_active = request.endpoint in ['admin_resellers', 'admin_reseller_bundles', 'admin_reseller_affiliates'] %}
+                <button class="sidebar-dropdown-toggle {% if is_resellers_group_active %}has-active{% endif %}" 
+                        type="button" 
+                        data-bs-toggle="collapse" 
+                        data-bs-target="#adminResellersCollapse" 
+                        aria-expanded="{% if is_resellers_group_active %}true{% else %}false{% endif %}" 
+                        aria-controls="adminResellersCollapse">
+                    <span class="d-flex align-items-center gap-2">
+                        <i class="fas fa-handshake" style="color: #8b5cf6;"></i>
+                        <span>مدیریت نمایندگان</span>
+                    </span>
+                    <i class="fas fa-chevron-down dropdown-chevron"></i>
+                </button>
+                <div class="collapse submenu-collapse {% if is_resellers_group_active %}show{% endif %}" id="adminResellersCollapse">
+                    <div class="submenu-inner">
+                        <a class="submenu-item {% if request.endpoint == 'admin_resellers' %}active{% endif %}" href="{{ url_for('admin_resellers') }}">
+                            <i class="fas fa-user-tie text-primary"></i> نمایندگان فروش (Resellers)
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'admin_reseller_bundles' %}active{% endif %}" href="{{ url_for('admin_reseller_bundles') }}">
+                            <i class="fas fa-boxes-stacked text-warning"></i> بسته‌های همکاران
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'admin_reseller_affiliates' %}active{% endif %}" href="{{ url_for('admin_reseller_affiliates') }}">
+                            <i class="fas fa-network-wired text-info"></i> زیرمجموعه‌گیری همکاران
+                        </a>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- دسته‌بندی ۲: فروش و بازاریابی -->
+                {% if has_permission('plans') or has_permission('discounts') or has_permission('broadcast') or has_permission('users_view') %}
+                {% set is_marketing_group_active = request.endpoint in ['admin_plans_page', 'admin_discounts_page', 'vip_settings', 'broadcast'] %}
+                <button class="sidebar-dropdown-toggle {% if is_marketing_group_active %}has-active{% endif %}" 
+                        type="button" 
+                        data-bs-toggle="collapse" 
+                        data-bs-target="#adminMarketingCollapse" 
+                        aria-expanded="{% if is_marketing_group_active %}true{% else %}false{% endif %}" 
+                        aria-controls="adminMarketingCollapse">
+                    <span class="d-flex align-items-center gap-2">
+                        <i class="fas fa-bullhorn" style="color: #f97316;"></i>
+                        <span>فروش و بازاریابی</span>
+                    </span>
+                    <i class="fas fa-chevron-down dropdown-chevron"></i>
+                </button>
+                <div class="collapse submenu-collapse {% if is_marketing_group_active %}show{% endif %}" id="adminMarketingCollapse">
+                    <div class="submenu-inner">
+                        {% if has_permission('plans') %}
+                        <a class="submenu-item {% if request.endpoint == 'admin_plans_page' %}active{% endif %}" href="{{ url_for('admin_plans_page') }}">
+                            <i class="fas fa-layer-group text-info"></i> پلن‌های فروش
+                        </a>
+                        {% endif %}
+                        {% if has_permission('discounts') %}
+                        <a class="submenu-item {% if request.endpoint == 'admin_discounts_page' %}active{% endif %}" href="{{ url_for('admin_discounts_page') }}">
+                            <i class="fas fa-ticket text-danger"></i> کدهای تخفیف
+                        </a>
+                        {% endif %}
+                        {% if has_permission('users_view') %}
+                        <a class="submenu-item {% if request.endpoint == 'vip_settings' %}active{% endif %}" href="{{ url_for('vip_settings') }}">
+                            <i class="fas fa-crown text-warning"></i> مشتریان پرمیوم (VIP)
+                        </a>
+                        {% endif %}
+                        {% if has_permission('broadcast') %}
+                        <a class="submenu-item {% if request.endpoint == 'broadcast' %}active{% endif %}" href="{{ url_for('broadcast') }}">
+                            <i class="fas fa-paper-plane text-primary"></i> پیام همگانی و اطلاعیه‌ها
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- دسته‌بندی ۳: مالی و حسابداری -->
+                {% if has_permission('reports') or has_permission('accounting') or has_permission('cards') %}
+                {% set is_finance_group_active = request.endpoint in ['reports', 'accounting', 'cards', 'admin_wallet'] %}
+                <button class="sidebar-dropdown-toggle {% if is_finance_group_active %}has-active{% endif %}" 
+                        type="button" 
+                        data-bs-toggle="collapse" 
+                        data-bs-target="#adminFinanceCollapse" 
+                        aria-expanded="{% if is_finance_group_active %}true{% else %}false{% endif %}" 
+                        aria-controls="adminFinanceCollapse">
+                    <span class="d-flex align-items-center gap-2">
+                        <i class="fas fa-coins text-warning"></i>
+                        <span>مالی و حسابداری</span>
+                    </span>
+                    <i class="fas fa-chevron-down dropdown-chevron"></i>
+                </button>
+                <div class="collapse submenu-collapse {% if is_finance_group_active %}show{% endif %}" id="adminFinanceCollapse">
+                    <div class="submenu-inner">
+                        {% if has_permission('cards') %}
+                        <a class="submenu-item {% if request.endpoint == 'admin_wallet' %}active{% endif %}" href="{{ url_for('admin_wallet') }}">
+                            <i class="fas fa-wallet text-info"></i> کیف پول و حساب‌ها
+                        </a>
+                        {% endif %}
+                        {% if has_permission('reports') %}
+                        <a class="submenu-item {% if request.endpoint == 'reports' %}active{% endif %}" href="{{ url_for('reports') }}">
+                            <i class="fas fa-chart-line text-success"></i> گزارشات و هوش مالی
+                        </a>
+                        {% endif %}
+                        {% if has_permission('accounting') %}
+                        <a class="submenu-item {% if request.endpoint == 'accounting' %}active{% endif %}" href="{{ url_for('accounting') }}">
+                            <i class="fas fa-file-invoice-dollar text-primary"></i> حسابداری و تراز سود
+                        </a>
+                        {% endif %}
+                        {% if has_permission('cards') %}
+                        <a class="submenu-item {% if request.endpoint == 'cards' %}active{% endif %}" href="{{ url_for('cards') }}">
+                            <i class="fas fa-credit-card text-warning"></i> روش‌ها و تنظیمات پرداخت
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- دسته‌بندی ۴: سیستم و تنظیمات -->
+                {% set is_settings_group_active = request.endpoint in ['users', 'admin_managers', 'admin_logs', 'bot_menu_settings', 'admin_bot_settings', 'settings', 'admin_profile'] %}
+                <button class="sidebar-dropdown-toggle {% if is_settings_group_active %}has-active{% endif %}" 
+                        type="button" 
+                        data-bs-toggle="collapse" 
+                        data-bs-target="#adminSettingsCollapse" 
+                        aria-expanded="{% if is_settings_group_active %}true{% else %}false{% endif %}" 
+                        aria-controls="adminSettingsCollapse">
+                    <span class="d-flex align-items-center gap-2">
+                        <i class="fas fa-gear text-info"></i>
+                        <span>سیستم و تنظیمات</span>
+                    </span>
+                    <i class="fas fa-chevron-down dropdown-chevron"></i>
+                </button>
+                <div class="collapse submenu-collapse {% if is_settings_group_active %}show{% endif %}" id="adminSettingsCollapse">
+                    <div class="submenu-inner">
+                        {% if has_permission('users_view') %}
+                        <a class="submenu-item {% if request.endpoint == 'users' %}active{% endif %}" href="{{ url_for('users') }}">
+                            <i class="fas fa-users text-primary"></i> کاربران تلگرام
+                        </a>
+                        {% endif %}
+                        {% if session.get('admin_role') == 'super_admin' or has_permission('settings_manage') %}
+                        <a class="submenu-item {% if request.endpoint in ['bot_menu_settings', 'admin_bot_settings'] %}active{% endif %}" href="{{ url_for('bot_menu_settings') }}">
+                            <i class="fas fa-robot text-info"></i> تنظیمات ربات‌ها
+                        </a>
+                        <a class="submenu-item {% if request.endpoint in ['admin_tutorials', 'manage_tutorials'] %}active{% endif %}" href="{{ url_for('admin_tutorials') }}">
+                            <i class="fas fa-graduation-cap text-warning"></i> مدیریت آموزش‌ها و عیب‌یابی
+                        </a>
+                        {% endif %}
+                        {% if session.get('admin_role') == 'super_admin' %}
+                        <a class="submenu-item {% if request.endpoint == 'admin_managers' %}active{% endif %}" href="{{ url_for('admin_managers') }}">
+                            <i class="fas fa-users-gear" style="color: #8b5cf6;"></i> مدیران و دسترسی‌ها
+                        </a>
+                        {% endif %}
+                        {% if has_permission('servers_view') %}
+                        <a class="submenu-item {% if request.endpoint == 'admin_logs' %}active{% endif %}" href="{{ url_for('admin_logs') }}">
+                            <i class="fas fa-terminal text-success"></i> وضعیت سرور و لاگ‌ها
+                        </a>
+                        {% endif %}
+                        {% if session.get('admin_role') == 'super_admin' %}
+                        <a class="submenu-item {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">
+                            <i class="fas fa-sliders text-secondary"></i> تنظیمات سیستم
+                        </a>
+                        {% endif %}
+                        <a class="submenu-item {% if request.endpoint == 'admin_profile' %}active{% endif %}" href="{{ url_for('admin_profile') }}">
+                            <i class="fas fa-user-gear text-warning"></i> حساب کاربری من
+                        </a>
+                    </div>
+                </div>
+            {% endif %}
+        </nav>
+
+        <div class="sidebar-footer">
+            <a href="{% if session.get('role') == 'reseller' %}{{ url_for('reseller_profile') }}{% else %}{{ url_for('admin_profile') }}{% endif %}" class="user-pill mb-2 text-decoration-none d-flex align-items-center gap-2" title="مشاهده و ویرایش حساب کاربری">
+                <img src="{{ avatar_url(session.get('telegram_id') or session.get('username') or 'Admin') }}" 
+                     alt="{{ session.get('username') }}" 
+                     class="rounded-circle border border-secondary border-opacity-25 flex-shrink-0" 
+                     style="width: 38px; height: 38px; object-fit: cover;" 
+                     loading="lazy">
+                <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">
+                    <div style="font-weight: 700; font-size: 0.9rem; color: var(--sidebar-brand);">{{ session.get('username') }}</div>
+                    {% if session.get('role') == 'reseller' %}
+                        <div class="d-flex flex-column gap-1">
+                            <div style="font-size: 0.76rem; color: #10b981; font-weight: 600;">
+                                <i class="fas fa-wallet me-1"></i>کیف پول: <span id="sidebarResellerBalance">{{ "{:,}".format((session.get('balance') or 0)|int) }}</span> ت
+                            </div>
+                            {% if session.get('credit_enabled') %}
+                            <div style="font-size: 0.74rem; color: #0284c7; font-weight: 600;" title="سقف اعتبار: {{ '{:,}'.format((session.get('credit_limit') or 0)|int) }} ت | بدهی: {{ '{:,}'.format((session.get('credit_debt') or 0)|int) }} ت">
+                                <i class="fas fa-credit-card me-1"></i>اعتبار خرید: <span id="sidebarResellerCredit">{{ "{:,}".format((session.get('available_credit') or 0)|int) }}</span> ت
+                                {% if (session.get('credit_debt') or 0)|int > 0 %}
+                                <span class="badge bg-danger bg-opacity-10 text-danger border border-danger p-0 px-1 ms-1" style="font-size: 0.68rem;">بدهی: {{ "{:,}".format((session.get('credit_debt') or 0)|int) }}</span>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <div style="font-size: 0.75rem; color: var(--sidebar-text-muted);">{{ session.get('name', 'مدیر سیستم') }}</div>
+                    {% endif %}
+                </div>
+            </a>
+            <button type="button" class="btn btn-outline-secondary btn-sm w-100 mb-2 d-flex align-items-center justify-content-center gap-2" id="themeToggleBtn" onclick="toggleTheme()">
+                <i id="themeIcon" class="fas fa-moon text-info"></i> <span id="themeLabel">حالت تیره</span>
+            </button>
+            <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-sm w-100">
+                <i class="fas fa-power-off me-1"></i> خروج از پنل
+            </a>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- بنرهای اطلاعیه بالای پنل نمایندگان با ماندگاری در localStorage تا زمان بستن -->
+        {% if session.get('role') == 'reseller' %}
+            {% set active_reseller_banners = get_reseller_banners() if get_reseller_banners else [] %}
+            {% if active_reseller_banners %}
+                <div class="reseller-banners-container mb-3">
+                    {% for bnr in active_reseller_banners %}
+                        <div class="alert alert-{{ bnr.level or 'info' }} alert-dismissible fade show shadow-sm border-2 reseller-panel-banner position-relative" 
+                             id="reseller-banner-{{ bnr.id }}" 
+                             role="alert" 
+                             style="display: none;">
+                            <div class="d-flex align-items-start justify-content-between gap-3">
+                                <div class="d-flex align-items-start gap-2">
+                                    <i class="fas fa-bullhorn fs-5 mt-1 text-{{ bnr.level or 'info' }}"></i>
+                                    <div>
+                                        {% if bnr.title %}<strong class="d-block mb-1 fs-6">{{ bnr.title }}</strong>{% endif %}
+                                        <div style="white-space: pre-line; word-break: break-word;">{{ bnr.message }}</div>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn-close position-relative p-2" onclick="dismissResellerBanner('{{ bnr.id }}')" aria-label="بستن"></button>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <script>
+                    (function() {
+                        document.querySelectorAll('.reseller-panel-banner').forEach(function(bannerEl) {
+                            var bId = bannerEl.id.replace('reseller-banner-', '');
+                            if (localStorage.getItem('dismissed_reseller_banner_' + bId) !== 'true') {
+                                bannerEl.style.display = 'block';
+                            }
+                        });
+                    })();
+                    function dismissResellerBanner(bId) {
+                        try {
+                            localStorage.setItem('dismissed_reseller_banner_' + bId, 'true');
+                        } catch(e) {}
+                        var el = document.getElementById('reseller-banner-' + bId);
+                        if (el) {
+                            el.style.display = 'none';
+                        }
+                    }
+                </script>
+            {% endif %}
+        {% endif %}
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'success' if category == 'success' else ('warning' if category == 'warning' else 'danger') }} alert-dismissible fade show shadow-sm" role="alert">
+                        <i class="fas fa-{{ 'check-circle' if category == 'success' else ('exclamation-triangle' if category == 'warning' else 'times-circle') }} me-2"></i>
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+
+        <!-- System Footer -->
+        <footer class="system-footer mt-auto py-3 text-muted small border-top mt-5">
+            <div class="d-flex flex-column flex-sm-row justify-content-between align-items-center gap-2 px-1">
+                <div>
+                    {{ branding.get('footer_text') or 'تمامی حقوق برای مدیریت محفوظ است.' }}
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-secondary bg-opacity-25 text-body border border-secondary border-opacity-25 px-2 py-1" style="font-family: monospace; font-size: 0.75rem;">
+                        {% if branding.get('version_custom_icon') %}
+                            <img src="{{ branding.get('version_custom_icon') }}" alt="نسخه" class="version-icon-img me-1" style="width: 13px; height: 13px; vertical-align: middle;">
+                        {% else %}
+                            {% set v_icon = branding.get('version_icon_type', 'branch') %}
+                            {% if v_icon == 'tag' %}<i class="fas fa-tag me-1 text-primary"></i>
+                            {% elif v_icon == 'cube' %}<i class="fas fa-cube me-1 text-primary"></i>
+                            {% elif v_icon == 'rocket' %}<i class="fas fa-rocket me-1 text-primary"></i>
+                            {% elif v_icon == 'sparkles' %}<i class="fas fa-wand-magic-sparkles me-1 text-primary"></i>
+                            {% elif v_icon == 'shield' %}<i class="fas fa-shield-halved me-1 text-primary"></i>
+                            {% elif v_icon == 'terminal' %}<i class="fas fa-terminal me-1 text-primary"></i>
+                            {% elif v_icon == 'bolt' %}<i class="fas fa-bolt me-1 text-primary"></i>
+                            {% elif v_icon == 'microchip' %}<i class="fas fa-microchip me-1 text-primary"></i>
+                            {% elif v_icon == 'star' %}<i class="fas fa-star me-1 text-primary"></i>
+                            {% else %}<i class="fas fa-code-branch me-1 text-primary"></i>
+                            {% endif %}
+                        {% endif %}
+                        نسخه {{ branding.get('store_version') or 'v0.0.1 Beta' }}
+                    </span>
+                </div>
+            </div>
+        </footer>
+    </main>
+    {% else %}
+        {% block login_content %}{% endblock %}
+    {% endif %}
+
+    <!-- ─── Modal نمایش بارکد QR و لینک اتصال ─── -->
+    <div class="modal fade" id="qrCodeModal" tabindex="-1" aria-labelledby="qrModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content shadow-lg border-0">
+                <div class="modal-header bg-primary text-white py-3">
+                    <h5 class="modal-title fw-bold" id="qrModalTitle">
+                        <i class="fas fa-qrcode me-2"></i> بارکد و پورتال مشتری
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-center p-4">
+                    <div class="p-3 rounded-4 d-inline-block shadow mb-3" style="background-color: #ffffff !important; border: 4px solid #ffffff; box-shadow: 0 6px 24px rgba(0,0,0,0.15) !important;">
+                        <div id="qrCodeContainer" class="d-flex justify-content-center p-2" style="background-color: #ffffff !important;"></div>
+                    </div>
+                    <div class="mb-3 text-start">
+                        <label class="form-label small text-muted fw-bold" id="qrModalLabel">لینک پورتال مشتری:</label>
+                        <div class="input-group">
+                            <input type="text" id="qrModalLinkInput" class="form-control text-center font-monospace small" readonly style="direction: ltr;">
+                            <button class="btn btn-primary" onclick="copyModalLink()"><i class="fas fa-copy me-1"></i> کپی</button>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 justify-content-center mt-3">
+                        <a id="qrModalOpenBtn" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-primary px-3 py-2 fw-bold shadow-sm d-inline-flex align-items-center gap-2">
+                            <span>بازکردن در مرورگر</span>
+                            <span style="font-size: 1.1rem; line-height: 1;">↗️</span>
+                        </a>
+                    </div>
+                </div>
+                <div class="modal-footer py-2 bg-light d-flex justify-content-between align-items-center">
+                    <div class="small text-muted text-start pe-2" style="font-size: 0.82rem; line-height: 1.6;">
+                        <i class="fas fa-circle-info text-primary me-1"></i>
+                        <strong>راهنمای پورتال مشتری:</strong> این صفحه اختصاصی مشتری است که مشتری با باز کردن آن در مرورگر می‌تواند مشخصات اکانت، حجم مصرفی و باقیمانده، روزهای اشتراک، لینک‌ها و برنامه‌های اتصال را دریافت کرده و اشتراک خود را تمدید نماید.
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">بستن</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast کانتینر اعلان‌های زنده سیستم -->
+    <div class="toast-container position-fixed bottom-0 start-0 p-3" style="z-index: 1090;">
+        <div id="liveAlertToast" class="toast align-items-center text-bg-primary border-0 shadow-lg" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body d-flex align-items-center gap-2" id="liveAlertToastBody">
+                    <i class="fas fa-bell fa-lg text-warning"></i>
+                    <div>
+                        <strong id="liveAlertToastTitle">اعلان جدید</strong>
+                        <div class="small" id="liveAlertToastMsg">یک رویداد جدید ثبت شد.</div>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script>
+        if (typeof QRCode === 'undefined') {
+            document.write('<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>');
+        }
+    </script>
+
+    <script>
+        // ─── تابع عمومی نمایش بارکد QR و لینک ───
+        let currentQrCodeInstance = null;
+        function showQrModal(url, title, type) {
+            if (!url) return;
+            const container = document.getElementById('qrCodeContainer');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const modalTitle = document.getElementById('qrModalTitle');
+            if (modalTitle) {
+                modalTitle.innerHTML = `<i class="fas fa-qrcode me-2"></i> ${title || 'بارکد و پورتال مشتری'}`;
+            }
+
+            const input = document.getElementById('qrModalLinkInput');
+            if (input) input.value = url;
+
+            const openBtn = document.getElementById('qrModalOpenBtn');
+            if (openBtn) openBtn.href = url;
+
+            try {
+                if (typeof QRCode !== 'undefined') {
+                    const correctLvl = (typeof QRCode.CorrectLevel !== 'undefined' && QRCode.CorrectLevel.L !== undefined) 
+                        ? QRCode.CorrectLevel.L 
+                        : 1;
+                    new QRCode(container, {
+                        text: url,
+                        width: 200,
+                        height: 200,
+                        colorDark: "#000000",
+                        colorLight: "#ffffff",
+                        correctLevel: correctLvl
+                    });
+                } else {
+                    container.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}" alt="QR Code" class="img-fluid rounded">`;
+                }
+            } catch (e) {
+                container.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}" alt="QR Code" class="img-fluid rounded">`;
+            }
+
+            const modal = new bootstrap.Modal(document.getElementById('qrCodeModal'));
+            modal.show();
+        }
+
+        function copyModalLink() {
+            const input = document.getElementById('qrModalLinkInput');
+            if (!input) return;
+            input.select();
+            navigator.clipboard.writeText(input.value).then(() => {
+                alert('لینک با موفقیت در کلیپ‌بورد کپی شد! ✅');
+            }).catch(() => {
+                prompt('لینک را کپی کنید:', input.value);
+            });
+        }
+
+        // تابع سازگار با دکمه‌های کپی قبلی
+        function copyLink(url, label) {
+            if (!url) return;
+            showQrModal(url, label || 'لینک اتصال');
+        }
+
+        // ─── سیستم اعلان زنده و پخش صدای ملایم ───
+        // ─── سیستم اعلان صوتی اختصاصی: صدای مشتریان vs صدای نمایندگان و مدیریت ───
+        function playCustomerTicketSound() {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                const ctx = new AudioContext();
+                const now = ctx.currentTime;
+
+                // نت اول صدای مشتری (زنگ ملایم دوگانه)
+                const osc1 = ctx.createOscillator();
+                const gain1 = ctx.createGain();
+                osc1.type = 'sine';
+                osc1.frequency.setValueAtTime(880, now);
+                osc1.frequency.exponentialRampToValueAtTime(1320, now + 0.12);
+                gain1.gain.setValueAtTime(0.2, now);
+                gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+                osc1.connect(gain1);
+                gain1.connect(ctx.destination);
+                osc1.start(now);
+                osc1.stop(now + 0.45);
+
+                // نت دوم
+                const osc2 = ctx.createOscillator();
+                const gain2 = ctx.createGain();
+                osc2.type = 'sine';
+                osc2.frequency.setValueAtTime(1174.66, now + 0.1);
+                gain2.gain.setValueAtTime(0.18, now + 0.1);
+                gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+                osc2.connect(gain2);
+                gain2.connect(ctx.destination);
+                osc2.start(now + 0.1);
+                osc2.stop(now + 0.6);
+            } catch (err) {
+                console.warn('Customer sound notice:', err);
+            }
+        }
+
+        function playResellerAdminTicketSound() {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                const ctx = new AudioContext();
+                const now = ctx.currentTime;
+
+                // آکورد مجلل و متمایز ۳ تایی مدیریتی (C5 -> E5 -> G5 -> C6)
+                const notes = [523.25, 659.25, 783.99, 1046.50];
+                notes.forEach((freq, idx) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.09);
+                    gain.gain.setValueAtTime(0.28, now + idx * 0.09);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.09 + 0.55);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(now + idx * 0.09);
+                    osc.stop(now + idx * 0.09 + 0.55);
+                });
+            } catch (err) {
+                console.warn('Reseller/Admin sound notice:', err);
+            }
+        }
+
+        // توابع عمومی قابل فراخوانی
+        window.playChimeAlert = playCustomerTicketSound;
+        window.playCustomerTicketSound = playCustomerTicketSound;
+        window.playResellerAdminTicketSound = playResellerAdminTicketSound;
+
+        // درخواست مجوز اعلان‌های مرورگر
+        function showDesktopNotification(title, body) {
+            if ("Notification" in window) {
+                if (Notification.permission === "granted") {
+                    try {
+                        new Notification(title, {
+                            body: body,
+                            icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%230d6efd"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>',
+                            tag: 'hiddibot-live-alert'
+                        });
+                    } catch (e) {}
+                } else if (Notification.permission === "default") {
+                    Notification.requestPermission();
+                }
+            }
+        }
+
+        if ("Notification" in window && Notification.permission === "default") {
+            document.addEventListener('click', function reqNotif() {
+                Notification.requestPermission();
+                document.removeEventListener('click', reqNotif);
+            }, { once: true });
+        }
+
+        let lastAdminPendingCount = -1;
+        let lastAdminCustomerTicketsCount = -1;
+        let lastAdminResellerTicketsCount = -1;
+
+        async function pollAdminNotifications() {
+            try {
+                const res = await fetch('/api/admin/notifications-check');
+                if (!res.ok) return;
+                const data = await res.json();
+
+                const pendingBadge = document.getElementById('sidebarPendingBadge');
+                if (pendingBadge) {
+                    if (data.pending_payments_count > 0) {
+                        pendingBadge.textContent = data.pending_payments_count;
+                        pendingBadge.style.display = 'inline-block';
+                    } else {
+                        pendingBadge.style.display = 'none';
+                    }
+                }
+
+                const ticketsBadge = document.getElementById('sidebarTicketsBadge');
+                if (ticketsBadge) {
+                    if (data.open_tickets_count > 0) {
+                        ticketsBadge.textContent = data.open_tickets_count;
+                        ticketsBadge.style.display = 'inline-block';
+                    } else {
+                        ticketsBadge.style.display = 'none';
+                    }
+                }
+
+                // ۱. اگر تیکت جدید از نمایندگان آمده باشد -> صدای اختصاصی نمایندگان
+                if (lastAdminResellerTicketsCount !== -1 && data.open_reseller_tickets_count > lastAdminResellerTicketsCount) {
+                    playResellerAdminTicketSound();
+                    const title = '👑 تیکت / درخواست جدید از نماینده!';
+                    const msg = `یک تیکت یا درخواست تغییر مشخصات جدید از نمایندگان دریافت شد.`;
+                    showDesktopNotification(title, msg);
+                    const toastEl = document.getElementById('liveAlertToast');
+                    if (toastEl) {
+                        document.getElementById('liveAlertToastTitle').textContent = title;
+                        document.getElementById('liveAlertToastMsg').textContent = msg;
+                        const toast = new bootstrap.Toast(toastEl, { delay: 9000 });
+                        toast.show();
+                    }
+                }
+                // ۲. اگر تیکت جدید از مشتریان آمده باشد -> صدای مشتری
+                else if (lastAdminCustomerTicketsCount !== -1 && data.open_customer_tickets_count > lastAdminCustomerTicketsCount) {
+                    playCustomerTicketSound();
+                    const title = '💬 تیکت پشتیبانی مشتری جدید!';
+                    const msg = `یک پیام پشتیبانی جدید از کاربران دریافت شد.`;
+                    showDesktopNotification(title, msg);
+                    const toastEl = document.getElementById('liveAlertToast');
+                    if (toastEl) {
+                        document.getElementById('liveAlertToastTitle').textContent = title;
+                        document.getElementById('liveAlertToastMsg').textContent = msg;
+                        const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
+                        toast.show();
+                    }
+                }
+
+                // ۳. اگر پرداخت جدید آمده باشد
+                if (lastAdminPendingCount !== -1 && data.pending_payments_count > lastAdminPendingCount) {
+                    playCustomerTicketSound();
+                    const title = '💳 پرداخت کارت به کارت جدید!';
+                    const msg = `یک فیش واریزی جدید نیازمند تایید است. (کل: ${data.pending_payments_count})`;
+                    showDesktopNotification(title, msg);
+                    const toastEl = document.getElementById('liveAlertToast');
+                    if (toastEl) {
+                        document.getElementById('liveAlertToastTitle').textContent = title;
+                        document.getElementById('liveAlertToastMsg').textContent = msg;
+                        const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
+                        toast.show();
+                    }
+                }
+
+                lastAdminPendingCount = data.pending_payments_count;
+                lastAdminCustomerTicketsCount = data.open_customer_tickets_count;
+                lastAdminResellerTicketsCount = data.open_reseller_tickets_count;
+            } catch (e) {
+                // Ignore network errors in background polling
+            }
+        }
+
+        // ─── سیستم تغییر تم تیره / روشن (Dark/Light Mode) ───
+        function applyTheme(theme) {
+            document.documentElement.setAttribute('data-bs-theme', theme);
+            localStorage.setItem('app_theme', theme);
+            const icon = document.getElementById('themeIcon');
+            const label = document.getElementById('themeLabel');
+            if (icon && label) {
+                if (theme === 'dark') {
+                    icon.className = 'fas fa-sun text-warning';
+                    label.textContent = 'حالت روشن';
+                } else {
+                    icon.className = 'fas fa-moon text-info';
+                    label.textContent = 'حالت تیره';
+                }
+            }
+        }
+
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-bs-theme') || 'light';
+            const next = current === 'dark' ? 'light' : 'dark';
+            applyTheme(next);
+        }
+
+        function toggleSidebar() {
+            const sidebar = document.querySelector('.sidebar');
+            const backdrop = document.getElementById('sidebarBackdrop');
+            if (sidebar) {
+                sidebar.classList.toggle('show');
+                if (backdrop) {
+                    backdrop.classList.toggle('show', sidebar.classList.contains('show'));
+                }
+            }
+        }
+
+        // مقداردهی اولیه تم
+        const savedTheme = localStorage.getItem('app_theme') || 'light';
+        applyTheme(savedTheme);
+
+        let lastResellerReceiptsCount = -1;
+        let lastResellerCustomerTicketsCount = -1;
+        let lastResellerAdminRepliesCount = -1;
+
+        async function pollResellerNotifications() {
+            try {
+                const res = await fetch('/api/reseller/notifications/poll');
+                if (!res.ok) return;
+                const data = await res.json();
+
+                // بروزرسانی هوشمند عدد موجودی کیف پول نماینده در سایدبار
+                if (typeof data.current_balance === 'number' && window.updateResellerSidebarBalance) {
+                    window.updateResellerSidebarBalance(data.current_balance);
+                }
+
+                const receiptsBadge = document.getElementById('sidebarResellerCustomerReceiptsBadge');
+                if (receiptsBadge) {
+                    if (data.pending_customer_receipts_count > 0) {
+                        receiptsBadge.textContent = data.pending_customer_receipts_count;
+                        receiptsBadge.style.display = 'inline-block';
+                    } else {
+                        receiptsBadge.style.display = 'none';
+                    }
+                }
+
+                const ticketsBadge = document.getElementById('sidebarResellerTicketsBadge');
+                if (ticketsBadge) {
+                    if (data.open_tickets_count > 0) {
+                        ticketsBadge.textContent = data.open_tickets_count;
+                        ticketsBadge.style.display = 'inline-block';
+                    } else {
+                        ticketsBadge.style.display = 'none';
+                    }
+                }
+
+                // ۱. اگر پاسخ یا تیکت جدیدی از مدیریت دریافت شده باشد -> صدای مدیریتی
+                if (lastResellerAdminRepliesCount !== -1 && (data.admin_replied_tickets_count || 0) > lastResellerAdminRepliesCount) {
+                    playResellerAdminTicketSound();
+                    const title = '🏢 پیام جدید از پنل مدیریت!';
+                    const msg = `مدیریت به تیکت یا درخواست شما پاسخ داد.`;
+                    showDesktopNotification(title, msg);
+                    const toastEl = document.getElementById('liveAlertToast');
+                    if (toastEl) {
+                        document.getElementById('liveAlertToastTitle').textContent = title;
+                        document.getElementById('liveAlertToastMsg').textContent = msg;
+                        const toast = new bootstrap.Toast(toastEl, { delay: 9000 });
+                        toast.show();
+                    }
+                }
+                // ۲. اگر تیکت جدید از مشتری آمده باشد -> صدای مشتری
+                else if (lastResellerCustomerTicketsCount !== -1 && (data.open_customer_tickets_count || 0) > lastResellerCustomerTicketsCount) {
+                    playCustomerTicketSound();
+                    const title = '💬 تیکت مشتری جدید!';
+                    const msg = `یک مشتری تیکت پشتیبانی جدید ارسال کرده است.`;
+                    showDesktopNotification(title, msg);
+                    const toastEl = document.getElementById('liveAlertToast');
+                    if (toastEl) {
+                        document.getElementById('liveAlertToastTitle').textContent = title;
+                        document.getElementById('liveAlertToastMsg').textContent = msg;
+                        const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
+                        toast.show();
+                    }
+                }
+
+                // ۳. اگر فیش جدید مشتری آمده باشد
+                if (lastResellerReceiptsCount !== -1 && data.pending_customer_receipts_count > lastResellerReceiptsCount) {
+                    playCustomerTicketSound();
+                    const title = '💳 فیش واریزی جدید مشتری!';
+                    const msg = `یک فیش جدید از مشتریان دریافت شد و نیازمند بررسی است.`;
+                    showDesktopNotification(title, msg);
+                    const toastEl = document.getElementById('liveAlertToast');
+                    if (toastEl) {
+                        document.getElementById('liveAlertToastTitle').textContent = title;
+                        document.getElementById('liveAlertToastMsg').textContent = msg;
+                        const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
+                        toast.show();
+                    }
+                }
+
+                lastResellerReceiptsCount = data.pending_customer_receipts_count;
+                lastResellerCustomerTicketsCount = data.open_customer_tickets_count || 0;
+                lastResellerAdminRepliesCount = data.admin_replied_tickets_count || 0;
+            } catch (e) {
+                // Ignore network errors in background polling
+            }
+        }
+
+        window.updateResellerSidebarBalance = function(newBalance, newCredit) {
+            const el = document.getElementById('sidebarResellerBalance');
+            if (el && typeof newBalance === 'number') {
+                el.textContent = Number(newBalance).toLocaleString('en-US');
+            }
+            const elCredit = document.getElementById('sidebarResellerCredit');
+            if (elCredit && typeof newCredit === 'number') {
+                elCredit.textContent = Number(newCredit).toLocaleString('en-US');
+            }
+        };
+
+        // ─── سیستم پایش زنده پس‌زمینه بدون فریز با وب‌ورکر (Background Active Pulse) ───
+        let bgWorker = null;
+        try {
+            const workerCode = `
+                let timer = null;
+                self.onmessage = function(e) {
+                    if (e.data === 'start') {
+                        if (timer) clearInterval(timer);
+                        timer = setInterval(() => self.postMessage('tick'), 5000);
+                    } else if (e.data === 'stop') {
+                        if (timer) clearInterval(timer);
+                        timer = null;
+                    }
+                };
+            `;
+            const blob = new Blob([workerCode], { type: 'application/javascript' });
+            bgWorker = new Worker(URL.createObjectURL(blob));
+        } catch (e_worker) {
+            console.debug("Web Worker background pulse fallback:", e_worker);
+        }
+
+        function initBackgroundAlertPolling(pollCallback) {
+            // فراخوانی اولیه
+            setTimeout(pollCallback, 1500);
+
+            if (bgWorker) {
+                bgWorker.onmessage = function(ev) {
+                    if (ev.data === 'tick') {
+                        pollCallback();
+                    }
+                };
+                bgWorker.postMessage('start');
+            } else {
+                setInterval(pollCallback, 6000);
+            }
+
+            // فراخوانی آنی هنگام بازگشت کاربر به صفحه (Focus / VisibilityChange)
+            document.addEventListener('visibilitychange', function() {
+                if (!document.hidden) {
+                    pollCallback();
+                }
+            });
+            window.addEventListener('focus', function() {
+                pollCallback();
+            });
+        }
+
+        {% if session.get('role') == 'admin' %}
+        initBackgroundAlertPolling(pollAdminNotifications);
+        {% elif session.get('role') == 'reseller' %}
+        initBackgroundAlertPolling(pollResellerNotifications);
+        {% endif %}
+
+        // ─── موتور جستجوی زنده سراسری جداول با ماندگاری وضعیت (Universal Instant Table Search with Session Persistence) ───
+        function initTableSearch() {
+            document.querySelectorAll('.table-search-input').forEach(input => {
+                const targetTableId = input.getAttribute('data-table');
+                const clearBtn = input.parentElement.querySelector('.table-search-clear');
+                const counterBadge = document.querySelector(`[data-table-count="${targetTableId}"]`);
+                const table = document.getElementById(targetTableId);
+                
+                if (!table) return;
+
+                const storageKey = 'table_search_' + (targetTableId || window.location.pathname);
+
+                function performSearch() {
+                    const query = input.value.trim().toLowerCase();
+                    const words = query.split(/\s+/).filter(w => w.length > 0);
+                    
+                    if (query) {
+                        try { sessionStorage.setItem(storageKey, input.value); } catch(e){}
+                    } else {
+                        try { sessionStorage.removeItem(storageKey); } catch(e){}
+                    }
+
+                    if (clearBtn) {
+                        clearBtn.style.display = query ? 'block' : 'none';
+                    }
+
+                    const tbody = table.querySelector('tbody');
+                    if (!tbody) return;
+
+                    const rows = Array.from(tbody.querySelectorAll('tr:not(.no-search-results):not(.static-row)'));
+                    let visibleCount = 0;
+
+                    // پاک کردن پیام قبلی نتیجه نیافت
+                    const existingEmptyRow = tbody.querySelector('.no-search-results');
+                    if (existingEmptyRow) {
+                        existingEmptyRow.remove();
+                    }
+
+                    rows.forEach(row => {
+                        // متن کل ردیف
+                        const text = row.textContent.toLowerCase().replace(/\s+/g, ' ');
+                        const isMatch = words.every(word => text.includes(word));
+                        
+                        if (isMatch) {
+                            row.style.display = '';
+                            visibleCount++;
+                        } else {
+                            row.style.display = 'none';
+                        }
+                    });
+
+                    // بروزرسانی بج شمارنده نتایج
+                    if (counterBadge) {
+                        counterBadge.textContent = query ? `${visibleCount} مورد یافت شد` : `${rows.length} مورد`;
+                        if (query) {
+                            counterBadge.className = visibleCount > 0 ? 'badge bg-success' : 'badge bg-danger';
+                        } else {
+                            counterBadge.className = 'badge bg-secondary';
+                        }
+                    }
+
+                    // اگر موردی یافت نشد
+                    if (visibleCount === 0 && rows.length > 0 && query) {
+                        const colSpan = table.querySelectorAll('thead th').length || 6;
+                        const emptyRow = document.createElement('tr');
+                        emptyRow.className = 'no-search-results';
+                        emptyRow.innerHTML = `<td colspan="${colSpan}" class="text-center py-4 text-muted"><i class="fas fa-search-minus fa-2x mb-2 d-block text-secondary"></i> موردی با عبارت «<strong>${query}</strong>» در جدول یافت نشد.</td>`;
+                        tbody.appendChild(emptyRow);
+                    }
+                }
+
+                input.addEventListener('input', performSearch);
+
+                if (clearBtn) {
+                    clearBtn.addEventListener('click', () => {
+                        input.value = '';
+                        try { sessionStorage.removeItem(storageKey); } catch(e){}
+                        performSearch();
+                        input.focus();
+                    });
+                }
+
+                // بازیابی خودکار جستجوی ذخیره شده قبلی (در صورت رفرش یا بازگشت)
+                try {
+                    const saved = sessionStorage.getItem(storageKey);
+                    if (saved && !input.value) {
+                        input.value = saved;
+                        performSearch();
+                    }
+                } catch(e) {}
+            });
+        }
+
+        // ─── حفظ خودکار آدرس و پارامترهای جستجو برای تمامی فرم‌ها و مودال‌ها ───
+        function initFormRedirectPreserver() {
+            const currentFullUrl = window.location.pathname + window.location.search;
+            document.querySelectorAll('form[method="POST"], form[method="post"]').forEach(form => {
+                let hidden = form.querySelector('input[name="redirect_url"]');
+                if (!hidden) {
+                    hidden = document.createElement('input');
+                    hidden.type = 'hidden';
+                    hidden.name = 'redirect_url';
+                    form.appendChild(hidden);
+                }
+                hidden.value = currentFullUrl;
+            });
+        }
+
+        // ─── موتور جستجوی زنده سرور با Debounce و حفظ فوکوس (Live Server Search) ───
+        function initLiveServerSearch() {
+            document.querySelectorAll('.live-server-search, #serverCustomerSearchInput, #resellerCustomerSearchInput').forEach(input => {
+                const form = input.closest('form');
+                if (!form) return;
+
+                // بازیابی فوکوس و قرارگیری نشانگر در انتهای متن پس از ارسال زنده
+                if (sessionStorage.getItem('keep_server_search_focus') === 'true') {
+                    sessionStorage.removeItem('keep_server_search_focus');
+                    setTimeout(() => {
+                        input.focus();
+                        const len = input.value.length;
+                        input.setSelectionRange(len, len);
+                    }, 50);
+                }
+
+                let debounceTimer = null;
+                const initialVal = input.value.trim();
+
+                // فیلتر کلاینتی فوری (بدون تاخیر) روی ردیف‌های فعلی جدول
+                const targetTableId = input.getAttribute('data-table') || (form.id === 'serverCustomerSearchForm' ? 'subscriptionsTable' : 'resellerUsersTable');
+                const table = document.getElementById(targetTableId);
+
+                input.addEventListener('input', function() {
+                    const currentVal = input.value.trim();
+
+                    // ۱. فیلتر فوری ردیف‌های صفحه فعلی
+                    if (table) {
+                        const tbody = table.querySelector('tbody');
+                        if (tbody) {
+                            const query = currentVal.toLowerCase();
+                            const words = query.split(/\s+/).filter(w => w.length > 0);
+                            const rows = Array.from(tbody.querySelectorAll('tr:not(.no-search-results):not(.static-row)'));
+                            rows.forEach(row => {
+                                const text = row.textContent.toLowerCase().replace(/\s+/g, ' ');
+                                const isMatch = words.every(word => text.includes(word));
+                                row.style.display = isMatch ? '' : 'none';
+                            });
+                        }
+                    }
+
+                    // ۲. ارسال خودکار فرم به سرور پس از مکث ۶۵۰ میلی‌ثانیه‌ای (Debounce)
+                    clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(() => {
+                        if (currentVal !== initialVal) {
+                            sessionStorage.setItem('keep_server_search_focus', 'true');
+                            const pageInput = form.querySelector('input[name="page"]');
+                            if (pageInput) pageInput.value = '1';
+                            form.submit();
+                        }
+                    }, 650);
+                });
+
+                // ارسال فوری با کلید Enter
+                input.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        clearTimeout(debounceTimer);
+                        sessionStorage.setItem('keep_server_search_focus', 'true');
+                        form.submit();
+                    }
+                });
+            });
+        }
+
+        // ─── موتور مرتب‌سازی هوشمند سراسری جداول (Universal Smart Table Sorter) ───
+        function parseSortValue(raw) {
+            if (raw === null || raw === undefined) return { type: 'string', val: '' };
+            let str = String(raw).trim();
+            if (!str) return { type: 'string', val: '' };
+
+            // ۱. بررسی عدد مستقیم، اعشاری یا منفی
+            if (/^-?\d+(\.\d+)?$/.test(str)) {
+                return { type: 'number', val: parseFloat(str) };
+            }
+
+            // ۲. بررسی تاریخ و ساعت استاندارد میلادی (ISO / YYYY-MM-DD HH:MM:SS)
+            if (/^\d{4}[-/]\d{2}[-/]\d{2}/.test(str)) {
+                const parsedDate = Date.parse(str.replace(' ', 'T'));
+                if (!isNaN(parsedDate)) {
+                    return { type: 'date', val: parsedDate };
+                }
+                return { type: 'string', val: str };
+            }
+
+            // ۳. بررسی تاریخ شمسی با فرمت YYYY/MM/DD
+            if (/^1[34]\d{2}\/\d{1,2}\/\d{1,2}/.test(str)) {
+                const parts = str.split(' ')[0].split('/');
+                const y = parts[0];
+                const m = (parts[1] || '1').padStart(2, '0');
+                const d = (parts[2] || '1').padStart(2, '0');
+                const time = str.split(' ')[1] || '00:00:00';
+                return { type: 'string', val: `${y}/${m}/${d} ${time}` };
+            }
+
+            // ۴. بررسی مبالغ مالی دارای ویرگول و کلمات (مانند "1,500,000 تومان" یا "250,000")
+            const fa2en = str.replace(/[\u0660-\u0669\u06F0-\u06F9]/g, d => d.charCodeAt(0) % 16);
+            const cleanNum = fa2en.replace(/,/g, '').replace(/[^\d.-]/g, '');
+            if (cleanNum && /^-?\d+(\.\d+)?$/.test(cleanNum) && !str.includes('/') && !str.includes(':')) {
+                return { type: 'number', val: parseFloat(cleanNum) };
+            }
+
+            return { type: 'string', val: str.toLowerCase() };
+        }
+
+        function initUniversalTableSorting() {
+            document.querySelectorAll('table.sortable-table, table').forEach(table => {
+                const headers = table.querySelectorAll('thead th.sortable-th');
+                if (!headers.length) return;
+
+                headers.forEach((header) => {
+                    // اطمینان از وجود آیکون سورت
+                    if (!header.querySelector('i.fa-sort, i.fa-sort-up, i.fa-sort-down')) {
+                        const icon = document.createElement('i');
+                        icon.className = 'fas fa-sort text-muted ms-1';
+                        header.appendChild(icon);
+                    }
+
+                    // حذف لیسنر تکراری در صورت مقداردهی دوباره
+                    if (header.dataset.sortBound) return;
+                    header.dataset.sortBound = 'true';
+
+                    header.addEventListener('click', function (e) {
+                        if (e.target.closest('button, input, select, a, form')) return;
+
+                        const tbody = table.querySelector('tbody');
+                        if (!tbody) return;
+
+                        const colAttr = header.getAttribute('data-column');
+                        const colIndex = colAttr !== null ? parseInt(colAttr, 10) : header.cellIndex;
+                        const currentDir = header.getAttribute('data-dir') === 'asc' ? 'desc' : 'asc';
+
+                        // ریست وضعیت سایر هدرهای جدول
+                        headers.forEach(th => {
+                            th.removeAttribute('data-dir');
+                            const icon = th.querySelector('i.fas');
+                            if (icon) icon.className = 'fas fa-sort text-muted ms-1';
+                        });
+
+                        // اعمال وضعیت هدر انتخابی
+                        header.setAttribute('data-dir', currentDir);
+                        const activeIcon = header.querySelector('i.fas');
+                        if (activeIcon) {
+                            activeIcon.className = currentDir === 'asc' 
+                                ? 'fas fa-sort-up text-primary ms-1' 
+                                : 'fas fa-sort-down text-primary ms-1';
+                        }
+
+                        // مرتب‌سازی ردیف‌ها
+                        const rows = Array.from(tbody.querySelectorAll(':scope > tr:not(.no-search-results):not(.static-row)'));
+                        if (rows.length <= 1) return;
+
+                        rows.sort((rowA, rowB) => {
+                            const cellA = rowA.children[colIndex];
+                            const cellB = rowB.children[colIndex];
+                            if (!cellA || !cellB) return 0;
+
+                            const rawA = cellA.getAttribute('data-sort') ?? cellA.getAttribute('data-value') ?? cellA.getAttribute('data-timestamp') ?? cellA.innerText.trim();
+                            const rawB = cellB.getAttribute('data-sort') ?? cellB.getAttribute('data-value') ?? cellB.getAttribute('data-timestamp') ?? cellB.innerText.trim();
+
+                            const pA = parseSortValue(rawA);
+                            const pB = parseSortValue(rawB);
+
+                            let diff = 0;
+                            if (pA.type === 'number' && pB.type === 'number') {
+                                diff = pA.val - pB.val;
+                            } else if (pA.type === 'date' && pB.type === 'date') {
+                                diff = pA.val - pB.val;
+                            } else {
+                                diff = String(pA.val).localeCompare(String(pB.val), 'fa', { numeric: true, sensitivity: 'base' });
+                            }
+
+                            return currentDir === 'asc' ? diff : -diff;
+                        });
+
+                        rows.forEach(r => tbody.appendChild(r));
+                    });
+                });
+            });
+        }
+
+        // ─── سیستم سراسری مدیریت گروهی (Universal Bulk Actions) ───
+        function initUniversalBulkActions() {
+            document.querySelectorAll('.bulk-table').forEach(table => {
+                const selectAllCb = table.querySelector('.bulk-select-all');
+                const rowCbs = table.querySelectorAll('.bulk-select-row');
+                const barId = table.getAttribute('data-bulk-bar');
+                const bulkBar = barId ? document.getElementById(barId) : document.querySelector('.bulk-actions-bar');
+                const countSpan = bulkBar ? bulkBar.querySelector('.bulk-selected-count') : null;
+                const hiddenInput = bulkBar ? bulkBar.querySelector('.bulk-selected-ids-input') : null;
+
+                function updateState() {
+                    const checkedBoxes = Array.from(table.querySelectorAll('.bulk-select-row:checked'));
+                    const count = checkedBoxes.length;
+                    const ids = checkedBoxes.map(cb => cb.value);
+
+                    if (countSpan) countSpan.innerText = count;
+                    if (hiddenInput) hiddenInput.value = ids.join(',');
+
+                    // هایلایت ردیف‌های انتخاب شده
+                    rowCbs.forEach(cb => {
+                        const tr = cb.closest('tr');
+                        if (tr) {
+                            if (cb.checked) tr.classList.add('table-active-row-selected');
+                            else tr.classList.remove('table-active-row-selected');
+                        }
+                    });
+
+                    if (bulkBar) {
+                        if (count > 0) {
+                            bulkBar.classList.add('show');
+                        } else {
+                            bulkBar.classList.remove('show');
+                        }
+                    }
+
+                    if (selectAllCb) {
+                        const totalRows = table.querySelectorAll('.bulk-select-row').length;
+                        selectAllCb.checked = (count > 0 && count === totalRows);
+                        selectAllCb.indeterminate = (count > 0 && count < totalRows);
+                    }
+                }
+
+                if (selectAllCb) {
+                    selectAllCb.addEventListener('change', function() {
+                        rowCbs.forEach(cb => {
+                            const tr = cb.closest('tr');
+                            if (!tr || tr.style.display !== 'none') {
+                                cb.checked = selectAllCb.checked;
+                            }
+                        });
+                        updateState();
+                    });
+                }
+
+                rowCbs.forEach(cb => {
+                    cb.addEventListener('change', updateState);
+                });
+            });
+        }
+
+        function submitBulkAction(formId, actionName, confirmMsg) {
+            const form = document.getElementById(formId);
+            if (!form) return false;
+            const hiddenIds = form.querySelector('.bulk-selected-ids-input');
+            if (!hiddenIds || !hiddenIds.value) {
+                alert('لطفاً حداقل یک مورد را انتخاب کنید.');
+                return false;
+            }
+            if (confirmMsg && !confirm(confirmMsg)) {
+                return false;
+            }
+            const actionInput = form.querySelector('input[name="bulk_action"]');
+            if (actionInput) actionInput.value = actionName;
+            form.submit();
+            return true;
+        }
+
+        // انتقال مودال‌ها به سطح ریشه body جهت تضمین عدم تداخل با لایه‌های Stacking Context
+        function relocateModalsToBody() {
+            document.querySelectorAll('.modal').forEach(function (modal) {
+                if (modal.parentElement && modal.parentElement !== document.body) {
+                    document.body.appendChild(modal);
+                }
+            });
+        }
+
+        // ─── پاکسازی کامل و تضمینی تمامی لایه‌های مات و پس‌زمینه‌های جامانده (Modal Backdrop Cleanup) ───
+        function cleanupModalBackdrops() {
+            document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+            document.body.classList.remove('modal-open');
+            document.body.style.removeProperty('overflow');
+            document.body.style.removeProperty('padding-right');
+            document.body.style.overflow = '';
+            document.body.style.paddingRight = '';
+        }
+        window.cleanupModalBackdrops = cleanupModalBackdrops;
+
+        // رویداد سراسری بسته‌شدن هر مودال در بوت‌استرپ
+        document.addEventListener('hidden.bs.modal', function () {
+            setTimeout(() => {
+                const openModals = document.querySelectorAll('.modal.show');
+                if (openModals.length === 0) {
+                    cleanupModalBackdrops();
+                } else {
+                    const backdrops = document.querySelectorAll('.modal-backdrop');
+                    while (backdrops.length > 1) {
+                        backdrops[backdrops.length - 1].remove();
+                    }
+                }
+            }, 50);
+        });
+
+        // کلیک اضطراری روی بک‌دراپ در صورتی که هیچ مودالی باز نباشد اما تصویر مات شده باشد
+        document.addEventListener('click', function (e) {
+            if (e.target && e.target.classList && e.target.classList.contains('modal-backdrop')) {
+                const openModals = document.querySelectorAll('.modal.show');
+                if (openModals.length === 0) {
+                    cleanupModalBackdrops();
+                }
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            relocateModalsToBody();
+            initTableSearch();
+            initUniversalTableSorting();
+            initUniversalBulkActions();
+            initFormRedirectPreserver();
+            initLiveServerSearch();
+        });
+        document.addEventListener('show.bs.modal', function (event) {
+            const modal = event.target;
+            if (modal && modal.parentElement !== document.body) {
+                document.body.appendChild(modal);
+            }
+            initFormRedirectPreserver();
+        });
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

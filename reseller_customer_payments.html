@@ -1,0 +1,662 @@
+{% extends "base.html" %}
+{% block title %}پرداخت‌ها - پنل نماینده{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a href="{{ url_for('reseller_dashboard') }}">داشبورد</a></li>
+                <li class="breadcrumb-item active" aria-current="page">پرداخت‌ها</li>
+            </ol>
+        </nav>
+        <h1 class="page-title d-flex align-items-center gap-2">
+            <i class="fas fa-receipt text-warning"></i>
+            پرداخت‌ها
+        </h1>
+        <p class="text-muted mb-0">بررسی، تایید و صدور خودکار اشتراک‌های VPN پس از تایید پرداخت‌ها و فیش‌های واریزی مشتریان شما (ربات تلگرام و پرتال مشتری)</p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <a href="{{ url_for('reseller_payments') }}" class="btn btn-outline-primary">
+            <i class="fas fa-file-invoice-dollar me-1"></i> سوابق مالی
+        </a>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <h5 class="mb-0 fw-bold"><i class="fas fa-list-check text-primary me-2"></i>لیست فیش‌های مشتریان</h5>
+            <span class="badge bg-secondary" id="paymentRowsCount" data-table-count="customerPaymentsTable">{{ transactions|length }} مورد</span>
+            
+            <!-- دکمه‌های فیلتر سریع بر اساس مبدأ سفارش -->
+            <div class="btn-group btn-group-sm ms-2" role="group" id="sourceFilterBtnGroup">
+                <button type="button" class="btn btn-primary active" data-source-filter="all">
+                    همه ({{ transactions|length }})
+                </button>
+                {% if admin_count > 0 %}
+                <button type="button" class="btn btn-outline-dark" data-source-filter="admin">
+                    <i class="fas fa-user-shield me-1"></i>پنل مدیریت ({{ admin_count }})
+                </button>
+                {% endif %}
+                {% if reseller_count > 0 %}
+                <button type="button" class="btn btn-outline-secondary" data-source-filter="reseller">
+                    <i class="fas fa-handshake me-1"></i>پنل نماینده ({{ reseller_count }})
+                </button>
+                {% endif %}
+                <button type="button" class="btn btn-outline-info" data-source-filter="portal">
+                    <i class="fas fa-globe me-1"></i>پرتال مشتری ({{ portal_count }})
+                </button>
+                <button type="button" class="btn btn-outline-primary" data-source-filter="telegram">
+                    <i class="fab fa-telegram me-1"></i>ربات تلگرام ({{ telegram_count }})
+                </button>
+            </div>
+        </div>
+        <div class="table-search-wrapper">
+            <i class="fas fa-search table-search-icon"></i>
+            <input type="text" class="form-control table-search-input" data-table="customerPaymentsTable" placeholder="جستجو در فیش‌ها...">
+            <button type="button" class="table-search-clear" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 sortable-table bulk-table" id="customerPaymentsTable" data-bulk-bar="resellerCustomerPaymentsBulkBar">
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-center" style="width: 40px;">
+                            <input type="checkbox" class="form-check-input bulk-select-all" title="انتخاب همه">
+                        </th>
+                        <th class="ps-2 sortable-th" data-column="1">سفارش</th>
+                        <th class="sortable-th" data-column="2">مشتری</th>
+                        <th class="sortable-th text-center" data-column="3">مبدأ</th>
+                        <th class="sortable-th" data-column="4">پلن درخواستی</th>
+                        <th class="sortable-th" data-column="5">مبلغ</th>
+                        <th class="sortable-th" data-column="6">روش پرداخت</th>
+                        <th class="sortable-th" data-column="7">وضعیت</th>
+                        <th class="sortable-th" data-column="8">تاریخ ثبت</th>
+                        <th class="text-end pe-3" style="min-width: 170px;">عملیات و جزئیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tx in transactions %}
+                    <tr class="customer-payment-row" data-source="{{ tx['source'] }}">
+                        <td class="text-center">
+                            <input type="checkbox" class="form-check-input bulk-select-row" value="{{ tx['id'] }}">
+                        </td>
+                        <td class="ps-2" data-value="{{ tx['id'] }}">
+                            <code class="badge bg-light text-dark border font-monospace fs-6">#{{ tx['id'] }}</code>
+                            {% if tx.get('order_id') %}
+                                <div class="text-muted small font-monospace" style="font-size: 0.72rem;">{{ tx['order_id'] }}</div>
+                            {% endif %}
+                        </td>
+                        <td data-value="{{ (tx['customer_name'] or tx['account_name'] or tx['username'] or tx['user_id'] or '')|striptags }}">
+                            {% if tx['source'] == 'admin' %}
+                                <!-- ثبت شده توسط مدیریت -->
+                                <div class="d-flex align-items-center gap-2">
+                                    <img src="{{ avatar_url(tx['customer_name'] or 'Admin') }}" 
+                                         alt="Admin" class="rounded-circle border shadow-sm flex-shrink-0" style="width: 36px; height: 36px; object-fit: cover;">
+                                    <div>
+                                        <div class="d-flex align-items-center gap-1">
+                                            <strong class="text-dark">{{ tx['customer_name'] }}</strong>
+                                            <span class="badge bg-dark-subtle text-dark border border-dark" style="font-size: 0.65rem;" title="ثبت‌شده در پنل مدیریت">
+                                                <i class="fas fa-user-shield"></i> مدیر
+                                            </span>
+                                        </div>
+                                        <div class="text-muted small">
+                                            <span>پنل مدیریت</span>
+                                            {% if tx.get('renew_sub_id') %}
+                                                <span> | اشتراک #{{ tx['renew_sub_id'] }}</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            {% elif tx['source'] == 'reseller' %}
+                                <!-- ثبت شده توسط نماینده -->
+                                <div class="d-flex align-items-center gap-2">
+                                    <img src="{{ avatar_url(tx['customer_name'] or 'Reseller') }}" 
+                                         alt="Reseller" class="rounded-circle border shadow-sm flex-shrink-0" style="width: 36px; height: 36px; object-fit: cover;">
+                                    <div>
+                                        <div class="d-flex align-items-center gap-1">
+                                            <strong class="text-dark">{{ tx['customer_name'] }}</strong>
+                                            <span class="badge bg-secondary-subtle text-secondary border border-secondary" style="font-size: 0.65rem;" title="ثبت‌شده در پنل نماینده">
+                                                <i class="fas fa-handshake"></i> نماینده
+                                            </span>
+                                        </div>
+                                        <div class="text-muted small">
+                                            <span>پنل نماینده</span>
+                                            {% if tx.get('renew_sub_id') %}
+                                                <span> | اشتراک #{{ tx['renew_sub_id'] }}</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            {% elif tx['source'] == 'portal' %}
+                                <!-- مشتری پرتال وب -->
+                                <div class="d-flex align-items-center gap-2">
+                                    <img src="{{ avatar_url(tx['account_name'] or tx['customer_name'] or 'Customer') }}" 
+                                         alt="Customer" class="rounded-circle border shadow-sm flex-shrink-0" style="width: 36px; height: 36px; object-fit: cover;">
+                                    <div>
+                                        <div class="d-flex align-items-center gap-1">
+                                            <strong class="text-dark">{{ tx['customer_name'] }}</strong>
+                                            <span class="badge bg-info-subtle text-info border border-info" style="font-size: 0.65rem;" title="مشتری ثبت‌شده در پرتال وب">
+                                                <i class="fas fa-globe"></i> وب
+                                            </span>
+                                        </div>
+                                        <div class="text-muted small">
+                                            {% if tx.get('renew_sub_id') %}
+                                                <a href="{{ url_for('reseller_users') }}?search={{ tx['account_name'] or tx['renew_sub_id'] }}" class="text-decoration-none font-monospace text-muted" title="مشاهده اشتراک در لیست مشتریان">
+                                                    <i class="fas fa-id-card me-1 text-secondary"></i>اشتراک #{{ tx['renew_sub_id'] }}
+                                                </a>
+                                            {% elif tx.get('account_name') %}
+                                                <code>{{ tx['account_name'] }}</code>
+                                            {% else %}
+                                                <span class="text-muted small">پرتال مشتری</span>
+                                            {% endif %}
+                                            {% if tx.get('customer_phone') %}
+                                                <span class="text-secondary ms-1 font-monospace" style="font-size: 10px;">({{ tx['customer_phone'] }})</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            {% else %}
+                                <!-- کاربر ربات تلگرام -->
+                                <div class="d-flex align-items-center gap-2">
+                                    <img src="{{ avatar_url(tx['user_id'] or tx['username'] or 'User') }}" 
+                                         alt="User" class="rounded-circle border shadow-sm flex-shrink-0" style="width: 36px; height: 36px; object-fit: cover;">
+                                    <div>
+                                        <div class="d-flex align-items-center gap-1">
+                                            <strong class="text-dark">{{ tx['customer_name'] }}</strong>
+                                            <span class="badge bg-primary-subtle text-primary border border-primary" style="font-size: 0.65rem;" title="کاربر ربات تلگرام">
+                                                <i class="fab fa-telegram"></i> ربات
+                                            </span>
+                                        </div>
+                                        <div class="text-muted small"><code>{{ tx['user_id'] }}</code></div>
+                                    </div>
+                                    {% if tx['username'] and not tx['username'].startswith('tg_') and tx['username'] != 'کاربر' and tx['username'] != 'کاربر تلگرام' %}
+                                        <a href="https://t.me/{{ tx['username'].replace('@', '') }}" target="_blank" class="btn btn-sm btn-outline-primary py-0 px-2 ms-auto" title="چت تلگرام">
+                                            <i class="fab fa-telegram"></i>
+                                        </a>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+                        </td>
+                        <!-- ستون مبدأ فیش -->
+                        <td class="text-center" data-value="{{ tx['source'] }}">
+                            {% if tx['source'] == 'admin' %}
+                                <span class="badge bg-dark-subtle text-dark border border-dark px-2 py-1 shadow-sm" style="font-size: 0.78rem;">
+                                    <i class="fas fa-user-shield me-1"></i> پنل مدیریت
+                                </span>
+                            {% elif tx['source'] == 'reseller' %}
+                                <span class="badge bg-secondary-subtle text-secondary border border-secondary px-2 py-1 shadow-sm" style="font-size: 0.78rem;">
+                                    <i class="fas fa-handshake me-1"></i> پنل نماینده
+                                </span>
+                            {% elif tx['source'] == 'portal' %}
+                                <span class="badge bg-info-subtle text-info border border-info px-2 py-1 shadow-sm" style="font-size: 0.78rem;">
+                                    <i class="fas fa-globe me-1"></i> پرتال مشتری
+                                </span>
+                            {% elif tx['source'] == 'bundle' %}
+                                <span class="badge bg-purple-subtle text-purple border border-purple px-2 py-1 shadow-sm" style="font-size: 0.78rem; background: #ede9fe; color: #6d28d9;">
+                                    <i class="fas fa-crown me-1 text-warning"></i> بسته نماینده
+                                </span>
+                            {% else %}
+                                <span class="badge bg-primary-subtle text-primary border border-primary px-2 py-1 shadow-sm" style="font-size: 0.78rem;">
+                                    <i class="fab fa-telegram me-1"></i> ربات تلگرام
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td data-value="{{ tx['plan_name'] or '' }}"><span class="badge bg-primary-subtle text-primary border border-primary px-2 py-1">{{ tx['plan_name'] }}</span></td>
+                        <td data-value="{{ tx['amount'] or 0 }}"><strong class="text-primary fs-6">{{ "{:,}".format(tx['amount'] or 0) }} تومان</strong></td>
+                        <td data-value="{{ tx['gateway'] or '' }}"><span class="badge bg-light text-dark border">{{ tx['gateway']|gateway_name }}</span></td>
+                        <td data-value="{{ tx['status'] or '' }}">
+                            {% if tx['status'] == 'approved' or tx['status'] == 'completed' %}
+                                <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i> تایید شده</span>
+                                {% if tx.get('processed_by') %}
+                                    <div class="text-muted small mt-1" style="font-size: 11px;"><i class="fas fa-user-check text-success me-1"></i>{{ tx['processed_by']|reviewer_name }}</div>
+                                {% endif %}
+                            {% elif tx['status'] == 'pending' %}
+                                <span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i> در انتظار تایید</span>
+                            {% elif tx['status'] == 'revoked' %}
+                                <span class="badge bg-secondary border border-secondary shadow-sm" title="{{ tx.get('revoke_reason') or 'باطل شده' }}">
+                                    <i class="fas fa-ban me-1 text-warning"></i> باطل‌شده
+                                </span>
+                                {% if tx.get('revoked_by') %}
+                                    <div class="text-danger small mt-1" style="font-size: 11px;"><i class="fas fa-user-slash me-1"></i>{{ tx['revoked_by']|reviewer_name }}</div>
+                                {% endif %}
+                                {% if tx.get('revoke_reason') %}
+                                    <div class="text-muted small mt-0" style="font-size: 10px;">{{ tx['revoke_reason'] }}</div>
+                                {% endif %}
+                            {% else %}
+                                <span class="badge bg-danger"><i class="fas fa-times-circle me-1"></i> رد شده</span>
+                                {% if tx.get('processed_by') %}
+                                    <div class="text-muted small mt-1" style="font-size: 11px;"><i class="fas fa-user-xmark text-danger me-1"></i>{{ tx['processed_by']|reviewer_name }}</div>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        <td data-value="{{ tx['created_at'] or '' }}">
+                            <div class="fw-bold font-monospace small" style="direction: ltr; text-align: right;">{{ tx['created_at']|shamsi_date }}</div>
+                            <small class="text-muted font-monospace d-block" style="font-size: 11px; direction: ltr; text-align: right;">{{ tx['created_at']|gregorian_clean }}</small>
+                        </td>
+                        <td class="text-end pe-3">
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-primary fw-bold" data-bs-toggle="modal" data-bs-target="#detailModal{{ tx['id'] }}" title="مشاهده مشخصات و فیش">
+                                    <i class="fas fa-eye me-1"></i> مشاهده
+                                </button>
+                                {% if tx['status'] == 'pending' %}
+                                    <form action="{{ url_for('reseller_payment_approve', payment_id=tx['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از تایید این فیش و صدور یا تمدید آنی اشتراک برای مشتری اطمینان دارید؟');">
+                                        <button type="submit" class="btn btn-success" title="تایید و صدور/تمدید اشتراک">
+                                            <i class="fas fa-check"></i>
+                                        </button>
+                                    </form>
+                                    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#rejectModal{{ tx['id'] }}" title="رد فیش">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                {% elif (tx['status'] == 'approved' or tx['status'] == 'completed') and (reseller.get('can_revoke_payments') is none or reseller.get('can_revoke_payments')) %}
+                                    <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#revokeModal{{ tx['id'] }}" title="ابطال فیش">
+                                        <i class="fas fa-ban me-1"></i> ابطال
+                                    </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not transactions %}
+                    <tr>
+                        <td colspan="10" class="text-center py-5 text-muted">
+                            <i class="fas fa-receipt fs-1 text-secondary opacity-50 mb-3 d-block"></i>
+                            <h6 class="fw-bold">فیش پرداختی از سمت مشتریان ثبت نشده است.</h6>
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ─── نوار ابزار شناور مدیریت گروهی فیش‌های مشتریان ─── -->
+<div class="bulk-actions-bar" id="resellerCustomerPaymentsBulkBar">
+    <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-primary rounded-pill fs-6 px-3 py-2">
+            <i class="fas fa-check-double me-1"></i> <span class="bulk-selected-count">0</span> فیش انتخاب شد
+        </span>
+    </div>
+    <form id="resellerPaymentBulkForm" method="POST" action="{{ url_for('reseller_customer_payments_bulk') }}" class="d-flex align-items-center flex-wrap gap-2 m-0">
+        <input type="hidden" name="bulk_action" value="">
+        <input type="hidden" name="selected_ids_str" class="bulk-selected-ids-input" value="">
+        
+        <button type="button" class="btn btn-sm btn-outline-warning" onclick="submitBulkAction('resellerPaymentBulkForm', 'reject', 'آیا از رد تمام فیش‌های انتخاب شده اطمینان دارید؟')">
+            <i class="fas fa-times me-1"></i> رد فیش‌های انتخابی
+        </button>
+        {% if reseller.get('can_delete_payments') %}
+        <button type="button" class="btn btn-sm btn-outline-danger" onclick="submitBulkAction('resellerPaymentBulkForm', 'delete', 'هشدار: آیا از انتقال فیش‌های انتخاب شده به سطل زباله اطمینان دارید؟')">
+            <i class="fas fa-trash-can me-1"></i> انتقال به سطل زباله
+        </button>
+        {% endif %}
+    </form>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- ─── مودال‌های مدیریت فیش‌های مشتریان (خارج از ساختار جدول) ─── -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+{% for tx in transactions %}
+<!-- مودال جامع جزئیات سفارش مشتری نماینده -->
+<div class="modal fade text-start" id="detailModal{{ tx['id'] }}" tabindex="-1" aria-labelledby="detailModalLabel{{ tx['id'] }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white py-3">
+                <h5 class="modal-title fw-bold" id="detailModalLabel{{ tx['id'] }}">
+                    <i class="fas fa-file-invoice-dollar me-2"></i> جزئیات سفارش مشتری #{{ tx['id'] }}
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <div class="list-group list-group-flush border rounded">
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="text-muted">شماره سفارش:</span>
+                                <code class="fw-bold">#{{ tx['id'] }}</code>
+                            </div>
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="text-muted">مشتری:</span>
+                                <div>
+                                    <strong>{{ tx['customer_name'] }}</strong>
+                                    {% if tx['source'] == 'portal' %}
+                                        {% if tx.get('account_name') %}
+                                            <small class="text-muted d-block font-monospace">نام اکانت: {{ tx['account_name'] }}</small>
+                                        {% endif %}
+                                        {% if tx.get('renew_sub_id') %}
+                                            <small class="text-info d-block">شناسه اشتراک: #{{ tx['renew_sub_id'] }}</small>
+                                        {% endif %}
+                                    {% else %}
+                                        <small class="text-muted d-block"><code>{{ tx['user_id'] }}</code></small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="text-muted">مبدأ فیش:</span>
+                                <div>
+                                    {% if tx['source'] == 'portal' %}
+                                        <span class="badge bg-info-subtle text-info border border-info px-2 py-1">
+                                            <i class="fas fa-globe me-1"></i> پرتال مشتری (وب)
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-primary-subtle text-primary border border-primary px-2 py-1">
+                                            <i class="fab fa-telegram me-1"></i> ربات تلگرام
+                                        </span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="text-muted">پلن درخواستی:</span>
+                                <strong class="text-dark">{{ tx['plan_name'] or '-' }}</strong>
+                            </div>
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="text-muted">نوع خرید:</span>
+                                <span class="fw-semibold">{{ '🔄 تمدید اشتراک' if tx['is_renewal'] else '🛒 خرید جدید' }}</span>
+                            </div>
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="text-muted">مبلغ سفارش:</span>
+                                <strong class="text-success fs-6">{{ "{:,}".format(tx['amount'] or 0) }} تومان</strong>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="list-group list-group-flush border rounded">
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="text-muted">روش پرداخت:</span>
+                                <span class="badge bg-primary-subtle text-primary border border-primary">{{ tx['gateway']|gateway_name }}</span>
+                            </div>
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="text-muted">وضعیت:</span>
+                                <div>
+                                    {% if tx['status'] == 'approved' or tx['status'] == 'completed' %}
+                                        <span class="badge bg-success">تایید شده</span>
+                                    {% elif tx['status'] == 'pending' %}
+                                        <span class="badge bg-warning text-dark">در انتظار تایید</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">رد شده</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="text-muted">بررسی‌کننده:</span>
+                                <div>
+                                    {% if tx.get('processed_by') %}
+                                        <span class="badge bg-info-subtle text-info border border-info">{{ tx['processed_by']|reviewer_name }}</span>
+                                    {% else %}
+                                        <span class="text-muted small">-</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% if tx.get('card_number') %}
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="text-muted">شماره کارت / حساب مقصد:</span>
+                                <code dir="ltr" class="fw-bold">{{ tx['card_number'] }}{% if tx.get('bank_name') %} ({{ tx['bank_name'] }}){% endif %}</code>
+                            </div>
+                            {% endif %}
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <span class="text-muted"><i class="fas fa-calendar-plus me-1 text-primary"></i>زمان ثبت رسید:</span>
+                                    <strong class="text-dark font-monospace small">{{ tx['created_at']|shamsi_date("%Y/%m/%d - %H:%M:%S") }}</strong>
+                                </div>
+                                <div class="text-end">
+                                    <small class="text-muted font-monospace" dir="ltr" style="font-size: 11px;">میلادی: {{ tx['created_at']|gregorian_clean(True) }}</small>
+                                </div>
+                            </div>
+                            {% if tx['status'] != 'pending' and (tx['processed_at'] or tx['updated_at']) %}
+                            <div class="list-group-item bg-light bg-opacity-50">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <span class="text-muted"><i class="fas fa-calendar-check me-1 text-success"></i>زمان بررسی:</span>
+                                    <strong class="text-success font-monospace small">{{ (tx['processed_at'] or tx['updated_at'])|shamsi_date("%Y/%m/%d - %H:%M:%S") }}</strong>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    {% set d_time = format_diff_time(tx['created_at'], tx['processed_at'] or tx['updated_at']) %}
+                                    {% if d_time %}
+                                        <span class="badge bg-info-subtle text-info border border-info" style="font-size: 10px;">
+                                            <i class="fas fa-stopwatch me-1"></i>فاصله بررسی: {{ d_time }}
+                                        </span>
+                                    {% else %}
+                                        <span></span>
+                                    {% endif %}
+                                    <small class="text-muted font-monospace" dir="ltr" style="font-size: 11px;">میلادی: {{ (tx['processed_at'] or tx['updated_at'])|gregorian_clean(True) }}</small>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                
+                {% if tx['status'] == 'rejected' and (tx.get('rejection_reason') or tx.get('description')) %}
+                <div class="alert alert-danger d-flex align-items-center gap-3 p-3 mb-3 border-danger shadow-sm">
+                    <i class="fas fa-circle-exclamation fs-3 text-danger flex-shrink-0"></i>
+                    <div>
+                        <strong class="d-block mb-1">علت رد فیش:</strong>
+                        <div class="mb-0">{{ tx.get('rejection_reason') or tx.get('description') }}</div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- مشخصات کد پیگیری و اطلاعات واریز -->
+                <div class="card bg-light border-0 p-3 mb-3">
+                    <h6 class="fw-bold mb-2 text-dark"><i class="fas fa-receipt me-2 text-primary"></i>کد پیگیری / اطلاعات واریز:</h6>
+                    <div class="p-2 bg-white rounded border font-monospace text-wrap" style="max-height: 120px; overflow-y: auto;">
+                        {{ tx['tracking_code'] or 'ثبت نشده' }}
+                    </div>
+                    {% if tx.get('account_comment') %}
+                    <div class="mt-2 small text-muted">
+                        <strong>توضیحات / یادداشت:</strong> {{ tx['account_comment'] }}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- تصویر فیش واریزی -->
+                {% if tx['receipt_image'] or tx['receipt_photo_id'] %}
+                <div class="card border p-3 text-center mb-3">
+                    <h6 class="fw-bold mb-3"><i class="fas fa-image me-2 text-primary"></i>تصویر فیش واریزی ارسالی مشتری:</h6>
+                    <div class="d-inline-block border rounded p-2 bg-white shadow-sm" style="max-height: 350px; overflow: hidden;">
+                        <img src="{{ url_for('admin_payment_receipt', payment_id=tx['id']) }}" 
+                             alt="فیش واریزی" 
+                             class="img-fluid rounded" 
+                             style="max-height: 330px; object-fit: contain; cursor: pointer;"
+                             onclick="openReceiptPreview('{{ url_for('admin_payment_receipt', payment_id=tx['id']) }}', '{{ tx['customer_name'] }}', '{{ tx['id'] }}', '{{ tx['user_id'] }}')">
+                    </div>
+                    <div class="mt-2">
+                        <button type="button" class="btn btn-sm btn-outline-primary"
+                                onclick="openReceiptPreview('{{ url_for('admin_payment_receipt', payment_id=tx['id']) }}', '{{ tx['customer_name'] }}', '{{ tx['id'] }}', '{{ tx['user_id'] }}')">
+                            <i class="fas fa-magnifying-glass-plus me-1"></i> مشاهده بزرگنمایی کامل تصویر
+                        </button>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pt-3 border-top">
+                    <div></div>
+                    <div class="d-flex gap-2">
+                        {% if tx['status'] == 'pending' %}
+                            <form action="{{ url_for('reseller_payment_approve', payment_id=tx['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از تایید این فیش و صدور یا تمدید آنی اشتراک برای مشتری اطمینان دارید؟');">
+                                <button type="submit" class="btn btn-success fw-bold">
+                                    <i class="fas fa-check me-1"></i> تایید و صدور/تمدید اشتراک
+                                </button>
+                            </form>
+                            <button type="button" class="btn btn-outline-danger fw-bold" data-bs-toggle="modal" data-bs-target="#rejectModal{{ tx['id'] }}">
+                                <i class="fas fa-times me-1"></i> رد پرداخت
+                            </button>
+                        {% endif %}
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">بستن</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal رد فیش مشتری -->
+<div class="modal fade text-start" id="rejectModal{{ tx['id'] }}" tabindex="-1" aria-labelledby="rejectModalLabel{{ tx['id'] }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0 text-start">
+            <form action="{{ url_for('reseller_payment_reject', payment_id=tx['id']) }}" method="POST">
+                <div class="modal-header bg-danger text-white py-3">
+                    <h5 class="modal-title fw-bold" id="rejectModalLabel{{ tx['id'] }}"><i class="fas fa-times-circle me-2"></i>رد فیش سفارش #{{ tx['id'] }}</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <label class="form-label fw-bold">علت رد فیش ({% if tx['source'] == 'portal' %}در صفحه پرتال به مشتری نمایش داده می‌شود{% else %}برای مشتری در تلگرام ارسال می‌شود{% endif %}):</label>
+                    <textarea class="form-control" name="reason" rows="3" required placeholder="مثال: فیش ارسالی ناخوانا است یا مبلغ واریزی مغایرت دارد..."></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-danger fw-bold px-4">رد قطعی فیش و اطلاع به مشتری</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal ابطال فیش تاییدشده توسط نماینده -->
+{% if tx['status'] == 'approved' or tx['status'] == 'completed' %}
+<div class="modal fade text-start" id="revokeModal{{ tx['id'] }}" tabindex="-1" aria-labelledby="revokeModalLabel{{ tx['id'] }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <form method="POST" action="{{ url_for('reseller_payment_revoke', payment_id=tx['id']) }}">
+                <div class="modal-header bg-warning text-dark py-3">
+                    <h5 class="modal-title fw-bold" id="revokeModalLabel{{ tx['id'] }}">
+                        <i class="fas fa-ban me-2 text-dark"></i> ابطال فیش پرداخت #{{ tx['id'] }}
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-warning py-2 mb-3 small">
+                        <i class="fas fa-triangle-exclamation me-1"></i>
+                        با ابطال این فیش، رکورد از <strong>درآمد و آمار فروش</strong> شما کسر می‌گردد و وضعیت آن به «باطل‌شده» تغییر می‌یابد.
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">علت ابطال فیش <span class="text-danger">*</span>:</label>
+                        <input type="text" name="reason" class="form-control" placeholder="مثال: فیش اشتباهی تایید شده بود یا استرداد وجه مشتری" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">عملیات روی اکانت/اشتراک کاربر در سرور هیدیفای:</label>
+                        <select name="rollback_sub_action" class="form-select">
+                            <option value="disable" selected>🔒 غیرفعال‌سازی اکانت کاربر در سرور هیدیفای (پیشنهادی)</option>
+                            <option value="delete">🗑 حذف کامل اکانت کاربر از سرور هیدیفای و دیتابیس</option>
+                            <option value="keep">⚙️ بدون تغییر (اکانت کاربر فعال بماند)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-check form-switch mb-2 p-2 border rounded bg-light">
+                        <input class="form-check-input ms-2" type="checkbox" name="refund_wallet" value="1" id="refundWallet{{ tx['id'] }}" checked>
+                        <label class="form-check-label fw-bold small text-success" for="refundWallet{{ tx['id'] }}">
+                            <i class="fas fa-rotate-left me-1"></i> بازگشت هزینه خرید عمده به کیف پول من
+                        </label>
+                        <div class="small text-muted ps-4" style="font-size: 0.72rem;">
+                            مبلغی که از کیف پول شما برای صدور این بسته کسر شده بود، به موجودی کیف پول شما مسترد خواهد شد.
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-warning text-dark fw-bold px-4">
+                        <i class="fas fa-ban me-1"></i> تأیید ابطال فیش
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+
+<!-- Modal مشاهده کامل تصویر فیش با بزرگنمایی -->
+<div class="modal fade" id="receiptPreviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-dark text-white py-3">
+                <h5 class="modal-title fw-bold" id="receiptModalTitle">
+                    <i class="fas fa-image me-2 text-primary"></i> تصویر رسید مشتری
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center p-3 bg-light">
+                <div class="p-2 border rounded bg-white d-inline-block shadow-sm mb-2" style="max-height: 70vh; overflow: auto;">
+                    <img id="receiptModalImg" src="" alt="تصویر فیش" class="img-fluid rounded" style="max-height: 65vh; object-fit: contain;">
+                </div>
+            </div>
+            <div class="modal-footer bg-light py-2 d-flex justify-content-between">
+                <a id="receiptDownloadBtn" href="#" target="_blank" download="receipt.jpg" class="btn btn-sm btn-outline-primary">
+                    <i class="fas fa-download me-1"></i> دانلود تصویر با کیفیت اصلی
+                </a>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">بستن پنجره</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function openReceiptPreview(imgUrl, username, orderId, userId) {
+    document.getElementById('receiptModalImg').src = imgUrl;
+    document.getElementById('receiptDownloadBtn').href = imgUrl;
+    document.getElementById('receiptModalTitle').innerHTML = `<i class="fas fa-image me-2 text-primary"></i> تصویر رسید سفارش #${orderId} - ${username || 'مشتری'}`;
+    const modal = new bootstrap.Modal(document.getElementById('receiptPreviewModal'));
+    modal.show();
+}
+
+// فیلتر سریع بر اساس مبدأ سفارش (همه / پرتال مشتری / ربات تلگرام)
+document.addEventListener('DOMContentLoaded', function() {
+    const filterBtns = document.querySelectorAll('#sourceFilterBtnGroup [data-source-filter]');
+    const rows = document.querySelectorAll('#customerPaymentsTable tbody tr.customer-payment-row');
+    const counterBadge = document.getElementById('paymentRowsCount');
+
+    filterBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            const filter = this.getAttribute('data-source-filter');
+
+            filterBtns.forEach(b => {
+                b.classList.remove('active', 'btn-primary', 'btn-dark', 'btn-info', 'btn-secondary');
+                const bFilter = b.getAttribute('data-source-filter');
+                if (bFilter === 'portal') {
+                    b.classList.add('btn-outline-info');
+                } else if (bFilter === 'admin') {
+                    b.classList.add('btn-outline-dark');
+                } else if (bFilter === 'reseller') {
+                    b.classList.add('btn-outline-secondary');
+                } else {
+                    b.classList.add('btn-outline-primary');
+                }
+            });
+
+            this.classList.add('active');
+            if (filter === 'portal') {
+                this.classList.remove('btn-outline-info');
+                this.classList.add('btn-info', 'text-white');
+            } else if (filter === 'admin') {
+                this.classList.remove('btn-outline-dark');
+                this.classList.add('btn-dark', 'text-white');
+            } else if (filter === 'reseller') {
+                this.classList.remove('btn-outline-secondary');
+                this.classList.add('btn-secondary', 'text-white');
+            } else {
+                this.classList.remove('btn-outline-primary');
+                this.classList.add('btn-primary');
+            }
+
+            let visibleCount = 0;
+            rows.forEach(row => {
+                const rowSource = row.getAttribute('data-source');
+                if (filter === 'all' || rowSource === filter) {
+                    row.style.display = '';
+                    visibleCount++;
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+
+            if (counterBadge) {
+                counterBadge.textContent = visibleCount + ' مورد';
+            }
+        });
+    });
+});
+</script>
+{% endblock %}
