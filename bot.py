@@ -4283,8 +4283,17 @@ async def admin_order_pay_action_callback(update: Update, context: ContextTypes.
         if tx.get("gateway") == "bundle_reseller" or str(order_id).startswith("R_BUNDLE"):
             r_id = tx.get("reseller_id")
             amount = tx.get("amount", 0)
+            pname = tx.get("plan_name", "بسته اعتباری")
             res_b = db.apply_reseller_bundle_credit(r_id, amount, pname, tx.get("id"))
-            db.update_transaction(order_id, status="approved")
+            caller_name = (user.first_name if user and user.first_name else "مدیریت")
+            proc_title = f"{caller_name} / ربات"
+            now_iso = get_now_iso()
+            db.update_transaction(order_id, status="approved", processed_by=proc_title, processed_at=now_iso)
+            if user:
+                try:
+                    db.record_telegram_activity(user.id, role="admin")
+                except Exception:
+                    pass
 
             # واریز خودکار به کارت بانکی مقصد مدیر
             target_card_id = tx.get("target_card_id")
@@ -4369,7 +4378,7 @@ async def admin_order_pay_action_callback(update: Update, context: ContextTypes.
         account_name = tx.get("account_name") or (f"tg_{user_id}" if user_id else f"order_{order_id}")
         sub_url = ""
 
-        # اگر نماینده است، هزینه عمده از کیف پولش کسر شود
+        # اگر نماینده است، هزینه عمده از کیف پول یا اعتبارش کسر شود
         r_id = tx.get("reseller_id")
         if r_id and not is_adm:
             r_stats = db.get_reseller_stats(r_id)
@@ -4379,10 +4388,20 @@ async def admin_order_pay_action_callback(update: Update, context: ContextTypes.
             master_p = (r_sel_plan.get("master_price") or orig_p) if r_sel_plan else orig_p
             r_discount = r_stats.get("discount_percent", 20)
             wh_p = r_sel_plan.get("wholesale_price") if r_sel_plan and r_sel_plan.get("wholesale_price") else int(master_p * (100 - r_discount) / 100)
-            if r_stats["balance"] < wh_p:
-                await query.answer(f"❌ موجودی کیف پول کافی نیست! نیاز: {wh_p:,} تومان", show_alert=True)
+
+            r_bal = r_stats.get("balance", 0) or 0
+            r_c_limit = r_stats.get("credit_limit", 0) or 0
+            r_c_debt = r_stats.get("credit_debt", 0) or 0
+            r_c_enabled = bool(r_stats.get("credit_enabled")) or (r_c_limit > 0)
+            r_avail_credit = max(0, r_c_limit - r_c_debt) if r_c_enabled else 0
+            total_purchasing_power = r_bal + r_avail_credit
+
+            if total_purchasing_power < wh_p:
+                await query.answer(f"❌ موجودی کیف پول و اعتبار کافی نیست! نیاز: {wh_p:,} تومان | موجودی: {r_bal:,} ت | اعتبار: {r_avail_credit:,} ت", show_alert=True)
                 return
-            db.deduct_reseller_balance(r_id, wh_p, plan_name, account_name, selling_price=orig_p, profit_margin=max(0, orig_p - wh_p), created_by="Telegram Bot")
+
+            caller_name = (user.first_name if user and user.first_name else f"نماینده #{r_id}")
+            db.deduct_reseller_balance(r_id, wh_p, plan_name, account_name, selling_price=orig_p, profit_margin=max(0, orig_p - wh_p), created_by=f"{caller_name} / ربات", payment_source="auto")
 
         queued_renewal = False
         queued_order = 1
@@ -4484,7 +4503,14 @@ async def admin_order_pay_action_callback(update: Update, context: ContextTypes.
                 logger.error(f"Error creating user in Hiddify: {e_cr}")
 
         now_iso = get_now_iso()
-        proc_title = "مدیریت (تلگرام)" if is_adm else f"نماینده #{r_id} (تلگرام)"
+        caller_name = (user.first_name if user and user.first_name else ("مدیریت" if is_adm else f"نماینده #{r_id}"))
+        proc_title = f"{caller_name} / ربات"
+        if user:
+            try:
+                db.record_telegram_activity(user.id, role=("admin" if is_adm else "reseller"), reseller_id=r_id if not is_adm else None)
+            except Exception:
+                pass
+
         conn = db.get_connection()
         conn.execute(
             "UPDATE transactions SET status='approved', processed_by=?, processed_at=?, updated_at=? WHERE order_id=? OR id=?",
@@ -4531,7 +4557,14 @@ async def admin_order_pay_action_callback(update: Update, context: ContextTypes.
         is_adm = data.startswith("adm_pay_rej_")
         order_id = data.replace("adm_pay_rej_" if is_adm else "res_pay_rej_", "")
         now_iso = get_now_iso()
-        proc_title = "مدیریت (تلگرام)" if is_adm else "نماینده (تلگرام)"
+        caller_name = (user.first_name if user and user.first_name else ("مدیریت" if is_adm else "نماینده"))
+        proc_title = f"{caller_name} / ربات"
+        if user:
+            try:
+                db.record_telegram_activity(user.id, role=("admin" if is_adm else "reseller"))
+            except Exception:
+                pass
+
         conn = db.get_connection()
         conn.execute(
             "UPDATE transactions SET status='rejected', processed_by=?, processed_at=?, updated_at=? WHERE order_id=? OR id=?",

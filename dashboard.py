@@ -515,35 +515,95 @@ def filter_gateway_name(gateway):
         return "کارت به کارت"
     g = str(gateway).strip().lower()
     
+    # درگاه بلوپال
+    if g in ("blupal", "blupal_gateway"):
+        return "درگاه هوشمند بلوپال"
+    elif g in ("blupal_portal", "portal_blupal"):
+        return "درگاه هوشمند بلوپال (پرتال)"
+    elif g.startswith("blupal_reseller") or "blupal_reseller" in g:
+        return "درگاه هوشمند بلوپال (نماینده)"
+    elif "blupal" in g:
+        return "درگاه پرداخت بلوپال"
+
+    # کارت به کارت و پرداخت‌های بانکی
     if g in ("cash_admin", "card_admin", "manual_cash", "cash", "c2c_admin") or g.startswith("cash_"):
         return "کارت به کارت (مدیریت)"
     elif g in ("card_reseller", "c2c_reseller") or g.startswith("card_reseller_") or g.startswith("cash_reseller_"):
         return "کارت به کارت (نماینده)"
-    elif g == "bundle_reseller" or g.startswith("r_bundle"):
-        return "شارژ بسته اعتباری نماینده"
+    elif g in ("card_to_bank", "c2b"):
+        return "کارت به کارت (واریز مستقیم بانکی)"
+    elif g in ("bank_sms", "sms_c2c", "auto_sms"):
+        return "کارت به کارت (تأیید خودکار پیامکی)"
     elif g in ("card_to_card", "card", "kart", "c2c"):
         return "کارت به کارت"
-    elif g in ("wallet", "wal", "pwal", "wallet_balance"):
+    elif g == "bundle_reseller" or g.startswith("r_bundle"):
+        return "شارژ بسته اعتباری نماینده"
+    elif g in ("wallet", "wal", "pwal", "wallet_balance", "portal_wallet", "miniapp_wallet"):
         return "کیف پول هوشمند"
+    elif g in ("zarinpal_portal", "portal_zarinpal"):
+        return "درگاه آنلاین شاپرک (زرین‌پال پرتال)"
     elif g in ("zarinpal", "zarin_pal") or g.startswith("zarinpal_"):
         return "درگاه آنلاین شاپرک (زرین‌پال)"
+    elif g in ("idpay_portal", "portal_idpay"):
+        return "درگاه آنلاین شاپرک (آیدی‌پی پرتال)"
     elif g in ("idpay", "id_pay") or g.startswith("idpay_"):
         return "درگاه آنلاین شاپرک (آیدی‌پی)"
+    elif g in ("nextpay_portal", "portal_nextpay"):
+        return "درگاه آنلاین شاپرک (نکست‌پی پرتال)"
     elif g in ("nextpay", "next_pay") or g.startswith("nextpay_"):
         return "درگاه آنلاین شاپرک (نکست‌پی)"
-    elif g in ("gateway", "online", "online_gateway", "shaparak") or g.startswith("online_"):
+    elif g in ("gateway", "online", "online_gateway", "shaparak", "portal_online") or g.startswith("online_"):
         return "درگاه پرداخت آنلاین شاپرک"
-    elif g in ("crypto", "nowpayments", "usdt", "oxapay"):
+    elif g in ("crypto", "nowpayments", "usdt", "oxapay", "trx", "ton"):
         return "ارز دیجیتال (تتر / کریپتو)"
     elif g in ("perfect_money", "perfectmoney", "pm"):
         return "پرفکت مانی"
-    elif g in ("admin_manual", "manual"):
+    elif g in ("admin_manual", "manual", "panel_manual"):
         return "ثبت دستی مدیریت"
+    elif g in ("reseller_manual", "manual_reseller"):
+        return "ثبت دستی نماینده"
     elif g in ("cashback", "vip_cashback"):
         return "پاداش کش‌بک VIP"
-    elif g in ("free", "gift", "trial"):
+    elif g in ("free", "gift", "trial", "free_discount"):
         return "تست رایگان / هدیه"
     return gateway
+
+
+@app.template_filter("reviewer_name")
+@app.template_global("format_reviewer")
+def filter_reviewer_name(reviewer):
+    """فرمت‌بندی استاندارد بررسی‌کننده به صورت: {نام} / {مبدأ} (مثلاً: ویکتور / ربات یا ویکتور / پنل)"""
+    if not reviewer or str(reviewer).strip() in ["", "None", "null", "-"]:
+        return "-"
+    rev = str(reviewer).strip()
+
+    # اگر قبلاً دارای مبدأ باشد
+    if " / " in rev:
+        return rev
+    elif "/" in rev:
+        parts = [p.strip() for p in rev.split("/", 1)]
+        return f"{parts[0]} / {parts[1]}"
+
+    # تطبیق ساختار 'نام (نماینده #X)'
+    m_reseller = re.match(r"^(.*?)\s*\(نماینده\s*#?\d*\)$", rev)
+    if m_reseller:
+        name = m_reseller.group(1).strip()
+        return f"{name or rev} / پنل"
+
+    # بررسی ثبت‌های انجام شده توسط ربات تلگرام
+    if "ربات" in rev or "bot" in rev.lower():
+        m_bot = re.match(r"^(?:Telegram Bot|ربات|ربات تلگرام)\s*(?:\((.*?)\))?$", rev, re.IGNORECASE)
+        if m_bot and m_bot.group(1):
+            return f"{m_bot.group(1).strip()} / ربات"
+        clean = re.sub(r"(?i)telegram bot|ربات تلگرام|ربات|[()]", "", rev).strip()
+        return f"{clean or 'پشتیبان'} / ربات"
+
+    # فرآیندهای کاملاً خودکار و درگاهی
+    if any(k in rev for k in ["درگاه", "شاپرک", "بلوپال", "وب‌هوک", "پیامک بانک", "کیف پول", "کد تخفیف"]):
+        return rev
+
+    # پیش‌فرض برای بررسی‌های انجام‌شده از طریق پنل وب
+    return f"{rev} / پنل"
 
 
 @app.template_filter("shamsi_date")
@@ -4270,6 +4330,20 @@ def payments():
                 cust_name = f"کاربر {user_id}" if user_id else "کاربر تلگرام"
             p_dict["customer_name"] = cust_name
 
+        # استخراج شماره کارت و اطلاعات بانک مقصد از فاکتور هوشمند یا کارت‌های بانکی
+        if not p_dict.get("card_number") and p_dict.get("order_id"):
+            inv = db.get_smart_invoice_by_order_id(p_dict["order_id"])
+            if inv:
+                p_dict["card_number"] = inv.get("card_number")
+                p_dict["card_holder"] = inv.get("card_holder")
+                p_dict["bank_name"] = inv.get("bank_name")
+        if not p_dict.get("card_number") and p_dict.get("target_card_id"):
+            c_row = conn.execute("SELECT card_number, holder_name, bank_name FROM bank_cards WHERE id=?", (p_dict["target_card_id"],)).fetchone()
+            if c_row:
+                p_dict["card_number"] = c_row["card_number"]
+                p_dict["card_holder"] = c_row["holder_name"]
+                p_dict["bank_name"] = c_row["bank_name"]
+
         payment_list.append(p_dict)
 
     conn.close()
@@ -4914,12 +4988,13 @@ def approve_payment(payment_id):
         
         admin_name = session.get("name") or session.get("username") or "مدیر ارشد"
         admin_id = session.get("admin_id")
+        reviewer_str = f"{admin_name} / پنل"
         now_iso = get_now_iso()
         
         conn = db.get_connection()
         conn.execute(
             "UPDATE transactions SET status='approved', processed_by=?, processed_at=?, updated_at=? WHERE id=?", 
-            (admin_name, now_iso, now_iso, tx["id"])
+            (reviewer_str, now_iso, now_iso, tx["id"])
         )
         conn.commit()
         conn.close()
@@ -5099,12 +5174,13 @@ def approve_payment(payment_id):
     # بروزرسانی وضعیت تراکنش در دیتابیس
     admin_name = session.get("name") or session.get("username") or "مدیر ارشد"
     admin_id = session.get("admin_id")
+    reviewer_str = f"{admin_name} / پنل"
     now_iso = get_now_iso()
 
     conn = db.get_connection()
     conn.execute(
         "UPDATE transactions SET status='approved', processed_by=?, processed_at=?, updated_at=? WHERE id=?", 
-        (admin_name, now_iso, now_iso, payment_id)
+        (reviewer_str, now_iso, now_iso, payment_id)
     )
     conn.commit()
     conn.close()
@@ -5236,11 +5312,12 @@ def reject_payment(payment_id):
         tx = dict(tx_row)
         admin_name = session.get("name") or session.get("username") or "مدیر ارشد"
         admin_id = session.get("admin_id")
+        reviewer_str = f"{admin_name} / پنل"
         now_iso = get_now_iso()
 
         conn.execute(
             "UPDATE transactions SET status='rejected', rejection_reason=?, processed_by=?, processed_at=?, updated_at=? WHERE id=?", 
-            (reason, admin_name, now_iso, now_iso, payment_id)
+            (reason, reviewer_str, now_iso, now_iso, payment_id)
         )
         conn.commit()
 
@@ -5430,8 +5507,9 @@ def admin_payments_bulk():
                             pass
 
                     now_iso = get_now_iso()
+                    reviewer_str = f"{admin_name} / پنل"
                     conn = db.get_connection()
-                    conn.execute("UPDATE transactions SET status='approved', processed_by=?, processed_at=?, updated_at=? WHERE id=?", (admin_name, now_iso, now_iso, pid))
+                    conn.execute("UPDATE transactions SET status='approved', processed_by=?, processed_at=?, updated_at=? WHERE id=?", (reviewer_str, now_iso, now_iso, pid))
                     conn.commit()
                     conn.close()
 
@@ -5459,7 +5537,8 @@ def admin_payments_bulk():
                     except Exception:
                         pass
                 now_iso = get_now_iso()
-                conn.execute("UPDATE transactions SET status='rejected', rejection_reason='رد توسط مدیریت در عملیات گروهی', processed_by=?, processed_at=?, updated_at=? WHERE id=?", (admin_name, now_iso, now_iso, pid))
+                reviewer_str = f"{admin_name} / پنل"
+                conn.execute("UPDATE transactions SET status='rejected', rejection_reason='رد توسط مدیریت در عملیات گروهی', processed_by=?, processed_at=?, updated_at=? WHERE id=?", (reviewer_str, now_iso, now_iso, pid))
                 conn.commit()
                 conn.close()
                 success_count += 1
@@ -8476,38 +8555,147 @@ def broadcast():
             flash("🗑️ بنر اطلاعیه با موفقیت از پنل نمایندگان حذف گردید.", "info")
             return redirect(url_for("broadcast"))
 
+        elif action_type == "portal_customer_banner":
+            banner_title = request.form.get("banner_title", "").strip()
+            banner_message = request.form.get("banner_message", "").strip()
+            banner_level = request.form.get("banner_level", "info")
+            if not banner_message:
+                flash("متن بنر اطلاعیه پورتال مشتریان نمی‌تواند خالی باشد.", "danger")
+                return redirect(url_for("broadcast"))
+            db.add_portal_customer_banner(
+                title=banner_title,
+                message=banner_message,
+                level=banner_level
+            )
+            flash("✅ بنر اطلاعیه پورتال مشتریان با موفقیت ایجاد و فعال شد.", "success")
+            return redirect(url_for("broadcast"))
+
+        elif action_type == "delete_portal_banner":
+            banner_id = request.form.get("banner_id")
+            if banner_id:
+                db.delete_portal_customer_banner(banner_id)
+                flash("🗑️ بنر اطلاعیه پورتال مشتریان با موفقیت حذف گردید.", "info")
+            return redirect(url_for("broadcast"))
+
+        # ارسال پیام به کاربران (تلگرام یا پیامک)
+        channel = request.form.get("channel", "telegram")
         target_group = request.form.get("target_group", "all")
         message_text = request.form.get("message", "").strip()
-        btn_text = request.form.get("btn_text", "").strip()
-        btn_url = request.form.get("btn_url", "").strip()
 
         if not message_text:
             flash("متن پیام نمی‌تواند خالی باشد!", "danger")
             return redirect(url_for("broadcast"))
 
-        user_ids = db.get_target_broadcast_users(target_group)
-        if not user_ids:
-            flash("هیچ کاربری در گروه هدف انتخاب شده یافت نشد.", "warning")
+        if channel == "sms":
+            phones = db.get_target_broadcast_phones(target_group)
+            if not phones:
+                flash("هیچ شماره همراهی در گروه هدف انتخاب شده یافت نشد.", "warning")
+                return redirect(url_for("broadcast"))
+
+            success_count = 0
+            fail_count = 0
+            for ph in phones:
+                ok, res_msg = send_sms(receptor=ph, message=message_text, db_instance=db)
+                if ok:
+                    success_count += 1
+                else:
+                    fail_count += 1
+
+            flash(f"پیامک به {success_count} شماره همراه با موفقیت ارسال شد. (خطا: {fail_count})", "success")
+            return redirect(url_for("broadcast"))
+        else:
+            user_ids = db.get_target_broadcast_users(target_group)
+            if not user_ids:
+                flash("هیچ کاربری در گروه هدف انتخاب شده یافت نشد.", "warning")
+                return redirect(url_for("broadcast"))
+
+            btn_text = request.form.get("btn_text", "").strip()
+            btn_url = request.form.get("btn_url", "").strip()
+            reply_markup = None
+            if btn_text and btn_url:
+                reply_markup = {"inline_keyboard": [[{"text": btn_text, "url": btn_url}]]}
+
+            success_count = 0
+            fail_count = 0
+            for uid in user_ids:
+                ok = send_telegram_msg(uid, message_text, reply_markup=reply_markup)
+                if ok:
+                    success_count += 1
+                else:
+                    fail_count += 1
+
+            flash(f"پیام به {success_count} کاربر تلگرام ارسال شد. (خطا: {fail_count})", "success")
             return redirect(url_for("broadcast"))
 
-        reply_markup = None
-        if btn_text and btn_url:
-            reply_markup = {"inline_keyboard": [[{"text": btn_text, "url": btn_url}]]}
-
-        success_count = 0
-        fail_count = 0
-        for uid in user_ids:
-            ok = send_telegram_msg(uid, message_text, reply_markup=reply_markup)
-            if ok:
-                success_count += 1
-            else:
-                fail_count += 1
-
-        flash(f"پیام به {success_count} کاربر ارسال شد. (خطا: {fail_count})", "success")
-        return redirect(url_for("broadcast"))
-
     resellers = db.get_all_resellers()
-    return render_template("broadcast.html", resellers=resellers, active_banners=RESELLER_PANEL_BANNERS)
+    portal_customer_banners = db.get_portal_customer_banners()
+    return render_template(
+        "broadcast.html", 
+        resellers=resellers, 
+        active_banners=RESELLER_PANEL_BANNERS,
+        portal_customer_banners=portal_customer_banners
+    )
+
+
+@app.route("/reseller/broadcast", methods=["GET", "POST"])
+@reseller_required
+def reseller_broadcast():
+    """ارسال پیام همگانی به مشتریان نماینده (از طریق پیامک اختصاصی یا ربات اختصاصی نماینده)"""
+    reseller_id = session.get("reseller_id")
+    if request.method == "POST":
+        channel = request.form.get("channel", "telegram")
+        target_group = request.form.get("target_group", "all")
+        message_text = request.form.get("message", "").strip()
+
+        if not message_text:
+            flash("متن پیام نمی‌تواند خالی باشد!", "danger")
+            return redirect(url_for("reseller_broadcast"))
+
+        if channel == "sms":
+            phones = db.get_target_broadcast_phones(target_group, reseller_id=reseller_id)
+            if not phones:
+                flash("هیچ شماره همراهی در میان مشتریان شما در این گروه یافت نشد.", "warning")
+                return redirect(url_for("reseller_broadcast"))
+
+            success_count = 0
+            fail_count = 0
+            for ph in phones:
+                ok, res_msg = send_sms(receptor=ph, message=message_text, db_instance=db, reseller_id=reseller_id)
+                if ok:
+                    success_count += 1
+                else:
+                    fail_count += 1
+
+            flash(f"پیامک به {success_count} شماره مشتری شما با موفقیت ارسال شد. (خطا: {fail_count})", "success")
+            return redirect(url_for("reseller_broadcast"))
+        else:
+            user_ids = db.get_target_broadcast_users(target_group, reseller_id=reseller_id)
+            if not user_ids:
+                flash("هیچ کاربری در گروه هدف انتخاب شده در ربات شما یافت نشد.", "warning")
+                return redirect(url_for("reseller_broadcast"))
+
+            r_data = db.get_reseller(reseller_id) or {}
+            bot_token = r_data.get("bot_token")
+            btn_text = request.form.get("btn_text", "").strip()
+            btn_url = request.form.get("btn_url", "").strip()
+            reply_markup = None
+            if btn_text and btn_url:
+                reply_markup = {"inline_keyboard": [[{"text": btn_text, "url": btn_url}]]}
+
+            success_count = 0
+            fail_count = 0
+            for uid in user_ids:
+                ok = send_telegram_msg(uid, message_text, bot_token=bot_token, reply_markup=reply_markup)
+                if ok:
+                    success_count += 1
+                else:
+                    fail_count += 1
+
+            flash(f"پیام با موفقیت به {success_count} کاربر در ربات شما ارسال شد. (خطا: {fail_count})", "success")
+            return redirect(url_for("reseller_broadcast"))
+
+    sms_config = db.get_reseller_sms_config(reseller_id) if hasattr(db, "get_reseller_sms_config") else {}
+    return render_template("reseller_broadcast.html", sms_config=sms_config)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -14004,6 +14192,22 @@ def reseller_customer_payments():
                 cust_name = f"کاربر {user_id}" if user_id else "کاربر تلگرام"
             tx["customer_name"] = cust_name
             tx["customer_phone"] = None
+
+        # استخراج شماره کارت مقصد از فاکتور هوشمند یا کارت‌های نماینده
+        if not tx.get("card_number") and tx.get("order_id"):
+            inv = db.get_smart_invoice_by_order_id(tx["order_id"])
+            if inv:
+                tx["card_number"] = inv.get("card_number")
+                tx["card_holder"] = inv.get("card_holder")
+                tx["bank_name"] = inv.get("bank_name")
+        if not tx.get("card_number") and tx.get("target_card_id"):
+            conn_c = db.get_connection()
+            rc = conn_c.execute("SELECT card_number, card_holder, bank_name FROM reseller_cards WHERE id=?", (tx["target_card_id"],)).fetchone()
+            conn_c.close()
+            if rc:
+                tx["card_number"] = rc["card_number"]
+                tx["card_holder"] = rc["card_holder"]
+                tx["bank_name"] = rc["bank_name"]
             
         transactions.append(tx)
         
@@ -14063,9 +14267,14 @@ def reseller_payment_approve(payment_id):
     base_price = (selected_plan.get("master_price") or original_price) if selected_plan else original_price
     wholesale_price = selected_plan.get("wholesale_price") if selected_plan and selected_plan.get("wholesale_price") is not None else int(base_price * (100 - discount) / 100)
 
-    if stats["balance"] < wholesale_price:
-        flash(f"موجودی کیف پول شما کافی نیست! موجودی: {stats['balance']:,} ت | مبلغ کسر: {wholesale_price:,} ت", "danger")
-        return redirect(url_for("reseller_payments"))
+    # بررسی قدرت خرید اعتباری نماینده (موجودی نقدی + باقیمانده سقف اعتبار)
+    balance = stats.get("balance", 0)
+    avail_credit = max(0, stats.get("credit_limit", 0) - stats.get("credit_used", 0))
+    total_purchasing_power = balance + avail_credit
+
+    if total_purchasing_power < wholesale_price:
+        flash(f"عدم موجودی کافی در کیف پول یا اعتبار! قدرت خرید: {total_purchasing_power:,} ت | مبلغ کسر: {wholesale_price:,} ت", "danger")
+        return redirect(url_for("reseller_customer_payments"))
 
     is_renewal = bool(tx.get("is_renewal"))
     renew_sub_id = tx.get("renew_sub_id")
@@ -14083,7 +14292,7 @@ def reseller_payment_approve(payment_id):
         smart_inv = db.get_smart_invoice_by_order_id(tx.get("order_id"))
         instant_act = bool(smart_inv.get("instant_activation", 1)) if smart_inv else True
 
-        db.deduct_reseller_balance(reseller_id, wholesale_price, plan_name, account_name, selling_price=original_price, profit_margin=res_profit, created_by=approver_user)
+        db.deduct_reseller_balance(reseller_id, wholesale_price, plan_name, account_name, selling_price=original_price, profit_margin=res_profit, created_by=approver_user, payment_source="auto")
         
         if instant_act and target_sub.get("hidify_uuid"):
             try:
@@ -14098,7 +14307,7 @@ def reseller_payment_approve(payment_id):
             plan_id=plan_id_val,
             cost=wholesale_price,
             instant_activate=instant_act,
-            payment_source="wallet",
+            payment_source="auto",
             selling_price=original_price,
             profit_margin=res_profit,
             creator=approver_user
@@ -14126,8 +14335,8 @@ def reseller_payment_approve(payment_id):
             uuid_val = str(uuid.uuid4())
             sub_link = f"https://vpn.service/sub/{account_name}"
 
-        # کسر از کیف پول نماینده
-        db.deduct_reseller_balance(reseller_id, wholesale_price, plan_name, account_name, selling_price=original_price, profit_margin=res_profit, created_by=approver_user)
+        # کسر خودکار از کیف پول و اعتبار نماینده
+        db.deduct_reseller_balance(reseller_id, wholesale_price, plan_name, account_name, selling_price=original_price, profit_margin=res_profit, created_by=approver_user, payment_source="auto")
         
         # ثبت اشتراک برای کاربر
         plan_id_val = str(selected_plan.get("id") or 1) if selected_plan else "1"
@@ -14166,12 +14375,13 @@ def reseller_payment_approve(payment_id):
 
     # بروزرسانی وضعیت تراکنش
     reseller_name = session.get("name") or session.get("username") or f"نماینده #{reseller_id}"
+    reviewer_str = f"{reseller_name} / پنل"
     now_iso = get_now_iso()
     conn = db.get_connection()
     cursor = conn.cursor()
     cursor.execute(
         "UPDATE transactions SET status = 'approved', processed_by = ?, processed_at = ?, updated_at = ? WHERE id = ?", 
-        (f"{reseller_name} (نماینده #{reseller_id})", now_iso, now_iso, payment_id)
+        (reviewer_str, now_iso, now_iso, payment_id)
     )
     conn.commit()
     conn.close()
@@ -14287,10 +14497,11 @@ def reseller_payment_reject(payment_id):
 
     tx = dict(tx_row)
     reseller_name = session.get("name") or session.get("username") or f"نماینده #{reseller_id}"
+    reviewer_str = f"{reseller_name} / پنل"
     now_iso = get_now_iso()
     cursor.execute(
         "UPDATE transactions SET status = 'rejected', rejection_reason = ?, processed_by = ?, processed_at = ?, updated_at = ? WHERE id = ?", 
-        (reason, f"{reseller_name} (نماینده #{reseller_id})", now_iso, now_iso, payment_id)
+        (reason, reviewer_str, now_iso, now_iso, payment_id)
     )
     conn.commit()
 
@@ -14421,8 +14632,9 @@ def reseller_customer_payments_bulk():
             continue
 
         if action == "reject":
+            reviewer_str = f"{reseller_name} / پنل"
             c_conn = db.get_connection()
-            c_conn.execute("UPDATE transactions SET status='rejected', rejection_reason='رد توسط نماینده در عملیات گروهی', processed_by=?, processed_at=?, updated_at=? WHERE id=?", (f"{reseller_name} (نماینده #{reseller_id})", now_iso, now_iso, pid))
+            c_conn.execute("UPDATE transactions SET status='rejected', rejection_reason='رد توسط نماینده در عملیات گروهی', processed_by=?, processed_at=?, updated_at=? WHERE id=?", (reviewer_str, now_iso, now_iso, pid))
             c_conn.commit()
             c_conn.close()
             success_count += 1
@@ -17868,7 +18080,8 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
         mini_app_splash_title=mini_app_splash_title,
         mini_app_splash_subtitle=mini_app_splash_subtitle,
         mini_app_splash_image=mini_app_splash_image,
-        mini_app_splash_duration=mini_app_splash_duration
+        mini_app_splash_duration=mini_app_splash_duration,
+        portal_banners=db.get_portal_customer_banners()
     )
 
 

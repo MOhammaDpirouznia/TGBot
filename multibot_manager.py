@@ -1052,8 +1052,13 @@ class ResellerBotInstance:
                 return
 
             r_info = db.get_reseller(r_id) or {}
-            r_balance = r_info.get("balance", 0)
-            if r_balance < wholesale_cost:
+            r_balance = r_info.get("balance", 0) or 0
+            r_credit_limit = r_info.get("credit_limit", 0) or 0
+            r_credit_debt = r_info.get("credit_debt", 0) or 0
+            r_credit_enabled = bool(r_info.get("credit_enabled")) or (r_credit_limit > 0)
+            r_avail_credit = max(0, r_credit_limit - r_credit_debt) if r_credit_enabled else 0
+            total_purchasing_power = r_balance + r_avail_credit
+            if total_purchasing_power < wholesale_cost:
                 await query.answer("⚠️ اعتبار فروشگاه موقتاً نیازمند شارژ است. لطفاً به پشتیبانی اطلاع دهید.", show_alert=True)
                 return
 
@@ -1104,7 +1109,7 @@ class ResellerBotInstance:
                     data_limit=float(vol),
                     duration=int(days),
                     instant_activate=instant_act,
-                    payment_source="wallet",
+                    payment_source="auto",
                     selling_price=price,
                     profit_margin=bot_profit,
                     created_by=f"Customer Wallet (User {user.id})"
@@ -1154,7 +1159,8 @@ class ResellerBotInstance:
             account_name = context.user_data.get("buying_account_name") or f"r{r_id}_u{user.id}_{int(datetime.now().timestamp()) % 10000}"
             db.deduct_reseller_balance(
                 r_id, wholesale_cost, pname, account_name,
-                selling_price=price, profit_margin=bot_profit, created_by="bot"
+                selling_price=price, profit_margin=bot_profit, created_by="bot",
+                payment_source="auto"
             )
 
             await query.edit_message_text("⏳ در حال ساخت و فعال‌سازی آنی اشتراک شما...")
@@ -1442,6 +1448,11 @@ class ResellerBotInstance:
                 await query.answer("⛔ شما دسترسی تایید این پرداخت را ندارید.", show_alert=True)
                 return
 
+            try:
+                db.record_telegram_activity(caller_id, role="reseller", reseller_id=r_id)
+            except Exception:
+                pass
+
             data = query.data
 
             if data.startswith("rapprove_") or data.startswith("rapprove:"):
@@ -1555,18 +1566,26 @@ class ResellerBotInstance:
                     account_name = tx_data.get("account_name") or (target_sub.get("account_name") if target_sub else f"r{r_id}_u{target_uid}_{int(datetime.now().timestamp()) % 10000}")
                     res_profit = max(0, price - wholesale_cost)
 
-                    # ۳. بررسی موجودی کیف پول نماینده
+                    # ۳. بررسی توان خرید و اعتبار نماینده
                     stats = db.get_reseller_stats(r_id)
-                    if stats.get("balance", 0) < wholesale_cost:
+                    r_bal = stats.get("balance", 0) or 0
+                    r_c_limit = stats.get("credit_limit", 0) or 0
+                    r_c_debt = stats.get("credit_debt", 0) or 0
+                    r_c_enabled = bool(stats.get("credit_enabled")) or (r_c_limit > 0)
+                    r_avail_credit = max(0, r_c_limit - r_c_debt) if r_c_enabled else 0
+                    total_purchasing_power = r_bal + r_avail_credit
+
+                    if total_purchasing_power < wholesale_cost:
                         db.update_transaction(order_id, status="pending")
                         err_msg = (
-                            f"❌ <b>خطا در تایید:</b> موجودی کیف پول نماینده کافی نیست!\n\n"
+                            f"❌ <b>خطا در تایید:</b> موجودی کیف پول و اعتبار نماینده کافی نیست!\n\n"
                             f"💰 مبلغ عمده مورد نیاز: <b>{wholesale_cost:,} تومان</b>\n"
-                            f"💳 موجودی فعلی کیف پول: <b>{stats.get('balance', 0):,} تومان</b>\n\n"
-                            f"لطفاً ابتدا کیف پول خود را در پنل وب شارژ فرمایید."
+                            f"💳 موجودی کیف پول: <b>{r_bal:,} تومان</b>\n"
+                            f"🏷️ اعتبار باقیمانده: <b>{r_avail_credit:,} تومان</b>\n\n"
+                            f"لطفاً ابتدا کیف پول خود را در پنل وب شارژ فرمایید یا سقف اعتبار خود را ارتقا دهید."
                         )
                         await safe_edit_admin_message(context.bot, query.message.chat_id, query.message.message_id, err_msg, reply_markup=None)
-                        await query.answer("❌ موجودی کیف پول نماینده برای تایید این سفارش کافی نیست!", show_alert=True)
+                        await query.answer("❌ موجودی کیف پول و اعتبار نماینده برای تایید این سفارش کافی نیست!", show_alert=True)
                         return
 
                     sub_db_id = None
@@ -1601,14 +1620,14 @@ class ResellerBotInstance:
                             data_limit=float(vol),
                             duration=int(days),
                             instant_activate=instant_act,
-                            payment_source="wallet",
+                            payment_source="auto",
                             selling_price=price,
                             profit_margin=res_profit,
-                            created_by=f"Telegram Bot ({caller_name})"
+                            created_by=f"{caller_name} / ربات"
                         )
                         mode_note = "⚡ فعال‌سازی آنی" if instant_act else "⏳ قرارگیری در صف رزرو"
                     else:
-                        deduct_res = db.deduct_reseller_balance(r_id, wholesale_cost, pname, account_name, selling_price=price, profit_margin=res_profit, created_by=f"Telegram Bot ({caller_name})")
+                        deduct_res = db.deduct_reseller_balance(r_id, wholesale_cost, pname, account_name, selling_price=price, profit_margin=res_profit, created_by=f"{caller_name} / ربات", payment_source="auto")
                         h_res = None
                         try:
                             r_client = get_reseller_hidify_client(r_id)
@@ -1647,7 +1666,7 @@ class ResellerBotInstance:
                     cursor = conn.cursor()
                     cursor.execute(
                         "UPDATE transactions SET status='approved', processed_by=?, processed_at=?, updated_at=? WHERE (order_id=? OR id=?) AND reseller_id=?",
-                        (f"Telegram Bot ({caller_name})", now_iso, now_iso, order_id, order_id, r_id)
+                        (f"{caller_name} / ربات", now_iso, now_iso, order_id, order_id, r_id)
                     )
                     conn.commit()
                     conn.close()
@@ -1815,7 +1834,7 @@ class ResellerBotInstance:
                         await query.answer(lock_res.get("message", "⚠️ این فیش قبلاً تعیین‌تکلیف شده است."), show_alert=True)
                         return
 
-                    db.update_transaction(order_id, status="rejected", processed_by=caller_name, processed_at=get_now_iso())
+                    db.update_transaction(order_id, status="rejected", processed_by=f"{caller_name} / ربات", processed_at=get_now_iso())
                     rej_msg = f"❌ <b>رسید پرداخت با کد سفارش: <code>{order_id}</code> توسط مدیر {html.escape(caller_name)} رد شد.</b>\n⏰ زمان: {get_now_shamsi()}"
                     await sync_admin_receipt_action(context.bot, order_id, caller_id, caller_name, action="rejected", caller_msg=rej_msg)
 
@@ -1863,15 +1882,23 @@ class ResellerBotInstance:
                     master_base = (selected_plan.get("master_price") or original_price) if selected_plan else original_price
                     wholesale_cost = selected_plan.get("wholesale_price") if selected_plan and selected_plan.get("wholesale_price") is not None else (master_base - int((master_base * discount) / 100))
 
-                    if stats.get("balance", 0) < wholesale_cost:
+                    r_bal = stats.get("balance", 0) or 0
+                    r_c_limit = stats.get("credit_limit", 0) or 0
+                    r_c_debt = stats.get("credit_debt", 0) or 0
+                    r_c_enabled = bool(stats.get("credit_enabled")) or (r_c_limit > 0)
+                    r_avail_credit = max(0, r_c_limit - r_c_debt) if r_c_enabled else 0
+                    total_purchasing_power = r_bal + r_avail_credit
+
+                    if total_purchasing_power < wholesale_cost:
                         db.update_transaction(order_id, status="pending")
                         err_msg = (
-                            f"❌ <b>خطا در تایید:</b> موجودی کیف پول نماینده کافی نیست!\n\n"
+                            f"❌ <b>خطا در تایید:</b> موجودی کیف پول و اعتبار نماینده کافی نیست!\n\n"
                             f"💰 مبلغ عمده مورد نیاز: <b>{wholesale_cost:,} تومان</b>\n"
-                            f"💳 موجودی فعلی: <b>{stats.get('balance', 0):,} تومان</b>"
+                            f"💳 موجودی کیف پول: <b>{r_bal:,} تومان</b>\n"
+                            f"🏷️ اعتبار باقیمانده: <b>{r_avail_credit:,} تومان</b>"
                         )
                         await safe_edit_admin_message(context.bot, query.message.chat_id, query.message.message_id, err_msg, reply_markup=None)
-                        await query.answer("❌ موجودی کیف پول شما کافی نیست!", show_alert=True)
+                        await query.answer("❌ موجودی کیف پول و اعتبار شما کافی نیست!", show_alert=True)
                         return
 
                     is_renewal = bool(tx_data.get("is_renewal"))
@@ -1932,14 +1959,14 @@ class ResellerBotInstance:
                             data_limit=float(vol),
                             duration=int(days),
                             instant_activate=instant_act,
-                            payment_source="wallet",
+                            payment_source="auto",
                             selling_price=original_price,
                             profit_margin=res_profit,
-                            created_by=f"Telegram Bot ({caller_name})"
+                            created_by=f"{caller_name} / ربات"
                         )
                         mode_note = "⚡ فعال‌سازی آنی" if instant_act else "⏳ قرارگیری در صف رزرو"
                     else:
-                        db.deduct_reseller_balance(r_id, wholesale_cost, plan_name, account_name, selling_price=original_price, profit_margin=res_profit, created_by=f"Telegram Bot ({caller_name})")
+                        db.deduct_reseller_balance(r_id, wholesale_cost, plan_name, account_name, selling_price=original_price, profit_margin=res_profit, created_by=f"{caller_name} / ربات", payment_source="auto")
                         h_res = None
                         try:
                             r_client = get_reseller_hidify_client(r_id)
@@ -1980,7 +2007,7 @@ class ResellerBotInstance:
                     cursor = conn.cursor()
                     cursor.execute(
                         "UPDATE transactions SET status='approved', processed_by=?, processed_at=?, updated_at=? WHERE (order_id=? OR id=?) AND reseller_id=?",
-                        (f"Telegram Bot ({caller_name})", now_iso, now_iso, order_id, order_id, r_id)
+                        (f"{caller_name} / ربات", now_iso, now_iso, order_id, order_id, r_id)
                     )
                     conn.commit()
                     conn.close()
@@ -2078,7 +2105,7 @@ class ResellerBotInstance:
                     cursor = conn.cursor()
                     cursor.execute(
                         "UPDATE transactions SET status='rejected', processed_by=?, processed_at=?, updated_at=? WHERE (order_id=? OR id=?) AND reseller_id=?",
-                        (f"Telegram Bot ({caller_name})", now_iso, now_iso, order_id, order_id, r_id)
+                        (f"{caller_name} / ربات", now_iso, now_iso, order_id, order_id, r_id)
                     )
                     conn.commit()
                     conn.close()
