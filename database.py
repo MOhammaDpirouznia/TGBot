@@ -176,6 +176,22 @@ class Database:
             )
         """)
 
+        # جدول یادآورهای ادمین و هشدارها
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS admin_reminders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                type TEXT NOT NULL,
+                description TEXT,
+                target_date TEXT,
+                target_traffic REAL,
+                threshold_percent REAL,
+                is_active BOOLEAN DEFAULT 1,
+                last_notified_at TEXT,
+                created_at TEXT
+            )
+        """)
+
         # جدول پشتیبان‌ها
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS backups (
@@ -805,7 +821,7 @@ class Database:
         for col_def in [
             "custom_domain TEXT", "tutorial_domain TEXT", "logo_url TEXT", "favicon_url TEXT",
             "brand_title TEXT", "primary_color TEXT", "footer_text TEXT",
-            "portal_layout TEXT DEFAULT ''", "portal_plan_style TEXT DEFAULT ''"
+            "portal_layout TEXT DEFAULT ''", "portal_plan_style TEXT DEFAULT ''", "portal_palette TEXT DEFAULT 'inherit'"
         ]:
             try:
                 cursor.execute(f"ALTER TABLE resellers ADD COLUMN {col_def}")
@@ -12057,7 +12073,7 @@ class Database:
             allowed = [
                 "custom_domain", "tutorial_domain", "logo_url", "favicon_url",
                 "brand_title", "portal_title", "portal_subtitle", "support_phone", "support_username",
-                "primary_color", "footer_text", "portal_layout", "portal_plan_style", "updated_at"
+                "primary_color", "footer_text", "portal_layout", "portal_plan_style", "portal_palette", "updated_at"
             ]
             fields = []
             params = []

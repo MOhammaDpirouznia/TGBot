@@ -284,6 +284,96 @@ PALETTES: Dict[str, Dict[str, Any]] = {
             "mesh_blend": "screen"
         }
     },
+    "ruby_sunset": {
+        "id": "ruby_sunset",
+        "name": "غروب یاقوتی (قرمز و نارنجی)",
+        "subtitle": "ترکیبی گرم از طیف‌های قرمز، نارنجی و صورتی",
+        "description": "پالتی پرانرژی و جذاب با الهام از غروب آفتاب و رنگ‌های گرم پاییزی",
+        "primary_color": "#e11d48",
+        "primary_hover": "#be123c",
+        "accent_color": "#f97316",
+        "preview": {
+            "blob1": "#f43f5e",
+            "blob2": "#fb923c",
+            "blob3": "#e11d48",
+            "gradient": "linear-gradient(135deg, #f43f5e 0%, #fb923c 50%, #e11d48 100%)"
+        },
+        "light": {
+            "body_bg": "#fff1f2",
+            "card_bg": "rgba(255, 255, 255, 0.78)",
+            "card_border": "rgba(255, 255, 255, 0.88)",
+            "card_border_subtle": "rgba(254, 226, 226, 0.8)",
+            "card_shadow": "0 14px 38px -10px rgba(225, 29, 72, 0.08), 0 4px 14px rgba(0, 0, 0, 0.04)",
+            "text_main": "#1c1917",
+            "text_muted": "#57534e",
+            "chip_bg": "rgba(255, 255, 255, 0.7)",
+            "chip_border": "rgba(254, 226, 226, 0.9)",
+            "blob1_color": "rgba(244, 63, 94, 0.36)",
+            "blob2_color": "rgba(251, 146, 60, 0.30)",
+            "blob3_color": "rgba(225, 29, 72, 0.25)",
+            "mesh_blend": "multiply"
+        },
+        "dark": {
+            "body_bg": "#10090a",
+            "card_bg": "rgba(28, 15, 17, 0.75)",
+            "card_border": "rgba(225, 29, 72, 0.18)",
+            "card_border_subtle": "rgba(255, 255, 255, 0.06)",
+            "card_shadow": "0 20px 45px -12px rgba(0, 0, 0, 0.65), 0 0 25px rgba(225, 29, 72, 0.12)",
+            "text_main": "#f5f5f4",
+            "text_muted": "#a8a29e",
+            "chip_bg": "rgba(255, 255, 255, 0.05)",
+            "chip_border": "rgba(225, 29, 72, 0.22)",
+            "blob1_color": "rgba(244, 63, 94, 0.30)",
+            "blob2_color": "rgba(251, 146, 60, 0.24)",
+            "blob3_color": "rgba(225, 29, 72, 0.20)",
+            "mesh_blend": "screen"
+        }
+    },
+    "emerald_forest": {
+        "id": "emerald_forest",
+        "name": "جنگل زمرد (سبز و زرد)",
+        "subtitle": "طراوت طبیعت با طیف‌های سبز و زرد لیمویی",
+        "description": "پالتی آرامش‌بخش و شاداب با الهام از طبیعت و جنگل",
+        "primary_color": "#10b981",
+        "primary_hover": "#059669",
+        "accent_color": "#facc15",
+        "preview": {
+            "blob1": "#34d399",
+            "blob2": "#fde047",
+            "blob3": "#10b981",
+            "gradient": "linear-gradient(135deg, #34d399 0%, #fde047 50%, #10b981 100%)"
+        },
+        "light": {
+            "body_bg": "#f0fdf4",
+            "card_bg": "rgba(255, 255, 255, 0.78)",
+            "card_border": "rgba(255, 255, 255, 0.88)",
+            "card_border_subtle": "rgba(220, 252, 231, 0.8)",
+            "card_shadow": "0 14px 38px -10px rgba(16, 185, 129, 0.08), 0 4px 14px rgba(0, 0, 0, 0.04)",
+            "text_main": "#1e293b",
+            "text_muted": "#64748b",
+            "chip_bg": "rgba(255, 255, 255, 0.7)",
+            "chip_border": "rgba(220, 252, 231, 0.9)",
+            "blob1_color": "rgba(52, 211, 153, 0.36)",
+            "blob2_color": "rgba(253, 224, 71, 0.30)",
+            "blob3_color": "rgba(16, 185, 129, 0.25)",
+            "mesh_blend": "multiply"
+        },
+        "dark": {
+            "body_bg": "#020f09",
+            "card_bg": "rgba(11, 28, 20, 0.75)",
+            "card_border": "rgba(16, 185, 129, 0.18)",
+            "card_border_subtle": "rgba(255, 255, 255, 0.06)",
+            "card_shadow": "0 20px 45px -12px rgba(0, 0, 0, 0.65), 0 0 25px rgba(16, 185, 129, 0.12)",
+            "text_main": "#f8fafc",
+            "text_muted": "#94a3b8",
+            "chip_bg": "rgba(255, 255, 255, 0.05)",
+            "chip_border": "rgba(16, 185, 129, 0.22)",
+            "blob1_color": "rgba(52, 211, 153, 0.30)",
+            "blob2_color": "rgba(253, 224, 71, 0.24)",
+            "blob3_color": "rgba(16, 185, 129, 0.20)",
+            "mesh_blend": "screen"
+        }
+    },
     "classic_clean": {
         "id": "classic_clean",
         "name": "کلاسیک ساده (بدون هاله نوری)",

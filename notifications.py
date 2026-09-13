@@ -141,6 +141,9 @@ class NotificationScheduler:
             except Exception as e_off:
                 logger.error(f"Error checking offline subscriptions: {e_off}")
             
+            # Check Admin Reminders
+            await self._check_admin_reminders()
+            
             logger.info("Notifications checked successfully")
         except Exception as e:
             logger.error(f"Error checking notifications: {e}")
@@ -502,6 +505,54 @@ class NotificationScheduler:
             logger.error(f"Error sending manual notification: {e}")
             return False
 
+    async def _check_admin_reminders(self):
+        """Check admin reminders and send telegram notification if triggered."""
+        from bot import ADMIN_ID
+        if not ADMIN_ID or not self.bot:
+            return
+            
+        try:
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM admin_reminders WHERE is_active = 1")
+            reminders = [dict(r) for r in cursor.fetchall()]
+            
+            now_iso = get_now_iso()
+            
+            for r in reminders:
+                trigger = False
+                msg = ""
+                if r['type'] == 'date':
+                    if r['target_date'] and r['target_date'] <= now_iso:
+                        if not r['last_notified_at'] or r['last_notified_at'] < (datetime.utcnow() - timedelta(days=1)).isoformat() + "Z":
+                            trigger = True
+                            msg = f"🔔 یادآوری سررسید: {r['title']}\nتوضیحات: {r['description']}"
+                elif r['type'] == 'traffic':
+                    c = conn.cursor()
+                    c.execute("SELECT SUM(data_used) as total_used FROM subscriptions")
+                    row = c.fetchone()
+                    total_used = row['total_used'] or 0
+                    limit = r['target_traffic'] or 0
+                    threshold = r['threshold_percent'] or 100
+                    
+                    if limit > 0 and (total_used / limit) * 100 >= threshold:
+                        if not r['last_notified_at'] or r['last_notified_at'] < (datetime.utcnow() - timedelta(days=1)).isoformat() + "Z":
+                            trigger = True
+                            msg = f"⚠️ یادآوری ترافیک: {r['title']}\nترافیک مصرفی: {total_used:.2f} GB از {limit:.2f} GB (بیش از {threshold}%)\nتوضیحات: {r['description']}"
+                
+                if trigger:
+                    try:
+                        await self.bot.send_message(
+                            chat_id=ADMIN_ID,
+                            text=msg
+                        )
+                        cursor.execute("UPDATE admin_reminders SET last_notified_at = ? WHERE id = ?", (now_iso, r['id']))
+                        conn.commit()
+                    except Exception as ex:
+                        logger.error(f"Failed to send admin reminder: {ex}")
+            conn.close()
+        except Exception as e:
+            logger.error(f"Error in _check_admin_reminders: {e}")
 
 # نمونه singleton
 notification_scheduler = NotificationScheduler()

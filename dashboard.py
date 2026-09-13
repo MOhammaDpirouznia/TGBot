@@ -11287,6 +11287,7 @@ def settings():
             portal_show_troubleshoot = "1" if request.form.get("portal_show_troubleshoot") else "0"
             portal_layout = request.form.get("portal_layout", "classic").strip().lower()
             portal_plan_style = request.form.get("portal_plan_style", "glass_classic").strip().lower()
+            portal_palette = request.form.get("portal_palette", "inherit").strip()
 
             db.save_setting("portal_proxy_path", portal_proxy_path)
             db.save_setting("portal_title", portal_title)
@@ -15642,6 +15643,7 @@ def reseller_branding():
         support_username = request.form.get("support_username", "").strip().lstrip("@")
         portal_layout = request.form.get("portal_layout", "").strip().lower()
         portal_plan_style = request.form.get("portal_plan_style", "").strip().lower()
+        portal_palette = request.form.get("portal_palette", "inherit").strip()
 
         # بررسی پاک‌سازی یا آپلود لوگوی اختصاصی
         if request.form.get("clear_logo"):
@@ -15669,7 +15671,8 @@ def reseller_branding():
             "primary_color": primary_color,
             "footer_text": footer_text,
             "portal_layout": portal_layout,
-            "portal_plan_style": portal_plan_style
+            "portal_plan_style": portal_plan_style,
+            "portal_palette": portal_palette
         }
 
         # فقط در صورتی که فیلد دامنه در فرم ارسال شده باشد آن را پردازش کن
@@ -19744,3 +19747,91 @@ def start_dashboard_thread():
 
 if __name__ == "__main__":
     run_dashboard(debug=True)
+@app.route('/admin/reminders', methods=['GET'])
+def admin_reminders():
+    if not session.get('is_admin'):
+        return redirect(url_for('login'))
+    
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM admin_reminders ORDER BY id DESC")
+    reminders = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    
+    # Calculate traffic limit percentages if type is traffic
+    for r in reminders:
+        if r['type'] == 'traffic':
+            conn = db.get_connection()
+            c = conn.cursor()
+            c.execute("SELECT SUM(data_used) as total_used FROM subscriptions")
+            row = c.fetchone()
+            total_used = row['total_used'] or 0
+            r['current_traffic'] = total_used
+            conn.close()
+            
+    return render_template('admin_reminders.html', reminders=reminders)
+
+@app.route('/api/admin/reminders/active', methods=['GET'])
+def api_admin_reminders_active():
+    if not session.get('is_admin'):
+        return jsonify([])
+        
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM admin_reminders WHERE is_active = 1")
+    reminders = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    
+    active_alerts = []
+    now_iso = get_now_iso()
+    for r in reminders:
+        if r['type'] == 'date':
+            if r['target_date'] and r['target_date'] <= now_iso:
+                active_alerts.append(r)
+        elif r['type'] == 'traffic':
+            conn = db.get_connection()
+            c = conn.cursor()
+            c.execute("SELECT SUM(data_used) as total_used FROM subscriptions")
+            row = c.fetchone()
+            total_used = row['total_used'] or 0
+            conn.close()
+            limit = r.get('target_traffic') or 0
+            threshold = r.get('threshold_percent') or 100
+            if limit > 0 and (total_used / limit) * 100 >= threshold:
+                r['current_traffic'] = total_used
+                active_alerts.append(r)
+                
+    return jsonify(active_alerts)
+
+@app.route('/api/admin/reminders/add', methods=['POST'])
+def api_admin_reminders_add():
+    if not session.get('is_admin'):
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+    
+    data = request.json
+    title = data.get('title')
+    rtype = data.get('type')
+    desc = data.get('description', '')
+    target_date = data.get('target_date')
+    target_traffic = data.get('target_traffic')
+    threshold_percent = data.get('threshold_percent')
+    
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO admin_reminders (title, type, description, target_date, target_traffic, threshold_percent, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                   (title, rtype, desc, target_date, target_traffic, threshold_percent, get_now_iso()))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+@app.route('/api/admin/reminders/delete/<int:id>', methods=['POST'])
+def api_admin_reminders_delete(id):
+    if not session.get('is_admin'):
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+        
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM admin_reminders WHERE id = ?", (id,))
+    conn.commit()
+    conn.close()
+        return render_template("reseller_branding.html", reseller=reseller, available_palettes=get_all_palettes())
