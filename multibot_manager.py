@@ -27,7 +27,7 @@ load_dotenv()
 from database import db
 from utils import (
     get_now_iso, get_now_naive, get_single_link_template, format_single_link,
-    generate_qr_code_bytes, gregorian_to_shamsi, days_remaining_shamsi
+    generate_qr_code_bytes, gregorian_to_shamsi, days_remaining_shamsi, get_now_shamsi
 )
 from admin_manager import load_plans, get_all_plans, get_plan_telegram_emoji
 from hidify import HidifyClient
