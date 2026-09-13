@@ -4473,9 +4473,12 @@ async def admin_order_pay_action_callback(update: Update, context: ContextTypes.
                         status="active"
                     )
                 if user_uuid:
-                    h_url = db.get_setting("hiddify_url") or ""
-                    u_proxy = db.get_setting("user_proxy_path") or ""
-                    sub_url = f"{h_url}/{u_proxy}/{user_uuid}/"
+                    h_url = db.get_setting("hiddify_url") or HIDIFY_PANEL_URL or ""
+                    u_proxy = db.get_setting("user_proxy_path") or USER_PROXY_PATH or HIDIFY_PROXY_PATH or "user"
+                    if h_url:
+                        sub_url = f"{h_url.rstrip('/')}/{u_proxy.strip('/')}/{user_uuid}/"
+                    else:
+                        sub_url = f"https://vpn.service/sub/{account_name}"
         else:
             try:
                 res_create = await hidify.create_user(
@@ -4486,7 +4489,12 @@ async def admin_order_pay_action_callback(update: Update, context: ContextTypes.
                     comment=str(user_id or f"TG:{order_id}")
                 )
                 user_uuid = res_create.get("uuid", "")
-                sub_url = res_create.get("subscription_url", "")
+                h_url = db.get_setting("hiddify_url") or HIDIFY_PANEL_URL or ""
+                u_proxy = db.get_setting("user_proxy_path") or USER_PROXY_PATH or HIDIFY_PROXY_PATH or "user"
+                if user_uuid and h_url:
+                    sub_url = f"{h_url.rstrip('/')}/{u_proxy.strip('/')}/{user_uuid}/"
+                elif user_uuid:
+                    sub_url = f"https://vpn.service/sub/{account_name}"
                 if user_uuid:
                     db.save_subscription(
                         telegram_id=user_id,
@@ -4526,26 +4534,88 @@ async def admin_order_pay_action_callback(update: Update, context: ContextTypes.
                 pass
 
         if user_id and int(user_id) > 0:
-            try:
-                if queued_renewal:
-                    c_msg = (
-                        f"🎉 <b>تمدید اشتراک شما با موفقیت تایید و در صف تمدید رزرو شد!</b>\n\n"
-                        f"🔢 <b>نوبت فعال‌سازی:</b> نوبت {queued_order}\n"
-                        f"📦 پلن رزرو: <b>{plan_name}</b>\n"
-                        f"📊 حجم: <b>{data_limit} گیگابایت</b> | ⏳ مدت: <b>{duration} روز</b>\n\n"
-                        f"🔄 <b>زمان فعال‌سازی خودکار:</b> پس از مصرف ۹۹.۵٪ حجم یا در ساعت ۲۳:۵۵ روز پایانی بسته فعلی\n"
-                        f"⚡ در صورت تمایل می‌توانید در منوی «وضعیت اشتراک» این بسته را به صورت آنی فعال نمایید."
+            target_uid = int(user_id)
+            c_title = "🎉 **پرداخت شما تایید شد و اشتراک فعال گردید!**" if not is_renewal else "🔄 **اشتراک شما با موفقیت تمدید شد!**"
+            c_details = (
+                f"📦 پلن: **{plan_name}**\n"
+                f"👤 نام اکانت: `{account_name}`\n"
+                f"📊 حجم: **{data_limit} گیگابایت** | ⏳ مدت: **{duration} روز**\n"
+                f"🔖 کد سفارش: `{order_id}`"
+            )
+            if queued_renewal:
+                c_title = "⏳ **تمدید اشتراک شما تایید و در صف رزرو شد!**"
+                c_details += f"\n🔢 نوبت فعال‌سازی: نوبت {queued_order}\n🔄 این بسته پس از اتمام بسته فعلی به صورت خودکار فعال خواهد شد."
+
+            # بررسی ارسال از طریق ربات اختصاصی نماینده در صورتی که سفارش متعلق به نماینده باشد
+            reseller_bot_tok = None
+            if r_id:
+                try:
+                    r_info = db.get_reseller(r_id)
+                    if r_info and r_info.get("bot_token"):
+                        reseller_bot_tok = str(r_info["bot_token"]).strip()
+                except Exception:
+                    pass
+
+            notified = False
+            if reseller_bot_tok:
+                try:
+                    from dashboard import send_subscription_card_sync
+                    notified = send_subscription_card_sync(
+                        chat_id=target_uid,
+                        sub_url=sub_url,
+                        title=c_title,
+                        details=c_details,
+                        bot_token=reseller_bot_tok,
+                        reseller_id=r_id
                     )
-                else:
-                    c_msg = (
-                        f"🎉 <b>پرداخت شما تایید شد و اشتراک فعال گردید!</b>\n\n"
-                        f"📦 پلن: <b>{plan_name}</b>\n"
-                        f"📊 حجم: <b>{data_limit} گیگابایت</b> | ⏳ مدت: <b>{duration} روز</b>\n"
-                        + (f"🔗 لینک اشتراک شما:\n<code>{sub_url}</code>\n" if sub_url else "")
+                    if notified:
+                        logger.info(f"Customer {target_uid} successfully notified via reseller #{r_id} bot token.")
+                except Exception as e_tok:
+                    logger.error(f"Failed to notify customer via reseller bot token: {e_tok}")
+
+            if not notified:
+                try:
+                    qr_bytes = generate_qr_code_bytes(sub_url) if sub_url else None
+                    kb_btns = []
+                    if sub_url and (sub_url.startswith("http://") or sub_url.startswith("https://")):
+                        kb_btns.append([InlineKeyboardButton("🚀 اتصال سریع به برنامه", url=sub_url)])
+                    if user_uuid:
+                        kb_btns.append([InlineKeyboardButton("📥 دریافت کانفیگ تکی", callback_data=f"single_link_{user_uuid}")])
+                    kb_btns.append([InlineKeyboardButton("📱 راهنمای کپی و اتصال", callback_data="copy_link")])
+                    reply_markup = InlineKeyboardMarkup(kb_btns) if kb_btns else None
+
+                    caption_text = (
+                        f"{c_title}\n\n"
+                        f"{c_details}\n\n"
+                        + (f"🔗 <b>لینک سابسکریپشن اختصاصی شما (برای کپی لمس کنید):</b>\n<code>{sub_url}</code>\n\n" if sub_url else "")
+                        + "💡 جهت اتصال، لینک بالا را کپی کرده یا بارکد QR زیر را در نرم‌افزار اسکن فرمایید."
                     )
-                await context.bot.send_message(chat_id=int(user_id), text=c_msg, parse_mode="HTML")
-            except Exception as e_not:
-                logger.error(f"Failed to notify user of payment approval: {e_not}")
+
+                    sent_photo = False
+                    if qr_bytes:
+                        try:
+                            await context.bot.send_photo(
+                                chat_id=target_uid,
+                                photo=qr_bytes,
+                                caption=caption_text,
+                                reply_markup=reply_markup,
+                                parse_mode="HTML"
+                            )
+                            sent_photo = True
+                            notified = True
+                        except Exception as e_ph:
+                            logger.warning(f"Failed to send QR photo via context.bot: {e_ph}")
+
+                    if not sent_photo:
+                        await context.bot.send_message(
+                            chat_id=target_uid,
+                            text=caption_text,
+                            reply_markup=reply_markup,
+                            parse_mode="HTML"
+                        )
+                        notified = True
+                except Exception as e_not:
+                    logger.error(f"Failed to notify user of payment approval in bot.py: {e_not}")
 
         if queued_renewal:
             done_text = f"{orig_text}\n\n✅ <b>پرداخت سفارش {order_id} تایید و بسته در نوبت {queued_order} صف تمدید رزرو شد.</b>"
@@ -6112,60 +6182,8 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await query.edit_message_text(p_text, reply_markup=kb, parse_mode="Markdown")
             return ADMIN_MENU
 
-        elif data.startswith("adm_pay_app_"):
-            order_id = data.replace("adm_pay_app_", "")
-            conn = db.get_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM transactions WHERE order_id=? OR id=?", (order_id, order_id))
-            tx_row = cursor.fetchone()
-            if tx_row:
-                tx = dict(tx_row)
-                cursor.execute("UPDATE transactions SET status='approved', updated_at=? WHERE id=?", (get_now_iso(), tx['id']))
-                conn.commit()
-                def_acc = db.get_customer_default_account("admin", 0)
-                if def_acc:
-                    try:
-                        db.add_card_transaction(card_id=def_acc['id'], owner_type="admin", tx_type="deposit", amount=tx.get('amount', 0), category="فروش اشتراک", title=f"تایید فیش سفارش {order_id}", actor="super_admin")
-                    except Exception:
-                        pass
-                conn.close()
-                if tx.get("user_id") and int(tx["user_id"]) > 0:
-                    try:
-                        await context.bot.send_message(chat_id=int(tx["user_id"]), text=f"✅ فیش پرداخت سفارش شما به مبلغ {tx.get('amount', 0):,} تومان تایید شد.")
-                    except Exception:
-                        pass
-                await query.answer("✅ فیش پرداخت با موفقیت تایید و به موجودی حساب افزوده شد.", show_alert=True)
-                from admin_bot_admin import get_admin_payments_payload
-                txt, kb = get_admin_payments_payload("pending")
-                await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
-            else:
-                conn.close()
-                await query.answer("❌ سفارش یافت نشد.", show_alert=True)
-            return ADMIN_MENU
-
-        elif data.startswith("adm_pay_rej_"):
-            order_id = data.replace("adm_pay_rej_", "")
-            conn = db.get_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM transactions WHERE order_id=? OR id=?", (order_id, order_id))
-            tx_row = cursor.fetchone()
-            if tx_row:
-                tx = dict(tx_row)
-                cursor.execute("UPDATE transactions SET status='rejected', updated_at=? WHERE id=?", (get_now_iso(), tx['id']))
-                conn.commit()
-                conn.close()
-                if tx.get("user_id") and int(tx["user_id"]) > 0:
-                    try:
-                        await context.bot.send_message(chat_id=int(tx["user_id"]), text=f"❌ متاسفانه فیش پرداخت سفارش #{order_id} تایید نشد.")
-                    except Exception:
-                        pass
-                await query.answer("❌ فیش پرداخت رد شد.", show_alert=True)
-                from admin_bot_admin import get_admin_payments_payload
-                txt, kb = get_admin_payments_payload("pending")
-                await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
-            else:
-                conn.close()
-                await query.answer("❌ سفارش یافت نشد.", show_alert=True)
+        elif data.startswith("adm_pay_app_") or data.startswith("adm_pay_rej_"):
+            await admin_order_pay_action_callback(update, context)
             return ADMIN_MENU
 
         elif data == "adm_adv_discounts":

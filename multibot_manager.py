@@ -319,7 +319,7 @@ class ResellerBotInstance:
             is_adm, role = db.is_reseller_bot_admin(r_id, user_id)
             if not is_adm:
                 reseller_tg = self.reseller_data.get("telegram_id")
-                if reseller_tg and user_id == reseller_tg:
+                if reseller_tg and str(user_id).strip() == str(reseller_tg).strip():
                     return True, "main"
                 return False, ""
             return True, role
@@ -1596,8 +1596,12 @@ class ResellerBotInstance:
                     if is_renewal and target_sub:
                         sub_db_id = target_sub["id"]
                         uuid_val = target_sub.get("hidify_uuid") or str(target_sub["id"])
-                        if HIDIFY_PANEL_URL and uuid_val:
-                            sub_url = f"{HIDIFY_PANEL_URL}/{HIDIFY_PROXY_PATH}/{uuid_val}/"
+                        h_url = HIDIFY_PANEL_URL or db.get_setting("hiddify_url") or ""
+                        u_proxy = HIDIFY_PROXY_PATH or db.get_setting("user_proxy_path") or "user"
+                        if h_url and uuid_val:
+                            sub_url = f"{h_url.rstrip('/')}/{u_proxy.strip('/')}/{uuid_val}/"
+                        elif uuid_val:
+                            sub_url = f"https://vpn.service/sub/{account_name}"
 
                         if instant_act and target_sub.get("hidify_uuid"):
                             try:
@@ -1641,8 +1645,10 @@ class ResellerBotInstance:
                             logger.error(f"Hiddify creation error: {e}")
 
                         uuid_val = h_res.get("uuid") if h_res else None
-                        if uuid_val and HIDIFY_PANEL_URL:
-                            sub_url = f"{HIDIFY_PANEL_URL}/{HIDIFY_PROXY_PATH}/{uuid_val}/"
+                        h_url = HIDIFY_PANEL_URL or db.get_setting("hiddify_url") or ""
+                        u_proxy = HIDIFY_PROXY_PATH or db.get_setting("user_proxy_path") or "user"
+                        if uuid_val and h_url:
+                            sub_url = f"{h_url.rstrip('/')}/{u_proxy.strip('/')}/{uuid_val}/"
                         else:
                             sub_url = f"https://vpn.service/sub/{account_name}"
 
@@ -1748,9 +1754,9 @@ class ResellerBotInstance:
                             cust_msg += f"🔗 <b>لینک سابسکریپشن اختصاصی شما:</b>\n<code>{sub_url}</code>{cashback_note}\n\n"
                             cust_msg += "💡 جهت اتصال، لینک بالا را کپی کرده یا بارکد QR زیر را در نرم‌افزار اسکن فرمایید."
 
-                            kb_btns = [
-                                [InlineKeyboardButton("🚀 اتصال سریع به برنامه", url=sub_url)],
-                            ]
+                            kb_btns = []
+                            if sub_url and (sub_url.startswith("http://") or sub_url.startswith("https://")):
+                                kb_btns.append([InlineKeyboardButton("🚀 اتصال سریع به برنامه", url=sub_url)])
                             if uuid_val:
                                 kb_btns.append([
                                     InlineKeyboardButton("📥 دریافت کانفیگ تکی", callback_data=f"r_single_link_{uuid_val}_{sub_db_id or 0}")
@@ -1760,21 +1766,46 @@ class ResellerBotInstance:
                             ])
 
                             qr_bytes = generate_qr_code_bytes(sub_url) if sub_url else None
+                            delivered = False
                             if qr_bytes:
-                                await context.bot.send_photo(
-                                    chat_id=target_uid,
-                                    photo=qr_bytes,
-                                    caption=cust_msg,
-                                    reply_markup=InlineKeyboardMarkup(kb_btns),
-                                    parse_mode="HTML"
-                                )
-                            else:
-                                await context.bot.send_message(
-                                    chat_id=target_uid,
-                                    text=cust_msg,
-                                    reply_markup=InlineKeyboardMarkup(kb_btns),
-                                    parse_mode="HTML"
-                                )
+                                try:
+                                    await context.bot.send_photo(
+                                        chat_id=target_uid,
+                                        photo=qr_bytes,
+                                        caption=cust_msg,
+                                        reply_markup=InlineKeyboardMarkup(kb_btns) if kb_btns else None,
+                                        parse_mode="HTML"
+                                    )
+                                    delivered = True
+                                except Exception as e_ph:
+                                    logger.warning(f"Failed to send QR photo via context.bot to {target_uid}: {e_ph}")
+
+                            if not delivered:
+                                try:
+                                    await context.bot.send_message(
+                                        chat_id=target_uid,
+                                        text=cust_msg,
+                                        reply_markup=InlineKeyboardMarkup(kb_btns) if kb_btns else None,
+                                        parse_mode="HTML"
+                                    )
+                                    delivered = True
+                                except Exception as e_txt:
+                                    logger.error(f"Failed to send text message via context.bot to {target_uid}: {e_txt}")
+
+                            if not delivered and target_uid > 0:
+                                try:
+                                    from dashboard import send_subscription_card_sync
+                                    bot_tok = (self.reseller_data.get("bot_token") or "").strip()
+                                    send_subscription_card_sync(
+                                        chat_id=target_uid,
+                                        sub_url=sub_url,
+                                        title=f"🎉 **رسید پرداخت شما با کد سفارش: {order_id} تایید شد!**",
+                                        details=f"📦 پلن: **{pname}**\n👤 نام اکانت: `{account_name}`\n📊 حجم: **{vol} گیگابایت** | ⏳ مدت: **{days} روز**",
+                                        bot_token=bot_tok,
+                                        reseller_id=r_id
+                                    )
+                                except Exception as e_fb:
+                                    logger.error(f"Fallback send_subscription_card_sync failed for {target_uid}: {e_fb}")
                     except Exception as e_cust:
                         logger.error(f"Failed to deliver config with QR to customer {target_uid}: {e_cust}")
 
@@ -1931,11 +1962,16 @@ class ResellerBotInstance:
                     elif "instant_act:0" in comm:
                         instant_act = False
 
+                    h_url = HIDIFY_PANEL_URL or db.get_setting("hiddify_url") or ""
+                    u_proxy = HIDIFY_PROXY_PATH or db.get_setting("user_proxy_path") or "user"
+
                     if target_sub:
                         sub_db_id = target_sub["id"]
                         uuid_created = target_sub.get("hidify_uuid") or str(target_sub["id"])
-                        if HIDIFY_PANEL_URL and uuid_created:
-                            sub_url = f"{HIDIFY_PANEL_URL}/{HIDIFY_PROXY_PATH}/{uuid_created}/"
+                        if h_url and uuid_created:
+                            sub_url = f"{h_url.rstrip('/')}/{u_proxy.strip('/')}/{uuid_created}/"
+                        elif uuid_created:
+                            sub_url = f"https://vpn.service/sub/{account_name}"
 
                         if instant_act and target_sub.get("hidify_uuid"):
                             try:
@@ -1981,8 +2017,8 @@ class ResellerBotInstance:
 
                         uuid_val = h_res.get("uuid") if h_res else None
                         uuid_created = uuid_val
-                        if uuid_val and HIDIFY_PANEL_URL:
-                            sub_url = f"{HIDIFY_PANEL_URL}/{HIDIFY_PROXY_PATH}/{uuid_val}/"
+                        if uuid_val and h_url:
+                            sub_url = f"{h_url.rstrip('/')}/{u_proxy.strip('/')}/{uuid_val}/"
                         else:
                             sub_url = f"https://vpn.service/sub/{account_name}"
 
@@ -2053,32 +2089,57 @@ class ResellerBotInstance:
                                     f"📦 پلن: <b>{html.escape(str(plan_name))}</b>\n"
                                     f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
                                     f"📊 حجم: <b>{vol} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>\n\n"
-                                    + (f"🔗 لینک اتصال اختصاصی:\n<code>{sub_url}</code>\n\n" if sub_url else "")
-                                    + "💡 جهت اتصال، لینک بالا را کپی کرده یا بارکد QR زیر را اسکن فرمایید."
+                                    + (f"🔗 <b>لینک سابسکریپشن اختصاصی شما:</b>\n<code>{sub_url}</code>\n\n" if sub_url else "")
+                                    + "💡 جهت اتصال، لینک بالا را کپی کرده یا بارکد QR زیر را در نرم‌افزار اسکن فرمایید."
                                 )
                                 kb_btns = []
-                                if sub_url:
-                                    kb_btns.append([InlineKeyboardButton("🚀 اتصال سریع", url=sub_url)])
+                                if sub_url and (sub_url.startswith("http://") or sub_url.startswith("https://")):
+                                    kb_btns.append([InlineKeyboardButton("🚀 اتصال سریع به برنامه", url=sub_url)])
                                 if uuid_created:
                                     kb_btns.append([InlineKeyboardButton("📥 دریافت کانفیگ تکی", callback_data=f"r_single_link_{uuid_created}_{sub_db_id or 0}")])
                                 kb_btns.append([InlineKeyboardButton("📱 راهنمای کپی و اتصال", callback_data="r_copy_help")])
 
                                 qr_bytes = generate_qr_code_bytes(sub_url) if sub_url else None
+                                delivered = False
                                 if qr_bytes:
-                                    await context.bot.send_photo(
-                                        chat_id=int(user_id),
-                                        photo=qr_bytes,
-                                        caption=c_msg,
-                                        reply_markup=InlineKeyboardMarkup(kb_btns),
-                                        parse_mode="HTML"
-                                    )
-                                else:
-                                    await context.bot.send_message(
-                                        chat_id=int(user_id),
-                                        text=c_msg,
-                                        reply_markup=InlineKeyboardMarkup(kb_btns) if kb_btns else None,
-                                        parse_mode="HTML"
-                                    )
+                                    try:
+                                        await context.bot.send_photo(
+                                            chat_id=int(user_id),
+                                            photo=qr_bytes,
+                                            caption=c_msg,
+                                            reply_markup=InlineKeyboardMarkup(kb_btns) if kb_btns else None,
+                                            parse_mode="HTML"
+                                        )
+                                        delivered = True
+                                    except Exception as e_ph:
+                                        logger.warning(f"Failed to send QR photo via context.bot to {user_id}: {e_ph}")
+
+                                if not delivered:
+                                    try:
+                                        await context.bot.send_message(
+                                            chat_id=int(user_id),
+                                            text=c_msg,
+                                            reply_markup=InlineKeyboardMarkup(kb_btns) if kb_btns else None,
+                                            parse_mode="HTML"
+                                        )
+                                        delivered = True
+                                    except Exception as e_txt:
+                                        logger.error(f"Failed to send text message via context.bot to {user_id}: {e_txt}")
+
+                                if not delivered and user_id and int(user_id) > 0:
+                                    try:
+                                        from dashboard import send_subscription_card_sync
+                                        bot_tok = (self.reseller_data.get("bot_token") or "").strip()
+                                        send_subscription_card_sync(
+                                            chat_id=int(user_id),
+                                            sub_url=sub_url,
+                                            title=f"🎉 **رسید پرداخت شما با کد سفارش: {order_id} تایید شد!**",
+                                            details=f"📦 پلن: **{plan_name}**\n👤 نام اکانت: `{account_name}`\n📊 حجم: **{vol} گیگابایت** | ⏳ مدت: **{days} روز**",
+                                            bot_token=bot_tok,
+                                            reseller_id=r_id
+                                        )
+                                    except Exception as e_fb:
+                                        logger.error(f"Fallback send_subscription_card_sync failed for {user_id}: {e_fb}")
                         except Exception as e_u:
                             logger.error(f"Failed to notify customer in res_pay_app: {e_u}")
 
@@ -2514,7 +2575,9 @@ class ResellerBotInstance:
                     return
 
                 uuid_val = target_sub["hidify_uuid"]
-                sub_url = f"{HIDIFY_PANEL_URL}/{HIDIFY_PROXY_PATH}/{uuid_val}/"
+                h_url = HIDIFY_PANEL_URL or db.get_setting("hiddify_url") or ""
+                u_proxy = HIDIFY_PROXY_PATH or db.get_setting("user_proxy_path") or "user"
+                sub_url = f"{h_url.rstrip('/')}/{u_proxy.strip('/')}/{uuid_val}/" if h_url else f"https://vpn.service/sub/{uuid_val}"
                 qr_bytes = generate_qr_code_bytes(sub_url)
 
                 caption = (
@@ -3828,8 +3891,9 @@ class ResellerBotInstance:
                     except Exception as e_rec:
                         logger.error(f"Error logging multibot tx/history: {e_rec}")
 
-                    proxy_path = (USER_PROXY_PATH or HIDIFY_PROXY_PATH or "user").strip("/")
-                    sub_url = f"{HIDIFY_PANEL_URL.rstrip('/')}/{proxy_path}/{uuid_val}/"
+                    proxy_path = (USER_PROXY_PATH or HIDIFY_PROXY_PATH or db.get_setting("user_proxy_path") or "user").strip("/")
+                    h_url = HIDIFY_PANEL_URL or db.get_setting("hiddify_url") or ""
+                    sub_url = f"{h_url.rstrip('/')}/{proxy_path}/{uuid_val}/" if h_url else f"https://vpn.service/sub/{uuid_val}"
 
                     context.user_data.pop("res_create_plan_id", None)
                     context.user_data.pop("res_create_account_name", None)

@@ -89,7 +89,13 @@ def get_admin_id() -> int:
     return int(os.getenv("ADMIN_ID", 0))
 
 def get_hiddify_url() -> str:
-    return os.getenv("HIDIFY_PANEL_URL", "").rstrip("/")
+    url = os.getenv("HIDIFY_PANEL_URL", "").rstrip("/")
+    if not url:
+        try:
+            url = (db.get_setting("hiddify_url") or "").rstrip("/")
+        except Exception:
+            pass
+    return url
 
 def get_hiddify_key() -> str:
     return os.getenv("HIDIFY_API_KEY", "")
@@ -1221,60 +1227,111 @@ def notify_auth_event(event_type: str, username: str, contact_info: dict, ip: st
             logger.error(f"Error sending auth SMS notification to {phone}: {e}")
 
 
-def send_subscription_card_sync(chat_id: int, sub_url: str, title: str, details: str):
-    """ارسال کارت اشتراک همراه با بارکد QR و دکمه‌های اتصال مستقیم از وب به کاربر"""
-    bot_token = get_bot_token()
-    clean_sub_url = sub_url.strip()
-    qr_bytes = generate_qr_code_bytes(clean_sub_url)
+def send_subscription_card_sync(chat_id: int, sub_url: str, title: str, details: str, bot_token: str = None, reseller_id: int = None) -> bool:
+    """ارسال کارت اشتراک همراه با بارکد QR و دکمه‌های اتصال مستقیم از وب به کاربر با پشتیبانی از ربات اصلی یا ربات نماینده"""
+    if not bot_token and reseller_id:
+        try:
+            r_data = db.get_reseller(reseller_id)
+            if r_data and r_data.get("bot_token"):
+                bot_token = str(r_data.get("bot_token")).strip()
+        except Exception:
+            pass
 
-    inline_keyboard = {
-        "inline_keyboard": [
-            [{"text": "🌐 صفحه کاربری و اتصال سریع", "url": clean_sub_url}],
-            [{"text": "📋 کپی لینک", "callback_data": "copy_link"}],
-        ]
-    }
+    active_token = (bot_token or get_bot_token() or "").strip()
+    clean_sub_url = (sub_url or "").strip()
+    qr_bytes = generate_qr_code_bytes(clean_sub_url) if clean_sub_url else None
+
+    # دکمه‌های شیشه‌ای - دکمه لینک وب تنها در صورت شروع با پروتکل معتبر اضافه شود
+    keyboard_rows = []
+    if clean_sub_url and (clean_sub_url.startswith("http://") or clean_sub_url.startswith("https://")):
+        keyboard_rows.append([{"text": "🌐 صفحه کاربری و اتصال سریع", "url": clean_sub_url}])
+    keyboard_rows.append([{"text": "📋 کپی لینک", "callback_data": "copy_link"}])
+
+    inline_keyboard = {"inline_keyboard": keyboard_rows}
+
+    # تبدیل ایمن مارک‌داون‌های احتمالی به تگ‌های HTML معتبر
+    def to_html(s: str) -> str:
+        if not s:
+            return ""
+        s = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", str(s))
+        s = re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
+        return s
+
+    safe_title = to_html(title)
+    safe_details = to_html(details)
 
     caption = (
-        f"{title}\n\n"
-        f"{details}\n\n"
+        f"{safe_title}\n\n"
+        f"{safe_details}\n\n"
         f"🔗 <b>لینک اتصال شما (برای کپی لمس کنید):</b>\n"
         f"<code>{clean_sub_url}</code>\n\n"
         f"💡 <b>راهنمای اتصال:</b>\n"
         f"1️⃣ کادر لینک بالا را لمس کنید تا کپی شود.\n"
         f"2️⃣ در اپلیکیشن (Hiddify / v2rayNG / Streisand) دکمه افزودن کانفیگ از کلیپ‌بورد را بزنید.\n"
-        f"3️⃣ یا از دکمه «🌐 صفحه کاربری و اتصال سریع» استفاده نمایید."
+        + (f"3️⃣ یا از دکمه «🌐 صفحه کاربری و اتصال سریع» در زیر استفاده نمایید." if len(keyboard_rows) > 1 else "")
     )
 
-    if qr_bytes and bot_token:
-        try:
-            boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
-            body = bytearray()
-            # chat_id
-            body.extend(f"--{boundary}\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n{chat_id}\r\n".encode())
-            # caption
-            body.extend(f"--{boundary}\r\nContent-Disposition: form-data; name=\"caption\"\r\n\r\n{caption}\r\n".encode())
-            # parse_mode
-            body.extend(f"--{boundary}\r\nContent-Disposition: form-data; name=\"parse_mode\"\r\n\r\nHTML\r\n".encode())
-            # reply_markup
-            body.extend(f"--{boundary}\r\nContent-Disposition: form-data; name=\"reply_markup\"\r\n\r\n{json.dumps(inline_keyboard)}\r\n".encode())
-            # photo file
-            body.extend(f"--{boundary}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"qr.png\"\r\nContent-Type: image/png\r\n\r\n".encode())
-            body.extend(qr_bytes)
-            body.extend(f"\r\n--{boundary}--\r\n".encode())
+    plain_caption = re.sub(r"<[^>]+>", "", caption)
 
-            req = urllib.request.Request(
-                f"https://api.telegram.org/bot{bot_token}/sendPhoto",
-                data=bytes(body),
-                headers={"Content-Type": f"multipart/form-data; boundary={boundary}"}
-            )
-            with urllib.request.urlopen(req, timeout=12) as resp:
-                if resp.status == 200:
-                    return True
-        except Exception as e:
-            logger.error(f"Error sending photo card via sync web: {e}")
+    tokens_to_try = [active_token]
+    main_tok = (get_bot_token() or "").strip()
+    if main_tok and main_tok not in tokens_to_try:
+        tokens_to_try.append(main_tok)
 
-    # Fallback به ارسال متنی
-    return send_telegram_msg(chat_id, caption, reply_markup=inline_keyboard)
+    for tok in tokens_to_try:
+        if not tok:
+            continue
+        if qr_bytes:
+            # ۱. ارسال عکس QR با مد HTML
+            try:
+                boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+                body = bytearray()
+                body.extend(f"--{boundary}\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n{chat_id}\r\n".encode())
+                body.extend(f"--{boundary}\r\nContent-Disposition: form-data; name=\"caption\"\r\n\r\n{caption}\r\n".encode())
+                body.extend(f"--{boundary}\r\nContent-Disposition: form-data; name=\"parse_mode\"\r\n\r\nHTML\r\n".encode())
+                body.extend(f"--{boundary}\r\nContent-Disposition: form-data; name=\"reply_markup\"\r\n\r\n{json.dumps(inline_keyboard)}\r\n".encode())
+                body.extend(f"--{boundary}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"qr.png\"\r\nContent-Type: image/png\r\n\r\n".encode())
+                body.extend(qr_bytes)
+                body.extend(f"\r\n--{boundary}--\r\n".encode())
+
+                req = urllib.request.Request(
+                    f"https://api.telegram.org/bot{tok}/sendPhoto",
+                    data=bytes(body),
+                    headers={"Content-Type": f"multipart/form-data; boundary={boundary}"}
+                )
+                with urllib.request.urlopen(req, timeout=12) as resp:
+                    if resp.status == 200:
+                        return True
+            except Exception as e_html:
+                logger.warning(f"Error sending photo card (HTML) via {tok[:8]}... to {chat_id}: {e_html}")
+                # تلاش مجدد ارسال عکس به صورت متن ساده (در صورت خطای entity)
+                try:
+                    boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+                    body = bytearray()
+                    body.extend(f"--{boundary}\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n{chat_id}\r\n".encode())
+                    body.extend(f"--{boundary}\r\nContent-Disposition: form-data; name=\"caption\"\r\n\r\n{plain_caption}\r\n".encode())
+                    body.extend(f"--{boundary}\r\nContent-Disposition: form-data; name=\"reply_markup\"\r\n\r\n{json.dumps(inline_keyboard)}\r\n".encode())
+                    body.extend(f"--{boundary}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"qr.png\"\r\nContent-Type: image/png\r\n\r\n".encode())
+                    body.extend(qr_bytes)
+                    body.extend(f"\r\n--{boundary}--\r\n".encode())
+
+                    req = urllib.request.Request(
+                        f"https://api.telegram.org/bot{tok}/sendPhoto",
+                        data=bytes(body),
+                        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"}
+                    )
+                    with urllib.request.urlopen(req, timeout=12) as resp:
+                        if resp.status == 200:
+                            return True
+                except Exception as e_plain:
+                    logger.warning(f"Error sending photo card (plain) via {tok[:8]}... to {chat_id}: {e_plain}")
+
+        # ارسال متنی در صورت عدم موفقیت عکس
+        sent = send_telegram_msg(chat_id, caption, reply_markup=inline_keyboard, bot_token=tok)
+        if sent:
+            return True
+
+    return False
 
 
 def hidify_sync_request(method: str, endpoint: str, data: dict = None, api_key: str = None):
@@ -4860,7 +4917,7 @@ def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: 
             card_title = "🎉 **پرداخت آنلاین تایید شد و اشتراک شما فعال گردید!**" if not is_renewal else "🔄 **اشتراک شما با موفقیت تمدید شد!**"
             card_details = f"📋 پلن: **{pname}**\n📊 حجم: **{data_limit} گیگابایت**\n⏰ مدت: **{duration} روز**"
         try:
-            send_subscription_card_sync(user_id, sub_url, card_title, card_details)
+            send_subscription_card_sync(user_id, sub_url, card_title, card_details, reseller_id=r_id)
         except Exception as e_card:
             logger.error(f"Error sending subscription card: {e_card}")
 
@@ -5292,7 +5349,7 @@ def approve_payment(payment_id):
             card_title = "🎉 **اشتراک شما تایید و فعال شد!**" if not is_renewal else "🔄 **اشتراک شما با موفقیت تمدید شد!**"
             card_details = f"📋 پلن: **{plan_name}**\n📊 حجم: **{data_limit} گیگابایت**\n⏰ مدت: **{duration} روز**"
             try:
-                send_subscription_card_sync(user_id, sub_url, card_title, card_details)
+                send_subscription_card_sync(user_id, sub_url, card_title, card_details, reseller_id=r_id)
             except Exception as e_card:
                 logger.error(f"Error sending subscription card to {user_id}: {e_card}")
 
@@ -5521,7 +5578,7 @@ def admin_payments_bulk():
                             card_title = "🎉 **اشتراک شما تایید و فعال شد!**"
                             card_details = f"📋 پلن: **{plan_name}**\n📊 حجم: **{data_limit} گیگابایت**\n⏰ مدت: **{duration} روز**"
                             try:
-                                send_subscription_card_sync(user_id, sub_url, card_title, card_details)
+                                send_subscription_card_sync(user_id, sub_url, card_title, card_details, reseller_id=tx.get("reseller_id"))
                             except Exception:
                                 pass
                     success_count += 1
@@ -14329,10 +14386,15 @@ def reseller_payment_approve(payment_id):
         )
 
         uuid_val = h_res.get("uuid", "") if h_res else ""
-        sub_link = h_res.get("subscription_url", "") if h_res else ""
         if not uuid_val:
             import uuid
             uuid_val = str(uuid.uuid4())
+
+        h_url = get_hiddify_url()
+        u_proxy = get_user_proxy()
+        if h_url and uuid_val:
+            sub_link = f"{h_url}/{u_proxy}/{uuid_val}/"
+        else:
             sub_link = f"https://vpn.service/sub/{account_name}"
 
         # کسر خودکار از کیف پول و اعتبار نماینده
@@ -14464,16 +14526,23 @@ def reseller_payment_approve(payment_id):
         except Exception as e_ug:
             logger.error(f"Error checking reseller VIP auto upgrade for {user_id}: {e_ug}")
 
-        # ارسال لینک برای کاربر در تلگرام
-        msg_to_user = f"🎉 **پرداخت شما تایید شد!**\n\n"
-        msg_to_user += f"📦 پلن: **{plan_name}** ({data_limit}GB - {duration} روزه)\n"
-        msg_to_user += f"🔗 لینک اشتراک شما:\n`{sub_link}`{cashback_note}\n\n"
-        msg_to_user += f"از خرید شما در **{brand_title}** متشکریم!"
+        # ارسال لینک و تصویر QR Code برای کاربر در تلگرام با استفاده از توکن ربات نماینده
+        card_title = "🎉 **رسید پرداخت شما تایید شد و اشتراک فعال گردید!**" if not is_renewal else "🔄 **اشتراک شما با موفقیت تمدید شد!**"
+        card_details = f"📦 پلن: **{plan_name}**\n📊 حجم: **{data_limit} گیگابایت** | ⏳ مدت: **{duration} روز**\n🔖 کد سفارش: `{tx.get('order_id') or payment_id}`"
+        if cashback_note:
+            card_details += cashback_note
 
-        if bot_tok:
-            send_telegram_msg(user_id, msg_to_user, bot_token=bot_tok)
-        else:
-            send_telegram_msg(user_id, msg_to_user)
+        try:
+            send_subscription_card_sync(
+                chat_id=int(user_id),
+                sub_url=sub_link,
+                title=card_title,
+                details=card_details,
+                bot_token=bot_tok,
+                reseller_id=reseller_id
+            )
+        except Exception as e_snd:
+            logger.error(f"Error sending subscription card from reseller web approve: {e_snd}")
 
     flash(f"پرداخت سفارش #{payment_id} با موفقیت تایید و اعمال شد.", "success")
     return redirect(url_for("reseller_customer_payments"))
