@@ -1545,6 +1545,9 @@
                 <a class="nav-link {% if request.endpoint == 'reseller_tickets' %}active{% endif %}" href="{{ url_for('reseller_tickets') }}">
                     <i class="fas fa-headset text-info"></i> تیکت‌ها و پشتیبانی
                 </a>
+                <a class="nav-link {% if request.endpoint == 'reseller_broadcast' %}active{% endif %}" href="{{ url_for('reseller_broadcast') }}">
+                    <i class="fas fa-bullhorn text-warning"></i> پیام همگانی
+                </a>
                 {% endif %}
 
                 {% if not sub_role or sub_role in ['partner', 'finance', 'manager2'] %}
@@ -1666,6 +1669,13 @@
                 <a class="nav-link {% if request.endpoint == 'tickets' %}active{% endif %}" href="{{ url_for('tickets') }}">
                     <i class="fas fa-headset text-info"></i> تیکت‌ها
                     <span id="sidebarTicketsBadge" class="badge bg-warning text-dark ms-auto rounded-pill" style="display: none; font-size: 0.75rem;">0</span>
+                </a>
+                {% endif %}
+
+                <!-- سیستم یادآوری -->
+                {% if has_permission('dashboard') %}
+                <a class="nav-link {% if request.endpoint == 'admin_reminders' %}active{% endif %}" href="{{ url_for('admin_reminders') }}">
+                    <i class="fas fa-bell text-danger"></i> یادآوری و هشدار
                 </a>
                 {% endif %}
 
@@ -1874,6 +1884,16 @@
 
     <!-- Main Content -->
     <main class="main-content">
+        <!-- هشدار یادآوری مدیریت -->
+        {% if session.get('role') != 'reseller' %}
+        <div id="adminRemindersAlert" class="container-fluid mt-3" style="display:none;">
+            <div class="alert alert-danger shadow-sm d-flex align-items-center" role="alert">
+                <i class="bi bi-exclamation-triangle-fill fs-4 me-3"></i>
+                <div id="adminRemindersAlertText"></div>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- بنرهای اطلاعیه بالای پنل نمایندگان با ماندگاری در localStorage تا زمان بستن -->
         {% if session.get('role') == 'reseller' %}
             {% set active_reseller_banners = get_reseller_banners() if get_reseller_banners else [] %}
@@ -2879,6 +2899,25 @@
                 document.body.appendChild(modal);
             }
             initFormRedirectPreserver();
+        });
+    </script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            {% if session.get('role') != 'reseller' %}
+            fetch('/api/admin/reminders/active')
+                .then(r => r.json())
+                .then(reminders => {
+                    if (reminders && reminders.length > 0) {
+                        const alertBox = document.getElementById('adminRemindersAlert');
+                        const alertText = document.getElementById('adminRemindersAlertText');
+                        if (alertBox && alertText) {
+                            let msgs = reminders.map(r => '<b>' + r.title + '</b>: ' + (r.type === 'traffic' ? 'ترافیک ' + (r.current_traffic||0).toFixed(2) + ' از ' + r.target_traffic + ' GB' : r.description));
+                            alertText.innerHTML = msgs.join('<br>');
+                            alertBox.style.display = 'block';
+                        }
+                    }
+                }).catch(e => console.error(e));
+            {% endif %}
         });
     </script>
     {% block scripts %}{% endblock %}

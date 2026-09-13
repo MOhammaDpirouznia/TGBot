@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}سیستم یادآوری{% endblock %}
+{% block content %}
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-bell me-2"></i>سیستم یادآوری و هشدار</h5>
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addReminderModal">
+            <i class="bi bi-plus-circle me-1"></i>افزودن یادآوری جدید
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>عنوان</th>
+                        <th>نوع</th>
+                        <th>وضعیت</th>
+                        <th>هدف / ترافیک</th>
+                        <th>درصد هشدار</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in reminders %}
+                    <tr>
+                        <td>{{ r.title }}<br><small class="text-muted">{{ r.description }}</small></td>
+                        <td>
+                            {% if r.type == 'date' %}
+                                <span class="badge bg-info">تاریخ سررسید</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark">حجم ترافیک</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if r.is_active %}
+                                <span class="badge bg-success">فعال</span>
+                            {% else %}
+                                <span class="badge bg-secondary">غیرفعال</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if r.type == 'date' %}
+                                {{ r.target_date[:10] }}
+                            {% else %}
+                                {{ "%.2f"|format(r.current_traffic|default(0)) }} / {{ r.target_traffic }} GB
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if r.type == 'traffic' %}
+                                {{ r.threshold_percent }}%
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-danger" onclick="deleteReminder({{ r.id }})">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted">یادآوری یافت نشد.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add Reminder Modal -->
+<div class="modal fade" id="addReminderModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">افزودن یادآوری جدید</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="reminderForm">
+                    <div class="mb-3">
+                        <label class="form-label">عنوان</label>
+                        <input type="text" class="form-control" id="title" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">نوع یادآوری</label>
+                        <select class="form-select" id="type" onchange="toggleFields()" required>
+                            <option value="date">تاریخ سررسید (مثلا تمدید سرور)</option>
+                            <option value="traffic">ترافیک مصرفی کل</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">توضیحات</label>
+                        <textarea class="form-control" id="description" rows="2"></textarea>
+                    </div>
+                    
+                    <div id="dateFields">
+                        <div class="mb-3">
+                            <label class="form-label">تاریخ سررسید</label>
+                            <input type="datetime-local" class="form-control" id="target_date">
+                        </div>
+                    </div>
+                    
+                    <div id="trafficFields" style="display:none;">
+                        <div class="mb-3">
+                            <label class="form-label">حد ترافیک (گیگابایت)</label>
+                            <input type="number" step="0.1" class="form-control" id="target_traffic">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">درصد هشدار (در این درصد از مصرف پیام ارسال شود)</label>
+                            <input type="number" class="form-control" id="threshold_percent" value="80">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                <button type="button" class="btn btn-primary" onclick="addReminder()">ذخیره</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleFields() {
+    const type = document.getElementById('type').value;
+    if (type === 'date') {
+        document.getElementById('dateFields').style.display = 'block';
+        document.getElementById('trafficFields').style.display = 'none';
+    } else {
+        document.getElementById('dateFields').style.display = 'none';
+        document.getElementById('trafficFields').style.display = 'block';
+    }
+}
+
+function addReminder() {
+    const data = {
+        title: document.getElementById('title').value,
+        type: document.getElementById('type').value,
+        description: document.getElementById('description').value,
+        target_date: document.getElementById('target_date').value,
+        target_traffic: document.getElementById('target_traffic').value,
+        threshold_percent: document.getElementById('threshold_percent').value
+    };
+    
+    if (data.type === 'date' && data.target_date) {
+        data.target_date = new Date(data.target_date).toISOString();
+    }
+    
+    fetch('/api/admin/reminders/add', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) {
+            location.reload();
+        } else {
+            alert('خطا در ثبت یادآوری');
+        }
+    });
+}
+
+function deleteReminder(id) {
+    if (confirm('آیا از حذف این یادآوری اطمینان دارید؟')) {
+        fetch('/api/admin/reminders/delete/' + id, {method: 'POST'})
+        .then(r => r.json())
+        .then(res => {
+            if (res.success) location.reload();
+        });
+    }
+}
+</script>
+{% endblock %}

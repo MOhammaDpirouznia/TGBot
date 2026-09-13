@@ -1086,6 +1086,19 @@ function selectPalette(pid) {
                         </label>
                     </div>
 
+                    <!-- Ruby Waves -->
+                    <div class="col-md-6 col-lg-4">
+                        <label class="login-theme-choice-card d-block p-3 rounded-3 border h-100 position-relative {% if login_security_config.login_style == 'ruby_waves' %}border-primary shadow-sm bg-primary-subtle bg-opacity-10{% else %}border-light-subtle bg-white{% endif %}" style="cursor: pointer;">
+                            <input type="radio" name="login_style" value="ruby_waves" class="form-check-input position-absolute top-0 end-0 m-3" {% if login_security_config.login_style == 'ruby_waves' %}checked{% endif %} onchange="selectLoginTheme(this)">
+                            <div class="theme-preview-box rounded-2 mb-2 p-3 text-center" style="background: linear-gradient(135deg, #be123c 0%, #fb923c 100%); color: #fff; min-height: 80px; display: flex; align-items: center; justify-content: center;">
+                                <div style="background: rgba(255,255,255,0.18); backdrop-filter: blur(8px); border-radius: 6px; padding: 6px 14px; font-size: 0.75rem; border: 1px solid rgba(255,255,255,0.3);">
+                                    <i class="fas fa-water me-1"></i> Ruby Waves
+                                </div>
+                            </div>
+                            <div class="fw-bold text-dark small mb-1">امواج یاقوتی (Ruby Waves)</div>
+                            <div class="text-muted" style="font-size: 0.75rem;">طراحی گرم و روان با طیف قرمز و نارنجی غروب</div>
+                        </label>
+                    </div>
                     <!-- Executive Dark -->
                     <div class="col-md-6 col-lg-4">
                         <label class="login-theme-choice-card d-block p-3 rounded-3 border h-100 position-relative {% if login_security_config.login_style == 'executive_dark' %}border-primary shadow-sm bg-primary-subtle bg-opacity-10{% else %}border-light-subtle bg-white{% endif %}" style="cursor: pointer;">
