@@ -4523,7 +4523,16 @@ def fulfill_approved_transaction(order_id: str, ref_id: str = None, payer_info: 
     is_renewal = bool(tx.get("is_renewal"))
     renew_sub_id = tx.get("renew_sub_id")
     plans = get_plans_dict()
-    selected_plan = next((p for p in plans.values() if p["name"] == pname), None)
+    selected_plan = None
+    if tx.get("plan_id"):
+        selected_plan = plans.get(str(tx["plan_id"]))
+        if not selected_plan and r_id:
+            selected_plan = get_reseller_plans_dict(r_id).get(str(tx["plan_id"]))
+    if not selected_plan:
+        selected_plan = next((p for p in plans.values() if p.get("name") == pname), None)
+    if not selected_plan and r_id:
+        r_plans = get_reseller_plans_dict(r_id)
+        selected_plan = next((p for p in r_plans.values() if p.get("name") == pname or p.get("display_name") == pname), None)
     data_limit = selected_plan["data_limit"] if selected_plan else 30
     duration = selected_plan["duration"] if selected_plan else 30
     account_name = tx.get("account_name") or f"tg_{user_id}"
@@ -4996,7 +5005,17 @@ def approve_payment(payment_id):
 
     # یافتن مشخصات پلن
     plans = get_plans_dict()
-    selected_plan = next((p for p in plans.values() if p["name"] == plan_name), None)
+    r_id = tx.get("reseller_id")
+    selected_plan = None
+    if tx.get("plan_id"):
+        selected_plan = plans.get(str(tx["plan_id"]))
+        if not selected_plan and r_id:
+            selected_plan = get_reseller_plans_dict(r_id).get(str(tx["plan_id"]))
+    if not selected_plan:
+        selected_plan = next((p for p in plans.values() if p["name"] == plan_name), None)
+    if not selected_plan and r_id:
+        r_plans = get_reseller_plans_dict(r_id)
+        selected_plan = next((p for p in r_plans.values() if p.get("name") == plan_name or p.get("display_name") == plan_name), None)
     data_limit = selected_plan["data_limit"] if selected_plan else 30
     duration = selected_plan["duration"] if selected_plan else 30
 

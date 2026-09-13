@@ -155,6 +155,7 @@ async def sync_admin_receipt_action(bot, order_id: str, caller_id: int, caller_n
         if not c_id or not m_id:
             continue
         handled_chat_ids.add(int(c_id))
+        is_caller = (int(c_id) == int(caller_id))
         if is_caller:
             if caller_msg:
                 await safe_edit_admin_message(bot, chat_id=int(c_id), message_id=int(m_id), new_text=caller_msg, reply_markup=None)
@@ -1443,12 +1444,43 @@ class ResellerBotInstance:
 
             data = query.data
 
-            if data.startswith("rapprove_"):
+            if data.startswith("rapprove_") or data.startswith("rapprove:"):
                 try:
-                    parts = data.split("_")
-                    order_id = parts[1]
-                    target_uid = int(parts[2])
-                    plan_id = parts[3]
+                    payload = data.replace("rapprove:", "") if data.startswith("rapprove:") else data.replace("rapprove_", "")
+                    order_id = None
+                    target_uid = 0
+                    plan_id = ""
+
+                    # بازیابی دقیق شناسه سفارش و اطلاعات تراکنش از دیتابیس
+                    tx_data = db.get_transaction_by_order_id(payload)
+                    if tx_data:
+                        order_id = payload
+                    else:
+                        p_parts = payload.split("_")
+                        for i in range(len(p_parts), 0, -1):
+                            cand = "_".join(p_parts[:i])
+                            tx_cand = db.get_transaction_by_order_id(cand)
+                            if tx_cand:
+                                order_id = cand
+                                tx_data = tx_cand
+                                remain_parts = p_parts[i:]
+                                if remain_parts:
+                                    try:
+                                        target_uid = int(remain_parts[0])
+                                        plan_id = "_".join(remain_parts[1:])
+                                    except ValueError:
+                                        plan_id = "_".join(remain_parts)
+                                break
+
+                    if not order_id:
+                        p_parts = payload.split("_")
+                        order_id = p_parts[0] if len(p_parts) == 1 else (p_parts[1] if len(p_parts) > 1 and p_parts[0] == "" else p_parts[0])
+                        if len(p_parts) >= 3:
+                            try:
+                                target_uid = int(p_parts[-2])
+                                plan_id = p_parts[-1]
+                            except Exception:
+                                pass
 
                     # ۱. پاسخ سریع جهت رفع لودینگ تلگرام
                     try:
@@ -1465,7 +1497,15 @@ class ResellerBotInstance:
                         await safe_edit_admin_message(context.bot, query.message.chat_id, query.message.message_id, txt, reply_markup=None)
                         return
 
-                    tx_data = lock_res.get("tx") or db.get_transaction_by_order_id(order_id) or {}
+                    if not tx_data:
+                        tx_data = lock_res.get("tx") or db.get_transaction_by_order_id(order_id) or {}
+
+                    if tx_data:
+                        if not target_uid or target_uid <= 0:
+                            target_uid = int(tx_data.get("user_id") or 0)
+                        if not plan_id and tx_data.get("plan_id"):
+                            plan_id = str(tx_data["plan_id"])
+
                     is_renewal = bool(tx_data.get("is_renewal"))
                     renew_sub_id = tx_data.get("renew_sub_id")
                     comm = tx_data.get("account_comment") or ""
@@ -1485,11 +1525,27 @@ class ResellerBotInstance:
                     elif "instant_act:0" in comm:
                         instant_act = False
 
-                    plan = db.get_reseller_plan(r_id, plan_id) or {}
-                    pname = plan.get("display_name") or plan.get("master_name", "اشتراک")
+                    # جستجوی چندمرحله‌ای و دقیق پلن جهت جلوگیری از لغزش به مقادیر پیش‌فرض
+                    plan = db.get_reseller_plan(r_id, plan_id) or {} if plan_id else {}
+                    pname_tx = tx_data.get("plan_name")
+                    if not plan or not plan.get("data_limit") or not plan.get("duration"):
+                        all_r_plans = db.get_reseller_plans(r_id)
+                        for rp in all_r_plans:
+                            if (plan_id and str(rp.get("plan_id")) == str(plan_id)) or (pname_tx and rp.get("display_name") == pname_tx) or (pname_tx and rp.get("master_name") == pname_tx) or (pname_tx and rp.get("name") == pname_tx):
+                                plan = rp
+                                break
+                    if not plan:
+                        from admin_manager import get_all_plans
+                        all_m_plans = get_all_plans()
+                        if plan_id and plan_id in all_m_plans:
+                            plan = all_m_plans[plan_id]
+                        elif pname_tx:
+                            plan = next((mp for mp in all_m_plans.values() if mp.get("name") == pname_tx), {})
+
+                    pname = plan.get("display_name") or plan.get("master_name") or plan.get("name") or pname_tx or "اشتراک"
                     vol = plan.get("data_limit", 30)
                     days = plan.get("duration", 30)
-                    price = plan.get("display_price", 0)
+                    price = plan.get("display_price", 0) or tx_data.get("amount", 0)
                     wholesale_cost = plan.get("wholesale_price", price)
 
                     target_sub = None
@@ -1716,11 +1772,41 @@ class ResellerBotInstance:
                     except Exception:
                         pass
 
-            elif data.startswith("rreject_"):
+            elif data.startswith("rreject_") or data.startswith("rreject:"):
                 try:
-                    parts = data.split("_")
-                    order_id = parts[1]
-                    target_uid = int(parts[2])
+                    payload = data.replace("rreject:", "") if data.startswith("rreject:") else data.replace("rreject_", "")
+                    order_id = None
+                    target_uid = 0
+                    tx_data = db.get_transaction_by_order_id(payload)
+                    if tx_data:
+                        order_id = payload
+                    else:
+                        p_parts = payload.split("_")
+                        for i in range(len(p_parts), 0, -1):
+                            cand = "_".join(p_parts[:i])
+                            tx_cand = db.get_transaction_by_order_id(cand)
+                            if tx_cand:
+                                order_id = cand
+                                tx_data = tx_cand
+                                remain_parts = p_parts[i:]
+                                if remain_parts:
+                                    try:
+                                        target_uid = int(remain_parts[0])
+                                    except ValueError:
+                                        pass
+                                break
+
+                    if not order_id:
+                        p_parts = payload.split("_")
+                        order_id = p_parts[0] if len(p_parts) == 1 else (p_parts[1] if len(p_parts) > 1 and p_parts[0] == "" else p_parts[0])
+                        if len(p_parts) >= 2:
+                            try:
+                                target_uid = int(p_parts[-1])
+                            except Exception:
+                                pass
+
+                    if tx_data and (not target_uid or target_uid <= 0):
+                        target_uid = int(tx_data.get("user_id") or 0)
 
                     await query.answer("⏳ در حال ثبت رد پرداخت...", show_alert=False)
 
@@ -2471,9 +2557,10 @@ class ResellerBotInstance:
             data = query.data
             try:
                 if data.startswith("r_renew_choose_"):
-                    parts = data.split("_")
-                    sub_id = int(parts[3])
-                    plan_id = parts[4]
+                    remain = data.replace("r_renew_choose_", "")
+                    parts = remain.split("_", 1)
+                    sub_id = int(parts[0])
+                    plan_id = parts[1]
 
                     user_subs = db.get_user_subscriptions(update.effective_user.id, reseller_id=r_id)
                     target_sub = next((s for s in user_subs if s["id"] == sub_id), None)
@@ -2515,7 +2602,7 @@ class ResellerBotInstance:
                     is_instant = data.startswith("r_ren_set_instant_")
                     prefix = "r_ren_set_instant_" if is_instant else "r_ren_set_queue_"
                     remain = data.replace(prefix, "")
-                    parts = remain.split("_")
+                    parts = remain.split("_", 1)
                     sub_id = int(parts[0])
                     plan_id = parts[1]
 

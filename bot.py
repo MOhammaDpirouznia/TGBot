@@ -1361,7 +1361,7 @@ async def plan_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     raw_data = query.data
     extracted_id = raw_data.removeprefix("plan_") if raw_data.startswith("plan_") else raw_data
 
-    plans = get_plans()
+    plans = {**get_all_plans(), **get_plans()}
     if extracted_id in plans:
         plan_id = extracted_id
     elif raw_data in plans:
@@ -3298,7 +3298,7 @@ async def handle_renew(update: Update, context: ContextTypes.DEFAULT_TYPE):
     raw_data = query.data
     extracted_id = raw_data.removeprefix("renew_plan_") if raw_data.startswith("renew_plan_") else raw_data
 
-    plans = get_plans()
+    plans = {**get_all_plans(), **get_plans()}
     if extracted_id in plans:
         plan_id = extracted_id
     elif raw_data in plans:
@@ -4356,7 +4356,13 @@ async def admin_order_pay_action_callback(update: Update, context: ContextTypes.
         renew_sub_id = tx.get("renew_sub_id")
         plan_name = tx.get("plan_name", "پلن")
         plans = get_plans()
-        selected_plan = next((p for p in plans.values() if p.get("name") == plan_name), None)
+        all_plans = get_all_plans()
+        tx_plan_id = str(tx.get("plan_id") or "")
+        selected_plan = plans.get(tx_plan_id) or all_plans.get(tx_plan_id)
+        if not selected_plan:
+            selected_plan = next((p for p in plans.values() if p.get("name") == plan_name), None)
+        if not selected_plan:
+            selected_plan = next((p for p in all_plans.values() if p.get("name") == plan_name), None)
         data_limit = selected_plan.get("data_limit", 30) if selected_plan else 30
         duration = selected_plan.get("duration", 30) if selected_plan else 30
 
@@ -5350,19 +5356,22 @@ async def admin_approve_payment(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     data = query.data.replace("admin_approve_", "")
-    parts = data.split("_")
+    parts = data.split("_", 1)
     if len(parts) < 2:
         await edit_admin_message_safe(query, "❌ داده نامعتبر!")
         return
 
-    user_id = int(parts[0])
+    try:
+        user_id = int(parts[0])
+    except (ValueError, TypeError):
+        await edit_admin_message_safe(query, "❌ شناسه کاربر نامعتبر است!")
+        return
+
     plan_id = parts[1]
 
     plans = get_plans()
-    plan = plans.get(plan_id, {})
-    if not plan:
-        all_p = get_all_plans()
-        plan = all_p.get(plan_id, {})
+    all_p = get_all_plans()
+    plan = plans.get(plan_id) or all_p.get(plan_id, {})
 
     # ۱. بررسی تراکنش برای جلوگیری از تایید تکراری (Idempotency / Double-Click Lock)
     user_transactions = db.get_user_transactions(user_id)
@@ -5373,6 +5382,20 @@ async def admin_approve_payment(update: Update, context: ContextTypes.DEFAULT_TY
             break
     if not target_tx and user_transactions:
         target_tx = user_transactions[0]
+
+    # اگر پلن پیدا نشد، از اطلاعات تراکنش یا مقایسه نام پلن استفاده کن
+    if not plan and target_tx:
+        tx_pid = str(target_tx.get("plan_id") or "")
+        plan = plans.get(tx_pid) or all_p.get(tx_pid, {})
+        if not plan and target_tx.get("plan_name"):
+            plan = next((p for p in all_p.values() if p.get("name") == target_tx.get("plan_name")), {})
+            if not plan:
+                plan = next((p for p in plans.values() if p.get("name") == target_tx.get("plan_name")), {})
+
+    if not plan:
+        logger.error(f"admin_approve_payment: Plan '{plan_id}' not found for user {user_id}")
+        await edit_admin_message_safe(query, f"❌ خطا: پلن با شناسه «{plan_id}» یافت نشد!\nلطفاً پلن‌ها را در پنل مدیریت بررسی کنید.")
+        return
 
     if target_tx and target_tx.get("order_id"):
         lock_res = db.lock_transaction_for_processing(target_tx["order_id"], locked_by=str(update.effective_user.id))
@@ -5395,12 +5418,15 @@ async def admin_approve_payment(update: Update, context: ContextTypes.DEFAULT_TY
     username = target_tx.get("account_name") if target_tx and target_tx.get("account_name") else f"tg_{user_id}"
     account_comment = target_tx.get("account_comment") if target_tx else str(user_id)
 
+    plan_duration = int(plan.get("duration", 30) or 30)
+    plan_data_limit = float(plan.get("data_limit", 0) or 0)
+
     # ۲. ساخت اشتراک در Hidify
     try:
         result = await hidify.create_user(
             name=username,
-            usage_limit_gb=plan.get("data_limit") if plan.get("data_limit", 0) > 0 else None,
-            package_days=plan.get("duration", 30),
+            usage_limit_gb=plan_data_limit if plan_data_limit > 0 else None,
+            package_days=plan_duration,
             enable=True,
             comment=str(account_comment or user_id)
         )
@@ -5426,7 +5452,7 @@ async def admin_approve_payment(update: Update, context: ContextTypes.DEFAULT_TY
             "hidify_uuid": user_uuid,
             "plan": plan_id,
             "created_at": get_now_iso(),
-            "data_limit": plan.get("data_limit", 0),
+            "data_limit": plan_data_limit,
         }
         save_user_data(user_id, user_data)
 
@@ -5435,8 +5461,8 @@ async def admin_approve_payment(update: Update, context: ContextTypes.DEFAULT_TY
             hidify_uuid=user_uuid,
             plan_id=plan_id,
             plan_name=plan.get("name", "نامشخص"),
-            data_limit=plan.get("data_limit", 0),
-            duration=plan.get("duration", 30),
+            data_limit=plan_data_limit,
+            duration=plan_duration,
             status="active",
             account_name=username,
             account_comment=account_comment,
@@ -5473,20 +5499,19 @@ async def admin_approve_payment(update: Update, context: ContextTypes.DEFAULT_TY
 
     # ۵. ویرایش امن پیام ادمین
     price_formatted = f"{plan.get('price', 0):,}".replace(",", "،")
+    vol_display = f"{plan_data_limit:g} گیگ" if plan_data_limit > 0 else "نامحدود"
     admin_success_text = (
         f"✅ **اشتراک جدید با موفقیت تایید و فعال شد!**\n\n"
         f"👤 کاربر: `{user_id}`\n"
         f"📋 پلن: {plan.get('name', 'نامشخص')}\n"
-        f"📊 حجم: {plan.get('data_limit', 0) if plan.get('data_limit', 0) > 0 else 'نامحدود'} گیگ\n"
+        f"📊 حجم: {vol_display}\n"
         f"💰 مبلغ: {price_formatted} تومان\n"
-        f"⏰ مدت: {plan.get('duration', 30)} روز"
+        f"⏰ مدت: {plan_duration} روز"
     )
     await edit_admin_message_safe(query, admin_success_text)
 
     # ۶. پیام به کاربر + ارسال کارت اشتراک و QR Code
-    plan_data_limit = plan.get('data_limit', 0)
-    plan_duration = plan.get('duration', 30)
-    data_text = str(plan_data_limit) if plan_data_limit > 0 else 'نامحدود'
+    data_text = f"{plan_data_limit:g}" if plan_data_limit > 0 else 'نامحدود'
     base_url = (HIDIFY_PANEL_URL or "").rstrip("/")
     proxy_path = (USER_PROXY_PATH or HIDIFY_PROXY_PATH or "").strip("/")
     subscription_url = f"{base_url}/{proxy_path}/{user_uuid}/"
@@ -5497,13 +5522,26 @@ async def admin_approve_payment(update: Update, context: ContextTypes.DEFAULT_TY
         f"📊 حجم: **{data_text} گیگابایت**\n"
         f"⏰ مدت: **{plan_duration} روز**"
     )
-    await send_subscription_card(
-        context.bot,
-        chat_id=user_id,
-        sub_url=subscription_url,
-        title="🎉 **اشتراک جدید شما آماده اتصال است!**",
-        details=details
-    )
+    try:
+        await send_subscription_card(
+            context.bot,
+            chat_id=user_id,
+            sub_url=subscription_url,
+            title="🎉 **اشتراک جدید شما آماده اتصال است!**",
+            details=details,
+            uuid=user_uuid,
+            account_name=username
+        )
+    except Exception as e_card:
+        logger.error(f"Error sending subscription card to user {user_id}: {e_card}")
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=f"🎉 **اشتراک جدید شما فعال شد!**\n\n{details}\n\n🔗 **لینک اشتراک:**\n`{subscription_url}`",
+                parse_mode="Markdown"
+            )
+        except Exception as e_fallback:
+            logger.error(f"Fallback send_message to user {user_id} also failed: {e_fallback}")
 
 
 async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5521,18 +5559,18 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
         await edit_admin_message_safe(query, "❌ داده نامعتبر!")
         return
 
-    user_id = int(parts[0])
-    plan_id = parts[1]
-    sub_id = int(parts[2])
+    try:
+        user_id = int(parts[0])
+        sub_id = int(parts[-1])
+    except (ValueError, TypeError):
+        await edit_admin_message_safe(query, "❌ داده نامعتبر!")
+        return
+
+    plan_id = "_".join(parts[1:-1])
 
     plans = get_plans()
-    plan = plans.get(plan_id, {})
-    if not plan:
-        all_p = get_all_plans()
-        plan = all_p.get(plan_id, {})
-    if not plan:
-        await edit_admin_message_safe(query, "❌ پلن مورد نظر یافت نشد!")
-        return
+    all_p = get_all_plans()
+    plan = plans.get(plan_id) or all_p.get(plan_id, {})
 
     # ۱. بررسی وضعیت تراکنش در دیتابیس برای جلوگیری از تایید تکراری (Idempotency)
     user_transactions = db.get_user_transactions(user_id)
@@ -5543,6 +5581,19 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
             break
     if not target_tx and user_transactions:
         target_tx = user_transactions[0]
+
+    # اگر پلن پیدا نشد، از اطلاعات تراکنش جستجو کن
+    if not plan and target_tx:
+        tx_pid = str(target_tx.get("plan_id") or "")
+        plan = plans.get(tx_pid) or all_p.get(tx_pid, {})
+        if not plan and target_tx.get("plan_name"):
+            plan = next((p for p in all_p.values() if p.get("name") == target_tx.get("plan_name")), {})
+            if not plan:
+                plan = next((p for p in plans.values() if p.get("name") == target_tx.get("plan_name")), {})
+
+    if not plan:
+        await edit_admin_message_safe(query, f"❌ پلن مورد نظر یافت نشد (شناسه: {plan_id})!")
+        return
 
     if target_tx and target_tx.get("order_id"):
         lock_res = db.lock_transaction_for_processing(target_tx["order_id"], locked_by=str(update.effective_user.id))
@@ -5767,13 +5818,26 @@ async def admin_approve_renew(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"📊 حجم جدید: **{new_data_limit if new_data_limit else 'نامحدود'} گیگابایت**\n"
             f"⏰ مدت کل: **{new_duration} روز**"
         )
-        await send_subscription_card(
-            context.bot,
-            chat_id=user_id,
-            sub_url=subscription_url,
-            title="🎉 **تمدید اشتراک شما انجام شد!**",
-            details=details
-        )
+        try:
+            await send_subscription_card(
+                context.bot,
+                chat_id=user_id,
+                sub_url=subscription_url,
+                title="🎉 **تمدید اشتراک شما انجام شد!**",
+                details=details,
+                uuid=user_uuid,
+                account_name=target_sub.get("account_name") if target_sub else ""
+            )
+        except Exception as e_card:
+            logger.error(f"Error sending renewal subscription card to user {user_id}: {e_card}")
+            try:
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=f"🎉 **تمدید اشتراک شما انجام شد!**\n\n{details}\n\n🔗 **لینک اشتراک:**\n`{subscription_url}`",
+                    parse_mode="Markdown"
+                )
+            except Exception as e_fb:
+                logger.error(f"Fallback send_message to user {user_id} also failed: {e_fb}")
 
 
 async def admin_reject_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6880,7 +6944,7 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return ADMIN_MENU
 
         elif data.startswith("res_adm_cfren_"):
-            parts = data.replace("res_adm_cfren_", "").split("_")
+            parts = data.replace("res_adm_cfren_", "").split("_", 1)
             sub_id = int(parts[0])
             plan_id = parts[1]
             sub = db.get_subscription(sub_id)
@@ -6936,8 +7000,12 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             parts = data.replace("res_adm_renpay_", "").split("_")
             mode = parts[0]
             sub_id = int(parts[1])
-            plan_id = parts[2]
-            target_card_id = int(parts[3]) if (mode == "card" and len(parts) > 3) else None
+            if mode == "card" and len(parts) > 3:
+                target_card_id = int(parts[-1])
+                plan_id = "_".join(parts[2:-1])
+            else:
+                target_card_id = None
+                plan_id = "_".join(parts[2:])
 
             sub = db.get_subscription(sub_id)
             if not sub or int(sub.get("reseller_id") or 0) != int(r_id):
