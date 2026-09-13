@@ -1723,13 +1723,25 @@ class ResellerBotInstance:
                         f"🔖 کد سفارش: <code>{order_id}</code>"
                         + (f"\n🔄 حالت تمدید: <b>{mode_note}</b>" if mode_note else "")
                     )
-                    await sync_admin_receipt_action(context.bot, order_id, caller_id, caller_name, action="approved", caller_msg=done_msg)
-
-                    # ۶. ارسال خودکار پیام و کانفیگ/QR به مشتری
+                    await sync_admin_receipt_action(context.bot, order_id, caller_id, caller_name, action="approved", caller_msg=done_msg, r_id=r_id)
                     try:
+                        if query and query.message:
+                            await safe_edit_admin_message(context.bot, query.message.chat_id, query.message.message_id, done_msg, reply_markup=None)
+                    except Exception:
+                        pass
+
+                    # ۶. ارسال خودکار پیام و کانفیگ/QR به مشتری (دقیقاً هماهنگ با پنل وب)
+                    bot_tok = (self.reseller_data.get("bot_token") or "").strip()
+                    if not bot_tok and r_id:
+                        r_info = db.get_reseller(r_id)
+                        if r_info and r_info.get("bot_token"):
+                            bot_tok = str(r_info.get("bot_token")).strip()
+
+                    try:
+                        from dashboard import send_subscription_card_sync
                         if is_renewal and not instant_act:
-                            cust_msg = (
-                                f"🎉 <b>رسید پرداخت شما با کد سفارش: {order_id} تایید شد!</b>\n\n"
+                            card_title = f"🎉 <b>رسید پرداخت شما با کد سفارش: {order_id} تایید شد!</b>"
+                            card_details = (
                                 f"📦 پلن تمدیدی: <b>{html.escape(str(pname))}</b>\n"
                                 f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
                                 f"📊 حجم: <b>{vol} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>\n\n"
@@ -1737,77 +1749,47 @@ class ResellerBotInstance:
                                 f"💡 حجم و روزهای باقیمانده فعلی شما کاملاً محفوظ است و به محض رسیدن مصرف به ۹۹.۹٪ یا اتمام مدت زمان، بسته جدید به صورت کاملاً خودکار فعال خواهد شد.\n"
                                 f"(همچنین می‌توانید در بخش «سرویس‌های من» در هر زمان آن را به صورت دستی فعال فرمایید){cashback_note}"
                             )
-                            kb_btns = [
-                                [InlineKeyboardButton("📋 مشاهده وضعیت اشتراک و صف", callback_data=f"r_sub_detail_{sub_db_id}")],
+                            renewal_kb = [
+                                [{"text": "📋 مشاهده وضعیت اشتراک و صف", "callback_data": f"r_sub_detail_{sub_db_id}"}]
                             ]
-                            await context.bot.send_message(
-                                chat_id=target_uid,
-                                text=cust_msg,
-                                reply_markup=InlineKeyboardMarkup(kb_btns),
-                                parse_mode="HTML"
+                            await asyncio.to_thread(
+                                send_subscription_card_sync,
+                                chat_id=int(target_uid),
+                                sub_url=None,
+                                title=card_title,
+                                details=card_details,
+                                bot_token=bot_tok,
+                                reseller_id=r_id,
+                                custom_keyboard=renewal_kb
                             )
                         else:
-                            cust_msg = f"🎉 <b>رسید پرداخت شما با کد سفارش: {order_id} تایید شد!</b>\n\n"
-                            cust_msg += f"📦 پلن: <b>{html.escape(str(pname))}</b>\n"
-                            cust_msg += f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
-                            cust_msg += f"📊 حجم: <b>{vol} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>\n\n"
-                            cust_msg += f"🔗 <b>لینک سابسکریپشن اختصاصی شما:</b>\n<code>{sub_url}</code>{cashback_note}\n\n"
-                            cust_msg += "💡 جهت اتصال، لینک بالا را کپی کرده یا بارکد QR زیر را در نرم‌افزار اسکن فرمایید."
-
-                            kb_btns = []
+                            card_title = f"🎉 <b>رسید پرداخت شما با کد سفارش: {order_id} تایید شد!</b>"
+                            card_details = (
+                                f"📦 پلن: <b>{html.escape(str(pname))}</b>\n"
+                                f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
+                                f"📊 حجم: <b>{vol} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>{cashback_note}"
+                            )
+                            cust_kb = []
                             if sub_url and (sub_url.startswith("http://") or sub_url.startswith("https://")):
-                                kb_btns.append([InlineKeyboardButton("🚀 اتصال سریع به برنامه", url=sub_url)])
+                                cust_kb.append([{"text": "🚀 اتصال سریع به برنامه", "url": sub_url}])
                             if uuid_val:
-                                kb_btns.append([
-                                    InlineKeyboardButton("📥 دریافت کانفیگ تکی", callback_data=f"r_single_link_{uuid_val}_{sub_db_id or 0}")
-                                ])
-                            kb_btns.append([
-                                InlineKeyboardButton("📱 راهنمای کپی و اتصال", callback_data="r_copy_help")
-                            ])
+                                cust_kb.append([{"text": "📥 دریافت کانفیگ تکی", "callback_data": f"r_single_link_{uuid_val}_{sub_db_id or 0}"}])
+                            cust_kb.append([{"text": "📋 کپی لینک", "callback_data": "copy_link"}])
 
-                            qr_bytes = generate_qr_code_bytes(sub_url) if sub_url else None
-                            delivered = False
-                            if qr_bytes:
-                                try:
-                                    await context.bot.send_photo(
-                                        chat_id=target_uid,
-                                        photo=qr_bytes,
-                                        caption=cust_msg,
-                                        reply_markup=InlineKeyboardMarkup(kb_btns) if kb_btns else None,
-                                        parse_mode="HTML"
-                                    )
-                                    delivered = True
-                                except Exception as e_ph:
-                                    logger.warning(f"Failed to send QR photo via context.bot to {target_uid}: {e_ph}")
-
-                            if not delivered:
-                                try:
-                                    await context.bot.send_message(
-                                        chat_id=target_uid,
-                                        text=cust_msg,
-                                        reply_markup=InlineKeyboardMarkup(kb_btns) if kb_btns else None,
-                                        parse_mode="HTML"
-                                    )
-                                    delivered = True
-                                except Exception as e_txt:
-                                    logger.error(f"Failed to send text message via context.bot to {target_uid}: {e_txt}")
-
-                            if not delivered and target_uid > 0:
-                                try:
-                                    from dashboard import send_subscription_card_sync
-                                    bot_tok = (self.reseller_data.get("bot_token") or "").strip()
-                                    send_subscription_card_sync(
-                                        chat_id=target_uid,
-                                        sub_url=sub_url,
-                                        title=f"🎉 **رسید پرداخت شما با کد سفارش: {order_id} تایید شد!**",
-                                        details=f"📦 پلن: **{pname}**\n👤 نام اکانت: `{account_name}`\n📊 حجم: **{vol} گیگابایت** | ⏳ مدت: **{days} روز**",
-                                        bot_token=bot_tok,
-                                        reseller_id=r_id
-                                    )
-                                except Exception as e_fb:
-                                    logger.error(f"Fallback send_subscription_card_sync failed for {target_uid}: {e_fb}")
+                            sent_ok = await asyncio.to_thread(
+                                send_subscription_card_sync,
+                                chat_id=int(target_uid),
+                                sub_url=sub_url,
+                                title=card_title,
+                                details=card_details,
+                                bot_token=bot_tok,
+                                reseller_id=r_id,
+                                custom_keyboard=cust_kb
+                            )
+                            if not sent_ok:
+                                logger.warning(f"send_subscription_card_sync returned False for customer {target_uid}")
                     except Exception as e_cust:
-                        logger.error(f"Failed to deliver config with QR to customer {target_uid}: {e_cust}")
+                        logger.error(f"Failed to deliver config with QR to customer {target_uid}: {e_cust}", exc_info=True)
 
                     # ۷. اعلان موفقیت مستقیم به مدیر کلیک‌کننده
                     try:
@@ -1866,17 +1848,55 @@ class ResellerBotInstance:
                         return
 
                     db.update_transaction(order_id, status="rejected", processed_by=f"{caller_name} / ربات", processed_at=get_now_iso())
-                    rej_msg = f"❌ <b>رسید پرداخت با کد سفارش: <code>{order_id}</code> توسط مدیر {html.escape(caller_name)} رد شد.</b>\n⏰ زمان: {get_now_shamsi()}"
-                    await sync_admin_receipt_action(context.bot, order_id, caller_id, caller_name, action="rejected", caller_msg=rej_msg)
+                    if str(order_id).startswith("INV"):
+                        try:
+                            db.update_smart_invoice(order_id, status="rejected")
+                        except Exception:
+                            pass
 
+                    rej_msg = f"❌ <b>رسید پرداخت با کد سفارش: <code>{order_id}</code> توسط مدیر {html.escape(caller_name)} رد شد.</b>\n⏰ زمان: {get_now_shamsi()}"
+                    await sync_admin_receipt_action(context.bot, order_id, caller_id, caller_name, action="rejected", caller_msg=rej_msg, r_id=r_id)
                     try:
-                        await context.bot.send_message(
-                            chat_id=target_uid,
-                            text=f"❌ <b>رسید پرداخت شما با کد سفارش: {order_id} تایید نشد.</b>\n\nدر صورت بروز هرگونه ابهام، با پشتیبانی در ارتباط باشید.",
-                            parse_mode="HTML"
-                        )
+                        if query and query.message:
+                            await safe_edit_admin_message(context.bot, query.message.chat_id, query.message.message_id, rej_msg, reply_markup=None)
                     except Exception:
                         pass
+
+                    if target_uid and int(target_uid) > 0:
+                        cust_rej_text = (
+                            f"❌ <b>رسید پرداخت شما تایید نشد.</b>\n\n"
+                            f"🔖 کد سفارش: <code>{order_id}</code>\n"
+                            f"⚠️ علت رد: رسید ارسالی مورد تایید قرار نگرفت یا نامعتبر بود.\n\n"
+                            f"💬 در صورت کسر وجه یا نیاز به راهنمایی، لطفاً با پشتیبانی در ارتباط باشید."
+                        )
+                        delivered_rej = False
+                        try:
+                            await context.bot.send_message(
+                                chat_id=int(target_uid),
+                                text=cust_rej_text,
+                                parse_mode="HTML"
+                            )
+                            delivered_rej = True
+                        except Exception as e_rej_ctx:
+                            logger.warning(f"context.bot failed to send rejection to {target_uid}: {e_rej_ctx}")
+
+                        if not delivered_rej:
+                            try:
+                                bot_tok = (self.reseller_data.get("bot_token") or "").strip()
+                                if not bot_tok and r_id:
+                                    r_info = db.get_reseller(r_id)
+                                    if r_info and r_info.get("bot_token"):
+                                        bot_tok = str(r_info.get("bot_token")).strip()
+                                from dashboard import send_telegram_msg
+                                await asyncio.to_thread(
+                                    send_telegram_msg,
+                                    chat_id=int(target_uid),
+                                    text=cust_rej_text,
+                                    parse_mode="HTML",
+                                    bot_token=bot_tok
+                                )
+                            except Exception as e_rej_fb:
+                                logger.error(f"Fallback send_telegram_msg failed for {target_uid}: {e_rej_fb}")
 
                     await query.answer("❌ پرداخت رد شد و به مشتری اطلاع‌رسانی گردید.", show_alert=True)
                 except Exception as ex_rrej:
@@ -2054,6 +2074,35 @@ class ResellerBotInstance:
                         except Exception:
                             pass
 
+                    # کش‌بک و ارتقای سطح VIP کاربر
+                    cashback_note = ""
+                    try:
+                        vip_info = db.get_user_vip_info(user_id)
+                        if vip_info.get("is_vip") and vip_info.get("cashback_percent", 0) > 0:
+                            cb_pct = vip_info.get("cashback_percent", 10)
+                            cb_amount = int((original_price * cb_pct) / 100)
+                            if cb_amount > 0:
+                                cb_res = db.add_wallet_balance(
+                                    user_id,
+                                    cb_amount,
+                                    f"هدیه کش‌بک خرید VIP ({cb_pct}%)",
+                                    ref_id=str(order_id),
+                                    tx_type="cashback"
+                                )
+                                new_b = cb_res.get("new_balance", 0)
+                                cashback_note += f"\n\n🎁 **هدیه کش‌بک VIP:** مبلغ {cb_amount:,} تومان ({cb_pct}٪) به کیف پول شما واریز شد.\n💰 موجودی کیف پول: {new_b:,} تومان"
+                    except Exception as e_cb:
+                        logger.error(f"Error in reseller bot VIP cashback: {e_cb}")
+
+                    try:
+                        ug_res = db.check_and_upgrade_user_vip(user_id, reseller_id=r_id)
+                        if ug_res.get("upgraded"):
+                            cb_rate = ug_res.get("cashback_percent", 10)
+                            t_sp = ug_res.get("total_spent", 0)
+                            cashback_note += f"\n\n🎉 **تبریک! شما به عنوان مشتری طلایی (⭐️ VIP) ارتقا یافتید!**\nبا رسیدن مجموع خرید شما به {t_sp:,} تومان، از این پس از {cb_rate}٪ کش‌بک در هر خرید برخوردار خواهید بود. 🌹"
+                    except Exception as e_ug:
+                        logger.error(f"Error checking reseller bot VIP auto upgrade: {e_ug}")
+
                     done_adm_text = (
                         f"✅ <b>سفارش {order_id} با موفقیت تایید شد.</b>\n\n"
                         f"👤 بررسی شده توسط: <b>{html.escape(caller_name)}</b>\n"
@@ -2061,87 +2110,72 @@ class ResellerBotInstance:
                         f"💰 هزینه عمده: <b>{wholesale_cost:,} تومان</b>"
                         + (f"\n🔄 حالت تمدید: <b>{mode_note}</b>" if mode_note else "")
                     )
-                    await sync_admin_receipt_action(context.bot, order_id, caller_id, caller_name, action="approved", caller_msg=done_adm_text)
+                    await sync_admin_receipt_action(context.bot, order_id, caller_id, caller_name, action="approved", caller_msg=done_adm_text, r_id=r_id)
+                    try:
+                        if query and query.message:
+                            await safe_edit_admin_message(context.bot, query.message.chat_id, query.message.message_id, done_adm_text, reply_markup=None)
+                    except Exception:
+                        pass
 
                     if user_id and int(user_id) > 0:
+                        bot_tok = (self.reseller_data.get("bot_token") or "").strip()
+                        if not bot_tok and r_id:
+                            r_info = db.get_reseller(r_id)
+                            if r_info and r_info.get("bot_token"):
+                                bot_tok = str(r_info.get("bot_token")).strip()
+
                         try:
+                            from dashboard import send_subscription_card_sync
                             if is_renewal and not instant_act:
-                                c_msg = (
-                                    f"🎉 <b>رسید پرداخت شما با کد سفارش: {order_id} تایید شد!</b>\n\n"
+                                card_title = f"🎉 <b>رسید پرداخت شما با کد سفارش: {order_id} تایید شد!</b>"
+                                card_details = (
                                     f"📦 پلن تمدیدی: <b>{html.escape(str(plan_name))}</b>\n"
                                     f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
                                     f"📊 حجم: <b>{vol} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>\n\n"
                                     f"⏳ <b>این بسته با موفقیت در صف رزرو اشتراک شما قرار گرفت.</b>\n"
-                                    f"حجم و زمان اشتراک فعلی شما حفظ شده و بسته جدید به صورت خودکار پس از اتمام بسته فعلی فعال خواهد شد."
+                                    f"حجم و زمان اشتراک فعلی شما حفظ شده و بسته جدید به صورت خودکار پس از اتمام بسته فعلی فعال خواهد شد.{cashback_note}"
                                 )
-                                kb_btns = [
-                                    [InlineKeyboardButton("📋 مشاهده اشتراک و صف تمدید", callback_data=f"r_sub_detail_{sub_db_id}")]
+                                renewal_kb = [
+                                    [{"text": "📋 مشاهده وضعیت اشتراک و صف", "callback_data": f"r_sub_detail_{sub_db_id}"}]
                                 ]
-                                await context.bot.send_message(
+                                await asyncio.to_thread(
+                                    send_subscription_card_sync,
                                     chat_id=int(user_id),
-                                    text=c_msg,
-                                    reply_markup=InlineKeyboardMarkup(kb_btns),
-                                    parse_mode="HTML"
+                                    sub_url=None,
+                                    title=card_title,
+                                    details=card_details,
+                                    bot_token=bot_tok,
+                                    reseller_id=r_id,
+                                    custom_keyboard=renewal_kb
                                 )
                             else:
-                                c_msg = (
-                                    f"🎉 <b>رسید پرداخت شما با کد سفارش: {order_id} تایید شد!</b>\n\n"
+                                card_title = f"🎉 <b>رسید پرداخت شما با کد سفارش: {order_id} تایید شد!</b>"
+                                card_details = (
                                     f"📦 پلن: <b>{html.escape(str(plan_name))}</b>\n"
                                     f"👤 نام اکانت: <code>{html.escape(str(account_name))}</code>\n"
-                                    f"📊 حجم: <b>{vol} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>\n\n"
-                                    + (f"🔗 <b>لینک سابسکریپشن اختصاصی شما:</b>\n<code>{sub_url}</code>\n\n" if sub_url else "")
-                                    + "💡 جهت اتصال، لینک بالا را کپی کرده یا بارکد QR زیر را در نرم‌افزار اسکن فرمایید."
+                                    f"📊 حجم: <b>{vol} گیگابایت</b> | ⏳ مدت: <b>{days} روز</b>{cashback_note}"
                                 )
-                                kb_btns = []
+                                cust_kb = []
                                 if sub_url and (sub_url.startswith("http://") or sub_url.startswith("https://")):
-                                    kb_btns.append([InlineKeyboardButton("🚀 اتصال سریع به برنامه", url=sub_url)])
+                                    cust_kb.append([{"text": "🚀 اتصال سریع به برنامه", "url": sub_url}])
                                 if uuid_created:
-                                    kb_btns.append([InlineKeyboardButton("📥 دریافت کانفیگ تکی", callback_data=f"r_single_link_{uuid_created}_{sub_db_id or 0}")])
-                                kb_btns.append([InlineKeyboardButton("📱 راهنمای کپی و اتصال", callback_data="r_copy_help")])
+                                    cust_kb.append([{"text": "📥 دریافت کانفیگ تکی", "callback_data": f"r_single_link_{uuid_created}_{sub_db_id or 0}"}])
+                                cust_kb.append([{"text": "📋 کپی لینک", "callback_data": "copy_link"}])
 
-                                qr_bytes = generate_qr_code_bytes(sub_url) if sub_url else None
-                                delivered = False
-                                if qr_bytes:
-                                    try:
-                                        await context.bot.send_photo(
-                                            chat_id=int(user_id),
-                                            photo=qr_bytes,
-                                            caption=c_msg,
-                                            reply_markup=InlineKeyboardMarkup(kb_btns) if kb_btns else None,
-                                            parse_mode="HTML"
-                                        )
-                                        delivered = True
-                                    except Exception as e_ph:
-                                        logger.warning(f"Failed to send QR photo via context.bot to {user_id}: {e_ph}")
-
-                                if not delivered:
-                                    try:
-                                        await context.bot.send_message(
-                                            chat_id=int(user_id),
-                                            text=c_msg,
-                                            reply_markup=InlineKeyboardMarkup(kb_btns) if kb_btns else None,
-                                            parse_mode="HTML"
-                                        )
-                                        delivered = True
-                                    except Exception as e_txt:
-                                        logger.error(f"Failed to send text message via context.bot to {user_id}: {e_txt}")
-
-                                if not delivered and user_id and int(user_id) > 0:
-                                    try:
-                                        from dashboard import send_subscription_card_sync
-                                        bot_tok = (self.reseller_data.get("bot_token") or "").strip()
-                                        send_subscription_card_sync(
-                                            chat_id=int(user_id),
-                                            sub_url=sub_url,
-                                            title=f"🎉 **رسید پرداخت شما با کد سفارش: {order_id} تایید شد!**",
-                                            details=f"📦 پلن: **{plan_name}**\n👤 نام اکانت: `{account_name}`\n📊 حجم: **{vol} گیگابایت** | ⏳ مدت: **{days} روز**",
-                                            bot_token=bot_tok,
-                                            reseller_id=r_id
-                                        )
-                                    except Exception as e_fb:
-                                        logger.error(f"Fallback send_subscription_card_sync failed for {user_id}: {e_fb}")
+                                sent_ok = await asyncio.to_thread(
+                                    send_subscription_card_sync,
+                                    chat_id=int(user_id),
+                                    sub_url=sub_url,
+                                    title=card_title,
+                                    details=card_details,
+                                    bot_token=bot_tok,
+                                    reseller_id=r_id,
+                                    custom_keyboard=cust_kb
+                                )
+                                if not sent_ok:
+                                    logger.warning(f"send_subscription_card_sync returned False for customer {user_id}")
                         except Exception as e_u:
-                            logger.error(f"Failed to notify customer in res_pay_app: {e_u}")
+                            logger.error(f"Failed to notify customer in res_pay_app: {e_u}", exc_info=True)
 
                     await query.answer("✅ پرداخت تایید شد و مشخصات اشتراک برای مشتری ارسال گردید.", show_alert=True)
                 except Exception as ex_app:
@@ -2171,20 +2205,57 @@ class ResellerBotInstance:
                     conn.commit()
                     conn.close()
 
+                    if str(order_id).startswith("INV"):
+                        try:
+                            db.update_smart_invoice(order_id, status="rejected")
+                        except Exception:
+                            pass
+
                     rej_adm_text = f"❌ <b>پرداخت سفارش {order_id} توسط مدیر {html.escape(caller_name)} رد شد.</b>"
-                    await sync_admin_receipt_action(context.bot, order_id, caller_id, caller_name, action="rejected", caller_msg=rej_adm_text)
+                    await sync_admin_receipt_action(context.bot, order_id, caller_id, caller_name, action="rejected", caller_msg=rej_adm_text, r_id=r_id)
+                    try:
+                        if query and query.message:
+                            await safe_edit_admin_message(context.bot, query.message.chat_id, query.message.message_id, rej_adm_text, reply_markup=None)
+                    except Exception:
+                        pass
 
                     tx_data = db.get_transaction_by_order_id(order_id)
                     user_id = tx_data.get("user_id") if tx_data else None
                     if user_id and int(user_id) > 0:
+                        cust_rej_text = (
+                            f"❌ <b>رسید پرداخت شما تایید نشد.</b>\n\n"
+                            f"🔖 کد سفارش: <code>{order_id}</code>\n"
+                            f"⚠️ علت رد: رسید ارسالی مورد تایید قرار نگرفت یا نامعتبر بود.\n\n"
+                            f"💬 در صورت کسر وجه یا نیاز به راهنمایی، لطفاً با پشتیبانی در ارتباط باشید."
+                        )
+                        delivered_rej = False
                         try:
                             await context.bot.send_message(
                                 chat_id=int(user_id),
-                                text=f"❌ <b>رسید پرداخت شما با کد سفارش: {order_id} تایید نشد.</b>\n\nجهت راهنمایی با پشتیبانی تماس بگیرید.",
+                                text=cust_rej_text,
                                 parse_mode="HTML"
                             )
-                        except Exception:
-                            pass
+                            delivered_rej = True
+                        except Exception as e_rej_ctx:
+                            logger.warning(f"context.bot failed to send rejection to {user_id}: {e_rej_ctx}")
+
+                        if not delivered_rej:
+                            try:
+                                bot_tok = (self.reseller_data.get("bot_token") or "").strip()
+                                if not bot_tok and r_id:
+                                    r_info = db.get_reseller(r_id)
+                                    if r_info and r_info.get("bot_token"):
+                                        bot_tok = str(r_info.get("bot_token")).strip()
+                                from dashboard import send_telegram_msg
+                                await asyncio.to_thread(
+                                    send_telegram_msg,
+                                    chat_id=int(user_id),
+                                    text=cust_rej_text,
+                                    parse_mode="HTML",
+                                    bot_token=bot_tok
+                                )
+                            except Exception as e_rej_fb:
+                                logger.error(f"Fallback send_telegram_msg failed for {user_id}: {e_rej_fb}")
 
                     await query.answer("❌ پرداخت رد شد و به مشتری اطلاع داده شد.", show_alert=True)
                 except Exception as ex_rej:
@@ -2230,6 +2301,11 @@ class ResellerBotInstance:
                 text=msg_text,
                 parse_mode="HTML"
             )
+
+        async def reseller_copy_link_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """راهنمای کپی لینک سابسکریپشن"""
+            query = update.callback_query
+            await query.answer("📋 کافیست روی کادر لینک ضربه بزنید تا در حافظه کپی شود!", show_alert=True)
 
         async def reseller_ticket_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """پاسخگویی سریع، ارسال پاسخ‌های آماده و بستن تیکت توسط نماینده از تلگرام"""
@@ -4828,6 +4904,7 @@ class ResellerBotInstance:
         app.add_handler(CallbackQueryHandler(reseller_ticket_callbacks, pattern="^(res_reply_tkt_|res_canned_tkt_|res_canned_send_|res_canned_cancel_|res_close_tkt_)"))
         app.add_handler(CallbackQueryHandler(reseller_approve_callback, pattern="^(rapprove_|rreject_|res_pay_app_|res_pay_rej_)"))
         app.add_handler(CallbackQueryHandler(reseller_single_link_callback, pattern="^r_single_link_"))
+        app.add_handler(CallbackQueryHandler(reseller_copy_link_callback, pattern="^(copy_link|r_copy_help)$"))
         app.add_handler(CallbackQueryHandler(reseller_queue_action_callback, pattern="^(r_act_queue_|r_conf_act_queue_|r_cancel_act_queue|r_qman_|r_qmove_)"))
         app.add_handler(CallbackQueryHandler(reseller_quick_ticket_callback, pattern="^(r_quick_tkt_|r_qsend_|r_qedit_|r_qback)"))
         app.add_handler(CallbackQueryHandler(reseller_admin_callback_handler, pattern="^res_adm_"))

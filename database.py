@@ -473,6 +473,16 @@ class Database:
             )
         """)
 
+        # جدول ردگیری فعالیت و وضعیت آنلاین پشتیبانان و مدیران در تلگرام
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS telegram_activity (
+                telegram_id INTEGER PRIMARY KEY,
+                role TEXT,
+                reseller_id INTEGER,
+                last_active_at TEXT
+            )
+        """)
+
         # مایگریشن خودکار ایندکس‌ها و ستون‌های جدید
         try:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_login_logs_token ON login_logs(session_token)")
@@ -499,6 +509,24 @@ class Database:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_reseller ON users(reseller_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_reseller_tx_reseller ON reseller_transactions(reseller_id, type, created_at)")
+        except Exception:
+            pass
+
+        # همگام‌سازی و درج خودکار شماره تلفن احراز هویت شده مشتریان از جدول users در جدول subscriptions
+        try:
+            cursor.execute("""
+                UPDATE subscriptions
+                SET phone_number = (
+                    SELECT u.phone_number FROM users u 
+                    WHERE u.telegram_id = subscriptions.telegram_id 
+                      AND u.phone_number IS NOT NULL AND u.phone_number != ''
+                )
+                WHERE (phone_number IS NULL OR phone_number = '') 
+                  AND telegram_id IN (
+                    SELECT telegram_id FROM users 
+                    WHERE phone_number IS NOT NULL AND phone_number != ''
+                  )
+            """)
         except Exception:
             pass
 
@@ -2126,6 +2154,14 @@ class Database:
                     INSERT INTO users (telegram_id, username, phone_number, is_verified, created_at, updated_at)
                     VALUES (?, ?, ?, 1, ?, ?)
                 """, (telegram_id, f"user_{telegram_id}", clean_phone, now, now))
+
+            # همچنین درج و به‌روزرسانی خودکار شماره تلفن احراز شده در اشتراک‌های کاربر
+            cursor.execute("""
+                UPDATE subscriptions 
+                SET phone_number = ?, updated_at = ? 
+                WHERE telegram_id = ? AND (phone_number IS NULL OR phone_number = '')
+            """, (clean_phone, now, telegram_id))
+
             conn.commit()
             return True
         except Exception as e:
@@ -2564,6 +2600,14 @@ class Database:
         expire_date = (get_now_naive() + timedelta(days=duration)).isoformat()
         creator = created_by or kwargs.get("created_by")
         phone = kwargs.get("phone_number") or kwargs.get("phone")
+        if not phone and telegram_id and int(telegram_id) > 0:
+            try:
+                cursor.execute("SELECT phone_number FROM users WHERE telegram_id = ?", (int(telegram_id),))
+                u_p_row = cursor.fetchone()
+                if u_p_row and u_p_row["phone_number"]:
+                    phone = u_p_row["phone_number"]
+            except Exception:
+                pass
         payment_status = kwargs.get("payment_status", "paid")
         debt_amount = int(kwargs.get("debt_amount", 0) or 0)
         debt_notes = kwargs.get("debt_notes")
@@ -2828,8 +2872,8 @@ class Database:
 
         try:
             cursor.execute("""
-                SELECT * FROM transactions WHERE order_id = ?
-            """, (order_id,))
+                SELECT * FROM transactions WHERE order_id = ? OR id = ?
+            """, (order_id, order_id))
             row = cursor.fetchone()
             return dict(row) if row else None
         except Exception as e:
@@ -5849,6 +5893,28 @@ class Database:
                                 is_online = True
                         except Exception:
                             pass
+
+                # بررسی فعالیت مستقیم نماینده و اپراتورهای تلگرام در ربات
+                if not is_online:
+                    try:
+                        cursor.execute("""
+                            SELECT last_active_at FROM telegram_activity
+                            WHERE (reseller_id = ? OR telegram_id IN (
+                                SELECT telegram_id FROM resellers WHERE id = ?
+                                UNION
+                                SELECT telegram_id FROM admin_users WHERE reseller_id = ? AND is_active = 1
+                            ))
+                            ORDER BY last_active_at DESC LIMIT 1
+                        """, (reseller_id, reseller_id, reseller_id))
+                        act_row = cursor.fetchone()
+                        if act_row and act_row[0]:
+                            act_time = datetime.fromisoformat(act_row[0])
+                            if act_time.tzinfo is None:
+                                act_time = act_time.replace(tzinfo=TEHRAN_TZ)
+                            if abs((now_tehran - act_time).total_seconds()) <= 15 * 60:
+                                is_online = True
+                    except Exception:
+                        pass
             else:
                 # بررسی ادمین اصلی و سایر مدیران پنل
                 cursor.execute("""
@@ -5886,6 +5952,26 @@ class Database:
                                 is_online = True
                         except Exception:
                             pass
+
+                # بررسی فعالیت مستقیم مدیران، پشتیبانان و مدیر ارشد در ربات تلگرام
+                if not is_online:
+                    try:
+                        cursor.execute("""
+                            SELECT last_active_at FROM telegram_activity
+                            WHERE (role IN ('admin', 'super_admin', 'support', 'finance', 'creator') OR telegram_id IN (
+                                SELECT telegram_id FROM admin_users WHERE is_active = 1
+                            ))
+                            ORDER BY last_active_at DESC LIMIT 1
+                        """)
+                        act_row = cursor.fetchone()
+                        if act_row and act_row[0]:
+                            act_time = datetime.fromisoformat(act_row[0])
+                            if act_time.tzinfo is None:
+                                act_time = act_time.replace(tzinfo=TEHRAN_TZ)
+                            if abs((now_tehran - act_time).total_seconds()) <= 15 * 60:
+                                is_online = True
+                    except Exception:
+                        pass
         except Exception as e:
             logger.error(f"Error checking support real online status: {e}")
             is_online = False
@@ -5899,6 +5985,71 @@ class Database:
             "status_text": "آنلاین و پاسخگو" if is_online else "آفلاین (ثبت پیام برای بررسی)",
             "mode": "real"
         }
+
+    def record_telegram_activity(self, telegram_id: int, role: str = "user", reseller_id: int = None):
+        """ثبت زمان آخرین فعالیت تلگرامی مدیر، نماینده یا پشتیبان جهت نمایش آنلاین بودن در پرتال مشتری"""
+        if not telegram_id or int(telegram_id) <= 0:
+            return
+        now = get_now_iso()
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO telegram_activity (telegram_id, role, reseller_id, last_active_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(telegram_id) DO UPDATE SET 
+                    role = excluded.role,
+                    reseller_id = COALESCE(excluded.reseller_id, telegram_activity.reseller_id),
+                    last_active_at = excluded.last_active_at
+            """, (int(telegram_id), role, reseller_id, now))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.debug(f"Error recording telegram activity for {telegram_id}: {e}")
+
+    # ═══════════════════════════════════════════════════════════════
+    # بنرها و اطلاعیه‌های پرتال مشتریان (مختص مدیریت)
+    # ═══════════════════════════════════════════════════════════════
+
+    def get_portal_customer_banners(self) -> List[Dict[str, Any]]:
+        """دریافت لیست بنرها و اطلاعیه‌های فعال پرتال وب مشتریان"""
+        try:
+            raw = self.get_setting("portal_customer_banners", "[]")
+            if isinstance(raw, list):
+                return raw
+            return json.loads(raw)
+        except Exception:
+            return []
+
+    def save_portal_customer_banners(self, banners: List[Dict[str, Any]]) -> bool:
+        """ذخیره لیست بنرهای پرتال مشتریان در تنظیمات دیتابیس"""
+        try:
+            return self.set_setting("portal_customer_banners", json.dumps(banners, ensure_ascii=False))
+        except Exception as e:
+            logger.error(f"Error saving portal customer banners: {e}")
+            return False
+
+    def add_portal_customer_banner(self, title: str, message: str, level: str = "warning", target: str = "all") -> Dict[str, Any]:
+        """افزودن بنر اطلاعیه جدید برای پرتال مشتریان توسط مدیریت"""
+        banners = self.get_portal_customer_banners()
+        banner_id = f"pbnr_{int(time.time())}_{random.randint(100, 999)}"
+        new_banner = {
+            "id": banner_id,
+            "title": title,
+            "message": message,
+            "level": level,
+            "target": target,
+            "created_at": get_now_iso()
+        }
+        banners.append(new_banner)
+        self.save_portal_customer_banners(banners)
+        return new_banner
+
+    def delete_portal_customer_banner(self, banner_id: str) -> bool:
+        """حذف بنر اطلاعیه پرتال مشتریان"""
+        banners = self.get_portal_customer_banners()
+        filtered = [b for b in banners if b.get("id") != banner_id]
+        return self.save_portal_customer_banners(filtered)
 
     def get_chat_settings(self) -> dict:
         """دریافت تنظیمات جامع گفتگوی آنلاین پورتال مشتری، استایل دکمه و هوش مصنوعی"""
@@ -12348,38 +12499,143 @@ class Database:
     # ارسال پیام هدفمند به دسته‌های کاربری (Broadcast Engine)
     # ═══════════════════════════════════════════════════════════════════════
 
-    def get_target_broadcast_users(self, group_type: str = "all") -> list:
-        """استخراج لیست تلگرام آیدی کاربران بر اساس فیلتر هدفمند"""
+    def get_target_broadcast_users(self, group_type: str = "all", reseller_id: int = None) -> list:
+        """استخراج لیست تلگرام آیدی کاربران بر اساس فیلتر هدفمند و ایزولاسیون نماینده یا مدیریت"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
+        is_r = bool(reseller_id and int(reseller_id) > 0)
+        r_cond_sub = f" AND reseller_id = {int(reseller_id)}" if is_r else " AND (reseller_id IS NULL OR reseller_id = 0)"
+        r_cond_usr = f" AND reseller_id = {int(reseller_id)}" if is_r else " AND (reseller_id IS NULL OR reseller_id = 0)"
+
         if group_type == "all":
-            cursor.execute("SELECT DISTINCT telegram_id FROM users WHERE telegram_id IS NOT NULL AND telegram_id != 0")
+            cursor.execute(f"SELECT DISTINCT telegram_id FROM users WHERE telegram_id IS NOT NULL AND telegram_id != 0{r_cond_usr}")
         elif group_type == "active":
-            cursor.execute("SELECT DISTINCT telegram_id FROM subscriptions WHERE status='active'")
+            cursor.execute(f"SELECT DISTINCT telegram_id FROM subscriptions WHERE status='active' AND (is_deleted=0 OR is_deleted IS NULL){r_cond_sub}")
         elif group_type == "expired":
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT DISTINCT telegram_id FROM subscriptions 
-                WHERE status='expired' OR (expire_date IS NOT NULL AND expire_date < datetime('now'))
+                WHERE (status='expired' OR (expire_date IS NOT NULL AND expire_date < datetime('now')))
+                  AND (is_deleted=0 OR is_deleted IS NULL){r_cond_sub}
+            """)
+        elif group_type == "debtors":
+            cursor.execute(f"""
+                SELECT DISTINCT telegram_id FROM subscriptions 
+                WHERE (payment_status='debtor' OR debt_amount > 0)
+                  AND (is_deleted=0 OR is_deleted IS NULL){r_cond_sub}
             """)
         elif group_type == "test_only":
-            cursor.execute("""
-                SELECT DISTINCT telegram_id FROM subscriptions WHERE plan_id='test'
+            cursor.execute(f"""
+                SELECT DISTINCT telegram_id FROM subscriptions WHERE plan_id='test' AND (is_deleted=0 OR is_deleted IS NULL){r_cond_sub}
                 EXCEPT
-                SELECT DISTINCT telegram_id FROM subscriptions WHERE plan_id != 'test'
+                SELECT DISTINCT telegram_id FROM subscriptions WHERE plan_id != 'test' AND (is_deleted=0 OR is_deleted IS NULL){r_cond_sub}
             """)
         elif group_type == "expiring_soon":
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT DISTINCT telegram_id FROM subscriptions 
                 WHERE status='active' AND expire_date IS NOT NULL 
                   AND expire_date BETWEEN datetime('now') AND datetime('now', '+3 days')
+                  AND (is_deleted=0 OR is_deleted IS NULL){r_cond_sub}
             """)
         else:
-            cursor.execute("SELECT DISTINCT telegram_id FROM users WHERE telegram_id IS NOT NULL")
+            cursor.execute(f"SELECT DISTINCT telegram_id FROM users WHERE telegram_id IS NOT NULL{r_cond_usr}")
             
         rows = cursor.fetchall()
         conn.close()
         return [r[0] for r in rows if r[0]]
+
+    def get_target_broadcast_phones(self, group_type: str = "all", reseller_id: int = None) -> list:
+        """استخراج لیست یکتای شماره تلفن‌های معتبر کاربران بر اساس فیلتر هدفمند برای ارسال پیامک"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        is_r = bool(reseller_id and int(reseller_id) > 0)
+        r_cond_sub = f" AND s.reseller_id = {int(reseller_id)}" if is_r else " AND (s.reseller_id IS NULL OR s.reseller_id = 0)"
+        r_cond_usr = f" AND u.reseller_id = {int(reseller_id)}" if is_r else " AND (u.reseller_id IS NULL OR u.reseller_id = 0)"
+
+        if group_type == "all":
+            query = f"""
+                SELECT DISTINCT u.phone_number FROM users u 
+                WHERE u.phone_number IS NOT NULL AND u.phone_number != '' {r_cond_usr}
+                UNION
+                SELECT DISTINCT s.phone_number FROM subscriptions s 
+                WHERE s.phone_number IS NOT NULL AND s.phone_number != '' AND (s.is_deleted = 0 OR s.is_deleted IS NULL) {r_cond_sub}
+            """
+        elif group_type == "active":
+            query = f"""
+                SELECT DISTINCT COALESCE(s.phone_number, u.phone_number) 
+                FROM subscriptions s
+                LEFT JOIN users u ON s.telegram_id = u.telegram_id
+                WHERE s.status='active' AND (s.is_deleted = 0 OR s.is_deleted IS NULL)
+                  AND (s.phone_number IS NOT NULL OR u.phone_number IS NOT NULL) {r_cond_sub}
+            """
+        elif group_type == "expiring_soon":
+            query = f"""
+                SELECT DISTINCT COALESCE(s.phone_number, u.phone_number) 
+                FROM subscriptions s
+                LEFT JOIN users u ON s.telegram_id = u.telegram_id
+                WHERE s.status='active' AND (s.is_deleted = 0 OR s.is_deleted IS NULL)
+                  AND s.expire_date IS NOT NULL 
+                  AND s.expire_date BETWEEN datetime('now') AND datetime('now', '+3 days')
+                  AND (s.phone_number IS NOT NULL OR u.phone_number IS NOT NULL) {r_cond_sub}
+            """
+        elif group_type == "expired":
+            query = f"""
+                SELECT DISTINCT COALESCE(s.phone_number, u.phone_number) 
+                FROM subscriptions s
+                LEFT JOIN users u ON s.telegram_id = u.telegram_id
+                WHERE (s.status='expired' OR (s.expire_date IS NOT NULL AND s.expire_date < datetime('now')))
+                  AND (s.is_deleted = 0 OR s.is_deleted IS NULL)
+                  AND (s.phone_number IS NOT NULL OR u.phone_number IS NOT NULL) {r_cond_sub}
+            """
+        elif group_type == "debtors":
+            query = f"""
+                SELECT DISTINCT COALESCE(s.phone_number, u.phone_number) 
+                FROM subscriptions s
+                LEFT JOIN users u ON s.telegram_id = u.telegram_id
+                WHERE (s.payment_status = 'debtor' OR s.debt_amount > 0)
+                  AND (s.is_deleted = 0 OR s.is_deleted IS NULL)
+                  AND (s.phone_number IS NOT NULL OR u.phone_number IS NOT NULL) {r_cond_sub}
+            """
+        elif group_type == "test_only":
+            query = f"""
+                SELECT DISTINCT COALESCE(s.phone_number, u.phone_number) 
+                FROM subscriptions s
+                LEFT JOIN users u ON s.telegram_id = u.telegram_id
+                WHERE s.plan_id='test' AND (s.is_deleted = 0 OR s.is_deleted IS NULL) {r_cond_sub}
+                EXCEPT
+                SELECT DISTINCT COALESCE(s2.phone_number, u2.phone_number) 
+                FROM subscriptions s2
+                LEFT JOIN users u2 ON s2.telegram_id = u2.telegram_id
+                WHERE s2.plan_id != 'test' AND (s2.is_deleted = 0 OR s2.is_deleted IS NULL) {r_cond_sub}
+            """
+        else:
+            query = f"""
+                SELECT DISTINCT u.phone_number FROM users u 
+                WHERE u.phone_number IS NOT NULL AND u.phone_number != '' {r_cond_usr}
+            """
+
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        conn.close()
+
+        valid_phones = set()
+        for r in rows:
+            raw = str(r[0] or "").strip()
+            if raw:
+                # پاکسازی و فرمت شماره ایران
+                clean = re.sub(r"[^\d+]", "", raw)
+                if clean.startswith("+98"):
+                    clean = "0" + clean[3:]
+                elif clean.startswith("0098"):
+                    clean = "0" + clean[4:]
+                elif clean.startswith("98"):
+                    clean = "0" + clean[2:]
+                elif len(clean) == 10 and clean.startswith("9"):
+                    clean = "0" + clean
+                if len(clean) == 11 and clean.startswith("09"):
+                    valid_phones.add(clean)
+        return sorted(list(valid_phones))
 
     # ═══════════════════════════════════════════════════════════════════════
     # مدیریت کارت‌های بانکی مقصد (Smart Card Rotator)

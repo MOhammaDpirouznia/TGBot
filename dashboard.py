@@ -1227,27 +1227,49 @@ def notify_auth_event(event_type: str, username: str, contact_info: dict, ip: st
             logger.error(f"Error sending auth SMS notification to {phone}: {e}")
 
 
-def send_subscription_card_sync(chat_id: int, sub_url: str, title: str, details: str, bot_token: str = None, reseller_id: int = None) -> bool:
+def send_subscription_card_sync(chat_id: int, sub_url: str, title: str, details: str, bot_token: str = None, reseller_id: int = None, custom_keyboard: list = None) -> bool:
     """ارسال کارت اشتراک همراه با بارکد QR و دکمه‌های اتصال مستقیم از وب به کاربر با پشتیبانی از ربات اصلی یا ربات نماینده"""
-    if not bot_token and reseller_id:
+    if (not bot_token or str(bot_token).lower() == "none") and reseller_id:
         try:
             r_data = db.get_reseller(reseller_id)
             if r_data and r_data.get("bot_token"):
-                bot_token = str(r_data.get("bot_token")).strip()
+                tok_cand = str(r_data.get("bot_token")).strip()
+                if tok_cand and tok_cand.lower() != "none":
+                    bot_token = tok_cand
         except Exception:
             pass
 
-    active_token = (bot_token or get_bot_token() or "").strip()
+    cand_tok = (bot_token or "").strip()
+    active_token = cand_tok if cand_tok and cand_tok.lower() != "none" else (get_bot_token() or "").strip()
     clean_sub_url = (sub_url or "").strip()
     qr_bytes = generate_qr_code_bytes(clean_sub_url) if clean_sub_url else None
 
-    # دکمه‌های شیشه‌ای - دکمه لینک وب تنها در صورت شروع با پروتکل معتبر اضافه شود
+    # دکمه‌های شیشه‌ای
     keyboard_rows = []
-    if clean_sub_url and (clean_sub_url.startswith("http://") or clean_sub_url.startswith("https://")):
-        keyboard_rows.append([{"text": "🌐 صفحه کاربری و اتصال سریع", "url": clean_sub_url}])
-    keyboard_rows.append([{"text": "📋 کپی لینک", "callback_data": "copy_link"}])
+    if custom_keyboard is not None:
+        for row in custom_keyboard:
+            new_row = []
+            for btn in row:
+                if isinstance(btn, dict):
+                    new_row.append(btn)
+                elif hasattr(btn, "to_dict"):
+                    new_row.append(btn.to_dict())
+                elif hasattr(btn, "text"):
+                    d = {"text": btn.text}
+                    if getattr(btn, "url", None):
+                        d["url"] = btn.url
+                    if getattr(btn, "callback_data", None):
+                        d["callback_data"] = btn.callback_data
+                    new_row.append(d)
+            if new_row:
+                keyboard_rows.append(new_row)
+    else:
+        if clean_sub_url and (clean_sub_url.startswith("http://") or clean_sub_url.startswith("https://")):
+            keyboard_rows.append([{"text": "🌐 صفحه کاربری و اتصال سریع", "url": clean_sub_url}])
+        if clean_sub_url:
+            keyboard_rows.append([{"text": "📋 کپی لینک", "callback_data": "copy_link"}])
 
-    inline_keyboard = {"inline_keyboard": keyboard_rows}
+    inline_keyboard = {"inline_keyboard": keyboard_rows} if keyboard_rows else None
 
     # تبدیل ایمن مارک‌داون‌های احتمالی به تگ‌های HTML معتبر
     def to_html(s: str) -> str:
@@ -1260,16 +1282,19 @@ def send_subscription_card_sync(chat_id: int, sub_url: str, title: str, details:
     safe_title = to_html(title)
     safe_details = to_html(details)
 
-    caption = (
-        f"{safe_title}\n\n"
-        f"{safe_details}\n\n"
-        f"🔗 <b>لینک اتصال شما (برای کپی لمس کنید):</b>\n"
-        f"<code>{clean_sub_url}</code>\n\n"
-        f"💡 <b>راهنمای اتصال:</b>\n"
-        f"1️⃣ کادر لینک بالا را لمس کنید تا کپی شود.\n"
-        f"2️⃣ در اپلیکیشن (Hiddify / v2rayNG / Streisand) دکمه افزودن کانفیگ از کلیپ‌بورد را بزنید.\n"
-        + (f"3️⃣ یا از دکمه «🌐 صفحه کاربری و اتصال سریع» در زیر استفاده نمایید." if len(keyboard_rows) > 1 else "")
-    )
+    if clean_sub_url:
+        caption = (
+            f"{safe_title}\n\n"
+            f"{safe_details}\n\n"
+            f"🔗 <b>لینک اتصال شما (برای کپی لمس کنید):</b>\n"
+            f"<code>{clean_sub_url}</code>\n\n"
+            f"💡 <b>راهنمای اتصال:</b>\n"
+            f"1️⃣ کادر لینک بالا را لمس کنید تا کپی شود.\n"
+            f"2️⃣ در اپلیکیشن (Hiddify / v2rayNG / Streisand) دکمه افزودن کانفیگ از کلیپ‌بورد را بزنید.\n"
+            + (f"3️⃣ یا از دکمه «🌐 صفحه کاربری و اتصال سریع» در زیر استفاده نمایید." if len(keyboard_rows) > 1 else "")
+        )
+    else:
+        caption = f"{safe_title}\n\n{safe_details}"
 
     plain_caption = re.sub(r"<[^>]+>", "", caption)
 
