@@ -3064,8 +3064,8 @@ def inject_global_branding():
         reseller_credit_limit = session.get("credit_limit", 0)
         reseller_credit_debt = session.get("credit_debt", 0)
 
-    # پالت اختصاصی و استایل‌های شیشه‌ای مات
-    palette_config = get_active_palette_config(db, context="system")
+    # تم سیستم و استایل‌های شیشه‌ای بلور
+    palette_config = get_active_palette_config(db, context="system", reseller_id=active_reseller_id)
     palette_css = generate_palette_css(palette_config)
 
     return dict(
@@ -18103,7 +18103,7 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
     portal_show_troubleshoot = str(db.get_setting("portal_show_troubleshoot", "1")).lower() in ("1", "true")
 
     server_status = get_customer_portal_server_status()
-    portal_palette_config = get_active_palette_config(db, context="portal")
+    portal_palette_config = get_active_palette_config(db, context="portal", reseller_id=reseller_id)
     portal_palette_css = generate_palette_css(portal_palette_config)
     chat_settings = db.get_chat_settings()
     support_online_info = db.is_support_online_for_sub(sub_id, reseller_id=reseller_id)
@@ -19748,10 +19748,8 @@ def start_dashboard_thread():
 if __name__ == "__main__":
     run_dashboard(debug=True)
 @app.route('/admin/reminders', methods=['GET'])
+@admin_required
 def admin_reminders():
-    if not session.get('is_admin'):
-        return redirect(url_for('login'))
-    
     conn = db.get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM admin_reminders ORDER BY id DESC")
@@ -19773,7 +19771,7 @@ def admin_reminders():
 
 @app.route('/api/admin/reminders/active', methods=['GET'])
 def api_admin_reminders_active():
-    if not session.get('is_admin'):
+    if session.get('role') != 'admin':
         return jsonify([])
         
     conn = db.get_connection()
@@ -19805,7 +19803,7 @@ def api_admin_reminders_active():
 
 @app.route('/api/admin/reminders/add', methods=['POST'])
 def api_admin_reminders_add():
-    if not session.get('is_admin'):
+    if session.get('role') != 'admin':
         return jsonify({"success": False, "error": "Unauthorized"}), 403
     
     data = request.json
@@ -19826,7 +19824,7 @@ def api_admin_reminders_add():
 
 @app.route('/api/admin/reminders/delete/<int:id>', methods=['POST'])
 def api_admin_reminders_delete(id):
-    if not session.get('is_admin'):
+    if session.get('role') != 'admin':
         return jsonify({"success": False, "error": "Unauthorized"}), 403
         
     conn = db.get_connection()
