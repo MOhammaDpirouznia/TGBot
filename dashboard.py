@@ -15691,7 +15691,7 @@ def reseller_branding():
             flash(f"خطا در ذخیره‌سازی: {res.get('error')}", "danger")
         return redirect(url_for("reseller_branding"))
 
-    return render_template("reseller_branding.html", reseller=reseller)
+    return render_template("reseller_branding.html", reseller=reseller, available_palettes=get_all_palettes())
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -19834,4 +19834,4 @@ def api_admin_reminders_delete(id):
     cursor.execute("DELETE FROM admin_reminders WHERE id = ?", (id,))
     conn.commit()
     conn.close()
-        return render_template("reseller_branding.html", reseller=reseller, available_palettes=get_all_palettes())
+    return jsonify({"success": True})
