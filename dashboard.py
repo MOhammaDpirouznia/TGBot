@@ -17126,7 +17126,44 @@ def start_dashboard_thread():
     return t
 
 
+
+# ==========================================
+# Dummy routes for missing features to prevent 500 errors
+# ==========================================
+
+@app.route('/admin/reminders')
+@admin_required
+def admin_reminders():
+    flash('این بخش هنوز پیاده‌سازی نشده یا کدهای آن ناقص آپلود شده است.', 'warning')
+    return render_template('admin_reminders.html', reminders=[]) if os.path.exists('templates/admin_reminders.html') else redirect(url_for('dashboard'))
+
+@app.route('/admin/security')
+@admin_required
+def admin_security():
+    flash('این بخش هنوز پیاده‌سازی نشده یا کدهای آن ناقص آپلود شده است.', 'warning')
+    return render_template('admin_security.html') if os.path.exists('templates/admin_security.html') else redirect(url_for('dashboard'))
+
+@app.route('/admin/wallet')
+@admin_required
+def admin_wallet():
+    flash('این بخش هنوز پیاده‌سازی نشده یا کدهای آن ناقص آپلود شده است.', 'warning')
+    return render_template('admin_wallet.html') if os.path.exists('templates/admin_wallet.html') else redirect(url_for('dashboard'))
+
+@app.route('/reseller/broadcast')
+@permission_required('reseller_broadcast')
+def reseller_broadcast():
+    flash('این بخش هنوز پیاده‌سازی نشده یا کدهای آن ناقص آپلود شده است.', 'warning')
+    return render_template('reseller_broadcast.html') if os.path.exists('templates/reseller_broadcast.html') else redirect(url_for('reseller_dashboard'))
+
+@app.route('/reseller/sms-settings')
+@permission_required('reseller_sms')
+def reseller_sms_settings():
+    flash('این بخش هنوز پیاده‌سازی نشده یا کدهای آن ناقص آپلود شده است.', 'warning')
+    return render_template('reseller_sms_settings.html') if os.path.exists('templates/reseller_sms_settings.html') else redirect(url_for('reseller_dashboard'))
+
+
 if __name__ == "__main__":
     run_dashboard(debug=True)
+
 
 
