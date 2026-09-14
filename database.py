@@ -14476,10 +14476,20 @@ class Database:
             total_partner_shares = 0
             total_partner_paid = 0
 
+            # الف) استعلام اعضای تیم با نقش شریک از جدول admin_users (تسک ۲)
+            cursor.execute("""
+                SELECT id, username, display_name, phone, share_percent, telegram_id
+                FROM admin_users 
+                WHERE reseller_id = ? AND role = 'partner' AND is_active = 1
+            """, (reseller_id,))
+            team_partners = [dict(r) for r in cursor.fetchall()]
+            seen_partner_names = set()
+
             for p in partner_cards:
                 pct = float(p.get("profit_percent") or 0)
-                total_partner_percent += pct
                 p_name = p.get("card_holder") or p.get("assigned_to") or "شریک"
+                seen_partner_names.add(p_name.strip().lower())
+                total_partner_percent += pct
                 share_amt = int(net_profit * pct / 100) if net_profit > 0 else 0
                 total_partner_shares += share_amt
 
@@ -14501,7 +14511,41 @@ class Database:
                     "remaining_amount": max(0, share_amt - paid_balance),
                     "card_number": p.get("card_number") or "",
                     "bank_name": p.get("bank_name") or "صندوق",
-                    "notes": p.get("notes") or ""
+                    "notes": p.get("notes") or "",
+                    "is_team_member": False
+                })
+
+            # ب) افزودن خودکار اعضای تیم که نقش شریک دارند
+            for tp in team_partners:
+                tp_name = tp.get("display_name") or tp.get("username") or "شریک"
+                u_name = (tp.get("username") or "").strip().lower()
+                if tp_name.strip().lower() in seen_partner_names or (u_name and u_name in seen_partner_names):
+                    continue
+                pct = float(tp.get("share_percent") or 0)
+                total_partner_percent += pct
+                share_amt = int(net_profit * pct / 100) if net_profit > 0 else 0
+                total_partner_shares += share_amt
+
+                cursor.execute("""
+                    SELECT COALESCE(SUM(amount), 0) FROM accounting_records 
+                    WHERE reseller_id = ? AND (type = 'settlement' OR category LIKE '%تسویه%')
+                      AND (title LIKE ? OR description LIKE ?)
+                """, (reseller_id, f"%{tp_name}%", f"%{tp_name}%"))
+                paid_amt = cursor.fetchone()[0] or 0
+                total_partner_paid += paid_amt
+
+                partners_data.append({
+                    "id": f"team_{tp['id']}",
+                    "name": tp_name,
+                    "assigned_to": f"@{tp.get('username')}" if tp.get("username") else tp_name,
+                    "percent": pct,
+                    "share_amount": share_amt,
+                    "paid_amount": paid_amt,
+                    "remaining_amount": max(0, share_amt - paid_amt),
+                    "card_number": tp.get("phone") or "",
+                    "bank_name": "عضو تیم (شریک)",
+                    "notes": f"عضو تیم نمایندگی (کاربری: {tp.get('username')})",
+                    "is_team_member": True
                 })
 
             reseller_share_percent = max(0.0, round(100.0 - total_partner_percent, 2))
@@ -14647,6 +14691,42 @@ class Database:
                     amt = int(row["amount"] or 0)
                     months[m_idx]["expense"] += amt
                     months[m_idx]["profit"] -= amt
+
+            # ۵. محاسبه رتبه و دسته‌بندی رنگی ملایم هر ماه (تسک ۱)
+            # آینده: future (نقره‌ای)
+            # سپری‌شده: بالاترین=highest (طلایی), پایین‌ترین=lowest (قهوه‌ای), بالاتر از میانگین=good (سبز), پایین‌تر=weak (نارنجی)
+            elapsed_months = []
+            for m in months:
+                is_future = (year > now_j.year) or (year == now_j.year and m["month"] > now_j.month)
+                m["is_future"] = is_future
+                if is_future:
+                    m["tier"] = "future"
+                else:
+                    elapsed_months.append(m)
+
+            if elapsed_months:
+                profits = [m["profit"] for m in elapsed_months]
+                incomes = [m["income"] for m in elapsed_months]
+                has_activity = any(p != 0 or inc != 0 for p, inc in zip(profits, incomes))
+
+                if has_activity:
+                    max_p = max(profits)
+                    min_p = min(profits)
+                    avg_p = sum(profits) / len(profits)
+
+                    for m in elapsed_months:
+                        p = m["profit"]
+                        if p == max_p and p > 0:
+                            m["tier"] = "highest"
+                        elif p == min_p and min_p < max_p:
+                            m["tier"] = "lowest"
+                        elif p > avg_p:
+                            m["tier"] = "good"
+                        else:
+                            m["tier"] = "weak"
+                else:
+                    for m in elapsed_months:
+                        m["tier"] = "neutral"
 
             return months
         except Exception as e:
@@ -14861,9 +14941,10 @@ class Database:
                     "profit_margin": int(r_dict["amount"] or 0) if rtype == 'income' else 0,
                     "selling_price": int(r_dict["amount"] or 0) if rtype == 'income' else 0,
                     "title": r_dict["title"],
-                    "customer_name": "ثبت دستی توسط نماینده",
+                    "customer_name": r_dict.get("customer_name") or "ثبت دستی توسط نماینده",
                     "customer_id": "",
-                    "plan_name": "---",
+                    "plan_name": r_dict.get("plan_name") or "---",
+                    "discount_amount": int(r_dict.get("discount_amount") or 0),
                     "gateway": r_dict.get("card_name") or "نقدی / کارت",
                     "tracking_code": f"MANUAL-{r_dict['id']}",
                     "card_number": "",
@@ -14893,20 +14974,33 @@ class Database:
 
     def add_reseller_accounting_record(self, reseller_id: int, rtype: str, category: str, title: str,
                                        amount: int, project: str = "عمومی / بدون پروژه", card_name: str = None,
-                                       description: str = "", date_str: str = None) -> dict:
-        """ثبت رکورد درآمد یا هزینه دستی توسط نماینده"""
+                                       description: str = "", date_str: str = None, customer_name: str = None,
+                                       plan_name: str = None, discount_amount: int = 0) -> dict:
+        """ثبت رکورد درآمد یا هزینه دستی توسط نماینده با پشتیبانی از مشتری، پلن و تخفیف"""
         import jdatetime
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         dt_val = date_str or jdatetime.datetime.now().strftime("%Y/%m/%d")
         try:
-            cursor.execute("""
-                INSERT INTO accounting_records (
-                    type, category, title, amount, source, description, date, created_at,
-                    reseller_id, project, card_name
-                ) VALUES (?, ?, ?, ?, 'reseller_manual', ?, ?, ?, ?, ?, ?)
-            """, (rtype, category, title, amount, description, dt_val, now, reseller_id, project or 'عمومی / بدون پروژه', card_name))
+            cols = [c[1] for c in cursor.execute("PRAGMA table_info(accounting_records)").fetchall()]
+            extra_cols = []
+            extra_vals = []
+            if "customer_name" in cols:
+                extra_cols.append("customer_name")
+                extra_vals.append(customer_name or "")
+            if "plan_name" in cols:
+                extra_cols.append("plan_name")
+                extra_vals.append(plan_name or "")
+            if "discount_amount" in cols:
+                extra_cols.append("discount_amount")
+                extra_vals.append(int(discount_amount or 0))
+
+            col_names = ["type", "category", "title", "amount", "source", "description", "date", "created_at", "reseller_id", "project", "card_name"] + extra_cols
+            placeholders = ", ".join(["?"] * len(col_names))
+            values = [rtype, category, title, amount, 'reseller_manual', description, dt_val, now, reseller_id, project or 'عمومی / بدون پروژه', card_name] + extra_vals
+
+            cursor.execute(f"INSERT INTO accounting_records ({', '.join(col_names)}) VALUES ({placeholders})", values)
             rec_id = cursor.lastrowid
             conn.commit()
             return {"success": True, "record_id": rec_id}

@@ -16,10 +16,10 @@
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
 }
 
-/* ۱. استایل واضح و پرکنتراست ماه‌ها (Point 1) */
+/* ۱. استایل بلوک‌های ماهانه بدون کادر با رنگ‌های ملایم داینامیک بر اساس درآمد (تسک ۱) */
 .month-box {
-    background: #141f32 !important;
-    border: 1px solid #2d3e58 !important;
+    border: none !important;
+    outline: none !important;
     border-radius: 14px;
     padding: 1.15rem 0.85rem;
     text-align: center;
@@ -27,18 +27,71 @@
     transition: all 0.22s ease-in-out;
     position: relative;
     user-select: none;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 .month-box:hover {
-    background: #1b2a44 !important;
-    border-color: #3b82f6 !important;
     transform: translateY(-2px);
-    box-shadow: 0 6px 14px rgba(59, 130, 246, 0.2);
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
+    filter: brightness(1.08);
 }
 .month-box.active {
-    border: 2px solid #3b82f6 !important;
-    background: #192c4d !important;
-    box-shadow: 0 0 16px rgba(59, 130, 246, 0.45) !important;
+    box-shadow: 0 0 16px rgba(59, 130, 246, 0.5) !important;
+    filter: brightness(1.15);
+}
+
+/* رنگ‌های ملایم، محو و پس‌زمینه‌محور بدون هیچ‌گونه خط‌کشی */
+.month-box.month-tier-future {
+    background: rgba(148, 163, 184, 0.12) !important; /* نقره‌ای / خاکستری ملایم ماه‌های آینده */
+}
+.month-box.month-tier-future .month-title {
+    color: #94a3b8 !important;
+}
+.month-box.month-tier-future .month-amount {
+    color: #64748b !important;
+}
+
+.month-box.month-tier-highest {
+    background: rgba(234, 179, 8, 0.16) !important; /* طلایی ملایم بالاترین سود */
+}
+.month-box.month-tier-highest .month-title {
+    color: #fef08a !important;
+}
+.month-box.month-tier-highest .month-amount {
+    color: #facc15 !important;
+}
+
+.month-box.month-tier-lowest {
+    background: rgba(180, 83, 9, 0.18) !important; /* قهوه‌ای ملایم پایین‌ترین سود */
+}
+.month-box.month-tier-lowest .month-title {
+    color: #fed7aa !important;
+}
+.month-box.month-tier-lowest .month-amount {
+    color: #fdba74 !important;
+}
+
+.month-box.month-tier-good {
+    background: rgba(34, 197, 94, 0.14) !important; /* سبز ملایم عملکرد خوب */
+}
+.month-box.month-tier-good .month-title {
+    color: #bbf7d0 !important;
+}
+.month-box.month-tier-good .month-amount {
+    color: #4ade80 !important;
+}
+
+.month-box.month-tier-weak {
+    background: rgba(249, 115, 22, 0.14) !important; /* نارنجی ملایم عملکرد ضعیف */
+}
+.month-box.month-tier-weak .month-title {
+    color: #fed7aa !important;
+}
+.month-box.month-tier-weak .month-amount {
+    color: #fb923c !important;
+}
+
+.month-box.month-tier-neutral {
+    background: rgba(30, 41, 59, 0.55) !important; /* پس‌زمینه پیش‌فرض ملایم */
 }
 .month-box .current-badge {
     position: absolute;
@@ -296,7 +349,7 @@
             <!-- ردیف اول: فروردین تا شهریور (ماه‌های ۱ تا ۶) -->
             {% for m in monthly_stats[:6] %}
             <div class="col-6 col-md-4 col-lg-2">
-                <div class="month-box" data-month="{{ m.month }}" onclick="filterByMonth('{{ m.month }}')">
+                <div class="month-box month-tier-{{ m.tier or 'neutral' }}" data-month="{{ m.month }}" onclick="filterByMonth('{{ m.month }}')">
                     {% if m.is_current %}
                     <span class="current-badge">جاری</span>
                     {% endif %}
@@ -313,7 +366,7 @@
             <!-- ردیف دوم: مهر تا اسفند (ماه‌های ۷ تا ۱۲) -->
             {% for m in monthly_stats[6:] %}
             <div class="col-6 col-md-4 col-lg-2">
-                <div class="month-box" data-month="{{ m.month }}" onclick="filterByMonth('{{ m.month }}')">
+                <div class="month-box month-tier-{{ m.tier or 'neutral' }}" data-month="{{ m.month }}" onclick="filterByMonth('{{ m.month }}')">
                     {% if m.is_current %}
                     <span class="current-badge">جاری</span>
                     {% endif %}
@@ -380,15 +433,20 @@
                     <div class="partner-card h-100">
                         <div class="d-flex align-items-center justify-content-between mb-3">
                             <div class="d-flex align-items-center gap-2">
-                                <div class="badge bg-primary bg-opacity-20 text-primary p-2 rounded-circle fs-6">
-                                    <i class="fas fa-user-tie"></i>
+                                <div class="badge {% if p.is_team_member %}bg-purple bg-opacity-20 text-purple{% else %}bg-primary bg-opacity-20 text-primary{% endif %} p-2 rounded-circle fs-6">
+                                    <i class="fas {% if p.is_team_member %}fa-id-badge{% else %}fa-user-tie{% endif %}"></i>
                                 </div>
                                 <div>
                                     <h6 class="fw-bold text-white mb-0">{{ p.name }}</h6>
-                                    <small class="text-muted" style="font-size: 11px;">{{ p.assigned_to }}</small>
+                                    <div class="d-flex align-items-center gap-1">
+                                        <small class="text-muted" style="font-size: 11px;">{{ p.assigned_to }}</small>
+                                        {% if p.is_team_member %}
+                                        <span class="badge bg-purple bg-opacity-25 text-purple px-1.5 py-0.5 rounded-pill" style="font-size: 9px; color: #c084fc;">عضو تیم</span>
+                                        {% endif %}
+                                    </div>
                                 </div>
                             </div>
-                            <span class="badge bg-primary px-2 py-1 fw-bold rounded-pill">{{ p.percent }}% سهم</span>
+                            <span class="badge {% if p.is_team_member %}bg-purple text-white{% else %}bg-primary{% endif %} px-2 py-1 fw-bold rounded-pill">{{ p.percent }}% سهم</span>
                         </div>
 
                         <!-- مشخصات بانکی شریک -->
@@ -418,6 +476,11 @@
                                     onclick="openSettlePartnerModal('{{ p.id }}', '{{ p.name }}', '{{ p.remaining_amount }}')">
                                 <i class="fas fa-money-bill-transfer me-1"></i> تسویه
                             </button>
+                            {% if p.is_team_member %}
+                            <a href="{{ url_for('reseller_team') }}" class="btn btn-sm btn-outline-secondary py-1 px-2 text-decoration-none" title="مدیریت در اعضای تیم">
+                                <i class="fas fa-users-gear me-1"></i> تیم
+                            </a>
+                            {% else %}
                             <div class="d-flex gap-1">
                                 <button type="button" class="btn btn-sm btn-outline-info py-1 px-2" 
                                         onclick="openEditPartnerModal('{{ p.id }}', '{{ p.name }}', '{{ p.percent }}', '{{ p.card_number }}', '{{ p.bank_name }}', '{{ p.notes }}')">
@@ -427,6 +490,7 @@
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -884,7 +948,7 @@
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">نوع تراکنش <span class="text-danger">*</span></label>
-                            <select name="type" class="form-select bg-dark text-white border-secondary" required>
+                            <select name="type" id="recordTypeSelect" class="form-select bg-dark text-white border-secondary" onchange="onRecordTypeChange()" required>
                                 <option value="expense" selected>هزینه جاری</option>
                                 <option value="income">درآمد / دریافت از مشتری</option>
                                 <option value="savings">واریز به صندوق پس‌انداز</option>
@@ -892,28 +956,79 @@
                             </select>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">دسته‌بندی</label>
-                            <select name="category" class="form-select bg-dark text-white border-secondary">
+                            <label class="form-label fw-semibold">دسته‌بندی <span class="text-danger">*</span></label>
+                            <select name="category" id="recordCategorySelect" class="form-select bg-dark text-white border-secondary" onchange="onCategorySelectChange(this)">
                                 {% for cat in categories %}
                                 <option value="{{ cat }}">{{ cat }}</option>
                                 {% endfor %}
+                                <option value="__custom__" class="text-warning fw-bold">+ ایجاد دسته‌بندی دلخواه جدید...</option>
                             </select>
+                            <input type="text" name="custom_category" id="customCategoryInput" class="form-control bg-dark text-white border-warning mt-2 d-none" placeholder="نام دسته‌بندی دلخواه جدید را بنویسید...">
                         </div>
+
+                        <!-- بخش هوشمند مشتری، پلن و تخفیف (تسک‌های ۶، ۷ و ۸) -->
+                        <div id="customerPlanSection" class="col-12 p-3 rounded-3 border border-secondary border-opacity-50" style="background: rgba(30, 41, 59, 0.55);">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <span class="fw-bold text-info small"><i class="fas fa-cart-shopping me-1"></i> انتخاب مشتری، پلن و تخفیف (ویژه فروش و تمدید)</span>
+                                <span class="badge bg-info bg-opacity-20 text-info">تکمیل خودکار مبلغ</span>
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-md-6">
+                                    <label class="form-label small text-white-50">انتخاب مشتری</label>
+                                    <select name="customer_name" id="recordCustomerSelect" class="form-select form-select-sm bg-dark text-white border-secondary" onchange="onCustomerSelectChange()">
+                                        <option value="">-- بدون انتخاب / ثبت عمومی --</option>
+                                        {% for u in users_list %}
+                                        <option value="{{ u.display_name }}">{{ u.display_name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small text-white-50">انتخاب پلن اشتراک</label>
+                                    <select name="plan_name" id="recordPlanSelect" class="form-select form-select-sm bg-dark text-white border-secondary" onchange="onPlanSelectChange()">
+                                        <option value="" data-price="0">-- انتخاب پلن (اختیاری) --</option>
+                                        {% if plans %}
+                                        {% for pkey, pval in plans.items() %}
+                                        <option value="{{ pval.name or pkey }}" data-price="{{ pval.price or 0 }}">{{ pval.name or pkey }} - {{ "{:,}".format(pval.price or 0) }} تومان ({{ pval.data_limit or 0 }} گیگ)</option>
+                                        {% endfor %}
+                                        {% endif %}
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small text-white-50">مبلغ تخفیف (تومان)</label>
+                                    <input type="number" name="discount" id="recordDiscountInput" class="form-control form-control-sm bg-dark text-white border-secondary font-monospace" placeholder="۰" oninput="recalcRecordAmount()">
+                                </div>
+                                <div class="col-md-6 d-flex align-items-center">
+                                    <div class="small text-muted pt-3" id="planPricingHint">
+                                        با انتخاب پلن، مبلغ به طور خودکار با کسر تخفیف محاسبه می‌شود.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="col-12">
                             <label class="form-label fw-semibold">عنوان تراکنش <span class="text-danger">*</span></label>
-                            <input type="text" name="title" class="form-control bg-dark text-white border-secondary" placeholder="مثال: هزینه تمدید سرور لینوکس" required>
+                            <input type="text" name="title" id="recordTitleInput" class="form-control bg-dark text-white border-secondary" placeholder="مثال: هزینه تمدید سرور لینوکس" required>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">مبلغ (تومان) <span class="text-danger">*</span></label>
-                            <input type="number" name="amount" class="form-control bg-dark text-white border-secondary font-monospace" placeholder="مثال: 500000" required>
+                            <label class="form-label fw-semibold">مبلغ نهایی (تومان) <span class="text-danger">*</span></label>
+                            <input type="number" name="amount" id="recordAmountInput" class="form-control bg-dark text-white border-secondary font-monospace" placeholder="مثال: 500000" required>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">نام بانک / کارت</label>
-                            <input type="text" name="card_name" class="form-control bg-dark text-white border-secondary" placeholder="مثال: بانک سپه">
+                            <label class="form-label fw-semibold">کارت / حساب مقصد (داینامیک)</label>
+                            <select name="card_name" id="recordCardSelect" class="form-select bg-dark text-white border-secondary" onchange="onCardSelectChange(this)">
+                                <option value="">-- نقدی / بدون کارت خاص --</option>
+                                {% for card in reseller_cards %}
+                                <option value="{{ card.bank_name }}: {{ card.card_holder }} ({{ card.card_number[-4:] if card.card_number|length >= 4 else card.card_number }})">
+                                    {{ card.bank_name }} - {{ card.card_holder }} ({{ card.card_number[-4:] if card.card_number|length >= 4 else card.card_number }})
+                                </option>
+                                {% endfor %}
+                                <option value="__custom_card__" class="text-info">+ سایر / وارد کردن دستی کارت...</option>
+                            </select>
+                            <input type="text" name="custom_card_name" id="customCardInput" class="form-control bg-dark text-white border-info mt-2 d-none" placeholder="نام بانک یا شماره کارت را بنویسید...">
                         </div>
                         <div class="col-12">
                             <label class="form-label fw-semibold">توضیحات تکمیلی</label>
-                            <textarea name="description" class="form-control bg-dark text-white border-secondary" rows="2" placeholder="توضیحات اختیاری..."></textarea>
+                            <textarea name="description" id="recordDescriptionInput" class="form-control bg-dark text-white border-secondary" rows="2" placeholder="توضیحات اختیاری..."></textarea>
                         </div>
                     </div>
                 </div>
@@ -1184,6 +1299,100 @@ function deleteRecord(id) {
         const form = document.getElementById('actionForm');
         form.action = `/api/reseller/accounting/delete/${id}`;
         form.submit();
+    }
+}
+
+/* توابع تعاملی فرم ثبت رکورد جدید (تسک‌های ۳، ۴، ۶، ۷ و ۸) */
+function onCategorySelectChange(sel) {
+    const customInput = document.getElementById('customCategoryInput');
+    if(sel.value === '__custom__') {
+        customInput.classList.remove('d-none');
+        customInput.required = true;
+        customInput.focus();
+    } else {
+        customInput.classList.add('d-none');
+        customInput.required = false;
+    }
+
+    const catVal = sel.value;
+    const planSec = document.getElementById('customerPlanSection');
+    if(catVal.includes('فروش') || catVal.includes('تمدید') || catVal.includes('دریافت') || catVal.includes('مشتری')) {
+        planSec.classList.remove('d-none');
+        document.getElementById('recordTypeSelect').value = 'income';
+    }
+}
+
+function onRecordTypeChange() {
+    const typeVal = document.getElementById('recordTypeSelect').value;
+    const planSec = document.getElementById('customerPlanSection');
+    if(typeVal === 'income') {
+        planSec.classList.remove('d-none');
+    }
+}
+
+function onCardSelectChange(sel) {
+    const customCard = document.getElementById('customCardInput');
+    if(sel.value === '__custom_card__') {
+        customCard.classList.remove('d-none');
+        customCard.required = true;
+        customCard.focus();
+    } else {
+        customCard.classList.add('d-none');
+        customCard.required = false;
+    }
+}
+
+function onPlanSelectChange() {
+    const planSel = document.getElementById('recordPlanSelect');
+    const selectedOpt = planSel.options[planSel.selectedIndex];
+    const price = parseInt(selectedOpt.getAttribute('data-price') || '0', 10);
+    const planName = planSel.value;
+    const custName = document.getElementById('recordCustomerSelect').value;
+
+    if(planName && price > 0) {
+        // به‌روزرسانی خودکار عنوان تراکنش
+        const titleInput = document.getElementById('recordTitleInput');
+        if(!titleInput.value || titleInput.value.includes('پلن') || titleInput.value.includes('فروش') || titleInput.value.includes('تمدید')) {
+            const custPart = custName ? ` به ${custName}` : '';
+            titleInput.value = `فروش پلن ${planName}${custPart}`;
+        }
+    }
+
+    recalcRecordAmount();
+}
+
+function onCustomerSelectChange() {
+    const planSel = document.getElementById('recordPlanSelect');
+    const planName = planSel.value;
+    const custName = document.getElementById('recordCustomerSelect').value;
+    const titleInput = document.getElementById('recordTitleInput');
+
+    if(custName && (!titleInput.value || titleInput.value.includes('پلن') || titleInput.value.includes('فروش') || titleInput.value.includes('تمدید'))) {
+        const planPart = planName ? `پلن ${planName}` : 'اشتراک';
+        titleInput.value = `فروش ${planPart} به ${custName}`;
+    }
+}
+
+function recalcRecordAmount() {
+    const planSel = document.getElementById('recordPlanSelect');
+    const selectedOpt = planSel.options[planSel.selectedIndex];
+    const planPrice = parseInt(selectedOpt.getAttribute('data-price') || '0', 10);
+    const discount = parseInt(document.getElementById('recordDiscountInput').value || '0', 10);
+    const hint = document.getElementById('planPricingHint');
+
+    let base = planPrice;
+    if(base <= 0) {
+        base = parseInt(document.getElementById('recordAmountInput').value || '0', 10);
+    }
+
+    if(base > 0) {
+        const finalAmt = Math.max(0, base - (discount > 0 ? discount : 0));
+        document.getElementById('recordAmountInput').value = finalAmt;
+        if(discount > 0) {
+            hint.innerHTML = `<span class="text-warning fw-semibold">مبلغ پلن: ${base.toLocaleString()} ت - تخفیف: ${discount.toLocaleString()} ت = خالص: ${finalAmt.toLocaleString()} تومان</span>`;
+        } else {
+            hint.innerHTML = `<span class="text-success fw-semibold">مبلغ پلن: ${base.toLocaleString()} تومان اعمال شد.</span>`;
+        }
     }
 }
 </script>

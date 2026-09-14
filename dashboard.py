@@ -13781,6 +13781,7 @@ def reseller_accounting():
     partners = summary.get("partners", [])
     users_list = db.get_reseller_users_for_partner_picker(reseller_id)
     categories = summary.get("categories", [])
+    plans = get_reseller_plans_dict(reseller_id)
 
     return render_template(
         "reseller_accounting.html",
@@ -13795,7 +13796,8 @@ def reseller_accounting():
         reseller_cards=reseller_cards,
         partners=partners,
         users_list=users_list,
-        categories=categories
+        categories=categories,
+        plans=plans
     )
 
 @app.route("/api/reseller/accounting/add", methods=["POST"])
@@ -13804,12 +13806,23 @@ def api_reseller_accounting_add():
     reseller_id = session.get("reseller_id")
     rtype = request.form.get("type", "expense")
     category = request.form.get("category", "متفرقه")
+    if category in ("__custom__", "__new__", "custom"):
+        category = request.form.get("custom_category", "").strip() or "متفرقه"
+
     title = request.form.get("title", "").strip()
     amount_str = request.form.get("amount", "0").replace(",", "").strip()
     project = request.form.get("project", "عمومی / بدون پروژه").strip() or "عمومی / بدون پروژه"
     card_name = request.form.get("card_name", "").strip() or None
     description = request.form.get("description", "").strip()
     date_str = request.form.get("date", "").strip() or None
+
+    customer_name = request.form.get("customer_name", "").strip() or None
+    plan_name = request.form.get("plan_name", "").strip() or None
+    discount_str = request.form.get("discount", "0").replace(",", "").strip()
+    try:
+        discount_amount = int(discount_str) if discount_str else 0
+    except ValueError:
+        discount_amount = 0
 
     try:
         amount = int(amount_str)
@@ -13830,7 +13843,10 @@ def api_reseller_accounting_add():
         project=project,
         card_name=card_name,
         description=description,
-        date_str=date_str
+        date_str=date_str,
+        customer_name=customer_name,
+        plan_name=plan_name,
+        discount_amount=discount_amount
     )
     if res.get("success"):
         flash("تراکنش جدید با موفقیت ثبت شد.", "success")
