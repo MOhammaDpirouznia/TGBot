@@ -8,6 +8,7 @@
 - 🇨🇳 中文 (zh)
 """
 
+import os
 from telegram import KeyboardButton, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 SUPPORTED_LANGUAGES = {
@@ -19,6 +20,12 @@ SUPPORTED_LANGUAGES = {
 
 STRINGS = {
     # ─── مینی‌اپ و کیف پول ───
+    "btn_mini_app": {
+        "fa": "📱 پنل هوشمند (Mini App)",
+        "en": "📱 Smart Panel (Mini App)",
+        "ru": "📱 Смарт-панель (Mini App)",
+        "zh": "📱 智能面板 (Mini App)",
+    },
     "btn_webapp": {
         "fa": "📱 پنل هوشمند من (Mini App)",
         "en": "📱 Smart Panel (Mini App)",
@@ -572,7 +579,15 @@ def get_main_keyboard(user_id: int, admin_id: int, lang: str = "fa", webapp_url:
                 for btn in row:
                     b_id = btn.get("id")
                     b_title = btn.get("title") or t(f"btn_{b_id}", lang)
-                    kb_row.append(KeyboardButton(b_title))
+                    if b_id in ("mini_app", "webapp"):
+                        from telegram_menu_helper import get_miniapp_url
+                        app_url = get_miniapp_url(reseller_id=0, user_id=user_id)
+                        if app_url:
+                            kb_row.append(KeyboardButton(b_title, web_app=WebAppInfo(url=app_url)))
+                        else:
+                            kb_row.append(KeyboardButton(b_title))
+                    else:
+                        kb_row.append(KeyboardButton(b_title))
                 if kb_row:
                     keyboard.append(kb_row)
     except Exception as e:

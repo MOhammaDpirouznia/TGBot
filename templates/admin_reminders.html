@@ -1,0 +1,316 @@
+{% extends "base.html" %}
+{% block title %}سیستم یادآوری{% endblock %}
+{% block content %}
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-bell me-2"></i>سیستم یادآوری و هشدار</h5>
+        <button class="btn btn-primary btn-sm" onclick="openAddModal()">
+            <i class="bi bi-plus-circle me-1"></i>افزودن یادآوری جدید
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>عنوان</th>
+                        <th>نوع</th>
+                        <th>وضعیت</th>
+                        <th>هدف / مصرف فعلی</th>
+                        <th>ارسال پیام</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in reminders %}
+                    <tr>
+                        <td>{{ r.title }}<br><small class="text-muted">{{ r.description }}</small></td>
+                        <td>
+                            {% if r.type == 'date' %}
+                                <span class="badge bg-info">تاریخ سررسید</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark">حجم ترافیک</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if r.is_done %}
+                                <span class="badge bg-secondary">انجام شده</span>
+                            {% elif r.is_active %}
+                                <span class="badge bg-success">فعال</span>
+                            {% else %}
+                                <span class="badge bg-secondary">غیرفعال</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if r.type == 'date' %}
+                                {{ r.target_date[:10] }}
+                            {% else %}
+                                {{ "%.2f"|format(r.current_traffic|default(0)) }} / {{ r.target_traffic }} GB
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if r.send_telegram %}<i class="bi bi-telegram text-primary"></i>{% endif %}
+                            {% if r.send_sms %}<i class="bi bi-chat-text text-success"></i>{% endif %}
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-info" onclick='openEditModal({{ r|tojson }})'>
+                                <i class="bi bi-pencil"></i> ویرایش
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteReminder({{ r.id }})">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted">یادآوری یافت نشد.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Reminder Modal -->
+<div class="modal fade" id="reminderModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">افزودن یادآوری</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="reminderForm">
+                    <input type="hidden" id="edit_id" value="">
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">عنوان</label>
+                            <input type="text" class="form-control" id="title" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">نوع یادآوری</label>
+                            <select class="form-select" id="type" onchange="toggleFields()" required>
+                                <option value="date">تاریخ سررسید (مثلا تمدید سرور)</option>
+                                <option value="traffic">حجم ترافیک (محاسبه از لحظه تنظیم)</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">توضیحات</label>
+                        <textarea class="form-control" id="description" rows="2"></textarea>
+                    </div>
+                    
+                    <div id="dateFields" class="row">
+                        <div class="col-md-12 mb-3">
+                            <label class="form-label">تاریخ سررسید</label>
+                            <input type="datetime-local" class="form-control" id="target_date">
+                        </div>
+                    </div>
+                    
+                    <div id="trafficFields" style="display:none;">
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">حد ترافیک (GB)</label>
+                                <input type="number" step="0.1" class="form-control" id="target_traffic">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">درصد هشدار (%)</label>
+                                <input type="number" class="form-control" id="threshold_percent" value="80">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">مصرف فعلی دستی (GB)</label>
+                                <input type="number" step="0.1" class="form-control" id="manual_consumed_traffic" value="0">
+                                <small class="text-muted">از این مقدار شروع به محاسبه می‌کند.</small>
+                            </div>
+                        </div>
+                        <div class="mb-3 form-check" id="resetBaselineCheck" style="display:none;">
+                            <input type="checkbox" class="form-check-input" id="reset_baseline">
+                            <label class="form-check-label" for="reset_baseline">بازنشانی مبدأ ترافیک به همین لحظه (شروع مجدد مصرف از الان)</label>
+                        </div>
+                    </div>
+
+                    <hr>
+                    <h6>تنظیمات اطلاع‌رسانی</h6>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input" type="checkbox" id="send_telegram" checked onchange="toggleTelegram()">
+                                <label class="form-check-label">ارسال پیام تلگرام</label>
+                            </div>
+                            <div id="telegramSettings">
+                                <label class="form-label">گیرنده تلگرام</label>
+                                <select class="form-select mb-2" id="telegram_target" onchange="toggleTelegramTarget()">
+                                    <option value="main_admin">مدیر اصلی (شما)</option>
+                                    <option value="all_admins">تمام مدیران</option>
+                                    <option value="specific">شخص خاص (شماره عددی)</option>
+                                </select>
+                                <input type="text" class="form-control" id="specific_telegram_id" placeholder="Telegram ID (e.g. 123456789)" style="display:none;">
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input" type="checkbox" id="send_sms" onchange="toggleSms()">
+                                <label class="form-check-label">ارسال پیامک (SMS)</label>
+                            </div>
+                            <div id="smsSettings" style="display:none;">
+                                <label class="form-label">شماره موبایل گیرنده</label>
+                                <input type="text" class="form-control" id="sms_number" placeholder="مثال: 09123456789">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3 form-check" id="statusCheck" style="display:none;">
+                        <input type="checkbox" class="form-check-input" id="is_active" checked>
+                        <label class="form-check-label">یادآوری فعال باشد</label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                <button type="button" class="btn btn-primary" onclick="saveReminder()">ذخیره</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let reminderModal;
+document.addEventListener('DOMContentLoaded', function() {
+    reminderModal = new bootstrap.Modal(document.getElementById('reminderModal'));
+});
+
+function toggleFields() {
+    const type = document.getElementById('type').value;
+    if (type === 'date') {
+        document.getElementById('dateFields').style.display = 'flex';
+        document.getElementById('trafficFields').style.display = 'none';
+    } else {
+        document.getElementById('dateFields').style.display = 'none';
+        document.getElementById('trafficFields').style.display = 'block';
+    }
+}
+
+function toggleTelegram() {
+    document.getElementById('telegramSettings').style.display = document.getElementById('send_telegram').checked ? 'block' : 'none';
+}
+
+function toggleSms() {
+    document.getElementById('smsSettings').style.display = document.getElementById('send_sms').checked ? 'block' : 'none';
+}
+
+function toggleTelegramTarget() {
+    const t = document.getElementById('telegram_target').value;
+    document.getElementById('specific_telegram_id').style.display = (t === 'specific') ? 'block' : 'none';
+}
+
+function openAddModal() {
+    document.getElementById('modalTitle').innerText = 'افزودن یادآوری';
+    document.getElementById('edit_id').value = '';
+    document.getElementById('reminderForm').reset();
+    document.getElementById('send_telegram').checked = true;
+    document.getElementById('send_sms').checked = false;
+    document.getElementById('is_active').checked = true;
+    
+    document.getElementById('resetBaselineCheck').style.display = 'none';
+    document.getElementById('statusCheck').style.display = 'none';
+    
+    toggleFields();
+    toggleTelegram();
+    toggleSms();
+    toggleTelegramTarget();
+    
+    reminderModal.show();
+}
+
+function openEditModal(r) {
+    document.getElementById('modalTitle').innerText = 'ویرایش یادآوری';
+    document.getElementById('edit_id').value = r.id;
+    
+    document.getElementById('title').value = r.title || '';
+    document.getElementById('type').value = r.type;
+    document.getElementById('description').value = r.description || '';
+    
+    if (r.target_date) {
+        document.getElementById('target_date').value = r.target_date.substring(0, 16);
+    }
+    
+    document.getElementById('target_traffic').value = r.target_traffic || '';
+    document.getElementById('threshold_percent').value = r.threshold_percent || '80';
+    document.getElementById('manual_consumed_traffic').value = r.manual_consumed_traffic || '0';
+    
+    document.getElementById('send_telegram').checked = r.send_telegram === 1;
+    document.getElementById('telegram_target').value = r.telegram_target || 'main_admin';
+    document.getElementById('specific_telegram_id').value = r.specific_telegram_id || '';
+    
+    document.getElementById('send_sms').checked = r.send_sms === 1;
+    document.getElementById('sms_number').value = r.sms_number || '';
+    
+    document.getElementById('is_active').checked = r.is_active === 1;
+    
+    document.getElementById('resetBaselineCheck').style.display = r.type === 'traffic' ? 'block' : 'none';
+    document.getElementById('reset_baseline').checked = false;
+    document.getElementById('statusCheck').style.display = 'block';
+    
+    toggleFields();
+    toggleTelegram();
+    toggleSms();
+    toggleTelegramTarget();
+    
+    reminderModal.show();
+}
+
+function saveReminder() {
+    const editId = document.getElementById('edit_id').value;
+    
+    const data = {
+        title: document.getElementById('title').value,
+        type: document.getElementById('type').value,
+        description: document.getElementById('description').value,
+        target_date: document.getElementById('target_date').value,
+        target_traffic: document.getElementById('target_traffic').value,
+        threshold_percent: document.getElementById('threshold_percent').value,
+        manual_consumed_traffic: document.getElementById('manual_consumed_traffic').value,
+        reset_baseline: document.getElementById('reset_baseline') ? document.getElementById('reset_baseline').checked : false,
+        send_telegram: document.getElementById('send_telegram').checked,
+        telegram_target: document.getElementById('telegram_target').value,
+        specific_telegram_id: document.getElementById('specific_telegram_id').value,
+        send_sms: document.getElementById('send_sms').checked,
+        sms_number: document.getElementById('sms_number').value,
+        is_active: document.getElementById('is_active').checked
+    };
+    
+    if (data.type === 'date' && data.target_date) {
+        data.target_date = new Date(data.target_date).toISOString();
+    }
+    
+    const url = editId ? '/api/admin/reminders/edit/' + editId : '/api/admin/reminders/add';
+    
+    fetch(url, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) {
+            location.reload();
+        } else {
+            alert('خطا در ثبت یادآوری');
+        }
+    });
+}
+
+function deleteReminder(id) {
+    if (confirm('آیا از حذف این یادآوری اطمینان دارید؟')) {
+        fetch('/api/admin/reminders/delete/' + id, {method: 'POST'})
+        .then(r => r.json())
+        .then(res => {
+            if (res.success) location.reload();
+        });
+    }
+}
+</script>
+{% endblock %}

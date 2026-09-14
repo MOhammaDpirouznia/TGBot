@@ -17,9 +17,6 @@
         <p class="text-muted mb-0">بررسی، تایید و صدور خودکار اشتراک‌های VPN پس از تایید پرداخت‌ها و فیش‌های واریزی مشتریان شما (ربات تلگرام و پرتال مشتری)</p>
     </div>
     <div class="d-flex align-items-center gap-2">
-        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addManualPaymentModal">
-            <i class="fas fa-plus-circle me-1"></i> ثبت پرداخت دستی
-        </button>
         <a href="{{ url_for('reseller_payments') }}" class="btn btn-outline-primary">
             <i class="fas fa-file-invoice-dollar me-1"></i> سوابق مالی
         </a>
@@ -299,146 +296,6 @@
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════ -->
-<!-- Modal ثبت دستی پرداخت مشتری (نماینده) -->
-<div class="modal fade" id="addManualPaymentModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-        <div class="modal-content shadow-lg border-0">
-            <div class="modal-header bg-primary text-white py-3">
-                <h5 class="modal-title fw-bold">
-                    <i class="fas fa-plus-circle me-2"></i> ثبت پرداخت دستی / شارژ حساب مشتری
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <form action="{{ url_for('reseller_payment_manual_add') }}" method="POST" enctype="multipart/form-data">
-                <div class="modal-body p-4">
-                    <!-- جستجوی زنده مشتری -->
-                    <div class="card bg-light border-0 shadow-sm p-3 mb-3">
-                        <label class="form-label fw-bold text-primary">
-                            <i class="fas fa-search me-1"></i> انتخاب اشتراک / مشتری هدف (مشتریان شما):
-                        </label>
-                        <div class="input-group">
-                            <span class="input-group-text bg-white"><i class="fas fa-user text-muted"></i></span>
-                            <input type="text" id="custSearchInput" class="form-control" placeholder="نام مشتری، ایمیل، ریمارک..." autocomplete="off">
-                            <button type="button" class="btn btn-outline-secondary" onclick="searchCustomersAjax()">
-                                <i class="fas fa-search"></i> جستجو
-                            </button>
-                        </div>
-                        <div id="custSearchResults" class="mt-2 list-group shadow-sm" style="max-height: 220px; overflow-y: auto; display: none;"></div>
-                        <div id="selectedCustCard" class="mt-3 p-3 bg-white border rounded shadow-sm" style="display: none;">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <h6 class="fw-bold text-dark mb-1" id="selectedCustName">نام مشتری</h6>
-                                    <div class="small text-muted" id="selectedCustMeta">مشخصات</div>
-                                </div>
-                                <div class="text-end">
-                                    <span class="badge bg-danger fs-6 mb-1" id="selectedCustDebt" style="display: none;">بدهی: ۰ تومان</span>
-                                    <div><button type="button" class="btn btn-sm btn-outline-danger" onclick="clearSelectedCustomer()"><i class="fas fa-times me-1"></i> لغو انتخاب</button></div>
-                                </div>
-                            </div>
-                        </div>
-                        <input type="hidden" name="subscription_id" id="manualSubId" value="">
-                        <input type="hidden" name="user_id" id="manualUserId" value="">
-                        <input type="hidden" name="customer_name" id="manualCustomerName" value="">
-                    </div>
-                    
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">مبلغ پرداختی (تومان) <span class="text-danger">*</span>:</label>
-                            <div class="input-group">
-                                <input type="number" name="amount" id="manualAmount" class="form-control fw-bold" required min="1000" step="1000" placeholder="مثال: 150000">
-                                <span class="input-group-text">تومان</span>
-                            </div>
-                            <div id="fillDebtBtnWrapper" class="mt-1" style="display: none;">
-                                <button type="button" class="btn btn-sm btn-link p-0 text-danger" onclick="fillDebtAmount()">تنظیم مبلغ برابر با کل بدهی</button>
-                            </div>
-                        </div>
-                        
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">وضعیت اولیه پرداخت:</label>
-                            <select name="status" class="form-select">
-                                <option value="approved" selected>تایید شده (Approved)</option>
-                                <option value="pending">در انتظار بررسی (Pending)</option>
-                            </select>
-                        </div>
-                        
-                        <div class="col-12" id="settleDebtBox" style="display: none;">
-                            <div class="form-check form-switch p-3 rounded border bg-light">
-                                <input class="form-check-input ms-0 me-3" type="checkbox" name="settle_debt" id="manualSettleDebt" checked>
-                                <label class="form-check-label fw-bold text-danger" for="manualSettleDebt">کسر این واریزی از بدهی ثبت‌شده مشتری (تسویه بدهی)</label>
-                            </div>
-                        </div>
-                        
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">روش واریز:</label>
-                            <select name="payment_method" class="form-select">
-                                <option value="کارت به کارت (دستی)" selected>کارت به کارت (دستی)</option>
-                                <option value="واریز پایا / ساتنا">واریز پایا / ساتنا</option>
-                                <option value="ارز دیجیتال / تتر">ارز دیجیتال / تتر (Crypto)</option>
-                                <option value="نقدی / حضوری">نقدی / حضوری</option>
-                                <option value="تسویه اعتبار">تسویه اعتبار</option>
-                                <option value="سایر">سایر</option>
-                            </select>
-                        </div>
-                        
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">کارت / حساب مقصد (الزامی برای کارت):</label>
-                            <select name="destination_card" class="form-select" id="manualDestinationCard" required>
-                                <option value="" disabled selected>انتخاب کنید...</option>
-                                {% for card in cards %}
-                                <option value="{{ card.card_number }} - {{ card.owner_name }}">{{ card.bank_name }} ({{ card.card_number[-4:] }}) - {{ card.owner_name }}</option>
-                                {% endfor %}
-                                {% for account in accounts %}
-                                <option value="{{ account.id }}">{{ account.bank_name }} - {{ account.owner_name }} (حساب)</option>
-                                {% endfor %}
-                                <option value="other">سایر (نامشخص)</option>
-                            </select>
-                        </div>
-                        
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">پلن خریداری شده <span class="text-danger">*</span>:</label>
-                            <select name="purchased_plan_id" class="form-select" required>
-                                <option value="" disabled selected>انتخاب کنید...</option>
-                                {% if plans is mapping %}
-                                    {% for plan_id, plan in plans.items() %}
-                                    <option value="{{ plan_id }}">{{ plan.name | default(plan.display_name) }}</option>
-                                    {% endfor %}
-                                {% else %}
-                                    {% for plan in plans %}
-                                    <option value="{{ plan.id | default(plan.plan_id) }}">{{ plan.name | default(plan.display_name) }}</option>
-                                    {% endfor %}
-                                {% endif %}
-                            </select>
-                        </div>
-                        
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">کد پیگیری بانکی / ترنزکشن:</label>
-                            <input type="text" name="tracking_code" class="form-control font-monospace" placeholder="مثال: 987654321" dir="ltr">
-                        </div>
-                        
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">شماره کارت پرداخت کننده:</label>
-                            <input type="text" name="card_number" class="form-control font-monospace" placeholder="مثال: 603799..." dir="ltr">
-                        </div>
-                        
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">تصویر فیش یا رسید:</label>
-                            <input type="file" name="receipt_image" class="form-control" accept="image/*">
-                        </div>
-                        
-                        <div class="col-12">
-                            <label class="form-label fw-bold">توضیحات و یادداشت نماینده:</label>
-                            <textarea name="notes" class="form-control" rows="2"></textarea>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer bg-light py-2">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
-                    <button type="submit" class="btn btn-primary fw-bold px-4"><i class="fas fa-check-circle me-1"></i> ثبت پرداخت</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
 <!-- ─── مودال‌های مدیریت فیش‌های مشتریان (خارج از ساختار جدول) ─── -->
 <!-- ═══════════════════════════════════════════════════════════════ -->
 {% for tx in transactions %}
@@ -800,20 +657,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
-});
-document.addEventListener('DOMContentLoaded', function() {
-    const paymentMethodSelect = document.querySelector('#addManualPaymentModal select[name="payment_method"]');
-    const destCardSelect = document.getElementById('manualDestinationCard');
-    
-    if (paymentMethodSelect && destCardSelect) {
-        paymentMethodSelect.addEventListener('change', function() {
-            if (this.value.includes('کارت') || this.value.includes('پایا') || this.value.includes('ساتنا')) {
-                destCardSelect.setAttribute('required', 'required');
-            } else {
-                destCardSelect.removeAttribute('required');
-            }
-        });
-    }
 });
 </script>
 {% endblock %}

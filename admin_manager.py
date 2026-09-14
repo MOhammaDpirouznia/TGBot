@@ -216,6 +216,67 @@ def get_all_cards() -> dict:
 # مدیریت پلن‌ها
 # ═══════════════════════════════════════════════════════════════════════
 
+def normalize_plan_permissions(p: dict) -> dict:
+    """تطبیق و استانداردسازی فیلدهای دسترسی پلن برای سازگاری کامل با ۴ کانال نمایش و فلگ‌های قدیمی"""
+    if not isinstance(p, dict):
+        return p
+
+    # اگر فیلدهای جدید کانال‌ها وجود دارند
+    if any(k in p for k in ("show_in_admin_bot", "show_in_admin_panel", "show_in_reseller_bot", "show_in_reseller_panel")):
+        show_admin_bot = bool(p.get("show_in_admin_bot", False))
+        show_admin_panel = bool(p.get("show_in_admin_panel", True))
+        show_reseller_bot = bool(p.get("show_in_reseller_bot", False))
+        show_reseller_panel = bool(p.get("show_in_reseller_panel", False))
+        allowed = p.get("allowed_resellers") or []
+        reseller_scope = p.get("reseller_scope") or ("selected" if allowed else "all")
+    else:
+        # استنباط از فلگ‌های موروثی سیستم جهت سازگاری ۱۰۰٪ با پلن‌های قبلی
+        allowed = p.get("allowed_resellers") or []
+        if p.get("is_exclusive_admin") and not p.get("is_exclusive_admin_bot"):
+            show_admin_bot = False
+            show_admin_panel = True
+            show_reseller_bot = False
+            show_reseller_panel = False
+            reseller_scope = "selected"
+        elif p.get("is_exclusive_admin_bot"):
+            show_admin_bot = True
+            show_admin_panel = True
+            show_reseller_bot = False
+            show_reseller_panel = False
+            reseller_scope = "selected"
+        elif allowed or p.get("is_exclusive_reseller"):
+            show_admin_bot = False
+            show_admin_panel = True
+            show_reseller_bot = True
+            show_reseller_panel = True
+            reseller_scope = "selected"
+        else:
+            # پلن عمومی
+            show_admin_bot = True
+            show_admin_panel = True
+            show_reseller_bot = True
+            show_reseller_panel = True
+            reseller_scope = "all"
+
+    # همگام‌سازی فلگ‌های موروثی قدیمی
+    is_excl_admin = show_admin_panel and not show_admin_bot and not show_reseller_bot and not show_reseller_panel
+    is_excl_admin_bot = show_admin_panel and show_admin_bot and not show_reseller_bot and not show_reseller_panel
+    is_excl_reseller = (reseller_scope == "selected" and bool(allowed)) or (not show_admin_bot and (show_reseller_bot or show_reseller_panel))
+
+    clean_resellers = [int(x) for x in allowed if str(x).isdigit() or isinstance(x, int)]
+
+    p["show_in_admin_bot"] = show_admin_bot
+    p["show_in_admin_panel"] = show_admin_panel
+    p["show_in_reseller_bot"] = show_reseller_bot
+    p["show_in_reseller_panel"] = show_reseller_panel
+    p["reseller_scope"] = reseller_scope
+    p["allowed_resellers"] = clean_resellers
+    p["is_exclusive_admin"] = is_excl_admin
+    p["is_exclusive_admin_bot"] = is_excl_admin_bot
+    p["is_exclusive_reseller"] = is_excl_reseller
+    return p
+
+
 def load_plans() -> dict:
     """بارگذاری پلن‌ها با اولویت فایل محلی -> دیتابیس -> بک‌آپ جامع -> پلن‌های پیش‌فرض"""
     candidate_files = [
@@ -230,6 +291,8 @@ def load_plans() -> dict:
                 with open(pfile, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     if data and isinstance(data, dict):
+                        for p in data.values():
+                            normalize_plan_permissions(p)
                         return data
             except Exception:
                 pass
@@ -239,6 +302,8 @@ def load_plans() -> dict:
         from database import db
         setting_plans = db.get_setting("plans_config")
         if setting_plans and isinstance(setting_plans, dict):
+            for p in setting_plans.values():
+                normalize_plan_permissions(p)
             save_plans(setting_plans)
             return setting_plans
 
@@ -253,6 +318,8 @@ def load_plans() -> dict:
                             val = s.get("value")
                             pdict = json.loads(val) if isinstance(val, str) else val
                             if pdict and isinstance(pdict, dict):
+                                for p in pdict.values():
+                                    normalize_plan_permissions(p)
                                 save_plans(pdict)
                                 return pdict
     except Exception:
@@ -652,8 +719,23 @@ def get_bundle_icon(bundle: dict) -> dict:
         }
 
 
-def add_plan(name: str, price: int, data_limit: int, duration: int, is_exclusive_admin: bool = False, plan_icon: str = "", allowed_resellers: list = None, is_exclusive_reseller: bool = False, is_exclusive_admin_bot: bool = False) -> dict:
-    """افزودن پلن جدید با امکان تعیین دسترسی اختصاصی برای مدیریت، ربات مدیریت یا نمایندگان منتخب"""
+def add_plan(
+    name: str, 
+    price: int, 
+    data_limit: int, 
+    duration: int, 
+    is_exclusive_admin: bool = False, 
+    plan_icon: str = "", 
+    allowed_resellers: list = None, 
+    is_exclusive_reseller: bool = False, 
+    is_exclusive_admin_bot: bool = False,
+    show_in_admin_bot: Optional[bool] = None,
+    show_in_admin_panel: Optional[bool] = None,
+    show_in_reseller_bot: Optional[bool] = None,
+    show_in_reseller_panel: Optional[bool] = None,
+    reseller_scope: Optional[str] = None
+) -> dict:
+    """افزودن پلن جدید با امکان تعیین دسترسی اختصاصی در ۴ کانال نمایش و نمایندگان منتخب"""
     plans = load_plans()
     
     # ساخت آیدی یکتا
@@ -666,31 +748,68 @@ def add_plan(name: str, price: int, data_limit: int, duration: int, is_exclusive
     description = f"{data_text} | {duration} روز"
     
     clean_resellers = [int(x) for x in allowed_resellers if str(x).isdigit() or isinstance(x, int)] if allowed_resellers else []
-    is_reseller_excl = bool(clean_resellers) or bool(is_exclusive_reseller)
-    is_admin_bot_excl = bool(is_exclusive_admin_bot) and not is_reseller_excl
-    is_admin_excl = bool(is_exclusive_admin) and not is_reseller_excl and not is_admin_bot_excl
     
-    plans[plan_id] = {
+    if any(x is not None for x in (show_in_admin_bot, show_in_admin_panel, show_in_reseller_bot, show_in_reseller_panel)):
+        s_admin_bot = bool(show_in_admin_bot)
+        s_admin_panel = bool(show_in_admin_panel) if show_in_admin_panel is not None else True
+        s_reseller_bot = bool(show_in_reseller_bot)
+        s_reseller_panel = bool(show_in_reseller_panel)
+        r_scope = reseller_scope or ("selected" if clean_resellers else "all")
+    else:
+        # سازگاری با پارامترهای موروثی قدیمی
+        is_reseller_excl = bool(clean_resellers) or bool(is_exclusive_reseller)
+        is_admin_bot_excl = bool(is_exclusive_admin_bot) and not is_reseller_excl
+        is_admin_excl = bool(is_exclusive_admin) and not is_reseller_excl and not is_admin_bot_excl
+        if is_admin_excl:
+            s_admin_bot = False
+            s_admin_panel = True
+            s_reseller_bot = False
+            s_reseller_panel = False
+            r_scope = "selected"
+        elif is_admin_bot_excl:
+            s_admin_bot = True
+            s_admin_panel = True
+            s_reseller_bot = False
+            s_reseller_panel = False
+            r_scope = "selected"
+        elif is_reseller_excl:
+            s_admin_bot = False
+            s_admin_panel = True
+            s_reseller_bot = True
+            s_reseller_panel = True
+            r_scope = "selected"
+        else:
+            s_admin_bot = True
+            s_admin_panel = True
+            s_reseller_bot = True
+            s_reseller_panel = True
+            r_scope = "all"
+
+    plan_obj = {
         "name": name,
         "price": price,
         "data_limit": data_limit,
         "duration": duration,
         "description": description,
         "is_active": True,
-        "is_exclusive_admin": is_admin_excl,
-        "is_exclusive_admin_bot": is_admin_bot_excl,
-        "is_exclusive_reseller": is_reseller_excl,
+        "show_in_admin_bot": s_admin_bot,
+        "show_in_admin_panel": s_admin_panel,
+        "show_in_reseller_bot": s_reseller_bot,
+        "show_in_reseller_panel": s_reseller_panel,
+        "reseller_scope": r_scope,
         "allowed_resellers": clean_resellers,
         "plan_icon": plan_icon.strip() if plan_icon else "",
         "created_at": get_now_iso(),
     }
+    normalize_plan_permissions(plan_obj)
+    plans[plan_id] = plan_obj
     
     save_plans(plans)
     return {"success": True, "plan_id": plan_id}
 
 
 def update_plan(plan_id: str, **kwargs) -> dict:
-    """بروزرسانی پلن و امکان تغییر شناسه و سطح دسترسی پلن"""
+    """بروزرسانی پلن و امکان تغییر شناسه، کانال‌های نمایش و سطح دسترسی پلن"""
     plans = load_plans()
     
     if plan_id not in plans:
@@ -707,35 +826,46 @@ def update_plan(plan_id: str, **kwargs) -> dict:
         current_id = new_plan_id
 
     for key, value in kwargs.items():
-        if key in ["name", "price", "data_limit", "duration", "is_active", "is_exclusive_admin", "is_exclusive_admin_bot", "plan_icon", "allowed_resellers", "is_exclusive_reseller"]:
-            if key == "is_exclusive_admin_bot":
+        if key in [
+            "name", "price", "data_limit", "duration", "is_active", 
+            "plan_icon", "allowed_resellers", "reseller_scope",
+            "show_in_admin_bot", "show_in_admin_panel", "show_in_reseller_bot", "show_in_reseller_panel",
+            "is_exclusive_admin", "is_exclusive_admin_bot", "is_exclusive_reseller"
+        ]:
+            if key == "allowed_resellers":
+                clean_resellers = [int(x) for x in value if str(x).isdigit() or isinstance(x, int)] if value else []
+                plans[current_id]["allowed_resellers"] = clean_resellers
+            elif key in ("show_in_admin_bot", "show_in_admin_panel", "show_in_reseller_bot", "show_in_reseller_panel", "is_active"):
+                plans[current_id][key] = bool(value)
+            elif key == "reseller_scope":
+                plans[current_id][key] = str(value)
+            elif key == "is_exclusive_admin_bot":
                 val = bool(value)
                 plans[current_id]["is_exclusive_admin_bot"] = val
                 if val:
-                    plans[current_id]["is_exclusive_admin"] = False
-                    plans[current_id]["is_exclusive_reseller"] = False
-                    plans[current_id]["allowed_resellers"] = []
+                    plans[current_id]["show_in_admin_bot"] = True
+                    plans[current_id]["show_in_admin_panel"] = True
+                    plans[current_id]["show_in_reseller_bot"] = False
+                    plans[current_id]["show_in_reseller_panel"] = False
             elif key == "is_exclusive_admin":
                 val = bool(value)
                 plans[current_id]["is_exclusive_admin"] = val
                 if val:
-                    plans[current_id]["is_exclusive_admin_bot"] = False
-                    plans[current_id]["is_exclusive_reseller"] = False
-                    plans[current_id]["allowed_resellers"] = []
-            elif key == "allowed_resellers":
-                clean_resellers = [int(x) for x in value if str(x).isdigit() or isinstance(x, int)] if value else []
-                plans[current_id]["allowed_resellers"] = clean_resellers
-                plans[current_id]["is_exclusive_reseller"] = bool(clean_resellers)
-                if clean_resellers:
-                    plans[current_id]["is_exclusive_admin"] = False
-                    plans[current_id]["is_exclusive_admin_bot"] = False
+                    plans[current_id]["show_in_admin_bot"] = False
+                    plans[current_id]["show_in_admin_panel"] = True
+                    plans[current_id]["show_in_reseller_bot"] = False
+                    plans[current_id]["show_in_reseller_panel"] = False
             elif key == "is_exclusive_reseller":
-                plans[current_id][key] = bool(value)
-                if value:
-                    plans[current_id]["is_exclusive_admin"] = False
-                    plans[current_id]["is_exclusive_admin_bot"] = False
+                val = bool(value)
+                plans[current_id]["is_exclusive_reseller"] = val
+                if val:
+                    plans[current_id]["show_in_admin_bot"] = False
+                    plans[current_id]["show_in_admin_panel"] = True
+                    plans[current_id]["reseller_scope"] = "selected"
             else:
                 plans[current_id][key] = value
+
+    normalize_plan_permissions(plans[current_id])
     
     # بروزرسانی توضیحات
     data_limit = plans[current_id].get("data_limit", 0)
@@ -761,32 +891,28 @@ def delete_plan(plan_id: str) -> dict:
 
 
 def get_active_plans(include_exclusive_admin: bool = False, reseller_id: Optional[int] = None) -> dict:
-    """دریافت پلن‌های فعال (پلن‌های اختصاصی مدیریت و پلن‌های اختصاصی نمایندگان از ربات عمومی مخفی هستند)"""
+    """دریافت پلن‌های فعال بر اساس کانال‌های دسترسی و وضعیت نماینده"""
     plans = load_plans()
     result = {}
     for pid, p in plans.items():
         if not p.get("is_active", False):
             continue
-        if p.get("is_exclusive_admin") and not include_exclusive_admin:
-            continue
-        # پلن اختصاصی برای پنل و ربات مدیریت (مخفی از نمایندگان و ربات نمایندگان)
-        if p.get("is_exclusive_admin_bot"):
-            if reseller_id is not None:
-                continue
-            # برای ربات اصلی و پنل مدیریت مجاز است
-            result[pid] = p
-            continue
-        allowed = p.get("allowed_resellers") or []
-        if allowed:
-            # پلن اختصاصی نمایندگان منتخب
-            if reseller_id is not None and int(reseller_id) in [int(x) for x in allowed]:
+        normalize_plan_permissions(p)
+        if reseller_id is None:
+            # ربات اصلی مدیریت
+            if p.get("show_in_admin_bot"):
+                result[pid] = p
+            elif include_exclusive_admin and p.get("show_in_admin_panel"):
                 result[pid] = p
         else:
-            # اگر پلن فقط اختصاصی نماینده است اما بدون لیست مشخص، مخفی بماند مگر اینکه شناسه داده شود
-            if p.get("is_exclusive_reseller") and reseller_id is None:
+            # ربات تلگرام نماینده
+            if not p.get("show_in_reseller_bot"):
                 continue
-            # پلن عمومی یا ادمین
-            if reseller_id is None or not p.get("is_exclusive_admin"):
+            allowed = p.get("allowed_resellers") or []
+            scope = p.get("reseller_scope") or ("selected" if allowed else "all")
+            if scope == "all" and not allowed:
+                result[pid] = p
+            elif int(reseller_id) in [int(x) for x in allowed]:
                 result[pid] = p
     return result
 

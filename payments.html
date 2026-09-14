@@ -1068,37 +1068,7 @@
                         </div>
 
                         <div class="col-md-6">
-                            <label class="form-label fw-bold">کارت / حساب مقصد (الزامی برای کارت):</label>
-                            <select name="destination_card" class="form-select" id="manualDestinationCard" required>
-                                <option value="" disabled selected>انتخاب کنید...</option>
-                                {% for card in cards %}
-                                <option value="{{ card.card_number }} - {{ card.owner_name }}">{{ card.bank_name }} ({{ card.card_number[-4:] }}) - {{ card.owner_name }}</option>
-                                {% endfor %}
-                                {% for account in accounts %}
-                                <option value="{{ account.id }}">{{ account.bank_name }} - {{ account.owner_name }} (حساب)</option>
-                                {% endfor %}
-                                <option value="other">سایر (نامشخص)</option>
-                            </select>
-                        </div>
-                        
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">پلن خریداری شده <span class="text-danger">*</span>:</label>
-                            <select name="purchased_plan_id" class="form-select" required>
-                                <option value="" disabled selected>انتخاب کنید...</option>
-                                {% if plans is mapping %}
-                                    {% for plan_id, plan in plans.items() %}
-                                    <option value="{{ plan_id }}">{{ plan.name | default(plan.display_name) }}</option>
-                                    {% endfor %}
-                                {% else %}
-                                    {% for plan in plans %}
-                                    <option value="{{ plan.id | default(plan.plan_id) }}">{{ plan.name | default(plan.display_name) }}</option>
-                                    {% endfor %}
-                                {% endif %}
-                            </select>
-                        </div>
-
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">شماره کارت پرداخت کننده:</label>
+                            <label class="form-label fw-bold">شماره کارت یا ۴ رقم آخر:</label>
                             <input type="text" name="card_number" class="form-control font-monospace" placeholder="مثال: 603799..." dir="ltr">
                         </div>
 
@@ -1388,21 +1358,6 @@ function fillDebtAmount() {
         document.getElementById('manualAmount').value = currentCustomerDebt;
     }
 }
-
-document.addEventListener('DOMContentLoaded', function() {
-    const paymentMethodSelect = document.querySelector('select[name="payment_method"]');
-    const destCardSelect = document.getElementById('manualDestinationCard');
-    
-    if (paymentMethodSelect && destCardSelect) {
-        paymentMethodSelect.addEventListener('change', function() {
-            if (this.value.includes('کارت') || this.value.includes('پایا') || this.value.includes('ساتنا')) {
-                destCardSelect.setAttribute('required', 'required');
-            } else {
-                destCardSelect.removeAttribute('required');
-            }
-        });
-    }
-});
 </script>
 {% endblock %}
 

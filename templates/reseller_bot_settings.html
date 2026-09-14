@@ -251,66 +251,17 @@
                         </div>
                     </div>
 
-                    <hr class="my-4">
-                    <h5 class="fw-bold mb-3"><i class="fas fa-credit-card text-success me-2"></i> اطلاعات کارت بانکی جهت دریافت واریزی مشتریان</h5>
-                    <p class="text-muted small mb-3">هنگامی که مشتری در ربات شما درخواست خرید ثبت می‌کند، این اطلاعات برای واریز به او نمایش داده می‌شود و عکس فیش مستقیماً به تلگرام شما ارسال می‌گردد.</p>
-
-                    <div class="row g-3 mb-4">
-                        <div class="col-md-5">
-                            <label class="form-label fw-bold">شماره کارت ۱۶ رقمی</label>
-                            <input type="text" class="form-control font-monospace" name="card_number" 
-                                   value="{{ reseller.get('card_number') or '' }}" 
-                                   placeholder="6037-xxxx-xxxx-xxxx" dir="ltr" maxlength="19">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-bold">نام صاحب حساب</label>
-                            <input type="text" class="form-control" name="card_holder" 
-                                   value="{{ reseller.get('card_holder') or '' }}" 
-                                   placeholder="مثال: علی رضایی">
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label fw-bold">نام بانک</label>
-                            <input type="text" class="form-control" name="bank_name" 
-                                   value="{{ reseller.get('bank_name') or '' }}" 
-                                   placeholder="مثال: ملی / ملت">
-                        </div>
-                    </div>
-
-                    <hr class="my-4">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h5 class="fw-bold mb-0"><i class="fas fa-money-bill-wave text-primary me-2"></i> درگاه پرداخت آنلاین اختصاصی نماینده (ZarinPal / IDPay)</h5>
-                        <span class="badge {% if reseller_gateway.get('enabled') %}bg-success bg-opacity-10 text-success border border-success{% else %}bg-secondary bg-opacity-10 text-secondary border{% endif %}">
-                            {{ '🟢 درگاه آنلاین فعال' if reseller_gateway.get('enabled') else '⚪ درگاه غیرفعال (بزودی)' }}
-                        </span>
-                    </div>
-                    <p class="text-muted small mb-3">با فعال‌سازی درگاه آنلاین شخصی خود، مشتریان می‌توانند مستقیماً از طریق درگاه شاپرک پرداخت کرده و اشتراک خود را به صورت آنی تحویل بگیرند.</p>
-
-                    <div class="form-check form-switch mb-3">
-                        <input class="form-check-input" type="checkbox" name="is_gateway_active" id="resellerGwSwitch" {% if reseller_gateway.get('enabled') %}checked{% endif %}>
-                        <label class="form-check-label fw-bold" for="resellerGwSwitch">فعال‌سازی پرداخت آنلاین برای مشتریان ربات من</label>
-                    </div>
-
-                    <div class="row g-3 mb-4">
-                        <div class="col-md-4">
-                            <label class="form-label fw-bold">نوع درگاه بانکی</label>
-                            <select class="form-select" name="gateway_type">
-                                <option value="zarinpal" {% if reseller_gateway.get('type') == 'zarinpal' %}selected{% endif %}>زرین‌پال (ZarinPal)</option>
-                                <option value="idpay" {% if reseller_gateway.get('type') == 'idpay' %}selected{% endif %}>آیدی‌پی (IDPay)</option>
-                                <option value="nextpay" {% if reseller_gateway.get('type') == 'nextpay' %}selected{% endif %}>نکست‌پی (NextPay)</option>
-                            </select>
-                        </div>
-                        <div class="col-md-5">
-                            <label class="form-label fw-bold">مرچنت کد / API Key اختصاصی <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control font-monospace" name="gateway_key" 
-                                   value="{{ reseller_gateway.get('key') or '' }}" 
-                                   placeholder="کد درگاه اختصاصی شما" dir="ltr">
-                        </div>
-                        <div class="col-md-3 d-flex align-items-end">
-                            <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" name="gateway_sandbox" id="resellerGwSandbox" {% if reseller_gateway.get('sandbox') %}checked{% endif %}>
-                                <label class="form-check-label small text-muted" for="resellerGwSandbox">حالت تستی Sandbox</label>
+                    <div class="alert alert-info d-flex align-items-center justify-content-between p-3 my-4 rounded-3 border-0 bg-info bg-opacity-10">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="fas fa-credit-card text-info fs-5"></i>
+                            <div>
+                                <strong class="text-dark">مدیریت کارت‌های بانکی، درگاه‌های آنلاین، کریپتو و صندوق‌ها</strong>
+                                <div class="text-muted small">تنظیمات کارت‌ها، درگاه‌های آنلاین و صندوق‌ها به صورت یکپارچه و پیشرفته در صفحه «روش‌ها و تنظیمات پرداخت» انجام می‌شود.</div>
                             </div>
                         </div>
+                        <a href="{{ url_for('reseller_cards') }}" class="btn btn-sm btn-info text-white fw-bold px-3">
+                            <i class="fas fa-arrow-left me-1"></i> رفتن به روش‌های پرداخت
+                        </a>
                     </div>
 
                     <!-- بخش تنظیمات باشگاه مشتریان VIP و کش‌بک نماینده -->

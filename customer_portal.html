@@ -2061,6 +2061,12 @@
     <!-- بخش پشتیبانی و تماس در پاورقی -->
     <div class="glass-card p-3 mb-4 text-center">
         <div class="text-secondary small mb-2"><i class="fas fa-headset text-info me-1"></i> نیاز به پشتیبانی یا راهنمایی دارید؟</div>
+        {% if support_online_info and support_online_info.is_online %}
+        <div class="d-inline-flex align-items-center gap-2 mb-2 px-3 py-1 rounded-pill" style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3);">
+            <span class="spinner-grow spinner-grow-sm text-success" style="width: 8px; height: 8px;" role="status"></span>
+            <span class="small fw-bold text-success">پشتیبان در تلگرام آنلاین و آماده پاسخگویی است</span>
+        </div>
+        {% endif %}
         <div class="d-flex flex-wrap justify-content-center gap-2">
             {% if support_phone %}
             <a href="tel:{{ support_phone }}" class="btn btn-sm btn-outline-success rounded-pill px-3 py-1">
@@ -2070,6 +2076,9 @@
             {% if support_username %}
             <a href="https://t.me/{{ support_username.lstrip('@') }}" target="_blank" class="btn btn-sm btn-outline-info rounded-pill px-3 py-1">
                 <i class="fab fa-telegram me-1"></i> تلگرام: <span dir="ltr">@{{ support_username.lstrip('@') }}</span>
+                {% if support_online_info and support_online_info.is_online %}
+                <span class="badge bg-success ms-1" style="font-size: 0.68rem;">آنلاین و پاسخگو</span>
+                {% endif %}
             </a>
             {% endif %}
             {% if not support_phone and not support_username %}
@@ -2172,6 +2181,26 @@
             {% endfor %}
         {% endif %}
     {% endwith %}
+
+    <!-- بنرهای سراسری و اطلاعیه‌های پرتال مشتریان -->
+    {% if portal_banners %}
+        <div class="portal-banners-container mb-4 d-flex flex-column gap-2">
+            {% for bnr in portal_banners %}
+                <div class="alert alert-{{ bnr.level or 'info' }} alert-dismissible fade show shadow-sm border-0 rounded-3 p-3 mb-0" role="alert" style="backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
+                    <div class="d-flex align-items-start gap-2">
+                        <i class="fas fa-{% if bnr.level == 'danger' %}circle-exclamation text-danger{% elif bnr.level == 'warning' %}triangle-exclamation text-warning{% elif bnr.level == 'success' %}circle-check text-success{% else %}bullhorn text-info{% endif %} fs-5 mt-1 flex-shrink-0"></i>
+                        <div class="flex-grow-1">
+                            {% if bnr.title %}
+                                <div class="fw-bold mb-1">{{ bnr.title }}</div>
+                            {% endif %}
+                            <div class="small" style="white-space: pre-line; line-height: 1.6;">{{ bnr.message }}</div>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
 
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
     <!-- رندر طرح‌بندی‌های اختصاصی پورتال مشتری بر اساس تنظیمات (Portal Layouts) -->
@@ -2746,7 +2775,7 @@
 <button type="button" class="floating-chat-btn pos-{{ chat_settings.chat_button_position or 'right' }} style-{{ chat_settings.chat_button_style or 'modern_pill' }}" id="floatingChatBtn" onclick="openPortalChatModal()" title="گفتگوی آنلاین با پشتیبانی">
     <span class="chat-status-dot {% if support_online_info and support_online_info.is_online %}online{% else %}offline{% endif %}" id="chatStatusDot" title="{% if support_online_info and support_online_info.is_online %}پشتیبانی آنلاین و پاسخگو است{% else %}پشتیبانی در حال حاضر آفلاین است (می‌توانید پیام بگذارید){% endif %}"></span>
     <i class="fas fa-comments fs-5"></i>
-    <span class="chat-badge-text" id="chatBadgeText">{{ chat_settings.chat_button_text or 'گفتگوی آنلاین' }}</span>
+    <span class="chat-badge-text" id="chatBadgeText">{% if support_online_info and support_online_info.is_online %}آنلاین و پاسخگو{% else %}{{ chat_settings.chat_button_text or 'گفتگوی آنلاین' }}{% endif %}</span>
     <span class="chat-unread-badge d-none" id="chatUnreadBadge">0</span>
 </button>
 
@@ -3554,6 +3583,15 @@ function updateSupportOnlineStatusUI(isOnline, supportName, statusText) {
         } else {
             dot.className = "chat-status-dot offline";
             dot.title = "پشتیبانی در حال حاضر آفلاین است (می‌توانید پیام بگذارید)";
+        }
+    }
+
+    const badgeText = document.getElementById("chatBadgeText");
+    if (badgeText) {
+        if (isOnline) {
+            badgeText.innerText = "آنلاین و پاسخگو";
+        } else {
+            badgeText.innerText = "{{ chat_settings.chat_button_text or 'گفتگوی آنلاین' }}";
         }
     }
 

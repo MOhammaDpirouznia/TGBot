@@ -20,6 +20,8 @@
             <div class="position-absolute top-0 start-50 translate-middle-x" style="width: 600px; height: 300px; background: radial-gradient(circle, rgba(0, 242, 254, 0.22) 0%, rgba(0,0,0,0) 75%); filter: blur(50px);"></div>
         {% elif active_style == 'gradient_vibrant' %}
             <div class="position-absolute w-100 h-100 top-0 start-0" style="background: radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.15) 0%, transparent 40%), radial-gradient(circle at 90% 80%, rgba(236, 72, 153, 0.15) 0%, transparent 40%);"></div>
+        {% elif active_style == 'ruby_waves' %}
+            <div class="position-absolute w-100 h-100 top-0 start-0" style="background: radial-gradient(circle at 30% 10%, rgba(225, 29, 72, 0.25) 0%, transparent 40%), radial-gradient(circle at 80% 80%, rgba(251, 146, 60, 0.2) 0%, transparent 50%); filter: blur(40px);"></div>
         {% elif active_style == 'executive_dark' %}
             <div class="position-absolute top-0 start-50 translate-middle-x" style="width: 500px; height: 350px; background: radial-gradient(circle, rgba(245, 158, 11, 0.15) 0%, rgba(0,0,0,0) 70%); filter: blur(60px);"></div>
         {% endif %}
@@ -40,6 +42,8 @@
                         <div class="logo-icon-wrapper d-inline-flex align-items-center justify-content-center rounded-4 shadow-sm" style="width: 64px; height: 64px;">
                             {% if active_style == 'cyber_neon' %}
                                 <i class="fas fa-microchip fs-2 text-cyan"></i>
+                            {% elif active_style == 'ruby_waves' %}
+                                <i class="fas fa-fire fs-2 text-danger"></i>
                             {% elif active_style == 'executive_dark' %}
                                 <i class="fas fa-shield-halved fs-2 text-warning"></i>
                             {% else %}
@@ -500,6 +504,73 @@
     background: #090c14;
     border-top: 1px solid rgba(245, 158, 11, 0.12);
     color: #94a3b8;
+}
+/* استایل ۶: امواج یاقوتی (ruby_waves) */
+.login-theme-ruby_waves {
+    background: #0f0505;
+    color: #fdf2f8;
+}
+.login-theme-ruby_waves .login-main-card {
+    background: rgba(20, 5, 5, 0.8) !important;
+    border: 1px solid rgba(225, 29, 72, 0.4) !important;
+    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.8), 0 0 35px rgba(225, 29, 72, 0.15) !important;
+    border-radius: 20px !important;
+    backdrop-filter: blur(20px);
+}
+.login-theme-ruby_waves .login-card-header {
+    background: linear-gradient(180deg, rgba(225, 29, 72, 0.15) 0%, transparent 100%);
+    border-bottom: 1px solid rgba(225, 29, 72, 0.25);
+}
+.login-theme-ruby_waves .login-brand-title {
+    color: #f43f5e;
+}
+.login-theme-ruby_waves .logo-wrapper,
+.login-theme-ruby_waves .logo-icon-wrapper {
+    background: rgba(225, 29, 72, 0.15);
+    border: 1px solid rgba(225, 29, 72, 0.5);
+}
+.login-theme-ruby_waves .login-version-badge {
+    background: rgba(225, 29, 72, 0.15);
+    border: 1px solid rgba(225, 29, 72, 0.4);
+    color: #fda4af;
+}
+.login-theme-ruby_waves .login-input-group .input-group-text,
+.login-theme-ruby_waves .login-input-group .form-control {
+    background: #18090a;
+    border-color: rgba(225, 29, 72, 0.3);
+    color: #fdf2f8;
+}
+.login-theme-ruby_waves .login-input-group .form-control:focus {
+    border-color: #f43f5e;
+    box-shadow: 0 0 12px rgba(225, 29, 72, 0.4);
+}
+.login-theme-ruby_waves .captcha-img-box {
+    background: #18090a;
+    border-color: rgba(225, 29, 72, 0.3) !important;
+}
+.login-theme-ruby_waves .login-captcha-input {
+    background: #18090a;
+    border-color: rgba(225, 29, 72, 0.3);
+    color: #fda4af;
+}
+.login-theme-ruby_waves .login-submit-btn {
+    background: linear-gradient(135deg, #e11d48 0%, #fb923c 100%);
+    border: none;
+    color: #fff;
+    font-weight: 700;
+    border-radius: 10px;
+    box-shadow: 0 8px 20px rgba(225, 29, 72, 0.4);
+    transition: all 0.3s ease;
+}
+.login-theme-ruby_waves .login-submit-btn:hover {
+    box-shadow: 0 12px 25px rgba(225, 29, 72, 0.6);
+    transform: translateY(-2px);
+    filter: brightness(1.15);
+}
+.login-theme-ruby_waves .login-card-footer {
+    background: #0f0505;
+    border-top: 1px solid rgba(225, 29, 72, 0.15);
+    color: #fda4af;
 }
 </style>
 

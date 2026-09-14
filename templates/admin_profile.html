@@ -91,8 +91,14 @@
                             <input type="number" name="telegram_id" class="form-control font-monospace" placeholder="مثال: 12345678" value="{{ admin['telegram_id'] or '' }}">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-bold">شماره همراه (جهت هشدارهای پیامکی ورود):</label>
+                            <label class="form-label fw-bold">شماره تماس (جهت پیامک‌های اطلاع‌رسانی):</label>
                             <input type="text" name="phone" class="form-control font-monospace" placeholder="مثال: 09123456789" value="{{ admin['phone'] or '' }}">
+                        </div>
+                        <div class="col-md-12 mt-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" role="switch" id="logoutNotificationEnabled" name="logout_notification_enabled" value="1" {% if admin.get('logout_notification_enabled') %}checked{% endif %}>
+                                <label class="form-check-label fw-bold" for="logoutNotificationEnabled">ارسال پیامک/تلگرام هنگام خروج از حساب</label>
+                            </div>
                         </div>
                     </div>
                     

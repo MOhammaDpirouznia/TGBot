@@ -68,13 +68,28 @@
                                 </select>
                             </div>
                             <div class="col-md-6" id="resellerPaymentDestBox">
-                                <label class="form-label fw-bold">کارت مقصد واریز یا دریافت نقدی:</label>
-                                <select name="payment_destination" class="form-select border-success">
-                                    <option value="cash">💵 دریافت نقدی (ثبت در صندوق نقدی جهت تسویه بعدی)</option>
-                                    {% for c in cards %}
-                                    <option value="card_{{ c['id'] }}" {% if c.get('is_default') %}selected{% endif %}>
-                                        💳 کارت {{ c['bank_name'] }} - {{ c['card_holder'] }} ({{ c['card_number'][-4:] }}****) {% if c.get('is_default') %}⭐ [پیش‌فرض]{% elif c.get('is_backup') %}🛡️ [پشتیبان]{% endif %} - مانده: {{ "{:,}".format(c.get('balance', 0)) }} ت
+                                <label class="form-label fw-bold">حساب / کارت مقصد واریز یا دریافت نقدی:</label>
+                                <select name="payment_destination" class="form-select border-success fw-bold">
+                                    {% if default_account %}
+                                    <option value="account_{{ default_account['id'] }}" selected>
+                                        ⭐ [پیش‌فرض مشتریان] {{ default_account.get('bank_name') }} - {{ default_account.get('card_holder') }} (مانده: {{ "{:,}".format(default_account.get('balance', 0)) }} ت)
                                     </option>
+                                    {% endif %}
+                                    <option value="cash" {% if not default_account %}selected{% endif %}>💵 دریافت نقدی (ثبت در صندوق نقدی جهت تسویه بعدی)</option>
+                                    {% for acc in (accounts or cards) %}
+                                        {% if not default_account or acc['id'] != default_account['id'] %}
+                                        <option value="account_{{ acc['id'] }}">
+                                            {% if acc.get('account_type') == 'cash_desk' %}
+                                                🏢 صندوق {{ acc.get('bank_name') }} (مسئول: {{ acc.get('assigned_to', '-') }}) - مانده: {{ "{:,}".format(acc.get('balance', 0)) }} ت
+                                            {% elif 'gateway' in acc.get('account_type', '') %}
+                                                ⚡ درگاه {{ acc.get('bank_name') }} ({{ acc.get('connected_gateway', '') }}) - مانده: {{ "{:,}".format(acc.get('balance', 0)) }} ت
+                                            {% elif acc.get('account_type') == 'crypto_wallet' %}
+                                                💎 ولت کریپتو {{ acc.get('bank_name') }} - مانده: {{ "{:,}".format(acc.get('balance', 0)) }} ت
+                                            {% else %}
+                                                💳 کارت {{ acc.get('bank_name') }} - {{ acc.get('card_holder') }} ({{ acc.get('card_number', '')[-4:] }}****) - مانده: {{ "{:,}".format(acc.get('balance', 0)) }} ت
+                                            {% endif %}
+                                        </option>
+                                        {% endif %}
                                     {% endfor %}
                                 </select>
                                 <small class="text-muted">در صورت انتخاب کارت، به موجودی شناور کارت افزوده می‌شود.</small>
@@ -110,7 +125,14 @@
                                             <i class="{{ icon_info.icon }}"></i>
                                         </span>
                                         <div class="flex-grow-1">
-                                            <div class="fw-bold">{{ p_name }}</div>
+                                            <div class="d-flex align-items-center justify-content-between flex-wrap gap-1">
+                                                <span class="fw-bold">{{ p_name }}</span>
+                                                {% if not p.get('show_in_reseller_bot', True) %}
+                                                <span class="badge bg-warning-subtle text-dark border border-warning px-2 py-1" style="font-size: 0.7rem;" title="این پلن در ربات تلگرام نمایش داده نمی‌شود و فقط مخصوص صدور دستی در پنل وب شماست">
+                                                    <i class="fas fa-gem text-warning me-1"></i>پلن اختصاصی دستی
+                                                </span>
+                                                {% endif %}
+                                            </div>
                                             <div class="text-muted small">حجم: {{ p_limit }} گیگ | مدت: {{ p_duration }} روز</div>
                                             <div class="mt-2">
                                                 <span class="text-decoration-line-through text-muted small">{{ "{:,}".format(p_orig_price) }} ت</span>

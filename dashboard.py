@@ -5527,6 +5527,7 @@ def subscriptions():
         reseller_filter_id=reseller_filter_id,
         resellers_list=resellers_list,
         plans=plans,
+        accounts=accounts,
         search=search,
         sort_by=sort_by,
         total_count=total_count,
@@ -6534,6 +6535,7 @@ def admin_resellers():
         credit_limit = int(request.form.get("credit_limit", 0) or 0)
         credit_enabled = 1 if (request.form.get("credit_enabled") or credit_limit > 0) else 0
         can_gift_traffic = 1 if request.form.get("can_gift_traffic") in ("on", "1", "true") else 0
+        is_partner = 1 if request.form.get("is_partner") in ("on", "1", "true") else 0
 
         res = db.create_reseller(
             username=username,
@@ -6545,7 +6547,8 @@ def admin_resellers():
             hiddify_admin_uuid=hiddify_admin_uuid,
             credit_enabled=credit_enabled,
             credit_limit=credit_limit,
-            can_gift_traffic=can_gift_traffic
+            can_gift_traffic=can_gift_traffic,
+            is_partner=is_partner
         )
         if res.get("success"):
             flash(f"نماینده جدید «{name}» با موفقیت افزوده شد!", "success")
@@ -7481,69 +7484,39 @@ def admin_reseller_delete(reseller_id):
 @app.route("/accounting", methods=["GET"])
 @permission_required("accounting")
 def accounting():
-    """داشبورد حسابداری و مدیریت مالی، هزینه‌ها، سود خالص، گردش حساب ۳۰ روز اخیر و تراز بدهی"""
-    type_filter = request.args.get("type", "all")
-    category_filter = request.args.get("category", "all")
-    period = request.args.get("period", "all")
-    search = request.args.get("search", "")
-    reseller_audit_id = request.args.get("reseller_id", "")
-    selected_reseller_id = int(reseller_audit_id) if reseller_audit_id.isdigit() else None
-
-    summary = db.get_accounting_summary()
-    records = db.get_accounting_records(
-        limit=250,
-        type_filter=type_filter,
-        category_filter=category_filter,
-        period=period,
-        search=search
-    )
-
-    # گزارش حسابرسی جامع ۳۰ روز اخیر (کل سیستم یا اختصاصی یک نماینده)
-    monthly_audit = db.get_monthly_accounting_audit(reseller_id=selected_reseller_id, days=30)
-    resellers_list = db.get_all_resellers()
-    selected_reseller = db.get_reseller(selected_reseller_id) if selected_reseller_id else None
-
-    admin_role = session.get("admin_role", "super_admin")
-    admin_id = session.get("admin_id")
-    target_admin_id = admin_id if admin_role == "partner" else None
-
-    admin_debts_summary = db.get_admins_accounting_summary(admin_id=target_admin_id)
-    admin_debts_logs = db.get_admin_debts(admin_id=target_admin_id, limit=100)
-
-    # سود و حسابرسی شرکای تجاری با فیلتر دوره
-    partner_period = request.args.get("partner_period", "month").strip()
-    if partner_period not in ("today", "week", "month", "year", "all"):
-        partner_period = "month"
-    partner_profits = db.get_partner_profits_summary(period=partner_period)
+    """سیستم حسابداری و تراز مالی سراسری"""
+    import jdatetime
+    
+    current_year = jdatetime.datetime.now().year
+    year = int(request.args.get("year", current_year))
+    
+    # داده‌های شرکا و خلاصه کل
+    partners_data = db.get_accounting_partners_data()
+    
+    # آمار ماه‌های سال جلالی
+    monthly_stats = db.get_jalali_monthly_accounting(year=year)
+    
+    # لیست آخرین تراکنش‌های دستی برای نمایش یا مدیریت
+    records = db.get_accounting_records(limit=50)
 
     categories = [
-        "هزینه سرور",
-        "هزینه ترافیک هیدیفای",
+        "خرید سرور",
+        "شارژ پنل پیامک",
         "دامنه و CDN",
-        "تبلیغات و بازاریابی",
-        "دستمزد و پشتیبانی",
-        "فروش اشتراک",
-        "شارژ نماینده",
+        "تبلیغات و مارکتینگ",
+        "پشتیبانی و کارمندان",
+        "حقوق مدیریت",
+        "خرید ترافیک",
         "متفرقه"
     ]
 
     return render_template(
         "accounting.html",
-        summary=summary,
+        partners_data=partners_data,
+        monthly_stats=monthly_stats,
+        current_year=year,
         records=records,
-        categories=categories,
-        current_type=type_filter,
-        current_category=category_filter,
-        current_period=period,
-        search=search,
-        monthly_audit=monthly_audit,
-        resellers_list=resellers_list,
-        selected_reseller_id=selected_reseller_id,
-        selected_reseller=selected_reseller,
-        admin_debts_summary=admin_debts_summary,
-        admin_debts_logs=admin_debts_logs,
-        partner_profits=partner_profits,
-        partner_period=partner_period
+        categories=categories
     )
 
 
@@ -8551,13 +8524,19 @@ def cards():
             shaba_number = request.form.get("shaba_number", "").strip()
             account_number = request.form.get("account_number", "").strip()
             notes = request.form.get("notes", "").strip()
+            account_type = request.form.get("account_type", "bank_card").strip()
+            profit_percent = float(request.form.get("profit_percent", 0) or 0)
+            assigned_to = request.form.get("assigned_to", "").strip() or None
             db.add_bank_card(
                 card_num, holder, bank, daily_limit=limit,
                 is_default=is_default, is_backup=is_backup,
                 initial_balance=initial_balance,
                 shaba_number=shaba_number,
                 account_number=account_number,
-                notes=notes
+                notes=notes,
+                account_type=account_type,
+                profit_percent=profit_percent,
+                assigned_to=assigned_to
             )
             flash("کارت بانکی جدید با موفقیت افزوده شد.", "success")
         elif action == "card_set_role":
@@ -17149,3 +17128,5 @@ def start_dashboard_thread():
 
 if __name__ == "__main__":
     run_dashboard(debug=True)
+
+

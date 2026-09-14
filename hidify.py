@@ -332,3 +332,14 @@ class HidifyClient:
     async def get_server_status(self) -> dict:
         """دریافت وضعیت سرور"""
         return await self._request("GET", "/admin/server_status/")
+
+    async def get_backup(self) -> str:
+        """دریافت بکاپ پنل بصورت متن خام json"""
+        try:
+            client = await self._get_client()
+            resp = await client.get(f"{self.base_api}/admin/backup/")
+            if resp.status_code == 200:
+                return resp.text
+        except Exception as e:
+            logger.error(f"Error fetching Hiddify backup: {e}")
+        return None

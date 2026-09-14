@@ -71,21 +71,46 @@
                                 <i class="{{ icon_info.icon }}"></i>
                             </span>
                             {{ p.name }}
-                            {% if p.is_exclusive_admin_bot %}
-                                <span class="badge text-white ms-1" style="font-size: 0.72rem; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);" title="مخفی از تمام نمایندگان - فقط پنل و ربات مدیریت">
-                                    <i class="fas fa-robot me-1"></i>اختصاصی پنل و ربات مدیریت
-                                </span>
-                            {% elif p.is_exclusive_admin %}
+                            {% set s_ab = p.get('show_in_admin_bot') %}
+                            {% set s_ap = p.get('show_in_admin_panel', True) %}
+                            {% set s_rb = p.get('show_in_reseller_bot') %}
+                            {% set s_rp = p.get('show_in_reseller_panel') %}
+                            {% set r_count = p.allowed_resellers|length if p.allowed_resellers else 0 %}
+                            {% set r_scope = p.get('reseller_scope', 'selected' if r_count > 0 else 'all') %}
+
+                            {% if s_ab and s_ap and s_rb and s_rp and r_scope == 'all' %}
+                                <span class="badge bg-light text-secondary border ms-1" style="font-size: 0.72rem;"><i class="fas fa-globe me-1"></i>عمومی</span>
+                            {% elif s_ap and not s_ab and not s_rb and not s_rp %}
                                 <span class="badge bg-warning text-dark border border-warning ms-1" style="font-size: 0.72rem;" title="کاملاً مخفی از تمام ربات‌ها - فقط پنل مدیریت">
                                     <i class="fas fa-crown me-1"></i>فقط پنل مدیریت
                                 </span>
-                            {% elif p.allowed_resellers or p.is_exclusive_reseller %}
-                                {% set r_count = p.allowed_resellers|length if p.allowed_resellers else 0 %}
+                            {% elif s_ab and s_ap and not s_rb and not s_rp %}
+                                <span class="badge text-white ms-1" style="font-size: 0.72rem; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);" title="مخفی از تمام نمایندگان - فقط پنل و ربات مدیریت">
+                                    <i class="fas fa-robot me-1"></i>پنل و ربات مدیریت
+                                </span>
+                            {% elif not s_rb and s_rp %}
+                                <span class="badge text-white ms-1" style="font-size: 0.72rem; background: linear-gradient(135deg, #059669 0%, #10b981 100%);" title="مخفی از ربات نماینده - صدور دستی فقط در پنل نماینده">
+                                    <i class="fas fa-briefcase me-1"></i>فقط پنل نماینده (دستی)
+                                </span>
+                                {% if r_scope == 'selected' %}
+                                    <span class="badge bg-primary-subtle text-primary border ms-1" style="font-size: 0.70rem;">{{ r_count }} نماینده</span>
+                                {% else %}
+                                    <span class="badge bg-secondary-subtle text-secondary border ms-1" style="font-size: 0.70rem;">همه نمایندگان</span>
+                                {% endif %}
+                            {% elif s_rb and s_rp and (r_scope == 'selected' or p.allowed_resellers or p.is_exclusive_reseller) %}
                                 <span class="badge text-white ms-1" style="font-size: 0.72rem; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);" title="فقط برای {{ r_count }} نماینده منتخب فعال است">
-                                    <i class="fas fa-user-lock me-1"></i>اختصاصی ({{ r_count }} نماینده)
+                                    <i class="fas fa-user-lock me-1"></i>اختصاصی نماینده ({{ r_count }})
                                 </span>
                             {% else %}
-                                <span class="badge bg-light text-secondary border ms-1" style="font-size: 0.72rem;"><i class="fas fa-globe me-1"></i>عمومی</span>
+                                <span class="d-inline-flex gap-1 ms-1 align-items-center flex-wrap">
+                                    {% if s_ab %}<span class="badge bg-info-subtle text-info border" style="font-size: 0.65rem;" title="فعال در ربات اصلی">ربات مدیر</span>{% endif %}
+                                    {% if s_ap %}<span class="badge bg-secondary-subtle text-secondary border" style="font-size: 0.65rem;" title="فعال در پنل مدیریت">پنل مدیر</span>{% endif %}
+                                    {% if s_rb %}<span class="badge bg-primary-subtle text-primary border" style="font-size: 0.65rem;" title="فعال در ربات نماینده">ربات نماینده</span>{% endif %}
+                                    {% if s_rp %}<span class="badge bg-success-subtle text-success border" style="font-size: 0.65rem;" title="فعال در پنل نماینده">پنل نماینده</span>{% endif %}
+                                    {% if (s_rb or s_rp) and r_scope == 'selected' %}
+                                        <span class="badge bg-warning-subtle text-dark border" style="font-size: 0.65rem;">{{ r_count }} نماینده</span>
+                                    {% endif %}
+                                </span>
                             {% endif %}
                         </td>
                         <td data-value="{{ p.price or 0 }}"><span class="badge bg-success-subtle text-success fs-6 font-monospace">{{ "{:,}".format(p.price) }} تومان</span></td>
@@ -398,6 +423,37 @@
                             <span class="badge bg-white text-dark border font-monospace" id="add_ded_calc_hint_badge">
                                 تخفیف پیش‌فرض نماینده اعمال خواهد شد.
                             </span>
+                        </div>
+                    <!-- کانال‌های نمایش برای نماینده -->
+                    <input type="hidden" name="has_channel_switches" value="1">
+                    <div class="p-3 border rounded bg-light mt-3">
+                        <div class="fw-semibold small text-dark mb-2">
+                            <i class="fas fa-network-wired text-info me-1"></i>
+                            کانال‌های نمایش برای نماینده:
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-sm-6">
+                                <div class="form-check form-switch p-2 bg-white rounded border">
+                                    <input class="form-check-input ms-0 me-2" type="checkbox" name="show_in_reseller_panel" id="add_ded_show_panel" value="1" checked>
+                                    <label class="form-check-label fw-semibold small" for="add_ded_show_panel">
+                                        <i class="fas fa-laptop text-info me-1"></i> پنل وب نماینده
+                                        <div class="text-muted" style="font-size: 0.72rem;">فروش دستی توسط نماینده در وب</div>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-sm-6">
+                                <div class="form-check form-switch p-2 bg-white rounded border">
+                                    <input class="form-check-input ms-0 me-2" type="checkbox" name="show_in_reseller_bot" id="add_ded_show_bot" value="1">
+                                    <label class="form-check-label fw-semibold small" for="add_ded_show_bot">
+                                        <i class="fab fa-telegram text-primary me-1"></i> ربات تلگرام نماینده
+                                        <div class="text-muted" style="font-size: 0.72rem;">فروش عمومی به مشتریان ربات</div>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-text small mt-1 text-muted" style="font-size: 0.75rem;">
+                            <i class="fas fa-info-circle text-primary me-1"></i>
+                            اگر تیک «ربات تلگرام نماینده» برداشته شود، این پلن فقط در پنل وب نماینده برای صدور دستی فعال خواهد بود و در ربات تلگرام مخفی می‌شود.
                         </div>
                     </div>
 
@@ -737,59 +793,122 @@
                             <option value="0" {% if not p.is_active %}selected{% endif %}>🔴 غیرفعال</option>
                         </select>
                     </div>
-                    <div class="mb-3 p-3 border rounded bg-light">
-                        <label class="form-label fw-bold text-dark mb-2">
-                            <i class="fas fa-shield-halved text-primary me-1"></i> سطح دسترسی و نمایش پلن:
-                        </label>
+                    <div class="mb-3 p-3 border rounded-3 bg-light">
+                        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                            <label class="form-label fw-bold text-dark mb-0">
+                                <i class="fas fa-sliders text-primary me-1"></i> سطح دسترسی و کانال‌های نمایش پلن:
+                            </label>
+                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle font-monospace" id="presetBadge_{{ pid }}">
+                                {% if p.show_in_admin_bot and p.show_in_admin_panel and p.show_in_reseller_bot and p.show_in_reseller_panel and p.reseller_scope == 'all' %}
+                                    عمومی (همه جا)
+                                {% elif p.show_in_admin_bot and p.show_in_admin_panel and not p.show_in_reseller_bot and not p.show_in_reseller_panel %}
+                                    پنل و ربات مدیریت
+                                {% elif not p.show_in_admin_bot and p.show_in_admin_panel and not p.show_in_reseller_bot and not p.show_in_reseller_panel %}
+                                    فقط پنل مدیریت
+                                {% elif not p.show_in_admin_bot and p.show_in_admin_panel and not p.show_in_reseller_bot and p.show_in_reseller_panel %}
+                                    اختصاصی پنل نماینده (فروش دستی)
+                                {% elif p.show_in_reseller_bot and p.show_in_reseller_panel and (p.reseller_scope == 'selected' or p.allowed_resellers) %}
+                                    ربات و پنل نمایندگان منتخب
+                                {% else %}
+                                    سفارشی و ترکیبی
+                                {% endif %}
+                            </span>
+                        </div>
                         
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="radio" name="target_type" id="targetAll_{{ pid }}" value="all" 
-                                   {% if not p.is_exclusive_admin and not p.is_exclusive_admin_bot and not p.allowed_resellers and not p.is_exclusive_reseller %}checked{% endif %}
-                                   onchange="toggleResellerSelect('{{ pid }}')">
-                            <label class="form-check-label fw-semibold" for="targetAll_{{ pid }}">
-                                🌐 <strong>پلن عمومی</strong> (نمایش در ربات اصلی و برای تمام همکاران و نمایندگان)
-                            </label>
+                        <!-- دکمه‌های الگوهای سریع و آماده -->
+                        <div class="d-flex flex-wrap gap-1 mb-3">
+                            <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill px-2 py-1 preset-btn-{{ pid }}" onclick="applyPlanPreset('{{ pid }}', 'all')">
+                                🌐 عمومی
+                            </button>
+                            <button type="button" class="btn btn-xs btn-outline-info rounded-pill px-2 py-1 preset-btn-{{ pid }}" onclick="applyPlanPreset('{{ pid }}', 'admin_bot')">
+                                🤖 پنل و ربات مدیریت
+                            </button>
+                            <button type="button" class="btn btn-xs btn-outline-warning rounded-pill px-2 py-1 preset-btn-{{ pid }}" onclick="applyPlanPreset('{{ pid }}', 'admin_panel')">
+                                👑 فقط پنل مدیر
+                            </button>
+                            <button type="button" class="btn btn-xs btn-outline-primary rounded-pill px-2 py-1 preset-btn-{{ pid }}" onclick="applyPlanPreset('{{ pid }}', 'resellers_both')">
+                                👥 ربات و پنل نماینده
+                            </button>
+                            <button type="button" class="btn btn-xs btn-outline-success rounded-pill px-2 py-1 preset-btn-{{ pid }}" onclick="applyPlanPreset('{{ pid }}', 'reseller_panel_only')">
+                                💼 فقط پنل نماینده (فروش دستی)
+                            </button>
                         </div>
 
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="radio" name="target_type" id="targetAdminBot_{{ pid }}" value="admin_bot" 
-                                   {% if p.is_exclusive_admin_bot %}checked{% endif %}
-                                   onchange="toggleResellerSelect('{{ pid }}')">
-                            <label class="form-check-label fw-semibold" for="targetAdminBot_{{ pid }}" style="color: #0284c7;">
-                                🤖 <strong>پلن اختصاصی برای پنل و ربات مدیریت</strong> (مخفی از نمایندگان و ربات نمایندگان)
-                            </label>
-                        </div>
-
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="radio" name="target_type" id="targetAdmin_{{ pid }}" value="admin" 
-                                   {% if p.is_exclusive_admin and not p.is_exclusive_admin_bot %}checked{% endif %}
-                                   onchange="toggleResellerSelect('{{ pid }}')">
-                            <label class="form-check-label fw-semibold text-warning-emphasis" for="targetAdmin_{{ pid }}">
-                                👑 <strong>پلن اختصاصی مدیریت ارشد</strong> (مخفی از ربات اصلی و تمام نمایندگان - فقط پنل مدیر)
-                            </label>
-                        </div>
-
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="radio" name="target_type" id="targetResellers_{{ pid }}" value="resellers" 
-                                   {% if p.allowed_resellers or p.is_exclusive_reseller %}checked{% endif %}
-                                   onchange="toggleResellerSelect('{{ pid }}')">
-                            <label class="form-check-label fw-semibold" for="targetResellers_{{ pid }}" style="color: #6366f1;">
-                                👥 <strong>پلن اختصاصی نمایندگان منتخب</strong> (مخفی از ربات اصلی و سایر نمایندگان - فعال فقط برای موارد انتخابی)
-                            </label>
-                        </div>
-
-                        <!-- لیست انتخاب نمایندگان مجاز -->
-                        <div id="resellerSelectBox_{{ pid }}" class="mt-3 p-2 bg-white rounded border" style="{% if not p.allowed_resellers and not p.is_exclusive_reseller %}display: none;{% endif %} max-height: 180px; overflow-y: auto;">
-                            <div class="small fw-bold text-muted mb-2"><i class="fas fa-check-double me-1"></i>نمایندگان مجاز را انتخاب فرمایید:</div>
-                            {% for r in resellers_list %}
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="allowed_resellers" value="{{ r['id'] }}" id="reseller_{{ pid }}_{{ r['id'] }}" 
-                                       {% if p.allowed_resellers and r['id'] in p.allowed_resellers %}checked{% endif %}>
-                                <label class="form-check-label small" for="reseller_{{ pid }}_{{ r['id'] }}">
-                                    <strong>{{ r['name'] }}</strong> (@{{ r['username'] }})
-                                </label>
+                        <!-- ۴ کانال نمایش با سوئیچ‌های مدرن -->
+                        <div class="row g-2 p-2 bg-white rounded-3 border mb-3">
+                            <div class="col-sm-6">
+                                <div class="form-check form-switch p-2 ps-5 border rounded bg-light-subtle h-100">
+                                    <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" name="show_in_admin_bot" id="sw_admin_bot_{{ pid }}" value="1" {% if p.show_in_admin_bot %}checked{% endif %} onchange="onChannelSwitchChanged('{{ pid }}')">
+                                    <label class="form-check-label fw-semibold small" for="sw_admin_bot_{{ pid }}">
+                                        🤖 ربات اصلی تلگرام
+                                    </label>
+                                    <div class="text-muted" style="font-size: 0.70rem;">فروش عمومی در ربات اصلی</div>
+                                </div>
                             </div>
-                            {% endfor %}
+                            <div class="col-sm-6">
+                                <div class="form-check form-switch p-2 ps-5 border rounded bg-light-subtle h-100">
+                                    <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" name="show_in_admin_panel" id="sw_admin_panel_{{ pid }}" value="1" {% if p.show_in_admin_panel %}checked{% endif %} onchange="onChannelSwitchChanged('{{ pid }}')">
+                                    <label class="form-check-label fw-semibold small" for="sw_admin_panel_{{ pid }}">
+                                        💻 پنل وب مدیریت
+                                    </label>
+                                    <div class="text-muted" style="font-size: 0.70rem;">صدور دستی مشتری در پنل مدیر</div>
+                                </div>
+                            </div>
+                            <div class="col-sm-6">
+                                <div class="form-check form-switch p-2 ps-5 border rounded bg-light-subtle h-100">
+                                    <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" name="show_in_reseller_bot" id="sw_reseller_bot_{{ pid }}" value="1" {% if p.show_in_reseller_bot %}checked{% endif %} onchange="onChannelSwitchChanged('{{ pid }}')">
+                                    <label class="form-check-label fw-semibold small" for="sw_reseller_bot_{{ pid }}">
+                                        👥 ربات تلگرام نمایندگان
+                                    </label>
+                                    <div class="text-muted" style="font-size: 0.70rem;">فروش خودکار در ربات همکار</div>
+                                </div>
+                            </div>
+                            <div class="col-sm-6">
+                                <div class="form-check form-switch p-2 ps-5 border rounded bg-light-subtle h-100">
+                                    <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" name="show_in_reseller_panel" id="sw_reseller_panel_{{ pid }}" value="1" {% if p.show_in_reseller_panel %}checked{% endif %} onchange="onChannelSwitchChanged('{{ pid }}')">
+                                    <label class="form-check-label fw-semibold small" for="sw_reseller_panel_{{ pid }}">
+                                        💼 پنل وب نمایندگان (دستی)
+                                    </label>
+                                    <div class="text-muted" style="font-size: 0.70rem;">صدور دستی توسط نماینده در پنل خود</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- کادر انتخاب نمایندگان مجاز -->
+                        {% set has_reseller = p.show_in_reseller_bot or p.show_in_reseller_panel %}
+                        <div id="resellerTargetBox_{{ pid }}" class="mt-2 p-3 bg-white rounded-3 border" style="{% if not has_reseller %}display: none;{% endif %}">
+                            <label class="form-label small fw-bold text-dark mb-2">
+                                <i class="fas fa-users-gear text-primary me-1"></i> نمایندگان مجاز برای این پلن:
+                            </label>
+                            <div class="d-flex gap-3 mb-2 flex-wrap">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="reseller_scope" id="scopeAll_{{ pid }}" value="all" {% if p.reseller_scope != 'selected' and not p.allowed_resellers %}checked{% endif %} onchange="toggleResellerChecklist('{{ pid }}')">
+                                    <label class="form-check-label small fw-semibold" for="scopeAll_{{ pid }}">
+                                        🌐 تمام نمایندگان و همکاران
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="reseller_scope" id="scopeSelected_{{ pid }}" value="selected" {% if p.reseller_scope == 'selected' or p.allowed_resellers %}checked{% endif %} onchange="toggleResellerChecklist('{{ pid }}')">
+                                    <label class="form-check-label small fw-semibold" for="scopeSelected_{{ pid }}" style="color: #6366f1;">
+                                        🎯 فقط نمایندگان منتخب (تیک‌خورده)
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div id="resellerChecklist_{{ pid }}" style="{% if p.reseller_scope != 'selected' and not p.allowed_resellers %}display: none;{% endif %}">
+                                <div class="small fw-bold text-muted mb-2"><i class="fas fa-check-double me-1"></i>نمایندگان مجاز را انتخاب فرمایید:</div>
+                                <div style="max-height: 160px; overflow-y: auto;" class="p-2 border rounded bg-light">
+                                    {% for r in resellers_list %}
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="allowed_resellers" value="{{ r['id'] }}" id="reseller_{{ pid }}_{{ r['id'] }}" 
+                                               {% if p.allowed_resellers and r['id'] in p.allowed_resellers %}checked{% endif %}>
+                                        <label class="form-check-label small" for="reseller_{{ pid }}_{{ r['id'] }}">
+                                            <strong>{{ r['name'] }}</strong> (@{{ r['username'] }})
+                                        </label>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -857,95 +976,149 @@
                         </div>
                     </div>
 
-                    <div class="mb-3 p-3 border rounded bg-light">
-                        <label class="form-label fw-bold text-dark mb-2">
-                            <i class="fas fa-shield-halved text-primary me-1"></i> سطح دسترسی و نمایش پلن:
-                        </label>
+                    <div class="mb-3 p-3 border rounded-3 bg-light">
+                        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                            <label class="form-label fw-bold text-dark mb-0">
+                                <i class="fas fa-sliders text-primary me-1"></i> سطح دسترسی و کانال‌های نمایش پلن:
+                            </label>
+                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle font-monospace" id="presetBadge_add">عمومی (همه جا)</span>
+                        </div>
                         
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="radio" name="target_type" id="addTargetAll" value="all" checked onchange="toggleAddResellerSelect()">
-                            <label class="form-check-label fw-semibold" for="addTargetAll">
-                                🌐 <strong>پلن عمومی</strong> (قابل مشاهده در ربات اصلی و برای تمام همکاران و نمایندگان)
-                            </label>
+                        <!-- دکمه‌های الگوهای سریع و آماده -->
+                        <div class="d-flex flex-wrap gap-1 mb-3">
+                            <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill px-2 py-1 preset-btn-add active" onclick="applyPlanPreset('add', 'all')">
+                                🌐 پلن عمومی
+                            </button>
+                            <button type="button" class="btn btn-xs btn-outline-info rounded-pill px-2 py-1 preset-btn-add" onclick="applyPlanPreset('add', 'admin_bot')">
+                                🤖 پنل و ربات مدیریت
+                            </button>
+                            <button type="button" class="btn btn-xs btn-outline-warning rounded-pill px-2 py-1 preset-btn-add" onclick="applyPlanPreset('add', 'admin_panel')">
+                                👑 فقط پنل مدیریت
+                            </button>
+                            <button type="button" class="btn btn-xs btn-outline-primary rounded-pill px-2 py-1 preset-btn-add" onclick="applyPlanPreset('add', 'resellers_both')">
+                                👥 ربات و پنل نمایندگان منتخب
+                            </button>
+                            <button type="button" class="btn btn-xs btn-outline-success rounded-pill px-2 py-1 preset-btn-add" onclick="applyPlanPreset('add', 'reseller_panel_only')">
+                                💼 اختصاصی پنل نماینده (فروش دستی)
+                            </button>
                         </div>
 
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="radio" name="target_type" id="addTargetAdminBot" value="admin_bot" onchange="toggleAddResellerSelect()">
-                            <label class="form-check-label fw-semibold" for="addTargetAdminBot" style="color: #0284c7;">
-                                🤖 <strong>پلن اختصاصی برای پنل و ربات مدیریت</strong> (مخفی از نمایندگان و ربات نمایندگان)
-                            </label>
+                        <!-- ۴ کانال نمایش با سوئیچ‌های مدرن -->
+                        <div class="row g-2 p-2 bg-white rounded-3 border mb-3">
+                            <div class="col-sm-6">
+                                <div class="form-check form-switch p-2 ps-5 border rounded bg-light-subtle h-100">
+                                    <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" name="show_in_admin_bot" id="sw_admin_bot_add" value="1" checked onchange="onChannelSwitchChanged('add')">
+                                    <label class="form-check-label fw-semibold small" for="sw_admin_bot_add">
+                                        🤖 ربات اصلی تلگرام
+                                    </label>
+                                    <div class="text-muted" style="font-size: 0.70rem;">فروش خودکار به مشتریان در ربات مدیریت</div>
+                                </div>
+                            </div>
+                            <div class="col-sm-6">
+                                <div class="form-check form-switch p-2 ps-5 border rounded bg-light-subtle h-100">
+                                    <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" name="show_in_admin_panel" id="sw_admin_panel_add" value="1" checked onchange="onChannelSwitchChanged('add')">
+                                    <label class="form-check-label fw-semibold small" for="sw_admin_panel_add">
+                                        💻 پنل وب مدیریت
+                                    </label>
+                                    <div class="text-muted" style="font-size: 0.70rem;">صدور دستی اشتراک در پنل مدیریت</div>
+                                </div>
+                            </div>
+                            <div class="col-sm-6">
+                                <div class="form-check form-switch p-2 ps-5 border rounded bg-light-subtle h-100">
+                                    <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" name="show_in_reseller_bot" id="sw_reseller_bot_add" value="1" checked onchange="onChannelSwitchChanged('add')">
+                                    <label class="form-check-label fw-semibold small" for="sw_reseller_bot_add">
+                                        👥 ربات تلگرام نمایندگان
+                                    </label>
+                                    <div class="text-muted" style="font-size: 0.70rem;">فروش خودکار به مشتریان در ربات همکار</div>
+                                </div>
+                            </div>
+                            <div class="col-sm-6">
+                                <div class="form-check form-switch p-2 ps-5 border rounded bg-light-subtle h-100">
+                                    <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" name="show_in_reseller_panel" id="sw_reseller_panel_add" value="1" checked onchange="onChannelSwitchChanged('add')">
+                                    <label class="form-check-label fw-semibold small" for="sw_reseller_panel_add">
+                                        💼 پنل وب نمایندگان (دستی)
+                                    </label>
+                                    <div class="text-muted" style="font-size: 0.70rem;">صدور دستی توسط نماینده در پنل خود</div>
+                                </div>
+                            </div>
                         </div>
 
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="radio" name="target_type" id="addTargetAdmin" value="admin" onchange="toggleAddResellerSelect()">
-                            <label class="form-check-label fw-semibold text-warning-emphasis" for="addTargetAdmin">
-                                👑 <strong>پلن اختصاصی مدیریت ارشد</strong> (کاملاً مخفی از تمام ربات‌ها و تمام نمایندگان)
+                        <!-- کادر انتخاب نمایندگان مجاز و درصد تخفیف / قیمت عمده -->
+                        <div id="resellerTargetBox_add" class="mt-2 p-3 bg-white rounded-3 border" style="display: block;">
+                            <label class="form-label small fw-bold text-dark mb-2">
+                                <i class="fas fa-users-gear text-primary me-1"></i> نمایندگان مجاز برای این پلن:
                             </label>
-                        </div>
-
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="radio" name="target_type" id="addTargetResellers" value="resellers" onchange="toggleAddResellerSelect()">
-                            <label class="form-check-label fw-semibold" for="addTargetResellers" style="color: #6366f1;">
-                                👥 <strong>پلن اختصاصی نمایندگان منتخب</strong> (مخفی از ربات اصلی و سایر نمایندگان - فقط نمایندگان تیک‌خورده)
-                            </label>
-                        </div>
-
-                        <!-- لیست انتخاب نمایندگان مجاز و تنظیم درصد تخفیف / قیمت عمده -->
-                        <div id="addResellerSelectBox" class="mt-3 p-3 bg-white rounded border" style="display: none;">
-                            <div class="small fw-bold text-muted mb-2"><i class="fas fa-check-double me-1"></i>تیک نمایندگان مجاز را بزنید:</div>
-                            <div style="max-height: 130px; overflow-y: auto;" class="p-2 border rounded bg-light mb-3">
-                                {% for r in resellers_list %}
+                            <div class="d-flex gap-3 mb-2 flex-wrap">
                                 <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="allowed_resellers" value="{{ r['id'] }}" id="addReseller_{{ r['id'] }}">
-                                    <label class="form-check-label small" for="addReseller_{{ r['id'] }}">
-                                        <strong>{{ r['name'] }}</strong> (@{{ r['username'] }})
+                                    <input class="form-check-input" type="radio" name="reseller_scope" id="scopeAll_add" value="all" checked onchange="toggleResellerChecklist('add')">
+                                    <label class="form-check-label small fw-semibold" for="scopeAll_add">
+                                        🌐 تمام نمایندگان و همکاران
                                     </label>
                                 </div>
-                                {% endfor %}
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="reseller_scope" id="scopeSelected_add" value="selected" onchange="toggleResellerChecklist('add')">
+                                    <label class="form-check-label small fw-semibold" for="scopeSelected_add" style="color: #6366f1;">
+                                        🎯 فقط نمایندگان منتخب (تیک‌خورده)
+                                    </label>
+                                </div>
                             </div>
 
-                            <!-- کادر تنظیم درصد تخفیف و قیمت عمده (با رندسازی دستی) -->
-                            <div class="p-3 rounded-3 border bg-light">
-                                <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-1">
-                                    <span class="fw-bold text-primary small">
-                                        <i class="fas fa-percent me-1"></i> تنظیم درصد تخفیف و قیمت عمده (با رندسازی دستی)
-                                    </span>
-                                    <span class="badge bg-secondary-subtle text-secondary small font-monospace" id="add_plan_price_badge">
-                                        قیمت پلن: ۰ ت
-                                    </span>
-                                </div>
-                                <div class="row g-2">
-                                    <div class="col-md-6">
-                                        <label class="form-label small fw-semibold">درصد تخفیف اختصاصی پلن (٪):</label>
-                                        <div class="input-group input-group-sm">
-                                            <input type="number" 
-                                                   name="custom_discount_percent" 
-                                                   class="form-control font-monospace" 
-                                                   id="add_plan_custom_discount"
-                                                   placeholder="مثال: 25" 
-                                                   step="0.1" min="0" max="100">
-                                            <span class="input-group-text">٪</span>
-                                        </div>
-                                        <small class="text-muted" style="font-size: 0.72rem;">خالی = اعمال تخفیف پایه هر نماینده</small>
+                            <div id="resellerChecklist_add" style="display: none;">
+                                <div class="small fw-bold text-muted mb-2"><i class="fas fa-check-double me-1"></i>تیک نمایندگان مجاز را بزنید:</div>
+                                <div style="max-height: 130px; overflow-y: auto;" class="p-2 border rounded bg-light mb-3">
+                                    {% for r in resellers_list %}
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="allowed_resellers" value="{{ r['id'] }}" id="addReseller_{{ r['id'] }}">
+                                        <label class="form-check-label small" for="addReseller_{{ r['id'] }}">
+                                            <strong>{{ r['name'] }}</strong> (@{{ r['username'] }})
+                                        </label>
                                     </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label small fw-semibold">قیمت خرید عمده (تومان) - رندسازی دستی:</label>
-                                        <div class="input-group input-group-sm">
-                                            <input type="number" 
-                                                   name="custom_wholesale_price" 
-                                                   class="form-control font-monospace" 
-                                                   id="add_plan_custom_wholesale"
-                                                   placeholder="مثال: 120000" 
-                                                   step="1000" min="0">
-                                            <span class="input-group-text">ت</span>
-                                        </div>
-                                        <small class="text-muted" style="font-size: 0.72rem;">تغییر این فیلد تخفیف را خودکار محاسبه می‌کند</small>
-                                    </div>
+                                    {% endfor %}
                                 </div>
-                                <div class="small mt-2" id="add_plan_calc_hint">
-                                    <span class="badge bg-white text-dark border font-monospace" id="add_plan_calc_hint_badge">
-                                        تخفیف پیش‌فرض سیستم برای نمایندگان انتخاب‌شده اعمال خواهد شد.
-                                    </span>
+
+                                <!-- کادر تنظیم درصد تخفیف و قیمت عمده (با رندسازی دستی) -->
+                                <div class="p-3 rounded-3 border bg-light">
+                                    <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-1">
+                                        <span class="fw-bold text-primary small">
+                                            <i class="fas fa-percent me-1"></i> تنظیم درصد تخفیف و قیمت عمده (با رندسازی دستی)
+                                        </span>
+                                        <span class="badge bg-secondary-subtle text-secondary small font-monospace" id="add_plan_price_badge">
+                                            قیمت پلن: ۰ ت
+                                        </span>
+                                    </div>
+                                    <div class="row g-2">
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-semibold">درصد تخفیف اختصاصی پلن (٪):</label>
+                                            <div class="input-group input-group-sm">
+                                                <input type="number" 
+                                                       name="custom_discount_percent" 
+                                                       class="form-control font-monospace" 
+                                                       id="add_plan_custom_discount"
+                                                       placeholder="مثال: 25" 
+                                                       step="0.1" min="0" max="100">
+                                                <span class="input-group-text">٪</span>
+                                            </div>
+                                            <small class="text-muted" style="font-size: 0.72rem;">خالی = اعمال تخفیف پایه هر نماینده</small>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-semibold">قیمت خرید عمده (تومان) - رندسازی دستی:</label>
+                                            <div class="input-group input-group-sm">
+                                                <input type="number" 
+                                                       name="custom_wholesale_price" 
+                                                       class="form-control font-monospace" 
+                                                       id="add_plan_custom_wholesale"
+                                                       placeholder="مثال: 120000" 
+                                                       step="1000" min="0">
+                                                <span class="input-group-text">ت</span>
+                                            </div>
+                                            <small class="text-muted" style="font-size: 0.72rem;">تغییر این فیلد تخفیف را خودکار محاسبه می‌کند</small>
+                                        </div>
+                                    </div>
+                                    <div class="small mt-2" id="add_plan_calc_hint">
+                                        <span class="badge bg-white text-dark border font-monospace" id="add_plan_calc_hint_badge">
+                                            تخفیف پیش‌فرض سیستم برای نمایندگان انتخاب‌شده اعمال خواهد شد.
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -961,19 +1134,105 @@
 </div>
 
 <script>
-function toggleResellerSelect(pid) {
-    const radio = document.getElementById('targetResellers_' + pid);
-    const box = document.getElementById('resellerSelectBox_' + pid);
-    if (radio && box) {
-        box.style.display = radio.checked ? 'block' : 'none';
+function applyPlanPreset(targetId, preset) {
+    const swAdminBot = document.getElementById('sw_admin_bot_' + targetId);
+    const swAdminPanel = document.getElementById('sw_admin_panel_' + targetId);
+    const swResellerBot = document.getElementById('sw_reseller_bot_' + targetId);
+    const swResellerPanel = document.getElementById('sw_reseller_panel_' + targetId);
+    const scopeAll = document.getElementById('scopeAll_' + targetId);
+    const scopeSelected = document.getElementById('scopeSelected_' + targetId);
+    const badge = document.getElementById('presetBadge_' + targetId);
+
+    if (preset === 'all') {
+        if (swAdminBot) swAdminBot.checked = true;
+        if (swAdminPanel) swAdminPanel.checked = true;
+        if (swResellerBot) swResellerBot.checked = true;
+        if (swResellerPanel) swResellerPanel.checked = true;
+        if (scopeAll) scopeAll.checked = true;
+        if (badge) badge.textContent = 'عمومی (همه جا)';
+    } else if (preset === 'admin_bot') {
+        if (swAdminBot) swAdminBot.checked = true;
+        if (swAdminPanel) swAdminPanel.checked = true;
+        if (swResellerBot) swResellerBot.checked = false;
+        if (swResellerPanel) swResellerPanel.checked = false;
+        if (badge) badge.textContent = 'پنل و ربات مدیریت';
+    } else if (preset === 'admin_panel') {
+        if (swAdminBot) swAdminBot.checked = false;
+        if (swAdminPanel) swAdminPanel.checked = true;
+        if (swResellerBot) swResellerBot.checked = false;
+        if (swResellerPanel) swResellerPanel.checked = false;
+        if (badge) badge.textContent = 'فقط پنل مدیریت';
+    } else if (preset === 'resellers_both') {
+        if (swAdminBot) swAdminBot.checked = false;
+        if (swAdminPanel) swAdminPanel.checked = true;
+        if (swResellerBot) swResellerBot.checked = true;
+        if (swResellerPanel) swResellerPanel.checked = true;
+        if (scopeSelected) scopeSelected.checked = true;
+        if (badge) badge.textContent = 'ربات و پنل نمایندگان منتخب';
+    } else if (preset === 'reseller_panel_only') {
+        if (swAdminBot) swAdminBot.checked = false;
+        if (swAdminPanel) swAdminPanel.checked = true;
+        if (swResellerBot) swResellerBot.checked = false;
+        if (swResellerPanel) swResellerPanel.checked = true;
+        if (scopeSelected) scopeSelected.checked = true;
+        if (badge) badge.textContent = 'اختصاصی پنل نماینده (فروش دستی)';
+    }
+
+    onChannelSwitchChanged(targetId, false);
+}
+
+function onChannelSwitchChanged(targetId, resetBadge = true) {
+    const swAdminBot = document.getElementById('sw_admin_bot_' + targetId);
+    const swAdminPanel = document.getElementById('sw_admin_panel_' + targetId);
+    const swResellerBot = document.getElementById('sw_reseller_bot_' + targetId);
+    const swResellerPanel = document.getElementById('sw_reseller_panel_' + targetId);
+    const resellerBox = document.getElementById('resellerTargetBox_' + targetId);
+    const badge = document.getElementById('presetBadge_' + targetId);
+
+    const hasReseller = (swResellerBot && swResellerBot.checked) || (swResellerPanel && swResellerPanel.checked);
+    if (resellerBox) {
+        resellerBox.style.display = hasReseller ? 'block' : 'none';
+    }
+
+    toggleResellerChecklist(targetId);
+
+    if (resetBadge && badge) {
+        const isAB = swAdminBot && swAdminBot.checked;
+        const isAP = swAdminPanel && swAdminPanel.checked;
+        const isRB = swResellerBot && swResellerBot.checked;
+        const isRP = swResellerPanel && swResellerPanel.checked;
+        const isSelected = document.getElementById('scopeSelected_' + targetId)?.checked;
+
+        if (isAB && isAP && isRB && isRP && !isSelected) {
+            badge.textContent = 'عمومی (همه جا)';
+        } else if (isAB && isAP && !isRB && !isRP) {
+            badge.textContent = 'پنل و ربات مدیریت';
+        } else if (!isAB && isAP && !isRB && !isRP) {
+            badge.textContent = 'فقط پنل مدیریت';
+        } else if (!isAB && isAP && !isRB && isRP && isSelected) {
+            badge.textContent = 'اختصاصی پنل نماینده (فروش دستی)';
+        } else if (!isAB && isAP && isRB && isRP && isSelected) {
+            badge.textContent = 'ربات و پنل نمایندگان منتخب';
+        } else {
+            badge.textContent = '⚙️ سفارشی و ترکیبی';
+        }
     }
 }
-function toggleAddResellerSelect() {
-    const radio = document.getElementById('addTargetResellers');
-    const box = document.getElementById('addResellerSelectBox');
-    if (radio && box) {
-        box.style.display = radio.checked ? 'block' : 'none';
+
+function toggleResellerChecklist(targetId) {
+    const scopeSelected = document.getElementById('scopeSelected_' + targetId);
+    const checklist = document.getElementById('resellerChecklist_' + targetId);
+    if (scopeSelected && checklist) {
+        checklist.style.display = scopeSelected.checked ? 'block' : 'none';
     }
+}
+
+// توابع سازگاری قدیمی جهت اطمینان
+function toggleResellerSelect(pid) {
+    onChannelSwitchChanged(pid);
+}
+function toggleAddResellerSelect() {
+    onChannelSwitchChanged('add');
 }
 
 function resetPlanDiscountToDefault(planId, masterPrice, defaultDiscount) {

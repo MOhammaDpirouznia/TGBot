@@ -61,7 +61,14 @@
                                     <i class="{{ icon_info.icon }}"></i>
                                 </span>
                                 <div>
-                                    <div class="fw-bold text-dark">{{ p['master_name'] }}</div>
+                                    <div class="d-flex align-items-center gap-1">
+                                        <div class="fw-bold text-dark">{{ p['master_name'] }}</div>
+                                        {% if not p.get('show_in_reseller_bot', True) %}
+                                        <span class="badge bg-warning-subtle text-dark border border-warning px-1" style="font-size: 0.65rem;" title="فقط فروش دستی در پنل وب - مخفی از ربات تلگرام">
+                                            <i class="fas fa-gem text-warning me-1"></i>فقط پنل
+                                        </span>
+                                        {% endif %}
+                                    </div>
                                     <code class="small text-muted font-monospace">#{{ p['plan_id'] }}</code>
                                 </div>
                             </div>
@@ -130,11 +137,21 @@
                             </div>
                         </td>
                         <td data-value="{{ 1 if p['is_active'] else 0 }}" class="text-center">
+                            {% if not p.get('show_in_reseller_bot', True) %}
+                            <span class="badge bg-secondary-subtle text-secondary border font-monospace" style="font-size: 0.72rem;" title="این پلن فقط مخصوص فروش دستی در پنل وب است و در ربات تلگرام نمایش داده نمی‌شود.">
+                                <i class="fas fa-eye-slash me-1"></i>مخفی از ربات (فقط پنل)
+                            </span>
+                            <div class="form-check form-switch d-none">
+                                <input class="form-check-input" type="checkbox" name="is_active" 
+                                       form="form_override_{{ p['plan_id'] }}" value="1" {% if p['is_active'] %}checked{% endif %}>
+                            </div>
+                            {% else %}
                             <div class="form-check form-switch d-inline-block">
                                 <input class="form-check-input" type="checkbox" name="is_active" 
                                        form="form_override_{{ p['plan_id'] }}"
                                        {% if p['is_active'] %}checked{% endif %}>
                             </div>
+                            {% endif %}
                         </td>
                         <td class="text-end pe-3">
                             <div class="d-flex justify-content-end gap-1">

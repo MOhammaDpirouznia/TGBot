@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <radialGradient id="bgGrad" cx="50%" cy="45%" r="65%">
+      <stop offset="0%" stop-color="#143770"/>
+      <stop offset="55%" stop-color="#091834"/>
+      <stop offset="100%" stop-color="#020612"/>
+    </radialGradient>
+    <linearGradient id="cyanBlue" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f2fe"/>
+      <stop offset="45%" stop-color="#00c0ff"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="pGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="50%" stop-color="#00d2ff"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </linearGradient>
+    <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- پس‌زمینه با گوشه‌های گرد و بوردر گرادیان -->
+  <rect width="512" height="512" rx="110" fill="url(#bgGrad)"/>
+  <rect width="504" height="504" x="4" y="4" rx="106" fill="none" stroke="url(#cyanBlue)" stroke-width="2.5" stroke-opacity="0.4"/>
+  
+  <!-- دوایر مدار نوری پس‌زمینه -->
+  <circle cx="256" cy="205" r="145" fill="none" stroke="#00d2ff" stroke-width="1.5" stroke-dasharray="8 8" opacity="0.25"/>
+  <circle cx="256" cy="205" r="105" fill="none" stroke="#2563eb" stroke-width="1.5" opacity="0.3"/>
+  <circle cx="256" cy="205" r="60" fill="#00c0ff" opacity="0.18" filter="url(#neonGlow)"/>
+
+  <!-- مونوگرام نئونی ترکیب حروف hp -->
+  <g filter="url(#neonGlow)">
+    <!-- ستون چپ حرف h -->
+    <rect x="135" y="110" width="36" height="190" rx="18" fill="url(#cyanBlue)"/>
+    <!-- خط اتصال افقی حرف h -->
+    <rect x="135" y="192" width="125" height="34" rx="17" fill="url(#cyanBlue)"/>
+    <!-- ستون مشترک وسط (ستون راست h و پایه p) -->
+    <rect x="225" y="110" width="36" height="190" rx="18" fill="url(#cyanBlue)"/>
+    <!-- کمان حلقه p -->
+    <path d="M 245 110 H 310 C 358 110 388 138 388 180 C 388 222 358 250 310 250 H 245" fill="none" stroke="url(#pGrad)" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- نقطه نورانی کانون حلقه -->
+  <circle cx="310" cy="180" r="11" fill="#ffffff" filter="url(#neonGlow)" opacity="0.95"/>
+
+  <!-- تایپوگرافی تمیز HiddiPlus -->
+  <text x="256" y="375" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="44" font-weight="800" fill="#ffffff" text-anchor="middle" letter-spacing="1">Hiddi<tspan fill="#38bdf8">Plus</tspan></text>
+  <text x="256" y="412" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#94a3b8" text-anchor="middle" letter-spacing="4">SMART CONNECTION</text>
+</svg>

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ماژول دیتابیس برای ذخیره‌سازی مشتریان، تنظیمات و تراکنش‌ها
+Ù…Ø§Ú˜ÙˆÙ„ Ø¯ÛŒØªØ§Ø¨ÛŒØ³ Ø¨Ø±Ø§ÛŒ Ø°Ø®ÛŒØ±Ù‡â€ŒØ³Ø§Ø²ÛŒ Ù…Ø´ØªØ±ÛŒØ§Ù†ØŒ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ùˆ ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§
 """
 
 import sqlite3
@@ -20,29 +20,29 @@ from session_analyzer import parse_user_agent_details
 
 logger = logging.getLogger(__name__)
 
-# مسیر دیتابیس - از Railway persistent storage یا متغیر محیطی استفاده میکنه
-# Railway: اگر Volume دارید، DATA_DIR=/data تنظیم کنید
-# در غیر این صورت، دیتابیس در مسیر پروژه ذخیره میشه
+# Ù…Ø³ÛŒØ± Ø¯ÛŒØªØ§Ø¨ÛŒØ³ - Ø§Ø² Railway persistent storage ÛŒØ§ Ù…ØªØºÛŒØ± Ù…Ø­ÛŒØ·ÛŒ Ø§Ø³ØªÙØ§Ø¯Ù‡ Ù…ÛŒÚ©Ù†Ù‡
+# Railway: Ø§Ú¯Ø± Volume Ø¯Ø§Ø±ÛŒØ¯ØŒ DATA_DIR=/data ØªÙ†Ø¸ÛŒÙ… Ú©Ù†ÛŒØ¯
+# Ø¯Ø± ØºÛŒØ± Ø§ÛŒÙ† ØµÙˆØ±ØªØŒ Ø¯ÛŒØªØ§Ø¨ÛŒØ³ Ø¯Ø± Ù…Ø³ÛŒØ± Ù¾Ø±ÙˆÚ˜Ù‡ Ø°Ø®ÛŒØ±Ù‡ Ù…ÛŒØ´Ù‡
 POSSIBLE_PATHS = []
 
-# ۱. متغیر محیطی اختصاصی (بالاترین اولویت برای Railway Volume یا Docker Mount)
+# Û±. Ù…ØªØºÛŒØ± Ù…Ø­ÛŒØ·ÛŒ Ø§Ø®ØªØµØ§ØµÛŒ (Ø¨Ø§Ù„Ø§ØªØ±ÛŒÙ† Ø§ÙˆÙ„ÙˆÛŒØª Ø¨Ø±Ø§ÛŒ Railway Volume ÛŒØ§ Docker Mount)
 data_dir_env = os.environ.get("DATA_DIR", "").strip()
 if data_dir_env:
     if not (os.name == "nt" and data_dir_env.startswith("/")):
         POSSIBLE_PATHS.append(Path(data_dir_env))
 
-# ۲. اگر دیتابیس در پوشه دیتای پروژه از قبل وجود دارد (ویندوز یا سرور لینوکس VPS)
+# Û². Ø§Ú¯Ø± Ø¯ÛŒØªØ§Ø¨ÛŒØ³ Ø¯Ø± Ù¾ÙˆØ´Ù‡ Ø¯ÛŒØªØ§ÛŒ Ù¾Ø±ÙˆÚ˜Ù‡ Ø§Ø² Ù‚Ø¨Ù„ ÙˆØ¬ÙˆØ¯ Ø¯Ø§Ø±Ø¯ (ÙˆÛŒÙ†Ø¯ÙˆØ² ÛŒØ§ Ø³Ø±ÙˆØ± Ù„ÛŒÙ†ÙˆÚ©Ø³ VPS)
 if Path("data/bot_database.db").exists():
     POSSIBLE_PATHS.append(Path("data"))
 
-# ۳. اگر دیتابیس در مسیر پیش‌فرض Railway (/data/bot_database.db) وجود دارد
+# Û³. Ø§Ú¯Ø± Ø¯ÛŒØªØ§Ø¨ÛŒØ³ Ø¯Ø± Ù…Ø³ÛŒØ± Ù¾ÛŒØ´â€ŒÙØ±Ø¶ Railway (/data/bot_database.db) ÙˆØ¬ÙˆØ¯ Ø¯Ø§Ø±Ø¯
 if os.name != "nt" and Path("/data/bot_database.db").exists():
     POSSIBLE_PATHS.append(Path("/data"))
 
-# ۴. پوشه پیش‌فرض دیتای پروژه
+# Û´. Ù¾ÙˆØ´Ù‡ Ù¾ÛŒØ´â€ŒÙØ±Ø¶ Ø¯ÛŒØªØ§ÛŒ Ù¾Ø±ÙˆÚ˜Ù‡
 POSSIBLE_PATHS.append(Path("data"))
 
-# ۵. سایر مسیرهای پایدار لینوکس و هوم دایرکتوری به عنوان فال‌بک
+# Ûµ. Ø³Ø§ÛŒØ± Ù…Ø³ÛŒØ±Ù‡Ø§ÛŒ Ù¾Ø§ÛŒØ¯Ø§Ø± Ù„ÛŒÙ†ÙˆÚ©Ø³ Ùˆ Ù‡ÙˆÙ… Ø¯Ø§ÛŒØ±Ú©ØªÙˆØ±ÛŒ Ø¨Ù‡ Ø¹Ù†ÙˆØ§Ù† ÙØ§Ù„â€ŒØ¨Ú©
 if os.name != "nt":
     POSSIBLE_PATHS.append(Path("/data"))
 
@@ -53,7 +53,7 @@ for path in POSSIBLE_PATHS:
     if path and path != Path(""):
         try:
             path.mkdir(parents=True, exist_ok=True)
-            # تست نوشتن
+            # ØªØ³Øª Ù†ÙˆØ´ØªÙ†
             test_file = path / ".write_test"
             test_file.write_text("test")
             test_file.unlink()
@@ -73,7 +73,7 @@ logger.info(f"Data directory: {DB_DIR}")
 
 
 class Database:
-    """کلاس مدیریت دیتابیس"""
+    """Ú©Ù„Ø§Ø³ Ù…Ø¯ÛŒØ±ÛŒØª Ø¯ÛŒØªØ§Ø¨ÛŒØ³"""
 
     def __init__(self, db_path=None):
         self.db_dir = DB_DIR
@@ -82,18 +82,18 @@ class Database:
         self.migrate_add_columns()
 
     def get_connection(self):
-        """دریافت اتصال دیتابیس"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø§ØªØµØ§Ù„ Ø¯ÛŒØªØ§Ø¨ÛŒØ³"""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         return conn
 
     def init_db(self):
-        """ایجاد جداول دیتابیس"""
+        """Ø§ÛŒØ¬Ø§Ø¯ Ø¬Ø¯Ø§ÙˆÙ„ Ø¯ÛŒØªØ§Ø¨ÛŒØ³"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
-        # جدول مشتریان
+        # Ø¬Ø¯ÙˆÙ„ Ù…Ø´ØªØ±ÛŒØ§Ù†
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -116,7 +116,7 @@ class Database:
             )
         """)
 
-        # جدول اشتراک‌ها
+        # Ø¬Ø¯ÙˆÙ„ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS subscriptions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -138,7 +138,7 @@ class Database:
             )
         """)
 
-        # جدول تراکنش‌ها
+        # Ø¬Ø¯ÙˆÙ„ ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS transactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -161,7 +161,7 @@ class Database:
             )
         """)
 
-        # جدول تنظیمات
+        # Ø¬Ø¯ÙˆÙ„ ØªÙ†Ø¸ÛŒÙ…Ø§Øª
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -170,7 +170,7 @@ class Database:
             )
         """)
 
-        # جدول پشتیبان‌ها
+        # Ø¬Ø¯ÙˆÙ„ Ù¾Ø´ØªÛŒØ¨Ø§Ù†â€ŒÙ‡Ø§
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS backups (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -181,7 +181,7 @@ class Database:
             )
         """)
 
-        # جدول کیف پول
+        # Ø¬Ø¯ÙˆÙ„ Ú©ÛŒÙ Ù¾ÙˆÙ„
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS wallet (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -193,7 +193,7 @@ class Database:
             )
         """)
 
-        # جدول کدهای تخفیف
+        # Ø¬Ø¯ÙˆÙ„ Ú©Ø¯Ù‡Ø§ÛŒ ØªØ®ÙÛŒÙ
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS discount_codes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -209,7 +209,7 @@ class Database:
             )
         """)
 
-        # جدول بلاک لیست
+        # Ø¬Ø¯ÙˆÙ„ Ø¨Ù„Ø§Ú© Ù„ÛŒØ³Øª
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS blocked_users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -220,7 +220,7 @@ class Database:
             )
         """)
 
-        # جدول تیکت‌های پشتیبانی
+        # Ø¬Ø¯ÙˆÙ„ ØªÛŒÚ©Øªâ€ŒÙ‡Ø§ÛŒ Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS support_tickets (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -235,7 +235,7 @@ class Database:
             )
         """)
 
-        # جدول پیام‌های زنجیره گفتگوی تیکت‌ها (Ticket Messages / Thread)
+        # Ø¬Ø¯ÙˆÙ„ Ù¾ÛŒØ§Ù…â€ŒÙ‡Ø§ÛŒ Ø²Ù†Ø¬ÛŒØ±Ù‡ Ú¯ÙØªÚ¯ÙˆÛŒ ØªÛŒÚ©Øªâ€ŒÙ‡Ø§ (Ticket Messages / Thread)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS ticket_messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -249,7 +249,7 @@ class Database:
             )
         """)
 
-        # جدول اعلان‌های ارسال شده
+        # Ø¬Ø¯ÙˆÙ„ Ø§Ø¹Ù„Ø§Ù†â€ŒÙ‡Ø§ÛŒ Ø§Ø±Ø³Ø§Ù„ Ø´Ø¯Ù‡
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS sent_notifications (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -261,7 +261,7 @@ class Database:
             )
         """)
 
-        # جدول رفرال و معرفی
+        # Ø¬Ø¯ÙˆÙ„ Ø±ÙØ±Ø§Ù„ Ùˆ Ù…Ø¹Ø±ÙÛŒ
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS referrals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -274,7 +274,7 @@ class Database:
             )
         """)
 
-        # جدول همکاران و نمایندگان فروش (Resellers)
+        # Ø¬Ø¯ÙˆÙ„ Ù‡Ù…Ú©Ø§Ø±Ø§Ù† Ùˆ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† ÙØ±ÙˆØ´ (Resellers)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS resellers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -290,7 +290,7 @@ class Database:
             )
         """)
 
-        # جدول تراکنش‌های نمایندگان
+        # Ø¬Ø¯ÙˆÙ„ ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù†
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS reseller_transactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -305,7 +305,7 @@ class Database:
             )
         """)
 
-        # جدول پلن‌های سفارشی نماینده (نام نمایشی، قیمت سفارشی، فعال/غیرفعال)
+        # Ø¬Ø¯ÙˆÙ„ Ù¾Ù„Ù†â€ŒÙ‡Ø§ÛŒ Ø³ÙØ§Ø±Ø´ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (Ù†Ø§Ù… Ù†Ù…Ø§ÛŒØ´ÛŒØŒ Ù‚ÛŒÙ…Øª Ø³ÙØ§Ø±Ø´ÛŒØŒ ÙØ¹Ø§Ù„/ØºÛŒØ±ÙØ¹Ø§Ù„)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS reseller_plans (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -320,7 +320,7 @@ class Database:
             )
         """)
 
-        # جدول اعلان‌ها و پیام‌های سیستمی نماینده (تایید/رد فیش، تغییرات حساب)
+        # Ø¬Ø¯ÙˆÙ„ Ø§Ø¹Ù„Ø§Ù†â€ŒÙ‡Ø§ Ùˆ Ù¾ÛŒØ§Ù…â€ŒÙ‡Ø§ÛŒ Ø³ÛŒØ³ØªÙ…ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (ØªØ§ÛŒÛŒØ¯/Ø±Ø¯ ÙÛŒØ´ØŒ ØªØºÛŒÛŒØ±Ø§Øª Ø­Ø³Ø§Ø¨)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS reseller_notifications (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -334,7 +334,7 @@ class Database:
             )
         """)
 
-        # جدول کارت‌های بانکی مقصد
+        # Ø¬Ø¯ÙˆÙ„ Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ÛŒ Ø¨Ø§Ù†Ú©ÛŒ Ù…Ù‚ØµØ¯
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS bank_cards (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -347,7 +347,7 @@ class Database:
             )
         """)
 
-        # جدول سابقه و تاریخچه مصرف دوره‌های گذشته اشتراک‌ها هنگام تمدید یا ثبت دستی
+        # Ø¬Ø¯ÙˆÙ„ Ø³Ø§Ø¨Ù‚Ù‡ Ùˆ ØªØ§Ø±ÛŒØ®Ú†Ù‡ Ù…ØµØ±Ù Ø¯ÙˆØ±Ù‡â€ŒÙ‡Ø§ÛŒ Ú¯Ø°Ø´ØªÙ‡ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ Ù‡Ù†Ú¯Ø§Ù… ØªÙ…Ø¯ÛŒØ¯ ÛŒØ§ Ø«Ø¨Øª Ø¯Ø³ØªÛŒ
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS subscription_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -374,7 +374,7 @@ class Database:
             )
         """)
 
-        # جدول اسناد حسابداری و مدیریت مالی پیشرفته (درآمدها و مخارج)
+        # Ø¬Ø¯ÙˆÙ„ Ø§Ø³Ù†Ø§Ø¯ Ø­Ø³Ø§Ø¨Ø¯Ø§Ø±ÛŒ Ùˆ Ù…Ø¯ÛŒØ±ÛŒØª Ù…Ø§Ù„ÛŒ Ù¾ÛŒØ´Ø±ÙØªÙ‡ (Ø¯Ø±Ø¢Ù…Ø¯Ù‡Ø§ Ùˆ Ù…Ø®Ø§Ø±Ø¬)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS accounting_records (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -391,7 +391,7 @@ class Database:
             )
         """)
 
-        # جدول مدیران پنل و سطوح دسترسی (RBAC)
+        # Ø¬Ø¯ÙˆÙ„ Ù…Ø¯ÛŒØ±Ø§Ù† Ù¾Ù†Ù„ Ùˆ Ø³Ø·ÙˆØ­ Ø¯Ø³ØªØ±Ø³ÛŒ (RBAC)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS admin_users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -407,7 +407,7 @@ class Database:
             )
         """)
 
-        # جدول لاگ حسابرسی و ردپای تغییرات تراکنش‌ها (Audit Logs)
+        # Ø¬Ø¯ÙˆÙ„ Ù„Ø§Ú¯ Ø­Ø³Ø§Ø¨Ø±Ø³ÛŒ Ùˆ Ø±Ø¯Ù¾Ø§ÛŒ ØªØºÛŒÛŒØ±Ø§Øª ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ (Audit Logs)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS transaction_audit_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -424,7 +424,7 @@ class Database:
             )
         """)
 
-        # جدول لاگ ورود، خروج، نشست‌های فعال و امنیت (Login & Security Logs)
+        # Ø¬Ø¯ÙˆÙ„ Ù„Ø§Ú¯ ÙˆØ±ÙˆØ¯ØŒ Ø®Ø±ÙˆØ¬ØŒ Ù†Ø´Ø³Øªâ€ŒÙ‡Ø§ÛŒ ÙØ¹Ø§Ù„ Ùˆ Ø§Ù…Ù†ÛŒØª (Login & Security Logs)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS login_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -446,28 +446,28 @@ class Database:
             )
         """)
 
-        # جدول ثبت وقایع و حسابرسی جامع سیستم (System Activity & Audit Logs)
+        # Ø¬Ø¯ÙˆÙ„ Ø«Ø¨Øª ÙˆÙ‚Ø§ÛŒØ¹ Ùˆ Ø­Ø³Ø§Ø¨Ø±Ø³ÛŒ Ø¬Ø§Ù…Ø¹ Ø³ÛŒØ³ØªÙ… (System Activity & Audit Logs)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS system_activity_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 category TEXT NOT NULL,          -- 'system', 'admin', 'reseller', 'user_bot', 'security'
                 action TEXT NOT NULL,            -- 'purge', 'delete', 'restore', 'create', 'update', 'renew', 'sync', 'sync_diff', 'login', 'backup', 'settings_change', 'bulk_action', 'status_change', etc.
-                title TEXT NOT NULL,             -- خلاصه عنوان عملیات
-                description TEXT,                -- شرح تفصیلی رویداد
+                title TEXT NOT NULL,             -- Ø®Ù„Ø§ØµÙ‡ Ø¹Ù†ÙˆØ§Ù† Ø¹Ù…Ù„ÛŒØ§Øª
+                description TEXT,                -- Ø´Ø±Ø­ ØªÙØµÛŒÙ„ÛŒ Ø±ÙˆÛŒØ¯Ø§Ø¯
                 actor_type TEXT NOT NULL,        -- 'system', 'admin', 'reseller', 'bot', 'user'
-                actor_id INTEGER,               -- شناسه عامل
-                actor_name TEXT,                 -- نام یا نام کاربری عامل
-                target_type TEXT,                -- موجودیت هدف: 'subscription', 'user', 'reseller', 'setting', 'payment', 'system'
-                target_id INTEGER,               -- شناسه هدف (مثل sub_id)
-                target_name TEXT,                -- عنوان یا نام هدف (مثل account_name یا UUID)
-                details TEXT,                    -- اطلاعات جزئی با فرمت JSON
+                actor_id INTEGER,               -- Ø´Ù†Ø§Ø³Ù‡ Ø¹Ø§Ù…Ù„
+                actor_name TEXT,                 -- Ù†Ø§Ù… ÛŒØ§ Ù†Ø§Ù… Ú©Ø§Ø±Ø¨Ø±ÛŒ Ø¹Ø§Ù…Ù„
+                target_type TEXT,                -- Ù…ÙˆØ¬ÙˆØ¯ÛŒØª Ù‡Ø¯Ù: 'subscription', 'user', 'reseller', 'setting', 'payment', 'system'
+                target_id INTEGER,               -- Ø´Ù†Ø§Ø³Ù‡ Ù‡Ø¯Ù (Ù…Ø«Ù„ sub_id)
+                target_name TEXT,                -- Ø¹Ù†ÙˆØ§Ù† ÛŒØ§ Ù†Ø§Ù… Ù‡Ø¯Ù (Ù…Ø«Ù„ account_name ÛŒØ§ UUID)
+                details TEXT,                    -- Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ø¬Ø²Ø¦ÛŒ Ø¨Ø§ ÙØ±Ù…Øª JSON
                 level TEXT DEFAULT 'info',       -- 'info', 'success', 'warning', 'danger'
-                ip_address TEXT,                 -- آدرس IP عامل در صورت وجود
-                created_at TEXT NOT NULL         -- زمان ایزو تهران
+                ip_address TEXT,                 -- Ø¢Ø¯Ø±Ø³ IP Ø¹Ø§Ù…Ù„ Ø¯Ø± ØµÙˆØ±Øª ÙˆØ¬ÙˆØ¯
+                created_at TEXT NOT NULL         -- Ø²Ù…Ø§Ù† Ø§ÛŒØ²Ùˆ ØªÙ‡Ø±Ø§Ù†
             )
         """)
 
-        # مایگریشن خودکار ایندکس‌ها و ستون‌های جدید
+        # Ù…Ø§ÛŒÚ¯Ø±ÛŒØ´Ù† Ø®ÙˆØ¯Ú©Ø§Ø± Ø§ÛŒÙ†Ø¯Ú©Ø³â€ŒÙ‡Ø§ Ùˆ Ø³ØªÙˆÙ†â€ŒÙ‡Ø§ÛŒ Ø¬Ø¯ÛŒØ¯
         try:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_login_logs_token ON login_logs(session_token)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_login_logs_user_active ON login_logs(user_type, user_id, is_active)")
@@ -597,7 +597,7 @@ class Database:
         except Exception:
             pass
 
-        # تصحیح و همگام‌سازی خودکار مبدأ و نام مشتری برای تراکنش‌های پیشین
+        # ØªØµØ­ÛŒØ­ Ùˆ Ù‡Ù…Ú¯Ø§Ù…â€ŒØ³Ø§Ø²ÛŒ Ø®ÙˆØ¯Ú©Ø§Ø± Ù…Ø¨Ø¯Ø£ Ùˆ Ù†Ø§Ù… Ù…Ø´ØªØ±ÛŒ Ø¨Ø±Ø§ÛŒ ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ Ù¾ÛŒØ´ÛŒÙ†
         try:
             cursor.execute("""
                 UPDATE transactions 
@@ -608,7 +608,7 @@ class Database:
             cursor.execute("""
                 UPDATE transactions 
                 SET username = account_name 
-                WHERE (username IS NULL OR username = '' OR username = 'کاربر') 
+                WHERE (username IS NULL OR username = '' OR username = 'Ú©Ø§Ø±Ø¨Ø±') 
                   AND account_name IS NOT NULL AND account_name != ''
             """)
         except Exception:
@@ -649,7 +649,7 @@ class Database:
         except Exception:
             pass
 
-        # ستون‌های پروفایل و مشخصات فردی نمایندگان
+        # Ø³ØªÙˆÙ†â€ŒÙ‡Ø§ÛŒ Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ùˆ Ù…Ø´Ø®ØµØ§Øª ÙØ±Ø¯ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù†
         try:
             cursor.execute("ALTER TABLE resellers ADD COLUMN phone TEXT")
         except Exception:
@@ -705,7 +705,7 @@ class Database:
         except Exception:
             pass
 
-        # ستون‌های کاربران پریمیوم و وفاداری (VIP)
+        # Ø³ØªÙˆÙ†â€ŒÙ‡Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ù¾Ø±ÛŒÙ…ÛŒÙˆÙ… Ùˆ ÙˆÙØ§Ø¯Ø§Ø±ÛŒ (VIP)
         for col_def in [
             "is_vip INTEGER DEFAULT 0",
             "vip_type TEXT DEFAULT 'manual'",
@@ -717,7 +717,7 @@ class Database:
             except Exception:
                 pass
 
-        # ستون‌های ربات اختصاصی (White-label Multi-Bot) و تنظیمات نمایندگان
+        # Ø³ØªÙˆÙ†â€ŒÙ‡Ø§ÛŒ Ø±Ø¨Ø§Øª Ø§Ø®ØªØµØ§ØµÛŒ (White-label Multi-Bot) Ùˆ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù†
         for col_def in [
             "bot_token TEXT", "bot_username TEXT", "channel_id TEXT", "brand_name TEXT",
             "start_message TEXT", "support_username TEXT", "card_number TEXT", "card_holder TEXT",
@@ -730,7 +730,7 @@ class Database:
             except Exception:
                 pass
 
-        # ستون‌های برندینگ، دامنه و آموزش‌های اختصاصی نماینده
+        # Ø³ØªÙˆÙ†â€ŒÙ‡Ø§ÛŒ Ø¨Ø±Ù†Ø¯ÛŒÙ†Ú¯ØŒ Ø¯Ø§Ù…Ù†Ù‡ Ùˆ Ø¢Ù…ÙˆØ²Ø´â€ŒÙ‡Ø§ÛŒ Ø§Ø®ØªØµØ§ØµÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
         for col_def in [
             "custom_domain TEXT", "tutorial_domain TEXT", "logo_url TEXT", "favicon_url TEXT",
             "brand_title TEXT", "primary_color TEXT", "footer_text TEXT",
@@ -741,7 +741,7 @@ class Database:
             except Exception:
                 pass
 
-        # ستون‌های درگاه پرداخت آنلاین نماینده
+        # Ø³ØªÙˆÙ†â€ŒÙ‡Ø§ÛŒ Ø¯Ø±Ú¯Ø§Ù‡ Ù¾Ø±Ø¯Ø§Ø®Øª Ø¢Ù†Ù„Ø§ÛŒÙ† Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
         for col_def in [
             "is_gateway_active INTEGER DEFAULT 0",
             "gateway_type TEXT DEFAULT 'zarinpal'",
@@ -764,7 +764,7 @@ class Database:
         except Exception:
             pass
 
-        # پاک‌سازی مقادیر خالی دامنه‌ها جهت جلوگیری از تداخل ایندکس یونیک
+        # Ù¾Ø§Ú©â€ŒØ³Ø§Ø²ÛŒ Ù…Ù‚Ø§Ø¯ÛŒØ± Ø®Ø§Ù„ÛŒ Ø¯Ø§Ù…Ù†Ù‡â€ŒÙ‡Ø§ Ø¬Ù‡Øª Ø¬Ù„ÙˆÚ¯ÛŒØ±ÛŒ Ø§Ø² ØªØ¯Ø§Ø®Ù„ Ø§ÛŒÙ†Ø¯Ú©Ø³ ÛŒÙˆÙ†ÛŒÚ©
         try:
             cursor.execute("UPDATE resellers SET custom_domain = NULL WHERE custom_domain = '' OR TRIM(custom_domain) = ''")
             cursor.execute("UPDATE resellers SET tutorial_domain = NULL WHERE tutorial_domain = '' OR TRIM(tutorial_domain) = ''")
@@ -783,7 +783,7 @@ class Database:
         except Exception:
             pass
 
-        # ستون‌های انتساب مدیر به نماینده جهت ساخت زیرمدیران (Sub-Admins)
+        # Ø³ØªÙˆÙ†â€ŒÙ‡Ø§ÛŒ Ø§Ù†ØªØ³Ø§Ø¨ Ù…Ø¯ÛŒØ± Ø¨Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¬Ù‡Øª Ø³Ø§Ø®Øª Ø²ÛŒØ±Ù…Ø¯ÛŒØ±Ø§Ù† (Sub-Admins)
         try:
             cursor.execute("ALTER TABLE admin_users ADD COLUMN reseller_id INTEGER")
         except Exception:
@@ -794,7 +794,7 @@ class Database:
         except Exception:
             pass
 
-        # جدول کارت‌های بانکی اختصاصی نماینده
+        # Ø¬Ø¯ÙˆÙ„ Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ÛŒ Ø¨Ø§Ù†Ú©ÛŒ Ø§Ø®ØªØµØ§ØµÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
         try:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS reseller_cards (
@@ -812,7 +812,7 @@ class Database:
         except Exception:
             pass
 
-        # جدول کدهای تخفیف اختصاصی نماینده
+        # Ø¬Ø¯ÙˆÙ„ Ú©Ø¯Ù‡Ø§ÛŒ ØªØ®ÙÛŒÙ Ø§Ø®ØªØµØ§ØµÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
         try:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS reseller_discount_codes (
@@ -832,7 +832,7 @@ class Database:
         except Exception:
             pass
 
-        # جدول لاگ پیامک‌های واریزی بانک
+        # Ø¬Ø¯ÙˆÙ„ Ù„Ø§Ú¯ Ù¾ÛŒØ§Ù…Ú©â€ŒÙ‡Ø§ÛŒ ÙˆØ§Ø±ÛŒØ²ÛŒ Ø¨Ø§Ù†Ú©
         try:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS bank_sms_logs (
@@ -851,7 +851,7 @@ class Database:
         except Exception:
             pass
 
-        # جدول فاکتورهای هوشمند با ارقام تصادفی خرد جهت تایید خودکار کارت به کارت
+        # Ø¬Ø¯ÙˆÙ„ ÙØ§Ú©ØªÙˆØ±Ù‡Ø§ÛŒ Ù‡ÙˆØ´Ù…Ù†Ø¯ Ø¨Ø§ Ø§Ø±Ù‚Ø§Ù… ØªØµØ§Ø¯ÙÛŒ Ø®Ø±Ø¯ Ø¬Ù‡Øª ØªØ§ÛŒÛŒØ¯ Ø®ÙˆØ¯Ú©Ø§Ø± Ú©Ø§Ø±Øª Ø¨Ù‡ Ú©Ø§Ø±Øª
         try:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS smart_invoices (
@@ -880,7 +880,7 @@ class Database:
         except Exception:
             pass
 
-        # جدول سوابق و رسیدهای بدهی مشتریان (تفکیک به ازای هر خرید یا تمدید)
+        # Ø¬Ø¯ÙˆÙ„ Ø³ÙˆØ§Ø¨Ù‚ Ùˆ Ø±Ø³ÛŒØ¯Ù‡Ø§ÛŒ Ø¨Ø¯Ù‡ÛŒ Ù…Ø´ØªØ±ÛŒØ§Ù† (ØªÙÚ©ÛŒÚ© Ø¨Ù‡ Ø§Ø²Ø§ÛŒ Ù‡Ø± Ø®Ø±ÛŒØ¯ ÛŒØ§ ØªÙ…Ø¯ÛŒØ¯)
         try:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS customer_debt_records (
@@ -909,7 +909,7 @@ class Database:
         except Exception:
             pass
 
-        # مایگریشن ستون‌های پورتال مشتری برای نمایندگان و فاکتورها
+        # Ù…Ø§ÛŒÚ¯Ø±ÛŒØ´Ù† Ø³ØªÙˆÙ†â€ŒÙ‡Ø§ÛŒ Ù¾ÙˆØ±ØªØ§Ù„ Ù…Ø´ØªØ±ÛŒ Ø¨Ø±Ø§ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† Ùˆ ÙØ§Ú©ØªÙˆØ±Ù‡Ø§
         try:
             cursor.execute("ALTER TABLE resellers ADD COLUMN portal_title TEXT")
         except Exception:
@@ -981,7 +981,7 @@ class Database:
         except Exception:
             pass
 
-        # ستون تعداد کاربر مجاز و جدول نشست‌ها (Device/User Limit & Sessions)
+        # Ø³ØªÙˆÙ† ØªØ¹Ø¯Ø§Ø¯ Ú©Ø§Ø±Ø¨Ø± Ù…Ø¬Ø§Ø² Ùˆ Ø¬Ø¯ÙˆÙ„ Ù†Ø´Ø³Øªâ€ŒÙ‡Ø§ (Device/User Limit & Sessions)
         try:
             cursor.execute("ALTER TABLE subscriptions ADD COLUMN user_limit INTEGER DEFAULT 1")
         except Exception:
@@ -1012,7 +1012,7 @@ class Database:
         except Exception:
             pass
 
-        # ستون‌های فعال‌سازی موقت رسید (Grace Period)
+        # Ø³ØªÙˆÙ†â€ŒÙ‡Ø§ÛŒ ÙØ¹Ø§Ù„â€ŒØ³Ø§Ø²ÛŒ Ù…ÙˆÙ‚Øª Ø±Ø³ÛŒØ¯ (Grace Period)
         try:
             cursor.execute("ALTER TABLE payments ADD COLUMN is_grace_active INTEGER DEFAULT 0")
         except Exception:
@@ -1023,7 +1023,7 @@ class Database:
         except Exception:
             pass
 
-        # ستون‌های وضعیت پرداخت، مبلغ بدهی و یادداشت بدهی اشتراک‌ها
+        # Ø³ØªÙˆÙ†â€ŒÙ‡Ø§ÛŒ ÙˆØ¶Ø¹ÛŒØª Ù¾Ø±Ø¯Ø§Ø®ØªØŒ Ù…Ø¨Ù„Øº Ø¨Ø¯Ù‡ÛŒ Ùˆ ÛŒØ§Ø¯Ø¯Ø§Ø´Øª Ø¨Ø¯Ù‡ÛŒ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§
         for col_def in [
             "payment_status TEXT DEFAULT 'paid'",
             "debt_amount INTEGER DEFAULT 0",
@@ -1035,7 +1035,7 @@ class Database:
             except Exception:
                 pass
 
-        # ستون‌های قیمت پلن، جزئیات مالی و ثبت دستی سوابق در سابقه دوره‌ها
+        # Ø³ØªÙˆÙ†â€ŒÙ‡Ø§ÛŒ Ù‚ÛŒÙ…Øª Ù¾Ù„Ù†ØŒ Ø¬Ø²Ø¦ÛŒØ§Øª Ù…Ø§Ù„ÛŒ Ùˆ Ø«Ø¨Øª Ø¯Ø³ØªÛŒ Ø³ÙˆØ§Ø¨Ù‚ Ø¯Ø± Ø³Ø§Ø¨Ù‚Ù‡ Ø¯ÙˆØ±Ù‡â€ŒÙ‡Ø§
         for col_def in [
             "plan_price INTEGER DEFAULT 0",
             "cost_paid INTEGER DEFAULT 0",
@@ -1052,7 +1052,7 @@ class Database:
             except Exception:
                 pass
 
-        # ستون‌های تیکت‌های درخواست تغییر حجم و مدت نماینده و چت پورتال مشتری
+        # Ø³ØªÙˆÙ†â€ŒÙ‡Ø§ÛŒ ØªÛŒÚ©Øªâ€ŒÙ‡Ø§ÛŒ Ø¯Ø±Ø®ÙˆØ§Ø³Øª ØªØºÛŒÛŒØ± Ø­Ø¬Ù… Ùˆ Ù…Ø¯Øª Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ùˆ Ú†Øª Ù¾ÙˆØ±ØªØ§Ù„ Ù…Ø´ØªØ±ÛŒ
         for col_def in [
             "reseller_id INTEGER DEFAULT 0",
             "ticket_type TEXT DEFAULT 'general'",
@@ -1069,7 +1069,7 @@ class Database:
             except Exception:
                 pass
 
-        # ستون‌های سیستم زیرمجموعه‌گیری و پورسانت نمایندگان
+        # Ø³ØªÙˆÙ†â€ŒÙ‡Ø§ÛŒ Ø³ÛŒØ³ØªÙ… Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡â€ŒÚ¯ÛŒØ±ÛŒ Ùˆ Ù¾ÙˆØ±Ø³Ø§Ù†Øª Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù†
         for col_def in [
             "parent_reseller_id INTEGER DEFAULT NULL",
             "affiliate_commission_percent REAL DEFAULT NULL",
@@ -1085,7 +1085,7 @@ class Database:
             except Exception:
                 pass
 
-        # ستون‌های شخصی‌سازی حجم، مدت، درصد تخفیف و قیمت عمده در پلن‌های نماینده
+        # Ø³ØªÙˆÙ†â€ŒÙ‡Ø§ÛŒ Ø´Ø®ØµÛŒâ€ŒØ³Ø§Ø²ÛŒ Ø­Ø¬Ù…ØŒ Ù…Ø¯ØªØŒ Ø¯Ø±ØµØ¯ ØªØ®ÙÛŒÙ Ùˆ Ù‚ÛŒÙ…Øª Ø¹Ù…Ø¯Ù‡ Ø¯Ø± Ù¾Ù„Ù†â€ŒÙ‡Ø§ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
         for col_def in [
             "custom_data_limit REAL DEFAULT NULL",
             "custom_duration INTEGER DEFAULT NULL",
@@ -1101,7 +1101,7 @@ class Database:
             except Exception:
                 pass
 
-        # ستون‌های پرمیوم و خرید اعتباری اشتراک‌ها و کاربران
+        # Ø³ØªÙˆÙ†â€ŒÙ‡Ø§ÛŒ Ù¾Ø±Ù…ÛŒÙˆÙ… Ùˆ Ø®Ø±ÛŒØ¯ Ø§Ø¹ØªØ¨Ø§Ø±ÛŒ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ Ùˆ Ú©Ø§Ø±Ø¨Ø±Ø§Ù†
         for col_def in [
             "is_vip INTEGER DEFAULT 0",
             "is_credit INTEGER DEFAULT 0",
@@ -1117,13 +1117,13 @@ class Database:
         except Exception:
             pass
 
-        # فعال‌سازی خودکار خرید اعتباری برای کلیه نمایندگانی که سقف اعتبار دارند
+        # ÙØ¹Ø§Ù„â€ŒØ³Ø§Ø²ÛŒ Ø®ÙˆØ¯Ú©Ø§Ø± Ø®Ø±ÛŒØ¯ Ø§Ø¹ØªØ¨Ø§Ø±ÛŒ Ø¨Ø±Ø§ÛŒ Ú©Ù„ÛŒÙ‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù†ÛŒ Ú©Ù‡ Ø³Ù‚Ù Ø§Ø¹ØªØ¨Ø§Ø± Ø¯Ø§Ø±Ù†Ø¯
         try:
             cursor.execute("UPDATE resellers SET credit_enabled = 1 WHERE credit_limit > 0 AND (credit_enabled IS NULL OR credit_enabled = 0)")
         except Exception:
             pass
 
-        # جدول تراکنش‌های پورسانت زیرمجموعه‌گیری نمایندگان
+        # Ø¬Ø¯ÙˆÙ„ ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ Ù¾ÙˆØ±Ø³Ø§Ù†Øª Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡â€ŒÚ¯ÛŒØ±ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù†
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS reseller_affiliate_commissions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1141,17 +1141,17 @@ class Database:
             )
         """)
 
-        # مقداردهی اولیه تنظیمات زیرمجموعه‌گیری در صورت عدم وجود
+        # Ù…Ù‚Ø¯Ø§Ø±Ø¯Ù‡ÛŒ Ø§ÙˆÙ„ÛŒÙ‡ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡â€ŒÚ¯ÛŒØ±ÛŒ Ø¯Ø± ØµÙˆØ±Øª Ø¹Ø¯Ù… ÙˆØ¬ÙˆØ¯
         default_aff_settings = {
             "reseller_affiliate_enabled": "1",
             "reseller_affiliate_default_percent": "10",
             "reseller_affiliate_calc_base": "plan_price",
-            "reseller_affiliate_terms": "با پیوستن به عنوان همکار و نماینده زیرمجموعه، از ربات اختصاصی هوشمند، ساب‌دامنه‌های بدون فیلتر و پنل مدیریت فروش با تسویه آنی بهره‌مند شوید."
+            "reseller_affiliate_terms": "Ø¨Ø§ Ù¾ÛŒÙˆØ³ØªÙ† Ø¨Ù‡ Ø¹Ù†ÙˆØ§Ù† Ù‡Ù…Ú©Ø§Ø± Ùˆ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡ØŒ Ø§Ø² Ø±Ø¨Ø§Øª Ø§Ø®ØªØµØ§ØµÛŒ Ù‡ÙˆØ´Ù…Ù†Ø¯ØŒ Ø³Ø§Ø¨â€ŒØ¯Ø§Ù…Ù†Ù‡â€ŒÙ‡Ø§ÛŒ Ø¨Ø¯ÙˆÙ† ÙÛŒÙ„ØªØ± Ùˆ Ù¾Ù†Ù„ Ù…Ø¯ÛŒØ±ÛŒØª ÙØ±ÙˆØ´ Ø¨Ø§ ØªØ³ÙˆÛŒÙ‡ Ø¢Ù†ÛŒ Ø¨Ù‡Ø±Ù‡â€ŒÙ…Ù†Ø¯ Ø´ÙˆÛŒØ¯."
         }
         for k, v in default_aff_settings.items():
             cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
 
-        # ستون‌های حذف نرم اشتراک‌ها (Soft Delete & 7-Day Purge)
+        # Ø³ØªÙˆÙ†â€ŒÙ‡Ø§ÛŒ Ø­Ø°Ù Ù†Ø±Ù… Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ (Soft Delete & 7-Day Purge)
         for col_def in [
             ("is_deleted", "INTEGER DEFAULT 0"),
             ("deleted_at", "TEXT"),
@@ -1166,7 +1166,7 @@ class Database:
             except Exception:
                 pass
 
-        # تصحیح خودکار شناسه نماینده برای اشتراک‌های قدیمی که تگ نماینده در کامنت دارند اما reseller_id آن‌ها خالی است
+        # ØªØµØ­ÛŒØ­ Ø®ÙˆØ¯Ú©Ø§Ø± Ø´Ù†Ø§Ø³Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø±Ø§ÛŒ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒ Ù‚Ø¯ÛŒÙ…ÛŒ Ú©Ù‡ ØªÚ¯ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¯Ø± Ú©Ø§Ù…Ù†Øª Ø¯Ø§Ø±Ù†Ø¯ Ø§Ù…Ø§ reseller_id Ø¢Ù†â€ŒÙ‡Ø§ Ø®Ø§Ù„ÛŒ Ø§Ø³Øª
         try:
             import re
             c_fix = conn.cursor()
@@ -1180,7 +1180,7 @@ class Database:
         except Exception as e:
             logger.warning(f"Error auto-fixing legacy reseller_ids: {e}")
 
-        # جدول قبوض بدهی قبلی/جدید نماینده (Reseller Debts & Invoices)
+        # Ø¬Ø¯ÙˆÙ„ Ù‚Ø¨ÙˆØ¶ Ø¨Ø¯Ù‡ÛŒ Ù‚Ø¨Ù„ÛŒ/Ø¬Ø¯ÛŒØ¯ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (Reseller Debts & Invoices)
         try:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS reseller_debts (
@@ -1202,7 +1202,7 @@ class Database:
         except Exception:
             pass
 
-        # جدول صف تمدید هوشمند و بسته‌های رزرو
+        # Ø¬Ø¯ÙˆÙ„ ØµÙ ØªÙ…Ø¯ÛŒØ¯ Ù‡ÙˆØ´Ù…Ù†Ø¯ Ùˆ Ø¨Ø³ØªÙ‡â€ŒÙ‡Ø§ÛŒ Ø±Ø²Ø±Ùˆ
         try:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS subscription_queue (
@@ -1228,7 +1228,7 @@ class Database:
         except Exception as e:
             logger.warning(f"Error creating subscription_queue table: {e}")
 
-        # ستون‌های مبدأ پرداخت کیف‌پول/اعتبار و رهگیری ویرایش اسناد حسابداری و بدهی‌ها
+        # Ø³ØªÙˆÙ†â€ŒÙ‡Ø§ÛŒ Ù…Ø¨Ø¯Ø£ Ù¾Ø±Ø¯Ø§Ø®Øª Ú©ÛŒÙâ€ŒÙ¾ÙˆÙ„/Ø§Ø¹ØªØ¨Ø§Ø± Ùˆ Ø±Ù‡Ú¯ÛŒØ±ÛŒ ÙˆÛŒØ±Ø§ÛŒØ´ Ø§Ø³Ù†Ø§Ø¯ Ø­Ø³Ø§Ø¨Ø¯Ø§Ø±ÛŒ Ùˆ Ø¨Ø¯Ù‡ÛŒâ€ŒÙ‡Ø§
         for col_sql in [
             "ALTER TABLE subscription_queue ADD COLUMN queue_order INTEGER DEFAULT 0",
             "ALTER TABLE subscriptions ADD COLUMN payment_source TEXT DEFAULT 'wallet'",
@@ -1253,9 +1253,15 @@ class Database:
             "ALTER TABLE admin_debts ADD COLUMN is_edited INTEGER DEFAULT 0",
             "ALTER TABLE admin_debts ADD COLUMN edited_by TEXT",
             "ALTER TABLE admin_debts ADD COLUMN edited_at TEXT",
-            # ستون‌های ارتقای سیستم مدیریت کارت‌ها و حسابداری شناور
+            # Ø³ØªÙˆÙ†â€ŒÙ‡Ø§ÛŒ Ø§Ø±ØªÙ‚Ø§ÛŒ Ø³ÛŒØ³ØªÙ… Ù…Ø¯ÛŒØ±ÛŒØª Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ Ùˆ Ø­Ø³Ø§Ø¨Ø¯Ø§Ø±ÛŒ Ø´Ù†Ø§ÙˆØ±
             "ALTER TABLE bank_cards ADD COLUMN is_default INTEGER DEFAULT 0",
             "ALTER TABLE bank_cards ADD COLUMN is_backup INTEGER DEFAULT 0",
+            "ALTER TABLE bank_cards ADD COLUMN profit_percent INTEGER DEFAULT 0",
+            "ALTER TABLE bank_cards ADD COLUMN assigned_to TEXT DEFAULT NULL",
+            "ALTER TABLE bank_cards ADD COLUMN account_type TEXT DEFAULT 'bank_card'",
+            "ALTER TABLE reseller_cards ADD COLUMN account_type TEXT DEFAULT 'bank_card'",
+            "ALTER TABLE reseller_cards ADD COLUMN profit_percent INTEGER DEFAULT 0",
+            "ALTER TABLE reseller_cards ADD COLUMN assigned_to TEXT DEFAULT NULL",
             "ALTER TABLE bank_cards ADD COLUMN balance INTEGER DEFAULT 0",
             "ALTER TABLE bank_cards ADD COLUMN initial_balance INTEGER DEFAULT 0",
             "ALTER TABLE bank_cards ADD COLUMN shaba_number TEXT",
@@ -1274,7 +1280,7 @@ class Database:
             except Exception:
                 pass
 
-        # جدول دفتر ریزتراکنش‌های تفکیکی کارت‌های بانکی (مدیریت و نمایندگان)
+        # Ø¬Ø¯ÙˆÙ„ Ø¯ÙØªØ± Ø±ÛŒØ²ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ ØªÙÚ©ÛŒÚ©ÛŒ Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ÛŒ Ø¨Ø§Ù†Ú©ÛŒ (Ù…Ø¯ÛŒØ±ÛŒØª Ùˆ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù†)
         try:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS card_transactions (
@@ -1300,7 +1306,7 @@ class Database:
         except Exception:
             pass
 
-        # جدول صندوق نقدی و دفتر تسویه نقدی مدیریت و نمایندگان
+        # Ø¬Ø¯ÙˆÙ„ ØµÙ†Ø¯ÙˆÙ‚ Ù†Ù‚Ø¯ÛŒ Ùˆ Ø¯ÙØªØ± ØªØ³ÙˆÛŒÙ‡ Ù†Ù‚Ø¯ÛŒ Ù…Ø¯ÛŒØ±ÛŒØª Ùˆ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù†
         try:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS cash_desk_logs (
@@ -1347,7 +1353,7 @@ class Database:
         except Exception:
             pass
 
-        # جدول بسته‌های پیش‌خرید اعتباری همکاران و نمایندگان (Reseller Credit Bundles)
+        # Ø¬Ø¯ÙˆÙ„ Ø¨Ø³ØªÙ‡â€ŒÙ‡Ø§ÛŒ Ù¾ÛŒØ´â€ŒØ®Ø±ÛŒØ¯ Ø§Ø¹ØªØ¨Ø§Ø±ÛŒ Ù‡Ù…Ú©Ø§Ø±Ø§Ù† Ùˆ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† (Reseller Credit Bundles)
         try:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS reseller_bundles (
@@ -1369,10 +1375,10 @@ class Database:
             if cursor.fetchone()[0] == 0:
                 now_seed = get_now_iso()
                 default_bundles = [
-                    ("bundle_1m", "بسته استارتر", 1000000, 1050000, 5, "۵٪ شارژ هدیه", "info", "مناسب شروع همکاری و شارژ اولیه", 1, 1, now_seed, now_seed),
-                    ("bundle_3m", "بسته نقره‌ای", 3000000, 3210000, 7, "۷٪ شارژ هدیه", "primary", "بسته اقتصادی با بونوس شارژ تشویقی", 2, 1, now_seed, now_seed),
-                    ("bundle_5m", "بسته طلایی", 5000000, 5500000, 10, "۱۰٪ شارژ هدیه", "success", "بسته پرفروش همکاران با ۱۰٪ هدیه نقدی", 3, 1, now_seed, now_seed),
-                    ("bundle_10m", "بسته الماس VIP", 10000000, 11500000, 15, "۱۵٪ شارژ ویژه", "warning", "حداکثر اعتبار با بالاترین نرخ بونوس ویژه", 4, 1, now_seed, now_seed),
+                    ("bundle_1m", "Ø¨Ø³ØªÙ‡ Ø§Ø³ØªØ§Ø±ØªØ±", 1000000, 1050000, 5, "ÛµÙª Ø´Ø§Ø±Ú˜ Ù‡Ø¯ÛŒÙ‡", "info", "Ù…Ù†Ø§Ø³Ø¨ Ø´Ø±ÙˆØ¹ Ù‡Ù…Ú©Ø§Ø±ÛŒ Ùˆ Ø´Ø§Ø±Ú˜ Ø§ÙˆÙ„ÛŒÙ‡", 1, 1, now_seed, now_seed),
+                    ("bundle_3m", "Ø¨Ø³ØªÙ‡ Ù†Ù‚Ø±Ù‡â€ŒØ§ÛŒ", 3000000, 3210000, 7, "Û·Ùª Ø´Ø§Ø±Ú˜ Ù‡Ø¯ÛŒÙ‡", "primary", "Ø¨Ø³ØªÙ‡ Ø§Ù‚ØªØµØ§Ø¯ÛŒ Ø¨Ø§ Ø¨ÙˆÙ†ÙˆØ³ Ø´Ø§Ø±Ú˜ ØªØ´ÙˆÛŒÙ‚ÛŒ", 2, 1, now_seed, now_seed),
+                    ("bundle_5m", "Ø¨Ø³ØªÙ‡ Ø·Ù„Ø§ÛŒÛŒ", 5000000, 5500000, 10, "Û±Û°Ùª Ø´Ø§Ø±Ú˜ Ù‡Ø¯ÛŒÙ‡", "success", "Ø¨Ø³ØªÙ‡ Ù¾Ø±ÙØ±ÙˆØ´ Ù‡Ù…Ú©Ø§Ø±Ø§Ù† Ø¨Ø§ Û±Û°Ùª Ù‡Ø¯ÛŒÙ‡ Ù†Ù‚Ø¯ÛŒ", 3, 1, now_seed, now_seed),
+                    ("bundle_10m", "Ø¨Ø³ØªÙ‡ Ø§Ù„Ù…Ø§Ø³ VIP", 10000000, 11500000, 15, "Û±ÛµÙª Ø´Ø§Ø±Ú˜ ÙˆÛŒÚ˜Ù‡", "warning", "Ø­Ø¯Ø§Ú©Ø«Ø± Ø§Ø¹ØªØ¨Ø§Ø± Ø¨Ø§ Ø¨Ø§Ù„Ø§ØªØ±ÛŒÙ† Ù†Ø±Ø® Ø¨ÙˆÙ†ÙˆØ³ ÙˆÛŒÚ˜Ù‡", 4, 1, now_seed, now_seed),
                 ]
                 cursor.executemany("""
                     INSERT INTO reseller_bundles (id, title, price, credit, bonus_percent, badge, color, description, display_order, is_active, created_at, updated_at)
@@ -1381,7 +1387,7 @@ class Database:
         except Exception as e:
             logger.warning(f"Error initializing reseller_bundles table: {e}")
 
-        # اصلاح دسته‌بندی تیکت‌های مشتریان نماینده به target_role='reseller'
+        # Ø§ØµÙ„Ø§Ø­ Ø¯Ø³ØªÙ‡â€ŒØ¨Ù†Ø¯ÛŒ ØªÛŒÚ©Øªâ€ŒÙ‡Ø§ÛŒ Ù…Ø´ØªØ±ÛŒØ§Ù† Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ù‡ target_role='reseller'
         try:
             cursor.execute("""
                 UPDATE support_tickets 
@@ -1395,20 +1401,20 @@ class Database:
         conn.close()
         logger.info("Database initialized successfully")
 
-        # بازیابی جامع اطلاعات در صورت خالی بودن دیتابیس پس از دیپلوی
+        # Ø¨Ø§Ø²ÛŒØ§Ø¨ÛŒ Ø¬Ø§Ù…Ø¹ Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ø¯Ø± ØµÙˆØ±Øª Ø®Ø§Ù„ÛŒ Ø¨ÙˆØ¯Ù† Ø¯ÛŒØªØ§Ø¨ÛŒØ³ Ù¾Ø³ Ø§Ø² Ø¯ÛŒÙ¾Ù„ÙˆÛŒ
         try:
             self.auto_restore_full()
         except Exception as e:
             logger.warning(f"Initial auto_restore_full check: {e}")
 
-        # خودترمیمی و اصلاح خودکار هرگونه انحراف یا خطای محاسباتی در رسیدها و بدهی‌ها
+        # Ø®ÙˆØ¯ØªØ±Ù…ÛŒÙ…ÛŒ Ùˆ Ø§ØµÙ„Ø§Ø­ Ø®ÙˆØ¯Ú©Ø§Ø± Ù‡Ø±Ú¯ÙˆÙ†Ù‡ Ø§Ù†Ø­Ø±Ø§Ù ÛŒØ§ Ø®Ø·Ø§ÛŒ Ù…Ø­Ø§Ø³Ø¨Ø§ØªÛŒ Ø¯Ø± Ø±Ø³ÛŒØ¯Ù‡Ø§ Ùˆ Ø¨Ø¯Ù‡ÛŒâ€ŒÙ‡Ø§
         try:
             self.repair_customer_debt_records()
         except Exception as e:
             logger.warning(f"Initial repair_customer_debt_records check: {e}")
 
     def export_full_backup_json(self) -> dict:
-        """پشتیبان‌گیری کامل از تمام جداول، کاربران، پلن‌ها، کارت‌ها، تنظیمات، تخفیف‌ها و نمایندگان در قالب یک فایل JSON پایدار"""
+        """Ù¾Ø´ØªÛŒØ¨Ø§Ù†â€ŒÚ¯ÛŒØ±ÛŒ Ú©Ø§Ù…Ù„ Ø§Ø² ØªÙ…Ø§Ù… Ø¬Ø¯Ø§ÙˆÙ„ØŒ Ú©Ø§Ø±Ø¨Ø±Ø§Ù†ØŒ Ù¾Ù„Ù†â€ŒÙ‡Ø§ØŒ Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ØŒ ØªÙ†Ø¸ÛŒÙ…Ø§ØªØŒ ØªØ®ÙÛŒÙâ€ŒÙ‡Ø§ Ùˆ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† Ø¯Ø± Ù‚Ø§Ù„Ø¨ ÛŒÚ© ÙØ§ÛŒÙ„ JSON Ù¾Ø§ÛŒØ¯Ø§Ø±"""
         conn = self.get_connection()
         cursor = conn.cursor()
         backup_data = {
@@ -1435,7 +1441,7 @@ class Database:
         
         conn.close()
         
-        # ذخیره در فایل‌های پشتیبان پایدار
+        # Ø°Ø®ÛŒØ±Ù‡ Ø¯Ø± ÙØ§ÛŒÙ„â€ŒÙ‡Ø§ÛŒ Ù¾Ø´ØªÛŒØ¨Ø§Ù† Ù¾Ø§ÛŒØ¯Ø§Ø±
         try:
             backup_dirs = [Path("data"), Path("/data"), DB_DIR]
             for bdir in backup_dirs:
@@ -1449,12 +1455,12 @@ class Database:
         return backup_data
 
     def auto_restore_full(self) -> dict:
-        """بازیابی جامع اطلاعات تمام جداول (کاربران، کارت‌ها، پلن‌ها، نمایندگان، کد تخفیف و تنظیمات) پس از دیپلوی"""
+        """Ø¨Ø§Ø²ÛŒØ§Ø¨ÛŒ Ø¬Ø§Ù…Ø¹ Ø§Ø·Ù„Ø§Ø¹Ø§Øª ØªÙ…Ø§Ù… Ø¬Ø¯Ø§ÙˆÙ„ (Ú©Ø§Ø±Ø¨Ø±Ø§Ù†ØŒ Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ØŒ Ù¾Ù„Ù†â€ŒÙ‡Ø§ØŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù†ØŒ Ú©Ø¯ ØªØ®ÙÛŒÙ Ùˆ ØªÙ†Ø¸ÛŒÙ…Ø§Øª) Ù¾Ø³ Ø§Ø² Ø¯ÛŒÙ¾Ù„ÙˆÛŒ"""
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
             
-            # بررسی خالی بودن جداول کلیدی
+            # Ø¨Ø±Ø±Ø³ÛŒ Ø®Ø§Ù„ÛŒ Ø¨ÙˆØ¯Ù† Ø¬Ø¯Ø§ÙˆÙ„ Ú©Ù„ÛŒØ¯ÛŒ
             cursor.execute("SELECT COUNT(*) FROM users")
             users_count = cursor.fetchone()[0]
             cursor.execute("SELECT COUNT(*) FROM bank_cards")
@@ -1468,7 +1474,7 @@ class Database:
                 logger.info(f"Database contains {users_count} users, full restore skipped.")
                 return {"restored": False, "reason": "database_not_empty"}
             
-            # جستجوی فایل JSON فول بک‌آپ
+            # Ø¬Ø³ØªØ¬ÙˆÛŒ ÙØ§ÛŒÙ„ JSON ÙÙˆÙ„ Ø¨Ú©â€ŒØ¢Ù¾
             candidate_files = [
                 Path("data/backup_full_latest.json"),
                 Path("/data/backup_full_latest.json"),
@@ -1483,7 +1489,7 @@ class Database:
                     break
             
             if not found_file:
-                # تلاش برای بازیابی از فایل‌های .db
+                # ØªÙ„Ø§Ø´ Ø¨Ø±Ø§ÛŒ Ø¨Ø§Ø²ÛŒØ§Ø¨ÛŒ Ø§Ø² ÙØ§ÛŒÙ„â€ŒÙ‡Ø§ÛŒ .db
                 conn.close()
                 return self.auto_restore()
                 
@@ -1517,12 +1523,12 @@ class Database:
             return {"restored": False, "error": str(e)}
 
     def auto_restore(self):
-        """بازیابی خودکار از آخرین پشتیبان اگر دیتابیس خالی باشد"""
+        """Ø¨Ø§Ø²ÛŒØ§Ø¨ÛŒ Ø®ÙˆØ¯Ú©Ø§Ø± Ø§Ø² Ø¢Ø®Ø±ÛŒÙ† Ù¾Ø´ØªÛŒØ¨Ø§Ù† Ø§Ú¯Ø± Ø¯ÛŒØªØ§Ø¨ÛŒØ³ Ø®Ø§Ù„ÛŒ Ø¨Ø§Ø´Ø¯"""
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
             
-            # بررسی تعداد کاربران
+            # Ø¨Ø±Ø±Ø³ÛŒ ØªØ¹Ø¯Ø§Ø¯ Ú©Ø§Ø±Ø¨Ø±Ø§Ù†
             cursor.execute("SELECT COUNT(*) FROM users")
             count = cursor.fetchone()[0]
             conn.close()
@@ -1533,7 +1539,7 @@ class Database:
             
             logger.info("Database is empty, looking for backups...")
             
-            # جستجو برای فایل‌های پشتیبان
+            # Ø¬Ø³ØªØ¬Ùˆ Ø¨Ø±Ø§ÛŒ ÙØ§ÛŒÙ„â€ŒÙ‡Ø§ÛŒ Ù¾Ø´ØªÛŒØ¨Ø§Ù†
             backup_dirs = [
                 Path("backups"),
                 Path("/data/backups"),
@@ -1551,17 +1557,17 @@ class Database:
                 logger.info("No backup files found")
                 return {"restored": False, "reason": "no_backups_found"}
             
-            # مرتب‌سازی بر اساس تاریخ (جدیدترین اول)
+            # Ù…Ø±ØªØ¨â€ŒØ³Ø§Ø²ÛŒ Ø¨Ø± Ø§Ø³Ø§Ø³ ØªØ§Ø±ÛŒØ® (Ø¬Ø¯ÛŒØ¯ØªØ±ÛŒÙ† Ø§ÙˆÙ„)
             all_backups.sort(key=lambda x: x.stat().st_mtime, reverse=True)
             latest_backup = all_backups[0]
             
             logger.info(f"Restoring from backup: {latest_backup.name}")
             
-            # کپی پشتیبان به مسیر دیتابیس فعلی
+            # Ú©Ù¾ÛŒ Ù¾Ø´ØªÛŒØ¨Ø§Ù† Ø¨Ù‡ Ù…Ø³ÛŒØ± Ø¯ÛŒØªØ§Ø¨ÛŒØ³ ÙØ¹Ù„ÛŒ
             import shutil
             shutil.copy2(latest_backup, self.db_path)
             
-            # بررسی نتیجه
+            # Ø¨Ø±Ø±Ø³ÛŒ Ù†ØªÛŒØ¬Ù‡
             conn = self.get_connection()
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM users")
@@ -1581,13 +1587,13 @@ class Database:
 
     def _parse_hiddify_user_online(self, u: dict) -> tuple[int, str]:
         """
-        تشخیص آنلاین بودن و استخراج آخرین اتصال از آبجکت کاربر در هیدیفای (روش فوق‌بهینه بر پایه Timestamp)
-        خروجی: (is_online: 1|0, last_online_str)
+        ØªØ´Ø®ÛŒØµ Ø¢Ù†Ù„Ø§ÛŒÙ† Ø¨ÙˆØ¯Ù† Ùˆ Ø§Ø³ØªØ®Ø±Ø§Ø¬ Ø¢Ø®Ø±ÛŒÙ† Ø§ØªØµØ§Ù„ Ø§Ø² Ø¢Ø¨Ø¬Ú©Øª Ú©Ø§Ø±Ø¨Ø± Ø¯Ø± Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ (Ø±ÙˆØ´ ÙÙˆÙ‚â€ŒØ¨Ù‡ÛŒÙ†Ù‡ Ø¨Ø± Ù¾Ø§ÛŒÙ‡ Timestamp)
+        Ø®Ø±ÙˆØ¬ÛŒ: (is_online: 1|0, last_online_str)
         """
         if not u or not isinstance(u, dict):
             return 0, None
 
-        # اگر کاربر در هیدیفای غیرفعال یا منقضی باشد، به هیچ وجه آنلاین نیست
+        # Ø§Ú¯Ø± Ú©Ø§Ø±Ø¨Ø± Ø¯Ø± Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ ØºÛŒØ±ÙØ¹Ø§Ù„ ÛŒØ§ Ù…Ù†Ù‚Ø¶ÛŒ Ø¨Ø§Ø´Ø¯ØŒ Ø¨Ù‡ Ù‡ÛŒÚ† ÙˆØ¬Ù‡ Ø¢Ù†Ù„Ø§ÛŒÙ† Ù†ÛŒØ³Øª
         if not u.get("is_active", True) or not u.get("enable", True):
             last_raw = u.get("last_online") or u.get("last_online_time") or u.get("last_connected")
             clean_str = None
@@ -1603,14 +1609,14 @@ class Database:
             try:
                 clean_str = str(last_online_raw).replace("T", " ").split(".")[0].split("+")[0].strip()
                 last_online_str = clean_str
-                # بررسی فاصله زمانی آخرین اتصال (سرور هیدیفای بر پایه UTC است)
+                # Ø¨Ø±Ø±Ø³ÛŒ ÙØ§ØµÙ„Ù‡ Ø²Ù…Ø§Ù†ÛŒ Ø¢Ø®Ø±ÛŒÙ† Ø§ØªØµØ§Ù„ (Ø³Ø±ÙˆØ± Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ Ø¨Ø± Ù¾Ø§ÛŒÙ‡ UTC Ø§Ø³Øª)
                 dt = datetime.strptime(clean_str[:19], "%Y-%m-%d %H:%M:%S")
                 now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
                 now_tehran = get_now_naive()
                 diff_utc = (now_utc - dt).total_seconds()
                 diff_tehran = (now_tehran - dt).total_seconds()
                 
-                # کاربر فقط در صورتی آنلاین است که اتصال واقعی در ۵ دقیقه (۳۰۰ ثانیه) اخیر رخ داده باشد
+                # Ú©Ø§Ø±Ø¨Ø± ÙÙ‚Ø· Ø¯Ø± ØµÙˆØ±ØªÛŒ Ø¢Ù†Ù„Ø§ÛŒÙ† Ø§Ø³Øª Ú©Ù‡ Ø§ØªØµØ§Ù„ ÙˆØ§Ù‚Ø¹ÛŒ Ø¯Ø± Ûµ Ø¯Ù‚ÛŒÙ‚Ù‡ (Û³Û°Û° Ø«Ø§Ù†ÛŒÙ‡) Ø§Ø®ÛŒØ± Ø±Ø® Ø¯Ø§Ø¯Ù‡ Ø¨Ø§Ø´Ø¯
                 if (0 <= diff_utc <= 300) or (0 <= diff_tehran <= 300):
                     is_online = 1
                 else:
@@ -1621,9 +1627,9 @@ class Database:
         return is_online, last_online_str
 
     def sync_from_hidify(self, hidify_users: list) -> dict:
-        """همگام‌سازی و بازیابی خودکار تمامی کاربران و اشتراک‌ها به همراه وضعیت آنلاین بودن از پنل هیدیفای"""
+        """Ù‡Ù…Ú¯Ø§Ù…â€ŒØ³Ø§Ø²ÛŒ Ùˆ Ø¨Ø§Ø²ÛŒØ§Ø¨ÛŒ Ø®ÙˆØ¯Ú©Ø§Ø± ØªÙ…Ø§Ù…ÛŒ Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ùˆ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ Ø¨Ù‡ Ù‡Ù…Ø±Ø§Ù‡ ÙˆØ¶Ø¹ÛŒØª Ø¢Ù†Ù„Ø§ÛŒÙ† Ø¨ÙˆØ¯Ù† Ø§Ø² Ù¾Ù†Ù„ Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ"""
         if not hidify_users or not isinstance(hidify_users, list):
-            return {"success": False, "count": 0, "error": "لیست کاربران هیدیفای خالی یا نامعتبر است"}
+            return {"success": False, "count": 0, "error": "Ù„ÛŒØ³Øª Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ Ø®Ø§Ù„ÛŒ ÛŒØ§ Ù†Ø§Ù…Ø¹ØªØ¨Ø± Ø§Ø³Øª"}
 
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -1657,19 +1663,19 @@ class Database:
                 
                 status = "active" if (is_active and enable) else ("disabled" if not enable else "expired")
 
-                # تشخیص وضعیت آنلاین بودن
+                # ØªØ´Ø®ÛŒØµ ÙˆØ¶Ø¹ÛŒØª Ø¢Ù†Ù„Ø§ÛŒÙ† Ø¨ÙˆØ¯Ù†
                 is_online_val, last_online_val = self._parse_hiddify_user_online(u)
                 if is_online_val:
                     total_online += 1
 
-                # استخراج telegram_id از کامنت یا نام کاربری
+                # Ø§Ø³ØªØ®Ø±Ø§Ø¬ telegram_id Ø§Ø² Ú©Ø§Ù…Ù†Øª ÛŒØ§ Ù†Ø§Ù… Ú©Ø§Ø±Ø¨Ø±ÛŒ
                 telegram_id = 0
                 if comment.isdigit() and len(comment) >= 5:
                     telegram_id = int(comment)
                 elif name.startswith("tg_") and name.replace("tg_", "").isdigit():
                     telegram_id = int(name.replace("tg_", ""))
 
-                # ۱. ثبت یا بروزرسانی در جدول users
+                # Û±. Ø«Ø¨Øª ÛŒØ§ Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø¯Ø± Ø¬Ø¯ÙˆÙ„ users
                 if telegram_id > 0:
                     cursor.execute("SELECT id FROM users WHERE telegram_id = ?", (telegram_id,))
                     existing_user = cursor.fetchone()
@@ -1691,7 +1697,7 @@ class Database:
                             WHERE telegram_id = ?
                         """, (name, uuid, usage_limit, is_online_val, last_online_val, now, telegram_id))
 
-                    # ایجاد کیف پول در صورت عدم وجود
+                    # Ø§ÛŒØ¬Ø§Ø¯ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ø¯Ø± ØµÙˆØ±Øª Ø¹Ø¯Ù… ÙˆØ¬ÙˆØ¯
                     cursor.execute("SELECT id FROM wallet WHERE telegram_id = ?", (telegram_id,))
                     if not cursor.fetchone():
                         cursor.execute("""
@@ -1699,14 +1705,14 @@ class Database:
                             VALUES (?, 0, ?, ?)
                         """, (telegram_id, now, now))
 
-                # ۲. ثبت یا بروزرسانی در جدول subscriptions
+                # Û². Ø«Ø¨Øª ÛŒØ§ Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø¯Ø± Ø¬Ø¯ÙˆÙ„ subscriptions
                 cursor.execute("SELECT id FROM subscriptions WHERE hidify_uuid = ?", (uuid,))
                 existing_sub = cursor.fetchone()
 
-                plan_name = f"{usage_limit} گیگ {package_days} روزه" if usage_limit > 0 else f"{package_days} روزه"
+                plan_name = f"{usage_limit} Ú¯ÛŒÚ¯ {package_days} Ø±ÙˆØ²Ù‡" if usage_limit > 0 else f"{package_days} Ø±ÙˆØ²Ù‡"
                 if "test" in name.lower() or (usage_limit > 0 and usage_limit <= 0.5):
                     plan_id = "test"
-                    plan_name = "اشتراک تست"
+                    plan_name = "Ø§Ø´ØªØ±Ø§Ú© ØªØ³Øª"
                 else:
                     plan_id = "custom"
 
@@ -1722,7 +1728,7 @@ class Database:
                         pass
 
                 if existing_sub:
-                    # بروزرسانی مصرف، سقف حجم، تعداد روزها (duration / package_days)، تاریخ‌ها و وضعیت
+                    # Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ù…ØµØ±ÙØŒ Ø³Ù‚Ù Ø­Ø¬Ù…ØŒ ØªØ¹Ø¯Ø§Ø¯ Ø±ÙˆØ²Ù‡Ø§ (duration / package_days)ØŒ ØªØ§Ø±ÛŒØ®â€ŒÙ‡Ø§ Ùˆ ÙˆØ¶Ø¹ÛŒØª
                     cursor.execute("""
                         UPDATE subscriptions SET
                             data_used = ?,
@@ -1739,7 +1745,7 @@ class Database:
                         WHERE hidify_uuid = ?
                     """, (current_usage, usage_limit, package_days, start_date, expiry_time, status, name_clean, extracted_reseller_id, is_online_val, last_online_val, now, uuid))
                 else:
-                    # درج اشتراک جدید بازیابی شده
+                    # Ø¯Ø±Ø¬ Ø§Ø´ØªØ±Ø§Ú© Ø¬Ø¯ÛŒØ¯ Ø¨Ø§Ø²ÛŒØ§Ø¨ÛŒ Ø´Ø¯Ù‡
                     cursor.execute("""
                         INSERT INTO subscriptions (
                             telegram_id, hidify_uuid, plan_id, plan_name, account_name,
@@ -1770,9 +1776,9 @@ class Database:
 
     def refresh_subscriptions_expiry_and_online(self) -> dict:
         """
-        بروزرسانی و تصحیح هوشمند و دوره‌ای وضعیت اشتراک‌ها:
-        ۱. صفر کردن آنلاین بودن برای اشتراک‌هایی که اتصال اخیر (بیش از ۱۰ دقیقه) نداشته‌اند
-        ۲. بروزرسانی وضعیت اشتراک‌های منقضی‌شده بر اساس تاریخ انقضا یا حجم مصرفی
+        Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ùˆ ØªØµØ­ÛŒØ­ Ù‡ÙˆØ´Ù…Ù†Ø¯ Ùˆ Ø¯ÙˆØ±Ù‡â€ŒØ§ÛŒ ÙˆØ¶Ø¹ÛŒØª Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§:
+        Û±. ØµÙØ± Ú©Ø±Ø¯Ù† Ø¢Ù†Ù„Ø§ÛŒÙ† Ø¨ÙˆØ¯Ù† Ø¨Ø±Ø§ÛŒ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒÛŒ Ú©Ù‡ Ø§ØªØµØ§Ù„ Ø§Ø®ÛŒØ± (Ø¨ÛŒØ´ Ø§Ø² Û±Û° Ø¯Ù‚ÛŒÙ‚Ù‡) Ù†Ø¯Ø§Ø´ØªÙ‡â€ŒØ§Ù†Ø¯
+        Û². Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ ÙˆØ¶Ø¹ÛŒØª Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒ Ù…Ù†Ù‚Ø¶ÛŒâ€ŒØ´Ø¯Ù‡ Ø¨Ø± Ø§Ø³Ø§Ø³ ØªØ§Ø±ÛŒØ® Ø§Ù†Ù‚Ø¶Ø§ ÛŒØ§ Ø­Ø¬Ù… Ù…ØµØ±ÙÛŒ
         """
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -1782,7 +1788,7 @@ class Database:
         now_iso = get_now_iso()
 
         try:
-            # ۱. بازیابی کلیه اشتراک‌های دارای وضعیت آنلاین جهت اعتبارسنجی مجدد
+            # Û±. Ø¨Ø§Ø²ÛŒØ§Ø¨ÛŒ Ú©Ù„ÛŒÙ‡ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒ Ø¯Ø§Ø±Ø§ÛŒ ÙˆØ¶Ø¹ÛŒØª Ø¢Ù†Ù„Ø§ÛŒÙ† Ø¬Ù‡Øª Ø§Ø¹ØªØ¨Ø§Ø±Ø³Ù†Ø¬ÛŒ Ù…Ø¬Ø¯Ø¯
             cursor.execute("SELECT id, last_online, expire_date, start_date, duration, data_limit, data_used, status FROM subscriptions WHERE is_online = 1")
             online_rows = cursor.fetchall()
             now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -1803,11 +1809,11 @@ class Database:
                     except Exception:
                         pass
 
-                # اگر وضعیت فعال نیست، به هیچ وجه آنلاین نیست
+                # Ø§Ú¯Ø± ÙˆØ¶Ø¹ÛŒØª ÙØ¹Ø§Ù„ Ù†ÛŒØ³ØªØŒ Ø¨Ù‡ Ù‡ÛŒÚ† ÙˆØ¬Ù‡ Ø¢Ù†Ù„Ø§ÛŒÙ† Ù†ÛŒØ³Øª
                 if r["status"] in ("expired", "disabled", "inactive"):
                     is_still_online = False
 
-                # اگر حجم به پایان رسیده، آنلاین نیست
+                # Ø§Ú¯Ø± Ø­Ø¬Ù… Ø¨Ù‡ Ù¾Ø§ÛŒØ§Ù† Ø±Ø³ÛŒØ¯Ù‡ØŒ Ø¢Ù†Ù„Ø§ÛŒÙ† Ù†ÛŒØ³Øª
                 d_limit = float(r["data_limit"] or 0)
                 d_used = float(r["data_used"] or 0)
                 if d_limit > 0 and d_used >= d_limit:
@@ -1817,7 +1823,7 @@ class Database:
                     cursor.execute("UPDATE subscriptions SET is_online = 0, updated_at = ? WHERE id = ?", (now_iso, sub_id))
                     updated_online += 1
 
-            # ۲. بروزرسانی خودکار اشتراک‌هایی که موعد انقضای آن‌ها سپری شده اما هنوز active هستند
+            # Û². Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø®ÙˆØ¯Ú©Ø§Ø± Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒÛŒ Ú©Ù‡ Ù…ÙˆØ¹Ø¯ Ø§Ù†Ù‚Ø¶Ø§ÛŒ Ø¢Ù†â€ŒÙ‡Ø§ Ø³Ù¾Ø±ÛŒ Ø´Ø¯Ù‡ Ø§Ù…Ø§ Ù‡Ù†ÙˆØ² active Ù‡Ø³ØªÙ†Ø¯
             cursor.execute("SELECT id, start_date, duration, expire_date, data_limit, data_used FROM subscriptions WHERE status = 'active' AND (is_deleted = 0 OR is_deleted IS NULL)")
             active_rows = cursor.fetchall()
 
@@ -1872,7 +1878,7 @@ class Database:
             conn.close()
 
     def get_online_users_stats(self, reseller_id: int = None) -> dict:
-        """آمار تعداد کل کاربران و مشتریان آنلاین برای ادمین یا نماینده"""
+        """Ø¢Ù…Ø§Ø± ØªØ¹Ø¯Ø§Ø¯ Ú©Ù„ Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ùˆ Ù…Ø´ØªØ±ÛŒØ§Ù† Ø¢Ù†Ù„Ø§ÛŒÙ† Ø¨Ø±Ø§ÛŒ Ø§Ø¯Ù…ÛŒÙ† ÛŒØ§ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         self.refresh_subscriptions_expiry_and_online()
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -1904,7 +1910,7 @@ class Database:
             conn.close()
 
     def get_online_subscriptions(self, reseller_id: int = None) -> list:
-        """دریافت لیست اشتراک‌های آنلاین"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒØ³Øª Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒ Ø¢Ù†Ù„Ø§ÛŒÙ†"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -1920,23 +1926,23 @@ class Database:
         finally:
             conn.close()
 
-    # ═══════════════════════════════════════════════════════════════
-    # مدیریت مشتریان
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ù…Ø¯ÛŒØ±ÛŒØª Ù…Ø´ØªØ±ÛŒØ§Ù†
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def save_user(self, telegram_id, username=None, hidify_uuid=None, plan_id=None, data_limit=None, expire_at=None, reseller_id=None):
-        """ذخیره یا بروزرسانی اطلاعات کاربر"""
+        """Ø°Ø®ÛŒØ±Ù‡ ÛŒØ§ Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ú©Ø§Ø±Ø¨Ø±"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
 
         try:
-            # بررسی وجود کاربر
+            # Ø¨Ø±Ø±Ø³ÛŒ ÙˆØ¬ÙˆØ¯ Ú©Ø§Ø±Ø¨Ø±
             cursor.execute("SELECT id, reseller_id FROM users WHERE telegram_id = ?", (telegram_id,))
             existing = cursor.fetchone()
 
             if existing:
-                # بروزرسانی با حفظ فیلدهای قبلی در صورت None بودن
+                # Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø¨Ø§ Ø­ÙØ¸ ÙÛŒÙ„Ø¯Ù‡Ø§ÛŒ Ù‚Ø¨Ù„ÛŒ Ø¯Ø± ØµÙˆØ±Øª None Ø¨ÙˆØ¯Ù†
                 cursor.execute("""
                     UPDATE users SET
                         username = COALESCE(?, username),
@@ -1949,7 +1955,7 @@ class Database:
                     WHERE telegram_id = ?
                 """, (username, hidify_uuid, plan_id, data_limit, expire_at, reseller_id, now, telegram_id))
             else:
-                # درج جدید
+                # Ø¯Ø±Ø¬ Ø¬Ø¯ÛŒØ¯
                 cursor.execute("""
                     INSERT INTO users (telegram_id, username, hidify_uuid, plan_id, data_limit, expire_at, reseller_id, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1965,7 +1971,7 @@ class Database:
             conn.close()
 
     def get_user(self, telegram_id):
-        """دریافت اطلاعات کاربر"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ú©Ø§Ø±Ø¨Ø±"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -1982,7 +1988,7 @@ class Database:
             conn.close()
 
     def set_user_phone(self, telegram_id: int, phone_number: str) -> bool:
-        """ثبت و تایید شماره تماس تلگرام کاربر"""
+        """Ø«Ø¨Øª Ùˆ ØªØ§ÛŒÛŒØ¯ Ø´Ù…Ø§Ø±Ù‡ ØªÙ…Ø§Ø³ ØªÙ„Ú¯Ø±Ø§Ù… Ú©Ø§Ø±Ø¨Ø±"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -2012,30 +2018,30 @@ class Database:
             conn.close()
 
     def is_user_verified(self, telegram_id: int) -> bool:
-        """بررسی احراز هویت شماره تلفن کاربر"""
+        """Ø¨Ø±Ø±Ø³ÛŒ Ø§Ø­Ø±Ø§Ø² Ù‡ÙˆÛŒØª Ø´Ù…Ø§Ø±Ù‡ ØªÙ„ÙÙ† Ú©Ø§Ø±Ø¨Ø±"""
         user = self.get_user(telegram_id)
         if not user:
             return False
         phone = user.get("phone_number")
         return bool(phone and str(phone).strip())
 
-    # ═══════════════════════════════════════════════════════════════
-    # مدیریت مشتریان پریمیوم و وفاداری (VIP & Loyalty Club)
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ù…Ø¯ÛŒØ±ÛŒØª Ù…Ø´ØªØ±ÛŒØ§Ù† Ù¾Ø±ÛŒÙ…ÛŒÙˆÙ… Ùˆ ÙˆÙØ§Ø¯Ø§Ø±ÛŒ (VIP & Loyalty Club)
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def is_user_vip(self, telegram_id: int) -> bool:
-        """بررسی وضعیت پریمیوم / VIP بودن کاربر با رعایت تاریخ انقضا"""
+        """Ø¨Ø±Ø±Ø³ÛŒ ÙˆØ¶Ø¹ÛŒØª Ù¾Ø±ÛŒÙ…ÛŒÙˆÙ… / VIP Ø¨ÙˆØ¯Ù† Ú©Ø§Ø±Ø¨Ø± Ø¨Ø§ Ø±Ø¹Ø§ÛŒØª ØªØ§Ø±ÛŒØ® Ø§Ù†Ù‚Ø¶Ø§"""
         user = self.get_user(telegram_id)
         if not user or not user.get("is_vip"):
             return False
 
-        # بررسی تاریخ انقضا در صورت وجود
+        # Ø¨Ø±Ø±Ø³ÛŒ ØªØ§Ø±ÛŒØ® Ø§Ù†Ù‚Ø¶Ø§ Ø¯Ø± ØµÙˆØ±Øª ÙˆØ¬ÙˆØ¯
         vip_expire = user.get("vip_expire_at")
         if vip_expire:
             try:
                 exp_dt = datetime.fromisoformat(vip_expire)
                 if datetime.now() > exp_dt:
-                    # انقضای مدت VIP - ریست کردن وضعیت به عادی
+                    # Ø§Ù†Ù‚Ø¶Ø§ÛŒ Ù…Ø¯Øª VIP - Ø±ÛŒØ³Øª Ú©Ø±Ø¯Ù† ÙˆØ¶Ø¹ÛŒØª Ø¨Ù‡ Ø¹Ø§Ø¯ÛŒ
                     self.set_user_vip(telegram_id, is_vip=False, vip_type="expired")
                     return False
             except Exception:
@@ -2043,7 +2049,7 @@ class Database:
         return True
 
     def get_user_vip_info(self, telegram_id: int) -> dict:
-        """دریافت اطلاعات و مزایای VIP کاربر شامل درصد کش‌بک فعال"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ùˆ Ù…Ø²Ø§ÛŒØ§ÛŒ VIP Ú©Ø§Ø±Ø¨Ø± Ø´Ø§Ù…Ù„ Ø¯Ø±ØµØ¯ Ú©Ø´â€ŒØ¨Ú© ÙØ¹Ø§Ù„"""
         user = self.get_user(telegram_id)
         is_vip = self.is_user_vip(telegram_id)
         if not user:
@@ -2083,7 +2089,7 @@ class Database:
 
     def set_user_vip(self, telegram_id: int, is_vip: bool, vip_type: str = "manual",
                      expire_at: Optional[str] = None, custom_cashback: Optional[int] = None) -> dict:
-        """تغییر و تنظیم وضعیت VIP کاربر (دستی یا خودکار)"""
+        """ØªØºÛŒÛŒØ± Ùˆ ØªÙ†Ø¸ÛŒÙ… ÙˆØ¶Ø¹ÛŒØª VIP Ú©Ø§Ø±Ø¨Ø± (Ø¯Ø³ØªÛŒ ÛŒØ§ Ø®ÙˆØ¯Ú©Ø§Ø±)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -2112,7 +2118,7 @@ class Database:
             conn.close()
 
     def check_and_upgrade_user_vip(self, telegram_id: int, reseller_id: Optional[int] = None) -> dict:
-        """بررسی خودکار مجموع خریدهای کاربر و ارتقا به VIP در صورت رسیدن به حد نصاب"""
+        """Ø¨Ø±Ø±Ø³ÛŒ Ø®ÙˆØ¯Ú©Ø§Ø± Ù…Ø¬Ù…ÙˆØ¹ Ø®Ø±ÛŒØ¯Ù‡Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø± Ùˆ Ø§Ø±ØªÙ‚Ø§ Ø¨Ù‡ VIP Ø¯Ø± ØµÙˆØ±Øª Ø±Ø³ÛŒØ¯Ù† Ø¨Ù‡ Ø­Ø¯ Ù†ØµØ§Ø¨"""
         user = self.get_user(telegram_id)
         if not user:
             return {"upgraded": False, "is_vip": False}
@@ -2122,7 +2128,7 @@ class Database:
 
         r_id = reseller_id if reseller_id is not None else user.get("reseller_id")
 
-        # محاسبه مجموع خریدهای تایید شده کاربر
+        # Ù…Ø­Ø§Ø³Ø¨Ù‡ Ù…Ø¬Ù…ÙˆØ¹ Ø®Ø±ÛŒØ¯Ù‡Ø§ÛŒ ØªØ§ÛŒÛŒØ¯ Ø´Ø¯Ù‡ Ú©Ø§Ø±Ø¨Ø±
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -2170,7 +2176,7 @@ class Database:
         }
 
     def get_vip_settings(self) -> dict:
-        """دریافت تنظیمات جامع و فیچرهای باشگاه مشتریان پریمیوم (VIP)"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¬Ø§Ù…Ø¹ Ùˆ ÙÛŒÚ†Ø±Ù‡Ø§ÛŒ Ø¨Ø§Ø´Ú¯Ø§Ù‡ Ù…Ø´ØªØ±ÛŒØ§Ù† Ù¾Ø±ÛŒÙ…ÛŒÙˆÙ… (VIP)"""
         auto_enabled = str(self.get_setting("vip_auto_enabled", "1")).lower() in ("1", "true", "yes")
         enabled = str(self.get_setting("vip_system_enabled", "1")).lower() in ("1", "true", "yes")
         priority_support = str(self.get_setting("vip_priority_support", "1")).lower() in ("1", "true", "yes")
@@ -2200,7 +2206,7 @@ class Database:
         }
 
     def save_vip_settings(self, settings: dict) -> bool:
-        """ذخیره تنظیمات و فیچرهای باشگاه مشتریان پریمیوم در جدول settings"""
+        """Ø°Ø®ÛŒØ±Ù‡ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ùˆ ÙÛŒÚ†Ø±Ù‡Ø§ÛŒ Ø¨Ø§Ø´Ú¯Ø§Ù‡ Ù…Ø´ØªØ±ÛŒØ§Ù† Ù¾Ø±ÛŒÙ…ÛŒÙˆÙ… Ø¯Ø± Ø¬Ø¯ÙˆÙ„ settings"""
         try:
             for k, v in settings.items():
                 if isinstance(v, bool):
@@ -2214,7 +2220,7 @@ class Database:
             return False
 
     def get_vip_users_list(self) -> list:
-        """دریافت لیست تمام مشتریان پرمیوم همراه با آمار خرید و اشتراک‌های فعال"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒØ³Øª ØªÙ…Ø§Ù… Ù…Ø´ØªØ±ÛŒØ§Ù† Ù¾Ø±Ù…ÛŒÙˆÙ… Ù‡Ù…Ø±Ø§Ù‡ Ø¨Ø§ Ø¢Ù…Ø§Ø± Ø®Ø±ÛŒØ¯ Ùˆ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒ ÙØ¹Ø§Ù„"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -2236,7 +2242,7 @@ class Database:
             conn.close()
 
     def get_vip_dashboard_stats(self) -> dict:
-        """محاسبه آمار و شاخص‌های تحلیلی مشتریان پرمیوم برای داشبورد"""
+        """Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø¢Ù…Ø§Ø± Ùˆ Ø´Ø§Ø®Øµâ€ŒÙ‡Ø§ÛŒ ØªØ­Ù„ÛŒÙ„ÛŒ Ù…Ø´ØªØ±ÛŒØ§Ù† Ù¾Ø±Ù…ÛŒÙˆÙ… Ø¨Ø±Ø§ÛŒ Ø¯Ø§Ø´Ø¨ÙˆØ±Ø¯"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -2275,21 +2281,21 @@ class Database:
         finally:
             conn.close()
 
-    # ═══════════════════════════════════════════════════════════════
-    # مدیریت کیف پول کاربر (User In-App Wallet)
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ù…Ø¯ÛŒØ±ÛŒØª Ú©ÛŒÙ Ù¾ÙˆÙ„ Ú©Ø§Ø±Ø¨Ø± (User In-App Wallet)
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def get_user_wallet_balance(self, telegram_id: int) -> int:
-        """دریافت موجودی کیف پول کاربر (به تومان)"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ú©Ø§Ø±Ø¨Ø± (Ø¨Ù‡ ØªÙˆÙ…Ø§Ù†)"""
         user = self.get_user(telegram_id)
         if not user:
             return 0
         return int(user.get("wallet_balance") or 0)
 
     def add_wallet_balance(self, telegram_id: int, amount: int, description: str, ref_id: str = None, tx_type: str = "deposit") -> dict:
-        """افزایش موجودی کیف پول کاربر و ثبت تراکنش"""
+        """Ø§ÙØ²Ø§ÛŒØ´ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ú©Ø§Ø±Ø¨Ø± Ùˆ Ø«Ø¨Øª ØªØ±Ø§Ú©Ù†Ø´"""
         if amount <= 0:
-            return {"success": False, "error": "مبلغ باید بیشتر از صفر باشد."}
+            return {"success": False, "error": "Ù…Ø¨Ù„Øº Ø¨Ø§ÛŒØ¯ Ø¨ÛŒØ´ØªØ± Ø§Ø² ØµÙØ± Ø¨Ø§Ø´Ø¯."}
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -2321,9 +2327,9 @@ class Database:
             conn.close()
 
     def deduct_wallet_balance(self, telegram_id: int, amount: int, description: str, ref_id: str = None) -> dict:
-        """کسر از موجودی کیف پول کاربر جهت خرید یا تمدید پلن"""
+        """Ú©Ø³Ø± Ø§Ø² Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ú©Ø§Ø±Ø¨Ø± Ø¬Ù‡Øª Ø®Ø±ÛŒØ¯ ÛŒØ§ ØªÙ…Ø¯ÛŒØ¯ Ù¾Ù„Ù†"""
         if amount <= 0:
-            return {"success": False, "error": "مبلغ نامعتبر است."}
+            return {"success": False, "error": "Ù…Ø¨Ù„Øº Ù†Ø§Ù…Ø¹ØªØ¨Ø± Ø§Ø³Øª."}
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -2331,11 +2337,11 @@ class Database:
             cursor.execute("SELECT id, wallet_balance FROM users WHERE telegram_id = ?", (telegram_id,))
             row = cursor.fetchone()
             if not row:
-                return {"success": False, "error": "کاربر یافت نشد."}
+                return {"success": False, "error": "Ú©Ø§Ø±Ø¨Ø± ÛŒØ§ÙØª Ù†Ø´Ø¯."}
 
             current_bal = int(row["wallet_balance"] or 0)
             if current_bal < amount:
-                return {"success": False, "error": "موجودی کیف پول شما کافی نیست.", "balance": current_bal, "required": amount}
+                return {"success": False, "error": "Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ø´Ù…Ø§ Ú©Ø§ÙÛŒ Ù†ÛŒØ³Øª.", "balance": current_bal, "required": amount}
 
             new_balance = current_bal - amount
             cursor.execute("UPDATE users SET wallet_balance = ?, updated_at = ? WHERE telegram_id = ?", (new_balance, now, telegram_id))
@@ -2354,7 +2360,7 @@ class Database:
             conn.close()
 
     def get_wallet_transactions(self, telegram_id: int, limit: int = 20) -> list:
-        """دریافت لیست تاریخچه تراکنش‌های کیف پول کاربر"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒØ³Øª ØªØ§Ø±ÛŒØ®Ú†Ù‡ ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ú©Ø§Ø±Ø¨Ø±"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -2373,7 +2379,7 @@ class Database:
             conn.close()
 
     def find_telegram_id_by_phone(self, phone_number: str) -> Optional[int]:
-        """یافتن آیدی تلگرام کاربر از روی شماره تلفن ثبت‌شده در جدول کاربران"""
+        """ÛŒØ§ÙØªÙ† Ø¢ÛŒØ¯ÛŒ ØªÙ„Ú¯Ø±Ø§Ù… Ú©Ø§Ø±Ø¨Ø± Ø§Ø² Ø±ÙˆÛŒ Ø´Ù…Ø§Ø±Ù‡ ØªÙ„ÙÙ† Ø«Ø¨Øªâ€ŒØ´Ø¯Ù‡ Ø¯Ø± Ø¬Ø¯ÙˆÙ„ Ú©Ø§Ø±Ø¨Ø±Ø§Ù†"""
         if not phone_number:
             return None
         clean = re.sub(r"[^\d+]", "", str(phone_number).strip())
@@ -2399,7 +2405,7 @@ class Database:
             conn.close()
 
     def get_all_users(self):
-        """دریافت تمام کاربران"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªÙ…Ø§Ù… Ú©Ø§Ø±Ø¨Ø±Ø§Ù†"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -2414,7 +2420,7 @@ class Database:
             conn.close()
 
     def delete_user(self, telegram_id):
-        """حذف کاربر"""
+        """Ø­Ø°Ù Ú©Ø§Ø±Ø¨Ø±"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -2429,12 +2435,12 @@ class Database:
         finally:
             conn.close()
 
-    # ═══════════════════════════════════════════════════════════════
-    # مدیریت اشتراک‌ها
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ù…Ø¯ÛŒØ±ÛŒØª Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def save_subscription(self, telegram_id, hidify_uuid, plan_id, plan_name, data_limit, duration, data_used=0, status="active", account_name=None, account_comment=None, reseller_id=None, user_limit=1, cost_paid=0, created_by=None, **kwargs):
-        """ذخیره اشتراک جدید"""
+        """Ø°Ø®ÛŒØ±Ù‡ Ø§Ø´ØªØ±Ø§Ú© Ø¬Ø¯ÛŒØ¯"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -2458,7 +2464,7 @@ class Database:
             conn.close()
 
     def get_user_subscriptions(self, telegram_id, status=None, reseller_id=None, is_admin_bot=False):
-        """دریافت اشتراک‌های کاربر با قابلیت ایزولاسیون بر اساس نماینده یا مدیریت"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø± Ø¨Ø§ Ù‚Ø§Ø¨Ù„ÛŒØª Ø§ÛŒØ²ÙˆÙ„Ø§Ø³ÛŒÙˆÙ† Ø¨Ø± Ø§Ø³Ø§Ø³ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ ÛŒØ§ Ù…Ø¯ÛŒØ±ÛŒØª"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -2487,7 +2493,7 @@ class Database:
             conn.close()
 
     def get_active_subscription(self, telegram_id, reseller_id=None, is_admin_bot=False):
-        """دریافت اشتراک فعال کاربر با قابلیت ایزولاسیون بر اساس نماینده یا مدیریت"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø§Ø´ØªØ±Ø§Ú© ÙØ¹Ø§Ù„ Ú©Ø§Ø±Ø¨Ø± Ø¨Ø§ Ù‚Ø§Ø¨Ù„ÛŒØª Ø§ÛŒØ²ÙˆÙ„Ø§Ø³ÛŒÙˆÙ† Ø¨Ø± Ø§Ø³Ø§Ø³ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ ÛŒØ§ Ù…Ø¯ÛŒØ±ÛŒØª"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -2512,7 +2518,7 @@ class Database:
             conn.close()
 
     def update_subscription(self, subscription_id, **kwargs):
-        """بروزرسانی اشتراک"""
+        """Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø§Ø´ØªØ±Ø§Ú©"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -2539,11 +2545,11 @@ class Database:
             conn.close()
 
     def cancel_subscription(self, subscription_id):
-        """لغو اشتراک"""
+        """Ù„ØºÙˆ Ø§Ø´ØªØ±Ø§Ú©"""
         return self.update_subscription(subscription_id, status="cancelled")
 
     def update_subscription_by_uuid(self, hidify_uuid, **kwargs):
-        """بروزرسانی اشتراک بر اساس hidify_uuid"""
+        """Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø§Ø´ØªØ±Ø§Ú© Ø¨Ø± Ø§Ø³Ø§Ø³ hidify_uuid"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -2568,12 +2574,12 @@ class Database:
         finally:
             conn.close()
 
-    # ═══════════════════════════════════════════════════════════════
-    # مدیریت تراکنش‌ها
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ù…Ø¯ÛŒØ±ÛŒØª ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def save_transaction(self, order_id, user_id, username, plan_name, amount, gateway, tracking_code, status="pending", account_name=None, account_comment=None, is_renewal=0, renew_sub_id=None, discount_code=None, receipt_image=None, receipt_file_type=None, reseller_id=None, notes=None, source="telegram", **kwargs):
-        """ذخیره تراکنش"""
+        """Ø°Ø®ÛŒØ±Ù‡ ØªØ±Ø§Ú©Ù†Ø´"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -2593,7 +2599,7 @@ class Database:
             conn.commit()
             logger.info(f"Transaction {order_id} saved (is_renewal={is_renewal}, reseller_id={reseller_id}, source={source})")
             
-            # ذخیره بک‌آپ فوری
+            # Ø°Ø®ÛŒØ±Ù‡ Ø¨Ú©â€ŒØ¢Ù¾ ÙÙˆØ±ÛŒ
             try:
                 self.export_full_backup_json()
             except Exception:
@@ -2607,7 +2613,7 @@ class Database:
             conn.close()
 
     def update_transaction(self, order_id, status: str = None, ref_id: str = None, tracking_code: str = None, **kwargs):
-        """بروزرسانی وضعیت و مشخصات تراکنش (منعطف و جامع)"""
+        """Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ ÙˆØ¶Ø¹ÛŒØª Ùˆ Ù…Ø´Ø®ØµØ§Øª ØªØ±Ø§Ú©Ù†Ø´ (Ù…Ù†Ø¹Ø·Ù Ùˆ Ø¬Ø§Ù…Ø¹)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -2655,7 +2661,7 @@ class Database:
             conn.close()
 
     def get_user_transactions(self, user_id):
-        """دریافت تراکنش‌های کاربر"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -2673,7 +2679,7 @@ class Database:
             conn.close()
 
     def get_transaction_by_order_id(self, order_id):
-        """دریافت تراکنش بر اساس order_id"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªØ±Ø§Ú©Ù†Ø´ Ø¨Ø± Ø§Ø³Ø§Ø³ order_id"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -2690,7 +2696,7 @@ class Database:
             conn.close()
 
     def get_transaction_by_tracking_code(self, tracking_code):
-        """دریافت تراکنش بر اساس tracking_code (شناسه فاکتور / ارجاع درگاه)"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªØ±Ø§Ú©Ù†Ø´ Ø¨Ø± Ø§Ø³Ø§Ø³ tracking_code (Ø´Ù†Ø§Ø³Ù‡ ÙØ§Ú©ØªÙˆØ± / Ø§Ø±Ø¬Ø§Ø¹ Ø¯Ø±Ú¯Ø§Ù‡)"""
         if not tracking_code:
             return None
         conn = self.get_connection()
@@ -2711,7 +2717,7 @@ class Database:
             conn.close()
 
     def get_pending_transactions(self):
-        """دریافت تراکنش‌های در انتظار"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ Ø¯Ø± Ø§Ù†ØªØ¸Ø§Ø±"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -2730,7 +2736,7 @@ class Database:
 
     def revoke_transaction(self, tx_id: int, admin_name: str, admin_id: int = None, reason: str = "", rollback_sub_action: str = "keep") -> dict:
         """
-        ابطال تراکنش توسط مدیر ارشد با ثبت تاریخچه، کسر از درآمد، اصلاح تراز مالی نماینده و امکان رول‌بک اشتراک
+        Ø§Ø¨Ø·Ø§Ù„ ØªØ±Ø§Ú©Ù†Ø´ ØªÙˆØ³Ø· Ù…Ø¯ÛŒØ± Ø§Ø±Ø´Ø¯ Ø¨Ø§ Ø«Ø¨Øª ØªØ§Ø±ÛŒØ®Ú†Ù‡ØŒ Ú©Ø³Ø± Ø§Ø² Ø¯Ø±Ø¢Ù…Ø¯ØŒ Ø§ØµÙ„Ø§Ø­ ØªØ±Ø§Ø² Ù…Ø§Ù„ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ùˆ Ø§Ù…Ú©Ø§Ù† Ø±ÙˆÙ„â€ŒØ¨Ú© Ø§Ø´ØªØ±Ø§Ú©
         rollback_sub_action: 'keep', 'disable', 'delete'
         """
         conn = self.get_connection()
@@ -2738,35 +2744,35 @@ class Database:
         try:
             tx = cursor.execute("SELECT * FROM transactions WHERE id=?", (tx_id,)).fetchone()
             if not tx:
-                return {"success": False, "error": "تراکنش یافت نشد."}
+                return {"success": False, "error": "ØªØ±Ø§Ú©Ù†Ø´ ÛŒØ§ÙØª Ù†Ø´Ø¯."}
 
             tx = dict(tx)
             if tx["status"] == "revoked":
-                return {"success": False, "error": "این تراکنش قبلاً باطل شده است."}
+                return {"success": False, "error": "Ø§ÛŒÙ† ØªØ±Ø§Ú©Ù†Ø´ Ù‚Ø¨Ù„Ø§Ù‹ Ø¨Ø§Ø·Ù„ Ø´Ø¯Ù‡ Ø§Ø³Øª."}
 
             old_status = tx["status"]
             now_iso = get_now_iso()
 
-            # ۱. تغییر وضعیت تراکنش به revoked
+            # Û±. ØªØºÛŒÛŒØ± ÙˆØ¶Ø¹ÛŒØª ØªØ±Ø§Ú©Ù†Ø´ Ø¨Ù‡ revoked
             cursor.execute("""
                 UPDATE transactions
                 SET status='revoked', revoked_at=?, revoked_by=?, revoke_reason=?, updated_at=?
                 WHERE id=?
             """, (now_iso, admin_name, reason, now_iso, tx_id))
 
-            # ۲. ثبت لاگ حسابرسی
+            # Û². Ø«Ø¨Øª Ù„Ø§Ú¯ Ø­Ø³Ø§Ø¨Ø±Ø³ÛŒ
             cursor.execute("""
                 INSERT INTO transaction_audit_logs 
                 (transaction_id, admin_id, admin_name, action, field_name, old_value, new_value, reason, created_at)
                 VALUES (?, ?, ?, 'revoke', 'status', ?, 'revoked', ?, ?)
             """, (tx_id, admin_id, admin_name, old_status, reason, now_iso))
 
-            # ۳. در صورت تایید قبلی فیش، اصلاح و بازنگری در سیستم مالی:
+            # Û³. Ø¯Ø± ØµÙˆØ±Øª ØªØ§ÛŒÛŒØ¯ Ù‚Ø¨Ù„ÛŒ ÙÛŒØ´ØŒ Ø§ØµÙ„Ø§Ø­ Ùˆ Ø¨Ø§Ø²Ù†Ú¯Ø±ÛŒ Ø¯Ø± Ø³ÛŒØ³ØªÙ… Ù…Ø§Ù„ÛŒ:
             if old_status in ("approved", "completed"):
                 r_id = tx["reseller_id"]
                 is_bundle = (tx.get("gateway") == "bundle_reseller" or str(tx.get("order_id") or "").startswith("R_BUNDLE"))
                 if r_id and is_bundle:
-                    # یافتن تراکنش واریز بسته اعتباری
+                    # ÛŒØ§ÙØªÙ† ØªØ±Ø§Ú©Ù†Ø´ ÙˆØ§Ø±ÛŒØ² Ø¨Ø³ØªÙ‡ Ø§Ø¹ØªØ¨Ø§Ø±ÛŒ
                     r_tx = cursor.execute("""
                         SELECT id, amount FROM reseller_transactions 
                         WHERE reseller_id=? AND (description LIKE ? OR plan_name=?) AND type='deposit'
@@ -2789,25 +2795,25 @@ class Database:
                             VALUES (?, ?, ?, 'revoke', 'status', 'active', 'revoked', ?, ?)
                         """, (r_tx["id"], admin_id, admin_name, reason, now_iso))
 
-                # ابطال یا خنثی‌سازی سند در سیستم حسابداری
+                # Ø§Ø¨Ø·Ø§Ù„ ÛŒØ§ Ø®Ù†Ø«ÛŒâ€ŒØ³Ø§Ø²ÛŒ Ø³Ù†Ø¯ Ø¯Ø± Ø³ÛŒØ³ØªÙ… Ø­Ø³Ø§Ø¨Ø¯Ø§Ø±ÛŒ
                 try:
                     cursor.execute("""
                         UPDATE accounting_records
                         SET amount = 0, is_edited = 1, edited_by = ?, edited_at = ?,
-                            description = COALESCE(description, '') || ' [باطل شده توسط مدیریت]'
+                            description = COALESCE(description, '') || ' [Ø¨Ø§Ø·Ù„ Ø´Ø¯Ù‡ ØªÙˆØ³Ø· Ù…Ø¯ÛŒØ±ÛŒØª]'
                         WHERE (ref_type = 'transaction' AND ref_id = ?)
                            OR title LIKE ?
                     """, (admin_name, now_iso, str(tx_id), f"%{tx['order_id']}%"))
                 except Exception:
                     pass
 
-            # ۴. یافتن اشتراک مرتبط
+            # Û´. ÛŒØ§ÙØªÙ† Ø§Ø´ØªØ±Ø§Ú© Ù…Ø±ØªØ¨Ø·
             sub_id = tx["subscription_id"]
             associated_sub = None
             if sub_id:
                 associated_sub = cursor.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,)).fetchone()
             elif tx["user_id"] and tx["account_name"]:
-                # جستجوی اشتراک بر اساس user_id و account_name
+                # Ø¬Ø³ØªØ¬ÙˆÛŒ Ø§Ø´ØªØ±Ø§Ú© Ø¨Ø± Ø§Ø³Ø§Ø³ user_id Ùˆ account_name
                 associated_sub = cursor.execute(
                     "SELECT * FROM subscriptions WHERE telegram_id=? AND account_name=? ORDER BY id DESC LIMIT 1",
                     (tx["user_id"], tx["account_name"])
@@ -2827,13 +2833,13 @@ class Database:
             conn.close()
 
     def update_transaction_details(self, tx_id: int, admin_id: int, admin_name: str, amount: int = None, tracking_code: str = None, card_number: str = None, notes: str = None, reason: str = "") -> dict:
-        """ویرایش مشخصات فیش با ثبت دقیق لاگ حسابرسی (قبل و بعد)، برچسب ویرایش، و اعمال تغییرات مالی"""
+        """ÙˆÛŒØ±Ø§ÛŒØ´ Ù…Ø´Ø®ØµØ§Øª ÙÛŒØ´ Ø¨Ø§ Ø«Ø¨Øª Ø¯Ù‚ÛŒÙ‚ Ù„Ø§Ú¯ Ø­Ø³Ø§Ø¨Ø±Ø³ÛŒ (Ù‚Ø¨Ù„ Ùˆ Ø¨Ø¹Ø¯)ØŒ Ø¨Ø±Ú†Ø³Ø¨ ÙˆÛŒØ±Ø§ÛŒØ´ØŒ Ùˆ Ø§Ø¹Ù…Ø§Ù„ ØªØºÛŒÛŒØ±Ø§Øª Ù…Ø§Ù„ÛŒ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             tx = cursor.execute("SELECT * FROM transactions WHERE id=?", (tx_id,)).fetchone()
             if not tx:
-                return {"success": False, "error": "تراکنش یافت نشد."}
+                return {"success": False, "error": "ØªØ±Ø§Ú©Ù†Ø´ ÛŒØ§ÙØª Ù†Ø´Ø¯."}
 
             tx = dict(tx)
             now_iso = get_now_iso()
@@ -2863,7 +2869,7 @@ class Database:
                 changes.append(("account_comment", tx["account_comment"] or "", notes.strip()))
 
             if not fields_to_update:
-                return {"success": True, "message": "هیچ تغییری اعمال نشد."}
+                return {"success": True, "message": "Ù‡ÛŒÚ† ØªØºÛŒÛŒØ±ÛŒ Ø§Ø¹Ù…Ø§Ù„ Ù†Ø´Ø¯."}
 
             fields_to_update["is_edited"] = 1
             fields_to_update["edited_by"] = admin_name
@@ -2876,7 +2882,7 @@ class Database:
 
             cursor.execute(f"UPDATE transactions SET {set_clause} WHERE id=?", values)
 
-            # در صورت تغییر مبلغ فیش‌های تایید شده، اعمال تراز در حسابداری و تراز کیف پول نماینده
+            # Ø¯Ø± ØµÙˆØ±Øª ØªØºÛŒÛŒØ± Ù…Ø¨Ù„Øº ÙÛŒØ´â€ŒÙ‡Ø§ÛŒ ØªØ§ÛŒÛŒØ¯ Ø´Ø¯Ù‡ØŒ Ø§Ø¹Ù…Ø§Ù„ ØªØ±Ø§Ø² Ø¯Ø± Ø­Ø³Ø§Ø¨Ø¯Ø§Ø±ÛŒ Ùˆ ØªØ±Ø§Ø² Ú©ÛŒÙ Ù¾ÙˆÙ„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
             if int_amt is not None and tx["status"] in ("approved", "completed"):
                 delta = int_amt - tx["amount"]
                 r_id = tx["reseller_id"]
@@ -2884,13 +2890,13 @@ class Database:
                 if r_id and is_bundle and delta != 0:
                     cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at=? WHERE id=?", (delta, now_iso, r_id))
                     t_type = "deposit" if delta > 0 else "refund"
-                    t_desc = f"تعدیل موجودی به علت ویرایش مبلغ سفارش #{tx['order_id']} توسط مدیریت ({delta:+,} تومان)"
+                    t_desc = f"ØªØ¹Ø¯ÛŒÙ„ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ø¨Ù‡ Ø¹Ù„Øª ÙˆÛŒØ±Ø§ÛŒØ´ Ù…Ø¨Ù„Øº Ø³ÙØ§Ø±Ø´ #{tx['order_id']} ØªÙˆØ³Ø· Ù…Ø¯ÛŒØ±ÛŒØª ({delta:+,} ØªÙˆÙ…Ø§Ù†)"
                     cursor.execute("""
                         INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
                         VALUES (?, ?, ?, ?, '-', ?, ?)
                     """, (r_id, t_type, abs(delta), tx.get("plan_name"), t_desc, now_iso))
 
-                # به‌روزرسانی سند در حسابداری
+                # Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø³Ù†Ø¯ Ø¯Ø± Ø­Ø³Ø§Ø¨Ø¯Ø§Ø±ÛŒ
                 try:
                     cursor.execute("""
                         UPDATE accounting_records
@@ -2901,7 +2907,7 @@ class Database:
                 except Exception:
                     pass
 
-            # ثبت لاگ حسابرسی برای هر تغییر
+            # Ø«Ø¨Øª Ù„Ø§Ú¯ Ø­Ø³Ø§Ø¨Ø±Ø³ÛŒ Ø¨Ø±Ø§ÛŒ Ù‡Ø± ØªØºÛŒÛŒØ±
             for field, old_val, new_val in changes:
                 cursor.execute("""
                     INSERT INTO transaction_audit_logs 
@@ -2917,13 +2923,13 @@ class Database:
             conn.close()
 
     def soft_delete_transaction(self, tx_id: int, admin_id: int, admin_name: str, reason: str = "") -> dict:
-        """حذف نرم تراکنش (آرشیو) با ثبت لاگ"""
+        """Ø­Ø°Ù Ù†Ø±Ù… ØªØ±Ø§Ú©Ù†Ø´ (Ø¢Ø±Ø´ÛŒÙˆ) Ø¨Ø§ Ø«Ø¨Øª Ù„Ø§Ú¯"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             tx = cursor.execute("SELECT * FROM transactions WHERE id=?", (tx_id,)).fetchone()
             if not tx:
-                return {"success": False, "error": "تراکنش یافت نشد."}
+                return {"success": False, "error": "ØªØ±Ø§Ú©Ù†Ø´ ÛŒØ§ÙØª Ù†Ø´Ø¯."}
 
             now_iso = get_now_iso()
             cursor.execute("UPDATE transactions SET is_deleted=1, updated_at=? WHERE id=?", (now_iso, tx_id))
@@ -2942,7 +2948,7 @@ class Database:
             conn.close()
 
     def add_transaction_audit_log(self, transaction_id: int, admin_id: int, admin_name: str, action: str, field_name: str = None, old_value: str = None, new_value: str = None, reason: str = None) -> dict:
-        """ثبت لاگ حسابرسی تغییرات و عملیات روی تراکنش"""
+        """Ø«Ø¨Øª Ù„Ø§Ú¯ Ø­Ø³Ø§Ø¨Ø±Ø³ÛŒ ØªØºÛŒÛŒØ±Ø§Øª Ùˆ Ø¹Ù…Ù„ÛŒØ§Øª Ø±ÙˆÛŒ ØªØ±Ø§Ú©Ù†Ø´"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now_iso = get_now_iso()
@@ -2961,7 +2967,7 @@ class Database:
             conn.close()
 
     def get_transaction_audit_logs(self, tx_id: int) -> list:
-        """دریافت لیست لاگ‌های حسابرسی یک تراکنش"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒØ³Øª Ù„Ø§Ú¯â€ŒÙ‡Ø§ÛŒ Ø­Ø³Ø§Ø¨Ø±Ø³ÛŒ ÛŒÚ© ØªØ±Ø§Ú©Ù†Ø´"""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
@@ -2974,14 +2980,14 @@ class Database:
         return [dict(r) for r in rows]
 
     def update_reseller_wallet_transaction(self, rtx_id: int, admin_id: int, admin_name: str, amount: int = None, description: str = None, plan_name: str = None, reason: str = "") -> dict:
-        """ویرایش تراکنش کیف پول نماینده با تعدیل تراز مالی و ثبت لاگ قبل و بعد"""
+        """ÙˆÛŒØ±Ø§ÛŒØ´ ØªØ±Ø§Ú©Ù†Ø´ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø§ ØªØ¹Ø¯ÛŒÙ„ ØªØ±Ø§Ø² Ù…Ø§Ù„ÛŒ Ùˆ Ø«Ø¨Øª Ù„Ø§Ú¯ Ù‚Ø¨Ù„ Ùˆ Ø¨Ø¹Ø¯"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now_iso = get_now_iso()
         try:
             rtx = cursor.execute("SELECT * FROM reseller_transactions WHERE id=?", (rtx_id,)).fetchone()
             if not rtx:
-                return {"success": False, "error": "تراکنش کیف پول یافت نشد."}
+                return {"success": False, "error": "ØªØ±Ø§Ú©Ù†Ø´ Ú©ÛŒÙ Ù¾ÙˆÙ„ ÛŒØ§ÙØª Ù†Ø´Ø¯."}
 
             reseller_id = rtx["reseller_id"]
             rtx_dict = dict(rtx)
@@ -2995,7 +3001,7 @@ class Database:
                         updates["amount"] = int_amt
                         changes.append(("amount", str(rtx_dict["amount"]), str(int_amt)))
 
-                        # تعدیل موجودی کیف پول نماینده بر اساس نوع تراکنش
+                        # ØªØ¹Ø¯ÛŒÙ„ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø± Ø§Ø³Ø§Ø³ Ù†ÙˆØ¹ ØªØ±Ø§Ú©Ù†Ø´
                         delta = int_amt - rtx_dict["amount"]
                         if rtx_dict.get("status") != "revoked" and not rtx_dict.get("is_revoked"):
                             if rtx_dict["type"] == "deposit":
@@ -3014,7 +3020,7 @@ class Database:
                 changes.append(("plan_name", rtx_dict.get("plan_name") or "", plan_name.strip()))
 
             if not updates:
-                return {"success": True, "message": "هیچ تغییری اعمال نشد.", "reseller_id": reseller_id}
+                return {"success": True, "message": "Ù‡ÛŒÚ† ØªØºÛŒÛŒØ±ÛŒ Ø§Ø¹Ù…Ø§Ù„ Ù†Ø´Ø¯.", "reseller_id": reseller_id}
 
             updates["is_edited"] = 1
             updates["edited_by"] = admin_name
@@ -3025,7 +3031,7 @@ class Database:
             values = list(updates.values()) + [rtx_id]
             cursor.execute(f"UPDATE reseller_transactions SET {set_clause} WHERE id=?", values)
 
-            # ثبت در لاگ حسابرسی
+            # Ø«Ø¨Øª Ø¯Ø± Ù„Ø§Ú¯ Ø­Ø³Ø§Ø¨Ø±Ø³ÛŒ
             for f_name, old_v, new_v in changes:
                 cursor.execute("""
                     INSERT INTO reseller_transaction_audit_logs
@@ -3042,24 +3048,24 @@ class Database:
             conn.close()
 
     def revoke_reseller_wallet_transaction(self, rtx_id: int, admin_id: int, admin_name: str, reason: str = "") -> dict:
-        """ابطال تراکنش کیف پول نماینده با کسر/استرداد خودکار از تراز مالی کیف پول"""
+        """Ø§Ø¨Ø·Ø§Ù„ ØªØ±Ø§Ú©Ù†Ø´ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø§ Ú©Ø³Ø±/Ø§Ø³ØªØ±Ø¯Ø§Ø¯ Ø®ÙˆØ¯Ú©Ø§Ø± Ø§Ø² ØªØ±Ø§Ø² Ù…Ø§Ù„ÛŒ Ú©ÛŒÙ Ù¾ÙˆÙ„"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now_iso = get_now_iso()
         try:
             rtx = cursor.execute("SELECT * FROM reseller_transactions WHERE id=?", (rtx_id,)).fetchone()
             if not rtx:
-                return {"success": False, "error": "تراکنش کیف پول یافت نشد."}
+                return {"success": False, "error": "ØªØ±Ø§Ú©Ù†Ø´ Ú©ÛŒÙ Ù¾ÙˆÙ„ ÛŒØ§ÙØª Ù†Ø´Ø¯."}
 
             rtx_dict = dict(rtx)
             if rtx_dict.get("status") == "revoked" or rtx_dict.get("is_revoked"):
-                return {"success": False, "error": "این تراکنش قبلاً باطل شده است."}
+                return {"success": False, "error": "Ø§ÛŒÙ† ØªØ±Ø§Ú©Ù†Ø´ Ù‚Ø¨Ù„Ø§Ù‹ Ø¨Ø§Ø·Ù„ Ø´Ø¯Ù‡ Ø§Ø³Øª."}
 
             reseller_id = rtx_dict["reseller_id"]
             amount = rtx_dict["amount"] or 0
             ttype = rtx_dict["type"]
 
-            # ۱. کسر یا بازگشت مبلغ به موجودی کیف پول نماینده
+            # Û±. Ú©Ø³Ø± ÛŒØ§ Ø¨Ø§Ø²Ú¯Ø´Øª Ù…Ø¨Ù„Øº Ø¨Ù‡ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
             if ttype == "deposit":
                 cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (amount, now_iso, reseller_id))
             elif ttype in ("purchase", "renewal"):
@@ -3067,14 +3073,14 @@ class Database:
             elif ttype == "refund":
                 cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (amount, now_iso, reseller_id))
 
-            # ۲. علامت‌گذاری تراکنش به عنوان باطل‌شده
+            # Û². Ø¹Ù„Ø§Ù…Øªâ€ŒÚ¯Ø°Ø§Ø±ÛŒ ØªØ±Ø§Ú©Ù†Ø´ Ø¨Ù‡ Ø¹Ù†ÙˆØ§Ù† Ø¨Ø§Ø·Ù„â€ŒØ´Ø¯Ù‡
             cursor.execute("""
                 UPDATE reseller_transactions
                 SET status='revoked', is_revoked=1, revoked_by=?, revoked_at=?, revoke_reason=?
                 WHERE id=?
             """, (admin_name, now_iso, reason, rtx_id))
 
-            # ۳. ثبت لاگ حسابرسی
+            # Û³. Ø«Ø¨Øª Ù„Ø§Ú¯ Ø­Ø³Ø§Ø¨Ø±Ø³ÛŒ
             cursor.execute("""
                 INSERT INTO reseller_transaction_audit_logs
                 (reseller_transaction_id, admin_id, admin_name, action, field_name, old_value, new_value, reason, created_at)
@@ -3090,7 +3096,7 @@ class Database:
             conn.close()
 
     def get_reseller_wallet_transaction_audit_logs(self, rtx_id: int) -> list:
-        """دریافت لاگ‌های حسابرسی یک تراکنش کیف پول نماینده"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ù„Ø§Ú¯â€ŒÙ‡Ø§ÛŒ Ø­Ø³Ø§Ø¨Ø±Ø³ÛŒ ÛŒÚ© ØªØ±Ø§Ú©Ù†Ø´ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
@@ -3102,9 +3108,9 @@ class Database:
         conn.close()
         return [dict(r) for r in rows]
 
-    # ═══════════════════════════════════════════════════════════════
-    # مدیریت لاگ‌های ورود، خروج و امنیت نشست‌ها (Login & Session Logs)
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ù…Ø¯ÛŒØ±ÛŒØª Ù„Ø§Ú¯â€ŒÙ‡Ø§ÛŒ ÙˆØ±ÙˆØ¯ØŒ Ø®Ø±ÙˆØ¬ Ùˆ Ø§Ù…Ù†ÛŒØª Ù†Ø´Ø³Øªâ€ŒÙ‡Ø§ (Login & Session Logs)
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def record_login_attempt(
         self,
@@ -3120,7 +3126,7 @@ class Database:
         device_os: str = "",
         session_token: str = ""
     ) -> int:
-        """ثبت تلاش ورود به سیستم (موفق یا ناموفق)"""
+        """Ø«Ø¨Øª ØªÙ„Ø§Ø´ ÙˆØ±ÙˆØ¯ Ø¨Ù‡ Ø³ÛŒØ³ØªÙ… (Ù…ÙˆÙÙ‚ ÛŒØ§ Ù†Ø§Ù…ÙˆÙÙ‚)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -3146,7 +3152,7 @@ class Database:
             conn.close()
 
     def record_logout(self, session_token: str):
-        """ثبت خروج از حساب و غیرفعال‌سازی نشست"""
+        """Ø«Ø¨Øª Ø®Ø±ÙˆØ¬ Ø§Ø² Ø­Ø³Ø§Ø¨ Ùˆ ØºÛŒØ±ÙØ¹Ø§Ù„â€ŒØ³Ø§Ø²ÛŒ Ù†Ø´Ø³Øª"""
         if not session_token:
             return
         conn = self.get_connection()
@@ -3165,7 +3171,7 @@ class Database:
             conn.close()
 
     def update_session_activity(self, session_token: str):
-        """بروزرسانی زمان آخرین فعالیت نشست فعال"""
+        """Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø²Ù…Ø§Ù† Ø¢Ø®Ø±ÛŒÙ† ÙØ¹Ø§Ù„ÛŒØª Ù†Ø´Ø³Øª ÙØ¹Ø§Ù„"""
         if not session_token:
             return
         conn = self.get_connection()
@@ -3184,7 +3190,7 @@ class Database:
             conn.close()
 
     def get_user_login_history(self, user_type: str, user_id: int, limit: int = 30) -> list:
-        """دریافت سوابق ورود و نشست‌های یک کاربر یا مدیر"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø³ÙˆØ§Ø¨Ù‚ ÙˆØ±ÙˆØ¯ Ùˆ Ù†Ø´Ø³Øªâ€ŒÙ‡Ø§ÛŒ ÛŒÚ© Ú©Ø§Ø±Ø¨Ø± ÛŒØ§ Ù…Ø¯ÛŒØ±"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -3203,11 +3209,11 @@ class Database:
             conn.close()
 
     def get_reseller_security_logs(self, reseller_id: int, username: str) -> dict:
-        """دریافت سوابق کامل نشست‌ها و ورودهای ناموفق یک نماینده"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø³ÙˆØ§Ø¨Ù‚ Ú©Ø§Ù…Ù„ Ù†Ø´Ø³Øªâ€ŒÙ‡Ø§ Ùˆ ÙˆØ±ÙˆØ¯Ù‡Ø§ÛŒ Ù†Ø§Ù…ÙˆÙÙ‚ ÛŒÚ© Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            # ۱. نشست‌های موفق
+            # Û±. Ù†Ø´Ø³Øªâ€ŒÙ‡Ø§ÛŒ Ù…ÙˆÙÙ‚
             cursor.execute("""
                 SELECT * FROM login_logs
                 WHERE user_type = 'reseller' AND user_id = ? AND status = 'success'
@@ -3215,7 +3221,7 @@ class Database:
             """, (reseller_id,))
             sessions = [dict(r) for r in cursor.fetchall()]
 
-            # ۲. تلاش‌های ناموفق با این نام کاربری
+            # Û². ØªÙ„Ø§Ø´â€ŒÙ‡Ø§ÛŒ Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨Ø§ Ø§ÛŒÙ† Ù†Ø§Ù… Ú©Ø§Ø±Ø¨Ø±ÛŒ
             cursor.execute("""
                 SELECT * FROM login_logs
                 WHERE username = ? AND status = 'failed'
@@ -3223,7 +3229,7 @@ class Database:
             """, (username,))
             failed_attempts = [dict(r) for r in cursor.fetchall()]
 
-            # ۳. وضعیت آنلاین بودن
+            # Û³. ÙˆØ¶Ø¹ÛŒØª Ø¢Ù†Ù„Ø§ÛŒÙ† Ø¨ÙˆØ¯Ù†
             is_online = self.is_reseller_online(reseller_id)
 
             return {
@@ -3238,7 +3244,7 @@ class Database:
             conn.close()
 
     def is_user_online(self, user_type: str, user_id: int, threshold_minutes: int = 15) -> bool:
-        """بررسی آنلاین بودن کاربر، نماینده یا زیرمدیر بر اساس آخرین فعالیت در چند دقیقه گذشته"""
+        """Ø¨Ø±Ø±Ø³ÛŒ Ø¢Ù†Ù„Ø§ÛŒÙ† Ø¨ÙˆØ¯Ù† Ú©Ø§Ø±Ø¨Ø±ØŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ ÛŒØ§ Ø²ÛŒØ±Ù…Ø¯ÛŒØ± Ø¨Ø± Ø§Ø³Ø§Ø³ Ø¢Ø®Ø±ÛŒÙ† ÙØ¹Ø§Ù„ÛŒØª Ø¯Ø± Ú†Ù†Ø¯ Ø¯Ù‚ÛŒÙ‚Ù‡ Ú¯Ø°Ø´ØªÙ‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -3271,15 +3277,15 @@ class Database:
             conn.close()
 
     def is_reseller_online(self, reseller_id: int, threshold_minutes: int = 15) -> bool:
-        """بررسی آنلاین بودن نماینده فروش"""
+        """Ø¨Ø±Ø±Ø³ÛŒ Ø¢Ù†Ù„Ø§ÛŒÙ† Ø¨ÙˆØ¯Ù† Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ ÙØ±ÙˆØ´"""
         return self.is_user_online("reseller", reseller_id, threshold_minutes)
 
     def is_subadmin_online(self, admin_id: int, threshold_minutes: int = 15) -> bool:
-        """بررسی آنلاین بودن مدیر کمکی یا پشتیبان زیرمجموعه نماینده"""
+        """Ø¨Ø±Ø±Ø³ÛŒ Ø¢Ù†Ù„Ø§ÛŒÙ† Ø¨ÙˆØ¯Ù† Ù…Ø¯ÛŒØ± Ú©Ù…Ú©ÛŒ ÛŒØ§ Ù¾Ø´ØªÛŒØ¨Ø§Ù† Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         return self.is_user_online("reseller_subadmin", admin_id, threshold_minutes)
 
     def is_session_active(self, session_token: str) -> bool:
-        """بررسی فعال بودن نشست بر اساس توکن نشست در لاگ‌ها"""
+        """Ø¨Ø±Ø±Ø³ÛŒ ÙØ¹Ø§Ù„ Ø¨ÙˆØ¯Ù† Ù†Ø´Ø³Øª Ø¨Ø± Ø§Ø³Ø§Ø³ ØªÙˆÚ©Ù† Ù†Ø´Ø³Øª Ø¯Ø± Ù„Ø§Ú¯â€ŒÙ‡Ø§"""
         if not session_token:
             return False
         conn = self.get_connection()
@@ -3288,7 +3294,7 @@ class Database:
             cursor.execute("SELECT is_active FROM login_logs WHERE session_token = ? ORDER BY id DESC LIMIT 1", (session_token,))
             row = cursor.fetchone()
             if not row:
-                return True  # در صورت عدم وجود لاگ قدیمی جهت جلوگیری از خروج ناگهانی
+                return True  # Ø¯Ø± ØµÙˆØ±Øª Ø¹Ø¯Ù… ÙˆØ¬ÙˆØ¯ Ù„Ø§Ú¯ Ù‚Ø¯ÛŒÙ…ÛŒ Ø¬Ù‡Øª Ø¬Ù„ÙˆÚ¯ÛŒØ±ÛŒ Ø§Ø² Ø®Ø±ÙˆØ¬ Ù†Ø§Ú¯Ù‡Ø§Ù†ÛŒ
             return bool(row["is_active"])
         except Exception:
             return True
@@ -3296,7 +3302,7 @@ class Database:
             conn.close()
 
     def terminate_session(self, session_id: int) -> bool:
-        """خاتمه و قطع فوری یک نشست فعال بر اساس شناسه لاگ"""
+        """Ø®Ø§ØªÙ…Ù‡ Ùˆ Ù‚Ø·Ø¹ ÙÙˆØ±ÛŒ ÛŒÚ© Ù†Ø´Ø³Øª ÙØ¹Ø§Ù„ Ø¨Ø± Ø§Ø³Ø§Ø³ Ø´Ù†Ø§Ø³Ù‡ Ù„Ø§Ú¯"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -3315,7 +3321,7 @@ class Database:
             conn.close()
 
     def terminate_session_by_token(self, session_token: str) -> bool:
-        """خاتمه نشست فعال بر اساس توکن"""
+        """Ø®Ø§ØªÙ…Ù‡ Ù†Ø´Ø³Øª ÙØ¹Ø§Ù„ Ø¨Ø± Ø§Ø³Ø§Ø³ ØªÙˆÚ©Ù†"""
         if not session_token:
             return False
         conn = self.get_connection()
@@ -3336,7 +3342,7 @@ class Database:
             conn.close()
 
     def terminate_all_user_sessions(self, user_type: str, user_id: int, except_token: str = None) -> int:
-        """خاتمه تمام نشست‌های فعال یک کاربر، نماینده یا زیرمدیر (با امکان مستثنی کردن نشست فعلی)"""
+        """Ø®Ø§ØªÙ…Ù‡ ØªÙ…Ø§Ù… Ù†Ø´Ø³Øªâ€ŒÙ‡Ø§ÛŒ ÙØ¹Ø§Ù„ ÛŒÚ© Ú©Ø§Ø±Ø¨Ø±ØŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ ÛŒØ§ Ø²ÛŒØ±Ù…Ø¯ÛŒØ± (Ø¨Ø§ Ø§Ù…Ú©Ø§Ù† Ù…Ø³ØªØ«Ù†ÛŒ Ú©Ø±Ø¯Ù† Ù†Ø´Ø³Øª ÙØ¹Ù„ÛŒ)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -3356,7 +3362,7 @@ class Database:
             conn.close()
 
     def terminate_reseller_and_team_sessions(self, reseller_id: int) -> int:
-        """خاتمه کلیه نشست‌های فعال یک نماینده و تمامی اعضای تیم زیرمجموعه وی"""
+        """Ø®Ø§ØªÙ…Ù‡ Ú©Ù„ÛŒÙ‡ Ù†Ø´Ø³Øªâ€ŒÙ‡Ø§ÛŒ ÙØ¹Ø§Ù„ ÛŒÚ© Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ùˆ ØªÙ…Ø§Ù…ÛŒ Ø§Ø¹Ø¶Ø§ÛŒ ØªÛŒÙ… Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡ ÙˆÛŒ"""
         count = self.terminate_all_user_sessions("reseller", reseller_id)
         team_members = self.get_reseller_team_members(reseller_id)
         for m in team_members:
@@ -3364,7 +3370,7 @@ class Database:
         return count
 
     def get_all_failed_login_logs(self, limit: int = 50) -> list:
-        """دریافت تمام تلاش‌های ناموفق ورود به سیستم برای مانیتورینگ امنیتی مدیر کل"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªÙ…Ø§Ù… ØªÙ„Ø§Ø´â€ŒÙ‡Ø§ÛŒ Ù†Ø§Ù…ÙˆÙÙ‚ ÙˆØ±ÙˆØ¯ Ø¨Ù‡ Ø³ÛŒØ³ØªÙ… Ø¨Ø±Ø§ÛŒ Ù…Ø§Ù†ÛŒØªÙˆØ±ÛŒÙ†Ú¯ Ø§Ù…Ù†ÛŒØªÛŒ Ù…Ø¯ÛŒØ± Ú©Ù„"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -3382,9 +3388,9 @@ class Database:
         finally:
             conn.close()
 
-    # ═══════════════════════════════════════════════════════════════
-    # سامانه ثبت وقایع و حسابرسی فعالیت‌های سیستم (System Activity & Audit Logs)
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ø³Ø§Ù…Ø§Ù†Ù‡ Ø«Ø¨Øª ÙˆÙ‚Ø§ÛŒØ¹ Ùˆ Ø­Ø³Ø§Ø¨Ø±Ø³ÛŒ ÙØ¹Ø§Ù„ÛŒØªâ€ŒÙ‡Ø§ÛŒ Ø³ÛŒØ³ØªÙ… (System Activity & Audit Logs)
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def add_system_log(
         self,
@@ -3403,7 +3409,7 @@ class Database:
         ip_address: str = None
     ) -> dict:
         """
-        ثبت یک رویداد در سامانه لاگ و حسابرسی سیستم
+        Ø«Ø¨Øª ÛŒÚ© Ø±ÙˆÛŒØ¯Ø§Ø¯ Ø¯Ø± Ø³Ø§Ù…Ø§Ù†Ù‡ Ù„Ø§Ú¯ Ùˆ Ø­Ø³Ø§Ø¨Ø±Ø³ÛŒ Ø³ÛŒØ³ØªÙ…
         category: 'system', 'admin', 'reseller', 'user_bot', 'security'
         action: 'purge', 'delete', 'restore', 'create', 'update', 'renew', 'sync', 'sync_diff', 'login', 'backup', 'settings_change', 'bulk_action', 'status_change', etc.
         level: 'info', 'success', 'warning', 'danger'
@@ -3467,7 +3473,7 @@ class Database:
         time_range: str = None
     ) -> Tuple[List[dict], int]:
         """
-        دریافت لیست لاگ‌های سیستم با فیلترهای چندگانه و صفحه‌بندی
+        Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒØ³Øª Ù„Ø§Ú¯â€ŒÙ‡Ø§ÛŒ Ø³ÛŒØ³ØªÙ… Ø¨Ø§ ÙÛŒÙ„ØªØ±Ù‡Ø§ÛŒ Ú†Ù†Ø¯Ú¯Ø§Ù†Ù‡ Ùˆ ØµÙØ­Ù‡â€ŒØ¨Ù†Ø¯ÛŒ
         """
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -3548,7 +3554,7 @@ class Database:
             conn.close()
 
     def get_system_logs_stats(self) -> dict:
-        """محاسبه آمار کلان لاگ‌ها برای کارت‌های شاخص (KPI)"""
+        """Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø¢Ù…Ø§Ø± Ú©Ù„Ø§Ù† Ù„Ø§Ú¯â€ŒÙ‡Ø§ Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ÛŒ Ø´Ø§Ø®Øµ (KPI)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now_dt = get_now_naive()
@@ -3586,7 +3592,7 @@ class Database:
         return stats
 
     def clear_old_system_logs(self, days: int = 90) -> int:
-        """پاکسازی لاگ‌های قدیمی‌تر از تعداد روز مشخص شده"""
+        """Ù¾Ø§Ú©Ø³Ø§Ø²ÛŒ Ù„Ø§Ú¯â€ŒÙ‡Ø§ÛŒ Ù‚Ø¯ÛŒÙ…ÛŒâ€ŒØªØ± Ø§Ø² ØªØ¹Ø¯Ø§Ø¯ Ø±ÙˆØ² Ù…Ø´Ø®Øµ Ø´Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now_dt = get_now_naive()
@@ -3602,18 +3608,18 @@ class Database:
             conn.close()
         return deleted
 
-    # ═══════════════════════════════════════════════════════════════
-    # مدیریت تنظیمات
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ù…Ø¯ÛŒØ±ÛŒØª ØªÙ†Ø¸ÛŒÙ…Ø§Øª
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def save_setting(self, key, value):
-        """ذخیره تنظیم"""
+        """Ø°Ø®ÛŒØ±Ù‡ ØªÙ†Ø¸ÛŒÙ…"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
 
         try:
-            # تبدیل dict/list به JSON
+            # ØªØ¨Ø¯ÛŒÙ„ dict/list Ø¨Ù‡ JSON
             if isinstance(value, (dict, list)):
                 value = json.dumps(value, ensure_ascii=False)
 
@@ -3635,11 +3641,11 @@ class Database:
             conn.close()
 
     def set_setting(self, key, value):
-        """نام مستعار برای save_setting"""
+        """Ù†Ø§Ù… Ù…Ø³ØªØ¹Ø§Ø± Ø¨Ø±Ø§ÛŒ save_setting"""
         return self.save_setting(key, value)
 
     def get_setting(self, key, default=None):
-        """دریافت تنظیم"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªÙ†Ø¸ÛŒÙ…"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -3648,7 +3654,7 @@ class Database:
             row = cursor.fetchone()
             if row:
                 value = row["value"]
-                # تلاش برای تبدیل از JSON
+                # ØªÙ„Ø§Ø´ Ø¨Ø±Ø§ÛŒ ØªØ¨Ø¯ÛŒÙ„ Ø§Ø² JSON
                 try:
                     return json.loads(value)
                 except:
@@ -3661,7 +3667,7 @@ class Database:
             conn.close()
 
     def get_all_settings(self):
-        """دریافت تمام تنظیمات"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªÙ…Ø§Ù… ØªÙ†Ø¸ÛŒÙ…Ø§Øª"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -3682,7 +3688,7 @@ class Database:
             conn.close()
 
     def get_refund_settings(self) -> dict:
-        """دریافت تنظیمات جامع قوانین استرداد وجه و سقف‌های بازگردانی"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¬Ø§Ù…Ø¹ Ù‚ÙˆØ§Ù†ÛŒÙ† Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡ Ùˆ Ø³Ù‚Ùâ€ŒÙ‡Ø§ÛŒ Ø¨Ø§Ø²Ú¯Ø±Ø¯Ø§Ù†ÛŒ"""
         raw = self.get_setting("refund_settings")
         defaults = {
             "refund_enabled": True,
@@ -3738,7 +3744,7 @@ class Database:
         return res
 
     def save_refund_settings(self, settings_dict: dict) -> bool:
-        """ذخیره تنظیمات جامع قوانین استرداد وجه"""
+        """Ø°Ø®ÛŒØ±Ù‡ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¬Ø§Ù…Ø¹ Ù‚ÙˆØ§Ù†ÛŒÙ† Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡"""
         try:
             current = self.get_refund_settings()
             current.update(settings_dict)
@@ -3748,7 +3754,7 @@ class Database:
             return False
 
     def get_reseller_daily_restore_count(self, reseller_id: int) -> int:
-        """تعداد دفعات بازگردانی اشتراک از سطل زباله توسط نماینده در تاریخ امروز"""
+        """ØªØ¹Ø¯Ø§Ø¯ Ø¯ÙØ¹Ø§Øª Ø¨Ø§Ø²Ú¯Ø±Ø¯Ø§Ù†ÛŒ Ø§Ø´ØªØ±Ø§Ú© Ø§Ø² Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡ ØªÙˆØ³Ø· Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¯Ø± ØªØ§Ø±ÛŒØ® Ø§Ù…Ø±ÙˆØ²"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -3757,7 +3763,7 @@ class Database:
                 SELECT COUNT(*) FROM reseller_transactions
                 WHERE reseller_id = ?
                   AND type IN ('purchase', 'purchase_credit')
-                  AND (description LIKE '%بازگردانی%' OR description LIKE '%restore%')
+                  AND (description LIKE '%Ø¨Ø§Ø²Ú¯Ø±Ø¯Ø§Ù†ÛŒ%' OR description LIKE '%restore%')
                   AND created_at >= ?
             """, (reseller_id, today_start))
             row = cursor.fetchone()
@@ -3770,8 +3776,8 @@ class Database:
 
     def can_reseller_restore(self, reseller_id: int, count_to_restore: int = 1) -> tuple[bool, str, int, int]:
         """
-        بررسی اینکه آیا نماینده مجاز به بازگردانی اشتراک‌های درخواستی در امروز هست یا خیر.
-        خروجی: (مجاز بودن, پیام خطا, سقف مجاز, تعداد انجام‌شده)
+        Ø¨Ø±Ø±Ø³ÛŒ Ø§ÛŒÙ†Ú©Ù‡ Ø¢ÛŒØ§ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ù…Ø¬Ø§Ø² Ø¨Ù‡ Ø¨Ø§Ø²Ú¯Ø±Ø¯Ø§Ù†ÛŒ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒ Ø¯Ø±Ø®ÙˆØ§Ø³ØªÛŒ Ø¯Ø± Ø§Ù…Ø±ÙˆØ² Ù‡Ø³Øª ÛŒØ§ Ø®ÛŒØ±.
+        Ø®Ø±ÙˆØ¬ÛŒ: (Ù…Ø¬Ø§Ø² Ø¨ÙˆØ¯Ù†, Ù¾ÛŒØ§Ù… Ø®Ø·Ø§, Ø³Ù‚Ù Ù…Ø¬Ø§Ø², ØªØ¹Ø¯Ø§Ø¯ Ø§Ù†Ø¬Ø§Ù…â€ŒØ´Ø¯Ù‡)
         """
         settings = self.get_refund_settings()
         custom_limits = settings.get("reseller_daily_restore_limits", {})
@@ -3783,245 +3789,245 @@ class Database:
         else:
             limit = default_limit
 
-        # عدد ۰ به معنای بدون محدودیت است
+        # Ø¹Ø¯Ø¯ Û° Ø¨Ù‡ Ù…Ø¹Ù†Ø§ÛŒ Ø¨Ø¯ÙˆÙ† Ù…Ø­Ø¯ÙˆØ¯ÛŒØª Ø§Ø³Øª
         if limit <= 0:
             return (True, "", 0, 0)
 
         current_count = self.get_reseller_daily_restore_count(reseller_id)
         if current_count + count_to_restore > limit:
             remaining = max(0, limit - current_count)
-            err = f"سقف مجاز بازگردانی روزانه شما ({limit} بار در روز) تکمیل شده است. بازگردانی‌های امروز شما: {current_count} مورد | ظرفیت باقیمانده امروز: {remaining} مورد."
+            err = f"Ø³Ù‚Ù Ù…Ø¬Ø§Ø² Ø¨Ø§Ø²Ú¯Ø±Ø¯Ø§Ù†ÛŒ Ø±ÙˆØ²Ø§Ù†Ù‡ Ø´Ù…Ø§ ({limit} Ø¨Ø§Ø± Ø¯Ø± Ø±ÙˆØ²) ØªÚ©Ù…ÛŒÙ„ Ø´Ø¯Ù‡ Ø§Ø³Øª. Ø¨Ø§Ø²Ú¯Ø±Ø¯Ø§Ù†ÛŒâ€ŒÙ‡Ø§ÛŒ Ø§Ù…Ø±ÙˆØ² Ø´Ù…Ø§: {current_count} Ù…ÙˆØ±Ø¯ | Ø¸Ø±ÙÛŒØª Ø¨Ø§Ù‚ÛŒÙ…Ø§Ù†Ø¯Ù‡ Ø§Ù…Ø±ÙˆØ²: {remaining} Ù…ÙˆØ±Ø¯."
             return (False, err, limit, current_count)
 
         return (True, "", limit, current_count)
 
-    # ═══════════════════════════════════════════════════════════════
-    # مدیریت و چیدمان سفارشی دکمه‌ها و منوی ربات (Bot Menu Customizer)
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ù…Ø¯ÛŒØ±ÛŒØª Ùˆ Ú†ÛŒØ¯Ù…Ø§Ù† Ø³ÙØ§Ø±Ø´ÛŒ Ø¯Ú©Ù…Ù‡â€ŒÙ‡Ø§ Ùˆ Ù…Ù†ÙˆÛŒ Ø±Ø¨Ø§Øª (Bot Menu Customizer)
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     DEFAULT_BOT_MENU_BUTTONS = [
         {
             "id": "buy",
-            "title": "🛍️ خرید اشتراک",
-            "description": "نمایش تعرفه‌ها و خرید اشتراک VPN",
+            "title": "ðŸ›ï¸ Ø®Ø±ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú©",
+            "description": "Ù†Ù…Ø§ÛŒØ´ ØªØ¹Ø±ÙÙ‡â€ŒÙ‡Ø§ Ùˆ Ø®Ø±ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú© VPN",
             "row": 0,
             "col": 0,
             "is_enabled": True,
             "disabled_behavior": "show_disabled",
-            "disabled_message": "⚠️ بخش خرید اشتراک موقتاً غیرفعال می‌باشد. لطفاً دقایقی دیگر مراجعه فرمایید.",
+            "disabled_message": "âš ï¸ Ø¨Ø®Ø´ Ø®Ø±ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú© Ù…ÙˆÙ‚ØªØ§Ù‹ ØºÛŒØ±ÙØ¹Ø§Ù„ Ù…ÛŒâ€ŒØ¨Ø§Ø´Ø¯. Ù„Ø·ÙØ§Ù‹ Ø¯Ù‚Ø§ÛŒÙ‚ÛŒ Ø¯ÛŒÚ¯Ø± Ù…Ø±Ø§Ø¬Ø¹Ù‡ ÙØ±Ù…Ø§ÛŒÛŒØ¯.",
         },
         {
             "id": "my_subs",
-            "title": "👤 اشتراک‌های من",
-            "description": "مشاهده وضعیت ترافیک، زمان و لینک‌های اتصال کاربر",
+            "title": "ðŸ‘¤ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒ Ù…Ù†",
+            "description": "Ù…Ø´Ø§Ù‡Ø¯Ù‡ ÙˆØ¶Ø¹ÛŒØª ØªØ±Ø§ÙÛŒÚ©ØŒ Ø²Ù…Ø§Ù† Ùˆ Ù„ÛŒÙ†Ú©â€ŒÙ‡Ø§ÛŒ Ø§ØªØµØ§Ù„ Ú©Ø§Ø±Ø¨Ø±",
             "row": 0,
             "col": 1,
             "is_enabled": True,
             "disabled_behavior": "show_disabled",
-            "disabled_message": "⚠️ بخش اشتراک‌های من موقتاً در حال بروزرسانی است.",
+            "disabled_message": "âš ï¸ Ø¨Ø®Ø´ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒ Ù…Ù† Ù…ÙˆÙ‚ØªØ§Ù‹ Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø§Ø³Øª.",
         },
         {
             "id": "test_sub",
-            "title": "⚡ تست رایگان",
-            "description": "دریافت کانفیگ تست رایگان برای کاربران جدید",
+            "title": "âš¡ ØªØ³Øª Ø±Ø§ÛŒÚ¯Ø§Ù†",
+            "description": "Ø¯Ø±ÛŒØ§ÙØª Ú©Ø§Ù†ÙÛŒÚ¯ ØªØ³Øª Ø±Ø§ÛŒÚ¯Ø§Ù† Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ø¬Ø¯ÛŒØ¯",
             "row": 1,
             "col": 0,
             "is_enabled": True,
             "disabled_behavior": "hide",
-            "disabled_message": "⚠️ اشتراک تست موقتاً غیرفعال است.",
+            "disabled_message": "âš ï¸ Ø§Ø´ØªØ±Ø§Ú© ØªØ³Øª Ù…ÙˆÙ‚ØªØ§Ù‹ ØºÛŒØ±ÙØ¹Ø§Ù„ Ø§Ø³Øª.",
         },
         {
             "id": "renew",
-            "title": "🔄 تمدید سرویس",
-            "description": "تمدید سریع اکانت‌های موجود بدون تغییر لینک",
+            "title": "ðŸ”„ ØªÙ…Ø¯ÛŒØ¯ Ø³Ø±ÙˆÛŒØ³",
+            "description": "ØªÙ…Ø¯ÛŒØ¯ Ø³Ø±ÛŒØ¹ Ø§Ú©Ø§Ù†Øªâ€ŒÙ‡Ø§ÛŒ Ù…ÙˆØ¬ÙˆØ¯ Ø¨Ø¯ÙˆÙ† ØªØºÛŒÛŒØ± Ù„ÛŒÙ†Ú©",
             "row": 1,
             "col": 1,
             "is_enabled": True,
             "disabled_behavior": "show_disabled",
-            "disabled_message": "⚠️ بخش تمدید سرویس موقتاً غیرفعال است.",
+            "disabled_message": "âš ï¸ Ø¨Ø®Ø´ ØªÙ…Ø¯ÛŒØ¯ Ø³Ø±ÙˆÛŒØ³ Ù…ÙˆÙ‚ØªØ§Ù‹ ØºÛŒØ±ÙØ¹Ø§Ù„ Ø§Ø³Øª.",
         },
         {
             "id": "wallet",
-            "title": "💳 کیف پول و شارژ",
-            "description": "مشاهده موجودی کیف پول و شارژ اعتبار",
+            "title": "ðŸ’³ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ùˆ Ø´Ø§Ø±Ú˜",
+            "description": "Ù…Ø´Ø§Ù‡Ø¯Ù‡ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ùˆ Ø´Ø§Ø±Ú˜ Ø§Ø¹ØªØ¨Ø§Ø±",
             "row": 2,
             "col": 0,
             "is_enabled": True,
             "disabled_behavior": "show_disabled",
-            "disabled_message": "⚠️ بخش کیف پول موقتاً در دسترس نیست.",
+            "disabled_message": "âš ï¸ Ø¨Ø®Ø´ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ù…ÙˆÙ‚ØªØ§Ù‹ Ø¯Ø± Ø¯Ø³ØªØ±Ø³ Ù†ÛŒØ³Øª.",
         },
         {
             "id": "support",
-            "title": "🎧 پشتیبانی و تیکت",
-            "description": "ارسال تیکت و پیام به اپراتورها",
+            "title": "ðŸŽ§ Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ Ùˆ ØªÛŒÚ©Øª",
+            "description": "Ø§Ø±Ø³Ø§Ù„ ØªÛŒÚ©Øª Ùˆ Ù¾ÛŒØ§Ù… Ø¨Ù‡ Ø§Ù¾Ø±Ø§ØªÙˆØ±Ù‡Ø§",
             "row": 2,
             "col": 1,
             "is_enabled": True,
             "disabled_behavior": "show_disabled",
-            "disabled_message": "⚠️ پشتیبانی موقتاً غیرفعال است.",
+            "disabled_message": "âš ï¸ Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ Ù…ÙˆÙ‚ØªØ§Ù‹ ØºÛŒØ±ÙØ¹Ø§Ù„ Ø§Ø³Øª.",
         },
         {
             "id": "tutorials",
-            "title": "📖 راهنمای اتصال",
-            "description": "آموزش‌های تصویری اتصال برای اندروید، آیفون، ویندوز و...",
+            "title": "ðŸ“– Ø±Ø§Ù‡Ù†Ù…Ø§ÛŒ Ø§ØªØµØ§Ù„",
+            "description": "Ø¢Ù…ÙˆØ²Ø´â€ŒÙ‡Ø§ÛŒ ØªØµÙˆÛŒØ±ÛŒ Ø§ØªØµØ§Ù„ Ø¨Ø±Ø§ÛŒ Ø§Ù†Ø¯Ø±ÙˆÛŒØ¯ØŒ Ø¢ÛŒÙÙˆÙ†ØŒ ÙˆÛŒÙ†Ø¯ÙˆØ² Ùˆ...",
             "row": 3,
             "col": 0,
             "is_enabled": True,
             "disabled_behavior": "show_disabled",
-            "disabled_message": "⚠️ بخش راهنمای اتصال در حال بروزرسانی است.",
+            "disabled_message": "âš ï¸ Ø¨Ø®Ø´ Ø±Ø§Ù‡Ù†Ù…Ø§ÛŒ Ø§ØªØµØ§Ù„ Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø§Ø³Øª.",
         },
         {
             "id": "troubleshoot",
-            "title": "🛠️ حل مشکلات اتصال",
-            "description": "ویزارد عیب‌یابی و رفع قطعی اینترنت",
+            "title": "ðŸ› ï¸ Ø­Ù„ Ù…Ø´Ú©Ù„Ø§Øª Ø§ØªØµØ§Ù„",
+            "description": "ÙˆÛŒØ²Ø§Ø±Ø¯ Ø¹ÛŒØ¨â€ŒÛŒØ§Ø¨ÛŒ Ùˆ Ø±ÙØ¹ Ù‚Ø·Ø¹ÛŒ Ø§ÛŒÙ†ØªØ±Ù†Øª",
             "row": 3,
             "col": 1,
             "is_enabled": True,
             "disabled_behavior": "show_disabled",
-            "disabled_message": "⚠️ سامانه حل مشکلات اتصال موقتاً در دسترس نیست.",
+            "disabled_message": "âš ï¸ Ø³Ø§Ù…Ø§Ù†Ù‡ Ø­Ù„ Ù…Ø´Ú©Ù„Ø§Øª Ø§ØªØµØ§Ù„ Ù…ÙˆÙ‚ØªØ§Ù‹ Ø¯Ø± Ø¯Ø³ØªØ±Ø³ Ù†ÛŒØ³Øª.",
         },
         {
             "id": "referral",
-            "title": "👥 کسب درآمد و دعوت",
-            "description": "دریافت لینک زیرمجموعه‌گیری و پورسانت",
+            "title": "ðŸ‘¥ Ú©Ø³Ø¨ Ø¯Ø±Ø¢Ù…Ø¯ Ùˆ Ø¯Ø¹ÙˆØª",
+            "description": "Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒÙ†Ú© Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡â€ŒÚ¯ÛŒØ±ÛŒ Ùˆ Ù¾ÙˆØ±Ø³Ø§Ù†Øª",
             "row": 4,
             "col": 0,
             "is_enabled": True,
             "disabled_behavior": "hide",
-            "disabled_message": "⚠️ سیستم زیرمجموعه‌گیری موقتاً غیرفعال است.",
+            "disabled_message": "âš ï¸ Ø³ÛŒØ³ØªÙ… Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡â€ŒÚ¯ÛŒØ±ÛŒ Ù…ÙˆÙ‚ØªØ§Ù‹ ØºÛŒØ±ÙØ¹Ø§Ù„ Ø§Ø³Øª.",
         },
         {
             "id": "payments",
-            "title": "🧾 سابقه پرداخت‌ها",
-            "description": "مشاهده تراکنش‌ها و فیش‌های ارسالی کاربر",
+            "title": "ðŸ§¾ Ø³Ø§Ø¨Ù‚Ù‡ Ù¾Ø±Ø¯Ø§Ø®Øªâ€ŒÙ‡Ø§",
+            "description": "Ù…Ø´Ø§Ù‡Ø¯Ù‡ ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ Ùˆ ÙÛŒØ´â€ŒÙ‡Ø§ÛŒ Ø§Ø±Ø³Ø§Ù„ÛŒ Ú©Ø§Ø±Ø¨Ø±",
             "row": 4,
             "col": 1,
             "is_enabled": True,
             "disabled_behavior": "hide",
-            "disabled_message": "⚠️ بخش سابقه پرداخت‌ها موقتاً غیرفعال است.",
+            "disabled_message": "âš ï¸ Ø¨Ø®Ø´ Ø³Ø§Ø¨Ù‚Ù‡ Ù¾Ø±Ø¯Ø§Ø®Øªâ€ŒÙ‡Ø§ Ù…ÙˆÙ‚ØªØ§Ù‹ ØºÛŒØ±ÙØ¹Ø§Ù„ Ø§Ø³Øª.",
         },
         {
             "id": "language",
-            "title": "🌐 تغییر زبان",
-            "description": "تغییر زبان ربات به زبان‌های دیگر",
+            "title": "ðŸŒ ØªØºÛŒÛŒØ± Ø²Ø¨Ø§Ù†",
+            "description": "ØªØºÛŒÛŒØ± Ø²Ø¨Ø§Ù† Ø±Ø¨Ø§Øª Ø¨Ù‡ Ø²Ø¨Ø§Ù†â€ŒÙ‡Ø§ÛŒ Ø¯ÛŒÚ¯Ø±",
             "row": 5,
             "col": 0,
             "is_enabled": True,
             "disabled_behavior": "hide",
-            "disabled_message": "⚠️ قابلیت تغییر زبان موقتاً غیرفعال است.",
+            "disabled_message": "âš ï¸ Ù‚Ø§Ø¨Ù„ÛŒØª ØªØºÛŒÛŒØ± Ø²Ø¨Ø§Ù† Ù…ÙˆÙ‚ØªØ§Ù‹ ØºÛŒØ±ÙØ¹Ø§Ù„ Ø§Ø³Øª.",
         },
     ]
 
     DEFAULT_RESELLER_BOT_MENU_BUTTONS = [
         {
             "id": "buy",
-            "title": "🛍️ خرید اشتراک",
-            "description": "نمایش تعرفه‌ها و خرید اشتراک VPN از نماینده",
+            "title": "ðŸ›ï¸ Ø®Ø±ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú©",
+            "description": "Ù†Ù…Ø§ÛŒØ´ ØªØ¹Ø±ÙÙ‡â€ŒÙ‡Ø§ Ùˆ Ø®Ø±ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú© VPN Ø§Ø² Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡",
             "row": 0,
             "col": 0,
             "is_enabled": True,
             "disabled_behavior": "show_disabled",
-            "disabled_message": "⚠️ بخش خرید اشتراک موقتاً غیرفعال می‌باشد. لطفاً دقایقی دیگر مراجعه فرمایید.",
+            "disabled_message": "âš ï¸ Ø¨Ø®Ø´ Ø®Ø±ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú© Ù…ÙˆÙ‚ØªØ§Ù‹ ØºÛŒØ±ÙØ¹Ø§Ù„ Ù…ÛŒâ€ŒØ¨Ø§Ø´Ø¯. Ù„Ø·ÙØ§Ù‹ Ø¯Ù‚Ø§ÛŒÙ‚ÛŒ Ø¯ÛŒÚ¯Ø± Ù…Ø±Ø§Ø¬Ø¹Ù‡ ÙØ±Ù…Ø§ÛŒÛŒØ¯.",
         },
         {
             "id": "my_subs",
-            "title": "👤 اشتراک‌های من",
-            "description": "مشاهده وضعیت ترافیک، زمان، لینک‌ها و بارکد اتصال کاربر",
+            "title": "ðŸ‘¤ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒ Ù…Ù†",
+            "description": "Ù…Ø´Ø§Ù‡Ø¯Ù‡ ÙˆØ¶Ø¹ÛŒØª ØªØ±Ø§ÙÛŒÚ©ØŒ Ø²Ù…Ø§Ù†ØŒ Ù„ÛŒÙ†Ú©â€ŒÙ‡Ø§ Ùˆ Ø¨Ø§Ø±Ú©Ø¯ Ø§ØªØµØ§Ù„ Ú©Ø§Ø±Ø¨Ø±",
             "row": 0,
             "col": 1,
             "is_enabled": True,
             "disabled_behavior": "show_disabled",
-            "disabled_message": "⚠️ بخش اشتراک‌های من موقتاً در حال بروزرسانی است.",
+            "disabled_message": "âš ï¸ Ø¨Ø®Ø´ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒ Ù…Ù† Ù…ÙˆÙ‚ØªØ§Ù‹ Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø§Ø³Øª.",
         },
         {
             "id": "wallet",
-            "title": "💳 کیف پول و شارژ",
-            "description": "مشاهده موجودی کیف پول و وضعیت حساب کاربری",
+            "title": "ðŸ’³ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ùˆ Ø´Ø§Ø±Ú˜",
+            "description": "Ù…Ø´Ø§Ù‡Ø¯Ù‡ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ùˆ ÙˆØ¶Ø¹ÛŒØª Ø­Ø³Ø§Ø¨ Ú©Ø§Ø±Ø¨Ø±ÛŒ",
             "row": 1,
             "col": 0,
             "is_enabled": True,
             "disabled_behavior": "show_disabled",
-            "disabled_message": "⚠️ بخش کیف پول موقتاً در دسترس نیست.",
+            "disabled_message": "âš ï¸ Ø¨Ø®Ø´ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ù…ÙˆÙ‚ØªØ§Ù‹ Ø¯Ø± Ø¯Ø³ØªØ±Ø³ Ù†ÛŒØ³Øª.",
         },
         {
             "id": "renew",
-            "title": "🔄 تمدید سرویس",
-            "description": "تمدید سریع اکانت‌های موجود بدون تغییر لینک",
+            "title": "ðŸ”„ ØªÙ…Ø¯ÛŒØ¯ Ø³Ø±ÙˆÛŒØ³",
+            "description": "ØªÙ…Ø¯ÛŒØ¯ Ø³Ø±ÛŒØ¹ Ø§Ú©Ø§Ù†Øªâ€ŒÙ‡Ø§ÛŒ Ù…ÙˆØ¬ÙˆØ¯ Ø¨Ø¯ÙˆÙ† ØªØºÛŒÛŒØ± Ù„ÛŒÙ†Ú©",
             "row": 1,
             "col": 1,
             "is_enabled": True,
             "disabled_behavior": "show_disabled",
-            "disabled_message": "⚠️ بخش تمدید سرویس موقتاً غیرفعال است.",
+            "disabled_message": "âš ï¸ Ø¨Ø®Ø´ ØªÙ…Ø¯ÛŒØ¯ Ø³Ø±ÙˆÛŒØ³ Ù…ÙˆÙ‚ØªØ§Ù‹ ØºÛŒØ±ÙØ¹Ø§Ù„ Ø§Ø³Øª.",
         },
         {
             "id": "test_sub",
-            "title": "⚡ تست رایگان",
-            "description": "دریافت کانفیگ تست رایگان برای کاربران جدید",
+            "title": "âš¡ ØªØ³Øª Ø±Ø§ÛŒÚ¯Ø§Ù†",
+            "description": "Ø¯Ø±ÛŒØ§ÙØª Ú©Ø§Ù†ÙÛŒÚ¯ ØªØ³Øª Ø±Ø§ÛŒÚ¯Ø§Ù† Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ø¬Ø¯ÛŒØ¯",
             "row": 2,
             "col": 0,
             "is_enabled": True,
             "disabled_behavior": "hide",
-            "disabled_message": "⚠️ اشتراک تست موقتاً غیرفعال است.",
+            "disabled_message": "âš ï¸ Ø§Ø´ØªØ±Ø§Ú© ØªØ³Øª Ù…ÙˆÙ‚ØªØ§Ù‹ ØºÛŒØ±ÙØ¹Ø§Ù„ Ø§Ø³Øª.",
         },
         {
             "id": "support",
-            "title": "🎧 پشتیبانی و تیکت",
-            "description": "ارسال تیکت و پیام مستقیم به پشتیبانی نماینده",
+            "title": "ðŸŽ§ Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ Ùˆ ØªÛŒÚ©Øª",
+            "description": "Ø§Ø±Ø³Ø§Ù„ ØªÛŒÚ©Øª Ùˆ Ù¾ÛŒØ§Ù… Ù…Ø³ØªÙ‚ÛŒÙ… Ø¨Ù‡ Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡",
             "row": 2,
             "col": 1,
             "is_enabled": True,
             "disabled_behavior": "show_disabled",
-            "disabled_message": "⚠️ پشتیبانی موقتاً غیرفعال است.",
+            "disabled_message": "âš ï¸ Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ Ù…ÙˆÙ‚ØªØ§Ù‹ ØºÛŒØ±ÙØ¹Ø§Ù„ Ø§Ø³Øª.",
         },
         {
             "id": "tutorials",
-            "title": "📖 راهنمای اتصال",
-            "description": "آموزش‌های تصویری اتصال برای اندروید، آیفون، ویندوز و...",
+            "title": "ðŸ“– Ø±Ø§Ù‡Ù†Ù…Ø§ÛŒ Ø§ØªØµØ§Ù„",
+            "description": "Ø¢Ù…ÙˆØ²Ø´â€ŒÙ‡Ø§ÛŒ ØªØµÙˆÛŒØ±ÛŒ Ø§ØªØµØ§Ù„ Ø¨Ø±Ø§ÛŒ Ø§Ù†Ø¯Ø±ÙˆÛŒØ¯ØŒ Ø¢ÛŒÙÙˆÙ†ØŒ ÙˆÛŒÙ†Ø¯ÙˆØ² Ùˆ...",
             "row": 3,
             "col": 0,
             "is_enabled": True,
             "disabled_behavior": "show_disabled",
-            "disabled_message": "⚠️ بخش راهنمای اتصال در حال بروزرسانی است.",
+            "disabled_message": "âš ï¸ Ø¨Ø®Ø´ Ø±Ø§Ù‡Ù†Ù…Ø§ÛŒ Ø§ØªØµØ§Ù„ Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø§Ø³Øª.",
         },
         {
             "id": "troubleshoot",
-            "title": "🛠️ حل مشکلات اتصال",
-            "description": "ویزارد عیب‌یابی و رفع قطعی اینترنت",
+            "title": "ðŸ› ï¸ Ø­Ù„ Ù…Ø´Ú©Ù„Ø§Øª Ø§ØªØµØ§Ù„",
+            "description": "ÙˆÛŒØ²Ø§Ø±Ø¯ Ø¹ÛŒØ¨â€ŒÛŒØ§Ø¨ÛŒ Ùˆ Ø±ÙØ¹ Ù‚Ø·Ø¹ÛŒ Ø§ÛŒÙ†ØªØ±Ù†Øª",
             "row": 3,
             "col": 1,
             "is_enabled": True,
             "disabled_behavior": "show_disabled",
-            "disabled_message": "⚠️ سامانه حل مشکلات اتصال موقتاً در دسترس نیست.",
+            "disabled_message": "âš ï¸ Ø³Ø§Ù…Ø§Ù†Ù‡ Ø­Ù„ Ù…Ø´Ú©Ù„Ø§Øª Ø§ØªØµØ§Ù„ Ù…ÙˆÙ‚ØªØ§Ù‹ Ø¯Ø± Ø¯Ø³ØªØ±Ø³ Ù†ÛŒØ³Øª.",
         },
         {
             "id": "payments",
-            "title": "🧾 سابقه پرداخت‌ها",
-            "description": "مشاهده تراکنش‌ها و فیش‌های ارسالی کاربر",
+            "title": "ðŸ§¾ Ø³Ø§Ø¨Ù‚Ù‡ Ù¾Ø±Ø¯Ø§Ø®Øªâ€ŒÙ‡Ø§",
+            "description": "Ù…Ø´Ø§Ù‡Ø¯Ù‡ ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ Ùˆ ÙÛŒØ´â€ŒÙ‡Ø§ÛŒ Ø§Ø±Ø³Ø§Ù„ÛŒ Ú©Ø§Ø±Ø¨Ø±",
             "row": 4,
             "col": 0,
             "is_enabled": True,
             "disabled_behavior": "hide",
-            "disabled_message": "⚠️ بخش سابقه پرداخت‌ها موقتاً غیرفعال است.",
+            "disabled_message": "âš ï¸ Ø¨Ø®Ø´ Ø³Ø§Ø¨Ù‚Ù‡ Ù¾Ø±Ø¯Ø§Ø®Øªâ€ŒÙ‡Ø§ Ù…ÙˆÙ‚ØªØ§Ù‹ ØºÛŒØ±ÙØ¹Ø§Ù„ Ø§Ø³Øª.",
         },
         {
             "id": "language",
-            "title": "🌐 تغییر زبان",
-            "description": "تغییر زبان ربات به زبان‌های دیگر",
+            "title": "ðŸŒ ØªØºÛŒÛŒØ± Ø²Ø¨Ø§Ù†",
+            "description": "ØªØºÛŒÛŒØ± Ø²Ø¨Ø§Ù† Ø±Ø¨Ø§Øª Ø¨Ù‡ Ø²Ø¨Ø§Ù†â€ŒÙ‡Ø§ÛŒ Ø¯ÛŒÚ¯Ø±",
             "row": 4,
             "col": 1,
             "is_enabled": True,
             "disabled_behavior": "hide",
-            "disabled_message": "⚠️ قابلیت تغییر زبان موقتاً غیرفعال است.",
+            "disabled_message": "âš ï¸ Ù‚Ø§Ø¨Ù„ÛŒØª ØªØºÛŒÛŒØ± Ø²Ø¨Ø§Ù† Ù…ÙˆÙ‚ØªØ§Ù‹ ØºÛŒØ±ÙØ¹Ø§Ù„ Ø§Ø³Øª.",
         },
     ]
 
     def get_bot_menu_buttons(self) -> List[dict]:
-        """دریافت لیست و تنظیمات چیدمان دکمه‌های منوی ربات مدیریت"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒØ³Øª Ùˆ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ú†ÛŒØ¯Ù…Ø§Ù† Ø¯Ú©Ù…Ù‡â€ŒÙ‡Ø§ÛŒ Ù…Ù†ÙˆÛŒ Ø±Ø¨Ø§Øª Ù…Ø¯ÛŒØ±ÛŒØª"""
         saved = self.get_setting("bot_menu_buttons_config")
         if not saved or not isinstance(saved, list):
             return copy.deepcopy(self.DEFAULT_BOT_MENU_BUTTONS)
 
-        # ادغام با دکمه‌های پیش‌فرض برای اطمینان از وجود تمام کلیدها
+        # Ø§Ø¯ØºØ§Ù… Ø¨Ø§ Ø¯Ú©Ù…Ù‡â€ŒÙ‡Ø§ÛŒ Ù¾ÛŒØ´â€ŒÙØ±Ø¶ Ø¨Ø±Ø§ÛŒ Ø§Ø·Ù…ÛŒÙ†Ø§Ù† Ø§Ø² ÙˆØ¬ÙˆØ¯ ØªÙ…Ø§Ù… Ú©Ù„ÛŒØ¯Ù‡Ø§
         saved_dict = {b["id"]: b for b in saved if isinstance(b, dict) and "id" in b}
         merged = []
         for def_btn in self.DEFAULT_BOT_MENU_BUTTONS:
@@ -4033,12 +4039,12 @@ class Database:
             else:
                 merged.append(copy.deepcopy(def_btn))
 
-        # مرتب‌سازی بر اساس سطر و ستون
+        # Ù…Ø±ØªØ¨â€ŒØ³Ø§Ø²ÛŒ Ø¨Ø± Ø§Ø³Ø§Ø³ Ø³Ø·Ø± Ùˆ Ø³ØªÙˆÙ†
         merged.sort(key=lambda x: (int(x.get("row", 0)), int(x.get("col", 0))))
         return merged
 
     def save_bot_menu_buttons(self, buttons: List[dict]) -> bool:
-        """ذخیره تنظیمات و چیدمان دکمه‌های منوی اصلی ربات مدیریت"""
+        """Ø°Ø®ÛŒØ±Ù‡ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ùˆ Ú†ÛŒØ¯Ù…Ø§Ù† Ø¯Ú©Ù…Ù‡â€ŒÙ‡Ø§ÛŒ Ù…Ù†ÙˆÛŒ Ø§ØµÙ„ÛŒ Ø±Ø¨Ø§Øª Ù…Ø¯ÛŒØ±ÛŒØª"""
         try:
             clean_buttons = []
             for b in buttons:
@@ -4051,7 +4057,7 @@ class Database:
                     "col": int(b.get("col", 0)),
                     "is_enabled": bool(b.get("is_enabled", True)),
                     "disabled_behavior": str(b.get("disabled_behavior", "show_disabled")),
-                    "disabled_message": str(b.get("disabled_message", "⚠️ این بخش موقتاً غیرفعال است.")).strip(),
+                    "disabled_message": str(b.get("disabled_message", "âš ï¸ Ø§ÛŒÙ† Ø¨Ø®Ø´ Ù…ÙˆÙ‚ØªØ§Ù‹ ØºÛŒØ±ÙØ¹Ø§Ù„ Ø§Ø³Øª.")).strip(),
                     "description": str(b.get("description", "")),
                 })
             self.set_setting("bot_menu_buttons_config", clean_buttons)
@@ -4061,13 +4067,13 @@ class Database:
             return False
 
     def reset_bot_menu_buttons(self) -> List[dict]:
-        """بازنشانی تنظیمات دکمه‌های ربات مدیریت به حالت پیش‌فرض اولیه"""
+        """Ø¨Ø§Ø²Ù†Ø´Ø§Ù†ÛŒ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¯Ú©Ù…Ù‡â€ŒÙ‡Ø§ÛŒ Ø±Ø¨Ø§Øª Ù…Ø¯ÛŒØ±ÛŒØª Ø¨Ù‡ Ø­Ø§Ù„Øª Ù¾ÛŒØ´â€ŒÙØ±Ø¶ Ø§ÙˆÙ„ÛŒÙ‡"""
         defaults = copy.deepcopy(self.DEFAULT_BOT_MENU_BUTTONS)
         self.set_setting("bot_menu_buttons_config", defaults)
         return defaults
 
     def get_reseller_bot_menu_buttons(self) -> List[dict]:
-        """دریافت لیست و تنظیمات چیدمان دکمه‌های منوی ربات‌های نمایندگان"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒØ³Øª Ùˆ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ú†ÛŒØ¯Ù…Ø§Ù† Ø¯Ú©Ù…Ù‡â€ŒÙ‡Ø§ÛŒ Ù…Ù†ÙˆÛŒ Ø±Ø¨Ø§Øªâ€ŒÙ‡Ø§ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù†"""
         saved = self.get_setting("reseller_bot_menu_buttons_config")
         if not saved or not isinstance(saved, list):
             return copy.deepcopy(self.DEFAULT_RESELLER_BOT_MENU_BUTTONS)
@@ -4087,7 +4093,7 @@ class Database:
         return merged
 
     def save_reseller_bot_menu_buttons(self, buttons: List[dict]) -> bool:
-        """ذخیره تنظیمات و چیدمان دکمه‌های منوی ربات‌های نمایندگان"""
+        """Ø°Ø®ÛŒØ±Ù‡ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ùˆ Ú†ÛŒØ¯Ù…Ø§Ù† Ø¯Ú©Ù…Ù‡â€ŒÙ‡Ø§ÛŒ Ù…Ù†ÙˆÛŒ Ø±Ø¨Ø§Øªâ€ŒÙ‡Ø§ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù†"""
         try:
             clean_buttons = []
             for b in buttons:
@@ -4100,7 +4106,7 @@ class Database:
                     "col": int(b.get("col", 0)),
                     "is_enabled": bool(b.get("is_enabled", True)),
                     "disabled_behavior": str(b.get("disabled_behavior", "show_disabled")),
-                    "disabled_message": str(b.get("disabled_message", "⚠️ این بخش موقتاً غیرفعال است.")).strip(),
+                    "disabled_message": str(b.get("disabled_message", "âš ï¸ Ø§ÛŒÙ† Ø¨Ø®Ø´ Ù…ÙˆÙ‚ØªØ§Ù‹ ØºÛŒØ±ÙØ¹Ø§Ù„ Ø§Ø³Øª.")).strip(),
                     "description": str(b.get("description", "")),
                 })
             self.set_setting("reseller_bot_menu_buttons_config", clean_buttons)
@@ -4110,13 +4116,13 @@ class Database:
             return False
 
     def reset_reseller_bot_menu_buttons(self) -> List[dict]:
-        """بازنشانی تنظیمات دکمه‌های ربات نمایندگان به حالت پیش‌فرض اولیه"""
+        """Ø¨Ø§Ø²Ù†Ø´Ø§Ù†ÛŒ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¯Ú©Ù…Ù‡â€ŒÙ‡Ø§ÛŒ Ø±Ø¨Ø§Øª Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† Ø¨Ù‡ Ø­Ø§Ù„Øª Ù¾ÛŒØ´â€ŒÙØ±Ø¶ Ø§ÙˆÙ„ÛŒÙ‡"""
         defaults = copy.deepcopy(self.DEFAULT_RESELLER_BOT_MENU_BUTTONS)
         self.set_setting("reseller_bot_menu_buttons_config", defaults)
         return defaults
 
     def get_bot_menu_keyboard_rows(self, is_admin: bool = False, is_reseller: bool = False) -> List[List[dict]]:
-        """ساخت سطرهای چیدمان دکمه‌های منو بر اساس سطر و ستون و وضعیت فعال بودن"""
+        """Ø³Ø§Ø®Øª Ø³Ø·Ø±Ù‡Ø§ÛŒ Ú†ÛŒØ¯Ù…Ø§Ù† Ø¯Ú©Ù…Ù‡â€ŒÙ‡Ø§ÛŒ Ù…Ù†Ùˆ Ø¨Ø± Ø§Ø³Ø§Ø³ Ø³Ø·Ø± Ùˆ Ø³ØªÙˆÙ† Ùˆ ÙˆØ¶Ø¹ÛŒØª ÙØ¹Ø§Ù„ Ø¨ÙˆØ¯Ù†"""
         buttons = self.get_reseller_bot_menu_buttons() if is_reseller else self.get_bot_menu_buttons()
         visible_buttons = []
         for b in buttons:
@@ -4130,7 +4136,7 @@ class Database:
                 b_copy = copy.deepcopy(b)
                 visible_buttons.append(b_copy)
 
-        # مرتب‌سازی بر اساس سطر و ستون
+        # Ù…Ø±ØªØ¨â€ŒØ³Ø§Ø²ÛŒ Ø¨Ø± Ø§Ø³Ø§Ø³ Ø³Ø·Ø± Ùˆ Ø³ØªÙˆÙ†
         visible_buttons.sort(key=lambda x: (int(x.get("row", 0)), int(x.get("col", 0))))
 
         rows_dict = {}
@@ -4144,31 +4150,31 @@ class Database:
         return sorted_rows
 
     def match_bot_menu_button(self, text: str, is_reseller: bool = False) -> Optional[dict]:
-        """تطبیق هوشمند متن ارسالی کاربر با اکشن‌های تعریف شده دکمه‌های منو"""
+        """ØªØ·Ø¨ÛŒÙ‚ Ù‡ÙˆØ´Ù…Ù†Ø¯ Ù…ØªÙ† Ø§Ø±Ø³Ø§Ù„ÛŒ Ú©Ø§Ø±Ø¨Ø± Ø¨Ø§ Ø§Ú©Ø´Ù†â€ŒÙ‡Ø§ÛŒ ØªØ¹Ø±ÛŒÙ Ø´Ø¯Ù‡ Ø¯Ú©Ù…Ù‡â€ŒÙ‡Ø§ÛŒ Ù…Ù†Ùˆ"""
         if not text:
             return None
         text_clean = text.strip()
         buttons = self.get_reseller_bot_menu_buttons() if is_reseller else self.get_bot_menu_buttons()
 
-        # ۱. تطبیق مستقیم با عنوان تنظیم‌شده دکمه
+        # Û±. ØªØ·Ø¨ÛŒÙ‚ Ù…Ø³ØªÙ‚ÛŒÙ… Ø¨Ø§ Ø¹Ù†ÙˆØ§Ù† ØªÙ†Ø¸ÛŒÙ…â€ŒØ´Ø¯Ù‡ Ø¯Ú©Ù…Ù‡
         for b in buttons:
             b_title = b.get("title", "").strip()
             if b_title and (text_clean == b_title or text_clean in b_title or b_title in text_clean):
                 return b
 
-        # ۲. تطبیق کلمات کلیدی استاندارد هر دکمه
+        # Û². ØªØ·Ø¨ÛŒÙ‚ Ú©Ù„Ù…Ø§Øª Ú©Ù„ÛŒØ¯ÛŒ Ø§Ø³ØªØ§Ù†Ø¯Ø§Ø±Ø¯ Ù‡Ø± Ø¯Ú©Ù…Ù‡
         keywords_map = {
-            "buy": ["خرید اشتراک", "خرید", "buy", "اشتراک جدید", "خرید سرویس"],
-            "my_subs": ["اشتراک‌های من", "سرویس‌های من", "وضعیت سرویس", "کانفیگ‌های من", "my subscriptions", "status", "link", "لینک"],
-            "test_sub": ["تست رایگان", "اکانت تست", "تست", "اشتراک تست", "free test", "test"],
-            "renew": ["تمدید سرویس", "تمدید اشتراک", "تمدید", "renew"],
-            "wallet": ["کیف پول", "کیف پول و شارژ", "شارژ حساب", "شارژ", "wallet", "balance"],
-            "support": ["پشتیبانی و تیکت", "پشتیبانی", "ارسال تیکت", "تیکت", "support", "ticket"],
-            "tutorials": ["راهنمای اتصال", "آموزش اتصال", "آموزش", "راهنما", "help", "guide", "tutorial"],
-            "troubleshoot": ["حل مشکلات اتصال", "حل مشکل", "عیب‌یابی", "مشکل اتصال", "troubleshoot"],
-            "referral": ["کسب درآمد و دعوت", "زیرمجموعه‌گیری", "دعوت دوستان", "کسب درآمد", "referral", "invite"],
-            "payments": ["سابقه پرداخت‌ها", "سابقه پرداخت", "تراکنش‌ها", "فیش‌ها", "payments", "history"],
-            "language": ["تغییر زبان", "زبان", "language", "lang"],
+            "buy": ["Ø®Ø±ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú©", "Ø®Ø±ÛŒØ¯", "buy", "Ø§Ø´ØªØ±Ø§Ú© Ø¬Ø¯ÛŒØ¯", "Ø®Ø±ÛŒØ¯ Ø³Ø±ÙˆÛŒØ³"],
+            "my_subs": ["Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒ Ù…Ù†", "Ø³Ø±ÙˆÛŒØ³â€ŒÙ‡Ø§ÛŒ Ù…Ù†", "ÙˆØ¶Ø¹ÛŒØª Ø³Ø±ÙˆÛŒØ³", "Ú©Ø§Ù†ÙÛŒÚ¯â€ŒÙ‡Ø§ÛŒ Ù…Ù†", "my subscriptions", "status", "link", "Ù„ÛŒÙ†Ú©"],
+            "test_sub": ["ØªØ³Øª Ø±Ø§ÛŒÚ¯Ø§Ù†", "Ø§Ú©Ø§Ù†Øª ØªØ³Øª", "ØªØ³Øª", "Ø§Ø´ØªØ±Ø§Ú© ØªØ³Øª", "free test", "test"],
+            "renew": ["ØªÙ…Ø¯ÛŒØ¯ Ø³Ø±ÙˆÛŒØ³", "ØªÙ…Ø¯ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú©", "ØªÙ…Ø¯ÛŒØ¯", "renew"],
+            "wallet": ["Ú©ÛŒÙ Ù¾ÙˆÙ„", "Ú©ÛŒÙ Ù¾ÙˆÙ„ Ùˆ Ø´Ø§Ø±Ú˜", "Ø´Ø§Ø±Ú˜ Ø­Ø³Ø§Ø¨", "Ø´Ø§Ø±Ú˜", "wallet", "balance"],
+            "support": ["Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ Ùˆ ØªÛŒÚ©Øª", "Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ", "Ø§Ø±Ø³Ø§Ù„ ØªÛŒÚ©Øª", "ØªÛŒÚ©Øª", "support", "ticket"],
+            "tutorials": ["Ø±Ø§Ù‡Ù†Ù…Ø§ÛŒ Ø§ØªØµØ§Ù„", "Ø¢Ù…ÙˆØ²Ø´ Ø§ØªØµØ§Ù„", "Ø¢Ù…ÙˆØ²Ø´", "Ø±Ø§Ù‡Ù†Ù…Ø§", "help", "guide", "tutorial"],
+            "troubleshoot": ["Ø­Ù„ Ù…Ø´Ú©Ù„Ø§Øª Ø§ØªØµØ§Ù„", "Ø­Ù„ Ù…Ø´Ú©Ù„", "Ø¹ÛŒØ¨â€ŒÛŒØ§Ø¨ÛŒ", "Ù…Ø´Ú©Ù„ Ø§ØªØµØ§Ù„", "troubleshoot"],
+            "referral": ["Ú©Ø³Ø¨ Ø¯Ø±Ø¢Ù…Ø¯ Ùˆ Ø¯Ø¹ÙˆØª", "Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡â€ŒÚ¯ÛŒØ±ÛŒ", "Ø¯Ø¹ÙˆØª Ø¯ÙˆØ³ØªØ§Ù†", "Ú©Ø³Ø¨ Ø¯Ø±Ø¢Ù…Ø¯", "referral", "invite"],
+            "payments": ["Ø³Ø§Ø¨Ù‚Ù‡ Ù¾Ø±Ø¯Ø§Ø®Øªâ€ŒÙ‡Ø§", "Ø³Ø§Ø¨Ù‚Ù‡ Ù¾Ø±Ø¯Ø§Ø®Øª", "ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§", "ÙÛŒØ´â€ŒÙ‡Ø§", "payments", "history"],
+            "language": ["ØªØºÛŒÛŒØ± Ø²Ø¨Ø§Ù†", "Ø²Ø¨Ø§Ù†", "language", "lang"],
         }
 
         for b in buttons:
@@ -4180,12 +4186,12 @@ class Database:
 
         return None
 
-    # ═══════════════════════════════════════════════════════════════
-    # مدیریت پشتیبان‌ها
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ù…Ø¯ÛŒØ±ÛŒØª Ù¾Ø´ØªÛŒØ¨Ø§Ù†â€ŒÙ‡Ø§
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def save_backup_record(self, backup_file, backup_size):
-        """ذخیره رکورد پشتیبان"""
+        """Ø°Ø®ÛŒØ±Ù‡ Ø±Ú©ÙˆØ±Ø¯ Ù¾Ø´ØªÛŒØ¨Ø§Ù†"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -4204,7 +4210,7 @@ class Database:
             conn.close()
 
     def mark_backup_uploaded(self, backup_id):
-        """علامت‌گذاری پشتیبان به عنوان آپلود شده"""
+        """Ø¹Ù„Ø§Ù…Øªâ€ŒÚ¯Ø°Ø§Ø±ÛŒ Ù¾Ø´ØªÛŒØ¨Ø§Ù† Ø¨Ù‡ Ø¹Ù†ÙˆØ§Ù† Ø¢Ù¾Ù„ÙˆØ¯ Ø´Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -4219,7 +4225,7 @@ class Database:
             conn.close()
 
     def get_backups(self, limit=10):
-        """دریافت لیست پشتیبان‌ها"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒØ³Øª Ù¾Ø´ØªÛŒØ¨Ø§Ù†â€ŒÙ‡Ø§"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -4235,12 +4241,12 @@ class Database:
         finally:
             conn.close()
 
-    # ═══════════════════════════════════════════════════════════════
-    # مدیریت کیف پول
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ù…Ø¯ÛŒØ±ÛŒØª Ú©ÛŒÙ Ù¾ÙˆÙ„
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def get_wallet(self, telegram_id):
-        """دریافت موجودی کیف پول"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©ÛŒÙ Ù¾ÙˆÙ„"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -4248,7 +4254,7 @@ class Database:
             row = cursor.fetchone()
             if row:
                 return dict(row)
-            # ایجاد کیف پول جدید
+            # Ø§ÛŒØ¬Ø§Ø¯ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ø¬Ø¯ÛŒØ¯
             now = get_now_iso()
             cursor.execute("INSERT INTO wallet (telegram_id, balance, created_at, updated_at) VALUES (?, 0, ?, ?)",
                           (telegram_id, now, now))
@@ -4261,7 +4267,7 @@ class Database:
             conn.close()
 
     def update_wallet(self, telegram_id, amount):
-        """بروزرسانی موجودی کیف پول"""
+        """Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©ÛŒÙ Ù¾ÙˆÙ„"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -4272,7 +4278,7 @@ class Database:
                 ON CONFLICT(telegram_id) DO UPDATE SET balance = balance + ?, updated_at = ?
             """, (telegram_id, amount, now, now, amount, now))
             conn.commit()
-            # دریافت موجودی جدید
+            # Ø¯Ø±ÛŒØ§ÙØª Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ø¬Ø¯ÛŒØ¯
             cursor.execute("SELECT balance FROM wallet WHERE telegram_id = ?", (telegram_id,))
             row = cursor.fetchone()
             return {"success": True, "balance": row["balance"] if row else 0}
@@ -4283,7 +4289,7 @@ class Database:
             conn.close()
 
     def get_all_wallets(self):
-        """دریافت تمام کیف پول‌ها"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªÙ…Ø§Ù… Ú©ÛŒÙ Ù¾ÙˆÙ„â€ŒÙ‡Ø§"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -4295,12 +4301,12 @@ class Database:
         finally:
             conn.close()
 
-    # ═══════════════════════════════════════════════════════════════
-    # مدیریت کدهای تخفیف
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ù…Ø¯ÛŒØ±ÛŒØª Ú©Ø¯Ù‡Ø§ÛŒ ØªØ®ÙÛŒÙ
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def create_discount_code(self, code, discount_percent=0, discount_amount=0, max_uses=0, valid_until=None):
-        """ایجاد کد تخفیف جدید"""
+        """Ø§ÛŒØ¬Ø§Ø¯ Ú©Ø¯ ØªØ®ÙÛŒÙ Ø¬Ø¯ÛŒØ¯"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -4318,7 +4324,7 @@ class Database:
             conn.close()
 
     def use_discount_code(self, code):
-        """استفاده از کد تخفیف"""
+        """Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø§Ø² Ú©Ø¯ ØªØ®ÙÛŒÙ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -4326,21 +4332,21 @@ class Database:
             cursor.execute("SELECT * FROM discount_codes WHERE code = ? AND is_active = 1", (code.upper(),))
             row = cursor.fetchone()
             if not row:
-                return {"success": False, "error": "کد تخفیف یافت نشد"}
+                return {"success": False, "error": "Ú©Ø¯ ØªØ®ÙÛŒÙ ÛŒØ§ÙØª Ù†Ø´Ø¯"}
             
             discount = dict(row)
             
-            # بررسی تاریخ اعتبار
+            # Ø¨Ø±Ø±Ø³ÛŒ ØªØ§Ø±ÛŒØ® Ø§Ø¹ØªØ¨Ø§Ø±
             if discount["valid_until"]:
                 valid_until = datetime.fromisoformat(discount["valid_until"])
                 if get_now_naive() > valid_until:
-                    return {"success": False, "error": "کد تخفیف منقضی شده"}
+                    return {"success": False, "error": "Ú©Ø¯ ØªØ®ÙÛŒÙ Ù…Ù†Ù‚Ø¶ÛŒ Ø´Ø¯Ù‡"}
             
-            # بررسی تعداد استفاده
+            # Ø¨Ø±Ø±Ø³ÛŒ ØªØ¹Ø¯Ø§Ø¯ Ø§Ø³ØªÙØ§Ø¯Ù‡
             if discount["max_uses"] > 0 and discount["used_count"] >= discount["max_uses"]:
-                return {"success": False, "error": "کد تخفیف به حداکثر استفاده رسیده"}
+                return {"success": False, "error": "Ú©Ø¯ ØªØ®ÙÛŒÙ Ø¨Ù‡ Ø­Ø¯Ø§Ú©Ø«Ø± Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø±Ø³ÛŒØ¯Ù‡"}
             
-            # بروزرسانی تعداد استفاده
+            # Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ ØªØ¹Ø¯Ø§Ø¯ Ø§Ø³ØªÙØ§Ø¯Ù‡
             cursor.execute("UPDATE discount_codes SET used_count = used_count + 1, updated_at = ? WHERE code = ?", (now, code.upper()))
             conn.commit()
             
@@ -4356,24 +4362,24 @@ class Database:
             conn.close()
 
     def validate_admin_discount_code(self, code: str, order_amount: int = 0) -> dict:
-        """اعتبارسنجی و محاسبه تخفیف کدهای ادمین (بدون افزایش تعداد مصرف)"""
+        """Ø§Ø¹ØªØ¨Ø§Ø±Ø³Ù†Ø¬ÛŒ Ùˆ Ù…Ø­Ø§Ø³Ø¨Ù‡ ØªØ®ÙÛŒÙ Ú©Ø¯Ù‡Ø§ÛŒ Ø§Ø¯Ù…ÛŒÙ† (Ø¨Ø¯ÙˆÙ† Ø§ÙØ²Ø§ÛŒØ´ ØªØ¹Ø¯Ø§Ø¯ Ù…ØµØ±Ù)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute("SELECT * FROM discount_codes WHERE code = ? AND is_active = 1", (code.strip().upper(),))
             row = cursor.fetchone()
             if not row:
-                return {"valid": False, "error": "کد تخفیف نامعتبر است."}
+                return {"valid": False, "error": "Ú©Ø¯ ØªØ®ÙÛŒÙ Ù†Ø§Ù…Ø¹ØªØ¨Ø± Ø§Ø³Øª."}
             
             d = dict(row)
             if d.get("max_uses", 0) > 0 and d.get("used_count", 0) >= d.get("max_uses"):
-                return {"valid": False, "error": "ظرفیت استفاده از این کد تخفیف به پایان رسیده است."}
+                return {"valid": False, "error": "Ø¸Ø±ÙÛŒØª Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø§Ø² Ø§ÛŒÙ† Ú©Ø¯ ØªØ®ÙÛŒÙ Ø¨Ù‡ Ù¾Ø§ÛŒØ§Ù† Ø±Ø³ÛŒØ¯Ù‡ Ø§Ø³Øª."}
 
             if d.get("valid_until"):
                 try:
                     exp = datetime.fromisoformat(d["valid_until"])
                     if get_now_naive() > exp:
-                        return {"valid": False, "error": "مهلت استفاده از این کد تخفیف منقضی شده است."}
+                        return {"valid": False, "error": "Ù…Ù‡Ù„Øª Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø§Ø² Ø§ÛŒÙ† Ú©Ø¯ ØªØ®ÙÛŒÙ Ù…Ù†Ù‚Ø¶ÛŒ Ø´Ø¯Ù‡ Ø§Ø³Øª."}
                 except Exception:
                     pass
 
@@ -4399,12 +4405,12 @@ class Database:
 
     def validate_customer_discount(self, sub_row_or_id, code: str, order_amount: int = 0) -> dict:
         """
-        اعتبارسنجی ایزوله کد تخفیف مشتری:
-        - اگر مشتری متعلق به نماینده باشد: صرفاً کدهای همان نماینده معتبر است (کدهای ادمین و سایر نمایندگان نامعتبرند).
-        - اگر مشتری مستقیم ادمین باشد: صرفاً کدهای ادمین معتبر است (کدهای هیچ نماینده‌ای معتبر نیست).
+        Ø§Ø¹ØªØ¨Ø§Ø±Ø³Ù†Ø¬ÛŒ Ø§ÛŒØ²ÙˆÙ„Ù‡ Ú©Ø¯ ØªØ®ÙÛŒÙ Ù…Ø´ØªØ±ÛŒ:
+        - Ø§Ú¯Ø± Ù…Ø´ØªØ±ÛŒ Ù…ØªØ¹Ù„Ù‚ Ø¨Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø§Ø´Ø¯: ØµØ±ÙØ§Ù‹ Ú©Ø¯Ù‡Ø§ÛŒ Ù‡Ù…Ø§Ù† Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ù…Ø¹ØªØ¨Ø± Ø§Ø³Øª (Ú©Ø¯Ù‡Ø§ÛŒ Ø§Ø¯Ù…ÛŒÙ† Ùˆ Ø³Ø§ÛŒØ± Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† Ù†Ø§Ù…Ø¹ØªØ¨Ø±Ù†Ø¯).
+        - Ø§Ú¯Ø± Ù…Ø´ØªØ±ÛŒ Ù…Ø³ØªÙ‚ÛŒÙ… Ø§Ø¯Ù…ÛŒÙ† Ø¨Ø§Ø´Ø¯: ØµØ±ÙØ§Ù‹ Ú©Ø¯Ù‡Ø§ÛŒ Ø§Ø¯Ù…ÛŒÙ† Ù…Ø¹ØªØ¨Ø± Ø§Ø³Øª (Ú©Ø¯Ù‡Ø§ÛŒ Ù‡ÛŒÚ† Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡â€ŒØ§ÛŒ Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª).
         """
         if not code:
-            return {"valid": False, "error": "لطفاً کد تخفیف را وارد کنید."}
+            return {"valid": False, "error": "Ù„Ø·ÙØ§Ù‹ Ú©Ø¯ ØªØ®ÙÛŒÙ Ø±Ø§ ÙˆØ§Ø±Ø¯ Ú©Ù†ÛŒØ¯."}
 
         reseller_id = 0
         if isinstance(sub_row_or_id, dict):
@@ -4417,14 +4423,14 @@ class Database:
                 reseller_id = r["reseller_id"] or 0
 
         if reseller_id and reseller_id > 0:
-            # فقط و فقط کدهای این نماینده خاص
+            # ÙÙ‚Ø· Ùˆ ÙÙ‚Ø· Ú©Ø¯Ù‡Ø§ÛŒ Ø§ÛŒÙ† Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø®Ø§Øµ
             return self.validate_reseller_discount_code(reseller_id, code, order_amount)
         else:
-            # فقط و فقط کدهای مدیریت
+            # ÙÙ‚Ø· Ùˆ ÙÙ‚Ø· Ú©Ø¯Ù‡Ø§ÛŒ Ù…Ø¯ÛŒØ±ÛŒØª
             return self.validate_admin_discount_code(code, order_amount)
 
     def apply_customer_discount(self, sub_row_or_id, code: str) -> bool:
-        """افزایش شمارنده استفاده از کد تخفیف در جدول مربوطه بر اساس ایزولاسیون نماینده یا ادمین"""
+        """Ø§ÙØ²Ø§ÛŒØ´ Ø´Ù…Ø§Ø±Ù†Ø¯Ù‡ Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø§Ø² Ú©Ø¯ ØªØ®ÙÛŒÙ Ø¯Ø± Ø¬Ø¯ÙˆÙ„ Ù…Ø±Ø¨ÙˆØ·Ù‡ Ø¨Ø± Ø§Ø³Ø§Ø³ Ø§ÛŒØ²ÙˆÙ„Ø§Ø³ÛŒÙˆÙ† Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ ÛŒØ§ Ø§Ø¯Ù…ÛŒÙ†"""
         if not code:
             return False
 
@@ -4464,7 +4470,7 @@ class Database:
             conn.close()
 
     def get_all_discount_codes(self):
-        """دریافت تمام کدهای تخفیف"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªÙ…Ø§Ù… Ú©Ø¯Ù‡Ø§ÛŒ ØªØ®ÙÛŒÙ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -4477,7 +4483,7 @@ class Database:
             conn.close()
 
     def delete_discount_code(self, code):
-        """حذف کد تخفیف"""
+        """Ø­Ø°Ù Ú©Ø¯ ØªØ®ÙÛŒÙ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -4490,12 +4496,12 @@ class Database:
         finally:
             conn.close()
 
-    # ═══════════════════════════════════════════════════════════════
-    # مدیریت بلاک لیست
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ù…Ø¯ÛŒØ±ÛŒØª Ø¨Ù„Ø§Ú© Ù„ÛŒØ³Øª
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def block_user(self, telegram_id, reason=None, blocked_by=None):
-        """بلاک کردن کاربر"""
+        """Ø¨Ù„Ø§Ú© Ú©Ø±Ø¯Ù† Ú©Ø§Ø±Ø¨Ø±"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -4513,7 +4519,7 @@ class Database:
             conn.close()
 
     def unblock_user(self, telegram_id):
-        """آنبلاک کردن کاربر"""
+        """Ø¢Ù†Ø¨Ù„Ø§Ú© Ú©Ø±Ø¯Ù† Ú©Ø§Ø±Ø¨Ø±"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -4527,7 +4533,7 @@ class Database:
             conn.close()
 
     def is_blocked(self, telegram_id):
-        """بررسی بلاک بودن کاربر"""
+        """Ø¨Ø±Ø±Ø³ÛŒ Ø¨Ù„Ø§Ú© Ø¨ÙˆØ¯Ù† Ú©Ø§Ø±Ø¨Ø±"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -4541,7 +4547,7 @@ class Database:
             conn.close()
 
     def get_blocked_users(self):
-        """دریافت لیست کاربران بلاک شده"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒØ³Øª Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ø¨Ù„Ø§Ú© Ø´Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -4553,18 +4559,18 @@ class Database:
         finally:
             conn.close()
 
-    # ═══════════════════════════════════════════════════════════════
-    # مدیریت تیکت‌های پشتیبانی و پیام‌های گفتگو
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ù…Ø¯ÛŒØ±ÛŒØª ØªÛŒÚ©Øªâ€ŒÙ‡Ø§ÛŒ Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ Ùˆ Ù¾ÛŒØ§Ù…â€ŒÙ‡Ø§ÛŒ Ú¯ÙØªÚ¯Ùˆ
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-    def create_ticket(self, telegram_id=None, subject="پیام کاربر", message="", reseller_id=None, user_id=None, **kwargs):
-        """ایجاد تیکت پشتیبانی جدید با قابلیت انتساب به نماینده و درج اولین پیام گفتگو"""
+    def create_ticket(self, telegram_id=None, subject="Ù¾ÛŒØ§Ù… Ú©Ø§Ø±Ø¨Ø±", message="", reseller_id=None, user_id=None, **kwargs):
+        """Ø§ÛŒØ¬Ø§Ø¯ ØªÛŒÚ©Øª Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ Ø¬Ø¯ÛŒØ¯ Ø¨Ø§ Ù‚Ø§Ø¨Ù„ÛŒØª Ø§Ù†ØªØ³Ø§Ø¨ Ø¨Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ùˆ Ø¯Ø±Ø¬ Ø§ÙˆÙ„ÛŒÙ† Ù¾ÛŒØ§Ù… Ú¯ÙØªÚ¯Ùˆ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         tg_id = telegram_id or user_id
         if not tg_id:
-            return {"success": False, "error": "شناسه کاربر الزامی است."}
+            return {"success": False, "error": "Ø´Ù†Ø§Ø³Ù‡ Ú©Ø§Ø±Ø¨Ø± Ø§Ù„Ø²Ø§Ù…ÛŒ Ø§Ø³Øª."}
         try:
             target_role = kwargs.get("target_role") or ('reseller' if reseller_id and int(reseller_id) > 0 else 'admin')
             ticket_type = kwargs.get("ticket_type") or "general"
@@ -4575,7 +4581,7 @@ class Database:
             ticket_id = cursor.lastrowid
 
             if message:
-                sender_name = kwargs.get("username") or kwargs.get("first_name") or "کاربر"
+                sender_name = kwargs.get("username") or kwargs.get("first_name") or "Ú©Ø§Ø±Ø¨Ø±"
                 cursor.execute("""
                     INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, sender_name, message, created_at)
                     VALUES (?, 'user', ?, ?, ?, ?)
@@ -4590,7 +4596,7 @@ class Database:
             conn.close()
 
     def add_ticket_message(self, ticket_id, sender_type, message, sender_id=None, sender_name=None, new_status=None):
-        """افزودن پیام به زنجیره گفتگوی تیکت و بروزرسانی وضعیت تیکت"""
+        """Ø§ÙØ²ÙˆØ¯Ù† Ù¾ÛŒØ§Ù… Ø¨Ù‡ Ø²Ù†Ø¬ÛŒØ±Ù‡ Ú¯ÙØªÚ¯ÙˆÛŒ ØªÛŒÚ©Øª Ùˆ Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ ÙˆØ¶Ø¹ÛŒØª ØªÛŒÚ©Øª"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -4629,15 +4635,15 @@ class Database:
             conn.close()
 
     def add_ticket_reply(self, ticket_id, sender_type="admin", sender_id=None, sender_name=None, message=""):
-        """ثبت پاسخ ادمین یا نماینده به تیکت"""
+        """Ø«Ø¨Øª Ù¾Ø§Ø³Ø® Ø§Ø¯Ù…ÛŒÙ† ÛŒØ§ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ù‡ ØªÛŒÚ©Øª"""
         return self.add_ticket_message(ticket_id, sender_type=sender_type, message=message, sender_id=sender_id, sender_name=sender_name)
 
-    def reply_ticket(self, ticket_id, admin_reply, sender_name="پشتیبانی"):
-        """پاسخ ادمین یا نماینده به تیکت"""
+    def reply_ticket(self, ticket_id, admin_reply, sender_name="Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ"):
+        """Ù¾Ø§Ø³Ø® Ø§Ø¯Ù…ÛŒÙ† ÛŒØ§ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ù‡ ØªÛŒÚ©Øª"""
         return self.add_ticket_message(ticket_id, sender_type="admin", message=admin_reply, sender_name=sender_name, new_status="replied")
 
     def update_ticket_status(self, ticket_id, status):
-        """بروزرسانی وضعیت تیکت (open, in_progress, replied, closed)"""
+        """Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ ÙˆØ¶Ø¹ÛŒØª ØªÛŒÚ©Øª (open, in_progress, replied, closed)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -4652,22 +4658,22 @@ class Database:
             conn.close()
 
     def reopen_ticket(self, ticket_id):
-        """بازگشایی مجدد تیکت"""
+        """Ø¨Ø§Ø²Ú¯Ø´Ø§ÛŒÛŒ Ù…Ø¬Ø¯Ø¯ ØªÛŒÚ©Øª"""
         return self.update_ticket_status(ticket_id, "open")
 
     def close_ticket(self, ticket_id):
-        """بستن تیکت"""
+        """Ø¨Ø³ØªÙ† ØªÛŒÚ©Øª"""
         return self.update_ticket_status(ticket_id, "closed")
 
     def delete_ticket(self, ticket_id, reseller_id=None):
-        """حذف کامل یک تیکت و پیام‌های آن"""
+        """Ø­Ø°Ù Ú©Ø§Ù…Ù„ ÛŒÚ© ØªÛŒÚ©Øª Ùˆ Ù¾ÛŒØ§Ù…â€ŒÙ‡Ø§ÛŒ Ø¢Ù†"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             if reseller_id:
                 cursor.execute("SELECT id FROM support_tickets WHERE id=? AND reseller_id=?", (ticket_id, reseller_id))
                 if not cursor.fetchone():
-                    return {"success": False, "error": "تیکت یافت نشد یا متعلق به شما نیست."}
+                    return {"success": False, "error": "ØªÛŒÚ©Øª ÛŒØ§ÙØª Ù†Ø´Ø¯ ÛŒØ§ Ù…ØªØ¹Ù„Ù‚ Ø¨Ù‡ Ø´Ù…Ø§ Ù†ÛŒØ³Øª."}
             cursor.execute("DELETE FROM ticket_messages WHERE ticket_id=?", (ticket_id,))
             cursor.execute("DELETE FROM support_tickets WHERE id=?", (ticket_id,))
             conn.commit()
@@ -4678,7 +4684,7 @@ class Database:
             conn.close()
 
     def get_ticket_messages(self, ticket_id):
-        """دریافت تمام پیام‌های زنجیره گفتگوی یک تیکت با سازگاری به عقب"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªÙ…Ø§Ù… Ù¾ÛŒØ§Ù…â€ŒÙ‡Ø§ÛŒ Ø²Ù†Ø¬ÛŒØ±Ù‡ Ú¯ÙØªÚ¯ÙˆÛŒ ÛŒÚ© ØªÛŒÚ©Øª Ø¨Ø§ Ø³Ø§Ø²Ú¯Ø§Ø±ÛŒ Ø¨Ù‡ Ø¹Ù‚Ø¨"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -4698,7 +4704,7 @@ class Database:
                             "ticket_id": ticket_id,
                             "sender_type": "user",
                             "sender_id": t["telegram_id"],
-                            "sender_name": "کاربر",
+                            "sender_name": "Ú©Ø§Ø±Ø¨Ø±",
                             "message": t["message"],
                             "created_at": t["created_at"]
                         })
@@ -4708,7 +4714,7 @@ class Database:
                             "ticket_id": ticket_id,
                             "sender_type": "admin",
                             "sender_id": None,
-                            "sender_name": "پشتیبانی",
+                            "sender_name": "Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ",
                             "message": t["admin_reply"],
                             "created_at": t["updated_at"] or t["created_at"]
                         })
@@ -4720,7 +4726,7 @@ class Database:
             conn.close()
 
     def get_user_tickets(self, telegram_id, status=None):
-        """دریافت تیکت‌های کاربر"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªÛŒÚ©Øªâ€ŒÙ‡Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -4736,7 +4742,7 @@ class Database:
             conn.close()
 
     def create_portal_chat_ticket(self, subscription_id: int, customer_name: str, customer_phone: str, subject: str, initial_message: str, portal_token: str = None, reseller_id: int = None, telegram_id: int = None):
-        """ایجاد تیکت گفتگوی آنلاین مشتری از پورتال وب با ثبت مشخصات و پیام اولیه"""
+        """Ø§ÛŒØ¬Ø§Ø¯ ØªÛŒÚ©Øª Ú¯ÙØªÚ¯ÙˆÛŒ Ø¢Ù†Ù„Ø§ÛŒÙ† Ù…Ø´ØªØ±ÛŒ Ø§Ø² Ù¾ÙˆØ±ØªØ§Ù„ ÙˆØ¨ Ø¨Ø§ Ø«Ø¨Øª Ù…Ø´Ø®ØµØ§Øª Ùˆ Ù¾ÛŒØ§Ù… Ø§ÙˆÙ„ÛŒÙ‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -4756,7 +4762,7 @@ class Database:
                 cursor.execute("""
                     INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, sender_name, message, created_at)
                     VALUES (?, 'user', ?, ?, ?, ?)
-                """, (ticket_id, tg_id, customer_name or "مشتری", initial_message, now))
+                """, (ticket_id, tg_id, customer_name or "Ù…Ø´ØªØ±ÛŒ", initial_message, now))
 
             conn.commit()
             return {"success": True, "ticket_id": ticket_id}
@@ -4767,7 +4773,7 @@ class Database:
             conn.close()
 
     def get_portal_chat_history(self, subscription_id: int, telegram_id: int = None, portal_token: str = None):
-        """دریافت سوابق تمامی گفتگوهای آنلاین مرتبط با این اشتراک"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø³ÙˆØ§Ø¨Ù‚ ØªÙ…Ø§Ù…ÛŒ Ú¯ÙØªÚ¯ÙˆÙ‡Ø§ÛŒ Ø¢Ù†Ù„Ø§ÛŒÙ† Ù…Ø±ØªØ¨Ø· Ø¨Ø§ Ø§ÛŒÙ† Ø§Ø´ØªØ±Ø§Ú©"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -4801,7 +4807,7 @@ class Database:
             conn.close()
 
     def get_portal_ticket(self, ticket_id: int, subscription_id: int = None, portal_token: str = None):
-        """بررسی مجاز بودن و دریافت اطلاعات تیکت پورتال"""
+        """Ø¨Ø±Ø±Ø³ÛŒ Ù…Ø¬Ø§Ø² Ø¨ÙˆØ¯Ù† Ùˆ Ø¯Ø±ÛŒØ§ÙØª Ø§Ø·Ù„Ø§Ø¹Ø§Øª ØªÛŒÚ©Øª Ù¾ÙˆØ±ØªØ§Ù„"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -4823,12 +4829,12 @@ class Database:
             conn.close()
 
     def add_portal_user_message(self, ticket_id: int, subscription_id: int, message: str, customer_name: str = None):
-        """افزودن پیام جدید مشتری به گفتگوی آنلاین و تغییر وضعیت تیکت به open"""
+        """Ø§ÙØ²ÙˆØ¯Ù† Ù¾ÛŒØ§Ù… Ø¬Ø¯ÛŒØ¯ Ù…Ø´ØªØ±ÛŒ Ø¨Ù‡ Ú¯ÙØªÚ¯ÙˆÛŒ Ø¢Ù†Ù„Ø§ÛŒÙ† Ùˆ ØªØºÛŒÛŒØ± ÙˆØ¶Ø¹ÛŒØª ØªÛŒÚ©Øª Ø¨Ù‡ open"""
         t = self.get_portal_ticket(ticket_id, subscription_id=subscription_id)
         if not t:
-            return {"success": False, "error": "گفتگوی مورد نظر یافت نشد یا دسترسی نامعتبر است."}
+            return {"success": False, "error": "Ú¯ÙØªÚ¯ÙˆÛŒ Ù…ÙˆØ±Ø¯ Ù†Ø¸Ø± ÛŒØ§ÙØª Ù†Ø´Ø¯ ÛŒØ§ Ø¯Ø³ØªØ±Ø³ÛŒ Ù†Ø§Ù…Ø¹ØªØ¨Ø± Ø§Ø³Øª."}
 
-        sender_name = customer_name or t.get("customer_name") or "مشتری"
+        sender_name = customer_name or t.get("customer_name") or "Ù…Ø´ØªØ±ÛŒ"
         now = get_now_iso()
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -4853,7 +4859,7 @@ class Database:
             conn.close()
 
     def poll_portal_ticket_updates(self, subscription_id: int, ticket_id: int = None, last_msg_id: int = 0):
-        """بررسی پیام‌های جدید دریافتی از سمت پشتیبانی و وضعیت خوانده‌نشده"""
+        """Ø¨Ø±Ø±Ø³ÛŒ Ù¾ÛŒØ§Ù…â€ŒÙ‡Ø§ÛŒ Ø¬Ø¯ÛŒØ¯ Ø¯Ø±ÛŒØ§ÙØªÛŒ Ø§Ø² Ø³Ù…Øª Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ Ùˆ ÙˆØ¶Ø¹ÛŒØª Ø®ÙˆØ§Ù†Ø¯Ù‡â€ŒÙ†Ø´Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -4903,7 +4909,7 @@ class Database:
             conn.close()
 
     def has_human_support_replied(self, ticket_id: int) -> bool:
-        """بررسی اینکه آیا پشتیبان انسانی (ادمین یا نماینده) در این تیکت پاسخ داده است یا خیر"""
+        """Ø¨Ø±Ø±Ø³ÛŒ Ø§ÛŒÙ†Ú©Ù‡ Ø¢ÛŒØ§ Ù¾Ø´ØªÛŒØ¨Ø§Ù† Ø§Ù†Ø³Ø§Ù†ÛŒ (Ø§Ø¯Ù…ÛŒÙ† ÛŒØ§ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡) Ø¯Ø± Ø§ÛŒÙ† ØªÛŒÚ©Øª Ù¾Ø§Ø³Ø® Ø¯Ø§Ø¯Ù‡ Ø§Ø³Øª ÛŒØ§ Ø®ÛŒØ±"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -4926,7 +4932,7 @@ class Database:
             conn.close()
 
     def is_support_online_for_sub(self, sub_id: int, reseller_id: int = 0) -> dict:
-        """تشخیص وضعیت آنلاین یا آفلاین بودن پشتیبان برای یک اشتراک خاص (پشتیبانی نماینده یا مدیر)"""
+        """ØªØ´Ø®ÛŒØµ ÙˆØ¶Ø¹ÛŒØª Ø¢Ù†Ù„Ø§ÛŒÙ† ÛŒØ§ Ø¢ÙÙ„Ø§ÛŒÙ† Ø¨ÙˆØ¯Ù† Ù¾Ø´ØªÛŒØ¨Ø§Ù† Ø¨Ø±Ø§ÛŒ ÛŒÚ© Ø§Ø´ØªØ±Ø§Ú© Ø®Ø§Øµ (Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ ÛŒØ§ Ù…Ø¯ÛŒØ±)"""
         mode = self.get_setting("chat_fake_online_mode", "real")
         raw_agents = self.get_setting("chat_fake_online_agents", [])
         if isinstance(raw_agents, list):
@@ -4939,22 +4945,22 @@ class Database:
         else:
             fake_agents = []
 
-        # استخراج نام و هویت پشتیبان
-        support_name = "پشتیبانی"
+        # Ø§Ø³ØªØ®Ø±Ø§Ø¬ Ù†Ø§Ù… Ùˆ Ù‡ÙˆÛŒØª Ù¾Ø´ØªÛŒØ¨Ø§Ù†
+        support_name = "Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ"
         if reseller_id and int(reseller_id) > 0:
             r = self.get_reseller(reseller_id)
             if r:
-                support_name = r.get("brand_name") or r.get("brand_title") or r.get("name") or f"پشتیبانی نماینده ({r.get('username')})"
+                support_name = r.get("brand_name") or r.get("brand_title") or r.get("name") or f"Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ ({r.get('username')})"
         else:
-            support_name = self.get_setting("portal_title") or self.get_setting("store_name") or "پشتیبانی مرکزی"
+            support_name = self.get_setting("portal_title") or self.get_setting("store_name") or "Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ Ù…Ø±Ú©Ø²ÛŒ"
 
-        # ۱. بررسی حالت آنلاین ساختگی (Fake Online)
+        # Û±. Ø¨Ø±Ø±Ø³ÛŒ Ø­Ø§Ù„Øª Ø¢Ù†Ù„Ø§ÛŒÙ† Ø³Ø§Ø®ØªÚ¯ÛŒ (Fake Online)
         if mode == "always_all":
             return {
                 "is_online": True,
                 "status": "online",
                 "support_name": support_name,
-                "status_text": "آنلاین و پاسخگو",
+                "status_text": "Ø¢Ù†Ù„Ø§ÛŒÙ† Ùˆ Ù¾Ø§Ø³Ø®Ú¯Ùˆ",
                 "mode": "fake"
             }
         elif mode == "custom":
@@ -4971,11 +4977,11 @@ class Database:
                     "is_online": True,
                     "status": "online",
                     "support_name": support_name,
-                    "status_text": "آنلاین و پاسخگو",
+                    "status_text": "Ø¢Ù†Ù„Ø§ÛŒÙ† Ùˆ Ù¾Ø§Ø³Ø®Ú¯Ùˆ",
                     "mode": "fake"
                 }
 
-        # ۲. بررسی وضعیت واقعی (Real Online Status)
+        # Û². Ø¨Ø±Ø±Ø³ÛŒ ÙˆØ¶Ø¹ÛŒØª ÙˆØ§Ù‚Ø¹ÛŒ (Real Online Status)
         is_online = False
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -4983,7 +4989,7 @@ class Database:
             now_tehran = datetime.now(TEHRAN_TZ)
 
             if reseller_id and int(reseller_id) > 0:
-                # بررسی لاگین نماینده یا زیرمدیران فعال او
+                # Ø¨Ø±Ø±Ø³ÛŒ Ù„Ø§Ú¯ÛŒÙ† Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ ÛŒØ§ Ø²ÛŒØ±Ù…Ø¯ÛŒØ±Ø§Ù† ÙØ¹Ø§Ù„ Ø§Ùˆ
                 cursor.execute("""
                     SELECT last_active_at, login_at FROM login_logs
                     WHERE user_type IN ('reseller', 'reseller_subadmin') AND user_id = ? AND is_active = 1
@@ -5002,7 +5008,7 @@ class Database:
                         except Exception:
                             pass
 
-                # بررسی ارسال پیام اخیر تیکت توسط نماینده
+                # Ø¨Ø±Ø±Ø³ÛŒ Ø§Ø±Ø³Ø§Ù„ Ù¾ÛŒØ§Ù… Ø§Ø®ÛŒØ± ØªÛŒÚ©Øª ØªÙˆØ³Ø· Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
                 if not is_online:
                     cursor.execute("""
                         SELECT created_at FROM ticket_messages
@@ -5020,7 +5026,7 @@ class Database:
                         except Exception:
                             pass
             else:
-                # بررسی ادمین اصلی و سایر مدیران پنل
+                # Ø¨Ø±Ø±Ø³ÛŒ Ø§Ø¯Ù…ÛŒÙ† Ø§ØµÙ„ÛŒ Ùˆ Ø³Ø§ÛŒØ± Ù…Ø¯ÛŒØ±Ø§Ù† Ù¾Ù†Ù„
                 cursor.execute("""
                     SELECT last_active_at, login_at FROM login_logs
                     WHERE user_type = 'admin' AND is_active = 1
@@ -5039,7 +5045,7 @@ class Database:
                         except Exception:
                             pass
 
-                # بررسی ارسال پیام اخیر توسط ادمین
+                # Ø¨Ø±Ø±Ø³ÛŒ Ø§Ø±Ø³Ø§Ù„ Ù¾ÛŒØ§Ù… Ø§Ø®ÛŒØ± ØªÙˆØ³Ø· Ø§Ø¯Ù…ÛŒÙ†
                 if not is_online:
                     cursor.execute("""
                         SELECT created_at FROM ticket_messages
@@ -5066,12 +5072,12 @@ class Database:
             "is_online": is_online,
             "status": "online" if is_online else "offline",
             "support_name": support_name,
-            "status_text": "آنلاین و پاسخگو" if is_online else "آفلاین (ثبت پیام برای بررسی)",
+            "status_text": "Ø¢Ù†Ù„Ø§ÛŒÙ† Ùˆ Ù¾Ø§Ø³Ø®Ú¯Ùˆ" if is_online else "Ø¢ÙÙ„Ø§ÛŒÙ† (Ø«Ø¨Øª Ù¾ÛŒØ§Ù… Ø¨Ø±Ø§ÛŒ Ø¨Ø±Ø±Ø³ÛŒ)",
             "mode": "real"
         }
 
     def get_chat_settings(self) -> dict:
-        """دریافت تنظیمات جامع گفتگوی آنلاین پورتال مشتری، استایل دکمه و هوش مصنوعی"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¬Ø§Ù…Ø¹ Ú¯ÙØªÚ¯ÙˆÛŒ Ø¢Ù†Ù„Ø§ÛŒÙ† Ù¾ÙˆØ±ØªØ§Ù„ Ù…Ø´ØªØ±ÛŒØŒ Ø§Ø³ØªØ§ÛŒÙ„ Ø¯Ú©Ù…Ù‡ Ùˆ Ù‡ÙˆØ´ Ù…ØµÙ†ÙˆØ¹ÛŒ"""
         raw_agents = self.get_setting("chat_fake_online_agents", [])
         if isinstance(raw_agents, list):
             fake_agents = raw_agents
@@ -5085,7 +5091,7 @@ class Database:
 
         return {
             "chat_button_style": self.get_setting("chat_button_style", "modern_pill"),
-            "chat_button_text": self.get_setting("chat_button_text", "گفتگوی آنلاین"),
+            "chat_button_text": self.get_setting("chat_button_text", "Ú¯ÙØªÚ¯ÙˆÛŒ Ø¢Ù†Ù„Ø§ÛŒÙ†"),
             "chat_button_position": self.get_setting("chat_button_position", "right"),
             "chat_fake_online_mode": self.get_setting("chat_fake_online_mode", "real"),
             "chat_fake_online_agents": fake_agents,
@@ -5098,7 +5104,7 @@ class Database:
         }
 
     def save_chat_settings(self, settings: dict):
-        """ذخیره تنظیمات گفتگوی آنلاین در دیتابیس"""
+        """Ø°Ø®ÛŒØ±Ù‡ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ú¯ÙØªÚ¯ÙˆÛŒ Ø¢Ù†Ù„Ø§ÛŒÙ† Ø¯Ø± Ø¯ÛŒØªØ§Ø¨ÛŒØ³"""
         for k, v in settings.items():
             if isinstance(v, (list, dict)):
                 self.save_setting(k, json.dumps(v, ensure_ascii=False))
@@ -5108,12 +5114,12 @@ class Database:
                 self.save_setting(k, str(v) if v is not None else "")
 
     def generate_ai_chat_reply(self, ticket_id: int, customer_message: str, sub_info: dict = None) -> Optional[str]:
-        """پاسخگویی هوشمند چتبات هوش مصنوعی به پیام مشتری با رعایت توقف در صورت پاسخ پشتیبان انسانی"""
-        # ۱. بررسی اینکه آیا پشتیبان انسانی قبلاً در این گفتگو پاسخ داده است یا خیر
+        """Ù¾Ø§Ø³Ø®Ú¯ÙˆÛŒÛŒ Ù‡ÙˆØ´Ù…Ù†Ø¯ Ú†ØªØ¨Ø§Øª Ù‡ÙˆØ´ Ù…ØµÙ†ÙˆØ¹ÛŒ Ø¨Ù‡ Ù¾ÛŒØ§Ù… Ù…Ø´ØªØ±ÛŒ Ø¨Ø§ Ø±Ø¹Ø§ÛŒØª ØªÙˆÙ‚Ù Ø¯Ø± ØµÙˆØ±Øª Ù¾Ø§Ø³Ø® Ù¾Ø´ØªÛŒØ¨Ø§Ù† Ø§Ù†Ø³Ø§Ù†ÛŒ"""
+        # Û±. Ø¨Ø±Ø±Ø³ÛŒ Ø§ÛŒÙ†Ú©Ù‡ Ø¢ÛŒØ§ Ù¾Ø´ØªÛŒØ¨Ø§Ù† Ø§Ù†Ø³Ø§Ù†ÛŒ Ù‚Ø¨Ù„Ø§Ù‹ Ø¯Ø± Ø§ÛŒÙ† Ú¯ÙØªÚ¯Ùˆ Ù¾Ø§Ø³Ø® Ø¯Ø§Ø¯Ù‡ Ø§Ø³Øª ÛŒØ§ Ø®ÛŒØ±
         if self.has_human_support_replied(ticket_id):
             return None
 
-        # ۲. بررسی فعال بودن هوش مصنوعی
+        # Û². Ø¨Ø±Ø±Ø³ÛŒ ÙØ¹Ø§Ù„ Ø¨ÙˆØ¯Ù† Ù‡ÙˆØ´ Ù…ØµÙ†ÙˆØ¹ÛŒ
         ai_enabled = str(self.get_setting("chat_ai_enabled", "1")).lower() in ("1", "true")
         if not ai_enabled:
             return None
@@ -5122,56 +5128,56 @@ class Database:
         if not text:
             return None
 
-        # ۳. حالت‌های مختلف پیام مشتری:
-        # الف) اعلام آمادگی و تایید جهت حل مشکل
-        affirmative_words = ["بله", "اره", "آره", "موافقم", "ممنون", "حل کن", "میخوام", "اوکی", "باشه", "مرسی", "لطفا", "لطفاً"]
+        # Û³. Ø­Ø§Ù„Øªâ€ŒÙ‡Ø§ÛŒ Ù…Ø®ØªÙ„Ù Ù¾ÛŒØ§Ù… Ù…Ø´ØªØ±ÛŒ:
+        # Ø§Ù„Ù) Ø§Ø¹Ù„Ø§Ù… Ø¢Ù…Ø§Ø¯Ú¯ÛŒ Ùˆ ØªØ§ÛŒÛŒØ¯ Ø¬Ù‡Øª Ø­Ù„ Ù…Ø´Ú©Ù„
+        affirmative_words = ["Ø¨Ù„Ù‡", "Ø§Ø±Ù‡", "Ø¢Ø±Ù‡", "Ù…ÙˆØ§ÙÙ‚Ù…", "Ù…Ù…Ù†ÙˆÙ†", "Ø­Ù„ Ú©Ù†", "Ù…ÛŒØ®ÙˆØ§Ù…", "Ø§ÙˆÚ©ÛŒ", "Ø¨Ø§Ø´Ù‡", "Ù…Ø±Ø³ÛŒ", "Ù„Ø·ÙØ§", "Ù„Ø·ÙØ§Ù‹"]
         if any(w == text or text.startswith(w + " ") or text.endswith(" " + w) for w in affirmative_words) and len(text) <= 25:
             return (
-                "با کمال میل! 🌸 من هوش مصنوعی هستم و آماده‌ام مشکل‌تان را بررسی و حل کنم.\n\n"
-                "لطفاً بفرمایید دقیقاً چه مشکلی پیش آمده است؟\n"
-                "• مشکل در اتصال و پینگ؟\n"
-                "• نیاز به نرم‌افزار مناسب (اندروید، آیفون، ویندوز)؟\n"
-                "• سوال در مورد تمدید یا دریافت لینک اشتراک؟"
+                "Ø¨Ø§ Ú©Ù…Ø§Ù„ Ù…ÛŒÙ„! ðŸŒ¸ Ù…Ù† Ù‡ÙˆØ´ Ù…ØµÙ†ÙˆØ¹ÛŒ Ù‡Ø³ØªÙ… Ùˆ Ø¢Ù…Ø§Ø¯Ù‡â€ŒØ§Ù… Ù…Ø´Ú©Ù„â€ŒØªØ§Ù† Ø±Ø§ Ø¨Ø±Ø±Ø³ÛŒ Ùˆ Ø­Ù„ Ú©Ù†Ù….\n\n"
+                "Ù„Ø·ÙØ§Ù‹ Ø¨ÙØ±Ù…Ø§ÛŒÛŒØ¯ Ø¯Ù‚ÛŒÙ‚Ø§Ù‹ Ú†Ù‡ Ù…Ø´Ú©Ù„ÛŒ Ù¾ÛŒØ´ Ø¢Ù…Ø¯Ù‡ Ø§Ø³ØªØŸ\n"
+                "â€¢ Ù…Ø´Ú©Ù„ Ø¯Ø± Ø§ØªØµØ§Ù„ Ùˆ Ù¾ÛŒÙ†Ú¯ØŸ\n"
+                "â€¢ Ù†ÛŒØ§Ø² Ø¨Ù‡ Ù†Ø±Ù…â€ŒØ§ÙØ²Ø§Ø± Ù…Ù†Ø§Ø³Ø¨ (Ø§Ù†Ø¯Ø±ÙˆÛŒØ¯ØŒ Ø¢ÛŒÙÙˆÙ†ØŒ ÙˆÛŒÙ†Ø¯ÙˆØ²)ØŸ\n"
+                "â€¢ Ø³ÙˆØ§Ù„ Ø¯Ø± Ù…ÙˆØ±Ø¯ ØªÙ…Ø¯ÛŒØ¯ ÛŒØ§ Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒÙ†Ú© Ø§Ø´ØªØ±Ø§Ú©ØŸ"
             )
 
-        # ب) مشکلات اتصال، قطعی، کار نکردن یا پینگ بالا
-        if any(w in text for w in ["وصل نمیشه", "قطع", "کار نمیکنه", "پینگ", "سرعت", "کندی", "تایم اوت", "timeout", "فیلتر", "بسته شده", "وصل نیست"]):
+        # Ø¨) Ù…Ø´Ú©Ù„Ø§Øª Ø§ØªØµØ§Ù„ØŒ Ù‚Ø·Ø¹ÛŒØŒ Ú©Ø§Ø± Ù†Ú©Ø±Ø¯Ù† ÛŒØ§ Ù¾ÛŒÙ†Ú¯ Ø¨Ø§Ù„Ø§
+        if any(w in text for w in ["ÙˆØµÙ„ Ù†Ù…ÛŒØ´Ù‡", "Ù‚Ø·Ø¹", "Ú©Ø§Ø± Ù†Ù…ÛŒÚ©Ù†Ù‡", "Ù¾ÛŒÙ†Ú¯", "Ø³Ø±Ø¹Øª", "Ú©Ù†Ø¯ÛŒ", "ØªØ§ÛŒÙ… Ø§ÙˆØª", "timeout", "ÙÛŒÙ„ØªØ±", "Ø¨Ø³ØªÙ‡ Ø´Ø¯Ù‡", "ÙˆØµÙ„ Ù†ÛŒØ³Øª"]):
             return (
-                "برای رفع سریع مشکل اتصال و قطعی، لطفاً این مراحل پیشنهادی را به ترتیب انجام دهید:\n\n"
-                "۱- **حالت پرواز (Airplane Mode)** گوشی خود را به مدت ۵ ثانیه روشن و سپس خاموش کنید تا IP شبکه شما نو شود.\n"
-                "۲- در نرم‌افزار خود، گزینه **بروزرسانی اشتراک (Update Subscription)** را بزنید تا لیست جدیدترین سرورها دریافت شود.\n"
-                "۳- در صورت استفاده از v2rayNG یا Streisand، قابلیت **Fragment** را در تنظیمات فعال کنید؛ این کار اختلال اپراتور را دور می‌زند.\n"
-                "۴- در صورت امکان، یک‌بار اینترنت خود را بین همراه اول، ایرانسل یا وای‌فای سوییچ کنید.\n\n"
-                "پیام شما به پشتیبان انسانی نیز ارجاع شده است و در صورت عدم رفع مشکل به زودی پاسخ خواهند داد."
+                "Ø¨Ø±Ø§ÛŒ Ø±ÙØ¹ Ø³Ø±ÛŒØ¹ Ù…Ø´Ú©Ù„ Ø§ØªØµØ§Ù„ Ùˆ Ù‚Ø·Ø¹ÛŒØŒ Ù„Ø·ÙØ§Ù‹ Ø§ÛŒÙ† Ù…Ø±Ø§Ø­Ù„ Ù¾ÛŒØ´Ù†Ù‡Ø§Ø¯ÛŒ Ø±Ø§ Ø¨Ù‡ ØªØ±ØªÛŒØ¨ Ø§Ù†Ø¬Ø§Ù… Ø¯Ù‡ÛŒØ¯:\n\n"
+                "Û±- **Ø­Ø§Ù„Øª Ù¾Ø±ÙˆØ§Ø² (Airplane Mode)** Ú¯ÙˆØ´ÛŒ Ø®ÙˆØ¯ Ø±Ø§ Ø¨Ù‡ Ù…Ø¯Øª Ûµ Ø«Ø§Ù†ÛŒÙ‡ Ø±ÙˆØ´Ù† Ùˆ Ø³Ù¾Ø³ Ø®Ø§Ù…ÙˆØ´ Ú©Ù†ÛŒØ¯ ØªØ§ IP Ø´Ø¨Ú©Ù‡ Ø´Ù…Ø§ Ù†Ùˆ Ø´ÙˆØ¯.\n"
+                "Û²- Ø¯Ø± Ù†Ø±Ù…â€ŒØ§ÙØ²Ø§Ø± Ø®ÙˆØ¯ØŒ Ú¯Ø²ÛŒÙ†Ù‡ **Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø§Ø´ØªØ±Ø§Ú© (Update Subscription)** Ø±Ø§ Ø¨Ø²Ù†ÛŒØ¯ ØªØ§ Ù„ÛŒØ³Øª Ø¬Ø¯ÛŒØ¯ØªØ±ÛŒÙ† Ø³Ø±ÙˆØ±Ù‡Ø§ Ø¯Ø±ÛŒØ§ÙØª Ø´ÙˆØ¯.\n"
+                "Û³- Ø¯Ø± ØµÙˆØ±Øª Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø§Ø² v2rayNG ÛŒØ§ StreisandØŒ Ù‚Ø§Ø¨Ù„ÛŒØª **Fragment** Ø±Ø§ Ø¯Ø± ØªÙ†Ø¸ÛŒÙ…Ø§Øª ÙØ¹Ø§Ù„ Ú©Ù†ÛŒØ¯Ø› Ø§ÛŒÙ† Ú©Ø§Ø± Ø§Ø®ØªÙ„Ø§Ù„ Ø§Ù¾Ø±Ø§ØªÙˆØ± Ø±Ø§ Ø¯ÙˆØ± Ù…ÛŒâ€ŒØ²Ù†Ø¯.\n"
+                "Û´- Ø¯Ø± ØµÙˆØ±Øª Ø§Ù…Ú©Ø§Ù†ØŒ ÛŒÚ©â€ŒØ¨Ø§Ø± Ø§ÛŒÙ†ØªØ±Ù†Øª Ø®ÙˆØ¯ Ø±Ø§ Ø¨ÛŒÙ† Ù‡Ù…Ø±Ø§Ù‡ Ø§ÙˆÙ„ØŒ Ø§ÛŒØ±Ø§Ù†Ø³Ù„ ÛŒØ§ ÙˆØ§ÛŒâ€ŒÙØ§ÛŒ Ø³ÙˆÛŒÛŒÚ† Ú©Ù†ÛŒØ¯.\n\n"
+                "Ù¾ÛŒØ§Ù… Ø´Ù…Ø§ Ø¨Ù‡ Ù¾Ø´ØªÛŒØ¨Ø§Ù† Ø§Ù†Ø³Ø§Ù†ÛŒ Ù†ÛŒØ² Ø§Ø±Ø¬Ø§Ø¹ Ø´Ø¯Ù‡ Ø§Ø³Øª Ùˆ Ø¯Ø± ØµÙˆØ±Øª Ø¹Ø¯Ù… Ø±ÙØ¹ Ù…Ø´Ú©Ù„ Ø¨Ù‡ Ø²ÙˆØ¯ÛŒ Ù¾Ø§Ø³Ø® Ø®ÙˆØ§Ù‡Ù†Ø¯ Ø¯Ø§Ø¯."
             )
 
-        # ج) سیستم‌عامل آیفون و iOS
-        if any(w in text for w in ["آیفون", "ایفون", "iphone", "ios", "اپل", "apple"]):
+        # Ø¬) Ø³ÛŒØ³ØªÙ…â€ŒØ¹Ø§Ù…Ù„ Ø¢ÛŒÙÙˆÙ† Ùˆ iOS
+        if any(w in text for w in ["Ø¢ÛŒÙÙˆÙ†", "Ø§ÛŒÙÙˆÙ†", "iphone", "ios", "Ø§Ù¾Ù„", "apple"]):
             return (
-                "برای دستگاه‌های **iOS (آیفون و آیپد)**، بهترین و سازگارترین نرم‌افزارها عبارتند از:\n\n"
-                "📱 **Streisand** (پیشنهاد اول - پرسرعت و پایدار در اپ‌استور)\n"
-                "📱 **FoXray** (بسیار قوی و سازگار با انواع کانفیگ‌ها)\n"
-                "📱 **V2Box** (رایگان با کاربری ساده)\n\n"
-                "کافیست لینک هوشمند اشتراک خود را از همین صفحه کپی نموده و در نرم‌افزار مربوطه اضافه نمایید."
+                "Ø¨Ø±Ø§ÛŒ Ø¯Ø³ØªÚ¯Ø§Ù‡â€ŒÙ‡Ø§ÛŒ **iOS (Ø¢ÛŒÙÙˆÙ† Ùˆ Ø¢ÛŒÙ¾Ø¯)**ØŒ Ø¨Ù‡ØªØ±ÛŒÙ† Ùˆ Ø³Ø§Ø²Ú¯Ø§Ø±ØªØ±ÛŒÙ† Ù†Ø±Ù…â€ŒØ§ÙØ²Ø§Ø±Ù‡Ø§ Ø¹Ø¨Ø§Ø±ØªÙ†Ø¯ Ø§Ø²:\n\n"
+                "ðŸ“± **Streisand** (Ù¾ÛŒØ´Ù†Ù‡Ø§Ø¯ Ø§ÙˆÙ„ - Ù¾Ø±Ø³Ø±Ø¹Øª Ùˆ Ù¾Ø§ÛŒØ¯Ø§Ø± Ø¯Ø± Ø§Ù¾â€ŒØ§Ø³ØªÙˆØ±)\n"
+                "ðŸ“± **FoXray** (Ø¨Ø³ÛŒØ§Ø± Ù‚ÙˆÛŒ Ùˆ Ø³Ø§Ø²Ú¯Ø§Ø± Ø¨Ø§ Ø§Ù†ÙˆØ§Ø¹ Ú©Ø§Ù†ÙÛŒÚ¯â€ŒÙ‡Ø§)\n"
+                "ðŸ“± **V2Box** (Ø±Ø§ÛŒÚ¯Ø§Ù† Ø¨Ø§ Ú©Ø§Ø±Ø¨Ø±ÛŒ Ø³Ø§Ø¯Ù‡)\n\n"
+                "Ú©Ø§ÙÛŒØ³Øª Ù„ÛŒÙ†Ú© Ù‡ÙˆØ´Ù…Ù†Ø¯ Ø§Ø´ØªØ±Ø§Ú© Ø®ÙˆØ¯ Ø±Ø§ Ø§Ø² Ù‡Ù…ÛŒÙ† ØµÙØ­Ù‡ Ú©Ù¾ÛŒ Ù†Ù…ÙˆØ¯Ù‡ Ùˆ Ø¯Ø± Ù†Ø±Ù…â€ŒØ§ÙØ²Ø§Ø± Ù…Ø±Ø¨ÙˆØ·Ù‡ Ø§Ø¶Ø§ÙÙ‡ Ù†Ù…Ø§ÛŒÛŒØ¯."
             )
 
-        # د) سیستم‌عامل اندروید
-        if any(w in text for w in ["اندروید", "android", "سامسونگ", "شیائومی"]):
+        # Ø¯) Ø³ÛŒØ³ØªÙ…â€ŒØ¹Ø§Ù…Ù„ Ø§Ù†Ø¯Ø±ÙˆÛŒØ¯
+        if any(w in text for w in ["Ø§Ù†Ø¯Ø±ÙˆÛŒØ¯", "android", "Ø³Ø§Ù…Ø³ÙˆÙ†Ú¯", "Ø´ÛŒØ§Ø¦ÙˆÙ…ÛŒ"]):
             return (
-                "برای دستگاه‌های **اندروید**، نرم‌افزارهای استاندارد زیر پیشنهاد می‌شوند:\n\n"
-                "🤖 **v2rayNG** (نسخه ۱.۸.۲۵ به بالا با پشتیبانی عالی از Fragment)\n"
-                "🤖 **Hiddify Next** یا **Sing-box**\n\n"
-                "کافی است لینک ساب را از دکمه کپی لینک در پورتال کپی کرده و در برنامه وارد فرمایید."
+                "Ø¨Ø±Ø§ÛŒ Ø¯Ø³ØªÚ¯Ø§Ù‡â€ŒÙ‡Ø§ÛŒ **Ø§Ù†Ø¯Ø±ÙˆÛŒØ¯**ØŒ Ù†Ø±Ù…â€ŒØ§ÙØ²Ø§Ø±Ù‡Ø§ÛŒ Ø§Ø³ØªØ§Ù†Ø¯Ø§Ø±Ø¯ Ø²ÛŒØ± Ù¾ÛŒØ´Ù†Ù‡Ø§Ø¯ Ù…ÛŒâ€ŒØ´ÙˆÙ†Ø¯:\n\n"
+                "ðŸ¤– **v2rayNG** (Ù†Ø³Ø®Ù‡ Û±.Û¸.Û²Ûµ Ø¨Ù‡ Ø¨Ø§Ù„Ø§ Ø¨Ø§ Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ Ø¹Ø§Ù„ÛŒ Ø§Ø² Fragment)\n"
+                "ðŸ¤– **Hiddify Next** ÛŒØ§ **Sing-box**\n\n"
+                "Ú©Ø§ÙÛŒ Ø§Ø³Øª Ù„ÛŒÙ†Ú© Ø³Ø§Ø¨ Ø±Ø§ Ø§Ø² Ø¯Ú©Ù…Ù‡ Ú©Ù¾ÛŒ Ù„ÛŒÙ†Ú© Ø¯Ø± Ù¾ÙˆØ±ØªØ§Ù„ Ú©Ù¾ÛŒ Ú©Ø±Ø¯Ù‡ Ùˆ Ø¯Ø± Ø¨Ø±Ù†Ø§Ù…Ù‡ ÙˆØ§Ø±Ø¯ ÙØ±Ù…Ø§ÛŒÛŒØ¯."
             )
 
-        # ه) سوالات تمدید، شارژ و فاکتور
-        if any(w in text for w in ["تمدید", "خرید", "فاکتور", "پرداخت", "کارت", "واریز", "پلن", "قیمت"]):
+        # Ù‡) Ø³ÙˆØ§Ù„Ø§Øª ØªÙ…Ø¯ÛŒØ¯ØŒ Ø´Ø§Ø±Ú˜ Ùˆ ÙØ§Ú©ØªÙˆØ±
+        if any(w in text for w in ["ØªÙ…Ø¯ÛŒØ¯", "Ø®Ø±ÛŒØ¯", "ÙØ§Ú©ØªÙˆØ±", "Ù¾Ø±Ø¯Ø§Ø®Øª", "Ú©Ø§Ø±Øª", "ÙˆØ§Ø±ÛŒØ²", "Ù¾Ù„Ù†", "Ù‚ÛŒÙ…Øª"]):
             return (
-                "جهت **تمدید اشتراک یا خرید حجم اضافه**:\n\n"
-                "می‌توانید مستقیماً در همین صفحه پورتال، از بخش **پلن‌های تمدید**، پلن مورد نظر خود را انتخاب کرده و به صورت آنلاین یا کارت‌به‌کارت واریز فرمایید. پس از واریز یا تایید فیش، اشتراک شما به طور خودکار شارژ و فعال می‌گردد."
+                "Ø¬Ù‡Øª **ØªÙ…Ø¯ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú© ÛŒØ§ Ø®Ø±ÛŒØ¯ Ø­Ø¬Ù… Ø§Ø¶Ø§ÙÙ‡**:\n\n"
+                "Ù…ÛŒâ€ŒØªÙˆØ§Ù†ÛŒØ¯ Ù…Ø³ØªÙ‚ÛŒÙ…Ø§Ù‹ Ø¯Ø± Ù‡Ù…ÛŒÙ† ØµÙØ­Ù‡ Ù¾ÙˆØ±ØªØ§Ù„ØŒ Ø§Ø² Ø¨Ø®Ø´ **Ù¾Ù„Ù†â€ŒÙ‡Ø§ÛŒ ØªÙ…Ø¯ÛŒØ¯**ØŒ Ù¾Ù„Ù† Ù…ÙˆØ±Ø¯ Ù†Ø¸Ø± Ø®ÙˆØ¯ Ø±Ø§ Ø§Ù†ØªØ®Ø§Ø¨ Ú©Ø±Ø¯Ù‡ Ùˆ Ø¨Ù‡ ØµÙˆØ±Øª Ø¢Ù†Ù„Ø§ÛŒÙ† ÛŒØ§ Ú©Ø§Ø±Øªâ€ŒØ¨Ù‡â€ŒÚ©Ø§Ø±Øª ÙˆØ§Ø±ÛŒØ² ÙØ±Ù…Ø§ÛŒÛŒØ¯. Ù¾Ø³ Ø§Ø² ÙˆØ§Ø±ÛŒØ² ÛŒØ§ ØªØ§ÛŒÛŒØ¯ ÙÛŒØ´ØŒ Ø§Ø´ØªØ±Ø§Ú© Ø´Ù…Ø§ Ø¨Ù‡ Ø·ÙˆØ± Ø®ÙˆØ¯Ú©Ø§Ø± Ø´Ø§Ø±Ú˜ Ùˆ ÙØ¹Ø§Ù„ Ù…ÛŒâ€ŒÚ¯Ø±Ø¯Ø¯."
             )
 
-        # و) بررسی در صورت اتصال به API خارجی (OpenAI/Gemini/غیره)
+        # Ùˆ) Ø¨Ø±Ø±Ø³ÛŒ Ø¯Ø± ØµÙˆØ±Øª Ø§ØªØµØ§Ù„ Ø¨Ù‡ API Ø®Ø§Ø±Ø¬ÛŒ (OpenAI/Gemini/ØºÛŒØ±Ù‡)
         ai_mode = self.get_setting("chat_ai_mode", "smart_local")
         api_key = self.get_setting("chat_ai_api_key", "").strip()
         if ai_mode == "external_api" and api_key:
@@ -5204,15 +5210,15 @@ class Database:
             except Exception as e_api:
                 logger.warning(f"External AI chat error: {e_api}")
 
-        # پاسخ پیش‌فرض هوشمند و خوش‌آمدگویی
+        # Ù¾Ø§Ø³Ø® Ù¾ÛŒØ´â€ŒÙØ±Ø¶ Ù‡ÙˆØ´Ù…Ù†Ø¯ Ùˆ Ø®ÙˆØ´â€ŒØ¢Ù…Ø¯Ú¯ÙˆÛŒÛŒ
         return (
-            "پیام شما با موفقیت ثبت و بررسی شد. 🤖\n\n"
-            "من هوش مصنوعی پشتیبانی هستم؛ پیام‌تان همزمان برای کارشناسان پشتیبانی ارسال شده و در صورت نیاز به زودی به شما پاسخ خواهند داد.\n"
-            "اگر در خصوص اتصال، نرم‌افزارها یا تمدید سوالی دارید، بفرمایید تا راهنمایی‌تان کنم."
+            "Ù¾ÛŒØ§Ù… Ø´Ù…Ø§ Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø«Ø¨Øª Ùˆ Ø¨Ø±Ø±Ø³ÛŒ Ø´Ø¯. ðŸ¤–\n\n"
+            "Ù…Ù† Ù‡ÙˆØ´ Ù…ØµÙ†ÙˆØ¹ÛŒ Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ Ù‡Ø³ØªÙ…Ø› Ù¾ÛŒØ§Ù…â€ŒØªØ§Ù† Ù‡Ù…Ø²Ù…Ø§Ù† Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø´Ù†Ø§Ø³Ø§Ù† Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ Ø§Ø±Ø³Ø§Ù„ Ø´Ø¯Ù‡ Ùˆ Ø¯Ø± ØµÙˆØ±Øª Ù†ÛŒØ§Ø² Ø¨Ù‡ Ø²ÙˆØ¯ÛŒ Ø¨Ù‡ Ø´Ù…Ø§ Ù¾Ø§Ø³Ø® Ø®ÙˆØ§Ù‡Ù†Ø¯ Ø¯Ø§Ø¯.\n"
+            "Ø§Ú¯Ø± Ø¯Ø± Ø®ØµÙˆØµ Ø§ØªØµØ§Ù„ØŒ Ù†Ø±Ù…â€ŒØ§ÙØ²Ø§Ø±Ù‡Ø§ ÛŒØ§ ØªÙ…Ø¯ÛŒØ¯ Ø³ÙˆØ§Ù„ÛŒ Ø¯Ø§Ø±ÛŒØ¯ØŒ Ø¨ÙØ±Ù…Ø§ÛŒÛŒØ¯ ØªØ§ Ø±Ø§Ù‡Ù†Ù…Ø§ÛŒÛŒâ€ŒØªØ§Ù† Ú©Ù†Ù…."
         )
 
     def get_all_tickets(self, status=None, reseller_id=None, search=None, vip_only=False, category=None):
-        """دریافت تمام تیکت‌ها با فیلتر وضعیت، جستجو، نماینده و تفکیک دسته‌بندی مشتریان و نمایندگان"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªÙ…Ø§Ù… ØªÛŒÚ©Øªâ€ŒÙ‡Ø§ Ø¨Ø§ ÙÛŒÙ„ØªØ± ÙˆØ¶Ø¹ÛŒØªØŒ Ø¬Ø³ØªØ¬ÙˆØŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ùˆ ØªÙÚ©ÛŒÚ© Ø¯Ø³ØªÙ‡â€ŒØ¨Ù†Ø¯ÛŒ Ù…Ø´ØªØ±ÛŒØ§Ù† Ùˆ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù†"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -5234,9 +5240,9 @@ class Database:
             """
             params = []
 
-            # فیلتر دسته‌بندی و نماینده
+            # ÙÛŒÙ„ØªØ± Ø¯Ø³ØªÙ‡â€ŒØ¨Ù†Ø¯ÛŒ Ùˆ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
             if reseller_id is not None:
-                # پنل نماینده
+                # Ù¾Ù†Ù„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
                 if category == "admin":
                     query += " AND t.reseller_id = ? AND t.ticket_type IN ('reseller_to_admin', 'quota_change', 'reseller_application')"
                     params.append(reseller_id)
@@ -5247,12 +5253,12 @@ class Database:
                     query += " AND t.reseller_id = ?"
                     params.append(reseller_id)
             else:
-                # پنل مدیریت
+                # Ù¾Ù†Ù„ Ù…Ø¯ÛŒØ±ÛŒØª
                 if category == "resellers":
                     query += " AND t.ticket_type IN ('reseller_to_admin', 'quota_change', 'reseller_application')"
                 elif category == "customers":
                     query += " AND (t.reseller_id IS NULL OR t.reseller_id = 0) AND (t.ticket_type NOT IN ('reseller_to_admin', 'quota_change', 'reseller_application') OR t.ticket_type IS NULL)"
-                # اگر category == 'all' یا نامشخص بود، همه را برمی‌گرداند
+                # Ø§Ú¯Ø± category == 'all' ÛŒØ§ Ù†Ø§Ù…Ø´Ø®Øµ Ø¨ÙˆØ¯ØŒ Ù‡Ù…Ù‡ Ø±Ø§ Ø¨Ø±Ù…ÛŒâ€ŒÚ¯Ø±Ø¯Ø§Ù†Ø¯
 
             if vip_only:
                 query += " AND u.is_vip = 1"
@@ -5286,7 +5292,7 @@ class Database:
             conn.close()
 
     def get_ticket_details(self, ticket_id):
-        """دریافت اطلاعات جامع تیکت به همراه پروفایل کاربر، نماینده و تاریخچه گفتگو"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ø¬Ø§Ù…Ø¹ ØªÛŒÚ©Øª Ø¨Ù‡ Ù‡Ù…Ø±Ø§Ù‡ Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ú©Ø§Ø±Ø¨Ø±ØŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ùˆ ØªØ§Ø±ÛŒØ®Ú†Ù‡ Ú¯ÙØªÚ¯Ùˆ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -5318,7 +5324,7 @@ class Database:
             conn.close()
 
     def get_tickets_stats(self, reseller_id=None):
-        """محاسبه آمار تفکیکی تیکت‌ها برای تب‌های فیلتر با تفکیک مشتریان و نمایندگان"""
+        """Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø¢Ù…Ø§Ø± ØªÙÚ©ÛŒÚ©ÛŒ ØªÛŒÚ©Øªâ€ŒÙ‡Ø§ Ø¨Ø±Ø§ÛŒ ØªØ¨â€ŒÙ‡Ø§ÛŒ ÙÛŒÙ„ØªØ± Ø¨Ø§ ØªÙÚ©ÛŒÚ© Ù…Ø´ØªØ±ÛŒØ§Ù† Ùˆ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù†"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -5349,7 +5355,7 @@ class Database:
                 }
 
             if reseller_id is None:
-                # پنل مدیریت
+                # Ù¾Ù†Ù„ Ù…Ø¯ÛŒØ±ÛŒØª
                 cust_stats = _calc_stats("WHERE (t.reseller_id IS NULL OR t.reseller_id = 0) AND (t.ticket_type NOT IN ('reseller_to_admin', 'quota_change', 'reseller_application') OR t.ticket_type IS NULL)", [])
                 res_stats = _calc_stats("WHERE t.ticket_type IN ('reseller_to_admin', 'quota_change', 'reseller_application')", [])
                 all_stats = _calc_stats("WHERE 1=1", [])
@@ -5365,7 +5371,7 @@ class Database:
                     "resellers": res_stats
                 }
             else:
-                # پنل نماینده
+                # Ù¾Ù†Ù„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
                 cust_stats = _calc_stats("WHERE t.reseller_id = ? AND (t.ticket_type NOT IN ('reseller_to_admin', 'quota_change', 'reseller_application') OR t.ticket_type IS NULL)", [reseller_id])
                 admin_stats = _calc_stats("WHERE t.reseller_id = ? AND t.ticket_type IN ('reseller_to_admin', 'quota_change', 'reseller_application')", [reseller_id])
                 all_stats = _calc_stats("WHERE t.reseller_id = ?", [reseller_id])
@@ -5388,14 +5394,14 @@ class Database:
             conn.close()
 
     def create_reseller_to_admin_ticket(self, reseller_id: int, subject: str, message: str, priority: str = 'normal') -> dict:
-        """ثبت تیکت مستقیم توسط نماینده برای پنل مدیریت"""
+        """Ø«Ø¨Øª ØªÛŒÚ©Øª Ù…Ø³ØªÙ‚ÛŒÙ… ØªÙˆØ³Ø· Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø±Ø§ÛŒ Ù¾Ù†Ù„ Ù…Ø¯ÛŒØ±ÛŒØª"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
             cursor.execute("SELECT * FROM resellers WHERE id=?", (reseller_id,))
             reseller = cursor.fetchone()
-            r_name = reseller["name"] if reseller else f"نماینده #{reseller_id}"
+            r_name = reseller["name"] if reseller else f"Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ #{reseller_id}"
             r_tg = reseller["telegram_id"] if reseller else 0
 
             cursor.execute("""
@@ -5421,7 +5427,7 @@ class Database:
             conn.close()
 
     def add_reseller_admin_ticket_reply(self, ticket_id: int, reseller_id: int, message: str) -> dict:
-        """ارسال پاسخ از سمت نماینده در تیکت مکاتبه با مدیریت"""
+        """Ø§Ø±Ø³Ø§Ù„ Ù¾Ø§Ø³Ø® Ø§Ø² Ø³Ù…Øª Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¯Ø± ØªÛŒÚ©Øª Ù…Ú©Ø§ØªØ¨Ù‡ Ø¨Ø§ Ù…Ø¯ÛŒØ±ÛŒØª"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -5429,11 +5435,11 @@ class Database:
             cursor.execute("SELECT * FROM support_tickets WHERE id=? AND reseller_id=?", (ticket_id, reseller_id))
             ticket = cursor.fetchone()
             if not ticket:
-                return {"success": False, "error": "تیکت یافت نشد"}
+                return {"success": False, "error": "ØªÛŒÚ©Øª ÛŒØ§ÙØª Ù†Ø´Ø¯"}
 
             cursor.execute("SELECT * FROM resellers WHERE id=?", (reseller_id,))
             reseller = cursor.fetchone()
-            r_name = reseller["name"] if reseller else f"نماینده #{reseller_id}"
+            r_name = reseller["name"] if reseller else f"Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ #{reseller_id}"
 
             cursor.execute("""
                 INSERT INTO ticket_messages (
@@ -5456,7 +5462,7 @@ class Database:
             conn.close()
 
     def get_ticket(self, ticket_id):
-        """دریافت یک تیکت بر اساس شناسه"""
+        """Ø¯Ø±ÛŒØ§ÙØª ÛŒÚ© ØªÛŒÚ©Øª Ø¨Ø± Ø§Ø³Ø§Ø³ Ø´Ù†Ø§Ø³Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -5469,24 +5475,24 @@ class Database:
         finally:
             conn.close()
 
-    # ═══════════════════════════════════════════════════════════════
-    # مدیریت رفرال و زیرمجموعه‌گیری
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ù…Ø¯ÛŒØ±ÛŒØª Ø±ÙØ±Ø§Ù„ Ùˆ Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡â€ŒÚ¯ÛŒØ±ÛŒ
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def add_referral(self, referrer_id, referred_id):
-        """ثبت کاربر معرفی شده"""
+        """Ø«Ø¨Øª Ú©Ø§Ø±Ø¨Ø± Ù…Ø¹Ø±ÙÛŒ Ø´Ø¯Ù‡"""
         if referrer_id == referred_id:
             return {"success": False, "error": "self_referral"}
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
-            # ثبت در جدول referrals
+            # Ø«Ø¨Øª Ø¯Ø± Ø¬Ø¯ÙˆÙ„ referrals
             cursor.execute("""
                 INSERT OR IGNORE INTO referrals (referrer_id, referred_id, reward_amount, status, created_at, updated_at)
                 VALUES (?, ?, 0, 'pending', ?, ?)
             """, (referrer_id, referred_id, now, now))
-            # ثبت معرف در جدول users
+            # Ø«Ø¨Øª Ù…Ø¹Ø±Ù Ø¯Ø± Ø¬Ø¯ÙˆÙ„ users
             cursor.execute("""
                 UPDATE users SET referred_by = ?, updated_at = ?
                 WHERE telegram_id = ? AND referred_by IS NULL
@@ -5500,7 +5506,7 @@ class Database:
             conn.close()
 
     def get_referral_stats(self, referrer_id):
-        """دریافت آمار رفرال کاربر"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø¢Ù…Ø§Ø± Ø±ÙØ±Ø§Ù„ Ú©Ø§Ø±Ø¨Ø±"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -5525,7 +5531,7 @@ class Database:
             conn.close()
 
     def complete_referral(self, referred_id, reward_amount=10000):
-        """تکمیل پاداش رفرال پس از خرید کاربر"""
+        """ØªÚ©Ù…ÛŒÙ„ Ù¾Ø§Ø¯Ø§Ø´ Ø±ÙØ±Ø§Ù„ Ù¾Ø³ Ø§Ø² Ø®Ø±ÛŒØ¯ Ú©Ø§Ø±Ø¨Ø±"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -5541,7 +5547,7 @@ class Database:
                 WHERE referred_id = ?
             """, (reward_amount, now, referred_id))
             
-            # افزودن پاداش به کیف پول معرف
+            # Ø§ÙØ²ÙˆØ¯Ù† Ù¾Ø§Ø¯Ø§Ø´ Ø¨Ù‡ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ù…Ø¹Ø±Ù
             cursor.execute("""
                 INSERT INTO wallet (telegram_id, balance, created_at, updated_at)
                 VALUES (?, ?, ?, ?)
@@ -5557,12 +5563,12 @@ class Database:
             conn.close()
 
 
-    # ═══════════════════════════════════════════════════════════════
-    # مدیریت اعلان‌ها
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ù…Ø¯ÛŒØ±ÛŒØª Ø§Ø¹Ù„Ø§Ù†â€ŒÙ‡Ø§
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def save_notification(self, telegram_id, notification_type, subscription_id=None):
-        """ذخیره اعلان ارسال شده"""
+        """Ø°Ø®ÛŒØ±Ù‡ Ø§Ø¹Ù„Ø§Ù† Ø§Ø±Ø³Ø§Ù„ Ø´Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -5580,7 +5586,7 @@ class Database:
             conn.close()
 
     def was_notification_sent(self, telegram_id, notification_type, subscription_id=None):
-        """بررسی ارسال شدن اعلان"""
+        """Ø¨Ø±Ø±Ø³ÛŒ Ø§Ø±Ø³Ø§Ù„ Ø´Ø¯Ù† Ø§Ø¹Ù„Ø§Ù†"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -5599,18 +5605,18 @@ class Database:
         finally:
             conn.close()
 
-    # ═══════════════════════════════════════════════════════════════
-    # آمار پیشرفته
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ø¢Ù…Ø§Ø± Ù¾ÛŒØ´Ø±ÙØªÙ‡
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def get_advanced_stats(self):
-        """دریافت آمار پیشرفته"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø¢Ù…Ø§Ø± Ù¾ÛŒØ´Ø±ÙØªÙ‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             stats = {}
             
-            # آمار کلی
+            # Ø¢Ù…Ø§Ø± Ú©Ù„ÛŒ
             cursor.execute("SELECT COUNT(*) as count FROM users")
             stats["total_users"] = cursor.fetchone()["count"]
             
@@ -5620,29 +5626,29 @@ class Database:
             cursor.execute("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'expired'")
             stats["expired_subscriptions"] = cursor.fetchone()["count"]
             
-            # درآمد ماهانه
+            # Ø¯Ø±Ø¢Ù…Ø¯ Ù…Ø§Ù‡Ø§Ù†Ù‡
             cursor.execute("""SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
                 WHERE status IN ('approved', 'completed') AND (is_deleted = 0 OR is_deleted IS NULL) AND created_at >= date('now', '-30 days')""")
             stats["monthly_revenue"] = cursor.fetchone()["total"]
             
-            # درآمد امروز
+            # Ø¯Ø±Ø¢Ù…Ø¯ Ø§Ù…Ø±ÙˆØ²
             cursor.execute("""SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
                 WHERE status IN ('approved', 'completed') AND (is_deleted = 0 OR is_deleted IS NULL) AND date(created_at) = date('now')""")
             stats["today_revenue"] = cursor.fetchone()["total"]
             
-            # کاربران جدید امروز
+            # Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ø¬Ø¯ÛŒØ¯ Ø§Ù…Ø±ÙˆØ²
             cursor.execute("SELECT COUNT(*) as count FROM users WHERE date(created_at) = date('now')")
             stats["today_new_users"] = cursor.fetchone()["count"]
             
-            # تیکت‌های باز
+            # ØªÛŒÚ©Øªâ€ŒÙ‡Ø§ÛŒ Ø¨Ø§Ø²
             cursor.execute("SELECT COUNT(*) as count FROM support_tickets WHERE status = 'open'")
             stats["open_tickets"] = cursor.fetchone()["count"]
             
-            # کاربران بلاک شده
+            # Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ø¨Ù„Ø§Ú© Ø´Ø¯Ù‡
             cursor.execute("SELECT COUNT(*) as count FROM blocked_users")
             stats["blocked_users"] = cursor.fetchone()["count"]
             
-            # محبوب‌ترین پلن
+            # Ù…Ø­Ø¨ÙˆØ¨â€ŒØªØ±ÛŒÙ† Ù¾Ù„Ù†
             cursor.execute("""SELECT plan_name, COUNT(*) as count FROM subscriptions 
                 GROUP BY plan_name ORDER BY count DESC LIMIT 5""")
             stats["popular_plans"] = [dict(row) for row in cursor.fetchall()]
@@ -5654,54 +5660,54 @@ class Database:
         finally:
             conn.close()
 
-    # ═══════════════════════════════════════════════════════════════
-    # آمار
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ø¢Ù…Ø§Ø±
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def get_stats(self):
-        """دریافت آمار دقیق دیتابیس"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø¢Ù…Ø§Ø± Ø¯Ù‚ÛŒÙ‚ Ø¯ÛŒØªØ§Ø¨ÛŒØ³"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
         try:
             stats = {}
 
-            # تعداد کاربران
+            # ØªØ¹Ø¯Ø§Ø¯ Ú©Ø§Ø±Ø¨Ø±Ø§Ù†
             cursor.execute("SELECT COUNT(*) as count FROM users")
             stats["total_users"] = cursor.fetchone()["count"]
 
-            # تعداد تراکنش‌ها
+            # ØªØ¹Ø¯Ø§Ø¯ ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§
             cursor.execute("SELECT COUNT(*) as count FROM transactions")
             stats["total_transactions"] = cursor.fetchone()["count"]
 
-            # تراکنش‌های در انتظار
+            # ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ Ø¯Ø± Ø§Ù†ØªØ¸Ø§Ø±
             cursor.execute("SELECT COUNT(*) as count FROM transactions WHERE status = 'pending'")
             stats["pending_transactions"] = cursor.fetchone()["count"]
 
-            # تراکنش‌های تایید شده
+            # ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ ØªØ§ÛŒÛŒØ¯ Ø´Ø¯Ù‡
             cursor.execute("SELECT COUNT(*) as count FROM transactions WHERE status IN ('approved', 'completed')")
             stats["completed_transactions"] = cursor.fetchone()["count"]
 
-            # تراکنش‌های رد شده
+            # ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ Ø±Ø¯ Ø´Ø¯Ù‡
             cursor.execute("SELECT COUNT(*) as count FROM transactions WHERE status = 'rejected'")
             stats["rejected_transactions"] = cursor.fetchone()["count"]
 
-            # درآمد کل
+            # Ø¯Ø±Ø¢Ù…Ø¯ Ú©Ù„
             cursor.execute("SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE status IN ('approved', 'completed') AND (is_deleted = 0 OR is_deleted IS NULL)")
             stats["total_revenue"] = cursor.fetchone()["total"]
 
-            # تعداد پشتیبان‌ها
+            # ØªØ¹Ø¯Ø§Ø¯ Ù¾Ø´ØªÛŒØ¨Ø§Ù†â€ŒÙ‡Ø§
             cursor.execute("SELECT COUNT(*) as count FROM backups")
             stats["total_backups"] = cursor.fetchone()["count"]
 
-            # تعداد اشتراک‌ها
+            # ØªØ¹Ø¯Ø§Ø¯ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§
             cursor.execute("SELECT COUNT(*) as count FROM subscriptions")
             stats["total_subscriptions"] = cursor.fetchone()["count"]
 
             cursor.execute("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'active'")
             stats["active_subscriptions"] = cursor.fetchone()["count"]
 
-            # کارت‌های فعال بانکی
+            # Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ÛŒ ÙØ¹Ø§Ù„ Ø¨Ø§Ù†Ú©ÛŒ
             cursor.execute("SELECT COUNT(*) as count FROM bank_cards WHERE is_active = 1")
             stats["active_cards"] = cursor.fetchone()["count"]
 
@@ -5719,7 +5725,7 @@ class Database:
                                 start_date: str = None, expire_date: str = None,
                                 is_manual: int = 0, period_offset: int = 1, period_label: str = None,
                                 note: str = None, created_by: str = None, renewed_at: str = None) -> bool:
-        """ثبت تاریخچه و میزان مصرف دوره قبلی همراه با قیمت پلن هنگام تمدید یا تغییر دوره اشتراک"""
+        """Ø«Ø¨Øª ØªØ§Ø±ÛŒØ®Ú†Ù‡ Ùˆ Ù…ÛŒØ²Ø§Ù† Ù…ØµØ±Ù Ø¯ÙˆØ±Ù‡ Ù‚Ø¨Ù„ÛŒ Ù‡Ù…Ø±Ø§Ù‡ Ø¨Ø§ Ù‚ÛŒÙ…Øª Ù¾Ù„Ù† Ù‡Ù†Ú¯Ø§Ù… ØªÙ…Ø¯ÛŒØ¯ ÛŒØ§ ØªØºÛŒÛŒØ± Ø¯ÙˆØ±Ù‡ Ø§Ø´ØªØ±Ø§Ú©"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -5753,7 +5759,7 @@ class Database:
                                        start_date: str = None, expire_date: str = None,
                                        note: str = None, created_by: str = "manual",
                                        reseller_id: int = None, renewed_at: str = None) -> dict:
-        """افزودن دستی سابقه و گزارش دوره قبلی مشتری با برچسب دوره، حجم، مدت و تگ دستی"""
+        """Ø§ÙØ²ÙˆØ¯Ù† Ø¯Ø³ØªÛŒ Ø³Ø§Ø¨Ù‚Ù‡ Ùˆ Ú¯Ø²Ø§Ø±Ø´ Ø¯ÙˆØ±Ù‡ Ù‚Ø¨Ù„ÛŒ Ù…Ø´ØªØ±ÛŒ Ø¨Ø§ Ø¨Ø±Ú†Ø³Ø¨ Ø¯ÙˆØ±Ù‡ØŒ Ø­Ø¬Ù…ØŒ Ù…Ø¯Øª Ùˆ ØªÚ¯ Ø¯Ø³ØªÛŒ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -5763,28 +5769,28 @@ class Database:
                 cursor.execute("SELECT * FROM subscriptions WHERE id=?", (subscription_id,))
             sub_row = cursor.fetchone()
             if not sub_row:
-                return {"success": False, "error": "اشتراک مورد نظر یافت نشد یا دسترسی مجاز نیست"}
+                return {"success": False, "error": "Ø§Ø´ØªØ±Ø§Ú© Ù…ÙˆØ±Ø¯ Ù†Ø¸Ø± ÛŒØ§ÙØª Ù†Ø´Ø¯ ÛŒØ§ Ø¯Ø³ØªØ±Ø³ÛŒ Ù…Ø¬Ø§Ø² Ù†ÛŒØ³Øª"}
 
             sub_dict = dict(sub_row)
             
             p_limit = float(previous_limit_gb) if (previous_limit_gb is not None and float(previous_limit_gb) > 0) else float(sub_dict.get("data_limit") or previous_usage_gb or 0)
             p_days = int(period_days) if (period_days and int(period_days) > 0) else int(sub_dict.get("duration") or 30)
-            p_name = plan_name.strip() if (plan_name and plan_name.strip()) else (sub_dict.get("plan_name") or "پلن سفارشی")
+            p_name = plan_name.strip() if (plan_name and plan_name.strip()) else (sub_dict.get("plan_name") or "Ù¾Ù„Ù† Ø³ÙØ§Ø±Ø´ÛŒ")
             
             p_offset = int(period_offset) if period_offset else 1
             if not period_label or not period_label.strip():
                 if p_offset == 1:
-                    lbl = "۱ دوره قبل (دوره گذشته)"
+                    lbl = "Û± Ø¯ÙˆØ±Ù‡ Ù‚Ø¨Ù„ (Ø¯ÙˆØ±Ù‡ Ú¯Ø°Ø´ØªÙ‡)"
                 elif p_offset == 2:
-                    lbl = "۲ دوره قبل"
+                    lbl = "Û² Ø¯ÙˆØ±Ù‡ Ù‚Ø¨Ù„"
                 elif p_offset == 3:
-                    lbl = "۳ دوره قبل"
+                    lbl = "Û³ Ø¯ÙˆØ±Ù‡ Ù‚Ø¨Ù„"
                 elif p_offset == 4:
-                    lbl = "۴ دوره قبل"
+                    lbl = "Û´ Ø¯ÙˆØ±Ù‡ Ù‚Ø¨Ù„"
                 elif p_offset == 5:
-                    lbl = "۵ دوره قبل"
+                    lbl = "Ûµ Ø¯ÙˆØ±Ù‡ Ù‚Ø¨Ù„"
                 else:
-                    lbl = f"{p_offset} دوره قبل"
+                    lbl = f"{p_offset} Ø¯ÙˆØ±Ù‡ Ù‚Ø¨Ù„"
             else:
                 lbl = period_label.strip()
 
@@ -5807,7 +5813,7 @@ class Database:
             ))
             conn.commit()
             inserted_id = cursor.lastrowid
-            return {"success": True, "id": inserted_id, "message": "سابقه دوره دستی با موفقیت اضافه شد"}
+            return {"success": True, "id": inserted_id, "message": "Ø³Ø§Ø¨Ù‚Ù‡ Ø¯ÙˆØ±Ù‡ Ø¯Ø³ØªÛŒ Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø§Ø¶Ø§ÙÙ‡ Ø´Ø¯"}
         except Exception as e:
             logger.error(f"Error adding manual subscription history: {e}")
             return {"success": False, "error": str(e)}
@@ -5815,7 +5821,7 @@ class Database:
             conn.close()
 
     def delete_subscription_history_entry(self, history_id: int, reseller_id: int = None) -> bool:
-        """حذف یک رکورد سابقه دوره با بررسی دسترسی نماینده یا مدیر"""
+        """Ø­Ø°Ù ÛŒÚ© Ø±Ú©ÙˆØ±Ø¯ Ø³Ø§Ø¨Ù‚Ù‡ Ø¯ÙˆØ±Ù‡ Ø¨Ø§ Ø¨Ø±Ø±Ø³ÛŒ Ø¯Ø³ØªØ±Ø³ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ ÛŒØ§ Ù…Ø¯ÛŒØ±"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -5832,12 +5838,12 @@ class Database:
             conn.close()
 
     def log_subscription_history(self, *args, **kwargs):
-        """نام مستعار برای save_subscription_history جهت سازگاری کامل"""
+        """Ù†Ø§Ù… Ù…Ø³ØªØ¹Ø§Ø± Ø¨Ø±Ø§ÛŒ save_subscription_history Ø¬Ù‡Øª Ø³Ø§Ø²Ú¯Ø§Ø±ÛŒ Ú©Ø§Ù…Ù„"""
         return self.save_subscription_history(*args, **kwargs)
 
     def get_subscription_history(self, subscription_id: int = None, telegram_id: int = None,
                                 reseller_id: int = None, limit: int = 50) -> list:
-        """دریافت سوابق مصرف دوره‌های قبلی اشتراک‌ها با جزئیات قیمت و زمان"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø³ÙˆØ§Ø¨Ù‚ Ù…ØµØ±Ù Ø¯ÙˆØ±Ù‡â€ŒÙ‡Ø§ÛŒ Ù‚Ø¨Ù„ÛŒ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ Ø¨Ø§ Ø¬Ø²Ø¦ÛŒØ§Øª Ù‚ÛŒÙ…Øª Ùˆ Ø²Ù…Ø§Ù†"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -5869,7 +5875,7 @@ class Database:
             conn.close()
 
     def get_subscription_full_details_and_history(self, sub_id: int, reseller_id: int = None) -> dict:
-        """دریافت اطلاعات جامع اشتراک به همراه آرشیو تمام دوره‌ها و مبالغ پرداختی گذشته"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ø¬Ø§Ù…Ø¹ Ø§Ø´ØªØ±Ø§Ú© Ø¨Ù‡ Ù‡Ù…Ø±Ø§Ù‡ Ø¢Ø±Ø´ÛŒÙˆ ØªÙ…Ø§Ù… Ø¯ÙˆØ±Ù‡â€ŒÙ‡Ø§ Ùˆ Ù…Ø¨Ø§Ù„Øº Ù¾Ø±Ø¯Ø§Ø®ØªÛŒ Ú¯Ø°Ø´ØªÙ‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -5879,7 +5885,7 @@ class Database:
                 cursor.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,))
             sub_row = cursor.fetchone()
             if not sub_row:
-                return {"success": False, "error": "اشتراک یافت نشد"}
+                return {"success": False, "error": "Ø§Ø´ØªØ±Ø§Ú© ÛŒØ§ÙØª Ù†Ø´Ø¯"}
 
             sub_dict = dict(sub_row)
             cursor.execute("""
@@ -5908,7 +5914,7 @@ class Database:
             conn.close()
 
     def set_subscription_debt(self, sub_id: int, payment_status: str, debt_amount: int, debt_notes: str = None, reseller_id: int = None):
-        """تنظیم یا بروزرسانی وضعیت بدهی مشتری"""
+        """ØªÙ†Ø¸ÛŒÙ… ÛŒØ§ Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ ÙˆØ¶Ø¹ÛŒØª Ø¨Ø¯Ù‡ÛŒ Ù…Ø´ØªØ±ÛŒ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -5934,7 +5940,7 @@ class Database:
                                  created_by: str = None,
                                  previous_debt: int = None) -> dict:
         """
-        ثبت رسید بدهی اختصاصی برای خرید یا تمدید مشتری به همراه تجمیع خودکار و دقیق با بدهی قبلی
+        Ø«Ø¨Øª Ø±Ø³ÛŒØ¯ Ø¨Ø¯Ù‡ÛŒ Ø§Ø®ØªØµØ§ØµÛŒ Ø¨Ø±Ø§ÛŒ Ø®Ø±ÛŒØ¯ ÛŒØ§ ØªÙ…Ø¯ÛŒØ¯ Ù…Ø´ØªØ±ÛŒ Ø¨Ù‡ Ù‡Ù…Ø±Ø§Ù‡ ØªØ¬Ù…ÛŒØ¹ Ø®ÙˆØ¯Ú©Ø§Ø± Ùˆ Ø¯Ù‚ÛŒÙ‚ Ø¨Ø§ Ø¨Ø¯Ù‡ÛŒ Ù‚Ø¨Ù„ÛŒ
         """
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -5943,19 +5949,19 @@ class Database:
             cursor.execute("SELECT * FROM subscriptions WHERE id = ?", (subscription_id,))
             sub_row = cursor.fetchone()
             if not sub_row:
-                return {"success": False, "error": "اشتراک یافت نشد"}
+                return {"success": False, "error": "Ø§Ø´ØªØ±Ø§Ú© ÛŒØ§ÙØª Ù†Ø´Ø¯"}
 
             sub = dict(sub_row)
             added_amount = int(amount or 0)
 
-            # محاسبه دقیق بدهی قبلی
+            # Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø¯Ù‚ÛŒÙ‚ Ø¨Ø¯Ù‡ÛŒ Ù‚Ø¨Ù„ÛŒ
             if previous_debt is not None:
                 prev_debt = max(0, int(previous_debt))
             elif action_type == "create":
-                # در زمان ساخت اولیه اشتراک، بدهی قبلی قطعاً صفر است
+                # Ø¯Ø± Ø²Ù…Ø§Ù† Ø³Ø§Ø®Øª Ø§ÙˆÙ„ÛŒÙ‡ Ø§Ø´ØªØ±Ø§Ú©ØŒ Ø¨Ø¯Ù‡ÛŒ Ù‚Ø¨Ù„ÛŒ Ù‚Ø·Ø¹Ø§Ù‹ ØµÙØ± Ø§Ø³Øª
                 prev_debt = 0
             else:
-                # محاسبه بر اساس مجموع فاکتورهای باز ثبت‌شده قبلی
+                # Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø¨Ø± Ø§Ø³Ø§Ø³ Ù…Ø¬Ù…ÙˆØ¹ ÙØ§Ú©ØªÙˆØ±Ù‡Ø§ÛŒ Ø¨Ø§Ø² Ø«Ø¨Øªâ€ŒØ´Ø¯Ù‡ Ù‚Ø¨Ù„ÛŒ
                 cursor.execute("""
                     SELECT COALESCE(SUM(amount), 0), COUNT(*)
                     FROM customer_debt_records
@@ -5973,7 +5979,7 @@ class Database:
             r_id = reseller_id if reseller_id is not None else sub.get("reseller_id")
             creator = created_by or "admin"
 
-            # بروزرسانی اشتراک به وضعیت بدهکار و ثبت مجموع تجمعی صحیح بدهی
+            # Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø§Ø´ØªØ±Ø§Ú© Ø¨Ù‡ ÙˆØ¶Ø¹ÛŒØª Ø¨Ø¯Ù‡Ú©Ø§Ø± Ùˆ Ø«Ø¨Øª Ù…Ø¬Ù…ÙˆØ¹ ØªØ¬Ù…Ø¹ÛŒ ØµØ­ÛŒØ­ Ø¨Ø¯Ù‡ÛŒ
             cursor.execute("""
                 UPDATE subscriptions
                 SET payment_status = 'unpaid',
@@ -5984,7 +5990,7 @@ class Database:
                 WHERE id = ?
             """, (total_debt, notes, now, now, subscription_id))
 
-            # ثبت رکورد مجزا در جدول customer_debt_records
+            # Ø«Ø¨Øª Ø±Ú©ÙˆØ±Ø¯ Ù…Ø¬Ø²Ø§ Ø¯Ø± Ø¬Ø¯ÙˆÙ„ customer_debt_records
             cursor.execute("""
                 INSERT INTO customer_debt_records
                 (subscription_id, account_name, telegram_id, reseller_id, action_type, plan_name,
@@ -6013,10 +6019,10 @@ class Database:
 
     def repair_customer_debt_records(self, subscription_id: int = None) -> dict:
         """
-        بررسی و خودترمیمی جامع زنجیره محاسباتی بدهی‌ها و رسیدها:
-        - اصلاح previous_debt و total_debt بر اساس تاریخچه زمانی و مبالغ واقعی
-        - همگام‌سازی subscriptions.debt_amount و payment_status با جمع فاکتورهای باز
-        - تصحیح یادداشت‌های کپی‌شده مربوط به ساخت اشتراک روی رکوردهای تمدید
+        Ø¨Ø±Ø±Ø³ÛŒ Ùˆ Ø®ÙˆØ¯ØªØ±Ù…ÛŒÙ…ÛŒ Ø¬Ø§Ù…Ø¹ Ø²Ù†Ø¬ÛŒØ±Ù‡ Ù…Ø­Ø§Ø³Ø¨Ø§ØªÛŒ Ø¨Ø¯Ù‡ÛŒâ€ŒÙ‡Ø§ Ùˆ Ø±Ø³ÛŒØ¯Ù‡Ø§:
+        - Ø§ØµÙ„Ø§Ø­ previous_debt Ùˆ total_debt Ø¨Ø± Ø§Ø³Ø§Ø³ ØªØ§Ø±ÛŒØ®Ú†Ù‡ Ø²Ù…Ø§Ù†ÛŒ Ùˆ Ù…Ø¨Ø§Ù„Øº ÙˆØ§Ù‚Ø¹ÛŒ
+        - Ù‡Ù…Ú¯Ø§Ù…â€ŒØ³Ø§Ø²ÛŒ subscriptions.debt_amount Ùˆ payment_status Ø¨Ø§ Ø¬Ù…Ø¹ ÙØ§Ú©ØªÙˆØ±Ù‡Ø§ÛŒ Ø¨Ø§Ø²
+        - ØªØµØ­ÛŒØ­ ÛŒØ§Ø¯Ø¯Ø§Ø´Øªâ€ŒÙ‡Ø§ÛŒ Ú©Ù¾ÛŒâ€ŒØ´Ø¯Ù‡ Ù…Ø±Ø¨ÙˆØ· Ø¨Ù‡ Ø³Ø§Ø®Øª Ø§Ø´ØªØ±Ø§Ú© Ø±ÙˆÛŒ Ø±Ú©ÙˆØ±Ø¯Ù‡Ø§ÛŒ ØªÙ…Ø¯ÛŒØ¯
         """
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -6056,10 +6062,10 @@ class Database:
                     current_tot = int(rec.get("total_debt") or 0)
                     notes = rec.get("notes") or ""
 
-                    # اصلاح یادداشت‌هایی که متن ساخت اشتراک را روی تمدید کپی کرده بودند
+                    # Ø§ØµÙ„Ø§Ø­ ÛŒØ§Ø¯Ø¯Ø§Ø´Øªâ€ŒÙ‡Ø§ÛŒÛŒ Ú©Ù‡ Ù…ØªÙ† Ø³Ø§Ø®Øª Ø§Ø´ØªØ±Ø§Ú© Ø±Ø§ Ø±ÙˆÛŒ ØªÙ…Ø¯ÛŒØ¯ Ú©Ù¾ÛŒ Ú©Ø±Ø¯Ù‡ Ø¨ÙˆØ¯Ù†Ø¯
                     new_notes = notes
-                    if act_type == "renew" and "ساخت اشتراک" in str(notes):
-                        new_notes = str(notes).replace("ساخت اشتراک", "تمدید اشتراک")
+                    if act_type == "renew" and "Ø³Ø§Ø®Øª Ø§Ø´ØªØ±Ø§Ú©" in str(notes):
+                        new_notes = str(notes).replace("Ø³Ø§Ø®Øª Ø§Ø´ØªØ±Ø§Ú©", "ØªÙ…Ø¯ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú©")
 
                     if act_type in ("create", "renew", "manual", "initial"):
                         expected_prev = running_debt
@@ -6086,7 +6092,7 @@ class Database:
                         repaired_records += 1
                         sub_updated = True
 
-                # محاسبه جمع واقعی رسیدهای باز و همگام‌سازی اشتراک
+                # Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø¬Ù…Ø¹ ÙˆØ§Ù‚Ø¹ÛŒ Ø±Ø³ÛŒØ¯Ù‡Ø§ÛŒ Ø¨Ø§Ø² Ùˆ Ù‡Ù…Ú¯Ø§Ù…â€ŒØ³Ø§Ø²ÛŒ Ø§Ø´ØªØ±Ø§Ú©
                 cursor.execute("""
                     SELECT COALESCE(SUM(amount), 0), COUNT(*)
                     FROM customer_debt_records
@@ -6125,9 +6131,9 @@ class Database:
 
     def get_customer_debt_report(self, subscription_id: int) -> dict:
         """
-        دریافت گزارش جامع بدهی‌های یک مشتری شامل جمع کل، بدهی فعلی و لیست رسیدها به همراه خودترمیمی خودکار
+        Ø¯Ø±ÛŒØ§ÙØª Ú¯Ø²Ø§Ø±Ø´ Ø¬Ø§Ù…Ø¹ Ø¨Ø¯Ù‡ÛŒâ€ŒÙ‡Ø§ÛŒ ÛŒÚ© Ù…Ø´ØªØ±ÛŒ Ø´Ø§Ù…Ù„ Ø¬Ù…Ø¹ Ú©Ù„ØŒ Ø¨Ø¯Ù‡ÛŒ ÙØ¹Ù„ÛŒ Ùˆ Ù„ÛŒØ³Øª Ø±Ø³ÛŒØ¯Ù‡Ø§ Ø¨Ù‡ Ù‡Ù…Ø±Ø§Ù‡ Ø®ÙˆØ¯ØªØ±Ù…ÛŒÙ…ÛŒ Ø®ÙˆØ¯Ú©Ø§Ø±
         """
-        # ابتدا خودترمیمی اجرا می‌شود تا هرگونه انحراف در دیتابیس خودبه‌خود اصلاح شود
+        # Ø§Ø¨ØªØ¯Ø§ Ø®ÙˆØ¯ØªØ±Ù…ÛŒÙ…ÛŒ Ø§Ø¬Ø±Ø§ Ù…ÛŒâ€ŒØ´ÙˆØ¯ ØªØ§ Ù‡Ø±Ú¯ÙˆÙ†Ù‡ Ø§Ù†Ø­Ø±Ø§Ù Ø¯Ø± Ø¯ÛŒØªØ§Ø¨ÛŒØ³ Ø®ÙˆØ¯Ø¨Ù‡â€ŒØ®ÙˆØ¯ Ø§ØµÙ„Ø§Ø­ Ø´ÙˆØ¯
         try:
             self.repair_customer_debt_records(subscription_id)
         except Exception as e_rep:
@@ -6139,7 +6145,7 @@ class Database:
             cursor.execute("SELECT * FROM subscriptions WHERE id = ?", (subscription_id,))
             sub_row = cursor.fetchone()
             if not sub_row:
-                return {"success": False, "error": "اشتراک یافت نشد"}
+                return {"success": False, "error": "Ø§Ø´ØªØ±Ø§Ú© ÛŒØ§ÙØª Ù†Ø´Ø¯"}
 
             sub = dict(sub_row)
             cursor.execute("""
@@ -6152,10 +6158,10 @@ class Database:
 
             current_debt = int(sub.get("debt_amount") or 0)
 
-            # اگر رکوردی هنوز در جدول جدید ثبت نشده ولی در سابسکریپشن بدهی وجود دارد، رکورد آغازین درج کنیم
+            # Ø§Ú¯Ø± Ø±Ú©ÙˆØ±Ø¯ÛŒ Ù‡Ù†ÙˆØ² Ø¯Ø± Ø¬Ø¯ÙˆÙ„ Ø¬Ø¯ÛŒØ¯ Ø«Ø¨Øª Ù†Ø´Ø¯Ù‡ ÙˆÙ„ÛŒ Ø¯Ø± Ø³Ø§Ø¨Ø³Ú©Ø±ÛŒÙ¾Ø´Ù† Ø¨Ø¯Ù‡ÛŒ ÙˆØ¬ÙˆØ¯ Ø¯Ø§Ø±Ø¯ØŒ Ø±Ú©ÙˆØ±Ø¯ Ø¢ØºØ§Ø²ÛŒÙ† Ø¯Ø±Ø¬ Ú©Ù†ÛŒÙ…
             if not records and current_debt > 0:
                 now = get_now_iso()
-                notes = sub.get("debt_notes") or "بدهی قبلی ثبت‌شده در سیستم"
+                notes = sub.get("debt_notes") or "Ø¨Ø¯Ù‡ÛŒ Ù‚Ø¨Ù„ÛŒ Ø«Ø¨Øªâ€ŒØ´Ø¯Ù‡ Ø¯Ø± Ø³ÛŒØ³ØªÙ…"
                 cursor.execute("""
                     INSERT INTO customer_debt_records
                     (subscription_id, account_name, telegram_id, reseller_id, action_type, plan_name,
@@ -6163,8 +6169,8 @@ class Database:
                     VALUES (?, ?, ?, ?, 'initial', ?, ?, 0, ?, 'unpaid', ?, ?, ?, ?)
                 """, (
                     subscription_id, sub.get("account_name") or "", sub.get("telegram_id") or 0,
-                    sub.get("reseller_id"), sub.get("plan_name") or "اشتراک",
-                    current_debt, current_debt, notes, sub.get("created_by") or "سیستم",
+                    sub.get("reseller_id"), sub.get("plan_name") or "Ø§Ø´ØªØ±Ø§Ú©",
+                    current_debt, current_debt, notes, sub.get("created_by") or "Ø³ÛŒØ³ØªÙ…",
                     sub.get("debt_created_at") or now, now
                 ))
                 conn.commit()
@@ -6175,7 +6181,7 @@ class Database:
             total_settled_sum = sum(int(r.get("amount") or 0) for r in records if r.get("status") == "paid" and r.get("action_type") != "settle")
             unpaid_count = sum(1 for r in records if r.get("status") == "unpaid" and r.get("action_type") != "settle")
 
-            # محاسبه قطعی بدهی معوقه بر اساس جمع فاکتورهای باز
+            # Ù…Ø­Ø§Ø³Ø¨Ù‡ Ù‚Ø·Ø¹ÛŒ Ø¨Ø¯Ù‡ÛŒ Ù…Ø¹ÙˆÙ‚Ù‡ Ø¨Ø± Ø§Ø³Ø§Ø³ Ø¬Ù…Ø¹ ÙØ§Ú©ØªÙˆØ±Ù‡Ø§ÛŒ Ø¨Ø§Ø²
             if records:
                 current_debt = sum(int(r.get("amount") or 0) for r in records if r.get("status") == "unpaid" and r.get("action_type") != "settle")
 
@@ -6204,10 +6210,10 @@ class Database:
             conn.close()
 
     def settle_customer_debt_record(self, subscription_id: int, record_id: int = None,
-                                    amount: int = None, settled_by: str = "مدیریت",
+                                    amount: int = None, settled_by: str = "Ù…Ø¯ÛŒØ±ÛŒØª",
                                     order_id: str = None) -> dict:
         """
-        تسویه یک رسید بدهی خاص یا تسویه بخشی از بدهی مشتری با محاسبه دقیق مانده
+        ØªØ³ÙˆÛŒÙ‡ ÛŒÚ© Ø±Ø³ÛŒØ¯ Ø¨Ø¯Ù‡ÛŒ Ø®Ø§Øµ ÛŒØ§ ØªØ³ÙˆÛŒÙ‡ Ø¨Ø®Ø´ÛŒ Ø§Ø² Ø¨Ø¯Ù‡ÛŒ Ù…Ø´ØªØ±ÛŒ Ø¨Ø§ Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø¯Ù‚ÛŒÙ‚ Ù…Ø§Ù†Ø¯Ù‡
         """
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -6216,7 +6222,7 @@ class Database:
             cursor.execute("SELECT * FROM subscriptions WHERE id = ?", (subscription_id,))
             sub_row = cursor.fetchone()
             if not sub_row:
-                return {"success": False, "error": "اشتراک یافت نشد"}
+                return {"success": False, "error": "Ø§Ø´ØªØ±Ø§Ú© ÛŒØ§ÙØª Ù†Ø´Ø¯"}
 
             sub = dict(sub_row)
             current_debt = int(sub.get("debt_amount") or 0)
@@ -6225,7 +6231,7 @@ class Database:
                 cursor.execute("SELECT * FROM customer_debt_records WHERE id = ? AND subscription_id = ?", (record_id, subscription_id))
                 rec = cursor.fetchone()
                 if not rec:
-                    return {"success": False, "error": "رسید بدهی یافت نشد"}
+                    return {"success": False, "error": "Ø±Ø³ÛŒØ¯ Ø¨Ø¯Ù‡ÛŒ ÛŒØ§ÙØª Ù†Ø´Ø¯"}
                 rec_dict = dict(rec)
                 rec_amt = int(rec_dict.get("amount") or 0)
                 cursor.execute("""
@@ -6234,7 +6240,7 @@ class Database:
                     WHERE id = ?
                 """, (now, settled_by, order_id, now, record_id))
 
-                # محاسبه دقیق بدهی جدید بر اساس فاکتورهای باز باقیمانده
+                # Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø¯Ù‚ÛŒÙ‚ Ø¨Ø¯Ù‡ÛŒ Ø¬Ø¯ÛŒØ¯ Ø¨Ø± Ø§Ø³Ø§Ø³ ÙØ§Ú©ØªÙˆØ±Ù‡Ø§ÛŒ Ø¨Ø§Ø² Ø¨Ø§Ù‚ÛŒÙ…Ø§Ù†Ø¯Ù‡
                 cursor.execute("""
                     SELECT COALESCE(SUM(amount), 0)
                     FROM customer_debt_records
@@ -6248,11 +6254,11 @@ class Database:
                     INSERT INTO customer_debt_records
                     (subscription_id, account_name, telegram_id, reseller_id, action_type, plan_name,
                      amount, previous_debt, total_debt, status, notes, created_by, paid_at, settled_by, settle_order_id, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, 'settle', 'تسویه بدهی', ?, ?, ?, 'paid', ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, 'settle', 'ØªØ³ÙˆÛŒÙ‡ Ø¨Ø¯Ù‡ÛŒ', ?, ?, ?, 'paid', ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     subscription_id, sub.get("account_name"), sub.get("telegram_id") or 0,
                     sub.get("reseller_id"), int(amount), current_debt, new_debt,
-                    f"تسویه مبلغ {amount:,} تومان توسط {settled_by}", settled_by, now, settled_by, order_id, now, now
+                    f"ØªØ³ÙˆÛŒÙ‡ Ù…Ø¨Ù„Øº {amount:,} ØªÙˆÙ…Ø§Ù† ØªÙˆØ³Ø· {settled_by}", settled_by, now, settled_by, order_id, now, now
                 ))
             else:
                 new_debt = 0
@@ -6280,8 +6286,8 @@ class Database:
         finally:
             conn.close()
 
-    def clear_subscription_debt(self, sub_id: int, reseller_id: int = None, settled_by: str = "مدیریت", order_id: str = None):
-        """تسویه کامل بدهی مشتری و ثبت وضعیت پرداخت شده در اشتراک و رسیدها"""
+    def clear_subscription_debt(self, sub_id: int, reseller_id: int = None, settled_by: str = "Ù…Ø¯ÛŒØ±ÛŒØª", order_id: str = None):
+        """ØªØ³ÙˆÛŒÙ‡ Ú©Ø§Ù…Ù„ Ø¨Ø¯Ù‡ÛŒ Ù…Ø´ØªØ±ÛŒ Ùˆ Ø«Ø¨Øª ÙˆØ¶Ø¹ÛŒØª Ù¾Ø±Ø¯Ø§Ø®Øª Ø´Ø¯Ù‡ Ø¯Ø± Ø§Ø´ØªØ±Ø§Ú© Ùˆ Ø±Ø³ÛŒØ¯Ù‡Ø§"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -6293,12 +6299,12 @@ class Database:
                 params.append(reseller_id)
             cursor.execute(query, params)
 
-            # بروزرسانی تمامی رکوردهای باز در جدول رسیدهای بدهی
+            # Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ ØªÙ…Ø§Ù…ÛŒ Ø±Ú©ÙˆØ±Ø¯Ù‡Ø§ÛŒ Ø¨Ø§Ø² Ø¯Ø± Ø¬Ø¯ÙˆÙ„ Ø±Ø³ÛŒØ¯Ù‡Ø§ÛŒ Ø¨Ø¯Ù‡ÛŒ
             cursor.execute("""
                 UPDATE customer_debt_records 
                 SET status = 'paid', paid_at = ?, settled_by = ?, settle_order_id = ?, updated_at = ?
                 WHERE subscription_id = ? AND status = 'unpaid'
-            """, (now, settled_by or "مدیریت", order_id, now, sub_id))
+            """, (now, settled_by or "Ù…Ø¯ÛŒØ±ÛŒØª", order_id, now, sub_id))
 
             conn.commit()
             return {"success": True}
@@ -6309,7 +6315,7 @@ class Database:
             conn.close()
 
     def get_debtor_subscriptions(self, reseller_id: int = None, limit: int = 200) -> list:
-        """لیست مشتریان بدهکار به همراه تاریخ، مبلغ و شماره تماس"""
+        """Ù„ÛŒØ³Øª Ù…Ø´ØªØ±ÛŒØ§Ù† Ø¨Ø¯Ù‡Ú©Ø§Ø± Ø¨Ù‡ Ù‡Ù…Ø±Ø§Ù‡ ØªØ§Ø±ÛŒØ®ØŒ Ù…Ø¨Ù„Øº Ùˆ Ø´Ù…Ø§Ø±Ù‡ ØªÙ…Ø§Ø³"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -6333,7 +6339,7 @@ class Database:
             conn.close()
 
     def get_debtor_count(self, reseller_id: int = None) -> int:
-        """تعداد مشتریان بدهکار"""
+        """ØªØ¹Ø¯Ø§Ø¯ Ù…Ø´ØªØ±ÛŒØ§Ù† Ø¨Ø¯Ù‡Ú©Ø§Ø±"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -6357,7 +6363,7 @@ class Database:
 
     def create_quota_change_request(self, sub_id: int, reseller_id: int,
                                     requested_limit: float, requested_duration: int, reason: str = "") -> dict:
-        """ثبت درخواست رسمی تغییر حجم و مدت اشتراک نماینده و ارسال تیکت به مدیریت"""
+        """Ø«Ø¨Øª Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø±Ø³Ù…ÛŒ ØªØºÛŒÛŒØ± Ø­Ø¬Ù… Ùˆ Ù…Ø¯Øª Ø§Ø´ØªØ±Ø§Ú© Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ùˆ Ø§Ø±Ø³Ø§Ù„ ØªÛŒÚ©Øª Ø¨Ù‡ Ù…Ø¯ÛŒØ±ÛŒØª"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -6365,11 +6371,11 @@ class Database:
             cursor.execute("SELECT * FROM subscriptions WHERE id=? AND reseller_id=?", (sub_id, reseller_id))
             sub = cursor.fetchone()
             if not sub:
-                return {"success": False, "error": "اشتراک مورد نظر یافت نشد"}
+                return {"success": False, "error": "Ø§Ø´ØªØ±Ø§Ú© Ù…ÙˆØ±Ø¯ Ù†Ø¸Ø± ÛŒØ§ÙØª Ù†Ø´Ø¯"}
 
             cursor.execute("SELECT * FROM resellers WHERE id=?", (reseller_id,))
             reseller = cursor.fetchone()
-            r_name = reseller["name"] if reseller else f"نماینده #{reseller_id}"
+            r_name = reseller["name"] if reseller else f"Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ #{reseller_id}"
             r_tg = reseller["telegram_id"] if reseller else 0
 
             cur_limit = float(sub["data_limit"] or 0)
@@ -6390,15 +6396,15 @@ class Database:
             }
             req_json = json.dumps(req_payload, ensure_ascii=False)
 
-            subject = f"درخواست تغییر حجم و مدت اشتراک «{acc_name}»"
+            subject = f"Ø¯Ø±Ø®ÙˆØ§Ø³Øª ØªØºÛŒÛŒØ± Ø­Ø¬Ù… Ùˆ Ù…Ø¯Øª Ø§Ø´ØªØ±Ø§Ú© Â«{acc_name}Â»"
             msg = (
-                f"🔹 درخواست تغییر مشخصات سرویس توسط نماینده «{r_name}»:\n"
-                f"👤 نام اکانت: {acc_name}\n"
-                f"📦 حجم فعلی: {cur_limit} گیگابایت ➔ 🎯 حجم درخواستی: {requested_limit} گیگابایت\n"
-                f"⏳ مدت فعلی: {cur_dur} روز ➔ 🎯 مدت درخواستی: {requested_duration} روز\n"
+                f"ðŸ”¹ Ø¯Ø±Ø®ÙˆØ§Ø³Øª ØªØºÛŒÛŒØ± Ù…Ø´Ø®ØµØ§Øª Ø³Ø±ÙˆÛŒØ³ ØªÙˆØ³Ø· Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Â«{r_name}Â»:\n"
+                f"ðŸ‘¤ Ù†Ø§Ù… Ø§Ú©Ø§Ù†Øª: {acc_name}\n"
+                f"ðŸ“¦ Ø­Ø¬Ù… ÙØ¹Ù„ÛŒ: {cur_limit} Ú¯ÛŒÚ¯Ø§Ø¨Ø§ÛŒØª âž” ðŸŽ¯ Ø­Ø¬Ù… Ø¯Ø±Ø®ÙˆØ§Ø³ØªÛŒ: {requested_limit} Ú¯ÛŒÚ¯Ø§Ø¨Ø§ÛŒØª\n"
+                f"â³ Ù…Ø¯Øª ÙØ¹Ù„ÛŒ: {cur_dur} Ø±ÙˆØ² âž” ðŸŽ¯ Ù…Ø¯Øª Ø¯Ø±Ø®ÙˆØ§Ø³ØªÛŒ: {requested_duration} Ø±ÙˆØ²\n"
             )
             if reason.strip():
-                msg += f"📝 علت/توضیحات: {reason.strip()}"
+                msg += f"ðŸ“ Ø¹Ù„Øª/ØªÙˆØ¶ÛŒØ­Ø§Øª: {reason.strip()}"
 
             cursor.execute("""
                 INSERT INTO support_tickets (
@@ -6422,8 +6428,8 @@ class Database:
         finally:
             conn.close()
 
-    def approve_quota_change_request(self, ticket_id: int, admin_name: str = "مدیریت") -> dict:
-        """تایید درخواست تغییر حجم/مدت توسط مدیر و بازگرداندن اطلاعات جهت اعمال در هیدیفای"""
+    def approve_quota_change_request(self, ticket_id: int, admin_name: str = "Ù…Ø¯ÛŒØ±ÛŒØª") -> dict:
+        """ØªØ§ÛŒÛŒØ¯ Ø¯Ø±Ø®ÙˆØ§Ø³Øª ØªØºÛŒÛŒØ± Ø­Ø¬Ù…/Ù…Ø¯Øª ØªÙˆØ³Ø· Ù…Ø¯ÛŒØ± Ùˆ Ø¨Ø§Ø²Ú¯Ø±Ø¯Ø§Ù†Ø¯Ù† Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ø¬Ù‡Øª Ø§Ø¹Ù…Ø§Ù„ Ø¯Ø± Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -6431,7 +6437,7 @@ class Database:
             cursor.execute("SELECT * FROM support_tickets WHERE id=?", (ticket_id,))
             ticket = cursor.fetchone()
             if not ticket:
-                return {"success": False, "error": "تیکت یافت نشد"}
+                return {"success": False, "error": "ØªÛŒÚ©Øª ÛŒØ§ÙØª Ù†Ø´Ø¯"}
 
             req_data = json.loads(ticket["request_data"]) if ticket["request_data"] else {}
             sub_id = req_data.get("sub_id")
@@ -6439,17 +6445,17 @@ class Database:
             new_dur = req_data.get("requested_duration")
 
             if not sub_id or new_limit is None or new_dur is None:
-                return {"success": False, "error": "داده‌های درخواست ناقص هستند"}
+                return {"success": False, "error": "Ø¯Ø§Ø¯Ù‡â€ŒÙ‡Ø§ÛŒ Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ù†Ø§Ù‚Øµ Ù‡Ø³ØªÙ†Ø¯"}
 
-            # ۱. بروزرسانی در دیتابیس محلی
+            # Û±. Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø¯Ø± Ø¯ÛŒØªØ§Ø¨ÛŒØ³ Ù…Ø­Ù„ÛŒ
             cursor.execute("""
                 UPDATE subscriptions
                 SET data_limit = ?, duration = ?, updated_at = ?
                 WHERE id = ?
             """, (float(new_limit), int(new_dur), now, sub_id))
 
-            # ۲. بروزرسانی وضعیت تیکت
-            reply_text = f"✅ درخواست تغییر حجم به {new_limit} گیگابایت و {new_dur} روز توسط {admin_name} تایید شد و روی سرویس اعمال گردید."
+            # Û². Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ ÙˆØ¶Ø¹ÛŒØª ØªÛŒÚ©Øª
+            reply_text = f"âœ… Ø¯Ø±Ø®ÙˆØ§Ø³Øª ØªØºÛŒÛŒØ± Ø­Ø¬Ù… Ø¨Ù‡ {new_limit} Ú¯ÛŒÚ¯Ø§Ø¨Ø§ÛŒØª Ùˆ {new_dur} Ø±ÙˆØ² ØªÙˆØ³Ø· {admin_name} ØªØ§ÛŒÛŒØ¯ Ø´Ø¯ Ùˆ Ø±ÙˆÛŒ Ø³Ø±ÙˆÛŒØ³ Ø§Ø¹Ù…Ø§Ù„ Ú¯Ø±Ø¯ÛŒØ¯."
             cursor.execute("""
                 UPDATE support_tickets
                 SET status = 'replied', request_status = 'approved', admin_reply = ?, updated_at = ?
@@ -6470,8 +6476,8 @@ class Database:
         finally:
             conn.close()
 
-    def reject_quota_change_request(self, ticket_id: int, reason: str = "", admin_name: str = "مدیریت") -> dict:
-        """رد درخواست تغییر حجم/مدت توسط مدیر با درج علت"""
+    def reject_quota_change_request(self, ticket_id: int, reason: str = "", admin_name: str = "Ù…Ø¯ÛŒØ±ÛŒØª") -> dict:
+        """Ø±Ø¯ Ø¯Ø±Ø®ÙˆØ§Ø³Øª ØªØºÛŒÛŒØ± Ø­Ø¬Ù…/Ù…Ø¯Øª ØªÙˆØ³Ø· Ù…Ø¯ÛŒØ± Ø¨Ø§ Ø¯Ø±Ø¬ Ø¹Ù„Øª"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -6479,11 +6485,11 @@ class Database:
             cursor.execute("SELECT * FROM support_tickets WHERE id=?", (ticket_id,))
             ticket = cursor.fetchone()
             if not ticket:
-                return {"success": False, "error": "تیکت یافت نشد"}
+                return {"success": False, "error": "ØªÛŒÚ©Øª ÛŒØ§ÙØª Ù†Ø´Ø¯"}
 
-            reply_text = f"❌ درخواست تغییر مشخصات اشتراک توسط {admin_name} رد شد."
+            reply_text = f"âŒ Ø¯Ø±Ø®ÙˆØ§Ø³Øª ØªØºÛŒÛŒØ± Ù…Ø´Ø®ØµØ§Øª Ø§Ø´ØªØ±Ø§Ú© ØªÙˆØ³Ø· {admin_name} Ø±Ø¯ Ø´Ø¯."
             if reason.strip():
-                reply_text += f"\nعلت رد: {reason.strip()}"
+                reply_text += f"\nØ¹Ù„Øª Ø±Ø¯: {reason.strip()}"
 
             cursor.execute("""
                 UPDATE support_tickets
@@ -6506,14 +6512,14 @@ class Database:
             conn.close()
 
     def get_advanced_analytics(self, reseller_id: int = None) -> dict:
-        """گزارشات و تحلیل‌های پیشرفته هوش مالی و عملکردی برای مدیر و نمایندگان"""
+        """Ú¯Ø²Ø§Ø±Ø´Ø§Øª Ùˆ ØªØ­Ù„ÛŒÙ„â€ŒÙ‡Ø§ÛŒ Ù¾ÛŒØ´Ø±ÙØªÙ‡ Ù‡ÙˆØ´ Ù…Ø§Ù„ÛŒ Ùˆ Ø¹Ù…Ù„Ú©Ø±Ø¯ÛŒ Ø¨Ø±Ø§ÛŒ Ù…Ø¯ÛŒØ± Ùˆ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù†"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         res = {}
         
         try:
-            # ۱. محبوب‌ترین پلن‌ها (پرفروش‌ترین)
+            # Û±. Ù…Ø­Ø¨ÙˆØ¨â€ŒØªØ±ÛŒÙ† Ù¾Ù„Ù†â€ŒÙ‡Ø§ (Ù¾Ø±ÙØ±ÙˆØ´â€ŒØªØ±ÛŒÙ†)
             if reseller_id:
                 cursor.execute("""
                     SELECT plan_name, COUNT(*) as count, SUM(amount) as revenue 
@@ -6532,7 +6538,7 @@ class Database:
                 """)
             res["popular_plans"] = [dict(r) for r in cursor.fetchall()]
 
-            # ۲. برترین کاربران ماه جاری (Top users of the month)
+            # Û². Ø¨Ø±ØªØ±ÛŒÙ† Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ù…Ø§Ù‡ Ø¬Ø§Ø±ÛŒ (Top users of the month)
             current_month = now[:7]
             if reseller_id:
                 cursor.execute("""
@@ -6552,7 +6558,7 @@ class Database:
                 """, (f"{current_month}%",))
             res["top_users_month"] = [dict(r) for r in cursor.fetchall()]
 
-            # ۳. برترین کاربران سال جاری (Top users of the year)
+            # Û³. Ø¨Ø±ØªØ±ÛŒÙ† Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ø³Ø§Ù„ Ø¬Ø§Ø±ÛŒ (Top users of the year)
             current_year = now[:4]
             if reseller_id:
                 cursor.execute("""
@@ -6572,7 +6578,7 @@ class Database:
                 """, (f"{current_year}%",))
             res["top_users_year"] = [dict(r) for r in cursor.fetchall()]
 
-            # ۴. فعال‌ترین کاربران از نظر مصرف گیگابایت (Most active users)
+            # Û´. ÙØ¹Ø§Ù„â€ŒØªØ±ÛŒÙ† Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ø§Ø² Ù†Ø¸Ø± Ù…ØµØ±Ù Ú¯ÛŒÚ¯Ø§Ø¨Ø§ÛŒØª (Most active users)
             if reseller_id:
                 cursor.execute("""
                     SELECT account_name, plan_name, data_used, data_limit, duration, status, created_at
@@ -6589,7 +6595,7 @@ class Database:
                 """)
             res["most_active_users"] = [dict(r) for r in cursor.fetchall()]
 
-            # ۵. گزارش مصرف دوره‌های گذشته (Previous periods usage history)
+            # Ûµ. Ú¯Ø²Ø§Ø±Ø´ Ù…ØµØ±Ù Ø¯ÙˆØ±Ù‡â€ŒÙ‡Ø§ÛŒ Ú¯Ø°Ø´ØªÙ‡ (Previous periods usage history)
             if reseller_id:
                 cursor.execute("""
                     SELECT * FROM subscription_history
@@ -6603,7 +6609,7 @@ class Database:
                 """)
             res["usage_history"] = [dict(r) for r in cursor.fetchall()]
 
-            # ۶. آخرین تمدیدها و خریدها به همراه تاریخ عضویت و آخرین بروزرسانی (تایم‌لاین رویدادهای زنده ۳۰ تایی)
+            # Û¶. Ø¢Ø®Ø±ÛŒÙ† ØªÙ…Ø¯ÛŒØ¯Ù‡Ø§ Ùˆ Ø®Ø±ÛŒØ¯Ù‡Ø§ Ø¨Ù‡ Ù‡Ù…Ø±Ø§Ù‡ ØªØ§Ø±ÛŒØ® Ø¹Ø¶ÙˆÛŒØª Ùˆ Ø¢Ø®Ø±ÛŒÙ† Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ (ØªØ§ÛŒÙ…â€ŒÙ„Ø§ÛŒÙ† Ø±ÙˆÛŒØ¯Ø§Ø¯Ù‡Ø§ÛŒ Ø²Ù†Ø¯Ù‡ Û³Û° ØªØ§ÛŒÛŒ)
             if reseller_id:
                 res["timeline_subscriptions"] = self.get_reseller_activity_timeline(reseller_id, limit=30)
             else:
@@ -6629,16 +6635,16 @@ class Database:
         finally:
             conn.close()
 
-    # ═══════════════════════════════════════════════════════════════
-    # مهاجرت از JSON به دیتابیس
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ù…Ù‡Ø§Ø¬Ø±Øª Ø§Ø² JSON Ø¨Ù‡ Ø¯ÛŒØªØ§Ø¨ÛŒØ³
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def migrate_from_json(self):
-        """مهاجرت اطلاعات از فایل‌های JSON به دیتابیس"""
+        """Ù…Ù‡Ø§Ø¬Ø±Øª Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ø§Ø² ÙØ§ÛŒÙ„â€ŒÙ‡Ø§ÛŒ JSON Ø¨Ù‡ Ø¯ÛŒØªØ§Ø¨ÛŒØ³"""
         data_dir = Path("data")
         migrated = 0
 
-        # مهاجرت کاربران
+        # Ù…Ù‡Ø§Ø¬Ø±Øª Ú©Ø§Ø±Ø¨Ø±Ø§Ù†
         for user_file in data_dir.glob("*.json"):
             if user_file.name in ["transactions.json", "cards.json", "plans.json"]:
                 continue
@@ -6661,7 +6667,7 @@ class Database:
             except Exception as e:
                 logger.error(f"Error migrating {user_file}: {e}")
 
-        # مهاجرت تراکنش‌ها
+        # Ù…Ù‡Ø§Ø¬Ø±Øª ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§
         transactions_file = data_dir / "transactions.json"
         if transactions_file.exists():
             try:
@@ -6687,17 +6693,17 @@ class Database:
         logger.info(f"Migration complete: {migrated} records migrated")
         return {"success": True, "migrated": migrated}
 
-    # ═══════════════════════════════════════════════════════════════
-    # مهاجرت خودکار در شروع
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ù…Ù‡Ø§Ø¬Ø±Øª Ø®ÙˆØ¯Ú©Ø§Ø± Ø¯Ø± Ø´Ø±ÙˆØ¹
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def auto_migrate_on_startup(self):
-        """مهاجرت خودکار اگر دیتابیس خالی باشد و فایل‌های JSON وجود داشته باشد"""
+        """Ù…Ù‡Ø§Ø¬Ø±Øª Ø®ÙˆØ¯Ú©Ø§Ø± Ø§Ú¯Ø± Ø¯ÛŒØªØ§Ø¨ÛŒØ³ Ø®Ø§Ù„ÛŒ Ø¨Ø§Ø´Ø¯ Ùˆ ÙØ§ÛŒÙ„â€ŒÙ‡Ø§ÛŒ JSON ÙˆØ¬ÙˆØ¯ Ø¯Ø§Ø´ØªÙ‡ Ø¨Ø§Ø´Ø¯"""
         conn = self.get_connection()
         cursor = conn.cursor()
 
         try:
-            # بررسی آیا دیتابیس خالی است
+            # Ø¨Ø±Ø±Ø³ÛŒ Ø¢ÛŒØ§ Ø¯ÛŒØªØ§Ø¨ÛŒØ³ Ø®Ø§Ù„ÛŒ Ø§Ø³Øª
             cursor.execute("SELECT COUNT(*) as count FROM users")
             user_count = cursor.fetchone()["count"]
 
@@ -6705,14 +6711,14 @@ class Database:
                 logger.info(f"Database has {user_count} users, skipping auto-migration")
                 return {"success": True, "skipped": True, "reason": "database_not_empty"}
 
-            # بررسی وجود فایل‌های JSON
+            # Ø¨Ø±Ø±Ø³ÛŒ ÙˆØ¬ÙˆØ¯ ÙØ§ÛŒÙ„â€ŒÙ‡Ø§ÛŒ JSON
             data_dir = Path("data")
             json_files = list(data_dir.glob("*.json"))
             if not json_files:
                 logger.info("No JSON files found, skipping auto-migration")
                 return {"success": True, "skipped": True, "reason": "no_json_files"}
 
-            # اجرای مهاجرت
+            # Ø§Ø¬Ø±Ø§ÛŒ Ù…Ù‡Ø§Ø¬Ø±Øª
             logger.info(f"Found {len(json_files)} JSON files, starting auto-migration...")
             result = self.migrate_from_json()
             logger.info(f"Auto-migration completed: {result.get('migrated', 0)} records migrated")
@@ -6725,11 +6731,11 @@ class Database:
             conn.close()
 
     def migrate_add_columns(self):
-        """اضافه کردن ستون‌های جدید به جداول قدیمی"""
+        """Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† Ø³ØªÙˆÙ†â€ŒÙ‡Ø§ÛŒ Ø¬Ø¯ÛŒØ¯ Ø¨Ù‡ Ø¬Ø¯Ø§ÙˆÙ„ Ù‚Ø¯ÛŒÙ…ÛŒ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            # بررسی وجود ستون‌ها در subscriptions
+            # Ø¨Ø±Ø±Ø³ÛŒ ÙˆØ¬ÙˆØ¯ Ø³ØªÙˆÙ†â€ŒÙ‡Ø§ Ø¯Ø± subscriptions
             cursor.execute("PRAGMA table_info(subscriptions)")
             columns = [row[1] for row in cursor.fetchall()]
             if "account_name" not in columns:
@@ -6739,7 +6745,7 @@ class Database:
                 cursor.execute("ALTER TABLE subscriptions ADD COLUMN account_comment TEXT")
                 logger.info("Added account_comment column to subscriptions")
 
-            # بررسی وجود ستون language در users
+            # Ø¨Ø±Ø±Ø³ÛŒ ÙˆØ¬ÙˆØ¯ Ø³ØªÙˆÙ† language Ø¯Ø± users
             cursor.execute("PRAGMA table_info(users)")
             u_cols = [row[1] for row in cursor.fetchall()]
             if "language" not in u_cols:
@@ -6755,7 +6761,7 @@ class Database:
             conn.close()
 
     def get_user_language(self, telegram_id: int) -> str:
-        """دریافت زبان انتخابی کاربر"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø²Ø¨Ø§Ù† Ø§Ù†ØªØ®Ø§Ø¨ÛŒ Ú©Ø§Ø±Ø¨Ø±"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -6771,12 +6777,12 @@ class Database:
             conn.close()
 
     def set_user_language(self, telegram_id: int, language: str) -> bool:
-        """تنظیم و ذخیره زبان انتخابی کاربر"""
+        """ØªÙ†Ø¸ÛŒÙ… Ùˆ Ø°Ø®ÛŒØ±Ù‡ Ø²Ø¨Ø§Ù† Ø§Ù†ØªØ®Ø§Ø¨ÛŒ Ú©Ø§Ø±Ø¨Ø±"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             now = get_now_iso()
-            # مطمئن شویم کاربر در جدول وجود دارد
+            # Ù…Ø·Ù…Ø¦Ù† Ø´ÙˆÛŒÙ… Ú©Ø§Ø±Ø¨Ø± Ø¯Ø± Ø¬Ø¯ÙˆÙ„ ÙˆØ¬ÙˆØ¯ Ø¯Ø§Ø±Ø¯
             cursor.execute("SELECT id FROM users WHERE telegram_id = ?", (telegram_id,))
             if cursor.fetchone():
                 cursor.execute("""
@@ -6795,12 +6801,12 @@ class Database:
         finally:
             conn.close()
 
-    # ═══════════════════════════════════════════════════════════════
-    # خروجی گرفتن از دیتابیس
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ø®Ø±ÙˆØ¬ÛŒ Ú¯Ø±ÙØªÙ† Ø§Ø² Ø¯ÛŒØªØ§Ø¨ÛŒØ³
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def export_to_json(self, export_dir=None):
-        """خروجی گرفتن از دیتابیس به فایل‌های JSON"""
+        """Ø®Ø±ÙˆØ¬ÛŒ Ú¯Ø±ÙØªÙ† Ø§Ø² Ø¯ÛŒØªØ§Ø¨ÛŒØ³ Ø¨Ù‡ ÙØ§ÛŒÙ„â€ŒÙ‡Ø§ÛŒ JSON"""
         if export_dir is None:
             export_dir = Path("data/export")
         else:
@@ -6808,14 +6814,14 @@ class Database:
         export_dir.mkdir(parents=True, exist_ok=True)
 
         try:
-            # خروجی کاربران
+            # Ø®Ø±ÙˆØ¬ÛŒ Ú©Ø§Ø±Ø¨Ø±Ø§Ù†
             users = self.get_all_users()
             for user in users:
                 user_file = export_dir / f"user_{user['telegram_id']}.json"
                 with open(user_file, "w", encoding="utf-8") as f:
                     json.dump(user, f, ensure_ascii=False, indent=2)
 
-            # خروجی تراکنش‌ها
+            # Ø®Ø±ÙˆØ¬ÛŒ ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§
             conn = self.get_connection()
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM transactions")
@@ -6826,7 +6832,7 @@ class Database:
             with open(trans_file, "w", encoding="utf-8") as f:
                 json.dump(transactions, f, ensure_ascii=False, indent=2)
 
-            # خروجی اشتراک‌ها
+            # Ø®Ø±ÙˆØ¬ÛŒ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§
             conn = self.get_connection()
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM subscriptions")
@@ -6837,7 +6843,7 @@ class Database:
             with open(subs_file, "w", encoding="utf-8") as f:
                 json.dump(subscriptions, f, ensure_ascii=False, indent=2)
 
-            # خروجی تنظیمات
+            # Ø®Ø±ÙˆØ¬ÛŒ ØªÙ†Ø¸ÛŒÙ…Ø§Øª
             settings = self.get_all_settings()
             settings_file = export_dir / "settings.json"
             with open(settings_file, "w", encoding="utf-8") as f:
@@ -6856,12 +6862,12 @@ class Database:
             logger.error(f"Error exporting data: {e}")
             return {"success": False, "error": str(e)}
 
-    # ═══════════════════════════════════════════════════════════════
-    # ورودی گرفتن به دیتابیس
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # ÙˆØ±ÙˆØ¯ÛŒ Ú¯Ø±ÙØªÙ† Ø¨Ù‡ Ø¯ÛŒØªØ§Ø¨ÛŒØ³
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def import_from_json(self, import_dir=None):
-        """ورودی گرفتن از فایل‌های JSON به دیتابیس"""
+        """ÙˆØ±ÙˆØ¯ÛŒ Ú¯Ø±ÙØªÙ† Ø§Ø² ÙØ§ÛŒÙ„â€ŒÙ‡Ø§ÛŒ JSON Ø¨Ù‡ Ø¯ÛŒØªØ§Ø¨ÛŒØ³"""
         if import_dir is None:
             import_dir = Path("data/export")
         else:
@@ -6873,7 +6879,7 @@ class Database:
         imported = 0
 
         try:
-            # ورودی کاربران
+            # ÙˆØ±ÙˆØ¯ÛŒ Ú©Ø§Ø±Ø¨Ø±Ø§Ù†
             for user_file in import_dir.glob("user_*.json"):
                 try:
                     with open(user_file, "r", encoding="utf-8") as f:
@@ -6890,7 +6896,7 @@ class Database:
                 except Exception as e:
                     logger.error(f"Error importing {user_file}: {e}")
 
-            # ورودی تراکنش‌ها
+            # ÙˆØ±ÙˆØ¯ÛŒ ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§
             trans_file = import_dir / "transactions.json"
             if trans_file.exists():
                 with open(trans_file, "r", encoding="utf-8") as f:
@@ -6908,7 +6914,7 @@ class Database:
                     )
                     imported += 1
 
-            # ورودی اشتراک‌ها
+            # ÙˆØ±ÙˆØ¯ÛŒ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§
             subs_file = import_dir / "subscriptions.json"
             if subs_file.exists():
                 with open(subs_file, "r", encoding="utf-8") as f:
@@ -6950,9 +6956,9 @@ class Database:
             logger.error(f"Error importing data: {e}")
             return {"success": False, "error": str(e)}
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # متدهای مدیریت نمایندگان و همکاران فروش (Reseller System)
-    # ═══════════════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ù…ØªØ¯Ù‡Ø§ÛŒ Ù…Ø¯ÛŒØ±ÛŒØª Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† Ùˆ Ù‡Ù…Ú©Ø§Ø±Ø§Ù† ÙØ±ÙˆØ´ (Reseller System)
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     @staticmethod
     def hash_password(password: str) -> str:
@@ -6963,8 +6969,9 @@ class Database:
                         telegram_id: int = None, discount_percent: int = 20, initial_balance: int = 0,
                         hiddify_admin_uuid: str = None, parent_reseller_id: int = None,
                         affiliate_commission_percent: float = None, referral_code: str = None,
-                        credit_enabled: int = 0, credit_limit: int = 0, can_gift_traffic: int = 0) -> dict:
-        """ایجاد نماینده جدید با پشتیبانی از ادمین اختصاصی هیدیفای، انتساب نماینده معرف و تنظیمات خرید اعتباری"""
+                        credit_enabled: int = 0, credit_limit: int = 0, can_gift_traffic: int = 0,
+                        is_partner: int = 0) -> dict:
+        """ایجاد نماینده جدید با پشتیبانی از سیستم همکاری درفروش، سقف اعتبار و قابلیت کادو ترافیک"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -6980,50 +6987,50 @@ class Database:
                     username, password_hash, name, telegram_id, balance, 
                     discount_percent, status, hiddify_admin_uuid, 
                     parent_reseller_id, affiliate_commission_percent, referral_code,
-                    credit_enabled, credit_limit, credit_debt, can_gift_traffic,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+                    credit_enabled, credit_limit, can_gift_traffic,
+                    created_at, updated_at, is_partner
+                ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 cleaned_user, password_hash, name.strip(), telegram_id, initial_balance, 
-                discount_percent, (hiddify_admin_uuid.strip() if hiddify_admin_uuid else None),
+                discount_percent, hiddify_admin_uuid, 
                 parent_reseller_id, affiliate_commission_percent, referral_code,
                 credit_enabled, credit_limit, can_gift_traffic,
-                now, now
+                now, now, is_partner
             ))
             reseller_id = cursor.lastrowid
             
-            # تضمین تولید کد رفرال یکتا و تمیز
+            # ØªØ¶Ù…ÛŒÙ† ØªÙˆÙ„ÛŒØ¯ Ú©Ø¯ Ø±Ù Ø±Ø§Ù„ ÛŒÚ©ØªØ§ Ùˆ ØªÙ…ÛŒØ²
             final_ref_code = f"REF-{reseller_id}"
             cursor.execute("UPDATE resellers SET referral_code = ? WHERE id = ?", (final_ref_code, reseller_id))
 
             if initial_balance > 0:
                 cursor.execute("""
                     INSERT INTO reseller_transactions (reseller_id, type, amount, description, created_at)
-                    VALUES (?, 'deposit', ?, 'شارژ اولیه حساب', ?)
+                    VALUES (?, 'deposit', ?, 'Ø´Ø§Ø±Ú˜ Ø§ÙˆÙ„ÛŒÙ‡ Ø­Ø³Ø§Ø¨', ?)
                 """, (reseller_id, initial_balance, now))
 
             conn.commit()
             return {"success": True, "reseller_id": reseller_id, "referral_code": final_ref_code}
         except sqlite3.IntegrityError:
-            return {"success": False, "error": "این نام کاربری قبلاً ثبت شده است."}
+            return {"success": False, "error": "Ø§ÛŒÙ† Ù†Ø§Ù… Ú©Ø§Ø±Ø¨Ø±ÛŒ Ù‚Ø¨Ù„Ø§Ù‹ Ø«Ø¨Øª Ø´Ø¯Ù‡ Ø§Ø³Øª."}
         except Exception as e:
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # سیستم زیرمجموعه‌گیری و پورسانت نمایندگان (Reseller Affiliate System)
-    # ═══════════════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ø³ÛŒØ³ØªÙ… Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡â€ŒÚ¯ÛŒØ±ÛŒ Ùˆ Ù¾ÙˆØ±Ø³Ø§Ù†Øª Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† (Reseller Affiliate System)
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def get_reseller_affiliate_settings(self) -> dict:
-        """دریافت تنظیمات سراسری سیستم زیرمجموعه‌گیری نمایندگان"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø³Ø±Ø§Ø³Ø±ÛŒ Ø³ÛŒØ³ØªÙ… Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡â€ŒÚ¯ÛŒØ±ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù†"""
         conn = self.get_connection()
         cursor = conn.cursor()
         settings = {
             "enabled": True,
             "default_percent": 10.0,
             "calc_base": "plan_price",
-            "terms": "با پیوستن به عنوان همکار و نماینده زیرمجموعه، از ربات اختصاصی هوشمند، ساب‌دامنه‌های بدون فیلتر و پنل مدیریت فروش با تسویه آنی بهره‌مند شوید."
+            "terms": "Ø¨Ø§ Ù¾ÛŒÙˆØ³ØªÙ† Ø¨Ù‡ Ø¹Ù†ÙˆØ§Ù† Ù‡Ù…Ú©Ø§Ø± Ùˆ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡ØŒ Ø§Ø² Ø±Ø¨Ø§Øª Ø§Ø®ØªØµØ§ØµÛŒ Ù‡ÙˆØ´Ù…Ù†Ø¯ØŒ Ø³Ø§Ø¨â€ŒØ¯Ø§Ù…Ù†Ù‡â€ŒÙ‡Ø§ÛŒ Ø¨Ø¯ÙˆÙ† ÙÛŒÙ„ØªØ± Ùˆ Ù¾Ù†Ù„ Ù…Ø¯ÛŒØ±ÛŒØª ÙØ±ÙˆØ´ Ø¨Ø§ ØªØ³ÙˆÛŒÙ‡ Ø¢Ù†ÛŒ Ø¨Ù‡Ø±Ù‡â€ŒÙ…Ù†Ø¯ Ø´ÙˆÛŒØ¯."
         }
         try:
             cursor.execute("SELECT key, value FROM settings WHERE key LIKE 'reseller_affiliate_%'")
@@ -7048,7 +7055,7 @@ class Database:
         return settings
 
     def update_reseller_affiliate_settings(self, enabled: bool, default_percent: float, calc_base: str, terms: str) -> dict:
-        """بروزرسانی تنظیمات سیستم زیرمجموعه‌گیری نمایندگان"""
+        """Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø³ÛŒØ³ØªÙ… Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡â€ŒÚ¯ÛŒØ±ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù†"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -7072,7 +7079,7 @@ class Database:
             conn.close()
 
     def get_reseller_referral_code(self, reseller_id: int) -> str:
-        """دریافت یا تولید کد دعوت اختصاصی نماینده"""
+        """Ø¯Ø±ÛŒØ§ÙØª ÛŒØ§ ØªÙˆÙ„ÛŒØ¯ Ú©Ø¯ Ø¯Ø¹ÙˆØª Ø§Ø®ØªØµØ§ØµÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -7094,20 +7101,20 @@ class Database:
             conn.close()
 
     def get_reseller_by_referral_code(self, code_or_id: str) -> Optional[dict]:
-        """پیدا کردن مشخصات نماینده معرف بر اساس کد یا شناسه"""
+        """Ù¾ÛŒØ¯Ø§ Ú©Ø±Ø¯Ù† Ù…Ø´Ø®ØµØ§Øª Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ù…Ø¹Ø±Ù Ø¨Ø± Ø§Ø³Ø§Ø³ Ú©Ø¯ ÛŒØ§ Ø´Ù†Ø§Ø³Ù‡"""
         if not code_or_id:
             return None
         code_clean = str(code_or_id).strip()
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            # ۱. جستجو با referral_code
+            # Û±. Ø¬Ø³ØªØ¬Ùˆ Ø¨Ø§ referral_code
             cursor.execute("SELECT * FROM resellers WHERE UPPER(referral_code) = UPPER(?) AND status = 'active'", (code_clean,))
             row = cursor.fetchone()
             if row:
                 return dict(row)
 
-            # ۲. بررسی اگر فرمت شناسه عددی باشد (مثلاً 5 یا REF-5)
+            # Û². Ø¨Ø±Ø±Ø³ÛŒ Ø§Ú¯Ø± ÙØ±Ù…Øª Ø´Ù†Ø§Ø³Ù‡ Ø¹Ø¯Ø¯ÛŒ Ø¨Ø§Ø´Ø¯ (Ù…Ø«Ù„Ø§Ù‹ 5 ÛŒØ§ REF-5)
             numeric_id = None
             if code_clean.isdigit():
                 numeric_id = int(code_clean)
@@ -7120,7 +7127,7 @@ class Database:
                 if row:
                     return dict(row)
 
-            # ۳. جستجو بر اساس نام کاربری
+            # Û³. Ø¬Ø³ØªØ¬Ùˆ Ø¨Ø± Ø§Ø³Ø§Ø³ Ù†Ø§Ù… Ú©Ø§Ø±Ø¨Ø±ÛŒ
             cursor.execute("SELECT * FROM resellers WHERE LOWER(username) = LOWER(?) AND status = 'active'", (code_clean,))
             row = cursor.fetchone()
             if row:
@@ -7134,7 +7141,7 @@ class Database:
             conn.close()
 
     def get_sub_resellers(self, parent_reseller_id: int) -> list:
-        """لیست نمایندگان زیرمجموعه یک نماینده به همراه آمار فروش و سود تولید شده"""
+        """Ù„ÛŒØ³Øª Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡ ÛŒÚ© Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ù‡ Ù‡Ù…Ø±Ø§Ù‡ Ø¢Ù…Ø§Ø± ÙØ±ÙˆØ´ Ùˆ Ø³ÙˆØ¯ ØªÙˆÙ„ÛŒØ¯ Ø´Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -7158,7 +7165,7 @@ class Database:
             conn.close()
 
     def get_reseller_affiliate_stats(self, reseller_id: int) -> dict:
-        """شاخص‌ها و آمار کامل زیرمجموعه‌گیری نماینده"""
+        """Ø´Ø§Ø®Øµâ€ŒÙ‡Ø§ Ùˆ Ø¢Ù…Ø§Ø± Ú©Ø§Ù…Ù„ Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡â€ŒÚ¯ÛŒØ±ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         reseller = self.get_reseller(reseller_id)
         if not reseller:
             return {}
@@ -7169,29 +7176,29 @@ class Database:
         try:
             ref_code = self.get_reseller_referral_code(reseller_id)
 
-            # تعداد کل زیرمجموعه‌ها
+            # ØªØ¹Ø¯Ø§Ø¯ Ú©Ù„ Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡â€ŒÙ‡Ø§
             cursor.execute("SELECT COUNT(*) FROM resellers WHERE parent_reseller_id = ?", (reseller_id,))
             sub_count = cursor.fetchone()[0] or 0
 
-            # تعداد زیرمجموعه‌های فعال
+            # ØªØ¹Ø¯Ø§Ø¯ Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡â€ŒÙ‡Ø§ÛŒ ÙØ¹Ø§Ù„
             cursor.execute("SELECT COUNT(*) FROM resellers WHERE parent_reseller_id = ? AND status = 'active'", (reseller_id,))
             active_sub_count = cursor.fetchone()[0] or 0
 
-            # مجموع کل کمیسیون دریافتی
+            # Ù…Ø¬Ù…ÙˆØ¹ Ú©Ù„ Ú©Ù…ÛŒØ³ÛŒÙˆÙ† Ø¯Ø±ÛŒØ§ÙØªÛŒ
             cursor.execute("SELECT COALESCE(SUM(commission_amount), 0) FROM reseller_affiliate_commissions WHERE parent_reseller_id = ?", (reseller_id,))
             total_commission = cursor.fetchone()[0] or 0
 
-            # کمیسیون ۳۰ روز اخیر
+            # Ú©Ù…ÛŒØ³ÛŒÙˆÙ† Û³Û° Ø±ÙˆØ² Ø§Ø®ÛŒØ±
             month_ago = (datetime.now() - timedelta(days=30)).isoformat()
             cursor.execute("SELECT COALESCE(SUM(commission_amount), 0) FROM reseller_affiliate_commissions WHERE parent_reseller_id = ? AND created_at >= ?", (reseller_id, month_ago))
             recent_commission = cursor.fetchone()[0] or 0
 
-            # درصد کمیسیون موثر برای این نماینده
+            # Ø¯Ø±ØµØ¯ Ú©Ù…ÛŒØ³ÛŒÙˆÙ† Ù…ÙˆØ«Ø± Ø¨Ø±Ø§ÛŒ Ø§ÛŒÙ† Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
             effective_percent = reseller.get("affiliate_commission_percent")
             if effective_percent is None or effective_percent <= 0:
                 effective_percent = aff_settings.get("default_percent", 10.0)
 
-            # مشخصات نماینده بالادستی (اگر وجود دارد)
+            # Ù…Ø´Ø®ØµØ§Øª Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø§Ù„Ø§Ø¯Ø³ØªÛŒ (Ø§Ú¯Ø± ÙˆØ¬ÙˆØ¯ Ø¯Ø§Ø±Ø¯)
             parent_reseller = None
             if reseller.get("parent_reseller_id"):
                 cursor.execute("SELECT id, name, username, telegram_id FROM resellers WHERE id = ?", (reseller["parent_reseller_id"],))
@@ -7218,7 +7225,7 @@ class Database:
             conn.close()
 
     def get_reseller_affiliate_commissions_history(self, reseller_id: int = None, limit: int = 100) -> list:
-        """دریافت ریز تراکنش‌های پورسانت زیرمجموعه‌گیری"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø±ÛŒØ² ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ Ù¾ÙˆØ±Ø³Ø§Ù†Øª Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡â€ŒÚ¯ÛŒØ±ÛŒ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -7255,7 +7262,7 @@ class Database:
 
     def process_sub_reseller_affiliate_commission(self, sub_reseller_id: int, plan_price: int, plan_name: str, account_name: str, sub_id: int = None) -> dict:
         """
-        محاسبه و واریز خودکار درصد پورسانت به نماینده بالادستی به ازای هر خرید یا ساخت اکانت توسط زیرمجموعه
+        Ù…Ø­Ø§Ø³Ø¨Ù‡ Ùˆ ÙˆØ§Ø±ÛŒØ² Ø®ÙˆØ¯Ú©Ø§Ø± Ø¯Ø±ØµØ¯ Ù¾ÙˆØ±Ø³Ø§Ù†Øª Ø¨Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø§Ù„Ø§Ø¯Ø³ØªÛŒ Ø¨Ù‡ Ø§Ø²Ø§ÛŒ Ù‡Ø± Ø®Ø±ÛŒØ¯ ÛŒØ§ Ø³Ø§Ø®Øª Ø§Ú©Ø§Ù†Øª ØªÙˆØ³Ø· Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡
         """
         if not sub_reseller_id or plan_price <= 0:
             return {"success": False, "reason": "invalid_parameters"}
@@ -7273,7 +7280,7 @@ class Database:
         if not parent_reseller or parent_reseller.get("status") != "active":
             return {"success": False, "reason": "parent_reseller_inactive"}
 
-        # درصد کمیسیون (اختصاصی بالادستی یا پیش‌فرض سیستم)
+        # Ø¯Ø±ØµØ¯ Ú©Ù…ÛŒØ³ÛŒÙˆÙ† (Ø§Ø®ØªØµØ§ØµÛŒ Ø¨Ø§Ù„Ø§Ø¯Ø³ØªÛŒ ÛŒØ§ Ù¾ÛŒØ´â€ŒÙØ±Ø¶ Ø³ÛŒØ³ØªÙ…)
         commission_percent = parent_reseller.get("affiliate_commission_percent")
         if commission_percent is None or commission_percent <= 0:
             commission_percent = float(aff_settings.get("default_percent", 10.0))
@@ -7285,20 +7292,20 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
-        sub_name = sub_reseller.get("name") or f"نماینده #{sub_reseller_id}"
-        desc = f"پورسانت {commission_percent:g}٪ از ساخت اشتراک «{account_name}» ({plan_name}) توسط زیرمجموعه «{sub_name}»"
+        sub_name = sub_reseller.get("name") or f"Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ #{sub_reseller_id}"
+        desc = f"Ù¾ÙˆØ±Ø³Ø§Ù†Øª {commission_percent:g}Ùª Ø§Ø² Ø³Ø§Ø®Øª Ø§Ø´ØªØ±Ø§Ú© Â«{account_name}Â» ({plan_name}) ØªÙˆØ³Ø· Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡ Â«{sub_name}Â»"
 
         try:
-            # ۱. افزایش موجودی کیف پول نماینده بالادستی
+            # Û±. Ø§ÙØ²Ø§ÛŒØ´ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø§Ù„Ø§Ø¯Ø³ØªÛŒ
             cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at = ? WHERE id = ?", (commission_amount, now, parent_id))
 
-            # ۲. ثبت تراکنش در reseller_transactions
+            # Û². Ø«Ø¨Øª ØªØ±Ø§Ú©Ù†Ø´ Ø¯Ø± reseller_transactions
             cursor.execute("""
                 INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
                 VALUES (?, 'deposit', ?, ?, ?, ?, ?)
             """, (parent_id, commission_amount, plan_name, account_name, desc, now))
 
-            # ۳. ثبت رکورد در جدول تخصصی پورسانت‌های زیرمجموعه‌گیری
+            # Û³. Ø«Ø¨Øª Ø±Ú©ÙˆØ±Ø¯ Ø¯Ø± Ø¬Ø¯ÙˆÙ„ ØªØ®ØµØµÛŒ Ù¾ÙˆØ±Ø³Ø§Ù†Øªâ€ŒÙ‡Ø§ÛŒ Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡â€ŒÚ¯ÛŒØ±ÛŒ
             cursor.execute("""
                 INSERT INTO reseller_affiliate_commissions (
                     parent_reseller_id, sub_reseller_id, sub_id, account_name,
@@ -7313,11 +7320,11 @@ class Database:
 
             conn.commit()
 
-            # ۴. ارسال اعلان بلادرنگ به پنل نماینده بالادستی
+            # Û´. Ø§Ø±Ø³Ø§Ù„ Ø§Ø¹Ù„Ø§Ù† Ø¨Ù„Ø§Ø¯Ø±Ù†Ú¯ Ø¨Ù‡ Ù¾Ù†Ù„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø§Ù„Ø§Ø¯Ø³ØªÛŒ
             self.add_reseller_notification(
                 reseller_id=parent_id,
-                title="💰 واریز پورسانت زیرمجموعه",
-                message=f"مبلغ {commission_amount:,} تومان بابت فروش اشتراک «{account_name}» توسط زیرمجموعه شما ({sub_name}) به کیف پول شما واریز شد.",
+                title="ðŸ’° ÙˆØ§Ø±ÛŒØ² Ù¾ÙˆØ±Ø³Ø§Ù†Øª Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡",
+                message=f"Ù…Ø¨Ù„Øº {commission_amount:,} ØªÙˆÙ…Ø§Ù† Ø¨Ø§Ø¨Øª ÙØ±ÙˆØ´ Ø§Ø´ØªØ±Ø§Ú© Â«{account_name}Â» ØªÙˆØ³Ø· Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡ Ø´Ù…Ø§ ({sub_name}) Ø¨Ù‡ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ø´Ù…Ø§ ÙˆØ§Ø±ÛŒØ² Ø´Ø¯.",
                 type="success"
             )
 
@@ -7336,12 +7343,12 @@ class Database:
 
     def create_reseller_application(self, referrer_id: Optional[int], full_name: str, phone_number: str, 
                                     telegram_id: Optional[int], requested_username: str, notes: str = "") -> dict:
-        """ثبت فرم درخواست اخذ نمایندگی با لینک معرف و ایجاد تیکت رسمی برای مدیریت"""
+        """Ø«Ø¨Øª ÙØ±Ù… Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø§Ø®Ø° Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯ÛŒ Ø¨Ø§ Ù„ÛŒÙ†Ú© Ù…Ø¹Ø±Ù Ùˆ Ø§ÛŒØ¬Ø§Ø¯ ØªÛŒÚ©Øª Ø±Ø³Ù…ÛŒ Ø¨Ø±Ø§ÛŒ Ù…Ø¯ÛŒØ±ÛŒØª"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
 
-        referrer_name = "مستقیم (بدون معرف)"
+        referrer_name = "Ù…Ø³ØªÙ‚ÛŒÙ… (Ø¨Ø¯ÙˆÙ† Ù…Ø¹Ø±Ù)"
         if referrer_id:
             cursor.execute("SELECT name, username FROM resellers WHERE id=?", (referrer_id,))
             ref_row = cursor.fetchone()
@@ -7360,17 +7367,17 @@ class Database:
         }
         req_json = json.dumps(req_payload, ensure_ascii=False)
 
-        subject = f"💼 درخواست اخذ پنل نمایندگی توسط «{full_name.strip()}» (معرف: {referrer_name})"
+        subject = f"ðŸ’¼ Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø§Ø®Ø° Ù¾Ù†Ù„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯ÛŒ ØªÙˆØ³Ø· Â«{full_name.strip()}Â» (Ù…Ø¹Ø±Ù: {referrer_name})"
         msg = (
-            f"🌟 درخواست جدید برای اخذ پنل نمایندگی ثبت گردید:\n"
-            f"👤 متقاضی: {full_name.strip()}\n"
-            f"📱 شماره تماس: {phone_number.strip()}\n"
-            f"🆔 تلگرام: {telegram_id or 'ثبت نشده'}\n"
-            f"👤 نام کاربری درخواستی: {requested_username.strip().lower()}\n"
-            f"🤝 نماینده معرف: {referrer_name}\n"
+            f"ðŸŒŸ Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø¬Ø¯ÛŒØ¯ Ø¨Ø±Ø§ÛŒ Ø§Ø®Ø° Ù¾Ù†Ù„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯ÛŒ Ø«Ø¨Øª Ú¯Ø±Ø¯ÛŒØ¯:\n"
+            f"ðŸ‘¤ Ù…ØªÙ‚Ø§Ø¶ÛŒ: {full_name.strip()}\n"
+            f"ðŸ“± Ø´Ù…Ø§Ø±Ù‡ ØªÙ…Ø§Ø³: {phone_number.strip()}\n"
+            f"ðŸ†” ØªÙ„Ú¯Ø±Ø§Ù…: {telegram_id or 'Ø«Ø¨Øª Ù†Ø´Ø¯Ù‡'}\n"
+            f"ðŸ‘¤ Ù†Ø§Ù… Ú©Ø§Ø±Ø¨Ø±ÛŒ Ø¯Ø±Ø®ÙˆØ§Ø³ØªÛŒ: {requested_username.strip().lower()}\n"
+            f"ðŸ¤ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ù…Ø¹Ø±Ù: {referrer_name}\n"
         )
         if notes.strip():
-            msg += f"📝 توضیحات/سوابق: {notes.strip()}\n"
+            msg += f"ðŸ“ ØªÙˆØ¶ÛŒØ­Ø§Øª/Ø³ÙˆØ§Ø¨Ù‚: {notes.strip()}\n"
 
         try:
             cursor.execute("""
@@ -7398,7 +7405,7 @@ class Database:
     def approve_reseller_application(self, ticket_id: int, password: str = None, 
                                      initial_balance: int = 0, discount_percent: int = 20, 
                                      custom_commission: float = None) -> dict:
-        """تایید درخواست نمایندگی توسط مدیریت و ایجاد آنی حساب نماینده با انتساب معرف"""
+        """ØªØ§ÛŒÛŒØ¯ Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯ÛŒ ØªÙˆØ³Ø· Ù…Ø¯ÛŒØ±ÛŒØª Ùˆ Ø§ÛŒØ¬Ø§Ø¯ Ø¢Ù†ÛŒ Ø­Ø³Ø§Ø¨ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø§ Ø§Ù†ØªØ³Ø§Ø¨ Ù…Ø¹Ø±Ù"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -7406,14 +7413,14 @@ class Database:
             cursor.execute("SELECT * FROM support_tickets WHERE id=? AND ticket_type='reseller_application'", (ticket_id,))
             ticket = cursor.fetchone()
             if not ticket:
-                return {"success": False, "error": "درخواست نمایندگی یافت نشد."}
+                return {"success": False, "error": "Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯ÛŒ ÛŒØ§ÙØª Ù†Ø´Ø¯."}
 
             if ticket["request_status"] == "approved":
-                return {"success": False, "error": "این درخواست قبلاً تایید شده است."}
+                return {"success": False, "error": "Ø§ÛŒÙ† Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ù‚Ø¨Ù„Ø§Ù‹ ØªØ§ÛŒÛŒØ¯ Ø´Ø¯Ù‡ Ø§Ø³Øª."}
 
             req_data = json.loads(ticket["request_data"] or "{}")
             username = req_data.get("requested_username")
-            full_name = req_data.get("full_name") or f"نماینده {username}"
+            full_name = req_data.get("full_name") or f"Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ {username}"
             telegram_id = req_data.get("telegram_id")
             referrer_id = req_data.get("referrer_id")
 
@@ -7421,7 +7428,7 @@ class Database:
                 import random
                 password = f"Pass@{random.randint(1000, 9999)}"
 
-            # ایجاد نماینده با اتصال به parent_reseller_id
+            # Ø§ÛŒØ¬Ø§Ø¯ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø§ Ø§ØªØµØ§Ù„ Ø¨Ù‡ parent_reseller_id
             create_res = self.create_reseller(
                 username=username,
                 password=password,
@@ -7438,27 +7445,27 @@ class Database:
 
             reseller_id = create_res["reseller_id"]
 
-            # به‌روزرسانی وضعیت تیکت
+            # Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ ÙˆØ¶Ø¹ÛŒØª ØªÛŒÚ©Øª
             cursor.execute("""
                 UPDATE support_tickets 
                 SET request_status = 'approved', status = 'closed', updated_at = ?
                 WHERE id = ?
             """, (now, ticket_id))
 
-            reply_msg = f"✅ درخواست نمایندگی شما با موفقیت تایید و پنل شما ایجاد شد.\n👤 نام کاربری: {username}\n🔑 رمز عبور: {password}"
+            reply_msg = f"âœ… Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯ÛŒ Ø´Ù…Ø§ Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª ØªØ§ÛŒÛŒØ¯ Ùˆ Ù¾Ù†Ù„ Ø´Ù…Ø§ Ø§ÛŒØ¬Ø§Ø¯ Ø´Ø¯.\nðŸ‘¤ Ù†Ø§Ù… Ú©Ø§Ø±Ø¨Ø±ÛŒ: {username}\nðŸ”‘ Ø±Ù…Ø² Ø¹Ø¨ÙˆØ±: {password}"
             cursor.execute("""
                 INSERT INTO ticket_messages (ticket_id, sender_type, sender_name, message, created_at)
-                VALUES (?, 'support', 'مدیریت سامانه', ?, ?)
+                VALUES (?, 'support', 'Ù…Ø¯ÛŒØ±ÛŒØª Ø³Ø§Ù…Ø§Ù†Ù‡', ?, ?)
             """, (ticket_id, reply_msg, now))
 
             conn.commit()
 
-            # اطلاع‌رسانی به نماینده معرف در صورت وجود
+            # Ø§Ø·Ù„Ø§Ø¹â€ŒØ±Ø³Ø§Ù†ÛŒ Ø¨Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ù…Ø¹Ø±Ù Ø¯Ø± ØµÙˆØ±Øª ÙˆØ¬ÙˆØ¯
             if referrer_id:
                 self.add_reseller_notification(
                     reseller_id=referrer_id,
-                    title="🎉 عضویت زیرمجموعه جدید",
-                    message=f"درخواست نمایندگی «{full_name}» تایید و به عنوان زیرمجموعه رسمی شما فعال شد.",
+                    title="ðŸŽ‰ Ø¹Ø¶ÙˆÛŒØª Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡ Ø¬Ø¯ÛŒØ¯",
+                    message=f"Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯ÛŒ Â«{full_name}Â» ØªØ§ÛŒÛŒØ¯ Ùˆ Ø¨Ù‡ Ø¹Ù†ÙˆØ§Ù† Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡ Ø±Ø³Ù…ÛŒ Ø´Ù…Ø§ ÙØ¹Ø§Ù„ Ø´Ø¯.",
                     type="success"
                 )
 
@@ -7475,18 +7482,18 @@ class Database:
             conn.close()
 
     def reject_reseller_application(self, ticket_id: int, reason: str = "") -> dict:
-        """رد درخواست اخذ نمایندگی"""
+        """Ø±Ø¯ Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø§Ø®Ø° Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯ÛŒ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
             cursor.execute("UPDATE support_tickets SET request_status = 'rejected', status = 'closed', updated_at = ? WHERE id = ? AND ticket_type = 'reseller_application'", (now, ticket_id))
-            reject_msg = "❌ متأسفانه با درخواست اخذ پنل نمایندگی شما موافقت نگردید."
+            reject_msg = "âŒ Ù…ØªØ£Ø³ÙØ§Ù†Ù‡ Ø¨Ø§ Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø§Ø®Ø° Ù¾Ù†Ù„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯ÛŒ Ø´Ù…Ø§ Ù…ÙˆØ§ÙÙ‚Øª Ù†Ú¯Ø±Ø¯ÛŒØ¯."
             if reason.strip():
-                reject_msg += f"\nعلت: {reason.strip()}"
+                reject_msg += f"\nØ¹Ù„Øª: {reason.strip()}"
             cursor.execute("""
                 INSERT INTO ticket_messages (ticket_id, sender_type, sender_name, message, created_at)
-                VALUES (?, 'support', 'مدیریت سامانه', ?, ?)
+                VALUES (?, 'support', 'Ù…Ø¯ÛŒØ±ÛŒØª Ø³Ø§Ù…Ø§Ù†Ù‡', ?, ?)
             """, (ticket_id, reject_msg, now))
             conn.commit()
             return {"success": True}
@@ -7497,9 +7504,9 @@ class Database:
             conn.close()
 
     def update_reseller_parent(self, reseller_id: int, parent_reseller_id: Optional[int]) -> dict:
-        """تغییر یا حذف نماینده بالادستی یک نماینده"""
+        """ØªØºÛŒÛŒØ± ÛŒØ§ Ø­Ø°Ù Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø§Ù„Ø§Ø¯Ø³ØªÛŒ ÛŒÚ© Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         if parent_reseller_id == reseller_id:
-            return {"success": False, "error": "یک نماینده نمی‌تواند معرف خودش باشد."}
+            return {"success": False, "error": "ÛŒÚ© Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ù†Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ø¯ Ù…Ø¹Ø±Ù Ø®ÙˆØ¯Ø´ Ø¨Ø§Ø´Ø¯."}
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -7514,7 +7521,7 @@ class Database:
             conn.close()
 
     def update_reseller_custom_commission(self, reseller_id: int, percent: Optional[float]) -> dict:
-        """تخصیص درصد پورسانت اختصاصی برای یک نماینده"""
+        """ØªØ®ØµÛŒØµ Ø¯Ø±ØµØ¯ Ù¾ÙˆØ±Ø³Ø§Ù†Øª Ø§Ø®ØªØµØ§ØµÛŒ Ø¨Ø±Ø§ÛŒ ÛŒÚ© Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -7529,11 +7536,11 @@ class Database:
             conn.close()
 
     def get_admin_reseller_affiliates_overview(self) -> dict:
-        """گزارش آماری جامع سیستم زیرمجموعه‌گیری برای پنل مدیریت"""
+        """Ú¯Ø²Ø§Ø±Ø´ Ø¢Ù…Ø§Ø±ÛŒ Ø¬Ø§Ù…Ø¹ Ø³ÛŒØ³ØªÙ… Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡â€ŒÚ¯ÛŒØ±ÛŒ Ø¨Ø±Ø§ÛŒ Ù¾Ù†Ù„ Ù…Ø¯ÛŒØ±ÛŒØª"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            # ۱. لیست تمام نمایندگان با اطلاعات معرف و زیرمجموعه‌ها
+            # Û±. Ù„ÛŒØ³Øª ØªÙ…Ø§Ù… Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† Ø¨Ø§ Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ù…Ø¹Ø±Ù Ùˆ Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡â€ŒÙ‡Ø§
             cursor.execute("""
                 SELECT r.*,
                        pr.name as parent_name,
@@ -7547,7 +7554,7 @@ class Database:
             """)
             resellers = [dict(row) for row in cursor.fetchall()]
 
-            # ۲. آمار کلی سامانه
+            # Û². Ø¢Ù…Ø§Ø± Ú©Ù„ÛŒ Ø³Ø§Ù…Ø§Ù†Ù‡
             cursor.execute("SELECT COUNT(*) FROM resellers WHERE parent_reseller_id IS NOT NULL")
             total_network_subs = cursor.fetchone()[0] or 0
 
@@ -7574,16 +7581,16 @@ class Database:
 
     def get_reseller_hiddify_key(self, reseller_id: int) -> Optional[str]:
         """
-        دریافت کلید API یا Admin UUID اختصاصی نماینده در هیدیفای
-        اولویت‌ها:
-        ۱. متغیر محیطی Railway بر اساس ID یا Username (مانند RESELLER_1_HIDDIFY_KEY یا RESELLER_ALI_HIDDIFY_KEY)
-        ۲. فیلد hiddify_admin_uuid در دیتابیس
-        ۳. در صورت عدم تنظیم -> None (استفاده از کلید اصلی ادمین کل)
+        Ø¯Ø±ÛŒØ§ÙØª Ú©Ù„ÛŒØ¯ API ÛŒØ§ Admin UUID Ø§Ø®ØªØµØ§ØµÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¯Ø± Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ
+        Ø§ÙˆÙ„ÙˆÛŒØªâ€ŒÙ‡Ø§:
+        Û±. Ù…ØªØºÛŒØ± Ù…Ø­ÛŒØ·ÛŒ Railway Ø¨Ø± Ø§Ø³Ø§Ø³ ID ÛŒØ§ Username (Ù…Ø§Ù†Ù†Ø¯ RESELLER_1_HIDDIFY_KEY ÛŒØ§ RESELLER_ALI_HIDDIFY_KEY)
+        Û². ÙÛŒÙ„Ø¯ hiddify_admin_uuid Ø¯Ø± Ø¯ÛŒØªØ§Ø¨ÛŒØ³
+        Û³. Ø¯Ø± ØµÙˆØ±Øª Ø¹Ø¯Ù… ØªÙ†Ø¸ÛŒÙ… -> None (Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø§Ø² Ú©Ù„ÛŒØ¯ Ø§ØµÙ„ÛŒ Ø§Ø¯Ù…ÛŒÙ† Ú©Ù„)
         """
         if not reseller_id:
             return None
 
-        # ۱. بررسی متغیرهای محیطی Railway
+        # Û±. Ø¨Ø±Ø±Ø³ÛŒ Ù…ØªØºÛŒØ±Ù‡Ø§ÛŒ Ù…Ø­ÛŒØ·ÛŒ Railway
         env_key_by_id = os.environ.get(f"RESELLER_{reseller_id}_HIDDIFY_KEY")
         if env_key_by_id and env_key_by_id.strip():
             return env_key_by_id.strip()
@@ -7598,7 +7605,7 @@ class Database:
             if env_key_by_user and env_key_by_user.strip():
                 return env_key_by_user.strip()
 
-        # ۲. بررسی فیلد ذخیره شده در دیتابیس
+        # Û². Ø¨Ø±Ø±Ø³ÛŒ ÙÛŒÙ„Ø¯ Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯Ù‡ Ø¯Ø± Ø¯ÛŒØªØ§Ø¨ÛŒØ³
         db_uuid = reseller.get("hiddify_admin_uuid")
         if db_uuid and str(db_uuid).strip():
             return str(db_uuid).strip()
@@ -7606,7 +7613,7 @@ class Database:
         return None
 
     def get_reseller_by_hiddify_admin(self, hiddify_admin_uuid: str) -> Optional[dict]:
-        """پیدا کردن نماینده بر اساس Admin UUID هیدیفای"""
+        """Ù¾ÛŒØ¯Ø§ Ú©Ø±Ø¯Ù† Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø± Ø§Ø³Ø§Ø³ Admin UUID Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ"""
         if not hiddify_admin_uuid:
             return None
         conn = self.get_connection()
@@ -7618,11 +7625,11 @@ class Database:
 
     def restore_subscriptions_from_hiddify(self, users_list: list, default_reseller_id: int = None) -> dict:
         """
-        بازیابی و همگام‌سازی هوشمند اشتراک‌ها از لیست کاربران هیدیفای
-        تطبیق خودکار کاربر با نماینده بر اساس added_by یا تگ کامنت یا default_reseller_id
+        Ø¨Ø§Ø²ÛŒØ§Ø¨ÛŒ Ùˆ Ù‡Ù…Ú¯Ø§Ù…â€ŒØ³Ø§Ø²ÛŒ Ù‡ÙˆØ´Ù…Ù†Ø¯ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ Ø§Ø² Ù„ÛŒØ³Øª Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ
+        ØªØ·Ø¨ÛŒÙ‚ Ø®ÙˆØ¯Ú©Ø§Ø± Ú©Ø§Ø±Ø¨Ø± Ø¨Ø§ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø± Ø§Ø³Ø§Ø³ added_by ÛŒØ§ ØªÚ¯ Ú©Ø§Ù…Ù†Øª ÛŒØ§ default_reseller_id
         """
         if not users_list or not isinstance(users_list, list):
-            return {"success": False, "synced_count": 0, "error": "لیست کاربران هیدیفای خالی است."}
+            return {"success": False, "synced_count": 0, "error": "Ù„ÛŒØ³Øª Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ Ø®Ø§Ù„ÛŒ Ø§Ø³Øª."}
 
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -7630,7 +7637,7 @@ class Database:
         synced_count = 0
 
         try:
-            # ایجاد مپینگ Admin UUID به Reseller ID
+            # Ø§ÛŒØ¬Ø§Ø¯ Ù…Ù¾ÛŒÙ†Ú¯ Admin UUID Ø¨Ù‡ Reseller ID
             cursor.execute("SELECT id, hiddify_admin_uuid FROM resellers WHERE hiddify_admin_uuid IS NOT NULL")
             admin_to_reseller = {r["hiddify_admin_uuid"].strip(): r["id"] for r in cursor.fetchall() if r["hiddify_admin_uuid"]}
 
@@ -7650,7 +7657,7 @@ class Database:
                 comment = str(u.get("comment") or "")
                 added_by = str(u.get("added_by") or "").strip()
 
-                # تشخیص شناسه نماینده
+                # ØªØ´Ø®ÛŒØµ Ø´Ù†Ø§Ø³Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
                 assigned_reseller_id = default_reseller_id
                 if added_by and added_by in admin_to_reseller:
                     assigned_reseller_id = admin_to_reseller[added_by]
@@ -7663,7 +7670,7 @@ class Database:
                     except Exception:
                         pass
 
-                # بررسی یا ایجاد در جدول subscriptions
+                # Ø¨Ø±Ø±Ø³ÛŒ ÛŒØ§ Ø§ÛŒØ¬Ø§Ø¯ Ø¯Ø± Ø¬Ø¯ÙˆÙ„ subscriptions
                 cursor.execute("SELECT id, telegram_id FROM subscriptions WHERE hidify_uuid=?", (uuid_val,))
                 existing_sub = cursor.fetchone()
 
@@ -7675,13 +7682,13 @@ class Database:
                         WHERE hidify_uuid=?
                     """, (usage_limit, current_usage, package_days, status, assigned_reseller_id, now, uuid_val))
                 else:
-                    # ایجاد اشتراک جدید بازسازی شده
+                    # Ø§ÛŒØ¬Ø§Ø¯ Ø§Ø´ØªØ±Ø§Ú© Ø¬Ø¯ÛŒØ¯ Ø¨Ø§Ø²Ø³Ø§Ø²ÛŒ Ø´Ø¯Ù‡
                     simulated_tg = 900000000 + abs(hash(uuid_val)) % 99999999
                     cursor.execute("""
                         INSERT INTO subscriptions (
                             telegram_id, hidify_uuid, plan_id, plan_name, account_name,
                             data_limit, data_used, duration, status, reseller_id, created_at, updated_at
-                        ) VALUES (?, ?, 'restored', 'اشتراک بازیابی‌شده هیدیفای', ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, 'restored', 'Ø§Ø´ØªØ±Ø§Ú© Ø¨Ø§Ø²ÛŒØ§Ø¨ÛŒâ€ŒØ´Ø¯Ù‡ Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ', ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (simulated_tg, uuid_val, name, usage_limit, current_usage, package_days, status, assigned_reseller_id, now, now))
 
                 synced_count += 1
@@ -7697,20 +7704,20 @@ class Database:
 
     def sync_and_prune_reseller_subscriptions(self, reseller_id: int, users_list: list) -> dict:
         """
-        همگام‌سازی کامل اشتراک‌های نماینده با پنل هیدیفای:
-        ۱. بازیابی و بروزرسانی کلیه مشترکین موجود در هیدیفای به پنل نماینده
-        ۲. مقایسه و پاکسازی کلیه مشترکینی که در پنل نماینده هستند اما در هیدیفای وجود ندارند
+        Ù‡Ù…Ú¯Ø§Ù…â€ŒØ³Ø§Ø²ÛŒ Ú©Ø§Ù…Ù„ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø§ Ù¾Ù†Ù„ Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ:
+        Û±. Ø¨Ø§Ø²ÛŒØ§Ø¨ÛŒ Ùˆ Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ú©Ù„ÛŒÙ‡ Ù…Ø´ØªØ±Ú©ÛŒÙ† Ù…ÙˆØ¬ÙˆØ¯ Ø¯Ø± Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ Ø¨Ù‡ Ù¾Ù†Ù„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
+        Û². Ù…Ù‚Ø§ÛŒØ³Ù‡ Ùˆ Ù¾Ø§Ú©Ø³Ø§Ø²ÛŒ Ú©Ù„ÛŒÙ‡ Ù…Ø´ØªØ±Ú©ÛŒÙ†ÛŒ Ú©Ù‡ Ø¯Ø± Ù¾Ù†Ù„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ù‡Ø³ØªÙ†Ø¯ Ø§Ù…Ø§ Ø¯Ø± Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ ÙˆØ¬ÙˆØ¯ Ù†Ø¯Ø§Ø±Ù†Ø¯
         """
         if not reseller_id:
-            return {"success": False, "error": "شناسه نماینده نامعتبر است."}
+            return {"success": False, "error": "Ø´Ù†Ø§Ø³Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ù†Ø§Ù…Ø¹ØªØ¨Ø± Ø§Ø³Øª."}
         if users_list is None or not isinstance(users_list, list):
-            return {"success": False, "error": "لیست کاربران هیدیفای نامعتبر است."}
+            return {"success": False, "error": "Ù„ÛŒØ³Øª Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ Ù†Ø§Ù…Ø¹ØªØ¨Ø± Ø§Ø³Øª."}
 
-        # مرحله ۱: بازیابی و بروزرسانی مشترکین موجود در هیدیفای
+        # Ù…Ø±Ø­Ù„Ù‡ Û±: Ø¨Ø§Ø²ÛŒØ§Ø¨ÛŒ Ùˆ Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ù…Ø´ØªØ±Ú©ÛŒÙ† Ù…ÙˆØ¬ÙˆØ¯ Ø¯Ø± Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ
         restore_res = self.restore_subscriptions_from_hiddify(users_list, default_reseller_id=reseller_id)
         synced_count = restore_res.get("synced_count", 0)
 
-        # مرحله ۲: استخراج تمام شناسه (UUID) های معتبر کاربران هیدیفای
+        # Ù…Ø±Ø­Ù„Ù‡ Û²: Ø§Ø³ØªØ®Ø±Ø§Ø¬ ØªÙ…Ø§Ù… Ø´Ù†Ø§Ø³Ù‡ (UUID) Ù‡Ø§ÛŒ Ù…Ø¹ØªØ¨Ø± Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ
         hiddify_uuids = set()
         for u in users_list:
             if isinstance(u, dict) and u.get("uuid"):
@@ -7722,7 +7729,7 @@ class Database:
         purged_names = []
 
         try:
-            # واکشی کلیه اشتراک‌های منتسب به این نماینده در دیتابیس
+            # ÙˆØ§Ú©Ø´ÛŒ Ú©Ù„ÛŒÙ‡ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒ Ù…Ù†ØªØ³Ø¨ Ø¨Ù‡ Ø§ÛŒÙ† Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¯Ø± Ø¯ÛŒØªØ§Ø¨ÛŒØ³
             cursor.execute("""
                 SELECT id, hidify_uuid, account_name, telegram_id
                 FROM subscriptions
@@ -7733,23 +7740,23 @@ class Database:
             extra_sub_ids = []
             for sub in current_subs:
                 sub_uuid = str(sub["hidify_uuid"] or "").strip().lower()
-                # اگر کاربر UUID هیدیفای ندارد یا در لیست هیدیفای وجود ندارد -> کاربر اضافی است
+                # Ø§Ú¯Ø± Ú©Ø§Ø±Ø¨Ø± UUID Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ Ù†Ø¯Ø§Ø±Ø¯ ÛŒØ§ Ø¯Ø± Ù„ÛŒØ³Øª Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ ÙˆØ¬ÙˆØ¯ Ù†Ø¯Ø§Ø±Ø¯ -> Ú©Ø§Ø±Ø¨Ø± Ø§Ø¶Ø§ÙÛŒ Ø§Ø³Øª
                 if not sub_uuid or sub_uuid not in hiddify_uuids:
                     extra_sub_ids.append(sub["id"])
-                    purged_names.append(sub["account_name"] or f"اشتراک #{sub['id']}")
+                    purged_names.append(sub["account_name"] or f"Ø§Ø´ØªØ±Ø§Ú© #{sub['id']}")
 
             if extra_sub_ids:
                 placeholders = ",".join("?" for _ in extra_sub_ids)
                 
-                # حفظ یکپارچگی ارجاعات جداول وابسته
+                # Ø­ÙØ¸ ÛŒÚ©Ù¾Ø§Ø±Ú†Ú¯ÛŒ Ø§Ø±Ø¬Ø§Ø¹Ø§Øª Ø¬Ø¯Ø§ÙˆÙ„ ÙˆØ§Ø¨Ø³ØªÙ‡
                 cursor.execute(f"UPDATE transactions SET subscription_id = NULL WHERE subscription_id IN ({placeholders})", extra_sub_ids)
                 cursor.execute(f"DELETE FROM subscription_history WHERE subscription_id IN ({placeholders})", extra_sub_ids)
                 
-                # حذف کامل اشتراک‌های اضافی از پنل نماینده
+                # Ø­Ø°Ù Ú©Ø§Ù…Ù„ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒ Ø§Ø¶Ø§ÙÛŒ Ø§Ø² Ù¾Ù†Ù„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
                 cursor.execute(f"DELETE FROM subscriptions WHERE id IN ({placeholders})", extra_sub_ids)
                 purged_count = len(extra_sub_ids)
 
-                # پاکسازی کاربران شبیه‌سازی‌شده بدون اشتراک از جدول users
+                # Ù¾Ø§Ú©Ø³Ø§Ø²ÛŒ Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ø´Ø¨ÛŒÙ‡â€ŒØ³Ø§Ø²ÛŒâ€ŒØ´Ø¯Ù‡ Ø¨Ø¯ÙˆÙ† Ø§Ø´ØªØ±Ø§Ú© Ø§Ø² Ø¬Ø¯ÙˆÙ„ users
                 cursor.execute("""
                     DELETE FROM users 
                     WHERE telegram_id >= 900000000 
@@ -7772,7 +7779,7 @@ class Database:
             conn.close()
 
     def get_active_subscriptions_for_sync(self, reseller_id: int = None) -> list:
-        """واکشی اشتراک‌های فعال جهت پیش‌نمایش و همگام‌سازی با هیدیفای"""
+        """ÙˆØ§Ú©Ø´ÛŒ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒ ÙØ¹Ø§Ù„ Ø¬Ù‡Øª Ù¾ÛŒØ´â€ŒÙ†Ù…Ø§ÛŒØ´ Ùˆ Ù‡Ù…Ú¯Ø§Ù…â€ŒØ³Ø§Ø²ÛŒ Ø¨Ø§ Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -7798,7 +7805,7 @@ class Database:
             conn.close()
 
     def ensure_subscription_uuid(self, sub_id: int) -> str:
-        """بررسی و تولید شناسه UUID در صورت خالی بودن برای اشتراک محلی"""
+        """Ø¨Ø±Ø±Ø³ÛŒ Ùˆ ØªÙˆÙ„ÛŒØ¯ Ø´Ù†Ø§Ø³Ù‡ UUID Ø¯Ø± ØµÙˆØ±Øª Ø®Ø§Ù„ÛŒ Ø¨ÙˆØ¯Ù† Ø¨Ø±Ø§ÛŒ Ø§Ø´ØªØ±Ø§Ú© Ù…Ø­Ù„ÛŒ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -7815,7 +7822,7 @@ class Database:
             conn.close()
 
     def prune_selected_subscriptions(self, subscription_ids: list) -> dict:
-        """حذف ایمن اشتراک‌های انتخاب‌شده محلی با پاکسازی وابستگی‌ها"""
+        """Ø­Ø°Ù Ø§ÛŒÙ…Ù† Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒ Ø§Ù†ØªØ®Ø§Ø¨â€ŒØ´Ø¯Ù‡ Ù…Ø­Ù„ÛŒ Ø¨Ø§ Ù¾Ø§Ú©Ø³Ø§Ø²ÛŒ ÙˆØ§Ø¨Ø³ØªÚ¯ÛŒâ€ŒÙ‡Ø§"""
         if not subscription_ids:
             return {"success": True, "purged_count": 0, "purged_names": []}
         
@@ -7833,12 +7840,12 @@ class Database:
             for r in rows:
                 purged_names.append(r["account_name"] or f"#{r['id']}")
 
-            # پاکسازی ارجاعات
+            # Ù¾Ø§Ú©Ø³Ø§Ø²ÛŒ Ø§Ø±Ø¬Ø§Ø¹Ø§Øª
             cursor.execute(f"UPDATE transactions SET subscription_id = NULL WHERE subscription_id IN ({placeholders})", valid_ids)
             cursor.execute(f"DELETE FROM subscription_history WHERE subscription_id IN ({placeholders})", valid_ids)
             cursor.execute(f"DELETE FROM subscriptions WHERE id IN ({placeholders})", valid_ids)
             
-            # پاکسازی کاربران شبیه‌سازی‌شده بدون اشتراک
+            # Ù¾Ø§Ú©Ø³Ø§Ø²ÛŒ Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ø´Ø¨ÛŒÙ‡â€ŒØ³Ø§Ø²ÛŒâ€ŒØ´Ø¯Ù‡ Ø¨Ø¯ÙˆÙ† Ø§Ø´ØªØ±Ø§Ú©
             cursor.execute("""
                 DELETE FROM users 
                 WHERE telegram_id >= 900000000 
@@ -7855,8 +7862,8 @@ class Database:
 
     def find_subscriptions_by_pattern(self, pattern: str, pattern_type: str = "auto", source_filter: str = "all") -> list:
         """
-        جستجوی هوشمند اشتراک‌ها بر اساس الگو، پیشوند، وایلدکارد یا عبارت منظم (Regex)
-        جهت انتقال گروهی و دسته‌ای به نمایندگان
+        Ø¬Ø³ØªØ¬ÙˆÛŒ Ù‡ÙˆØ´Ù…Ù†Ø¯ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ Ø¨Ø± Ø§Ø³Ø§Ø³ Ø§Ù„Ú¯ÙˆØŒ Ù¾ÛŒØ´ÙˆÙ†Ø¯ØŒ ÙˆØ§ÛŒÙ„Ø¯Ú©Ø§Ø±Ø¯ ÛŒØ§ Ø¹Ø¨Ø§Ø±Øª Ù…Ù†Ø¸Ù… (Regex)
+        Ø¬Ù‡Øª Ø§Ù†ØªÙ‚Ø§Ù„ Ú¯Ø±ÙˆÙ‡ÛŒ Ùˆ Ø¯Ø³ØªÙ‡â€ŒØ§ÛŒ Ø¨Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù†
         """
         if not pattern or not str(pattern).strip():
             return []
@@ -7865,7 +7872,7 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
 
-        # اعمال فیلتر بر اساس منبع مالکیت
+        # Ø§Ø¹Ù…Ø§Ù„ ÙÛŒÙ„ØªØ± Ø¨Ø± Ø§Ø³Ø§Ø³ Ù…Ù†Ø¨Ø¹ Ù…Ø§Ù„Ú©ÛŒØª
         query = """
             SELECT s.*, 
                    r.name as reseller_name, 
@@ -7898,7 +7905,7 @@ class Database:
         matched = []
         pattern_lower = pattern.lower()
 
-        # تعیین نوع جستجو در حالت auto
+        # ØªØ¹ÛŒÛŒÙ† Ù†ÙˆØ¹ Ø¬Ø³ØªØ¬Ùˆ Ø¯Ø± Ø­Ø§Ù„Øª auto
         is_regex = pattern_type == "regex" or (pattern_type == "auto" and (pattern.startswith("^") or pattern.endswith("$") or "\\d" in pattern))
         is_wildcard = pattern_type == "wildcard" or (pattern_type == "auto" and not is_regex and ("*" in pattern or "?" in pattern))
         is_prefix = pattern_type == "prefix"
@@ -7926,7 +7933,7 @@ class Database:
                 if name.lower().startswith(pattern_lower) or comment.lower().startswith(pattern_lower):
                     is_match = True
             else:
-                # حالت پیش‌فرض / contains / prefix هوشمند
+                # Ø­Ø§Ù„Øª Ù¾ÛŒØ´â€ŒÙØ±Ø¶ / contains / prefix Ù‡ÙˆØ´Ù…Ù†Ø¯
                 if name.lower().startswith(pattern_lower):
                     is_match = True
                 elif pattern_lower in name.lower() or pattern_lower in comment.lower():
@@ -7940,21 +7947,21 @@ class Database:
     def transfer_subscriptions_to_reseller(self, sub_ids: list, target_reseller_id: int,
                                           target_hiddify_admin: str = None,
                                           safe_backdate_hours: int = 72,
-                                          admin_name: str = "مدیریت") -> dict:
+                                          admin_name: str = "Ù…Ø¯ÛŒØ±ÛŒØª") -> dict:
         """
-        انتقال دسته‌ای و هوشمند اشتراک‌ها به یک نماینده با رعایت شروط امنیتی:
-        ۱. حفظ تاریخ واقعی یا تنظیم تاریخ به بیش از ۲۴ ساعت گذشته جهت جلوگیری از سوءاستفاده استرداد وجه
-        ۲. انتساب به reseller_id نماینده و ثبت لاگ تاریخچه
-        ۳. بازگرداندن اطلاعات لازم جهت اعمال همزمان در API هیدیفای (تغییر added_by)
+        Ø§Ù†ØªÙ‚Ø§Ù„ Ø¯Ø³ØªÙ‡â€ŒØ§ÛŒ Ùˆ Ù‡ÙˆØ´Ù…Ù†Ø¯ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ Ø¨Ù‡ ÛŒÚ© Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø§ Ø±Ø¹Ø§ÛŒØª Ø´Ø±ÙˆØ· Ø§Ù…Ù†ÛŒØªÛŒ:
+        Û±. Ø­ÙØ¸ ØªØ§Ø±ÛŒØ® ÙˆØ§Ù‚Ø¹ÛŒ ÛŒØ§ ØªÙ†Ø¸ÛŒÙ… ØªØ§Ø±ÛŒØ® Ø¨Ù‡ Ø¨ÛŒØ´ Ø§Ø² Û²Û´ Ø³Ø§Ø¹Øª Ú¯Ø°Ø´ØªÙ‡ Ø¬Ù‡Øª Ø¬Ù„ÙˆÚ¯ÛŒØ±ÛŒ Ø§Ø² Ø³ÙˆØ¡Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡
+        Û². Ø§Ù†ØªØ³Ø§Ø¨ Ø¨Ù‡ reseller_id Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ùˆ Ø«Ø¨Øª Ù„Ø§Ú¯ ØªØ§Ø±ÛŒØ®Ú†Ù‡
+        Û³. Ø¨Ø§Ø²Ú¯Ø±Ø¯Ø§Ù†Ø¯Ù† Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ù„Ø§Ø²Ù… Ø¬Ù‡Øª Ø§Ø¹Ù…Ø§Ù„ Ù‡Ù…Ø²Ù…Ø§Ù† Ø¯Ø± API Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ (ØªØºÛŒÛŒØ± added_by)
         """
         if not sub_ids or not isinstance(sub_ids, list):
-            return {"success": False, "transferred_count": 0, "error": "هیچ اشتراکی برای انتقال انتخاب نشده است."}
+            return {"success": False, "transferred_count": 0, "error": "Ù‡ÛŒÚ† Ø§Ø´ØªØ±Ø§Ú©ÛŒ Ø¨Ø±Ø§ÛŒ Ø§Ù†ØªÙ‚Ø§Ù„ Ø§Ù†ØªØ®Ø§Ø¨ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª."}
 
         target_reseller = self.get_reseller(target_reseller_id)
         if not target_reseller:
-            return {"success": False, "transferred_count": 0, "error": "نماینده مقصد یافت نشد."}
+            return {"success": False, "transferred_count": 0, "error": "Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ù…Ù‚ØµØ¯ ÛŒØ§ÙØª Ù†Ø´Ø¯."}
 
-        # تعیین شناسه ادمین هیدیفای نماینده
+        # ØªØ¹ÛŒÛŒÙ† Ø´Ù†Ø§Ø³Ù‡ Ø§Ø¯Ù…ÛŒÙ† Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
         final_hiddify_admin = target_hiddify_admin or target_reseller.get("hiddify_admin_uuid")
 
         conn = self.get_connection()
@@ -7962,7 +7969,7 @@ class Database:
         now = get_now_iso()
         now_dt = get_now_naive()
 
-        # زمان امن گذشته (حداقل ۷۲ ساعت پیش) در صورت نبود تاریخ یا تاریخ کمتر از ۲۴ ساعت
+        # Ø²Ù…Ø§Ù† Ø§Ù…Ù† Ú¯Ø°Ø´ØªÙ‡ (Ø­Ø¯Ø§Ù‚Ù„ Û·Û² Ø³Ø§Ø¹Øª Ù¾ÛŒØ´) Ø¯Ø± ØµÙˆØ±Øª Ù†Ø¨ÙˆØ¯ ØªØ§Ø±ÛŒØ® ÛŒØ§ ØªØ§Ø±ÛŒØ® Ú©Ù…ØªØ± Ø§Ø² Û²Û´ Ø³Ø§Ø¹Øª
         safe_past_dt = now_dt - timedelta(hours=max(25, safe_backdate_hours))
         safe_past_iso = safe_past_dt.strftime("%Y-%m-%dT%H:%M:%S")
 
@@ -7977,7 +7984,7 @@ class Database:
                 sub = dict(sub_row)
                 current_created = sub.get("created_at")
                 
-                # بررسی اینکه آیا تاریخ ایجاد قبلی معتبر و بیش از ۲۴ ساعت گذشته است
+                # Ø¨Ø±Ø±Ø³ÛŒ Ø§ÛŒÙ†Ú©Ù‡ Ø¢ÛŒØ§ ØªØ§Ø±ÛŒØ® Ø§ÛŒØ¬Ø§Ø¯ Ù‚Ø¨Ù„ÛŒ Ù…Ø¹ØªØ¨Ø± Ùˆ Ø¨ÛŒØ´ Ø§Ø² Û²Û´ Ø³Ø§Ø¹Øª Ú¯Ø°Ø´ØªÙ‡ Ø§Ø³Øª
                 is_older_than_24h = False
                 final_created_at = safe_past_iso
                 if current_created:
@@ -7992,7 +7999,7 @@ class Database:
                     except Exception:
                         pass
 
-                # بروزرسانی اشتراک: تغییر مالکیت، تنظیم تاریخ امن، و صفر کردن هزینه پرداختی نماینده
+                # Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø§Ø´ØªØ±Ø§Ú©: ØªØºÛŒÛŒØ± Ù…Ø§Ù„Ú©ÛŒØªØŒ ØªÙ†Ø¸ÛŒÙ… ØªØ§Ø±ÛŒØ® Ø§Ù…Ù†ØŒ Ùˆ ØµÙØ± Ú©Ø±Ø¯Ù† Ù‡Ø²ÛŒÙ†Ù‡ Ù¾Ø±Ø¯Ø§Ø®ØªÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
                 cursor.execute("""
                     UPDATE subscriptions
                     SET reseller_id = ?,
@@ -8002,7 +8009,7 @@ class Database:
                     WHERE id = ?
                 """, (target_reseller_id, final_created_at, now, sub_id))
 
-                # ثبت در جدول تاریخچه اشتراک‌ها (سوابق مدیریت)
+                # Ø«Ø¨Øª Ø¯Ø± Ø¬Ø¯ÙˆÙ„ ØªØ§Ø±ÛŒØ®Ú†Ù‡ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ (Ø³ÙˆØ§Ø¨Ù‚ Ù…Ø¯ÛŒØ±ÛŒØª)
                 try:
                     cursor.execute("""
                         INSERT INTO subscription_history (
@@ -8016,7 +8023,7 @@ class Database:
                         sub.get("plan_name"), float(sub.get("data_used") or 0), float(sub.get("data_limit") or 0),
                         int(sub.get("duration") or 30), now, target_reseller_id, sub.get("start_date"),
                         sub.get("expire_date"),
-                        f"انتقال سازمانی به نماینده {target_reseller['name']} (@{target_reseller['username']})",
+                        f"Ø§Ù†ØªÙ‚Ø§Ù„ Ø³Ø§Ø²Ù…Ø§Ù†ÛŒ Ø¨Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ {target_reseller['name']} (@{target_reseller['username']})",
                         admin_name
                     ))
                 except Exception as ex:
@@ -8051,7 +8058,7 @@ class Database:
             conn.close()
 
     def authenticate_reseller(self, username: str, password: str):
-        """احراز هویت نماینده (Case-Insensitive و مقاوم در برابر فاصله‌ها)"""
+        """Ø§Ø­Ø±Ø§Ø² Ù‡ÙˆÛŒØª Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (Case-Insensitive Ùˆ Ù…Ù‚Ø§ÙˆÙ… Ø¯Ø± Ø¨Ø±Ø§Ø¨Ø± ÙØ§ØµÙ„Ù‡â€ŒÙ‡Ø§)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         clean_user = username.strip().lower()
@@ -8064,7 +8071,7 @@ class Database:
         return dict(row) if row else None
 
     def get_all_resellers(self):
-        """لیست همه نمایندگان"""
+        """Ù„ÛŒØ³Øª Ù‡Ù…Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù†"""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
@@ -8082,7 +8089,7 @@ class Database:
     get_resellers = get_all_resellers
 
     def get_reseller(self, reseller_id: int):
-        """دریافت اطلاعات یک نماینده"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø§Ø·Ù„Ø§Ø¹Ø§Øª ÛŒÚ© Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM resellers WHERE id=?", (reseller_id,))
@@ -8091,7 +8098,7 @@ class Database:
         return dict(row) if row else None
 
     def update_reseller(self, reseller_id: int, **kwargs):
-        """ویرایش مشخصات نماینده"""
+        """ÙˆÛŒØ±Ø§ÛŒØ´ Ù…Ø´Ø®ØµØ§Øª Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         kwargs["updated_at"] = get_now_iso()
@@ -8114,7 +8121,7 @@ class Database:
         return {"success": True}
 
     def toggle_reseller_status(self, reseller_id: int, is_active: bool = None):
-        """فعال یا غیرفعال کردن نماینده"""
+        """ÙØ¹Ø§Ù„ ÛŒØ§ ØºÛŒØ±ÙØ¹Ø§Ù„ Ú©Ø±Ø¯Ù† Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         if is_active is None:
@@ -8135,7 +8142,7 @@ class Database:
         return {"success": True, "status": new_status}
 
     def delete_reseller(self, reseller_id: int):
-        """حذف نماینده فروش"""
+        """Ø­Ø°Ù Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ ÙØ±ÙˆØ´"""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM reseller_transactions WHERE reseller_id=?", (reseller_id,))
@@ -8148,8 +8155,8 @@ class Database:
             pass
         return {"success": True}
 
-    def add_reseller_balance(self, reseller_id: int, amount: int, description: str = "شارژ کیف پول توسط مدیریت"):
-        """افزایش موجودی کیف پول نماینده"""
+    def add_reseller_balance(self, reseller_id: int, amount: int, description: str = "Ø´Ø§Ø±Ú˜ Ú©ÛŒÙ Ù¾ÙˆÙ„ ØªÙˆØ³Ø· Ù…Ø¯ÛŒØ±ÛŒØª"):
+        """Ø§ÙØ²Ø§ÛŒØ´ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -8167,7 +8174,7 @@ class Database:
             conn.close()
 
     def deduct_reseller_balance(self, reseller_id: int, amount: int, plan_name: str, account_name: str,
-                                description: str = "خرید اشتراک برای مشتری", payment_source: str = "auto",
+                                description: str = "Ø®Ø±ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú© Ø¨Ø±Ø§ÛŒ Ù…Ø´ØªØ±ÛŒ", payment_source: str = "auto",
                                 subscription_id: int = None, selling_price: int = None, profit_margin: int = None,
                                 created_by: str = None):
         """کسر هزینه با پشتیبانی از انتخاب دقیق مبدأ پرداخت (کیف پول نقدی یا اعتبار خرید)، ثبت صادرکننده و ثبت حاشیه سود"""
@@ -8175,7 +8182,7 @@ class Database:
         cursor = conn.cursor()
         now = get_now_iso()
         try:
-            cursor.execute("SELECT balance, credit_limit, credit_debt, credit_enabled, discount_percent FROM resellers WHERE id=?", (reseller_id,))
+            cursor.execute("SELECT balance, credit_limit, credit_debt, credit_enabled, discount_percent, is_partner FROM resellers WHERE id=?", (reseller_id,))
             row = cursor.fetchone()
             if not row:
                 return {"success": False, "error": "نماینده یافت نشد."}
@@ -8186,6 +8193,7 @@ class Database:
             credit_enabled = bool(row["credit_enabled"]) or (credit_limit > 0)
             available_credit = max(0, credit_limit - credit_debt) if credit_enabled else 0
             discount_pct = row["discount_percent"] if ("discount_percent" in row.keys() and row["discount_percent"] is not None) else 20
+            is_partner = bool(row["is_partner"]) if "is_partner" in row.keys() else False
 
             chosen_source = str(payment_source).strip().lower() if payment_source else "auto"
             if selling_price is not None and int(selling_price) > 0:
@@ -8195,14 +8203,25 @@ class Database:
             profit_val = int(profit_margin) if profit_margin is not None else max(0, selling_val - int(amount))
             creator_val = str(created_by).strip() if created_by else None
 
+            if is_partner:
+                profit_val = selling_val
+                desc_text = f"{description} (شریک سیستم - معاف از هزینه)"
+                cursor.execute("""
+                    INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
+                    VALUES (?, 'purchase', 0, ?, ?, ?, ?, ?, 'partner', ?, ?, ?)
+                """, (reseller_id, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, creator_val, now))
+                tx_id = cursor.lastrowid
+                conn.commit()
+                return {"success": True, "transaction_id": tx_id, "is_credit": False, "credit_used": 0, "payment_source": "partner"}
+
             if chosen_source == "wallet":
                 if balance < amount:
                     return {
                         "success": False,
-                        "error": f"موجودی کیف پول شما کافی نیست! موجودی: {balance:,} تومان | مبلغ مورد نیاز: {amount:,} تومان"
+                        "error": f"Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©ÛŒÙ  Ù¾ÙˆÙ„ Ø´Ù…Ø§ Ú©Ø§Ù ÛŒ Ù†ÛŒØ³Øª! Ù…ÙˆØ¬ÙˆØ¯ÛŒ: {balance:,} ØªÙˆÙ…Ø§Ù† | Ù…Ø¨Ù„Øº Ù…ÙˆØ±Ø¯ Ù†ÛŒØ§Ø²: {amount:,} ØªÙˆÙ…Ø§Ù†"
                     }
                 cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (amount, now, reseller_id))
-                desc_text = f"{description} (کسر از کیف پول نقدی)"
+                desc_text = f"{description} (Ú©Ø³Ø± Ø§Ø² Ú©ÛŒÙ  Ù¾ÙˆÙ„ Ù†Ù‚Ø¯ÛŒ)"
                 cursor.execute("""
                     INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
                     VALUES (?, 'purchase', ?, ?, ?, ?, ?, ?, 'wallet', ?, ?, ?)
@@ -8213,14 +8232,14 @@ class Database:
 
             elif chosen_source == "credit":
                 if not credit_enabled:
-                    return {"success": False, "error": "اعتبار خرید برای شما فعال نشده است."}
+                    return {"success": False, "error": "Ø§Ø¹ØªØ¨Ø§Ø± Ø®Ø±ÛŒØ¯ Ø¨Ø±Ø§ÛŒ Ø´Ù…Ø§ Ù Ø¹Ø§Ù„ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª."}
                 if available_credit < amount:
                     return {
                         "success": False,
-                        "error": f"اعتبار خرید شما کافی نیست! اعتبار باقیمانده: {available_credit:,} تومان | مبلغ مورد نیاز: {amount:,} تومان"
+                        "error": f"Ø§Ø¹ØªØ¨Ø§Ø± Ø®Ø±ÛŒØ¯ Ø´Ù…Ø§ Ú©Ø§ÙÛŒ Ù†ÛŒØ³Øª! Ø§Ø¹ØªØ¨Ø§Ø± Ø¨Ø§Ù‚ÛŒÙ…Ø§Ù†Ø¯Ù‡: {available_credit:,} ØªÙˆÙ…Ø§Ù† | Ù…Ø¨Ù„Øº Ù…ÙˆØ±Ø¯ Ù†ÛŒØ§Ø²: {amount:,} ØªÙˆÙ…Ø§Ù†"
                     }
                 cursor.execute("UPDATE resellers SET credit_debt = credit_debt + ?, updated_at=? WHERE id=?", (amount, now, reseller_id))
-                desc_text = f"{description} (کسر از اعتبار خرید: {amount:,} ت بدهی)"
+                desc_text = f"{description} (Ú©Ø³Ø± Ø§Ø² Ø§Ø¹ØªØ¨Ø§Ø± Ø®Ø±ÛŒØ¯: {amount:,} Øª Ø¨Ø¯Ù‡ÛŒ)"
                 cursor.execute("""
                     INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
                     VALUES (?, 'purchase_credit', ?, ?, ?, ?, ?, ?, 'credit', ?, ?, ?)
@@ -8230,12 +8249,12 @@ class Database:
                 return {"success": True, "transaction_id": tx_id, "is_credit": True, "credit_used": amount, "payment_source": "credit"}
 
             else:
-                # حالت هوشمند و خودکار (auto)
+                # Ø­Ø§Ù„Øª Ù‡ÙˆØ´Ù…Ù†Ø¯ Ùˆ Ø®ÙˆØ¯Ú©Ø§Ø± (auto)
                 total_available = balance + available_credit
                 if total_available < amount:
                     return {
                         "success": False, 
-                        "error": f"موجودی و اعتبار کافی نیست! موجودی: {balance:,} تومان | اعتبار باقیمانده: {available_credit:,} تومان | مبلغ کل: {amount:,} تومان"
+                        "error": f"Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ùˆ Ø§Ø¹ØªØ¨Ø§Ø± Ú©Ø§ÙÛŒ Ù†ÛŒØ³Øª! Ù…ÙˆØ¬ÙˆØ¯ÛŒ: {balance:,} ØªÙˆÙ…Ø§Ù† | Ø§Ø¹ØªØ¨Ø§Ø± Ø¨Ø§Ù‚ÛŒÙ…Ø§Ù†Ø¯Ù‡: {available_credit:,} ØªÙˆÙ…Ø§Ù† | Ù…Ø¨Ù„Øº Ú©Ù„: {amount:,} ØªÙˆÙ…Ø§Ù†"
                     }
 
                 if balance >= amount:
@@ -8257,7 +8276,7 @@ class Database:
                         WHERE id = ?
                     """, (credit_used, now, reseller_id))
 
-                    desc_text = f"{description} (خرید اعتباری: {credit_used:,} تومان بدهی)"
+                    desc_text = f"{description} (Ø®Ø±ÛŒØ¯ Ø§Ø¹ØªØ¨Ø§Ø±ÛŒ: {credit_used:,} ØªÙˆÙ…Ø§Ù† Ø¨Ø¯Ù‡ÛŒ)"
                     cursor.execute("""
                         INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
                         VALUES (?, 'purchase_credit', ?, ?, ?, ?, ?, ?, 'credit', ?, ?, ?)
@@ -8270,8 +8289,8 @@ class Database:
         finally:
             conn.close()
 
-    def settle_reseller_debt(self, reseller_id: int, amount: int, description: str = "تسویه بدهی اعتباری", settled_by: str = "مدیر ارشد") -> dict:
-        """ثبت تسویه حساب بدهی اعتباری نماینده توسط مدیریت"""
+    def settle_reseller_debt(self, reseller_id: int, amount: int, description: str = "ØªØ³ÙˆÛŒÙ‡ Ø¨Ø¯Ù‡ÛŒ Ø§Ø¹ØªØ¨Ø§Ø±ÛŒ", settled_by: str = "Ù…Ø¯ÛŒØ± Ø§Ø±Ø´Ø¯") -> dict:
+        """Ø«Ø¨Øª ØªØ³ÙˆÛŒÙ‡ Ø­Ø³Ø§Ø¨ Ø¨Ø¯Ù‡ÛŒ Ø§Ø¹ØªØ¨Ø§Ø±ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ ØªÙˆØ³Ø· Ù…Ø¯ÛŒØ±ÛŒØª"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -8279,29 +8298,29 @@ class Database:
             cursor.execute("SELECT credit_debt, name, username FROM resellers WHERE id=?", (reseller_id,))
             row = cursor.fetchone()
             if not row:
-                return {"success": False, "error": "نماینده یافت نشد."}
+                return {"success": False, "error": "Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ ÛŒØ§ÙØª Ù†Ø´Ø¯."}
 
             current_debt = row["credit_debt"] or 0
             if amount <= 0:
-                return {"success": False, "error": "مبلغ تسویه باید بزرگتر از صفر باشد."}
+                return {"success": False, "error": "Ù…Ø¨Ù„Øº ØªØ³ÙˆÛŒÙ‡ Ø¨Ø§ÛŒØ¯ Ø¨Ø²Ø±Ú¯ØªØ± Ø§Ø² ØµÙØ± Ø¨Ø§Ø´Ø¯."}
 
             new_debt = max(0, current_debt - amount)
             cursor.execute("UPDATE resellers SET credit_debt = ?, updated_at = ? WHERE id = ?", (new_debt, now, reseller_id))
 
             cursor.execute("""
                 INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
-                VALUES (?, 'settle_debt', ?, 'تسویه بدهی', ?, ?, ?)
-            """, (reseller_id, amount, row["username"], f"{description} توسط {settled_by}", now))
+                VALUES (?, 'settle_debt', ?, 'ØªØ³ÙˆÛŒÙ‡ Ø¨Ø¯Ù‡ÛŒ', ?, ?, ?)
+            """, (reseller_id, amount, row["username"], f"{description} ØªÙˆØ³Ø· {settled_by}", now))
 
-            # ثبت سند درآمدی تسویه در سیستم حسابداری
+            # Ø«Ø¨Øª Ø³Ù†Ø¯ Ø¯Ø±Ø¢Ù…Ø¯ÛŒ ØªØ³ÙˆÛŒÙ‡ Ø¯Ø± Ø³ÛŒØ³ØªÙ… Ø­Ø³Ø§Ø¨Ø¯Ø§Ø±ÛŒ
             try:
                 self.add_accounting_record(
                     type="income",
-                    category="شارژ نماینده",
-                    title=f"تسویه بدهی اعتباری نماینده {row['name']}",
+                    category="Ø´Ø§Ø±Ú˜ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡",
+                    title=f"ØªØ³ÙˆÛŒÙ‡ Ø¨Ø¯Ù‡ÛŒ Ø§Ø¹ØªØ¨Ø§Ø±ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ {row['name']}",
                     amount=amount,
                     source="reseller_debt_settle",
-                    description=f"{description} (مانده بدهی جدید: {new_debt:,} تومان)",
+                    description=f"{description} (Ù…Ø§Ù†Ø¯Ù‡ Ø¨Ø¯Ù‡ÛŒ Ø¬Ø¯ÛŒØ¯: {new_debt:,} ØªÙˆÙ…Ø§Ù†)",
                     date=now[:10]
                 )
             except Exception:
@@ -8316,7 +8335,7 @@ class Database:
             conn.close()
 
     def get_reseller_transactions(self, reseller_id: int, limit: int = 100):
-        """لیست تراکنش‌های یک نماینده به همراه صادرکننده، نوع فروش و حاشیه سود دقیق"""
+        """Ù„ÛŒØ³Øª ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ ÛŒÚ© Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ù‡ Ù‡Ù…Ø±Ø§Ù‡ ØµØ§Ø¯Ø±Ú©Ù†Ù†Ø¯Ù‡ØŒ Ù†ÙˆØ¹ ÙØ±ÙˆØ´ Ùˆ Ø­Ø§Ø´ÛŒÙ‡ Ø³ÙˆØ¯ Ø¯Ù‚ÛŒÙ‚"""
         conn = self.get_connection()
         cursor = conn.cursor()
         res_info = self.get_reseller(reseller_id) or {}
@@ -8342,7 +8361,7 @@ class Database:
             selling = int(tx.get("selling_price") or 0)
             profit = int(tx.get("profit_margin") or 0)
 
-            # محاسبه پشتیبان حاشیه سود و قیمت فروش در صورت ثبت نشدن در سوابق
+            # Ù…Ø­Ø§Ø³Ø¨Ù‡ Ù¾Ø´ØªÛŒØ¨Ø§Ù† Ø­Ø§Ø´ÛŒÙ‡ Ø³ÙˆØ¯ Ùˆ Ù‚ÛŒÙ…Øª ÙØ±ÙˆØ´ Ø¯Ø± ØµÙˆØ±Øª Ø«Ø¨Øª Ù†Ø´Ø¯Ù† Ø¯Ø± Ø³ÙˆØ§Ø¨Ù‚
             if profit <= 0 and selling <= 0 and amount > 0 and ttype in ("purchase", "purchase_credit", "renewal", "renew"):
                 selling = int(amount * 100 / (100 - discount_pct)) if discount_pct < 100 else amount
                 profit = max(0, selling - amount)
@@ -8352,28 +8371,28 @@ class Database:
             tx["selling_price"] = selling
             tx["profit_margin"] = profit
 
-            # تعیین عنوان فارسی نوع فروش
+            # ØªØ¹ÛŒÛŒÙ† Ø¹Ù†ÙˆØ§Ù† ÙØ§Ø±Ø³ÛŒ Ù†ÙˆØ¹ ÙØ±ÙˆØ´
             if ttype in ("purchase", "purchase_credit"):
-                tx["sale_type_title"] = "فروش جدید"
+                tx["sale_type_title"] = "ÙØ±ÙˆØ´ Ø¬Ø¯ÛŒØ¯"
                 tx["sale_type_class"] = "primary"
             elif ttype in ("renewal", "renew", "renew_credit"):
-                tx["sale_type_title"] = "تمدید"
+                tx["sale_type_title"] = "ØªÙ…Ø¯ÛŒØ¯"
                 tx["sale_type_class"] = "warning"
             elif ttype == "deposit":
-                tx["sale_type_title"] = "شارژ کیف پول"
+                tx["sale_type_title"] = "Ø´Ø§Ø±Ú˜ Ú©ÛŒÙ Ù¾ÙˆÙ„"
                 tx["sale_type_class"] = "success"
             elif ttype == "refund":
-                tx["sale_type_title"] = "استرداد وجه"
+                tx["sale_type_title"] = "Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡"
                 tx["sale_type_class"] = "info"
             else:
                 tx["sale_type_title"] = "-"
                 tx["sale_type_class"] = "secondary"
 
-            # صادرکننده
+            # ØµØ§Ø¯Ø±Ú©Ù†Ù†Ø¯Ù‡
             raw_c = tx.get("created_by") or tx.get("sub_creator") or ""
             comment = tx.get("sub_comment") or tx.get("description") or ""
-            if raw_c in ("bot", "robot", "ربات") or "bot" in str(raw_c).lower() or "bot" in str(comment).lower() or "ربات" in str(comment):
-                tx["issuer"] = "ربات"
+            if raw_c in ("bot", "robot", "Ø±Ø¨Ø§Øª") or "bot" in str(raw_c).lower() or "bot" in str(comment).lower() or "Ø±Ø¨Ø§Øª" in str(comment):
+                tx["issuer"] = "Ø±Ø¨Ø§Øª"
                 tx["is_bot"] = True
             elif raw_c:
                 tx["issuer"] = raw_c
@@ -8387,11 +8406,11 @@ class Database:
 
     def get_reseller_activity_timeline(self, reseller_id: int, limit: int = 30) -> list:
         """
-        تایم‌لاین هوشمند و جامع رویدادهای زنده فعالیت نماینده:
-        - مرتب‌سازی نزولی بر اساس زمان آخرین فعالیت (جدیدترین در صدر لیست)
-        - تفکیک کامل فعالیت‌ها: خرید ربات، تمدید اشتراک‌ها، ساخت مشتری دستی توسط مدیران و شارژ کیف پول
-        - ثبت صادرکننده (نام کاربری مدیر یا عنوان 'ربات')
-        - برگرداندن ۳۰ رویداد اخیر با قابلیت صفحه‌بندی
+        ØªØ§ÛŒÙ…â€ŒÙ„Ø§ÛŒÙ† Ù‡ÙˆØ´Ù…Ù†Ø¯ Ùˆ Ø¬Ø§Ù…Ø¹ Ø±ÙˆÛŒØ¯Ø§Ø¯Ù‡Ø§ÛŒ Ø²Ù†Ø¯Ù‡ ÙØ¹Ø§Ù„ÛŒØª Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡:
+        - Ù…Ø±ØªØ¨â€ŒØ³Ø§Ø²ÛŒ Ù†Ø²ÙˆÙ„ÛŒ Ø¨Ø± Ø§Ø³Ø§Ø³ Ø²Ù…Ø§Ù† Ø¢Ø®Ø±ÛŒÙ† ÙØ¹Ø§Ù„ÛŒØª (Ø¬Ø¯ÛŒØ¯ØªØ±ÛŒÙ† Ø¯Ø± ØµØ¯Ø± Ù„ÛŒØ³Øª)
+        - ØªÙÚ©ÛŒÚ© Ú©Ø§Ù…Ù„ ÙØ¹Ø§Ù„ÛŒØªâ€ŒÙ‡Ø§: Ø®Ø±ÛŒØ¯ Ø±Ø¨Ø§ØªØŒ ØªÙ…Ø¯ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ØŒ Ø³Ø§Ø®Øª Ù…Ø´ØªØ±ÛŒ Ø¯Ø³ØªÛŒ ØªÙˆØ³Ø· Ù…Ø¯ÛŒØ±Ø§Ù† Ùˆ Ø´Ø§Ø±Ú˜ Ú©ÛŒÙ Ù¾ÙˆÙ„
+        - Ø«Ø¨Øª ØµØ§Ø¯Ø±Ú©Ù†Ù†Ø¯Ù‡ (Ù†Ø§Ù… Ú©Ø§Ø±Ø¨Ø±ÛŒ Ù…Ø¯ÛŒØ± ÛŒØ§ Ø¹Ù†ÙˆØ§Ù† 'Ø±Ø¨Ø§Øª')
+        - Ø¨Ø±Ú¯Ø±Ø¯Ø§Ù†Ø¯Ù† Û³Û° Ø±ÙˆÛŒØ¯Ø§Ø¯ Ø§Ø®ÛŒØ± Ø¨Ø§ Ù‚Ø§Ø¨Ù„ÛŒØª ØµÙØ­Ù‡â€ŒØ¨Ù†Ø¯ÛŒ
         """
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -8401,7 +8420,7 @@ class Database:
 
         activities = []
 
-        # ۱. استخراج تراکنش‌های نماینده (خرید، تمدید، شارژ و ...)
+        # Û±. Ø§Ø³ØªØ®Ø±Ø§Ø¬ ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (Ø®Ø±ÛŒØ¯ØŒ ØªÙ…Ø¯ÛŒØ¯ØŒ Ø´Ø§Ø±Ú˜ Ùˆ ...)
         try:
             cursor.execute("""
                 SELECT rt.*, s.data_limit as sub_data_limit, s.duration as sub_duration,
@@ -8419,9 +8438,9 @@ class Database:
                 raw_creator = rd.get("created_by") or rd.get("sub_created_by") or ""
                 comment = rd.get("account_comment") or rd.get("description") or ""
 
-                # تشخیص صادرکننده
-                if raw_creator in ("bot", "robot", "ربات") or "bot" in str(raw_creator).lower() or "bot" in str(comment).lower() or "ربات" in str(comment):
-                    issuer = "ربات"
+                # ØªØ´Ø®ÛŒØµ ØµØ§Ø¯Ø±Ú©Ù†Ù†Ø¯Ù‡
+                if raw_creator in ("bot", "robot", "Ø±Ø¨Ø§Øª") or "bot" in str(raw_creator).lower() or "bot" in str(comment).lower() or "Ø±Ø¨Ø§Øª" in str(comment):
+                    issuer = "Ø±Ø¨Ø§Øª"
                     issuer_type = "bot"
                 elif raw_creator:
                     issuer = raw_creator
@@ -8430,26 +8449,26 @@ class Database:
                     issuer = reseller_uname
                     issuer_type = "reseller"
 
-                # تعیین نوع فعالیت
+                # ØªØ¹ÛŒÛŒÙ† Ù†ÙˆØ¹ ÙØ¹Ø§Ù„ÛŒØª
                 if ttype in ("renewal", "renew", "renew_credit"):
                     act_type = "renewal"
-                    act_title = "تمدید اشتراک"
+                    act_title = "ØªÙ…Ø¯ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú©"
                     badge_class = "warning"
                 elif ttype in ("purchase", "purchase_credit"):
                     act_type = "new_sale"
-                    act_title = "فروش جدید (ساخت مشتری)"
+                    act_title = "ÙØ±ÙˆØ´ Ø¬Ø¯ÛŒØ¯ (Ø³Ø§Ø®Øª Ù…Ø´ØªØ±ÛŒ)"
                     badge_class = "primary"
                 elif ttype == "deposit":
                     act_type = "deposit"
-                    act_title = "شارژ کیف پول"
+                    act_title = "Ø´Ø§Ø±Ú˜ Ú©ÛŒÙ Ù¾ÙˆÙ„"
                     badge_class = "success"
                 elif ttype == "refund":
                     act_type = "refund"
-                    act_title = "استرداد وجه"
+                    act_title = "Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡"
                     badge_class = "info"
                 else:
                     act_type = "activity"
-                    act_title = "تراکنش"
+                    act_title = "ØªØ±Ø§Ú©Ù†Ø´"
                     badge_class = "secondary"
 
                 amount = int(rd.get("amount") or 0)
@@ -8480,7 +8499,7 @@ class Database:
         except Exception as e_tx:
             logger.error(f"Error fetching timeline transactions: {e_tx}")
 
-        # ۲. اضافه کردن اشتراک‌هایی که احیاناً در reseller_transactions ثبت نشده‌اند
+        # Û². Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒÛŒ Ú©Ù‡ Ø§Ø­ÛŒØ§Ù†Ø§Ù‹ Ø¯Ø± reseller_transactions Ø«Ø¨Øª Ù†Ø´Ø¯Ù‡â€ŒØ§Ù†Ø¯
         try:
             cursor.execute("""
                 SELECT s.* FROM subscriptions s
@@ -8495,8 +8514,8 @@ class Database:
                 sd = dict(s)
                 raw_creator = sd.get("created_by") or ""
                 comment = sd.get("account_comment") or ""
-                if raw_creator in ("bot", "robot", "ربات") or "bot" in str(raw_creator).lower() or "bot" in str(comment).lower():
-                    issuer = "ربات"
+                if raw_creator in ("bot", "robot", "Ø±Ø¨Ø§Øª") or "bot" in str(raw_creator).lower() or "bot" in str(comment).lower():
+                    issuer = "Ø±Ø¨Ø§Øª"
                     issuer_type = "bot"
                 elif raw_creator:
                     issuer = raw_creator
@@ -8513,7 +8532,7 @@ class Database:
                     "account_name": sd.get("account_name") or "-",
                     "plan_name": sd.get("plan_name") or "-",
                     "activity_type": "renewal" if is_renewed else "new_sale",
-                    "activity_title": "تمدید اشتراک" if is_renewed else "فروش جدید (ساخت مشتری)",
+                    "activity_title": "ØªÙ…Ø¯ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú©" if is_renewed else "ÙØ±ÙˆØ´ Ø¬Ø¯ÛŒØ¯ (Ø³Ø§Ø®Øª Ù…Ø´ØªØ±ÛŒ)",
                     "badge_class": "warning" if is_renewed else "primary",
                     "data_limit": sd.get("data_limit") or 0,
                     "duration": sd.get("duration") or 30,
@@ -8531,12 +8550,12 @@ class Database:
 
         conn.close()
 
-        # ۳. مرتب‌سازی نزولی بر اساس زمان دقیق (جدیدترین فعالیت در صدر لیست)
+        # Û³. Ù…Ø±ØªØ¨â€ŒØ³Ø§Ø²ÛŒ Ù†Ø²ÙˆÙ„ÛŒ Ø¨Ø± Ø§Ø³Ø§Ø³ Ø²Ù…Ø§Ù† Ø¯Ù‚ÛŒÙ‚ (Ø¬Ø¯ÛŒØ¯ØªØ±ÛŒÙ† ÙØ¹Ø§Ù„ÛŒØª Ø¯Ø± ØµØ¯Ø± Ù„ÛŒØ³Øª)
         activities.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
         return activities[:limit]
 
     def get_reseller_full_payment_history(self, reseller_id: int) -> dict:
-        """دریافت سابقه کامل پرداختی‌ها، شارژها، بسته‌های اعتباری و ریز تراکنش‌های نماینده"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø³Ø§Ø¨Ù‚Ù‡ Ú©Ø§Ù…Ù„ Ù¾Ø±Ø¯Ø§Ø®ØªÛŒâ€ŒÙ‡Ø§ØŒ Ø´Ø§Ø±Ú˜Ù‡Ø§ØŒ Ø¨Ø³ØªÙ‡â€ŒÙ‡Ø§ÛŒ Ø§Ø¹ØªØ¨Ø§Ø±ÛŒ Ùˆ Ø±ÛŒØ² ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         reseller = self.get_reseller(reseller_id)
         if not reseller:
             return {}
@@ -8544,7 +8563,7 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
 
-        # ۱. تراکنش‌های کیف پول نماینده (شارژها، خریدها، تمدیدها، استردادها)
+        # Û±. ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (Ø´Ø§Ø±Ú˜Ù‡Ø§ØŒ Ø®Ø±ÛŒØ¯Ù‡Ø§ØŒ ØªÙ…Ø¯ÛŒØ¯Ù‡Ø§ØŒ Ø§Ø³ØªØ±Ø¯Ø§Ø¯Ù‡Ø§)
         cursor.execute("""
             SELECT * FROM reseller_transactions 
             WHERE reseller_id = ? 
@@ -8557,7 +8576,7 @@ class Database:
             w_dict["audit_logs"] = self.get_reseller_wallet_transaction_audit_logs(w_dict["id"])
             wallet_txs.append(w_dict)
 
-        # ۲. رسیدها، فیش‌های بانکی و تراکنش‌های ثبت‌شده در جدول اصلی
+        # Û². Ø±Ø³ÛŒØ¯Ù‡Ø§ØŒ ÙÛŒØ´â€ŒÙ‡Ø§ÛŒ Ø¨Ø§Ù†Ú©ÛŒ Ùˆ ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ Ø«Ø¨Øªâ€ŒØ´Ø¯Ù‡ Ø¯Ø± Ø¬Ø¯ÙˆÙ„ Ø§ØµÙ„ÛŒ
         cursor.execute("""
             SELECT * FROM transactions 
             WHERE reseller_id = ? 
@@ -8570,7 +8589,7 @@ class Database:
             r_dict["audit_logs"] = self.get_transaction_audit_logs(r_dict["id"])
             receipt_txs.append(r_dict)
 
-        # ۳. محاسبات مالی دقیق (با حذف کامل تراکنش‌های باطل‌شده)
+        # Û³. Ù…Ø­Ø§Ø³Ø¨Ø§Øª Ù…Ø§Ù„ÛŒ Ø¯Ù‚ÛŒÙ‚ (Ø¨Ø§ Ø­Ø°Ù Ú©Ø§Ù…Ù„ ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ Ø¨Ø§Ø·Ù„â€ŒØ´Ø¯Ù‡)
         cursor.execute("""
             SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions 
             WHERE reseller_id=? AND type='deposit' 
@@ -8613,7 +8632,7 @@ class Database:
         }
 
     def get_reseller_subscriptions(self, reseller_id: int):
-        """لیست کاربران و اشتراک‌های یک نماینده (بدون موارد سطل زباله)"""
+        """Ù„ÛŒØ³Øª Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ùˆ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒ ÛŒÚ© Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (Ø¨Ø¯ÙˆÙ† Ù…ÙˆØ§Ø±Ø¯ Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM subscriptions WHERE reseller_id=? AND (is_deleted=0 OR is_deleted IS NULL) ORDER BY created_at DESC", (reseller_id,))
@@ -8622,7 +8641,7 @@ class Database:
         return [dict(r) for r in rows]
 
     def get_reseller_stats(self, reseller_id: int):
-        """آمار و شاخص‌های نماینده شامل کیف پول، اعتبار و وضعیت بدهی‌ها"""
+        """Ø¢Ù…Ø§Ø± Ùˆ Ø´Ø§Ø®Øµâ€ŒÙ‡Ø§ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø´Ø§Ù…Ù„ Ú©ÛŒÙ Ù¾ÙˆÙ„ØŒ Ø§Ø¹ØªØ¨Ø§Ø± Ùˆ ÙˆØ¶Ø¹ÛŒØª Ø¨Ø¯Ù‡ÛŒâ€ŒÙ‡Ø§"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
@@ -8655,12 +8674,12 @@ class Database:
         except Exception:
             unpaid_debts_total = 0
         
-        # مجموع خریدهای واقعی (کسر مبالغ مرجوعی/خطا در صورت وجود)
+        # Ù…Ø¬Ù…ÙˆØ¹ Ø®Ø±ÛŒØ¯Ù‡Ø§ÛŒ ÙˆØ§Ù‚Ø¹ÛŒ (Ú©Ø³Ø± Ù…Ø¨Ø§Ù„Øº Ù…Ø±Ø¬ÙˆØ¹ÛŒ/Ø®Ø·Ø§ Ø¯Ø± ØµÙˆØ±Øª ÙˆØ¬ÙˆØ¯)
         cursor.execute("""
             SELECT COALESCE(
                 (SELECT SUM(amount) FROM reseller_transactions WHERE reseller_id=? AND type='purchase'), 0
             ) - COALESCE(
-                (SELECT SUM(amount) FROM reseller_transactions WHERE reseller_id=? AND (type='refund' OR description LIKE '%برگشت%')), 0
+                (SELECT SUM(amount) FROM reseller_transactions WHERE reseller_id=? AND (type='refund' OR description LIKE '%Ø¨Ø±Ú¯Ø´Øª%')), 0
             )
         """, (reseller_id, reseller_id))
         total_purchases_val = cursor.fetchone()[0] or 0
@@ -8715,7 +8734,7 @@ class Database:
         }
 
     def get_reseller_usage_summary(self, reseller_id: int) -> dict:
-        """محاسبه خلاصه جامع وضعیت استفاده و عملکرد نماینده (امروز، دیروز، ماهانه، میانگین روزانه و ترافیک)"""
+        """Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø®Ù„Ø§ØµÙ‡ Ø¬Ø§Ù…Ø¹ ÙˆØ¶Ø¹ÛŒØª Ø§Ø³ØªÙØ§Ø¯Ù‡ Ùˆ Ø¹Ù…Ù„Ú©Ø±Ø¯ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (Ø§Ù…Ø±ÙˆØ²ØŒ Ø¯ÛŒØ±ÙˆØ²ØŒ Ù…Ø§Ù‡Ø§Ù†Ù‡ØŒ Ù…ÛŒØ§Ù†Ú¯ÛŒÙ† Ø±ÙˆØ²Ø§Ù†Ù‡ Ùˆ ØªØ±Ø§ÙÛŒÚ©)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now_tehran = datetime.now(TEHRAN_TZ)
@@ -8724,7 +8743,7 @@ class Database:
         month_ago_date = (now_tehran - timedelta(days=30)).strftime("%Y-%m-%d")
 
         try:
-            # ۱. اطلاعات پایه و مالی نماینده
+            # Û±. Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ù¾Ø§ÛŒÙ‡ Ùˆ Ù…Ø§Ù„ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
             cursor.execute("""
                 SELECT balance, discount_percent, credit_enabled, credit_limit, credit_debt, can_gift_traffic
                 FROM resellers WHERE id = ?
@@ -8738,7 +8757,7 @@ class Database:
             available_credit = max(0, credit_limit - credit_debt) if credit_enabled else 0
             total_purchasing_power = balance + available_credit
 
-            # ۲. استفاده امروز (Today's Usage)
+            # Û². Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø§Ù…Ø±ÙˆØ² (Today's Usage)
             cursor.execute("""
                 SELECT COALESCE(SUM(amount), 0), COUNT(*)
                 FROM reseller_transactions
@@ -8750,7 +8769,7 @@ class Database:
             today_spent = int(today_row[0] or 0)
             today_orders = int(today_row[1] or 0)
 
-            # ۳. استفاده دیروز (Yesterday's Usage)
+            # Û³. Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø¯ÛŒØ±ÙˆØ² (Yesterday's Usage)
             cursor.execute("""
                 SELECT COALESCE(SUM(amount), 0), COUNT(*)
                 FROM reseller_transactions
@@ -8762,7 +8781,7 @@ class Database:
             yesterday_spent = int(yesterday_row[0] or 0)
             yesterday_orders = int(yesterday_row[1] or 0)
 
-            # ۴. استفاده ماهانه (۳۰ روز اخیر / Monthly Usage)
+            # Û´. Ø§Ø³ØªÙØ§Ø¯Ù‡ Ù…Ø§Ù‡Ø§Ù†Ù‡ (Û³Û° Ø±ÙˆØ² Ø§Ø®ÛŒØ± / Monthly Usage)
             cursor.execute("""
                 SELECT COALESCE(SUM(amount), 0), COUNT(*)
                 FROM reseller_transactions
@@ -8774,10 +8793,10 @@ class Database:
             month_spent = int(month_row[0] or 0)
             month_orders = int(month_row[1] or 0)
 
-            # میانگین مصرف روزانه (بر مبنای ۳۰ روز)
+            # Ù…ÛŒØ§Ù†Ú¯ÛŒÙ† Ù…ØµØ±Ù Ø±ÙˆØ²Ø§Ù†Ù‡ (Ø¨Ø± Ù…Ø¨Ù†Ø§ÛŒ Û³Û° Ø±ÙˆØ²)
             daily_average = int(month_spent / 30) if month_spent > 0 else 0
 
-            # ۵. وضعیت ترافیک مصرفی مشترکین (Traffic stats)
+            # Ûµ. ÙˆØ¶Ø¹ÛŒØª ØªØ±Ø§ÙÛŒÚ© Ù…ØµØ±ÙÛŒ Ù…Ø´ØªØ±Ú©ÛŒÙ† (Traffic stats)
             cursor.execute("""
                 SELECT COALESCE(SUM(data_used), 0), COALESCE(SUM(data_limit), 0)
                 FROM subscriptions
@@ -8788,7 +8807,7 @@ class Database:
             total_limit_gb = round(float(traffic_row[1] or 0), 2)
             usage_percent = round((total_used_gb / total_limit_gb * 100), 1) if total_limit_gb > 0 else 0
 
-            # ۶. آمار وضعیت کاربران
+            # Û¶. Ø¢Ù…Ø§Ø± ÙˆØ¶Ø¹ÛŒØª Ú©Ø§Ø±Ø¨Ø±Ø§Ù†
             cursor.execute("""
                 SELECT 
                     COUNT(*),
@@ -8804,7 +8823,7 @@ class Database:
             online_users = int(u_row[2] or 0)
             expired_users = int(u_row[3] or 0)
 
-            # ۷. آمار اعضای تیم زیرمجموعه
+            # Û·. Ø¢Ù…Ø§Ø± Ø§Ø¹Ø¶Ø§ÛŒ ØªÛŒÙ… Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡
             team_members = self.get_reseller_team_with_sessions(reseller_id)
             team_total = len(team_members)
             team_online = sum(1 for m in team_members if m.get("is_online"))
@@ -8869,8 +8888,8 @@ class Database:
 
     def get_reseller_7days_revenue(self, reseller_id: int) -> dict:
         """
-        محاسبه روند درآمد و فروش ۷ روز گذشته نماینده (شامل پرداخت‌های ربات و فروش مستقیم پنل)
-        به همراه تاریخ‌های شمسی، نام روز هفته، تعداد سفارشات، میانگین فروش و سود برآورد شده
+        Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø±ÙˆÙ†Ø¯ Ø¯Ø±Ø¢Ù…Ø¯ Ùˆ ÙØ±ÙˆØ´ Û· Ø±ÙˆØ² Ú¯Ø°Ø´ØªÙ‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (Ø´Ø§Ù…Ù„ Ù¾Ø±Ø¯Ø§Ø®Øªâ€ŒÙ‡Ø§ÛŒ Ø±Ø¨Ø§Øª Ùˆ ÙØ±ÙˆØ´ Ù…Ø³ØªÙ‚ÛŒÙ… Ù¾Ù†Ù„)
+        Ø¨Ù‡ Ù‡Ù…Ø±Ø§Ù‡ ØªØ§Ø±ÛŒØ®â€ŒÙ‡Ø§ÛŒ Ø´Ù…Ø³ÛŒØŒ Ù†Ø§Ù… Ø±ÙˆØ² Ù‡ÙØªÙ‡ØŒ ØªØ¹Ø¯Ø§Ø¯ Ø³ÙØ§Ø±Ø´Ø§ØªØŒ Ù…ÛŒØ§Ù†Ú¯ÛŒÙ† ÙØ±ÙˆØ´ Ùˆ Ø³ÙˆØ¯ Ø¨Ø±Ø¢ÙˆØ±Ø¯ Ø´Ø¯Ù‡
         """
         import datetime
         from utils import get_now_naive, gregorian_to_shamsi
@@ -8881,16 +8900,16 @@ class Database:
         today = now_dt.date()
 
         PERSIAN_WEEKDAYS = {
-            0: "دوشنبه",
-            1: "سه‌شنبه",
-            2: "چهارشنبه",
-            3: "پنج‌شنبه",
-            4: "جمعه",
-            5: "شنبه",
-            6: "یکشنبه"
+            0: "Ø¯ÙˆØ´Ù†Ø¨Ù‡",
+            1: "Ø³Ù‡â€ŒØ´Ù†Ø¨Ù‡",
+            2: "Ú†Ù‡Ø§Ø±Ø´Ù†Ø¨Ù‡",
+            3: "Ù¾Ù†Ø¬â€ŒØ´Ù†Ø¨Ù‡",
+            4: "Ø¬Ù…Ø¹Ù‡",
+            5: "Ø´Ù†Ø¨Ù‡",
+            6: "ÛŒÚ©Ø´Ù†Ø¨Ù‡"
         }
 
-        # درصد تخفیف نماینده جهت تخمین سود حاصله
+        # Ø¯Ø±ØµØ¯ ØªØ®ÙÛŒÙ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¬Ù‡Øª ØªØ®Ù…ÛŒÙ† Ø³ÙˆØ¯ Ø­Ø§ØµÙ„Ù‡
         discount_pct = 20
         try:
             cursor.execute("SELECT discount_percent FROM resellers WHERE id = ?", (reseller_id,))
@@ -8907,22 +8926,22 @@ class Database:
         total_direct_revenue = 0
 
         try:
-            # استخراج داده‌های ۷ روز اخیر (از ۶ روز قبل تا امروز به ترتیب زمانی)
+            # Ø§Ø³ØªØ®Ø±Ø§Ø¬ Ø¯Ø§Ø¯Ù‡â€ŒÙ‡Ø§ÛŒ Û· Ø±ÙˆØ² Ø§Ø®ÛŒØ± (Ø§Ø² Û¶ Ø±ÙˆØ² Ù‚Ø¨Ù„ ØªØ§ Ø§Ù…Ø±ÙˆØ² Ø¨Ù‡ ØªØ±ØªÛŒØ¨ Ø²Ù…Ø§Ù†ÛŒ)
             for i in range(6, -1, -1):
                 cur_date = today - datetime.timedelta(days=i)
                 date_str = cur_date.strftime("%Y-%m-%d")
                 weekday_name = PERSIAN_WEEKDAYS[cur_date.weekday()]
 
                 if i == 0:
-                    day_label = f"امروز ({weekday_name})"
+                    day_label = f"Ø§Ù…Ø±ÙˆØ² ({weekday_name})"
                 elif i == 1:
-                    day_label = f"دیروز ({weekday_name})"
+                    day_label = f"Ø¯ÛŒØ±ÙˆØ² ({weekday_name})"
                 else:
                     day_label = weekday_name
 
                 jalali_str = gregorian_to_shamsi(date_str, fmt="%Y/%m/%d")
 
-                # ۱. پرداخت‌های تایید شده ربات تلگرام نماینده
+                # Û±. Ù¾Ø±Ø¯Ø§Ø®Øªâ€ŒÙ‡Ø§ÛŒ ØªØ§ÛŒÛŒØ¯ Ø´Ø¯Ù‡ Ø±Ø¨Ø§Øª ØªÙ„Ú¯Ø±Ø§Ù… Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
                 cursor.execute("""
                     SELECT COALESCE(SUM(amount), 0), COUNT(*)
                     FROM transactions
@@ -8936,7 +8955,7 @@ class Database:
                 bot_rev = int(bot_row[0] or 0)
                 bot_cnt = int(bot_row[1] or 0)
 
-                # ۲. خریدهای مستقیم و تمدیدهای ثبت شده در پنل وب توسط نماینده (محاسبه به عنوان درآمد با قیمت فروش و سود)
+                # Û². Ø®Ø±ÛŒØ¯Ù‡Ø§ÛŒ Ù…Ø³ØªÙ‚ÛŒÙ… Ùˆ ØªÙ…Ø¯ÛŒØ¯Ù‡Ø§ÛŒ Ø«Ø¨Øª Ø´Ø¯Ù‡ Ø¯Ø± Ù¾Ù†Ù„ ÙˆØ¨ ØªÙˆØ³Ø· Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø¨Ù‡ Ø¹Ù†ÙˆØ§Ù† Ø¯Ø±Ø¢Ù…Ø¯ Ø¨Ø§ Ù‚ÛŒÙ…Øª ÙØ±ÙˆØ´ Ùˆ Ø³ÙˆØ¯)
                 cursor.execute("""
                     SELECT COALESCE(SUM(COALESCE(NULLIF(selling_price, 0), amount)), 0), 
                            COUNT(*),
@@ -9021,7 +9040,7 @@ class Database:
             conn.close()
 
     def get_reseller_subscription(self, reseller_id: int, sub_id: int):
-        """دریافت اطلاعات یک اشتراک متعلق به نماینده"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø§Ø·Ù„Ø§Ø¹Ø§Øª ÛŒÚ© Ø§Ø´ØªØ±Ø§Ú© Ù…ØªØ¹Ù„Ù‚ Ø¨Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM subscriptions WHERE id=? AND reseller_id=?", (sub_id, reseller_id))
@@ -9035,7 +9054,7 @@ class Database:
                                      status: str = None, telegram_id: int = None,
                                      payment_status: str = None, debt_amount: int = None,
                                      debt_notes: str = None):
-        """ویرایش جامع مشخصات مشتری نماینده، وضعیت بدهی و همگام‌سازی با کاربران و تراکنش‌ها"""
+        """ÙˆÛŒØ±Ø§ÛŒØ´ Ø¬Ø§Ù…Ø¹ Ù…Ø´Ø®ØµØ§Øª Ù…Ø´ØªØ±ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ØŒ ÙˆØ¶Ø¹ÛŒØª Ø¨Ø¯Ù‡ÛŒ Ùˆ Ù‡Ù…Ú¯Ø§Ù…â€ŒØ³Ø§Ø²ÛŒ Ø¨Ø§ Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ùˆ ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -9043,7 +9062,7 @@ class Database:
             cursor.execute("SELECT * FROM subscriptions WHERE id=? AND reseller_id=?", (sub_id, reseller_id))
             sub_row = cursor.fetchone()
             if not sub_row:
-                return {"success": False, "error": "اشتراک مورد نظر یافت نشد"}
+                return {"success": False, "error": "Ø§Ø´ØªØ±Ø§Ú© Ù…ÙˆØ±Ø¯ Ù†Ø¸Ø± ÛŒØ§ÙØª Ù†Ø´Ø¯"}
 
             sub_dict = dict(sub_row)
             clean_name = account_name.strip() if account_name else (sub_dict.get("account_name") or f"user_{sub_id}")
@@ -9053,7 +9072,7 @@ class Database:
 
             debt_created = now if (payment_status in ('unpaid', 'debtor') and not sub_dict.get("debt_created_at")) else sub_dict.get("debt_created_at")
 
-            # ۱. بروزرسانی جدول subscriptions
+            # Û±. Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø¬Ø¯ÙˆÙ„ subscriptions
             cursor.execute("""
                 UPDATE subscriptions
                 SET account_name = ?,
@@ -9086,7 +9105,7 @@ class Database:
                 reseller_id
             ))
 
-            # در صورت تسویه بدهی یا تنظیم مبلغ ۰، بستن فاکتورهای باز
+            # Ø¯Ø± ØµÙˆØ±Øª ØªØ³ÙˆÛŒÙ‡ Ø¨Ø¯Ù‡ÛŒ ÛŒØ§ ØªÙ†Ø¸ÛŒÙ… Ù…Ø¨Ù„Øº Û°ØŒ Ø¨Ø³ØªÙ† ÙØ§Ú©ØªÙˆØ±Ù‡Ø§ÛŒ Ø¨Ø§Ø²
             if payment_status == 'paid' or (debt_amount is not None and int(debt_amount) == 0):
                 cursor.execute("""
                     UPDATE customer_debt_records
@@ -9094,7 +9113,7 @@ class Database:
                     WHERE subscription_id = ? AND status = 'unpaid'
                 """, (now, f"reseller_{reseller_id}", now, sub_id))
 
-            # ۲. اگر کاربر دارای شناسه تلگرام باشد، بروزرسانی در جدول users
+            # Û². Ø§Ú¯Ø± Ú©Ø§Ø±Ø¨Ø± Ø¯Ø§Ø±Ø§ÛŒ Ø´Ù†Ø§Ø³Ù‡ ØªÙ„Ú¯Ø±Ø§Ù… Ø¨Ø§Ø´Ø¯ØŒ Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø¯Ø± Ø¬Ø¯ÙˆÙ„ users
             if effective_tg and int(effective_tg) > 0:
                 cursor.execute("SELECT * FROM users WHERE telegram_id=?", (effective_tg,))
                 u_row = cursor.fetchone()
@@ -9109,7 +9128,7 @@ class Database:
                         VALUES (?, ?, ?, 1, ?, ?, ?)
                     """, (effective_tg, clean_name, clean_phone, reseller_id, now, now))
 
-            # ۳. بروزرسانی در تراکنش‌های مربوط به این اشتراک
+            # Û³. Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø¯Ø± ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ Ù…Ø±Ø¨ÙˆØ· Ø¨Ù‡ Ø§ÛŒÙ† Ø§Ø´ØªØ±Ø§Ú©
             cursor.execute("""
                 UPDATE transactions
                 SET account_name = ?, account_comment = COALESCE(?, account_comment), updated_at = ?
@@ -9125,7 +9144,7 @@ class Database:
             conn.close()
 
     def toggle_reseller_subscription(self, reseller_id: int, sub_id: int, enable: bool = None, reason: str = None):
-        """فعال یا غیرفعال کردن مشتری نماینده بدون کسر یا بازگشت هزینه همراه با ثبت علت غیرفعال‌سازی"""
+        """ÙØ¹Ø§Ù„ ÛŒØ§ ØºÛŒØ±ÙØ¹Ø§Ù„ Ú©Ø±Ø¯Ù† Ù…Ø´ØªØ±ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø¯ÙˆÙ† Ú©Ø³Ø± ÛŒØ§ Ø¨Ø§Ø²Ú¯Ø´Øª Ù‡Ø²ÛŒÙ†Ù‡ Ù‡Ù…Ø±Ø§Ù‡ Ø¨Ø§ Ø«Ø¨Øª Ø¹Ù„Øª ØºÛŒØ±ÙØ¹Ø§Ù„â€ŒØ³Ø§Ø²ÛŒ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -9133,7 +9152,7 @@ class Database:
             cursor.execute("SELECT status FROM subscriptions WHERE id=? AND reseller_id=?", (sub_id, reseller_id))
             row = cursor.fetchone()
             if not row:
-                return {"success": False, "error": "اشتراک یافت نشد."}
+                return {"success": False, "error": "Ø§Ø´ØªØ±Ø§Ú© ÛŒØ§ÙØª Ù†Ø´Ø¯."}
             
             if enable is None:
                 new_status = "disabled" if row["status"] == "active" else "active"
@@ -9159,16 +9178,16 @@ class Database:
                                     instant_activate: bool = True, renewal_type: str = "reset_and_replaced",
                                     payment_source: str = "auto", selling_price: int = None, profit_margin: int = None,
                                     created_by: str = None):
-        """تمدید اشتراک مشتری توسط نماینده با انتخاب دقیق مبدأ پرداخت، ثبت صادرکننده و ثبت حاشیه سود"""
+        """ØªÙ…Ø¯ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú© Ù…Ø´ØªØ±ÛŒ ØªÙˆØ³Ø· Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø§ Ø§Ù†ØªØ®Ø§Ø¨ Ø¯Ù‚ÛŒÙ‚ Ù…Ø¨Ø¯Ø£ Ù¾Ø±Ø¯Ø§Ø®ØªØŒ Ø«Ø¨Øª ØµØ§Ø¯Ø±Ú©Ù†Ù†Ø¯Ù‡ Ùˆ Ø«Ø¨Øª Ø­Ø§Ø´ÛŒÙ‡ Ø³ÙˆØ¯"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
-            # بررسی موجودی کیف پول و سقف اعتبار
+            # Ø¨Ø±Ø±Ø³ÛŒ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ùˆ Ø³Ù‚Ù Ø§Ø¹ØªØ¨Ø§Ø±
             cursor.execute("SELECT balance, credit_enabled, credit_limit, credit_debt, discount_percent FROM resellers WHERE id=?", (reseller_id,))
             res_row = cursor.fetchone()
             if not res_row:
-                return {"success": False, "error": "اطلاعات نماینده یافت نشد."}
+                return {"success": False, "error": "Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ ÛŒØ§ÙØª Ù†Ø´Ø¯."}
 
             balance = res_row["balance"] or 0
             credit_limit = (res_row["credit_limit"] or 0) if "credit_limit" in res_row.keys() else 0
@@ -9180,10 +9199,10 @@ class Database:
             cursor.execute("SELECT * FROM subscriptions WHERE id=? AND reseller_id=?", (sub_id, reseller_id))
             sub = cursor.fetchone()
             if not sub:
-                return {"success": False, "error": "اشتراک مورد نظر یافت نشد."}
+                return {"success": False, "error": "Ø§Ø´ØªØ±Ø§Ú© Ù…ÙˆØ±Ø¯ Ù†Ø¸Ø± ÛŒØ§ÙØª Ù†Ø´Ø¯."}
 
             chosen_source = str(payment_source).strip().lower() if payment_source else "auto"
-            mode_title = "فعال‌سازی آنی" if instant_activate else "رزرو در صف تمدید"
+            mode_title = "ÙØ¹Ø§Ù„â€ŒØ³Ø§Ø²ÛŒ Ø¢Ù†ÛŒ" if instant_activate else "Ø±Ø²Ø±Ùˆ Ø¯Ø± ØµÙ ØªÙ…Ø¯ÛŒØ¯"
             actual_source = "wallet"
 
             if selling_price is not None and int(selling_price) > 0:
@@ -9195,46 +9214,46 @@ class Database:
 
             if chosen_source == "wallet":
                 if balance < cost:
-                    return {"success": False, "error": f"موجودی کیف پول شما کافی نیست! موجودی: {balance:,} تومان | هزینه تمدید: {cost:,} تومان"}
+                    return {"success": False, "error": f"Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ø´Ù…Ø§ Ú©Ø§ÙÛŒ Ù†ÛŒØ³Øª! Ù…ÙˆØ¬ÙˆØ¯ÛŒ: {balance:,} ØªÙˆÙ…Ø§Ù† | Ù‡Ø²ÛŒÙ†Ù‡ ØªÙ…Ø¯ÛŒØ¯: {cost:,} ØªÙˆÙ…Ø§Ù†"}
                 cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (cost, now, reseller_id))
-                tx_desc = f"تمدید اشتراک «{sub['account_name']}» با پلن {plan_name} ({mode_title} - کسر از کیف پول نقدی)"
+                tx_desc = f"ØªÙ…Ø¯ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú© Â«{sub['account_name']}Â» Ø¨Ø§ Ù¾Ù„Ù† {plan_name} ({mode_title} - Ú©Ø³Ø± Ø§Ø² Ú©ÛŒÙ Ù¾ÙˆÙ„ Ù†Ù‚Ø¯ÛŒ)"
                 actual_source = "wallet"
 
             elif chosen_source == "credit":
                 if not credit_enabled:
-                    return {"success": False, "error": "اعتبار خرید برای شما فعال نشده است."}
+                    return {"success": False, "error": "Ø§Ø¹ØªØ¨Ø§Ø± Ø®Ø±ÛŒØ¯ Ø¨Ø±Ø§ÛŒ Ø´Ù…Ø§ ÙØ¹Ø§Ù„ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª."}
                 if available_credit < cost:
-                    return {"success": False, "error": f"اعتبار خرید شما کافی نیست! اعتبار باقیمانده: {available_credit:,} تومان | هزینه تمدید: {cost:,} تومان"}
+                    return {"success": False, "error": f"Ø§Ø¹ØªØ¨Ø§Ø± Ø®Ø±ÛŒØ¯ Ø´Ù…Ø§ Ú©Ø§ÙÛŒ Ù†ÛŒØ³Øª! Ø§Ø¹ØªØ¨Ø§Ø± Ø¨Ø§Ù‚ÛŒÙ…Ø§Ù†Ø¯Ù‡: {available_credit:,} ØªÙˆÙ…Ø§Ù† | Ù‡Ø²ÛŒÙ†Ù‡ ØªÙ…Ø¯ÛŒØ¯: {cost:,} ØªÙˆÙ…Ø§Ù†"}
                 new_debt = credit_debt + cost
                 cursor.execute("UPDATE resellers SET credit_debt = ?, updated_at=? WHERE id=?", (new_debt, now, reseller_id))
-                tx_desc = f"تمدید اشتراک «{sub['account_name']}» با پلن {plan_name} ({mode_title} - کسر از اعتبار خرید: {cost:,} ت بدهی)"
+                tx_desc = f"ØªÙ…Ø¯ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú© Â«{sub['account_name']}Â» Ø¨Ø§ Ù¾Ù„Ù† {plan_name} ({mode_title} - Ú©Ø³Ø± Ø§Ø² Ø§Ø¹ØªØ¨Ø§Ø± Ø®Ø±ÛŒØ¯: {cost:,} Øª Ø¨Ø¯Ù‡ÛŒ)"
                 actual_source = "credit"
 
             else:
-                # حالت هوشمند و خودکار (auto)
+                # Ø­Ø§Ù„Øª Ù‡ÙˆØ´Ù…Ù†Ø¯ Ùˆ Ø®ÙˆØ¯Ú©Ø§Ø± (auto)
                 total_purchasing_power = balance + available_credit
                 if total_purchasing_power < cost:
-                    return {"success": False, "error": f"موجودی کیف پول ({balance:,} ت) و اعتبار تمدید ({available_credit:,} ت) برای تمدید این پلن ({cost:,} ت) کافی نیست."}
+                    return {"success": False, "error": f"Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©ÛŒÙ Ù¾ÙˆÙ„ ({balance:,} Øª) Ùˆ Ø§Ø¹ØªØ¨Ø§Ø± ØªÙ…Ø¯ÛŒØ¯ ({available_credit:,} Øª) Ø¨Ø±Ø§ÛŒ ØªÙ…Ø¯ÛŒØ¯ Ø§ÛŒÙ† Ù¾Ù„Ù† ({cost:,} Øª) Ú©Ø§ÙÛŒ Ù†ÛŒØ³Øª."}
 
                 if balance >= cost:
                     cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (cost, now, reseller_id))
-                    tx_desc = f"تمدید اشتراک «{sub['account_name']}» با پلن {plan_name} ({mode_title} - پرداخت از کیف پول)"
+                    tx_desc = f"ØªÙ…Ø¯ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú© Â«{sub['account_name']}Â» Ø¨Ø§ Ù¾Ù„Ù† {plan_name} ({mode_title} - Ù¾Ø±Ø¯Ø§Ø®Øª Ø§Ø² Ú©ÛŒÙ Ù¾ÙˆÙ„)"
                     actual_source = "wallet"
                 else:
                     from_credit = cost - balance
                     new_debt = credit_debt + from_credit
                     cursor.execute("UPDATE resellers SET balance = 0, credit_debt = ?, updated_at=? WHERE id=?", (new_debt, now, reseller_id))
-                    tx_desc = f"تمدید اشتراک «{sub['account_name']}» با پلن {plan_name} ({mode_title} - کسر {balance:,} ت از کیف پول و {from_credit:,} ت از اعتبار)"
+                    tx_desc = f"ØªÙ…Ø¯ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú© Â«{sub['account_name']}Â» Ø¨Ø§ Ù¾Ù„Ù† {plan_name} ({mode_title} - Ú©Ø³Ø± {balance:,} Øª Ø§Ø² Ú©ÛŒÙ Ù¾ÙˆÙ„ Ùˆ {from_credit:,} Øª Ø§Ø² Ø§Ø¹ØªØ¨Ø§Ø±)"
                     actual_source = "credit"
 
-            # ثبت تراکنش تمدید با مشخص بودن مبدأ پرداخت، صادرکننده و حاشیه سود
+            # Ø«Ø¨Øª ØªØ±Ø§Ú©Ù†Ø´ ØªÙ…Ø¯ÛŒØ¯ Ø¨Ø§ Ù…Ø´Ø®Øµ Ø¨ÙˆØ¯Ù† Ù…Ø¨Ø¯Ø£ Ù¾Ø±Ø¯Ø§Ø®ØªØŒ ØµØ§Ø¯Ø±Ú©Ù†Ù†Ø¯Ù‡ Ùˆ Ø­Ø§Ø´ÛŒÙ‡ Ø³ÙˆØ¯
             cursor.execute("""
                 INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
                 VALUES (?, 'renewal', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (reseller_id, cost, selling_val, profit_val, plan_name, sub["account_name"], tx_desc, actual_source, sub_id, creator_val, now))
 
             if instant_activate:
-                # ۳. به‌روزرسانی آنی مشخصات اشتراک، ریست حجم مصرفی و ریست تاریخ شروع و انقضا
+                # Û³. Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø¢Ù†ÛŒ Ù…Ø´Ø®ØµØ§Øª Ø§Ø´ØªØ±Ø§Ú©ØŒ Ø±ÛŒØ³Øª Ø­Ø¬Ù… Ù…ØµØ±ÙÛŒ Ùˆ Ø±ÛŒØ³Øª ØªØ§Ø±ÛŒØ® Ø´Ø±ÙˆØ¹ Ùˆ Ø§Ù†Ù‚Ø¶Ø§
                 now_naive = get_now_naive()
                 new_start_date = now_naive.strftime("%Y-%m-%d")
                 new_expire_date = (now_naive + timedelta(days=duration)).isoformat()
@@ -9247,7 +9266,7 @@ class Database:
                 conn.commit()
                 return {"success": True, "mode": "instant", "payment_source": actual_source}
             else:
-                # ۴. افزودن به صف تمدید هوشمند (رزرو بسته خودکار بدون لغو بسته‌های قبلی)
+                # Û´. Ø§ÙØ²ÙˆØ¯Ù† Ø¨Ù‡ ØµÙ ØªÙ…Ø¯ÛŒØ¯ Ù‡ÙˆØ´Ù…Ù†Ø¯ (Ø±Ø²Ø±Ùˆ Ø¨Ø³ØªÙ‡ Ø®ÙˆØ¯Ú©Ø§Ø± Ø¨Ø¯ÙˆÙ† Ù„ØºÙˆ Ø¨Ø³ØªÙ‡â€ŒÙ‡Ø§ÛŒ Ù‚Ø¨Ù„ÛŒ)
                 cursor.execute("SELECT COALESCE(MAX(queue_order), 0) + 1 FROM subscription_queue WHERE subscription_id=? AND status='pending'", (sub_id,))
                 next_order_row = cursor.fetchone()
                 next_order = next_order_row[0] if next_order_row else 1
@@ -9257,7 +9276,7 @@ class Database:
                         plan_id, plan_name, data_limit, duration, cost, status, created_at, note, queue_order
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
                 """, (sub_id, sub["telegram_id"] or 0, sub["hidify_uuid"] or "", reseller_id,
-                      plan_id, plan_name, data_limit, duration, cost, now, f"تمدید رزرو نماینده ({actual_source})", next_order))
+                      plan_id, plan_name, data_limit, duration, cost, now, f"ØªÙ…Ø¯ÛŒØ¯ Ø±Ø²Ø±Ùˆ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ ({actual_source})", next_order))
                 cursor.execute("UPDATE subscriptions SET payment_source=? WHERE id=?", (actual_source, sub_id))
                 conn.commit()
                 return {"success": True, "mode": "queued", "payment_source": actual_source, "queue_order": next_order}
@@ -9267,7 +9286,7 @@ class Database:
             conn.close()
 
     def _normalize_subscription_queue_orders(self, cursor, subscription_id: int):
-        """مرتب‌سازی و اصلاح مجدد شماره نوبت بسته‌های معلق در صف یک اشتراک (1, 2, 3...)"""
+        """Ù…Ø±ØªØ¨â€ŒØ³Ø§Ø²ÛŒ Ùˆ Ø§ØµÙ„Ø§Ø­ Ù…Ø¬Ø¯Ø¯ Ø´Ù…Ø§Ø±Ù‡ Ù†ÙˆØ¨Øª Ø¨Ø³ØªÙ‡â€ŒÙ‡Ø§ÛŒ Ù…Ø¹Ù„Ù‚ Ø¯Ø± ØµÙ ÛŒÚ© Ø§Ø´ØªØ±Ø§Ú© (1, 2, 3...)"""
         try:
             cursor.execute("""
                 SELECT id FROM subscription_queue
@@ -9284,7 +9303,7 @@ class Database:
                                   data_limit: float, duration: int, cost: int = 0,
                                   reseller_id: int = None, telegram_id: int = None,
                                   hidify_uuid: str = None, note: str = None) -> dict:
-        """افزودن بسته تمدیدی به صف رزرو خودکار (بدون لغو بسته‌های قبلی و با تعیین شماره نوبت)"""
+        """Ø§ÙØ²ÙˆØ¯Ù† Ø¨Ø³ØªÙ‡ ØªÙ…Ø¯ÛŒØ¯ÛŒ Ø¨Ù‡ ØµÙ Ø±Ø²Ø±Ùˆ Ø®ÙˆØ¯Ú©Ø§Ø± (Ø¨Ø¯ÙˆÙ† Ù„ØºÙˆ Ø¨Ø³ØªÙ‡â€ŒÙ‡Ø§ÛŒ Ù‚Ø¨Ù„ÛŒ Ùˆ Ø¨Ø§ ØªØ¹ÛŒÛŒÙ† Ø´Ù…Ø§Ø±Ù‡ Ù†ÙˆØ¨Øª)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -9292,7 +9311,7 @@ class Database:
             cursor.execute("SELECT * FROM subscriptions WHERE id=?", (subscription_id,))
             sub_row = cursor.fetchone()
             if not sub_row:
-                return {"success": False, "error": "اشتراک یافت نشد."}
+                return {"success": False, "error": "Ø§Ø´ØªØ±Ø§Ú© ÛŒØ§ÙØª Ù†Ø´Ø¯."}
 
             sub = dict(sub_row)
             t_id = telegram_id if telegram_id is not None else (sub.get("telegram_id") or 0)
@@ -9308,7 +9327,7 @@ class Database:
                     subscription_id, telegram_id, hidify_uuid, reseller_id,
                     plan_id, plan_name, data_limit, duration, cost, status, created_at, note, queue_order
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
-            """, (subscription_id, t_id, u_uuid, r_id, plan_id, plan_name, data_limit, duration, cost, now, note or "تمدید در صف رزرو مدیریت", next_order))
+            """, (subscription_id, t_id, u_uuid, r_id, plan_id, plan_name, data_limit, duration, cost, now, note or "ØªÙ…Ø¯ÛŒØ¯ Ø¯Ø± ØµÙ Ø±Ø²Ø±Ùˆ Ù…Ø¯ÛŒØ±ÛŒØª", next_order))
             queue_id = cursor.lastrowid
             conn.commit()
             return {"success": True, "queue_id": queue_id, "queue_order": next_order}
@@ -9319,7 +9338,7 @@ class Database:
             conn.close()
 
     def get_pending_queue_items(self, subscription_id: int) -> list:
-        """دریافت تمام بسته‌های در صف یک اشتراک به ترتیب نوبت تمدید"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªÙ…Ø§Ù… Ø¨Ø³ØªÙ‡â€ŒÙ‡Ø§ÛŒ Ø¯Ø± ØµÙ ÛŒÚ© Ø§Ø´ØªØ±Ø§Ú© Ø¨Ù‡ ØªØ±ØªÛŒØ¨ Ù†ÙˆØ¨Øª ØªÙ…Ø¯ÛŒØ¯"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -9336,13 +9355,13 @@ class Database:
             conn.close()
 
     def get_pending_queue_item(self, subscription_id: int) -> dict:
-        """دریافت اولین بسته در نوبت صف برای یک اشتراک خاص"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø§ÙˆÙ„ÛŒÙ† Ø¨Ø³ØªÙ‡ Ø¯Ø± Ù†ÙˆØ¨Øª ØµÙ Ø¨Ø±Ø§ÛŒ ÛŒÚ© Ø§Ø´ØªØ±Ø§Ú© Ø®Ø§Øµ"""
         items = self.get_pending_queue_items(subscription_id)
         return items[0] if items else None
 
     def reorder_subscription_queue(self, subscription_id: int, queue_id: int, direction: str) -> dict:
         """
-        تغییر نوبت یک بسته در صف تمدید (direction: 'up', 'down', 'top')
+        ØªØºÛŒÛŒØ± Ù†ÙˆØ¨Øª ÛŒÚ© Ø¨Ø³ØªÙ‡ Ø¯Ø± ØµÙ ØªÙ…Ø¯ÛŒØ¯ (direction: 'up', 'down', 'top')
         """
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -9354,7 +9373,7 @@ class Database:
             """, (subscription_id,))
             rows = [r[0] for r in cursor.fetchall()]
             if queue_id not in rows:
-                return {"success": False, "error": "بسته در صف یافت نشد."}
+                return {"success": False, "error": "Ø¨Ø³ØªÙ‡ Ø¯Ø± ØµÙ ÛŒØ§ÙØª Ù†Ø´Ø¯."}
 
             idx = rows.index(queue_id)
             if direction == "up":
@@ -9366,7 +9385,7 @@ class Database:
             elif direction == "top":
                 rows.insert(0, rows.pop(idx))
             else:
-                return {"success": False, "error": "جهت جابجایی نامعتبر است."}
+                return {"success": False, "error": "Ø¬Ù‡Øª Ø¬Ø§Ø¨Ø¬Ø§ÛŒÛŒ Ù†Ø§Ù…Ø¹ØªØ¨Ø± Ø§Ø³Øª."}
 
             for order, q_id in enumerate(rows, start=1):
                 cursor.execute("UPDATE subscription_queue SET queue_order=? WHERE id=?", (order, q_id))
@@ -9379,7 +9398,7 @@ class Database:
             conn.close()
 
     def get_all_pending_queue_items(self, reseller_id: int = None) -> list:
-        """دریافت تمام بسته‌های در صف به همراه اطلاعات اشتراک مربوطه به ترتیب نوبت برای پردازش خودکار و نمایش در پنل"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªÙ…Ø§Ù… Ø¨Ø³ØªÙ‡â€ŒÙ‡Ø§ÛŒ Ø¯Ø± ØµÙ Ø¨Ù‡ Ù‡Ù…Ø±Ø§Ù‡ Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ø§Ø´ØªØ±Ø§Ú© Ù…Ø±Ø¨ÙˆØ·Ù‡ Ø¨Ù‡ ØªØ±ØªÛŒØ¨ Ù†ÙˆØ¨Øª Ø¨Ø±Ø§ÛŒ Ù¾Ø±Ø¯Ø§Ø²Ø´ Ø®ÙˆØ¯Ú©Ø§Ø± Ùˆ Ù†Ù…Ø§ÛŒØ´ Ø¯Ø± Ù¾Ù†Ù„"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -9407,7 +9426,7 @@ class Database:
             conn.close()
 
     def get_pending_queue_count(self, reseller_id: int = None) -> int:
-        """دریافت تعداد کل بسته‌های در انتظار صف تمدید"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªØ¹Ø¯Ø§Ø¯ Ú©Ù„ Ø¨Ø³ØªÙ‡â€ŒÙ‡Ø§ÛŒ Ø¯Ø± Ø§Ù†ØªØ¸Ø§Ø± ØµÙ ØªÙ…Ø¯ÛŒØ¯"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -9424,7 +9443,7 @@ class Database:
             conn.close()
 
     def get_subscription_queue_items(self, subscription_id: int, limit: int = 10) -> list:
-        """دریافت تاریخچه و وضعیت بسته‌های در صف یک اشتراک خاص"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªØ§Ø±ÛŒØ®Ú†Ù‡ Ùˆ ÙˆØ¶Ø¹ÛŒØª Ø¨Ø³ØªÙ‡â€ŒÙ‡Ø§ÛŒ Ø¯Ø± ØµÙ ÛŒÚ© Ø§Ø´ØªØ±Ø§Ú© Ø®Ø§Øµ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -9441,7 +9460,7 @@ class Database:
             conn.close()
 
     def mark_queue_item_activated(self, queue_id: int) -> dict:
-        """علامت‌گذاری بسته در صف به عنوان فعال‌شده و به‌روزرسانی نوبت بسته‌های باقیمانده"""
+        """Ø¹Ù„Ø§Ù…Øªâ€ŒÚ¯Ø°Ø§Ø±ÛŒ Ø¨Ø³ØªÙ‡ Ø¯Ø± ØµÙ Ø¨Ù‡ Ø¹Ù†ÙˆØ§Ù† ÙØ¹Ø§Ù„â€ŒØ´Ø¯Ù‡ Ùˆ Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ù†ÙˆØ¨Øª Ø¨Ø³ØªÙ‡â€ŒÙ‡Ø§ÛŒ Ø¨Ø§Ù‚ÛŒÙ…Ø§Ù†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -9462,7 +9481,7 @@ class Database:
             conn.close()
 
     def cancel_queue_item(self, queue_id: int, reseller_id: int = None) -> dict:
-        """لغو بسته در صف و استرداد وجه به کیف‌پول نماینده یا کاربر در صورت پرداخت هزینه"""
+        """Ù„ØºÙˆ Ø¨Ø³ØªÙ‡ Ø¯Ø± ØµÙ Ùˆ Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡ Ø¨Ù‡ Ú©ÛŒÙâ€ŒÙ¾ÙˆÙ„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ ÛŒØ§ Ú©Ø§Ø±Ø¨Ø± Ø¯Ø± ØµÙˆØ±Øª Ù¾Ø±Ø¯Ø§Ø®Øª Ù‡Ø²ÛŒÙ†Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -9470,7 +9489,7 @@ class Database:
             cursor.execute("SELECT * FROM subscription_queue WHERE id=? AND status='pending'", (queue_id,))
             item = cursor.fetchone()
             if not item:
-                return {"success": False, "error": "بسته مورد نظر در صف یافت نشد یا قبلاً پردازش شده است."}
+                return {"success": False, "error": "Ø¨Ø³ØªÙ‡ Ù…ÙˆØ±Ø¯ Ù†Ø¸Ø± Ø¯Ø± ØµÙ ÛŒØ§ÙØª Ù†Ø´Ø¯ ÛŒØ§ Ù‚Ø¨Ù„Ø§Ù‹ Ù¾Ø±Ø¯Ø§Ø²Ø´ Ø´Ø¯Ù‡ Ø§Ø³Øª."}
 
             item_dict = dict(item)
             cost = item_dict.get("cost") or 0
@@ -9478,16 +9497,16 @@ class Database:
             sub_id = item_dict.get("subscription_id")
 
             if reseller_id and r_id and r_id != reseller_id:
-                return {"success": False, "error": "شما به این بسته دسترسی ندارید."}
+                return {"success": False, "error": "Ø´Ù…Ø§ Ø¨Ù‡ Ø§ÛŒÙ† Ø¨Ø³ØªÙ‡ Ø¯Ø³ØªØ±Ø³ÛŒ Ù†Ø¯Ø§Ø±ÛŒØ¯."}
 
             cursor.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,))
             sub_row = cursor.fetchone()
             sub_dict = dict(sub_row) if sub_row else {}
             account_name = sub_dict.get("account_name") or f"user_{sub_id}"
 
-            # استرداد وجه به نماینده
+            # Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡ Ø¨Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
             if r_id and cost > 0:
-                # بررسی منبع پرداخت تمدید و علامت‌گذاری تراکنش تمدید به لغو شده
+                # Ø¨Ø±Ø±Ø³ÛŒ Ù…Ù†Ø¨Ø¹ Ù¾Ø±Ø¯Ø§Ø®Øª ØªÙ…Ø¯ÛŒØ¯ Ùˆ Ø¹Ù„Ø§Ù…Øªâ€ŒÚ¯Ø°Ø§Ø±ÛŒ ØªØ±Ø§Ú©Ù†Ø´ ØªÙ…Ø¯ÛŒØ¯ Ø¨Ù‡ Ù„ØºÙˆ Ø´Ø¯Ù‡
                 cursor.execute("""
                     SELECT id, payment_source FROM reseller_transactions
                     WHERE reseller_id = ? AND (subscription_id = ? OR account_name = ?)
@@ -9501,7 +9520,7 @@ class Database:
                     renew_source = last_renew_tx[1] or "wallet"
                     cursor.execute("""
                         UPDATE reseller_transactions
-                        SET type = 'renewal_cancelled', description = description || ' [لغو شده از صف تمدید]'
+                        SET type = 'renewal_cancelled', description = description || ' [Ù„ØºÙˆ Ø´Ø¯Ù‡ Ø§Ø² ØµÙ ØªÙ…Ø¯ÛŒØ¯]'
                         WHERE id = ?
                     """, (renew_tx_id,))
 
@@ -9510,22 +9529,22 @@ class Database:
                     cursor.execute("""
                         INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
                         VALUES (?, 'refund_credit', ?, ?, ?, ?, 'credit', ?, ?)
-                    """, (r_id, cost, item_dict.get("plan_name", ""), account_name, "استرداد وجه لغو بسته رزرو در صف (کاهش بدهی اعتبار)", sub_id, now))
+                    """, (r_id, cost, item_dict.get("plan_name", ""), account_name, "Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡ Ù„ØºÙˆ Ø¨Ø³ØªÙ‡ Ø±Ø²Ø±Ùˆ Ø¯Ø± ØµÙ (Ú©Ø§Ù‡Ø´ Ø¨Ø¯Ù‡ÛŒ Ø§Ø¹ØªØ¨Ø§Ø±)", sub_id, now))
                 else:
                     cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at=? WHERE id=?", (cost, now, r_id))
                     cursor.execute("""
                         INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
                         VALUES (?, 'refund', ?, ?, ?, ?, 'wallet', ?, ?)
-                    """, (r_id, cost, item_dict.get("plan_name", ""), account_name, "استرداد وجه لغو بسته رزرو در صف (واریز به کیف پول)", sub_id, now))
+                    """, (r_id, cost, item_dict.get("plan_name", ""), account_name, "Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡ Ù„ØºÙˆ Ø¨Ø³ØªÙ‡ Ø±Ø²Ø±Ùˆ Ø¯Ø± ØµÙ (ÙˆØ§Ø±ÛŒØ² Ø¨Ù‡ Ú©ÛŒÙ Ù¾ÙˆÙ„)", sub_id, now))
             elif not r_id and cost > 0:
-                # استرداد وجه برای مشتریان مستقیم ادمین
+                # Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡ Ø¨Ø±Ø§ÛŒ Ù…Ø´ØªØ±ÛŒØ§Ù† Ù…Ø³ØªÙ‚ÛŒÙ… Ø§Ø¯Ù…ÛŒÙ†
                 tg_id = item_dict.get("telegram_id") or sub_dict.get("telegram_id")
                 if tg_id:
                     try:
                         self.add_wallet_balance(
                             tg_id,
                             cost,
-                            f"استرداد وجه بابت لغو بسته در صف تمدید برای اشتراک «{account_name}»",
+                            f"Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡ Ø¨Ø§Ø¨Øª Ù„ØºÙˆ Ø¨Ø³ØªÙ‡ Ø¯Ø± ØµÙ ØªÙ…Ø¯ÛŒØ¯ Ø¨Ø±Ø§ÛŒ Ø§Ø´ØªØ±Ø§Ú© Â«{account_name}Â»",
                             tx_type="refund"
                         )
                     except Exception as we:
@@ -9540,7 +9559,7 @@ class Database:
                     )
                 """, (sub_id,))
 
-            cursor.execute("UPDATE subscription_queue SET status='cancelled', note='لغو توسط کاربر/مدیر و استرداد وجه' WHERE id=?", (queue_id,))
+            cursor.execute("UPDATE subscription_queue SET status='cancelled', note='Ù„ØºÙˆ ØªÙˆØ³Ø· Ú©Ø§Ø±Ø¨Ø±/Ù…Ø¯ÛŒØ± Ùˆ Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡' WHERE id=?", (queue_id,))
             if sub_id:
                 self._normalize_subscription_queue_orders(cursor, sub_id)
             conn.commit()
@@ -9553,11 +9572,11 @@ class Database:
 
     def calculate_reseller_refund(self, reseller_id: int, sub_id: int):
         """
-        محاسبه هوشمند استرداد وجه حذف مشتری نماینده طبق تنظیمات مدیریت:
-        - عدم تاثیرپذیری از مبلغ بدهی مشتری (صرفاً بر اساس هزینه خرید پلن کسر شده از نماینده)
-        - محاسبه زمان بر اساس زمان ساخت اولیه مشتری یا آخرین اقدام (طبق تنظیمات)
-        - رعایت درصدهای سفارشی مدیریت و غیرفعال‌سازی سراسری یا برای نماینده خاص
-        - تفکیک مبدأ بازگشت وجه (کیف پول نقدی یا اعتبار خرید)
+        Ù…Ø­Ø§Ø³Ø¨Ù‡ Ù‡ÙˆØ´Ù…Ù†Ø¯ Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡ Ø­Ø°Ù Ù…Ø´ØªØ±ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø·Ø¨Ù‚ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ù…Ø¯ÛŒØ±ÛŒØª:
+        - Ø¹Ø¯Ù… ØªØ§Ø«ÛŒØ±Ù¾Ø°ÛŒØ±ÛŒ Ø§Ø² Ù…Ø¨Ù„Øº Ø¨Ø¯Ù‡ÛŒ Ù…Ø´ØªØ±ÛŒ (ØµØ±ÙØ§Ù‹ Ø¨Ø± Ø§Ø³Ø§Ø³ Ù‡Ø²ÛŒÙ†Ù‡ Ø®Ø±ÛŒØ¯ Ù¾Ù„Ù† Ú©Ø³Ø± Ø´Ø¯Ù‡ Ø§Ø² Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡)
+        - Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø²Ù…Ø§Ù† Ø¨Ø± Ø§Ø³Ø§Ø³ Ø²Ù…Ø§Ù† Ø³Ø§Ø®Øª Ø§ÙˆÙ„ÛŒÙ‡ Ù…Ø´ØªØ±ÛŒ ÛŒØ§ Ø¢Ø®Ø±ÛŒÙ† Ø§Ù‚Ø¯Ø§Ù… (Ø·Ø¨Ù‚ ØªÙ†Ø¸ÛŒÙ…Ø§Øª)
+        - Ø±Ø¹Ø§ÛŒØª Ø¯Ø±ØµØ¯Ù‡Ø§ÛŒ Ø³ÙØ§Ø±Ø´ÛŒ Ù…Ø¯ÛŒØ±ÛŒØª Ùˆ ØºÛŒØ±ÙØ¹Ø§Ù„â€ŒØ³Ø§Ø²ÛŒ Ø³Ø±Ø§Ø³Ø±ÛŒ ÛŒØ§ Ø¨Ø±Ø§ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø®Ø§Øµ
+        - ØªÙÚ©ÛŒÚ© Ù…Ø¨Ø¯Ø£ Ø¨Ø§Ø²Ú¯Ø´Øª ÙˆØ¬Ù‡ (Ú©ÛŒÙ Ù¾ÙˆÙ„ Ù†Ù‚Ø¯ÛŒ ÛŒØ§ Ø§Ø¹ØªØ¨Ø§Ø± Ø®Ø±ÛŒØ¯)
         """
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -9571,7 +9590,7 @@ class Database:
         account_name = sub_dict.get("account_name") or f"user_{sub_id}"
         now_dt = get_now_naive()
 
-        # دریافت تنظیمات استرداد
+        # Ø¯Ø±ÛŒØ§ÙØª ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø§Ø³ØªØ±Ø¯Ø§Ø¯
         settings = self.get_refund_settings()
         refund_enabled = bool(settings.get("refund_enabled", True))
         disabled_resellers = settings.get("disabled_resellers", [])
@@ -9581,22 +9600,22 @@ class Database:
 
         is_disallowed = (not refund_enabled) or (reseller_id in disabled_resellers)
 
-        # تعیین مبدأ پرداخت (کیف پول یا اعتبار)
+        # ØªØ¹ÛŒÛŒÙ† Ù…Ø¨Ø¯Ø£ Ù¾Ø±Ø¯Ø§Ø®Øª (Ú©ÛŒÙ Ù¾ÙˆÙ„ ÛŒØ§ Ø§Ø¹ØªØ¨Ø§Ø±)
         sub_source = str(sub_dict.get("payment_source") or "").lower()
         is_credit_sub = bool(sub_dict.get("is_credit") or (sub_dict.get("credit_debt_amount") or 0) > 0 or sub_source == "credit")
 
-        # جستجوی زمان آخرین استرداد ثبت‌شده برای این اشتراک در سطل زباله (جهت تفکیک حذف و بازگردانی‌های قبلی از لغو صف)
+        # Ø¬Ø³ØªØ¬ÙˆÛŒ Ø²Ù…Ø§Ù† Ø¢Ø®Ø±ÛŒÙ† Ø§Ø³ØªØ±Ø¯Ø§Ø¯ Ø«Ø¨Øªâ€ŒØ´Ø¯Ù‡ Ø¨Ø±Ø§ÛŒ Ø§ÛŒÙ† Ø§Ø´ØªØ±Ø§Ú© Ø¯Ø± Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡ (Ø¬Ù‡Øª ØªÙÚ©ÛŒÚ© Ø­Ø°Ù Ùˆ Ø¨Ø§Ø²Ú¯Ø±Ø¯Ø§Ù†ÛŒâ€ŒÙ‡Ø§ÛŒ Ù‚Ø¨Ù„ÛŒ Ø§Ø² Ù„ØºÙˆ ØµÙ)
         cursor.execute("""
             SELECT MAX(created_at) FROM reseller_transactions
             WHERE reseller_id = ?
               AND (subscription_id = ? OR account_name = ?)
               AND type IN ('refund', 'refund_credit')
-              AND (description LIKE '%سطل زباله%' OR description LIKE '%حذف اشتراک%')
+              AND (description LIKE '%Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡%' OR description LIKE '%Ø­Ø°Ù Ø§Ø´ØªØ±Ø§Ú©%')
         """, (reseller_id, sub_id, account_name))
         latest_refund_row = cursor.fetchone()
         latest_refund_time = latest_refund_row[0] if latest_refund_row and latest_refund_row[0] else None
 
-        # جستجوی تمام اقدامات مالی کسر شده از نماینده برای این اکانت (صرفاً اقدامات پس از آخرین استرداد سطل زباله)
+        # Ø¬Ø³ØªØ¬ÙˆÛŒ ØªÙ…Ø§Ù… Ø§Ù‚Ø¯Ø§Ù…Ø§Øª Ù…Ø§Ù„ÛŒ Ú©Ø³Ø± Ø´Ø¯Ù‡ Ø§Ø² Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø±Ø§ÛŒ Ø§ÛŒÙ† Ø§Ú©Ø§Ù†Øª (ØµØ±ÙØ§Ù‹ Ø§Ù‚Ø¯Ø§Ù…Ø§Øª Ù¾Ø³ Ø§Ø² Ø¢Ø®Ø±ÛŒÙ† Ø§Ø³ØªØ±Ø¯Ø§Ø¯ Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡)
         if latest_refund_time:
             cursor.execute("""
                 SELECT * FROM reseller_transactions
@@ -9623,7 +9642,7 @@ class Database:
         total_paid = 0
         total_refund = 0
         latest_elapsed_hours = 999999.0
-        latest_time_passed_text = "بیش از ۲۴ ساعت پیش"
+        latest_time_passed_text = "Ø¨ÛŒØ´ Ø§Ø² Û²Û´ Ø³Ø§Ø¹Øª Ù¾ÛŒØ´"
 
         def _calc_elapsed(dt_str):
             try:
@@ -9638,9 +9657,9 @@ class Database:
         def _format_time_passed(hours_val):
             h = int(hours_val)
             m = int((hours_val - h) * 60)
-            return f"{h} ساعت و {m} دقیقه پیش" if h > 0 else f"{m} دقیقه پیش"
+            return f"{h} Ø³Ø§Ø¹Øª Ùˆ {m} Ø¯Ù‚ÛŒÙ‚Ù‡ Ù¾ÛŒØ´" if h > 0 else f"{m} Ø¯Ù‚ÛŒÙ‚Ù‡ Ù¾ÛŒØ´"
 
-        # محاسبه زمان بر اساس ساخت مشتری یا آخرین بازگردانی
+        # Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø²Ù…Ø§Ù† Ø¨Ø± Ø§Ø³Ø§Ø³ Ø³Ø§Ø®Øª Ù…Ø´ØªØ±ÛŒ ÛŒØ§ Ø¢Ø®Ø±ÛŒÙ† Ø¨Ø§Ø²Ú¯Ø±Ø¯Ø§Ù†ÛŒ
         creation_dt_str = sub_dict.get("created_at") or get_now_iso()
         if latest_refund_time and sub_dict.get("updated_at"):
             creation_dt_str = sub_dict.get("updated_at")
@@ -9659,14 +9678,14 @@ class Database:
 
                 tx_src = tx_d.get("payment_source")
                 if not tx_src:
-                    tx_src = "credit" if (tx_d.get("type") in ("purchase_credit", "renewal_credit") or "اعتبار" in str(tx_d.get("description", ""))) else "wallet"
+                    tx_src = "credit" if (tx_d.get("type") in ("purchase_credit", "renewal_credit") or "Ø§Ø¹ØªØ¨Ø§Ø±" in str(tx_d.get("description", ""))) else "wallet"
 
                 if tx_src == "credit":
                     has_credit_tx = True
                 else:
                     has_wallet_tx = True
 
-                # تعیین زمان مبنا: برای خرید اولیه طبق تنظیمات، اما برای تمدیدها حتماً بر اساس زمان خود اقدام تمدید
+                # ØªØ¹ÛŒÛŒÙ† Ø²Ù…Ø§Ù† Ù…Ø¨Ù†Ø§: Ø¨Ø±Ø§ÛŒ Ø®Ø±ÛŒØ¯ Ø§ÙˆÙ„ÛŒÙ‡ Ø·Ø¨Ù‚ ØªÙ†Ø¸ÛŒÙ…Ø§ØªØŒ Ø§Ù…Ø§ Ø¨Ø±Ø§ÛŒ ØªÙ…Ø¯ÛŒØ¯Ù‡Ø§ Ø­ØªÙ…Ø§Ù‹ Ø¨Ø± Ø§Ø³Ø§Ø³ Ø²Ù…Ø§Ù† Ø®ÙˆØ¯ Ø§Ù‚Ø¯Ø§Ù… ØªÙ…Ø¯ÛŒØ¯
                 is_purchase_action = "purchase" in str(tx_d.get("type", "")).lower()
                 if is_purchase_action and calc_from_creation:
                     elapsed_hours = creation_elapsed_hours
@@ -9701,8 +9720,8 @@ class Database:
                     "tx_id": tx_d["id"],
                     "type": tx_d["type"],
                     "payment_source": tx_src,
-                    "type_title": "خرید اولیه" if "purchase" in tx_d["type"] else "تمدید اشتراک",
-                    "plan_name": tx_d.get("plan_name") or sub_dict.get("plan_name") or "پلن",
+                    "type_title": "Ø®Ø±ÛŒØ¯ Ø§ÙˆÙ„ÛŒÙ‡" if "purchase" in tx_d["type"] else "ØªÙ…Ø¯ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú©",
+                    "plan_name": tx_d.get("plan_name") or sub_dict.get("plan_name") or "Ù¾Ù„Ù†",
                     "amount": amount,
                     "elapsed_hours": round(elapsed_hours, 1),
                     "time_passed_text": time_passed_str,
@@ -9711,7 +9730,7 @@ class Database:
                     "created_at": tx_d.get("created_at")
                 })
 
-        # در صورتی که تراکنشی یافت نشد (اکانت‌های دستی یا ایجاد مستقیم)
+        # Ø¯Ø± ØµÙˆØ±ØªÛŒ Ú©Ù‡ ØªØ±Ø§Ú©Ù†Ø´ÛŒ ÛŒØ§ÙØª Ù†Ø´Ø¯ (Ø§Ú©Ø§Ù†Øªâ€ŒÙ‡Ø§ÛŒ Ø¯Ø³ØªÛŒ ÛŒØ§ Ø§ÛŒØ¬Ø§Ø¯ Ù…Ø³ØªÙ‚ÛŒÙ…)
         if not items:
             elapsed_hours = creation_elapsed_hours
             time_passed_str = creation_time_passed_str
@@ -9731,7 +9750,7 @@ class Database:
                 percent = 0
                 rate = 0.0
 
-            # اگر قبلاً استرداد شده و تراکنش جدیدی ندارد، مبلغ پرداختی ۰ است
+            # Ø§Ú¯Ø± Ù‚Ø¨Ù„Ø§Ù‹ Ø§Ø³ØªØ±Ø¯Ø§Ø¯ Ø´Ø¯Ù‡ Ùˆ ØªØ±Ø§Ú©Ù†Ø´ Ø¬Ø¯ÛŒØ¯ÛŒ Ù†Ø¯Ø§Ø±Ø¯ØŒ Ù…Ø¨Ù„Øº Ù¾Ø±Ø¯Ø§Ø®ØªÛŒ Û° Ø§Ø³Øª
             if latest_refund_time:
                 cost_paid = 0
             else:
@@ -9751,8 +9770,8 @@ class Database:
                 "tx_id": 0,
                 "type": "purchase_credit" if is_credit_sub else "purchase",
                 "payment_source": fallback_src,
-                "type_title": "خرید اشتراک (سیستمی)",
-                "plan_name": sub_dict.get("plan_name") or "پلن",
+                "type_title": "Ø®Ø±ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú© (Ø³ÛŒØ³ØªÙ…ÛŒ)",
+                "plan_name": sub_dict.get("plan_name") or "Ù¾Ù„Ù†",
                 "amount": cost_paid,
                 "elapsed_hours": round(elapsed_hours, 1),
                 "time_passed_text": time_passed_str,
@@ -9766,7 +9785,7 @@ class Database:
             effective_percent = 0
             total_refund = 0
 
-        # مبدأ کلی استرداد
+        # Ù…Ø¨Ø¯Ø£ Ú©Ù„ÛŒ Ø§Ø³ØªØ±Ø¯Ø§Ø¯
         final_payment_source = "credit" if (has_credit_tx and not has_wallet_tx) else ("wallet" if (has_wallet_tx and not has_credit_tx) else ("credit" if is_credit_sub else "wallet"))
 
         return {
@@ -9785,11 +9804,11 @@ class Database:
             "calc_from_creation": calc_from_creation
         }
 
-    def delete_reseller_subscription(self, reseller_id: int, sub_id: int, reason: str = "سایر", deleted_by: str = None):
-        """حذف نرم مشتری نماینده به سطل زباله با استرداد وجه دقیق به مبدأ اولیه (کیف پول یا اعتبار)"""
+    def delete_reseller_subscription(self, reseller_id: int, sub_id: int, reason: str = "Ø³Ø§ÛŒØ±", deleted_by: str = None):
+        """Ø­Ø°Ù Ù†Ø±Ù… Ù…Ø´ØªØ±ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ù‡ Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡ Ø¨Ø§ Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡ Ø¯Ù‚ÛŒÙ‚ Ø¨Ù‡ Ù…Ø¨Ø¯Ø£ Ø§ÙˆÙ„ÛŒÙ‡ (Ú©ÛŒÙ Ù¾ÙˆÙ„ ÛŒØ§ Ø§Ø¹ØªØ¨Ø§Ø±)"""
         refund_info = self.calculate_reseller_refund(reseller_id, sub_id)
         if not refund_info:
-            return {"success": False, "error": "اشتراک مورد نظر یافت نشد."}
+            return {"success": False, "error": "Ø§Ø´ØªØ±Ø§Ú© Ù…ÙˆØ±Ø¯ Ù†Ø¸Ø± ÛŒØ§ÙØª Ù†Ø´Ø¯."}
 
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -9801,33 +9820,33 @@ class Database:
             actions_count = refund_info.get("actions_count", 1)
             payment_source = refund_info.get("payment_source", "wallet")
 
-            # ۱. در صورت تعلق استرداد وجه، برگشت به مبدأ اصلی انجام می‌شود
+            # Û±. Ø¯Ø± ØµÙˆØ±Øª ØªØ¹Ù„Ù‚ Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡ØŒ Ø¨Ø±Ú¯Ø´Øª Ø¨Ù‡ Ù…Ø¨Ø¯Ø£ Ø§ØµÙ„ÛŒ Ø§Ù†Ø¬Ø§Ù… Ù…ÛŒâ€ŒØ´ÙˆØ¯
             if refund_amount > 0:
                 if payment_source == "credit":
-                    # کسر بدهی اعتباری نماینده (بازگشت به سقف اعتبار)
+                    # Ú©Ø³Ø± Ø¨Ø¯Ù‡ÛŒ Ø§Ø¹ØªØ¨Ø§Ø±ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (Ø¨Ø§Ø²Ú¯Ø´Øª Ø¨Ù‡ Ø³Ù‚Ù Ø§Ø¹ØªØ¨Ø§Ø±)
                     cursor.execute("UPDATE resellers SET credit_debt = MAX(0, credit_debt - ?), updated_at=? WHERE id=?", (refund_amount, now, reseller_id))
-                    desc_text = f"استرداد وجه {refund_percent}٪ بابت انتقال اشتراک «{account_name}» به سطل زباله (برگشت به اعتبار خرید - کاهش بدهی) - زمان گذشته: {refund_info['time_passed_text']} - علت: {reason}"
+                    desc_text = f"Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡ {refund_percent}Ùª Ø¨Ø§Ø¨Øª Ø§Ù†ØªÙ‚Ø§Ù„ Ø§Ø´ØªØ±Ø§Ú© Â«{account_name}Â» Ø¨Ù‡ Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡ (Ø¨Ø±Ú¯Ø´Øª Ø¨Ù‡ Ø§Ø¹ØªØ¨Ø§Ø± Ø®Ø±ÛŒØ¯ - Ú©Ø§Ù‡Ø´ Ø¨Ø¯Ù‡ÛŒ) - Ø²Ù…Ø§Ù† Ú¯Ø°Ø´ØªÙ‡: {refund_info['time_passed_text']} - Ø¹Ù„Øª: {reason}"
                     cursor.execute("""
                         INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
-                        VALUES (?, 'refund', ?, 'استرداد وجه اعتباری', ?, ?, 'credit', ?, ?)
+                        VALUES (?, 'refund', ?, 'Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡ Ø§Ø¹ØªØ¨Ø§Ø±ÛŒ', ?, ?, 'credit', ?, ?)
                     """, (reseller_id, refund_amount, account_name, desc_text, sub_id, now))
                 else:
-                    # افزایش موجودی کیف پول نقدی نماینده
+                    # Ø§ÙØ²Ø§ÛŒØ´ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ù†Ù‚Ø¯ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
                     cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at=? WHERE id=?", (refund_amount, now, reseller_id))
-                    desc_text = f"استرداد وجه {refund_percent}٪ بابت انتقال اشتراک «{account_name}» به سطل زباله (واریز به کیف پول) - زمان گذشته: {refund_info['time_passed_text']} - علت: {reason}"
+                    desc_text = f"Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡ {refund_percent}Ùª Ø¨Ø§Ø¨Øª Ø§Ù†ØªÙ‚Ø§Ù„ Ø§Ø´ØªØ±Ø§Ú© Â«{account_name}Â» Ø¨Ù‡ Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡ (ÙˆØ§Ø±ÛŒØ² Ø¨Ù‡ Ú©ÛŒÙ Ù¾ÙˆÙ„) - Ø²Ù…Ø§Ù† Ú¯Ø°Ø´ØªÙ‡: {refund_info['time_passed_text']} - Ø¹Ù„Øª: {reason}"
                     cursor.execute("""
                         INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
-                        VALUES (?, 'refund', ?, 'استرداد وجه', ?, ?, 'wallet', ?, ?)
+                        VALUES (?, 'refund', ?, 'Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡', ?, ?, 'wallet', ?, ?)
                     """, (reseller_id, refund_amount, account_name, desc_text, sub_id, now))
 
-            # ۲. لغو خودکار بسته‌های معلق در صف تمدید این اشتراک تا در صف معلق نمانند و پس از بازگردانی دوبله استرداد نشوند
+            # Û². Ù„ØºÙˆ Ø®ÙˆØ¯Ú©Ø§Ø± Ø¨Ø³ØªÙ‡â€ŒÙ‡Ø§ÛŒ Ù…Ø¹Ù„Ù‚ Ø¯Ø± ØµÙ ØªÙ…Ø¯ÛŒØ¯ Ø§ÛŒÙ† Ø§Ø´ØªØ±Ø§Ú© ØªØ§ Ø¯Ø± ØµÙ Ù…Ø¹Ù„Ù‚ Ù†Ù…Ø§Ù†Ù†Ø¯ Ùˆ Ù¾Ø³ Ø§Ø² Ø¨Ø§Ø²Ú¯Ø±Ø¯Ø§Ù†ÛŒ Ø¯ÙˆØ¨Ù„Ù‡ Ø§Ø³ØªØ±Ø¯Ø§Ø¯ Ù†Ø´ÙˆÙ†Ø¯
             cursor.execute("""
                 UPDATE subscription_queue 
-                SET status = 'cancelled', note = 'لغو به علت حذف اشتراک و انتقال به سطل زباله'
+                SET status = 'cancelled', note = 'Ù„ØºÙˆ Ø¨Ù‡ Ø¹Ù„Øª Ø­Ø°Ù Ø§Ø´ØªØ±Ø§Ú© Ùˆ Ø§Ù†ØªÙ‚Ø§Ù„ Ø¨Ù‡ Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡'
                 WHERE subscription_id = ? AND status = 'pending'
             """, (sub_id,))
 
-            # ۳. حذف نرم اشتراک از جدول (انتقال به سطل زباله)
+            # Û³. Ø­Ø°Ù Ù†Ø±Ù… Ø§Ø´ØªØ±Ø§Ú© Ø§Ø² Ø¬Ø¯ÙˆÙ„ (Ø§Ù†ØªÙ‚Ø§Ù„ Ø¨Ù‡ Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡)
             by_user = deleted_by or f"reseller_{reseller_id}"
             cursor.execute("""
                 UPDATE subscriptions 
@@ -9836,13 +9855,13 @@ class Database:
             """, (now, reason, by_user, now, sub_id, reseller_id))
             conn.commit()
 
-            # ثبت لاگ انتقال به سطل زباله توسط نماینده
+            # Ø«Ø¨Øª Ù„Ø§Ú¯ Ø§Ù†ØªÙ‚Ø§Ù„ Ø¨Ù‡ Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡ ØªÙˆØ³Ø· Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
             try:
                 self.add_system_log(
                     category="reseller",
                     action="delete",
-                    title=f"انتقال اشتراک «{account_name}» به سطل زباله",
-                    description=f"اشتراک «{account_name}» توسط نماینده ({by_user}) با علت «{reason}» به سطل زباله منتقل گردید." + (f" (استرداد وجه: {refund_amount:,} تومان به {payment_source})" if refund_amount > 0 else ""),
+                    title=f"Ø§Ù†ØªÙ‚Ø§Ù„ Ø§Ø´ØªØ±Ø§Ú© Â«{account_name}Â» Ø¨Ù‡ Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡",
+                    description=f"Ø§Ø´ØªØ±Ø§Ú© Â«{account_name}Â» ØªÙˆØ³Ø· Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ ({by_user}) Ø¨Ø§ Ø¹Ù„Øª Â«{reason}Â» Ø¨Ù‡ Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡ Ù…Ù†ØªÙ‚Ù„ Ú¯Ø±Ø¯ÛŒØ¯." + (f" (Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡: {refund_amount:,} ØªÙˆÙ…Ø§Ù† Ø¨Ù‡ {payment_source})" if refund_amount > 0 else ""),
                     actor_type="reseller",
                     actor_id=reseller_id,
                     actor_name=by_user,
@@ -9876,14 +9895,14 @@ class Database:
         finally:
             conn.close()
 
-    # ─── استرداد وجه و حذف هوشمند اشتراک مشتریان برای مدیران (Customer Refund & Delete) ───
+    # â”€â”€â”€ Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡ Ùˆ Ø­Ø°Ù Ù‡ÙˆØ´Ù…Ù†Ø¯ Ø§Ø´ØªØ±Ø§Ú© Ù…Ø´ØªØ±ÛŒØ§Ù† Ø¨Ø±Ø§ÛŒ Ù…Ø¯ÛŒØ±Ø§Ù† (Customer Refund & Delete) â”€â”€â”€
 
     def calculate_customer_refund(self, sub_id: int):
         """
-        محاسبه شرایط و درصد استرداد وجه حذف اشتراک مشتری توسط مدیران (شامل خرید و کلیه تمدیدها):
-        - هر اقدام کمتر از ۱۲ ساعت پیش: ۱۰۰٪ مبلغ
-        - هر اقدام بین ۱۲ تا ۲۴ ساعت پیش: ۸۰٪ مبلغ
-        - هر اقدام بیش از ۲۴ ساعت پیش: ۰٪ مبلغ
+        Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø´Ø±Ø§ÛŒØ· Ùˆ Ø¯Ø±ØµØ¯ Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡ Ø­Ø°Ù Ø§Ø´ØªØ±Ø§Ú© Ù…Ø´ØªØ±ÛŒ ØªÙˆØ³Ø· Ù…Ø¯ÛŒØ±Ø§Ù† (Ø´Ø§Ù…Ù„ Ø®Ø±ÛŒØ¯ Ùˆ Ú©Ù„ÛŒÙ‡ ØªÙ…Ø¯ÛŒØ¯Ù‡Ø§):
+        - Ù‡Ø± Ø§Ù‚Ø¯Ø§Ù… Ú©Ù…ØªØ± Ø§Ø² Û±Û² Ø³Ø§Ø¹Øª Ù¾ÛŒØ´: Û±Û°Û°Ùª Ù…Ø¨Ù„Øº
+        - Ù‡Ø± Ø§Ù‚Ø¯Ø§Ù… Ø¨ÛŒÙ† Û±Û² ØªØ§ Û²Û´ Ø³Ø§Ø¹Øª Ù¾ÛŒØ´: Û¸Û°Ùª Ù…Ø¨Ù„Øº
+        - Ù‡Ø± Ø§Ù‚Ø¯Ø§Ù… Ø¨ÛŒØ´ Ø§Ø² Û²Û´ Ø³Ø§Ø¹Øª Ù¾ÛŒØ´: Û°Ùª Ù…Ø¨Ù„Øº
         """
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -9893,11 +9912,11 @@ class Database:
             conn.close()
             return None
 
-        account_name = sub["account_name"] or "بدون نام"
+        account_name = sub["account_name"] or "Ø¨Ø¯ÙˆÙ† Ù†Ø§Ù…"
         user_id = sub["telegram_id"] if ("telegram_id" in sub.keys() and sub["telegram_id"]) else None
         now_dt = get_now_naive()
 
-        if account_name and account_name != "بدون نام":
+        if account_name and account_name != "Ø¨Ø¯ÙˆÙ† Ù†Ø§Ù…":
             cursor.execute("""
                 SELECT * FROM transactions 
                 WHERE (account_name = ? OR renew_sub_id = ?)
@@ -9922,7 +9941,7 @@ class Database:
         total_paid = 0
         total_refund = 0
         latest_elapsed_hours = 999999.0
-        latest_time_passed_text = "بیش از ۲۴ ساعت پیش"
+        latest_time_passed_text = "Ø¨ÛŒØ´ Ø§Ø² Û²Û´ Ø³Ø§Ø¹Øª Ù¾ÛŒØ´"
 
         def _calc_elapsed(dt_str):
             try:
@@ -9937,7 +9956,7 @@ class Database:
         def _format_time_passed(hours_val):
             h = int(hours_val)
             m = int((hours_val - h) * 60)
-            return f"{h} ساعت و {m} دقیقه پیش" if h > 0 else f"{m} دقیقه پیش"
+            return f"{h} Ø³Ø§Ø¹Øª Ùˆ {m} Ø¯Ù‚ÛŒÙ‚Ù‡ Ù¾ÛŒØ´" if h > 0 else f"{m} Ø¯Ù‚ÛŒÙ‚Ù‡ Ù¾ÛŒØ´"
 
         if tx_rows:
             for tx in tx_rows:
@@ -9970,8 +9989,8 @@ class Database:
                 items.append({
                     "tx_id": tx_d["id"],
                     "order_id": tx_d["order_id"],
-                    "type_title": "تمدید اشتراک" if is_renewal else "خرید اولیه",
-                    "plan_name": tx_d.get("plan_name") or sub["plan_name"] or "پلن",
+                    "type_title": "ØªÙ…Ø¯ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú©" if is_renewal else "Ø®Ø±ÛŒØ¯ Ø§ÙˆÙ„ÛŒÙ‡",
+                    "plan_name": tx_d.get("plan_name") or sub["plan_name"] or "Ù¾Ù„Ù†",
                     "amount": amount,
                     "elapsed_hours": round(elapsed_hours, 1),
                     "time_passed_text": time_passed_str,
@@ -10005,8 +10024,8 @@ class Database:
             items.append({
                 "tx_id": 0,
                 "order_id": "-",
-                "type_title": "خرید اولیه (ثبت سیستمی)",
-                "plan_name": sub["plan_name"] or "پلن",
+                "type_title": "Ø®Ø±ÛŒØ¯ Ø§ÙˆÙ„ÛŒÙ‡ (Ø«Ø¨Øª Ø³ÛŒØ³ØªÙ…ÛŒ)",
+                "plan_name": sub["plan_name"] or "Ù¾Ù„Ù†",
                 "amount": cost_paid,
                 "elapsed_hours": round(elapsed_hours, 1),
                 "time_passed_text": time_passed_str,
@@ -10032,11 +10051,11 @@ class Database:
             "hidify_uuid": sub["hidify_uuid"]
         }
 
-    def delete_customer_subscription(self, sub_id: int, refund_to_customer: bool = True, admin_name: str = "مدیر", reason: str = "سایر"):
-        """حذف نرم مشتری توسط مدیر به سطل زباله با قابلیت استرداد مستقیم وجه به کیف پول کاربر تلگرام"""
+    def delete_customer_subscription(self, sub_id: int, refund_to_customer: bool = True, admin_name: str = "Ù…Ø¯ÛŒØ±", reason: str = "Ø³Ø§ÛŒØ±"):
+        """Ø­Ø°Ù Ù†Ø±Ù… Ù…Ø´ØªØ±ÛŒ ØªÙˆØ³Ø· Ù…Ø¯ÛŒØ± Ø¨Ù‡ Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡ Ø¨Ø§ Ù‚Ø§Ø¨Ù„ÛŒØª Ø§Ø³ØªØ±Ø¯Ø§Ø¯ Ù…Ø³ØªÙ‚ÛŒÙ… ÙˆØ¬Ù‡ Ø¨Ù‡ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ú©Ø§Ø±Ø¨Ø± ØªÙ„Ú¯Ø±Ø§Ù…"""
         refund_info = self.calculate_customer_refund(sub_id)
         if not refund_info:
-            return {"success": False, "error": "اشتراک مورد نظر یافت نشد."}
+            return {"success": False, "error": "Ø§Ø´ØªØ±Ø§Ú© Ù…ÙˆØ±Ø¯ Ù†Ø¸Ø± ÛŒØ§ÙØª Ù†Ø´Ø¯."}
 
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -10049,11 +10068,11 @@ class Database:
             hidify_uuid = refund_info["hidify_uuid"]
             actions_count = refund_info.get("actions_count", 1)
 
-            # ۱. در صورت تایید استرداد و وجود مبلغ، کیف پول کاربر شارژ می‌شود
+            # Û±. Ø¯Ø± ØµÙˆØ±Øª ØªØ§ÛŒÛŒØ¯ Ø§Ø³ØªØ±Ø¯Ø§Ø¯ Ùˆ ÙˆØ¬ÙˆØ¯ Ù…Ø¨Ù„ØºØŒ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ú©Ø§Ø±Ø¨Ø± Ø´Ø§Ø±Ú˜ Ù…ÛŒâ€ŒØ´ÙˆØ¯
             refund_done = False
             if refund_to_customer and refund_amount > 0 and user_id:
                 try:
-                    desc_text = f"استرداد وجه {refund_percent}٪ بابت انتقال اشتراک «{account_name}» به سطل زباله ({actions_count} مرحله تراکنش/تمدید - آخرین اقدام: {refund_info['time_passed_text']}) توسط {admin_name} - علت: {reason}"
+                    desc_text = f"Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡ {refund_percent}Ùª Ø¨Ø§Ø¨Øª Ø§Ù†ØªÙ‚Ø§Ù„ Ø§Ø´ØªØ±Ø§Ú© Â«{account_name}Â» Ø¨Ù‡ Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡ ({actions_count} Ù…Ø±Ø­Ù„Ù‡ ØªØ±Ø§Ú©Ù†Ø´/ØªÙ…Ø¯ÛŒØ¯ - Ø¢Ø®Ø±ÛŒÙ† Ø§Ù‚Ø¯Ø§Ù…: {refund_info['time_passed_text']}) ØªÙˆØ³Ø· {admin_name} - Ø¹Ù„Øª: {reason}"
                     self.add_wallet_balance(
                         user_id,
                         refund_amount,
@@ -10064,14 +10083,14 @@ class Database:
                 except Exception as ex:
                     logger.error(f"Error adding refund to wallet for user {user_id}: {ex}")
 
-            # ۲. لغو خودکار بسته‌های معلق در صف تمدید این اشتراک
+            # Û². Ù„ØºÙˆ Ø®ÙˆØ¯Ú©Ø§Ø± Ø¨Ø³ØªÙ‡â€ŒÙ‡Ø§ÛŒ Ù…Ø¹Ù„Ù‚ Ø¯Ø± ØµÙ ØªÙ…Ø¯ÛŒØ¯ Ø§ÛŒÙ† Ø§Ø´ØªØ±Ø§Ú©
             cursor.execute("""
                 UPDATE subscription_queue 
-                SET status = 'cancelled', note = 'لغو به علت حذف اشتراک و انتقال به سطل زباله'
+                SET status = 'cancelled', note = 'Ù„ØºÙˆ Ø¨Ù‡ Ø¹Ù„Øª Ø­Ø°Ù Ø§Ø´ØªØ±Ø§Ú© Ùˆ Ø§Ù†ØªÙ‚Ø§Ù„ Ø¨Ù‡ Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡'
                 WHERE subscription_id = ? AND status = 'pending'
             """, (sub_id,))
 
-            # ۳. حذف نرم اشتراک از دیتابیس (انتقال به سطل زباله)
+            # Û³. Ø­Ø°Ù Ù†Ø±Ù… Ø§Ø´ØªØ±Ø§Ú© Ø§Ø² Ø¯ÛŒØªØ§Ø¨ÛŒØ³ (Ø§Ù†ØªÙ‚Ø§Ù„ Ø¨Ù‡ Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡)
             cursor.execute("""
                 UPDATE subscriptions 
                 SET is_deleted = 1, deleted_at = ?, delete_reason = ?, deleted_by = ?, status = 'deleted', updated_at = ?
@@ -10079,13 +10098,13 @@ class Database:
             """, (now, reason, admin_name, now, sub_id))
             conn.commit()
 
-            # ثبت لاگ انتقال به سطل زباله توسط مدیر
+            # Ø«Ø¨Øª Ù„Ø§Ú¯ Ø§Ù†ØªÙ‚Ø§Ù„ Ø¨Ù‡ Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡ ØªÙˆØ³Ø· Ù…Ø¯ÛŒØ±
             try:
                 self.add_system_log(
                     category="admin",
                     action="delete",
-                    title=f"انتقال اشتراک «{account_name}» به سطل زباله",
-                    description=f"اشتراک «{account_name}» توسط {admin_name} با علت «{reason}» به سطل زباله منتقل گردید." + (f" (استرداد وجه: {refund_amount:,} تومان به کیف پول کاربر)" if (refund_done and refund_amount > 0) else ""),
+                    title=f"Ø§Ù†ØªÙ‚Ø§Ù„ Ø§Ø´ØªØ±Ø§Ú© Â«{account_name}Â» Ø¨Ù‡ Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡",
+                    description=f"Ø§Ø´ØªØ±Ø§Ú© Â«{account_name}Â» ØªÙˆØ³Ø· {admin_name} Ø¨Ø§ Ø¹Ù„Øª Â«{reason}Â» Ø¨Ù‡ Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡ Ù…Ù†ØªÙ‚Ù„ Ú¯Ø±Ø¯ÛŒØ¯." + (f" (Ø§Ø³ØªØ±Ø¯Ø§Ø¯ ÙˆØ¬Ù‡: {refund_amount:,} ØªÙˆÙ…Ø§Ù† Ø¨Ù‡ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ú©Ø§Ø±Ø¨Ø±)" if (refund_done and refund_amount > 0) else ""),
                     actor_type="admin",
                     actor_name=admin_name,
                     target_type="subscription",
@@ -10124,7 +10143,7 @@ class Database:
             conn.close()
 
     def get_deleted_subscriptions(self, reseller_id: int = None, sort_by: str = "newest") -> list:
-        """دریافت لیست اشتراک‌های موجود در سطل زباله با پشتیبانی از انواع مرتب‌سازی و محاسبه مهلت ۷ روزه"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒØ³Øª Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒ Ù…ÙˆØ¬ÙˆØ¯ Ø¯Ø± Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡ Ø¨Ø§ Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ Ø§Ø² Ø§Ù†ÙˆØ§Ø¹ Ù…Ø±ØªØ¨â€ŒØ³Ø§Ø²ÛŒ Ùˆ Ù…Ø­Ø§Ø³Ø¨Ù‡ Ù…Ù‡Ù„Øª Û· Ø±ÙˆØ²Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now_dt = get_now_naive()
@@ -10175,7 +10194,7 @@ class Database:
     def restore_subscription(self, sub_id: int, is_reseller: bool = False, reseller_id: int = None, cost: int = 0,
                              new_uuid: str = None, new_start_date: str = None, new_expire_date: str = None,
                              new_data_used: float = None, payment_source: str = "auto") -> dict:
-        """بازگردانی اشتراک از سطل زباله به لیست فعال، به‌روزرسانی مشخصات و کسر هزینه در صورت بازگردانی توسط نماینده"""
+        """Ø¨Ø§Ø²Ú¯Ø±Ø¯Ø§Ù†ÛŒ Ø§Ø´ØªØ±Ø§Ú© Ø§Ø² Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡ Ø¨Ù‡ Ù„ÛŒØ³Øª ÙØ¹Ø§Ù„ØŒ Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ù…Ø´Ø®ØµØ§Øª Ùˆ Ú©Ø³Ø± Ù‡Ø²ÛŒÙ†Ù‡ Ø¯Ø± ØµÙˆØ±Øª Ø¨Ø§Ø²Ú¯Ø±Ø¯Ø§Ù†ÛŒ ØªÙˆØ³Ø· Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -10183,25 +10202,25 @@ class Database:
             cursor.execute("SELECT * FROM subscriptions WHERE id = ? AND is_deleted = 1", (sub_id,))
             sub = cursor.fetchone()
             if not sub:
-                return {"success": False, "error": "اشتراک در سطل زباله یافت نشد."}
+                return {"success": False, "error": "Ø§Ø´ØªØ±Ø§Ú© Ø¯Ø± Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡ ÛŒØ§ÙØª Ù†Ø´Ø¯."}
 
             sub_dict = dict(sub)
-            account_name = sub_dict.get("account_name", "بدون نام")
+            account_name = sub_dict.get("account_name", "Ø¨Ø¯ÙˆÙ† Ù†Ø§Ù…")
             chosen_source = "wallet"
 
-            # اگر نماینده بازگردانی می‌کند و هزینه دارد، کسر از کیف پول یا اعتبار
+            # Ø§Ú¯Ø± Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø§Ø²Ú¯Ø±Ø¯Ø§Ù†ÛŒ Ù…ÛŒâ€ŒÚ©Ù†Ø¯ Ùˆ Ù‡Ø²ÛŒÙ†Ù‡ Ø¯Ø§Ø±Ø¯ØŒ Ú©Ø³Ø± Ø§Ø² Ú©ÛŒÙ Ù¾ÙˆÙ„ ÛŒØ§ Ø§Ø¹ØªØ¨Ø§Ø±
             if is_reseller and reseller_id and cost > 0:
                 deduct_res = self.deduct_reseller_balance(
                     reseller_id=reseller_id,
                     amount=cost,
-                    plan_name=sub_dict.get("plan_name") or "پلن اشتراک",
+                    plan_name=sub_dict.get("plan_name") or "Ù¾Ù„Ù† Ø§Ø´ØªØ±Ø§Ú©",
                     account_name=account_name,
-                    description=f"هزینه بازگردانی اشتراک «{account_name}» از سطل زباله",
+                    description=f"Ù‡Ø²ÛŒÙ†Ù‡ Ø¨Ø§Ø²Ú¯Ø±Ø¯Ø§Ù†ÛŒ Ø§Ø´ØªØ±Ø§Ú© Â«{account_name}Â» Ø§Ø² Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡",
                     payment_source=payment_source,
                     subscription_id=sub_id
                 )
                 if not deduct_res.get("success"):
-                    return {"success": False, "error": deduct_res.get("error", "موجودی یا اعتبار کافی نیست.")}
+                    return {"success": False, "error": deduct_res.get("error", "Ù…ÙˆØ¬ÙˆØ¯ÛŒ ÛŒØ§ Ø§Ø¹ØªØ¨Ø§Ø± Ú©Ø§ÙÛŒ Ù†ÛŒØ³Øª.")}
                 chosen_source = deduct_res.get("payment_source", "wallet")
 
             update_sql = """
@@ -10232,16 +10251,16 @@ class Database:
             cursor.execute(update_sql, tuple(params))
             conn.commit()
 
-            # ثبت لاگ بازگردانی
+            # Ø«Ø¨Øª Ù„Ø§Ú¯ Ø¨Ø§Ø²Ú¯Ø±Ø¯Ø§Ù†ÛŒ
             try:
                 self.add_system_log(
                     category="admin" if not is_reseller else "reseller",
                     action="restore",
-                    title=f"بازگردانی اشتراک «{account_name}» از سطل زباله",
-                    description=f"اشتراک «{account_name}» از سطل زباله بازیابی و مجدداً در پنل هیدیفای فعال گردید." + (f" (هزینه کسر شده: {cost:,} تومان)" if cost > 0 else ""),
+                    title=f"Ø¨Ø§Ø²Ú¯Ø±Ø¯Ø§Ù†ÛŒ Ø§Ø´ØªØ±Ø§Ú© Â«{account_name}Â» Ø§Ø² Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡",
+                    description=f"Ø§Ø´ØªØ±Ø§Ú© Â«{account_name}Â» Ø§Ø² Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡ Ø¨Ø§Ø²ÛŒØ§Ø¨ÛŒ Ùˆ Ù…Ø¬Ø¯Ø¯Ø§Ù‹ Ø¯Ø± Ù¾Ù†Ù„ Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ ÙØ¹Ø§Ù„ Ú¯Ø±Ø¯ÛŒØ¯." + (f" (Ù‡Ø²ÛŒÙ†Ù‡ Ú©Ø³Ø± Ø´Ø¯Ù‡: {cost:,} ØªÙˆÙ…Ø§Ù†)" if cost > 0 else ""),
                     actor_type="admin" if not is_reseller else "reseller",
                     actor_id=reseller_id if is_reseller else None,
-                    actor_name=f"نماینده #{reseller_id}" if is_reseller else "مدیر سیستم",
+                    actor_name=f"Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ #{reseller_id}" if is_reseller else "Ù…Ø¯ÛŒØ± Ø³ÛŒØ³ØªÙ…",
                     target_type="subscription",
                     target_id=sub_id,
                     target_name=account_name,
@@ -10270,7 +10289,7 @@ class Database:
             conn.close()
 
     def purge_subscription_permanently(self, sub_id: int, reseller_id: int = None) -> dict:
-        """حذف فیزیکی و قطعی اشتراک از سطل زباله دیتابیس"""
+        """Ø­Ø°Ù ÙÛŒØ²ÛŒÚ©ÛŒ Ùˆ Ù‚Ø·Ø¹ÛŒ Ø§Ø´ØªØ±Ø§Ú© Ø§Ø² Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡ Ø¯ÛŒØªØ§Ø¨ÛŒØ³"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -10280,23 +10299,23 @@ class Database:
                 cursor.execute("SELECT * FROM subscriptions WHERE id = ? AND is_deleted = 1", (sub_id,))
             row = cursor.fetchone()
             if not row:
-                return {"success": False, "error": "اشتراک در سطل زباله یافت نشد."}
+                return {"success": False, "error": "Ø§Ø´ØªØ±Ø§Ú© Ø¯Ø± Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡ ÛŒØ§ÙØª Ù†Ø´Ø¯."}
 
             sub_dict = dict(row)
             sub_name = sub_dict.get("account_name") or f"Sub #{sub_id}"
             cursor.execute("DELETE FROM subscriptions WHERE id = ?", (sub_id,))
             conn.commit()
 
-            # ثبت لاگ حذف دائمی دستی
+            # Ø«Ø¨Øª Ù„Ø§Ú¯ Ø­Ø°Ù Ø¯Ø§Ø¦Ù…ÛŒ Ø¯Ø³ØªÛŒ
             try:
                 self.add_system_log(
                     category="admin" if not reseller_id else "reseller",
                     action="purge",
-                    title=f"حذف دائمی اشتراک «{sub_name}» از سطل زباله",
-                    description=f"اشتراک «{sub_name}» به صورت دستی برای همیشه از سطل زباله دیتابیس و پنل هیدیفای حذف گردید.",
+                    title=f"Ø­Ø°Ù Ø¯Ø§Ø¦Ù…ÛŒ Ø§Ø´ØªØ±Ø§Ú© Â«{sub_name}Â» Ø§Ø² Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡",
+                    description=f"Ø§Ø´ØªØ±Ø§Ú© Â«{sub_name}Â» Ø¨Ù‡ ØµÙˆØ±Øª Ø¯Ø³ØªÛŒ Ø¨Ø±Ø§ÛŒ Ù‡Ù…ÛŒØ´Ù‡ Ø§Ø² Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡ Ø¯ÛŒØªØ§Ø¨ÛŒØ³ Ùˆ Ù¾Ù†Ù„ Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ Ø­Ø°Ù Ú¯Ø±Ø¯ÛŒØ¯.",
                     actor_type="admin" if not reseller_id else "reseller",
                     actor_id=reseller_id,
-                    actor_name=f"نماینده #{reseller_id}" if reseller_id else "مدیر سیستم",
+                    actor_name=f"Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ #{reseller_id}" if reseller_id else "Ù…Ø¯ÛŒØ± Ø³ÛŒØ³ØªÙ…",
                     target_type="subscription",
                     target_id=sub_id,
                     target_name=sub_name,
@@ -10324,7 +10343,7 @@ class Database:
             conn.close()
 
     def purge_expired_deleted_subscriptions(self, hiddify_purge_func=None) -> int:
-        """پاکسازی دائمی خودکار اشتراک‌های سپری‌شده از مهلت ۷ روزه از سرور هیدیفای و حذف قطعی از دیتابیس"""
+        """Ù¾Ø§Ú©Ø³Ø§Ø²ÛŒ Ø¯Ø§Ø¦Ù…ÛŒ Ø®ÙˆØ¯Ú©Ø§Ø± Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒ Ø³Ù¾Ø±ÛŒâ€ŒØ´Ø¯Ù‡ Ø§Ø² Ù…Ù‡Ù„Øª Û· Ø±ÙˆØ²Ù‡ Ø§Ø² Ø³Ø±ÙˆØ± Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ Ùˆ Ø­Ø°Ù Ù‚Ø·Ø¹ÛŒ Ø§Ø² Ø¯ÛŒØªØ§Ø¨ÛŒØ³"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now_dt = get_now_naive()
@@ -10350,7 +10369,7 @@ class Database:
                             hiddify_purge_func(uuid_val)
                         except Exception as e:
                             logger.warning(f"Error purging user {uuid_val} from Hiddify: {e}")
-                    # حذف قطعی از دیتابیس جهت تمیز شدن کامل سطل زباله
+                    # Ø­Ø°Ù Ù‚Ø·Ø¹ÛŒ Ø§Ø² Ø¯ÛŒØªØ§Ø¨ÛŒØ³ Ø¬Ù‡Øª ØªÙ…ÛŒØ² Ø´Ø¯Ù† Ú©Ø§Ù…Ù„ Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡
                     cursor.execute("DELETE FROM subscriptions WHERE id = ?", (r["id"],))
                     purged_count += 1
                     purged_items.append({
@@ -10363,18 +10382,18 @@ class Database:
                     })
             conn.commit()
 
-            # ثبت لاگ دقیق خودکار سیستم در صورت پاکسازی اشتراک‌ها
+            # Ø«Ø¨Øª Ù„Ø§Ú¯ Ø¯Ù‚ÛŒÙ‚ Ø®ÙˆØ¯Ú©Ø§Ø± Ø³ÛŒØ³ØªÙ… Ø¯Ø± ØµÙˆØ±Øª Ù¾Ø§Ú©Ø³Ø§Ø²ÛŒ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§
             if purged_count > 0:
                 try:
                     self.add_system_log(
                         category="system",
                         action="purge",
-                        title=f"پاکسازی خودکار {purged_count} اشتراک از سرور هیدیفای",
-                        description=f"تعداد {purged_count} اشتراک به علت انقضای مهلت {restore_window} روزه سطل زباله، به صورت خودکار توسط پردازش پس‌زمینه سیستم از پنل هیدیفای و دیتابیس حذف دائمی شدند.",
+                        title=f"Ù¾Ø§Ú©Ø³Ø§Ø²ÛŒ Ø®ÙˆØ¯Ú©Ø§Ø± {purged_count} Ø§Ø´ØªØ±Ø§Ú© Ø§Ø² Ø³Ø±ÙˆØ± Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ",
+                        description=f"ØªØ¹Ø¯Ø§Ø¯ {purged_count} Ø§Ø´ØªØ±Ø§Ú© Ø¨Ù‡ Ø¹Ù„Øª Ø§Ù†Ù‚Ø¶Ø§ÛŒ Ù…Ù‡Ù„Øª {restore_window} Ø±ÙˆØ²Ù‡ Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡ØŒ Ø¨Ù‡ ØµÙˆØ±Øª Ø®ÙˆØ¯Ú©Ø§Ø± ØªÙˆØ³Ø· Ù¾Ø±Ø¯Ø§Ø²Ø´ Ù¾Ø³â€ŒØ²Ù…ÛŒÙ†Ù‡ Ø³ÛŒØ³ØªÙ… Ø§Ø² Ù¾Ù†Ù„ Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ Ùˆ Ø¯ÛŒØªØ§Ø¨ÛŒØ³ Ø­Ø°Ù Ø¯Ø§Ø¦Ù…ÛŒ Ø´Ø¯Ù†Ø¯.",
                         actor_type="system",
-                        actor_name="سیستم (پاکسازی خودکار ۷ روزه)",
+                        actor_name="Ø³ÛŒØ³ØªÙ… (Ù¾Ø§Ú©Ø³Ø§Ø²ÛŒ Ø®ÙˆØ¯Ú©Ø§Ø± Û· Ø±ÙˆØ²Ù‡)",
                         target_type="subscription",
-                        target_name=f"{purged_count} اشتراک سطل زباله",
+                        target_name=f"{purged_count} Ø§Ø´ØªØ±Ø§Ú© Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡",
                         details={
                             "purged_count": purged_count,
                             "restore_window_days": restore_window,
@@ -10390,10 +10409,10 @@ class Database:
             conn.close()
         return purged_count
 
-    # ─── مدیریت قبوض بدهی نمایندگان (Reseller Debts & Invoices) ───
+    # â”€â”€â”€ Ù…Ø¯ÛŒØ±ÛŒØª Ù‚Ø¨ÙˆØ¶ Ø¨Ø¯Ù‡ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† (Reseller Debts & Invoices) â”€â”€â”€
 
     def add_reseller_debt(self, reseller_id: int, title: str, amount: int, due_date: str = None, notes: str = None, created_by: str = "admin") -> dict:
-        """ثبت قبض بدهی جدید یا بدهی معوق قبلی برای نماینده (مجزا از اعتبار خرید)"""
+        """Ø«Ø¨Øª Ù‚Ø¨Ø¶ Ø¨Ø¯Ù‡ÛŒ Ø¬Ø¯ÛŒØ¯ ÛŒØ§ Ø¨Ø¯Ù‡ÛŒ Ù…Ø¹ÙˆÙ‚ Ù‚Ø¨Ù„ÛŒ Ø¨Ø±Ø§ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (Ù…Ø¬Ø²Ø§ Ø§Ø² Ø§Ø¹ØªØ¨Ø§Ø± Ø®Ø±ÛŒØ¯)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -10412,7 +10431,7 @@ class Database:
             conn.close()
 
     def get_reseller_debts(self, reseller_id: int = None) -> list:
-        """دریافت لیست کلیه قبوض و مطالبات بدهی نمایندگان"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒØ³Øª Ú©Ù„ÛŒÙ‡ Ù‚Ø¨ÙˆØ¶ Ùˆ Ù…Ø·Ø§Ù„Ø¨Ø§Øª Ø¨Ø¯Ù‡ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù†"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -10439,7 +10458,7 @@ class Database:
             conn.close()
 
     def get_reseller_debt(self, debt_id: int) -> Optional[dict]:
-        """دریافت جزئیات یک قبض بدهی مشخص"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø¬Ø²Ø¦ÛŒØ§Øª ÛŒÚ© Ù‚Ø¨Ø¶ Ø¨Ø¯Ù‡ÛŒ Ù…Ø´Ø®Øµ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -10458,7 +10477,7 @@ class Database:
             conn.close()
 
     def update_reseller_debt_status(self, debt_id: int, status: str, remaining_amount: int = None) -> dict:
-        """به‌روزرسانی وضعیت تسویه یا پرداخت جزئی قبض بدهی"""
+        """Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ ÙˆØ¶Ø¹ÛŒØª ØªØ³ÙˆÛŒÙ‡ ÛŒØ§ Ù¾Ø±Ø¯Ø§Ø®Øª Ø¬Ø²Ø¦ÛŒ Ù‚Ø¨Ø¶ Ø¨Ø¯Ù‡ÛŒ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -10474,10 +10493,10 @@ class Database:
         finally:
             conn.close()
 
-    # ─── متدهای تکمیلی ربات اختصاصی و هوش مالی نماینده (White-Label & Multi-Bot) ───
+    # â”€â”€â”€ Ù…ØªØ¯Ù‡Ø§ÛŒ ØªÚ©Ù…ÛŒÙ„ÛŒ Ø±Ø¨Ø§Øª Ø§Ø®ØªØµØ§ØµÛŒ Ùˆ Ù‡ÙˆØ´ Ù…Ø§Ù„ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (White-Label & Multi-Bot) â”€â”€â”€
 
     def get_active_reseller_bots(self) -> list:
-        """لیست تمام نمایندگان دارای ربات فعال و توکن معتبر"""
+        """Ù„ÛŒØ³Øª ØªÙ…Ø§Ù… Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† Ø¯Ø§Ø±Ø§ÛŒ Ø±Ø¨Ø§Øª ÙØ¹Ø§Ù„ Ùˆ ØªÙˆÚ©Ù† Ù…Ø¹ØªØ¨Ø±"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -10496,7 +10515,7 @@ class Database:
             conn.close()
 
     def get_reseller_by_bot_token(self, bot_token: str):
-        """جستجوی نماینده بر اساس توکن ربات"""
+        """Ø¬Ø³ØªØ¬ÙˆÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø± Ø§Ø³Ø§Ø³ ØªÙˆÚ©Ù† Ø±Ø¨Ø§Øª"""
         if not bot_token:
             return None
         conn = self.get_connection()
@@ -10512,7 +10531,7 @@ class Database:
             conn.close()
 
     def get_reseller_by_telegram_id(self, telegram_id: int):
-        """جستجوی نماینده بر اساس تلگرام آیدی"""
+        """Ø¬Ø³ØªØ¬ÙˆÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø± Ø§Ø³Ø§Ø³ ØªÙ„Ú¯Ø±Ø§Ù… Ø¢ÛŒØ¯ÛŒ"""
         if not telegram_id:
             return None
         conn = self.get_connection()
@@ -10528,7 +10547,7 @@ class Database:
             conn.close()
 
     def update_reseller_bot_settings(self, reseller_id: int, **kwargs) -> dict:
-        """بروزرسانی مشخصات و تنظیمات ربات اختصاصی نماینده"""
+        """Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ù…Ø´Ø®ØµØ§Øª Ùˆ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø±Ø¨Ø§Øª Ø§Ø®ØªØµØ§ØµÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -10560,7 +10579,7 @@ class Database:
             conn.close()
 
     def get_reseller_bot_admins(self, reseller_id: int) -> list:
-        """دریافت لیست ادمین‌های ربات تلگرام نماینده با تفکیک نقش‌ها"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒØ³Øª Ø§Ø¯Ù…ÛŒÙ†â€ŒÙ‡Ø§ÛŒ Ø±Ø¨Ø§Øª ØªÙ„Ú¯Ø±Ø§Ù… Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø§ ØªÙÚ©ÛŒÚ© Ù†Ù‚Ø´â€ŒÙ‡Ø§"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -10576,13 +10595,13 @@ class Database:
                 except Exception:
                     admins = []
 
-            # اگر ادمین‌های ذخیره‌شده خالی بود اما telegram_id نماینده وجود داشت
+            # Ø§Ú¯Ø± Ø§Ø¯Ù…ÛŒÙ†â€ŒÙ‡Ø§ÛŒ Ø°Ø®ÛŒØ±Ù‡â€ŒØ´Ø¯Ù‡ Ø®Ø§Ù„ÛŒ Ø¨ÙˆØ¯ Ø§Ù…Ø§ telegram_id Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ ÙˆØ¬ÙˆØ¯ Ø¯Ø§Ø´Øª
             main_tg = row["telegram_id"]
             if main_tg and not any(str(a.get("telegram_id")) == str(main_tg) for a in admins):
                 admins.insert(0, {
                     "telegram_id": main_tg,
                     "role": "main",
-                    "title": "ادمین اصلی (پروفایل)"
+                    "title": "Ø§Ø¯Ù…ÛŒÙ† Ø§ØµÙ„ÛŒ (Ù¾Ø±ÙˆÙØ§ÛŒÙ„)"
                 })
             return admins
         except Exception as e:
@@ -10593,9 +10612,9 @@ class Database:
 
     def is_reseller_bot_admin(self, reseller_id: int, telegram_id: int) -> tuple:
         """
-        بررسی آیا کاربر ادمین ربات این نماینده است یا خیر؟
-        بازگشت: (is_admin: bool, role: str)
-        نقش‌ها: main (ادمین اصلی), finance (مدیر مالی), support (پشتیبان), sales (فروش)
+        Ø¨Ø±Ø±Ø³ÛŒ Ø¢ÛŒØ§ Ú©Ø§Ø±Ø¨Ø± Ø§Ø¯Ù…ÛŒÙ† Ø±Ø¨Ø§Øª Ø§ÛŒÙ† Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø§Ø³Øª ÛŒØ§ Ø®ÛŒØ±ØŸ
+        Ø¨Ø§Ø²Ú¯Ø´Øª: (is_admin: bool, role: str)
+        Ù†Ù‚Ø´â€ŒÙ‡Ø§: main (Ø§Ø¯Ù…ÛŒÙ† Ø§ØµÙ„ÛŒ), finance (Ù…Ø¯ÛŒØ± Ù…Ø§Ù„ÛŒ), support (Ù¾Ø´ØªÛŒØ¨Ø§Ù†), sales (ÙØ±ÙˆØ´)
         """
         if not telegram_id or not reseller_id:
             return False, ""
@@ -10606,7 +10625,7 @@ class Database:
             if str(a.get("telegram_id", "")).strip() == tg_str:
                 return True, a.get("role", "main")
 
-        # بررسی فیلد مستقیم telegram_id در resellers
+        # Ø¨Ø±Ø±Ø³ÛŒ ÙÛŒÙ„Ø¯ Ù…Ø³ØªÙ‚ÛŒÙ… telegram_id Ø¯Ø± resellers
         reseller = self.get_reseller(reseller_id)
         if reseller and reseller.get("telegram_id") and str(reseller["telegram_id"]).strip() == tg_str:
             return True, "main"
@@ -10614,7 +10633,7 @@ class Database:
         return False, ""
 
     def is_telegram_user_any_reseller_admin(self, telegram_id: int) -> tuple:
-        """بررسی آیا کاربر تلگرام ادمین ربات هر نماینده‌ای در سیستم هست یا نه"""
+        """Ø¨Ø±Ø±Ø³ÛŒ Ø¢ÛŒØ§ Ú©Ø§Ø±Ø¨Ø± ØªÙ„Ú¯Ø±Ø§Ù… Ø§Ø¯Ù…ÛŒÙ† Ø±Ø¨Ø§Øª Ù‡Ø± Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡â€ŒØ§ÛŒ Ø¯Ø± Ø³ÛŒØ³ØªÙ… Ù‡Ø³Øª ÛŒØ§ Ù†Ù‡"""
         if not telegram_id:
             return False, 0, ""
         conn = self.get_connection()
@@ -10642,7 +10661,7 @@ class Database:
             conn.close()
 
     def get_reseller_users(self, reseller_id: int) -> list:
-        """دریافت لیست کاربران اختصاصی ثبت‌نام شده از ربات یا کانال نماینده"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒØ³Øª Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ø§Ø®ØªØµØ§ØµÛŒ Ø«Ø¨Øªâ€ŒÙ†Ø§Ù… Ø´Ø¯Ù‡ Ø§Ø² Ø±Ø¨Ø§Øª ÛŒØ§ Ú©Ø§Ù†Ø§Ù„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -10662,33 +10681,33 @@ class Database:
             conn.close()
 
     def get_reseller_financial_summary(self, reseller_id: int) -> dict:
-        """محاسبه دقیق سود و تراز مالی نماینده (سود حاصل از تخفیف همکاری نسبت به فروش خرد)"""
+        """Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø¯Ù‚ÛŒÙ‚ Ø³ÙˆØ¯ Ùˆ ØªØ±Ø§Ø² Ù…Ø§Ù„ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (Ø³ÙˆØ¯ Ø­Ø§ØµÙ„ Ø§Ø² ØªØ®ÙÛŒÙ Ù‡Ù…Ú©Ø§Ø±ÛŒ Ù†Ø³Ø¨Øª Ø¨Ù‡ ÙØ±ÙˆØ´ Ø®Ø±Ø¯)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            # ۱. مجموع خریدهای عمده نماینده
+            # Û±. Ù…Ø¬Ù…ÙˆØ¹ Ø®Ø±ÛŒØ¯Ù‡Ø§ÛŒ Ø¹Ù…Ø¯Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
             cursor.execute("""
                 SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions 
                 WHERE reseller_id = ? AND type IN ('purchase', 'purchase_credit', 'renewal', 'renew', 'renew_credit')
             """, (reseller_id,))
             total_wholesale_cost = cursor.fetchone()[0] or 0
 
-            # ۲. مجموع واریزی‌ها / شارژ کیف‌پول
+            # Û². Ù…Ø¬Ù…ÙˆØ¹ ÙˆØ§Ø±ÛŒØ²ÛŒâ€ŒÙ‡Ø§ / Ø´Ø§Ø±Ú˜ Ú©ÛŒÙâ€ŒÙ¾ÙˆÙ„
             cursor.execute("""
                 SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions 
                 WHERE reseller_id = ? AND type = 'deposit'
             """, (reseller_id,))
             total_deposited = cursor.fetchone()[0] or 0
 
-            # ۳. تخفیف و موجودی نماینده
+            # Û³. ØªØ®ÙÛŒÙ Ùˆ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
             cursor.execute("SELECT discount_percent, balance, name, username FROM resellers WHERE id = ?", (reseller_id,))
             r_info = cursor.fetchone()
             discount_pct = r_info["discount_percent"] if (r_info and r_info["discount_percent"] is not None) else 20
             current_balance = r_info["balance"] if r_info else 0
-            reseller_name = r_info["name"] if r_info else "همکار"
+            reseller_name = r_info["name"] if r_info else "Ù‡Ù…Ú©Ø§Ø±"
             reseller_uname = r_info["username"] if r_info else None
 
-            # ۴. محاسبه سود و ارزش ریالی فروش (بر اساس حاشیه سود ثبت‌شده یا تخمین تخفیف)
+            # Û´. Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø³ÙˆØ¯ Ùˆ Ø§Ø±Ø²Ø´ Ø±ÛŒØ§Ù„ÛŒ ÙØ±ÙˆØ´ (Ø¨Ø± Ø§Ø³Ø§Ø³ Ø­Ø§Ø´ÛŒÙ‡ Ø³ÙˆØ¯ Ø«Ø¨Øªâ€ŒØ´Ø¯Ù‡ ÛŒØ§ ØªØ®Ù…ÛŒÙ† ØªØ®ÙÛŒÙ)
             cursor.execute("""
                 SELECT COALESCE(SUM(profit_margin), 0), COALESCE(SUM(selling_price), 0)
                 FROM reseller_transactions
@@ -10753,7 +10772,7 @@ class Database:
             conn.close()
 
     def get_reseller_by_domain(self, domain: str):
-        """یافتن نماینده بر اساس دامنه اختصاصی پنل یا دامنه اختصاصی آموزش‌ها"""
+        """ÛŒØ§ÙØªÙ† Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø± Ø§Ø³Ø§Ø³ Ø¯Ø§Ù…Ù†Ù‡ Ø§Ø®ØªØµØ§ØµÛŒ Ù¾Ù†Ù„ ÛŒØ§ Ø¯Ø§Ù…Ù†Ù‡ Ø§Ø®ØªØµØ§ØµÛŒ Ø¢Ù…ÙˆØ²Ø´â€ŒÙ‡Ø§"""
         if not domain:
             return None
         clean_domain = domain.split(":")[0].strip().lower()
@@ -10773,7 +10792,7 @@ class Database:
             conn.close()
 
     def update_reseller_branding(self, reseller_id: int, **kwargs) -> dict:
-        """بروزرسانی مشخصات هویت بصری، لوگو، دامنه و عنوان فروشگاه نماینده"""
+        """Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ù…Ø´Ø®ØµØ§Øª Ù‡ÙˆÛŒØª Ø¨ØµØ±ÛŒØŒ Ù„ÙˆÚ¯ÙˆØŒ Ø¯Ø§Ù…Ù†Ù‡ Ùˆ Ø¹Ù†ÙˆØ§Ù† ÙØ±ÙˆØ´Ú¯Ø§Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -10789,7 +10808,7 @@ class Database:
             for k, v in kwargs.items():
                 if k in allowed:
                     val = v.strip() if isinstance(v, str) else v
-                    # دامنه‌ها در صورت خالی بودن باید None (معادل NULL در دیتابیس) ذخیره شوند تا تداخل ایندکس یونیک رخ ندهد
+                    # Ø¯Ø§Ù…Ù†Ù‡â€ŒÙ‡Ø§ Ø¯Ø± ØµÙˆØ±Øª Ø®Ø§Ù„ÛŒ Ø¨ÙˆØ¯Ù† Ø¨Ø§ÛŒØ¯ None (Ù…Ø¹Ø§Ø¯Ù„ NULL Ø¯Ø± Ø¯ÛŒØªØ§Ø¨ÛŒØ³) Ø°Ø®ÛŒØ±Ù‡ Ø´ÙˆÙ†Ø¯ ØªØ§ ØªØ¯Ø§Ø®Ù„ Ø§ÛŒÙ†Ø¯Ú©Ø³ ÛŒÙˆÙ†ÛŒÚ© Ø±Ø® Ù†Ø¯Ù‡Ø¯
                     if k in ("custom_domain", "tutorial_domain"):
                         val = val.lower() if isinstance(val, str) else val
                         if not val:
@@ -10805,17 +10824,17 @@ class Database:
         except sqlite3.IntegrityError as e:
             err_str = str(e).lower()
             if "custom_domain" in err_str or "tutorial_domain" in err_str:
-                return {"success": False, "error": "این دامنه قبلاً توسط نماینده دیگری ثبت شده است."}
-            return {"success": False, "error": f"خطای یکتایی اطلاعات: {e}"}
+                return {"success": False, "error": "Ø§ÛŒÙ† Ø¯Ø§Ù…Ù†Ù‡ Ù‚Ø¨Ù„Ø§Ù‹ ØªÙˆØ³Ø· Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¯ÛŒÚ¯Ø±ÛŒ Ø«Ø¨Øª Ø´Ø¯Ù‡ Ø§Ø³Øª."}
+            return {"success": False, "error": f"Ø®Ø·Ø§ÛŒ ÛŒÚ©ØªØ§ÛŒÛŒ Ø§Ø·Ù„Ø§Ø¹Ø§Øª: {e}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
 
-    # ─── مدیریت کارت‌های بانکی اختصاصی نماینده (Reseller Cards) ───
+    # â”€â”€â”€ Ù…Ø¯ÛŒØ±ÛŒØª Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ÛŒ Ø¨Ø§Ù†Ú©ÛŒ Ø§Ø®ØªØµØ§ØµÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (Reseller Cards) â”€â”€â”€
 
     def get_reseller_cards(self, reseller_id: int) -> list:
-        """لیست تمام کارت‌های بانکی ثبت‌شده توسط نماینده"""
+        """Ù„ÛŒØ³Øª ØªÙ…Ø§Ù… Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ÛŒ Ø¨Ø§Ù†Ú©ÛŒ Ø«Ø¨Øªâ€ŒØ´Ø¯Ù‡ ØªÙˆØ³Ø· Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -10828,7 +10847,7 @@ class Database:
             conn.close()
 
     def get_active_reseller_card(self, reseller_id: int, incoming_amount: int = 0):
-        """دریافت کارت بانکی فعال نماینده جهت پرداخت با روتاتور هوشمند پیش‌فرض و پشتیبان بر اساس سقف روزانه"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ú©Ø§Ø±Øª Ø¨Ø§Ù†Ú©ÛŒ ÙØ¹Ø§Ù„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¬Ù‡Øª Ù¾Ø±Ø¯Ø§Ø®Øª Ø¨Ø§ Ø±ÙˆØªØ§ØªÙˆØ± Ù‡ÙˆØ´Ù…Ù†Ø¯ Ù¾ÛŒØ´â€ŒÙØ±Ø¶ Ùˆ Ù¾Ø´ØªÛŒØ¨Ø§Ù† Ø¨Ø± Ø§Ø³Ø§Ø³ Ø³Ù‚Ù Ø±ÙˆØ²Ø§Ù†Ù‡"""
         best = self.get_best_active_card(owner_type="reseller", reseller_id=reseller_id, incoming_amount=incoming_amount)
         if best:
             return best
@@ -10836,7 +10855,7 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            # بازگشت به کارت ثبت‌شده در پروفایل اصلی نماینده
+            # Ø¨Ø§Ø²Ú¯Ø´Øª Ø¨Ù‡ Ú©Ø§Ø±Øª Ø«Ø¨Øªâ€ŒØ´Ø¯Ù‡ Ø¯Ø± Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ø§ØµÙ„ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
             cursor.execute("SELECT card_number, card_holder, bank_name FROM resellers WHERE id = ?", (reseller_id,))
             r_row = cursor.fetchone()
             if r_row and r_row["card_number"]:
@@ -10844,7 +10863,7 @@ class Database:
                     "id": 0,
                     "card_number": r_row["card_number"],
                     "card_holder": r_row.get("card_holder") or "",
-                    "bank_name": r_row.get("bank_name") or "بانک",
+                    "bank_name": r_row.get("bank_name") or "Ø¨Ø§Ù†Ú©",
                     "daily_limit": 50000000,
                     "is_default": 1,
                     "is_backup": 0,
@@ -10860,7 +10879,8 @@ class Database:
     def add_reseller_card(self, reseller_id: int, card_number: str, card_holder: str, bank_name: str,
                           daily_limit: int = 50000000, is_default: int = 0, is_backup: int = 0,
                           initial_balance: int = 0, shaba_number: str = None,
-                          account_number: str = None, notes: str = None) -> dict:
+                          account_number: str = None, notes: str = None,
+                          account_type: str = "bank_card", profit_percent: int = 0, assigned_to: str = None) -> dict:
         """افزودن کارت بانکی جدید برای نماینده با موجودی اولیه و نقش کارت"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -10880,24 +10900,25 @@ class Database:
                 INSERT INTO reseller_cards (
                     reseller_id, card_number, card_holder, bank_name, daily_limit,
                     is_active, created_at, is_default, is_backup, balance,
-                    initial_balance, shaba_number, account_number, notes
-                ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)
+                    initial_balance, shaba_number, account_number, notes, account_type, profit_percent, assigned_to
+                ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 reseller_id, card_number.strip(), card_holder.strip(), bank_name.strip(),
                 daily_limit, now, def_val, back_val, init_bal, init_bal,
                 shaba_number.strip() if shaba_number else None,
                 account_number.strip() if account_number else None,
-                notes.strip() if notes else None
+                notes.strip() if notes else None,
+                account_type, int(profit_percent or 0), assigned_to.strip() if assigned_to else None
             ))
             card_id = cursor.lastrowid
 
-            # در صورت وجود موجودی اولیه، ثبت سند افتتاحیه در دفتر ریزتراکنش‌ها
+            # Ø¯Ø± ØµÙˆØ±Øª ÙˆØ¬ÙˆØ¯ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ø§ÙˆÙ„ÛŒÙ‡ØŒ Ø«Ø¨Øª Ø³Ù†Ø¯ Ø§Ù ØªØªØ§Ø­ÛŒÙ‡ Ø¯Ø± Ø¯Ù ØªØ± Ø±ÛŒØ²ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§
             if init_bal > 0:
                 cursor.execute("""
                     INSERT INTO card_transactions (
                         card_id, owner_type, reseller_id, type, amount, balance_after,
                         category, title, description, tracking_code, ref_type, created_by, created_at
-                    ) VALUES (?, 'reseller', ?, 'deposit', ?, ?, 'manual_deposit', 'ثبت موجودی اولیه کارت', 'افتتاح و تعیین موجودی اولیه کارت بانکی نماینده', 'INIT', 'card_init', 'system', ?)
+                    ) VALUES (?, 'reseller', ?, 'deposit', ?, ?, 'manual_deposit', 'Ø«Ø¨Øª Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ø§ÙˆÙ„ÛŒÙ‡ Ú©Ø§Ø±Øª', 'Ø§ÙØªØªØ§Ø­ Ùˆ ØªØ¹ÛŒÛŒÙ† Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ø§ÙˆÙ„ÛŒÙ‡ Ú©Ø§Ø±Øª Ø¨Ø§Ù†Ú©ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡', 'INIT', 'card_init', 'system', ?)
                 """, (card_id, reseller_id, init_bal, init_bal, now))
 
             conn.commit()
@@ -10908,7 +10929,7 @@ class Database:
             conn.close()
 
     def delete_reseller_card(self, card_id: int, reseller_id: int) -> dict:
-        """حذف کارت بانکی نماینده"""
+        """Ø­Ø°Ù Ú©Ø§Ø±Øª Ø¨Ø§Ù†Ú©ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -10921,14 +10942,14 @@ class Database:
             conn.close()
 
     def toggle_reseller_card(self, card_id: int, reseller_id: int) -> dict:
-        """فعال یا غیرفعال کردن کارت بانکی نماینده"""
+        """ÙØ¹Ø§Ù„ ÛŒØ§ ØºÛŒØ±ÙØ¹Ø§Ù„ Ú©Ø±Ø¯Ù† Ú©Ø§Ø±Øª Ø¨Ø§Ù†Ú©ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute("SELECT is_active FROM reseller_cards WHERE id = ? AND reseller_id = ?", (card_id, reseller_id))
             row = cursor.fetchone()
             if not row:
-                return {"success": False, "error": "کارت یافت نشد."}
+                return {"success": False, "error": "Ú©Ø§Ø±Øª ÛŒØ§ÙØª Ù†Ø´Ø¯."}
             new_st = 0 if row["is_active"] else 1
             cursor.execute("UPDATE reseller_cards SET is_active = ? WHERE id = ? AND reseller_id = ?", (new_st, card_id, reseller_id))
             conn.commit()
@@ -10938,10 +10959,10 @@ class Database:
         finally:
             conn.close()
 
-    # ─── مدیریت کدهای تخفیف اختصاصی نماینده (Reseller Discount Codes) ───
+    # â”€â”€â”€ Ù…Ø¯ÛŒØ±ÛŒØª Ú©Ø¯Ù‡Ø§ÛŒ ØªØ®ÙÛŒÙ Ø§Ø®ØªØµØ§ØµÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (Reseller Discount Codes) â”€â”€â”€
 
     def get_reseller_discount_codes(self, reseller_id: int) -> list:
-        """لیست کدهای تخفیف تعریف‌شده توسط نماینده"""
+        """Ù„ÛŒØ³Øª Ú©Ø¯Ù‡Ø§ÛŒ ØªØ®ÙÛŒÙ ØªØ¹Ø±ÛŒÙâ€ŒØ´Ø¯Ù‡ ØªÙˆØ³Ø· Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -10955,7 +10976,7 @@ class Database:
 
     def create_reseller_discount_code(self, reseller_id: int, code: str, discount_percent: int = 0,
                                       discount_amount: int = 0, max_uses: int = 0, valid_until: str = None) -> dict:
-        """ایجاد کد تخفیف جدید برای مشتریان نماینده"""
+        """Ø§ÛŒØ¬Ø§Ø¯ Ú©Ø¯ ØªØ®ÙÛŒÙ Ø¬Ø¯ÛŒØ¯ Ø¨Ø±Ø§ÛŒ Ù…Ø´ØªØ±ÛŒØ§Ù† Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -10963,7 +10984,7 @@ class Database:
             clean_code = code.strip().upper()
             cursor.execute("SELECT id FROM reseller_discount_codes WHERE reseller_id = ? AND code = ?", (reseller_id, clean_code))
             if cursor.fetchone():
-                return {"success": False, "error": "این کد تخفیف قبلاً برای شما ثبت شده است."}
+                return {"success": False, "error": "Ø§ÛŒÙ† Ú©Ø¯ ØªØ®ÙÛŒÙ Ù‚Ø¨Ù„Ø§Ù‹ Ø¨Ø±Ø§ÛŒ Ø´Ù…Ø§ Ø«Ø¨Øª Ø´Ø¯Ù‡ Ø§Ø³Øª."}
 
             cursor.execute("""
                 INSERT INTO reseller_discount_codes 
@@ -10979,7 +11000,7 @@ class Database:
             conn.close()
 
     def validate_reseller_discount_code(self, reseller_id: int, code: str, order_amount: int = 0) -> dict:
-        """اعتبارسنجی و محاسبه تخفیف برای مشتری نماینده"""
+        """Ø§Ø¹ØªØ¨Ø§Ø±Ø³Ù†Ø¬ÛŒ Ùˆ Ù…Ø­Ø§Ø³Ø¨Ù‡ ØªØ®ÙÛŒÙ Ø¨Ø±Ø§ÛŒ Ù…Ø´ØªØ±ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -10989,17 +11010,17 @@ class Database:
             """, (reseller_id, code.strip().upper()))
             row = cursor.fetchone()
             if not row:
-                return {"valid": False, "error": "کد تخفیف نامعتبر است."}
+                return {"valid": False, "error": "Ú©Ø¯ ØªØ®ÙÛŒÙ Ù†Ø§Ù…Ø¹ØªØ¨Ø± Ø§Ø³Øª."}
 
             d = dict(row)
             if d.get("max_uses", 0) > 0 and d.get("used_count", 0) >= d.get("max_uses"):
-                return {"valid": False, "error": "ظرفیت استفاده از این کد تخفیف به پایان رسیده است."}
+                return {"valid": False, "error": "Ø¸Ø±ÙÛŒØª Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø§Ø² Ø§ÛŒÙ† Ú©Ø¯ ØªØ®ÙÛŒÙ Ø¨Ù‡ Ù¾Ø§ÛŒØ§Ù† Ø±Ø³ÛŒØ¯Ù‡ Ø§Ø³Øª."}
 
             if d.get("valid_until"):
                 try:
                     exp = datetime.fromisoformat(d["valid_until"])
                     if datetime.now() > exp:
-                        return {"valid": False, "error": "مهلت استفاده از این کد تخفیف منقضی شده است."}
+                        return {"valid": False, "error": "Ù…Ù‡Ù„Øª Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø§Ø² Ø§ÛŒÙ† Ú©Ø¯ ØªØ®ÙÛŒÙ Ù…Ù†Ù‚Ø¶ÛŒ Ø´Ø¯Ù‡ Ø§Ø³Øª."}
                 except Exception:
                     pass
 
@@ -11023,7 +11044,7 @@ class Database:
             conn.close()
 
     def delete_reseller_discount_code(self, code_id: int, reseller_id: int) -> dict:
-        """حذف کد تخفیف نماینده"""
+        """Ø­Ø°Ù Ú©Ø¯ ØªØ®ÙÛŒÙ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -11036,14 +11057,14 @@ class Database:
             conn.close()
 
     def toggle_reseller_discount_code(self, code_id: int, reseller_id: int) -> dict:
-        """فعال یا غیرفعال کردن کد تخفیف نماینده"""
+        """ÙØ¹Ø§Ù„ ÛŒØ§ ØºÛŒØ±ÙØ¹Ø§Ù„ Ú©Ø±Ø¯Ù† Ú©Ø¯ ØªØ®ÙÛŒÙ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute("SELECT is_active FROM reseller_discount_codes WHERE id = ? AND reseller_id = ?", (code_id, reseller_id))
             row = cursor.fetchone()
             if not row:
-                return {"success": False, "error": "کد تخفیف یافت نشد."}
+                return {"success": False, "error": "Ú©Ø¯ ØªØ®ÙÛŒÙ ÛŒØ§ÙØª Ù†Ø´Ø¯."}
             new_st = 0 if row["is_active"] else 1
             cursor.execute("UPDATE reseller_discount_codes SET is_active = ? WHERE id = ? AND reseller_id = ?", (new_st, code_id, reseller_id))
             conn.commit()
@@ -11053,10 +11074,10 @@ class Database:
         finally:
             conn.close()
 
-    # ─── مدیریت تیم و زیرمدیران نماینده (Reseller Team & Sub-Admins) ───
+    # â”€â”€â”€ Ù…Ø¯ÛŒØ±ÛŒØª ØªÛŒÙ… Ùˆ Ø²ÛŒØ±Ù…Ø¯ÛŒØ±Ø§Ù† Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (Reseller Team & Sub-Admins) â”€â”€â”€
 
     def get_reseller_team_members(self, reseller_id: int) -> list:
-        """لیست مدیران و کارمندان زیرمجموعه نماینده"""
+        """Ù„ÛŒØ³Øª Ù…Ø¯ÛŒØ±Ø§Ù† Ùˆ Ú©Ø§Ø±Ù…Ù†Ø¯Ø§Ù† Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -11069,7 +11090,7 @@ class Database:
             conn.close()
 
     def get_reseller_team_with_sessions(self, reseller_id: int) -> list:
-        """لیست کادر و زیرمدیران نماینده به همراه وضعیت آنلاین، آخرین ورود و نشست‌های فعال"""
+        """Ù„ÛŒØ³Øª Ú©Ø§Ø¯Ø± Ùˆ Ø²ÛŒØ±Ù…Ø¯ÛŒØ±Ø§Ù† Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ù‡ Ù‡Ù…Ø±Ø§Ù‡ ÙˆØ¶Ø¹ÛŒØª Ø¢Ù†Ù„Ø§ÛŒÙ†ØŒ Ø¢Ø®Ø±ÛŒÙ† ÙˆØ±ÙˆØ¯ Ùˆ Ù†Ø´Ø³Øªâ€ŒÙ‡Ø§ÛŒ ÙØ¹Ø§Ù„"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -11078,10 +11099,10 @@ class Database:
             
             for m in members:
                 m_id = m["id"]
-                # وضعیت زنده آنلاین بودن
+                # ÙˆØ¶Ø¹ÛŒØª Ø²Ù†Ø¯Ù‡ Ø¢Ù†Ù„Ø§ÛŒÙ† Ø¨ÙˆØ¯Ù†
                 m["is_online"] = self.is_user_online("reseller_subadmin", m_id)
                 
-                # دریافت سوابق ورود و نشست‌های این کاربر
+                # Ø¯Ø±ÛŒØ§ÙØª Ø³ÙˆØ§Ø¨Ù‚ ÙˆØ±ÙˆØ¯ Ùˆ Ù†Ø´Ø³Øªâ€ŒÙ‡Ø§ÛŒ Ø§ÛŒÙ† Ú©Ø§Ø±Ø¨Ø±
                 cursor.execute("""
                     SELECT * FROM login_logs 
                     WHERE user_type = 'reseller_subadmin' AND user_id = ? 
@@ -11090,11 +11111,11 @@ class Database:
                 logs = [dict(r) for r in cursor.fetchall()]
                 m["login_logs"] = logs
                 
-                # تفکیک نشست‌های فعال جاری
+                # ØªÙÚ©ÛŒÚ© Ù†Ø´Ø³Øªâ€ŒÙ‡Ø§ÛŒ ÙØ¹Ø§Ù„ Ø¬Ø§Ø±ÛŒ
                 m["active_sessions"] = [l for l in logs if l.get("is_active")]
                 m["active_sessions_count"] = len(m["active_sessions"])
                 
-                # اطلاعات آخرین نشست / فعالیت
+                # Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ø¢Ø®Ø±ÛŒÙ† Ù†Ø´Ø³Øª / ÙØ¹Ø§Ù„ÛŒØª
                 if logs:
                     m["last_login"] = logs[0].get("login_at")
                     m["last_active"] = logs[0].get("last_active_at")
@@ -11118,7 +11139,7 @@ class Database:
     def create_reseller_team_member(self, reseller_id: int, username: str, password: str,
                                     display_name: str, role: str = "support", phone: str = None,
                                     share_percent: int = 0) -> dict:
-        """ایجاد مدیر زیرمجموعه جدید برای نماینده با نقش‌های manager2, partner, finance, support"""
+        """Ø§ÛŒØ¬Ø§Ø¯ Ù…Ø¯ÛŒØ± Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡ Ø¬Ø¯ÛŒØ¯ Ø¨Ø±Ø§ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø§ Ù†Ù‚Ø´â€ŒÙ‡Ø§ÛŒ manager2, partner, finance, support"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -11128,7 +11149,7 @@ class Database:
             clean_username = username.strip().lower()
             cursor.execute("SELECT id FROM admin_users WHERE LOWER(username) = ?", (clean_username,))
             if cursor.fetchone():
-                return {"success": False, "error": "این نام کاربری قبلاً در سیستم ثبت شده است."}
+                return {"success": False, "error": "Ø§ÛŒÙ† Ù†Ø§Ù… Ú©Ø§Ø±Ø¨Ø±ÛŒ Ù‚Ø¨Ù„Ø§Ù‹ Ø¯Ø± Ø³ÛŒØ³ØªÙ… Ø«Ø¨Øª Ø´Ø¯Ù‡ Ø§Ø³Øª."}
 
             permissions = "all"
             if role == "support":
@@ -11139,7 +11160,7 @@ class Database:
                 permissions = "all"
                 if role in ("manager2", "manager", "co_admin"):
                     role = "manager2"
-                    share_percent = 0  # مدیر دو عنوان شریک ندارد و درصد سود شریک برای آن صفر است
+                    share_percent = 0  # Ù…Ø¯ÛŒØ± Ø¯Ùˆ Ø¹Ù†ÙˆØ§Ù† Ø´Ø±ÛŒÚ© Ù†Ø¯Ø§Ø±Ø¯ Ùˆ Ø¯Ø±ØµØ¯ Ø³ÙˆØ¯ Ø´Ø±ÛŒÚ© Ø¨Ø±Ø§ÛŒ Ø¢Ù† ØµÙØ± Ø§Ø³Øª
 
             cursor.execute("""
                 INSERT INTO admin_users 
@@ -11155,7 +11176,7 @@ class Database:
             conn.close()
 
     def update_reseller_team_member(self, member_id: int, reseller_id: int, **kwargs) -> dict:
-        """ویرایش مشخصات مدیر زیرمجموعه نماینده"""
+        """ÙˆÛŒØ±Ø§ÛŒØ´ Ù…Ø´Ø®ØµØ§Øª Ù…Ø¯ÛŒØ± Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -11181,7 +11202,7 @@ class Database:
             conn.close()
 
     def delete_reseller_team_member(self, member_id: int, reseller_id: int) -> dict:
-        """حذف مدیر زیرمجموعه نماینده"""
+        """Ø­Ø°Ù Ù…Ø¯ÛŒØ± Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -11194,14 +11215,14 @@ class Database:
             conn.close()
 
     def toggle_reseller_team_member(self, member_id: int, reseller_id: int) -> dict:
-        """تغییر وضعیت فعال/غیرفعال مدیر زیرمجموعه نماینده"""
+        """ØªØºÛŒÛŒØ± ÙˆØ¶Ø¹ÛŒØª ÙØ¹Ø§Ù„/ØºÛŒØ±ÙØ¹Ø§Ù„ Ù…Ø¯ÛŒØ± Ø²ÛŒØ±Ù…Ø¬Ù…ÙˆØ¹Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute("SELECT is_active FROM admin_users WHERE id = ? AND reseller_id = ?", (member_id, reseller_id))
             row = cursor.fetchone()
             if not row:
-                return {"success": False, "error": "مدیر یافت نشد."}
+                return {"success": False, "error": "Ù…Ø¯ÛŒØ± ÛŒØ§ÙØª Ù†Ø´Ø¯."}
             new_st = 0 if row["is_active"] else 1
             cursor.execute("UPDATE admin_users SET is_active = ? WHERE id = ? AND reseller_id = ?", (new_st, member_id, reseller_id))
             conn.commit()
@@ -11211,12 +11232,12 @@ class Database:
         finally:
             conn.close()
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # ارسال پیام هدفمند به دسته‌های کاربری (Broadcast Engine)
-    # ═══════════════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ø§Ø±Ø³Ø§Ù„ Ù¾ÛŒØ§Ù… Ù‡Ø¯ÙÙ…Ù†Ø¯ Ø¨Ù‡ Ø¯Ø³ØªÙ‡â€ŒÙ‡Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±ÛŒ (Broadcast Engine)
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def get_target_broadcast_users(self, group_type: str = "all") -> list:
-        """استخراج لیست تلگرام آیدی کاربران بر اساس فیلتر هدفمند"""
+        """Ø§Ø³ØªØ®Ø±Ø§Ø¬ Ù„ÛŒØ³Øª ØªÙ„Ú¯Ø±Ø§Ù… Ø¢ÛŒØ¯ÛŒ Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ø¨Ø± Ø§Ø³Ø§Ø³ ÙÛŒÙ„ØªØ± Ù‡Ø¯ÙÙ…Ù†Ø¯"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
@@ -11248,12 +11269,12 @@ class Database:
         conn.close()
         return [r[0] for r in rows if r[0]]
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # مدیریت کارت‌های بانکی مقصد (Smart Card Rotator)
-    # ═══════════════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ù…Ø¯ÛŒØ±ÛŒØª Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ÛŒ Ø¨Ø§Ù†Ú©ÛŒ Ù…Ù‚ØµØ¯ (Smart Card Rotator)
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def get_all_bank_cards(self):
-        """لیست تمام کارت‌های بانکی مدیریت مرتب‌شده بر اساس اولویت پیش‌فرض و پشتیبان"""
+        """Ù„ÛŒØ³Øª ØªÙ…Ø§Ù… Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ÛŒ Ø¨Ø§Ù†Ú©ÛŒ Ù…Ø¯ÛŒØ±ÛŒØª Ù…Ø±ØªØ¨â€ŒØ´Ø¯Ù‡ Ø¨Ø± Ø§Ø³Ø§Ø³ Ø§ÙˆÙ„ÙˆÛŒØª Ù¾ÛŒØ´â€ŒÙØ±Ø¶ Ùˆ Ù¾Ø´ØªÛŒØ¨Ø§Ù†"""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM bank_cards ORDER BY is_default DESC, is_backup DESC, id DESC")
@@ -11262,7 +11283,7 @@ class Database:
         return [dict(r) for r in rows]
 
     def get_active_bank_cards(self):
-        """لیست کارت‌های بانکی فعال مدیریت"""
+        """Ù„ÛŒØ³Øª Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ÛŒ Ø¨Ø§Ù†Ú©ÛŒ ÙØ¹Ø§Ù„ Ù…Ø¯ÛŒØ±ÛŒØª"""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM bank_cards WHERE is_active=1 ORDER BY is_default DESC, is_backup DESC, id DESC")
@@ -11273,8 +11294,9 @@ class Database:
     def add_bank_card(self, card_number: str, card_holder: str, bank_name: str,
                       daily_limit: int = 50000000, is_default: int = 0, is_backup: int = 0,
                       initial_balance: int = 0, shaba_number: str = None,
-                      account_number: str = None, notes: str = None):
-        """افزودن کارت بانکی جدید برای مدیریت با موجودی اولیه و نقش کارت"""
+                      account_number: str = None, notes: str = None,
+                      account_type: str = "bank_card", profit_percent: int = 0, assigned_to: str = None):
+        """افزودن کارت بانکی ادمین"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -11283,7 +11305,7 @@ class Database:
             def_val = 1 if is_default else 0
             back_val = 1 if (is_backup and not def_val) else 0
 
-            # اگر کارت جدید پیش‌فرض باشد، کارت‌های قبلی را از پیش‌فرض خارج می‌کنیم
+            # اگر کارت جدÛŒد پÛŒشâ€Œفرض باشد، کارتâ€Œهای قبلÛŒ را از پÛŒشâ€Œفرض خارج میâ€ŒکنÛŒم
             if def_val:
                 cursor.execute("UPDATE bank_cards SET is_default = 0")
             elif back_val:
@@ -11293,24 +11315,25 @@ class Database:
                 INSERT INTO bank_cards (
                     card_number, card_holder, bank_name, daily_limit, is_active,
                     created_at, is_default, is_backup, balance, initial_balance,
-                    shaba_number, account_number, notes
-                ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)
+                    shaba_number, account_number, notes, account_type, profit_percent, assigned_to
+                ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 card_number.strip(), card_holder.strip(), bank_name.strip(),
                 daily_limit, now, def_val, back_val, init_bal, init_bal,
                 shaba_number.strip() if shaba_number else None,
                 account_number.strip() if account_number else None,
-                notes.strip() if notes else None
+                notes.strip() if notes else None,
+                account_type, int(profit_percent or 0), assigned_to.strip() if assigned_to else None
             ))
             card_id = cursor.lastrowid
 
-            # ثبت سند افتتاحیه در صورت وجود موجودی اولیه
+            # Ø«Ø¨Øª Ø³Ù†Ø¯ Ø§ÙØªØªØ§Ø­ÛŒÙ‡ Ø¯Ø± ØµÙˆØ±Øª ÙˆØ¬ÙˆØ¯ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ø§ÙˆÙ„ÛŒÙ‡
             if init_bal > 0:
                 cursor.execute("""
                     INSERT INTO card_transactions (
                         card_id, owner_type, reseller_id, type, amount, balance_after,
                         category, title, description, tracking_code, ref_type, created_by, created_at
-                    ) VALUES (?, 'admin', 0, 'deposit', ?, ?, 'manual_deposit', 'ثبت موجودی اولیه کارت', 'افتتاح و تعیین موجودی اولیه کارت بانکی مدیریت', 'INIT', 'card_init', 'system', ?)
+                    ) VALUES (?, 'admin', 0, 'deposit', ?, ?, 'manual_deposit', 'Ø«Ø¨Øª Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ø§ÙˆÙ„ÛŒÙ‡ Ú©Ø§Ø±Øª', 'Ø§ÙØªØªØ§Ø­ Ùˆ ØªØ¹ÛŒÛŒÙ† Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ø§ÙˆÙ„ÛŒÙ‡ Ú©Ø§Ø±Øª Ø¨Ø§Ù†Ú©ÛŒ Ù…Ø¯ÛŒØ±ÛŒØª', 'INIT', 'card_init', 'system', ?)
                 """, (card_id, init_bal, init_bal, now))
 
             conn.commit()
@@ -11325,7 +11348,7 @@ class Database:
             conn.close()
 
     def toggle_bank_card(self, card_id: int, is_active: bool):
-        """فعال یا غیرفعال کردن کارت"""
+        """ÙØ¹Ø§Ù„ ÛŒØ§ ØºÛŒØ±ÙØ¹Ø§Ù„ Ú©Ø±Ø¯Ù† Ú©Ø§Ø±Øª"""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("UPDATE bank_cards SET is_active=? WHERE id=?", (1 if is_active else 0, card_id))
@@ -11338,7 +11361,7 @@ class Database:
         return {"success": True}
 
     def delete_bank_card(self, card_id: int):
-        """حذف کارت بانکی"""
+        """Ø­Ø°Ù Ú©Ø§Ø±Øª Ø¨Ø§Ù†Ú©ÛŒ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM bank_cards WHERE id=?", (card_id,))
@@ -11350,13 +11373,13 @@ class Database:
             pass
         return {"success": True}
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # سیستم جامع حسابداری شناور و روتاتور هوشمند کارت‌ها (Card Rotator & Ledger)
-    # ═══════════════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ø³ÛŒØ³ØªÙ… Ø¬Ø§Ù…Ø¹ Ø­Ø³Ø§Ø¨Ø¯Ø§Ø±ÛŒ Ø´Ù†Ø§ÙˆØ± Ùˆ Ø±ÙˆØªØ§ØªÙˆØ± Ù‡ÙˆØ´Ù…Ù†Ø¯ Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ (Card Rotator & Ledger)
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def get_card_daily_volume(self, card_id: int, owner_type: str = "admin", date_str: str = None,
                                owner_id: int = 0, reseller_id: int = 0, **kwargs) -> int:
-        """محاسبه مجموع واریزی‌های یک کارت در روز جاری جهت کنترل سقف روزانه"""
+        """Ù…Ø­Ø§Ø³Ø¨Ù‡ Ù…Ø¬Ù…ÙˆØ¹ ÙˆØ§Ø±ÛŒØ²ÛŒâ€ŒÙ‡Ø§ÛŒ ÛŒÚ© Ú©Ø§Ø±Øª Ø¯Ø± Ø±ÙˆØ² Ø¬Ø§Ø±ÛŒ Ø¬Ù‡Øª Ú©Ù†ØªØ±Ù„ Ø³Ù‚Ù Ø±ÙˆØ²Ø§Ù†Ù‡"""
         if not date_str:
             date_str = get_now_naive().strftime("%Y-%m-%d")
         conn = self.get_connection()
@@ -11372,11 +11395,11 @@ class Database:
 
     def get_best_active_card(self, owner_type: str = "admin", reseller_id: int = 0, incoming_amount: int = 0) -> Optional[dict]:
         """
-        انتخاب هوشمند کارت بانکی جهت ارسال به مشتری:
-        ۱. اولویت اول: کارت پیش‌فرض (در صورت داشتن ظرفیت سقف روزانه)
-        ۲. اولویت دوم: کارت پشتیبان (در صورت پر شدن سقف کارت پیش‌فرض)
-        ۳. اولویت سوم: سایر کارت‌های فعال با ظرفیت باقیمانده
-        ۴. برگشت به کارت پیش‌فرض/پشتیبان در صورت پر بودن تمام سقف‌ها
+        Ø§Ù†ØªØ®Ø§Ø¨ Ù‡ÙˆØ´Ù…Ù†Ø¯ Ú©Ø§Ø±Øª Ø¨Ø§Ù†Ú©ÛŒ Ø¬Ù‡Øª Ø§Ø±Ø³Ø§Ù„ Ø¨Ù‡ Ù…Ø´ØªØ±ÛŒ:
+        Û±. Ø§ÙˆÙ„ÙˆÛŒØª Ø§ÙˆÙ„: Ú©Ø§Ø±Øª Ù¾ÛŒØ´â€ŒÙØ±Ø¶ (Ø¯Ø± ØµÙˆØ±Øª Ø¯Ø§Ø´ØªÙ† Ø¸Ø±ÙÛŒØª Ø³Ù‚Ù Ø±ÙˆØ²Ø§Ù†Ù‡)
+        Û². Ø§ÙˆÙ„ÙˆÛŒØª Ø¯ÙˆÙ…: Ú©Ø§Ø±Øª Ù¾Ø´ØªÛŒØ¨Ø§Ù† (Ø¯Ø± ØµÙˆØ±Øª Ù¾Ø± Ø´Ø¯Ù† Ø³Ù‚Ù Ú©Ø§Ø±Øª Ù¾ÛŒØ´â€ŒÙØ±Ø¶)
+        Û³. Ø§ÙˆÙ„ÙˆÛŒØª Ø³ÙˆÙ…: Ø³Ø§ÛŒØ± Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ÛŒ ÙØ¹Ø§Ù„ Ø¨Ø§ Ø¸Ø±ÙÛŒØª Ø¨Ø§Ù‚ÛŒÙ…Ø§Ù†Ø¯Ù‡
+        Û´. Ø¨Ø±Ú¯Ø´Øª Ø¨Ù‡ Ú©Ø§Ø±Øª Ù¾ÛŒØ´â€ŒÙØ±Ø¶/Ù¾Ø´ØªÛŒØ¨Ø§Ù† Ø¯Ø± ØµÙˆØ±Øª Ù¾Ø± Ø¨ÙˆØ¯Ù† ØªÙ…Ø§Ù… Ø³Ù‚Ùâ€ŒÙ‡Ø§
         """
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -11397,7 +11420,7 @@ class Database:
                             "id": 0,
                             "card_number": r_row["card_number"],
                             "card_holder": r_row.get("card_holder") or "",
-                            "bank_name": r_row.get("bank_name") or "بانک",
+                            "bank_name": r_row.get("bank_name") or "Ø¨Ø§Ù†Ú©",
                             "daily_limit": 50000000,
                             "is_default": 1,
                             "is_backup": 0,
@@ -11428,30 +11451,30 @@ class Database:
                     if has_capacity:
                         other_eligible_cards.append(c)
 
-            # ۱. بررسی کارت پیش‌فرض
+            # Û±. Ø¨Ø±Ø±Ø³ÛŒ Ú©Ø§Ø±Øª Ù¾ÛŒØ´â€ŒÙØ±Ø¶
             if default_card:
                 def_limit = default_card.get("daily_limit") or 50000000
                 if (default_card["daily_volume_today"] + incoming_amount) <= def_limit:
                     return default_card
 
-            # ۲. بررسی کارت پشتیبان (چون پیش‌فرض پر شده یا تعریف نشده)
+            # Û². Ø¨Ø±Ø±Ø³ÛŒ Ú©Ø§Ø±Øª Ù¾Ø´ØªÛŒØ¨Ø§Ù† (Ú†ÙˆÙ† Ù¾ÛŒØ´â€ŒÙØ±Ø¶ Ù¾Ø± Ø´Ø¯Ù‡ ÛŒØ§ ØªØ¹Ø±ÛŒÙ Ù†Ø´Ø¯Ù‡)
             if backup_card:
                 back_limit = backup_card.get("daily_limit") or 50000000
                 if (backup_card["daily_volume_today"] + incoming_amount) <= back_limit:
                     return backup_card
 
-            # ۳. سایر کارت‌های فعال با ظرفیت آزاد
+            # Û³. Ø³Ø§ÛŒØ± Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ÛŒ ÙØ¹Ø§Ù„ Ø¨Ø§ Ø¸Ø±ÙÛŒØª Ø¢Ø²Ø§Ø¯
             if other_eligible_cards:
                 return other_eligible_cards[0]
 
-            # ۴. در صورت پر بودن تمام کارت‌ها، کارت پیش‌فرض یا اولین کارت فعال را برگشت می‌دهیم
+            # Û´. Ø¯Ø± ØµÙˆØ±Øª Ù¾Ø± Ø¨ÙˆØ¯Ù† ØªÙ…Ø§Ù… Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ØŒ Ú©Ø§Ø±Øª Ù¾ÛŒØ´â€ŒÙØ±Ø¶ ÛŒØ§ Ø§ÙˆÙ„ÛŒÙ† Ú©Ø§Ø±Øª ÙØ¹Ø§Ù„ Ø±Ø§ Ø¨Ø±Ú¯Ø´Øª Ù…ÛŒâ€ŒØ¯Ù‡ÛŒÙ…
             return default_card or backup_card or rows[0]
         finally:
             conn.close()
 
     def set_card_role(self, card_id: int, role: str, owner_type: str = "admin", reseller_id: int = 0) -> dict:
         """
-        تنظیم نقش کارت (پیش‌فرض، پشتیبان، عادی)
+        ØªÙ†Ø¸ÛŒÙ… Ù†Ù‚Ø´ Ú©Ø§Ø±Øª (Ù¾ÛŒØ´â€ŒÙØ±Ø¶ØŒ Ù¾Ø´ØªÛŒØ¨Ø§Ù†ØŒ Ø¹Ø§Ø¯ÛŒ)
         role: 'default', 'backup', 'normal'
         """
         table = "bank_cards" if owner_type == "admin" else "reseller_cards"
@@ -11477,12 +11500,12 @@ class Database:
             conn.close()
 
     def update_card_info(self, card_id: int, owner_type: str = "admin", **kwargs) -> dict:
-        """ویرایش مشخصات، اطلاعات شبا و تنظیم مانده حساب کارت"""
+        """ÙˆÛŒØ±Ø§ÛŒØ´ Ù…Ø´Ø®ØµØ§ØªØŒ Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ø´Ø¨Ø§ Ùˆ ØªÙ†Ø¸ÛŒÙ… Ù…Ø§Ù†Ø¯Ù‡ Ø­Ø³Ø§Ø¨ Ú©Ø§Ø±Øª"""
         table = "bank_cards" if owner_type == "admin" else "reseller_cards"
-        allowed = ["card_number", "card_holder", "bank_name", "daily_limit", "shaba_number", "account_number", "notes", "initial_balance", "balance"]
+        allowed = ["card_number", "card_holder", "bank_name", "daily_limit", "shaba_number", "account_number", "notes", "initial_balance", "balance", "account_type", "profit_percent", "assigned_to"]
         updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
         if not updates:
-            return {"success": False, "error": "فیلدی برای به‌روزرسانی ارسال نشده است."}
+            return {"success": False, "error": "Ù ÛŒÙ„Ø¯ÛŒ Ø¨Ø±Ø§ÛŒ Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø§Ø±Ø³Ø§Ù„ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª."}
 
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -11503,10 +11526,10 @@ class Database:
                              ref_type: str = None, ref_id: str = None, created_by: str = None,
                              reseller_id: int = 0, owner_id: int = None, actor: str = None, **kwargs) -> dict:
         """
-        ثبت تراکنش واریز/برداشت و به‌روزرسانی آنی مانده حساب شناور کارت
+        Ø«Ø¨Øª ØªØ±Ø§Ú©Ù†Ø´ ÙˆØ§Ø±ÛŒØ²/Ø¨Ø±Ø¯Ø§Ø´Øª Ùˆ Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø¢Ù†ÛŒ Ù…Ø§Ù†Ø¯Ù‡ Ø­Ø³Ø§Ø¨ Ø´Ù†Ø§ÙˆØ± Ú©Ø§Ø±Øª
         """
         if not card_id or int(card_id) <= 0:
-            return {"success": False, "error": "شناسه کارت نامعتبر است."}
+            return {"success": False, "error": "Ø´Ù†Ø§Ø³Ù‡ Ú©Ø§Ø±Øª Ù†Ø§Ù…Ø¹ØªØ¨Ø± Ø§Ø³Øª."}
 
         effective_reseller_id = owner_id if owner_id is not None else reseller_id
         effective_created_by = actor or created_by or "system"
@@ -11521,7 +11544,7 @@ class Database:
             cursor.execute(f"SELECT * FROM {table} WHERE id = ?", (card_id,))
             card_row = cursor.fetchone()
             if not card_row:
-                return {"success": False, "error": "کارت بانکی مورد نظر یافت نشد."}
+                return {"success": False, "error": "Ú©Ø§Ø±Øª Ø¨Ø§Ù†Ú©ÛŒ Ù…ÙˆØ±Ø¯ Ù†Ø¸Ø± ÛŒØ§ÙØª Ù†Ø´Ø¯."}
 
             card = dict(card_row)
             curr_bal = int(card.get("balance") or 0)
@@ -11542,7 +11565,7 @@ class Database:
             """, (
                 card_id, owner_type, effective_reseller_id or card.get("reseller_id", 0),
                 tx_type, amt, new_balance, category,
-                title.strip() if title else ("واریز به کارت" if tx_type == "deposit" else "برداشت از کارت"),
+                title.strip() if title else ("ÙˆØ§Ø±ÛŒØ² Ø¨Ù‡ Ú©Ø§Ø±Øª" if tx_type == "deposit" else "Ø¨Ø±Ø¯Ø§Ø´Øª Ø§Ø² Ú©Ø§Ø±Øª"),
                 description.strip() if description else None,
                 tracking_code.strip() if tracking_code else None,
                 ref_type, str(ref_id) if ref_id else None,
@@ -11550,15 +11573,15 @@ class Database:
             ))
             tx_id = cursor.lastrowid
 
-            # همگام‌سازی با سیستم حسابداری کل (accounting_records) برای مدیریت
+            # Ù‡Ù…Ú¯Ø§Ù…â€ŒØ³Ø§Ø²ÛŒ Ø¨Ø§ Ø³ÛŒØ³ØªÙ… Ø­Ø³Ø§Ø¨Ø¯Ø§Ø±ÛŒ Ú©Ù„ (accounting_records) Ø¨Ø±Ø§ÛŒ Ù…Ø¯ÛŒØ±ÛŒØª
             if owner_type == "admin":
                 cat_map = {
-                    "salary": "حقوق و دستمزد",
-                    "server_cost": "سرور و زیرساخت",
-                    "bank_fee": "کارمزد بانکی",
-                    "withdrawal": "برداشت سود شخصی",
-                    "manual_deposit": "واریز متفرقه",
-                    "other": "سایر هزینه‌ها"
+                    "salary": "Ø­Ù‚ÙˆÙ‚ Ùˆ Ø¯Ø³ØªÙ…Ø²Ø¯",
+                    "server_cost": "Ø³Ø±ÙˆØ± Ùˆ Ø²ÛŒØ±Ø³Ø§Ø®Øª",
+                    "bank_fee": "Ú©Ø§Ø±Ù…Ø²Ø¯ Ø¨Ø§Ù†Ú©ÛŒ",
+                    "withdrawal": "Ø¨Ø±Ø¯Ø§Ø´Øª Ø³ÙˆØ¯ Ø´Ø®ØµÛŒ",
+                    "manual_deposit": "ÙˆØ§Ø±ÛŒØ² Ù…ØªÙØ±Ù‚Ù‡",
+                    "other": "Ø³Ø§ÛŒØ± Ù‡Ø²ÛŒÙ†Ù‡â€ŒÙ‡Ø§"
                 }
                 if tx_type == "withdrawal" and category in cat_map:
                     try:
@@ -11566,7 +11589,7 @@ class Database:
                             INSERT INTO accounting_records 
                             (type, category, title, amount, source, ref_type, ref_id, description, date, created_at)
                             VALUES ('expense', ?, ?, ?, ?, 'card_tx', ?, ?, ?, ?)
-                        """, (cat_map[category], title or cat_map[category], amt, f"card_{card_id}", str(tx_id), description or f"کسر از کارت {card.get('bank_name')} ({card.get('card_number')[-4:]})", now[:10], now))
+                        """, (cat_map[category], title or cat_map[category], amt, f"card_{card_id}", str(tx_id), description or f"Ú©Ø³Ø± Ø§Ø² Ú©Ø§Ø±Øª {card.get('bank_name')} ({card.get('card_number')[-4:]})", now[:10], now))
                     except Exception as e_acc:
                         logger.error(f"Error syncing card withdrawal to accounting: {e_acc}")
                 elif tx_type == "deposit" and category == "manual_deposit":
@@ -11574,8 +11597,8 @@ class Database:
                         cursor.execute("""
                             INSERT INTO accounting_records 
                             (type, category, title, amount, source, ref_type, ref_id, description, date, created_at)
-                            VALUES ('income', 'واریز دستی/متفرقه', ?, ?, ?, 'card_tx', ?, ?, ?, ?)
-                        """, (title or "واریز به حساب", amt, f"card_{card_id}", str(tx_id), description, now[:10], now))
+                            VALUES ('income', 'ÙˆØ§Ø±ÛŒØ² Ø¯Ø³ØªÛŒ/Ù…ØªÙØ±Ù‚Ù‡', ?, ?, ?, 'card_tx', ?, ?, ?, ?)
+                        """, (title or "ÙˆØ§Ø±ÛŒØ² Ø¨Ù‡ Ø­Ø³Ø§Ø¨", amt, f"card_{card_id}", str(tx_id), description, now[:10], now))
                     except Exception as e_acc:
                         logger.error(f"Error syncing card deposit to accounting: {e_acc}")
 
@@ -11590,7 +11613,7 @@ class Database:
     def get_card_details_and_transactions(self, card_id: int, owner_type: str = "admin", limit: int = 150,
                                            category: str = None, tx_type: str = None,
                                            owner_id: int = 0, reseller_id: int = 0, **kwargs) -> dict:
-        """دریافت جزییات کارت، مانده شناور، گردش روز و ریزتراکنش‌های تفکیکی"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø¬Ø²ÛŒÛŒØ§Øª Ú©Ø§Ø±ØªØŒ Ù…Ø§Ù†Ø¯Ù‡ Ø´Ù†Ø§ÙˆØ±ØŒ Ú¯Ø±Ø¯Ø´ Ø±ÙˆØ² Ùˆ Ø±ÛŒØ²ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ ØªÙÚ©ÛŒÚ©ÛŒ"""
         table = "bank_cards" if owner_type == "admin" else "reseller_cards"
         effective_reseller_id = owner_id or reseller_id
         conn = self.get_connection()
@@ -11602,7 +11625,7 @@ class Database:
                 cursor.execute(f"SELECT * FROM {table} WHERE id = ?", (card_id,))
             card_row = cursor.fetchone()
             if not card_row:
-                return {"success": False, "error": "کارت یافت نشد."}
+                return {"success": False, "error": "Ú©Ø§Ø±Øª ÛŒØ§ÙØª Ù†Ø´Ø¯."}
             card = dict(card_row)
 
             query = "SELECT * FROM card_transactions WHERE card_id = ? AND owner_type = ?"
@@ -11652,7 +11675,7 @@ class Database:
 
     def get_cards_financial_summary(self, owner_type: str = "admin", reseller_id: int = 0,
                                     owner_id: int = None, **kwargs) -> dict:
-        """محاسبه شاخص‌های مالی مانده شناور، کل واریزها، مخارج و صندوق نقد"""
+        """Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø´Ø§Ø®Øµâ€ŒÙ‡Ø§ÛŒ Ù…Ø§Ù„ÛŒ Ù…Ø§Ù†Ø¯Ù‡ Ø´Ù†Ø§ÙˆØ±ØŒ Ú©Ù„ ÙˆØ§Ø±ÛŒØ²Ù‡Ø§ØŒ Ù…Ø®Ø§Ø±Ø¬ Ùˆ ØµÙ†Ø¯ÙˆÙ‚ Ù†Ù‚Ø¯"""
         effective_reseller_id = owner_id if owner_id is not None else reseller_id
         table = "bank_cards" if owner_type == "admin" else "reseller_cards"
         owner_filter = "" if owner_type == "admin" else " WHERE reseller_id = ?"
@@ -11715,7 +11738,7 @@ class Database:
     def add_cash_desk_log(self, owner_type: str, owner_id: int, amount: int, tx_type: str = "income",
                           customer_name: str = None, plan_name: str = None, description: str = None,
                           created_by: str = None) -> dict:
-        """ثبت دریافت نقدی در صندوق جهت تسویه بعدی با مدیریت/پنل"""
+        """Ø«Ø¨Øª Ø¯Ø±ÛŒØ§ÙØª Ù†Ù‚Ø¯ÛŒ Ø¯Ø± ØµÙ†Ø¯ÙˆÙ‚ Ø¬Ù‡Øª ØªØ³ÙˆÛŒÙ‡ Ø¨Ø¹Ø¯ÛŒ Ø¨Ø§ Ù…Ø¯ÛŒØ±ÛŒØª/Ù¾Ù†Ù„"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -11734,7 +11757,7 @@ class Database:
 
     def get_cash_desk_logs(self, owner_type: str = "admin", owner_id: int = 0, limit: int = 100,
                            status: str = "all", as_dict: bool = False, **kwargs):
-        """لیست دریافتی‌های نقدی و مانده تسویه نشده صندوق نقد"""
+        """Ù„ÛŒØ³Øª Ø¯Ø±ÛŒØ§ÙØªÛŒâ€ŒÙ‡Ø§ÛŒ Ù†Ù‚Ø¯ÛŒ Ùˆ Ù…Ø§Ù†Ø¯Ù‡ ØªØ³ÙˆÛŒÙ‡ Ù†Ø´Ø¯Ù‡ ØµÙ†Ø¯ÙˆÙ‚ Ù†Ù‚Ø¯"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -11759,7 +11782,7 @@ class Database:
                 if "status" not in r_dict:
                     r_dict["status"] = "settled" if r_dict.get("is_settled") else "pending"
                 if "source" not in r_dict:
-                    r_dict["source"] = r_dict.get("description") or r_dict.get("plan_name") or "دریافت نقدی"
+                    r_dict["source"] = r_dict.get("description") or r_dict.get("plan_name") or "Ø¯Ø±ÛŒØ§ÙØª Ù†Ù‚Ø¯ÛŒ"
                 logs.append(r_dict)
 
             cursor.execute("""
@@ -11790,7 +11813,7 @@ class Database:
     def settle_cash_desk_log(self, log_id: int, settled_by: str = None, owner_type: str = "admin",
                             owner_id: int = 0, target_card_id: int = None, note: str = None,
                             actor: str = None) -> dict:
-        """تسویه سند دریافت نقدی و واریز به کارت مقصد در صورت انتخاب"""
+        """ØªØ³ÙˆÛŒÙ‡ Ø³Ù†Ø¯ Ø¯Ø±ÛŒØ§ÙØª Ù†Ù‚Ø¯ÛŒ Ùˆ ÙˆØ§Ø±ÛŒØ² Ø¨Ù‡ Ú©Ø§Ø±Øª Ù…Ù‚ØµØ¯ Ø¯Ø± ØµÙˆØ±Øª Ø§Ù†ØªØ®Ø§Ø¨"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -11799,10 +11822,10 @@ class Database:
             cursor.execute("SELECT * FROM cash_desk_logs WHERE id = ?", (log_id,))
             row = cursor.fetchone()
             if not row:
-                return {"success": False, "error": "سند صندوق نقدی یافت نشد."}
+                return {"success": False, "error": "Ø³Ù†Ø¯ ØµÙ†Ø¯ÙˆÙ‚ Ù†Ù‚Ø¯ÛŒ ÛŒØ§ÙØª Ù†Ø´Ø¯."}
             log_data = dict(row)
             if log_data.get("is_settled"):
-                return {"success": False, "error": "این سند قبلاً تسویه شده است."}
+                return {"success": False, "error": "Ø§ÛŒÙ† Ø³Ù†Ø¯ Ù‚Ø¨Ù„Ø§Ù‹ ØªØ³ÙˆÛŒÙ‡ Ø´Ø¯Ù‡ Ø§Ø³Øª."}
 
             amount = int(log_data.get("amount", 0))
             cust_name = log_data.get("customer_name") or ""
@@ -11816,7 +11839,7 @@ class Database:
             """, (now, effective_actor, log_id))
             conn.commit()
 
-            # اگر کارت مقصد انتخاب شده باشد، مبلغ نقدی به موجودی کارت واریز می‌شود
+            # Ø§Ú¯Ø± Ú©Ø§Ø±Øª Ù…Ù‚ØµØ¯ Ø§Ù†ØªØ®Ø§Ø¨ Ø´Ø¯Ù‡ Ø¨Ø§Ø´Ø¯ØŒ Ù…Ø¨Ù„Øº Ù†Ù‚Ø¯ÛŒ Ø¨Ù‡ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©Ø§Ø±Øª ÙˆØ§Ø±ÛŒØ² Ù…ÛŒâ€ŒØ´ÙˆØ¯
             if target_card_id:
                 try:
                     self.add_card_transaction(
@@ -11824,9 +11847,9 @@ class Database:
                         owner_type=row_owner_type,
                         amount=amount,
                         tx_type="deposit",
-                        category="تسویه صندوق نقدی",
-                        title=f"واریز تسویه نقدی ({cust_name})" if cust_name else "واریز تسویه صندوق نقدی",
-                        description=note or f"تسویه سند نقدی شماره #{log_id}",
+                        category="ØªØ³ÙˆÛŒÙ‡ ØµÙ†Ø¯ÙˆÙ‚ Ù†Ù‚Ø¯ÛŒ",
+                        title=f"ÙˆØ§Ø±ÛŒØ² ØªØ³ÙˆÛŒÙ‡ Ù†Ù‚Ø¯ÛŒ ({cust_name})" if cust_name else "ÙˆØ§Ø±ÛŒØ² ØªØ³ÙˆÛŒÙ‡ ØµÙ†Ø¯ÙˆÙ‚ Ù†Ù‚Ø¯ÛŒ",
+                        description=note or f"ØªØ³ÙˆÛŒÙ‡ Ø³Ù†Ø¯ Ù†Ù‚Ø¯ÛŒ Ø´Ù…Ø§Ø±Ù‡ #{log_id}",
                         ref_type="cash_settle",
                         ref_id=str(log_id),
                         created_by=effective_actor,
@@ -11841,14 +11864,14 @@ class Database:
         finally:
             conn.close()
 
-    # ═══════════════════════════════════════════════════════════════
-    # سیستم حسابداری و مدیریت مالی پیشرفته (Accounting & Profit/Loss)
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ø³ÛŒØ³ØªÙ… Ø­Ø³Ø§Ø¨Ø¯Ø§Ø±ÛŒ Ùˆ Ù…Ø¯ÛŒØ±ÛŒØª Ù…Ø§Ù„ÛŒ Ù¾ÛŒØ´Ø±ÙØªÙ‡ (Accounting & Profit/Loss)
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def add_accounting_record(self, type: str, category: str, title: str, amount: int,
                               source: str = "manual", ref_type: str = None, ref_id: str = None,
                               description: str = None, date: str = None) -> dict:
-        """ثبت سند جدید درآمد یا هزینه در حسابداری"""
+        """Ø«Ø¨Øª Ø³Ù†Ø¯ Ø¬Ø¯ÛŒØ¯ Ø¯Ø±Ø¢Ù…Ø¯ ÛŒØ§ Ù‡Ø²ÛŒÙ†Ù‡ Ø¯Ø± Ø­Ø³Ø§Ø¨Ø¯Ø§Ø±ÛŒ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now_iso = get_now_iso()
@@ -11877,7 +11900,7 @@ class Database:
             conn.close()
 
     def update_accounting_record(self, record_id: int, edited_by: str = None, **kwargs) -> dict:
-        """ویرایش سند حسابداری توسط مدیر ارشد با ثبت رهگیری کامل"""
+        """ÙˆÛŒØ±Ø§ÛŒØ´ Ø³Ù†Ø¯ Ø­Ø³Ø§Ø¨Ø¯Ø§Ø±ÛŒ ØªÙˆØ³Ø· Ù…Ø¯ÛŒØ± Ø§Ø±Ø´Ø¯ Ø¨Ø§ Ø«Ø¨Øª Ø±Ù‡Ú¯ÛŒØ±ÛŒ Ú©Ø§Ù…Ù„"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now_iso = get_now_iso()
@@ -11885,7 +11908,7 @@ class Database:
             allowed = ["type", "category", "title", "amount", "description", "date"]
             updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
             if not updates:
-                return {"success": False, "error": "داده‌ای برای بروزرسانی ارسال نشده است."}
+                return {"success": False, "error": "Ø¯Ø§Ø¯Ù‡â€ŒØ§ÛŒ Ø¨Ø±Ø§ÛŒ Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø§Ø±Ø³Ø§Ù„ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª."}
 
             updates["is_edited"] = 1
             if edited_by:
@@ -11907,7 +11930,7 @@ class Database:
             conn.close()
 
     def update_admin_debt(self, debt_id: int, edited_by: str = None, **kwargs) -> dict:
-        """ویرایش سابقه تراز بدهی مدیر/شریک توسط مدیر ارشد با برچسب ویرایش"""
+        """ÙˆÛŒØ±Ø§ÛŒØ´ Ø³Ø§Ø¨Ù‚Ù‡ ØªØ±Ø§Ø² Ø¨Ø¯Ù‡ÛŒ Ù…Ø¯ÛŒØ±/Ø´Ø±ÛŒÚ© ØªÙˆØ³Ø· Ù…Ø¯ÛŒØ± Ø§Ø±Ø´Ø¯ Ø¨Ø§ Ø¨Ø±Ú†Ø³Ø¨ ÙˆÛŒØ±Ø§ÛŒØ´"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now_iso = get_now_iso()
@@ -11915,7 +11938,7 @@ class Database:
             allowed = ["total_amount", "share_amount", "debt_amount", "description", "customer_name", "plan_name"]
             updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
             if not updates:
-                return {"success": False, "error": "داده‌ای برای بروزرسانی ارسال نشده است."}
+                return {"success": False, "error": "Ø¯Ø§Ø¯Ù‡â€ŒØ§ÛŒ Ø¨Ø±Ø§ÛŒ Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø§Ø±Ø³Ø§Ù„ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª."}
 
             updates["is_edited"] = 1
             if edited_by:
@@ -11934,7 +11957,7 @@ class Database:
             conn.close()
 
     def delete_accounting_record(self, record_id: int) -> dict:
-        """حذف سند حسابداری"""
+        """Ø­Ø°Ù Ø³Ù†Ø¯ Ø­Ø³Ø§Ø¨Ø¯Ø§Ø±ÛŒ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -11953,7 +11976,7 @@ class Database:
     def get_accounting_records(self, limit: int = 300, type_filter: str = "all",
                                category_filter: str = "all", period: str = "all",
                                search: str = None) -> list:
-        """دریافت لیست اسناد حسابداری با فیلترهای پیشرفته"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒØ³Øª Ø§Ø³Ù†Ø§Ø¯ Ø­Ø³Ø§Ø¨Ø¯Ø§Ø±ÛŒ Ø¨Ø§ ÙÛŒÙ„ØªØ±Ù‡Ø§ÛŒ Ù¾ÛŒØ´Ø±ÙØªÙ‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -11994,6 +12017,164 @@ class Database:
         finally:
             conn.close()
 
+    def get_jalali_monthly_accounting(self, year: int = None) -> list:
+        "گزارش مالی ماه‌های سال جلالی"
+        import jdatetime
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if not year:
+                year = jdatetime.datetime.now().year
+            
+            # Create a list for the 12 months
+            months = [
+                {'month': i, 'name': jdatetime.date.j_months_fa[i-1], 'income': 0, 'expense': 0, 'net': 0}
+                for i in range(1, 13)
+            ]
+
+            # 1. Income from manual records
+            cursor.execute("SELECT amount, date FROM accounting_records WHERE type='income'")
+            for row in cursor.fetchall():
+                try:
+                    dt = jdatetime.datetime.strptime(row['date'][:10].replace('/', '-'), '%Y-%m-%d')
+                except:
+                    continue
+                if dt.year == year:
+                    months[dt.month - 1]['income'] += row['amount']
+
+            # 2. Income from auto tx
+            cursor.execute("SELECT amount, created_at FROM transactions WHERE status IN ('approved', 'completed')")
+            for row in cursor.fetchall():
+                try:
+                    dt = jdatetime.datetime.fromgregorian(datetime=datetime.strptime(row['created_at'][:19], '%Y-%m-%d %H:%M:%S'))
+                except:
+                    continue
+                if dt.year == year:
+                    months[dt.month - 1]['income'] += row['amount']
+
+            # 3. Income from reseller deposits
+            cursor.execute("SELECT amount, created_at FROM reseller_transactions WHERE type='deposit'")
+            for row in cursor.fetchall():
+                try:
+                    dt = jdatetime.datetime.fromgregorian(datetime=datetime.strptime(row['created_at'][:19], '%Y-%m-%d %H:%M:%S'))
+                except:
+                    continue
+                if dt.year == year:
+                    months[dt.month - 1]['income'] += row['amount']
+                    
+            # 4. Income from partner sales
+            cursor.execute("SELECT selling_price as amount, created_at FROM reseller_transactions WHERE type='purchase' AND payment_source='partner'")
+            for row in cursor.fetchall():
+                try:
+                    dt = jdatetime.datetime.fromgregorian(datetime=datetime.strptime(row['created_at'][:19], '%Y-%m-%d %H:%M:%S'))
+                except:
+                    continue
+                if dt.year == year:
+                    months[dt.month - 1]['income'] += row['amount']
+
+            # 5. Expenses
+            cursor.execute("SELECT amount, date FROM accounting_records WHERE type='expense'")
+            for row in cursor.fetchall():
+                try:
+                    dt = jdatetime.datetime.strptime(row['date'][:10].replace('/', '-'), '%Y-%m-%d')
+                except:
+                    continue
+                if dt.year == year:
+                    months[dt.month - 1]['expense'] += row['amount']
+
+            # Calculate Net
+            for m in months:
+                m['net'] = m['income'] - m['expense']
+
+            return months
+        except Exception as e:
+            logger.error(f"Error in get_jalali_monthly_accounting: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_accounting_partners_data(self) -> dict:
+        "اطلاعات شرکا و سهم آن‌ها"
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            # ۱. محاسبه کل درآمد و هزینه‌ها برای تعیین سود خالص کل
+            cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE status IN ('approved', 'completed')")
+            auto_tx_income = cursor.fetchone()[0] or 0
+
+            cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions WHERE type='deposit'")
+            auto_reseller_income = cursor.fetchone()[0] or 0
+
+            cursor.execute("SELECT COALESCE(SUM(selling_price), 0) FROM reseller_transactions WHERE type='purchase' AND payment_source='partner'")
+            partner_income = cursor.fetchone()[0] or 0
+
+            cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM accounting_records WHERE type='income'")
+            manual_income = cursor.fetchone()[0] or 0
+
+            total_income = auto_tx_income + auto_reseller_income + partner_income + manual_income
+
+            cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM accounting_records WHERE type='expense'")
+            total_expense = cursor.fetchone()[0] or 0
+
+            net_profit = total_income - total_expense
+
+            # ۲. دریافت کارت‌های صندوق شرکا
+            cursor.execute("SELECT * FROM bank_cards WHERE account_type='partner_savings'")
+            partner_cards = [dict(r) for r in cursor.fetchall()]
+
+            # دریافت کارت‌های صندوق شرکا از نمایندگان
+            cursor.execute("SELECT * FROM reseller_cards WHERE account_type='partner_savings'")
+            partner_cards.extend([dict(r) for r in cursor.fetchall()])
+
+            partners_data = []
+            total_partner_shares = 0
+            total_partner_paid = 0
+
+            for card in partner_cards:
+                assigned_to = card.get('assigned_to') or card.get('card_holder') or 'نامشخص'
+                profit_pct = card.get('profit_percent') or 0
+                
+                # محاسبه سهم این شریک
+                share_amount = (net_profit * profit_pct) / 100
+                total_partner_shares += share_amount
+                
+                # کل دریافتی این شریک (از طریق این کارت)
+                # در بخش کارت‌ها، واریز به کارت نشان‌دهنده پرداخت سود به شریک است (افزایش موجودی صندوق شریک)
+                table_name = 'bank_cards' if 'reseller_id' not in card else 'reseller_cards'
+                card_id = card['id']
+                cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM card_transactions WHERE card_id=? AND type='deposit'", (card_id,))
+                total_paid = cursor.fetchone()[0] or 0
+                
+                # همچنین برداشت از کارت شریک به معنی پس دادن به سیستم است؟
+                # معمولاً سود شریک به کارت او واریز می‌شود. پس total_paid همین deposits است.
+                total_partner_paid += total_paid
+
+                partners_data.append({
+                    'id': card_id,
+                    'is_reseller_card': 'reseller_id' in card,
+                    'name': assigned_to,
+                    'percent': profit_pct,
+                    'share_amount': share_amount,
+                    'paid_amount': total_paid,
+                    'remaining_amount': share_amount - total_paid,
+                    'card_number': card.get('card_number')
+                })
+
+            return {
+                'total_income': total_income,
+                'total_expense': total_expense,
+                'net_profit': net_profit,
+                'total_partner_shares': total_partner_shares,
+                'total_partner_paid': total_partner_paid,
+                'distributable_profit': net_profit - total_partner_shares,
+                'partners': partners_data
+            }
+        except Exception as e:
+            logger.error(f"Error in get_accounting_partners_data: {e}")
+            return {}
+        finally:
+            conn.close()
+
     def get_accounting_summary(self) -> dict:
         """محاسبه شاخص‌های جامع مالی، حسابرسی مشتریان مدیریت، بسته‌های پیش‌خرید اعتباری و بدهی نمایندگان"""
         conn = self.get_connection()
@@ -12007,22 +12188,26 @@ class Database:
             cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions WHERE type='deposit'")
             auto_reseller_income = cursor.fetchone()[0] or 0
 
+            # درآمدهای شرکا (فروش‌هایی که هزینه کسر نکردند ولی پولش دست شریک است)
+            cursor.execute("SELECT COALESCE(SUM(selling_price), 0) FROM reseller_transactions WHERE type='purchase' AND payment_source='partner'")
+            partner_income = cursor.fetchone()[0] or 0
+
             # ۳. درآمدهای دستی ثبت شده در سیستم حسابداری
             cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM accounting_records WHERE type='income'")
             manual_income = cursor.fetchone()[0] or 0
 
             # کل درآمد ناخالص
-            total_income = auto_tx_income + auto_reseller_income + manual_income
+            total_income = auto_tx_income + auto_reseller_income + partner_income + manual_income
 
             # ۴. کل مخارج و هزینه‌ها
             cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM accounting_records WHERE type='expense'")
             total_expense = cursor.fetchone()[0] or 0
 
-            # ۵. سود خالص و حاشیه سود
+            # Ûµ. Ø³ÙˆØ¯ Ø®Ø§Ù„Øµ Ùˆ Ø­Ø§Ø´ÛŒÙ‡ Ø³ÙˆØ¯
             net_profit = total_income - total_expense
             profit_margin = round((net_profit / total_income * 100), 1) if total_income > 0 else 0.0
 
-            # ۶. آمار ماه جاری
+            # Û¶. Ø¢Ù…Ø§Ø± Ù…Ø§Ù‡ Ø¬Ø§Ø±ÛŒ
             current_month = get_now_naive().strftime("%Y-%m")
             cursor.execute("""
                 SELECT COALESCE(SUM(amount), 0) FROM transactions 
@@ -12038,7 +12223,7 @@ class Database:
             month_total_expense = cursor.fetchone()[0] or 0
             month_net_profit = month_total_income - month_total_expense
 
-            # ۷. تفکیک مخارج بر اساس دسته‌بندی
+            # Û·. ØªÙÚ©ÛŒÚ© Ù…Ø®Ø§Ø±Ø¬ Ø¨Ø± Ø§Ø³Ø§Ø³ Ø¯Ø³ØªÙ‡â€ŒØ¨Ù†Ø¯ÛŒ
             cursor.execute("""
                 SELECT category, SUM(amount) as total, COUNT(*) as count
                 FROM accounting_records
@@ -12048,7 +12233,7 @@ class Database:
             """)
             expense_categories = [dict(r) for r in cursor.fetchall()]
 
-            # ۸. روند ماهانه سود و مخارج (۶ ماه گذشته)
+            # Û¸. Ø±ÙˆÙ†Ø¯ Ù…Ø§Ù‡Ø§Ù†Ù‡ Ø³ÙˆØ¯ Ùˆ Ù…Ø®Ø§Ø±Ø¬ (Û¶ Ù…Ø§Ù‡ Ú¯Ø°Ø´ØªÙ‡)
             cursor.execute("""
                 SELECT strftime('%Y-%m', date) as month,
                        SUM(CASE WHEN type='income' THEN amount ELSE 0 END) as manual_inc,
@@ -12059,7 +12244,7 @@ class Database:
             """)
             monthly_trend = [dict(r) for r in cursor.fetchall()]
 
-            # ۹. حسابرسی اختصاصی مشتریان مستقیم مدیریت
+            # Û¹. Ø­Ø³Ø§Ø¨Ø±Ø³ÛŒ Ø§Ø®ØªØµØ§ØµÛŒ Ù…Ø´ØªØ±ÛŒØ§Ù† Ù…Ø³ØªÙ‚ÛŒÙ… Ù…Ø¯ÛŒØ±ÛŒØª
             cursor.execute("""
                 SELECT COALESCE(SUM(amount), 0) FROM transactions 
                 WHERE status IN ('approved', 'completed') 
@@ -12083,7 +12268,7 @@ class Database:
             """)
             admin_direct_customers_count = cursor.fetchone()[0] or 0
 
-            # ۱۰. بسته‌های پیش‌خرید اعتباری نمایندگان (Volume Bundles)
+            # Û±Û°. Ø¨Ø³ØªÙ‡â€ŒÙ‡Ø§ÛŒ Ù¾ÛŒØ´â€ŒØ®Ø±ÛŒØ¯ Ø§Ø¹ØªØ¨Ø§Ø±ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† (Volume Bundles)
             cursor.execute("""
                 SELECT COALESCE(SUM(amount), 0) FROM transactions 
                 WHERE status IN ('approved', 'completed') 
@@ -12098,7 +12283,7 @@ class Database:
             """)
             reseller_bundles_count = cursor.fetchone()[0] or 0
 
-            # ۱۱. بدهی نمایندگانی که خرید اعتباری انجام داده‌اند
+            # Û±Û±. Ø¨Ø¯Ù‡ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù†ÛŒ Ú©Ù‡ Ø®Ø±ÛŒØ¯ Ø§Ø¹ØªØ¨Ø§Ø±ÛŒ Ø§Ù†Ø¬Ø§Ù… Ø¯Ø§Ø¯Ù‡â€ŒØ§Ù†Ø¯
             cursor.execute("SELECT COALESCE(SUM(credit_debt), 0) FROM resellers WHERE credit_debt > 0")
             reseller_credit_debts_total = cursor.fetchone()[0] or 0
 
@@ -12124,14 +12309,14 @@ class Database:
                 "month_net_profit": month_net_profit,
                 "expense_categories": expense_categories,
                 "monthly_trend": monthly_trend,
-                # حسابرسی مشتریان مدیریت
+                # Ø­Ø³Ø§Ø¨Ø±Ø³ÛŒ Ù…Ø´ØªØ±ÛŒØ§Ù† Ù…Ø¯ÛŒØ±ÛŒØª
                 "admin_direct_income": admin_direct_income,
                 "admin_direct_debt": admin_direct_debt,
                 "admin_direct_customers_count": admin_direct_customers_count,
-                # بسته‌های پیش‌خرید اعتباری
+                # Ø¨Ø³ØªÙ‡â€ŒÙ‡Ø§ÛŒ Ù¾ÛŒØ´â€ŒØ®Ø±ÛŒØ¯ Ø§Ø¹ØªØ¨Ø§Ø±ÛŒ
                 "reseller_bundles_income": reseller_bundles_income,
                 "reseller_bundles_count": reseller_bundles_count,
-                # بدهی‌های اعتباری نمایندگان
+                # Ø¨Ø¯Ù‡ÛŒâ€ŒÙ‡Ø§ÛŒ Ø§Ø¹ØªØ¨Ø§Ø±ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù†
                 "reseller_credit_debts_total": reseller_credit_debts_total,
                 "reseller_debtors_count": reseller_debtors_count,
                 "reseller_credit_limits_total": reseller_credit_limits_total,
@@ -12153,7 +12338,7 @@ class Database:
             conn.close()
 
     def get_partner_profits_summary(self, period: str = "all") -> dict:
-        """محاسبه سود شرکا در صورت وجود شرکا و سود کسب شده در دوره‌های مختلف"""
+        """Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø³ÙˆØ¯ Ø´Ø±Ú©Ø§ Ø¯Ø± ØµÙˆØ±Øª ÙˆØ¬ÙˆØ¯ Ø´Ø±Ú©Ø§ Ùˆ Ø³ÙˆØ¯ Ú©Ø³Ø¨ Ø´Ø¯Ù‡ Ø¯Ø± Ø¯ÙˆØ±Ù‡â€ŒÙ‡Ø§ÛŒ Ù…Ø®ØªÙ„Ù"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -12185,7 +12370,7 @@ class Database:
                 p_id = p["id"]
                 p_share_pct = p.get("share_percent") or 0
 
-                # فروش نقدی در بازه
+                # ÙØ±ÙˆØ´ Ù†Ù‚Ø¯ÛŒ Ø¯Ø± Ø¨Ø§Ø²Ù‡
                 cursor.execute(f"""
                     SELECT COALESCE(SUM(total_amount), 0), COALESCE(SUM(share_amount), 0), COUNT(*)
                     FROM admin_debts
@@ -12196,7 +12381,7 @@ class Database:
                 profit_earned = sale_row[1] or 0
                 sales_count = sale_row[2] or 0
 
-                # کل تسویه‌شده در بازه
+                # Ú©Ù„ ØªØ³ÙˆÛŒÙ‡â€ŒØ´Ø¯Ù‡ Ø¯Ø± Ø¨Ø§Ø²Ù‡
                 cursor.execute(f"""
                     SELECT COALESCE(SUM(total_amount), 0)
                     FROM admin_debts
@@ -12243,7 +12428,7 @@ class Database:
             conn.close()
 
     def search_all_customers(self, query: str = "", limit: int = 50) -> list:
-        """جستجوی جامع مشتریان فعال، منقضی و حذف‌شده در سطل زباله جهت انتساب رسید دستی"""
+        """Ø¬Ø³ØªØ¬ÙˆÛŒ Ø¬Ø§Ù…Ø¹ Ù…Ø´ØªØ±ÛŒØ§Ù† ÙØ¹Ø§Ù„ØŒ Ù…Ù†Ù‚Ø¶ÛŒ Ùˆ Ø­Ø°Ùâ€ŒØ´Ø¯Ù‡ Ø¯Ø± Ø³Ø·Ù„ Ø²Ø¨Ø§Ù„Ù‡ Ø¬Ù‡Øª Ø§Ù†ØªØ³Ø§Ø¨ Ø±Ø³ÛŒØ¯ Ø¯Ø³ØªÛŒ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -12269,7 +12454,7 @@ class Database:
             conn.close()
 
     def get_financial_reports_data(self, period: str = "month") -> dict:
-        """گزارشات و تحلیل هوش مالی به تفکیک تب‌های همه، مشتریان مستقیم مدیریت، و نمایندگان با فیلتر زمانی"""
+        """Ú¯Ø²Ø§Ø±Ø´Ø§Øª Ùˆ ØªØ­Ù„ÛŒÙ„ Ù‡ÙˆØ´ Ù…Ø§Ù„ÛŒ Ø¨Ù‡ ØªÙÚ©ÛŒÚ© ØªØ¨â€ŒÙ‡Ø§ÛŒ Ù‡Ù…Ù‡ØŒ Ù…Ø´ØªØ±ÛŒØ§Ù† Ù…Ø³ØªÙ‚ÛŒÙ… Ù…Ø¯ÛŒØ±ÛŒØªØŒ Ùˆ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† Ø¨Ø§ ÙÛŒÙ„ØªØ± Ø²Ù…Ø§Ù†ÛŒ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -12293,7 +12478,7 @@ class Database:
                 date_cond_sub = "AND created_at >= DATE('now', 'start of year')"
                 date_cond_rtx = "AND created_at >= DATE('now', 'start of year')"
 
-            # ۱. تب همه (All)
+            # Û±. ØªØ¨ Ù‡Ù…Ù‡ (All)
             cursor.execute(f"SELECT COALESCE(SUM(amount), 0), COUNT(*) FROM transactions WHERE status IN ('approved', 'completed') {date_cond_tx}")
             all_tx = cursor.fetchone()
             period_revenue = all_tx[0] or 0
@@ -12315,7 +12500,7 @@ class Database:
             """)
             monthly_trend = [dict(r) for r in cursor.fetchall()]
 
-            # ۲. تب مشتریان مدیریت (Direct Admin Customers)
+            # Û². ØªØ¨ Ù…Ø´ØªØ±ÛŒØ§Ù† Ù…Ø¯ÛŒØ±ÛŒØª (Direct Admin Customers)
             cursor.execute(f"""
                 SELECT COALESCE(SUM(amount), 0), COUNT(*)
                 FROM transactions
@@ -12381,7 +12566,7 @@ class Database:
             """)
             admin_monthly_trend = [dict(r) for r in cursor.fetchall()]
 
-            # ۳. تب نمایندگان (Resellers)
+            # Û³. ØªØ¨ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† (Resellers)
             cursor.execute(f"""
                 SELECT COALESCE(SUM(amount), 0), COUNT(*)
                 FROM reseller_transactions
@@ -12535,12 +12720,12 @@ class Database:
         finally:
             conn.close()
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # سیستم مدیریت مدیران و سطوح دسترسی (Admin Management & RBAC)
-    # ═══════════════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ø³ÛŒØ³ØªÙ… Ù…Ø¯ÛŒØ±ÛŒØª Ù…Ø¯ÛŒØ±Ø§Ù† Ùˆ Ø³Ø·ÙˆØ­ Ø¯Ø³ØªØ±Ø³ÛŒ (Admin Management & RBAC)
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def authenticate_admin(self, username: str, password: str):
-        """احراز هویت مدیران از جدول admin_users (Case-Insensitive و مقاوم در برابر فاصله‌ها)"""
+        """Ø§Ø­Ø±Ø§Ø² Ù‡ÙˆÛŒØª Ù…Ø¯ÛŒØ±Ø§Ù† Ø§Ø² Ø¬Ø¯ÙˆÙ„ admin_users (Case-Insensitive Ùˆ Ù…Ù‚Ø§ÙˆÙ… Ø¯Ø± Ø¨Ø±Ø§Ø¨Ø± ÙØ§ØµÙ„Ù‡â€ŒÙ‡Ø§)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         clean_user = username.strip().lower()
@@ -12564,7 +12749,7 @@ class Database:
         return None
 
     def get_admin_users(self):
-        """لیست تمام مدیران سیستم"""
+        """Ù„ÛŒØ³Øª ØªÙ…Ø§Ù… Ù…Ø¯ÛŒØ±Ø§Ù† Ø³ÛŒØ³ØªÙ…"""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM admin_users ORDER BY id ASC")
@@ -12573,7 +12758,7 @@ class Database:
         return [dict(r) for r in rows]
 
     def get_admin_user(self, admin_id: int):
-        """دریافت اطلاعات یک مدیر"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø§Ø·Ù„Ø§Ø¹Ø§Øª ÛŒÚ© Ù…Ø¯ÛŒØ±"""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM admin_users WHERE id=?", (admin_id,))
@@ -12584,7 +12769,7 @@ class Database:
     def create_admin_user(self, username: str, password: str, display_name: str,
                           role: str = "super_admin", permissions: str = "*", is_active: bool = True,
                           telegram_id: int = None, phone: str = None, share_percent: int = 0) -> dict:
-        """افزودن مدیر جدید با نقش و دسترسی‌های مشخص، آیدی تلگرام، شماره تماس و درصد شراکت"""
+        """Ø§ÙØ²ÙˆØ¯Ù† Ù…Ø¯ÛŒØ± Ø¬Ø¯ÛŒØ¯ Ø¨Ø§ Ù†Ù‚Ø´ Ùˆ Ø¯Ø³ØªØ±Ø³ÛŒâ€ŒÙ‡Ø§ÛŒ Ù…Ø´Ø®ØµØŒ Ø¢ÛŒØ¯ÛŒ ØªÙ„Ú¯Ø±Ø§Ù…ØŒ Ø´Ù…Ø§Ø±Ù‡ ØªÙ…Ø§Ø³ Ùˆ Ø¯Ø±ØµØ¯ Ø´Ø±Ø§Ú©Øª"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -12598,14 +12783,14 @@ class Database:
             conn.commit()
             return {"success": True, "admin_id": admin_id}
         except sqlite3.IntegrityError:
-            return {"success": False, "error": "این نام کاربری قبلاً برای مدیر دیگری ثبت شده است."}
+            return {"success": False, "error": "Ø§ÛŒÙ† Ù†Ø§Ù… Ú©Ø§Ø±Ø¨Ø±ÛŒ Ù‚Ø¨Ù„Ø§Ù‹ Ø¨Ø±Ø§ÛŒ Ù…Ø¯ÛŒØ± Ø¯ÛŒÚ¯Ø±ÛŒ Ø«Ø¨Øª Ø´Ø¯Ù‡ Ø§Ø³Øª."}
         except Exception as e:
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
 
     def update_admin_user(self, admin_id: int, **kwargs) -> dict:
-        """ویرایش اطلاعات، نقش، دسترسی‌ها و درصد شراکت یک مدیر"""
+        """ÙˆÛŒØ±Ø§ÛŒØ´ Ø§Ø·Ù„Ø§Ø¹Ø§ØªØŒ Ù†Ù‚Ø´ØŒ Ø¯Ø³ØªØ±Ø³ÛŒâ€ŒÙ‡Ø§ Ùˆ Ø¯Ø±ØµØ¯ Ø´Ø±Ø§Ú©Øª ÛŒÚ© Ù…Ø¯ÛŒØ±"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -12628,21 +12813,21 @@ class Database:
             conn.commit()
             return {"success": True}
         except sqlite3.IntegrityError:
-            return {"success": False, "error": "این نام کاربری تکراری است."}
+            return {"success": False, "error": "Ø§ÛŒÙ† Ù†Ø§Ù… Ú©Ø§Ø±Ø¨Ø±ÛŒ ØªÚ©Ø±Ø§Ø±ÛŒ Ø§Ø³Øª."}
         except Exception as e:
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
 
     def toggle_admin_user(self, admin_id: int) -> dict:
-        """تغییر وضعیت فعال/غیرفعال مدیر"""
+        """ØªØºÛŒÛŒØ± ÙˆØ¶Ø¹ÛŒØª ÙØ¹Ø§Ù„/ØºÛŒØ±ÙØ¹Ø§Ù„ Ù…Ø¯ÛŒØ±"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute("SELECT is_active FROM admin_users WHERE id=?", (admin_id,))
             row = cursor.fetchone()
             if not row:
-                return {"success": False, "error": "مدیر یافت نشد."}
+                return {"success": False, "error": "Ù…Ø¯ÛŒØ± ÛŒØ§ÙØª Ù†Ø´Ø¯."}
             new_status = 0 if row["is_active"] else 1
             cursor.execute("UPDATE admin_users SET is_active=? WHERE id=?", (new_status, admin_id))
             conn.commit()
@@ -12653,7 +12838,7 @@ class Database:
             conn.close()
 
     def delete_admin_user(self, admin_id: int) -> dict:
-        """حذف مدیر"""
+        """Ø­Ø°Ù Ù…Ø¯ÛŒØ±"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -12666,7 +12851,7 @@ class Database:
             conn.close()
 
     def update_admin_profile(self, admin_id: int, username: str, password: str = None, display_name: str = None, telegram_id: int = None, phone: str = None) -> dict:
-        """تغییر مشخصات فردی، یوزرنیم، آیدی تلگرام، شماره تماس و پسورد مدیر فعال"""
+        """ØªØºÛŒÛŒØ± Ù…Ø´Ø®ØµØ§Øª ÙØ±Ø¯ÛŒØŒ ÛŒÙˆØ²Ø±Ù†ÛŒÙ…ØŒ Ø¢ÛŒØ¯ÛŒ ØªÙ„Ú¯Ø±Ø§Ù…ØŒ Ø´Ù…Ø§Ø±Ù‡ ØªÙ…Ø§Ø³ Ùˆ Ù¾Ø³ÙˆØ±Ø¯ Ù…Ø¯ÛŒØ± ÙØ¹Ø§Ù„"""
         kwargs = {"username": username}
         if display_name:
             kwargs["display_name"] = display_name
@@ -12678,37 +12863,37 @@ class Database:
             kwargs["password"] = password.strip()
         return self.update_admin_user(admin_id, **kwargs)
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # حسابداری بدهی مدیران و شرکای تجاری (Admin & Partner Debts & Ledger)
-    # ═══════════════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ø­Ø³Ø§Ø¨Ø¯Ø§Ø±ÛŒ Ø¨Ø¯Ù‡ÛŒ Ù…Ø¯ÛŒØ±Ø§Ù† Ùˆ Ø´Ø±Ú©Ø§ÛŒ ØªØ¬Ø§Ø±ÛŒ (Admin & Partner Debts & Ledger)
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def record_admin_cash_sale(self, admin_id: int, customer_name: str, plan_name: str, total_amount: int, share_percent: int = 0, created_by: int = None, description: str = "") -> dict:
-        """ثبت فروش نقدی توسط مدیر/شریک، محاسبه درصد سهم شراکت و ثبت بدهی به مدیریت"""
+        """Ø«Ø¨Øª ÙØ±ÙˆØ´ Ù†Ù‚Ø¯ÛŒ ØªÙˆØ³Ø· Ù…Ø¯ÛŒØ±/Ø´Ø±ÛŒÚ©ØŒ Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø¯Ø±ØµØ¯ Ø³Ù‡Ù… Ø´Ø±Ø§Ú©Øª Ùˆ Ø«Ø¨Øª Ø¨Ø¯Ù‡ÛŒ Ø¨Ù‡ Ù…Ø¯ÛŒØ±ÛŒØª"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
-            # دریافت اطلاعات مدیر
+            # Ø¯Ø±ÛŒØ§ÙØª Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ù…Ø¯ÛŒØ±
             cursor.execute("SELECT username, display_name, role, share_percent, debt_balance FROM admin_users WHERE id=?", (admin_id,))
             admin_row = cursor.fetchone()
             if not admin_row:
-                return {"success": False, "error": "مدیر یافت نشد."}
+                return {"success": False, "error": "Ù…Ø¯ÛŒØ± ÛŒØ§ÙØª Ù†Ø´Ø¯."}
 
             admin_dict = dict(admin_row)
             username = admin_dict.get("username", f"admin_{admin_id}")
             effective_share_percent = int(share_percent if share_percent is not None else admin_dict.get("share_percent", 0))
             
-            # محاسبه سهم شراکت و مبلغ بدهی به مدیریت
+            # Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø³Ù‡Ù… Ø´Ø±Ø§Ú©Øª Ùˆ Ù…Ø¨Ù„Øº Ø¨Ø¯Ù‡ÛŒ Ø¨Ù‡ Ù…Ø¯ÛŒØ±ÛŒØª
             share_amount = int(total_amount * (effective_share_percent / 100)) if effective_share_percent > 0 else 0
             debt_amount = total_amount - share_amount
 
-            # ثبت در جدول لاگ بدهی
+            # Ø«Ø¨Øª Ø¯Ø± Ø¬Ø¯ÙˆÙ„ Ù„Ø§Ú¯ Ø¨Ø¯Ù‡ÛŒ
             cursor.execute("""
                 INSERT INTO admin_debts (admin_id, admin_username, customer_name, plan_name, total_amount, share_percent, share_amount, debt_amount, type, description, created_by, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'cash_sale', ?, ?, ?)
             """, (admin_id, username, customer_name, plan_name, total_amount, effective_share_percent, share_amount, debt_amount, description, created_by or admin_id, now))
 
-            # افزایش مانده بدهی مدیر
+            # Ø§ÙØ²Ø§ÛŒØ´ Ù…Ø§Ù†Ø¯Ù‡ Ø¨Ø¯Ù‡ÛŒ Ù…Ø¯ÛŒØ±
             new_debt_balance = (admin_dict.get("debt_balance") or 0) + debt_amount
             cursor.execute("UPDATE admin_users SET debt_balance=? WHERE id=?", (new_debt_balance, admin_id))
             conn.commit()
@@ -12728,7 +12913,7 @@ class Database:
             conn.close()
 
     def settle_admin_debt(self, admin_id: int, amount: int, description: str, settled_by: int) -> dict:
-        """ثبت تسویه حساب نقدی یا واریزی مدیر/شریک و کاهش بدهی"""
+        """Ø«Ø¨Øª ØªØ³ÙˆÛŒÙ‡ Ø­Ø³Ø§Ø¨ Ù†Ù‚Ø¯ÛŒ ÛŒØ§ ÙˆØ§Ø±ÛŒØ²ÛŒ Ù…Ø¯ÛŒØ±/Ø´Ø±ÛŒÚ© Ùˆ Ú©Ø§Ù‡Ø´ Ø¨Ø¯Ù‡ÛŒ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -12736,20 +12921,20 @@ class Database:
             cursor.execute("SELECT username, debt_balance FROM admin_users WHERE id=?", (admin_id,))
             admin_row = cursor.fetchone()
             if not admin_row:
-                return {"success": False, "error": "مدیر یافت نشد."}
+                return {"success": False, "error": "Ù…Ø¯ÛŒØ± ÛŒØ§ÙØª Ù†Ø´Ø¯."}
 
             admin_dict = dict(admin_row)
             username = admin_dict.get("username", f"admin_{admin_id}")
             current_debt = admin_dict.get("debt_balance") or 0
             settle_amount = int(amount)
 
-            # ثبت تراکنش تسویه در جدول بدهی‌ها
+            # Ø«Ø¨Øª ØªØ±Ø§Ú©Ù†Ø´ ØªØ³ÙˆÛŒÙ‡ Ø¯Ø± Ø¬Ø¯ÙˆÙ„ Ø¨Ø¯Ù‡ÛŒâ€ŒÙ‡Ø§
             cursor.execute("""
                 INSERT INTO admin_debts (admin_id, admin_username, customer_name, plan_name, total_amount, share_percent, share_amount, debt_amount, type, description, created_by, created_at)
-                VALUES (?, ?, '-', 'تسویه حساب بدهی', ?, 0, 0, ?, 'settlement', ?, ?, ?)
+                VALUES (?, ?, '-', 'ØªØ³ÙˆÛŒÙ‡ Ø­Ø³Ø§Ø¨ Ø¨Ø¯Ù‡ÛŒ', ?, 0, 0, ?, 'settlement', ?, ?, ?)
             """, (admin_id, username, settle_amount, -settle_amount, description, settled_by, now))
 
-            # کاهش مانده بدهی
+            # Ú©Ø§Ù‡Ø´ Ù…Ø§Ù†Ø¯Ù‡ Ø¨Ø¯Ù‡ÛŒ
             new_debt = max(0, current_debt - settle_amount)
             cursor.execute("UPDATE admin_users SET debt_balance=? WHERE id=?", (new_debt, admin_id))
             conn.commit()
@@ -12762,7 +12947,7 @@ class Database:
             conn.close()
 
     def get_admin_debts(self, admin_id: int = None, limit: int = 100) -> list:
-        """دریافت سوابق فروش‌های نقدی، سهم شراکت و تسویه‌حساب‌های مدیران"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø³ÙˆØ§Ø¨Ù‚ ÙØ±ÙˆØ´â€ŒÙ‡Ø§ÛŒ Ù†Ù‚Ø¯ÛŒØŒ Ø³Ù‡Ù… Ø´Ø±Ø§Ú©Øª Ùˆ ØªØ³ÙˆÛŒÙ‡â€ŒØ­Ø³Ø§Ø¨â€ŒÙ‡Ø§ÛŒ Ù…Ø¯ÛŒØ±Ø§Ù†"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -12790,7 +12975,7 @@ class Database:
             conn.close()
 
     def get_admins_accounting_summary(self, admin_id: int = None) -> list:
-        """گزارش تراز مالی و خلاصه وضعیت فروش و بدهی مدیران و شرکا"""
+        """Ú¯Ø²Ø§Ø±Ø´ ØªØ±Ø§Ø² Ù…Ø§Ù„ÛŒ Ùˆ Ø®Ù„Ø§ØµÙ‡ ÙˆØ¶Ø¹ÛŒØª ÙØ±ÙˆØ´ Ùˆ Ø¨Ø¯Ù‡ÛŒ Ù…Ø¯ÛŒØ±Ø§Ù† Ùˆ Ø´Ø±Ú©Ø§"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -12823,14 +13008,14 @@ class Database:
             conn.close()
 
     def find_user_contact_info(self, username: str) -> dict:
-        """یافتن مشخصات و اطلاعات تماس مدیر یا نماینده بر اساس نام کاربری"""
+        """ÛŒØ§ÙØªÙ† Ù…Ø´Ø®ØµØ§Øª Ùˆ Ø§Ø·Ù„Ø§Ø¹Ø§Øª ØªÙ…Ø§Ø³ Ù…Ø¯ÛŒØ± ÛŒØ§ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø± Ø§Ø³Ø§Ø³ Ù†Ø§Ù… Ú©Ø§Ø±Ø¨Ø±ÛŒ"""
         if not username:
             return None
         clean_user = username.strip().lower()
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            # ۱. جستجو در جدول مدیران (Admin Users)
+            # Û±. Ø¬Ø³ØªØ¬Ùˆ Ø¯Ø± Ø¬Ø¯ÙˆÙ„ Ù…Ø¯ÛŒØ±Ø§Ù† (Admin Users)
             cursor.execute("SELECT id, username, display_name, telegram_id, phone, role FROM admin_users WHERE LOWER(username)=?", (clean_user,))
             row = cursor.fetchone()
             if row:
@@ -12839,13 +13024,13 @@ class Database:
                     "user_type": "admin",
                     "user_id": admin_row["id"],
                     "username": admin_row["username"],
-                    "name": admin_row.get("display_name") or "مدیر سیستم",
+                    "name": admin_row.get("display_name") or "Ù…Ø¯ÛŒØ± Ø³ÛŒØ³ØªÙ…",
                     "telegram_id": admin_row.get("telegram_id"),
                     "phone": admin_row.get("phone"),
                     "role": admin_row.get("role", "super_admin")
                 }
 
-            # ۲. جستجو در جدول نمایندگان (Resellers)
+            # Û². Ø¬Ø³ØªØ¬Ùˆ Ø¯Ø± Ø¬Ø¯ÙˆÙ„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† (Resellers)
             cursor.execute("SELECT id, username, name, telegram_id, phone, status FROM resellers WHERE LOWER(username)=?", (clean_user,))
             row = cursor.fetchone()
             if row:
@@ -12854,7 +13039,7 @@ class Database:
                     "user_type": "reseller",
                     "user_id": res_row["id"],
                     "username": res_row["username"],
-                    "name": res_row.get("name") or "نماینده فروش",
+                    "name": res_row.get("name") or "Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ ÙØ±ÙˆØ´",
                     "telegram_id": res_row.get("telegram_id"),
                     "phone": res_row.get("phone"),
                     "status": res_row.get("status", "active")
@@ -12867,12 +13052,12 @@ class Database:
         finally:
             conn.close()
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # پروفایل و مشخصات کاربری نماینده (Reseller Profile)
-    # ═══════════════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ùˆ Ù…Ø´Ø®ØµØ§Øª Ú©Ø§Ø±Ø¨Ø±ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (Reseller Profile)
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     def update_reseller_profile(self, reseller_id: int, **kwargs) -> dict:
-        """ویرایش مشخصات فردی، اطلاعات تماس، حساب بانکی و تغییر رمز عبور توسط خود نماینده"""
+        """ÙˆÛŒØ±Ø§ÛŒØ´ Ù…Ø´Ø®ØµØ§Øª ÙØ±Ø¯ÛŒØŒ Ø§Ø·Ù„Ø§Ø¹Ø§Øª ØªÙ…Ø§Ø³ØŒ Ø­Ø³Ø§Ø¨ Ø¨Ø§Ù†Ú©ÛŒ Ùˆ ØªØºÛŒÛŒØ± Ø±Ù…Ø² Ø¹Ø¨ÙˆØ± ØªÙˆØ³Ø· Ø®ÙˆØ¯ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -12893,14 +13078,14 @@ class Database:
             conn.commit()
             return {"success": True}
         except sqlite3.IntegrityError:
-            return {"success": False, "error": "این نام کاربری قبلاً ثبت شده است."}
+            return {"success": False, "error": "Ø§ÛŒÙ† Ù†Ø§Ù… Ú©Ø§Ø±Ø¨Ø±ÛŒ Ù‚Ø¨Ù„Ø§Ù‹ Ø«Ø¨Øª Ø´Ø¯Ù‡ Ø§Ø³Øª."}
         except Exception as e:
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
 
     def update_subscription_avatar(self, sub_id: int, custom_avatar: str) -> bool:
-        """بروزرسانی آواتار اختصاصی اشتراک مشتری"""
+        """Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø¢ÙˆØ§ØªØ§Ø± Ø§Ø®ØªØµØ§ØµÛŒ Ø§Ø´ØªØ±Ø§Ú© Ù…Ø´ØªØ±ÛŒ"""
         conn = self.get_connection()
         try:
             conn.execute("UPDATE subscriptions SET custom_avatar=?, updated_at=? WHERE id=?", (custom_avatar, get_now_iso(), sub_id))
@@ -12913,7 +13098,7 @@ class Database:
             conn.close()
 
     def find_subscription_avatar(self, identifier: str) -> Optional[str]:
-        """یافتن آواتار اختصاصی بر اساس شناسه اشتراک، نام اکانت یا شماره تلفن"""
+        """ÛŒØ§ÙØªÙ† Ø¢ÙˆØ§ØªØ§Ø± Ø§Ø®ØªØµØ§ØµÛŒ Ø¨Ø± Ø§Ø³Ø§Ø³ Ø´Ù†Ø§Ø³Ù‡ Ø§Ø´ØªØ±Ø§Ú©ØŒ Ù†Ø§Ù… Ø§Ú©Ø§Ù†Øª ÛŒØ§ Ø´Ù…Ø§Ø±Ù‡ ØªÙ„ÙÙ†"""
         if not identifier:
             return None
         conn = self.get_connection()
@@ -12934,7 +13119,7 @@ class Database:
             conn.close()
 
     def record_subscription_session(self, sub_id: int, hidify_uuid: str, ip_address: str, user_agent: str, last_seen: str = None, is_active: int = 1):
-        """ثبت یا بروزرسانی نشست و اطلاعات کلاینت متصل"""
+        """Ø«Ø¨Øª ÛŒØ§ Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ù†Ø´Ø³Øª Ùˆ Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ú©Ù„Ø§ÛŒÙ†Øª Ù…ØªØµÙ„"""
         if not sub_id and not hidify_uuid:
             return None
         now = get_now_iso()
@@ -12943,7 +13128,7 @@ class Database:
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
-            # بررسی آیا نشستی با همین IP و برنامه برای این اشتراک وجود دارد؟
+            # Ø¨Ø±Ø±Ø³ÛŒ Ø¢ÛŒØ§ Ù†Ø´Ø³ØªÛŒ Ø¨Ø§ Ù‡Ù…ÛŒÙ† IP Ùˆ Ø¨Ø±Ù†Ø§Ù…Ù‡ Ø¨Ø±Ø§ÛŒ Ø§ÛŒÙ† Ø§Ø´ØªØ±Ø§Ú© ÙˆØ¬ÙˆØ¯ Ø¯Ø§Ø±Ø¯ØŸ
             cursor.execute("""
                 SELECT id FROM subscription_sessions
                 WHERE (sub_id=? OR hidify_uuid=?) AND ip_address=? AND client_app=?
@@ -12981,7 +13166,7 @@ class Database:
             conn.close()
 
     def get_subscription_by_uuid(self, uuid: str) -> Optional[dict]:
-        """یافتن اشتراک بر اساس UUID هیدیفای"""
+        """ÛŒØ§ÙØªÙ† Ø§Ø´ØªØ±Ø§Ú© Ø¨Ø± Ø§Ø³Ø§Ø³ UUID Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ"""
         if not uuid:
             return None
         conn = self.get_connection()
@@ -12997,7 +13182,7 @@ class Database:
             conn.close()
 
     def get_subscription(self, sub_id: int) -> Optional[dict]:
-        """یافتن اشتراک بر اساس شناسه id"""
+        """ÛŒØ§ÙØªÙ† Ø§Ø´ØªØ±Ø§Ú© Ø¨Ø± Ø§Ø³Ø§Ø³ Ø´Ù†Ø§Ø³Ù‡ id"""
         if not sub_id:
             return None
         conn = self.get_connection()
@@ -13013,7 +13198,7 @@ class Database:
             conn.close()
 
     def get_all_subscriptions(self, limit: int = 500) -> list:
-        """دریافت لیست کلیه اشتراک‌ها"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒØ³Øª Ú©Ù„ÛŒÙ‡ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -13026,7 +13211,7 @@ class Database:
             conn.close()
 
     def get_subscription_sessions(self, sub_id: int) -> dict:
-        """دریافت لیست نشست‌های فعال و تاریخچه دستگاه‌های متصل به اشتراک"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒØ³Øª Ù†Ø´Ø³Øªâ€ŒÙ‡Ø§ÛŒ ÙØ¹Ø§Ù„ Ùˆ ØªØ§Ø±ÛŒØ®Ú†Ù‡ Ø¯Ø³ØªÚ¯Ø§Ù‡â€ŒÙ‡Ø§ÛŒ Ù…ØªØµÙ„ Ø¨Ù‡ Ø§Ø´ØªØ±Ø§Ú©"""
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
@@ -13061,10 +13246,10 @@ class Database:
         finally:
             conn.close()
 
-    # ─── اعتبارسنجی کد پیگیری و فیش‌های تکراری ───
+    # â”€â”€â”€ Ø§Ø¹ØªØ¨Ø§Ø±Ø³Ù†Ø¬ÛŒ Ú©Ø¯ Ù¾ÛŒÚ¯ÛŒØ±ÛŒ Ùˆ ÙÛŒØ´â€ŒÙ‡Ø§ÛŒ ØªÚ©Ø±Ø§Ø±ÛŒ â”€â”€â”€
 
     def is_tracking_code_duplicate(self, tracking_code: str, exclude_id: int = None) -> bool:
-        """بررسی عدم ثبت تکراری کد پیگیری یا شماره فیش بانکی"""
+        """Ø¨Ø±Ø±Ø³ÛŒ Ø¹Ø¯Ù… Ø«Ø¨Øª ØªÚ©Ø±Ø§Ø±ÛŒ Ú©Ø¯ Ù¾ÛŒÚ¯ÛŒØ±ÛŒ ÛŒØ§ Ø´Ù…Ø§Ø±Ù‡ ÙÛŒØ´ Ø¨Ø§Ù†Ú©ÛŒ"""
         if not tracking_code or not str(tracking_code).strip():
             return False
         clean_code = str(tracking_code).strip()
@@ -13083,29 +13268,29 @@ class Database:
         finally:
             conn.close()
 
-    # ─── شارژ حجم اضافه و پیش‌بینی اتمام ترافیک (Top-up & Depletion Prediction) ───
+    # â”€â”€â”€ Ø´Ø§Ø±Ú˜ Ø­Ø¬Ù… Ø§Ø¶Ø§ÙÙ‡ Ùˆ Ù¾ÛŒØ´â€ŒØ¨ÛŒÙ†ÛŒ Ø§ØªÙ…Ø§Ù… ØªØ±Ø§ÙÛŒÚ© (Top-up & Depletion Prediction) â”€â”€â”€
 
     def add_traffic_to_subscription(self, sub_id: int, extra_gb: float) -> dict:
-        """افزودن حجم اضافه (Top-up) به سقف مصرف اشتراک کاربر بدون تغییر لینک و UUID"""
+        """Ø§ÙØ²ÙˆØ¯Ù† Ø­Ø¬Ù… Ø§Ø¶Ø§ÙÙ‡ (Top-up) Ø¨Ù‡ Ø³Ù‚Ù Ù…ØµØ±Ù Ø§Ø´ØªØ±Ø§Ú© Ú©Ø§Ø±Ø¨Ø± Ø¨Ø¯ÙˆÙ† ØªØºÛŒÛŒØ± Ù„ÛŒÙ†Ú© Ùˆ UUID"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,))
             row = cursor.fetchone()
             if not row:
-                return {"success": False, "error": "اشتراک یافت نشد."}
+                return {"success": False, "error": "Ø§Ø´ØªØ±Ø§Ú© ÛŒØ§ÙØª Ù†Ø´Ø¯."}
             sub = dict(row)
             current_limit = float(sub.get("data_limit") or sub.get("traffic_limit") or 0)
             new_limit = current_limit + float(extra_gb)
             cursor.execute("UPDATE subscriptions SET data_limit=? WHERE id=?", (new_limit, sub_id))
             conn.commit()
 
-            # در صورت اتصال به هیدیفای، سقف کاربر در هیدیفای نیز بروزرسانی شود
+            # Ø¯Ø± ØµÙˆØ±Øª Ø§ØªØµØ§Ù„ Ø¨Ù‡ Ù‡ÛŒØ¯ÛŒÙØ§ÛŒØŒ Ø³Ù‚Ù Ú©Ø§Ø±Ø¨Ø± Ø¯Ø± Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ Ù†ÛŒØ² Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø´ÙˆØ¯
             hidify_uuid = sub.get("hidify_uuid")
             if hidify_uuid:
                 try:
                     from hidify import HidifyClient
-                    # هماهنگی در صورت وجود اتصال
+                    # Ù‡Ù…Ø§Ù‡Ù†Ú¯ÛŒ Ø¯Ø± ØµÙˆØ±Øª ÙˆØ¬ÙˆØ¯ Ø§ØªØµØ§Ù„
                 except Exception:
                     pass
 
@@ -13117,7 +13302,7 @@ class Database:
             conn.close()
 
     def calculate_subscription_burn_rate(self, sub: dict) -> dict:
-        """محاسبه نرخ مصرف روزانه و پیش‌بینی هوشمند تاریخ اتمام ترافیک"""
+        """Ù…Ø­Ø§Ø³Ø¨Ù‡ Ù†Ø±Ø® Ù…ØµØ±Ù Ø±ÙˆØ²Ø§Ù†Ù‡ Ùˆ Ù¾ÛŒØ´â€ŒØ¨ÛŒÙ†ÛŒ Ù‡ÙˆØ´Ù…Ù†Ø¯ ØªØ§Ø±ÛŒØ® Ø§ØªÙ…Ø§Ù… ØªØ±Ø§ÙÛŒÚ©"""
         try:
             current_usage = float(sub.get("data_used") or sub.get("current_usage") or 0)
             traffic_limit = float(sub.get("data_limit") or sub.get("traffic_limit") or 0)
@@ -13154,10 +13339,10 @@ class Database:
         except Exception as e:
             return {"burn_rate_gb_day": 0, "days_remaining": 999, "predicted_depletion_date": None, "error": str(e)}
 
-    # ─── بسته‌های پیش‌خرید اعتباری با بونوس شارژ رایگان برای نمایندگان (Volume Bundles) ───
+    # â”€â”€â”€ Ø¨Ø³ØªÙ‡â€ŒÙ‡Ø§ÛŒ Ù¾ÛŒØ´â€ŒØ®Ø±ÛŒØ¯ Ø§Ø¹ØªØ¨Ø§Ø±ÛŒ Ø¨Ø§ Ø¨ÙˆÙ†ÙˆØ³ Ø´Ø§Ø±Ú˜ Ø±Ø§ÛŒÚ¯Ø§Ù† Ø¨Ø±Ø§ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† (Volume Bundles) â”€â”€â”€
 
     def get_reseller_credit_bundles(self, active_only: bool = False) -> list:
-        """لیست بسته‌های شارژ عمده با درصد بونوس هدیه برای نمایندگان از دیتابیس"""
+        """Ù„ÛŒØ³Øª Ø¨Ø³ØªÙ‡â€ŒÙ‡Ø§ÛŒ Ø´Ø§Ø±Ú˜ Ø¹Ù…Ø¯Ù‡ Ø¨Ø§ Ø¯Ø±ØµØ¯ Ø¨ÙˆÙ†ÙˆØ³ Ù‡Ø¯ÛŒÙ‡ Ø¨Ø±Ø§ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† Ø§Ø² Ø¯ÛŒØªØ§Ø¨ÛŒØ³"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -13174,19 +13359,19 @@ class Database:
         finally:
             conn.close()
 
-        # بازگشت به بسته‌های پیش‌فرض در صورت خالی بودن جدول یا بروز خطا
+        # Ø¨Ø§Ø²Ú¯Ø´Øª Ø¨Ù‡ Ø¨Ø³ØªÙ‡â€ŒÙ‡Ø§ÛŒ Ù¾ÛŒØ´â€ŒÙØ±Ø¶ Ø¯Ø± ØµÙˆØ±Øª Ø®Ø§Ù„ÛŒ Ø¨ÙˆØ¯Ù† Ø¬Ø¯ÙˆÙ„ ÛŒØ§ Ø¨Ø±ÙˆØ² Ø®Ø·Ø§
         default_bundles = [
-            {"id": "bundle_1m", "title": "بسته استارتر", "price": 1000000, "credit": 1050000, "bonus_percent": 5, "badge": "۵٪ شارژ هدیه", "color": "info", "description": "مناسب شروع همکاری و شارژ اولیه", "display_order": 1, "is_active": 1},
-            {"id": "bundle_3m", "title": "بسته نقره‌ای", "price": 3000000, "credit": 3210000, "bonus_percent": 7, "badge": "۷٪ شارژ هدیه", "color": "primary", "description": "بسته اقتصادی با بونوس شارژ تشویقی", "display_order": 2, "is_active": 1},
-            {"id": "bundle_5m", "title": "بسته طلایی", "price": 5000000, "credit": 5500000, "bonus_percent": 10, "badge": "۱۰٪ شارژ هدیه", "color": "success", "description": "بسته پرفروش همکاران با ۱۰٪ هدیه نقدی", "display_order": 3, "is_active": 1},
-            {"id": "bundle_10m", "title": "بسته الماس VIP", "price": 10000000, "credit": 11500000, "bonus_percent": 15, "badge": "۱۵٪ شارژ ویژه", "color": "warning", "description": "حداکثر اعتبار با بالاترین نرخ بونوس ویژه", "display_order": 4, "is_active": 1},
+            {"id": "bundle_1m", "title": "Ø¨Ø³ØªÙ‡ Ø§Ø³ØªØ§Ø±ØªØ±", "price": 1000000, "credit": 1050000, "bonus_percent": 5, "badge": "ÛµÙª Ø´Ø§Ø±Ú˜ Ù‡Ø¯ÛŒÙ‡", "color": "info", "description": "Ù…Ù†Ø§Ø³Ø¨ Ø´Ø±ÙˆØ¹ Ù‡Ù…Ú©Ø§Ø±ÛŒ Ùˆ Ø´Ø§Ø±Ú˜ Ø§ÙˆÙ„ÛŒÙ‡", "display_order": 1, "is_active": 1},
+            {"id": "bundle_3m", "title": "Ø¨Ø³ØªÙ‡ Ù†Ù‚Ø±Ù‡â€ŒØ§ÛŒ", "price": 3000000, "credit": 3210000, "bonus_percent": 7, "badge": "Û·Ùª Ø´Ø§Ø±Ú˜ Ù‡Ø¯ÛŒÙ‡", "color": "primary", "description": "Ø¨Ø³ØªÙ‡ Ø§Ù‚ØªØµØ§Ø¯ÛŒ Ø¨Ø§ Ø¨ÙˆÙ†ÙˆØ³ Ø´Ø§Ø±Ú˜ ØªØ´ÙˆÛŒÙ‚ÛŒ", "display_order": 2, "is_active": 1},
+            {"id": "bundle_5m", "title": "Ø¨Ø³ØªÙ‡ Ø·Ù„Ø§ÛŒÛŒ", "price": 5000000, "credit": 5500000, "bonus_percent": 10, "badge": "Û±Û°Ùª Ø´Ø§Ø±Ú˜ Ù‡Ø¯ÛŒÙ‡", "color": "success", "description": "Ø¨Ø³ØªÙ‡ Ù¾Ø±ÙØ±ÙˆØ´ Ù‡Ù…Ú©Ø§Ø±Ø§Ù† Ø¨Ø§ Û±Û°Ùª Ù‡Ø¯ÛŒÙ‡ Ù†Ù‚Ø¯ÛŒ", "display_order": 3, "is_active": 1},
+            {"id": "bundle_10m", "title": "Ø¨Ø³ØªÙ‡ Ø§Ù„Ù…Ø§Ø³ VIP", "price": 10000000, "credit": 11500000, "bonus_percent": 15, "badge": "Û±ÛµÙª Ø´Ø§Ø±Ú˜ ÙˆÛŒÚ˜Ù‡", "color": "warning", "description": "Ø­Ø¯Ø§Ú©Ø«Ø± Ø§Ø¹ØªØ¨Ø§Ø± Ø¨Ø§ Ø¨Ø§Ù„Ø§ØªØ±ÛŒÙ† Ù†Ø±Ø® Ø¨ÙˆÙ†ÙˆØ³ ÙˆÛŒÚ˜Ù‡", "display_order": 4, "is_active": 1},
         ]
         if active_only:
             return [b for b in default_bundles if b.get("is_active", 1)]
         return default_bundles
 
     def get_reseller_credit_bundle(self, bundle_id: str) -> dict:
-        """دریافت اطلاعات یک بسته پیش‌خرید نمایندگان بر اساس شناسه"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø§Ø·Ù„Ø§Ø¹Ø§Øª ÛŒÚ© Ø¨Ø³ØªÙ‡ Ù¾ÛŒØ´â€ŒØ®Ø±ÛŒØ¯ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† Ø¨Ø± Ø§Ø³Ø§Ø³ Ø´Ù†Ø§Ø³Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -13205,7 +13390,7 @@ class Database:
         return None
 
     def save_reseller_credit_bundle(self, bundle_data: dict) -> dict:
-        """ذخیره یا ویرایش بسته پیش‌خرید نمایندگان در دیتابیس"""
+        """Ø°Ø®ÛŒØ±Ù‡ ÛŒØ§ ÙˆÛŒØ±Ø§ÛŒØ´ Ø¨Ø³ØªÙ‡ Ù¾ÛŒØ´â€ŒØ®Ø±ÛŒØ¯ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† Ø¯Ø± Ø¯ÛŒØªØ§Ø¨ÛŒØ³"""
         bundle_id = str(bundle_data.get("id") or "").strip()
         title = str(bundle_data.get("title") or "").strip()
         try:
@@ -13230,7 +13415,7 @@ class Database:
 
         badge = str(bundle_data.get("badge") or "").strip()
         if not badge:
-            badge = f"{bonus_percent}٪ شارژ هدیه" if bonus_percent > 0 else "شارژ کیف پول"
+            badge = f"{bonus_percent}Ùª Ø´Ø§Ø±Ú˜ Ù‡Ø¯ÛŒÙ‡" if bonus_percent > 0 else "Ø´Ø§Ø±Ú˜ Ú©ÛŒÙ Ù¾ÙˆÙ„"
 
         color = str(bundle_data.get("color") or "primary").strip()
         description = str(bundle_data.get("description") or "").strip()
@@ -13244,7 +13429,7 @@ class Database:
         now = get_now_iso()
 
         if not bundle_id or not title or price <= 0:
-            return {"success": False, "error": "شناسه انگلیسی، عنوان بسته و قیمت معتبر الزامی هستند."}
+            return {"success": False, "error": "Ø´Ù†Ø§Ø³Ù‡ Ø§Ù†Ú¯Ù„ÛŒØ³ÛŒØŒ Ø¹Ù†ÙˆØ§Ù† Ø¨Ø³ØªÙ‡ Ùˆ Ù‚ÛŒÙ…Øª Ù…Ø¹ØªØ¨Ø± Ø§Ù„Ø²Ø§Ù…ÛŒ Ù‡Ø³ØªÙ†Ø¯."}
 
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -13271,7 +13456,7 @@ class Database:
             conn.close()
 
     def delete_reseller_credit_bundle(self, bundle_id: str) -> dict:
-        """حذف بسته پیش‌خرید نمایندگان از دیتابیس"""
+        """Ø­Ø°Ù Ø¨Ø³ØªÙ‡ Ù¾ÛŒØ´â€ŒØ®Ø±ÛŒØ¯ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† Ø§Ø² Ø¯ÛŒØªØ§Ø¨ÛŒØ³"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -13285,7 +13470,7 @@ class Database:
             conn.close()
 
     def toggle_reseller_credit_bundle(self, bundle_id: str) -> dict:
-        """تغییر وضعیت فعال/غیرفعال بسته پیش‌خرید"""
+        """ØªØºÛŒÛŒØ± ÙˆØ¶Ø¹ÛŒØª ÙØ¹Ø§Ù„/ØºÛŒØ±ÙØ¹Ø§Ù„ Ø¨Ø³ØªÙ‡ Ù¾ÛŒØ´â€ŒØ®Ø±ÛŒØ¯"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -13293,7 +13478,7 @@ class Database:
             cursor.execute("SELECT is_active FROM reseller_bundles WHERE id = ?", (bundle_id,))
             row = cursor.fetchone()
             if not row:
-                return {"success": False, "error": "بسته یافت نشد."}
+                return {"success": False, "error": "Ø¨Ø³ØªÙ‡ ÛŒØ§ÙØª Ù†Ø´Ø¯."}
             new_status = 0 if row["is_active"] else 1
             cursor.execute("UPDATE reseller_bundles SET is_active = ?, updated_at = ? WHERE id = ?", (new_status, now, bundle_id))
             conn.commit()
@@ -13305,15 +13490,15 @@ class Database:
             conn.close()
 
     def reset_default_reseller_credit_bundles(self) -> dict:
-        """بازنشانی بسته‌های پیش‌خرید به ۴ بسته استاندارد پیش‌فرض سیستم"""
+        """Ø¨Ø§Ø²Ù†Ø´Ø§Ù†ÛŒ Ø¨Ø³ØªÙ‡â€ŒÙ‡Ø§ÛŒ Ù¾ÛŒØ´â€ŒØ®Ø±ÛŒØ¯ Ø¨Ù‡ Û´ Ø¨Ø³ØªÙ‡ Ø§Ø³ØªØ§Ù†Ø¯Ø§Ø±Ø¯ Ù¾ÛŒØ´â€ŒÙØ±Ø¶ Ø³ÛŒØ³ØªÙ…"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now_seed = get_now_iso()
         default_bundles = [
-            ("bundle_1m", "بسته استارتر", 1000000, 1050000, 5, "۵٪ شارژ هدیه", "info", "مناسب شروع همکاری و شارژ اولیه", 1, 1, now_seed, now_seed),
-            ("bundle_3m", "بسته نقره‌ای", 3000000, 3210000, 7, "۷٪ شارژ هدیه", "primary", "بسته اقتصادی با بونوس شارژ تشویقی", 2, 1, now_seed, now_seed),
-            ("bundle_5m", "بسته طلایی", 5000000, 5500000, 10, "۱۰٪ شارژ هدیه", "success", "بسته پرفروش همکاران با ۱۰٪ هدیه نقدی", 3, 1, now_seed, now_seed),
-            ("bundle_10m", "بسته الماس VIP", 10000000, 11500000, 15, "۱۵٪ شارژ ویژه", "warning", "حداکثر اعتبار با بالاترین نرخ بونوس ویژه", 4, 1, now_seed, now_seed),
+            ("bundle_1m", "Ø¨Ø³ØªÙ‡ Ø§Ø³ØªØ§Ø±ØªØ±", 1000000, 1050000, 5, "ÛµÙª Ø´Ø§Ø±Ú˜ Ù‡Ø¯ÛŒÙ‡", "info", "Ù…Ù†Ø§Ø³Ø¨ Ø´Ø±ÙˆØ¹ Ù‡Ù…Ú©Ø§Ø±ÛŒ Ùˆ Ø´Ø§Ø±Ú˜ Ø§ÙˆÙ„ÛŒÙ‡", 1, 1, now_seed, now_seed),
+            ("bundle_3m", "Ø¨Ø³ØªÙ‡ Ù†Ù‚Ø±Ù‡â€ŒØ§ÛŒ", 3000000, 3210000, 7, "Û·Ùª Ø´Ø§Ø±Ú˜ Ù‡Ø¯ÛŒÙ‡", "primary", "Ø¨Ø³ØªÙ‡ Ø§Ù‚ØªØµØ§Ø¯ÛŒ Ø¨Ø§ Ø¨ÙˆÙ†ÙˆØ³ Ø´Ø§Ø±Ú˜ ØªØ´ÙˆÛŒÙ‚ÛŒ", 2, 1, now_seed, now_seed),
+            ("bundle_5m", "Ø¨Ø³ØªÙ‡ Ø·Ù„Ø§ÛŒÛŒ", 5000000, 5500000, 10, "Û±Û°Ùª Ø´Ø§Ø±Ú˜ Ù‡Ø¯ÛŒÙ‡", "success", "Ø¨Ø³ØªÙ‡ Ù¾Ø±ÙØ±ÙˆØ´ Ù‡Ù…Ú©Ø§Ø±Ø§Ù† Ø¨Ø§ Û±Û°Ùª Ù‡Ø¯ÛŒÙ‡ Ù†Ù‚Ø¯ÛŒ", 3, 1, now_seed, now_seed),
+            ("bundle_10m", "Ø¨Ø³ØªÙ‡ Ø§Ù„Ù…Ø§Ø³ VIP", 10000000, 11500000, 15, "Û±ÛµÙª Ø´Ø§Ø±Ú˜ ÙˆÛŒÚ˜Ù‡", "warning", "Ø­Ø¯Ø§Ú©Ø«Ø± Ø§Ø¹ØªØ¨Ø§Ø± Ø¨Ø§ Ø¨Ø§Ù„Ø§ØªØ±ÛŒÙ† Ù†Ø±Ø® Ø¨ÙˆÙ†ÙˆØ³ ÙˆÛŒÚ˜Ù‡", 4, 1, now_seed, now_seed),
         ]
         try:
             cursor.execute("DELETE FROM reseller_bundles")
@@ -13330,11 +13515,11 @@ class Database:
             conn.close()
 
     def apply_reseller_bundle_purchase(self, reseller_id: int, bundle_id: str) -> dict:
-        """اعمال شارژ بسته پیش‌خرید به همراه اعتبار هدیه به موجودی نماینده"""
+        """Ø§Ø¹Ù…Ø§Ù„ Ø´Ø§Ø±Ú˜ Ø¨Ø³ØªÙ‡ Ù¾ÛŒØ´â€ŒØ®Ø±ÛŒØ¯ Ø¨Ù‡ Ù‡Ù…Ø±Ø§Ù‡ Ø§Ø¹ØªØ¨Ø§Ø± Ù‡Ø¯ÛŒÙ‡ Ø¨Ù‡ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         bundles = {b["id"]: b for b in self.get_reseller_credit_bundles()}
         bundle = bundles.get(bundle_id)
         if not bundle:
-            return {"success": False, "error": "بسته اعتباری مورد نظر یافت نشد."}
+            return {"success": False, "error": "Ø¨Ø³ØªÙ‡ Ø§Ø¹ØªØ¨Ø§Ø±ÛŒ Ù…ÙˆØ±Ø¯ Ù†Ø¸Ø± ÛŒØ§ÙØª Ù†Ø´Ø¯."}
 
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -13343,7 +13528,7 @@ class Database:
             cursor.execute("SELECT balance, name FROM resellers WHERE id=?", (reseller_id,))
             res_row = cursor.fetchone()
             if not res_row:
-                return {"success": False, "error": "نماینده یافت نشد."}
+                return {"success": False, "error": "Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ ÛŒØ§ÙØª Ù†Ø´Ø¯."}
 
             res_dict = dict(res_row)
             old_balance = res_dict.get("balance") or 0
@@ -13352,8 +13537,8 @@ class Database:
 
             cursor.execute("UPDATE resellers SET balance=?, updated_at=? WHERE id=?", (new_balance, now, reseller_id))
 
-            # ثبت تراکنش نماینده
-            desc = f"خرید {bundle['title']} (واریز {credit_to_add:,} تومان با {bundle['badge']})"
+            # Ø«Ø¨Øª ØªØ±Ø§Ú©Ù†Ø´ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
+            desc = f"Ø®Ø±ÛŒØ¯ {bundle['title']} (ÙˆØ§Ø±ÛŒØ² {credit_to_add:,} ØªÙˆÙ…Ø§Ù† Ø¨Ø§ {bundle['badge']})"
             cursor.execute("""
                 INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
                 VALUES (?, 'deposit', ?, ?, '-', ?, ?)
@@ -13367,10 +13552,10 @@ class Database:
         finally:
             conn.close()
 
-    # ─── اعلان‌ها و پیام‌های پنل نماینده (Reseller Notifications) ───
+    # â”€â”€â”€ Ø§Ø¹Ù„Ø§Ù†â€ŒÙ‡Ø§ Ùˆ Ù¾ÛŒØ§Ù…â€ŒÙ‡Ø§ÛŒ Ù¾Ù†Ù„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (Reseller Notifications) â”€â”€â”€
 
     def add_reseller_notification(self, reseller_id: int, title: str, message: str, type: str = "info") -> dict:
-        """افزودن اعلان به پنل نماینده (تایید/رد فیش، واریز، هشدارهای سیستمی)"""
+        """Ø§ÙØ²ÙˆØ¯Ù† Ø§Ø¹Ù„Ø§Ù† Ø¨Ù‡ Ù¾Ù†Ù„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (ØªØ§ÛŒÛŒØ¯/Ø±Ø¯ ÙÛŒØ´ØŒ ÙˆØ§Ø±ÛŒØ²ØŒ Ù‡Ø´Ø¯Ø§Ø±Ù‡Ø§ÛŒ Ø³ÛŒØ³ØªÙ…ÛŒ)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -13389,7 +13574,7 @@ class Database:
             conn.close()
 
     def get_reseller_notifications(self, reseller_id: int, unread_only: bool = False, limit: int = 50) -> list:
-        """دریافت لیست اعلان‌های نماینده"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒØ³Øª Ø§Ø¹Ù„Ø§Ù†â€ŒÙ‡Ø§ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -13413,7 +13598,7 @@ class Database:
             conn.close()
 
     def get_reseller_unread_notifications_count(self, reseller_id: int) -> int:
-        """تعداد اعلان‌های خوانده‌نشده نماینده"""
+        """ØªØ¹Ø¯Ø§Ø¯ Ø§Ø¹Ù„Ø§Ù†â€ŒÙ‡Ø§ÛŒ Ø®ÙˆØ§Ù†Ø¯Ù‡â€ŒÙ†Ø´Ø¯Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -13425,7 +13610,7 @@ class Database:
             conn.close()
 
     def mark_reseller_notifications_read(self, reseller_id: int, notification_id: int = None):
-        """علامت‌گذاری اعلان‌ها به عنوان خوانده‌شده"""
+        """Ø¹Ù„Ø§Ù…Øªâ€ŒÚ¯Ø°Ø§Ø±ÛŒ Ø§Ø¹Ù„Ø§Ù†â€ŒÙ‡Ø§ Ø¨Ù‡ Ø¹Ù†ÙˆØ§Ù† Ø®ÙˆØ§Ù†Ø¯Ù‡â€ŒØ´Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -13440,10 +13625,10 @@ class Database:
         finally:
             conn.close()
 
-    # ─── سیستم رفرال و کش‌بک وفاداری (Referral & Cashback) ───
+    # â”€â”€â”€ Ø³ÛŒØ³ØªÙ… Ø±ÙØ±Ø§Ù„ Ùˆ Ú©Ø´â€ŒØ¨Ú© ÙˆÙØ§Ø¯Ø§Ø±ÛŒ (Referral & Cashback) â”€â”€â”€
 
     def process_referral_reward(self, user_telegram_id: int, purchase_amount: int, percent: int = 10) -> dict:
-        """محاسبه و واریز خودکار پورسانت رفرال به کیف پول معرف"""
+        """Ù…Ø­Ø§Ø³Ø¨Ù‡ Ùˆ ÙˆØ§Ø±ÛŒØ² Ø®ÙˆØ¯Ú©Ø§Ø± Ù¾ÙˆØ±Ø³Ø§Ù†Øª Ø±ÙØ±Ø§Ù„ Ø¨Ù‡ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ù…Ø¹Ø±Ù"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -13458,14 +13643,14 @@ class Database:
             if reward_amount <= 0:
                 return {"rewarded": False, "reason": "Zero reward amount"}
 
-            # افزودن به موجودی کیف پول معرف
+            # Ø§ÙØ²ÙˆØ¯Ù† Ø¨Ù‡ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ù…Ø¹Ø±Ù
             cursor.execute("UPDATE users SET wallet_balance = COALESCE(wallet_balance, 0) + ? WHERE telegram_id = ?", (reward_amount, referrer_id))
 
-            # ثبت در تراکنش‌های کیف پول
+            # Ø«Ø¨Øª Ø¯Ø± ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ Ú©ÛŒÙ Ù¾ÙˆÙ„
             cursor.execute("""
                 INSERT INTO wallet_transactions (telegram_id, amount, type, balance_after, description, ref_id, created_at)
                 VALUES (?, ?, 'referral_reward', (SELECT wallet_balance FROM users WHERE telegram_id=?), ?, ?, ?)
-            """, (referrer_id, reward_amount, referrer_id, f"پاداش دعوت از دوست ({percent}٪ خرید اشتراک)", str(user_telegram_id), now))
+            """, (referrer_id, reward_amount, referrer_id, f"Ù¾Ø§Ø¯Ø§Ø´ Ø¯Ø¹ÙˆØª Ø§Ø² Ø¯ÙˆØ³Øª ({percent}Ùª Ø®Ø±ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú©)", str(user_telegram_id), now))
 
             conn.commit()
             return {"rewarded": True, "referrer_id": referrer_id, "reward_amount": reward_amount, "percent": percent}
@@ -13475,10 +13660,10 @@ class Database:
         finally:
             conn.close()
 
-    # ─── تنظیمات درگاه پرداخت آنلاین (مدیریت و نمایندگان) ───
+    # â”€â”€â”€ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¯Ø±Ú¯Ø§Ù‡ Ù¾Ø±Ø¯Ø§Ø®Øª Ø¢Ù†Ù„Ø§ÛŒÙ† (Ù…Ø¯ÛŒØ±ÛŒØª Ùˆ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù†) â”€â”€â”€
 
     def get_reseller_gateway(self, reseller_id: int) -> dict:
-        """دریافت تنظیمات درگاه آنلاین اختصاصی نماینده"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¯Ø±Ú¯Ø§Ù‡ Ø¢Ù†Ù„Ø§ÛŒÙ† Ø§Ø®ØªØµØ§ØµÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -13502,7 +13687,7 @@ class Database:
             conn.close()
 
     def get_admin_gateway(self) -> dict:
-        """دریافت تنظیمات درگاه آنلاین مدیریت اصلی"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¯Ø±Ú¯Ø§Ù‡ Ø¢Ù†Ù„Ø§ÛŒÙ† Ù…Ø¯ÛŒØ±ÛŒØª Ø§ØµÙ„ÛŒ"""
         enabled = str(self.get_setting("online_gateway_enabled") or "").lower() in ("1", "true")
         gw_type = str(self.get_setting("online_gateway_type") or "zarinpal")
         gw_key = str(self.get_setting("online_gateway_key") or "").strip()
@@ -13515,7 +13700,7 @@ class Database:
         }
 
     def update_reseller_gateway(self, reseller_id: int, is_active: bool, gateway_type: str, gateway_key: str, sandbox: bool = False) -> dict:
-        """بروزرسانی درگاه پرداخت آنلاین نماینده"""
+        """Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø¯Ø±Ú¯Ø§Ù‡ Ù¾Ø±Ø¯Ø§Ø®Øª Ø¢Ù†Ù„Ø§ÛŒÙ† Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -13534,7 +13719,7 @@ class Database:
             conn.close()
 
     def update_admin_gateway(self, enabled: bool, gateway_type: str, gateway_key: str, sandbox: bool = False) -> dict:
-        """بروزرسانی درگاه پرداخت آنلاین مدیریت اصلی"""
+        """Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø¯Ø±Ú¯Ø§Ù‡ Ù¾Ø±Ø¯Ø§Ø®Øª Ø¢Ù†Ù„Ø§ÛŒÙ† Ù…Ø¯ÛŒØ±ÛŒØª Ø§ØµÙ„ÛŒ"""
         try:
             self.set_setting("online_gateway_enabled", "1" if enabled else "0")
             self.set_setting("online_gateway_type", gateway_type or "zarinpal")
@@ -13545,15 +13730,15 @@ class Database:
             logger.error(f"Error updating admin gateway: {e}")
             return {"success": False, "error": str(e)}
 
-    # ─── تنظیمات پرداخت ارزی و کریپتو نماینده (Reseller Crypto Settings) ───
+    # â”€â”€â”€ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ù¾Ø±Ø¯Ø§Ø®Øª Ø§Ø±Ø²ÛŒ Ùˆ Ú©Ø±ÛŒÙ¾ØªÙˆ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (Reseller Crypto Settings) â”€â”€â”€
 
     def get_reseller_crypto_config(self, reseller_id: int) -> dict:
-        """دریافت تنظیمات پرداخت ارزی و کریپتو اختصاصی نماینده"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ù¾Ø±Ø¯Ø§Ø®Øª Ø§Ø±Ø²ÛŒ Ùˆ Ú©Ø±ÛŒÙ¾ØªÙˆ Ø§Ø®ØªØµØ§ØµÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         enabled_val = self.get_setting(f"crypto_enabled_r_{reseller_id}", "0")
         wallet_addr = str(self.get_setting(f"crypto_wallet_r_{reseller_id}", "") or "").strip()
         usdt_rate_val = self.get_setting(f"crypto_rate_r_{reseller_id}", "")
         if not usdt_rate_val or not str(usdt_rate_val).isdigit():
-            # فال‌بک به نرخ درگاه کریپتو سراسری
+            # ÙØ§Ù„â€ŒØ¨Ú© Ø¨Ù‡ Ù†Ø±Ø® Ø¯Ø±Ú¯Ø§Ù‡ Ú©Ø±ÛŒÙ¾ØªÙˆ Ø³Ø±Ø§Ø³Ø±ÛŒ
             rate_val = self.get_setting("crypto_usdt_rate", "90000")
             usdt_rate = int(rate_val) if str(rate_val).isdigit() else 90000
         else:
@@ -13566,7 +13751,7 @@ class Database:
         }
 
     def save_reseller_crypto_config(self, reseller_id: int, enabled: bool, wallet_address: str, usdt_rate: int = 0) -> dict:
-        """ذخیره تنظیمات پرداخت ارزی و کریپتو اختصاصی نماینده"""
+        """Ø°Ø®ÛŒØ±Ù‡ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ù¾Ø±Ø¯Ø§Ø®Øª Ø§Ø±Ø²ÛŒ Ùˆ Ú©Ø±ÛŒÙ¾ØªÙˆ Ø§Ø®ØªØµØ§ØµÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         try:
             self.set_setting(f"crypto_enabled_r_{reseller_id}", "1" if enabled else "0")
             self.set_setting(f"crypto_wallet_r_{reseller_id}", str(wallet_address or "").strip())
@@ -13577,10 +13762,10 @@ class Database:
             logger.error(f"Error saving reseller crypto config: {e}")
             return {"success": False, "error": str(e)}
 
-    # ─── تنظیمات تایید خودکار کارت به کارت با پیامک بانک (Smart Bank SMS) ───
+    # â”€â”€â”€ ØªÙ†Ø¸ÛŒÙ…Ø§Øª ØªØ§ÛŒÛŒØ¯ Ø®ÙˆØ¯Ú©Ø§Ø± Ú©Ø§Ø±Øª Ø¨Ù‡ Ú©Ø§Ø±Øª Ø¨Ø§ Ù¾ÛŒØ§Ù…Ú© Ø¨Ø§Ù†Ú© (Smart Bank SMS) â”€â”€â”€
 
     def get_admin_bank_sms_config(self) -> dict:
-        """دریافت تنظیمات تایید خودکار با پیامک بانک برای مدیریت اصلی"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªÙ†Ø¸ÛŒÙ…Ø§Øª ØªØ§ÛŒÛŒØ¯ Ø®ÙˆØ¯Ú©Ø§Ø± Ø¨Ø§ Ù¾ÛŒØ§Ù…Ú© Ø¨Ø§Ù†Ú© Ø¨Ø±Ø§ÛŒ Ù…Ø¯ÛŒØ±ÛŒØª Ø§ØµÙ„ÛŒ"""
         enabled = str(self.get_setting("admin_bank_sms_enabled", "0")).lower() in ("1", "true")
         token = self.get_setting("admin_bank_sms_token")
         if not token:
@@ -13596,7 +13781,7 @@ class Database:
         }
 
     def save_admin_bank_sms_config(self, enabled: bool, digits: int = 3, timeout: int = 15, regenerate_token: bool = False) -> dict:
-        """ذخیره تنظیمات تایید خودکار با پیامک بانک برای مدیریت اصلی"""
+        """Ø°Ø®ÛŒØ±Ù‡ ØªÙ†Ø¸ÛŒÙ…Ø§Øª ØªØ§ÛŒÛŒØ¯ Ø®ÙˆØ¯Ú©Ø§Ø± Ø¨Ø§ Ù¾ÛŒØ§Ù…Ú© Ø¨Ø§Ù†Ú© Ø¨Ø±Ø§ÛŒ Ù…Ø¯ÛŒØ±ÛŒØª Ø§ØµÙ„ÛŒ"""
         try:
             self.set_setting("admin_bank_sms_enabled", "1" if enabled else "0")
             self.set_setting("admin_bank_sms_digits", str(max(3, min(4, int(digits)))))
@@ -13610,7 +13795,7 @@ class Database:
             return {"success": False, "error": str(e)}
 
     def get_reseller_bank_sms_config(self, reseller_id: int) -> dict:
-        """دریافت تنظیمات تایید خودکار با پیامک بانک نماینده"""
+        """Ø¯Ø±ÛŒØ§ÙØª ØªÙ†Ø¸ÛŒÙ…Ø§Øª ØªØ§ÛŒÛŒØ¯ Ø®ÙˆØ¯Ú©Ø§Ø± Ø¨Ø§ Ù¾ÛŒØ§Ù…Ú© Ø¨Ø§Ù†Ú© Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -13637,7 +13822,7 @@ class Database:
             conn.close()
 
     def save_reseller_bank_sms_config(self, reseller_id: int, enabled: bool, digits: int = 3, timeout: int = 15, regenerate_token: bool = False) -> dict:
-        """ذخیره تنظیمات تایید خودکار با پیامک بانک نماینده"""
+        """Ø°Ø®ÛŒØ±Ù‡ ØªÙ†Ø¸ÛŒÙ…Ø§Øª ØªØ§ÛŒÛŒØ¯ Ø®ÙˆØ¯Ú©Ø§Ø± Ø¨Ø§ Ù¾ÛŒØ§Ù…Ú© Ø¨Ø§Ù†Ú© Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -13665,16 +13850,16 @@ class Database:
             conn.close()
 
     def find_bank_sms_owner_by_token(self, token: str) -> Optional[dict]:
-        """پیدا کردن صاحب توکن وب‌هوک (ادمین یا نماینده)"""
+        """Ù¾ÛŒØ¯Ø§ Ú©Ø±Ø¯Ù† ØµØ§Ø­Ø¨ ØªÙˆÚ©Ù† ÙˆØ¨â€ŒÙ‡ÙˆÚ© (Ø§Ø¯Ù…ÛŒÙ† ÛŒØ§ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡)"""
         if not token:
             return None
         token = str(token).strip()
-        # بررسی ادمین
+        # Ø¨Ø±Ø±Ø³ÛŒ Ø§Ø¯Ù…ÛŒÙ†
         admin_token = self.get_setting("admin_bank_sms_token")
         if admin_token and admin_token == token:
             return {"type": "admin", "id": 0}
         
-        # بررسی نمایندگان
+        # Ø¨Ø±Ø±Ø³ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù†
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -13687,7 +13872,7 @@ class Database:
             conn.close()
 
     def log_bank_sms(self, owner_type: str, owner_id: int, sender_number: str, raw_message: str, extracted_amount: int = None, matched_order_id: str = None, status: str = "pending") -> int:
-        """ثبت لاگ پیامک دریافتی از فورواردر"""
+        """Ø«Ø¨Øª Ù„Ø§Ú¯ Ù¾ÛŒØ§Ù…Ú© Ø¯Ø±ÛŒØ§ÙØªÛŒ Ø§Ø² ÙÙˆØ±ÙˆØ§Ø±Ø¯Ø±"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -13706,7 +13891,7 @@ class Database:
             conn.close()
 
     def get_bank_sms_logs(self, owner_type: str, owner_id: int = 0, limit: int = 15) -> list:
-        """دریافت آخرین لاگ‌های پیامک بانکی"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø¢Ø®Ø±ÛŒÙ† Ù„Ø§Ú¯â€ŒÙ‡Ø§ÛŒ Ù¾ÛŒØ§Ù…Ú© Ø¨Ø§Ù†Ú©ÛŒ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -13724,7 +13909,7 @@ class Database:
 
     def create_smart_invoice(self, sub_id: int, plan_id: str, reseller_id: int, base_amount: int, target_card: dict = None, digits: int = 3, timeout_minutes: int = 15, instant_activation: bool = True, discount_code: str = None, discount_amount: int = 0, is_debt_settlement: int = 0) -> dict:
         """
-        تولید فاکتور تمدید هوشمند با ارقام تصادفی خرد جهت تایید اتوماتیک با پیامک بانک
+        ØªÙˆÙ„ÛŒØ¯ ÙØ§Ú©ØªÙˆØ± ØªÙ…Ø¯ÛŒØ¯ Ù‡ÙˆØ´Ù…Ù†Ø¯ Ø¨Ø§ Ø§Ø±Ù‚Ø§Ù… ØªØµØ§Ø¯ÙÛŒ Ø®Ø±Ø¯ Ø¬Ù‡Øª ØªØ§ÛŒÛŒØ¯ Ø§ØªÙˆÙ…Ø§ØªÛŒÚ© Ø¨Ø§ Ù¾ÛŒØ§Ù…Ú© Ø¨Ø§Ù†Ú©
         """
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -13733,21 +13918,21 @@ class Database:
         expires_dt = now_dt + timedelta(minutes=max(5, timeout_minutes))
         expires_str = expires_dt.isoformat()
 
-        # ارقام خرد تصادفی
+        # Ø§Ø±Ù‚Ø§Ù… Ø®Ø±Ø¯ ØªØµØ§Ø¯ÙÛŒ
         min_suffix = 100 if digits == 3 else 1000
         max_suffix = 999 if digits == 3 else 9999
 
-        # رند کردن بیس به هزارگان
+        # Ø±Ù†Ø¯ Ú©Ø±Ø¯Ù† Ø¨ÛŒØ³ Ø¨Ù‡ Ù‡Ø²Ø§Ø±Ú¯Ø§Ù†
         base_clean = (int(base_amount) // 1000) * 1000
 
-        # پیدا کردن مبالغ در حال استفاده در فاکتورهای معلق این نماینده/ادمین برای جلوگیری از تداخل
+        # Ù¾ÛŒØ¯Ø§ Ú©Ø±Ø¯Ù† Ù…Ø¨Ø§Ù„Øº Ø¯Ø± Ø­Ø§Ù„ Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø¯Ø± ÙØ§Ú©ØªÙˆØ±Ù‡Ø§ÛŒ Ù…Ø¹Ù„Ù‚ Ø§ÛŒÙ† Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡/Ø§Ø¯Ù…ÛŒÙ† Ø¨Ø±Ø§ÛŒ Ø¬Ù„ÙˆÚ¯ÛŒØ±ÛŒ Ø§Ø² ØªØ¯Ø§Ø®Ù„
         cursor.execute("""
             SELECT final_amount FROM smart_invoices 
             WHERE reseller_id=? AND status='pending' AND expires_at > ?
         """, (reseller_id, now_str))
         active_amounts = {r["final_amount"] for r in cursor.fetchall()}
 
-        # انتخاب یک عدد رندوم که تداخل نداشته باشد
+        # Ø§Ù†ØªØ®Ø§Ø¨ ÛŒÚ© Ø¹Ø¯Ø¯ Ø±Ù†Ø¯ÙˆÙ… Ú©Ù‡ ØªØ¯Ø§Ø®Ù„ Ù†Ø¯Ø§Ø´ØªÙ‡ Ø¨Ø§Ø´Ø¯
         final_amount = None
         chosen_suffix = None
         for _ in range(50):
@@ -13808,7 +13993,7 @@ class Database:
         }
 
     def get_smart_invoice_by_token(self, token: str) -> Optional[dict]:
-        """دریافت فاکتور با توکن امن"""
+        """Ø¯Ø±ÛŒØ§ÙØª ÙØ§Ú©ØªÙˆØ± Ø¨Ø§ ØªÙˆÚ©Ù† Ø§Ù…Ù†"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -13819,7 +14004,7 @@ class Database:
             conn.close()
 
     def get_smart_invoice_by_order_id(self, order_id: str) -> Optional[dict]:
-        """دریافت فاکتور با شناسه سفارش"""
+        """Ø¯Ø±ÛŒØ§ÙØª ÙØ§Ú©ØªÙˆØ± Ø¨Ø§ Ø´Ù†Ø§Ø³Ù‡ Ø³ÙØ§Ø±Ø´"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -13831,7 +14016,7 @@ class Database:
 
     def match_smart_invoice_by_amount(self, amount_toman: int, owner_type: str, owner_id: int = 0) -> Optional[dict]:
         """
-        تطبیق مبلغ پیامک بانکی با فاکتورهای باز در انتظار پرداخت
+        ØªØ·Ø¨ÛŒÙ‚ Ù…Ø¨Ù„Øº Ù¾ÛŒØ§Ù…Ú© Ø¨Ø§Ù†Ú©ÛŒ Ø¨Ø§ ÙØ§Ú©ØªÙˆØ±Ù‡Ø§ÛŒ Ø¨Ø§Ø² Ø¯Ø± Ø§Ù†ØªØ¸Ø§Ø± Ù¾Ø±Ø¯Ø§Ø®Øª
         """
         if not amount_toman or amount_toman <= 0:
             return None
@@ -13842,7 +14027,7 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            # ۱. جستجوی فاکتور معلق منقضی‌نشده با این مبلغ دقیق برای همین مالک
+            # Û±. Ø¬Ø³ØªØ¬ÙˆÛŒ ÙØ§Ú©ØªÙˆØ± Ù…Ø¹Ù„Ù‚ Ù…Ù†Ù‚Ø¶ÛŒâ€ŒÙ†Ø´Ø¯Ù‡ Ø¨Ø§ Ø§ÛŒÙ† Ù…Ø¨Ù„Øº Ø¯Ù‚ÛŒÙ‚ Ø¨Ø±Ø§ÛŒ Ù‡Ù…ÛŒÙ† Ù…Ø§Ù„Ú©
             cursor.execute("""
                 SELECT * FROM smart_invoices 
                 WHERE reseller_id=? AND final_amount=? AND status='pending' AND expires_at >= ?
@@ -13852,7 +14037,7 @@ class Database:
             if row:
                 return dict(row)
 
-            # ۲. اگر مالک ادمین است، فاکتورهای مشتریان نمایندگان که به کارت‌های ادمین واریز می‌کنند نیز بررسی شود
+            # Û². Ø§Ú¯Ø± Ù…Ø§Ù„Ú© Ø§Ø¯Ù…ÛŒÙ† Ø§Ø³ØªØŒ ÙØ§Ú©ØªÙˆØ±Ù‡Ø§ÛŒ Ù…Ø´ØªØ±ÛŒØ§Ù† Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† Ú©Ù‡ Ø¨Ù‡ Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ÛŒ Ø§Ø¯Ù…ÛŒÙ† ÙˆØ§Ø±ÛŒØ² Ù…ÛŒâ€ŒÚ©Ù†Ù†Ø¯ Ù†ÛŒØ² Ø¨Ø±Ø±Ø³ÛŒ Ø´ÙˆØ¯
             if owner_type == "admin":
                 cursor.execute("""
                     SELECT * FROM smart_invoices 
@@ -13863,7 +14048,7 @@ class Database:
                 if row_adm:
                     return dict(row_adm)
 
-            # ۳. بررسی بازه ۶۰ دقیقه اخیر برای واریزهایی که با تاخیر انجام شدند
+            # Û³. Ø¨Ø±Ø±Ø³ÛŒ Ø¨Ø§Ø²Ù‡ Û¶Û° Ø¯Ù‚ÛŒÙ‚Ù‡ Ø§Ø®ÛŒØ± Ø¨Ø±Ø§ÛŒ ÙˆØ§Ø±ÛŒØ²Ù‡Ø§ÛŒÛŒ Ú©Ù‡ Ø¨Ø§ ØªØ§Ø®ÛŒØ± Ø§Ù†Ø¬Ø§Ù… Ø´Ø¯Ù†Ø¯
             grace_dt = (get_now_naive() - timedelta(minutes=60)).isoformat()
             cursor.execute("""
                 SELECT * FROM smart_invoices 
@@ -13876,7 +14061,7 @@ class Database:
             conn.close()
 
     def mark_smart_invoice_paid(self, order_id: str, tracking_code: str = None) -> bool:
-        """ثبت وضعیت پرداخت موفق برای فاکتور هوشمند"""
+        """Ø«Ø¨Øª ÙˆØ¶Ø¹ÛŒØª Ù¾Ø±Ø¯Ø§Ø®Øª Ù…ÙˆÙÙ‚ Ø¨Ø±Ø§ÛŒ ÙØ§Ú©ØªÙˆØ± Ù‡ÙˆØ´Ù…Ù†Ø¯"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now_str = get_now_iso()
@@ -13896,7 +14081,7 @@ class Database:
             conn.close()
 
     def cancel_smart_invoice(self, order_id: str, sub_id: Optional[int] = None) -> bool:
-        """لغو فاکتور هوشمند معلق توسط مشتری یا مدیر"""
+        """Ù„ØºÙˆ ÙØ§Ú©ØªÙˆØ± Ù‡ÙˆØ´Ù…Ù†Ø¯ Ù…Ø¹Ù„Ù‚ ØªÙˆØ³Ø· Ù…Ø´ØªØ±ÛŒ ÛŒØ§ Ù…Ø¯ÛŒØ±"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -13921,19 +14106,19 @@ class Database:
         finally:
             conn.close()
 
-    # ═══════════════════════════════════════════════════════════════
-    # مدیریت اولویت و چیدمان روش‌های پرداخت (Payment Methods Ordering)
-    # ═══════════════════════════════════════════════════════════════
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    # Ù…Ø¯ÛŒØ±ÛŒØª Ø§ÙˆÙ„ÙˆÛŒØª Ùˆ Ú†ÛŒØ¯Ù…Ø§Ù† Ø±ÙˆØ´â€ŒÙ‡Ø§ÛŒ Ù¾Ø±Ø¯Ø§Ø®Øª (Payment Methods Ordering)
+    # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     DEFAULT_PAYMENT_METHODS = [
-        {"id": "card_to_card", "name": "کارت به کارت (بانکی)", "icon": "fa-credit-card", "color": "primary", "enabled": True, "desc": "واریز به شماره کارت‌های فعال با بررسی و تایید فیش"},
-        {"id": "wallet", "name": "پرداخت از کیف پول", "icon": "fa-wallet", "color": "success", "enabled": True, "desc": "کسر آنی مبلغ از موجودی کیف پول و فعال‌سازی لحظه‌ای اشتراک"},
-        {"id": "online_gateway", "name": "درگاه پرداخت آنلاین (شاپرک / بلوپال)", "icon": "fa-globe", "color": "info", "enabled": True, "desc": "اتصال خودکار به درگاه‌های زرین‌پال، آیدی‌پی، نکست‌پی یا کارت‌به‌کارت هوشمند بلوپال"},
-        {"id": "crypto", "name": "ارز دیجیتال (تتر / کریپتو)", "icon": "fa-gem", "color": "warning", "enabled": True, "desc": "پرداخت با تتر (USDT TRC20 / TON) با محاسبه خودکار نرخ روز"},
+        {"id": "card_to_card", "name": "Ú©Ø§Ø±Øª Ø¨Ù‡ Ú©Ø§Ø±Øª (Ø¨Ø§Ù†Ú©ÛŒ)", "icon": "fa-credit-card", "color": "primary", "enabled": True, "desc": "ÙˆØ§Ø±ÛŒØ² Ø¨Ù‡ Ø´Ù…Ø§Ø±Ù‡ Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ÛŒ ÙØ¹Ø§Ù„ Ø¨Ø§ Ø¨Ø±Ø±Ø³ÛŒ Ùˆ ØªØ§ÛŒÛŒØ¯ ÙÛŒØ´"},
+        {"id": "wallet", "name": "Ù¾Ø±Ø¯Ø§Ø®Øª Ø§Ø² Ú©ÛŒÙ Ù¾ÙˆÙ„", "icon": "fa-wallet", "color": "success", "enabled": True, "desc": "Ú©Ø³Ø± Ø¢Ù†ÛŒ Ù…Ø¨Ù„Øº Ø§Ø² Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ùˆ ÙØ¹Ø§Ù„â€ŒØ³Ø§Ø²ÛŒ Ù„Ø­Ø¸Ù‡â€ŒØ§ÛŒ Ø§Ø´ØªØ±Ø§Ú©"},
+        {"id": "online_gateway", "name": "Ø¯Ø±Ú¯Ø§Ù‡ Ù¾Ø±Ø¯Ø§Ø®Øª Ø¢Ù†Ù„Ø§ÛŒÙ† (Ø´Ø§Ù¾Ø±Ú© / Ø¨Ù„ÙˆÙ¾Ø§Ù„)", "icon": "fa-globe", "color": "info", "enabled": True, "desc": "Ø§ØªØµØ§Ù„ Ø®ÙˆØ¯Ú©Ø§Ø± Ø¨Ù‡ Ø¯Ø±Ú¯Ø§Ù‡â€ŒÙ‡Ø§ÛŒ Ø²Ø±ÛŒÙ†â€ŒÙ¾Ø§Ù„ØŒ Ø¢ÛŒØ¯ÛŒâ€ŒÙ¾ÛŒØŒ Ù†Ú©Ø³Øªâ€ŒÙ¾ÛŒ ÛŒØ§ Ú©Ø§Ø±Øªâ€ŒØ¨Ù‡â€ŒÚ©Ø§Ø±Øª Ù‡ÙˆØ´Ù…Ù†Ø¯ Ø¨Ù„ÙˆÙ¾Ø§Ù„"},
+        {"id": "crypto", "name": "Ø§Ø±Ø² Ø¯ÛŒØ¬ÛŒØªØ§Ù„ (ØªØªØ± / Ú©Ø±ÛŒÙ¾ØªÙˆ)", "icon": "fa-gem", "color": "warning", "enabled": True, "desc": "Ù¾Ø±Ø¯Ø§Ø®Øª Ø¨Ø§ ØªØªØ± (USDT TRC20 / TON) Ø¨Ø§ Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø®ÙˆØ¯Ú©Ø§Ø± Ù†Ø±Ø® Ø±ÙˆØ²"},
     ]
 
     def get_payment_methods(self, reseller_id: Optional[int] = None) -> List[dict]:
-        """دریافت لیست و ترتیب اولویت روش‌های پرداخت برای بات و پنل"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒØ³Øª Ùˆ ØªØ±ØªÛŒØ¨ Ø§ÙˆÙ„ÙˆÛŒØª Ø±ÙˆØ´â€ŒÙ‡Ø§ÛŒ Ù¾Ø±Ø¯Ø§Ø®Øª Ø¨Ø±Ø§ÛŒ Ø¨Ø§Øª Ùˆ Ù¾Ù†Ù„"""
         setting_key = f"payment_methods_order_r_{reseller_id}" if reseller_id else "payment_methods_order"
         raw = self.get_setting(setting_key)
         if raw:
@@ -13960,7 +14145,7 @@ class Database:
         return [dict(m) for m in self.DEFAULT_PAYMENT_METHODS]
 
     def save_payment_methods(self, methods: List[dict], reseller_id: Optional[int] = None) -> bool:
-        """ذخیره چیدمان و وضعیت فعال بودن روش‌های پرداخت"""
+        """Ø°Ø®ÛŒØ±Ù‡ Ú†ÛŒØ¯Ù…Ø§Ù† Ùˆ ÙˆØ¶Ø¹ÛŒØª ÙØ¹Ø§Ù„ Ø¨ÙˆØ¯Ù† Ø±ÙˆØ´â€ŒÙ‡Ø§ÛŒ Ù¾Ø±Ø¯Ø§Ø®Øª"""
         try:
             setting_key = f"payment_methods_order_r_{reseller_id}" if reseller_id else "payment_methods_order"
             self.set_setting(setting_key, json.dumps(methods, ensure_ascii=False))
@@ -13970,7 +14155,7 @@ class Database:
             return False
 
     def move_payment_method(self, method_id: str, direction: str, reseller_id: Optional[int] = None) -> List[dict]:
-        """جابجایی عمودی یک روش پرداخت به بالا یا پایین"""
+        """Ø¬Ø§Ø¨Ø¬Ø§ÛŒÛŒ Ø¹Ù…ÙˆØ¯ÛŒ ÛŒÚ© Ø±ÙˆØ´ Ù¾Ø±Ø¯Ø§Ø®Øª Ø¨Ù‡ Ø¨Ø§Ù„Ø§ ÛŒØ§ Ù¾Ø§ÛŒÛŒÙ†"""
         methods = self.get_payment_methods(reseller_id)
         idx = -1
         for i, m in enumerate(methods):
@@ -13986,7 +14171,7 @@ class Database:
         return methods
 
     def toggle_payment_method(self, method_id: str, reseller_id: Optional[int] = None) -> List[dict]:
-        """تغییر وضعیت فعال/غیرفعال بودن یک روش پرداخت"""
+        """ØªØºÛŒÛŒØ± ÙˆØ¶Ø¹ÛŒØª ÙØ¹Ø§Ù„/ØºÛŒØ±ÙØ¹Ø§Ù„ Ø¨ÙˆØ¯Ù† ÛŒÚ© Ø±ÙˆØ´ Ù¾Ø±Ø¯Ø§Ø®Øª"""
         methods = self.get_payment_methods(reseller_id)
         for m in methods:
             if m["id"] == method_id:
@@ -13996,17 +14181,17 @@ class Database:
         return methods
 
 
-    # ─── مدیریت پلن‌های اختصاصی نمایندگان (Reseller Custom Plans) ───
+    # â”€â”€â”€ Ù…Ø¯ÛŒØ±ÛŒØª Ù¾Ù„Ù†â€ŒÙ‡Ø§ÛŒ Ø§Ø®ØªØµØ§ØµÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† (Reseller Custom Plans) â”€â”€â”€
 
     def get_reseller_plans(self, reseller_id: int) -> List[dict]:
-        """دریافت لیست تمام پلن‌های مادر با اعمال شخصی‌سازی‌ها، حجم، مدت و قیمت‌های سفارشی نماینده (با فیلتر قطعی پلن‌های اختصاصی)"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ù„ÛŒØ³Øª ØªÙ…Ø§Ù… Ù¾Ù„Ù†â€ŒÙ‡Ø§ÛŒ Ù…Ø§Ø¯Ø± Ø¨Ø§ Ø§Ø¹Ù…Ø§Ù„ Ø´Ø®ØµÛŒâ€ŒØ³Ø§Ø²ÛŒâ€ŒÙ‡Ø§ØŒ Ø­Ø¬Ù…ØŒ Ù…Ø¯Øª Ùˆ Ù‚ÛŒÙ…Øªâ€ŒÙ‡Ø§ÛŒ Ø³ÙØ§Ø±Ø´ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (Ø¨Ø§ ÙÛŒÙ„ØªØ± Ù‚Ø·Ø¹ÛŒ Ù¾Ù„Ù†â€ŒÙ‡Ø§ÛŒ Ø§Ø®ØªØµØ§ØµÛŒ)"""
         from admin_manager import load_plans
         raw_master_plans = load_plans()
         
-        # فیلتر هوشمند پلن‌ها:
-        # ۱. پلن‌های اختصاصی مدیریت ارشد کاملاً مخفی هستند
-        # ۲. پلن‌های اختصاصی نمایندگان (دارای allowed_resellers) فقط به نمایندگان مجاز تخصیص داده می‌شوند
-        # ۳. سایر نمایندگان یا کاربران عادی به هیچ عنوان پلن‌های اختصاصی را دریافت نخواهند کرد
+        # ÙÛŒÙ„ØªØ± Ù‡ÙˆØ´Ù…Ù†Ø¯ Ù¾Ù„Ù†â€ŒÙ‡Ø§:
+        # Û±. Ù¾Ù„Ù†â€ŒÙ‡Ø§ÛŒ Ø§Ø®ØªØµØ§ØµÛŒ Ù…Ø¯ÛŒØ±ÛŒØª Ø§Ø±Ø´Ø¯ Ú©Ø§Ù…Ù„Ø§Ù‹ Ù…Ø®ÙÛŒ Ù‡Ø³ØªÙ†Ø¯
+        # Û². Ù¾Ù„Ù†â€ŒÙ‡Ø§ÛŒ Ø§Ø®ØªØµØ§ØµÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† (Ø¯Ø§Ø±Ø§ÛŒ allowed_resellers) ÙÙ‚Ø· Ø¨Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† Ù…Ø¬Ø§Ø² ØªØ®ØµÛŒØµ Ø¯Ø§Ø¯Ù‡ Ù…ÛŒâ€ŒØ´ÙˆÙ†Ø¯
+        # Û³. Ø³Ø§ÛŒØ± Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯Ø§Ù† ÛŒØ§ Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ø¹Ø§Ø¯ÛŒ Ø¨Ù‡ Ù‡ÛŒÚ† Ø¹Ù†ÙˆØ§Ù† Ù¾Ù„Ù†â€ŒÙ‡Ø§ÛŒ Ø§Ø®ØªØµØ§ØµÛŒ Ø±Ø§ Ø¯Ø±ÛŒØ§ÙØª Ù†Ø®ÙˆØ§Ù‡Ù†Ø¯ Ú©Ø±Ø¯
         master_plans = {}
         for pid, p in raw_master_plans.items():
             if p.get("is_exclusive_admin") or p.get("is_exclusive_admin_bot"):
@@ -14078,9 +14263,9 @@ class Database:
 
             master_price = p.get("price", 0)
             admin_price = admin_custom_price if (admin_custom_price is not None and admin_custom_price > 0) else master_price
-            admin_name = admin_custom_name if admin_custom_name else p.get("name", "پلن")
+            admin_name = admin_custom_name if admin_custom_name else p.get("name", "Ù¾Ù„Ù†")
 
-            # اگر نماینده قیمت یا نام اختصاصی داده باشد و فلگ تغییر خورده باشد
+            # Ø§Ú¯Ø± Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ù‚ÛŒÙ…Øª ÛŒØ§ Ù†Ø§Ù… Ø§Ø®ØªØµØ§ØµÛŒ Ø¯Ø§Ø¯Ù‡ Ø¨Ø§Ø´Ø¯ Ùˆ ÙÙ„Ú¯ ØªØºÛŒÛŒØ± Ø®ÙˆØ±Ø¯Ù‡ Ø¨Ø§Ø´Ø¯
             if is_reseller_modified and reseller_custom_price is not None and reseller_custom_price > 0:
                 display_price = reseller_custom_price
             else:
@@ -14104,7 +14289,7 @@ class Database:
             else:
                 is_active = p.get("is_active", True)
             
-            # قیمت تمام‌شده خرید عمده برای نماینده همیشه بر مبنای قیمت پایه تعیین شده توسط مدیر (admin_price) محاسبه می‌شود
+            # Ù‚ÛŒÙ…Øª ØªÙ…Ø§Ù…â€ŒØ´Ø¯Ù‡ Ø®Ø±ÛŒØ¯ Ø¹Ù…Ø¯Ù‡ Ø¨Ø±Ø§ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ù‡Ù…ÛŒØ´Ù‡ Ø¨Ø± Ù…Ø¨Ù†Ø§ÛŒ Ù‚ÛŒÙ…Øª Ù¾Ø§ÛŒÙ‡ ØªØ¹ÛŒÛŒÙ† Ø´Ø¯Ù‡ ØªÙˆØ³Ø· Ù…Ø¯ÛŒØ± (admin_price) Ù…Ø­Ø§Ø³Ø¨Ù‡ Ù…ÛŒâ€ŒØ´ÙˆØ¯
             base_wholesale_price = admin_price
             if custom_wholesale_price is not None and custom_wholesale_price >= 0:
                 wholesale_price = int(custom_wholesale_price)
@@ -14125,7 +14310,7 @@ class Database:
                 "plan_id": pid_str,
                 "name": display_name,
                 "price": display_price,
-                "master_name": p.get("name", "پلن"),
+                "master_name": p.get("name", "Ù¾Ù„Ù†"),
                 "admin_custom_name": admin_custom_name,
                 "reseller_custom_name": reseller_custom_name,
                 "display_name": display_name,
@@ -14191,7 +14376,7 @@ class Database:
                 base_wholesale_price = admin_custom_price if admin_custom_price > 0 else master_p
 
                 display_price = reseller_custom_price if (is_reseller_modified and reseller_custom_price is not None and reseller_custom_price > 0) else base_wholesale_price
-                display_name = reseller_custom_name if (is_reseller_modified and reseller_custom_name) else (admin_custom_name or p_meta.get("name", "پلن"))
+                display_name = reseller_custom_name if (is_reseller_modified and reseller_custom_name) else (admin_custom_name or p_meta.get("name", "Ù¾Ù„Ù†"))
 
                 if is_reseller_modified and reseller_is_active is not None:
                     is_active = bool(reseller_is_active)
@@ -14251,17 +14436,17 @@ class Database:
         return result
 
     def get_reseller_plans_dict(self, reseller_id: int) -> Dict[str, dict]:
-        """دریافت دیکشنری پلن‌های اختصاصی نماینده بر اساس plan_id با تمام شخصی‌سازی‌ها"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ø¯ÛŒÚ©Ø´Ù†Ø±ÛŒ Ù¾Ù„Ù†â€ŒÙ‡Ø§ÛŒ Ø§Ø®ØªØµØ§ØµÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø± Ø§Ø³Ø§Ø³ plan_id Ø¨Ø§ ØªÙ…Ø§Ù… Ø´Ø®ØµÛŒâ€ŒØ³Ø§Ø²ÛŒâ€ŒÙ‡Ø§"""
         plans = self.get_reseller_plans(reseller_id)
         return {str(p["plan_id"]): p for p in plans}
 
     def get_reseller_active_plans(self, reseller_id: int) -> List[dict]:
-        """دریافت فقط پلن‌های فعال برای نمایش به مشتریان ربات تلگرام نماینده"""
+        """Ø¯Ø±ÛŒØ§ÙØª ÙÙ‚Ø· Ù¾Ù„Ù†â€ŒÙ‡Ø§ÛŒ ÙØ¹Ø§Ù„ Ø¨Ø±Ø§ÛŒ Ù†Ù…Ø§ÛŒØ´ Ø¨Ù‡ Ù…Ø´ØªØ±ÛŒØ§Ù† Ø±Ø¨Ø§Øª ØªÙ„Ú¯Ø±Ø§Ù… Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         all_plans = self.get_reseller_plans(reseller_id)
         return [p for p in all_plans if p.get("is_active") and p.get("master_is_active")]
 
     def get_reseller_plan(self, reseller_id: int, plan_id: str) -> Optional[dict]:
-        """دریافت مشخصات کامل یک پلن خاص برای نماینده"""
+        """Ø¯Ø±ÛŒØ§ÙØª Ù…Ø´Ø®ØµØ§Øª Ú©Ø§Ù…Ù„ ÛŒÚ© Ù¾Ù„Ù† Ø®Ø§Øµ Ø¨Ø±Ø§ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡"""
         plans = self.get_reseller_plans(reseller_id)
         for p in plans:
             if str(p["plan_id"]) == str(plan_id):
@@ -14269,7 +14454,7 @@ class Database:
         return None
 
     def update_reseller_plan_override(self, reseller_id: int, plan_id: str, custom_name: str = None, custom_price: int = None, custom_data_limit: float = None, custom_duration: int = None, custom_discount_percent: float = None, custom_wholesale_price: int = None, is_active: bool = True, preserve_specs: bool = False, is_reseller: bool = False) -> dict:
-        """بروزرسانی یا ثبت تنظیمات اختصاصی نماینده برای یک پلن (نام، قیمت، حجم، مدت، تخفیف، قیمت عمده، وضعیت)"""
+        """Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ ÛŒØ§ Ø«Ø¨Øª ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø§Ø®ØªØµØ§ØµÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ø±Ø§ÛŒ ÛŒÚ© Ù¾Ù„Ù† (Ù†Ø§Ù…ØŒ Ù‚ÛŒÙ…ØªØŒ Ø­Ø¬Ù…ØŒ Ù…Ø¯ØªØŒ ØªØ®ÙÛŒÙØŒ Ù‚ÛŒÙ…Øª Ø¹Ù…Ø¯Ù‡ØŒ ÙˆØ¶Ø¹ÛŒØª)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -14343,7 +14528,7 @@ class Database:
             conn.close()
 
     def reset_reseller_plan_override(self, reseller_id: int, plan_id: str, by_reseller: bool = True) -> dict:
-        """بازنشانی تنظیمات پلن نماینده؛ در صورت بازنشانی توسط نماینده، درصد تخفیف و قیمت عمده مدیر حفظ می‌شود"""
+        """Ø¨Ø§Ø²Ù†Ø´Ø§Ù†ÛŒ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ù¾Ù„Ù† Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡Ø› Ø¯Ø± ØµÙˆØ±Øª Ø¨Ø§Ø²Ù†Ø´Ø§Ù†ÛŒ ØªÙˆØ³Ø· Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ØŒ Ø¯Ø±ØµØ¯ ØªØ®ÙÛŒÙ Ùˆ Ù‚ÛŒÙ…Øª Ø¹Ù…Ø¯Ù‡ Ù…Ø¯ÛŒØ± Ø­ÙØ¸ Ù…ÛŒâ€ŒØ´ÙˆØ¯"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -14387,8 +14572,8 @@ class Database:
 
     def get_monthly_accounting_audit(self, reseller_id: int = None, days: int = 30) -> dict:
         """
-        گزارش جامع گردش حساب و حسابرسی ۳۰ روز اخیر با جزئیات سود، فروش نقدی/اعتباری،
-        ترافیک واگذار شده، تعداد اشتراک‌ها و ریز تراکنش‌ها به همراه خروجی تفکیکی
+        Ú¯Ø²Ø§Ø±Ø´ Ø¬Ø§Ù…Ø¹ Ú¯Ø±Ø¯Ø´ Ø­Ø³Ø§Ø¨ Ùˆ Ø­Ø³Ø§Ø¨Ø±Ø³ÛŒ Û³Û° Ø±ÙˆØ² Ø§Ø®ÛŒØ± Ø¨Ø§ Ø¬Ø²Ø¦ÛŒØ§Øª Ø³ÙˆØ¯ØŒ ÙØ±ÙˆØ´ Ù†Ù‚Ø¯ÛŒ/Ø§Ø¹ØªØ¨Ø§Ø±ÛŒØŒ
+        ØªØ±Ø§ÙÛŒÚ© ÙˆØ§Ú¯Ø°Ø§Ø± Ø´Ø¯Ù‡ØŒ ØªØ¹Ø¯Ø§Ø¯ Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ Ùˆ Ø±ÛŒØ² ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ Ø¨Ù‡ Ù‡Ù…Ø±Ø§Ù‡ Ø®Ø±ÙˆØ¬ÛŒ ØªÙÚ©ÛŒÚ©ÛŒ
         """
         from datetime import datetime, timedelta
         from utils import get_now_naive, gregorian_to_shamsi
@@ -14448,7 +14633,7 @@ class Database:
             res_username = res_row.get("username") if res_row else None
             accounted_sub_ids = set()
 
-            # ۱. استخراج تراکنش‌های تایید شده در بازه زمانی
+            # Û±. Ø§Ø³ØªØ®Ø±Ø§Ø¬ ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ ØªØ§ÛŒÛŒØ¯ Ø´Ø¯Ù‡ Ø¯Ø± Ø¨Ø§Ø²Ù‡ Ø²Ù…Ø§Ù†ÛŒ
             if reseller_id:
                 cursor.execute("""
                     SELECT * FROM transactions 
@@ -14475,7 +14660,7 @@ class Database:
                 amount = int(r_dict.get("amount") or 0)
                 audit["total_revenue"] += amount
                 
-                is_credit_tx = bool(r_dict.get("gateway") == "credit" or "credit" in str(r_dict.get("order_id", "")).lower() or "اعتباری" in str(r_dict.get("tracking_code", "")))
+                is_credit_tx = bool(r_dict.get("gateway") == "credit" or "credit" in str(r_dict.get("order_id", "")).lower() or "Ø§Ø¹ØªØ¨Ø§Ø±ÛŒ" in str(r_dict.get("tracking_code", "")))
                 c_date = str(r_dict.get("created_at", ""))[:10]
                 day_entry = get_or_init_day(c_date)
 
@@ -14500,7 +14685,7 @@ class Database:
 
                 audit["transactions"].append(r_dict)
 
-            # ۱.۲. اضافه کردن خریدهای مستقیم و تمدیدهای پنل نماینده به عنوان درآمد و سود
+            # Û±.Û². Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† Ø®Ø±ÛŒØ¯Ù‡Ø§ÛŒ Ù…Ø³ØªÙ‚ÛŒÙ… Ùˆ ØªÙ…Ø¯ÛŒØ¯Ù‡Ø§ÛŒ Ù¾Ù†Ù„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ù‡ Ø¹Ù†ÙˆØ§Ù† Ø¯Ø±Ø¢Ù…Ø¯ Ùˆ Ø³ÙˆØ¯
             if reseller_id:
                 cursor.execute("""
                     SELECT * FROM reseller_transactions 
@@ -14555,10 +14740,10 @@ class Database:
                     if not norm_tx.get("username"):
                         norm_tx["username"] = norm_tx.get("account_name") or ""
                     if not norm_tx.get("gateway"):
-                        norm_tx["gateway"] = "کیف پول" if norm_tx.get("payment_source") == "wallet" else "اعتبار خرید"
+                        norm_tx["gateway"] = "Ú©ÛŒÙ Ù¾ÙˆÙ„" if norm_tx.get("payment_source") == "wallet" else "Ø§Ø¹ØªØ¨Ø§Ø± Ø®Ø±ÛŒØ¯"
                     audit["transactions"].append(norm_tx)
 
-            # ۲. اشتراک‌های ایجاد شده در بازه زمانی جهت محاسبه حجم کل GB و تفکیک روزشمار
+            # Û². Ø§Ø´ØªØ±Ø§Ú©â€ŒÙ‡Ø§ÛŒ Ø§ÛŒØ¬Ø§Ø¯ Ø´Ø¯Ù‡ Ø¯Ø± Ø¨Ø§Ø²Ù‡ Ø²Ù…Ø§Ù†ÛŒ Ø¬Ù‡Øª Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø­Ø¬Ù… Ú©Ù„ GB Ùˆ ØªÙÚ©ÛŒÚ© Ø±ÙˆØ²Ø´Ù…Ø§Ø±
             if reseller_id:
                 cursor.execute("""
                     SELECT id, account_name, telegram_id, data_limit, cost_paid, is_credit, payment_source, debt_amount, created_at, plan_name 
@@ -14607,7 +14792,7 @@ class Database:
                         day_entry["credit_income"] += debt_amt
                         day_entry["total_income"] += debt_amt
 
-                    gw = "اعتبار خرید" if (s_dict.get("is_credit") or s_dict.get("payment_source") == "credit") else ("کیف پول" if c_paid > 0 else "سفارش مستقیم")
+                    gw = "Ø§Ø¹ØªØ¨Ø§Ø± Ø®Ø±ÛŒØ¯" if (s_dict.get("is_credit") or s_dict.get("payment_source") == "credit") else ("Ú©ÛŒÙ Ù¾ÙˆÙ„" if c_paid > 0 else "Ø³ÙØ§Ø±Ø´ Ù…Ø³ØªÙ‚ÛŒÙ…")
                     audit["transactions"].append({
                         "id": s_id,
                         "order_id": f"SUB-{s_id}",
@@ -14619,7 +14804,7 @@ class Database:
                         "created_at": s_dict.get("created_at") or ""
                     })
 
-            # ۳. محاسبه هزینه‌ها و بدهی‌ها
+            # Û³. Ù…Ø­Ø§Ø³Ø¨Ù‡ Ù‡Ø²ÛŒÙ†Ù‡â€ŒÙ‡Ø§ Ùˆ Ø¨Ø¯Ù‡ÛŒâ€ŒÙ‡Ø§
             if not reseller_id:
                 cursor.execute("""
                     SELECT SUM(amount) FROM accounting_records 
@@ -14650,7 +14835,7 @@ class Database:
                     audit["total_expenses"] = int(audit["total_revenue"] * (100 - discount) / 100)
                 audit["net_profit"] = max(0, audit["total_revenue"] - audit["total_expenses"])
 
-            # ۴. مرتب‌سازی روزشمار ۳۰ روزه بر اساس تاریخ به صورت نزولی
+            # Û´. Ù…Ø±ØªØ¨â€ŒØ³Ø§Ø²ÛŒ Ø±ÙˆØ²Ø´Ù…Ø§Ø± Û³Û° Ø±ÙˆØ²Ù‡ Ø¨Ø± Ø§Ø³Ø§Ø³ ØªØ§Ø±ÛŒØ® Ø¨Ù‡ ØµÙˆØ±Øª Ù†Ø²ÙˆÙ„ÛŒ
             sorted_daily = []
             for d_key in sorted(daily_map.keys(), reverse=True):
                 sorted_daily.append(daily_map[d_key])
@@ -14658,7 +14843,7 @@ class Database:
             audit["daily_stats"] = sorted_daily
             audit["daily_turnover"] = daily_map
 
-            # ۵. دیکشنری summary هماهنگ با قالب‌های jinja2
+            # Ûµ. Ø¯ÛŒÚ©Ø´Ù†Ø±ÛŒ summary Ù‡Ù…Ø§Ù‡Ù†Ú¯ Ø¨Ø§ Ù‚Ø§Ù„Ø¨â€ŒÙ‡Ø§ÛŒ jinja2
             audit["summary"] = {
                 "total_revenue": audit["total_revenue"],
                 "cash_revenue": audit["cash_revenue"],
@@ -14680,7 +14865,7 @@ class Database:
         return audit
 
     def get_customers_ticket_status_map(self, reseller_id: int = None) -> dict:
-        """نقشه سریع وضعیت تیکت‌های کاربران و مشتریان (باز، در انتظار، بسته)"""
+        """Ù†Ù‚Ø´Ù‡ Ø³Ø±ÛŒØ¹ ÙˆØ¶Ø¹ÛŒØª ØªÛŒÚ©Øªâ€ŒÙ‡Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ùˆ Ù…Ø´ØªØ±ÛŒØ§Ù† (Ø¨Ø§Ø²ØŒ Ø¯Ø± Ø§Ù†ØªØ¸Ø§Ø±ØŒ Ø¨Ø³ØªÙ‡)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         result = {}
@@ -14725,7 +14910,7 @@ class Database:
         return result
 
     def add_subscription_traffic(self, sub_id: int, extra_gb: float) -> dict:
-        """افزایش دستی حجم اشتراک در دیتابیس و پنل هیدیفای"""
+        """Ø§ÙØ²Ø§ÛŒØ´ Ø¯Ø³ØªÛŒ Ø­Ø¬Ù… Ø§Ø´ØªØ±Ø§Ú© Ø¯Ø± Ø¯ÛŒØªØ§Ø¨ÛŒØ³ Ùˆ Ù¾Ù†Ù„ Ù‡ÛŒØ¯ÛŒÙØ§ÛŒ"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -14733,7 +14918,7 @@ class Database:
             cursor.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,))
             sub = cursor.fetchone()
             if not sub:
-                return {"success": False, "error": "اشتراک یافت نشد."}
+                return {"success": False, "error": "Ø§Ø´ØªØ±Ø§Ú© ÛŒØ§ÙØª Ù†Ø´Ø¯."}
             
             old_limit = float(sub["data_limit"] or 0)
             new_limit = round(old_limit + extra_gb, 2)
@@ -14749,7 +14934,7 @@ class Database:
             conn.close()
 
     def set_subscription_vip(self, sub_id: int, is_vip: bool = True) -> dict:
-        """تنظیم وضعیت مشتری پرمیوم / VIP برای اشتراک"""
+        """ØªÙ†Ø¸ÛŒÙ… ÙˆØ¶Ø¹ÛŒØª Ù…Ø´ØªØ±ÛŒ Ù¾Ø±Ù…ÛŒÙˆÙ… / VIP Ø¨Ø±Ø§ÛŒ Ø§Ø´ØªØ±Ø§Ú©"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -14768,7 +14953,7 @@ class Database:
             conn.close()
 
     def apply_reseller_bundle_credit(self, reseller_id: int, amount: int, bundle_title: str, tx_id: int = None) -> dict:
-        """واریز شارژ بسته اعتباری و بونوس مربوطه به کیف پول نماینده پس از تایید رسید"""
+        """ÙˆØ§Ø±ÛŒØ² Ø´Ø§Ø±Ú˜ Ø¨Ø³ØªÙ‡ Ø§Ø¹ØªØ¨Ø§Ø±ÛŒ Ùˆ Ø¨ÙˆÙ†ÙˆØ³ Ù…Ø±Ø¨ÙˆØ·Ù‡ Ø¨Ù‡ Ú©ÛŒÙ Ù¾ÙˆÙ„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ù¾Ø³ Ø§Ø² ØªØ§ÛŒÛŒØ¯ Ø±Ø³ÛŒØ¯"""
         bundles = {b["price"]: b for b in self.get_reseller_credit_bundles()}
         bundle = bundles.get(amount)
         if not bundle:
@@ -14787,7 +14972,7 @@ class Database:
             cursor.execute("SELECT balance, name FROM resellers WHERE id=?", (reseller_id,))
             res_row = cursor.fetchone()
             if not res_row:
-                return {"success": False, "error": "نماینده یافت نشد."}
+                return {"success": False, "error": "Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ ÛŒØ§ÙØª Ù†Ø´Ø¯."}
 
             res_dict = dict(res_row)
             old_balance = res_dict.get("balance") or 0
@@ -14795,7 +14980,7 @@ class Database:
 
             cursor.execute("UPDATE resellers SET balance=?, updated_at=? WHERE id=?", (new_balance, now, reseller_id))
 
-            desc = f"شارژ تاییدشده {bundle_title} (مبلغ شارژ: {credit_to_add:,} تومان | بونوس: {bonus_pct}٪)"
+            desc = f"Ø´Ø§Ø±Ú˜ ØªØ§ÛŒÛŒØ¯Ø´Ø¯Ù‡ {bundle_title} (Ù…Ø¨Ù„Øº Ø´Ø§Ø±Ú˜: {credit_to_add:,} ØªÙˆÙ…Ø§Ù† | Ø¨ÙˆÙ†ÙˆØ³: {bonus_pct}Ùª)"
             cursor.execute("""
                 INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
                 VALUES (?, 'deposit', ?, ?, '-', ?, ?)
@@ -14810,7 +14995,12 @@ class Database:
             conn.close()
 
 
-# نمونه singleton
+# Ù†Ù…ÙˆÙ†Ù‡ singleton
 db = Database()
+
+
+
+
+
 
 

@@ -40,8 +40,8 @@ def format_iranian_phone(phone: str) -> Optional[str]:
     return None
 
 
-def get_sms_config(db_instance=None) -> Dict[str, Any]:
-    """دریافت تنظیمات فعال پنل پیامکی از دیتابیس یا فایل .env"""
+def get_sms_config(db_instance=None, reseller_id: int = None) -> Dict[str, Any]:
+    """دریافت تنظیمات فعال پنل پیامکی از دیتابیس (مدیریت یا نماینده اختصاصی) یا فایل .env"""
     cfg = {
         "enabled": False,
         "provider": "ippanel",
@@ -51,9 +51,26 @@ def get_sms_config(db_instance=None) -> Dict[str, Any]:
         "pattern_login": "",
         "pattern_failed": "",
         "pattern_logout": "",
+        "is_reseller": False,
     }
 
-    # اولویت اول: خواندن از تنظیمات ذخیره‌شده در دیتابیس
+    # در صورت درخواست تنظیمات نماینده خاص
+    if reseller_id and int(reseller_id) > 0 and db_instance and hasattr(db_instance, "get_reseller_sms_config"):
+        try:
+            r_cfg = db_instance.get_reseller_sms_config(int(reseller_id))
+            if r_cfg:
+                cfg["enabled"] = bool(r_cfg.get("enabled"))
+                cfg["provider"] = str(r_cfg.get("provider") or "ippanel").lower()
+                cfg["api_key"] = str(r_cfg.get("api_key") or "")
+                cfg["originator"] = str(r_cfg.get("originator") or "")
+                cfg["url"] = str(r_cfg.get("url") or "")
+                cfg["templates"] = r_cfg.get("templates") or {}
+                cfg["is_reseller"] = True
+                return cfg
+        except Exception as e:
+            logger.warning(f"Failed to read reseller {reseller_id} sms config from db: {e}")
+
+    # اولویت اول ادمین: خواندن از تنظیمات ذخیره‌شده در دیتابیس
     if db_instance and hasattr(db_instance, "get_setting"):
         try:
             db_enabled = db_instance.get_setting("sms_enabled", None)
@@ -84,15 +101,27 @@ def get_sms_config(db_instance=None) -> Dict[str, Any]:
     return cfg
 
 
+def format_sms_template(template_text: str, placeholders: dict) -> str:
+    """جایگذاری متغیرهای داینامیک مانند نام، لینک پورتال، ساب، بدهی و نام برند در متن پیامک"""
+    if not template_text:
+        return ""
+    result = template_text
+    for key, val in placeholders.items():
+        placeholder_str = "{" + str(key) + "}"
+        result = result.replace(placeholder_str, str(val if val is not None else ""))
+    return result
+
+
 def send_sms(
     receptor: str,
     message: str,
     pattern_code: str = None,
     pattern_data: dict = None,
-    db_instance=None
+    db_instance=None,
+    reseller_id: int = None
 ) -> Tuple[bool, str]:
     """
-    ارسال پیامک به شماره همراه مشخص شده
+    ارسال پیامک به شماره همراه مشخص شده با درگاه سیستم یا درگاه اختصاصی نماینده
     
     Args:
         receptor: شماره همراه مقصد
@@ -100,6 +129,7 @@ def send_sms(
         pattern_code: کد الگو / پترن خدماتی (در صورت فعال بودن در پنل پیامک)
         pattern_data: دیکشنری مقادیر متغیرهای پترن (مانند {'name': 'علی', 'code': '1234'})
         db_instance: شیء دیتابیس برای خواندن تنظیمات
+        reseller_id: در صورت ارسال توسط نماینده، شناسه نماینده جهت استفاده از پنل پیامک خودش
         
     Returns:
         tuple (موفق بودن عملیات, پیام نتیجه یا خطا)
@@ -108,13 +138,17 @@ def send_sms(
     if not formatted_phone:
         return False, f"شماره همراه «{receptor}» نامعتبر است."
 
-    config = get_sms_config(db_instance)
+    config = get_sms_config(db_instance, reseller_id=reseller_id)
     if not config["enabled"]:
+        if reseller_id and config.get("is_reseller"):
+            return False, "درگاه پیامک اختصاصی نماینده غیرفعال است. لطفاً از منوی تنظیمات درگاه پیامک، آن را فعال فرمایید."
         return False, "ارسال پیامک در تنظیمات سیستم غیرفعال است."
 
     provider = config["provider"]
     api_key = config.get("api_key", "")
     if not api_key and provider != "generic":
+        if reseller_id and config.get("is_reseller"):
+            return False, "کلید API پنل پیامکی اختصاصی نماینده تنظیم نشده است."
         return False, "کلید API پنل پیامکی (SMS_API_KEY) تنظیم نشده است."
 
     try:
@@ -375,3 +409,37 @@ def send_auth_sms_notification(
         return send_sms(phone, message, pattern_code=pattern if pattern else None, pattern_data=pattern_data, db_instance=db_instance)
 
     return False, "نوع رویداد نامعتبر است."
+
+
+def send_customer_templated_sms(
+    phone: str,
+    template_type: str,
+    data: dict,
+    custom_message: str = None,
+    db_instance=None,
+    reseller_id: int = None
+) -> Tuple[bool, str]:
+    """
+    ارسال پیامک با قالب آماده برای مشتری (لینک پورتال، لینک ساب، هر دو لینک، یا صورتحساب بدهی)
+    """
+    if custom_message and str(custom_message).strip():
+        formatted_msg = format_sms_template(str(custom_message).strip(), data)
+        return send_sms(phone, formatted_msg, db_instance=db_instance, reseller_id=reseller_id)
+
+    templates = {}
+    if db_instance and hasattr(db_instance, "get_sms_templates"):
+        templates = db_instance.get_sms_templates(reseller_id=reseller_id)
+
+    raw_template = templates.get(template_type)
+    if not raw_template:
+        default_templates = {
+            "portal_link": "کاربر گرامی {name}، جهت مشاهده وضعیت اشتراک، لینک‌های اتصال و تمدید آنلاین به لینک اختصاصی زیر مراجعه فرمایید:\n{portal_url}\n{brand_name}",
+            "sub_link": "کاربر گرامی {name}، لینک اختصاصی اتصال شما:\n{sub_url}\n{brand_name}",
+            "both_links": "کاربر گرامی {name}، اشتراک شما آماده است.\nپورتال و مدیریت: {portal_url}\nلینک اتصال مستقیم: {sub_url}\n{brand_name}",
+            "debt_invoice": "کاربر گرامی {name}، صورتحساب بدهی اشتراک شما صادر شده است.\nمبلغ بدهی: {debt_amount} تومان\nجهت مشاهده و پرداخت آنلاین به لینک زیر مراجعه نمایید:\n{payment_url}\n{brand_name}"
+        }
+        raw_template = default_templates.get(template_type, "{portal_url}")
+
+    formatted_msg = format_sms_template(raw_template, data)
+    return send_sms(phone, formatted_msg, db_instance=db_instance, reseller_id=reseller_id)
+

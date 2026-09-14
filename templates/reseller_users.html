@@ -251,7 +251,7 @@
                         <th class="sortable-th" data-column="4">پلن و حجم</th>
                         <th class="sortable-th" data-column="5">مدت اعتبار</th>
                         <th class="sortable-th" data-column="6">وضعیت اتصال</th>
-                        <th class="sortable-th" data-column="7">تاریخ صدور</th>
+                        <th class="sortable-th" data-column="7">تاریخ</th>
                         <th class="sortable-th" data-column="8">صادر کننده</th>
                         <th class="text-end pe-3">عملیات و مدیریت</th>
                     </tr>
@@ -363,9 +363,12 @@
                             <div>
                                 <span class="badge bg-primary bg-opacity-10 text-primary mb-1">{{ sub['plan_name'] or '-' }}</span>
                                 <div class="small fw-bold font-monospace text-nowrap" dir="ltr">{{ "%.2f"|format(sub['data_used']|float or 0) }} / {{ "%.1f"|format(sub['data_limit']|float or 0) }} GB</div>
-                                <div class="progress mt-1 custom-usage-progress" style="width: 100px;">
-                                    {% set pct = (((sub['data_used']|float or 0) / (sub['data_limit']|float or 1)) * 100)|int %}
-                                    <div class="progress-bar {{ 'bg-danger' if pct > 90 else ('bg-warning' if pct > 70 else 'bg-success') }}" style="width: {{ pct if pct <= 100 else 100 }}%"></div>
+                                {% set pct = (((sub['data_used']|float or 0) / (sub['data_limit']|float or 1)) * 100)|int %}
+                                {% set rem_pct = 100 - pct %}
+                                {% if rem_pct < 0 %}{% set rem_pct = 0 %}{% endif %}
+                                <div class="progress mt-1 custom-usage-progress position-relative" style="width: 105px; height: 16px; border: 1.5px solid #475569; background-color: rgba(15, 23, 42, 0.45); border-radius: 6px; overflow: hidden;" title="باقی‌مانده: {{ rem_pct }}%">
+                                    <div class="progress-bar {{ 'bg-danger' if pct > 90 else ('bg-warning' if pct > 70 else 'bg-success') }}" style="width: {{ pct if pct <= 100 else 100 }}%; height: 100%;"></div>
+                                    <span class="position-absolute w-100 text-center fw-bold text-white font-monospace" style="font-size: 10px; line-height: 14px; text-shadow: 0 1px 2px rgba(0,0,0,0.9); left: 0; top: 0; pointer-events: none;">{{ rem_pct }}%</span>
                                 </div>
                             </div>
                         </td>
@@ -373,15 +376,15 @@
                             {% if sub.get('is_started') %}
                                 <div>
                                     {% if sub.get('is_expired') or sub.get('remaining_days', 30) < 0 %}
-                                        <span class="badge bg-danger text-white border border-danger font-monospace fs-6" title="اشتراک منقضی شده است">
+                                        <span class="badge bg-danger text-white border border-danger font-monospace py-1 px-2" style="font-size: 0.78rem;" title="اشتراک منقضی شده است">
                                             {{ sub.get('expiry_text') or (sub.get('expired_days', 1)|string + ' روز پیش') }}
                                         </span>
                                     {% elif sub.get('remaining_days', 30) == 0 %}
-                                        <span class="badge bg-danger-subtle text-danger border border-danger font-monospace fs-6">
+                                        <span class="badge bg-danger-subtle text-danger border border-danger font-monospace py-1 px-2" style="font-size: 0.78rem;">
                                             {{ sub.get('expiry_text') or 'امروز منقضی شد' }}
                                         </span>
                                     {% else %}
-                                        <span class="badge {% if sub.get('remaining_days', 30) <= 3 %}bg-warning-subtle text-dark border border-warning{% else %}bg-success-subtle text-success border border-success{% endif %} font-monospace fs-6">
+                                        <span class="badge {% if sub.get('remaining_days', 30) <= 3 %}bg-warning-subtle text-dark border border-warning{% else %}bg-success-subtle text-success border border-success{% endif %} font-monospace py-1 px-2" style="font-size: 0.78rem;">
                                             {{ sub.get('expiry_text') or (sub.get('remaining_days', sub['duration'])|string + ' روز دیگر') }}
                                         </span>
                                     {% endif %}
@@ -389,7 +392,7 @@
                                 </div>
                             {% else %}
                                 <div>
-                                    <span class="badge bg-secondary-subtle text-secondary border font-monospace">{{ sub['duration'] or 30 }} روز</span>
+                                    <span class="badge bg-secondary-subtle text-secondary border font-monospace py-1 px-2" style="font-size: 0.78rem;">{{ sub['duration'] or 30 }} روز</span>
                                     <div class="text-muted small" style="font-size: 10px;">شروع پس از اتصال</div>
                                 </div>
                             {% endif %}
@@ -420,15 +423,21 @@
                                 {% endif %}
                             {% endif %}
                         </td>
-                        <td data-value="{{ sub['created_at'] or '' }}">
-                            {% if sub.get('created_at') %}
+                        {% set event_date = sub.get('last_renewed_at') or sub.get('last_lifecycle_event_at') or sub.get('created_at') %}
+                        <td data-value="{{ event_date or '' }}">
+                            {% if event_date %}
                                 <div class="d-flex flex-column text-nowrap">
                                     <span class="fw-semibold text-primary font-monospace" style="font-size: 11px;">
-                                        {{ sub['created_at']|shamsi_date }}
+                                        {{ event_date|shamsi_date }}
                                     </span>
                                     <span class="text-secondary opacity-75 font-monospace" style="font-size: 10px;">
-                                        {{ sub['created_at']|gregorian_clean }}
+                                        {{ event_date|gregorian_clean }}
                                     </span>
+                                    {% if sub.get('last_renewed_at') or (sub.get('last_lifecycle_event_at') and sub.get('last_lifecycle_event_at') != sub.get('created_at')) %}
+                                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-1 mt-0.5" style="font-size: 8.5px; width: fit-content;" title="آخرین تمدید اشتراک">تمدید</span>
+                                    {% else %}
+                                        <span class="badge bg-success-subtle text-success border border-success-subtle px-1 mt-0.5" style="font-size: 8.5px; width: fit-content;" title="مشتری تازه ساخته شده">ساخت جدید</span>
+                                    {% endif %}
                                 </div>
                             {% else %}
                                 <span class="text-muted small font-monospace">-</span>
@@ -469,20 +478,7 @@
                         </td>
                         <td class="text-end pe-3">
                             <div class="d-inline-flex align-items-center gap-1">
-                                <!-- ۱. دکمه سریع تغییر وضعیت فعال/غیرفعال -->
-                                {% if sub['status'] == 'active' %}
-                                <button type="button" class="btn btn-sm btn-outline-secondary px-2" data-bs-toggle="modal" data-bs-target="#disableModal{{ sub['id'] }}" title="غیرفعال‌سازی سریع اکانت با ثبت علت">
-                                    <i class="fas fa-user-slash"></i>
-                                </button>
-                                {% else %}
-                                <form method="POST" action="{{ url_for('reseller_toggle_user', sub_id=sub['id']) }}" class="d-inline" onsubmit="return confirm('آیا از فعال‌سازی مجدد این مشتری اطمینان دارید؟')">
-                                    <button type="submit" class="btn btn-sm btn-outline-success px-2" title="فعال‌سازی سریع مجدد اکانت">
-                                        <i class="fas fa-user-check"></i>
-                                    </button>
-                                </form>
-                                {% endif %}
-
-                                <!-- ۲. دکمه سریع تمدید اشتراک -->
+                                <!-- ۱. دکمه سریع تمدید اشتراک -->
                                 <button type="button" class="btn btn-sm btn-success d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" data-bs-toggle="modal" data-bs-target="#renewModal{{ sub['id'] }}" title="تمدید سریع اشتراک">
                                     <i class="fas fa-arrows-rotate"></i>
                                     <span class="d-none d-md-inline">تمدید</span>
@@ -500,6 +496,12 @@
                                 <button type="button" class="btn btn-sm btn-outline-info d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" onclick="copyLink('{{ get_customer_portal_url(sub.get('hidify_uuid') or sub['id']) }}', 'لینک پورتال مشتری')" title="مشاهده و کپی لینک پورتال مشتری">
                                     <i class="fas fa-link"></i>
                                     <span class="d-none d-lg-inline">پورتال مشتری</span>
+                                </button>
+
+                                <!-- ۳.۵. دکمه ارسال پیامک اختصاصی -->
+                                <button type="button" class="btn btn-sm btn-outline-warning d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" onclick="openCustomerSmsModal({{ sub['id'] }}, '{{ sub['account_name'] }}', '{{ sub['phone_number'] or '' }}', {{ 1 if is_debtor else 0 }}, {{ sub.get('debt_amount')|int if is_debtor else 0 }})" title="ارسال پیامک اختصاصی به مشتری">
+                                    <i class="fas fa-comment-sms"></i>
+                                    <span class="d-none d-xl-inline">پیامک</span>
                                 </button>
 
                                 <!-- ۴. دکمه اصلی و جامع: مدیریت، بارکدها و لینک‌ها -->
@@ -617,10 +619,11 @@
 {% set ref = sub.get('refund_info') or {} %}
 {% set sub_url = panel_url + '/' + user_proxy + '/' + sub['hidify_uuid'] + '/' if sub['hidify_uuid'] else '' %}
 {% set single_url = sub|format_single_link(single_link_template) if sub['hidify_uuid'] else '' %}
+{% set portal_url = get_customer_portal_url(sub.get('hidify_uuid') or sub['id']) %}
 {% set is_debtor = (sub.get('payment_status') in ('unpaid', 'debtor') or (sub.get('debt_amount')|int or 0) > 0) %}
 
 <!-- ─── Modal جامع مدیریت مشتری و بارکدهای اتصال ─── -->
-<div class="modal fade text-start customer-manage-modal" id="customerDetailModal{{ sub['id'] }}" tabindex="-1" aria-labelledby="customerDetailModalLabel{{ sub['id'] }}" aria-hidden="true" data-sub-id="{{ sub['id'] }}" data-sub-url="{{ sub_url }}" data-single-url="{{ single_url }}">
+<div class="modal fade text-start customer-manage-modal" id="customerDetailModal{{ sub['id'] }}" tabindex="-1" aria-labelledby="customerDetailModalLabel{{ sub['id'] }}" aria-hidden="true" data-sub-id="{{ sub['id'] }}" data-sub-url="{{ sub_url }}" data-single-url="{{ single_url }}" data-portal-url="{{ portal_url }}">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content shadow-lg border-0">
             <div class="modal-header bg-dark text-white py-3">
@@ -720,97 +723,140 @@
                 </div>
                 {% endif %}
 
-                <!-- بخش بارکدها و لینک‌های اتصال -->
-                <div class="row g-3 mb-4">
-                    <!-- ۱. لینک سابسکریپشن -->
-                    <div class="col-md-6 col-12">
-                        <div class="card h-100 border shadow-sm">
-                            <div class="card-header bg-primary bg-opacity-10 py-2 d-flex justify-content-between align-items-center">
-                                <span class="fw-bold text-primary small"><i class="fas fa-rss me-1"></i> لینک سابسکریپشن (هوشمند)</span>
-                                <span class="badge bg-primary">پیشنهادی</span>
-                            </div>
-                            <div class="card-body text-center p-3 d-flex flex-column align-items-center">
-                                <div class="qr-box mx-auto mb-3">
-                                    <div id="subQr{{ sub['id'] }}" class="qr-target"></div>
-                                </div>
-                                <div class="input-group input-group-sm mb-2 w-100">
-                                    <input type="text" class="form-control text-center font-monospace" value="{{ sub_url }}" readonly id="subInput{{ sub['id'] }}" style="direction: ltr; font-size: 11px;">
-                                    <button class="btn btn-primary" onclick="copyLink('{{ sub_url }}', 'لینک ساب')"><i class="fas fa-copy"></i></button>
-                                </div>
-                                <div class="d-flex flex-wrap gap-1 justify-content-center">
-                                    {% if sub_url %}
-                                    <button type="button" class="btn btn-sm btn-outline-info py-1 px-2 font-monospace" style="font-size: 11px;" onclick="shareConnectionLink('{{ sub_url }}', 'لینک اتصال {{ sub['account_name'] }}')"><i class="fas fa-share-nodes me-1"></i> اشتراک‌گذاری</button>
-                                    <a href="hiddify://install-sub?url={{ sub_url|urlencode }}" class="btn btn-sm btn-outline-primary py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-rocket me-1"></i> Hiddify</a>
-                                    <a href="streisand://import/{{ sub_url|urlencode }}" class="btn btn-sm btn-outline-info py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-bolt me-1"></i> Streisand</a>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2 font-monospace" style="font-size: 11px;" onclick="downloadQrCode('subQr{{ sub['id'] }}', 'Sub_{{ sub['account_name'] }}.png')"><i class="fas fa-download me-1"></i> دانلود QR</button>
-                                    <a href="{{ sub_url }}" target="_blank" class="btn btn-sm btn-outline-secondary py-1 px-2 font-monospace" style="font-size: 11px;" title="باز کردن در مرورگر"><i class="fas fa-external-link-alt"></i></a>
-                                    {% endif %}
-                                </div>
-                            </div>
-                        </div>
+                <!-- بخش تب‌بندی هوشمند ۳ گانه بارکدها و لینک‌های اتصال -->
+                <div class="card border shadow-sm rounded-4 mb-4 overflow-hidden text-start">
+                    <div class="card-header bg-light border-bottom p-2">
+                        <ul class="nav nav-pills nav-fill gap-2" id="qrTabs{{ sub['id'] }}" role="tablist">
+                            {% if portal_url %}
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active py-2 px-3 fw-bold rounded-3" id="tab-portal-btn{{ sub['id'] }}" data-bs-toggle="pill" data-bs-target="#tab-portal{{ sub['id'] }}" type="button" role="tab">
+                                    <i class="fas fa-globe me-1 text-info"></i> پورتال هوشمند مشتری
+                                </button>
+                            </li>
+                            {% endif %}
+                            {% if sub_url %}
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link {% if not portal_url %}active{% endif %} py-2 px-3 fw-bold rounded-3" id="tab-sub-btn{{ sub['id'] }}" data-bs-toggle="pill" data-bs-target="#tab-sub{{ sub['id'] }}" type="button" role="tab">
+                                    <i class="fas fa-qrcode me-1 text-primary"></i> لینک سابسکریپشن
+                                </button>
+                            </li>
+                            {% endif %}
+                            {% if single_url %}
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link {% if not portal_url and not sub_url %}active{% endif %} py-2 px-3 fw-bold rounded-3" id="tab-single-btn{{ sub['id'] }}" data-bs-toggle="pill" data-bs-target="#tab-single{{ sub['id'] }}" type="button" role="tab">
+                                    <i class="fas fa-bolt me-1 text-warning"></i> لینک مستقیم تکی
+                                </button>
+                            </li>
+                            {% endif %}
+                        </ul>
                     </div>
-
-                    <!-- ۲. لینک مستقیم تکی -->
-                    <div class="col-md-6 col-12">
-                        <div class="card h-100 border shadow-sm">
-                            <div class="card-header bg-warning bg-opacity-10 py-2 d-flex justify-content-between align-items-center">
-                                <span class="fw-bold text-dark small"><i class="fas fa-bolt text-warning me-1"></i> لینک مستقیم تکی (Single Config)</span>
-                                <span class="badge bg-secondary">V2Ray / Clash</span>
+                    <div class="card-body p-4 tab-content text-center" id="qrTabsContent{{ sub['id'] }}">
+                        
+                        <!-- ۱. تب پورتال هوشمند مشتری -->
+                        {% if portal_url %}
+                        <div class="tab-pane fade show active" id="tab-portal{{ sub['id'] }}" role="tabpanel">
+                            <div class="p-3 rounded-4 shadow-sm mb-3 d-inline-block" style="background-color: #ffffff !important; border: 4px solid #ffffff; box-shadow: 0 4px 20px rgba(0,0,0,0.08) !important;">
+                                <div id="portalQr{{ sub['id'] }}" class="d-flex justify-content-center p-1" style="background-color: #ffffff !important;"></div>
                             </div>
-                            <div class="card-body text-center p-3 d-flex flex-column align-items-center">
-                                <div class="qr-box mx-auto mb-3">
-                                    <div id="singleQr{{ sub['id'] }}" class="qr-target"></div>
+                            <div class="w-100 max-w-lg mx-auto" style="max-width: 550px;">
+                                <div class="d-flex justify-content-center gap-2 mb-3 flex-wrap">
+                                    <button type="button" class="btn btn-sm btn-outline-success" onclick="downloadQrCode('portalQr{{ sub['id'] }}', 'Portal_{{ sub['account_name'] }}.png')">
+                                        <i class="fas fa-download me-1"></i> دانلود بارکد
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-info" onclick="shareConnectionLink('{{ portal_url }}', 'پورتال مشتری {{ sub['account_name'] }}')">
+                                        <i class="fas fa-share-nodes me-1"></i> اشتراک‌گذاری
+                                    </button>
+                                    <a href="{{ portal_url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-external-link-alt me-1"></i> باز کردن پورتال
+                                    </a>
                                 </div>
-                                <div class="input-group input-group-sm mb-2 w-100">
-                                    <input type="text" class="form-control text-center font-monospace" value="{{ single_url }}" readonly id="singleInput{{ sub['id'] }}" style="direction: ltr; font-size: 11px;">
-                                    <button class="btn btn-warning" onclick="copyLink('{{ single_url }}', 'لینک تکی')"><i class="fas fa-copy"></i></button>
+                                <div class="input-group mb-2">
+                                    <input type="text" id="portalInput{{ sub['id'] }}" class="form-control text-center font-monospace small" readonly value="{{ portal_url }}" style="direction: ltr; font-size: 11px;">
+                                    <button class="btn btn-primary btn-sm" onclick="copyLink('{{ portal_url }}', 'لینک پورتال مشتری')"><i class="fas fa-copy me-1"></i> کپی</button>
                                 </div>
-                                <div class="d-flex flex-wrap gap-1 justify-content-center">
-                                    {% if single_url %}
-                                    <button type="button" class="btn btn-sm btn-outline-info py-1 px-2 font-monospace" style="font-size: 11px;" onclick="shareConnectionLink('{{ single_url }}', 'کانفیگ تکی {{ sub['account_name'] }}')"><i class="fas fa-share-nodes me-1"></i> اشتراک‌گذاری</button>
-                                    <button type="button" class="btn btn-sm btn-outline-warning py-1 px-2 font-monospace" style="font-size: 11px;" onclick="copyLink('{{ single_url }}', 'لینک مستقیم تکی')"><i class="fas fa-copy me-1"></i> کپی کانفیگ</button>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2 font-monospace" style="font-size: 11px;" onclick="downloadQrCode('singleQr{{ sub['id'] }}', 'Single_{{ sub['account_name'] }}.png')"><i class="fas fa-download me-1"></i> دانلود QR</button>
-                                    {% else %}
-                                    <small class="text-muted">لینک تکی در دسترس نیست</small>
-                                    {% endif %}
+                                <div class="small text-muted">
+                                    <i class="fas fa-info-circle text-info me-1"></i> پورتال دائمی کاربر جهت بررسی حجم باقی‌مانده، تمدید آنلاین، پرداخت و پشتیبانی
                                 </div>
                             </div>
                         </div>
+                        {% endif %}
+
+                        <!-- ۲. تب لینک سابسکریپشن -->
+                        {% if sub_url %}
+                        <div class="tab-pane fade {% if not portal_url %}show active{% endif %}" id="tab-sub{{ sub['id'] }}" role="tabpanel">
+                            <div class="p-3 rounded-4 shadow-sm mb-3 d-inline-block" style="background-color: #ffffff !important; border: 4px solid #ffffff; box-shadow: 0 4px 20px rgba(0,0,0,0.08) !important;">
+                                <div id="subQr{{ sub['id'] }}" class="d-flex justify-content-center p-1" style="background-color: #ffffff !important;"></div>
+                            </div>
+                            <div class="w-100 max-w-lg mx-auto" style="max-width: 550px;">
+                                <div class="d-flex justify-content-center gap-2 mb-3 flex-wrap">
+                                    <button type="button" class="btn btn-sm btn-outline-success" onclick="downloadQrCode('subQr{{ sub['id'] }}', 'Sub_{{ sub['account_name'] }}.png')">
+                                        <i class="fas fa-download me-1"></i> دانلود بارکد
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-info" onclick="shareConnectionLink('{{ sub_url }}', 'لینک ساب {{ sub['account_name'] }}')">
+                                        <i class="fas fa-share-nodes me-1"></i> اشتراک‌گذاری
+                                    </button>
+                                    <a href="{{ sub_url }}" target="_blank" class="btn btn-sm btn-outline-secondary" title="باز کردن در مرورگر">
+                                        <i class="fas fa-external-link-alt me-1"></i> باز کردن وب
+                                    </a>
+                                </div>
+                                <div class="input-group mb-2">
+                                    <input type="text" id="subInput{{ sub['id'] }}" class="form-control text-center font-monospace small" readonly value="{{ sub_url }}" style="direction: ltr; font-size: 11px;">
+                                    <button class="btn btn-primary btn-sm" onclick="copyLink('{{ sub_url }}', 'لینک ساب')"><i class="fas fa-copy me-1"></i> کپی</button>
+                                </div>
+                                <div class="d-flex flex-wrap gap-1 justify-content-center mt-2">
+                                    <a href="hiddify://install-sub?url={{ sub_url|urlencode }}" class="btn btn-xs btn-outline-primary py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-rocket me-1"></i> Hiddify</a>
+                                    <a href="streisand://import/{{ sub_url|urlencode }}" class="btn btn-xs btn-outline-info py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-bolt me-1"></i> Streisand</a>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <!-- ۳. تب لینک مستقیم تکی -->
+                        {% if single_url %}
+                        <div class="tab-pane fade {% if not portal_url and not sub_url %}show active{% endif %}" id="tab-single{{ sub['id'] }}" role="tabpanel">
+                            <div class="p-3 rounded-4 shadow-sm mb-3 d-inline-block" style="background-color: #ffffff !important; border: 4px solid #ffffff; box-shadow: 0 4px 20px rgba(0,0,0,0.08) !important;">
+                                <div id="singleQr{{ sub['id'] }}" class="d-flex justify-content-center p-1" style="background-color: #ffffff !important;"></div>
+                            </div>
+                            <div class="w-100 max-w-lg mx-auto" style="max-width: 550px;">
+                                <div class="d-flex justify-content-center gap-2 mb-3 flex-wrap">
+                                    <button type="button" class="btn btn-sm btn-outline-success" onclick="downloadQrCode('singleQr{{ sub['id'] }}', 'Single_{{ sub['account_name'] }}.png')">
+                                        <i class="fas fa-download me-1"></i> دانلود بارکد
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-info" onclick="shareConnectionLink('{{ single_url }}', 'کانفیگ تکی {{ sub['account_name'] }}')">
+                                        <i class="fas fa-share-nodes me-1"></i> اشتراک‌گذاری
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-warning" onclick="copyLink('{{ single_url }}', 'لینک مستقیم تکی')">
+                                        <i class="fas fa-copy me-1"></i> کپی کانفیگ
+                                    </button>
+                                </div>
+                                <div class="input-group mb-2">
+                                    <input type="text" id="singleInput{{ sub['id'] }}" class="form-control text-center font-monospace small" readonly value="{{ single_url }}" style="direction: ltr; font-size: 11px;">
+                                    <button class="btn btn-warning btn-sm" onclick="copyLink('{{ single_url }}', 'لینک تکی')"><i class="fas fa-copy me-1"></i> کپی</button>
+                                </div>
+                                <div class="small text-muted">
+                                    <i class="fas fa-bolt text-warning me-1"></i> مناسب نرم‌افزارهای V2RayNG, v2rayN, Shadowrocket, Clash
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+
                     </div>
                 </div>
 
-                <!-- دکمه ویژه صدور فاکتور دیجیتال رسمی -->
-                <div class="mb-3 text-center">
-                    <a href="{{ url_for('view_invoice', sub_id=sub['id']) }}" target="_blank" class="btn btn-success btn-lg w-100 fw-bold shadow-sm py-2">
+                <!-- دکمه‌های عملیاتی: صدور فاکتور و ارسال پیامک/لینک تمدید -->
+                <div class="d-flex flex-column gap-2 mb-4">
+                    <a href="{{ url_for('view_invoice', sub_id=sub['id']) }}" target="_blank" class="btn btn-success fw-bold shadow-sm py-2 text-center">
                         <i class="fas fa-file-invoice-dollar me-2"></i> صدور و مشاهده فاکتور رسمی دیجیتال برای این مشتری
                     </a>
-                </div>
-
-                <!-- بخش پورتال دائمی و لینک تمدید اختصاصی مشتری نماینده -->
-                {% set portal_url = get_customer_portal_url(sub.get('hidify_uuid') or sub['id']) %}
-                <div class="card border-primary border-opacity-25 bg-primary bg-opacity-10 shadow-sm mb-4">
-                    <div class="card-body p-3">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <span class="fw-bold text-primary">
-                                <i class="fas fa-globe me-1"></i> پورتال دائمی و لینک تمدید اختصاصی مشتری
-                            </span>
-                            <span class="badge bg-primary text-white">لینک دائم و خودکار</span>
-                        </div>
-                        <p class="small text-muted mb-2">
-                            این لینک آدرس اختصاصی و دائمی مشتری شماست. مشتری در این صفحه می‌تواند حجم مصرفی، روزهای مانده، لینک‌های نرم‌افزارهای اتصال و امکان تمدید کارت‌به‌کارت با کارت بانکی شما را مشاهده کند.
-                        </p>
-                        <div class="input-group input-group-sm mb-2">
-                            <input type="text" class="form-control text-center font-monospace" value="{{ portal_url }}" readonly id="portalUrlReseller{{ sub['id'] }}" style="direction: ltr; font-size: 11px;">
-                            <button class="btn btn-primary" onclick="copyLink('{{ portal_url }}', 'لینک پورتال مشتری')" title="کپی لینک اختصاصی"><i class="fas fa-copy me-1"></i> کپی لینک</button>
-                            <a href="{{ portal_url }}" target="_blank" class="btn btn-outline-primary" title="مشاهده پورتال"><i class="fas fa-external-link-alt"></i></a>
-                        </div>
-                        <div class="d-flex flex-wrap gap-2 justify-content-end">
-                            <form method="POST" action="{{ url_for('reseller_send_renewal_link', sub_id=sub['id']) }}" class="m-0" onsubmit="return confirm('آیا می‌خواهید پیامک و پیام تلگرام حاوی لینک تمدید برای مشتری «{{ sub['account_name'] }}» ارسال شود؟');">
-                                <button type="submit" class="btn btn-sm btn-success fw-bold shadow-sm">
-                                    <i class="fas fa-paper-plane me-1"></i> ارسال لینک تمدید به مشتری (پیامک / تلگرام)
-                                </button>
-                            </form>
-                        </div>
+                    <div class="d-flex flex-wrap gap-2 justify-content-end">
+                        <button type="button" class="btn btn-sm btn-warning fw-bold shadow-sm" onclick="openCustomerSmsModal({{ sub['id'] }}, '{{ sub['account_name'] }}', '{{ sub['phone_number'] or '' }}', {{ 1 if is_debtor else 0 }}, {{ sub.get('debt_amount')|int if is_debtor else 0 }})">
+                            <i class="fas fa-comment-sms me-1"></i> ارسال پیامک به مشتری
+                        </button>
+                        <form method="POST" action="{{ url_for('reseller_send_renewal_link', sub_id=sub['id']) }}" class="m-0" onsubmit="return confirm('آیا می‌خواهید پیامک و پیام تلگرام حاوی لینک تمدید برای مشتری «{{ sub['account_name'] }}» ارسال شود؟');">
+                            <button type="submit" class="btn btn-sm btn-outline-success fw-bold shadow-sm">
+                                <i class="fas fa-paper-plane me-1"></i> ارسال لینک تمدید به مشتری (پیامک / تلگرام)
+                            </button>
+                        </form>
                     </div>
                 </div>
 
@@ -859,8 +905,13 @@
                             {% endif %}
                         </div>
                         <div class="col-md col-6">
-                            <small class="text-muted d-block">تاریخ ایجاد</small>
-                            <strong class="font-monospace text-muted">{{ sub['created_at'][:10] if sub['created_at'] else '-' }}</strong>
+                            <small class="text-muted d-block">تاریخ صدور</small>
+                            <strong class="text-primary font-monospace" style="font-size: 0.85rem;">
+                                {{ sub['created_at']|shamsi_date if sub.get('created_at') else '-' }}
+                            </strong>
+                            {% if sub.get('created_at') %}
+                                <small class="text-muted d-block font-monospace" style="font-size: 10px;">{{ sub['created_at']|gregorian_clean }}</small>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -874,7 +925,7 @@
                     </button>
                     <!-- دکمه صف تمدید -->
                     <button type="button" class="btn {% if sub.get('has_queue') %}btn-info text-dark fw-bold shadow-sm{% else %}btn-outline-info{% endif %} flex-grow-1 py-2" data-bs-toggle="modal" data-bs-target="#customerQueueModal{{ sub['id'] }}">
-                        <i class="fas fa-layer-group me-1"></i> صف تمدید {% if sub.get('has_queue') %}<span class="badge bg-danger text-white ms-1">۱ بسته</span>{% endif %}
+                        <i class="fas fa-layer-group me-1"></i> صف تمدید {% if sub.get('has_queue') %}<span class="badge bg-danger text-white ms-1">{{ sub.get('queue_count') or 1 }} بسته</span>{% endif %}
                     </button>
                     <!-- دکمه ویرایش -->
                     <button type="button" class="btn btn-outline-primary flex-grow-1 py-2" data-bs-toggle="modal" data-bs-target="#editModal{{ sub['id'] }}">
@@ -892,13 +943,15 @@
                     <button type="button" class="btn btn-outline-danger flex-grow-1 py-2 fw-bold" onclick="openCustomerDebtReport('{{ sub['id'] }}', '{{ sub['account_name'] }}')">
                         <i class="fas fa-file-invoice-dollar me-1"></i> گزارش بدهی
                     </button>
+                    <!-- دکمه ثبت بدهی جدید -->
+                    <button type="button" class="btn btn-outline-danger flex-grow-1 py-2" onclick="openAddDebtModal({{ sub['id'] }}, '{{ sub['account_name'] }}')">
+                        <i class="fas fa-plus-circle me-1"></i> ثبت بدهی جدید
+                    </button>
                     <!-- تسویه بدهی -->
                     {% if is_debtor %}
-                    <form method="POST" action="{{ url_for('reseller_subscription_clear_debt', sub_id=sub['id']) }}" class="d-inline flex-grow-1" onsubmit="return confirm('آیا از تسویه کامل بدهی این مشتری اطمینان دارید؟');">
-                        <button type="submit" class="btn btn-success w-100 py-2">
-                            <i class="fas fa-check-double me-1"></i> تسویه کامل بدهی
-                        </button>
-                    </form>
+                    <button type="button" class="btn btn-success flex-grow-1 py-2 fw-bold" onclick="openSettleDebtModal({{ sub['id'] }}, '{{ sub['account_name'] }}', {{ sub.get('debt_amount', 0) }}, 'full')">
+                        <i class="fas fa-check-double me-1"></i> تسویه کامل بدهی
+                    </button>
                     {% if sub.get('telegram_id') and sub['telegram_id'] > 0 %}
                     <form method="POST" action="{{ url_for('subscription_send_debt_reminder', sub_id=sub['id']) }}" class="d-inline flex-grow-1" onsubmit="return confirm('آیا از ارسال پیام یادآوری بدهی به تلگرام این کاربر اطمینان دارید؟');">
                         <button type="submit" class="btn btn-outline-danger w-100 py-2">
@@ -1066,10 +1119,27 @@
                                 </div>
                                 <div class="col-md-6" id="resellerRenewPaymentDestBox{{ sub['id'] }}" style="{% if sub.get('payment_status') == 'unpaid' or sub.get('debt_amount', 0) > 0 %}display: none;{% endif %}">
                                     <label class="form-label fw-bold text-success"><i class="fas fa-credit-card text-success me-1"></i>واریز به کارت بانکی یا صندوق:</label>
-                                    <select name="payment_destination" class="form-select border-success">
-                                        <option value="cash">💵 دریافت نقدی (ثبت در صندوق نقدی)</option>
-                                        {% for c in cards %}
-                                        <option value="card_{{ c['id'] }}">💳 {{ c.get('bank_name') or 'بانک' }} - {{ c['card_number'][-4:] }} ({{ c['card_holder'] }}) [موجودی: {{ "{:,}".format(c.get('balance', 0)) }} ت]</option>
+                                    <select name="payment_destination" class="form-select border-success fw-bold">
+                                        {% if default_account %}
+                                        <option value="account_{{ default_account['id'] }}" selected>
+                                            ⭐ [پیش‌فرض مشتریان] {{ default_account.get('bank_name') }} - {{ default_account.get('card_holder') }} [مانده: {{ "{:,}".format(default_account.get('balance', 0)) }} ت]
+                                        </option>
+                                        {% endif %}
+                                        <option value="cash" {% if not default_account %}selected{% endif %}>💵 دریافت نقدی (ثبت در صندوق نقدی)</option>
+                                        {% for acc in (accounts or cards) %}
+                                            {% if not default_account or acc['id'] != default_account['id'] %}
+                                            <option value="account_{{ acc['id'] }}">
+                                                {% if acc.get('account_type') == 'cash_desk' %}
+                                                    🏢 صندوق {{ acc.get('bank_name') }} (مسئول: {{ acc.get('assigned_to', '-') }}) [مانده: {{ "{:,}".format(acc.get('balance', 0)) }} ت]
+                                                {% elif 'gateway' in acc.get('account_type', '') %}
+                                                    ⚡ درگاه {{ acc.get('bank_name') }} ({{ acc.get('connected_gateway', '') }}) [مانده: {{ "{:,}".format(acc.get('balance', 0)) }} ت]
+                                                {% elif acc.get('account_type') == 'crypto_wallet' %}
+                                                    💎 ولت کریپتو {{ acc.get('bank_name') }} [مانده: {{ "{:,}".format(acc.get('balance', 0)) }} ت]
+                                                {% else %}
+                                                    💳 {{ acc.get('bank_name') or 'بانک' }} - {{ acc.get('card_number', '')[-4:] }} ({{ acc.get('card_holder') }}) [مانده: {{ "{:,}".format(acc.get('balance', 0)) }} ت]
+                                                {% endif %}
+                                            </option>
+                                            {% endif %}
                                         {% endfor %}
                                     </select>
                                     <small class="text-muted" style="font-size: 11px;">مبلغ دریافتی مستقیم به موجودی این کارت یا صندوق افزوده می‌شود.</small>
@@ -1914,6 +1984,89 @@
     </div>
 </div>
 
+<!-- ─── Modal ارسال پیامک به مشتری (Customer SMS Modal) ─── -->
+<div class="modal fade text-start" id="customerSmsModal" tabindex="-1" aria-labelledby="customerSmsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content rounded-4 border-0 shadow-lg">
+            <div class="modal-header bg-dark text-white py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="fas fa-comment-sms text-warning fs-5"></i>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0" id="smsModalCustomerTitle">ارسال پیامک به مشتری</h5>
+                        <small class="text-white-50" id="smsModalCustomerSubtitle"></small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="بستن"></button>
+            </div>
+            <div class="modal-body p-4">
+                <input type="hidden" id="smsModalSubId" value="">
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-muted">شماره موبایل دریافت‌کننده:</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light"><i class="fas fa-phone text-muted"></i></span>
+                        <input type="tel" class="form-control font-monospace text-center" id="smsModalPhoneInput" placeholder="09xxxxxxxxx" style="direction: ltr;">
+                    </div>
+                    <div class="form-text small">شماره موبایل مشتری جهت دریافت پیامک را تایید یا ویرایش فرمایید.</div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-muted">انتخاب نوع پیامک:</label>
+                    <div class="d-flex flex-column gap-2" id="smsTypeOptionsContainer">
+                        <label class="btn btn-outline-primary text-start d-flex align-items-center gap-2 py-2 px-3 rounded-3 active cursor-pointer">
+                            <input type="radio" name="customer_sms_choice" value="portal_link" class="form-check-input mt-0" checked onchange="fetchTableSmsPreview()">
+                            <div>
+                                <div class="fw-bold">🌐 فقط لینک پورتال مشتری</div>
+                                <small class="text-muted d-block">شامل لینک دائمی پورتال و استعلام آنلاین</small>
+                            </div>
+                        </label>
+                        <label class="btn btn-outline-primary text-start d-flex align-items-center gap-2 py-2 px-3 rounded-3 cursor-pointer">
+                            <input type="radio" name="customer_sms_choice" value="sub_link" class="form-check-input mt-0" onchange="fetchTableSmsPreview()">
+                            <div>
+                                <div class="fw-bold">🚀 فقط لینک مستقیم سابسکریپشن</div>
+                                <small class="text-muted d-block">شامل لینک اتصال مستقیم به برنامه‌ها</small>
+                            </div>
+                        </label>
+                        <label class="btn btn-outline-primary text-start d-flex align-items-center gap-2 py-2 px-3 rounded-3 cursor-pointer">
+                            <input type="radio" name="customer_sms_choice" value="both_links" class="form-check-input mt-0" onchange="fetchTableSmsPreview()">
+                            <div>
+                                <div class="fw-bold">🎁 هر دو لینک (پورتال + سابسکریپشن)</div>
+                                <small class="text-muted d-block">پکیج کامل اتصال و مدیریت</small>
+                            </div>
+                        </label>
+                        <label class="btn btn-outline-danger text-start d-flex align-items-center gap-2 py-2 px-3 rounded-3 cursor-pointer" id="smsChoiceDebtorOption" style="display: none;">
+                            <input type="radio" name="customer_sms_choice" value="debt_invoice" class="form-check-input mt-0" onchange="fetchTableSmsPreview()">
+                            <div>
+                                <div class="fw-bold text-danger">💳 صورتحساب بدهی و لینک پرداخت</div>
+                                <small class="text-muted d-block" id="smsChoiceDebtSubtitle">ارسال مبلغ بدهی به همراه لینک پرداخت</small>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label class="form-label fw-bold small text-muted mb-0">پیش‌نمایش متن پیامک:</label>
+                        <button type="button" class="btn btn-link btn-sm text-decoration-none py-0 px-1" onclick="toggleTableCustomSmsEdit()">
+                            <i class="fas fa-pen-to-square me-1"></i> <span id="tableCustomEditLabel">ویرایش متن</span>
+                        </button>
+                    </div>
+                    <textarea class="form-control small font-monospace bg-light" id="smsModalPreviewBox" rows="4" readonly style="direction: rtl; font-size: 12px;"></textarea>
+                </div>
+
+                <div id="smsModalAlert" class="alert d-none py-2 px-3 small rounded-3 mb-0"></div>
+            </div>
+            <div class="modal-footer bg-light py-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm px-3" data-bs-dismiss="modal">انصراف</button>
+                <button type="button" class="btn btn-success btn-sm px-4 fw-bold" id="btnModalConfirmSendSms" onclick="dispatchTableCustomerSms()">
+                    <span id="smsModalSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status"></span>
+                    <i class="fas fa-paper-plane me-1"></i> تایید و ارسال پیامک
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ─── Modal جامع گزارش بدهی‌های مشتری (Customer Debt Report Modal) ─── -->
 <div class="modal fade text-start" id="customerDebtReportModal" tabindex="-1" aria-labelledby="debtReportModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
@@ -1937,6 +2090,128 @@
             <div class="modal-footer d-flex justify-content-between">
                 <div id="debtReportModalFooterActions"></div>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">بستن</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Modal تسویه بدهی و انتخاب کارت مقصد ─── -->
+<div class="modal fade text-start" id="settleDebtModal" tabindex="-1" aria-labelledby="settleDebtModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-success text-white py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="fas fa-hand-holding-dollar fs-4"></i>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0" id="settleDebtModalLabel">تسویه بدهی مشتری</h5>
+                        <small class="opacity-75" id="settleDebtModalSubTitle">ثبت دریافت وجه و واریز به کارت / حساب</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <input type="hidden" id="settleDebtSubId" value="">
+                <input type="hidden" id="settleDebtType" value="full">
+                <input type="hidden" id="settleDebtRecordId" value="">
+                <input type="hidden" id="settleDebtAccountName" value="">
+
+                <div class="p-3 bg-light rounded-3 border mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted"><i class="fas fa-user me-1"></i> نام مشتری:</span>
+                        <strong class="font-monospace text-dark" id="settleDebtAccountDisplay">-</strong>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="text-muted"><i class="fas fa-coins me-1"></i> مبلغ قابل تسویه:</span>
+                        <span class="fs-5 fw-bold text-success font-monospace" id="settleDebtAmountDisplay">۰ تومان</span>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-dark mb-1">
+                        <i class="fas fa-credit-card text-success me-1"></i> شیوه دریافت و حساب مقصد واریز:
+                    </label>
+                    <select id="settleDebtTargetCard" class="form-select border-success fw-bold">
+                        {% if default_account %}
+                        <option value="{{ default_account['id'] }}" selected>
+                            ⭐ [پیش‌فرض] {{ default_account.get('bank_name') }} - {{ default_account.get('card_holder') }} ({{ default_account.get('card_number', '')[-4:] }})
+                        </option>
+                        {% endif %}
+                        <option value="cash" {% if not default_account %}selected{% endif %}>💵 دریافت نقدی (ثبت در صندوق نقدی)</option>
+                        {% for acc in (accounts or cards) %}
+                            {% if not default_account or acc['id'] != default_account['id'] %}
+                            <option value="{{ acc['id'] }}">
+                                {% if acc.get('account_type') == 'cash_desk' %}
+                                    🏢 صندوق {{ acc.get('bank_name') }} (مسئول: {{ acc.get('assigned_to', '-') }})
+                                {% elif 'gateway' in acc.get('account_type', '') %}
+                                    ⚡ درگاه {{ acc.get('bank_name') }} ({{ acc.get('connected_gateway', '') }})
+                                {% elif acc.get('account_type') == 'crypto_wallet' %}
+                                    💎 ولت کریپتو {{ acc.get('bank_name') }}
+                                {% else %}
+                                    💳 {{ acc.get('bank_name') or 'بانک' }} - {{ acc.get('card_number', '')[-4:] }} ({{ acc.get('card_holder') }})
+                                {% endif %}
+                            </option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                    <small class="text-muted d-block mt-1" style="font-size: 11px;">
+                        <i class="fas fa-info-circle text-primary me-1"></i> در صورت انتخاب کارت، مبلغ تسویه‌شده به عنوان تراکنش واریز به موجودی کارت افزوده خواهد شد.
+                    </small>
+                </div>
+            </div>
+            <div class="modal-footer bg-light py-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">انصراف</button>
+                <button type="button" class="btn btn-success btn-sm px-4 fw-bold" id="btnConfirmSettleDebt" onclick="executeSettleDebtAction()">
+                    <i class="fas fa-check me-1"></i> تایید تسویه و ثبت در سیستم
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Modal ثبت بدهی جدید برای مشتری ─── -->
+<div class="modal fade text-start" id="addCustomerDebtModal" tabindex="-1" aria-labelledby="addCustomerDebtModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-danger text-white py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="fas fa-plus-circle fs-4"></i>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0" id="addCustomerDebtModalLabel">ثبت بدهی جدید</h5>
+                        <small class="opacity-75" id="addCustomerDebtModalSubTitle">افزودن صورت‌حساب بدهی به حساب مشتری</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <input type="hidden" id="addDebtSubId" value="">
+                <input type="hidden" id="addDebtAccountName" value="">
+
+                <div class="p-3 bg-light rounded-3 border mb-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="text-muted"><i class="fas fa-user me-1"></i> نام مشتری:</span>
+                        <strong class="font-monospace text-dark" id="addDebtAccountDisplay">-</strong>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-danger mb-1">
+                        <i class="fas fa-coins me-1"></i> مبلغ بدهی جدید (تومان): <span class="text-danger">*</span>
+                    </label>
+                    <input type="number" step="1000" id="addDebtAmountInput" class="form-control font-monospace border-danger fw-bold" placeholder="مثال: 150000" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-dark mb-1">
+                        <i class="fas fa-comment-dots me-1"></i> بابت / توضیحات بدهی:
+                    </label>
+                    <input type="text" id="addDebtNotesInput" class="form-control form-control-sm" placeholder="مثال: خرید گیگ اضافه، هزینه تمدید ماه قبل، و...">
+                </div>
+            </div>
+            <div class="modal-footer bg-light py-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">انصراف</button>
+                <button type="button" class="btn btn-danger btn-sm px-4 fw-bold" id="btnConfirmAddDebt" onclick="executeAddCustomerDebtAction()">
+                    <i class="fas fa-plus me-1"></i> ثبت قطعی بدهی
+                </button>
             </div>
         </div>
     </div>
@@ -2031,12 +2306,191 @@ function toggleResellerRenewDebtor(subId) {
     }
 }
 
+let isTableEditingCustomSms = false;
+
+function openCustomerSmsModal(subId, accountName, phone, isDebtor, debtAmount) {
+    const modalEl = document.getElementById('customerSmsModal');
+    if (!modalEl) return;
+
+    // بستن مودال جزئیات در صورت باز بودن تا دو مودال تداخل نکنند
+    const detailModalEl = document.getElementById('customerDetailModal' + subId);
+    if (detailModalEl) {
+        const dm = bootstrap.Modal.getInstance(detailModalEl);
+        if (dm) dm.hide();
+    }
+
+    document.getElementById('smsModalSubId').value = subId;
+    document.getElementById('smsModalCustomerTitle').innerText = 'ارسال پیامک به ' + (accountName || 'مشتری');
+    document.getElementById('smsModalCustomerSubtitle').innerText = 'شناسه اشتراک: #' + subId;
+    document.getElementById('smsModalPhoneInput').value = phone || '';
+    
+    const alertBox = document.getElementById('smsModalAlert');
+    if (alertBox) alertBox.classList.add('d-none');
+
+    // ریست ویرایش دستی
+    isTableEditingCustomSms = false;
+    const box = document.getElementById('smsModalPreviewBox');
+    const label = document.getElementById('tableCustomEditLabel');
+    if (box) {
+        box.setAttribute('readonly', 'true');
+        box.classList.add('bg-light');
+    }
+    if (label) label.textContent = 'ویرایش متن';
+
+    // وضعیت گزینه بدهی
+    const debtorOption = document.getElementById('smsChoiceDebtorOption');
+    const debtSub = document.getElementById('smsChoiceDebtSubtitle');
+    if (debtorOption) {
+        if (isDebtor || (debtAmount && Number(debtAmount) > 0)) {
+            debtorOption.style.display = 'flex';
+            if (debtSub && debtAmount) {
+                debtSub.textContent = 'مبلغ بدهی: ' + Number(debtAmount).toLocaleString('fa-IR') + ' تومان + لینک پرداخت';
+            }
+        } else {
+            debtorOption.style.display = 'none';
+        }
+    }
+
+    // انتخاب پیش‌فرض: اگر بدهکار است بدهی، در غیر این صورت هر دو لینک یا پورتال
+    const radios = document.querySelectorAll('input[name="customer_sms_choice"]');
+    if (isDebtor || (debtAmount && Number(debtAmount) > 0)) {
+        radios.forEach(r => { if (r.value === 'debt_invoice') r.checked = true; });
+    } else {
+        radios.forEach(r => { if (r.value === 'both_links') r.checked = true; });
+    }
+
+    fetchTableSmsPreview();
+
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+}
+
+function toggleTableCustomSmsEdit() {
+    const box = document.getElementById('smsModalPreviewBox');
+    const label = document.getElementById('tableCustomEditLabel');
+    if (!box) return;
+    isTableEditingCustomSms = !isTableEditingCustomSms;
+    if (isTableEditingCustomSms) {
+        box.removeAttribute('readonly');
+        box.classList.remove('bg-light');
+        box.focus();
+        label.textContent = 'قفل متن';
+    } else {
+        box.setAttribute('readonly', 'true');
+        box.classList.add('bg-light');
+        label.textContent = 'ویرایش متن';
+    }
+}
+
+async function fetchTableSmsPreview() {
+    if (isTableEditingCustomSms) return;
+    const subId = document.getElementById('smsModalSubId').value;
+    const checked = document.querySelector('input[name="customer_sms_choice"]:checked');
+    const smsType = checked ? checked.value : 'portal_link';
+    const previewBox = document.getElementById('smsModalPreviewBox');
+    if (!previewBox || !subId) return;
+
+    previewBox.value = 'در حال دریافت پیش‌نمایش...';
+    try {
+        const resp = await fetch('/api/preview_customer_sms', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sub_id: subId, sms_type: smsType })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            previewBox.value = data.preview;
+        } else {
+            previewBox.value = 'خطا در بارگذاری پیش‌نمایش';
+        }
+    } catch (e) {
+        previewBox.value = 'خطا در ارتباط با سرور';
+    }
+}
+
+async function dispatchTableCustomerSms() {
+    const subId = document.getElementById('smsModalSubId').value;
+    const phoneInput = document.getElementById('smsModalPhoneInput');
+    const phone = phoneInput ? phoneInput.value.trim() : '';
+    const alertBox = document.getElementById('smsModalAlert');
+    const spinner = document.getElementById('smsModalSpinner');
+    const btn = document.getElementById('btnModalConfirmSendSms');
+    const previewBox = document.getElementById('smsModalPreviewBox');
+    const checked = document.querySelector('input[name="customer_sms_choice"]:checked');
+    const smsType = checked ? checked.value : 'portal_link';
+
+    if (!phone) {
+        alertBox.className = 'alert alert-danger py-2 px-3 small rounded-3 mb-0';
+        alertBox.textContent = 'لطفاً شماره موبایل مشتری را وارد فرمایید.';
+        alertBox.classList.remove('d-none');
+        return;
+    }
+
+    alertBox.classList.add('d-none');
+    spinner.classList.remove('d-none');
+    btn.disabled = true;
+
+    try {
+        const resp = await fetch('/api/send_customer_sms', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sub_id: subId,
+                phone: phone,
+                sms_type: smsType,
+                custom_text: isTableEditingCustomSms ? previewBox.value.trim() : null
+            })
+        });
+        const res = await resp.json();
+        if (res.success) {
+            alertBox.className = 'alert alert-success py-2 px-3 small rounded-3 mb-0';
+            alertBox.textContent = '✅ پیامک با موفقیت به مشتری ارسال شد.';
+            alertBox.classList.remove('d-none');
+            setTimeout(() => {
+                const modalEl = document.getElementById('customerSmsModal');
+                const modal = bootstrap.Modal.getInstance(modalEl);
+                if (modal) modal.hide();
+            }, 1800);
+        } else {
+            alertBox.className = 'alert alert-danger py-2 px-3 small rounded-3 mb-0';
+            alertBox.textContent = '❌ خطا: ' + (res.message || 'ارسال پیامک ناموفق بود.');
+            alertBox.classList.remove('d-none');
+        }
+    } catch (e) {
+        alertBox.className = 'alert alert-danger py-2 px-3 small rounded-3 mb-0';
+        alertBox.textContent = '❌ خطای شبکه یا ارتباط با سرور!';
+        alertBox.classList.remove('d-none');
+    } finally {
+        spinner.classList.add('d-none');
+        btn.disabled = false;
+    }
+}
+
+window._debtSettledReloadNeeded = false;
+
 function openCustomerDebtReport(subId, accountName) {
     const modalEl = document.getElementById('customerDebtReportModal');
     if (!modalEl) return;
-    const modal = new bootstrap.Modal(modalEl);
+
+    // بستن مودال جزئیات در صورت باز بودن تا دو مودال روی هم تداخل نکنند
+    const detailModalEl = document.getElementById('customerDetailModal' + subId);
+    if (detailModalEl) {
+        const dm = bootstrap.Modal.getInstance(detailModalEl);
+        if (dm) dm.hide();
+    }
+
     document.getElementById('debtReportModalTitle').innerText = 'گزارش و سوابق بدهی: ' + (accountName || 'مشتری #' + subId);
     document.getElementById('debtReportModalSubtitle').innerText = 'شناسه مشتری: #' + subId;
+
+    loadCustomerDebtReportData(subId, accountName);
+
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    if (!modalEl.classList.contains('show')) {
+        modal.show();
+    }
+}
+
+function loadCustomerDebtReportData(subId, accountName) {
     const body = document.getElementById('debtReportModalBody');
     const footerActions = document.getElementById('debtReportModalFooterActions');
     if (footerActions) footerActions.innerHTML = '';
@@ -2046,7 +2500,6 @@ function openCustomerDebtReport(subId, accountName) {
             <div class="text-muted">در حال بارگذاری صورت‌حساب‌ها و رسیدهای بدهی...</div>
         </div>
     `;
-    modal.show();
 
     fetch(`/api/subscription/${subId}/debt-report`)
         .then(res => res.json())
@@ -2153,7 +2606,7 @@ function openCustomerDebtReport(subId, accountName) {
                             <td class="small text-muted">${r.notes || '-'}</td>
                             <td class="text-center">
                                 ${!isPaid ? `
-                                    <button type="button" class="btn btn-xs btn-success py-1 px-2 fw-bold" onclick="settleCustomerDebtRecord(${subId}, ${r.id}, '${accountName}')" title="تسویه اختصاصی این فاکتور">
+                                    <button type="button" class="btn btn-xs btn-success py-1 px-2 fw-bold" onclick="openSettleDebtModal(${subId}, '${accountName}', ${r.amount || 0}, 'record', ${r.id})" title="تسویه اختصاصی این فاکتور">
                                         <i class="fas fa-check me-1"></i> تسویه
                                     </button>
                                 ` : `
@@ -2173,17 +2626,20 @@ function openCustomerDebtReport(subId, accountName) {
 
             body.innerHTML = html;
 
-            if (footerActions && curDebt > 0) {
-                const clearEndpoint = window.location.pathname.includes('/reseller')
-                    ? `/reseller/subscription/${subId}/clear-debt`
-                    : `/admin/subscription/${subId}/clear-debt`;
-                footerActions.innerHTML = `
-                    <form method="POST" action="${clearEndpoint}" class="m-0 d-inline" onsubmit="return confirm('آیا از تسویه کامل کلیه بدهی‌های این مشتری اطمینان دارید؟');">
-                        <button type="submit" class="btn btn-success fw-bold">
+            if (footerActions) {
+                let footerBtns = `
+                    <button type="button" class="btn btn-outline-danger fw-bold shadow-sm" onclick="openAddDebtModal(${subId}, '${accountName}')">
+                        <i class="fas fa-plus me-1"></i> ثبت بدهی جدید
+                    </button>
+                `;
+                if (curDebt > 0) {
+                    footerBtns += `
+                        <button type="button" class="btn btn-success fw-bold shadow-sm ms-2" id="btnClearAllDebts" onclick="openSettleDebtModal(${subId}, '${accountName}', ${curDebt}, 'full')">
                             <i class="fas fa-check-double me-1"></i> تسویه کامل تمام بدهی‌ها (${curDebt.toLocaleString('fa-IR')} ت)
                         </button>
-                    </form>
-                `;
+                    `;
+                }
+                footerActions.innerHTML = footerBtns;
             }
         })
         .catch(err => {
@@ -2191,31 +2647,173 @@ function openCustomerDebtReport(subId, accountName) {
         });
 }
 
-function settleCustomerDebtRecord(subId, recordId, accountName) {
-    if (!confirm('آیا از تسویه این رسید بدهی اطمینان دارید؟ مبلغ این رسید از بدهی کل کسر خواهد شد.')) return;
-    
+function openSettleDebtModal(subId, accountName, amount, settleType = 'full', recordId = null) {
+    document.getElementById('settleDebtSubId').value = subId;
+    document.getElementById('settleDebtType').value = settleType;
+    document.getElementById('settleDebtRecordId').value = recordId || '';
+    document.getElementById('settleDebtAccountName').value = accountName || '';
+    document.getElementById('settleDebtAccountDisplay').innerText = accountName || ('#' + subId);
+    document.getElementById('settleDebtAmountDisplay').innerText = (amount ? Number(amount).toLocaleString('fa-IR') : '۰') + ' تومان';
+
+    const modalEl = document.getElementById('settleDebtModal');
+    if (modalEl) {
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+}
+
+function executeSettleDebtAction() {
+    const subId = document.getElementById('settleDebtSubId').value;
+    const settleType = document.getElementById('settleDebtType').value;
+    const recordId = document.getElementById('settleDebtRecordId').value;
+    const accountName = document.getElementById('settleDebtAccountName').value;
+    const targetCardVal = document.getElementById('settleDebtTargetCard').value;
+
+    const targetCardId = (targetCardVal && targetCardVal !== 'cash') ? parseInt(targetCardVal) : null;
+
     const isResellerPanel = window.location.pathname.includes('/reseller');
-    const endpoint = isResellerPanel 
-        ? `/reseller/subscription/${subId}/settle-debt-record/${recordId}` 
-        : `/admin/subscription/${subId}/settle-debt-record/${recordId}`;
+    let endpoint = '';
+    if (settleType === 'record' && recordId) {
+        endpoint = isResellerPanel
+            ? `/reseller/subscription/${subId}/settle-debt-record/${recordId}`
+            : `/admin/subscription/${subId}/settle-debt-record/${recordId}`;
+    } else {
+        endpoint = isResellerPanel
+            ? `/reseller/subscription/${subId}/clear-debt`
+            : `/admin/subscription/${subId}/clear-debt`;
+    }
+
+    const btn = document.getElementById('btnConfirmSettleDebt');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال ثبت...';
+    }
 
     fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({ target_card_id: targetCardId })
     })
     .then(res => res.json())
     .then(data => {
         if (data.success) {
-            alert('رسید بدهی با موفقیت تسویه شد.');
-            openCustomerDebtReport(subId, accountName);
+            const modalEl = document.getElementById('settleDebtModal');
+            if (modalEl) bootstrap.Modal.getInstance(modalEl)?.hide();
+
+            if (settleType === 'record') {
+                window._debtSettledReloadNeeded = true;
+                alert('✅ رسید بدهی با موفقیت تسویه و واریز ثبت شد.');
+                loadCustomerDebtReportData(subId, accountName);
+            } else {
+                alert('✅ بدهی مشتری با موفقیت تسویه و واریز ثبت شد.');
+                window.location.reload();
+            }
         } else {
-            alert('خطا در تسویه: ' + (data.error || 'خطای نامشخص'));
+            alert('❌ خطا در تسویه بدهی: ' + (data.error || 'خطای نامشخص'));
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-check me-1"></i> تایید تسویه و ثبت در سیستم';
+            }
         }
     })
     .catch(err => {
-        alert('خطای ارتباط با سرور: ' + err.message);
+        alert('❌ خطای ارتباط با سرور: ' + err.message);
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-check me-1"></i> تایید تسویه و ثبت در سیستم';
+        }
     });
 }
+
+function openAddDebtModal(subId, accountName) {
+    document.getElementById('addDebtSubId').value = subId;
+    document.getElementById('addDebtAccountName').value = accountName || '';
+    document.getElementById('addDebtAccountDisplay').innerText = accountName || ('#' + subId);
+    document.getElementById('addDebtAmountInput').value = '';
+    document.getElementById('addDebtNotesInput').value = '';
+
+    const modalEl = document.getElementById('addCustomerDebtModal');
+    if (modalEl) {
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+}
+
+function executeAddCustomerDebtAction() {
+    const subId = document.getElementById('addDebtSubId').value;
+    const accountName = document.getElementById('addDebtAccountName').value;
+    const amount = document.getElementById('addDebtAmountInput').value;
+    const notes = document.getElementById('addDebtNotesInput').value;
+
+    if (!amount || parseInt(amount) <= 0) {
+        alert('لطفاً مبلغ بدهی معتبری وارد فرمایید.');
+        return;
+    }
+
+    const isResellerPanel = window.location.pathname.includes('/reseller');
+    const endpoint = isResellerPanel
+        ? `/reseller/subscription/${subId}/add-debt`
+        : `/admin/subscription/${subId}/add-debt`;
+
+    const btn = document.getElementById('btnConfirmAddDebt');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> در حال ثبت...';
+    }
+
+    fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({ amount: parseInt(amount), notes: notes })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            const modalEl = document.getElementById('addCustomerDebtModal');
+            if (modalEl) bootstrap.Modal.getInstance(modalEl)?.hide();
+            alert('✅ بدهی جدید با موفقیت برای مشتری ثبت گردید.');
+            window.location.reload();
+        } else {
+            alert('❌ خطا در ثبت بدهی: ' + (data.error || 'خطای نامشخص'));
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-plus me-1"></i> ثبت قطعی بدهی';
+            }
+        }
+    })
+    .catch(err => {
+        alert('❌ خطای ارتباط با سرور: ' + err.message);
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-plus me-1"></i> ثبت قطعی بدهی';
+        }
+    });
+}
+
+function clearAllCustomerDebts(subId, accountName, amount = 0) {
+    openSettleDebtModal(subId, accountName, amount, 'full');
+}
+
+function quickClearDebt(subId, accountName, amount = 0) {
+    openSettleDebtModal(subId, accountName, amount, 'full');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const reportModal = document.getElementById('customerDebtReportModal');
+    if (reportModal) {
+        reportModal.addEventListener('hidden.bs.modal', function () {
+            if (typeof cleanupModalBackdrops === 'function') cleanupModalBackdrops();
+            if (window._debtSettledReloadNeeded) {
+                window._debtSettledReloadNeeded = false;
+                window.location.reload();
+            }
+        });
+    }
+});
 
 function toggleDebtorFields(selectElem, targetId) {
     const el = document.getElementById(targetId);
@@ -2646,15 +3244,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const subId = modalEl.getAttribute('data-sub-id');
         const subUrl = modalEl.getAttribute('data-sub-url');
         const singleUrl = modalEl.getAttribute('data-single-url');
+        const portalUrl = modalEl.getAttribute('data-portal-url');
+
+        const portalContainer = document.getElementById('portalQr' + subId);
+        if (portalContainer && portalUrl && (!portalContainer.querySelector('canvas') && !portalContainer.querySelector('img'))) {
+            renderQrCodeSafely(portalContainer, portalUrl, 145);
+        }
 
         const subContainer = document.getElementById('subQr' + subId);
         if (subContainer && subUrl && (!subContainer.querySelector('canvas') && !subContainer.querySelector('img'))) {
-            renderQrCodeSafely(subContainer, subUrl, 135);
+            renderQrCodeSafely(subContainer, subUrl, 145);
         }
 
         const singleContainer = document.getElementById('singleQr' + subId);
         if (singleContainer && singleUrl && (!singleContainer.querySelector('canvas') && !singleContainer.querySelector('img'))) {
-            renderQrCodeSafely(singleContainer, singleUrl, 135);
+            renderQrCodeSafely(singleContainer, singleUrl, 145);
         }
     };
 
@@ -2664,6 +3268,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         modalEl.addEventListener('shown.bs.modal', function () {
             initModalQr(this);
+        });
+        modalEl.querySelectorAll('button[data-bs-toggle="pill"]').forEach(tabBtn => {
+            tabBtn.addEventListener('shown.bs.tab', () => {
+                initModalQr(modalEl);
+            });
         });
     });
 });

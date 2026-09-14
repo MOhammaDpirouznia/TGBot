@@ -1,0 +1,612 @@
+{% extends "base.html" %}
+{% block title %}کیف پول، حساب‌ها و دارایی‌ها - پنل مدیریت{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+    <div>
+        <h1 class="page-title mb-0"><i class="fas fa-wallet text-primary me-2"></i>کیف پول و مدیریت حساب‌ها</h1>
+        <p class="text-muted mb-0">مدیریت موجودی تفکیک‌شده کارت‌ها، حساب‌های متصل به درگاه‌ها (بلوپال، زرین‌پال، کریپتو)، صندوق‌های نقدی و حساب‌های شریک</p>
+    </div>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <button type="button" class="btn btn-primary fw-bold" data-bs-toggle="modal" data-bs-target="#addAccountModal">
+            <i class="fas fa-plus me-1"></i> تعریف حساب / کارت جدید
+        </button>
+        <button type="button" class="btn btn-outline-primary fw-bold" data-bs-toggle="modal" data-bs-target="#transferModal">
+            <i class="fas fa-arrow-right-arrow-left me-1"></i> انتقال بین‌حسابی
+        </button>
+        <button type="button" class="btn btn-outline-warning fw-bold" data-bs-toggle="modal" data-bs-target="#closeCashModal">
+            <i class="fas fa-cash-register me-1"></i> بستن / تحویل صندوق
+        </button>
+        <button type="button" class="btn btn-outline-success fw-bold" data-bs-toggle="modal" data-bs-target="#profitModal">
+            <i class="fas fa-chart-pie me-1"></i> تخصیص سود ماهانه
+        </button>
+    </div>
+</div>
+
+<!-- ردیف ۱: کارت‌های آمار و خلاصه مالی -->
+<div class="row g-3 mb-4">
+    <div class="col-sm-6 col-xl-3">
+        <div class="card shadow-sm border-0 border-start border-primary border-4 h-100">
+            <div class="card-body p-3 d-flex align-items-center justify-content-between">
+                <div>
+                    <span class="text-muted small fw-semibold">خالص کل دارایی‌ها و نقدینگی</span>
+                    <h4 class="mb-0 fw-bold text-primary font-monospace mt-1">{{ "{:,}".format(financial_summary.get('net_floating_balance', 0)) }} <small class="fs-6 fw-normal text-muted">تومان</small></h4>
+                </div>
+                <div class="avatar-sm rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center" style="width: 44px; height: 44px;">
+                    <i class="fas fa-coins fs-5"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card shadow-sm border-0 border-start border-success border-4 h-100">
+            <div class="card-body p-3 d-flex align-items-center justify-content-between">
+                <div>
+                    <span class="text-muted small fw-semibold">موجودی کارت‌ها و حساب‌های بانکی</span>
+                    <h4 class="mb-0 fw-bold text-success font-monospace mt-1">{{ "{:,}".format(financial_summary.get('cards_balance', 0)) }} <small class="fs-6 fw-normal text-muted">تومان</small></h4>
+                </div>
+                <div class="avatar-sm rounded-circle bg-success-subtle text-success d-flex align-items-center justify-content-center" style="width: 44px; height: 44px;">
+                    <i class="fas fa-credit-card fs-5"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card shadow-sm border-0 border-start border-info border-4 h-100">
+            <div class="card-body p-3 d-flex align-items-center justify-content-between">
+                <div>
+                    <span class="text-muted small fw-semibold">درگاه‌های متصل و کریپتو</span>
+                    <h4 class="mb-0 fw-bold text-info font-monospace mt-1">{{ "{:,}".format(financial_summary.get('gateways_balance', 0)) }} <small class="fs-6 fw-normal text-muted">تومان</small></h4>
+                </div>
+                <div class="avatar-sm rounded-circle bg-info-subtle text-info d-flex align-items-center justify-content-center" style="width: 44px; height: 44px;">
+                    <i class="fas fa-network-wired fs-5"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card shadow-sm border-0 border-start border-warning border-4 h-100">
+            <div class="card-body p-3 d-flex align-items-center justify-content-between">
+                <div>
+                    <span class="text-muted small fw-semibold">صندوق‌های نقدی (تسویه‌نشده)</span>
+                    <h4 class="mb-0 fw-bold text-warning-emphasis font-monospace mt-1">{{ "{:,}".format(financial_summary.get('unsettled_cash', 0)) }} <small class="fs-6 fw-normal text-muted">تومان</small></h4>
+                </div>
+                <div class="avatar-sm rounded-circle bg-warning-subtle text-warning d-flex align-items-center justify-content-center" style="width: 44px; height: 44px;">
+                    <i class="fas fa-cash-register fs-5"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- حساب پیش‌فرض مشتریان -->
+{% if default_account %}
+<div class="alert alert-warning border-0 shadow-sm d-flex align-items-center justify-content-between p-3 mb-4 rounded-3">
+    <div class="d-flex align-items-center gap-3">
+        <div class="avatar-sm rounded-circle bg-warning text-dark d-flex align-items-center justify-content-center" style="width: 42px; height: 42px;">
+            <i class="fas fa-star fs-5"></i>
+        </div>
+        <div>
+            <strong class="text-dark fs-6">حساب پیش‌فرض ثبت دستی و تمدید مشتریان:</strong>
+            <span class="badge bg-dark ms-2">{{ default_account.get('bank_name') }} - {{ default_account.get('card_holder') }}</span>
+            <span class="font-monospace text-muted ms-1" dir="ltr">({{ default_account.get('card_number') }})</span>
+            <div class="text-muted small mt-1">هنگام ساخت یا تمدید دستی اشتراک در پنل، وجه به صورت پیش‌فرض در این حساب ثبت می‌شود (با امکان تغییر آنی).</div>
+        </div>
+    </div>
+    <span class="badge bg-success px-3 py-2 fs-6">موجودی: {{ "{:,}".format(default_account.get('balance', 0)) }} تومان</span>
+</div>
+{% endif %}
+
+<!-- ردیف ۲: جدول حساب‌ها، کارت‌ها، درگاه‌ها و صندوق‌ها -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0 fw-bold"><i class="fas fa-building-columns text-primary me-2"></i>لیست حساب‌ها، کارت‌ها، صندوق‌ها و درگاه‌های تعریف‌شده</h5>
+            <span class="badge bg-secondary">{{ accounts|length }} حساب</span>
+        </div>
+        <small class="text-muted">روی هر حساب کلیک کنید تا سوابق تراکنش‌ها نمایش داده شود یا خروجی اکسل/CSV دریافت کنید</small>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">اطلاعات حساب / بانک / صندوق</th>
+                        <th>نوع حساب / روش اتصال</th>
+                        <th>مسئول / صندوق‌دار / سهم سود</th>
+                        <th>موجودی شناور</th>
+                        <th class="text-center">نقش مشتریان</th>
+                        <th class="text-end pe-3">عملیات و گزارشات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for a in accounts %}
+                    <tr>
+                        <td class="ps-3">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="avatar-sm rounded-circle bg-light d-flex align-items-center justify-content-center border" style="width: 40px; height: 40px;">
+                                    {% if a.get('account_type') == 'cash_desk' %}
+                                        <i class="fas fa-cash-register text-warning fs-5"></i>
+                                    {% elif a.get('account_type') == 'partner_savings' %}
+                                        <i class="fas fa-piggy-bank text-success fs-5"></i>
+                                    {% elif 'gateway' in a.get('account_type', '') %}
+                                        <i class="fas fa-globe text-info fs-5"></i>
+                                    {% elif a.get('account_type') == 'crypto_wallet' %}
+                                        <i class="fab fa-bitcoin text-warning fs-5"></i>
+                                    {% else %}
+                                        <i class="fas fa-credit-card text-primary fs-5"></i>
+                                    {% endif %}
+                                </div>
+                                <div>
+                                    <strong class="text-dark fs-6">{{ a.get('bank_name') or a.get('card_holder') }}</strong>
+                                    {% if a.get('card_holder') and a.get('card_holder') != a.get('bank_name') %}
+                                        <div class="small text-muted">{{ a.get('card_holder') }}</div>
+                                    {% endif %}
+                                    <div class="small font-monospace text-secondary" dir="ltr">{{ a.get('card_number') }}</div>
+                                    {% if a.get('notes') %}
+                                        <small class="text-muted d-block fst-italic">{{ a.get('notes') }}</small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge bg-light text-dark border px-2 py-1">
+                                {{ a.get('type_label', 'کارت بانکی') }}
+                            </span>
+                            {% if a.get('connected_gateway') %}
+                                <div class="mt-1">
+                                    <span class="badge bg-info-subtle text-info border border-info font-monospace small">
+                                        درگاه: {{ a.get('connected_gateway') }}
+                                    </span>
+                                </div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if a.get('assigned_to') %}
+                                <div class="small"><i class="fas fa-user-tie text-secondary me-1"></i>مسئول: <strong>{{ a.get('assigned_to') }}</strong></div>
+                            {% endif %}
+                            {% if a.get('profit_percent', 0) > 0 %}
+                                <span class="badge bg-success-subtle text-success border border-success mt-1">
+                                    سهم سود ماهانه: {{ a.get('profit_percent') }}٪
+                                </span>
+                            {% endif %}
+                            {% if not a.get('assigned_to') and not (a.get('profit_percent', 0) > 0) %}
+                                <span class="text-muted small">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="font-monospace fs-6 fw-bold {% if a.get('balance', 0) >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                {{ "{:,}".format(a.get('balance', 0)) }}
+                            </span>
+                            <span class="small text-muted">تومان</span>
+                        </td>
+                        <td class="text-center">
+                            {% if a.get('is_default_customer') or (default_account and default_account.get('id') == a.get('id')) %}
+                                <span class="badge bg-warning text-dark border border-warning px-2 py-1">
+                                    <i class="fas fa-star me-1"></i>پیش‌فرض مشتریان
+                                </span>
+                            {% else %}
+                                <form method="POST" action="{{ url_for('admin_account_set_default', card_id=a.get('id')) }}" class="d-inline">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary py-0 px-2" title="انتخاب به عنوان حساب پیش‌فرض ثبت دستی">
+                                        انتخاب پیش‌فرض
+                                    </button>
+                                </form>
+                            {% endif %}
+                        </td>
+                        <td class="text-end pe-3">
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-primary" onclick="showAccountTxModal({{ a.get('id') }}, '{{ a.get('bank_name') or a.get('card_holder') }}')">
+                                    <i class="fas fa-list me-1"></i>تراکنش‌ها
+                                </button>
+                                <a href="{{ url_for('admin_account_export_csv', card_id=a.get('id')) }}" class="btn btn-outline-success" title="دانلود گزارش CSV">
+                                    <i class="fas fa-file-csv me-1"></i>CSV
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center py-4 text-muted">
+                            <i class="fas fa-info-circle me-1"></i> هنوز هیچ حسابی تعریف نشده است. جهت شروع دکمه «تعریف حساب / کارت جدید» را لمس کنید.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ردیف ۳: لاگ‌های اخیر صندوق‌های نقدی -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 fw-bold"><i class="fas fa-cash-register text-warning me-2"></i>گزارش واریزها و تسویه‌های صندوق نقدی</h5>
+        <span class="badge bg-secondary">{{ cash_desk_logs|length }} تراکنش نقدی اخیر</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3">شناسه و تاریخ</th>
+                        <th>مشتری / منبع</th>
+                        <th>مبلغ نقدی</th>
+                        <th>اقدام‌کننده</th>
+                        <th class="text-center">وضعیت تسویه</th>
+                        <th>توضیحات و مقصد</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in cash_desk_logs[:20] %}
+                    <tr>
+                        <td class="ps-3">
+                            <span class="badge bg-light text-dark font-monospace">#{{ log.get('id') }}</span>
+                            <div class="small text-muted mt-1">{{ log.get('created_at', '')[:16].replace('T', ' ') }}</div>
+                        </td>
+                        <td>
+                            <strong>{{ log.get('customer_name') or log.get('source') or '-' }}</strong>
+                            <div class="small text-muted">{{ log.get('source') }}</div>
+                        </td>
+                        <td>
+                            <strong class="font-monospace text-success">{{ "{:,}".format(log.get('amount', 0)) }}</strong> تومان
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary-subtle text-secondary">{{ log.get('actor') or '-' }}</span>
+                        </td>
+                        <td class="text-center">
+                            {% if log.get('is_settled') %}
+                                <span class="badge bg-success-subtle text-success border border-success px-2 py-1">تسویه شده</span>
+                            {% else %}
+                                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning px-2 py-1">در انتظار تسویه</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <small class="text-muted">{{ log.get('note') or '-' }}</small>
+                            {% if log.get('settled_to_card_id') %}
+                                <div class="small text-success">واریز به کارت #{{ log.get('settled_to_card_id') }}</div>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center py-3 text-muted">هیچ رکوردی برای صندوق نقدی ثبت نشده است.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- مودال ۱: تعریف حساب یا کارت جدید -->
+<div class="modal fade" id="addAccountModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('admin_account_add') }}">
+                <div class="modal-header bg-primary text-white py-3">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-plus-circle me-2"></i>تعریف حساب، درگاه، صندوق نقدی یا شریک</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">نوع حساب / روش دریافت وجه <span class="text-danger">*</span></label>
+                            <select class="form-select" name="account_type" id="admAccTypeSelect" onchange="updateAdmAccFields()" required>
+                                <option value="bank_card">کارت بانکی عادی</option>
+                                <option value="gateway_blupal">حساب متصل به درگاه بلوپال (BluPal)</option>
+                                <option value="gateway_zarinpal">حساب متصل به درگاه زرین‌پال (ZarinPal)</option>
+                                <option value="gateway_nextpay">حساب متصل به درگاه نکست‌پی (NextPay)</option>
+                                <option value="gateway_idpay">حساب متصل به درگاه آیدی‌پی (IDPay)</option>
+                                <option value="crypto_wallet">حساب متصل به ولت کریپتو / تتر</option>
+                                <option value="cash_desk">صندوق نقدی (صندوق‌دار / مدیر فروش)</option>
+                                <option value="partner_savings">حساب پس‌انداز / شریک (درصد سود ماهانه)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">نام بانک یا عنوان حساب <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="bank_name" placeholder="مثال: بانک سامان، صندوق فروشگاه، ولت تتر" required>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">نام صاحب حساب / عنوان نمایشی</label>
+                            <input type="text" class="form-control" name="card_holder" placeholder="مثال: محمد پیروزنیا">
+                        </div>
+                        <div class="col-md-6" id="admCardNumField">
+                            <label class="form-label fw-bold">شماره کارت یا شناسه ولت/صندوق</label>
+                            <input type="text" class="form-control font-monospace" name="card_number" placeholder="۶۰۳۷..." dir="ltr">
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3" id="admShabaRow">
+                        <div class="col-md-6">
+                            <label class="form-label">شماره شبا (اختیاری)</label>
+                            <div class="input-group" dir="ltr">
+                                <span class="input-group-text">IR</span>
+                                <input type="text" class="form-control font-monospace" name="shaba_number" placeholder="24 رقمی" maxlength="24">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">شماره حساب (اختیاری)</label>
+                            <input type="text" class="form-control font-monospace" name="account_number" dir="ltr">
+                        </div>
+                    </div>
+
+                    <!-- فیلدهای پویا بر اساس نوع حساب -->
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6" id="admAssignedField" style="display: none;">
+                            <label class="form-label fw-bold">صندوق‌دار / مسئول تحویل صندوق</label>
+                            <input type="text" class="form-control" name="assigned_to" placeholder="نام صندوق‌دار یا مدیر مربوطه">
+                        </div>
+                        <div class="col-md-6" id="admProfitField" style="display: none;">
+                            <label class="form-label fw-bold">درصد سود ماهانه شریک (٪)</label>
+                            <input type="number" step="0.1" class="form-control font-monospace" name="profit_percent" value="0" placeholder="مثال: 15">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">موجودی اولیه (تومان)</label>
+                            <input type="number" class="form-control font-monospace" name="initial_balance" value="0">
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">یادداشت و توضیحات</label>
+                        <textarea class="form-control" name="notes" rows="2" placeholder="توضیحات داخلی یا شماره قرارداد شراکت"></textarea>
+                    </div>
+
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="is_default_customer" id="admIsDefCust">
+                        <label class="form-check-label fw-bold" for="admIsDefCust">انتخاب این حساب به عنوان حساب پیش‌فرض ثبت دستی و تمدید مشتریان</label>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary fw-bold"><i class="fas fa-check me-1"></i>ثبت حساب جدید</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- مودال ۲: انتقال بین‌حسابی -->
+<div class="modal fade" id="transferModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('admin_account_transfer') }}">
+                <div class="modal-header bg-primary text-white py-3">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-arrow-right-arrow-left me-2"></i>انتقال موجودی بین‌حسابی</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">حساب مبدا (کسر وجه) <span class="text-danger">*</span></label>
+                        <select class="form-select" name="source_id" required>
+                            {% for a in accounts %}
+                            <option value="{{ a['id'] }}">{{ a['bank_name'] }} ({{ a['card_holder'] }}) - موجودی: {{ "{:,}".format(a['balance']) }} ت</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">حساب مقصد (افزایش وجه) <span class="text-danger">*</span></label>
+                        <select class="form-select" name="target_id" required>
+                            {% for a in accounts %}
+                            <option value="{{ a['id'] }}">{{ a['bank_name'] }} ({{ a['card_holder'] }}) - موجودی: {{ "{:,}".format(a['balance']) }} ت</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">مبلغ انتقال (تومان) <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control font-monospace" name="amount" min="1000" placeholder="مثال: 500000" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">علت یا بابت انتقال</label>
+                        <input type="text" class="form-control" name="note" placeholder="مثال: تسویه درگاه به حساب اصلی یا شارژ صندوق">
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary fw-bold"><i class="fas fa-check me-1"></i>انجام انتقال</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- مودال ۳: بستن / تحویل صندوق نقدی -->
+<div class="modal fade" id="closeCashModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('admin_account_close_cash') }}">
+                <div class="modal-header bg-warning text-dark py-3">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-cash-register me-2"></i>صفر کردن / تسویه و تحویل صندوق نقدی</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">انتخاب صندوق یا حساب نقدی <span class="text-danger">*</span></label>
+                        <select class="form-select" name="desk_id">
+                            <option value="0">صندوق نقدی عمومی سامانه (موجودی: {{ "{:,}".format(financial_summary.get('unsettled_cash', 0)) }} ت)</option>
+                            {% for a in accounts if a.get('account_type') == 'cash_desk' %}
+                            <option value="{{ a['id'] }}">{{ a['bank_name'] }} (مسئول: {{ a.get('assigned_to', '-') }}) - موجودی: {{ "{:,}".format(a['balance']) }} ت</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">کارت یا حساب مقصد جهت واریز وجه صندوق</label>
+                        <select class="form-select" name="target_card_id">
+                            <option value="">بدون واریز به حساب بانکی (فقط صفر کردن و تحویل فیزیکی)</option>
+                            {% for a in accounts if a.get('account_type') != 'cash_desk' %}
+                            <option value="{{ a['id'] }}">{{ a['bank_name'] }} - {{ a['card_holder'] }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">یادداشت تحویل / صورتجلسه</label>
+                        <textarea class="form-control" name="note" rows="2" placeholder="تحویل نقدی پایان روز یا شیفت کاری"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-warning fw-bold text-dark"><i class="fas fa-check me-1"></i>صفر کردن و تسویه صندوق</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- مودال ۴: تخصیص سود ماهانه شریک/پس‌انداز -->
+<div class="modal fade" id="profitModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('admin_account_allocate_profit') }}">
+                <div class="modal-header bg-success text-white py-3">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-chart-pie me-2"></i>تخصیص و واریز سود به حساب شریک / پس‌انداز</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">حساب شریک / پس‌انداز مقصد <span class="text-danger">*</span></label>
+                        <select class="form-select" name="account_id" required>
+                            {% for a in accounts if a.get('account_type') == 'partner_savings' or (a.get('profit_percent', 0) > 0) %}
+                            <option value="{{ a['id'] }}">{{ a['bank_name'] }} ({{ a['card_holder'] }}) - سهم: {{ a.get('profit_percent') }}٪</option>
+                            {% else %}
+                            <option value="" disabled>ابتدا حسابی با نوع «حساب پس‌انداز / شریک» ایجاد فرمایید.</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">حساب مبدا پرداخت سود (اختیاری)</label>
+                        <select class="form-select" name="source_id">
+                            <option value="">بدون کسر از حساب دیگر (افزایش سود مستقیم)</option>
+                            {% for a in accounts %}
+                            <option value="{{ a['id'] }}">{{ a['bank_name'] }} - موجودی: {{ "{:,}".format(a['balance']) }} ت</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">مبلغ سود واریزی (تومان) <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control font-monospace" name="profit_amount" min="1000" placeholder="مثال: 1250000" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">بابت ماه / توضیحات</label>
+                        <input type="text" class="form-control" name="note" placeholder="مثال: سهم سود ماه اسفند بر اساس ۱۵٪ فروش">
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-success fw-bold"><i class="fas fa-check me-1"></i>ثبت و واریز سود</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- مودال ۵: نمایش گردش حساب به صورت AJAX -->
+<div class="modal fade" id="accountTxModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white py-3">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="fas fa-chart-line text-info fs-5"></i>
+                    <h5 class="modal-title fw-bold" id="txModalTitle">گردش حساب و تراکنش‌ها</h5>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <span class="text-muted small">سوابق واریزها، برداشت‌ها و مانده پس از هر تراکنش</span>
+                    <a id="txModalExportBtn" href="#" class="btn btn-sm btn-outline-success">
+                        <i class="fas fa-file-csv me-1"></i>دانلود خروجی CSV این حساب
+                    </a>
+                </div>
+                <div class="table-responsive" style="max-height: 450px; overflow-y: auto;">
+                    <table class="table table-hover table-sm align-middle">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>#</th>
+                                <th>تاریخ و زمان</th>
+                                <th>نوع تراکنش</th>
+                                <th>مبلغ (تومان)</th>
+                                <th>مانده حساب</th>
+                                <th>عنوان / بابت</th>
+                                <th>اقدام‌کننده</th>
+                            </tr>
+                        </thead>
+                        <tbody id="txModalBody">
+                            <tr>
+                                <td colspan="7" class="text-center py-4 text-muted">در حال بارگذاری سوابق...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer bg-light py-2">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">بستن</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function updateAdmAccFields() {
+    const val = document.getElementById('admAccTypeSelect').value;
+    const assignedField = document.getElementById('admAssignedField');
+    const profitField = document.getElementById('admProfitField');
+    const shabaRow = document.getElementById('admShabaRow');
+
+    if (val === 'cash_desk') {
+        assignedField.style.display = 'block';
+        profitField.style.display = 'none';
+        shabaRow.style.display = 'none';
+    } else if (val === 'partner_savings') {
+        assignedField.style.display = 'none';
+        profitField.style.display = 'block';
+        shabaRow.style.display = 'flex';
+    } else {
+        assignedField.style.display = 'none';
+        profitField.style.display = 'none';
+        shabaRow.style.display = 'flex';
+    }
+}
+
+function showAccountTxModal(accId, accName) {
+    document.getElementById('txModalTitle').innerText = 'گردش و سوابق: ' + accName;
+    document.getElementById('txModalExportBtn').href = '/admin/accounts/export_csv/' + accId;
+    const tbody = document.getElementById('txModalBody');
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-muted"><i class="fas fa-spinner fa-spin me-2"></i>در حال دریافت تراکنش‌ها...</td></tr>';
+    
+    const myModal = new bootstrap.Modal(document.getElementById('accountTxModal'));
+    myModal.show();
+
+    fetch('/admin/accounts/transactions/' + accId)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success || !data.transactions || data.transactions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-muted">هیچ تراکنشی برای این حساب ثبت نشده است.</td></tr>';
+                return;
+            }
+            let html = '';
+            data.transactions.forEach((tx, idx) => {
+                const isDep = tx.type === 'deposit';
+                const badge = isDep ? '<span class="badge bg-success-subtle text-success border border-success">واریز</span>' : '<span class="badge bg-danger-subtle text-danger border border-danger">برداشت</span>';
+                const amtColor = isDep ? 'text-success' : 'text-danger';
+                const sign = isDep ? '+' : '-';
+                const dt = (tx.created_at || '').substring(0, 16).replace('T', ' ');
+                html += `<tr>
+                    <td>${idx + 1}</td>
+                    <td class="font-monospace small">${dt}</td>
+                    <td>${badge}</td>
+                    <td class="font-monospace fw-bold ${amtColor}">${sign}${Number(tx.amount || 0).toLocaleString()} ت</td>
+                    <td class="font-monospace">${Number(tx.balance_after || 0).toLocaleString()} ت</td>
+                    <td>${tx.title || '-'}<br><small class="text-muted">${tx.description || ''}</small></td>
+                    <td><span class="badge bg-light text-dark border">${tx.actor || '-'}</span></td>
+                </tr>`;
+            });
+            tbody.innerHTML = html;
+        })
+        .catch(err => {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-danger">خطا در دریافت تراکنش‌ها.</td></tr>';
+        });
+}
+</script>
+{% endblock %}

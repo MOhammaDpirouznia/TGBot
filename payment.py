@@ -297,7 +297,8 @@ class BluPal:
         self.simulate_url = f"{self.BASE_URL}/v1/sandbox/invoices"
 
     def create_payment(self, amount: int, card_number: str = None, 
-                       order_id: str = None, description: str = None) -> dict:
+                       order_id: str = None, description: str = None,
+                       callback_url: str = None, **kwargs) -> dict:
         """
         ایجاد فاکتور پرداخت کارت به کارت هوشمند در بلوپال
         

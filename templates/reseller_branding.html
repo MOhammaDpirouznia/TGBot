@@ -94,7 +94,20 @@
                                     <option value="floating_elevation" {% if reseller.get('portal_plan_style') == 'floating_elevation' %}selected{% endif %}>☁️ کارت معلق پرمیوم (شناور با سایه عمیق لوکس)</option>
                                     <option value="compact_row" {% if reseller.get('portal_plan_style') == 'compact_row' %}selected{% endif %}>📏 فشرده نواری مدرن (کم‌جا و خطی)</option>
                                 </select>
-                                <div class="form-text small">شکل و فیدبک کلیک دکمه‌های بسته‌ها در پورتال مشتریان شما.</div>
+                                <div class="form-text small">شکل و استایل نمایش سرویس‌ها در پورتال کاربری شما.</div>
+                            </div>
+
+                            <div class="col-md-6 mt-3">
+                                <label class="form-label fw-bold small">
+                                    <i class="fas fa-palette me-1 text-info"></i> تم و پالت رنگی پنل:
+                                </label>
+                                <select class="form-select" name="portal_palette">
+                                    <option value="inherit" {% if not reseller.get('portal_palette') or reseller.get('portal_palette') == 'inherit' %}selected{% endif %}>پیش‌فرض سیستم</option>
+                                    {% for pal_id, pal_data in available_palettes.items() %}
+                                        <option value="{{ pal_id }}" {% if reseller.get('portal_palette') == pal_id %}selected{% endif %}>{{ pal_data.name }} - {{ pal_data.subtitle }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="form-text small">پالت رنگی اعمال شده روی پورتال کاربری.</div>
                             </div>
                         </div>
                     </div>

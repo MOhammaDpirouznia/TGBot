@@ -48,7 +48,17 @@
                                 </div>
                                 <div>
                                     <strong class="d-block">{{ m.get('display_name') }}</strong>
-                                    {% if m.get('phone') %}<small class="text-muted font-monospace" style="font-size: 0.72rem;">{{ m.get('phone') }}</small>{% endif %}
+                                    <div class="d-flex align-items-center gap-1 flex-wrap mt-0.5">
+                                        {% if m.get('phone') %}<small class="text-muted font-monospace" style="font-size: 0.72rem;">{{ m.get('phone') }}</small>{% endif %}
+                                        {% if m.get('telegram_id') %}
+                                            <small class="text-muted font-monospace" style="font-size: 0.72rem;"><code>ID: {{ m['telegram_id'] }}</code></small>
+                                            {% if m.get('bot_access') %}
+                                                <span class="badge bg-success-subtle text-success border border-success" style="font-size: 0.65rem;"><i class="fab fa-telegram me-1"></i>دسترسی ربات</span>
+                                            {% else %}
+                                                <span class="badge bg-light text-muted border" style="font-size: 0.65rem;"><i class="fas fa-ban me-1"></i>بدون ربات</span>
+                                            {% endif %}
+                                        {% endif %}
+                                    </div>
                                 </div>
                             </div>
                         </td>
@@ -121,6 +131,12 @@
                                             <i class="fas fa-power-off"></i>
                                         </button>
                                     </form>
+                                {% endif %}
+
+                                {% if is_main_reseller %}
+                                <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editMemberModal{{ m['id'] }}" title="ویرایش عضو تیم">
+                                    <i class="fas fa-pen-to-square"></i>
+                                </button>
                                 {% endif %}
 
                                 <form action="{{ url_for('reseller_team_toggle', member_id=m['id']) }}" method="POST" class="d-inline m-0">
@@ -259,6 +275,17 @@
                             <input type="text" class="form-control" name="phone" placeholder="0912xxxxxxx" dir="ltr">
                         </div>
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">آیدی عددی تلگرام (اختیاری)</label>
+                        <input type="number" class="form-control font-monospace" name="telegram_id" placeholder="مثال: 12345678" dir="ltr">
+                    </div>
+                    <div class="mb-3 form-check form-switch bg-light p-3 rounded border">
+                        <input class="form-check-input ms-0 me-2" type="checkbox" name="bot_access" value="1" id="addMemberBotAccess" checked>
+                        <label class="form-check-label fw-bold" for="addMemberBotAccess">
+                            <i class="fab fa-telegram text-primary me-1"></i> اجازه دسترسی و مدیریت با ربات
+                        </label>
+                        <div class="form-text small text-muted mt-1">در صورت فعال بودن و ثبت آیدی تلگرام، این عضو می‌تواند با نقش خود به ربات اختصاصی نماینده متصل شده و امور مربوطه را مدیریت کند.</div>
+                    </div>
                     <div class="mb-3" id="sharePercentDiv" style="display: none;">
                         <label class="form-label fw-bold">درصد سهم سود شریک از فروش شما</label>
                         <div class="input-group">
@@ -277,6 +304,77 @@
     </div>
 </div>
 
+<!-- مودال‌های ویرایش اعضای تیم -->
+{% if is_main_reseller %}
+{% for m in team_members %}
+<div class="modal fade text-start" id="editMemberModal{{ m['id'] }}" tabindex="-1" aria-labelledby="editMemberModalLabel{{ m['id'] }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <form action="{{ url_for('reseller_team_edit', member_id=m['id']) }}" method="POST">
+                <div class="modal-header bg-primary text-white py-3">
+                    <h5 class="modal-title fw-bold" id="editMemberModalLabel{{ m['id'] }}"><i class="fas fa-user-pen me-2"></i>ویرایش عضو تیم «{{ m.get('display_name') }}»</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">نام و نام خانوادگی نمایشی <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="display_name" value="{{ m.get('display_name') }}" required>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">نام کاربری</label>
+                            <input type="text" class="form-control bg-light" value="{{ m.get('username') }}" dir="ltr" readonly>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">رمز عبور جدید</label>
+                            <input type="password" class="form-control" name="password" placeholder="برای عدم تغییر خالی بگذارید" dir="ltr">
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">نقش و سطح دسترسی <span class="text-danger">*</span></label>
+                            <select class="form-select" name="role" id="editRoleSelect{{ m['id'] }}" onchange="toggleEditSharePercent('{{ m['id'] }}')" required>
+                                <option value="manager2" {% if m.get('role') == 'manager2' %}selected{% endif %}>👑 مدیر دوم (دسترسی کامل مدیریتی)</option>
+                                <option value="partner" {% if m.get('role') == 'partner' %}selected{% endif %}>🤝 شریک تجاری (دسترسی کامل + درصد سود)</option>
+                                <option value="finance" {% if m.get('role') == 'finance' %}selected{% endif %}>💰 امور مالی (تایید فیش‌ها و تراکنش‌ها)</option>
+                                <option value="support" {% if m.get('role') == 'support' %}selected{% endif %}>🎧 کارشناس پشتیبانی (تیکت‌ها و کاربران)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">شماره موبایل</label>
+                            <input type="text" class="form-control" name="phone" value="{{ m.get('phone') or '' }}" placeholder="0912xxxxxxx" dir="ltr">
+                        </div>
+                    </div>
+                    <div class="mb-3" id="editSharePercentDiv{{ m['id'] }}" style="{% if m.get('role') != 'partner' %}display: none;{% endif %}">
+                        <label class="form-label fw-bold">درصد سهم سود شریک از فروش شما</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" name="share_percent" min="0" max="100" value="{{ m.get('share_percent', 0) }}">
+                            <span class="input-group-text">%</span>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">آیدی عددی تلگرام (اختیاری)</label>
+                        <input type="number" class="form-control font-monospace" name="telegram_id" value="{{ m.get('telegram_id') or '' }}" placeholder="مثال: 12345678" dir="ltr">
+                    </div>
+                    <div class="mb-3 form-check form-switch bg-light p-3 rounded border">
+                        <input class="form-check-input ms-0 me-2" type="checkbox" name="bot_access" value="1" id="editMemberBotAccess{{ m['id'] }}" {% if m.get('bot_access') %}checked{% endif %}>
+                        <label class="form-check-label fw-bold" for="editMemberBotAccess{{ m['id'] }}">
+                            <i class="fab fa-telegram text-primary me-1"></i> اجازه دسترسی و مدیریت با ربات
+                        </label>
+                        <div class="form-text small text-muted mt-1">در صورت فعال بودن و ثبت آیدی تلگرام، این کاربر با نقش خود به ربات تلگرام دسترسی خواهد داشت.</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold">ذخیره تغییرات</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+
 <script>
 function toggleSharePercent() {
     const sel = document.getElementById('memberRoleSelect');
@@ -285,6 +383,14 @@ function toggleSharePercent() {
         div.style.display = 'block';
     } else {
         div.style.display = 'none';
+    }
+}
+
+function toggleEditSharePercent(memberId) {
+    const sel = document.getElementById('editRoleSelect' + memberId);
+    const div = document.getElementById('editSharePercentDiv' + memberId);
+    if (sel && div) {
+        div.style.display = (sel.value === 'partner') ? 'block' : 'none';
     }
 }
 </script>
