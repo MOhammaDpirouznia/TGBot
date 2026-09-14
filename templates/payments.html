@@ -317,19 +317,19 @@
                             {% elif tx['status'] == 'approved' or tx['status'] == 'completed' %}
                                 <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i> تایید شده</span>
                                 {% if tx.get('processed_by') %}
-                                    <div class="text-muted small mt-1" style="font-size: 11px;" title="تایید شده توسط"><i class="fas fa-user-check text-success me-1"></i>{{ tx['processed_by'] }}</div>
+                                    <div class="text-muted small mt-1" style="font-size: 11px;" title="تایید شده توسط"><i class="fas fa-user-check text-success me-1"></i>{{ tx['processed_by']|reviewer_name }}</div>
                                 {% endif %}
                             {% elif tx['status'] == 'revoked' %}
                                 <span class="badge bg-secondary border border-secondary shadow-sm" title="{{ tx['revoke_reason'] or 'باطل شده توسط مدیریت' }}">
                                     <i class="fas fa-ban me-1"></i> ابطال‌شده توسط مدیریت
                                 </span>
                                 {% if tx.get('revoked_by') or tx.get('processed_by') %}
-                                    <div class="text-danger small mt-1" style="font-size: 11px;"><i class="fas fa-user-slash text-danger me-1"></i>{{ tx['revoked_by'] or tx['processed_by'] }}</div>
+                                    <div class="text-danger small mt-1" style="font-size: 11px;"><i class="fas fa-user-slash text-danger me-1"></i>{{ (tx['revoked_by'] or tx['processed_by'])|reviewer_name }}</div>
                                 {% endif %}
                             {% else %}
                                 <span class="badge bg-danger" title="{{ tx['rejection_reason'] or '' }}"><i class="fas fa-times-circle me-1"></i> رد شده</span>
                                 {% if tx.get('processed_by') %}
-                                    <div class="text-muted small mt-1" style="font-size: 11px;"><i class="fas fa-user-xmark text-danger me-1"></i>{{ tx['processed_by'] }}</div>
+                                    <div class="text-muted small mt-1" style="font-size: 11px;"><i class="fas fa-user-xmark text-danger me-1"></i>{{ tx['processed_by']|reviewer_name }}</div>
                                 {% endif %}
                             {% endif %}
 
@@ -554,7 +554,7 @@
                             </div>
                             <div class="list-group-item d-flex justify-content-between align-items-center">
                                 <span class="text-muted">نوع خرید:</span>
-                                <span>{{ '🔄 تمدید اشتراک' if tx['is_renewal'] else '🛒 خرید جدید' }}</span>
+                                <span class="fw-semibold">{{ '🔄 تمدید اشتراک' if tx['is_renewal'] else ('👑 بسته نمایندگان' if (tx['gateway'] == 'bundle_reseller' or (tx.get('order_id') and (tx['order_id']|string).startswith('R_BUNDLE'))) else '🛒 خرید جدید') }}</span>
                             </div>
                         </div>
                     </div>
@@ -576,19 +576,19 @@
                                 </div>
                             </div>
                             <div class="list-group-item d-flex justify-content-between align-items-center">
-                                <span class="text-muted">مدیر بررسی‌کننده:</span>
+                                <span class="text-muted">بررسی‌کننده:</span>
                                 <div>
                                     {% if tx['status'] in ['approved', 'completed'] %}
                                         <span class="badge bg-success-subtle text-success border border-success">
-                                            <i class="fas fa-user-check me-1"></i>{{ tx['processed_by'] or 'مدیر ارشد' }}
+                                            <i class="fas fa-user-check me-1"></i>{{ tx['processed_by']|reviewer_name }}
                                         </span>
                                     {% elif tx['status'] == 'rejected' %}
                                         <span class="badge bg-danger-subtle text-danger border border-danger">
-                                            <i class="fas fa-user-xmark me-1"></i>{{ tx['processed_by'] or 'مدیر ارشد' }}
+                                            <i class="fas fa-user-xmark me-1"></i>{{ tx['processed_by']|reviewer_name }}
                                         </span>
                                     {% elif tx['status'] == 'revoked' %}
                                         <span class="badge bg-secondary-subtle text-secondary border border-secondary">
-                                            <i class="fas fa-user-slash me-1"></i>{{ tx['revoked_by'] or tx['processed_by'] or 'مدیر ارشد' }}
+                                            <i class="fas fa-user-slash me-1"></i>{{ (tx['revoked_by'] or tx['processed_by'])|reviewer_name }}
                                         </span>
                                     {% else %}
                                         <span class="text-muted small">هنوز بررسی نشده</span>
@@ -599,10 +599,10 @@
                                 <span class="text-muted">نام اکانت متصل:</span>
                                 <code>{{ tx['account_name'] or '-' }}</code>
                             </div>
-                            {% if tx['card_number'] %}
+                            {% if tx.get('card_number') %}
                             <div class="list-group-item d-flex justify-content-between align-items-center">
-                                <span class="text-muted">کارت مقصد:</span>
-                                <code dir="ltr">{{ tx['card_number'] }}</code>
+                                <span class="text-muted">شماره کارت / حساب مقصد:</span>
+                                <code dir="ltr" class="fw-bold">{{ tx['card_number'] }}{% if tx.get('bank_name') %} ({{ tx['bank_name'] }}){% endif %}</code>
                             </div>
                             {% endif %}
                             <div class="list-group-item">
@@ -1068,7 +1068,37 @@
                         </div>
 
                         <div class="col-md-6">
-                            <label class="form-label fw-bold">شماره کارت یا ۴ رقم آخر:</label>
+                            <label class="form-label fw-bold">کارت / حساب مقصد (الزامی برای کارت):</label>
+                            <select name="destination_card" class="form-select" id="manualDestinationCard" required>
+                                <option value="" disabled selected>انتخاب کنید...</option>
+                                {% for card in cards %}
+                                <option value="{{ card.card_number }} - {{ card.owner_name }}">{{ card.bank_name }} ({{ card.card_number[-4:] }}) - {{ card.owner_name }}</option>
+                                {% endfor %}
+                                {% for account in accounts %}
+                                <option value="{{ account.id }}">{{ account.bank_name }} - {{ account.owner_name }} (حساب)</option>
+                                {% endfor %}
+                                <option value="other">سایر (نامشخص)</option>
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">پلن خریداری شده <span class="text-danger">*</span>:</label>
+                            <select name="purchased_plan_id" class="form-select" required>
+                                <option value="" disabled selected>انتخاب کنید...</option>
+                                {% if plans is mapping %}
+                                    {% for plan_id, plan in plans.items() %}
+                                    <option value="{{ plan_id }}">{{ plan.name | default(plan.display_name) }}</option>
+                                    {% endfor %}
+                                {% else %}
+                                    {% for plan in plans %}
+                                    <option value="{{ plan.id | default(plan.plan_id) }}">{{ plan.name | default(plan.display_name) }}</option>
+                                    {% endfor %}
+                                {% endif %}
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">شماره کارت پرداخت کننده:</label>
                             <input type="text" name="card_number" class="form-control font-monospace" placeholder="مثال: 603799..." dir="ltr">
                         </div>
 
@@ -1358,6 +1388,21 @@ function fillDebtAmount() {
         document.getElementById('manualAmount').value = currentCustomerDebt;
     }
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    const paymentMethodSelect = document.querySelector('select[name="payment_method"]');
+    const destCardSelect = document.getElementById('manualDestinationCard');
+    
+    if (paymentMethodSelect && destCardSelect) {
+        paymentMethodSelect.addEventListener('change', function() {
+            if (this.value.includes('کارت') || this.value.includes('پایا') || this.value.includes('ساتنا')) {
+                destCardSelect.setAttribute('required', 'required');
+            } else {
+                destCardSelect.removeAttribute('required');
+            }
+        });
+    }
+});
 </script>
 {% endblock %}
 

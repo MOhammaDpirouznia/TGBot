@@ -3039,9 +3039,41 @@ document.addEventListener('DOMContentLoaded', function() {
                         <i class="fas fa-upload me-1"></i> آپلود و بازیابی دیتابیس
                     </button>
                 </form>
+            
+            <hr class="my-4">
+            
+            <div class="row g-4 mt-2">
+                <div class="col-md-12">
+                    <h6 class="fw-bold mb-3"><i class="fas fa-server text-info me-2"></i> پشتیبان‌گیری از پنل هیدیفای</h6>
+                    <form action="{{ url_for('save_hiddify_backup_settings') }}" method="POST">
+                        <div class="row g-3">
+                            <div class="col-md-12">
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="hiddifyBackupEnabled" name="hiddify_backup_enabled" value="1" {% if hiddify_backup_enabled %}checked{% endif %}>
+                                    <label class="form-check-label fw-bold" for="hiddifyBackupEnabled">فعالسازی پشتیبان‌گیری خودکار هیدیفای (ارسال به تلگرام)</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">شناسه گروه/کانال تلگرام:</label>
+                                <input type="text" name="hiddify_backup_channel_id" class="form-control font-monospace" placeholder="مثال: -100123456789" value="{{ hiddify_backup_channel_id or '' }}">
+                                <div class="form-text small">ربات باید در این گروه یا کانال عضو و ادمین باشد.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">دوره زمانی (ساعت):</label>
+                                <input type="number" name="hiddify_backup_interval_hours" class="form-control font-monospace" placeholder="مثال: 12" value="{{ hiddify_backup_interval_hours or '12' }}" min="1">
+                                <div class="form-text small">هر چند ساعت یکبار بکاپ گرفته شود.</div>
+                            </div>
+                            <div class="col-md-12 mt-3">
+                                <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i> ذخیره تنظیمات بکاپ هیدیفای</button>
+                                <button type="button" class="btn btn-outline-info ms-2" onclick="window.location.href='{{ url_for('manual_hiddify_backup') }}'">
+                                    <i class="fas fa-cloud-download-alt me-1"></i> تهیه بکاپ هیدیفای و ارسال همین الان
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
             </div>
-
-    </div>
+</div>
 </div>
 <!-- کارت ۱۶: متغیرهای خام دیتابیس -->
 <div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="system" id="card-raw-settings">

@@ -1794,7 +1794,7 @@
                 {% endif %}
 
                 <!-- دسته‌بندی ۴: سیستم و تنظیمات -->
-                {% set is_settings_group_active = request.endpoint in ['users', 'admin_managers', 'admin_logs', 'bot_menu_settings', 'admin_bot_settings', 'settings', 'admin_profile'] %}
+                {% set is_settings_group_active = request.endpoint in ['users', 'admin_managers', 'admin_logs', 'admin_security', 'bot_menu_settings', 'admin_bot_settings', 'settings', 'admin_profile'] %}
                 <button class="sidebar-dropdown-toggle {% if is_settings_group_active %}has-active{% endif %}" 
                         type="button" 
                         data-bs-toggle="collapse" 
@@ -1830,6 +1830,9 @@
                         {% if has_permission('servers_view') %}
                         <a class="submenu-item {% if request.endpoint == 'admin_logs' %}active{% endif %}" href="{{ url_for('admin_logs') }}">
                             <i class="fas fa-terminal text-success"></i> وضعیت سرور و لاگ‌ها
+                        </a>
+                        <a class="submenu-item {% if request.endpoint == 'admin_security' %}active{% endif %}" href="{{ url_for('admin_security') }}">
+                            <i class="fas fa-shield-alt text-primary"></i> امنیت سیستم
                         </a>
                         {% endif %}
                         {% if session.get('admin_role') == 'super_admin' %}
@@ -2276,6 +2279,9 @@
                         const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
                         toast.show();
                     }
+                    if (window.location.pathname.includes('/payments')) {
+                        document.dispatchEvent(new CustomEvent('newPaymentReceived'));
+                    }
                 }
 
                 lastAdminPendingCount = data.pending_payments_count;
@@ -2400,6 +2406,9 @@
                         document.getElementById('liveAlertToastMsg').textContent = msg;
                         const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
                         toast.show();
+                    }
+                    if (window.location.pathname.includes('/payments')) {
+                        document.dispatchEvent(new CustomEvent('newPaymentReceived'));
                     }
                 }
 
@@ -2921,5 +2930,42 @@
         });
     </script>
     {% block scripts %}{% endblock %}
+    <!-- اسکریپت رفرش خودکار جداول پرداخت بدون رفرش صفحه -->
+    <script>
+        document.addEventListener('newPaymentReceived', function() {
+            const tableIds = ['paymentsTable', 'customerPaymentsTable', 'resellerReceiptTable', 'resellerWalletTable'];
+            let hasTargetTable = false;
+            for (let id of tableIds) {
+                if (document.getElementById(id)) {
+                    hasTargetTable = true;
+                    break;
+                }
+            }
+            
+            if (hasTargetTable) {
+                // Fetch the current page again
+                fetch(window.location.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(response => response.text())
+                    .then(html => {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(html, 'text/html');
+                        for (let id of tableIds) {
+                            const oldTable = document.getElementById(id);
+                            const newTable = doc.getElementById(id);
+                            if (oldTable && newTable) {
+                                oldTable.innerHTML = newTable.innerHTML;
+                                // Flash effect to show it updated
+                                oldTable.style.transition = 'background-color 0.5s';
+                                oldTable.style.backgroundColor = 'rgba(40, 167, 69, 0.2)';
+                                setTimeout(() => {
+                                    oldTable.style.backgroundColor = '';
+                                }, 1000);
+                            }
+                        }
+                    })
+                    .catch(e => console.warn('Failed to auto-refresh table:', e));
+            }
+        });
+    </script>
 </body>
 </html>

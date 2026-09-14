@@ -764,7 +764,12 @@
                 <div class="modal-body p-4">
                     <div class="row g-3">
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">شماره ۱۶ رقمی کارت:</label>
+                            <label class="form-label fw-semibold">نوع حساب:</label>
+                            <select name="account_type" class="form-select mb-3">
+                                <option value="bank_card">کارت بانکی عادی</option>
+                                <option value="partner_savings">صندوق پس‌انداز / شریک</option>
+                            </select>
+                            <label class="form-label fw-semibold">شماره ۱۶ رقمی کارت (یا حساب):</label>
                             <input type="text" name="card_number" id="resEditCardNumber" class="form-control text-center font-monospace fs-5" maxlength="19" required dir="ltr">
                         </div>
                         <div class="col-md-6">
@@ -1162,4 +1167,5 @@ function filterResCardTransactions(category) {
 }
 </script>
 {% endblock %}
+
 
