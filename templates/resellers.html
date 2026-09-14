@@ -255,6 +255,9 @@
                                         {% else %}
                                             <span class="badge bg-light text-muted border px-1 py-0" style="font-size: 0.65rem;">آفلاین</span>
                                         {% endif %}
+                                        {% if r.get('is_partner') %}
+                                            <span class="badge bg-warning-subtle text-warning border border-warning px-1 py-0" style="font-size: 0.65rem;" title="نماینده شریک"><i class="fas fa-handshake me-1"></i>شریک</span>
+                                        {% endif %}
                                         {% if r.get('can_gift_traffic') %}
                                             <span class="badge bg-success-subtle text-success border border-success px-1 py-0" style="font-size: 0.65rem;" title="مجاز به اهدای حجم هدیه به مشتریان"><i class="fas fa-gift me-1"></i>حجم هدیه</span>
                                         {% endif %}
@@ -1519,6 +1522,17 @@
                         </small>
                     </div>
 
+                                        <!-- بخش وضعیت نماینده شریک -->
+                    <div class="mb-3 border border-warning p-3 rounded bg-warning bg-opacity-10">
+                        <div class="form-check form-switch mb-1">
+                            <input class="form-check-input ms-2" type="checkbox" name="is_partner" id="isPartnerEdit{{ r['id'] }}" value="1" {% if r.get('is_partner') %}checked{% endif %}>
+                            <label class="form-check-label fw-bold text-dark" for="isPartnerEdit{{ r['id'] }}">
+                                <i class="fas fa-handshake text-warning me-1"></i> نماینده شریک (معاف از کسر هزینه و بدهی اعتباری)
+                            </label>
+                        </div>
+                        <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">در صورت فعال بودن، خریدها هزینه از نماینده کسر نمی‌کند و برای محاسبه سود شراکت در سیستم حسابداری لحاظ می‌شود.</small>
+                    </div>
+
                     <!-- بخش دسترسی اهدای حجم هدیه به مشتری -->
                     <div class="mb-3 border border-success p-3 rounded bg-success bg-opacity-10">
                         <label class="form-label fw-bold text-success"><i class="fas fa-gift me-1"></i> دسترسی حجم هدیه رایگان به مشتریان:</label>
@@ -1662,7 +1676,16 @@
                     </div>
 
                     <!-- بخش دسترسی اهدای حجم هدیه به مشتری -->
-                    <div class="mb-3 border border-success p-2 rounded bg-success bg-opacity-10">
+                                        <div class="mb-3 border border-warning p-2 rounded bg-warning bg-opacity-10">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="is_partner" id="isPartnerAdd" value="1">
+                            <label class="form-check-label fw-bold small text-dark" for="isPartnerAdd">
+                                <i class="fas fa-handshake text-warning me-1"></i> نماینده شریک (معاف از کسر هزینه و بدهی اعتباری)
+                            </label>
+                        </div>
+                        <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">خریدها بدون کسر موجودی انجام شده و در سود شراکت حسابداری ثبت می‌گردد.</small>
+                    </div>
+<div class="mb-3 border border-success p-2 rounded bg-success bg-opacity-10">
                         <div class="form-check form-switch">
                             <input class="form-check-input" type="checkbox" name="can_gift_traffic" id="canGiftTrafficAdd" value="1">
                             <label class="form-check-label fw-bold small text-dark" for="canGiftTrafficAdd">
@@ -1816,3 +1839,4 @@ document.addEventListener('DOMContentLoaded', function() {
 
 {% include "hiddify_sync_modal.html" %}
 {% endblock %}
+

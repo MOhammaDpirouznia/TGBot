@@ -54,7 +54,7 @@
                 </div>
                 <div>
                     <span class="text-muted small d-block mb-1">کل پورسانت دریافتی</span>
-                    <h3 class="fw-bold mb-0 text-success">{{ "{:,}".format(stats.total_commission_earned) }} <span class="fs-6 text-muted fw-normal">تومان</span></h3>
+                    <h3 class="fw-bold mb-0 text-success">{{ "{:,}".format((stats.total_commission_earned or 0)|int) }} <span class="fs-6 text-muted fw-normal">تومان</span></h3>
                     <small class="text-muted">واریز شده به کیف پول</small>
                 </div>
             </div>
@@ -67,7 +67,7 @@
                 </div>
                 <div>
                     <span class="text-muted small d-block mb-1">درآمد ۳۰ روز اخیر</span>
-                    <h3 class="fw-bold mb-0 text-primary">{{ "{:,}".format(stats.recent_month_commission) }} <span class="fs-6 text-muted fw-normal">تومان</span></h3>
+                    <h3 class="fw-bold mb-0 text-primary">{{ "{:,}".format((stats.recent_month_commission or 0)|int) }} <span class="fs-6 text-muted fw-normal">تومان</span></h3>
                     <small class="text-muted">ماه جاری</small>
                 </div>
             </div>

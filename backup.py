@@ -271,8 +271,6 @@ class AutoBackupScheduler:
                 await asyncio.sleep(300)  # 5 دقیقه صبر در صورت خطا
 
 
-
-
     async def _run_hiddify_scheduler(self):
         from database import db
         while self.is_running:
@@ -285,6 +283,10 @@ class AutoBackupScheduler:
             except Exception as e:
                 logger.error(f'Hiddify Scheduler Error: {e}')
                 await asyncio.sleep(300)
+
+
+# نمونه singleton (فقط برای BackupManager)
+backup_manager = BackupManager()
 
 async def trigger_hiddify_backup(db_instance):
     try:
@@ -309,11 +311,3 @@ async def trigger_hiddify_backup(db_instance):
     except Exception as e:
         logger.error(f'Hiddify Backup Error: {e}')
         return False
-
-
-
-
-
-
-# نمونه singleton (فقط برای BackupManager)
-backup_manager = BackupManager()

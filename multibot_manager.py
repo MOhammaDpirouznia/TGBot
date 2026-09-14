@@ -41,8 +41,6 @@ from reseller_bot_admin import (
     get_bundle_payment_methods_payload,
     get_bundle_smart_sms_payload,
     get_bundle_payment_details_payload,
-    get_bundle_smart_sms_payload,
-    get_bundle_payment_details_payload,
     get_reseller_tickets_payload,
     get_reseller_ticket_detail_payload,
     get_reseller_payments_payload,
@@ -722,8 +720,8 @@ class ResellerBotInstance:
 
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
 
-        async def buy_plan_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            """نمایش صفحه روش‌های پرداخت پس از تایید نام اشتراک با پشتیبانی از کد تخفیف"""
+        async def buy_plan_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, injected_plan_id=None):
+            """تایید نهایی مشخصات فاکتور و انتخاب روش پرداخت در ربات نمایندگان"""
             query = update.callback_query
             try:
                 await query.answer()
@@ -731,7 +729,7 @@ class ResellerBotInstance:
                 pass
 
             try:
-                plan_id = query.data.replace("r_conf_", "")
+                plan_id = injected_plan_id if injected_plan_id else query.data.replace("r_conf_", "")
                 plan = db.get_reseller_plan(r_id, plan_id)
                 if not plan or not plan.get("show_in_reseller_bot", True):
                     await query.edit_message_text("❌ پلن مورد نظر یافت نشد.")
@@ -2783,8 +2781,7 @@ class ResellerBotInstance:
                     if target_sub:
                         context.user_data["buying_account_name"] = target_sub.get("account_name")
 
-                    query.data = f"r_conf_{plan_id}"
-                    return await buy_plan_confirm_callback(update, context)
+                    return await buy_plan_confirm_callback(update, context, injected_plan_id=str(plan_id))
             except Exception as e:
                 logger.error(f"Error in reseller_renew_mode_callback reseller {r_id}: {e}", exc_info=True)
                 await query.answer("❌ خطا در پردازش درخواست تمدید", show_alert=True)
@@ -5075,4 +5072,3 @@ class MultiBotManager:
 
 # ساخت نمونه تکین (Singleton) برای کل پروژه
 multibot_manager = MultiBotManager()
-

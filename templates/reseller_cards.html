@@ -1,37 +1,37 @@
 {% extends "base.html" %}
-{% block title %}Ø±ÙˆØ´â€ŒÙ‡Ø§ Ùˆ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ù¾Ø±Ø¯Ø§Ø®Øª - Ù¾Ù†Ù„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ú¯ÛŒ{% endblock %}
+{% block title %}روش‌ها و تنظیمات پرداخت - پنل نمایندگی{% endblock %}
 
 {% block content %}
 <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="page-title mb-0"><i class="fas fa-credit-card text-primary me-2"></i> Ø±ÙˆØ´â€ŒÙ‡Ø§ Ùˆ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ù¾Ø±Ø¯Ø§Ø®Øª</h1>
-        <p class="text-muted mb-0">Ù…Ø¯ÛŒØ±ÛŒØª Ú†ÛŒØ¯Ù…Ø§Ù† Ùˆ Ø§ÙˆÙ„ÙˆÛŒØª Ø±ÙˆØ´â€ŒÙ‡Ø§ÛŒ Ù¾Ø±Ø¯Ø§Ø®Øª Ø¯Ø± Ø±Ø¨Ø§Øª ØªÙ„Ú¯Ø±Ø§Ù… Ø§Ø®ØªØµØ§ØµÛŒ Ùˆ Ù¾ÙˆØ±ØªØ§Ù„ Ù…Ø´ØªØ±ÛŒØŒ Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ÛŒ Ø¨Ø§Ù†Ú©ÛŒ Ù…Ù‚ØµØ¯ØŒ Ø¯Ø±Ú¯Ø§Ù‡ Ø¢Ù†Ù„Ø§ÛŒÙ† Ùˆ Ú©Ø±ÛŒÙ¾ØªÙˆ</p>
+        <h1 class="page-title mb-0"><i class="fas fa-credit-card text-primary me-2"></i> روش‌ها و تنظیمات پرداخت</h1>
+        <p class="text-muted mb-0">مدیریت چیدمان و اولویت روش‌های پرداخت در ربات تلگرام اختصاصی و پورتال مشتری، کارت‌های بانکی مقصد، درگاه آنلاین و کریپتو</p>
     </div>
     <button type="button" class="btn btn-primary fw-bold" data-bs-toggle="modal" data-bs-target="#addCardModal">
-        <i class="fas fa-plus me-1"></i> Ø§ÙØ²ÙˆØ¯Ù† Ú©Ø§Ø±Øª Ø¨Ø§Ù†Ú©ÛŒ Ø¬Ø¯ÛŒØ¯
+        <i class="fas fa-plus me-1"></i> افزودن کارت بانکی جدید
     </button>
 </div>
 
-<!-- Ø±Ø¯ÛŒÙ Û±: Ú†ÛŒØ¯Ù…Ø§Ù† Ùˆ Ø§ÙˆÙ„ÙˆÛŒØª Ø±ÙˆØ´â€ŒÙ‡Ø§ÛŒ Ù¾Ø±Ø¯Ø§Ø®Øª Ø¯Ø± Ø±Ø¨Ø§Øª Ø§Ø®ØªØµØ§ØµÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ùˆ Ù¾ÙˆØ±ØªØ§Ù„ Ù…Ø´ØªØ±ÛŒ -->
+<!-- ردیف ۱: چیدمان و اولویت روش‌های پرداخت در ربات اختصاصی نماینده و پورتال مشتری -->
 <div class="card shadow-sm border-0 mb-4">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="d-flex align-items-center gap-2">
-            <h5 class="mb-0 fw-bold"><i class="fas fa-arrow-down-up-across-line text-primary me-2"></i>Ú†ÛŒØ¯Ù…Ø§Ù† Ùˆ ÙˆØ¶Ø¹ÛŒØª Ù†Ù…Ø§ÛŒØ´ Ø±ÙˆØ´â€ŒÙ‡Ø§ÛŒ Ù¾Ø±Ø¯Ø§Ø®Øª Ø¯Ø± Ø±Ø¨Ø§Øª Ø§Ø®ØªØµØ§ØµÛŒ Ùˆ Ù¾ÙˆØ±ØªØ§Ù„ Ù…Ø´ØªØ±ÛŒ</h5>
-            <span class="badge bg-info-subtle text-info border border-info">Ø§Ø®ØªØµØ§ØµÛŒ Ø±Ø¨Ø§Øª Ùˆ Ù¾ÙˆØ±ØªØ§Ù„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡</span>
+            <h5 class="mb-0 fw-bold"><i class="fas fa-arrow-down-up-across-line text-primary me-2"></i>چیدمان و وضعیت نمایش روش‌های پرداخت در ربات اختصاصی و پورتال مشتری</h5>
+            <span class="badge bg-info-subtle text-info border border-info">اختصاصی ربات و پورتال نماینده</span>
         </div>
-        <small class="text-muted">ØªØ±ØªÛŒØ¨ Ùˆ ÙˆØ¶Ø¹ÛŒØª Ù†Ù…Ø§ÛŒØ´ Ú¯Ø²ÛŒÙ†Ù‡â€ŒÙ‡Ø§ÛŒ Ø®Ø±ÛŒØ¯ Ø¯Ø± Ø±Ø¨Ø§Øª ØªÙ„Ú¯Ø±Ø§Ù… Ùˆ Ù¾ÙˆØ±ØªØ§Ù„ Ø§Ø®ØªØµØ§ØµÛŒ Ù…Ø´ØªØ±ÛŒØ§Ù† Ø´Ù…Ø§ Ø¨Ø± Ø§Ø³Ø§Ø³ Ø§ÛŒÙ† ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø®ÙˆØ§Ù‡Ø¯ Ø¨ÙˆØ¯</small>
+        <small class="text-muted">ترتیب و وضعیت نمایش گزینه‌های خرید در ربات تلگرام و پورتال اختصاصی مشتریان شما بر اساس این تنظیمات خواهد بود</small>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th style="width: 70px;" class="text-center">Ø§ÙˆÙ„ÙˆÛŒØª</th>
-                        <th style="width: 90px;" class="text-center">Ø¬Ø§Ø¨Ø¬Ø§ÛŒÛŒ</th>
-                        <th>Ø±ÙˆØ´ Ù¾Ø±Ø¯Ø§Ø®Øª</th>
-                        <th>ØªÙˆØ¶ÛŒØ­Ø§Øª Ùˆ Ø¹Ù…Ù„Ú©Ø±Ø¯</th>
-                        <th class="text-center">ÙˆØ¶Ø¹ÛŒØª Ø¯Ø± Ø±Ø¨Ø§Øª Ùˆ Ù¾ÙˆØ±ØªØ§Ù„</th>
-                        <th class="text-end pe-3">Ø¹Ù…Ù„ÛŒØ§Øª</th>
+                        <th style="width: 70px;" class="text-center">اولویت</th>
+                        <th style="width: 90px;" class="text-center">جابجایی</th>
+                        <th>روش پرداخت</th>
+                        <th>توضیحات و عملکرد</th>
+                        <th class="text-center">وضعیت در ربات و پورتال</th>
+                        <th class="text-end pe-3">عملیات</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -44,12 +44,12 @@
                             <div class="btn-group btn-group-sm">
                                 <a href="{{ url_for('reseller_payment_method_move', method_id=m['id'], direction='up') }}" 
                                    class="btn btn-outline-secondary py-1 px-2 {% if loop.first %}disabled{% endif %}" 
-                                   title="Ø§Ù†ØªÙ‚Ø§Ù„ Ø¨Ù‡ Ø¨Ø§Ù„Ø§ (Ø§ÙˆÙ„ÙˆÛŒØª Ø¨Ø§Ù„Ø§ØªØ±)">
+                                   title="انتقال به بالا (اولویت بالاتر)">
                                     <i class="fas fa-chevron-up"></i>
                                 </a>
                                 <a href="{{ url_for('reseller_payment_method_move', method_id=m['id'], direction='down') }}" 
                                    class="btn btn-outline-secondary py-1 px-2 {% if loop.last %}disabled{% endif %}" 
-                                   title="Ø§Ù†ØªÙ‚Ø§Ù„ Ø¨Ù‡ Ù¾Ø§ÛŒÛŒÙ† (Ø§ÙˆÙ„ÙˆÛŒØª Ù¾Ø§ÛŒÛŒÙ†â€ŒØªØ±)">
+                                   title="انتقال به پایین (اولویت پایین‌تر)">
                                     <i class="fas fa-chevron-down"></i>
                                 </a>
                             </div>
@@ -57,7 +57,7 @@
                         <td>
                             <div class="d-flex align-items-center gap-2">
                                 <div class="avatar-sm rounded-circle bg-{{ m.get('color', 'primary') }}-subtle text-{{ m.get('color', 'primary') }} d-flex align-items-center justify-content-center" style="width: 38px; height: 38px;">
-                                    <i class="fas {{ m.get('icon', 'fa-credit-card') }} fs-6"></i>
+                                    <i class="{{ m.get('icon', 'fas fa-credit-card') }} fs-6"></i>
                                 </div>
                                 <div>
                                     <strong class="text-dark">{{ m['name'] }}</strong>
@@ -70,16 +70,16 @@
                         </td>
                         <td class="text-center">
                             {% if m.get('enabled', True) %}
-                                <span class="badge bg-success-subtle text-success border border-success px-3 py-1">ðŸŸ¢ ÙØ¹Ø§Ù„ Ø¯Ø± Ø±Ø¨Ø§Øª Ùˆ Ù¾ÙˆØ±ØªØ§Ù„</span>
+                                <span class="badge bg-success-subtle text-success border border-success px-3 py-1">🟢 فعال در ربات و پورتال</span>
                             {% else %}
-                                <span class="badge bg-secondary-subtle text-secondary border px-3 py-1">âšª ØºÛŒØ±ÙØ¹Ø§Ù„</span>
+                                <span class="badge bg-secondary-subtle text-secondary border px-3 py-1">⚪ غیرفعال</span>
                             {% endif %}
                         </td>
                         <td class="text-end pe-3">
                             <a href="{{ url_for('reseller_payment_method_toggle', method_id=m['id']) }}" 
                                class="btn btn-sm {% if m.get('enabled', True) %}btn-outline-warning{% else %}btn-outline-success{% endif %}">
                                 <i class="fas fa-power-off me-1"></i>
-                                {{ 'ØºÛŒØ±ÙØ¹Ø§Ù„â€ŒØ³Ø§Ø²ÛŒ' if m.get('enabled', True) else 'ÙØ¹Ø§Ù„â€ŒØ³Ø§Ø²ÛŒ' }}
+                                {{ 'غیرفعال‌سازی' if m.get('enabled', True) else 'فعال‌سازی' }}
                             </a>
                         </td>
                     </tr>
@@ -90,14 +90,14 @@
     </div>
 </div>
 
-<!-- Ø±Ø¯ÛŒÙ Û²: Ø®Ù„Ø§ØµÙ‡ Ù…Ø§Ù„ÛŒ Ùˆ Ø­Ø³Ø§Ø¨Ø¯Ø§Ø±ÛŒ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ø´Ù†Ø§ÙˆØ± Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ Ùˆ ØµÙ†Ø¯ÙˆÙ‚ Ù†Ù‚Ø¯ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ -->
+<!-- ردیف ۲: خلاصه مالی و حسابداری موجودی شناور کارت‌ها و صندوق نقدی نماینده -->
 <div class="row g-3 mb-4">
     <div class="col-sm-6 col-xl-3">
         <div class="card shadow-sm border-0 border-start border-primary border-4 h-100">
             <div class="card-body p-3 d-flex align-items-center justify-content-between">
                 <div>
-                    <span class="text-muted small fw-semibold">Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ø´Ù†Ø§ÙˆØ± Ú©Ù„ Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§</span>
-                    <h4 class="mb-0 fw-bold text-primary font-monospace mt-1">{{ "{:,}".format(financial_summary.get('total_balance', 0)) }} <small class="fs-6 fw-normal text-muted">ØªÙˆÙ…Ø§Ù†</small></h4>
+                    <span class="text-muted small fw-semibold">موجودی شناور کل کارت‌ها</span>
+                    <h4 class="mb-0 fw-bold text-primary font-monospace mt-1">{{ "{:,}".format(financial_summary.get('total_balance', 0)) }} <small class="fs-6 fw-normal text-muted">تومان</small></h4>
                 </div>
                 <div class="avatar-sm rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center" style="width: 44px; height: 44px;">
                     <i class="fas fa-wallet fs-5"></i>
@@ -109,8 +109,8 @@
         <div class="card shadow-sm border-0 border-start border-success border-4 h-100">
             <div class="card-body p-3 d-flex align-items-center justify-content-between">
                 <div>
-                    <span class="text-muted small fw-semibold">Ù…Ø¬Ù…ÙˆØ¹ ÙˆØ§Ø±ÛŒØ²ÛŒâ€ŒÙ‡Ø§ÛŒ Ø«Ø¨Øªâ€ŒØ´Ø¯Ù‡</span>
-                    <h4 class="mb-0 fw-bold text-success font-monospace mt-1">{{ "{:,}".format(financial_summary.get('total_deposits', 0)) }} <small class="fs-6 fw-normal text-muted">ØªÙˆÙ…Ø§Ù†</small></h4>
+                    <span class="text-muted small fw-semibold">مجموع واریزی‌های ثبت‌شده</span>
+                    <h4 class="mb-0 fw-bold text-success font-monospace mt-1">{{ "{:,}".format(financial_summary.get('total_deposits', 0)) }} <small class="fs-6 fw-normal text-muted">تومان</small></h4>
                 </div>
                 <div class="avatar-sm rounded-circle bg-success-subtle text-success d-flex align-items-center justify-content-center" style="width: 44px; height: 44px;">
                     <i class="fas fa-arrow-down-long fs-5"></i>
@@ -122,8 +122,8 @@
         <div class="card shadow-sm border-0 border-start border-danger border-4 h-100">
             <div class="card-body p-3 d-flex align-items-center justify-content-between">
                 <div>
-                    <span class="text-muted small fw-semibold">Ø¨Ø±Ø¯Ø§Ø´Øªâ€ŒÙ‡Ø§ØŒ Ù‡Ø²ÛŒÙ†Ù‡â€ŒÙ‡Ø§ Ùˆ Ú©Ø§Ø±Ù…Ø²Ø¯Ù‡Ø§</span>
-                    <h4 class="mb-0 fw-bold text-danger font-monospace mt-1">{{ "{:,}".format(financial_summary.get('total_withdrawals', 0)) }} <small class="fs-6 fw-normal text-muted">ØªÙˆÙ…Ø§Ù†</small></h4>
+                    <span class="text-muted small fw-semibold">برداشت‌ها، هزینه‌ها و کارمزدها</span>
+                    <h4 class="mb-0 fw-bold text-danger font-monospace mt-1">{{ "{:,}".format(financial_summary.get('total_withdrawals', 0)) }} <small class="fs-6 fw-normal text-muted">تومان</small></h4>
                 </div>
                 <div class="avatar-sm rounded-circle bg-danger-subtle text-danger d-flex align-items-center justify-content-center" style="width: 44px; height: 44px;">
                     <i class="fas fa-arrow-up-long fs-5"></i>
@@ -135,8 +135,8 @@
         <div class="card shadow-sm border-0 border-start border-warning border-4 h-100">
             <div class="card-body p-3 d-flex align-items-center justify-content-between">
                 <div>
-                    <span class="text-muted small fw-semibold">ØµÙ†Ø¯ÙˆÙ‚ Ù†Ù‚Ø¯ÛŒ (Ø¯Ø± Ø§Ù†ØªØ¸Ø§Ø± ØªØ³ÙˆÛŒÙ‡)</span>
-                    <h4 class="mb-0 fw-bold text-warning-emphasis font-monospace mt-1">{{ "{:,}".format(financial_summary.get('unsettled_cash', 0)) }} <small class="fs-6 fw-normal text-muted">ØªÙˆÙ…Ø§Ù†</small></h4>
+                    <span class="text-muted small fw-semibold">صندوق نقدی (در انتظار تسویه)</span>
+                    <h4 class="mb-0 fw-bold text-warning-emphasis font-monospace mt-1">{{ "{:,}".format(financial_summary.get('unsettled_cash', 0)) }} <small class="fs-6 fw-normal text-muted">تومان</small></h4>
                 </div>
                 <div class="avatar-sm rounded-circle bg-warning-subtle text-warning d-flex align-items-center justify-content-center" style="width: 44px; height: 44px;">
                     <i class="fas fa-cash-register fs-5"></i>
@@ -146,26 +146,26 @@
     </div>
 </div>
 
-<!-- Ø±Ø¯ÛŒÙ Û³: Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ÛŒ Ø¨Ø§Ù†Ú©ÛŒ Ù…Ù‚ØµØ¯ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (Ø±ÙˆØªØ§ØªÙˆØ± Ù‡ÙˆØ´Ù…Ù†Ø¯ Ùˆ Ù…Ø§Ù†Ø¯Ù‡ Ø­Ø³Ø§Ø¨â€ŒÙ‡Ø§) -->
+<!-- ردیف ۳: کارت‌های بانکی مقصد نماینده (روتاتور هوشمند و مانده حساب‌ها) -->
 <div class="card shadow-sm border-0 mb-4">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="d-flex align-items-center gap-2">
-            <h5 class="mb-0 fw-bold"><i class="fas fa-credit-card text-primary me-2"></i>Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ÛŒ Ø¨Ø§Ù†Ú©ÛŒ Ù…Ù‚ØµØ¯ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (Ø±ÙˆØªØ§ØªÙˆØ± Ù‡ÙˆØ´Ù…Ù†Ø¯ Ùˆ Ù…Ø§Ù†Ø¯Ù‡ Ø­Ø³Ø§Ø¨â€ŒÙ‡Ø§)</h5>
-            <span class="badge bg-secondary">{{ cards|length }} Ú©Ø§Ø±Øª Ø«Ø¨Øª Ø´Ø¯Ù‡</span>
+            <h5 class="mb-0 fw-bold"><i class="fas fa-credit-card text-primary me-2"></i>کارت‌های بانکی مقصد نماینده (روتاتور هوشمند و مانده حساب‌ها)</h5>
+            <span class="badge bg-secondary">{{ cards|length }} کارت ثبت شده</span>
         </div>
-        <small class="text-muted">Ø¯Ø± ØµÙˆØ±Øª Ø±Ø³ÛŒØ¯Ù† ÙˆØ§Ø±ÛŒØ²ÛŒâ€ŒÙ‡Ø§ÛŒ Ø±ÙˆØ²Ø§Ù†Ù‡ Ø¨Ù‡ Ø³Ù‚Ù ØªØ¹ÛŒÛŒÙ†â€ŒØ´Ø¯Ù‡ØŒ Ø±Ø¨Ø§Øª ØªÙ„Ú¯Ø±Ø§Ù… Ø®ÙˆØ¯Ú©Ø§Ø± Ø¨Ù‡ Ú©Ø§Ø±Øª Ù¾Ø´ØªÛŒØ¨Ø§Ù† Ø³ÙˆØ¦ÛŒÚ† Ù…ÛŒâ€ŒÚ©Ù†Ø¯</small>
+        <small class="text-muted">در صورت رسیدن واریزی‌های روزانه به سقف تعیین‌شده، ربات تلگرام خودکار به کارت پشتیبان سوئیچ می‌کند</small>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-3">Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ú©Ø§Ø±Øª Ùˆ Ø¨Ø§Ù†Ú©</th>
-                        <th>Ù†Ù‚Ø´ Ø¯Ø± Ø±ÙˆØªØ§ØªÙˆØ±</th>
-                        <th>Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ø´Ù†Ø§ÙˆØ±</th>
-                        <th style="min-width: 200px;">ØªØ±Ø§Ú©Ù†Ø´ Ø§Ù…Ø±ÙˆØ² / Ø³Ù‚Ù Ø±ÙˆØ²Ø§Ù†Ù‡</th>
-                        <th class="text-center">ÙˆØ¶Ø¹ÛŒØª</th>
-                        <th class="text-end pe-3">Ø¹Ù…Ù„ÛŒØ§Øª</th>
+                        <th class="ps-3">اطلاعات کارت و بانک</th>
+                        <th>نقش در روتاتور</th>
+                        <th>موجودی شناور</th>
+                        <th style="min-width: 200px;">تراکنش امروز / سقف روزانه</th>
+                        <th class="text-center">وضعیت</th>
+                        <th class="text-end pe-3">عملیات</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -190,11 +190,11 @@
                         </td>
                         <td>
                             {% if c.get('is_default') %}
-                                <span class="badge bg-warning text-dark border border-warning px-2 py-1" title="Ú©Ø§Ø±Øª Ø§ØµÙ„ÛŒ Ø¨Ø±Ø§ÛŒ Ø§Ø±Ø³Ø§Ù„ Ø¨Ù‡ Ù…Ø´ØªØ±ÛŒ"><i class="fas fa-star me-1"></i>Ú©Ø§Ø±Øª Ù¾ÛŒØ´â€ŒÙØ±Ø¶</span>
+                                <span class="badge bg-warning text-dark border border-warning px-2 py-1" title="کارت اصلی برای ارسال به مشتری"><i class="fas fa-star me-1"></i>کارت پیش‌فرض</span>
                             {% elif c.get('is_backup') %}
-                                <span class="badge bg-info-subtle text-info border border-info px-2 py-1" title="Ø¯Ø± ØµÙˆØ±Øª Ù¾Ø± Ø´Ø¯Ù† Ø³Ù‚Ù Ú©Ø§Ø±Øª Ù¾ÛŒØ´â€ŒÙØ±Ø¶ Ø¬Ø§ÛŒÚ¯Ø²ÛŒÙ† Ù…ÛŒâ€ŒØ´ÙˆØ¯"><i class="fas fa-shield-halved me-1"></i>Ú©Ø§Ø±Øª Ù¾Ø´ØªÛŒØ¨Ø§Ù†</span>
+                                <span class="badge bg-info-subtle text-info border border-info px-2 py-1" title="در صورت پر شدن سقف کارت پیش‌فرض جایگزین می‌شود"><i class="fas fa-shield-halved me-1"></i>کارت پشتیبان</span>
                             {% else %}
-                                <span class="badge bg-light text-muted border px-2 py-1">Ø¹Ø§Ø¯ÛŒ</span>
+                                <span class="badge bg-light text-muted border px-2 py-1">عادی</span>
                             {% endif %}
                         </td>
                         <td>
@@ -203,71 +203,71 @@
                                     <span class="font-monospace fs-6 fw-bold {% if c.get('balance', 0) >= 0 %}text-success{% else %}text-danger{% endif %}">
                                         {{ "{:,}".format(c.get('balance', 0)) }}
                                     </span>
-                                    <span class="small text-muted">ØªÙˆÙ…Ø§Ù†</span>
+                                    <span class="small text-muted">تومان</span>
                                 </div>
-                                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" title="Ø«Ø¨Øª Ø³Ø±ÛŒØ¹ ÙˆØ§Ø±ÛŒØ² / Ø¨Ø±Ø¯Ø§Ø´Øª / Ù‡Ø²ÛŒÙ†Ù‡" onclick="openAddTxModal({{ c['id'] }}, '{{ c['card_number'] }}', '{{ c['card_holder'] }}')">
+                                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" title="ثبت سریع واریز / برداشت / هزینه" onclick="openAddTxModal({{ c['id'] }}, '{{ c['card_number'] }}', '{{ c['card_holder'] }}')">
                                     <i class="fas fa-plus-minus small"></i>
                                 </button>
                             </div>
                         </td>
                         <td>
                             <div class="d-flex justify-content-between small mb-1">
-                                <span class="text-muted">Ø§Ù…Ø±ÙˆØ²: <strong class="text-dark font-monospace">{{ "{:,}".format(c.get('today_volume', 0)) }}</strong> Øª</span>
-                                <span class="text-muted">Ø³Ù‚Ù: <strong class="text-dark font-monospace">{{ "{:,}".format(c.get('daily_limit', 50000000)) }}</strong> Øª</span>
+                                <span class="text-muted">امروز: <strong class="text-dark font-monospace">{{ "{:,}".format(c.get('today_volume', 0)) }}</strong> ت</span>
+                                <span class="text-muted">سقف: <strong class="text-dark font-monospace">{{ "{:,}".format(c.get('daily_limit', 50000000)) }}</strong> ت</span>
                             </div>
-                            <div class="progress" style="height: 6px;" title="{{ c.get('usage_percent', 0) }}% Ù¾Ø± Ø´Ø¯Ù‡">
+                            <div class="progress" style="height: 6px;" title="{{ c.get('usage_percent', 0) }}% پر شده">
                                 <div class="progress-bar {% if c.get('usage_percent', 0) >= 90 %}bg-danger{% elif c.get('usage_percent', 0) >= 70 %}bg-warning{% else %}bg-primary{% endif %}" 
                                      role="progressbar" style="width: {{ c.get('usage_percent', 0) }}%;"></div>
                             </div>
                             <div class="d-flex justify-content-between text-muted" style="font-size: 11px;">
-                                <span>{{ c.get('usage_percent', 0) }}% Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø´Ø¯Ù‡</span>
-                                <span>Ù…Ø§Ù†Ø¯Ù‡ Ø³Ù‚Ù: {{ "{:,}".format(c.get('remaining_limit', 0)) }} Øª</span>
+                                <span>{{ c.get('usage_percent', 0) }}% استفاده شده</span>
+                                <span>مانده سقف: {{ "{:,}".format(c.get('remaining_limit', 0)) }} ت</span>
                             </div>
                         </td>
                         <td class="text-center">
                             {% if c['is_active'] %}
-                                <span class="badge bg-success-subtle text-success border border-success px-2 py-1">ðŸŸ¢ ÙØ¹Ø§Ù„</span>
+                                <span class="badge bg-success-subtle text-success border border-success px-2 py-1">🟢 فعال</span>
                             {% else %}
-                                <span class="badge bg-secondary-subtle text-secondary border px-2 py-1">âšª ØºÛŒØ±ÙØ¹Ø§Ù„</span>
+                                <span class="badge bg-secondary-subtle text-secondary border px-2 py-1">⚪ غیرفعال</span>
                             {% endif %}
                         </td>
                         <td class="text-end pe-3">
                             <div class="btn-group btn-group-sm">
-                                <button type="button" class="btn btn-outline-primary" title="Ù…Ø´Ø§Ù‡Ø¯Ù‡ Ú¯Ø²Ø§Ø±Ø´ Ú©Ø§Ù…Ù„ Ùˆ ØªÙÚ©ÛŒÚ© ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§" onclick="viewCardDetails({{ c['id'] }})">
-                                    <i class="fas fa-chart-line me-1"></i>Ú¯Ø±Ø¯Ø´ Ø­Ø³Ø§Ø¨
+                                <button type="button" class="btn btn-outline-primary" title="مشاهده گزارش کامل و تفکیک تراکنش‌ها" onclick="viewCardDetails({{ c['id'] }})">
+                                    <i class="fas fa-chart-line me-1"></i>گردش حساب
                                 </button>
                                 <div class="btn-group btn-group-sm">
-                                    <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" title="Ù†Ù‚Ø´ Ø¯Ø± Ø±ÙˆØªØ§ØªÙˆØ±">
+                                    <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" title="نقش در روتاتور">
                                         <i class="fas fa-cog"></i>
                                     </button>
                                     <ul class="dropdown-menu dropdown-menu-end shadow-sm">
                                         <li>
                                             <a class="dropdown-item small" href="{{ url_for('reseller_card_set_role', card_id=c['id'], role_type='default') }}">
-                                                <i class="fas fa-star text-warning me-2"></i>Ø§Ù†ØªØ®Ø§Ø¨ Ø¨Ù‡ Ø¹Ù†ÙˆØ§Ù† Ú©Ø§Ø±Øª Ù¾ÛŒØ´â€ŒÙØ±Ø¶ (Ø§ØµÙ„ÛŒ)
+                                                <i class="fas fa-star text-warning me-2"></i>انتخاب به عنوان کارت پیش‌فرض (اصلی)
                                             </a>
                                         </li>
                                         <li>
                                             <a class="dropdown-item small" href="{{ url_for('reseller_card_set_role', card_id=c['id'], role_type='backup') }}">
-                                                <i class="fas fa-shield-halved text-info me-2"></i>Ø§Ù†ØªØ®Ø§Ø¨ Ø¨Ù‡ Ø¹Ù†ÙˆØ§Ù† Ú©Ø§Ø±Øª Ù¾Ø´ØªÛŒØ¨Ø§Ù†
+                                                <i class="fas fa-shield-halved text-info me-2"></i>انتخاب به عنوان کارت پشتیبان
                                             </a>
                                         </li>
                                         <li>
                                             <a class="dropdown-item small" href="{{ url_for('reseller_card_set_role', card_id=c['id'], role_type='normal') }}">
-                                                <i class="fas fa-minus text-muted me-2"></i>Ú©Ø§Ø±Øª Ø¹Ø§Ø¯ÛŒ (Ø¨Ø¯ÙˆÙ† Ø§ÙˆÙ„ÙˆÛŒØª)
+                                                <i class="fas fa-minus text-muted me-2"></i>کارت عادی (بدون اولویت)
                                             </a>
                                         </li>
                                     </ul>
                                 </div>
-                                <button type="button" class="btn btn-outline-secondary" title="ÙˆÛŒØ±Ø§ÛŒØ´ Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ú©Ø§Ø±Øª" onclick="openEditCardModal({{ c|tojson }})">
+                                <button type="button" class="btn btn-outline-secondary" title="ویرایش اطلاعات کارت" onclick="openEditCardModal({{ c|tojson }})">
                                     <i class="fas fa-pencil"></i>
                                 </button>
                                 <form action="{{ url_for('reseller_card_toggle', card_id=c['id']) }}" method="POST" class="d-inline">
-                                    <button type="submit" class="btn {% if c['is_active'] %}btn-outline-warning{% else %}btn-outline-success{% endif %}" title="ØªØºÛŒÛŒØ± ÙˆØ¶Ø¹ÛŒØª ÙØ¹Ø§Ù„/ØºÛŒØ±ÙØ¹Ø§Ù„">
+                                    <button type="submit" class="btn {% if c['is_active'] %}btn-outline-warning{% else %}btn-outline-success{% endif %}" title="تغییر وضعیت فعال/غیرفعال">
                                         <i class="fas fa-power-off"></i>
                                     </button>
                                 </form>
-                                <form action="{{ url_for('reseller_card_delete', card_id=c['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('Ø¢ÛŒØ§ Ø§Ø² Ø­Ø°Ù Ø§ÛŒÙ† Ú©Ø§Ø±Øª Ù…Ø·Ù…Ø¦Ù† Ù‡Ø³ØªÛŒØ¯ØŸ ØªÙ…Ø§Ù… ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ Ø¢Ù† Ø­ÙØ¸ Ù…ÛŒâ€ŒØ´ÙˆÙ†Ø¯.');">
-                                    <button type="submit" class="btn btn-outline-danger" title="Ø­Ø°Ù Ú©Ø§Ø±Øª">
+                                <form action="{{ url_for('reseller_card_delete', card_id=c['id']) }}" method="POST" class="d-inline" onsubmit="return confirm('آیا از حذف این کارت مطمئن هستید؟ تمام تراکنش‌های آن حفظ می‌شوند.');">
+                                    <button type="submit" class="btn btn-outline-danger" title="حذف کارت">
                                         <i class="fas fa-trash-can"></i>
                                     </button>
                                 </form>
@@ -277,7 +277,7 @@
                     {% endfor %}
                     {% if not cards %}
                     <tr>
-                        <td colspan="6" class="text-center py-4 text-muted">Ù‡Ù†ÙˆØ² Ù‡ÛŒÚ† Ú©Ø§Ø±Øª Ø¨Ø§Ù†Ú©ÛŒ Ø«Ø¨Øª Ù†Ú©Ø±Ø¯Ù‡â€ŒØ§ÛŒØ¯. Ø¬Ù‡Øª Ø¯Ø±ÛŒØ§ÙØª Ù…Ø¨Ø§Ù„Øº Ú©Ø§Ø±Øª Ø¨Ù‡ Ú©Ø§Ø±Øª Ø¯Ø± Ø±Ø¨Ø§Øª Ø§Ø®ØªØµØ§ØµÛŒØŒ ÛŒÚ© Ú©Ø§Ø±Øª Ø§Ø¶Ø§ÙÙ‡ Ù†Ù…Ø§ÛŒÛŒØ¯.</td>
+                        <td colspan="6" class="text-center py-4 text-muted">هنوز هیچ کارت بانکی ثبت نکرده‌اید. جهت دریافت مبالغ کارت به کارت در ربات اختصاصی، یک کارت اضافه نمایید.</td>
                     </tr>
                     {% endif %}
                 </tbody>
@@ -286,26 +286,26 @@
     </div>
 </div>
 
-<!-- Ø±Ø¯ÛŒÙ Û´: ØµÙ†Ø¯ÙˆÙ‚ Ø¯Ø±ÛŒØ§ÙØªâ€ŒÙ‡Ø§ÛŒ Ù†Ù‚Ø¯ÛŒ Ùˆ ØªØ³ÙˆÛŒÙ‡ Ø­Ø³Ø§Ø¨â€ŒÙ‡Ø§ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (Cash Desk) -->
+<!-- ردیف ۴: صندوق دریافت‌های نقدی و تسویه حساب‌های نماینده (Cash Desk) -->
 <div class="card shadow-sm border-0 mb-4">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="d-flex align-items-center gap-2">
-            <h5 class="mb-0 fw-bold"><i class="fas fa-cash-register text-warning me-2"></i>ØµÙ†Ø¯ÙˆÙ‚ Ø¯Ø±ÛŒØ§ÙØªâ€ŒÙ‡Ø§ÛŒ Ù†Ù‚Ø¯ÛŒ Ùˆ ØªØ³ÙˆÛŒÙ‡ Ø¨Ù‡ Ø­Ø³Ø§Ø¨</h5>
-            <span class="badge bg-secondary">{{ cash_desk_logs|length }} ÙÛŒØ´</span>
+            <h5 class="mb-0 fw-bold"><i class="fas fa-cash-register text-warning me-2"></i>صندوق دریافت‌های نقدی و تسویه به حساب</h5>
+            <span class="badge bg-secondary">{{ cash_desk_logs|length }} فیش</span>
         </div>
-        <small class="text-muted">Ø¯Ø±ÛŒØ§ÙØªâ€ŒÙ‡Ø§ÛŒ Ù†Ù‚Ø¯ÛŒ Ø«Ø¨Øªâ€ŒØ´Ø¯Ù‡ Ù‡Ù†Ú¯Ø§Ù… Ø³Ø§Ø®Øª ÛŒØ§ ØªÙ…Ø¯ÛŒØ¯ Ø¯Ø³ØªÛŒ Ù…Ø´ØªØ±ÛŒ Ø¯Ø± Ø§ÛŒÙ† Ø¨Ø®Ø´ Ù‚Ø±Ø§Ø± Ù…ÛŒâ€ŒÚ¯ÛŒØ±Ù†Ø¯ Ùˆ Ù‚Ø§Ø¨Ù„ ØªØ³ÙˆÛŒÙ‡ Ø¨Ù‡ Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ÛŒ Ø¨Ø§Ù†Ú©ÛŒ Ù‡Ø³ØªÙ†Ø¯</small>
+        <small class="text-muted">دریافت‌های نقدی ثبت‌شده هنگام ساخت یا تمدید دستی مشتری در این بخش قرار می‌گیرند و قابل تسویه به کارت‌های بانکی هستند</small>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-3">ØªØ§Ø±ÛŒØ® Ùˆ Ø²Ù…Ø§Ù†</th>
-                        <th>Ù†Ø§Ù… Ù…Ø´ØªØ±ÛŒ / Ø§Ø´ØªØ±Ø§Ú©</th>
-                        <th>Ø¨Ø§Ø¨Øª / Ø¹Ù†ÙˆØ§Ù†</th>
-                        <th>Ù…Ø¨Ù„Øº Ù†Ù‚Ø¯ÛŒ</th>
-                        <th class="text-center">ÙˆØ¶Ø¹ÛŒØª ØªØ³ÙˆÛŒÙ‡</th>
-                        <th class="text-end pe-3">Ø¹Ù…Ù„ÛŒØ§Øª</th>
+                        <th class="ps-3">تاریخ و زمان</th>
+                        <th>نام مشتری / اشتراک</th>
+                        <th>بابت / عنوان</th>
+                        <th>مبلغ نقدی</th>
+                        <th class="text-center">وضعیت تسویه</th>
+                        <th class="text-end pe-3">عملیات</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -313,33 +313,33 @@
                     <tr>
                         <td class="ps-3 small font-monospace text-muted">{{ l['created_at'][:19] }}</td>
                         <td><strong>{{ l.get('customer_name') or '-' }}</strong></td>
-                        <td><span class="badge bg-light text-dark border">{{ l.get('source') or 'Ø¯Ø±ÛŒØ§ÙØª Ù†Ù‚Ø¯ÛŒ' }}</span></td>
-                        <td><strong class="font-monospace text-success">{{ "{:,}".format(l.get('amount', 0)) }} ØªÙˆÙ…Ø§Ù†</strong></td>
+                        <td><span class="badge bg-light text-dark border">{{ l.get('source') or 'دریافت نقدی' }}</span></td>
+                        <td><strong class="font-monospace text-success">{{ "{:,}".format(l.get('amount', 0)) }} تومان</strong></td>
                         <td class="text-center">
                             {% if l.get('status') == 'settled' %}
                                 <span class="badge bg-success-subtle text-success border border-success px-2 py-1">
-                                    <i class="fas fa-check me-1"></i>ØªØ³ÙˆÛŒÙ‡ Ø´Ø¯Ù‡ Ø¨Ù‡ Ú©Ø§Ø±Øª
+                                    <i class="fas fa-check me-1"></i>تسویه شده به کارت
                                 </span>
                             {% else %}
                                 <span class="badge bg-warning-subtle text-warning border border-warning px-2 py-1">
-                                    <i class="fas fa-clock me-1"></i>Ø¯Ø± Ø§Ù†ØªØ¸Ø§Ø± ØªØ³ÙˆÛŒÙ‡
+                                    <i class="fas fa-clock me-1"></i>در انتظار تسویه
                                 </span>
                             {% endif %}
                         </td>
                         <td class="text-end pe-3">
                             {% if l.get('status') != 'settled' %}
                                 <button type="button" class="btn btn-sm btn-outline-warning fw-bold" onclick="openSettleCashModal({{ l['id'] }}, {{ l.get('amount', 0) }}, '{{ l.get('customer_name') or '' }}')">
-                                    <i class="fas fa-building-columns me-1"></i>ØªØ³ÙˆÛŒÙ‡ Ùˆ ÙˆØ§Ø±ÛŒØ² Ø¨Ù‡ Ú©Ø§Ø±Øª
+                                    <i class="fas fa-building-columns me-1"></i>تسویه و واریز به کارت
                                 </button>
                             {% else %}
-                                <small class="text-muted font-monospace">ØªØ³ÙˆÛŒÙ‡ ØªÙˆØ³Ø·: {{ l.get('settled_by') or '-' }}</small>
+                                <small class="text-muted font-monospace">تسویه توسط: {{ l.get('settled_by') or '-' }}</small>
                             {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
                     {% if not cash_desk_logs %}
                     <tr>
-                        <td colspan="6" class="text-center py-3 text-muted">Ù‡ÛŒÚ† ÙÛŒØ´ Ù†Ù‚Ø¯ÛŒ Ø¯Ø± ØµÙ†Ø¯ÙˆÙ‚ Ø«Ø¨Øª Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª.</td>
+                        <td colspan="6" class="text-center py-3 text-muted">هیچ فیش نقدی در صندوق ثبت نشده است.</td>
                     </tr>
                     {% endif %}
                 </tbody>
@@ -349,12 +349,12 @@
 </div>
 </div>
 
-<!-- Ø±Ø¯ÛŒÙ Û³: Ø¯Ø±Ú¯Ø§Ù‡ Ù¾Ø±Ø¯Ø§Ø®Øª Ø¢Ù†Ù„Ø§ÛŒÙ† Ø§Ø®ØªØµØ§ØµÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ -->
+<!-- ردیف ۳: درگاه پرداخت آنلاین اختصاصی نماینده -->
 <div class="card shadow-sm border-0 mb-4">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-        <h5 class="mb-0 fw-bold"><i class="fas fa-globe text-info me-2"></i>Ø¯Ø±Ú¯Ø§Ù‡ Ù¾Ø±Ø¯Ø§Ø®Øª Ø¢Ù†Ù„Ø§ÛŒÙ† Ø§Ø®ØªØµØ§ØµÛŒ Ø±Ø¨Ø§Øª Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡</h5>
+        <h5 class="mb-0 fw-bold"><i class="fas fa-globe text-info me-2"></i>درگاه پرداخت آنلاین اختصاصی ربات نماینده</h5>
         <span class="badge {% if reseller_gateway.get('enabled') %}bg-success-subtle text-success border border-success{% else %}bg-secondary-subtle text-secondary border{% endif %}">
-            {{ 'ðŸŸ¢ Ø¯Ø±Ú¯Ø§Ù‡ Ø§Ø®ØªØµØ§ØµÛŒ ÙØ¹Ø§Ù„' if reseller_gateway.get('enabled') else 'âšª ØºÛŒØ±ÙØ¹Ø§Ù„' }}
+            {{ '🟢 درگاه اختصاصی فعال' if reseller_gateway.get('enabled') else '⚪ غیرفعال' }}
         </span>
     </div>
     <div class="card-body p-4">
@@ -363,79 +363,79 @@
             
             <div class="form-check form-switch mb-3">
                 <input class="form-check-input" type="checkbox" name="gateway_enabled" id="rGwEnabled" {% if reseller_gateway.get('enabled') %}checked{% endif %}>
-                <label class="form-check-label fw-bold" for="rGwEnabled">ÙØ¹Ø§Ù„â€ŒØ³Ø§Ø²ÛŒ Ø¯Ø±Ú¯Ø§Ù‡ Ù¾Ø±Ø¯Ø§Ø®Øª Ø¢Ù†Ù„Ø§ÛŒÙ† Ø´Ø§Ù¾Ø±Ú© Ø¯Ø± Ø±Ø¨Ø§Øª Ø§Ø®ØªØµØ§ØµÛŒ Ù…Ù†</label>
+                <label class="form-check-label fw-bold" for="rGwEnabled">فعال‌سازی درگاه پرداخت آنلاین شاپرک در ربات اختصاصی من</label>
             </div>
 
             <div class="row g-3 mb-3">
                 <div class="col-md-6">
-                    <label class="form-label fw-semibold">Ø§Ø±Ø§Ø¦Ù‡â€ŒØ¯Ù‡Ù†Ø¯Ù‡ Ø¯Ø±Ú¯Ø§Ù‡ (Gateway Provider):</label>
+                    <label class="form-label fw-semibold">ارائه‌دهنده درگاه (Gateway Provider):</label>
                     <select class="form-select" name="gateway_type" id="rGwTypeSelect" onchange="handleResellerGatewayTypeChange(this)">
-                        <option value="blupal" {% if reseller_gateway.get('type') == 'blupal' %}selected{% endif %}>Ø¨Ù„ÙˆÙ¾Ø§Ù„ - Ú©Ø§Ø±Øª Ø¨Ù‡ Ú©Ø§Ø±Øª Ù‡ÙˆØ´Ù…Ù†Ø¯ (BluPal)</option>
-                        <option value="zarinpal" {% if reseller_gateway.get('type') == 'zarinpal' %}selected{% endif %}>Ø²Ø±ÛŒÙ†â€ŒÙ¾Ø§Ù„ (ZarinPal)</option>
-                        <option value="idpay" {% if reseller_gateway.get('type') == 'idpay' %}selected{% endif %}>Ø¢ÛŒØ¯ÛŒâ€ŒÙ¾ÛŒ (IDPay)</option>
-                        <option value="nextpay" {% if reseller_gateway.get('type') == 'nextpay' %}selected{% endif %}>Ù†Ú©Ø³Øªâ€ŒÙ¾ÛŒ (NextPay)</option>
+                        <option value="blupal" {% if reseller_gateway.get('type') == 'blupal' %}selected{% endif %}>بلوپال - کارت به کارت هوشمند (BluPal)</option>
+                        <option value="zarinpal" {% if reseller_gateway.get('type') == 'zarinpal' %}selected{% endif %}>زرین‌پال (ZarinPal)</option>
+                        <option value="idpay" {% if reseller_gateway.get('type') == 'idpay' %}selected{% endif %}>آیدی‌پی (IDPay)</option>
+                        <option value="nextpay" {% if reseller_gateway.get('type') == 'nextpay' %}selected{% endif %}>نکست‌پی (NextPay)</option>
                     </select>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label fw-semibold">Ù…Ø±Ú†Ù†Øª Ú©Ø¯ / Ú©Ù„ÛŒØ¯ ÙˆØ¨â€ŒØ³Ø±ÙˆÛŒØ³ (API Key):</label>
+                    <label class="form-label fw-semibold">مرچنت کد / کلید وب‌سرویس (API Key):</label>
                     <input type="text" class="form-control font-monospace" name="gateway_key" 
-                           value="{{ reseller_gateway.get('key') or '' }}" placeholder="blu_live_... ÛŒØ§ xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" dir="ltr">
+                           value="{{ reseller_gateway.get('key') or '' }}" placeholder="blu_live_... یا xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" dir="ltr">
                     <div class="text-muted small mt-1" id="rGwKeyHint">
                         {% if reseller_gateway.get('type') == 'blupal' %}
-                            Ú©Ù„ÛŒØ¯ API Ù„Ø§ÛŒÙˆ (blu_live_...) ÛŒØ§ Ø³Ù†Ø¯Ø¨Ø§Ú©Ø³ (blu_test_...) Ø¯Ø±ÛŒØ§ÙØªÛŒ Ø§Ø² Ù¾Ù†Ù„ Ø¨Ù„ÙˆÙ¾Ø§Ù„
+                            کلید API لایو (blu_live_...) یا سندباکس (blu_test_...) دریافتی از پنل بلوپال
                         {% else %}
-                            Ú©Ø¯ Ù…Ø±Ú†Ù†Øª ÛŒØ§ Ú©Ù„ÛŒØ¯ ÙˆØ¨â€ŒØ³Ø±ÙˆÛŒØ³ Ø¯Ø±ÛŒØ§ÙØª Ø´Ø¯Ù‡ Ø§Ø² Ø¯Ø±Ú¯Ø§Ù‡ Ø§Ù†ØªØ®Ø§Ø¨ÛŒ
+                            کد مرچنت یا کلید وب‌سرویس دریافت شده از درگاه انتخابی
                         {% endif %}
                     </div>
                 </div>
             </div>
 
-            <!-- Ø¬Ø¹Ø¨Ù‡ Ø§Ø®ØªØµØ§ØµÛŒ Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ùˆ Ø¢Ø¯Ø±Ø³â€ŒÙ‡Ø§ÛŒ ÙˆØ¨â€ŒÙ‡ÙˆÚ© Ùˆ Ú©Ø§Ù„â€ŒØ¨Ú© Ø¨Ù„ÙˆÙ¾Ø§Ù„ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ -->
+            <!-- جعبه اختصاصی اطلاعات و آدرس‌های وب‌هوک و کال‌بک بلوپال نماینده -->
             <div id="rBlupalInfoBox" class="p-3 bg-light rounded-3 border border-primary border-opacity-25 mb-3" style="{% if reseller_gateway.get('type') != 'blupal' %}display: none;{% endif %}">
                 <div class="d-flex align-items-center gap-2 mb-2">
-                    <span class="badge bg-primary">Ø¯Ø±Ú¯Ø§Ù‡ Ú©Ø§Ø±Øª Ø¨Ù‡ Ú©Ø§Ø±Øª Ù‡ÙˆØ´Ù…Ù†Ø¯ Ø¨Ù„ÙˆÙ¾Ø§Ù„</span>
-                    <span class="small fw-bold text-dark">Ø¢Ø¯Ø±Ø³â€ŒÙ‡Ø§ÛŒ Ø§ØªØµØ§Ù„ ÙˆØ¨â€ŒÙ‡ÙˆÚ© Ùˆ Ú©Ø§Ù„â€ŒØ¨Ú© Ø±Ø¨Ø§Øª Ø´Ù…Ø§</span>
+                    <span class="badge bg-primary">درگاه کارت به کارت هوشمند بلوپال</span>
+                    <span class="small fw-bold text-dark">آدرس‌های اتصال وب‌هوک و کال‌بک ربات شما</span>
                 </div>
-                <p class="small text-muted mb-3">Ø¬Ù‡Øª Ø±Ø§Ù‡â€ŒØ§Ù†Ø¯Ø§Ø²ÛŒØŒ Ø§ÛŒÙ† Û² Ø¢Ø¯Ø±Ø³ Ø±Ø§ Ø¯Ø± Ù¾Ù†Ù„ Ú©Ø§Ø±Ø¨Ø±ÛŒ Ø¨Ù„ÙˆÙ¾Ø§Ù„ Ø®ÙˆØ¯ Ø¯Ø± Ø¨Ø®Ø´ Ù…Ø¯ÛŒØ±ÛŒØª API Key Ø«Ø¨Øª Ù†Ù…Ø§ÛŒÛŒØ¯:</p>
+                <p class="small text-muted mb-3">جهت راه‌اندازی، این ۲ آدرس را در پنل کاربری بلوپال خود در بخش مدیریت API Key ثبت نمایید:</p>
                 
                 <div class="row g-2 mb-2">
                     <div class="col-md-6">
-                        <label class="form-label small fw-bold text-secondary mb-1">ðŸ”— Ø¢Ø¯Ø±Ø³ ÙˆØ¨â€ŒÙ‡ÙˆÚ© (Webhook URL):</label>
+                        <label class="form-label small fw-bold text-secondary mb-1">🔗 آدرس وب‌هوک (Webhook URL):</label>
                         <div class="input-group input-group-sm">
                             <input type="text" id="rBlupalWebhookInput" class="form-control font-monospace text-primary fw-bold" readonly value="{{ blupal_webhook_url }}" dir="ltr">
-                            <button type="button" class="btn btn-primary" onclick="copyFieldValue('rBlupalWebhookInput', 'Ø¢Ø¯Ø±Ø³ ÙˆØ¨â€ŒÙ‡ÙˆÚ©')">
-                                <i class="fas fa-copy me-1"></i> Ú©Ù¾ÛŒ
+                            <button type="button" class="btn btn-primary" onclick="copyFieldValue('rBlupalWebhookInput', 'آدرس وب‌هوک')">
+                                <i class="fas fa-copy me-1"></i> کپی
                             </button>
                         </div>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label small fw-bold text-secondary mb-1">ðŸŒ Ø¢Ø¯Ø±Ø³ ØµÙØ­Ù‡ Ø¨Ø§Ø²Ú¯Ø´Øª (Callback URL):</label>
+                        <label class="form-label small fw-bold text-secondary mb-1">🌐 آدرس صفحه بازگشت (Callback URL):</label>
                         <div class="input-group input-group-sm">
                             <input type="text" id="rBlupalCallbackInput" class="form-control font-monospace text-success fw-bold" readonly value="{{ blupal_callback_url }}" dir="ltr">
-                            <button type="button" class="btn btn-success" onclick="copyFieldValue('rBlupalCallbackInput', 'Ø¢Ø¯Ø±Ø³ Ø¨Ø§Ø²Ú¯Ø´Øª')">
-                                <i class="fas fa-copy me-1"></i> Ú©Ù¾ÛŒ
+                            <button type="button" class="btn btn-success" onclick="copyFieldValue('rBlupalCallbackInput', 'آدرس بازگشت')">
+                                <i class="fas fa-copy me-1"></i> کپی
                             </button>
                         </div>
                     </div>
                 </div>
                 <div class="small text-muted mt-2">
-                    <i class="fas fa-circle-check text-success me-1"></i> Ø³Ø§Ø²Ú¯Ø§Ø± Ø¨Ø§ ØªÙ…Ø§Ù… Ú©Ù„ÛŒØ¯â€ŒÙ‡Ø§ÛŒ Ù„Ø§ÛŒÙˆ Ùˆ Ø³Ù†Ø¯Ø¨Ø§Ú©Ø³ Ø¨Ù„ÙˆÙ¾Ø§Ù„.
+                    <i class="fas fa-circle-check text-success me-1"></i> سازگار با تمام کلید‌های لایو و سندباکس بلوپال.
                 </div>
             </div>
 
             <div class="form-check mb-4">
                 <input class="form-check-input" type="checkbox" name="gateway_sandbox" id="rGwSandbox" {% if reseller_gateway.get('sandbox') %}checked{% endif %}>
-                <label class="form-check-label small text-muted" for="rGwSandbox">Ø­Ø§Ù„Øª ØªØ³ØªÛŒ / Ø¢Ø²Ù…Ø§ÛŒØ´ÛŒ (Sandbox)</label>
+                <label class="form-check-label small text-muted" for="rGwSandbox">حالت تستی / آزمایشی (Sandbox)</label>
             </div>
 
             <button type="submit" class="btn btn-primary fw-bold px-4">
-                <i class="fas fa-save me-1"></i> Ø°Ø®ÛŒØ±Ù‡ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¯Ø±Ú¯Ø§Ù‡ Ø§Ø®ØªØµØ§ØµÛŒ
+                <i class="fas fa-save me-1"></i> ذخیره تنظیمات درگاه اختصاصی
             </button>
         </form>
     </div>
 </div>
 
-<!-- Ø±Ø¯ÛŒÙ Û´: Ø¯Ø±Ú¯Ø§Ù‡ Ù¾Ø±Ø¯Ø§Ø®Øª Ø§Ø±Ø² Ø¯ÛŒØ¬ÛŒØªØ§Ù„ (Ú©Ø±ÛŒÙ¾ØªÙˆ / ØªØªØ± USDT) Ø§Ø®ØªØµØ§ØµÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ -->
+<!-- ردیف ۴: درگاه پرداخت ارز دیجیتال (کریپتو / تتر USDT) اختصاصی نماینده -->
 <div class="card shadow-sm border-0 mb-4">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="d-flex align-items-center gap-2">
@@ -443,12 +443,12 @@
                 <i class="fab fa-bitcoin fs-5"></i>
             </div>
             <div>
-                <h5 class="mb-0 fw-bold"><i class="fab fa-ethereum text-warning me-1"></i>Ø¯Ø±Ú¯Ø§Ù‡ Ù¾Ø±Ø¯Ø§Ø®Øª Ø§Ø±Ø² Ø¯ÛŒØ¬ÛŒØªØ§Ù„ Ø§Ø®ØªØµØ§ØµÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (ØªØªØ± USDT)</h5>
-                <small class="text-muted">Ù…Ø´ØªØ±ÛŒØ§Ù† Ø´Ù…Ø§ Ø¯Ø± Ø±Ø¨Ø§Øª Ùˆ Ù¾ÙˆØ±ØªØ§Ù„ Ø§Ø®ØªØµØ§ØµÛŒØŒ Ø¨Ù‡ Ø¢Ø¯Ø±Ø³ ÙˆÙ„Øª Ø§Ø®ØªØµØ§ØµÛŒ Ø´Ù…Ø§ ØªØªØ± ÙˆØ§Ø±ÛŒØ² Ù…ÛŒâ€ŒÚ©Ù†Ù†Ø¯</small>
+                <h5 class="mb-0 fw-bold"><i class="fab fa-ethereum text-warning me-1"></i>درگاه پرداخت ارز دیجیتال اختصاصی نماینده (تتر USDT)</h5>
+                <small class="text-muted">مشتریان شما در ربات و پورتال اختصاصی، به آدرس ولت اختصاصی شما تتر واریز می‌کنند</small>
             </div>
         </div>
         <span class="badge {% if reseller_crypto.get('enabled') %}bg-success-subtle text-success border border-success{% else %}bg-secondary-subtle text-secondary border{% endif %} px-3 py-2 fs-6">
-            {{ 'ðŸŸ¢ Ù¾Ø±Ø¯Ø§Ø®Øª Ú©Ø±ÛŒÙ¾ØªÙˆ ÙØ¹Ø§Ù„' if reseller_crypto.get('enabled') else 'âšª ØºÛŒØ±ÙØ¹Ø§Ù„' }}
+            {{ '🟢 پرداخت کریپتو فعال' if reseller_crypto.get('enabled') else '⚪ غیرفعال' }}
         </span>
     </div>
     <div class="card-body p-4">
@@ -457,35 +457,35 @@
 
             <div class="form-check form-switch mb-3">
                 <input class="form-check-input" type="checkbox" name="crypto_enabled" id="rCryptoEnabled" {% if reseller_crypto.get('enabled') %}checked{% endif %}>
-                <label class="form-check-label fw-bold text-dark" for="rCryptoEnabled">ÙØ¹Ø§Ù„â€ŒØ³Ø§Ø²ÛŒ Ù¾Ø±Ø¯Ø§Ø®Øª ØªØªØ± (USDT) Ø¨Ø±Ø§ÛŒ Ù…Ø´ØªØ±ÛŒØ§Ù† Ø§Ø®ØªØµØ§ØµÛŒ Ù…Ù† Ø¯Ø± Ø±Ø¨Ø§Øª Ùˆ Ù¾ÙˆØ±ØªØ§Ù„</label>
+                <label class="form-check-label fw-bold text-dark" for="rCryptoEnabled">فعال‌سازی پرداخت تتر (USDT) برای مشتریان اختصاصی من در ربات و پورتال</label>
             </div>
 
             <div class="row g-3 mb-4">
                 <div class="col-md-8">
-                    <label class="form-label fw-semibold">Ø¢Ø¯Ø±Ø³ Ú©ÛŒÙ Ù¾ÙˆÙ„ ØªØªØ± Ø´Ù…Ø§ (Ø´Ø¨Ú©Ù‡â€ŒÙ‡Ø§ÛŒ TRC-20 ÛŒØ§ TON):</label>
+                    <label class="form-label fw-semibold">آدرس کیف پول تتر شما (شبکه‌های TRC-20 یا TON):</label>
                     <input type="text" class="form-control font-monospace text-start" name="crypto_wallet_address" 
-                           value="{{ reseller_crypto.get('wallet_address') or '' }}" placeholder="Ù…Ø«Ø§Ù„: T... ÛŒØ§ UQ..." dir="ltr">
-                    <small class="text-muted mt-1 d-block">Ø¢Ø¯Ø±Ø³ ÙˆÙ„Øª Ø§Ø®ØªØµØ§ØµÛŒ Ø´Ù…Ø§ Ø¬Ù‡Øª ÙˆØ§Ø±ÛŒØ² ØªØªØ± ØªÙˆØ³Ø· Ø®Ø±ÛŒØ¯Ø§Ø±Ø§Ù† Ø´Ù…Ø§</small>
+                           value="{{ reseller_crypto.get('wallet_address') or '' }}" placeholder="مثال: T... یا UQ..." dir="ltr">
+                    <small class="text-muted mt-1 d-block">آدرس ولت اختصاصی شما جهت واریز تتر توسط خریداران شما</small>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label fw-semibold">Ù†Ø±Ø® ØªØ¨Ø¯ÛŒÙ„ Ø§Ø®ØªØµØ§ØµÛŒ Ù‡Ø± ØªØªØ± (ØªÙˆÙ…Ø§Ù†):</label>
+                    <label class="form-label fw-semibold">نرخ تبدیل اختصاصی هر تتر (تومان):</label>
                     <div class="input-group">
                         <input type="number" class="form-control font-monospace text-center" name="crypto_usdt_rate" 
-                               value="{{ reseller_crypto.get('usdt_rate') or 0 }}" placeholder="Ù…Ø«Ø§Ù„: 95000">
-                        <span class="input-group-text">ØªÙˆÙ…Ø§Ù†</span>
+                               value="{{ reseller_crypto.get('usdt_rate') or 0 }}" placeholder="مثال: 95000">
+                        <span class="input-group-text">تومان</span>
                     </div>
-                    <small class="text-muted mt-1 d-block">Ø¯Ø± ØµÙˆØ±Øª Ø¯Ø±Ø¬ ØµÙØ±ØŒ Ø§Ø² Ù†Ø±Ø® Ø³Ø±Ø§Ø³Ø±ÛŒ ØªÙ†Ø¸ÛŒÙ… Ø´Ø¯Ù‡ ØªÙˆØ³Ø· Ù…Ø¯ÛŒØ±ÛŒØª Ø§Ø³ØªÙØ§Ø¯Ù‡ Ø®ÙˆØ§Ù‡Ø¯ Ø´Ø¯.</small>
+                    <small class="text-muted mt-1 d-block">در صورت درج صفر، از نرخ سراسری تنظیم شده توسط مدیریت استفاده خواهد شد.</small>
                 </div>
             </div>
 
             <button type="submit" class="btn btn-warning fw-bold px-4 text-dark">
-                <i class="fas fa-save me-1"></i> Ø°Ø®ÛŒØ±Ù‡ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø§Ø±Ø² Ø¯ÛŒØ¬ÛŒØªØ§Ù„
+                <i class="fas fa-save me-1"></i> ذخیره تنظیمات ارز دیجیتال
             </button>
         </form>
     </div>
 </div>
 
-<!-- Ø±Ø¯ÛŒÙ Ûµ: ØªØ§ÛŒÛŒØ¯ Ø®ÙˆØ¯Ú©Ø§Ø± Ú©Ø§Ø±Øª Ø¨Ù‡ Ú©Ø§Ø±Øª Ø¨Ø§ Ù¾ÛŒØ§Ù…Ú© Ø¨Ø§Ù†Ú© Ø¨Ø±Ø§ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ -->
+<!-- ردیف ۵: تایید خودکار کارت به کارت با پیامک بانک برای نماینده -->
 <div class="card shadow-sm border-0 mb-4">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="d-flex align-items-center gap-2">
@@ -493,12 +493,12 @@
                 <i class="fas fa-robot fs-5"></i>
             </div>
             <div>
-                <h5 class="mb-0 fw-bold"><i class="fas fa-sms text-success me-1"></i>ØªØ§ÛŒÛŒØ¯ Ø®ÙˆØ¯Ú©Ø§Ø± Ú©Ø§Ø±Øª Ø¨Ù‡ Ú©Ø§Ø±Øª Ø§Ø®ØªØµØ§ØµÛŒ Ø´Ù…Ø§ Ø¨Ø§ Ù¾ÛŒØ§Ù…Ú© Ø¨Ø§Ù†Ú© (Ø§Ø±Ù‚Ø§Ù… ØªØµØ§Ø¯ÙÛŒ)</h5>
-                <small class="text-muted">Ù…Ø´ØªØ±ÛŒØ§Ù† Ø§Ø®ØªØµØ§ØµÛŒ Ø´Ù…Ø§ Ø¨Ø§ ÙˆØ§Ø±ÛŒØ² Ø¨Ù‡ Ú©Ø§Ø±Øªâ€ŒÙ‡Ø§ÛŒ Ø´Ù…Ø§ Ùˆ ÙÙˆØ±ÙˆØ§Ø±Ø¯ Ù¾ÛŒØ§Ù…Ú© Ø§Ø² Ú¯ÙˆØ´ÛŒ Ø´Ù…Ø§ØŒ Ø®ÙˆØ¯Ú©Ø§Ø± ØªÙ…Ø¯ÛŒØ¯ Ù…ÛŒâ€ŒØ´ÙˆÙ†Ø¯ (Ú©Ø§Ù…Ù„Ø§Ù‹ Ù…Ø³ØªÙ‚Ù„ Ø§Ø² Ù…Ø¯ÛŒØ±ÛŒØª)</small>
+                <h5 class="mb-0 fw-bold"><i class="fas fa-sms text-success me-1"></i>تایید خودکار کارت به کارت اختصاصی شما با پیامک بانک (ارقام تصادفی)</h5>
+                <small class="text-muted">مشتریان اختصاصی شما با واریز به کارت‌های شما و فوروارد پیامک از گوشی شما، خودکار تمدید می‌شوند (کاملاً مستقل از مدیریت)</small>
             </div>
         </div>
         <span class="badge {% if reseller_bank_sms.get('enabled') %}bg-success-subtle text-success border border-success{% else %}bg-secondary-subtle text-secondary border{% endif %} px-3 py-2 fs-6">
-            {{ 'ðŸŸ¢ ØªØ§ÛŒÛŒØ¯ Ø®ÙˆØ¯Ú©Ø§Ø± ÙØ¹Ø§Ù„' if reseller_bank_sms.get('enabled') else 'âšª ØºÛŒØ±ÙØ¹Ø§Ù„' }}
+            {{ '🟢 تایید خودکار فعال' if reseller_bank_sms.get('enabled') else '⚪ غیرفعال' }}
         </span>
     </div>
     <div class="card-body p-4">
@@ -507,79 +507,79 @@
 
             <div class="form-check form-switch mb-3">
                 <input class="form-check-input" type="checkbox" name="bank_sms_enabled" id="rBankSmsEnabled" {% if reseller_bank_sms.get('enabled') %}checked{% endif %}>
-                <label class="form-check-label fw-bold text-dark" for="rBankSmsEnabled">ÙØ¹Ø§Ù„â€ŒØ³Ø§Ø²ÛŒ Ø³ÛŒØ³ØªÙ… ØªØ§ÛŒÛŒØ¯ Ø®ÙˆØ¯Ú©Ø§Ø± Ú©Ø§Ø±Øª Ø¨Ù‡ Ú©Ø§Ø±Øª Ø¨Ø§ Ù¾ÛŒØ§Ù…Ú© Ø¨Ø§Ù†Ú© Ø¨Ø±Ø§ÛŒ Ù¾Ù†Ù„ Ù…Ù†</label>
+                <label class="form-check-label fw-bold text-dark" for="rBankSmsEnabled">فعال‌سازی سیستم تایید خودکار کارت به کارت با پیامک بانک برای پنل من</label>
             </div>
 
             <div class="row g-3 mb-3">
                 <div class="col-lg-6">
-                    <label class="form-label fw-semibold">ðŸ”— Ø¢Ø¯Ø±Ø³ Ø§Ø®ØªØµØ§ØµÛŒ ÙˆØ¨â€ŒÙ‡ÙˆÚ© ÙÙˆØ±ÙˆØ§Ø±Ø¯Ø± Ù¾ÛŒØ§Ù…Ú© Ø´Ù…Ø§ (Webhook URL):</label>
+                    <label class="form-label fw-semibold">🔗 آدرس اختصاصی وب‌هوک فورواردر پیامک شما (Webhook URL):</label>
                     <div class="input-group">
                         <input type="text" id="resellerBankSmsWebhook" class="form-control font-monospace text-primary fw-bold" readonly value="{{ bank_sms_webhook_url }}" dir="ltr">
-                        <button type="button" class="btn btn-primary" onclick="copyFieldValue('resellerBankSmsWebhook', 'Ø¢Ø¯Ø±Ø³ ÙˆØ¨â€ŒÙ‡ÙˆÚ© Ù¾ÛŒØ§Ù…Ú©')">
-                            <i class="fas fa-copy me-1"></i> Ú©Ù¾ÛŒ Ø¢Ø¯Ø±Ø³
+                        <button type="button" class="btn btn-primary" onclick="copyFieldValue('resellerBankSmsWebhook', 'آدرس وب‌هوک پیامک')">
+                            <i class="fas fa-copy me-1"></i> کپی آدرس
                         </button>
                     </div>
-                    <small class="text-muted mt-1 d-block">Ø§ÛŒÙ† Ø¢Ø¯Ø±Ø³ Ø§Ø®ØªØµØ§ØµÛŒ Ø­Ø§ÙˆÛŒ ØªÙˆÚ©Ù† Ù…Ø­Ø±Ù…Ø§Ù†Ù‡ Ø´Ù…Ø§Ø³Øª. Ù¾ÛŒØ§Ù…Ú©â€ŒÙ‡Ø§ÛŒ ÙˆØ§Ø±ÛŒØ² Ø¨Ù‡ Ú©Ø§Ø±Øª Ø´Ù…Ø§ ÙÙ‚Ø· ÙØ§Ú©ØªÙˆØ±Ù‡Ø§ÛŒ Ù…Ø´ØªØ±ÛŒØ§Ù† Ø´Ù…Ø§ Ø±Ø§ ØªØ§ÛŒÛŒØ¯ Ù…ÛŒâ€ŒÚ©Ù†Ø¯.</small>
+                    <small class="text-muted mt-1 d-block">این آدرس اختصاصی حاوی توکن محرمانه شماست. پیامک‌های واریز به کارت شما فقط فاکتورهای مشتریان شما را تایید می‌کند.</small>
                 </div>
 
                 <div class="col-md-3">
-                    <label class="form-label fw-semibold">â±ï¸ Ù…Ù‡Ù„Øª Ù¾Ø±Ø¯Ø§Ø®Øª ÙØ§Ú©ØªÙˆØ±:</label>
+                    <label class="form-label fw-semibold">⏱️ مهلت پرداخت فاکتور:</label>
                     <div class="input-group">
                         <input type="number" class="form-control font-monospace text-center" name="bank_sms_timeout" min="5" max="60" value="{{ reseller_bank_sms.get('timeout', 15) }}">
-                        <span class="input-group-text">Ø¯Ù‚ÛŒÙ‚Ù‡</span>
+                        <span class="input-group-text">دقیقه</span>
                     </div>
-                    <small class="text-muted mt-1 d-block">Ù…Ø¯Øª Ø§Ø¹ØªØ¨Ø§Ø± Ù…Ø¨Ù„Øº ØªØµØ§Ø¯ÙÛŒ Ø¨Ø±Ø§ÛŒ Ù…Ø´ØªØ±ÛŒ (Ù¾ÛŒØ´â€ŒÙØ±Ø¶: Û±Ûµ Ø¯Ù‚ÛŒÙ‚Ù‡)</small>
+                    <small class="text-muted mt-1 d-block">مدت اعتبار مبلغ تصادفی برای مشتری (پیش‌فرض: ۱۵ دقیقه)</small>
                 </div>
 
                 <div class="col-md-3">
-                    <label class="form-label fw-semibold">ðŸ”¢ Ø§Ø±Ù‚Ø§Ù… ØªØµØ§Ø¯ÙÛŒ Ø®Ø±Ø¯:</label>
+                    <label class="form-label fw-semibold">🔢 ارقام تصادفی خرد:</label>
                     <select class="form-select" name="bank_sms_digits">
-                        <option value="3" {% if reseller_bank_sms.get('digits') == 3 %}selected{% endif %}>Û³ Ø±Ù‚Ù…ÛŒ (Û±Û°Û° ØªØ§ Û¹Û¹Û¹ ØªÙˆÙ…Ø§Ù†)</option>
-                        <option value="4" {% if reseller_bank_sms.get('digits') == 4 %}selected{% endif %}>Û´ Ø±Ù‚Ù…ÛŒ (Û±Û°Û°Û° ØªØ§ Û¹Û¹Û¹Û¹ ØªÙˆÙ…Ø§Ù†)</option>
+                        <option value="3" {% if reseller_bank_sms.get('digits') == 3 %}selected{% endif %}>۳ رقمی (۱۰۰ تا ۹۹۹ تومان)</option>
+                        <option value="4" {% if reseller_bank_sms.get('digits') == 4 %}selected{% endif %}>۴ رقمی (۱۰۰۰ تا ۹۹۹۹ تومان)</option>
                     </select>
-                    <small class="text-muted mt-1 d-block">Ø§Ø±Ù‚Ø§Ù… ØªØµØ§Ø¯ÙÛŒ Ø¨Ù‡ Ø§Ù†ØªÙ‡Ø§ÛŒ Ù…Ø¨Ù„Øº Ø¨Ø³ØªÙ‡ Ø§Ø¶Ø§ÙÙ‡ Ù…ÛŒâ€ŒØ´ÙˆÙ†Ø¯ ØªØ§ Ù‡Ø± ÙˆØ§Ø±ÛŒØ²ÛŒ ÛŒÚ©ØªØ§ Ø¨Ø§Ø´Ø¯.</small>
+                    <small class="text-muted mt-1 d-block">ارقام تصادفی به انتهای مبلغ بسته اضافه می‌شوند تا هر واریزی یکتا باشد.</small>
                 </div>
             </div>
 
             <div class="d-flex flex-wrap gap-2 mb-4">
                 <button type="submit" class="btn btn-success fw-bold px-4">
-                    <i class="fas fa-save me-1"></i> Ø°Ø®ÛŒØ±Ù‡ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ù¾ÛŒØ§Ù…Ú© Ø¨Ø§Ù†Ú©
+                    <i class="fas fa-save me-1"></i> ذخیره تنظیمات پیامک بانک
                 </button>
-                <button type="submit" name="regenerate_token" value="1" class="btn btn-outline-danger btn-sm" onclick="return confirm('Ø¨Ø§ ØªØºÛŒÛŒØ± ØªÙˆÚ©Ù† ÙˆØ¨â€ŒÙ‡ÙˆÚ©ØŒ Ø¨Ø§ÛŒØ¯ Ø¢Ø¯Ø±Ø³ Ø¬Ø¯ÛŒØ¯ Ø±Ø§ Ø¯Ø± Ø§Ù¾Ù„ÛŒÚ©ÛŒØ´Ù† ÙÙˆØ±ÙˆØ§Ø±Ø¯Ø± Ú¯ÙˆØ´ÛŒ Ø®ÙˆØ¯ Ù†ÛŒØ² ØªØºÛŒÛŒØ± Ø¯Ù‡ÛŒØ¯. Ø¢ÛŒØ§ Ù…Ø·Ù…Ø¦Ù† Ù‡Ø³ØªÛŒØ¯ØŸ');">
-                    <i class="fas fa-rotate me-1"></i> ØªÙˆÙ„ÛŒØ¯ Ù…Ø¬Ø¯Ø¯ ØªÙˆÚ©Ù† ÙˆØ¨â€ŒÙ‡ÙˆÚ©
+                <button type="submit" name="regenerate_token" value="1" class="btn btn-outline-danger btn-sm" onclick="return confirm('با تغییر توکن وب‌هوک، باید آدرس جدید را در اپلیکیشن فورواردر گوشی خود نیز تغییر دهید. آیا مطمئن هستید؟');">
+                    <i class="fas fa-rotate me-1"></i> تولید مجدد توکن وب‌هوک
                 </button>
                 <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="collapse" data-bs-target="#rBankSmsGuide">
-                    <i class="fas fa-book-open me-1"></i> Ù…Ø´Ø§Ù‡Ø¯Ù‡ Ø±Ø§Ù‡Ù†Ù…Ø§ÛŒ Ø±Ø§Ù‡â€ŒØ§Ù†Ø¯Ø§Ø²ÛŒ Ø¯Ø± Ú¯ÙˆØ´ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡
+                    <i class="fas fa-book-open me-1"></i> مشاهده راهنمای راه‌اندازی در گوشی نماینده
                 </button>
             </div>
         </form>
 
-        <!-- Ø¨Ø§Ú©Ø³ Ø±Ø§Ù‡Ù†Ù…Ø§ ÙˆÛŒÚ˜Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ -->
+        <!-- باکس راهنما ویژه نماینده -->
         <div class="collapse mb-4" id="rBankSmsGuide">
             <div class="p-4 bg-light rounded-3 border border-success border-opacity-25">
-                <h6 class="fw-bold text-success mb-3"><i class="fas fa-graduation-cap me-2"></i>Ø±Ø§Ù‡Ù†Ù…Ø§ÛŒ Ú¯Ø§Ù…â€ŒØ¨Ù‡â€ŒÚ¯Ø§Ù… Ø±Ø§Ù‡â€ŒØ§Ù†Ø¯Ø§Ø²ÛŒ Ø§Ù¾Ù„ÛŒÚ©ÛŒØ´Ù† ÙÙˆØ±ÙˆØ§Ø±Ø¯Ø± Ù¾ÛŒØ§Ù…Ú© Ø±ÙˆÛŒ Ú¯ÙˆØ´ÛŒ Ù‡Ù…Ø±Ø§Ù‡ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡:</h6>
+                <h6 class="fw-bold text-success mb-3"><i class="fas fa-graduation-cap me-2"></i>راهنمای گام‌به‌گام راه‌اندازی اپلیکیشن فورواردر پیامک روی گوشی همراه نماینده:</h6>
                 <div class="alert alert-warning border-warning border-opacity-50 small mb-3">
-                    <strong>âš ï¸ ØªÙˆØ¬Ù‡ Ø¨Ø³ÛŒØ§Ø± Ù…Ù‡Ù… Ù¾ÛŒØ±Ø§Ù…ÙˆÙ† Ù†Ø§Ù… Ù…ØªØºÛŒØ± Ù¾ÛŒØ§Ù…Ú©:</strong>
-                    Ø¨Ø³ÛŒØ§Ø±ÛŒ Ø§Ø² Ú©Ø§Ø±Ø¨Ø±Ø§Ù† Ø¨Ù‡ Ø¬Ø§ÛŒ Ø§Ù†ØªØ®Ø§Ø¨ Ù…ØªØºÛŒØ± Ø®ÙˆØ¯ Ø¨Ø±Ù†Ø§Ù…Ù‡ØŒ Ø¹Ø¨Ø§Ø±Øª <code>[sms_body]</code> Ø±Ø§ ØªØ§ÛŒÙ¾ Ù…ÛŒâ€ŒÚ©Ù†Ù†Ø¯ Ú©Ù‡ Ø¨Ø§Ø¹Ø« Ø§Ø±Ø³Ø§Ù„ Ú©Ù„Ù…Ù‡ Ø®Ø§Ù… <code>[sms_body]</code> Ø¨Ù‡ Ø¬Ø§ÛŒ Ù…ØªÙ† Ù¾ÛŒØ§Ù…Ú© Ø¨Ø§Ù†Ú© Ù…ÛŒâ€ŒØ´ÙˆØ¯! Ù„Ø·ÙØ§Ù‹ Ø¨Ø± Ø§Ø³Ø§Ø³ Ø¨Ø±Ù†Ø§Ù…Ù‡â€ŒØ§ÛŒ Ú©Ù‡ Ù†ØµØ¨ Ú©Ø±Ø¯Ù‡â€ŒØ§ÛŒØ¯ØŒ Ø¯Ù‚ÛŒÙ‚Ø§Ù‹ Ù…Ø·Ø§Ø¨Ù‚ Ø±Ø§Ù‡Ù†Ù…Ø§ÛŒ Ø²ÛŒØ± Ù¾ÛŒÚ©Ø±Ø¨Ù†Ø¯ÛŒ Ù†Ù…Ø§ÛŒÛŒØ¯:
+                    <strong>⚠️ توجه بسیار مهم پیرامون نام متغیر پیامک:</strong>
+                    بسیاری از کاربران به جای انتخاب متغیر خود برنامه، عبارت <code>[sms_body]</code> را تایپ می‌کنند که باعث ارسال کلمه خام <code>[sms_body]</code> به جای متن پیامک بانک می‌شود! لطفاً بر اساس برنامه‌ای که نصب کرده‌اید، دقیقاً مطابق راهنمای زیر پیکربندی نمایید:
                 </div>
                 <div class="row g-3 mb-3">
                     <div class="col-md-6">
                         <div class="card h-100 border-primary border-opacity-25 bg-white shadow-sm">
                             <div class="card-header bg-primary text-white py-2 fw-bold small">
-                                <i class="fab fa-android me-1"></i> Ù¾ÛŒÚ©Ø±Ø¨Ù†Ø¯ÛŒ Ø¯Ø± Ø§Ù¾Ù„ÛŒÚ©ÛŒØ´Ù† MacroDroid
+                                <i class="fab fa-android me-1"></i> پیکربندی در اپلیکیشن MacroDroid
                             </div>
                             <div class="card-body small">
-                                <div><b>Û±. ØªØ±ÛŒÚ¯Ø± (Trigger):</b> Ù¾ÛŒØ§Ù…Ú© Ø¯Ø±ÛŒØ§ÙØªÛŒ (SMS Received) Ø§Ø² Ø³Ø±Ø´Ù…Ø§Ø±Ù‡â€ŒÙ‡Ø§ÛŒ Ø¨Ø§Ù†Ú©ÛŒ</div>
-                                <div class="mt-1"><b>Û². Ø§Ú©Ø´Ù† (Action):</b> Ø§Ø±Ø³Ø§Ù„ Ø¯Ø±Ø®ÙˆØ§Ø³Øª HTTP Request Ø¨Ø§ Ù…ØªØ¯ <code>POST</code></div>
-                                <div class="mt-1"><b>Û³. Ø¢Ø¯Ø±Ø³ (URL):</b> Ø¢Ø¯Ø±Ø³ ÙˆØ¨â€ŒÙ‡ÙˆÚ© Ø§Ø®ØªØµØ§ØµÛŒ Ø¨Ø§Ù„Ø§</div>
-                                <div class="mt-1"><b>Û´. Ù†ÙˆØ¹ Ù…Ø­ØªÙˆØ§ (Content Type):</b> <code>application/json</code></div>
-                                <div class="mt-2"><b>Ûµ. Ù…ØªÙ† Ø¨Ø¯Ù†Ù‡ (Request Body):</b></div>
+                                <div><b>۱. تریگر (Trigger):</b> پیامک دریافتی (SMS Received) از سرشماره‌های بانکی</div>
+                                <div class="mt-1"><b>۲. اکشن (Action):</b> ارسال درخواست HTTP Request با متد <code>POST</code></div>
+                                <div class="mt-1"><b>۳. آدرس (URL):</b> آدرس وب‌هوک اختصاصی بالا</div>
+                                <div class="mt-1"><b>۴. نوع محتوا (Content Type):</b> <code>application/json</code></div>
+                                <div class="mt-2"><b>۵. متن بدنه (Request Body):</b></div>
                                 <pre class="bg-light p-2 rounded text-start font-monospace small border mt-1 mb-1" dir="ltr"><code>{
   "sender": "[sms_number]",
   "message": "[sms_message]"
 }</code></pre>
                                 <div class="text-danger fw-bold mt-1" style="font-size: 0.78rem;">
-                                    ðŸ“Œ Ø­ØªÙ…Ø§Ù‹ Ø§Ø² <code>[sms_message]</code> Ø§Ø³ØªÙØ§Ø¯Ù‡ Ú©Ù†ÛŒØ¯ (Ù†Ù‡ [sms_body])
+                                    📌 حتماً از <code>[sms_message]</code> استفاده کنید (نه [sms_body])
                                 </div>
                             </div>
                         </div>
@@ -587,57 +587,57 @@
                     <div class="col-md-6">
                         <div class="card h-100 border-success border-opacity-25 bg-white shadow-sm">
                             <div class="card-header bg-success text-white py-2 fw-bold small">
-                                <i class="fas fa-paper-plane me-1"></i> Ù¾ÛŒÚ©Ø±Ø¨Ù†Ø¯ÛŒ Ø¯Ø± Ø§Ù¾Ù„ÛŒÚ©ÛŒØ´Ù† SMS Forwarder
+                                <i class="fas fa-paper-plane me-1"></i> پیکربندی در اپلیکیشن SMS Forwarder
                             </div>
                             <div class="card-body small">
-                                <div><b>Û±. Ù†ÙˆØ¹ Ø§Ø±Ø³Ø§Ù„ (Sender Type):</b> Webhook / HTTP Post</div>
-                                <div class="mt-1"><b>Û². Ø¢Ø¯Ø±Ø³ Ù…Ù‚ØµØ¯ (Target URL):</b> Ø¢Ø¯Ø±Ø³ ÙˆØ¨â€ŒÙ‡ÙˆÚ© Ø§Ø®ØªØµØ§ØµÛŒ Ø¨Ø§Ù„Ø§</div>
-                                <div class="mt-1"><b>Û³. Ù‡Ø¯Ø±Ù‡Ø§ (Headers):</b> <code>Content-Type: application/json</code></div>
-                                <div class="mt-2"><b>Û´. Ø¨Ø¯Ù†Ù‡ Ø¯Ø±Ø®ÙˆØ§Ø³Øª (Request Body):</b></div>
+                                <div><b>۱. نوع ارسال (Sender Type):</b> Webhook / HTTP Post</div>
+                                <div class="mt-1"><b>۲. آدرس مقصد (Target URL):</b> آدرس وب‌هوک اختصاصی بالا</div>
+                                <div class="mt-1"><b>۳. هدرها (Headers):</b> <code>Content-Type: application/json</code></div>
+                                <div class="mt-2"><b>۴. بدنه درخواست (Request Body):</b></div>
                                 <pre class="bg-light p-2 rounded text-start font-monospace small border mt-1 mb-1" dir="ltr"><code>{
   "sender": "[from]",
   "message": "[content]"
 }</code></pre>
                                 <div class="text-success fw-bold mt-1" style="font-size: 0.78rem;">
-                                    ðŸ“Œ Ø¯Ø± SMS Forwarder Ø§Ø² <code>[content]</code> Ø§Ø³ØªÙØ§Ø¯Ù‡ ÙØ±Ù…Ø§ÛŒÛŒØ¯.
+                                    📌 در SMS Forwarder از <code>[content]</code> استفاده فرمایید.
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div class="small text-muted">
-                    <i class="fas fa-battery-half text-warning me-1"></i> <strong>ØªÙ†Ø¸ÛŒÙ… Ø¨Ù‡ÛŒÙ†Ù‡â€ŒØ³Ø§Ø²ÛŒ Ø¨Ø§ØªØ±ÛŒ:</strong> Ø¯Ø± ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø§Ù†Ø¯Ø±ÙˆÛŒØ¯ØŒ Ú¯Ø²ÛŒÙ†Ù‡ Battery Optimization Ø±Ø§ Ø¨Ø±Ø§ÛŒ Ø¨Ø±Ù†Ø§Ù…Ù‡ ÙÙˆØ±ÙˆØ§Ø±Ø¯Ø± Ø®Ø§Ù…ÙˆØ´ (Unrestricted) Ú©Ù†ÛŒØ¯ ØªØ§ Ø³ÛŒØ³ØªÙ…â€ŒØ¹Ø§Ù…Ù„ Ø¯Ø± Ø²Ù…Ø§Ù† Ø®Ø§Ù…ÙˆØ´ Ø¨ÙˆØ¯Ù† ØµÙØ­Ù‡ØŒ Ø¨Ø±Ù†Ø§Ù…Ù‡ Ø±Ø§ Ù…ØªÙˆÙ‚Ù Ù†Ú©Ù†Ø¯.
+                    <i class="fas fa-battery-half text-warning me-1"></i> <strong>تنظیم بهینه‌سازی باتری:</strong> در تنظیمات اندروید، گزینه Battery Optimization را برای برنامه فورواردر خاموش (Unrestricted) کنید تا سیستم‌عامل در زمان خاموش بودن صفحه، برنامه را متوقف نکند.
                 </div>
             </div>
         </div>
 
-        <!-- Ø¬Ø¯ÙˆÙ„ Ø¢Ø®Ø±ÛŒÙ† Ù„Ø§Ú¯â€ŒÙ‡Ø§ÛŒ Ø¯Ø±ÛŒØ§ÙØªÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ -->
+        <!-- جدول آخرین لاگ‌های دریافتی نماینده -->
         <div class="border rounded-3 overflow-hidden">
             <div class="bg-light px-3 py-2 border-bottom d-flex justify-content-between align-items-center">
-                <span class="small fw-bold text-dark"><i class="fas fa-clock-rotate-left me-1"></i>Ø¢Ø®Ø±ÛŒÙ† Ù¾ÛŒØ§Ù…Ú©â€ŒÙ‡Ø§ÛŒ Ø¨Ø§Ù†Ú©ÛŒ Ø¯Ø±ÛŒØ§ÙØªÛŒ Ø§Ø² Ú¯ÙˆØ´ÛŒ Ø´Ù…Ø§</span>
-                <span class="badge bg-secondary">{{ bank_sms_logs|length }} Ù¾ÛŒØ§Ù…Ú© Ø§Ø®ÛŒØ±</span>
+                <span class="small fw-bold text-dark"><i class="fas fa-clock-rotate-left me-1"></i>آخرین پیامک‌های بانکی دریافتی از گوشی شما</span>
+                <span class="badge bg-secondary">{{ bank_sms_logs|length }} پیامک اخیر</span>
             </div>
             <div class="table-responsive">
                 <table class="table table-hover table-sm align-middle mb-0" style="font-size: 0.85rem;">
                     <thead class="table-light">
                         <tr>
-                            <th class="ps-3" style="width: 130px;">Ø²Ù…Ø§Ù† Ø¯Ø±ÛŒØ§ÙØª</th>
-                            <th style="width: 120px;">Ø³Ø±Ø´Ù…Ø§Ø±Ù‡ / Ø¨Ø§Ù†Ú©</th>
-                            <th>Ù…ØªÙ† Ù¾ÛŒØ§Ù…Ú©</th>
-                            <th style="width: 140px;" class="text-center">Ù…Ø¨Ù„Øº Ø§Ø³ØªØ®Ø±Ø§Ø¬â€ŒØ´Ø¯Ù‡</th>
-                            <th style="width: 140px;" class="text-center">Ø´Ù†Ø§Ø³Ù‡ Ø³ÙØ§Ø±Ø´</th>
-                            <th style="width: 140px;" class="text-center">ÙˆØ¶Ø¹ÛŒØª</th>
+                            <th class="ps-3" style="width: 130px;">زمان دریافت</th>
+                            <th style="width: 120px;">سرشماره / بانک</th>
+                            <th>متن پیامک</th>
+                            <th style="width: 140px;" class="text-center">مبلغ استخراج‌شده</th>
+                            <th style="width: 140px;" class="text-center">شناسه سفارش</th>
+                            <th style="width: 140px;" class="text-center">وضعیت</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for log in bank_sms_logs %}
                         <tr>
                             <td class="ps-3 font-monospace small text-muted">{{ log['created_at'][:16].replace('T', ' ') }}</td>
-                            <td><span class="badge bg-light text-dark border">{{ log['sender_number'] or 'Ø¨Ø§Ù†Ú©' }}</span></td>
+                            <td><span class="badge bg-light text-dark border">{{ log['sender_number'] or 'بانک' }}</span></td>
                             <td><div class="text-truncate" style="max-width: 350px;" title="{{ log['raw_message'] }}">{{ log['raw_message'] }}</div></td>
                             <td class="text-center">
                                 {% if log['extracted_amount'] %}
-                                    <strong class="text-success font-monospace">{{ "{:,}".format(log['extracted_amount']) }} ØªÙˆÙ…Ø§Ù†</strong>
+                                    <strong class="text-success font-monospace">{{ "{:,}".format(log['extracted_amount']) }} تومان</strong>
                                 {% else %}
                                     <span class="text-muted">-</span>
                                 {% endif %}
@@ -645,13 +645,13 @@
                             <td class="text-center font-monospace">{{ log['matched_order_id'] or '-' }}</td>
                             <td class="text-center">
                                 {% if log['status'] == 'matched' %}
-                                    <span class="badge bg-success-subtle text-success border border-success px-2">âœ… ØªØ§ÛŒÛŒØ¯ Ø®ÙˆØ¯Ú©Ø§Ø±</span>
+                                    <span class="badge bg-success-subtle text-success border border-success px-2">✅ تایید خودکار</span>
                                 {% elif log['status'] == 'unmatched' %}
-                                    <span class="badge bg-warning-subtle text-warning border border-warning px-2">âš ï¸ Ø¨Ø¯ÙˆÙ† ÙØ§Ú©ØªÙˆØ± Ø¨Ø§Ø²</span>
+                                    <span class="badge bg-warning-subtle text-warning border border-warning px-2">⚠️ بدون فاکتور باز</span>
                                 {% elif log['status'] == 'placeholder_error' %}
-                                    <span class="badge bg-danger text-white border px-2" title="Ù…ØªØºÛŒØ± Ù¾ÛŒØ§Ù…Ú© Ø¯Ø± Ø¨Ø±Ù†Ø§Ù…Ù‡ Ø¬Ø§ÛŒÚ¯Ø²ÛŒÙ† Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª">âŒ Ù…ØªØºÛŒØ± Ø§Ø´ØªØ¨Ø§Ù‡ Ú¯ÙˆØ´ÛŒ</span>
+                                    <span class="badge bg-danger text-white border px-2" title="متغیر پیامک در برنامه جایگزین نشده است">❌ متغیر اشتباه گوشی</span>
                                 {% elif log['status'] == 'ignored' %}
-                                    <span class="badge bg-secondary-subtle text-secondary border px-2">âšª Ù†Ø§Ù…Ø±ØªØ¨Ø· / Ø¨Ø±Ø¯Ø§Ø´Øª</span>
+                                    <span class="badge bg-secondary-subtle text-secondary border px-2">⚪ نامرتبط / برداشت</span>
                                 {% else %}
                                     <span class="badge bg-light text-dark border px-2">{{ log['status'] }}</span>
                                 {% endif %}
@@ -660,7 +660,7 @@
                         {% endfor %}
                         {% if not bank_sms_logs %}
                         <tr>
-                            <td colspan="6" class="text-center py-3 text-muted">Ù‡Ù†ÙˆØ² Ù¾ÛŒØ§Ù…Ú©ÛŒ Ø§Ø² Ú¯ÙˆØ´ÛŒ Ø´Ù…Ø§ Ø¨Ù‡ Ø§ÛŒÙ† ÙˆØ¨â€ŒÙ‡ÙˆÚ© Ø§Ø±Ø³Ø§Ù„ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª.</td>
+                            <td colspan="6" class="text-center py-3 text-muted">هنوز پیامکی از گوشی شما به این وب‌هوک ارسال نشده است.</td>
                         </tr>
                         {% endif %}
                     </tbody>
@@ -670,54 +670,73 @@
     </div>
 </div>
 
-<!-- Ù…Ø¯Ø§Ù„ Ø§ÙØ²ÙˆØ¯Ù† Ú©Ø§Ø±Øª Ø¨Ø§Ù†Ú©ÛŒ Ø¬Ø¯ÛŒØ¯ -->
+<!-- مدال افزودن کارت بانکی جدید -->
 <div class="modal fade" id="addCardModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content text-start">
             <form action="{{ url_for('reseller_cards') }}" method="POST">
                 <input type="hidden" name="action" value="add_card">
                 <div class="modal-header bg-primary text-white py-3">
-                    <h5 class="modal-title fw-bold"><i class="fas fa-credit-card me-2"></i>Ø§ÙØ²ÙˆØ¯Ù† Ú©Ø§Ø±Øª Ø¨Ø§Ù†Ú©ÛŒ Ù…Ù‚ØµØ¯ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡</h5>
+                    <h5 class="modal-title fw-bold"><i class="fas fa-credit-card me-2"></i>افزودن کارت بانکی مقصد نماینده</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body p-4">
                     <div class="row g-3">
                         <div class="col-md-6">
-                            <label class="form-label fw-bold">Ø´Ù…Ø§Ø±Ù‡ Ú©Ø§Ø±Øª Û±Û¶ Ø±Ù‚Ù…ÛŒ <span class="text-danger">*</span></label>
+                            <label class="form-label fw-bold">شماره کارت ۱۶ رقمی <span class="text-danger">*</span></label>
                             <input type="text" class="form-control font-monospace text-center fs-5" name="card_number" placeholder="xxxx-xxxx-xxxx-xxxx" maxlength="19" dir="ltr" required>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-bold">Ù†Ø§Ù… Ùˆ Ù†Ø§Ù… Ø®Ø§Ù†ÙˆØ§Ø¯Ú¯ÛŒ ØµØ§Ø­Ø¨ Ø­Ø³Ø§Ø¨ <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control" name="card_holder" placeholder="Ù…Ø«Ø§Ù„: Ø¹Ù„ÛŒ Ø±Ø¶Ø§ÛŒÛŒ" required>
+                            <label class="form-label fw-bold">نام و نام خانوادگی صاحب حساب <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="card_holder" placeholder="مثال: علی رضایی" required>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label fw-bold">Ù†Ø§Ù… Ø¨Ø§Ù†Ú© <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control" name="bank_name" placeholder="Ù…Ø«Ø§Ù„: Ù…Ù„ÛŒØŒ Ù…Ù„ØªØŒ Ø³Ø§Ù…Ø§Ù†" required>
+                            <label class="form-label fw-bold">نام بانک <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="bank_name" placeholder="مثال: ملی، ملت، سامان" required>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label fw-bold">Ø³Ù‚Ù ÙˆØ§Ø±ÛŒØ² Ø±ÙˆØ²Ø§Ù†Ù‡ (ØªÙˆÙ…Ø§Ù†)</label>
+                            <label class="form-label fw-bold">سقف واریز روزانه (تومان)</label>
                             <input type="number" class="form-control font-monospace" name="daily_limit" value="50000000" step="1000000">
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label fw-bold">Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ø§ÙˆÙ„ÛŒÙ‡ (ØªÙˆÙ…Ø§Ù†)</label>
+                            <label class="form-label fw-bold">موجودی اولیه (تومان)</label>
                             <input type="number" class="form-control font-monospace" name="initial_balance" value="0" step="100000">
-                            <small class="text-muted" style="font-size: 11px;">Ù…ÙˆØ¬ÙˆØ¯ÛŒ ÙØ¹Ù„ÛŒ Ú©Ø§Ø±Øª Ù‚Ø¨Ù„ Ø§Ø² Ø«Ø¨Øª</small>
+                            <small class="text-muted" style="font-size: 11px;">موجودی فعلی کارت قبل از ثبت</small>
                         </div>
 
+                        <div class="col-md-12">
+                            <label class="form-label fw-bold">نوع حساب:</label>
+                            <select name="account_type" class="form-select mb-2" onchange="const pf = this.closest('.modal-body').querySelector('#resellerAddPartnerFields'); if(pf) pf.style.display = (this.value === 'partner_savings' ? 'block' : 'none');">
+                                <option value="bank_card">کارت بانکی عادی</option>
+                                <option value="partner_savings">صندوق پس‌انداز (شریک)</option>
+                            </select>
+                            <div id="resellerAddPartnerFields" class="p-3 bg-warning-subtle rounded border border-warning mb-2" style="display: none;">
+                                <div class="row g-2">
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold text-dark small">نام شریک / عنوان صندوق:</label>
+                                        <input type="text" name="assigned_to" class="form-control form-control-sm" placeholder="مثال: پوریا">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold text-dark small">درصد سود (٪):</label>
+                                        <input type="number" name="profit_percent" class="form-control form-control-sm" placeholder="مثال: 50" min="0" max="100" step="0.1">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                         <div class="col-12">
                             <div class="p-3 bg-light rounded-3 border">
-                                <label class="form-label fw-bold text-dark d-block mb-2">Ù†Ù‚Ø´ Ú©Ø§Ø±Øª Ø¯Ø± Ø±ÙˆØªØ§ØªÙˆØ± Ù‡ÙˆØ´Ù…Ù†Ø¯ Ø±Ø¨Ø§Øª:</label>
+                                <label class="form-label fw-bold text-dark d-block mb-2">نقش کارت در روتاتور هوشمند ربات:</label>
                                 <div class="form-check form-check-inline">
                                     <input class="form-check-input" type="radio" name="res_card_role_radio" id="resRoleNormal" value="normal" checked onchange="document.getElementById('resIsDefaultInp').value='0'; document.getElementById('resIsBackupInp').value='0';">
-                                    <label class="form-check-label" for="resRoleNormal">Ú©Ø§Ø±Øª Ø¹Ø§Ø¯ÛŒ (Ø¨Ø¯ÙˆÙ† Ø§ÙˆÙ„ÙˆÛŒØª Ø§Ø®ØªØµØ§ØµÛŒ)</label>
+                                    <label class="form-check-label" for="resRoleNormal">کارت عادی (بدون اولویت اختصاصی)</label>
                                 </div>
                                 <div class="form-check form-check-inline">
                                     <input class="form-check-input" type="radio" name="res_card_role_radio" id="resRoleDefault" value="default" onchange="document.getElementById('resIsDefaultInp').value='1'; document.getElementById('resIsBackupInp').value='0';">
-                                    <label class="form-check-label text-warning-emphasis fw-bold" for="resRoleDefault">â­ Ú©Ø§Ø±Øª Ù¾ÛŒØ´â€ŒÙØ±Ø¶ (Ø§Ø±Ø³Ø§Ù„ Ø§ÙˆÙ„ÛŒÙ‡ Ø¨Ù‡ Ø®Ø±ÛŒØ¯Ø§Ø±)</label>
+                                    <label class="form-check-label text-warning-emphasis fw-bold" for="resRoleDefault">⭐ کارت پیش‌فرض (ارسال اولیه به خریدار)</label>
                                 </div>
                                 <div class="form-check form-check-inline">
                                     <input class="form-check-input" type="radio" name="res_card_role_radio" id="resRoleBackup" value="backup" onchange="document.getElementById('resIsDefaultInp').value='0'; document.getElementById('resIsBackupInp').value='1';">
-                                    <label class="form-check-label text-info fw-bold" for="resRoleBackup">ðŸ›¡ï¸ Ú©Ø§Ø±Øª Ù¾Ø´ØªÛŒØ¨Ø§Ù† (Ø¬Ø§ÛŒÚ¯Ø²ÛŒÙ† Ø®ÙˆØ¯Ú©Ø§Ø± Ø¯Ø± ØµÙˆØ±Øª Ù¾Ø± Ø´Ø¯Ù† Ø³Ù‚Ù Ø±ÙˆØ²Ø§Ù†Ù‡)</label>
+                                    <label class="form-check-label text-info fw-bold" for="resRoleBackup">🛡️ کارت پشتیبان (جایگزین خودکار در صورت پر شدن سقف روزانه)</label>
                                 </div>
                                 <input type="hidden" name="is_default" id="resIsDefaultInp" value="0">
                                 <input type="hidden" name="is_backup" id="resIsBackupInp" value="0">
@@ -725,32 +744,32 @@
                         </div>
 
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Ø´Ù…Ø§Ø±Ù‡ Ø´Ø¨Ø§ (Ø¨Ø¯ÙˆÙ† IR):</label>
+                            <label class="form-label fw-semibold">شماره شبا (بدون IR):</label>
                             <div class="input-group" dir="ltr">
                                 <span class="input-group-text font-monospace">IR</span>
                                 <input type="text" name="shaba_number" class="form-control font-monospace" placeholder="120150000000000000000000" maxlength="24">
                             </div>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Ø´Ù…Ø§Ø±Ù‡ Ø­Ø³Ø§Ø¨:</label>
-                            <input type="text" name="account_number" class="form-control font-monospace text-start" placeholder="Ù…Ø«Ø§Ù„: 0200123456001" dir="ltr">
+                            <label class="form-label fw-semibold">شماره حساب:</label>
+                            <input type="text" name="account_number" class="form-control font-monospace text-start" placeholder="مثال: 0200123456001" dir="ltr">
                         </div>
                         <div class="col-12">
-                            <label class="form-label fw-semibold">ÛŒØ§Ø¯Ø¯Ø§Ø´Øª Ø¯Ø§Ø®Ù„ÛŒ (Ø§Ø®ØªÛŒØ§Ø±ÛŒ):</label>
-                            <input type="text" name="notes" class="form-control" placeholder="Ù…Ø«Ø§Ù„: Ú©Ø§Ø±Øª Ø³Ø±ÙˆØ±ØŒ Ø­Ø³Ø§Ø¨ Ø´Ø®ØµÛŒØŒ Ú©Ø§Ø±Øª Ø¯Ø±ÛŒØ§ÙØªÛŒ ØªÙ„Ú¯Ø±Ø§Ù…...">
+                            <label class="form-label fw-semibold">یادداشت داخلی (اختیاری):</label>
+                            <input type="text" name="notes" class="form-control" placeholder="مثال: کارت سرور، حساب شخصی، کارت دریافتی تلگرام...">
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Ø§Ù†ØµØ±Ø§Ù</button>
-                    <button type="submit" class="btn btn-primary px-4 fw-bold">Ø«Ø¨Øª Ùˆ Ø°Ø®ÛŒØ±Ù‡ Ú©Ø§Ø±Øª</button>
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold">ثبت و ذخیره کارت</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-<!-- Modal ÙˆÛŒØ±Ø§ÛŒØ´ Ú©Ø§Ø±Øª Ø¨Ø§Ù†Ú©ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ -->
+<!-- Modal ویرایش کارت بانکی نماینده -->
 <div class="modal fade" id="editCardModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content text-start">
@@ -758,54 +777,71 @@
                 <input type="hidden" name="action" value="card_edit">
                 <input type="hidden" name="card_id" id="resEditCardId">
                 <div class="modal-header bg-secondary text-white py-3">
-                    <h5 class="modal-title fw-bold"><i class="fas fa-pencil me-2"></i>ÙˆÛŒØ±Ø§ÛŒØ´ Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ú©Ø§Ø±Øª Ø¨Ø§Ù†Ú©ÛŒ</h5>
+                    <h5 class="modal-title fw-bold"><i class="fas fa-pencil me-2"></i>ویرایش اطلاعات کارت بانکی</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body p-4">
                     <div class="row g-3">
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Ø´Ù…Ø§Ø±Ù‡ Û±Û¶ Ø±Ù‚Ù…ÛŒ Ú©Ø§Ø±Øª:</label>
+                            <label class="form-label fw-semibold">نوع حساب:</label>
+                            <select name="account_type" id="resEditAccountType" class="form-select mb-3" onchange="const pf = this.closest('.modal-body').querySelector('#resellerEditPartnerFields'); if(pf) pf.style.display = (this.value === 'partner_savings' ? 'block' : 'none');">
+                                <option value="bank_card">کارت بانکی عادی</option>
+                                <option value="partner_savings">صندوق پس‌انداز (شریک)</option>
+                            </select>
+                            <div id="resellerEditPartnerFields" class="p-3 bg-warning-subtle rounded border border-warning mb-3" style="display: none;">
+                                <div class="row g-2">
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold text-dark small">نام شریک / عنوان صندوق:</label>
+                                        <input type="text" name="assigned_to" id="resEditAssignedTo" class="form-control form-control-sm" placeholder="مثال: پوریا">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold text-dark small">درصد سود (٪):</label>
+                                        <input type="number" name="profit_percent" id="resEditProfitPercent" class="form-control form-control-sm" placeholder="مثال: 50" min="0" max="100" step="0.1">
+                                    </div>
+                                </div>
+                            </div>
+                            <label class="form-label fw-semibold">شماره ۱۶ رقمی کارت (یا حساب):</label>
                             <input type="text" name="card_number" id="resEditCardNumber" class="form-control text-center font-monospace fs-5" maxlength="19" required dir="ltr">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Ù†Ø§Ù… Ùˆ Ù†Ø§Ù… Ø®Ø§Ù†ÙˆØ§Ø¯Ú¯ÛŒ ØµØ§Ø­Ø¨ Ø­Ø³Ø§Ø¨:</label>
+                            <label class="form-label fw-semibold">نام و نام خانوادگی صاحب حساب:</label>
                             <input type="text" name="card_holder" id="resEditCardHolder" class="form-control" required>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Ù†Ø§Ù… Ø¨Ø§Ù†Ú©:</label>
+                            <label class="form-label fw-semibold">نام بانک:</label>
                             <input type="text" name="bank_name" id="resEditBankName" class="form-control" required>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Ø³Ù‚Ù Ù…Ø¬Ø§Ø² Ø±ÙˆØ²Ø§Ù†Ù‡ (ØªÙˆÙ…Ø§Ù†):</label>
+                            <label class="form-label fw-semibold">سقف مجاز روزانه (تومان):</label>
                             <input type="number" name="daily_limit" id="resEditDailyLimit" class="form-control font-monospace" step="1000000">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Ø´Ù…Ø§Ø±Ù‡ Ø´Ø¨Ø§ (Ø¨Ø¯ÙˆÙ† IR):</label>
+                            <label class="form-label fw-semibold">شماره شبا (بدون IR):</label>
                             <div class="input-group" dir="ltr">
                                 <span class="input-group-text font-monospace">IR</span>
                                 <input type="text" name="shaba_number" id="resEditShabaNumber" class="form-control font-monospace" maxlength="24">
                             </div>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Ø´Ù…Ø§Ø±Ù‡ Ø­Ø³Ø§Ø¨:</label>
+                            <label class="form-label fw-semibold">شماره حساب:</label>
                             <input type="text" name="account_number" id="resEditAccountNumber" class="form-control font-monospace text-start" dir="ltr">
                         </div>
                         <div class="col-12">
-                            <label class="form-label fw-semibold">ÛŒØ§Ø¯Ø¯Ø§Ø´Øª Ø¯Ø§Ø®Ù„ÛŒ:</label>
+                            <label class="form-label fw-semibold">یادداشت داخلی:</label>
                             <input type="text" name="notes" id="resEditNotes" class="form-control">
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Ø§Ù†ØµØ±Ø§Ù</button>
-                    <button type="submit" class="btn btn-success fw-bold"><i class="fas fa-save me-1"></i>Ø°Ø®ÛŒØ±Ù‡ ØªØºÛŒÛŒØ±Ø§Øª</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-success fw-bold"><i class="fas fa-save me-1"></i>ذخیره تغییرات</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-<!-- Modal Ø«Ø¨Øª ØªØ±Ø§Ú©Ù†Ø´ Ø¯Ø³ØªÛŒ Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Øª Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (ÙˆØ§Ø±ÛŒØ² / Ø¨Ø±Ø¯Ø§Ø´Øª / Ù‡Ø²ÛŒÙ†Ù‡ / Ú©Ø§Ø±Ù…Ø²Ø¯) -->
+<!-- Modal ثبت تراکنش دستی برای کارت نماینده (واریز / برداشت / هزینه / کارمزد) -->
 <div class="modal fade" id="cardAddTxModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content text-start">
@@ -813,56 +849,56 @@
                 <input type="hidden" name="action" value="card_add_tx">
                 <input type="hidden" name="card_id" id="resTxCardId">
                 <div class="modal-header bg-dark text-white py-3">
-                    <h5 class="modal-title fw-bold"><i class="fas fa-plus-minus me-2"></i>Ø«Ø¨Øª ØªØ±Ø§Ú©Ù†Ø´ Ø¯Ø³ØªÛŒ Ø­Ø³Ø§Ø¨ Ùˆ Ú©Ø§Ø±Øª</h5>
+                    <h5 class="modal-title fw-bold"><i class="fas fa-plus-minus me-2"></i>ثبت تراکنش دستی حساب و کارت</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body p-4">
                     <div class="p-3 bg-light rounded-3 mb-3 border">
-                        <div class="small text-muted">Ú©Ø§Ø±Øª Ø§Ù†ØªØ®Ø§Ø¨ÛŒ:</div>
+                        <div class="small text-muted">کارت انتخابی:</div>
                         <strong class="font-monospace text-primary fs-6" id="resTxCardNumDisplay"></strong>
                         <div class="small fw-bold text-dark mt-1" id="resTxCardHolderDisplay"></div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">Ù†ÙˆØ¹ ØªØ±Ø§Ú©Ù†Ø´:</label>
+                        <label class="form-label fw-semibold">نوع تراکنش:</label>
                         <select name="type" id="resTxTypeSelect" class="form-select" onchange="handleResTxTypeChange(this)">
-                            <option value="deposit">ÙˆØ§Ø±ÛŒØ² Ø¨Ù‡ Ø­Ø³Ø§Ø¨ (+ Ø§ÙØ²Ø§ÛŒØ´ Ù…ÙˆØ¬ÙˆØ¯ÛŒ)</option>
-                            <option value="withdrawal">Ø¨Ø±Ø¯Ø§Ø´Øª Ø§Ø² Ø­Ø³Ø§Ø¨ (- Ú©Ø§Ù‡Ø´ Ù…ÙˆØ¬ÙˆØ¯ÛŒ)</option>
+                            <option value="deposit">واریز به حساب (+ افزایش موجودی)</option>
+                            <option value="withdrawal">برداشت از حساب (- کاهش موجودی)</option>
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">Ø¯Ø³ØªÙ‡â€ŒØ¨Ù†Ø¯ÛŒ Ùˆ Ø¹Ù„Øª ØªØ±Ø§Ú©Ù†Ø´:</label>
+                        <label class="form-label fw-semibold">دسته‌بندی و علت تراکنش:</label>
                         <select name="category" id="resTxCategorySelect" class="form-select">
-                            <option value="ÙˆØ§Ø±ÛŒØ² Ø¯Ø³ØªÛŒ">ÙˆØ§Ø±ÛŒØ² Ø¯Ø³ØªÛŒ</option>
-                            <option value="Ø¨Ø±Ø¯Ø§Ø´Øª Ù†Ù‚Ø¯ÛŒ">Ø¨Ø±Ø¯Ø§Ø´Øª Ù†Ù‚Ø¯ÛŒ</option>
-                            <option value="Ù‡Ø²ÛŒÙ†Ù‡ Ø³Ø±ÙˆØ± Ùˆ Ø²ÛŒØ±Ø³Ø§Ø®Øª">Ù‡Ø²ÛŒÙ†Ù‡ Ø³Ø±ÙˆØ± Ùˆ Ø²ÛŒØ±Ø³Ø§Ø®Øª</option>
-                            <option value="Ú©Ø§Ø±Ù…Ø²Ø¯ Ùˆ Ù…Ø§Ù„ÛŒØ§Øª Ø¨Ø§Ù†Ú©ÛŒ">Ú©Ø§Ø±Ù…Ø²Ø¯ Ùˆ Ø®Ø¯Ù…Ø§Øª Ø¨Ø§Ù†Ú©ÛŒ</option>
-                            <option value="ØªØ³ÙˆÛŒÙ‡ Ù†Ù‚Ø¯ÛŒ">ØªØ³ÙˆÛŒÙ‡ ØµÙ†Ø¯ÙˆÙ‚ Ù†Ù‚Ø¯ÛŒ</option>
-                            <option value="Ø³Ø§ÛŒØ± Ù‡Ø²ÛŒÙ†Ù‡â€ŒÙ‡Ø§">Ø³Ø§ÛŒØ± Ù‡Ø²ÛŒÙ†Ù‡â€ŒÙ‡Ø§</option>
+                            <option value="واریز دستی">واریز دستی</option>
+                            <option value="برداشت نقدی">برداشت نقدی</option>
+                            <option value="هزینه سرور و زیرساخت">هزینه سرور و زیرساخت</option>
+                            <option value="کارمزد و مالیات بانکی">کارمزد و خدمات بانکی</option>
+                            <option value="تسویه نقدی">تسویه صندوق نقدی</option>
+                            <option value="سایر هزینه‌ها">سایر هزینه‌ها</option>
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">Ù…Ø¨Ù„Øº ØªØ±Ø§Ú©Ù†Ø´ (ØªÙˆÙ…Ø§Ù†):</label>
-                        <input type="number" name="amount" class="form-control font-monospace fs-5" min="1000" step="1000" placeholder="Ù…Ø«Ø§Ù„: 5000000" required>
+                        <label class="form-label fw-semibold">مبلغ تراکنش (تومان):</label>
+                        <input type="number" name="amount" class="form-control font-monospace fs-5" min="1000" step="1000" placeholder="مثال: 5000000" required>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">Ø¹Ù†ÙˆØ§Ù† ÛŒØ§ Ø¨Ø§Ø¨Øª (Ø§Ø®ØªÛŒØ§Ø±ÛŒ):</label>
-                        <input type="text" name="title" class="form-control" placeholder="Ù…Ø«Ø§Ù„: Ø®Ø±ÛŒØ¯ Ú©Ø§Ù†ÙÛŒÚ¯ / Ø§Ù†ØªÙ‚Ø§Ù„ Ø´Ø®ØµÛŒ">
+                        <label class="form-label fw-semibold">عنوان یا بابت (اختیاری):</label>
+                        <input type="text" name="title" class="form-control" placeholder="مثال: خرید کانفیگ / انتقال شخصی">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">ØªÙˆØ¶ÛŒØ­Ø§Øª ØªÚ©Ù…ÛŒÙ„ÛŒ:</label>
-                        <textarea name="description" class="form-control" rows="2" placeholder="Ø´Ù…Ø§Ø±Ù‡ Ù¾ÛŒÚ¯ÛŒØ±ÛŒØŒ ØªÙˆØ¶ÛŒØ­Ø§Øª Ø§Ø®ØªÛŒØ§Ø±ÛŒ..."></textarea>
+                        <label class="form-label fw-semibold">توضیحات تکمیلی:</label>
+                        <textarea name="description" class="form-control" rows="2" placeholder="شماره پیگیری، توضیحات اختیاری..."></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Ø§Ù†ØµØ±Ø§Ù</button>
-                    <button type="submit" class="btn btn-primary fw-bold"><i class="fas fa-check me-1"></i>Ø«Ø¨Øª Ù‚Ø·Ø¹ÛŒ ØªØ±Ø§Ú©Ù†Ø´</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary fw-bold"><i class="fas fa-check me-1"></i>ثبت قطعی تراکنش</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-<!-- Modal ØªØ³ÙˆÛŒÙ‡ ØµÙ†Ø¯ÙˆÙ‚ Ù†Ù‚Ø¯ÛŒ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ Ø¨Ù‡ Ú©Ø§Ø±Øª Ø¨Ø§Ù†Ú©ÛŒ -->
+<!-- Modal تسویه صندوق نقدی نماینده به کارت بانکی -->
 <div class="modal fade" id="settleCashModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content text-start">
@@ -870,47 +906,47 @@
                 <input type="hidden" name="action" value="cash_settle">
                 <input type="hidden" name="log_id" id="resSettleLogId">
                 <div class="modal-header bg-warning text-dark py-3">
-                    <h5 class="modal-title fw-bold"><i class="fas fa-cash-register me-2"></i>ØªØ³ÙˆÛŒÙ‡ ÙÛŒØ´ Ù†Ù‚Ø¯ÛŒ Ùˆ ÙˆØ§Ø±ÛŒØ² Ø¨Ù‡ Ø­Ø³Ø§Ø¨</h5>
+                    <h5 class="modal-title fw-bold"><i class="fas fa-cash-register me-2"></i>تسویه فیش نقدی و واریز به حساب</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body p-4">
                     <div class="p-3 bg-light rounded-3 mb-3 border">
                         <div class="d-flex justify-content-between mb-1">
-                            <span class="text-muted small">Ù…Ø´ØªØ±ÛŒ:</span>
+                            <span class="text-muted small">مشتری:</span>
                             <strong class="text-dark" id="resSettleCustomerDisplay"></strong>
                         </div>
                         <div class="d-flex justify-content-between">
-                            <span class="text-muted small">Ù…Ø¨Ù„Øº Ù†Ù‚Ø¯ÛŒ:</span>
+                            <span class="text-muted small">مبلغ نقدی:</span>
                             <strong class="font-monospace text-success fs-5" id="resSettleAmountDisplay"></strong>
                         </div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">Ú©Ø§Ø±Øª Ø¨Ø§Ù†Ú©ÛŒ Ù…Ù‚ØµØ¯ (Ø¬Ù‡Øª ÙˆØ§Ø±ÛŒØ² Ùˆ Ø§ÙØ²Ø§ÛŒØ´ Ù…ÙˆØ¬ÙˆØ¯ÛŒ):</label>
+                        <label class="form-label fw-semibold">کارت بانکی مقصد (جهت واریز و افزایش موجودی):</label>
                         <select name="target_card_id" class="form-select" required>
-                            <option value="">-- Ø§Ù†ØªØ®Ø§Ø¨ Ú©Ø§Ø±Øª Ù…Ù‚ØµØ¯ --</option>
+                            <option value="">-- انتخاب کارت مقصد --</option>
                             {% for c in cards %}
                             <option value="{{ c['id'] }}">
-                                {{ c['bank_name'] }} - {{ c['card_holder'] }} ({{ c['card_number'][-4:] }}****) - Ù…ÙˆØ¬ÙˆØ¯ÛŒ ÙØ¹Ù„ÛŒ: {{ "{:,}".format(c.get('balance', 0)) }} Øª
+                                {{ c['bank_name'] }} - {{ c['card_holder'] }} ({{ c['card_number'][-4:] }}****) - موجودی فعلی: {{ "{:,}".format(c.get('balance', 0)) }} ت
                             </option>
                             {% endfor %}
                         </select>
-                        <small class="text-muted mt-1 d-block">Ø¨Ø§ ØªØ³ÙˆÛŒÙ‡ØŒ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©Ø§Ø±Øª Ù…Ù‚ØµØ¯ Ø¯Ù‚ÛŒÙ‚Ø§Ù‹ Ø¨Ù‡ Ù…ÛŒØ²Ø§Ù† Ø§ÛŒÙ† Ù…Ø¨Ù„Øº Ø§ÙØ²Ø§ÛŒØ´ Ø®ÙˆØ§Ù‡Ø¯ ÛŒØ§ÙØª.</small>
+                        <small class="text-muted mt-1 d-block">با تسویه، موجودی کارت مقصد دقیقاً به میزان این مبلغ افزایش خواهد یافت.</small>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">ÛŒØ§Ø¯Ø¯Ø§Ø´Øª ØªØ³ÙˆÛŒÙ‡ (Ø§Ø®ØªÛŒØ§Ø±ÛŒ):</label>
-                        <input type="text" name="settle_note" class="form-control" placeholder="Ù…Ø«Ø§Ù„: Ø§Ù†ØªÙ‚Ø§Ù„ Ú©Ø§Ø±Øª Ø¨Ù‡ Ú©Ø§Ø±Øª / ÙˆØ§Ø±ÛŒØ² Ø®ÙˆØ¯Ù¾Ø±Ø¯Ø§Ø²">
+                        <label class="form-label fw-semibold">یادداشت تسویه (اختیاری):</label>
+                        <input type="text" name="settle_note" class="form-control" placeholder="مثال: انتقال کارت به کارت / واریز خودپرداز">
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Ø§Ù†ØµØ±Ø§Ù</button>
-                    <button type="submit" class="btn btn-warning fw-bold text-dark"><i class="fas fa-check me-1"></i>ØªØ§ÛŒÛŒØ¯ Ùˆ Ø«Ø¨Øª ØªØ³ÙˆÛŒÙ‡</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-warning fw-bold text-dark"><i class="fas fa-check me-1"></i>تایید و ثبت تسویه</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-<!-- Modal Ø¬Ø§Ù…Ø¹ Ø¬Ø²Ø¦ÛŒØ§ØªØŒ ØªÙÚ©ÛŒÚ© Ø¯Ø³ØªÙ‡â€ŒØ¨Ù†Ø¯ÛŒ Ùˆ Ú¯Ø±Ø¯Ø´ Ø­Ø³Ø§Ø¨ Ù†Ù…Ø§ÛŒÙ†Ø¯Ù‡ (Drill-Down Modal) -->
+<!-- Modal جامع جزئیات، تفکیک دسته‌بندی و گردش حساب نماینده (Drill-Down Modal) -->
 <div class="modal fade" id="cardDetailsModal" tabindex="-1">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content text-start">
@@ -920,78 +956,78 @@
                         <i class="fas fa-credit-card fs-5"></i>
                     </div>
                     <div>
-                        <h5 class="modal-title fw-bold mb-0" id="resCardDetailsTitle">Ú¯Ø±Ø¯Ø´ Ø­Ø³Ø§Ø¨ Ùˆ Ø¬Ø²Ø¦ÛŒØ§Øª Ú©Ø§Ø±Øª</h5>
+                        <h5 class="modal-title fw-bold mb-0" id="resCardDetailsTitle">گردش حساب و جزئیات کارت</h5>
                         <div class="small text-muted font-monospace" id="resCardDetailsSubtitle"></div>
                     </div>
                 </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-4">
-                <!-- Ø®Ù„Ø§ØµÙ‡ ÙˆØ¶Ø¹ÛŒØª Ú©Ø§Ø±Øª Ø¯Ø± Ø¨Ø§Ù„Ø§ÛŒ Ù…ÙˆØ¯Ø§Ù„ -->
+                <!-- خلاصه وضعیت کارت در بالای مودال -->
                 <div class="row g-3 mb-4">
                     <div class="col-md-3">
                         <div class="p-3 bg-light rounded-3 border">
-                            <span class="small text-muted d-block">Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ø´Ù†Ø§ÙˆØ± ÙØ¹Ù„ÛŒ</span>
+                            <span class="small text-muted d-block">موجودی شناور فعلی</span>
                             <strong class="fs-5 font-monospace text-primary" id="resCardModalBalance">-</strong>
                         </div>
                     </div>
                     <div class="col-md-3">
                         <div class="p-3 bg-light rounded-3 border">
-                            <span class="small text-muted d-block">ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ Ø§Ù…Ø±ÙˆØ²</span>
+                            <span class="small text-muted d-block">تراکنش‌های امروز</span>
                             <strong class="fs-5 font-monospace text-success" id="resCardModalTodayVol">-</strong>
                         </div>
                     </div>
                     <div class="col-md-3">
                         <div class="p-3 bg-light rounded-3 border">
-                            <span class="small text-muted d-block">Ø³Ù‚Ù Ø±ÙˆØ²Ø§Ù†Ù‡</span>
+                            <span class="small text-muted d-block">سقف روزانه</span>
                             <strong class="fs-5 font-monospace text-dark" id="resCardModalDailyLimit">-</strong>
                         </div>
                     </div>
                     <div class="col-md-3">
                         <div class="p-3 bg-light rounded-3 border">
-                            <span class="small text-muted d-block">Ù†Ù‚Ø´ Ø¯Ø± Ø±ÙˆØªØ§ØªÙˆØ±</span>
-                            <span id="resCardModalRoleBadge" class="badge bg-light text-dark border mt-1 fs-6">Ø¹Ø§Ø¯ÛŒ</span>
+                            <span class="small text-muted d-block">نقش در روتاتور</span>
+                            <span id="resCardModalRoleBadge" class="badge bg-light text-dark border mt-1 fs-6">عادی</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- ÙÛŒÙ„ØªØ± Ø¨Ø± Ø§Ø³Ø§Ø³ Ø¯Ø³ØªÙ‡â€ŒØ¨Ù†Ø¯ÛŒ -->
+                <!-- فیلتر بر اساس دسته‌بندی -->
                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
                     <div class="d-flex align-items-center gap-2">
-                        <label class="small fw-bold text-secondary mb-0">ÙÛŒÙ„ØªØ± Ø¯Ø³ØªÙ‡â€ŒØ¨Ù†Ø¯ÛŒ:</label>
+                        <label class="small fw-bold text-secondary mb-0">فیلتر دسته‌بندی:</label>
                         <select class="form-select form-select-sm" id="resCardTxCategoryFilter" style="width: auto;" onchange="filterResCardTransactions(this.value)">
-                            <option value="all">Ù‡Ù…Ù‡ Ø¯Ø³ØªÙ‡â€ŒÙ‡Ø§</option>
-                            <option value="ÙˆØ§Ø±ÛŒØ² Ù…Ø´ØªØ±ÛŒ">ÙˆØ§Ø±ÛŒØ² Ù…Ø´ØªØ±ÛŒ (Ø®Ø±ÛŒØ¯/ØªÙ…Ø¯ÛŒØ¯)</option>
-                            <option value="ÙØ±ÙˆØ´ Ø§Ø´ØªØ±Ø§Ú©">ÙØ±ÙˆØ´ Ø§Ø´ØªØ±Ø§Ú©</option>
-                            <option value="ØªÙ…Ø¯ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú©">ØªÙ…Ø¯ÛŒØ¯ Ø§Ø´ØªØ±Ø§Ú©</option>
-                            <option value="ÙˆØ§Ø±ÛŒØ² Ø¯Ø³ØªÛŒ">ÙˆØ§Ø±ÛŒØ² Ø¯Ø³ØªÛŒ</option>
-                            <option value="Ø¨Ø±Ø¯Ø§Ø´Øª Ù†Ù‚Ø¯ÛŒ">Ø¨Ø±Ø¯Ø§Ø´Øª Ù†Ù‚Ø¯ÛŒ</option>
-                            <option value="Ù‡Ø²ÛŒÙ†Ù‡ Ø³Ø±ÙˆØ± Ùˆ Ø²ÛŒØ±Ø³Ø§Ø®Øª">Ù‡Ø²ÛŒÙ†Ù‡ Ø³Ø±ÙˆØ± Ùˆ Ø²ÛŒØ±Ø³Ø§Ø®Øª</option>
-                            <option value="Ú©Ø§Ø±Ù…Ø²Ø¯ Ùˆ Ù…Ø§Ù„ÛŒØ§Øª Ø¨Ø§Ù†Ú©ÛŒ">Ú©Ø§Ø±Ù…Ø²Ø¯ Ùˆ Ù…Ø§Ù„ÛŒØ§Øª Ø¨Ø§Ù†Ú©ÛŒ</option>
-                            <option value="ØªØ³ÙˆÛŒÙ‡ Ù†Ù‚Ø¯ÛŒ">ØªØ³ÙˆÛŒÙ‡ ØµÙ†Ø¯ÙˆÙ‚ Ù†Ù‚Ø¯ÛŒ</option>
+                            <option value="all">همه دسته‌ها</option>
+                            <option value="واریز مشتری">واریز مشتری (خرید/تمدید)</option>
+                            <option value="فروش اشتراک">فروش اشتراک</option>
+                            <option value="تمدید اشتراک">تمدید اشتراک</option>
+                            <option value="واریز دستی">واریز دستی</option>
+                            <option value="برداشت نقدی">برداشت نقدی</option>
+                            <option value="هزینه سرور و زیرساخت">هزینه سرور و زیرساخت</option>
+                            <option value="کارمزد و مالیات بانکی">کارمزد و مالیات بانکی</option>
+                            <option value="تسویه نقدی">تسویه صندوق نقدی</option>
                         </select>
                     </div>
-                    <span class="badge bg-secondary font-monospace" id="resCardTxCountBadge">Û° ØªØ±Ø§Ú©Ù†Ø´</span>
+                    <span class="badge bg-secondary font-monospace" id="resCardTxCountBadge">۰ تراکنش</span>
                 </div>
 
-                <!-- Ø¬Ø¯ÙˆÙ„ ØªÙÚ©ÛŒÚ©ÛŒ ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ -->
+                <!-- جدول تفکیکی تراکنش‌ها -->
                 <div class="table-responsive border rounded-3">
                     <table class="table table-hover align-middle mb-0" style="font-size: 0.88rem;">
                         <thead class="table-light">
                             <tr>
-                                <th class="ps-3" style="width: 140px;">Ø²Ù…Ø§Ù†</th>
-                                <th style="width: 130px;">Ù†ÙˆØ¹ Ùˆ Ø¯Ø³ØªÙ‡</th>
-                                <th>Ø¹Ù†ÙˆØ§Ù† / Ø´Ø±Ø­</th>
-                                <th style="width: 130px;">Ù…Ø¨Ù„Øº</th>
-                                <th style="width: 130px;">Ù…Ø§Ù†Ø¯Ù‡ Ù¾Ø³ Ø§Ø² ØªØ±Ø§Ú©Ù†Ø´</th>
-                                <th style="width: 120px;" class="text-center">Ø«Ø¨Øªâ€ŒÚ©Ù†Ù†Ø¯Ù‡</th>
+                                <th class="ps-3" style="width: 140px;">زمان</th>
+                                <th style="width: 130px;">نوع و دسته</th>
+                                <th>عنوان / شرح</th>
+                                <th style="width: 130px;">مبلغ</th>
+                                <th style="width: 130px;">مانده پس از تراکنش</th>
+                                <th style="width: 120px;" class="text-center">ثبت‌کننده</th>
                             </tr>
                         </thead>
                         <tbody id="resCardTxTableBody">
                             <tr>
                                 <td colspan="6" class="text-center py-4 text-muted">
                                     <div class="spinner-border spinner-border-sm text-primary me-2"></div>
-                                    Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ Ú©Ø§Ø±Øª...
+                                    در حال بارگذاری تراکنش‌های کارت...
                                 </td>
                             </tr>
                         </tbody>
@@ -999,7 +1035,7 @@
                 </div>
             </div>
             <div class="modal-footer bg-light">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Ø¨Ø³ØªÙ†</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">بستن</button>
             </div>
         </div>
     </div>
@@ -1015,9 +1051,9 @@ function copyFieldValue(elemId, label) {
     if (!input) return;
     input.select();
     navigator.clipboard.writeText(input.value).then(() => {
-        alert((label || 'Ø¢Ø¯Ø±Ø³') + ' Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø¯Ø± Ú©Ù„ÛŒÙ¾â€ŒØ¨ÙˆØ±Ø¯ Ú©Ù¾ÛŒ Ø´Ø¯! âœ…');
+        alert((label || 'آدرس') + ' با موفقیت در کلیپ‌بورد کپی شد! ✅');
     }).catch(() => {
-        prompt('Ø¢Ø¯Ø±Ø³ Ø±Ø§ Ú©Ù¾ÛŒ Ú©Ù†ÛŒØ¯:', input.value);
+        prompt('آدرس را کپی کنید:', input.value);
     });
 }
 
@@ -1026,16 +1062,27 @@ function handleResellerGatewayTypeChange(selectEl) {
     const hint = document.getElementById('rGwKeyHint');
     if (selectEl.value === 'blupal') {
         if (box) box.style.display = 'block';
-        if (hint) hint.innerText = 'Ú©Ù„ÛŒØ¯ API Ù„Ø§ÛŒÙˆ (blu_live_...) ÛŒØ§ Ø³Ù†Ø¯Ø¨Ø§Ú©Ø³ (blu_test_...) Ø¯Ø±ÛŒØ§ÙØªÛŒ Ø§Ø² Ù¾Ù†Ù„ Ø¨Ù„ÙˆÙ¾Ø§Ù„';
+        if (hint) hint.innerText = 'کلید API لایو (blu_live_...) یا سندباکس (blu_test_...) دریافتی از پنل بلوپال';
     } else {
         if (box) box.style.display = 'none';
-        if (hint) hint.innerText = 'Ú©Ø¯ Ù…Ø±Ú†Ù†Øª ÛŒØ§ Ú©Ù„ÛŒØ¯ ÙˆØ¨â€ŒØ³Ø±ÙˆÛŒØ³ Ø¯Ø±ÛŒØ§ÙØª Ø´Ø¯Ù‡ Ø§Ø² Ø¯Ø±Ú¯Ø§Ù‡ Ø§Ù†ØªØ®Ø§Ø¨ÛŒ';
+        if (hint) hint.innerText = 'کد مرچنت یا کلید وب‌سرویس دریافت شده از درگاه انتخابی';
     }
 }
 
 function openEditCardModal(card) {
     document.getElementById('resEditCardId').value = card.id;
-    document.getElementById('resEditCardNumber').value = card.card_number || '';
+            document.getElementById('resEditCardNumber').value = card.card_number || '';
+        if(document.getElementById('resEditAccountType')) {
+            document.getElementById('resEditAccountType').value = card.account_type || 'bank_card';
+            const pf = document.getElementById('resellerEditPartnerFields');
+            if(pf) pf.style.display = (card.account_type === 'partner_savings' ? 'block' : 'none');
+        }
+        if(document.getElementById('resEditAssignedTo')) {
+            document.getElementById('resEditAssignedTo').value = card.assigned_to || '';
+        }
+        if(document.getElementById('resEditProfitPercent')) {
+            document.getElementById('resEditProfitPercent').value = card.profit_percent || 0;
+        }
     document.getElementById('resEditCardHolder').value = card.card_holder || '';
     document.getElementById('resEditBankName').value = card.bank_name || '';
     document.getElementById('resEditDailyLimit').value = card.daily_limit || 50000000;
@@ -1055,16 +1102,16 @@ function openAddTxModal(cardId, cardNum, cardHolder) {
 function handleResTxTypeChange(selectEl) {
     const catSelect = document.getElementById('resTxCategorySelect');
     if (selectEl.value === 'deposit') {
-        catSelect.value = 'ÙˆØ§Ø±ÛŒØ² Ø¯Ø³ØªÛŒ';
+        catSelect.value = 'واریز دستی';
     } else {
-        catSelect.value = 'Ø¨Ø±Ø¯Ø§Ø´Øª Ù†Ù‚Ø¯ÛŒ';
+        catSelect.value = 'برداشت نقدی';
     }
 }
 
 function openSettleCashModal(logId, amount, customerName) {
     document.getElementById('resSettleLogId').value = logId;
-    document.getElementById('resSettleCustomerDisplay').innerText = customerName || 'Ù†Ø§Ù…Ø´Ø®Øµ';
-    document.getElementById('resSettleAmountDisplay').innerText = Number(amount).toLocaleString('fa-IR') + ' ØªÙˆÙ…Ø§Ù†';
+    document.getElementById('resSettleCustomerDisplay').innerText = customerName || 'نامشخص';
+    document.getElementById('resSettleAmountDisplay').innerText = Number(amount).toLocaleString('fa-IR') + ' تومان';
     new bootstrap.Modal(document.getElementById('settleCashModal')).show();
 }
 
@@ -1077,7 +1124,7 @@ function viewCardDetails(cardId) {
         <tr>
             <td colspan="6" class="text-center py-4 text-muted">
                 <div class="spinner-border spinner-border-sm text-primary me-2"></div>
-                Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ùˆ ØªØ±Ø§Ú©Ù†Ø´â€ŒÙ‡Ø§ÛŒ Ú©Ø§Ø±Øª...
+                در حال بارگذاری اطلاعات و تراکنش‌های کارت...
             </td>
         </tr>`;
 
@@ -1085,14 +1132,14 @@ function viewCardDetails(cardId) {
         .then(r => r.json())
         .then(res => {
             if (!res.success) {
-                document.getElementById('resCardTxTableBody').innerHTML = `<tr><td colspan="6" class="text-center text-danger py-4">${res.error || 'Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ'}</td></tr>`;
+                document.getElementById('resCardTxTableBody').innerHTML = `<tr><td colspan="6" class="text-center text-danger py-4">${res.error || 'خطا در بارگذاری'}</td></tr>`;
                 return;
             }
             currentResCardData = res.data;
             renderResCardDetails(currentResCardData);
         })
         .catch(err => {
-            document.getElementById('resCardTxTableBody').innerHTML = `<tr><td colspan="6" class="text-center text-danger py-4">Ø®Ø·Ø§ÛŒ Ø§Ø±ØªØ¨Ø§Ø· Ø¨Ø§ Ø³Ø±ÙˆØ±</td></tr>`;
+            document.getElementById('resCardTxTableBody').innerHTML = `<tr><td colspan="6" class="text-center text-danger py-4">خطای ارتباط با سرور</td></tr>`;
         });
 }
 
@@ -1101,15 +1148,15 @@ function renderResCardDetails(data) {
     document.getElementById('resCardDetailsTitle').innerText = `${c.bank_name} - ${c.card_holder}`;
     document.getElementById('resCardDetailsSubtitle').innerText = `${c.card_number} ${c.shaba_number ? ' | IR' + c.shaba_number : ''}`;
 
-    document.getElementById('resCardModalBalance').innerText = Number(c.balance || 0).toLocaleString('fa-IR') + ' ØªÙˆÙ…Ø§Ù†';
-    document.getElementById('resCardModalTodayVol').innerText = Number(c.today_volume || 0).toLocaleString('fa-IR') + ' ØªÙˆÙ…Ø§Ù†';
-    document.getElementById('resCardModalDailyLimit').innerText = Number(c.daily_limit || 0).toLocaleString('fa-IR') + ' ØªÙˆÙ…Ø§Ù†';
+    document.getElementById('resCardModalBalance').innerText = Number(c.balance || 0).toLocaleString('fa-IR') + ' تومان';
+    document.getElementById('resCardModalTodayVol').innerText = Number(c.today_volume || 0).toLocaleString('fa-IR') + ' تومان';
+    document.getElementById('resCardModalDailyLimit').innerText = Number(c.daily_limit || 0).toLocaleString('fa-IR') + ' تومان';
 
-    let roleHtml = '<span class="badge bg-light text-muted border">Ø¹Ø§Ø¯ÛŒ</span>';
+    let roleHtml = '<span class="badge bg-light text-muted border">عادی</span>';
     if (c.is_default) {
-        roleHtml = '<span class="badge bg-warning text-dark border border-warning"><i class="fas fa-star me-1"></i>Ù¾ÛŒØ´â€ŒÙØ±Ø¶</span>';
+        roleHtml = '<span class="badge bg-warning text-dark border border-warning"><i class="fas fa-star me-1"></i>پیش‌فرض</span>';
     } else if (c.is_backup) {
-        roleHtml = '<span class="badge bg-info-subtle text-info border border-info"><i class="fas fa-shield-halved me-1"></i>Ù¾Ø´ØªÛŒØ¨Ø§Ù†</span>';
+        roleHtml = '<span class="badge bg-info-subtle text-info border border-info"><i class="fas fa-shield-halved me-1"></i>پشتیبان</span>';
     }
     document.getElementById('resCardModalRoleBadge').outerHTML = `<span id="resCardModalRoleBadge">${roleHtml}</span>`;
 
@@ -1122,11 +1169,11 @@ function filterResCardTransactions(category) {
     if (category !== 'all') {
         txs = txs.filter(t => t.category === category);
     }
-    document.getElementById('resCardTxCountBadge').innerText = `${txs.length} ØªØ±Ø§Ú©Ù†Ø´`;
+    document.getElementById('resCardTxCountBadge').innerText = `${txs.length} تراکنش`;
 
     const tbody = document.getElementById('resCardTxTableBody');
     if (txs.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-muted">ØªØ±Ø§Ú©Ù†Ø´ÛŒ Ø¯Ø± Ø§ÛŒÙ† Ø¯Ø³ØªÙ‡â€ŒØ¨Ù†Ø¯ÛŒ ÛŒØ§ÙØª Ù†Ø´Ø¯.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-muted">تراکنشی در این دسته‌بندی یافت نشد.</td></tr>`;
         return;
     }
 
@@ -1141,7 +1188,7 @@ function filterResCardTransactions(category) {
             <tr>
                 <td class="ps-3 font-monospace small text-muted" dir="ltr">${(t.created_at || '').substring(0, 19).replace('T', ' ')}</td>
                 <td>
-                    <span class="badge ${badgeClass} px-2 py-1">${t.category || (isDep ? 'ÙˆØ§Ø±ÛŒØ²' : 'Ø¨Ø±Ø¯Ø§Ø´Øª')}</span>
+                    <span class="badge ${badgeClass} px-2 py-1">${t.category || (isDep ? 'واریز' : 'برداشت')}</span>
                 </td>
                 <td>
                     <div class="fw-bold text-dark">${t.title || '-'}</div>
@@ -1149,52 +1196,18 @@ function filterResCardTransactions(category) {
                 </td>
                 <td>
                     <strong class="font-monospace ${amountClass}">${sign} ${Number(t.amount || 0).toLocaleString('fa-IR')}</strong>
-                    <span class="small text-muted">Øª</span>
+                    <span class="small text-muted">ت</span>
                 </td>
                 <td>
                     <span class="font-monospace fw-bold text-dark">${Number(t.balance_after || 0).toLocaleString('fa-IR')}</span>
-                    <span class="small text-muted">Øª</span>
+                    <span class="small text-muted">ت</span>
                 </td>
                 <td class="text-center small text-muted font-monospace">${t.actor || '-'}</td>
             </tr>`;
     });
     tbody.innerHTML = rows;
 }
-
-document.addEventListener("DOMContentLoaded", function() {
-    const accTypeSelects = document.querySelectorAll("select[name='account_type']");
-    accTypeSelects.forEach(sel => {
-        sel.addEventListener("change", function() {
-            const partnerFields = this.closest(".modal-body").querySelector("div[id^='partnerFields']");
-            if(partnerFields) {
-                if(this.value === "partner_savings") {
-                    partnerFields.style.display = "block";
-                } else {
-                    partnerFields.style.display = "none";
-                }
-            }
-        });
-    });
-});
-
-document.addEventListener("DOMContentLoaded", function() {
-    const accTypeSelects = document.querySelectorAll("select[name='account_type']");
-    accTypeSelects.forEach(sel => {
-        sel.addEventListener("change", function() {
-            const partnerFields = this.closest(".modal-body").querySelector("div[id^='partnerFields']");
-            if(partnerFields) {
-                if(this.value === "partner_savings") {
-                    partnerFields.style.display = "block";
-                } else {
-                    partnerFields.style.display = "none";
-                }
-            }
-        });
-    });
-});
 </script>
 {% endblock %}
-
-
 
 
