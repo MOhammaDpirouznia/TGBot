@@ -13671,6 +13671,7 @@ def reseller_reports():
     analytics = db.get_advanced_analytics(reseller_id=reseller_id)
     fin_summary = db.get_reseller_financial_summary(reseller_id)
     monthly_audit = db.get_monthly_accounting_audit(reseller_id=reseller_id, days=30)
+    history = db.get_reseller_full_payment_history(reseller_id)
 
     return render_template(
         "reseller_reports.html",
@@ -13678,6 +13679,7 @@ def reseller_reports():
         stats=stats,
         fin_summary=fin_summary,
         monthly_audit=monthly_audit,
+        history=history,
         popular_plans=analytics.get("popular_plans", []),
         top_users_month=analytics.get("top_users_month", []),
         top_users_year=analytics.get("top_users_year", []),
@@ -13745,24 +13747,131 @@ def reseller_reports_export_monthly_audit():
 @app.route("/reseller/payments")
 @reseller_required
 def reseller_payments():
-    """صفحه اختصاصی سوابق پرداخت‌ها، فیش‌های ارسالی و تراکنش‌های نماینده"""
+    """ادغام شده با صفحه جامع گزارشات و سوابق مالی"""
+    return redirect(url_for("reseller_reports", tab="payments"))
+
+
+# ==========================================
+# Reseller Accounting & Profit Balance
+# ==========================================
+
+@app.route("/reseller/accounting")
+@reseller_required
+def reseller_accounting():
+    """سیستم حسابداری، تراز سود و محاسبه درآمد ماهانه نماینده"""
+    import jdatetime
     reseller_id = session.get("reseller_id")
     reseller = db.get_reseller(reseller_id)
     if not reseller:
         flash("اطلاعات نماینده یافت نشد.", "danger")
         return redirect(url_for("reseller_dashboard"))
 
-    history = db.get_reseller_full_payment_history(reseller_id)
-    notifications = db.get_reseller_notifications(reseller_id, limit=20)
-    unread_count = db.get_reseller_unread_notifications_count(reseller_id)
-    
+    now_j = jdatetime.datetime.now()
+    current_year = now_j.year
+    try:
+        selected_year = int(request.args.get("year", current_year))
+    except (ValueError, TypeError):
+        selected_year = current_year
+
+    summary = db.get_reseller_accounting_summary(reseller_id, year=selected_year)
+    monthly_stats = db.get_reseller_jalali_monthly_accounting(reseller_id, year=selected_year)
+    transactions = db.get_reseller_accounting_transactions(reseller_id, year=selected_year)
+    available_years = [current_year - 2, current_year - 1, current_year, current_year + 1]
+    reseller_cards = db.get_reseller_cards(reseller_id) if hasattr(db, 'get_reseller_cards') else []
+
     return render_template(
-        "reseller_payments.html",
+        "reseller_accounting.html",
         reseller=reseller,
-        history=history,
-        notifications=notifications,
-        unread_count=unread_count
+        summary=summary,
+        monthly_stats=monthly_stats,
+        transactions=transactions,
+        selected_year=selected_year,
+        current_year=current_year,
+        current_month=now_j.month,
+        available_years=available_years,
+        reseller_cards=reseller_cards
     )
+
+@app.route("/api/reseller/accounting/add", methods=["POST"])
+@reseller_required
+def api_reseller_accounting_add():
+    reseller_id = session.get("reseller_id")
+    rtype = request.form.get("type", "expense")
+    category = request.form.get("category", "متفرقه")
+    title = request.form.get("title", "").strip()
+    amount_str = request.form.get("amount", "0").replace(",", "").strip()
+    project = request.form.get("project", "عمومی / بدون پروژه").strip() or "عمومی / بدون پروژه"
+    card_name = request.form.get("card_name", "").strip() or None
+    description = request.form.get("description", "").strip()
+    date_str = request.form.get("date", "").strip() or None
+
+    try:
+        amount = int(amount_str)
+    except ValueError:
+        flash("مبلغ وارد شده نامعتبر است.", "danger")
+        return redirect(url_for("reseller_accounting"))
+
+    if not title:
+        flash("عنوان تراکنش الزامی است.", "warning")
+        return redirect(url_for("reseller_accounting"))
+
+    res = db.add_reseller_accounting_record(
+        reseller_id=reseller_id,
+        rtype=rtype,
+        category=category,
+        title=title,
+        amount=amount,
+        project=project,
+        card_name=card_name,
+        description=description,
+        date_str=date_str
+    )
+    if res.get("success"):
+        flash("تراکنش جدید با موفقیت ثبت شد.", "success")
+    else:
+        flash(f"خطا در ثبت تراکنش: {res.get('error')}", "danger")
+    return redirect(url_for("reseller_accounting"))
+
+@app.route("/api/reseller/accounting/delete/<int:record_id>", methods=["POST"])
+@reseller_required
+def api_reseller_accounting_delete(record_id):
+    reseller_id = session.get("reseller_id")
+    res = db.delete_reseller_accounting_record(record_id, reseller_id)
+    if res.get("success"):
+        flash("تراکنش با موفقیت حذف شد.", "success")
+    else:
+        flash("خطا در حذف تراکنش.", "danger")
+    return redirect(url_for("reseller_accounting"))
+
+@app.route("/api/reseller/accounting/edit/<int:record_id>", methods=["POST"])
+@reseller_required
+def api_reseller_accounting_edit(record_id):
+    reseller_id = session.get("reseller_id")
+    rtype = request.form.get("type")
+    category = request.form.get("category")
+    title = request.form.get("title")
+    amount_str = request.form.get("amount", "0").replace(",", "").strip()
+    project = request.form.get("project")
+    card_name = request.form.get("card_name")
+    description = request.form.get("description")
+
+    updates = {}
+    if rtype: updates["type"] = rtype
+    if category: updates["category"] = category
+    if title: updates["title"] = title
+    if amount_str:
+        try: updates["amount"] = int(amount_str)
+        except ValueError: pass
+    if project: updates["project"] = project
+    if card_name is not None: updates["card_name"] = card_name
+    if description is not None: updates["description"] = description
+
+    res = db.update_reseller_accounting_record(record_id, reseller_id, **updates)
+    if res.get("success"):
+        flash("تراکنش با موفقیت ویرایش شد.", "success")
+    else:
+        flash("خطا در ویرایش تراکنش.", "danger")
+    return redirect(url_for("reseller_accounting"))
 
 
 @app.route("/reseller/payments/export")

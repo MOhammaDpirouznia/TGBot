@@ -24,6 +24,24 @@
     </div>
 </div>
 
+
+<!-- تب‌های اصلی صفحه ادغام‌شده گزارشات و سوابق مالی -->
+<ul class="nav nav-pills mb-4 gap-2 bg-light p-2 rounded-4 border" id="reportsMainTab" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link {% if request.args.get('tab') != 'payments' %}active{% endif %} fw-bold px-4 py-2 rounded-3" id="analytics-tab" data-bs-toggle="pill" data-bs-target="#analytics-tab-content" type="button" role="tab">
+            <i class="fas fa-chart-pie me-2 text-primary"></i> هوش مالی و تحلیل عملکرد فروش
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link {% if request.args.get('tab') == 'payments' %}active{% endif %} fw-bold px-4 py-2 rounded-3" id="payments-history-tab" data-bs-toggle="pill" data-bs-target="#payments-history-content" type="button" role="tab">
+            <i class="fas fa-file-invoice-dollar me-2 text-success"></i> سوابق مالی و تراکنش‌ها (فیش‌ها و کیف‌پول)
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content" id="reportsMainTabContent">
+    <!-- تب ۱: هوش مالی و گزارشات -->
+    <div class="tab-pane fade {% if request.args.get('tab') != 'payments' %}show active{% endif %}" id="analytics-tab-content" role="tabpanel">
 <!-- بخش گردش حسابرسی ۳۰ روزه (ماه اخیر) نماینده -->
 {% set ma = monthly_audit or {} %}
 {% set masum = ma.get('summary') or ma %}
@@ -699,4 +717,12 @@
     }
 })();
 </script>
+
+    </div>
+
+    <!-- تب ۲: سوابق مالی و فیش‌های پرداختی (ادغام‌شده) -->
+    <div class="tab-pane fade {% if request.args.get('tab') == 'payments' %}show active{% endif %}" id="payments-history-content" role="tabpanel">
+
+    </div>
+</div>
 {% endblock %}

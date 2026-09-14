@@ -1556,7 +1556,7 @@
                 </a>
 
                 <!-- منوی کشویی امور مالی و گزارشات -->
-                {% set is_finance_active = request.endpoint in ['reseller_payments', 'reseller_discounts', 'reseller_reports', 'reseller_affiliates'] %}
+                {% set is_finance_active = request.endpoint in ['reseller_accounting', 'reseller_reports', 'reseller_payments', 'reseller_discounts', 'reseller_affiliates'] %}
                 <button class="sidebar-dropdown-toggle {% if is_finance_active %}has-active{% endif %}" 
                         type="button" 
                         data-bs-toggle="collapse" 
@@ -1571,17 +1571,17 @@
                 </button>
                 <div class="collapse submenu-collapse {% if is_finance_active %}show{% endif %}" id="resellerFinanceCollapse">
                     <div class="submenu-inner">
-                        <a class="submenu-item {% if request.endpoint == 'reseller_payments' %}active{% endif %}" href="{{ url_for('reseller_payments') }}">
-                            <i class="fas fa-file-invoice-dollar text-primary"></i> سوابق مالی
+                        <a class="submenu-item {% if request.endpoint == 'reseller_accounting' %}active{% endif %}" href="{{ url_for('reseller_accounting') }}">
+                            <i class="fas fa-scale-balanced text-primary"></i> حسابداری و تراز سود
+                        </a>
+                        <a class="submenu-item {% if request.endpoint in ['reseller_reports', 'reseller_payments'] %}active{% endif %}" href="{{ url_for('reseller_reports') }}">
+                            <i class="fas fa-chart-line text-success"></i> گزارشات و سوابق مالی
                         </a>
                         {% if not sub_role or sub_role in ['partner', 'manager2'] %}
                         <a class="submenu-item {% if request.endpoint == 'reseller_discounts' %}active{% endif %}" href="{{ url_for('reseller_discounts') }}">
                             <i class="fas fa-ticket text-danger"></i> کدهای تخفیف
                         </a>
                         {% endif %}
-                        <a class="submenu-item {% if request.endpoint == 'reseller_reports' %}active{% endif %}" href="{{ url_for('reseller_reports') }}">
-                            <i class="fas fa-chart-line text-success"></i> گزارشات و هوش مالی
-                        </a>
                         <a class="submenu-item {% if request.endpoint == 'reseller_affiliates' %}active{% endif %}" href="{{ url_for('reseller_affiliates') }}">
                             <i class="fas fa-users-rays text-warning"></i> زیرمجموعه‌گیری و پورسانت
                         </a>

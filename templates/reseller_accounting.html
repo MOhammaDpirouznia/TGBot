@@ -1,0 +1,666 @@
+{% extends "base.html" %}
+{% block title %}حسابداری، تراز سود و درآمد ماهانه - پنل نمایندگی{% endblock %}
+
+{% block styles %}
+<style>
+:root {
+    --card-dark-bg: #161f30;
+    --box-dark-bg: #1e293b;
+    --border-dark-color: rgba(255, 255, 255, 0.08);
+}
+.accounting-dark-card {
+    background: #111827;
+    border: 1px solid var(--border-dark-color);
+    border-radius: 1.25rem;
+}
+.month-box {
+    background: #1e293b;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 1rem;
+    padding: 1.1rem 0.8rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+    position: relative;
+    user-select: none;
+}
+.month-box:hover {
+    background: #273549;
+    transform: translateY(-2px);
+    border-color: rgba(59, 130, 246, 0.4);
+}
+.month-box.active {
+    border: 2px solid #3b82f6 !important;
+    background: #1e2e48 !important;
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.35);
+}
+.month-box .current-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: #2563eb;
+    color: #fff;
+    font-size: 0.65rem;
+    padding: 2px 6px;
+    border-radius: 6px;
+    font-weight: 700;
+}
+.month-box .month-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #f1f5f9;
+    margin-bottom: 0.35rem;
+}
+.month-box .month-amount {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #34d399;
+}
+.month-box .month-amount.zero {
+    color: #94a3b8;
+    font-weight: 500;
+}
+
+.filter-pill-btn {
+    background: transparent;
+    color: #94a3b8;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 2rem;
+    padding: 0.45rem 1.1rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+.filter-pill-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+}
+.filter-pill-btn.active {
+    background: #2563eb;
+    color: #fff;
+    border-color: #2563eb;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.tx-item-card {
+    background: #161f30;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 1rem;
+    padding: 1.1rem 1.25rem;
+    transition: all 0.2s ease;
+}
+.tx-item-card:hover {
+    background: #1c283f;
+    border-color: rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
+}
+.badge-purple {
+    background: rgba(147, 51, 234, 0.15);
+    color: #c084fc;
+    border: 1px solid rgba(147, 51, 234, 0.3);
+}
+.badge-blue {
+    background: rgba(37, 99, 235, 0.15);
+    color: #60a5fa;
+    border: 1px solid rgba(37, 99, 235, 0.3);
+}
+.badge-orange {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.badge-green {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+.badge-red {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+.badge-gray {
+    background: rgba(255, 255, 255, 0.07);
+    color: #cbd5e1;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3 px-lg-4">
+
+    <!-- ردیف ۰: سربرگ صفحه و تغییر سال -->
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+        <div>
+            <h1 class="page-title mb-1 text-white fw-bold"><i class="fas fa-scale-balanced text-primary me-2"></i>حسابداری و تراز سود نماینده</h1>
+            <p class="text-muted mb-0 small">گزارش تراز مالی، تفکیک ماهانه درآمد، وضعیت صندوق پس‌انداز و سهم شرکا</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <!-- انتخاب سال -->
+            <div class="dropdown">
+                <button class="btn btn-dark border border-secondary px-3 py-2 fw-bold dropdown-toggle rounded-3" type="button" data-bs-toggle="dropdown">
+                    <i class="fas fa-calendar-days text-info me-1"></i> سال جلالی: {{ selected_year }}
+                </button>
+                <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end shadow">
+                    {% for y in available_years %}
+                    <li><a class="dropdown-item {% if y == selected_year %}active{% endif %}" href="{{ url_for('reseller_accounting', year=y) }}">سال {{ y }} {% if y == current_year %}(سال جاری){% endif %}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+            <!-- ثبت تراکنش جدید -->
+            <button type="button" class="btn btn-primary fw-bold px-3 py-2 rounded-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#addRecordModal">
+                <i class="fas fa-plus me-1"></i> ثبت رکورد مالی
+            </button>
+        </div>
+    </div>
+
+    <!-- ردیف ۱: بلوک‌های کلیدی خلاصه مالی (شاخص‌های بالا) -->
+    <div class="row g-3 mb-4">
+        <!-- کل درآمد ناخالص -->
+        <div class="col-12 col-sm-6 col-xl-2">
+            <div class="card h-100 border-0 shadow-sm rounded-4 p-3 bg-dark" style="background: #161f30 !important; border: 1px solid rgba(255,255,255,0.06) !important;">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="text-muted small">کل فروش و درآمد</span>
+                    <div class="badge bg-primary bg-opacity-10 text-primary p-2 rounded-3"><i class="fas fa-sack-dollar"></i></div>
+                </div>
+                <h4 class="fw-bold text-white font-monospace mb-1">{{ "{:,}".format(summary.total_income or 0) }}</h4>
+                <small class="text-muted" style="font-size: 11px;">فروش اشتراک + درآمدها</small>
+            </div>
+        </div>
+
+        <!-- سود خالص نماینده -->
+        <div class="col-12 col-sm-6 col-xl-2">
+            <div class="card h-100 border-0 shadow-sm rounded-4 p-3 bg-dark" style="background: #161f30 !important; border: 1px solid rgba(255,255,255,0.06) !important;">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="text-muted small">سود خالص کل</span>
+                    <div class="badge bg-success bg-opacity-10 text-success p-2 rounded-3"><i class="fas fa-chart-line"></i></div>
+                </div>
+                <h4 class="fw-bold text-success font-monospace mb-1">{{ "{:,}".format(summary.net_profit or 0) }}</h4>
+                <small class="text-muted" style="font-size: 11px;">پس از کسر هزینه‌های خرید</small>
+            </div>
+        </div>
+
+        <!-- سهم شرکا -->
+        <div class="col-12 col-sm-6 col-xl-2">
+            <div class="card h-100 border-0 shadow-sm rounded-4 p-3 bg-dark" style="background: #161f30 !important; border: 1px solid rgba(255,255,255,0.06) !important;">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="text-muted small">سهم شرکا</span>
+                    <div class="badge bg-warning bg-opacity-10 text-warning p-2 rounded-3"><i class="fas fa-handshake"></i></div>
+                </div>
+                <h4 class="fw-bold text-warning font-monospace mb-1">{{ "{:,}".format(summary.total_partner_shares or 0) }}</h4>
+                <small class="text-muted" style="font-size: 11px;">سهم صندوق‌های شراکت</small>
+            </div>
+        </div>
+
+        <!-- موجودی صندوق پس‌انداز -->
+        <div class="col-12 col-sm-6 col-xl-2">
+            <div class="card h-100 border-0 shadow-sm rounded-4 p-3 bg-dark" style="background: #161f30 !important; border: 1px solid rgba(255,255,255,0.06) !important;">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="text-muted small">موجودی صندوق پس‌انداز</span>
+                    <div class="badge bg-purple bg-opacity-10 text-purple p-2 rounded-3" style="color: #c084fc;"><i class="fas fa-piggy-bank"></i></div>
+                </div>
+                <h4 class="fw-bold text-info font-monospace mb-1">{{ "{:,}".format(summary.savings_balance or 0) }}</h4>
+                <small class="text-muted" style="font-size: 11px;">موجودی حساب‌های پس‌انداز</small>
+            </div>
+        </div>
+
+        <!-- مجموع تسویه‌ها -->
+        <div class="col-12 col-sm-6 col-xl-2">
+            <div class="card h-100 border-0 shadow-sm rounded-4 p-3 bg-dark" style="background: #161f30 !important; border: 1px solid rgba(255,255,255,0.06) !important;">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="text-muted small">مجموع تسویه‌ها</span>
+                    <div class="badge bg-info bg-opacity-10 text-info p-2 rounded-3"><i class="fas fa-receipt"></i></div>
+                </div>
+                <h4 class="fw-bold text-white font-monospace mb-1">{{ "{:,}".format(summary.total_settlements or 0) }}</h4>
+                <small class="text-muted" style="font-size: 11px;">تسویه بدهی و واریزها</small>
+            </div>
+        </div>
+
+        <!-- وضعیت کیف پول و اعتبار -->
+        <div class="col-12 col-sm-6 col-xl-2">
+            <div class="card h-100 border-0 shadow-sm rounded-4 p-3 bg-dark" style="background: #161f30 !important; border: 1px solid rgba(255,255,255,0.06) !important;">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="text-muted small">موجودی نقدی / بدهی</span>
+                    <div class="badge bg-secondary bg-opacity-10 text-secondary p-2 rounded-3"><i class="fas fa-wallet"></i></div>
+                </div>
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <div class="fw-bold text-success font-monospace" style="font-size: 0.95rem;">{{ "{:,}".format(summary.balance or 0) }} <small class="text-muted">نقد</small></div>
+                        <div class="fw-bold text-danger font-monospace" style="font-size: 0.85rem;">{{ "{:,}".format(summary.credit_debt or 0) }} <small class="text-muted">بدهی</small></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ردیف ۲: کادر محاسبه درآمد ماهانه (سال انتخابی) - دقیقاً مطابق تصویر ارسالی -->
+    <div class="accounting-dark-card p-4 mb-4">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <div>
+                <span class="text-white fw-bold fs-5">محاسبه درآمد ماهانه (سال {{ selected_year }})</span>
+                <span class="text-muted small ms-2">کلیک روی هر ماه جهت فیلتر لیست تراکنش‌ها</span>
+            </div>
+            <button type="button" class="btn btn-link text-info p-0 text-decoration-none small fw-semibold" id="resetMonthFilterBtn" onclick="filterByMonth('all')">
+                نمایش همه ماه‌ها (لغو فیلتر ماه)
+            </button>
+        </div>
+
+        <!-- ۱۲ باکس ماهانه در دو ردیف ۶ تایی -->
+        <div class="row g-2 mb-2">
+            <!-- ردیف اول: فروردین تا شهریور -->
+            {% for m in monthly_stats[:6] %}
+            <div class="col-6 col-md-4 col-lg-2">
+                <div class="month-box" data-month="{{ m.month }}" onclick="filterByMonth('{{ m.month }}')">
+                    {% if m.is_current %}
+                    <span class="current-badge">جاری</span>
+                    {% endif %}
+                    <div class="month-title">{{ m.name }}</div>
+                    <div class="month-amount {% if m.profit == 0 %}zero{% endif %} font-monospace">
+                        {{ "{:,}".format(m.profit) }} تومان
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="row g-2">
+            <!-- ردیف دوم: مهر تا اسفند -->
+            {% for m in monthly_stats[6:] %}
+            <div class="col-6 col-md-4 col-lg-2">
+                <div class="month-box" data-month="{{ m.month }}" onclick="filterByMonth('{{ m.month }}')">
+                    {% if m.is_current %}
+                    <span class="current-badge">جاری</span>
+                    {% endif %}
+                    <div class="month-title">{{ m.name }}</div>
+                    <div class="month-amount {% if m.profit == 0 %}zero{% endif %} font-monospace">
+                        {{ "{:,}".format(m.profit) }} تومان
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- ردیف ۳: فیلترها و لیست تراکنش‌ها - دقیقاً مطابق بخش پایینی تصویر -->
+    <div class="accounting-dark-card p-4">
+        <!-- نوار تب‌های فیلتر، پروژه و مرتب‌سازی -->
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 pb-3 border-bottom border-secondary border-opacity-25">
+            <!-- تب‌های فیلتر نوع تراکنش -->
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="filter-pill-btn active" data-type-filter="all" onclick="filterByType('all')">همه تراکنش‌ها</button>
+                <button type="button" class="filter-pill-btn" data-type-filter="customer" onclick="filterByType('customer')">دریافتی از مشتریان</button>
+                <button type="button" class="filter-pill-btn" data-type-filter="settlement" onclick="filterByType('settlement')">تسویه‌حساب‌ها</button>
+                <button type="button" class="filter-pill-btn" data-type-filter="expense" onclick="filterByType('expense')">هزینه‌ها</button>
+                <button type="button" class="filter-pill-btn" data-type-filter="savings" onclick="filterByType('savings')">صندوق پس‌انداز مشترک</button>
+            </div>
+
+            <!-- فیلتر پروژه و مرتب‌سازی -->
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+                <!-- انتخاب پروژه -->
+                <div class="d-flex align-items-center gap-2">
+                    <span class="text-muted small">پروژه:</span>
+                    <select class="form-select form-select-sm bg-dark text-white border-secondary rounded-pill px-3" id="projectFilterSelect" onchange="applyFilters()" style="width: auto;">
+                        <option value="all">همه پروژه‌ها</option>
+                        {% for proj in summary.projects %}
+                        <option value="{{ proj }}">{{ proj }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- مرتب‌سازی -->
+                <div class="d-flex align-items-center gap-2">
+                    <select class="form-select form-select-sm bg-dark text-white border-secondary rounded-pill px-3" id="sortBySelect" onchange="applySorting()" style="width: auto;">
+                        <option value="newest">↓ مرتب‌سازی: جدیدترین تاریخ اول</option>
+                        <option value="oldest">↑ مرتب‌سازی: قدیمی‌ترین تاریخ اول</option>
+                        <option value="highest">↓ مرتب‌سازی: بیشترین مبلغ</option>
+                        <option value="lowest">↑ مرتب‌سازی: کمترین مبلغ</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- پیام فیلتر فعال -->
+        <div id="activeFilterNotice" class="alert alert-info py-2 px-3 mb-3 d-none rounded-3 d-flex justify-content-between align-items-center">
+            <span id="activeFilterText">در حال نمایش تراکنش‌های فیلتر شده...</span>
+            <button class="btn btn-sm btn-outline-info py-0" onclick="resetAllFilters()">پاک کردن همه فیلترها</button>
+        </div>
+
+        <!-- لیست کارت‌های تراکنش -->
+        <div id="transactionsContainer">
+            {% if transactions %}
+                {% for tx in transactions %}
+                <div class="tx-item-card mb-3 d-flex justify-content-between align-items-center flex-wrap gap-3" 
+                     data-month="{{ tx.jalali_month }}" 
+                     data-type="{{ tx.type }}" 
+                     data-project="{{ tx.project }}"
+                     data-amount="{{ tx.amount }}"
+                     data-time="{{ tx.timestamp }}">
+                    
+                    <!-- سمت چپ: دکمه‌های عملیات (حذف و ویرایش) -->
+                    <div class="d-flex align-items-center gap-2">
+                        {% if tx.can_edit %}
+                        <button type="button" class="btn btn-link text-danger p-1 text-decoration-none" title="حذف" onclick="deleteRecord('{{ tx.id }}')">
+                            <i class="fas fa-trash-can"></i>
+                        </button>
+                        <button type="button" class="btn btn-link text-info p-1 text-decoration-none" title="ویرایش" onclick="openEditModal('{{ tx.id }}', '{{ tx.type }}', '{{ tx.title }}', '{{ tx.amount }}', '{{ tx.project }}', '{{ tx.description }}')">
+                            <i class="fas fa-pen-to-square"></i>
+                        </button>
+                        {% else %}
+                        <span class="text-muted" style="font-size: 0.8rem;" title="تراکنش سیستمی غیرقابل ویرایش دستی"><i class="fas fa-lock"></i></span>
+                        {% endif %}
+                    </div>
+
+                    <!-- سمت راست: جزئیات تراکنش، مبالغ، بج‌ها، تاریخ و زمان (راست‌چین RTL) -->
+                    <div class="d-flex align-items-center gap-3 flex-wrap ms-auto">
+                        <!-- جزئیات، بج‌ها و توضیحات -->
+                        <div class="text-end">
+                            <div class="d-flex align-items-center gap-2 mb-1 justify-content-end flex-wrap">
+                                <span class="fs-5 fw-bold text-white font-monospace">{{ "{:,}".format(tx.amount) }} تومان</span>
+                                
+                                <!-- بج نوع تراکنش -->
+                                {% if tx.type == 'savings' %}
+                                <span class="badge badge-purple px-2 py-1">{{ tx.type_label }}</span>
+                                {% elif tx.type == 'customer' %}
+                                <span class="badge badge-blue px-2 py-1">{{ tx.type_label }}</span>
+                                {% elif tx.type == 'settlement' %}
+                                <span class="badge badge-orange px-2 py-1">{{ tx.type_label }}</span>
+                                {% elif tx.type == 'expense' %}
+                                <span class="badge badge-red px-2 py-1">{{ tx.type_label }}</span>
+                                {% else %}
+                                <span class="badge badge-green px-2 py-1">{{ tx.type_label }}</span>
+                                {% endif %}
+
+                                <!-- بج بانک -->
+                                {% if tx.bank_name %}
+                                <span class="badge badge-gray px-2 py-1">{{ tx.bank_name }}</span>
+                                {% endif %}
+
+                                <!-- بج پروژه -->
+                                <span class="badge bg-dark text-muted border border-secondary border-opacity-25 px-2 py-1">({{ tx.project }})</span>
+
+                                <!-- یادداشت منبع -->
+                                {% if tx.source_note %}
+                                <span class="small text-muted font-monospace">{{ tx.source_note }}</span>
+                                {% endif %}
+                            </div>
+
+                            <!-- شرح زیر خط -->
+                            {% if tx.description %}
+                            <div class="small text-white-50">{{ tx.description }}</div>
+                            {% endif %}
+                        </div>
+
+                        <!-- تاریخ و ساعت (انتهای سمت راست در چیدمان RTL) -->
+                        <div class="text-end border-start pe-3 ps-3 border-secondary border-opacity-25" style="min-width: 120px;">
+                            <div class="fw-bold text-white small font-monospace">{{ tx.jalali_date }}</div>
+                            <div class="text-muted" style="font-size: 0.75rem;">{{ tx.jalali_time }}</div>
+                        </div>
+                    </div>
+
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="text-center py-5 text-muted">
+                    <i class="fas fa-folder-open fs-1 d-block mb-3 opacity-25"></i>
+                    <p class="mb-0">هیچ تراکنشی برای سال {{ selected_year }} یافت نشد.</p>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- پیام بدون نتیجه فیلتر -->
+        <div id="noResultsNotice" class="text-center py-5 text-muted d-none">
+            <i class="fas fa-filter-circle-xmark fs-2 d-block mb-2 opacity-50"></i>
+            <p class="mb-0">تراکنشی با فیلترهای انتخابی شما یافت نشد.</p>
+        </div>
+
+    </div>
+
+</div>
+
+<!-- مودال ثبت تراکنش / هزینه جدید -->
+<div class="modal fade" id="addRecordModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark text-white border border-secondary shadow-lg">
+            <form action="{{ url_for('api_reseller_accounting_add') }}" method="POST">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-plus-circle text-primary me-2"></i>ثبت رکورد مالی جدید</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">نوع تراکنش <span class="text-danger">*</span></label>
+                            <select name="type" class="form-select bg-dark text-white border-secondary" required>
+                                <option value="income">درآمد / دریافت از مشتری</option>
+                                <option value="expense" selected>هزینه جاری</option>
+                                <option value="savings">واریز به صندوق پس‌انداز</option>
+                                <option value="settlement">تسویه‌حساب</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">دسته‌بندی</label>
+                            <input type="text" name="category" class="form-control bg-dark text-white border-secondary" placeholder="مثال: هزینه سرور / شارژ">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">عنوان تراکنش <span class="text-danger">*</span></label>
+                            <input type="text" name="title" class="form-control bg-dark text-white border-secondary" placeholder="مثال: خرید تجهیزات سرور" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">مبلغ (تومان) <span class="text-danger">*</span></label>
+                            <input type="number" name="amount" class="form-control bg-dark text-white border-secondary font-monospace" placeholder="مثال: 500000" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">پروژه / برچسب</label>
+                            <input type="text" name="project" class="form-control bg-dark text-white border-secondary" placeholder="عمومی / بدون پروژه" value="عمومی / بدون پروژه">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">نام بانک / کارت مقصد</label>
+                            <input type="text" name="card_name" class="form-control bg-dark text-white border-secondary" placeholder="مثال: سپه / بلوبانک">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">توضیحات تکمیلی</label>
+                            <textarea name="description" class="form-control bg-dark text-white border-secondary" rows="2" placeholder="توضیحات اختیاری..."></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary fw-bold px-4">ثبت رکورد</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- مودال ویرایش رکورد مالی -->
+<div class="modal fade" id="editRecordModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark text-white border border-secondary shadow-lg">
+            <form id="editRecordForm" method="POST">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-edit text-info me-2"></i>ویرایش تراکنش</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">نوع تراکنش</label>
+                            <select name="type" id="editRecType" class="form-select bg-dark text-white border-secondary" required>
+                                <option value="income">درآمد / دریافت از مشتری</option>
+                                <option value="expense">هزینه</option>
+                                <option value="savings">واریز به صندوق پس‌انداز</option>
+                                <option value="settlement">تسویه‌حساب</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">مبلغ (تومان)</label>
+                            <input type="number" name="amount" id="editRecAmount" class="form-control bg-dark text-white border-secondary font-monospace" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">عنوان تراکنش</label>
+                            <input type="text" name="title" id="editRecTitle" class="form-control bg-dark text-white border-secondary" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">پروژه</label>
+                            <input type="text" name="project" id="editRecProject" class="form-control bg-dark text-white border-secondary">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">نام بانک / کارت</label>
+                            <input type="text" name="card_name" id="editRecCardName" class="form-control bg-dark text-white border-secondary">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">توضیحات</label>
+                            <textarea name="description" id="editRecDescription" class="form-control bg-dark text-white border-secondary" rows="2"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-info fw-bold px-4">ذخیره تغییرات</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- فرم مخفی برای حذف رکورد -->
+<form id="deleteRecordForm" method="POST" style="display: none;"></form>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentActiveMonth = 'all';
+let currentActiveType = 'all';
+
+function filterByMonth(monthNum) {
+    currentActiveMonth = monthNum;
+    
+    // بروزرسانی کلاس باکس‌های ماه
+    document.querySelectorAll('.month-box').forEach(box => {
+        if(box.getAttribute('data-month') === String(monthNum)) {
+            box.classList.add('active');
+        } else {
+            box.classList.remove('active');
+        }
+    });
+
+    applyFilters();
+}
+
+function filterByType(typeKey) {
+    currentActiveType = typeKey;
+
+    document.querySelectorAll('.filter-pill-btn').forEach(btn => {
+        if(btn.getAttribute('data-type-filter') === typeKey) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    applyFilters();
+}
+
+function applyFilters() {
+    const selectedProject = document.getElementById('projectFilterSelect').value;
+    const cards = document.querySelectorAll('.tx-item-card');
+    let visibleCount = 0;
+
+    cards.forEach(card => {
+        const cMonth = card.getAttribute('data-month');
+        const cType = card.getAttribute('data-type');
+        const cProject = card.getAttribute('data-project');
+
+        const matchMonth = (currentActiveMonth === 'all' || cMonth === String(currentActiveMonth));
+        const matchType = (currentActiveType === 'all' || cType === currentActiveType);
+        const matchProject = (selectedProject === 'all' || cProject === selectedProject);
+
+        if(matchMonth && matchType && matchProject) {
+            card.classList.remove('d-none');
+            visibleCount++;
+        } else {
+            card.classList.add('d-none');
+        }
+    });
+
+    // هشدار و وضعیت
+    const noResults = document.getElementById('noResultsNotice');
+    if(visibleCount === 0 && cards.length > 0) {
+        noResults.classList.remove('d-none');
+    } else {
+        noResults.classList.add('d-none');
+    }
+
+    const filterNotice = document.getElementById('activeFilterNotice');
+    const filterText = document.getElementById('activeFilterText');
+    if(currentActiveMonth !== 'all' || currentActiveType !== 'all' || selectedProject !== 'all') {
+        filterNotice.classList.remove('d-none');
+        let parts = [];
+        if(currentActiveMonth !== 'all') {
+            const activeBox = document.querySelector(`.month-box[data-month="${currentActiveMonth}"]`);
+            const mTitle = activeBox ? activeBox.querySelector('.month-title').innerText : `ماه ${currentActiveMonth}`;
+            parts.push(`ماه: ${mTitle}`);
+        }
+        if(currentActiveType !== 'all') {
+            const activeBtn = document.querySelector(`.filter-pill-btn[data-type-filter="${currentActiveType}"]`);
+            parts.push(`دسته‌بندی: ${activeBtn ? activeBtn.innerText : currentActiveType}`);
+        }
+        if(selectedProject !== 'all') {
+            parts.push(`پروژه: ${selectedProject}`);
+        }
+        filterText.innerText = `فیلترهای فعال: ${parts.join(' | ')} (${visibleCount} تراکنش)`;
+    } else {
+        filterNotice.classList.add('d-none');
+    }
+}
+
+function applySorting() {
+    const sortBy = document.getElementById('sortBySelect').value;
+    const container = document.getElementById('transactionsContainer');
+    const cards = Array.from(container.querySelectorAll('.tx-item-card'));
+
+    cards.sort((a, b) => {
+        const timeA = a.getAttribute('data-time') || '';
+        const timeB = b.getAttribute('data-time') || '';
+        const amtA = parseInt(a.getAttribute('data-amount') || '0', 10);
+        const amtB = parseInt(b.getAttribute('data-amount') || '0', 10);
+
+        if(sortBy === 'newest') return timeB.localeCompare(timeA);
+        if(sortBy === 'oldest') return timeA.localeCompare(timeB);
+        if(sortBy === 'highest') return amtB - amtA;
+        if(sortBy === 'lowest') return amtA - amtB;
+        return 0;
+    });
+
+    cards.forEach(c => container.appendChild(c));
+}
+
+function resetAllFilters() {
+    filterByMonth('all');
+    filterByType('all');
+    document.getElementById('projectFilterSelect').value = 'all';
+    applyFilters();
+}
+
+function openEditModal(id, type, title, amount, project, description) {
+    document.getElementById('editRecordForm').action = `/api/reseller/accounting/edit/${id}`;
+    document.getElementById('editRecType').value = type || 'expense';
+    document.getElementById('editRecAmount').value = amount || '';
+    document.getElementById('editRecTitle').value = title || '';
+    document.getElementById('editRecProject').value = project || 'عمومی / بدون پروژه';
+    document.getElementById('editRecDescription').value = description || '';
+    new bootstrap.Modal(document.getElementById('editRecordModal')).show();
+}
+
+function deleteRecord(id) {
+    if(confirm('آیا از حذف این رکورد مالی اطمینان دارید؟')) {
+        const form = document.getElementById('deleteRecordForm');
+        form.action = `/api/reseller/accounting/delete/${id}`;
+        form.submit();
+    }
+}
+</script>
+{% endblock %}
