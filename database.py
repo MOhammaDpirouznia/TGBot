@@ -9941,11 +9941,14 @@ class Database:
         cursor.execute("SELECT COALESCE(SUM(data_limit), 0) FROM subscriptions WHERE reseller_id=? AND (is_deleted=0 OR is_deleted IS NULL)", (reseller_id,))
         total_limit_gb = cursor.fetchone()[0] or 0
 
-        cursor.execute("""
-            SELECT COUNT(*) FROM customer_debt_settlements 
-            WHERE reseller_id = ? AND status = 'pending'
-        """, (reseller_id,))
-        pending_customer_receipts_count = cursor.fetchone()[0] or 0
+        try:
+            cursor.execute("""
+                SELECT COUNT(*) FROM transactions 
+                WHERE reseller_id = ? AND status = 'pending' AND (receipt_image IS NOT NULL OR gateway LIKE 'card%')
+            """, (reseller_id,))
+            pending_customer_receipts_count = cursor.fetchone()[0] or 0
+        except Exception:
+            pending_customer_receipts_count = 0
 
         cursor.execute("SELECT COUNT(*) FROM support_tickets WHERE reseller_id = ? AND status = 'open'", (reseller_id,))
         open_tickets_count = cursor.fetchone()[0] or 0
