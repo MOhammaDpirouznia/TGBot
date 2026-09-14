@@ -89,7 +89,7 @@ class Database:
 
     def get_connection(self):
         """دریافت اتصال دیتابیس"""
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=60)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         return conn
@@ -3863,6 +3863,16 @@ class Database:
         finally:
             conn.close()
 
+    def log_transaction_audit(self, transaction_id: int, action: str, admin_name: str, notes: str = None, admin_id: int = 0) -> dict:
+        """ثبت لاگ حسابرسی تراکنش (سازگاری کامل با فراخوانی‌های موجود)"""
+        return self.add_transaction_audit_log(
+            transaction_id=transaction_id,
+            admin_id=admin_id or 0,
+            admin_name=admin_name or "مدیر",
+            action=action,
+            reason=notes
+        )
+
     def get_transaction_audit_logs(self, tx_id: int) -> list:
         """دریافت لیست لاگ‌های حسابرسی یک تراکنش"""
         conn = self.get_connection()
@@ -7240,13 +7250,20 @@ class Database:
 
     def settle_customer_debt_record(self, subscription_id: int, record_id: int = None,
                                     amount: int = None, settled_by: str = "مدیریت",
-                                    order_id: str = None) -> dict:
+                                    order_id: str = None, target_card_id: int = None, **kwargs) -> dict:
         """
-        تسویه یک رسید بدهی خاص یا تسویه بخشی از بدهی مشتری با محاسبه دقیق مانده
+        تسویه یک رسید بدهی خاص یا تسویه بخشی از بدهی مشتری با محاسبه دقیق مانده،
+        ثبت تراکنش در بخش پرداخت‌ها و ثبت درآمد در حسابداری
         """
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
+        if not target_card_id and kwargs.get("target_card_id"):
+            try:
+                target_card_id = int(kwargs.get("target_card_id"))
+            except Exception:
+                target_card_id = None
+
         try:
             cursor.execute("SELECT * FROM subscriptions WHERE id = ?", (subscription_id,))
             sub_row = cursor.fetchone()
@@ -7255,6 +7272,8 @@ class Database:
 
             sub = dict(sub_row)
             current_debt = int(sub.get("debt_amount") or 0)
+            acc_name = sub.get("account_name") or f"sub_{subscription_id}"
+            effective_reseller_id = sub.get("reseller_id")
 
             if record_id:
                 cursor.execute("SELECT * FROM customer_debt_records WHERE id = ? AND subscription_id = ?", (record_id, subscription_id))
@@ -7309,27 +7328,68 @@ class Database:
 
             conn.commit()
 
-            # در صورت انتخاب کارت مقصد، واریز مبلغ به کارت ثبت شود
             settled_amount = current_debt - new_debt
-            target_card_id = kwargs.get("target_card_id")
-            if target_card_id and int(target_card_id) > 0 and settled_amount > 0:
-                effective_reseller_id = sub.get("reseller_id")
-                owner_type = "reseller" if (effective_reseller_id and int(effective_reseller_id) > 0) else "admin"
-                acc_name = sub.get("account_name") or f"sub_{subscription_id}"
-                self.add_card_transaction(
-                    card_id=int(target_card_id),
-                    owner_type=owner_type,
-                    owner_id=effective_reseller_id or 0,
-                    reseller_id=effective_reseller_id or 0,
-                    tx_type="deposit",
-                    amount=settled_amount,
-                    category="تسویه بدهی مشتری",
-                    title=f"تسویه بدهی {acc_name}",
-                    description=f"تسویه بخشی از بدهی مشتری {acc_name} به مبلغ {settled_amount:,} ت توسط {settled_by}",
-                    ref_type="subscription",
-                    ref_id=str(subscription_id),
-                    actor=settled_by
-                )
+            if settled_amount > 0:
+                tx_order_id = order_id or f"SETTLE_{subscription_id}_{int(time.time())}_{random.randint(100, 999)}"
+                gateway_val = f"card_{target_card_id}" if (target_card_id and int(target_card_id) > 0) else "cash"
+                source_val = "reseller_debt_settle" if (effective_reseller_id and int(effective_reseller_id) > 0) else "admin_debt_settle"
+                
+                # ثبت تراکنش در جدول پرداخت‌ها
+                try:
+                    self.save_transaction(
+                        order_id=tx_order_id,
+                        user_id=sub.get("telegram_id") or 0,
+                        username=sub.get("telegram_username") or acc_name,
+                        plan_name=f"تسویه بدهی - {sub.get('plan_name') or 'اشتراک'}",
+                        amount=settled_amount,
+                        gateway=gateway_val,
+                        tracking_code=f"SETTLE-{record_id or subscription_id}",
+                        status="approved",
+                        account_name=acc_name,
+                        account_comment=f"تسویه بدهی مشتری {acc_name} به مبلغ {settled_amount:,} ت توسط {settled_by}",
+                        is_renewal=0,
+                        renew_sub_id=subscription_id,
+                        reseller_id=effective_reseller_id,
+                        source=source_val
+                    )
+                except Exception as ex_tx:
+                    logger.error(f"Error saving transaction for debt settlement: {ex_tx}")
+
+                # ثبت درآمد در سیستم حسابداری
+                try:
+                    self.add_accounting_record(
+                        type="income",
+                        category="تسویه بدهی مشتری",
+                        title=f"تسویه بدهی {acc_name}",
+                        amount=settled_amount,
+                        source="debt_settle",
+                        ref_type="subscription",
+                        ref_id=str(subscription_id),
+                        description=f"تسویه بدهی مشتری {acc_name} به مبلغ {settled_amount:,} ت توسط {settled_by}"
+                    )
+                except Exception as ex_acc:
+                    logger.error(f"Error adding accounting record for debt settlement: {ex_acc}")
+
+                # در صورت انتخاب کارت مقصد، واریز مبلغ به کارت ثبت شود
+                if target_card_id and int(target_card_id) > 0:
+                    owner_type = "reseller" if (effective_reseller_id and int(effective_reseller_id) > 0) else "admin"
+                    try:
+                        self.add_card_transaction(
+                            card_id=int(target_card_id),
+                            owner_type=owner_type,
+                            owner_id=effective_reseller_id or 0,
+                            reseller_id=effective_reseller_id or 0,
+                            tx_type="deposit",
+                            amount=settled_amount,
+                            category="تسویه بدهی مشتری",
+                            title=f"تسویه بدهی {acc_name}",
+                            description=f"تسویه بدهی مشتری {acc_name} به مبلغ {settled_amount:,} ت توسط {settled_by}",
+                            ref_type="subscription",
+                            ref_id=str(subscription_id),
+                            actor=settled_by
+                        )
+                    except Exception as ex_card:
+                        logger.error(f"Error adding card transaction for debt settlement: {ex_card}")
 
             return {"success": True, "new_debt": new_debt, "new_status": new_status, "settled_amount": settled_amount}
         except Exception as e:
@@ -7338,11 +7398,20 @@ class Database:
         finally:
             conn.close()
 
-    def clear_subscription_debt(self, sub_id: int, reseller_id: int = None, settled_by: str = "مدیریت", order_id: str = None, target_card_id: int = None):
-        """تسویه کامل بدهی مشتری و ثبت وضعیت پرداخت شده در اشتراک، رسیدها و واریز به کارت بانکی مقصد در صورت انتخاب"""
+    def clear_subscription_debt(self, sub_id: int, reseller_id: int = None, settled_by: str = "مدیریت", order_id: str = None, target_card_id: int = None, **kwargs):
+        """
+        تسویه کامل بدهی مشتری و ثبت وضعیت پرداخت شده در اشتراک، رسیدها،
+        ثبت تراکنش مجزا در جدول پرداخت‌ها و واریز به کارت بانکی مقصد در صورت انتخاب
+        """
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
+        if not target_card_id and kwargs.get("target_card_id"):
+            try:
+                target_card_id = int(kwargs.get("target_card_id"))
+            except Exception:
+                target_card_id = None
+
         try:
             cursor.execute("SELECT * FROM subscriptions WHERE id = ?", (sub_id,))
             sub_row = cursor.fetchone()
@@ -7369,23 +7438,68 @@ class Database:
 
             conn.commit()
 
-            # واریز مبلغ بدهی تسویه‌شده به کارت مقصد انتخابی
-            if target_card_id and int(target_card_id) > 0 and prev_debt > 0:
-                owner_type = "reseller" if (effective_reseller_id and int(effective_reseller_id) > 0) else "admin"
-                self.add_card_transaction(
-                    card_id=int(target_card_id),
-                    owner_type=owner_type,
-                    owner_id=effective_reseller_id or 0,
-                    reseller_id=effective_reseller_id or 0,
-                    tx_type="deposit",
-                    amount=prev_debt,
-                    category="تسویه بدهی مشتری",
-                    title=f"تسویه بدهی {acc_name}",
-                    description=f"تسویه نقدی/کارت بدهی مشتری {acc_name} به مبلغ {prev_debt:,} ت توسط {settled_by}",
-                    ref_type="subscription",
-                    ref_id=str(sub_id),
-                    actor=settled_by
-                )
+            # ثبت تراکنش مجزا برای مشتری در صورتی که بدهی تسویه‌شده بزرگتر از صفر باشد
+            if prev_debt > 0:
+                tx_order_id = order_id or f"SETTLE_CLEAR_{sub_id}_{int(time.time())}_{random.randint(100, 999)}"
+                gateway_val = f"card_{target_card_id}" if (target_card_id and int(target_card_id) > 0) else "cash"
+                source_val = "reseller_debt_settle" if (effective_reseller_id and int(effective_reseller_id) > 0) else "admin_debt_settle"
+
+                # ثبت در جدول transactions
+                try:
+                    self.save_transaction(
+                        order_id=tx_order_id,
+                        user_id=sub.get("telegram_id") or 0,
+                        username=sub.get("telegram_username") or acc_name,
+                        plan_name=f"تسویه بدهی - {sub.get('plan_name') or 'اشتراک'}",
+                        amount=prev_debt,
+                        gateway=gateway_val,
+                        tracking_code=f"SETTLE-CLEAR-{sub_id}",
+                        status="approved",
+                        account_name=acc_name,
+                        account_comment=f"تسویه کامل بدهی مشتری {acc_name} به مبلغ {prev_debt:,} ت توسط {settled_by}",
+                        is_renewal=0,
+                        renew_sub_id=sub_id,
+                        reseller_id=effective_reseller_id,
+                        source=source_val
+                    )
+                except Exception as ex_tx:
+                    logger.error(f"Error saving transaction for clear_subscription_debt: {ex_tx}")
+
+                # ثبت درآمد در سیستم حسابداری
+                try:
+                    self.add_accounting_record(
+                        type="income",
+                        category="تسویه بدهی مشتری",
+                        title=f"تسویه بدهی {acc_name}",
+                        amount=prev_debt,
+                        source="debt_settle",
+                        ref_type="subscription",
+                        ref_id=str(sub_id),
+                        description=f"تسویه کامل بدهی مشتری {acc_name} به مبلغ {prev_debt:,} ت توسط {settled_by}"
+                    )
+                except Exception as ex_acc:
+                    logger.error(f"Error adding accounting record for clear_subscription_debt: {ex_acc}")
+
+                # واریز مبلغ بدهی تسویه‌شده به کارت مقصد انتخابی
+                if target_card_id and int(target_card_id) > 0:
+                    owner_type = "reseller" if (effective_reseller_id and int(effective_reseller_id) > 0) else "admin"
+                    try:
+                        self.add_card_transaction(
+                            card_id=int(target_card_id),
+                            owner_type=owner_type,
+                            owner_id=effective_reseller_id or 0,
+                            reseller_id=effective_reseller_id or 0,
+                            tx_type="deposit",
+                            amount=prev_debt,
+                            category="تسویه بدهی مشتری",
+                            title=f"تسویه بدهی {acc_name}",
+                            description=f"تسویه نقدی/کارت بدهی مشتری {acc_name} به مبلغ {prev_debt:,} ت توسط {settled_by}",
+                            ref_type="subscription",
+                            ref_id=str(sub_id),
+                            actor=settled_by
+                        )
+                    except Exception as ex_card:
+                        logger.error(f"Error adding card transaction for clear_subscription_debt: {ex_card}")
 
             return {"success": True, "settled_amount": prev_debt}
         except Exception as e:
@@ -9377,18 +9491,84 @@ class Database:
             pass
         return {"success": True}
 
-    def add_reseller_balance(self, reseller_id: int, amount: int, description: str = "شارژ کیف پول توسط مدیریت"):
-        """افزایش موجودی کیف پول نماینده"""
+    def add_reseller_balance(self, reseller_id: int, amount: int, description: str = "شارژ کیف پول توسط مدیریت",
+                             target_card_id: int = None, record_transaction: bool = True, actor: str = "مدیریت",
+                             **kwargs):
+        """
+        افزایش موجودی کیف پول نماینده، با ثبت در تراکنش‌ها، درآمد حسابداری و واریز به کارت مقصد
+        """
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         try:
+            cursor.execute("SELECT name, username, telegram_id FROM resellers WHERE id=?", (reseller_id,))
+            r_row = cursor.fetchone()
+            r_name = r_row["name"] if r_row else f"نماینده #{reseller_id}"
+            r_uname = r_row["username"] if r_row else ""
+            r_tg = r_row["telegram_id"] if r_row else 0
+
             cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at=? WHERE id=?", (amount, now, reseller_id))
             cursor.execute("""
                 INSERT INTO reseller_transactions (reseller_id, type, amount, description, created_at)
                 VALUES (?, 'deposit', ?, ?, ?)
             """, (reseller_id, amount, description, now))
             conn.commit()
+
+            # ثبت تراکنش در جدول transactions و ثبت درآمد در حسابداری
+            if record_transaction and amount > 0:
+                order_id = kwargs.get("order_id") or f"R_TOPUP_{reseller_id}_{int(time.time())}_{random.randint(100, 999)}"
+                gateway_val = f"card_{target_card_id}" if (target_card_id and int(target_card_id) > 0) else "admin_manual"
+                try:
+                    self.save_transaction(
+                        order_id=order_id,
+                        user_id=r_tg or 0,
+                        username=r_uname or r_name,
+                        plan_name="شارژ کیف پول نماینده",
+                        amount=amount,
+                        gateway=gateway_val,
+                        tracking_code=kwargs.get("tracking_code") or f"TOPUP-{reseller_id}-{int(time.time())}",
+                        status="approved",
+                        account_name=r_name,
+                        account_comment=description,
+                        reseller_id=reseller_id,
+                        source="admin_reseller_topup"
+                    )
+                except Exception as ex_t:
+                    logger.error(f"Error saving transaction for add_reseller_balance: {ex_t}")
+
+                try:
+                    self.add_accounting_record(
+                        type="income",
+                        category="شارژ نماینده",
+                        title=f"شارژ کیف پول نماینده {r_name}",
+                        amount=amount,
+                        source="reseller_topup",
+                        ref_type="reseller",
+                        ref_id=str(reseller_id),
+                        description=f"{description} (مبلغ: {amount:,} تومان) توسط {actor}"
+                    )
+                except Exception as ex_a:
+                    logger.error(f"Error adding accounting record for add_reseller_balance: {ex_a}")
+
+                if target_card_id and int(target_card_id) > 0:
+                    try:
+                        self.add_card_transaction(
+                            card_id=int(target_card_id),
+                            owner_type="admin",
+                            owner_id=0,
+                            reseller_id=0,
+                            tx_type="deposit",
+                            amount=amount,
+                            category="شارژ کیف پول نماینده",
+                            title=f"شارژ کیف پول {r_name}",
+                            description=f"واریز بابت شارژ کیف پول نماینده {r_name} ({amount:,} ت) توسط {actor}",
+                            ref_type="reseller",
+                            ref_id=str(reseller_id),
+                            actor=actor
+                        )
+                    except Exception as ex_c:
+                        logger.error(f"Error adding card transaction for add_reseller_balance: {ex_c}")
+
             return {"success": True}
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -9515,16 +9695,23 @@ class Database:
         finally:
             conn.close()
 
-    def settle_reseller_debt(self, reseller_id: int, amount: int, description: str = "تسویه بدهی اعتباری", settled_by: str = "مدیر ارشد") -> dict:
-        """ثبت تسویه حساب بدهی اعتباری نماینده توسط مدیریت"""
+    def settle_reseller_debt(self, reseller_id: int, amount: int, description: str = "تسویه بدهی اعتباری", settled_by: str = "مدیر ارشد", target_card_id: int = None, **kwargs) -> dict:
+        """ثبت تسویه حساب بدهی اعتباری نماینده توسط مدیریت، با ثبت در تراکنش‌ها، درآمد حسابداری و واریز به کارت مقصد"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
+        if not target_card_id and kwargs.get("target_card_id"):
+            try:
+                target_card_id = int(kwargs.get("target_card_id"))
+            except Exception:
+                target_card_id = None
+
         try:
-            cursor.execute("SELECT credit_debt, name, username FROM resellers WHERE id=?", (reseller_id,))
+            cursor.execute("SELECT credit_debt, name, username, telegram_id FROM resellers WHERE id=?", (reseller_id,))
             row = cursor.fetchone()
             if not row:
                 return {"success": False, "error": "نماینده یافت نشد."}
+            row = dict(row)
 
             current_debt = row["credit_debt"] or 0
             if amount <= 0:
@@ -9538,6 +9725,29 @@ class Database:
                 VALUES (?, 'settle_debt', ?, 'تسویه بدهی', ?, ?, ?)
             """, (reseller_id, amount, row["username"], f"{description} توسط {settled_by}", now))
 
+            conn.commit()
+
+            # ثبت تراکنش در جدول transactions
+            tx_order_id = kwargs.get("order_id") or f"R_SETTLE_{reseller_id}_{int(time.time())}_{random.randint(100, 999)}"
+            gateway_val = f"card_{target_card_id}" if (target_card_id and int(target_card_id) > 0) else "admin_manual"
+            try:
+                self.save_transaction(
+                    order_id=tx_order_id,
+                    user_id=row.get("telegram_id") or 0,
+                    username=row.get("username") or row.get("name"),
+                    plan_name="تسویه بدهی اعتباری نماینده",
+                    amount=amount,
+                    gateway=gateway_val,
+                    tracking_code=kwargs.get("tracking_code") or f"SETTLE-R-{reseller_id}-{int(time.time())}",
+                    status="approved",
+                    account_name=row.get("name"),
+                    account_comment=f"{description} توسط {settled_by}",
+                    reseller_id=reseller_id,
+                    source="reseller_debt_settle"
+                )
+            except Exception as ex_t:
+                logger.error(f"Error saving transaction for settle_reseller_debt: {ex_t}")
+
             # ثبت سند درآمدی تسویه در سیستم حسابداری
             try:
                 self.add_accounting_record(
@@ -9546,13 +9756,34 @@ class Database:
                     title=f"تسویه بدهی اعتباری نماینده {row['name']}",
                     amount=amount,
                     source="reseller_debt_settle",
+                    ref_type="reseller",
+                    ref_id=str(reseller_id),
                     description=f"{description} (مانده بدهی جدید: {new_debt:,} تومان)",
                     date=now[:10]
                 )
             except Exception:
                 pass
 
-            conn.commit()
+            # واریز مبلغ به کارت مقصد در صورت انتخاب
+            if target_card_id and int(target_card_id) > 0:
+                try:
+                    self.add_card_transaction(
+                        card_id=int(target_card_id),
+                        owner_type="admin",
+                        owner_id=0,
+                        reseller_id=0,
+                        tx_type="deposit",
+                        amount=amount,
+                        category="تسویه بدهی نماینده",
+                        title=f"تسویه بدهی {row['name']}",
+                        description=f"واریز بابت تسویه بدهی اعتباری نماینده {row['name']} ({amount:,} ت) توسط {settled_by}",
+                        ref_type="reseller",
+                        ref_id=str(reseller_id),
+                        actor=settled_by
+                    )
+                except Exception as ex_c:
+                    logger.error(f"Error adding card transaction for settle_reseller_debt: {ex_c}")
+
             return {"success": True, "remaining_debt": new_debt}
         except Exception as e:
             logger.error(f"Error settling reseller debt: {e}")

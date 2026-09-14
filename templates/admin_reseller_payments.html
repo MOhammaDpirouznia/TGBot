@@ -17,6 +17,9 @@
         <p class="text-muted mb-0">گزارش کامل واریزی‌ها، پیش‌خرید بسته‌های اعتباری، خریدهای اشتراک و تاریخچه مالی</p>
     </div>
     <div class="d-flex align-items-center gap-2">
+        <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#resellerManualPaymentPageModal">
+            <i class="fas fa-file-invoice-dollar me-1"></i> ثبت رسید و واریزی دستی
+        </button>
         <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#resetFinancesModal">
             <i class="fas fa-trash-can-arrow-up me-1"></i> ریست مالی و پاکسازی تستی
         </button>
@@ -959,6 +962,102 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
                     <button type="submit" class="btn btn-danger fw-bold px-4">
                         <i class="fas fa-check-double me-1"></i> تایید و ریست کامل مالی
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal ثبت رسید و واریزی دستی برای این نماینده -->
+<div class="modal fade text-start" id="resellerManualPaymentPageModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <form method="POST" action="{{ url_for('admin_reseller_add_manual_payment', reseller_id=reseller['id']) }}" enctype="multipart/form-data">
+                <div class="modal-header bg-success text-white py-3">
+                    <h5 class="modal-title fw-bold">
+                        <i class="fas fa-file-invoice-dollar me-2"></i>ثبت رسید و واریزی دستی برای {{ reseller['name'] }}
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-info py-2 px-3 mb-3 d-flex justify-content-between align-items-center small">
+                        <span>موجودی کیف پول فعلی: <strong>{{ "{:,}".format(reseller.get('balance', 0)) }} تومان</strong></span>
+                        <span>بدهی اعتباری: <strong class="text-danger">{{ "{:,}".format(reseller.get('credit_debt', 0)) }} تومان</strong></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">مبلغ واریزی (تومان) <span class="text-danger">*</span>:</label>
+                        <input type="number" name="amount" class="form-control font-monospace fw-bold" placeholder="مثال: 500000" min="1000" step="1000" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">نوع اقدام مالی:</label>
+                        <div class="d-flex flex-column gap-2 p-2 bg-light rounded border">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="action_type" id="pageActBalance" value="balance" checked>
+                                <label class="form-check-label fw-bold small text-success" for="pageActBalance">
+                                    <i class="fas fa-wallet me-1"></i> افزایش موجودی کیف پول نماینده (شارژ بالانس)
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="action_type" id="pageActDebt" value="debt">
+                                <label class="form-check-label fw-bold small text-danger" for="pageActDebt">
+                                    <i class="fas fa-hand-holding-dollar me-1"></i> تسویه بدهی اعتباری نماینده (مانده بدهی: {{ "{:,}".format(reseller.get('credit_debt', 0)) }} ت)
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="action_type" id="pageActReceipt" value="receipt_only">
+                                <label class="form-check-label small text-muted" for="pageActReceipt">
+                                    <i class="fas fa-receipt me-1"></i> صرفاً ثبت رسید مالی و درآمد (بدون تغییر کیف پول یا بدهی)
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">شیوه پرداخت:</label>
+                            <select name="payment_method" class="form-select form-select-sm">
+                                <option value="کارت به کارت (دستی)" selected>کارت به کارت (دستی)</option>
+                                <option value="واریز پایا / ساتنا">واریز پایا / ساتنا</option>
+                                <option value="نقدی / حضوری">نقدی / حضوری</option>
+                                <option value="ارز دیجیتال / تتر">ارز دیجیتال / تتر</option>
+                                <option value="سایر">سایر</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">کد پیگیری بانکی:</label>
+                            <input type="text" name="tracking_code" class="form-control form-control-sm font-monospace" placeholder="اختیاری">
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold"><i class="fas fa-credit-card me-1 text-primary"></i>حساب / کارت مقصد دریافت وجه:</label>
+                        <select name="target_card_id" class="form-select form-select-sm">
+                            <option value="">صندوق نقدی / دستی (بدون کارت)</option>
+                            {% if cards %}
+                                {% for c in cards %}
+                                <option value="{{ c['id'] }}">{{ c['bank_name'] }} ({{ c['card_number'][-4:] }}) - {{ c['owner_name'] }}</option>
+                                {% endfor %}
+                            {% endif %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold"><i class="fas fa-image me-1 text-secondary"></i>تصویر فیش واریزی (اختیاری):</label>
+                        <input type="file" name="receipt_image" class="form-control form-control-sm" accept="image/*">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">توضیحات و بابت (اختیاری):</label>
+                        <input type="text" name="notes" class="form-control form-control-sm" placeholder="مثال: واریزی دستی نماینده بابت پکیج یا شارژ">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-success fw-bold px-4">
+                        <i class="fas fa-check me-1"></i> ثبت واریزی و فیش
                     </button>
                 </div>
             </form>

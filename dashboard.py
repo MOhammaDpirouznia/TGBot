@@ -188,9 +188,10 @@ def get_redirect_target(default_endpoint: str = "subscriptions", **fallback_kwar
                     full_path += "?" + ref_url.query
                 if ref_url.fragment:
                     full_path += "#" + ref_url.fragment
-                return full_path if full_path else target
         except Exception:
             pass
+    if isinstance(default_endpoint, str) and (default_endpoint.startswith("/") or default_endpoint.startswith("http")):
+        return default_endpoint
     return url_for(default_endpoint, **fallback_kwargs)
 
 
@@ -4589,6 +4590,43 @@ def admin_payment_manual_add():
                 new_pstatus = "paid" if new_debt == 0 else "debtor"
                 db.set_subscription_debt(sub_id, new_pstatus, new_debt, f"تسویه دستی با رسید {order_id} ({amount:,} تومان)")
 
+            # ثبت در سوابق مشتری بدون فعال‌سازی در سرور هیدیفای (صرفاً تاریخچه مالی)
+            try:
+                db.save_subscription_history(
+                    subscription_id=sub_id,
+                    telegram_id=user_id,
+                    hidify_uuid=s_dict.get("hidify_uuid") or "",
+                    account_name=account_name,
+                    plan_name=plan_name,
+                    previous_usage_gb=float(s_dict.get("current_usage_gb") or 0),
+                    previous_limit_gb=float(s_dict.get("data_limit") or 0),
+                    period_days=int(s_dict.get("duration") or 30),
+                    renewal_type="manual_receipt",
+                    reseller_id=reseller_id,
+                    plan_price=amount,
+                    cost_paid=amount,
+                    is_manual=1,
+                    note=f"ثبت رسید دستی پرداخت به مبلغ {amount:,} تومان (رسید #{order_id}) - بدون تغییر در سرور هیدیفای. {notes}".strip(),
+                    created_by=admin_name
+                )
+            except Exception as ex_h:
+                logger.warning(f"Error saving to subscription_history for manual receipt: {ex_h}")
+
+    # تعیین گیت‌وی و کارت مقصد
+    gateway_name = "admin_manual"
+    raw_card = request.form.get("target_card_id")
+    target_card_id = int(raw_card) if (raw_card and str(raw_card).isdigit()) else None
+    if not target_card_id and destination_card and destination_card != "other":
+        try:
+            for c in db.get_active_bank_cards():
+                if str(c.get("id")) == str(destination_card) or (c.get("card_number") and c.get("card_number") in destination_card):
+                    target_card_id = c.get("id")
+                    break
+        except Exception:
+            pass
+    if target_card_id:
+        gateway_name = f"card_{target_card_id}"
+
     # ثبت در جدول transactions
     conn = db.get_connection()
     cursor = conn.cursor()
@@ -4596,10 +4634,10 @@ def admin_payment_manual_add():
         INSERT INTO transactions 
         (order_id, user_id, username, plan_name, amount, gateway, tracking_code, status, 
          receipt_image, receipt_photo_id, processed_by, processed_at, is_deleted, created_at, updated_at, reseller_id, account_name, account_comment)
-        VALUES (?, ?, ?, ?, ?, 'admin_manual', ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
     """, (
         order_id, user_id, account_name or str(user_id), plan_name, amount,
-        tracking_code or f"رسید دستی #{order_id}", p_status,
+        gateway_name, tracking_code or f"رسید دستی #{order_id}", p_status,
         receipt_image or "", receipt_type,
         admin_name, now if p_status in ('approved', 'completed') else None,
         created_at, now, reseller_id, account_name, notes
@@ -4609,7 +4647,30 @@ def admin_payment_manual_add():
     conn.close()
 
     # ثبت لاگ حسابرسی
-    db.log_transaction_audit(tx_id, "ثبت رسید دستی", admin_name, f"مبلغ: {amount:,} ت | اشتراک #{sub_id or '-'} | تسویه بدهی: {'بله' if settle_debt else 'خیر'}")
+    try:
+        db.log_transaction_audit(tx_id, "ثبت رسید دستی", admin_name, f"مبلغ: {amount:,} ت | اشتراک #{sub_id or '-'} | تسویه بدهی: {'بله' if settle_debt else 'خیر'}")
+    except Exception as ex_l:
+        logger.warning(f"Error logging transaction audit: {ex_l}")
+
+    # واریز مبلغ به کارت مقصد در صورت انتخاب
+    if target_card_id and int(target_card_id) > 0 and p_status in ("approved", "completed"):
+        try:
+            db.add_card_transaction(
+                card_id=int(target_card_id),
+                owner_type="admin",
+                owner_id=0,
+                reseller_id=0,
+                tx_type="deposit",
+                amount=amount,
+                category="فروش اشتراک",
+                title=f"رسید دستی: {account_name}",
+                description=f"واریز بابت رسید دستی مشتری {account_name} ({amount:,} ت) توسط {admin_name}",
+                ref_type="transaction",
+                ref_id=str(order_id),
+                actor=admin_name
+            )
+        except Exception as ex_c:
+            logger.warning(f"Error depositing to card for manual receipt: {ex_c}")
 
     # ثبت سند در حسابداری
     if p_status in ("approved", "completed"):
@@ -4619,11 +4680,13 @@ def admin_payment_manual_add():
             title=f"رسید دستی: {account_name} ({order_id})",
             amount=amount,
             source="manual",
+            ref_type="subscription" if sub_id else "transaction",
+            ref_id=str(sub_id or order_id),
             description=f"ثبت دستی توسط {admin_name}. {notes}".strip(),
             date=created_at[:10]
         )
 
-    flash(f"رسید دستی با شناسه {order_id} به مبلغ {amount:,} تومان با موفقیت ثبت شد.", "success")
+    flash(f"رسید دستی با شناسه {order_id} به مبلغ {amount:,} تومان با موفقیت ثبت شد (بدون تغییر در اشتراک سرور).", "success")
     return redirect(get_redirect_target(url_for("payments")))
 
 
@@ -7342,7 +7405,8 @@ def admin_resellers():
         reseller_list.append(r_dict)
 
     all_failed_logins = db.get_all_failed_login_logs(limit=50)
-    return render_template("resellers.html", resellers=reseller_list, all_failed_logins=all_failed_logins)
+    cards = db.get_active_bank_cards()
+    return render_template("resellers.html", resellers=reseller_list, all_failed_logins=all_failed_logins, cards=cards)
 
 
 @app.route("/admin/session/<int:session_id>/terminate", methods=["POST"])
@@ -7386,11 +7450,13 @@ def admin_reseller_payments(reseller_id):
 
     period = request.args.get("period", "all")
     history = db.get_reseller_full_payment_history(reseller_id, period_filter=period)
+    cards = db.get_active_bank_cards()
     return render_template(
         "admin_reseller_payments.html",
         reseller=reseller,
         history=history,
-        period=period
+        period=period,
+        cards=cards
     )
 
 
@@ -7507,13 +7573,157 @@ def admin_reseller_wallet_tx_revoke(rtx_id):
 @app.route("/admin/reseller/<int:reseller_id>/add-balance", methods=["POST"])
 @admin_required
 def admin_reseller_add_balance(reseller_id):
-    """افزایش اعتبار نماینده توسط ادمین"""
+    """افزایش اعتبار نماینده توسط ادمین با ثبت در تراکنش‌ها و درآمدها"""
     amount = int(request.form.get("amount", 0))
     desc = request.form.get("description", "شارژ کیف پول توسط ادمین")
+    raw_card = request.form.get("target_card_id")
+    target_card_id = int(raw_card) if (raw_card and str(raw_card).isdigit()) else None
+    admin_name = session.get("name") or session.get("username") or "مدیر ارشد"
     if amount > 0:
-        db.add_reseller_balance(reseller_id, amount, desc)
-        flash(f"مبلغ {amount:,} تومان به کیف پول نماینده افزوده شد.", "success")
-    return redirect(url_for("admin_resellers"))
+        db.add_reseller_balance(
+            reseller_id=reseller_id,
+            amount=amount,
+            description=desc,
+            target_card_id=target_card_id,
+            actor=admin_name
+        )
+        flash(f"مبلغ {amount:,} تومان به کیف پول نماینده افزوده شد و در بخش پرداخت‌ها و درآمدها ثبت گردید.", "success")
+    return redirect(request.referrer or url_for("admin_resellers"))
+
+
+@app.route("/admin/reseller/<int:reseller_id>/add-manual-payment", methods=["POST"])
+@app.route("/admin/reseller/add-manual-payment", methods=["POST"])
+@admin_required
+def admin_reseller_add_manual_payment(reseller_id: int = None):
+    """ثبت مستقیم فیش/رسید و واریزی دستی نماینده توسط ادمین با تعیین اثر مالی و واریز به کارت"""
+    if reseller_id is None:
+        raw_r_id = request.form.get("reseller_id")
+        reseller_id = int(raw_r_id) if (raw_r_id and str(raw_r_id).isdigit()) else None
+
+    if not reseller_id:
+        flash("نماینده مورد نظر انتخاب نشده است.", "danger")
+        return redirect(request.referrer or url_for("admin_resellers"))
+
+    r = db.get_reseller(reseller_id)
+    if not r:
+        flash("نماینده مورد نظر یافت نشد.", "danger")
+        return redirect(request.referrer or url_for("admin_resellers"))
+
+    amount_raw = request.form.get("amount", "0").replace(",", "").strip()
+    try:
+        amount = int(amount_raw)
+    except Exception:
+        amount = 0
+
+    if amount <= 0:
+        flash("مبلغ واریزی باید بزرگتر از صفر باشد.", "danger")
+        return redirect(request.referrer or url_for("admin_reseller_payments", reseller_id=reseller_id))
+
+    action_type = request.form.get("action_type", "balance")  # 'balance', 'debt', 'receipt_only'
+    payment_method = request.form.get("payment_method", "کارت به کارت (دستی)").strip()
+    tracking_code = request.form.get("tracking_code", "").strip()
+    raw_card = request.form.get("target_card_id")
+    target_card_id = int(raw_card) if (raw_card and str(raw_card).isdigit()) else None
+    notes = request.form.get("notes", "").strip()
+    admin_name = session.get("name") or session.get("username") or "مدیر ارشد"
+
+    now = get_now_iso()
+    order_id = f"R_PAY_{reseller_id}_{int(time.time())}"
+
+    # آپلود تصویر فیش
+    receipt_file = request.files.get("receipt_image")
+    receipt_image = None
+    receipt_type = "manual_entry"
+    if receipt_file and receipt_file.filename:
+        try:
+            sec_fn = secure_filename(receipt_file.filename)
+            ext = Path(sec_fn).suffix.lower() or ".jpg"
+            fn = f"receipt_{order_id}{ext}"
+            RECEIPTS_DIR.mkdir(parents=True, exist_ok=True)
+            save_path = RECEIPTS_DIR / fn
+            receipt_file.save(save_path)
+            receipt_image = fn
+            receipt_type = "web_upload"
+        except Exception as ex:
+            logger.warning(f"Error saving manual reseller receipt image: {ex}")
+
+    gateway_val = f"card_{target_card_id}" if target_card_id else ("cash" if "نقدی" in payment_method else "admin_manual")
+
+    # ۱. ثبت در جدول transactions
+    db.save_transaction(
+        order_id=order_id,
+        user_id=r.get("telegram_id") or 0,
+        username=r.get("username") or r.get("name"),
+        plan_name="رسید واریزی دستی نماینده",
+        amount=amount,
+        gateway=gateway_val,
+        tracking_code=tracking_code or f"رسید نماینده #{order_id}",
+        status="approved",
+        receipt_image=receipt_image,
+        receipt_file_type=receipt_type,
+        processed_by=admin_name,
+        reseller_id=reseller_id,
+        account_name=r.get("name"),
+        account_comment=f"رسید دستی: {notes}".strip(" :"),
+        source="reseller_manual_receipt"
+    )
+
+    # ۲. اعمال اثر مالی
+    if action_type == "balance":
+        db.add_reseller_balance(
+            reseller_id=reseller_id,
+            amount=amount,
+            description=f"واریز دستی ثبت‌شده با رسید {order_id}: {notes}".strip(" :"),
+            target_card_id=target_card_id,
+            record_transaction=False,
+            actor=admin_name
+        )
+    elif action_type == "debt":
+        db.settle_reseller_debt(
+            reseller_id=reseller_id,
+            amount=amount,
+            description=f"تسویه بدهی با رسید دستی {order_id}: {notes}".strip(" :"),
+            settled_by=admin_name,
+            target_card_id=target_card_id
+        )
+    else:
+        conn = db.get_connection()
+        conn.execute("""
+            INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
+            VALUES (?, 'receipt', ?, 'رسید دستی', ?, ?, ?)
+        """, (reseller_id, amount, r.get("name"), f"ثبت رسید دستی {order_id}: {notes}".strip(" :"), now))
+        conn.commit()
+        conn.close()
+
+        db.add_accounting_record(
+            type="income",
+            category="واریز نماینده",
+            title=f"رسید واریزی نماینده {r.get('name')}",
+            amount=amount,
+            source="reseller_manual_receipt",
+            ref_type="reseller",
+            ref_id=str(reseller_id),
+            description=f"ثبت فیش واریزی دستی توسط {admin_name}. {notes}".strip()
+        )
+
+        if target_card_id:
+            db.add_card_transaction(
+                card_id=int(target_card_id),
+                owner_type="admin",
+                owner_id=0,
+                reseller_id=0,
+                tx_type="deposit",
+                amount=amount,
+                category="واریز نماینده",
+                title=f"رسید واریزی {r.get('name')}",
+                description=f"واریز رسید دستی نماینده {r.get('name')} ({amount:,} ت) توسط {admin_name}",
+                ref_type="reseller",
+                ref_id=str(reseller_id),
+                actor=admin_name
+            )
+
+    flash(f"رسید واریزی دستی نماینده «{r.get('name')}» به مبلغ {amount:,} تومان با موفقیت ثبت و اعمال گردید.", "success")
+    return redirect(request.referrer or url_for("admin_reseller_payments", reseller_id=reseller_id))
 
 
 @app.route("/admin/reseller/<int:reseller_id>/edit", methods=["POST"])
@@ -7601,17 +7811,26 @@ def admin_reseller_recharge_gift(reseller_id):
 @app.route("/admin/reseller/<int:reseller_id>/settle-debt", methods=["POST"])
 @admin_required
 def admin_reseller_settle_debt(reseller_id):
-    """ثبت تسویه حساب بدهی اعتباری نماینده توسط مدیر"""
+    """ثبت تسویه حساب بدهی اعتباری نماینده توسط مدیر با واریز به کارت و ثبت در تراکنش‌ها"""
     amount = int(request.form.get("amount", 0))
     description = request.form.get("description", "تسویه بدهی اعتباری").strip()
+    raw_card = request.form.get("target_card_id")
+    target_card_id = int(raw_card) if (raw_card and str(raw_card).isdigit()) else None
+
     if amount <= 0:
         flash("مبلغ تسویه باید بزرگتر از صفر باشد.", "warning")
         return redirect(url_for("admin_resellers"))
 
     settler_name = session.get("name") or session.get("username") or "مدیر ارشد"
-    res = db.settle_reseller_debt(reseller_id, amount, description, settled_by=settler_name)
+    res = db.settle_reseller_debt(
+        reseller_id=reseller_id,
+        amount=amount,
+        description=description,
+        settled_by=settler_name,
+        target_card_id=target_card_id
+    )
     if res.get("success"):
-        flash(f"تسویه بدهی به مبلغ {amount:,} تومان با موفقیت ثبت شد. مانده بدهی فعلی: {res.get('remaining_debt', 0):,} تومان", "success")
+        flash(f"تسویه بدهی به مبلغ {amount:,} تومان با موفقیت ثبت شد و در بخش پرداخت‌ها و درآمدها درج گردید. مانده بدهی فعلی: {res.get('remaining_debt', 0):,} تومان", "success")
     else:
         flash(f"خطا در تسویه بدهی: {res.get('error')}", "danger")
     return redirect(url_for("admin_resellers"))
@@ -9543,7 +9762,9 @@ def admin_subscriptions_bulk():
             if del_res.get("success"):
                 success_count += 1
         elif action == "clear_debt":
-            db.clear_subscription_debt(sub_id)
+            raw_card = request.form.get("target_card_id")
+            target_card_id = int(raw_card) if (raw_card and str(raw_card).isdigit()) else None
+            db.clear_subscription_debt(sub_id, settled_by=admin_name, target_card_id=target_card_id)
             success_count += 1
         elif action == "transfer_reseller":
             pass
@@ -13407,7 +13628,10 @@ def reseller_subscriptions_bulk():
                 success_count += 1
                 total_refund += del_res.get("refund_amount", 0)
         elif action == "clear_debt":
-            db.clear_subscription_debt(sub_id, reseller_id=reseller_id)
+            raw_card = request.form.get("target_card_id")
+            target_card_id = int(raw_card) if (raw_card and str(raw_card).isdigit()) else None
+            settler_name = session.get("reseller_name") or f"reseller_{reseller_id}"
+            db.clear_subscription_debt(sub_id, reseller_id=reseller_id, settled_by=settler_name, target_card_id=target_card_id)
             success_count += 1
         elif action == "send_reminder":
             tg_id = sub.get("telegram_id")
@@ -20370,18 +20594,97 @@ def reseller_payment_manual_add():
         receipt_image, receipt_type = fn, 'web_upload'
     sub_id = int(sub_id_raw) if sub_id_raw.isdigit() else None
     user_id = int(user_id_raw) if user_id_raw.isdigit() else 0
+
+    if sub_id:
+        conn = db.get_connection()
+        s_row = conn.execute("SELECT * FROM subscriptions WHERE id=? AND reseller_id=?", (sub_id, reseller_id)).fetchone()
+        conn.close()
+        if s_row:
+            s_dict = dict(s_row)
+            try:
+                db.save_subscription_history(
+                    subscription_id=sub_id,
+                    telegram_id=user_id or s_dict.get("telegram_id") or 0,
+                    hidify_uuid=s_dict.get("hidify_uuid") or "",
+                    account_name=customer_name or s_dict.get("account_name") or "",
+                    plan_name=plan_name,
+                    previous_usage_gb=float(s_dict.get("current_usage_gb") or 0),
+                    previous_limit_gb=float(s_dict.get("data_limit") or 0),
+                    period_days=int(s_dict.get("duration") or 30),
+                    renewal_type="manual_receipt",
+                    reseller_id=reseller_id,
+                    plan_price=amount,
+                    cost_paid=amount,
+                    is_manual=1,
+                    note=f"ثبت رسید دستی پرداخت به مبلغ {amount:,} تومان (رسید #{order_id}) توسط نماینده. بدون تغییر در سرور هیدیفای. {notes}".strip(),
+                    created_by=session.get('reseller_name') or 'نماینده'
+                )
+            except Exception as ex_h:
+                logger.warning(f"Error saving to subscription_history for reseller manual receipt: {ex_h}")
+
+    gateway_name = "reseller_manual"
+    raw_card = request.form.get("target_card_id")
+    target_card_id = int(raw_card) if (raw_card and str(raw_card).isdigit()) else None
+    if not target_card_id and destination_card and destination_card != "other":
+        try:
+            for c in db.get_reseller_cards(reseller_id):
+                if str(c.get("id")) == str(destination_card) or (c.get("card_number") and c.get("card_number") in destination_card):
+                    target_card_id = c.get("id")
+                    break
+        except Exception:
+            pass
+    if target_card_id:
+        gateway_name = f"card_{target_card_id}"
+
     conn = db.get_connection()
     cursor = conn.cursor()
     cursor.execute('''INSERT INTO transactions 
         (order_id, user_id, username, plan_name, amount, gateway, tracking_code, status, 
          receipt_image, receipt_photo_id, processed_by, processed_at, is_deleted, created_at, updated_at, reseller_id, account_name, account_comment)
-        VALUES (?, ?, ?, ?, ?, 'reseller_manual', ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)''', (
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)''', (
         order_id, user_id, customer_name or str(user_id), plan_name, amount,
-        tracking_code or f'رسید نماینده #{order_id}', p_status,
+        gateway_name, tracking_code or f'رسید نماینده #{order_id}', p_status,
         receipt_image or '', receipt_type,
         session.get('reseller_name') or 'نماینده', now if p_status in ('approved', 'completed') else None,
         now, now, reseller_id, customer_name, notes))
     conn.commit()
     conn.close()
-    flash('پرداخت دستی باموفقیت ثبت شد.', 'success')
+
+    # ثبت درآمد در حسابداری نماینده
+    if p_status in ('approved', 'completed'):
+        try:
+            db.add_accounting_record(
+                type="income",
+                category="فروش اشتراک",
+                title=f"رسید دستی مشتری: {customer_name or order_id}",
+                amount=amount,
+                source="manual",
+                ref_type="subscription" if sub_id else "transaction",
+                ref_id=str(sub_id or order_id),
+                description=f"ثبت دستی توسط نماینده {session.get('reseller_name') or reseller_id}. {notes}".strip(),
+                date=now[:10]
+            )
+        except Exception:
+            pass
+
+        if target_card_id and int(target_card_id) > 0:
+            try:
+                db.add_card_transaction(
+                    card_id=int(target_card_id),
+                    owner_type="reseller",
+                    owner_id=reseller_id,
+                    reseller_id=reseller_id,
+                    tx_type="deposit",
+                    amount=amount,
+                    category="فروش اشتراک",
+                    title=f"رسید دستی: {customer_name}",
+                    description=f"واریز بابت رسید دستی مشتری {customer_name} ({amount:,} ت)",
+                    ref_type="transaction",
+                    ref_id=str(order_id),
+                    actor=session.get('reseller_name') or 'نماینده'
+                )
+            except Exception:
+                pass
+
+    flash('پرداخت دستی با موفقیت ثبت شد (بدون تغییر در اشتراک سرور).', 'success')
     return redirect(url_for('reseller_customer_payments'))

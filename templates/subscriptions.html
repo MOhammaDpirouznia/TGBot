@@ -627,7 +627,7 @@
         <button type="button" class="btn btn-sm btn-outline-light" onclick="submitBulkAction('adminSubBulkForm', 'enable', 'آیا از فعال‌سازی مجدد مشتریان انتخاب شده اطمینان دارید؟')">
             <i class="fas fa-user-check me-1"></i> فعال‌سازی
         </button>
-        <button type="button" class="btn btn-sm btn-outline-success" onclick="submitBulkAction('adminSubBulkForm', 'clear_debt', 'آیا از تسویه بدهی تمام مشتریان انتخاب شده اطمینان دارید؟')">
+        <button type="button" class="btn btn-sm btn-outline-success" onclick="openAdminBulkClearDebtModal()">
             <i class="fas fa-check-double me-1"></i> تسویه بدهی
         </button>
         {% if has_permission('sub_delete') %}
@@ -1842,6 +1842,56 @@
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
                 <button type="button" class="btn btn-warning fw-bold px-4" onclick="submitAdminBulkDisable()">
                     <i class="fas fa-user-slash me-1"></i> تایید و غیرفعال‌سازی گروهی
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Modal تسویه گروهی بدهی مدیریت ─── -->
+<div class="modal fade text-start" id="adminBulkClearDebtModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-success text-white py-3">
+                <h5 class="modal-title fw-bold">
+                    <i class="fas fa-hand-holding-dollar me-2"></i>تسویه گروهی بدهی مشتریان (<span id="adminBulkClearDebtCount">0</span> مشتری)
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="alert alert-success small mb-3">
+                    <i class="fas fa-info-circle me-1"></i> بدهی تمام مشتریان انتخاب‌شده تسویه شده و برای هر مشتری یک تراکنش پرداخت مستقل در سیستم ثبت و به حساب مقصد واریز می‌شود.
+                </div>
+                <div class="p-3 bg-light rounded-3 border" id="adminBulkClearDebtForm">
+                    <label class="form-label fw-bold small text-dark mb-1">
+                        <i class="fas fa-credit-card me-1 text-primary"></i> شیوه پرداخت و حساب/کارت مقصد واریزی:
+                    </label>
+                    <select name="target_card_id" id="adminBulkDebtTargetCard" class="form-select mb-2">
+                        <option value="cash" selected>💵 پرداخت نقدی / صندوق دستی (بدون کارت)</option>
+                        {% if cards %}
+                            <optgroup label="کارت‌های بانکی مقصد">
+                            {% for card in cards %}
+                                <option value="{{ card.id }}">{{ card.bank_name }} ({{ card.card_number[-4:] }}) - {{ card.owner_name }}</option>
+                            {% endfor %}
+                            </optgroup>
+                        {% endif %}
+                        {% if accounts %}
+                            <optgroup label="حساب‌های بانکی">
+                            {% for acc in accounts %}
+                                <option value="{{ acc.id }}">{{ acc.bank_name }} - {{ acc.owner_name }}</option>
+                            {% endfor %}
+                            </optgroup>
+                        {% endif %}
+                    </select>
+                    <div class="form-text text-muted small">
+                        در صورت انتخاب کارت، مبالغ بدهی مشتریان به موجودی کارت مقصد واریز و در تراکنش‌های کارت ثبت خواهد شد.
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                <button type="button" class="btn btn-success fw-bold px-4" onclick="submitAdminBulkClearDebt()">
+                    <i class="fas fa-check-double me-1"></i> تایید و تسویه گروهی
                 </button>
             </div>
         </div>
@@ -3829,6 +3879,39 @@ function submitAdminBulkDisable() {
 
     const actionInput = form.querySelector('input[name="bulk_action"]');
     if (actionInput) actionInput.value = 'disable';
+
+    form.submit();
+}
+
+function openAdminBulkClearDebtModal() {
+    const idsStr = document.querySelector('#adminSubBulkForm .bulk-selected-ids-input')?.value || '';
+    const ids = idsStr.split(',').map(x => x.trim()).filter(x => x.length > 0);
+    if (ids.length === 0) {
+        alert('⚠️ لطفاً ابتدا حداقل یک مشتری را از جدول انتخاب فرمایید.');
+        return;
+    }
+    document.getElementById('adminBulkClearDebtCount').innerText = ids.length;
+    const modalEl = document.getElementById('adminBulkClearDebtModal');
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+}
+
+function submitAdminBulkClearDebt() {
+    const form = document.getElementById('adminSubBulkForm');
+    if (!form) return;
+
+    const targetCardVal = document.getElementById('adminBulkDebtTargetCard')?.value || 'cash';
+    let cardInput = form.querySelector('input[name="target_card_id"]');
+    if (!cardInput) {
+        cardInput = document.createElement('input');
+        cardInput.type = 'hidden';
+        cardInput.name = 'target_card_id';
+        form.appendChild(cardInput);
+    }
+    cardInput.value = (targetCardVal !== 'cash') ? targetCardVal : '';
+
+    const actionInput = form.querySelector('input[name="bulk_action"]');
+    if (actionInput) actionInput.value = 'clear_debt';
 
     form.submit();
 }
