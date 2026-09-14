@@ -13777,7 +13777,10 @@ def reseller_accounting():
     monthly_stats = db.get_reseller_jalali_monthly_accounting(reseller_id, year=selected_year)
     transactions = db.get_reseller_accounting_transactions(reseller_id, year=selected_year)
     available_years = [current_year - 2, current_year - 1, current_year, current_year + 1]
-    reseller_cards = db.get_reseller_cards(reseller_id) if hasattr(db, 'get_reseller_cards') else []
+    reseller_cards = summary.get("bank_accounts", [])
+    partners = summary.get("partners", [])
+    users_list = db.get_reseller_users_for_partner_picker(reseller_id)
+    categories = summary.get("categories", [])
 
     return render_template(
         "reseller_accounting.html",
@@ -13789,7 +13792,10 @@ def reseller_accounting():
         current_year=current_year,
         current_month=now_j.month,
         available_years=available_years,
-        reseller_cards=reseller_cards
+        reseller_cards=reseller_cards,
+        partners=partners,
+        users_list=users_list,
+        categories=categories
     )
 
 @app.route("/api/reseller/accounting/add", methods=["POST"])
@@ -13871,6 +13877,110 @@ def api_reseller_accounting_edit(record_id):
         flash("تراکنش با موفقیت ویرایش شد.", "success")
     else:
         flash("خطا در ویرایش تراکنش.", "danger")
+    return redirect(url_for("reseller_accounting"))
+
+@app.route("/api/reseller/accounting/partner/add", methods=["POST"])
+@reseller_required
+def api_reseller_accounting_partner_add():
+    reseller_id = session.get("reseller_id")
+    name = request.form.get("name", "").strip()
+    percent_str = request.form.get("percent", "0").strip()
+    card_number = request.form.get("card_number", "").strip()
+    bank_name = request.form.get("bank_name", "").strip()
+    assigned_to = request.form.get("assigned_to", "").strip() or name
+    notes = request.form.get("notes", "").strip()
+
+    try:
+        percent = float(percent_str)
+    except ValueError:
+        flash("درصد وارد شده نامعتبر است.", "danger")
+        return redirect(url_for("reseller_accounting"))
+
+    if not name:
+        flash("نام شریک الزامی است.", "warning")
+        return redirect(url_for("reseller_accounting"))
+
+    res = db.add_reseller_partner(
+        reseller_id=reseller_id,
+        name=name,
+        percent=percent,
+        card_number=card_number,
+        bank_name=bank_name,
+        assigned_to=assigned_to,
+        notes=notes
+    )
+    if res.get("success"):
+        flash("شریک جدید با موفقیت اضافه شد.", "success")
+    else:
+        flash(f"خطا در افزودن شریک: {res.get('error')}", "danger")
+    return redirect(url_for("reseller_accounting"))
+
+
+@app.route("/api/reseller/accounting/partner/edit/<int:partner_id>", methods=["POST"])
+@reseller_required
+def api_reseller_accounting_partner_edit(partner_id):
+    reseller_id = session.get("reseller_id")
+    name = request.form.get("name", "").strip()
+    percent_str = request.form.get("percent", "0").strip()
+    card_number = request.form.get("card_number", "").strip()
+    bank_name = request.form.get("bank_name", "").strip()
+    notes = request.form.get("notes", "").strip()
+
+    updates = {}
+    if name:
+        updates["card_holder"] = name
+    if percent_str:
+        try:
+            updates["profit_percent"] = float(percent_str)
+        except ValueError:
+            pass
+    if card_number is not None:
+        updates["card_number"] = card_number
+    if bank_name is not None:
+        updates["bank_name"] = bank_name
+    if notes is not None:
+        updates["notes"] = notes
+
+    res = db.update_reseller_partner(partner_id, reseller_id, **updates)
+    if res.get("success"):
+        flash("مشخصات شریک با موفقیت ویرایش شد.", "success")
+    else:
+        flash("خطا در ویرایش شریک.", "danger")
+    return redirect(url_for("reseller_accounting"))
+
+
+@app.route("/api/reseller/accounting/partner/delete/<int:partner_id>", methods=["POST"])
+@reseller_required
+def api_reseller_accounting_partner_delete(partner_id):
+    reseller_id = session.get("reseller_id")
+    res = db.delete_reseller_partner(partner_id, reseller_id)
+    if res.get("success"):
+        flash("شریک با موفقیت حذف شد.", "success")
+    else:
+        flash("خطا در حذف شریک.", "danger")
+    return redirect(url_for("reseller_accounting"))
+
+
+@app.route("/api/reseller/accounting/partner/settle/<int:partner_id>", methods=["POST"])
+@reseller_required
+def api_reseller_accounting_partner_settle(partner_id):
+    reseller_id = session.get("reseller_id")
+    amount_str = request.form.get("amount", "0").replace(",", "").strip()
+    description = request.form.get("description", "").strip()
+
+    try:
+        amount = int(amount_str)
+        if amount <= 0:
+            raise ValueError()
+    except ValueError:
+        flash("مبلغ تسویه باید یک عدد مثبت باشد.", "danger")
+        return redirect(url_for("reseller_accounting"))
+
+    res = db.settle_reseller_partner(partner_id, reseller_id, amount, description)
+    if res.get("success"):
+        flash("تسویه‌حساب با شریک با موفقیت ثبت شد.", "success")
+    else:
+        flash(f"خطا در ثبت تسویه: {res.get('error')}", "danger")
     return redirect(url_for("reseller_accounting"))
 
 

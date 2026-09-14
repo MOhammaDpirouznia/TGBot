@@ -14208,14 +14208,198 @@ class Database:
         finally:
             conn.close()
 
+    @staticmethod
+    def _parse_jalali_datetime(date_val):
+        """تبدیل ایمن انواع فرمت‌های تاریخ (ISO، استاندارد، جلالی متنی) به آبجکت jdatetime"""
+        if not date_val:
+            return None
+        import jdatetime
+        from datetime import datetime
+        s = str(date_val).strip()
+        clean_s = s[:10].replace('/', '-')
+        parts = clean_s.split('-')
+        if len(parts) == 3 and parts[0].isdigit() and parts[1].isdigit() and parts[2].isdigit():
+            y, m, d = int(parts[0]), int(parts[1]), int(parts[2])
+            if 1300 <= y <= 1500:
+                return jdatetime.datetime(y, m, d)
+            elif y > 1900:
+                try:
+                    dt_g = datetime(y, m, d)
+                    return jdatetime.datetime.fromgregorian(datetime=dt_g)
+                except Exception:
+                    pass
+        try:
+            clean_iso = s.replace('T', ' ')[:19]
+            dt_g = datetime.strptime(clean_iso, '%Y-%m-%d %H:%M:%S')
+            return jdatetime.datetime.fromgregorian(datetime=dt_g)
+        except Exception:
+            pass
+        try:
+            clean_iso = s.replace('T', ' ')[:10]
+            dt_g = datetime.strptime(clean_iso, '%Y-%m-%d')
+            return jdatetime.datetime.fromgregorian(datetime=dt_g)
+        except Exception:
+            pass
+        return None
+
+    def get_reseller_partners(self, reseller_id: int) -> list:
+        """واکشی لیست شرکای نماینده از جدول reseller_cards"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT * FROM reseller_cards 
+                WHERE reseller_id = ? AND account_type = 'partner_savings'
+                ORDER BY id ASC
+            """, (reseller_id,))
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"Error in get_reseller_partners: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def add_reseller_partner(self, reseller_id: int, name: str, percent: float,
+                             card_number: str = None, bank_name: str = None,
+                             assigned_to: str = None, notes: str = None) -> dict:
+        """افزودن شریک جدید با درصد مشخص به سیستم حسابداری نماینده"""
+        import time
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if not card_number:
+                card_number = f"R{reseller_id}-PRT-{int(time.time()) % 100000}"
+            now = get_now_iso()
+            cursor.execute("""
+                INSERT INTO reseller_cards (
+                    reseller_id, card_number, card_holder, bank_name,
+                    balance, initial_balance, account_type, is_active,
+                    profit_percent, assigned_to, notes, created_at
+                ) VALUES (?, ?, ?, ?, 0, 0, 'partner_savings', 1, ?, ?, ?, ?)
+            """, (reseller_id, card_number, name, bank_name or 'صندوق شراکت', float(percent or 0), assigned_to or name, notes or '', now))
+            new_id = cursor.lastrowid
+            conn.commit()
+            return {"success": True, "partner_id": new_id}
+        except Exception as e:
+            logger.error(f"Error adding reseller partner: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def update_reseller_partner(self, partner_id: int, reseller_id: int, **kwargs) -> dict:
+        """ویرایش مشخصات یا درصد سود شریک"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            allowed = ["card_holder", "profit_percent", "card_number", "bank_name", "assigned_to", "notes", "is_active"]
+            updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
+            if not updates:
+                return {"success": False, "error": "داده‌ای برای ویرایش ارسال نشده است."}
+            fields = ", ".join([f"{k}=?" for k in updates.keys()])
+            values = list(updates.values()) + [partner_id, reseller_id]
+            cursor.execute(f"UPDATE reseller_cards SET {fields} WHERE id = ? AND reseller_id = ? AND account_type = 'partner_savings'", values)
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error updating reseller partner: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def delete_reseller_partner(self, partner_id: int, reseller_id: int) -> dict:
+        """حذف شریک از سیستم نماینده"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM reseller_cards WHERE id = ? AND reseller_id = ? AND account_type = 'partner_savings'", (partner_id, reseller_id))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error deleting reseller partner: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def settle_reseller_partner(self, partner_id: int, reseller_id: int, amount: int, description: str = None) -> dict:
+        """ثبت تسویه‌حساب یا واریزی به شریک"""
+        import jdatetime
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        now = get_now_iso()
+        now_shamsi = jdatetime.datetime.now().strftime("%Y/%m/%d")
+        try:
+            cursor.execute("SELECT * FROM reseller_cards WHERE id = ? AND reseller_id = ? AND account_type = 'partner_savings'", (partner_id, reseller_id))
+            p_card = cursor.fetchone()
+            if not p_card:
+                return {"success": False, "error": "حساب شریک یافت نشد."}
+            p_dict = dict(p_card)
+            partner_name = p_dict.get("card_holder") or p_dict.get("assigned_to") or "شریک"
+
+            # ثبت در card_transactions با رعایت قید category
+            cursor.execute("""
+                INSERT INTO card_transactions (card_id, amount, type, category, title, description, created_at, owner_type, reseller_id)
+                VALUES (?, ?, 'deposit', 'تسویه شرکا', ?, ?, ?, 'reseller', ?)
+            """, (partner_id, amount, f"تسویه سود با {partner_name}", description or "تسویه حساب سهم شراکت", now, reseller_id))
+
+            # افزایش موجودی پرداختی به شریک
+            cursor.execute("UPDATE reseller_cards SET balance = balance + ? WHERE id = ?", (amount, partner_id))
+
+            # ثبت در رکوردهای حسابداری
+            cursor.execute("""
+                INSERT INTO accounting_records (
+                    type, category, title, amount, source, description, date, created_at, reseller_id, card_name
+                ) VALUES ('settlement', 'تسویه‌حساب شرکا', ?, ?, 'reseller_partner_settle', ?, ?, ?, ?, ?)
+            """, (f"تسویه سهم سود {partner_name}", amount, description or f"تسویه سهم سود شریک {partner_name}", now_shamsi, now, reseller_id, partner_name))
+
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Error in settle_reseller_partner: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def get_reseller_users_for_partner_picker(self, reseller_id: int) -> list:
+        """دریافت لیست کاربران نماینده جهت انتخاب داینامیک در فرم افزودن شریک"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            users_map = {}
+            cursor.execute("SELECT id, telegram_id, username FROM users WHERE reseller_id = ?", (reseller_id,))
+            for r in cursor.fetchall():
+                u = dict(r)
+                tid = u.get("telegram_id")
+                uname = u.get("username")
+                label = f"{uname} (@{tid})" if uname else f"کاربر {tid}"
+                users_map[str(tid)] = {"id": u["id"], "telegram_id": tid, "username": uname, "display_name": label}
+
+            cursor.execute("SELECT id, telegram_id, account_name FROM subscriptions WHERE reseller_id = ?", (reseller_id,))
+            for r in cursor.fetchall():
+                s = dict(r)
+                tid = s.get("telegram_id")
+                acc = s.get("account_name")
+                key = str(tid or acc)
+                if key not in users_map and (acc or tid):
+                    label = f"{acc} ({tid})" if (acc and tid) else (acc or f"کاربر {tid}")
+                    users_map[key] = {"id": s["id"], "telegram_id": tid, "username": acc, "display_name": label}
+
+            return list(users_map.values())
+        except Exception as e:
+            logger.error(f"Error fetching reseller users for partner picker: {e}")
+            return []
+        finally:
+            conn.close()
+
     def get_reseller_accounting_summary(self, reseller_id: int, year: int = None) -> dict:
-        """خلاصه شاخص‌های مالی و حسابداری اختصاصی نماینده"""
+        """خلاصه شاخص‌های مالی، سهم تفکیکی خود نماینده و شرکا و کارت‌های بانکی"""
         import jdatetime
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
+            now_j = jdatetime.datetime.now()
             if not year:
-                year = jdatetime.datetime.now().year
+                year = now_j.year
 
             cursor.execute("SELECT * FROM resellers WHERE id = ?", (reseller_id,))
             r_info = cursor.fetchone()
@@ -14223,24 +14407,59 @@ class Database:
                 return {}
             r_dict = dict(r_info)
 
-            cursor.execute("SELECT * FROM reseller_cards WHERE reseller_id = ? AND account_type = 'partner_savings'", (reseller_id,))
-            partner_cards = [dict(c) for c in cursor.fetchall()]
+            # ۱. واکشی حساب‌ها و کارت‌های بانکی نماینده
+            cursor.execute("SELECT * FROM reseller_cards WHERE reseller_id = ? ORDER BY is_default DESC, id ASC", (reseller_id,))
+            all_cards = [dict(c) for c in cursor.fetchall()]
+
+            partner_cards = [c for c in all_cards if c.get("account_type") == "partner_savings"]
+            bank_accounts = [c for c in all_cards if c.get("account_type") != "partner_savings"]
 
             savings_balance = sum(int(c.get("balance") or 0) for c in partner_cards)
+            total_cards_balance = sum(int(c.get("balance") or 0) for c in bank_accounts)
 
+            for card in bank_accounts:
+                c_id = card["id"]
+                cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM card_transactions WHERE card_id = ? AND type = 'deposit'", (c_id,))
+                card["total_deposits"] = cursor.fetchone()[0] or 0
+                cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM card_transactions WHERE card_id = ? AND type = 'withdrawal'", (c_id,))
+                card["total_withdrawals"] = cursor.fetchone()[0] or 0
+
+            # ۲. درآمد حاصل از پرداخت‌های تایید شده مشتریان در transactions
+            cursor.execute("""
+                SELECT 
+                    COALESCE(SUM(amount), 0) as total_approved_tx,
+                    COUNT(*) as count_approved_tx
+                FROM transactions 
+                WHERE reseller_id = ? AND status IN ('approved', 'completed')
+                  AND (is_deleted = 0 OR is_deleted IS NULL)
+                  AND (gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
+            """, (reseller_id,))
+            tx_row = cursor.fetchone()
+            total_approved_tx = tx_row["total_approved_tx"] or 0
+
+            # ۳. خریدهای عمده و فروش‌ها در reseller_transactions
             cursor.execute("""
                 SELECT 
                     COALESCE(SUM(selling_price), 0) as total_sales,
                     COALESCE(SUM(amount), 0) as total_cost,
                     COALESCE(SUM(profit_margin), 0) as total_profit
                 FROM reseller_transactions 
-                WHERE reseller_id = ? AND type IN ('purchase', 'purchase_credit')
+                WHERE reseller_id = ? AND type IN ('purchase', 'purchase_credit', 'renewal', 'renew', 'renew_credit')
+                  AND (is_revoked = 0 OR is_revoked IS NULL) AND (status != 'revoked' OR status IS NULL)
+                  AND (is_deleted = 0 OR is_deleted IS NULL)
             """, (reseller_id,))
             sales_row = cursor.fetchone()
-            total_sales = sales_row["total_sales"] or 0
-            total_cost = sales_row["total_cost"] or 0
-            sub_profit = sales_row["total_profit"] or max(0, total_sales - total_cost)
+            total_sales_rtx = sales_row["total_sales"] or 0
+            total_cost_rtx = sales_row["total_cost"] or 0
 
+            total_sales = max(total_approved_tx, total_sales_rtx)
+            if total_sales == 0 and total_cost_rtx > 0:
+                disc = r_dict.get("discount_percent") or 20
+                total_sales = int(total_cost_rtx / (1 - (disc / 100)))
+
+            total_cost = total_cost_rtx
+
+            # ۴. درآمدهای دستی و هزینه‌های دستی
             cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM accounting_records WHERE reseller_id = ? AND type = 'income'", (reseller_id,))
             manual_income = cursor.fetchone()[0] or 0
 
@@ -14249,13 +14468,44 @@ class Database:
 
             total_income = total_sales + manual_income
             total_expense = total_cost + manual_expense
-            net_profit = total_income - total_expense
+            net_profit = max(0, total_income - total_expense)
 
+            # ۵. محاسبه سهم شرکا و سهم خود نماینده (مالک)
+            partners_data = []
+            total_partner_percent = 0
             total_partner_shares = 0
-            for c in partner_cards:
-                p_pct = float(c.get("profit_percent") or 0)
-                if p_pct > 0 and net_profit > 0:
-                    total_partner_shares += int(net_profit * p_pct / 100)
+            total_partner_paid = 0
+
+            for p in partner_cards:
+                pct = float(p.get("profit_percent") or 0)
+                total_partner_percent += pct
+                p_name = p.get("card_holder") or p.get("assigned_to") or "شریک"
+                share_amt = int(net_profit * pct / 100) if net_profit > 0 else 0
+                total_partner_shares += share_amt
+
+                cursor.execute("""
+                    SELECT COALESCE(SUM(amount), 0) FROM card_transactions 
+                    WHERE card_id = ? AND type IN ('deposit', 'settlement')
+                """, (p["id"],))
+                paid_from_card = cursor.fetchone()[0] or 0
+                paid_balance = max(int(p.get("balance") or 0), paid_from_card)
+                total_partner_paid += paid_balance
+
+                partners_data.append({
+                    "id": p["id"],
+                    "name": p_name,
+                    "assigned_to": p.get("assigned_to") or p_name,
+                    "percent": pct,
+                    "share_amount": share_amt,
+                    "paid_amount": paid_balance,
+                    "remaining_amount": max(0, share_amt - paid_balance),
+                    "card_number": p.get("card_number") or "",
+                    "bank_name": p.get("bank_name") or "صندوق",
+                    "notes": p.get("notes") or ""
+                })
+
+            reseller_share_percent = max(0.0, round(100.0 - total_partner_percent, 2))
+            reseller_profit_share = int(net_profit * reseller_share_percent / 100) if net_profit > 0 else 0
 
             cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM reseller_debts WHERE reseller_id = ? AND status = 'settled'", (reseller_id,))
             settled_debts = cursor.fetchone()[0] or 0
@@ -14263,29 +14513,49 @@ class Database:
             cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM reseller_transactions WHERE reseller_id = ? AND type = 'deposit'", (reseller_id,))
             total_deposits = cursor.fetchone()[0] or 0
 
-            # لیست پروژه‌ها / دسته‌بندی‌ها
-            cursor.execute("SELECT DISTINCT project FROM accounting_records WHERE reseller_id = ? AND project IS NOT NULL", (reseller_id,))
-            projects = [row[0] for row in cursor.fetchall() if row[0]]
-            if "عمومی / بدون پروژه" not in projects:
-                projects.insert(0, "عمومی / بدون پروژه")
+            reseller_paid_share = settled_debts + total_deposits
+            reseller_remaining_share = max(0, reseller_profit_share - reseller_paid_share)
+
+            standard_categories = [
+                "فروش اشتراک جدید",
+                "تمدید اشتراک",
+                "دریافتی از مشتری",
+                "شارژ کیف پول / افزایش اعتبار",
+                "هزینه‌های سرور و زیرساخت",
+                "هزینه‌های جاری و متفرقه",
+                "واریز به صندوق پس‌انداز",
+                "تسویه‌حساب شرکا"
+            ]
+            cursor.execute("SELECT DISTINCT category FROM accounting_records WHERE reseller_id = ? AND category IS NOT NULL", (reseller_id,))
+            custom_cats = [row[0] for row in cursor.fetchall() if row[0] and row[0] not in standard_categories]
+            all_categories = standard_categories + custom_cats
 
             return {
                 "total_income": total_income,
                 "total_sales": total_sales,
                 "manual_income": manual_income,
                 "total_expense": total_expense,
+                "total_cost": total_cost,
                 "manual_expense": manual_expense,
                 "net_profit": net_profit,
+                "reseller_share_percent": reseller_share_percent,
+                "reseller_profit_share": reseller_profit_share,
+                "reseller_paid_share": reseller_paid_share,
+                "reseller_remaining_share": reseller_remaining_share,
+                "partners": partners_data,
+                "total_partner_percent": total_partner_percent,
                 "total_partner_shares": total_partner_shares,
+                "total_partner_paid": total_partner_paid,
                 "distributable_profit": max(0, net_profit - total_partner_shares),
                 "savings_balance": savings_balance,
+                "total_cards_balance": total_cards_balance,
+                "bank_accounts": bank_accounts,
                 "total_settlements": settled_debts + total_deposits,
-                "partner_cards": partner_cards,
                 "balance": r_dict.get("balance") or 0,
                 "credit_limit": r_dict.get("credit_limit") or 0,
                 "credit_debt": r_dict.get("credit_debt") or 0,
                 "is_partner": bool(r_dict.get("is_partner")),
-                "projects": projects
+                "categories": all_categories
             }
         except Exception as e:
             logger.error(f"Error in get_reseller_accounting_summary: {e}")
@@ -14294,7 +14564,7 @@ class Database:
             conn.close()
 
     def get_reseller_jalali_monthly_accounting(self, reseller_id: int, year: int = None) -> list:
-        """محاسبه درآمد و سود ماهانه ۱۲ ماه سال جلالی انتخابی برای نماینده"""
+        """محاسبه دقیق درآمد، هزینه و سود ماهانه ۱۲ ماه سال جلالی با پارس استاندارد تاریخ"""
         import jdatetime
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -14314,68 +14584,69 @@ class Database:
                     "is_current": (year == now_j.year and i == now_j.month)
                 })
 
+            # ۱. تراکنش‌های خرید و تمدید اشتراک در reseller_transactions
             cursor.execute("""
-                SELECT selling_price, amount, profit_margin, created_at 
+                SELECT selling_price, amount, profit_margin, created_at, type 
                 FROM reseller_transactions 
-                WHERE reseller_id = ? AND type IN ('purchase', 'purchase_credit')
+                WHERE reseller_id = ? AND type IN ('purchase', 'purchase_credit', 'renewal', 'renew', 'renew_credit')
+                  AND (is_revoked = 0 OR is_revoked IS NULL) AND (status != 'revoked' OR status IS NULL)
+                  AND (is_deleted = 0 OR is_deleted IS NULL)
             """, (reseller_id,))
             for row in cursor.fetchall():
-                c_at = str(row["created_at"] or "")
-                if not c_at:
+                dt_j = self._parse_jalali_datetime(row["created_at"])
+                if not dt_j or dt_j.year != year:
                     continue
-                try:
-                    dt_g = datetime.strptime(c_at[:19], "%Y-%m-%d %H:%M:%S")
-                    dt_j = jdatetime.datetime.fromgregorian(datetime=dt_g)
-                except Exception:
-                    continue
-                if dt_j.year == year:
-                    m_idx = dt_j.month - 1
-                    s_price = int(row["selling_price"] or 0)
-                    cost = int(row["amount"] or 0)
-                    profit = int(row["profit_margin"] or (s_price - cost))
-                    months[m_idx]["income"] += s_price
-                    months[m_idx]["expense"] += cost
-                    months[m_idx]["profit"] += profit
+                m_idx = dt_j.month - 1
+                s_price = int(row["selling_price"] or 0)
+                cost = int(row["amount"] or 0)
+                if s_price == 0 and cost > 0:
+                    s_price = int(cost * 1.3)
+                profit = int(row["profit_margin"] or (s_price - cost))
+                months[m_idx]["income"] += s_price
+                months[m_idx]["expense"] += cost
+                months[m_idx]["profit"] += profit
 
+            # ۲. پرداخت‌های مستقیم مشتریان در transactions
+            cursor.execute("""
+                SELECT id, order_id, amount, created_at, is_renewal 
+                FROM transactions 
+                WHERE reseller_id = ? AND status IN ('approved', 'completed')
+                  AND (is_deleted = 0 OR is_deleted IS NULL)
+                  AND (gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
+            """, (reseller_id,))
+            for row in cursor.fetchall():
+                dt_j = self._parse_jalali_datetime(row["created_at"])
+                if not dt_j or dt_j.year != year:
+                    continue
+                m_idx = dt_j.month - 1
+                amt = int(row["amount"] or 0)
+                if months[m_idx]["income"] == 0:
+                    months[m_idx]["income"] += amt
+                    est_cost = int(amt * 0.7)
+                    months[m_idx]["expense"] += est_cost
+                    months[m_idx]["profit"] += (amt - est_cost)
+
+            # ۳. درآمدهای دستی در accounting_records
             cursor.execute("SELECT amount, date, created_at FROM accounting_records WHERE reseller_id = ? AND type = 'income'", (reseller_id,))
             for row in cursor.fetchall():
-                d_str = str(row["date"] or row["created_at"] or "")
-                try:
-                    if "/" in d_str or "-" in d_str:
-                        clean_d = d_str[:10].replace("/", "-")
-                        parts = clean_d.split("-")
-                        if int(parts[0]) > 1700:
-                            dt_j = jdatetime.datetime.fromgregorian(datetime=datetime.strptime(clean_d, "%Y-%m-%d"))
-                        else:
-                            dt_j = jdatetime.datetime.strptime(clean_d, "%Y-%m-%d")
-                    else:
-                        continue
-                except Exception:
-                    continue
-                if dt_j.year == year:
+                d_str = row["date"] or row["created_at"]
+                dt_j = self._parse_jalali_datetime(d_str)
+                if dt_j and dt_j.year == year:
                     m_idx = dt_j.month - 1
-                    months[m_idx]["income"] += int(row["amount"] or 0)
-                    months[m_idx]["profit"] += int(row["amount"] or 0)
+                    amt = int(row["amount"] or 0)
+                    months[m_idx]["income"] += amt
+                    months[m_idx]["profit"] += amt
 
+            # ۴. هزینه‌های دستی در accounting_records
             cursor.execute("SELECT amount, date, created_at FROM accounting_records WHERE reseller_id = ? AND type = 'expense'", (reseller_id,))
             for row in cursor.fetchall():
-                d_str = str(row["date"] or row["created_at"] or "")
-                try:
-                    if "/" in d_str or "-" in d_str:
-                        clean_d = d_str[:10].replace("/", "-")
-                        parts = clean_d.split("-")
-                        if int(parts[0]) > 1700:
-                            dt_j = jdatetime.datetime.fromgregorian(datetime=datetime.strptime(clean_d, "%Y-%m-%d"))
-                        else:
-                            dt_j = jdatetime.datetime.strptime(clean_d, "%Y-%m-%d")
-                    else:
-                        continue
-                except Exception:
-                    continue
-                if dt_j.year == year:
+                d_str = row["date"] or row["created_at"]
+                dt_j = self._parse_jalali_datetime(d_str)
+                if dt_j and dt_j.year == year:
                     m_idx = dt_j.month - 1
-                    months[m_idx]["expense"] += int(row["amount"] or 0)
-                    months[m_idx]["profit"] -= int(row["amount"] or 0)
+                    amt = int(row["amount"] or 0)
+                    months[m_idx]["expense"] += amt
+                    months[m_idx]["profit"] -= amt
 
             return months
         except Exception as e:
@@ -14385,7 +14656,7 @@ class Database:
             conn.close()
 
     def get_reseller_accounting_transactions(self, reseller_id: int, year: int = None, month: int = None) -> list:
-        """لیست یکپارچه تراکنش‌های مالی، دریافتی‌ها، هزینه‌ها و صندوق نماینده"""
+        """واکشی لیست جامع تراکنش‌ها با تمام متادیتاها (شماره سفارش، مشتری، پلن، سود، پیگیری و دسته‌بندی عملیاتی)"""
         import jdatetime
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -14395,192 +14666,219 @@ class Database:
             if not year:
                 year = now_j.year
 
-            # ۱. رکوردهای جدول accounting_records
-            cursor.execute("SELECT * FROM accounting_records WHERE reseller_id = ?", (reseller_id,))
-            for r in cursor.fetchall():
-                r_dict = dict(r)
-                d_str = str(r_dict.get("date") or r_dict.get("created_at") or "")
-                dt_j = None
-                try:
-                    clean_d = d_str[:10].replace("/", "-")
-                    parts = clean_d.split("-")
-                    if int(parts[0]) > 1700:
-                        dt_g = datetime.strptime(clean_d, "%Y-%m-%d")
-                        dt_j = jdatetime.datetime.fromgregorian(datetime=dt_g)
-                    else:
-                        dt_j = jdatetime.datetime.strptime(clean_d, "%Y-%m-%d")
-                except Exception:
-                    continue
-                if dt_j and dt_j.year == year:
-                    rtype = r_dict.get("type", "expense")
-                    cat = r_dict.get("category", "")
-                    if "صندوق" in cat or rtype == "savings":
-                        t_cat = "savings"
-                        label = "واریز به صندوق پس‌انداز"
-                        badge = "purple"
-                    elif rtype == "income":
-                        t_cat = "customer"
-                        label = "دریافتی از مشتری"
-                        badge = "info"
-                    elif "تسویه" in cat or rtype == "settlement":
-                        t_cat = "settlement"
-                        label = "تسویه‌حساب"
-                        badge = "warning"
-                    else:
-                        t_cat = "expense"
-                        label = "هزینه"
-                        badge = "danger"
+            cursor.execute("SELECT id, telegram_id, account_name, plan_name, data_limit, duration, phone_number FROM subscriptions WHERE reseller_id = ?", (reseller_id,))
+            sub_map = {}
+            for s in cursor.fetchall():
+                sub_dict = dict(s)
+                sub_map[sub_dict["id"]] = sub_dict
+                if sub_dict.get("account_name"):
+                    sub_map[sub_dict["account_name"]] = sub_dict
 
-                    t_time = d_str[11:16] if len(d_str) >= 16 else "۱۲:۰۰"
-                    items.append({
-                        "id": r_dict["id"],
-                        "source": "manual",
-                        "type": t_cat,
-                        "type_label": label,
-                        "badge_color": badge,
-                        "amount": r_dict["amount"],
-                        "title": r_dict["title"],
-                        "description": r_dict.get("description") or "",
-                        "project": r_dict.get("project") or "عمومی / بدون پروژه",
-                        "bank_name": r_dict.get("card_name") or "بانک",
-                        "jalali_date": f"{dt_j.day} {jdatetime.date.j_months_fa[dt_j.month - 1]} {dt_j.year}",
-                        "jalali_time": f"ساعت {t_time}",
-                        "jalali_month": dt_j.month,
-                        "jalali_year": dt_j.year,
-                        "timestamp": d_str,
-                        "can_edit": True
-                    })
+            seen_order_keys = set()
 
-            # ۲. خریدها و فروش‌های اشتراک در reseller_transactions
+            # ۱. تراکنش‌های جدول transactions (پرداخت‌های تایید شده مشتریان)
             cursor.execute("""
-                SELECT * FROM reseller_transactions 
-                WHERE reseller_id = ? AND type IN ('purchase', 'purchase_credit')
+                SELECT * FROM transactions 
+                WHERE reseller_id = ? AND (gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
+                  AND (is_deleted = 0 OR is_deleted IS NULL)
                 ORDER BY id DESC LIMIT 500
             """, (reseller_id,))
             for r in cursor.fetchall():
                 r_dict = dict(r)
-                c_at = str(r_dict.get("created_at") or "")
-                if not c_at:
+                dt_j = self._parse_jalali_datetime(r_dict.get("created_at"))
+                if not dt_j or dt_j.year != year:
                     continue
-                try:
-                    dt_g = datetime.strptime(c_at[:19], "%Y-%m-%d %H:%M:%S")
-                    dt_j = jdatetime.datetime.fromgregorian(datetime=dt_g)
-                except Exception:
-                    continue
-                if dt_j.year == year:
-                    amt = int(r_dict.get("selling_price") or r_dict.get("amount") or 0)
-                    p_name = r_dict.get("plan_name") or "اشتراک"
-                    acc_name = r_dict.get("account_name") or ""
-                    t_time = c_at[11:16] if len(c_at) >= 16 else "۰۰:۰۰"
-                    
-                    p_source = r_dict.get("payment_source")
-                    if p_source == "partner":
-                        src_note = f"منبع: فروش شریک ({acc_name})"
-                    elif p_source == "credit":
-                        src_note = f"منبع: اعتبار خرید ({acc_name})"
-                    else:
-                        src_note = f"واریز به: {acc_name}" if acc_name else "فروش اشتراک"
 
-                    items.append({
-                        "id": r_dict["id"],
-                        "source": "sub_purchase",
-                        "type": "customer",
-                        "type_label": "دریافت از مشتری",
-                        "badge_color": "info",
-                        "amount": amt,
-                        "title": f"فروش {p_name}",
-                        "description": r_dict.get("description") or f"خرید اشتراک {p_name} برای {acc_name}",
-                        "project": "عمومی / بدون پروژه",
-                        "bank_name": "درگاه / کارت",
-                        "source_note": src_note,
-                        "jalali_date": f"{dt_j.day} {jdatetime.date.j_months_fa[dt_j.month - 1]} {dt_j.year}",
-                        "jalali_time": f"ساعت {t_time}",
-                        "jalali_month": dt_j.month,
-                        "jalali_year": dt_j.year,
-                        "timestamp": c_at,
-                        "can_edit": False
-                    })
+                order_id = r_dict.get("order_id") or f"ORD-{r_dict['id']}"
+                seen_order_keys.add(order_id)
+                status = r_dict.get("status") or "approved"
+                is_renewal = bool(r_dict.get("is_renewal"))
+                
+                category = "تمدید اشتراک" if is_renewal else "فروش اشتراک جدید"
+                badge_type = "primary" if is_renewal else "customer"
 
-            # ۳. تراکنش‌های کارت‌های صندوق پس‌انداز
+                matched_sub = sub_map.get(r_dict.get("subscription_id")) or sub_map.get(r_dict.get("account_name"))
+                customer_name = r_dict.get("account_name") or r_dict.get("username")
+                if not customer_name and matched_sub:
+                    customer_name = matched_sub.get("account_name")
+                if not customer_name:
+                    customer_name = f"کاربر {r_dict.get('user_id') or r_dict['id']}"
+
+                plan_name = r_dict.get("plan_name")
+                if not plan_name and matched_sub:
+                    plan_name = matched_sub.get("plan_name")
+                plan_name = plan_name or "اشتراک اختصاصی"
+
+                amount = int(r_dict.get("amount") or 0)
+                cost = int(amount * 0.7)
+                profit = max(0, amount - cost)
+
+                t_time = str(r_dict.get("created_at") or "")[11:16] or "۰۰:۰۰"
+                items.append({
+                    "id": r_dict["id"],
+                    "order_id": order_id,
+                    "source": "transaction",
+                    "type": badge_type,
+                    "type_label": category,
+                    "category": category,
+                    "badge_color": "info" if not is_renewal else "primary",
+                    "amount": amount,
+                    "cost_amount": cost,
+                    "profit_margin": profit,
+                    "selling_price": amount,
+                    "title": f"{category} - {plan_name}",
+                    "customer_name": customer_name,
+                    "customer_id": r_dict.get("user_id") or "",
+                    "plan_name": plan_name,
+                    "gateway": r_dict.get("gateway") or "کارت به کارت",
+                    "tracking_code": r_dict.get("tracking_code") or r_dict.get("ref_id") or "---",
+                    "card_number": r_dict.get("card_number") or "",
+                    "bank_name": r_dict.get("gateway") or "درگاه بانکی",
+                    "status": status,
+                    "status_label": "موفق / تایید شده" if status in ('approved', 'completed') else ("در انتظار" if status == 'pending' else "ناموفق"),
+                    "description": r_dict.get("account_comment") or f"پرداخت سفارش {order_id}",
+                    "jalali_date": f"{dt_j.day} {jdatetime.date.j_months_fa[dt_j.month - 1]} {dt_j.year}",
+                    "jalali_time": f"ساعت {t_time}",
+                    "jalali_month": dt_j.month,
+                    "jalali_year": dt_j.year,
+                    "timestamp": str(r_dict.get("created_at") or ""),
+                    "can_edit": False
+                })
+
+            # ۲. خریدهای ثبت شده در reseller_transactions
             cursor.execute("""
-                SELECT ct.*, rc.card_holder, rc.bank_name, rc.assigned_to 
-                FROM card_transactions ct
-                JOIN reseller_cards rc ON ct.card_id = rc.id
-                WHERE rc.reseller_id = ? AND rc.account_type = 'partner_savings'
-                ORDER BY ct.id DESC LIMIT 200
+                SELECT * FROM reseller_transactions 
+                WHERE reseller_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)
+                  AND (is_revoked = 0 OR is_revoked IS NULL) AND (status != 'revoked' OR status IS NULL)
+                ORDER BY id DESC LIMIT 500
             """, (reseller_id,))
             for r in cursor.fetchall():
                 r_dict = dict(r)
-                c_at = str(r_dict.get("created_at") or "")
-                if not c_at:
+                dt_j = self._parse_jalali_datetime(r_dict.get("created_at"))
+                if not dt_j or dt_j.year != year:
                     continue
-                try:
-                    dt_g = datetime.strptime(c_at[:19], "%Y-%m-%d %H:%M:%S")
-                    dt_j = jdatetime.datetime.fromgregorian(datetime=dt_g)
-                except Exception:
-                    continue
-                if dt_j.year == year:
-                    t_time = c_at[11:16] if len(c_at) >= 16 else "۰۰:۰۰"
-                    holder = r_dict.get("assigned_to") or r_dict.get("card_holder") or "صندوق"
-                    items.append({
-                        "id": r_dict["id"],
-                        "source": "card_tx",
-                        "type": "savings",
-                        "type_label": "واریز به صندوق پس‌انداز",
-                        "badge_color": "purple",
-                        "amount": r_dict["amount"],
-                        "title": r_dict.get("title") or "تراکنش صندوق پس‌انداز",
-                        "description": r_dict.get("description") or f"واریز به صندوق {holder}",
-                        "project": "عمومی / بدون پروژه",
-                        "bank_name": r_dict.get("bank_name") or "سپه",
-                        "source_note": f"واریز به: {holder}",
-                        "jalali_date": f"{dt_j.day} {jdatetime.date.j_months_fa[dt_j.month - 1]} {dt_j.year}",
-                        "jalali_time": f"ساعت {t_time}",
-                        "jalali_month": dt_j.month,
-                        "jalali_year": dt_j.year,
-                        "timestamp": c_at,
-                        "can_edit": False
-                    })
 
-            # ۴. تسویه‌حساب‌های قبوض بدهی
-            cursor.execute("""
-                SELECT * FROM reseller_debts 
-                WHERE reseller_id = ? AND status = 'settled'
-                ORDER BY id DESC LIMIT 100
-            """, (reseller_id,))
+                rtx_type = r_dict.get("type", "purchase")
+                sub_id = r_dict.get("subscription_id")
+                acc_name = r_dict.get("account_name")
+                synth_order_id = f"SUB-{sub_id or r_dict['id']}"
+
+                if synth_order_id in seen_order_keys:
+                    continue
+
+                if rtx_type in ('purchase', 'purchase_credit'):
+                    cat = "فروش اشتراک جدید"
+                    badge_type = "customer"
+                    badge_color = "info"
+                elif rtx_type in ('renewal', 'renew', 'renew_credit'):
+                    cat = "تمدید اشتراک"
+                    badge_type = "customer"
+                    badge_color = "primary"
+                elif rtx_type == 'deposit':
+                    cat = "شارژ کیف پول / افزایش اعتبار"
+                    badge_type = "customer"
+                    badge_color = "success"
+                else:
+                    cat = "تراکنش مالی"
+                    badge_type = "customer"
+                    badge_color = "secondary"
+
+                cost = int(r_dict.get("amount") or 0)
+                selling = int(r_dict.get("selling_price") or (cost * 1.3 if cost > 0 else 0))
+                profit = int(r_dict.get("profit_margin") or max(0, selling - cost))
+
+                t_time = str(r_dict.get("created_at") or "")[11:16] or "۰۰:۰۰"
+                matched_sub = sub_map.get(sub_id) or sub_map.get(acc_name)
+                p_name = r_dict.get("plan_name") or (matched_sub.get("plan_name") if matched_sub else "اشتراک اختصاصی")
+
+                items.append({
+                    "id": r_dict["id"],
+                    "order_id": synth_order_id,
+                    "source": "reseller_tx",
+                    "type": badge_type,
+                    "type_label": cat,
+                    "category": cat,
+                    "badge_color": badge_color,
+                    "amount": selling if selling > 0 else cost,
+                    "cost_amount": cost,
+                    "profit_margin": profit,
+                    "selling_price": selling,
+                    "title": f"{cat} - {p_name}",
+                    "customer_name": acc_name or "مشتری ربات",
+                    "customer_id": matched_sub.get("telegram_id") if matched_sub else "",
+                    "plan_name": p_name,
+                    "gateway": "کیف پول نماینده / اعتباری",
+                    "tracking_code": f"RTX-{r_dict['id']}",
+                    "card_number": "",
+                    "bank_name": "کیف پول پنل",
+                    "status": "completed",
+                    "status_label": "تکمیل شده",
+                    "description": r_dict.get("description") or f"{cat} برای {acc_name}",
+                    "jalali_date": f"{dt_j.day} {jdatetime.date.j_months_fa[dt_j.month - 1]} {dt_j.year}",
+                    "jalali_time": f"ساعت {t_time}",
+                    "jalali_month": dt_j.month,
+                    "jalali_year": dt_j.year,
+                    "timestamp": str(r_dict.get("created_at") or ""),
+                    "can_edit": False
+                })
+
+            # ۳. رکوردهای دستی در accounting_records
+            cursor.execute("SELECT * FROM accounting_records WHERE reseller_id = ? ORDER BY id DESC", (reseller_id,))
             for r in cursor.fetchall():
                 r_dict = dict(r)
-                c_at = str(r_dict.get("settled_at") or r_dict.get("created_at") or "")
-                if not c_at:
+                dt_j = self._parse_jalali_datetime(r_dict.get("date") or r_dict.get("created_at"))
+                if not dt_j or dt_j.year != year:
                     continue
-                try:
-                    dt_g = datetime.strptime(c_at[:19], "%Y-%m-%d %H:%M:%S")
-                    dt_j = jdatetime.datetime.fromgregorian(datetime=dt_g)
-                except Exception:
-                    continue
-                if dt_j.year == year:
-                    t_time = c_at[11:16] if len(c_at) >= 16 else "۰۰:۰۰"
-                    items.append({
-                        "id": r_dict["id"],
-                        "source": "debt_settlement",
-                        "type": "settlement",
-                        "type_label": "تسویه‌حساب",
-                        "badge_color": "warning",
-                        "amount": r_dict["amount"],
-                        "title": r_dict.get("title") or "تسویه قبض بدهی",
-                        "description": r_dict.get("notes") or "تسویه حساب بدهی با مدیریت",
-                        "project": "عمومی / بدون پروژه",
-                        "bank_name": "سیستم مالی",
-                        "source_note": "تسویه شده با مدیریت",
-                        "jalali_date": f"{dt_j.day} {jdatetime.date.j_months_fa[dt_j.month - 1]} {dt_j.year}",
-                        "jalali_time": f"ساعت {t_time}",
-                        "jalali_month": dt_j.month,
-                        "jalali_year": dt_j.year,
-                        "timestamp": c_at,
-                        "can_edit": False
-                    })
 
-            # مرتب‌سازی بر اساس تاریخ نزولی
+                rtype = r_dict.get("type", "expense")
+                cat = r_dict.get("category") or ("هزینه‌های جاری و متفرقه" if rtype == 'expense' else "دریافتی از مشتری")
+                if rtype == 'savings':
+                    t_cat = "savings"
+                    b_color = "purple"
+                    cat = "واریز به صندوق پس‌انداز"
+                elif rtype == 'settlement':
+                    t_cat = "settlement"
+                    b_color = "warning"
+                    cat = "تسویه‌حساب شرکا"
+                elif rtype == 'income':
+                    t_cat = "customer"
+                    b_color = "success"
+                else:
+                    t_cat = "expense"
+                    b_color = "danger"
+
+                t_time = str(r_dict.get("created_at") or "")[11:16] or "۱۲:۰۰"
+                items.append({
+                    "id": r_dict["id"],
+                    "order_id": f"REC-{r_dict['id']}",
+                    "source": "manual",
+                    "type": t_cat,
+                    "type_label": cat,
+                    "category": cat,
+                    "badge_color": b_color,
+                    "amount": int(r_dict["amount"] or 0),
+                    "cost_amount": int(r_dict["amount"] or 0) if rtype == 'expense' else 0,
+                    "profit_margin": int(r_dict["amount"] or 0) if rtype == 'income' else 0,
+                    "selling_price": int(r_dict["amount"] or 0) if rtype == 'income' else 0,
+                    "title": r_dict["title"],
+                    "customer_name": "ثبت دستی توسط نماینده",
+                    "customer_id": "",
+                    "plan_name": "---",
+                    "gateway": r_dict.get("card_name") or "نقدی / کارت",
+                    "tracking_code": f"MANUAL-{r_dict['id']}",
+                    "card_number": "",
+                    "bank_name": r_dict.get("card_name") or "بانک",
+                    "status": "completed",
+                    "status_label": "تکمیل شده",
+                    "description": r_dict.get("description") or "",
+                    "jalali_date": f"{dt_j.day} {jdatetime.date.j_months_fa[dt_j.month - 1]} {dt_j.year}",
+                    "jalali_time": f"ساعت {t_time}",
+                    "jalali_month": dt_j.month,
+                    "jalali_year": dt_j.year,
+                    "timestamp": str(r_dict.get("created_at") or r_dict.get("date") or ""),
+                    "can_edit": True
+                })
+
             items.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
 
             if month:
@@ -14597,10 +14895,11 @@ class Database:
                                        amount: int, project: str = "عمومی / بدون پروژه", card_name: str = None,
                                        description: str = "", date_str: str = None) -> dict:
         """ثبت رکورد درآمد یا هزینه دستی توسط نماینده"""
+        import jdatetime
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
-        dt_val = date_str or get_now_shamsi()
+        dt_val = date_str or jdatetime.datetime.now().strftime("%Y/%m/%d")
         try:
             cursor.execute("""
                 INSERT INTO accounting_records (
