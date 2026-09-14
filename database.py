@@ -851,6 +851,22 @@ class Database:
         except Exception:
             pass
 
+        # ستون‌های سیستم یادآوری پیشرفته
+        for col_def in [
+            "manual_consumed_traffic REAL DEFAULT 0",
+            "baseline_traffic REAL DEFAULT 0",
+            "send_telegram INTEGER DEFAULT 1",
+            "send_sms INTEGER DEFAULT 0",
+            "telegram_target TEXT DEFAULT 'main_admin'",
+            "specific_telegram_id TEXT",
+            "sms_number TEXT",
+            "is_done INTEGER DEFAULT 0"
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE admin_reminders ADD COLUMN {col_def}")
+            except Exception:
+                pass
+
         # پاک‌سازی مقادیر خالی دامنه‌ها جهت جلوگیری از تداخل ایندکس یونیک
         try:
             cursor.execute("UPDATE resellers SET custom_domain = NULL WHERE custom_domain = '' OR TRIM(custom_domain) = ''")

@@ -4218,6 +4218,38 @@ async def admin_quota_action_callback(update: Update, context: ContextTypes.DEFA
                 except Exception as e_r:
                     logger.error(f"Failed to notify reseller of quota rejection: {e_r}")
 
+async def admin_reminder_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """مدیریت دکمه‌های انجام شد و تکرار در یادآوری‌ها"""
+    query = update.callback_query
+    data = query.data
+    await query.answer()
+
+    if data.startswith("remind_done_"):
+        reminder_id = int(data.replace("remind_done_", ""))
+        conn = db.get_connection()
+        c = conn.cursor()
+        c.execute("UPDATE admin_reminders SET is_done = 1 WHERE id = ?", (reminder_id,))
+        conn.commit()
+        conn.close()
+        orig = query.message.text if query.message.text else "یادآوری"
+        await edit_admin_message_safe(query, f"{orig}\n\n✅ <b>وضعیت: انجام شد</b>", reply_markup=None, parse_mode="HTML")
+
+    elif data.startswith("remind_snooze_"):
+        reminder_id = int(data.replace("remind_snooze_", ""))
+        conn = db.get_connection()
+        c = conn.cursor()
+        c.execute("SELECT * FROM admin_reminders WHERE id = ?", (reminder_id,))
+        r = c.fetchone()
+        if r:
+            if r['type'] == 'date':
+                from datetime import datetime, timedelta
+                new_date = (datetime.utcnow() + timedelta(days=1)).isoformat() + "Z"
+                c.execute("UPDATE admin_reminders SET target_date = ? WHERE id = ?", (new_date, reminder_id))
+        conn.commit()
+        conn.close()
+        orig = query.message.text if query.message.text else "یادآوری"
+        await edit_admin_message_safe(query, f"{orig}\n\n🔄 <b>وضعیت: تکرار شد (1 روز تأخیر)</b>", reply_markup=None, parse_mode="HTML")
+
 
 async def admin_order_pay_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """تایید یا رد آنی پرداخت‌های هوشمند، فیش‌های واریزی و بسته‌های اعتباری توسط مدیریت یا نماینده"""
@@ -8502,6 +8534,7 @@ def main():
             CallbackQueryHandler(admin_ticket_action_callback, pattern="^(adm_reply_tkt_|adm_canned_tkt_|adm_canned_send_|adm_canned_cancel_|adm_close_tkt_|res_reply_tkt_|res_canned_tkt_|res_canned_send_|res_canned_cancel_|res_close_tkt_)"),
             CallbackQueryHandler(admin_quota_action_callback, pattern="^(adm_quota_app_|adm_quota_rej_)"),
             CallbackQueryHandler(admin_order_pay_action_callback, pattern="^(adm_pay_app_|adm_pay_rej_|res_pay_app_|res_pay_rej_)"),
+            CallbackQueryHandler(admin_reminder_action_callback, pattern="^remind_"),
         ] + main_menu_handlers,
         states={
             CHOOSING: [
@@ -8517,6 +8550,7 @@ def main():
                 CallbackQueryHandler(admin_ticket_action_callback, pattern="^(adm_reply_tkt_|adm_canned_tkt_|adm_canned_send_|adm_canned_cancel_|adm_close_tkt_|res_reply_tkt_|res_canned_tkt_|res_canned_send_|res_canned_cancel_|res_close_tkt_)"),
                 CallbackQueryHandler(admin_quota_action_callback, pattern="^(adm_quota_app_|adm_quota_rej_)"),
                 CallbackQueryHandler(admin_order_pay_action_callback, pattern="^(adm_pay_app_|adm_pay_rej_|res_pay_app_|res_pay_rej_)"),
+            CallbackQueryHandler(admin_reminder_action_callback, pattern="^remind_"),
                 CallbackQueryHandler(copy_link_callback, pattern="^copy_link$"),
                 CallbackQueryHandler(wizard_callback_handler, pattern="^wiz_"),
             ] + main_menu_handlers,
@@ -8726,6 +8760,7 @@ def main():
     application.add_handler(CallbackQueryHandler(admin_ticket_action_callback, pattern="^(adm_reply_tkt_|adm_canned_tkt_|adm_canned_send_|adm_canned_cancel_|adm_close_tkt_|res_reply_tkt_|res_canned_tkt_|res_canned_send_|res_canned_cancel_|res_close_tkt_)"))
     application.add_handler(CallbackQueryHandler(admin_quota_action_callback, pattern="^(adm_quota_app_|adm_quota_rej_)"))
     application.add_handler(CallbackQueryHandler(admin_order_pay_action_callback, pattern="^(adm_pay_app_|adm_pay_rej_|res_pay_app_|res_pay_rej_)"))
+    application.add_handler(CallbackQueryHandler(admin_reminder_action_callback, pattern="^remind_"))
 
     # هندلرهای تایید و رد پرداخت ادمین
     application.add_handler(CallbackQueryHandler(admin_approve_renew, pattern="^admin_approve_renew_"))

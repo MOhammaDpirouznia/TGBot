@@ -19754,19 +19754,18 @@ def admin_reminders():
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM admin_reminders ORDER BY id DESC")
     reminders = [dict(r) for r in cursor.fetchall()]
-    conn.close()
     
     # Calculate traffic limit percentages if type is traffic
     for r in reminders:
         if r['type'] == 'traffic':
-            conn = db.get_connection()
-            c = conn.cursor()
-            c.execute("SELECT SUM(data_used) as total_used FROM subscriptions")
-            row = c.fetchone()
+            cursor.execute("SELECT SUM(data_used) as total_used FROM subscriptions")
+            row = cursor.fetchone()
             total_used = row['total_used'] or 0
-            r['current_traffic'] = total_used
-            conn.close()
+            baseline = r.get('baseline_traffic') or 0
+            manual = r.get('manual_consumed_traffic') or 0
+            r['current_traffic'] = max(0, (total_used - baseline) + manual)
             
+    conn.close()
     return render_template('admin_reminders.html', reminders=reminders)
 
 @app.route('/api/admin/reminders/active', methods=['GET'])
@@ -19776,9 +19775,8 @@ def api_admin_reminders_active():
         
     conn = db.get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM admin_reminders WHERE is_active = 1")
+    cursor.execute("SELECT * FROM admin_reminders WHERE is_active = 1 AND is_done = 0")
     reminders = [dict(r) for r in cursor.fetchall()]
-    conn.close()
     
     active_alerts = []
     now_iso = get_now_iso()
@@ -19787,18 +19785,21 @@ def api_admin_reminders_active():
             if r['target_date'] and r['target_date'] <= now_iso:
                 active_alerts.append(r)
         elif r['type'] == 'traffic':
-            conn = db.get_connection()
-            c = conn.cursor()
-            c.execute("SELECT SUM(data_used) as total_used FROM subscriptions")
-            row = c.fetchone()
+            cursor.execute("SELECT SUM(data_used) as total_used FROM subscriptions")
+            row = cursor.fetchone()
             total_used = row['total_used'] or 0
-            conn.close()
+            
+            baseline = r.get('baseline_traffic') or 0
+            manual = r.get('manual_consumed_traffic') or 0
+            current_traffic = max(0, (total_used - baseline) + manual)
+            
             limit = r.get('target_traffic') or 0
             threshold = r.get('threshold_percent') or 100
-            if limit > 0 and (total_used / limit) * 100 >= threshold:
-                r['current_traffic'] = total_used
+            if limit > 0 and (current_traffic / limit) * 100 >= threshold:
+                r['current_traffic'] = current_traffic
                 active_alerts.append(r)
                 
+    conn.close()
     return jsonify(active_alerts)
 
 @app.route('/api/admin/reminders/add', methods=['POST'])
@@ -19813,11 +19814,76 @@ def api_admin_reminders_add():
     target_date = data.get('target_date')
     target_traffic = data.get('target_traffic')
     threshold_percent = data.get('threshold_percent')
+    manual_consumed = data.get('manual_consumed_traffic', 0)
+    send_telegram = 1 if data.get('send_telegram') else 0
+    send_sms = 1 if data.get('send_sms') else 0
+    telegram_target = data.get('telegram_target', 'main_admin')
+    specific_telegram_id = data.get('specific_telegram_id', '')
+    sms_number = data.get('sms_number', '')
     
     conn = db.get_connection()
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO admin_reminders (title, type, description, target_date, target_traffic, threshold_percent, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                   (title, rtype, desc, target_date, target_traffic, threshold_percent, get_now_iso()))
+    
+    baseline_traffic = 0
+    if rtype == 'traffic':
+        cursor.execute("SELECT SUM(data_used) as total_used FROM subscriptions")
+        row = cursor.fetchone()
+        baseline_traffic = row['total_used'] or 0
+        
+    cursor.execute("""
+        INSERT INTO admin_reminders 
+        (title, type, description, target_date, target_traffic, threshold_percent, 
+         manual_consumed_traffic, baseline_traffic, send_telegram, send_sms, 
+         telegram_target, specific_telegram_id, sms_number, created_at, is_done) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+        """,
+        (title, rtype, desc, target_date, target_traffic, threshold_percent,
+         manual_consumed, baseline_traffic, send_telegram, send_sms,
+         telegram_target, specific_telegram_id, sms_number, get_now_iso()))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+@app.route('/api/admin/reminders/edit/<int:id>', methods=['POST'])
+def api_admin_reminders_edit(id):
+    if session.get('role') != 'admin':
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+        
+    data = request.json
+    
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    
+    # Check if we need to reset baseline
+    cursor.execute("SELECT * FROM admin_reminders WHERE id = ?", (id,))
+    old_r = cursor.fetchone()
+    if not old_r:
+        conn.close()
+        return jsonify({"success": False, "error": "Not found"}), 404
+        
+    baseline_traffic = old_r['baseline_traffic']
+    if data.get('reset_baseline') and data.get('type') == 'traffic':
+        cursor.execute("SELECT SUM(data_used) as total_used FROM subscriptions")
+        row = cursor.fetchone()
+        baseline_traffic = row['total_used'] or 0
+    
+    cursor.execute("""
+        UPDATE admin_reminders SET 
+        title = ?, type = ?, description = ?, target_date = ?, target_traffic = ?, 
+        threshold_percent = ?, manual_consumed_traffic = ?, baseline_traffic = ?,
+        send_telegram = ?, send_sms = ?, telegram_target = ?, specific_telegram_id = ?, 
+        sms_number = ?, is_active = ?, is_done = ?
+        WHERE id = ?
+    """, (
+        data.get('title'), data.get('type'), data.get('description', ''), 
+        data.get('target_date'), data.get('target_traffic'), data.get('threshold_percent'),
+        data.get('manual_consumed_traffic', 0), baseline_traffic,
+        1 if data.get('send_telegram') else 0, 1 if data.get('send_sms') else 0,
+        data.get('telegram_target', 'main_admin'), data.get('specific_telegram_id', ''),
+        data.get('sms_number', ''), 1 if data.get('is_active', True) else 0,
+        1 if data.get('is_done', False) else 0,
+        id
+    ))
     conn.commit()
     conn.close()
     return jsonify({"success": True})
