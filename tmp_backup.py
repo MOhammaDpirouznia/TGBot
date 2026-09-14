@@ -202,8 +202,7 @@ class AutoBackupScheduler:
 
         self.is_running = True
         self.task = asyncio.create_task(self._run_scheduler())
-        self.hiddify_task = asyncio.create_task(self._run_hiddify_scheduler())
-        logger.info("Auto backup scheduler started (DB + Hiddify)")
+        logger.info("Auto backup scheduler started (every 12 hours at 12:00 and 00:00)")
 
     async def stop(self):
         """توقف پشتیبان‌گیری خودکار"""
@@ -212,12 +211,6 @@ class AutoBackupScheduler:
             self.task.cancel()
             try:
                 await self.task
-            except asyncio.CancelledError:
-                pass
-        if getattr(self, "hiddify_task", None):
-            self.hiddify_task.cancel()
-            try:
-                await self.hiddify_task
             except asyncio.CancelledError:
                 pass
         logger.info("Auto backup scheduler stopped")
@@ -273,40 +266,3 @@ class AutoBackupScheduler:
 
 # نمونه singleton (فقط برای BackupManager)
 backup_manager = BackupManager()
-
-    async def _run_hiddify_scheduler(self):
-        from database import db
-        while self.is_running:
-            try:
-                interval_hours = int(db.get_setting('hiddify_backup_interval_hours', '12'))
-                await asyncio.sleep(interval_hours * 3600)
-                if not self.is_running: break
-                logger.info('Running scheduled Hiddify backup...')
-                await trigger_hiddify_backup(db)
-            except Exception as e:
-                logger.error(f'Hiddify Scheduler Error: {e}')
-                await asyncio.sleep(300)
-
-async def trigger_hiddify_backup(db_instance):
-    try:
-        if db_instance.get_setting('hiddify_backup_enabled', '0') != '1': return False
-        ch_id = db_instance.get_setting('hiddify_backup_channel_id', '').strip()
-        if not ch_id: return False
-        
-        from multibot_manager import multibot_manager
-        bot = multibot_manager.main_bot
-        if not bot: return False
-        
-        from bot import hidify
-        b_txt = await hidify.get_backup()
-        if not b_txt: return False
-        
-        from io import BytesIO
-        from datetime import datetime
-        bio = BytesIO(b_txt.encode('utf-8'))
-        fname = f'hiddify_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
-        await bot.send_document(chat_id=ch_id, document=bio, filename=fname, caption='بکاپ خودکار پنل هیدیفای')
-        return True
-    except Exception as e:
-        logger.error(f'Hiddify Backup Error: {e}')
-        return False

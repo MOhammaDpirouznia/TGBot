@@ -7883,12 +7883,25 @@ class Database:
                 cursor.execute("ALTER TABLE subscriptions ADD COLUMN account_comment TEXT")
                 logger.info("Added account_comment column to subscriptions")
 
-            # بررسی وجود ستون language در users
+            # بررسی وجود ستون            # بررسی فیلد language در users
             cursor.execute("PRAGMA table_info(users)")
             u_cols = [row[1] for row in cursor.fetchall()]
             if "language" not in u_cols:
                 cursor.execute("ALTER TABLE users ADD COLUMN language TEXT DEFAULT 'fa'")
                 logger.info("Added language column to users")
+
+            # بررسی فیلدهای نوتیفیکیشن خروج برای مدیران و نمایندگان
+            cursor.execute("PRAGMA table_info(admin_users)")
+            a_cols = [row[1] for row in cursor.fetchall()]
+            if "logout_notification_enabled" not in a_cols:
+                cursor.execute("ALTER TABLE admin_users ADD COLUMN logout_notification_enabled BOOLEAN DEFAULT 0")
+                logger.info("Added logout_notification_enabled to admin_users")
+
+            cursor.execute("PRAGMA table_info(resellers)")
+            r_cols = [row[1] for row in cursor.fetchall()]
+            if "logout_notification_enabled" not in r_cols:
+                cursor.execute("ALTER TABLE resellers ADD COLUMN logout_notification_enabled BOOLEAN DEFAULT 0")
+                logger.info("Added logout_notification_enabled to resellers")
 
             conn.commit()
             return {"success": True}
@@ -14629,7 +14642,7 @@ class Database:
                 if key == "password" and val:
                     fields.append("password_hash=?")
                     params.append(self.hash_password(val))
-                elif key in ["username", "display_name", "role", "permissions", "is_active", "telegram_id", "phone", "custom_avatar", "share_percent", "debt_balance", "bot_access"]:
+                elif key in ["username", "display_name", "role", "permissions", "is_active", "telegram_id", "phone", "custom_avatar", "share_percent", "debt_balance", "bot_access", "logout_notification_enabled"]:
                     fields.append(f"{key}=?")
                     params.append(val)
 
@@ -14679,8 +14692,8 @@ class Database:
         finally:
             conn.close()
 
-    def update_admin_profile(self, admin_id: int, username: str, password: str = None, display_name: str = None, telegram_id: int = None, phone: str = None) -> dict:
-        """تغییر مشخصات فردی، یوزرنیم، آیدی تلگرام، شماره تماس و پسورد مدیر فعال"""
+    def update_admin_profile(self, admin_id: int, username: str, password: str = None, display_name: str = None, telegram_id: int = None, phone: str = None, logout_notification_enabled: int = None) -> dict:
+        """ویرایش پروفایل مدیریت توسط خودش (شامل نام کاربری، رمز عبور و شناسه تلگرام)"""
         kwargs = {"username": username}
         if display_name:
             kwargs["display_name"] = display_name
@@ -14688,6 +14701,8 @@ class Database:
             kwargs["telegram_id"] = telegram_id
         if phone is not None:
             kwargs["phone"] = phone
+        if logout_notification_enabled is not None:
+            kwargs["logout_notification_enabled"] = logout_notification_enabled
         if password and len(password.strip()) > 0:
             kwargs["password"] = password.strip()
         return self.update_admin_user(admin_id, **kwargs)
@@ -14845,7 +14860,7 @@ class Database:
         cursor = conn.cursor()
         try:
             # ۱. جستجو در جدول مدیران (Admin Users)
-            cursor.execute("SELECT id, username, display_name, telegram_id, phone, role FROM admin_users WHERE LOWER(username)=?", (clean_user,))
+            cursor.execute("SELECT id, username, display_name, telegram_id, phone, role, logout_notification_enabled FROM admin_users WHERE LOWER(username)=?", (clean_user,))
             row = cursor.fetchone()
             if row:
                 admin_row = dict(row)
@@ -14856,11 +14871,12 @@ class Database:
                     "name": admin_row.get("display_name") or "مدیر سیستم",
                     "telegram_id": admin_row.get("telegram_id"),
                     "phone": admin_row.get("phone"),
-                    "role": admin_row.get("role", "super_admin")
+                    "role": admin_row.get("role", "super_admin"),
+                    "logout_notification_enabled": admin_row.get("logout_notification_enabled", 0)
                 }
 
             # ۲. جستجو در جدول نمایندگان (Resellers)
-            cursor.execute("SELECT id, username, name, telegram_id, phone, status FROM resellers WHERE LOWER(username)=?", (clean_user,))
+            cursor.execute("SELECT id, username, name, telegram_id, phone, status, logout_notification_enabled FROM resellers WHERE LOWER(username)=?", (clean_user,))
             row = cursor.fetchone()
             if row:
                 res_row = dict(row)
@@ -14868,10 +14884,11 @@ class Database:
                     "user_type": "reseller",
                     "user_id": res_row["id"],
                     "username": res_row["username"],
-                    "name": res_row.get("name") or "نماینده فروش",
+                    "name": res_row.get("name") or "نماینده سیستم",
                     "telegram_id": res_row.get("telegram_id"),
                     "phone": res_row.get("phone"),
-                    "status": res_row.get("status", "active")
+                    "status": res_row.get("status", "active"),
+                    "logout_notification_enabled": res_row.get("logout_notification_enabled", 0)
                 }
 
             return None
@@ -14897,7 +14914,7 @@ class Database:
                 if key == "password" and val:
                     fields.append("password_hash=?")
                     params.append(self.hash_password(val))
-                elif key in ["username", "name", "phone", "email", "telegram_id", "bank_card", "notes", "custom_avatar"]:
+                elif key in ["username", "name", "phone", "email", "telegram_id", "bank_card", "notes", "custom_avatar", "logout_notification_enabled"]:
                     fields.append(f"{key}=?")
                     params.append(val)
 
@@ -17248,8 +17265,46 @@ class Database:
             logger.error(f"Error saving SMS templates: {e}")
             return False
 
+    # ─── Security Methods ───
+    def get_active_sessions(self) -> list:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM login_logs WHERE is_active=1 ORDER BY login_at DESC")
+        return [dict(row) for row in cursor.fetchall()]
 
-# نمونه singleton
+    def get_failed_logins(self, limit=20) -> list:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM login_logs WHERE status='failed' ORDER BY login_at DESC LIMIT ?", (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_security_audit_logs(self, limit=50) -> list:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM system_activity_logs WHERE category='security' ORDER BY created_at DESC LIMIT ?", (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+
+    def terminate_all_sessions(self, except_token: str) -> dict:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            now = get_now_iso()
+            cursor.execute("UPDATE login_logs SET is_active=0, logout_at=? WHERE is_active=1 AND session_token != ?", (now, except_token))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def terminate_session(self, token: str) -> dict:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            now = get_now_iso()
+            cursor.execute("UPDATE login_logs SET is_active=0, logout_at=? WHERE session_token=?", (now, token))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+# اینستنس singleton
 db = Database()
-
-

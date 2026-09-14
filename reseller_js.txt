@@ -1,0 +1,14 @@
+document.addEventListener('DOMContentLoaded', function() {
+    const paymentMethodSelect = document.querySelector('#addManualPaymentModal select[name="payment_method"]');
+    const destCardSelect = document.getElementById('manualDestinationCard');
+    
+    if (paymentMethodSelect && destCardSelect) {
+        paymentMethodSelect.addEventListener('change', function() {
+            if (this.value.includes('کارت') || this.value.includes('پایا') || this.value.includes('ساتنا')) {
+                destCardSelect.setAttribute('required', 'required');
+            } else {
+                destCardSelect.removeAttribute('required');
+            }
+        });
+    }
+});

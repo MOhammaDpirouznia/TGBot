@@ -3383,7 +3383,7 @@ def logout():
         try:
             client_info = parse_client_info(request)
             contact_info = db.find_user_contact_info(username)
-            if contact_info:
+            if contact_info and contact_info.get("logout_notification_enabled", 0):
                 notify_auth_event("logout", username, contact_info, client_info["ip"], client_info["device_os"], client_info["browser"])
         except Exception as e:
             logger.error(f"Error notifying logout event: {e}")
@@ -4438,6 +4438,8 @@ def payments():
 
     resellers_list = db.get_all_resellers()
     cards = db.get_active_bank_cards()
+    plans = db.get_active_plans()
+    accounts = db.get_financial_accounts_summary('admin', 0).get('accounts', [])
     return render_template(
         "payments.html",
         payments=payment_list,
@@ -4447,6 +4449,8 @@ def payments():
         resellers_list=resellers_list,
         search=search,
         cards=cards,
+        plans=plans,
+        accounts=accounts,
         admin_count=admin_count,
         portal_count=portal_count,
         telegram_count=telegram_count,
@@ -4523,6 +4527,24 @@ def admin_payment_manual_add():
             logger.warning(f"Error saving manual receipt image: {ex}")
 
     plan_name = "ثبت دستی"
+    purchased_plan_id = request.form.get("purchased_plan_id")
+    if purchased_plan_id:
+        active_plans = db.get_active_plans()
+        if isinstance(active_plans, dict):
+            for pid, p in active_plans.items():
+                if str(pid) == str(purchased_plan_id):
+                    plan_name = p.get("name") or p.get("display_name") or "ثبت دستی"
+                    break
+        elif isinstance(active_plans, list):
+            for p in active_plans:
+                if str(p.get("id", p.get("plan_id", ""))) == str(purchased_plan_id):
+                    plan_name = p.get("name") or p.get("display_name") or "ثبت دستی"
+                    break
+
+    destination_card = request.form.get("destination_card", "").strip()
+    if destination_card and destination_card != "other":
+        notes = f"مقصد: {destination_card} | {notes}".strip(" |")
+
     reseller_id = None
     account_name = customer_name
     if sub_id:
@@ -4531,7 +4553,7 @@ def admin_payment_manual_add():
         conn.close()
         if s_row:
             s_dict = dict(s_row)
-            plan_name = s_dict.get("plan_name") or plan_name
+            plan_name = plan_name if purchased_plan_id else (s_dict.get("plan_name") or plan_name)
             reseller_id = s_dict.get("reseller_id")
             account_name = s_dict.get("account_name") or account_name
             if not user_id:
@@ -4550,14 +4572,14 @@ def admin_payment_manual_add():
     cursor.execute("""
         INSERT INTO transactions 
         (order_id, user_id, username, plan_name, amount, gateway, tracking_code, status, 
-         receipt_image, receipt_photo_id, processed_by, processed_at, is_deleted, created_at, updated_at, reseller_id, account_name)
-        VALUES (?, ?, ?, ?, ?, 'admin_manual', ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+         receipt_image, receipt_photo_id, processed_by, processed_at, is_deleted, created_at, updated_at, reseller_id, account_name, account_comment)
+        VALUES (?, ?, ?, ?, ?, 'admin_manual', ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
     """, (
         order_id, user_id, account_name or str(user_id), plan_name, amount,
         tracking_code or f"رسید دستی #{order_id}", p_status,
         receipt_image or "", receipt_type,
         admin_name, now if p_status in ('approved', 'completed') else None,
-        created_at, now, reseller_id, account_name
+        created_at, now, reseller_id, account_name, notes
     ))
     tx_id = cursor.lastrowid
     conn.commit()
@@ -9753,15 +9775,17 @@ def cards():
             shaba_number = request.form.get("shaba_number", "").strip()
             account_number = request.form.get("account_number", "").strip()
             notes = request.form.get("notes", "").strip()
+            account_type = request.form.get("account_type", "bank_card").strip()
             db.add_bank_card(
                 card_num, holder, bank, daily_limit=limit,
                 is_default=is_default, is_backup=is_backup,
                 initial_balance=initial_balance,
                 shaba_number=shaba_number,
                 account_number=account_number,
-                notes=notes
+                notes=notes,
+                account_type=account_type
             )
-            flash("کارت بانکی جدید با موفقیت افزوده شد.", "success")
+            flash("کارت / حساب جدید با موفقیت اضافه شد.", "success")
         elif action == "card_set_role":
             card_id = int(request.form.get("card_id", 0))
             role_type = request.form.get("role_type", "") # "default", "backup", "normal"
@@ -11534,7 +11558,10 @@ def settings():
         chat_settings=chat_settings,
         available_palettes=get_all_palettes(),
         mini_app_config=mini_app_config,
-        sms_templates=db.get_sms_templates(None)
+        sms_templates=db.get_sms_templates(None),
+        hiddify_backup_enabled=db.get_setting("hiddify_backup_enabled", "0") == "1",
+        hiddify_backup_channel_id=db.get_setting("hiddify_backup_channel_id", ""),
+        hiddify_backup_interval_hours=db.get_setting("hiddify_backup_interval_hours", "12")
     )
 
 
@@ -14309,7 +14336,10 @@ def reseller_customer_payments():
         portal_count=portal_count,
         telegram_count=telegram_count,
         reseller_count=reseller_count,
-        admin_count=admin_count
+        admin_count=admin_count,
+        cards=db.get_reseller_cards(reseller_id),
+        accounts=db.get_financial_accounts_summary('reseller', reseller_id).get('accounts', []),
+        plans=db.get_reseller_active_plans(reseller_id)
     )
 
 
@@ -14769,8 +14799,9 @@ def reseller_cards():
             account_number = request.form.get("account_number", "").strip()
             notes = request.form.get("notes", "").strip()
 
+            account_type = request.form.get("account_type", "bank_card").strip()
             if not card_number or not card_holder:
-                flash("شماره کارت و نام صاحب حساب الزامی است.", "warning")
+                flash("شماره کارت و نام دارنده الزامی است.", "warning")
             else:
                 res = db.add_reseller_card(
                     reseller_id, card_number, card_holder, bank_name, daily_limit,
@@ -14778,7 +14809,8 @@ def reseller_cards():
                     initial_balance=initial_balance,
                     shaba_number=shaba_number,
                     account_number=account_number,
-                    notes=notes
+                    notes=notes,
+                    account_type=account_type
                 )
                 if res.get("success"):
                     flash("کارت بانکی جدید با موفقیت اضافه شد.", "success")
@@ -16180,6 +16212,8 @@ def admin_profile():
         username = request.form.get("username", "").strip()
         telegram_id_raw = request.form.get("telegram_id", "").strip()
         telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else None
+        phone = request.form.get("phone", "").strip()
+        logout_notification_enabled = 1 if request.form.get("logout_notification_enabled") == "1" else 0
         new_password = request.form.get("new_password", "").strip()
         confirm_password = request.form.get("confirm_password", "").strip()
 
@@ -16191,12 +16225,15 @@ def admin_profile():
                 flash("رمز عبور باید حداقل ۶ کاراکتر باشد.", "warning")
                 return render_template("admin_profile.html", admin=admin_user)
 
+        # Ensure update_admin_profile in DB takes these args or handles them in **kwargs
         res = db.update_admin_profile(
             admin_user["id"],
             username=username,
             password=new_password if new_password else None,
             display_name=display_name,
-            telegram_id=telegram_id
+            telegram_id=telegram_id,
+            phone=phone,
+            logout_notification_enabled=logout_notification_enabled
         )
         if res.get("success"):
             session["username"] = username
@@ -16235,6 +16272,7 @@ def reseller_profile():
         telegram_id = request.form.get("telegram_id", "").strip()
         bank_card = request.form.get("bank_card", "").strip()
         notes = request.form.get("notes", "").strip()
+        logout_notification_enabled = 1 if request.form.get("logout_notification_enabled") == "1" else 0
         new_password = request.form.get("new_password", "").strip()
         confirm_password = request.form.get("confirm_password", "").strip()
 
@@ -16255,7 +16293,8 @@ def reseller_profile():
             telegram_id=telegram_id,
             bank_card=bank_card,
             notes=notes,
-            password=new_password if new_password else None
+            password=new_password if new_password else None,
+            logout_notification_enabled=logout_notification_enabled
         )
         if res.get("success"):
             session["name"] = name
@@ -19899,3 +19938,114 @@ def api_admin_reminders_delete(id):
     conn.commit()
     conn.close()
     return jsonify({"success": True})
+
+@app.route('/admin/security', methods=['GET'])
+@admin_required
+def admin_security():
+    active_sessions = db.get_active_sessions()
+    failed_logins = db.get_failed_logins()
+    audit_logs = db.get_security_audit_logs()
+    current_token = session.get('session_token', '')
+    last_alert_time = audit_logs[0]['created_at'][0:16].replace('T', ' ') if audit_logs else None
+    return render_template('admin_security.html', 
+        active_sessions=active_sessions, 
+        failed_logins=failed_logins, 
+        audit_logs=audit_logs, 
+        current_token=current_token, 
+        active_sessions_count=len(active_sessions), 
+        failed_logins_count=len(failed_logins), 
+        last_alert_time=last_alert_time
+    )
+
+@app.route('/admin/security/terminate-all', methods=['POST'])
+@admin_required
+def admin_security_terminate_all():
+    current_token = session.get('session_token', '')
+    db.terminate_all_sessions(except_token=current_token)
+    flash('تمامی نشست‌های دیگر با موفقیت پایان یافتند.', 'success')
+    return redirect(url_for('admin_security'))
+
+@app.route('/admin/security/terminate-session/<token>', methods=['POST'])
+@admin_required
+def admin_security_terminate_session(token):
+    db.terminate_session(token)
+    flash('نشست با موفقیت بسته شد.', 'success')
+    return redirect(url_for('admin_security'))
+
+@app.route('/admin/settings/hiddify_backup', methods=['POST'])
+@admin_required
+def save_hiddify_backup_settings():
+    enabled = request.form.get('hiddify_backup_enabled')
+    db.set_setting('hiddify_backup_enabled', '1' if enabled else '0')
+    db.set_setting('hiddify_backup_channel_id', request.form.get('hiddify_backup_channel_id', '').strip())
+    db.set_setting('hiddify_backup_interval_hours', request.form.get('hiddify_backup_interval_hours', '12').strip())
+    flash('تنظیمات پشتیبان‌گیری هیدیفای ذخیره شد.', 'success')
+    return redirect(url_for('settings'))
+
+@app.route('/admin/settings/manual_hiddify_backup', methods=['GET'])
+@admin_required
+def manual_hiddify_backup():
+    import asyncio
+    import threading
+    def run_backup():
+        from backup import trigger_hiddify_backup
+        asyncio.run(trigger_hiddify_backup(db))
+    threading.Thread(target=run_backup).start()
+    flash('درخواست بکاپ هیدیفای در پس‌زمینه ارسال شد. در صورت صحت تنظیمات به تلگرام ارسال می‌شود.', 'info')
+    return redirect(url_for('settings'))
+
+@app.route('/reseller/payment/manual_add', methods=['POST'])
+@reseller_required
+def reseller_payment_manual_add():
+    amount_raw = request.form.get('amount', '0').replace(',', '').strip()
+    tracking_code = request.form.get('tracking_code', '').strip()
+    card_number = request.form.get('card_number', '').strip()
+    sub_id_raw = request.form.get('subscription_id', '').strip()
+    customer_name = request.form.get('customer_name', '').strip()
+    user_id_raw = request.form.get('user_id', '').strip()
+    notes = request.form.get('notes', '').strip()
+    p_status = request.form.get('status', 'pending').strip()
+    try: amount = int(amount_raw)
+    except: amount = 0
+    if amount <= 0:
+        flash('مبلغ نامعتبر.', 'danger')
+        return redirect(url_for('reseller_customer_payments'))
+    reseller_id = session.get('reseller_id')
+    plan_name = 'ثبت دستی نماینده'
+    purchased_plan_id = request.form.get('purchased_plan_id')
+    if purchased_plan_id:
+        plans = db.get_reseller_active_plans(reseller_id)
+        for p in plans:
+            if str(p.get('id', p.get('plan_id', ''))) == str(purchased_plan_id):
+                plan_name = p.get('name') or p.get('display_name') or 'ثبت دستی'
+                break
+    destination_card = request.form.get('destination_card', '').strip()
+    if destination_card and destination_card != 'other': notes = f'مقصد: {destination_card} | {notes}'.strip(' |')
+    now = get_now_iso()
+    order_id = f'R_MANUAL-{int(time.time())}'
+    receipt_file = request.files.get('receipt_image')
+    receipt_image, receipt_type = None, 'manual_entry'
+    if receipt_file and receipt_file.filename:
+        sec_fn = secure_filename(receipt_file.filename)
+        ext = Path(sec_fn).suffix.lower() or '.jpg'
+        fn = f'receipt_{order_id}{ext}'
+        RECEIPTS_DIR.mkdir(parents=True, exist_ok=True)
+        receipt_file.save(RECEIPTS_DIR / fn)
+        receipt_image, receipt_type = fn, 'web_upload'
+    sub_id = int(sub_id_raw) if sub_id_raw.isdigit() else None
+    user_id = int(user_id_raw) if user_id_raw.isdigit() else 0
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''INSERT INTO transactions 
+        (order_id, user_id, username, plan_name, amount, gateway, tracking_code, status, 
+         receipt_image, receipt_photo_id, processed_by, processed_at, is_deleted, created_at, updated_at, reseller_id, account_name, account_comment)
+        VALUES (?, ?, ?, ?, ?, 'reseller_manual', ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)''', (
+        order_id, user_id, customer_name or str(user_id), plan_name, amount,
+        tracking_code or f'رسید نماینده #{order_id}', p_status,
+        receipt_image or '', receipt_type,
+        session.get('reseller_name') or 'نماینده', now if p_status in ('approved', 'completed') else None,
+        now, now, reseller_id, customer_name, notes))
+    conn.commit()
+    conn.close()
+    flash('پرداخت دستی باموفقیت ثبت شد.', 'success')
+    return redirect(url_for('reseller_customer_payments'))
