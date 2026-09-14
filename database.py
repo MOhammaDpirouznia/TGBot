@@ -1154,6 +1154,8 @@ class Database:
             "period_offset INTEGER DEFAULT 1",
             "period_label TEXT",
             "note TEXT",
+            "notes TEXT",
+            "custom_title TEXT",
             "created_by TEXT"
         ]:
             try:
@@ -1187,7 +1189,8 @@ class Database:
             "credit_limit INTEGER DEFAULT 0",
             "credit_debt INTEGER DEFAULT 0",
             "can_gift_traffic INTEGER DEFAULT 0",
-            "max_gift_traffic_gb REAL DEFAULT 0"
+            "max_gift_traffic_gb REAL DEFAULT 0",
+            "gift_traffic_balance REAL DEFAULT 0.0"
         ]:
             try:
                 cursor.execute(f"ALTER TABLE resellers ADD COLUMN {col_def}")
@@ -1210,11 +1213,13 @@ class Database:
             except Exception:
                 pass
 
-        # ستون‌های پرمیوم و خرید اعتباری اشتراک‌ها و کاربران
+        # ستون‌های پرمیوم، خرید اعتباری، حجم هدیه و تخفیف اشتراک‌ها و کاربران
         for col_def in [
             "is_vip INTEGER DEFAULT 0",
             "is_credit INTEGER DEFAULT 0",
-            "credit_debt_amount INTEGER DEFAULT 0"
+            "credit_debt_amount INTEGER DEFAULT 0",
+            "gift_traffic_gb REAL DEFAULT 0.0",
+            "discount_amount INTEGER DEFAULT 0"
         ]:
             try:
                 cursor.execute(f"ALTER TABLE subscriptions ADD COLUMN {col_def}")
@@ -6890,11 +6895,8 @@ class Database:
                 query += " AND reseller_id = ?"
                 params.append(reseller_id)
             query += """ ORDER BY 
-                CASE 
-                    WHEN period_offset IS NOT NULL AND period_offset > 0 THEN period_offset 
-                    ELSE 9999 
-                END ASC,
-                renewed_at DESC, id DESC LIMIT ?"""
+                COALESCE(renewed_at, start_date) DESC, 
+                id DESC LIMIT ?"""
             params.append(limit)
 
             cursor.execute(query, params)
@@ -6906,7 +6908,7 @@ class Database:
             conn.close()
 
     def get_subscription_full_details_and_history(self, sub_id: int, reseller_id: int = None) -> dict:
-        """دریافت اطلاعات جامع اشتراک به همراه آرشیو تمام دوره‌ها و مبالغ پرداختی گذشته"""
+        """دریافت اطلاعات جامع اشتراک به همراه آرشیو تمام دوره‌ها و مبالغ پرداختی گذشته به ترتیب زمانی دقیق"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -6923,11 +6925,7 @@ class Database:
                 SELECT * FROM subscription_history 
                 WHERE subscription_id = ? OR (hidify_uuid = ? AND hidify_uuid IS NOT NULL AND hidify_uuid != '')
                 ORDER BY 
-                    CASE 
-                        WHEN period_offset IS NOT NULL AND period_offset > 0 THEN period_offset 
-                        ELSE 9999 
-                    END ASC,
-                    renewed_at DESC, 
+                    COALESCE(renewed_at, start_date) DESC, 
                     id DESC
                 LIMIT 50
             """, (sub_id, sub_dict.get("hidify_uuid") or ""))
@@ -7396,8 +7394,9 @@ class Database:
         finally:
             conn.close()
 
-    def add_customer_debt(self, subscription_id: int, amount: int, notes: str = None, actor: str = "مدیریت", reseller_id: int = None) -> dict:
-        """ثبت مستقیم بدهی جدید روی اشتراک مشتری و ثبت در تاریخچه بدهی‌ها"""
+    def add_customer_debt(self, subscription_id: int, amount: int, notes: str = None, actor: str = "مدیریت", reseller_id: int = None,
+                          plan_name: str = None, delivery_date: str = None, discount_amount: int = 0, custom_title: str = None) -> dict:
+        """ثبت مستقیم بدهی جدید روی اشتراک مشتری و درج پلن در سوابق بدون هرگونه فعال‌سازی در سرور هیدیفای"""
         if not amount or int(amount) <= 0:
             return {"success": False, "error": "مبلغ بدهی باید بزرگتر از صفر باشد."}
         conn = self.get_connection()
@@ -7420,25 +7419,82 @@ class Database:
             effective_reseller_id = sub.get("reseller_id") or reseller_id
             acc_name = sub.get("account_name") or f"sub_{subscription_id}"
 
+            # تبدیل تاریخ تحویل پلن به فرمت استاندارد ISO
+            delivery_date_iso = now
+            if delivery_date and str(delivery_date).strip():
+                clean_date = str(delivery_date).strip()
+                try:
+                    parts = re.split(r"[-/\s:]+", clean_date)
+                    if len(parts) >= 3 and int(parts[0]) in range(1300, 1500):
+                        import jdatetime
+                        jy, jm, jd = int(parts[0]), int(parts[1]), int(parts[2])
+                        jh = int(parts[3]) if len(parts) > 3 else 12
+                        jmi = int(parts[4]) if len(parts) > 4 else 0
+                        delivery_date_iso = jdatetime.datetime(jy, jm, jd, jh, jmi).togregorian().isoformat()
+                    elif len(parts) >= 3 and int(parts[0]) > 2000:
+                        y, m, d = int(parts[0]), int(parts[1]), int(parts[2])
+                        h = int(parts[3]) if len(parts) > 3 else 12
+                        mi = int(parts[4]) if len(parts) > 4 else 0
+                        delivery_date_iso = datetime(y, m, d, h, mi).isoformat()
+                    else:
+                        delivery_date_iso = clean_date
+                except Exception:
+                    delivery_date_iso = clean_date
+
+            effective_plan_name = (plan_name or "").strip() or sub.get("plan_name") or "ثبت بدهی پلن"
+            discount_val = int(discount_amount or 0)
+            full_notes_list = []
+            if custom_title and str(custom_title).strip():
+                full_notes_list.append(str(custom_title).strip())
+            if notes and str(notes).strip():
+                full_notes_list.append(str(notes).strip())
+            if discount_val > 0:
+                full_notes_list.append(f"تخفیف: {discount_val:,} تومان")
+            combined_notes = " | ".join(full_notes_list) if full_notes_list else "ثبت بدهی برای مشتری"
+
             cursor.execute("""
                 UPDATE subscriptions 
                 SET debt_amount = ?, payment_status = 'debtor', debt_notes = COALESCE(?, debt_notes), debt_created_at = COALESCE(debt_created_at, ?), updated_at = ?
                 WHERE id = ?
-            """, (new_debt, notes, now, now, subscription_id))
+            """, (new_debt, combined_notes, delivery_date_iso, now, subscription_id))
 
-            # ثبت رسید بدهی
-            self.add_customer_debt_record(
-                subscription_id=subscription_id,
-                account_name=acc_name,
-                telegram_id=sub.get("telegram_id") or 0,
-                reseller_id=effective_reseller_id,
-                action_type="manual_debt",
-                plan_name=sub.get("plan_name") or "ثبت بدهی مستقیم",
-                amount=amt,
-                notes=notes or "ثبت مستقیم بدهی برای مشتری",
-                created_by=actor,
-                previous_debt=old_debt
-            )
+            # ثبت رکورد در جدول customer_debt_records با همان تراکنش
+            try:
+                cursor.execute("""
+                    INSERT INTO customer_debt_records
+                    (subscription_id, account_name, telegram_id, reseller_id, action_type, plan_name,
+                     amount, previous_debt, total_debt, status, notes, created_by, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid', ?, ?, ?, ?)
+                """, (
+                    subscription_id, acc_name, sub.get("telegram_id") or 0, effective_reseller_id,
+                    "manual_debt", effective_plan_name, amt, old_debt, new_debt, combined_notes,
+                    actor, now, now
+                ))
+            except Exception as e_debt_rec:
+                logger.error(f"Error inserting customer_debt_records in add_customer_debt: {e_debt_rec}")
+
+            # ثبت پلن در سوابق مشتری بدون فعال‌سازی در هیدیفای و با رعایت چینش زمانی تاریخ تحویل
+            display_title = custom_title.strip() if custom_title and str(custom_title).strip() else effective_plan_name
+            try:
+                cursor.execute("""
+                    INSERT INTO subscription_history (
+                        subscription_id, telegram_id, hidify_uuid, account_name, plan_name,
+                        previous_usage_gb, previous_limit_gb, period_days, renewal_type,
+                        renewed_at, reseller_id, plan_price, cost_paid, start_date, expire_date,
+                        is_manual, period_offset, period_label, note, notes, custom_title, created_by
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    subscription_id, sub.get("telegram_id") or 0, sub.get("hidify_uuid") or "",
+                    acc_name, effective_plan_name,
+                    0.0, float(sub.get("data_limit") or 0.0), int(sub.get("duration") or 30), "debt_record",
+                    delivery_date_iso, effective_reseller_id,
+                    amt + discount_val, amt, delivery_date_iso, None,
+                    1, 1, display_title,
+                    combined_notes, combined_notes, display_title, actor
+                ))
+            except Exception as e_hist:
+                logger.error(f"Error inserting subscription history for debt record: {e_hist}")
+
             conn.commit()
             return {"success": True, "old_debt": old_debt, "new_debt": new_debt}
         except Exception as e:
@@ -8136,8 +8192,8 @@ class Database:
                         hiddify_admin_uuid: str = None, parent_reseller_id: int = None,
                         affiliate_commission_percent: float = None, referral_code: str = None,
                         credit_enabled: int = 0, credit_limit: int = 0, can_gift_traffic: int = 0,
-                        is_partner: int = 0) -> dict:
-        """ایجاد نماینده جدید با پشتیبانی از ادمین اختصاصی هیدیفای، انتساب نماینده معرف و تنظیمات خرید اعتباری"""
+                        is_partner: int = 0, gift_traffic_balance: float = 0.0) -> dict:
+        """ایجاد نماینده جدید با پشتیبانی از ادمین اختصاصی هیدیفای، انتساب نماینده معرف و تنظیمات خرید اعتباری و سهمیه حجم هدیه"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
@@ -8154,14 +8210,14 @@ class Database:
                     discount_percent, status, hiddify_admin_uuid, 
                     parent_reseller_id, affiliate_commission_percent, referral_code,
                     credit_enabled, credit_limit, credit_debt, can_gift_traffic, is_partner,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+                    gift_traffic_balance, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
             """, (
                 cleaned_user, password_hash, name.strip(), telegram_id, initial_balance, 
                 discount_percent, (hiddify_admin_uuid.strip() if hiddify_admin_uuid else None),
                 parent_reseller_id, affiliate_commission_percent, referral_code,
                 credit_enabled, credit_limit, can_gift_traffic, (1 if is_partner else 0),
-                now, now
+                float(gift_traffic_balance or 0.0), now, now
             ))
             reseller_id = cursor.lastrowid
             
@@ -9832,7 +9888,7 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("SELECT balance, discount_percent, credit_enabled, credit_limit, credit_debt, can_gift_traffic, max_gift_traffic_gb, can_delete_payments, can_revoke_payments, last_settled_at FROM resellers WHERE id=?", (reseller_id,))
+        cursor.execute("SELECT balance, discount_percent, credit_enabled, credit_limit, credit_debt, can_gift_traffic, max_gift_traffic_gb, gift_traffic_balance, can_delete_payments, can_revoke_payments, last_settled_at FROM resellers WHERE id=?", (reseller_id,))
         res = cursor.fetchone()
         balance = res["balance"] if res else 0
         discount = res["discount_percent"] if res else 0
@@ -9840,6 +9896,7 @@ class Database:
         credit_debt = (res["credit_debt"] or 0) if res and "credit_debt" in res.keys() else 0
         credit_enabled = bool(res["credit_enabled"]) if (res and "credit_enabled" in res.keys() and res["credit_enabled"]) else (credit_limit > 0)
         can_gift_traffic = bool(res["can_gift_traffic"]) if (res and "can_gift_traffic" in res.keys() and res["can_gift_traffic"]) else False
+        gift_traffic_balance = float(res["gift_traffic_balance"] or 0.0) if (res and "gift_traffic_balance" in res.keys() and res["gift_traffic_balance"]) else 0.0
         can_delete_payments = bool(res["can_delete_payments"]) if (res and "can_delete_payments" in res.keys() and res["can_delete_payments"]) else False
         can_revoke_payments = bool(res["can_revoke_payments"]) if (res and "can_revoke_payments" in res.keys() and res["can_revoke_payments"] is not None) else True
         last_settled_at = res["last_settled_at"] if res and "last_settled_at" in res.keys() else None
@@ -9864,6 +9921,9 @@ class Database:
         except Exception:
             unpaid_debts_total = 0
         
+        cursor.execute("SELECT COUNT(*) FROM users WHERE is_vip=1 AND telegram_id IN (SELECT telegram_id FROM subscriptions WHERE reseller_id=?)", (reseller_id,))
+        vip_users = cursor.fetchone()[0]
+
         # مجموع خریدهای واقعی (کسر مبالغ مرجوعی/خطا و حذف تراکنش‌های باطل‌شده)
         cursor.execute("""
             SELECT COALESCE(
@@ -9875,25 +9935,15 @@ class Database:
         total_purchases_val = cursor.fetchone()[0] or 0
         total_purchases = max(0, total_purchases_val)
 
-        cursor.execute("SELECT COALESCE(SUM(data_used), 0), COALESCE(SUM(data_limit), 0) FROM subscriptions WHERE reseller_id=? AND (is_deleted=0 OR is_deleted IS NULL)", (reseller_id,))
-        traffic_row = cursor.fetchone()
-        total_used_gb = traffic_row[0] or 0
-        total_limit_gb = traffic_row[1] or 0
+        cursor.execute("SELECT COALESCE(SUM(data_used), 0) FROM subscriptions WHERE reseller_id=? AND (is_deleted=0 OR is_deleted IS NULL)", (reseller_id,))
+        total_used_gb = cursor.fetchone()[0] or 0
+
+        cursor.execute("SELECT COALESCE(SUM(data_limit), 0) FROM subscriptions WHERE reseller_id=? AND (is_deleted=0 OR is_deleted IS NULL)", (reseller_id,))
+        total_limit_gb = cursor.fetchone()[0] or 0
 
         cursor.execute("""
-            SELECT COUNT(DISTINCT u.telegram_id)
-            FROM users u
-            LEFT JOIN subscriptions s ON u.telegram_id = s.telegram_id
-            WHERE (s.reseller_id = ? OR u.reseller_id = ?) AND u.is_vip = 1
-        """, (reseller_id, reseller_id))
-        vip_users = cursor.fetchone()[0] or 0
-
-        cursor.execute("""
-            SELECT COUNT(*) FROM transactions 
-            WHERE reseller_id = ? 
-              AND (gateway != 'bundle_reseller' AND order_id NOT LIKE 'R_BUNDLE%')
-              AND (is_deleted = 0 OR is_deleted IS NULL)
-              AND status = 'pending'
+            SELECT COUNT(*) FROM customer_debt_settlements 
+            WHERE reseller_id = ? AND status = 'pending'
         """, (reseller_id,))
         pending_customer_receipts_count = cursor.fetchone()[0] or 0
 
@@ -9908,6 +9958,7 @@ class Database:
             "credit_limit": credit_limit,
             "credit_debt": credit_debt,
             "can_gift_traffic": can_gift_traffic,
+            "gift_traffic_balance": gift_traffic_balance,
             "available_credit": available_credit,
             "total_purchasing_power": total_purchasing_power,
             "unpaid_debts_total": unpaid_debts_total,
@@ -9922,6 +9973,50 @@ class Database:
             "pending_customer_receipts_count": pending_customer_receipts_count,
             "open_tickets_count": open_tickets_count,
         }
+
+    def deduct_reseller_gift_traffic(self, reseller_id: int, amount_gb: float) -> bool:
+        """کسر حجم هدیه اهدایی از سهمیه نماینده"""
+        if not amount_gb or float(amount_gb) <= 0:
+            return True
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                UPDATE resellers 
+                SET gift_traffic_balance = MAX(0.0, COALESCE(gift_traffic_balance, 0.0) - ?),
+                    updated_at = ?
+                WHERE id = ?
+            """, (float(amount_gb), get_now_iso(), reseller_id))
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error deducting reseller gift traffic: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def recharge_reseller_gift_traffic(self, reseller_id: int, amount_gb: float) -> dict:
+        """شارژ یا افزایش سهمیه حجم هدیه نماینده توسط مدیریت"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                UPDATE resellers 
+                SET gift_traffic_balance = COALESCE(gift_traffic_balance, 0.0) + ?,
+                    can_gift_traffic = 1,
+                    updated_at = ?
+                WHERE id = ?
+            """, (float(amount_gb), get_now_iso(), reseller_id))
+            conn.commit()
+            cursor.execute("SELECT gift_traffic_balance FROM resellers WHERE id = ?", (reseller_id,))
+            row = cursor.fetchone()
+            new_bal = row["gift_traffic_balance"] if row else 0.0
+            return {"success": True, "new_balance": new_bal}
+        except Exception as e:
+            logger.error(f"Error recharging reseller gift traffic: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
 
     def get_reseller_usage_summary(self, reseller_id: int) -> dict:
         """محاسبه خلاصه جامع وضعیت استفاده و عملکرد نماینده (امروز، دیروز، ماهانه، میانگین روزانه و ترافیک)"""

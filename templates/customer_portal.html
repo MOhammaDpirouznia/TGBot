@@ -1388,7 +1388,11 @@
                             {{ usub.get('account_name') or ('اشتراک ' ~ loop.index) }}
                         </div>
                         <div class="sub-meta small mt-1">
-                            {{ usub.get('remaining_days', usub.get('duration', 0)) }} روز • {{ usub.get('traffic_limit', 0) }} گیگ
+                            {% if usub.get('gift_traffic_gb') and usub.get('traffic_display') %}
+                                {{ usub.get('remaining_days', usub.get('duration', 0)) }} روز • <span class="text-warning">{{ usub.get('traffic_display') }}</span>
+                            {% else %}
+                                {{ usub.get('remaining_days', usub.get('duration', 0)) }} روز • {{ usub.get('traffic_limit', 0) }} گیگ
+                            {% endif %}
                         </div>
                     </a>
                 {% endfor %}
@@ -1662,10 +1666,22 @@
         {% set remain_gb = (total_gb - used_gb) | round(2) if total_gb >= used_gb else 0 %}
 
         <div class="mb-3">
-            <div class="d-flex justify-content-between text-secondary small mb-1">
+            <div class="d-flex justify-content-between text-secondary small mb-1 align-items-center">
                 <span>مصرف حجم: {{ "%.2f"|format(used_gb) }} گیگابایت از {{ total_gb }} گیگ</span>
+                {% if sub.get('gift_traffic_gb') and sub.get('gift_traffic_gb') > 0 %}
+                <span class="badge text-white px-2 py-1" style="background-color: #6f42c1; font-size: 0.72rem;">
+                    <i class="fas fa-gift me-1"></i>{{ sub.get('traffic_display') }}
+                </span>
+                {% else %}
                 <span>{{ percent }}٪</span>
+                {% endif %}
             </div>
+            {% if sub.get('gift_traffic_gb') and sub.get('gift_traffic_gb') > 0 %}
+            <div class="d-flex justify-content-between text-secondary small mb-1" style="font-size: 0.75rem;">
+                <span>درصد مصرف: {{ percent }}٪</span>
+                <span class="text-info"><i class="fas fa-sparkles me-1"></i>شامل {{ sub.get('gift_traffic_gb') }} گیگ هدیه</span>
+            </div>
+            {% endif %}
             <div class="progress" style="height: 10px; background: rgba(255,255,255,0.1); border-radius: 10px;">
                 <div class="progress-bar {% if percent > 90 %}bg-danger{% elif percent > 75 %}bg-warning{% else %}bg-primary{% endif %} progress-glow" 
                      style="width: {{ [percent, 100]|min }}%; border-radius: 10px;"></div>
@@ -2298,7 +2314,14 @@
                         </div>
                         <div class="d-flex justify-content-between align-items-center pt-2 border-top border-secondary border-opacity-25">
                             <span class="text-secondary small">کل سقف حجم بسته:</span>
-                            <strong class="text-info fs-5">{{ total_gb }} <small class="fs-6">GB</small></strong>
+                            <div class="text-end">
+                                <strong class="text-info fs-5">{{ total_gb }} <small class="fs-6">GB</small></strong>
+                                {% if sub.get('gift_traffic_gb') and sub.get('gift_traffic_gb') > 0 %}
+                                <div class="badge text-white d-block mt-1" style="background-color: #6f42c1; font-size: 0.75rem;">
+                                    <i class="fas fa-gift me-1"></i>{{ sub.get('traffic_display') }}
+                                </div>
+                                {% endif %}
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -207,24 +207,47 @@
                     {% endif %}
 
                     {% if reseller.get('can_gift_traffic') %}
+                    {% set gift_balance = reseller.get('gift_traffic_balance', 0) | float %}
                     <!-- بخش اهدای حجم هدیه رایگان به مشتری -->
-                    <div class="p-3 bg-success bg-opacity-10 border border-success rounded-3 mb-4">
+                    <div class="p-3 {% if gift_balance > 0 %}bg-success bg-opacity-10 border border-success{% else %}bg-secondary bg-opacity-10 border border-secondary{% endif %} rounded-3 mb-4">
                         <div class="d-flex align-items-center justify-content-between mb-2">
-                            <label class="form-label fw-bold text-success mb-0">
+                            <label class="form-label fw-bold {% if gift_balance > 0 %}text-success{% else %}text-muted{% endif %} mb-0">
                                 <i class="fas fa-gift me-1"></i> اهدای حجم هدیه رایگان به مشتری (GB):
                             </label>
-                            <span class="badge bg-success text-white"><i class="fas fa-check-circle me-1"></i>مجوز هدیه فعال است</span>
+                            {% if gift_balance > 0 %}
+                            <span class="badge bg-success text-white"><i class="fas fa-coins me-1"></i>سهمیه باقیمانده شما: {{ gift_balance }} گیگابایت</span>
+                            {% else %}
+                            <span class="badge bg-danger text-white"><i class="fas fa-ban me-1"></i>سهمیه هدیه تمام شده است</span>
+                            {% endif %}
                         </div>
                         <div class="input-group">
-                            <span class="input-group-text bg-white"><i class="fas fa-plus text-success"></i></span>
-                            <input type="number" step="0.5" min="0" name="gift_traffic_gb" class="form-control font-monospace" placeholder="حجم هدیه اضافی به گیگابایت (اختیاری - مثلاً: 5)" value="0">
+                            <span class="input-group-text bg-white"><i class="fas fa-plus {% if gift_balance > 0 %}text-success{% else %}text-muted{% endif %}"></i></span>
+                            <input type="number" step="0.5" min="0" {% if gift_balance > 0 %}max="{{ gift_balance }}"{% else %}disabled{% endif %} name="gift_traffic_gb" id="giftTrafficInput" class="form-control font-monospace" placeholder="حجم هدیه اضافی به گیگابایت (اختیاری - مثلاً: 5)" value="0">
                             <span class="input-group-text bg-white">گیگابایت</span>
                         </div>
-                        <div class="form-text small text-muted mt-1">
-                            این حجم هدیه بدون کسر هزینه اضافی از کیف پول شما، به حجم اولیه اشتراک مشتری اضافه می‌گردد.
+                        <div class="form-text small {% if gift_balance > 0 %}text-muted{% else %}text-danger fw-bold{% endif %} mt-1">
+                            {% if gift_balance > 0 %}
+                            این حجم هدیه از سهمیه هدیه شما ({{ gift_balance }} GB) کسر می‌شود و بدون کسر وجه از کیف پول شما، به حجم اولیه اشتراک مشتری اضافه می‌گردد.
+                            {% else %}
+                            سهمیه حجم هدیه شما تمام شده است و امکان افزودن هدیه ندارید تا مدیریت مجدداً سهمیه هدیه شما را شارژ نماید.
+                            {% endif %}
                         </div>
                     </div>
                     {% endif %}
+
+                    <!-- فیلد مبلغ تخفیف به مشتری -->
+                    <div class="p-3 bg-warning bg-opacity-10 border border-warning rounded-3 mb-4">
+                        <label class="form-label fw-bold text-dark mb-1">
+                            <i class="fas fa-tag text-warning me-1"></i> مبلغ تخفیف به مشتری (تومان - اختیاری):
+                        </label>
+                        <div class="input-group">
+                            <input type="number" step="1000" min="0" name="discount_amount" id="customerDiscountInput" class="form-control font-monospace" placeholder="مثلاً: 20000" value="0" oninput="updateCustomerDiscount()">
+                            <span class="input-group-text bg-white">تومان</span>
+                        </div>
+                        <div class="form-text small text-muted mt-1">
+                            در صورت وارد کردن، این مبلغ به عنوان تخفیف از قیمت نهایی یا بدهی ثبت‌شده مشتری کسر می‌گردد.
+                        </div>
+                    </div>
 
                     <!-- خلاصه فاکتور و پرداخت -->
                     <div class="p-3 bg-light rounded-3 mb-4">
@@ -356,6 +379,15 @@
         }
     }
 
+    function updateCustomerDiscount() {
+        const discInput = document.getElementById('customerDiscountInput');
+        const discVal = discInput ? Math.max(0, parseInt(discInput.value) || 0) : 0;
+        const debtInput = document.getElementById('resellerDebtAmountInput');
+        if (debtInput && currentRetailPrice > 0) {
+            debtInput.value = Math.max(0, currentRetailPrice - discVal);
+        }
+    }
+
     function calculatePrice(price, wholesalePrice) {
         const finalPrice = (wholesalePrice !== undefined && wholesalePrice !== null) ? wholesalePrice : Math.floor((price * (100 - discountPercent)) / 100);
         const discountAmount = Math.max(0, price - finalPrice);
@@ -366,8 +398,10 @@
         document.getElementById('finalPriceText').innerText = finalPrice.toLocaleString('fa-IR') + ' تومان';
         
         const debtInput = document.getElementById('resellerDebtAmountInput');
+        const discInput = document.getElementById('customerDiscountInput');
+        const discVal = discInput ? Math.max(0, parseInt(discInput.value) || 0) : 0;
         if (debtInput) {
-            debtInput.value = price;
+            debtInput.value = Math.max(0, price - discVal);
         }
 
         // هایلایت پلن فعال

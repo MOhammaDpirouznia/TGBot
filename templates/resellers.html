@@ -259,7 +259,7 @@
                                             <span class="badge bg-warning-subtle text-warning border border-warning px-1 py-0" style="font-size: 0.65rem;" title="نماینده شریک"><i class="fas fa-handshake me-1"></i>شریک</span>
                                         {% endif %}
                                         {% if r.get('can_gift_traffic') %}
-                                            <span class="badge bg-success-subtle text-success border border-success px-1 py-0" style="font-size: 0.65rem;" title="مجاز به اهدای حجم هدیه به مشتریان"><i class="fas fa-gift me-1"></i>حجم هدیه</span>
+                                            <span class="badge bg-success-subtle text-success border border-success px-1.5 py-0.5" style="font-size: 0.65rem;" title="سهمیه باقیمانده حجم هدیه رایگان"><i class="fas fa-gift me-1"></i>سهمیه هدیه: {{ (r.get('gift_traffic_balance', 0.0) | float) | round(1) }} GB</span>
                                         {% endif %}
                                     </div>
                                     <div class="d-flex align-items-center gap-1 mt-1 text-muted small flex-wrap">
@@ -440,6 +440,12 @@
                                             <button type="button" class="dropdown-item d-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#addDebtModal{{ r['id'] }}">
                                                 <i class="fas fa-receipt text-warning" style="width: 16px;"></i>
                                                 <span>ثبت بدهی جدید</span>
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button type="button" class="dropdown-item d-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#rechargeGiftModal{{ r['id'] }}">
+                                                <i class="fas fa-gift text-success" style="width: 16px;"></i>
+                                                <span>شارژ سهمیه حجم هدیه</span>
                                             </button>
                                         </li>
                                         {% if r.get('credit_enabled') or (r.get('credit_debt') or 0) > 0 %}
@@ -647,7 +653,7 @@
                                 <span class="badge bg-secondary-subtle text-secondary rounded-pill px-2 py-0.5" style="font-size: 0.65rem;">آفلاین</span>
                             {% endif %}
                             {% if r.get('can_gift_traffic') %}
-                                <span class="badge bg-warning text-dark rounded-pill px-2" style="font-size: 0.65rem;" title="مجاز به اهدای حجم هدیه"><i class="fas fa-gift me-1"></i>حجم هدیه فعال</span>
+                                <span class="badge bg-success-subtle text-success border border-success rounded-pill px-2" style="font-size: 0.65rem;" title="سهمیه باقیمانده حجم هدیه رایگان"><i class="fas fa-gift me-1"></i>سهمیه هدیه: {{ (r.get('gift_traffic_balance', 0.0) | float) | round(1) }} GB</span>
                             {% endif %}
                         </div>
                         <div class="d-flex align-items-center gap-2 text-white-50 small flex-wrap" style="font-size: 0.78rem;">
@@ -717,6 +723,13 @@
                         <button type="button" class="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1 shadow-xs px-3 py-1.5" data-bs-switch-modal="#settleDebtModal{{ r['id'] }}">
                             <i class="fas fa-hand-holding-dollar"></i>
                             <span>تسویه بدهی اعتباری ({{ "{:,}".format(r.get('credit_debt') or 0) }} ت)</span>
+                        </button>
+                        {% endif %}
+
+                        {% if r.get('can_gift_traffic') %}
+                        <button type="button" class="btn btn-sm d-inline-flex align-items-center gap-1 shadow-xs px-3 py-1.5 text-white" style="background-color: #6f42c1;" data-bs-switch-modal="#rechargeGiftModal{{ r['id'] }}">
+                            <i class="fas fa-gift"></i>
+                            <span>شارژ سهمیه هدیه ({{ r.get('gift_traffic_balance', 0) }} GB)</span>
                         </button>
                         {% endif %}
 
@@ -1419,6 +1432,34 @@
     </div>
 </div>
 
+<!-- Modal شارژ سهمیه حجم هدیه نماینده -->
+<div class="modal fade text-start" id="rechargeGiftModal{{ r['id'] }}" tabindex="-1" aria-labelledby="rechargeGiftModalLabel{{ r['id'] }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <form method="POST" action="{{ url_for('admin_reseller_recharge_gift', reseller_id=r['id']) }}">
+                <div class="modal-header text-white py-3" style="background-color: #6f42c1;">
+                    <h5 class="modal-title fw-bold" id="rechargeGiftModalLabel{{ r['id'] }}"><i class="fas fa-gift me-2"></i>شارژ سهمیه حجم هدیه «{{ r['name'] }}»</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-info py-2 px-3 small mb-3">
+                        <i class="fas fa-info-circle me-1"></i> سهمیه فعلی حجم هدیه این نماینده: <strong class="text-primary font-monospace">{{ r.get('gift_traffic_balance', 0) }} گیگابایت</strong> است.
+                        نماینده تنها تا سقف این سهمیه می‌تواند به مشتریان خود حجم هدیه رایگان اهدا کند.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">مقدار افزایش سهمیه هدیه (گیگابایت):</label>
+                        <input type="number" step="0.5" name="amount" class="form-control font-monospace" placeholder="مثال: 50" min="0.5" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn text-white fw-bold px-4" style="background-color: #6f42c1;">افزایش سهمیه هدیه</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- Modal ثبت قبض بدهی برای نماینده -->
 <div class="modal fade text-start" id="addDebtModal{{ r['id'] }}" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -1536,14 +1577,19 @@
                     <!-- بخش دسترسی اهدای حجم هدیه به مشتری -->
                     <div class="mb-3 border border-success p-3 rounded bg-success bg-opacity-10">
                         <label class="form-label fw-bold text-success"><i class="fas fa-gift me-1"></i> دسترسی حجم هدیه رایگان به مشتریان:</label>
-                        <div class="form-check form-switch mb-1">
+                        <div class="form-check form-switch mb-2">
                             <input class="form-check-input" type="checkbox" name="can_gift_traffic" id="canGiftTrafficEdit{{ r['id'] }}" value="1" {% if r.get('can_gift_traffic') %}checked{% endif %}>
                             <label class="form-check-label fw-bold small text-dark" for="canGiftTrafficEdit{{ r['id'] }}">
                                 مجاز بودن نماینده برای اهدای حجم هدیه رایگان (GB) به مشتری در هنگام ساخت یا تمدید
                             </label>
                         </div>
-                        <div class="small text-muted" style="font-size: 0.75rem;">
-                            در صورت فعال بودن، نماینده می‌تواند هنگام ساخت کاربر یا تمدید، حجم دلخواهی به صورت هدیه اضافه کند بدون اینکه هزینه‌ای از موجودی کیف پول نماینده کسر شود.
+                        <div class="mt-2 pt-2 border-top border-success-subtle">
+                            <label class="form-label fw-bold small text-dark"><i class="fas fa-coins text-warning me-1"></i> سقف سهمیه حجم هدیه (گیگابایت):</label>
+                            <input type="number" step="0.5" name="gift_traffic_balance" class="form-control font-monospace form-control-sm" value="{{ r.get('gift_traffic_balance', 0) }}" min="0" placeholder="0">
+                            <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">میزان حجم هدیه‌ای که نماینده مجاز است به مشتریان اهدا کند. پس از اتمام، امکان اهدای هدیه مسدود می‌شود.</small>
+                        </div>
+                        <div class="small text-muted mt-2" style="font-size: 0.75rem;">
+                            در صورت فعال بودن، نماینده می‌تواند هنگام ساخت کاربر یا تمدید، حجم دلخواهی به صورت هدیه اضافه کند بدون اینکه هزینه‌ای از موجودی کیف پول نماینده کسر شود (تا سقف سهمیه بالا).
                         </div>
                     </div>
 
@@ -1692,8 +1738,13 @@
                                 <i class="fas fa-gift text-success me-1"></i> دسترسی اهدای حجم هدیه به مشتریان (هنگام ساخت یا تمدید)
                             </label>
                         </div>
+                        <div class="mt-2 pt-2 border-top border-success-subtle">
+                            <label class="form-label fw-bold small text-dark"><i class="fas fa-coins text-warning me-1"></i> سهمیه اولیه حجم هدیه (گیگابایت):</label>
+                            <input type="number" step="0.5" name="gift_traffic_balance" class="form-control font-monospace form-control-sm" value="0" min="0" placeholder="0">
+                            <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">سقف مجاز اولیه برای اهدای حجم رایگان به مشتریان.</small>
+                        </div>
                         <small class="text-muted d-block mt-1" style="font-size: 0.72rem;">
-                            بدون کسر هزینه پلن از کیف پول نماینده.
+                            بدون کسر هزینه پلن از کیف پول نماینده (تا سقف سهمیه مشخص شده).
                         </small>
                     </div>
 

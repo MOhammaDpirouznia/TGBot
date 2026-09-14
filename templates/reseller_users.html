@@ -1089,19 +1089,30 @@
                     </div>
 
                     {% if stats.get('can_gift_traffic') %}
-                    <div class="p-2 mb-3 bg-success bg-opacity-10 border border-success rounded-3">
+                    {% set gift_balance = stats.get('gift_traffic_balance', 0) | float %}
+                    <div class="p-2 mb-3 {% if gift_balance > 0 %}bg-success bg-opacity-10 border border-success{% else %}bg-secondary bg-opacity-10 border border-secondary{% endif %} rounded-3">
                         <div class="d-flex align-items-center justify-content-between mb-1">
-                            <label class="form-label fw-bold text-success small mb-0">
+                            <label class="form-label fw-bold {% if gift_balance > 0 %}text-success{% else %}text-muted{% endif %} small mb-0">
                                 <i class="fas fa-gift me-1"></i> اهدای حجم هدیه تمدید (GB):
                             </label>
-                            <span class="badge bg-success text-white" style="font-size: 0.65rem;">مجوز هدیه فعال</span>
+                            {% if gift_balance > 0 %}
+                            <span class="badge bg-success text-white" style="font-size: 0.65rem;"><i class="fas fa-coins me-1"></i>سهمیه باقیمانده: {{ gift_balance }} گیگ</span>
+                            {% else %}
+                            <span class="badge bg-danger text-white" style="font-size: 0.65rem;"><i class="fas fa-ban me-1"></i>سهمیه هدیه تمام است</span>
+                            {% endif %}
                         </div>
                         <div class="input-group input-group-sm">
-                            <span class="input-group-text bg-white"><i class="fas fa-plus text-success"></i></span>
-                            <input type="number" step="0.5" min="0" name="gift_traffic_gb" class="form-control font-monospace" placeholder="حجم هدیه اضافی (اختیاری)" value="0">
+                            <span class="input-group-text bg-white"><i class="fas fa-plus {% if gift_balance > 0 %}text-success{% else %}text-muted{% endif %}"></i></span>
+                            <input type="number" step="0.5" min="0" {% if gift_balance > 0 %}max="{{ gift_balance }}"{% else %}disabled{% endif %} name="gift_traffic_gb" class="form-control font-monospace" placeholder="حجم هدیه اضافی (اختیاری)" value="0">
                             <span class="input-group-text bg-white">گیگابایت</span>
                         </div>
-                        <small class="text-muted" style="font-size: 0.72rem;">بدون کسر وجه از کیف پول شما به سقف پلن افزوده می‌شود.</small>
+                        <small class="{% if gift_balance > 0 %}text-muted{% else %}text-danger fw-bold{% endif %}" style="font-size: 0.72rem;">
+                            {% if gift_balance > 0 %}
+                            از سهمیه هدیه شما ({{ gift_balance }} GB) کسر می‌شود و بدون کسر وجه به سقف پلن افزوده می‌شود.
+                            {% else %}
+                            سهمیه هدیه به اتمام رسیده است و امکان افزودن هدیه ندارید تا مدیریت سهمیه شما را مجدداً شارژ کند.
+                            {% endif %}
+                        </small>
                     </div>
                     {% endif %}
 
@@ -1144,10 +1155,15 @@
                                     </select>
                                     <small class="text-muted" style="font-size: 11px;">مبلغ دریافتی مستقیم به موجودی این کارت یا صندوق افزوده می‌شود.</small>
                                 </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold text-dark"><i class="fas fa-tag text-warning me-1"></i>مبلغ تخفیف به مشتری (تومان):</label>
+                                    <input type="number" step="1000" min="0" name="discount_amount" id="resellerRenewDiscountInput{{ sub['id'] }}" class="form-control font-monospace" placeholder="مثلاً: 10000" value="0" oninput="updateResellerRenewDiscount('{{ sub['id'] }}')">
+                                    <small class="text-muted" style="font-size: 11px;">از مبلغ پرداختی یا بدهی مشتری کسر می‌گردد.</small>
+                                </div>
                                 <div class="col-md-6" id="resellerRenewDebtAmountBox{{ sub['id'] }}" style="{% if sub.get('payment_status') != 'unpaid' and not sub.get('debt_amount') %}display: none;{% endif %}">
                                     <label class="form-label fw-bold text-danger">مبلغ بدهی مشتری در این تمدید (تومان):</label>
                                     <input type="number" step="1000" name="debt_amount" id="resellerRenewDebtAmountInput{{ sub['id'] }}" class="form-control font-monospace border-danger" placeholder="مبلغ بدهی..." value="" data-existing-debt="{{ sub.get('debt_amount', 0) }}" oninput="updateResellerRenewDebtBreakdown('{{ sub['id'] }}')">
-                                    <small class="text-muted" style="font-size: 11px;">مبلغ بر اساس پلن انتخابی وارد می‌شود و قابل تغییر دستی است.</small>
+                                    <small class="text-muted" style="font-size: 11px;">مبلغ بر اساس پلن منهای تخفیف وارد می‌شود و قابل تغییر دستی است.</small>
                                     {% if sub.get('debt_amount', 0) > 0 %}
                                     <div class="alert alert-warning py-1 px-2 mt-1 mb-0 small" id="resellerRenewCumulativeDebtHint{{ sub['id'] }}">
                                         <i class="fas fa-coins text-warning me-1"></i>
@@ -2194,10 +2210,51 @@
                 </div>
 
                 <div class="mb-3">
+                    <label class="form-label fw-bold small text-dark mb-1">
+                        <i class="fas fa-box-open text-primary me-1"></i> انتخاب پلن (اختیاری):
+                    </label>
+                    <select id="addDebtPlanSelect" class="form-select" onchange="onAddDebtPlanChange()">
+                        <option value="" data-price="0">-- بدون پلن (ثبت بدهی متفرقه / آزاد) --</option>
+                        {% for p_key, p in plans.items() %}
+                        <option value="{{ p.get('name') or p_key }}" data-price="{{ p.get('price') or 0 }}">
+                            {{ p.get('name') or p_key }} - {{ "{:,}".format(p.get('price') or 0) }} تومان
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-dark mb-1">
+                        <i class="fas fa-calendar-check text-info me-1"></i> تاریخ تحویل پلن:
+                    </label>
+                    <input type="text" id="addDebtDeliveryDate" class="form-control font-monospace" placeholder="مثلاً: 1403/06/25 یا 2024-09-15 (پیش‌فرض: زمان جاری)">
+                    <div class="form-text small text-muted" style="font-size: 0.75rem;">
+                        شمسی یا میلادی. این تاریخ برای درج در سوابق اشتراک مشتری و مرتب‌سازی زمانی لحاظ می‌شود.
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-warning mb-1">
+                        <i class="fas fa-tag me-1"></i> مبلغ تخفیف (تومان):
+                    </label>
+                    <input type="number" step="1000" id="addDebtDiscountInput" class="form-control font-monospace" placeholder="مثال: 20000" value="0" oninput="calcAddDebtFinalAmount()">
+                </div>
+
+                <div class="mb-3">
                     <label class="form-label fw-bold small text-danger mb-1">
-                        <i class="fas fa-coins me-1"></i> مبلغ بدهی جدید (تومان): <span class="text-danger">*</span>
+                        <i class="fas fa-coins me-1"></i> مبلغ نهایی بدهی جهت ثبت (تومان): <span class="text-danger">*</span>
                     </label>
                     <input type="number" step="1000" id="addDebtAmountInput" class="form-control font-monospace border-danger fw-bold" placeholder="مثال: 150000" required>
+                    <div class="form-text small text-muted" style="font-size: 0.75rem;">
+                        در صورت انتخاب پلن، به صورت خودکار (قیمت پلن منهای تخفیف) محاسبه می‌شود.
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-dark mb-1">
+                        <i class="fas fa-pen text-primary me-1"></i> عنوان دلخواه برای ثبت در تاریخچه:
+                    </label>
+                    <input type="text" id="addDebtCustomTitleInput" class="form-control form-control-sm" placeholder="مثال: تحویل حضوری پلن، تمدید دوره گذشته و...">
                 </div>
 
                 <div class="mb-3">
@@ -2205,6 +2262,10 @@
                         <i class="fas fa-comment-dots me-1"></i> بابت / توضیحات بدهی:
                     </label>
                     <input type="text" id="addDebtNotesInput" class="form-control form-control-sm" placeholder="مثال: خرید گیگ اضافه، هزینه تمدید ماه قبل، و...">
+                </div>
+
+                <div class="alert alert-warning py-2 px-3 small mb-0" style="font-size: 0.78rem;">
+                    <i class="fas fa-shield-alt text-warning me-1"></i> <strong>توجه مهم:</strong> در این فرم فقط بدهی و سابقه پلن در تاریخچه ثبت می‌شود و تحت هیچ شرایطی این پلن روی سرور هیدیفای فعال نخواهد شد.
                 </div>
             </div>
             <div class="modal-footer bg-light py-2">
@@ -2267,11 +2328,17 @@ function handleResellerRenewPlanChange(subId) {
     if (!modal) return;
     const checked = modal.querySelector('input[name="plan_id"]:checked');
     const price = checked ? parseInt(checked.getAttribute('data-price') || 0) : 0;
+    const discInput = document.getElementById('resellerRenewDiscountInput' + subId);
+    const disc = discInput ? parseInt(discInput.value || 0) : 0;
     const debtInput = document.getElementById('resellerRenewDebtAmountInput' + subId);
     if (debtInput) {
-        debtInput.value = price;
+        debtInput.value = Math.max(0, price - disc);
         updateResellerRenewDebtBreakdown(subId);
     }
+}
+
+function updateResellerRenewDiscount(subId) {
+    handleResellerRenewPlanChange(subId);
 }
 
 function updateResellerRenewDebtBreakdown(subId) {
@@ -2727,11 +2794,34 @@ function executeSettleDebtAction() {
     });
 }
 
+function onAddDebtPlanChange() {
+    const sel = document.getElementById('addDebtPlanSelect');
+    const opt = sel.options[sel.selectedIndex];
+    const price = parseInt(opt.getAttribute('data-price') || '0');
+    calcAddDebtFinalAmount(price);
+}
+
+function calcAddDebtFinalAmount(basePrice) {
+    if (basePrice === undefined) {
+        const sel = document.getElementById('addDebtPlanSelect');
+        const opt = sel ? sel.options[sel.selectedIndex] : null;
+        basePrice = opt ? parseInt(opt.getAttribute('data-price') || '0') : 0;
+    }
+    const disc = parseInt(document.getElementById('addDebtDiscountInput').value || '0');
+    if (basePrice > 0) {
+        document.getElementById('addDebtAmountInput').value = Math.max(0, basePrice - disc);
+    }
+}
+
 function openAddDebtModal(subId, accountName) {
     document.getElementById('addDebtSubId').value = subId;
     document.getElementById('addDebtAccountName').value = accountName || '';
     document.getElementById('addDebtAccountDisplay').innerText = accountName || ('#' + subId);
+    document.getElementById('addDebtPlanSelect').value = '';
+    document.getElementById('addDebtDeliveryDate').value = '';
+    document.getElementById('addDebtDiscountInput').value = '0';
     document.getElementById('addDebtAmountInput').value = '';
+    document.getElementById('addDebtCustomTitleInput').value = '';
     document.getElementById('addDebtNotesInput').value = '';
 
     const modalEl = document.getElementById('addCustomerDebtModal');
@@ -2742,8 +2832,11 @@ function openAddDebtModal(subId, accountName) {
 
 function executeAddCustomerDebtAction() {
     const subId = document.getElementById('addDebtSubId').value;
-    const accountName = document.getElementById('addDebtAccountName').value;
+    const planName = document.getElementById('addDebtPlanSelect').value;
+    const deliveryDate = document.getElementById('addDebtDeliveryDate').value;
+    const discountAmount = parseInt(document.getElementById('addDebtDiscountInput').value || '0');
     const amount = document.getElementById('addDebtAmountInput').value;
+    const customTitle = document.getElementById('addDebtCustomTitleInput').value;
     const notes = document.getElementById('addDebtNotesInput').value;
 
     if (!amount || parseInt(amount) <= 0) {
@@ -2768,7 +2861,14 @@ function executeAddCustomerDebtAction() {
             'Content-Type': 'application/json',
             'X-Requested-With': 'XMLHttpRequest'
         },
-        body: JSON.stringify({ amount: parseInt(amount), notes: notes })
+        body: JSON.stringify({
+            amount: parseInt(amount),
+            notes: notes,
+            plan_name: planName,
+            delivery_date: deliveryDate,
+            discount_amount: discountAmount,
+            custom_title: customTitle
+        })
     })
     .then(res => res.json())
     .then(data => {

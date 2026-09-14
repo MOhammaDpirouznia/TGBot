@@ -2638,6 +2638,29 @@ def enrich_subscription_details(sub: dict, resellers_map: dict = None, admins_ma
     item["usage_pct"] = min(100, usage_pct)
     item["issuer_info"] = get_subscription_issuer_info(item, resellers_map=resellers_map, admins_map=admins_map)
 
+    # قالب‌بندی تفکیک‌شده حجم به همراه حجم هدیه (مثلاً: 30روزه 30گیگ + 5گیگ هدیه)
+    gift_traffic = float(item.get("gift_traffic_gb") or 0.0)
+    if gift_traffic <= 0:
+        m_gift = re.search(r"\+(\d+(?:\.\d+)?)\s*(?:GB|گیگ)", str(item.get("plan_name") or "") + " " + str(item.get("account_comment") or ""))
+        if m_gift:
+            try:
+                gift_traffic = float(m_gift.group(1))
+            except Exception:
+                gift_traffic = 0.0
+
+    if gift_traffic > 0 and data_limit > 0:
+        base_traffic = max(0.0, data_limit - gift_traffic)
+        base_str = f"{int(base_traffic) if base_traffic.is_integer() else base_traffic}گیگ"
+        gift_str = f"{int(gift_traffic) if gift_traffic.is_integer() else gift_traffic}گیگ هدیه"
+        item["gift_traffic_gb"] = gift_traffic
+        item["base_traffic_gb"] = base_traffic
+        item["traffic_display"] = f"{duration}روزه {base_str} + {gift_str}"
+    else:
+        limit_str = f"{int(data_limit) if data_limit.is_integer() else data_limit}گیگ"
+        item["gift_traffic_gb"] = 0.0
+        item["base_traffic_gb"] = data_limit
+        item["traffic_display"] = f"{duration}روزه {limit_str}"
+
     return item
 
 
@@ -6307,6 +6330,10 @@ def admin_subscription_renew(sub_id: int):
     if is_free:
         cost_paid = 0
 
+    discount_amount = max(0, int(request.form.get("discount_amount", 0) or 0))
+    if discount_amount > 0 and cost_paid > 0:
+        cost_paid = max(0, cost_paid - discount_amount)
+
     payment_status = request.form.get("payment_status", "paid").strip()
     debt_amount_raw = request.form.get("debt_amount", "").strip()
     renewal_notes = request.form.get("renewal_notes", "").strip()
@@ -6347,10 +6374,11 @@ def admin_subscription_renew(sub_id: int):
                 start_date=?, expire_date=?, status='active', updated_at=?,
                 last_renewed_at=?, last_lifecycle_event_at=?, cost_paid=?,
                 payment_status=?, debt_amount=?, debt_notes=?,
+                gift_traffic_gb=?, discount_amount=?,
                 debt_created_at = CASE WHEN ? = 'unpaid' THEN COALESCE(debt_created_at, ?) ELSE NULL END
             WHERE id=?
         """, (plan_key, plan_name, data_limit, duration, new_start_date, new_expire_date, now, now, now, 0 if debt_status == "unpaid" else cost_paid,
-              debt_status, total_debt, renewal_notes or None, debt_status, debt_created, sub_id))
+              debt_status, total_debt, renewal_notes or None, gift_traffic, discount_amount, debt_status, debt_created, sub_id))
         conn.commit()
         conn.close()
 
@@ -7276,6 +7304,7 @@ def admin_resellers():
         credit_limit = int(request.form.get("credit_limit", 0) or 0)
         credit_enabled = 1 if (request.form.get("credit_enabled") or credit_limit > 0) else 0
         can_gift_traffic = 1 if request.form.get("can_gift_traffic") in ("on", "1", "true") else 0
+        gift_traffic_balance = float(request.form.get("gift_traffic_balance", 0.0) or 0.0)
         is_partner = 1 if request.form.get("is_partner") in ("on", "1", "true") else 0
 
         res = db.create_reseller(
@@ -7289,7 +7318,8 @@ def admin_resellers():
             credit_enabled=credit_enabled,
             credit_limit=credit_limit,
             can_gift_traffic=can_gift_traffic,
-            is_partner=is_partner
+            is_partner=is_partner,
+            gift_traffic_balance=gift_traffic_balance
         )
         if res.get("success"):
             flash(f"نماینده جدید «{name}» با موفقیت افزوده شد!", "success")
@@ -7518,6 +7548,7 @@ def admin_reseller_edit(reseller_id):
     credit_limit = int(request.form.get("credit_limit", 0) or 0)
     credit_enabled = 1 if (request.form.get("credit_enabled") or credit_limit > 0) else 0
     can_gift_traffic = 1 if request.form.get("can_gift_traffic") in ("on", "1", "true") else 0
+    gift_traffic_balance = float(request.form.get("gift_traffic_balance", 0.0) or 0.0)
     can_delete_payments = 1 if request.form.get("can_delete_payments") in ("on", "1", "true") else 0
     can_revoke_payments = 1 if request.form.get("can_revoke_payments") in ("on", "1", "true") else 0
     is_partner = 1 if request.form.get("is_partner") in ("on", "1", "true") else 0
@@ -7532,6 +7563,7 @@ def admin_reseller_edit(reseller_id):
         "credit_enabled": credit_enabled,
         "credit_limit": credit_limit,
         "can_gift_traffic": can_gift_traffic,
+        "gift_traffic_balance": gift_traffic_balance,
         "can_delete_payments": can_delete_payments,
         "can_revoke_payments": can_revoke_payments,
         "is_partner": is_partner
@@ -7544,6 +7576,25 @@ def admin_reseller_edit(reseller_id):
         flash(f"اطلاعات نماینده «{updates['name']}» با موفقیت ویرایش شد.", "success")
     else:
         flash(f"خطا در ویرایش نماینده: {res.get('error')}", "danger")
+    return redirect(url_for("admin_resellers"))
+
+
+@app.route("/admin/reseller/<int:reseller_id>/recharge-gift", methods=["POST"])
+@admin_required
+def admin_reseller_recharge_gift(reseller_id):
+    """شارژ سریع سهمیه حجم هدیه نماینده توسط مدیر"""
+    try:
+        amount = float(request.form.get("amount", 0.0) or 0.0)
+    except (ValueError, TypeError):
+        amount = 0.0
+    if amount <= 0:
+        flash("مقدار حجم شارژ باید بزرگتر از صفر باشد.", "warning")
+        return redirect(url_for("admin_resellers"))
+    res = db.recharge_reseller_gift_traffic(reseller_id, amount)
+    if res.get("success"):
+        flash(f"سهمیه حجم هدیه نماینده با موفقیت به میزان {amount} گیگابایت شارژ گردید. موجودی جدید: {res.get('new_balance')} گیگابایت", "success")
+    else:
+        flash(f"خطا در شارژ سهمیه هدیه: {res.get('error')}", "danger")
     return redirect(url_for("admin_resellers"))
 
 
@@ -9039,22 +9090,36 @@ def reseller_subscription_clear_debt(sub_id):
 @app.route("/admin/subscription/<int:sub_id>/add-debt", methods=["POST"])
 @permission_required("sub_manage")
 def admin_subscription_add_debt(sub_id):
-    """ثبت مستقیم بدهی جدید برای مشتری توسط مدیر"""
-    amount_raw = request.form.get("amount") or (request.json.get("amount") if request.is_json else 0)
-    notes = request.form.get("notes") or (request.json.get("notes") if request.is_json else "")
+    """ثبت مستقیم بدهی جدید برای مشتری توسط مدیر (صرفاً ثبت مالی و سابقه بدون فعال‌سازی روی سرور)"""
+    req_data = (request.get_json(silent=True) if request.is_json else None) or request.form or {}
+    amount_raw = req_data.get("amount", 0)
+    notes = req_data.get("notes", "")
+    plan_name = req_data.get("plan_name", "")
+    delivery_date = req_data.get("delivery_date", "")
+    discount_amount = int(req_data.get("discount_amount", 0) or 0)
+    custom_title = req_data.get("custom_title", "")
     actor = session.get("name") or session.get("username") or "مدیریت"
     try:
         amount = int(re.sub(r"\D", "", str(amount_raw)))
     except Exception:
         amount = 0
 
-    res = db.add_customer_debt(sub_id, amount=amount, notes=notes, actor=actor)
+    res = db.add_customer_debt(
+        sub_id,
+        amount=amount,
+        notes=notes,
+        actor=actor,
+        plan_name=plan_name,
+        delivery_date=delivery_date,
+        discount_amount=discount_amount,
+        custom_title=custom_title
+    )
     if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
         if res.get("success"):
-            return jsonify({"success": True, "message": f"بدهی به مبلغ {amount:,} تومان با موفقیت ثبت شد.", "data": res})
+            return jsonify({"success": True, "message": f"بدهی به مبلغ {amount:,} تومان با موفقیت ثبت و در سوابق مشتری درج گردید.", "data": res})
         return jsonify({"success": False, "error": res.get("error", "خطا در ثبت بدهی")}), 400
     if res.get("success"):
-        flash(f"بدهی به مبلغ {amount:,} تومان با موفقیت برای مشتری ثبت شد.", "success")
+        flash(f"بدهی به مبلغ {amount:,} تومان با موفقیت برای مشتری ثبت و در سوابق دوره درج شد.", "success")
     else:
         flash(f"خطا در ثبت بدهی: {res.get('error')}", "danger")
     return redirect(request.form.get("redirect_url") or request.form.get("next") or request.referrer or url_for("subscriptions"))
@@ -9063,23 +9128,38 @@ def admin_subscription_add_debt(sub_id):
 @app.route("/reseller/subscription/<int:sub_id>/add-debt", methods=["POST"])
 @reseller_required
 def reseller_subscription_add_debt(sub_id):
-    """ثبت مستقیم بدهی جدید برای مشتری توسط نماینده"""
+    """ثبت مستقیم بدهی جدید برای مشتری توسط نماینده (صرفاً ثبت مالی و سابقه بدون فعال‌سازی روی سرور)"""
     reseller_id = session.get("reseller_id")
-    amount_raw = request.form.get("amount") or (request.json.get("amount") if request.is_json else 0)
-    notes = request.form.get("notes") or (request.json.get("notes") if request.is_json else "")
+    req_data = (request.get_json(silent=True) if request.is_json else None) or request.form or {}
+    amount_raw = req_data.get("amount", 0)
+    notes = req_data.get("notes", "")
+    plan_name = req_data.get("plan_name", "")
+    delivery_date = req_data.get("delivery_date", "")
+    discount_amount = int(req_data.get("discount_amount", 0) or 0)
+    custom_title = req_data.get("custom_title", "")
     actor = session.get("name") or session.get("username") or f"reseller_{reseller_id}"
     try:
         amount = int(re.sub(r"\D", "", str(amount_raw)))
     except Exception:
         amount = 0
 
-    res = db.add_customer_debt(sub_id, amount=amount, notes=notes, actor=actor, reseller_id=reseller_id)
+    res = db.add_customer_debt(
+        sub_id,
+        amount=amount,
+        notes=notes,
+        actor=actor,
+        reseller_id=reseller_id,
+        plan_name=plan_name,
+        delivery_date=delivery_date,
+        discount_amount=discount_amount,
+        custom_title=custom_title
+    )
     if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
         if res.get("success"):
-            return jsonify({"success": True, "message": f"بدهی به مبلغ {amount:,} تومان با موفقیت ثبت شد.", "data": res})
+            return jsonify({"success": True, "message": f"بدهی به مبلغ {amount:,} تومان با موفقیت ثبت و در سوابق مشتری درج گردید.", "data": res})
         return jsonify({"success": False, "error": res.get("error", "خطا در ثبت بدهی")}), 400
     if res.get("success"):
-        flash(f"بدهی به مبلغ {amount:,} تومان با موفقیت برای مشتری ثبت شد.", "success")
+        flash(f"بدهی به مبلغ {amount:,} تومان با موفقیت برای مشتری ثبت و در سوابق دوره درج شد.", "success")
     else:
         flash(f"خطا در ثبت بدهی: {res.get('error')}", "danger")
     return redirect(request.form.get("redirect_url") or request.form.get("next") or request.referrer or url_for("reseller_users"))
@@ -11792,8 +11872,10 @@ def reseller_create_user():
             account_name = f"res_{reseller_id}_{int(time.time()) % 10000}"
 
         telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else 0
+        discount_amount = max(0, int(request.form.get("discount_amount", 0) or 0))
+        customer_selling_price = max(0, original_price - discount_amount)
         if payment_status in ("unpaid", "debtor"):
-            debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else original_price
+            debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else customer_selling_price
         else:
             debt_amount = 0
 
@@ -11803,9 +11885,14 @@ def reseller_create_user():
         if telegram_id:
             user_comment += f" | TG: {telegram_id}"
 
-        # ۱. ابتدا ساخت کاربر در سرور هیدیفای انجام می‌شود
+        # ۱. بررسی حجم پایه و سهمیه حجم هدیه نماینده
         data_limit_gb = plan.get("display_data_limit") if plan.get("display_data_limit") is not None else plan.get("data_limit", 30)
         duration_days = plan.get("display_duration") if plan.get("display_duration") is not None else plan.get("duration", 30)
+
+        # امکان ساخت اشتراک فقط با حجم هدیه وجود ندارد
+        if not data_limit_gb or float(data_limit_gb) <= 0:
+            flash("امکان ساخت اشتراک فقط با حجم هدیه وجود ندارد. انتخاب پلن با حجم پایه معتبر الزامی است.", "danger")
+            return redirect(url_for("reseller_create_user"))
 
         can_gift = bool(reseller.get("can_gift_traffic"))
         gift_traffic = 0.0
@@ -11814,6 +11901,12 @@ def reseller_create_user():
                 gift_traffic = max(0.0, float(request.form.get("gift_traffic_gb", 0) or 0))
             except (ValueError, TypeError):
                 gift_traffic = 0.0
+
+        if gift_traffic > 0:
+            gift_balance = float(reseller.get("gift_traffic_balance") or 0.0)
+            if gift_balance <= 0 or gift_traffic > gift_balance:
+                flash(f"سهمیه حجم هدیه شما کافی نیست! باقیمانده سهمیه: {gift_balance} گیگابایت. لطفاً جهت شارژ سهمیه با پشتیبانی تماس بگیرید.", "danger")
+                return redirect(url_for("reseller_create_user"))
 
         effective_limit_gb = data_limit_gb + gift_traffic
         if gift_traffic > 0:
@@ -11833,11 +11926,15 @@ def reseller_create_user():
             flash(f"خطا در ساخت اکانت روی سرور هیدیفای: {err_msg}", "danger")
             return redirect(url_for("reseller_create_user"))
 
+        # کسر حجم هدیه اهدایی از سهمیه نماینده
+        if gift_traffic > 0:
+            db.deduct_reseller_gift_traffic(reseller_id, gift_traffic)
+
         # ۲. پس از تایید ۱۰۰٪ ساخت در هیدیفای، موجودی/اعتبار کسر و تراکنش خرید ثبت می‌گردد
         base_plan_title = plan.get("display_name") or plan.get("name") or plan.get("master_name", "")
         plan_title = base_plan_title + (f" (+{gift_traffic}GB هدیه)" if gift_traffic > 0 else "")
-        profit_margin = 0 if payment_status in ("unpaid", "debtor") else max(0, original_price - final_price)
-        reseller_selling_price = 0 if payment_status in ("unpaid", "debtor") else original_price
+        profit_margin = 0 if payment_status in ("unpaid", "debtor") else max(0, customer_selling_price - final_price)
+        reseller_selling_price = 0 if payment_status in ("unpaid", "debtor") else customer_selling_price
         reseller_creator = session.get("username") or reseller.get("username") or f"reseller_{reseller_id}"
         deduct_res = db.deduct_reseller_balance(
             reseller_id, final_price, plan_title, account_name,
@@ -11866,7 +11963,7 @@ def reseller_create_user():
         credit_used_amount = deduct_res.get("credit_used", 0)
         actual_payment_source = deduct_res.get("payment_source", "wallet")
 
-        # ۳. ثبت اشتراک با وضعیت بدهی، شناسه نماینده، شماره تلفن، هزینه و منبع پرداخت دقیق
+        # ۳. ثبت اشتراک با وضعیت بدهی، شناسه نماینده، شماره تلفن، هزینه، تخفیف و حجم هدیه
         reseller_creator = session.get("username") or f"reseller_{reseller_id}"
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -11874,13 +11971,13 @@ def reseller_create_user():
             INSERT INTO subscriptions 
             (telegram_id, hidify_uuid, plan_id, plan_name, account_name, phone_number,
              data_limit, duration, status, reseller_id, user_limit, cost_paid,
-             payment_status, debt_amount, debt_notes, debt_created_at, is_credit, credit_debt_amount, payment_source, created_by, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             payment_status, debt_amount, debt_notes, debt_created_at, is_credit, credit_debt_amount, payment_source, created_by, gift_traffic_gb, discount_amount, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             telegram_id, user_uuid, plan_key, plan_title, account_name, phone_number or None,
             effective_limit_gb, duration_days, reseller_id, user_limit, final_price,
             payment_status, debt_amount, debt_notes or None, debt_created, is_credit_sub, credit_used_amount,
-            actual_payment_source, reseller_creator, now, now
+            actual_payment_source, reseller_creator, gift_traffic, discount_amount, now, now
         ))
         sub_id = cursor.lastrowid
 
@@ -12532,6 +12629,11 @@ def reseller_renew_user(sub_id: int):
     data_limit_gb = plan.get("display_data_limit") if plan.get("display_data_limit") is not None else plan.get("data_limit", 30)
     duration_days = plan.get("display_duration") if plan.get("display_duration") is not None else plan.get("duration", 30)
 
+    # بررسی حجم پایه و سهمیه حجم هدیه نماینده
+    if not data_limit_gb or float(data_limit_gb) <= 0:
+        flash("امکان تمدید اشتراک فقط با حجم هدیه وجود ندارد. حجم پلن پایه باید بزرگتر از صفر باشد.", "danger")
+        return redirect(get_redirect_target("reseller_users"))
+
     can_gift = bool(reseller.get("can_gift_traffic"))
     gift_traffic = 0.0
     if can_gift:
@@ -12539,6 +12641,12 @@ def reseller_renew_user(sub_id: int):
             gift_traffic = max(0.0, float(request.form.get("gift_traffic_gb", 0) or 0))
         except (ValueError, TypeError):
             gift_traffic = 0.0
+
+    if gift_traffic > 0:
+        gift_balance = float(reseller.get("gift_traffic_balance") or 0.0)
+        if gift_balance <= 0 or gift_traffic > gift_balance:
+            flash(f"سهمیه حجم هدیه شما کافی نیست! باقیمانده سهمیه مجاز: {gift_balance} گیگابایت. لطفاً جهت شارژ سهمیه با مدیریت تماس بگیرید.", "danger")
+            return redirect(get_redirect_target("reseller_users"))
 
     effective_limit_gb = data_limit_gb + gift_traffic
     plan_title = base_plan_title + (f" (+{gift_traffic}GB هدیه)" if gift_traffic > 0 else "")
@@ -12551,13 +12659,19 @@ def reseller_renew_user(sub_id: int):
         except Exception as e:
             logger.error(f"Error in reseller renew Hiddify {sub.get('hidify_uuid')}: {e}")
 
-    # دریافت وضعیت مالی مشتری (تسویه یا بدهکار) و یادداشت تمدید
+    # کسر سهمیه حجم هدیه نماینده
+    if gift_traffic > 0:
+        db.deduct_reseller_gift_traffic(reseller_id, gift_traffic)
+
+    # دریافت وضعیت مالی مشتری (تسویه یا بدهکار)، مبلغ تخفیف و یادداشت تمدید
     payment_status = request.form.get("payment_status", "paid").strip()
     debt_amount_raw = request.form.get("debt_amount", "").strip()
     renewal_notes = request.form.get("renewal_notes", "").strip()
+    discount_amount = max(0, int(request.form.get("discount_amount", 0) or 0))
+    customer_selling_price = max(0, original_price - discount_amount)
 
     if payment_status in ("unpaid", "debtor"):
-        debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else original_price
+        debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else customer_selling_price
         debt_status = "unpaid"
     else:
         debt_amount = 0
@@ -12565,8 +12679,8 @@ def reseller_renew_user(sub_id: int):
 
     # ۲. ثبت در دیتابیس (آنی با ریست یا رزرو در صف) و کسر هزینه با توجه به منبع پرداخت
     creator_user = session.get("username") or f"reseller_{reseller_id}"
-    profit_margin = 0 if debt_status == "unpaid" else max(0, original_price - final_price)
-    renew_selling_price = 0 if debt_status == "unpaid" else original_price
+    profit_margin = 0 if debt_status == "unpaid" else max(0, customer_selling_price - final_price)
+    renew_selling_price = 0 if debt_status == "unpaid" else customer_selling_price
     renew_db = db.renew_reseller_subscription(
         reseller_id=reseller_id,
         sub_id=sub_id,
@@ -12582,6 +12696,15 @@ def reseller_renew_user(sub_id: int):
         profit_margin=profit_margin,
         created_by=creator_user
     )
+
+    # ذخیره حجم هدیه و مبلغ تخفیف روی اشتراک
+    try:
+        conn_sub = db.get_connection()
+        conn_sub.execute("UPDATE subscriptions SET gift_traffic_gb = ?, discount_amount = ? WHERE id = ?", (gift_traffic, discount_amount, sub_id))
+        conn_sub.commit()
+        conn_sub.close()
+    except Exception as e_sub:
+        logger.error(f"Error updating gift_traffic_gb/discount_amount on sub {sub_id}: {e_sub}")
 
     if renew_db.get("success"):
         # تنظیم یا تسویه وضعیت مالی و بدهی مشتری
@@ -16010,7 +16133,11 @@ def admin_create_customer():
             flash(f"خطا در ایجاد اکانت در سرور هیدیفای: {h_res.get('error')}", "danger")
             return redirect(url_for("admin_create_customer"))
 
-        # تعیین وضعیت بدهی
+        # محاسبه تخفیف و تعیین وضعیت بدهی
+        discount_amount = max(0, int(request.form.get("discount_amount", 0) or 0))
+        if discount_amount > 0:
+            price = max(0, price - discount_amount)
+
         debt_amount_raw = request.form.get("debt_amount", "").strip()
         debt_notes = request.form.get("debt_notes", "").strip()
         if payment_method == "debtor":
@@ -16039,13 +16166,13 @@ def admin_create_customer():
         )
         sub_id = sub_res.get("subscription_id") if isinstance(sub_res, dict) else sub_res
 
-        # بروزرسانی شماره تماس، وضعیت پرداخت و بدهی در جدول subscriptions
+        # بروزرسانی شماره تماس، وضعیت پرداخت، تخفیف، حجم هدیه و بدهی در جدول subscriptions
         conn = db.get_connection()
         conn.execute("""
             UPDATE subscriptions 
-            SET phone_number = ?, account_comment = ?, payment_status = ?, debt_amount = ?, debt_notes = ?, debt_created_at = ?, created_by = COALESCE(created_by, ?)
+            SET phone_number = ?, account_comment = ?, payment_status = ?, debt_amount = ?, debt_notes = ?, debt_created_at = ?, gift_traffic_gb = ?, discount_amount = ?, created_by = COALESCE(created_by, ?)
             WHERE id = ?
-        """, (phone_number or None, comment or None, payment_status, debt_amount, debt_notes or None, debt_created, admin_creator, sub_id))
+        """, (phone_number or None, comment or None, payment_status, debt_amount, debt_notes or None, debt_created, gift_traffic, discount_amount, admin_creator, sub_id))
         conn.commit()
         conn.close()
 

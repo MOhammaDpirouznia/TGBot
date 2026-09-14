@@ -2590,7 +2590,23 @@ async def show_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             status_icon = "⚪ غیرفعال"
 
-        # محاسبه حجم با نوار پیشرفت
+        # محاسبه حجم با نوار پیشرفت و فرمت حجم هدیه (مثلاً: 30روزه 30گیگ + 5گیگ هدیه)
+        gift_traffic = float(sub.get("gift_traffic_gb") or 0.0)
+        if gift_traffic <= 0:
+            m_gift = re.search(r"\+(\d+(?:\.\d+)?)\s*(?:GB|گیگ)", str(plan_name or "") + " " + str(sub.get("account_comment") or ""))
+            if m_gift:
+                try:
+                    gift_traffic = float(m_gift.group(1))
+                except Exception:
+                    gift_traffic = 0.0
+
+        traffic_display = ""
+        if gift_traffic > 0 and data_limit > 0:
+            base_traffic = max(0.0, data_limit - gift_traffic)
+            base_str = f"{int(base_traffic) if base_traffic.is_integer() else base_traffic}گیگ"
+            gift_str = f"{int(gift_traffic) if gift_traffic.is_integer() else gift_traffic}گیگ هدیه"
+            traffic_display = f"{duration}روزه {base_str} + {gift_str}"
+
         if data_limit > 0:
             remaining_gb = max(0.0, round(data_limit - data_used, 2))
             usage_percent = min((data_used / data_limit) * 100, 100.0)
@@ -2606,8 +2622,10 @@ async def show_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 status_emoji = "🟢"
 
+            gift_line = f"   🎁 بسته: **{traffic_display}**\n" if traffic_display else ""
             data_text = (
                 f"📊 مصرف: **{data_used}** از **{data_limit}** گیگ\n"
+                f"{gift_line}"
                 f"   {status_emoji} `{bar}` {usage_percent:.1f}%\n"
                 f"   💾 باقیمانده: **{remaining_gb}** گیگابایت"
             )
@@ -2660,7 +2678,7 @@ async def show_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.debug(f"Error checking pending queue for sub {sub.get('id')}: {e_q}")
 
         text += (
-            f"**{i}. {plan_name}** - {status_icon}\n"
+            f"**{i}. {plan_name}**{' (' + traffic_display + ')' if traffic_display else ''} - {status_icon}\n"
             f"   📝 نام اکانت: `{account_name}`\n"
             f"   {data_text}\n"
             f"   📅 شروع: {start_fmt} | انقضا: {expire_fmt}{remaining_text}\n"

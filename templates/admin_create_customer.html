@@ -241,6 +241,21 @@
                         </div>
                     </div>
 
+                    <!-- فیلد مبلغ تخفیف به مشتری -->
+                    <div class="card bg-warning-subtle border border-warning mb-4 shadow-sm">
+                        <div class="card-body">
+                            <h6 class="fw-bold text-dark mb-2"><i class="fas fa-tag text-warning me-2"></i>مبلغ تخفیف به مشتری (تومان - اختیاری):</h6>
+                            <div class="row g-2 align-items-center">
+                                <div class="col-md-6">
+                                    <input type="number" step="1000" min="0" name="discount_amount" id="adminDiscountInput" class="form-control font-monospace" placeholder="مثلاً: 20000" value="0" oninput="calculateDebt()">
+                                </div>
+                                <div class="col-md-6">
+                                    <small class="text-muted">در صورت تعیین، این مبلغ از هزینه یا بدهی پرداختی مشتری کسر می‌شود.</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- جعبه اطلاعات مالی و تراز بدهی -->
                     <div id="financialBreakdownCard" class="card bg-info-subtle border border-info shadow-sm mb-4">
                         <div class="card-body">
@@ -340,16 +355,18 @@ function handlePlanChange() {
     }
     updatePlanCardsUI();
 
-    // بروزرسانی مستقیم فیلد بدهی بر اساس قیمت پلن جدید
+    // بروزرسانی مستقیم فیلد بدهی بر اساس قیمت پلن جدید منهای تخفیف
     let price = 0;
     if (selectedRadio && selectedRadio.value === 'custom') {
         price = parseInt(document.getElementById('customPriceInput').value || 0);
     } else if (selectedRadio) {
         price = parseInt(selectedRadio.getAttribute('data-price') || 0);
     }
+    const discount = parseInt(document.getElementById('adminDiscountInput')?.value || 0);
+    const finalPrice = Math.max(0, price - discount);
     const debtInput = document.getElementById('debtAmountInput');
     if (debtInput) {
-        debtInput.value = price;
+        debtInput.value = finalPrice;
     }
 
     calculateDebt();
@@ -384,9 +401,11 @@ function selectPaymentMethod(cardEl, method) {
         } else if (selectedRadio) {
             price = parseInt(selectedRadio.getAttribute('data-price') || 0);
         }
+        const discount = parseInt(document.getElementById('adminDiscountInput')?.value || 0);
+        const finalPrice = Math.max(0, price - discount);
         const debtInput = document.getElementById('debtAmountInput');
         if (debtInput && (!debtInput.value || parseInt(debtInput.value) === 0)) {
-            debtInput.value = price;
+            debtInput.value = finalPrice;
         }
     } else {
         debtorCard.style.display = 'none';
@@ -407,20 +426,27 @@ function calculateDebt() {
     } else if (selectedRadio) {
         price = parseInt(selectedRadio.getAttribute('data-price') || 0);
     }
+    const discount = parseInt(document.getElementById('adminDiscountInput')?.value || 0);
+    const finalPrice = Math.max(0, price - discount);
 
     const priceEl = document.getElementById('displayTotalPrice');
-    if (priceEl) priceEl.innerText = price.toLocaleString('fa-IR') + ' تومان';
+    if (priceEl) priceEl.innerText = finalPrice.toLocaleString('fa-IR') + ' تومان' + (discount > 0 ? ` (تخفیف: ${discount.toLocaleString('fa-IR')} ت)` : '');
+
+    const debtInput = document.getElementById('debtAmountInput');
+    if (debtInput && !debtInput.dataset.userEdited) {
+        debtInput.value = finalPrice;
+    }
 
     if (adminRole === 'partner') {
-        const shareAmount = Math.floor(price * (partnerSharePercent / 100));
-        const debtAmount = price - shareAmount;
+        const shareAmount = Math.floor(finalPrice * (partnerSharePercent / 100));
+        const debtAmount = finalPrice - shareAmount;
         const shareEl = document.getElementById('displayPartnerShare');
         const debtEl = document.getElementById('displayAdminDebt');
         if (shareEl) shareEl.innerText = shareAmount.toLocaleString('fa-IR') + ' تومان';
         if (debtEl) debtEl.innerText = debtAmount.toLocaleString('fa-IR') + ' تومان';
     } else if (adminRole !== 'super_admin') {
         const debtEl = document.getElementById('displayAdminDebt');
-        if (debtEl) debtEl.innerText = price.toLocaleString('fa-IR') + ' تومان';
+        if (debtEl) debtEl.innerText = finalPrice.toLocaleString('fa-IR') + ' تومان';
     }
 }
 
