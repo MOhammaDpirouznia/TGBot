@@ -427,6 +427,12 @@ async def bsb_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text(text, reply_markup=get_admin_advanced_keyboard(is_bundle_bot=True), parse_mode="Markdown")
         return
 
+    if data == "adm_ai_menu" or data.startswith("ai_"):
+        from ai_bot_handlers import handle_ai_bot_callback
+        handled = await handle_ai_bot_callback(update, context, bot_type="bundle_sales", owner_id=0)
+        if handled:
+            return
+
     if data == "adm_adv_stats":
         stats_text = get_admin_advanced_stats_text()
         buttons = [

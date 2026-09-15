@@ -200,6 +200,9 @@ def get_reseller_admin_keyboard(is_multibot: bool = False, role: str = "main") -
                 InlineKeyboardButton("⚙️ وضعیت درگاه‌ها و تایید خودکار", callback_data="res_adm_settings"),
             ],
             [
+                InlineKeyboardButton("🤖 استودیو هوش مصنوعی و محتوا", callback_data="res_ai_menu"),
+            ],
+            [
                 InlineKeyboardButton("🔙 بازگشت به منوی کاربری", callback_data=back_callback),
             ]
         ]

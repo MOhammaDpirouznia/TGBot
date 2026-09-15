@@ -1132,6 +1132,29 @@ def send_telegram_msg(chat_id: int, text: str, reply_markup=None, parse_mode: st
         logger.error(f"Error sending telegram msg to {chat_id}: {e}")
         return False
 
+def send_telegram_poll(chat_id, question: str, options: list, is_anonymous: bool = True, allows_multiple_answers: bool = False, bot_token: str = None) -> bool:
+    """ارسال نظرسنجی تلگرام به صورت همگام به کانال یا گروه"""
+    active_token = (bot_token or "").strip() or get_bot_token()
+    if not active_token or not chat_id or not question or not options:
+        return False
+    url = f"https://api.telegram.org/bot{active_token}/sendPoll"
+    payload = {
+        "chat_id": chat_id,
+        "question": question[:300],
+        "options": [str(o)[:100] for o in options[:10]],
+        "is_anonymous": is_anonymous,
+        "allows_multiple_answers": allows_multiple_answers
+    }
+    try:
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            return resp.status == 200
+    except Exception as e:
+        logger.error(f"Error sending telegram poll to {chat_id}: {e}")
+        return False
+
+
 
 def parse_client_info(req) -> dict:
     """استخراج هوشمند آدرس آی‌پی، نام مرورگر، سیستم‌عامل و نوع دستگاه کاربر"""
@@ -9399,6 +9422,290 @@ def reseller_broadcast():
         if b.get("creator_reseller_id") == reseller_id
     ]
     return render_template("reseller_broadcast.html", sms_config=sms_config, portal_banners=portal_banners)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# بخش استودیو هوش مصنوعی و تولید محتوا (AI Studio & Content Automation)
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/admin/ai-studio", methods=["GET"])
+@admin_required
+def admin_ai_studio():
+    """صفحه استودیو هوش مصنوعی مدیریت کل"""
+    settings = db.get_ai_marketing_settings(bot_type="admin", owner_id=0)
+    queue = db.get_ai_content_queue(bot_type="admin", owner_id=0)
+    pending_count = len([x for x in queue if x.get("status") == "pending_approval"])
+    return render_template(
+        "ai_studio.html",
+        role="admin",
+        settings=settings,
+        queue=queue,
+        pending_count=pending_count
+    )
+
+
+@app.route("/reseller/ai-studio", methods=["GET"])
+@reseller_required
+def reseller_ai_studio():
+    """صفحه استودیو هوش مصنوعی نماینده"""
+    reseller_id = session.get("reseller_id")
+    settings = db.get_ai_marketing_settings(bot_type="reseller", owner_id=reseller_id)
+    queue = db.get_ai_content_queue(bot_type="reseller", owner_id=reseller_id)
+    pending_count = len([x for x in queue if x.get("status") == "pending_approval"])
+    return render_template(
+        "ai_studio.html",
+        role="reseller",
+        settings=settings,
+        queue=queue,
+        pending_count=pending_count
+    )
+
+
+@app.route("/api/ai-studio/generate", methods=["POST"])
+def api_ai_studio_generate():
+    """تولید هوشمند محتوا یا کمپین تخفیف توسط هوش مصنوعی"""
+    role = session.get("role")
+    reseller_id = session.get("reseller_id", 0)
+    if not role and not reseller_id:
+        return jsonify({"success": False, "error": "احراز هویت نشده است"}), 401
+
+    bot_type = "reseller" if role == "reseller" or (reseller_id and int(reseller_id) > 0) else "admin"
+    owner_id = int(reseller_id) if bot_type == "reseller" else 0
+
+    data = request.get_json(force=True, silent=True) or {}
+    action_type = data.get("action_type", "channel_post")
+    topic = data.get("topic", "").strip()
+    tone = data.get("tone", "informative")
+    platform = data.get("platform", "telegram_channel")
+    save_to_queue = data.get("save_to_queue", True)
+    custom_dest = data.get("target_destination", "").strip()
+
+    from ai_marketing_manager import ai_marketing
+    settings = db.get_ai_marketing_settings(bot_type=bot_type, owner_id=owner_id)
+    target_dest = custom_dest or settings.get("target_channel") or settings.get("instagram_page") or ""
+
+    try:
+        result = {}
+        item_title = topic[:60] if topic else "محتوای هوش مصنوعی"
+        content_text = ""
+        poll_dict = None
+        discount_dict = None
+
+        if action_type == "channel_post":
+            result = ai_marketing.generate_channel_post(
+                topic=topic,
+                tone=tone,
+                target_channel=target_dest,
+                signature=settings.get("signature", ""),
+                custom_settings=settings
+            )
+            content_text = result.get("post_text", "")
+            item_title = result.get("title", item_title)
+
+        elif action_type == "channel_poll":
+            result = ai_marketing.generate_channel_poll(
+                topic=topic,
+                custom_settings=settings
+            )
+            item_title = result.get("question", item_title)
+            options_str = "\n".join([f"- {opt}" for opt in result.get("options", [])])
+            content_text = f"📊 {item_title}\n\nگزینه‌ها:\n{options_str}"
+            poll_dict = {
+                "question": result.get("question", ""),
+                "options": result.get("options", []),
+                "is_anonymous": result.get("is_anonymous", True),
+                "allows_multiple_answers": result.get("allows_multiple_answers", False)
+            }
+
+        elif action_type == "instagram_package":
+            result = ai_marketing.generate_instagram_package(
+                topic=topic,
+                instagram_handle=settings.get("instagram_page") or target_dest,
+                custom_settings=settings
+            )
+            item_title = f"پکیج اینستاگرام: {topic[:40]}"
+            tags_str = " ".join(result.get("hashtags", []))
+            content_text = f"📸 کپشن:\n{result.get('caption', '')}\n\n💡 استوری:\n{result.get('story_idea', '')}\n\n🏷️ هشتگ‌ها:\n{tags_str}"
+
+        elif action_type == "discount_campaign":
+            discount_percent = int(data.get("discount_percent", 20))
+            max_uses = int(data.get("discount_max_uses", 50))
+            code_input = (data.get("discount_code") or "").strip().upper()
+            if not code_input:
+                code_input = f"OFF{discount_percent}_{int(time.time()) % 10000}"
+
+            # ایجاد کد تخفیف واقعی در دیتابیس
+            if bot_type == "reseller":
+                db.create_reseller_discount_code(
+                    reseller_id=owner_id,
+                    code=code_input,
+                    discount_percent=discount_percent,
+                    max_uses=max_uses
+                )
+            else:
+                db.create_discount_code(
+                    code=code_input,
+                    discount_percent=discount_percent,
+                    max_uses=max_uses
+                )
+
+            result = ai_marketing.generate_feedback_discount_campaign(
+                feedback_context=topic,
+                discount_code=code_input,
+                discount_percent=discount_percent,
+                bot_username=settings.get("target_channel", ""),
+                custom_settings=settings
+            )
+            item_title = f"کمپین تخفیف {discount_percent}٪ ({code_input})"
+            content_text = result.get("post_text", "")
+            discount_dict = {
+                "code": code_input,
+                "percent": discount_percent,
+                "max_uses": max_uses,
+                "banner_text": result.get("banner_text", "")
+            }
+
+        item_id = None
+        if save_to_queue:
+            item_id = db.create_ai_content_item(
+                bot_type=bot_type,
+                owner_id=owner_id,
+                content_type=action_type.replace("channel_", "").replace("_package", ""),
+                platform=platform,
+                target_destination=target_dest,
+                title=item_title,
+                content_text=content_text,
+                poll_data=poll_dict,
+                discount_data=discount_dict,
+                status="pending_approval",
+                created_by="ai_studio"
+            )
+
+        return jsonify({"success": True, "result": result, "item_id": item_id})
+
+    except Exception as e:
+        logger.error(f"Error in api_ai_studio_generate: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/ai-studio/chat", methods=["POST"])
+def api_ai_studio_chat():
+    """گفتگوی تعاملی و مشاوره با دستیار هوش مصنوعی بازاریابی"""
+    role = session.get("role")
+    reseller_id = session.get("reseller_id", 0)
+    if not role and not reseller_id:
+        return jsonify({"success": False, "error": "احراز هویت نشده است"}), 401
+
+    bot_type = "reseller" if role == "reseller" or (reseller_id and int(reseller_id) > 0) else "admin"
+    owner_id = int(reseller_id) if bot_type == "reseller" else 0
+
+    data = request.get_json(force=True, silent=True) or {}
+    message = data.get("message", "").strip()
+    history = data.get("history", [])
+
+    if not message:
+        return jsonify({"success": False, "error": "پیام نمی‌تواند خالی باشد"}), 400
+
+    from ai_marketing_manager import ai_marketing
+    settings = db.get_ai_marketing_settings(bot_type=bot_type, owner_id=owner_id)
+    reply = ai_marketing.ai_chat_reply(message=message, chat_history=history, custom_settings=settings)
+    return jsonify({"success": True, "reply": reply})
+
+
+@app.route("/api/ai-studio/queue/approve", methods=["POST"])
+def api_ai_studio_queue_approve():
+    """تایید و انتشار فوری آیتم از صف به کانال تلگرام"""
+    role = session.get("role")
+    reseller_id = session.get("reseller_id", 0)
+    if not role and not reseller_id:
+        return jsonify({"success": False, "error": "احراز هویت نشده است"}), 401
+
+    data = request.get_json(force=True, silent=True) or {}
+    item_id = int(data.get("item_id", 0))
+    item = db.get_ai_content_item(item_id)
+    if not item:
+        return jsonify({"success": False, "error": "مورد یافت نشد"}), 404
+
+    bot_token = None
+    if item.get("bot_type") == "reseller" and item.get("owner_id"):
+        r_data = db.get_reseller(item["owner_id"])
+        if r_data and r_data.get("bot_token"):
+            bot_token = r_data["bot_token"]
+
+    target = (item.get("target_destination") or "").strip()
+    if not target:
+        settings = db.get_ai_marketing_settings(bot_type=item.get("bot_type"), owner_id=item.get("owner_id"))
+        target = settings.get("target_channel", "").strip()
+
+    if not target:
+        return jsonify({"success": False, "error": "آدرس کانال مقصد تنظیم نشده است. لطفاً در تنظیمات یا ویرایش آیتم شناسه کانال را وارد کنید."}), 400
+
+    sent_ok = False
+    if item.get("content_type") == "poll" and item.get("poll_data"):
+        poll_info = item["poll_data"]
+        q = poll_info.get("question") or item.get("title")
+        opts = poll_info.get("options", [])
+        is_anon = poll_info.get("is_anonymous", True)
+        multi = poll_info.get("allows_multiple_answers", False)
+        sent_ok = send_telegram_poll(target, q, opts, is_anonymous=is_anon, allows_multiple_answers=multi, bot_token=bot_token)
+    else:
+        sent_ok = send_telegram_msg(target, item.get("content_text", ""), bot_token=bot_token)
+
+    if sent_ok:
+        db.update_ai_content_item(item_id, status="published", published_at=get_now_iso())
+        return jsonify({"success": True, "message": f"با موفقیت در {target} منتشر شد"})
+    else:
+        return jsonify({"success": False, "error": f"ارسال به {target} ناموفق بود. لطفاً از ادمین بودن ربات در کانال و صحت شناسه اطمینان حاصل کنید."}), 500
+
+
+@app.route("/api/ai-studio/queue/get", methods=["GET"])
+def api_ai_studio_queue_get():
+    """دریافت اطلاعات یک آیتم مشخص از صف"""
+    item_id = int(request.args.get("item_id", 0))
+    item = db.get_ai_content_item(item_id)
+    if not item:
+        return jsonify({"success": False, "error": "یافت نشد"}), 404
+    return jsonify({"success": True, "item": item})
+
+
+@app.route("/api/ai-studio/queue/edit", methods=["POST"])
+def api_ai_studio_queue_edit():
+    """ویرایش متن، عنوان یا مقصد آیتم در صف محتوا"""
+    data = request.get_json(force=True, silent=True) or {}
+    item_id = int(data.get("item_id", 0))
+    title = data.get("title")
+    content_text = data.get("content_text")
+    dest = data.get("target_destination")
+
+    ok = db.update_ai_content_item(item_id, title=title, content_text=content_text, target_destination=dest)
+    return jsonify({"success": ok})
+
+
+@app.route("/api/ai-studio/queue/delete", methods=["POST"])
+def api_ai_studio_queue_delete():
+    """حذف یک آیتم از صف محتوا"""
+    data = request.get_json(force=True, silent=True) or {}
+    item_id = int(data.get("item_id", 0))
+    ok = db.delete_ai_content_item(item_id)
+    return jsonify({"success": ok})
+
+
+@app.route("/api/ai-studio/settings/save", methods=["POST"])
+def api_ai_studio_settings_save():
+    """ذخیره تنظیمات هوش مصنوعی و کانال‌ها"""
+    role = session.get("role")
+    reseller_id = session.get("reseller_id", 0)
+    if not role and not reseller_id:
+        return jsonify({"success": False, "error": "احراز هویت نشده است"}), 401
+
+    bot_type = "reseller" if role == "reseller" or (reseller_id and int(reseller_id) > 0) else "admin"
+    owner_id = int(reseller_id) if bot_type == "reseller" else 0
+
+    data = request.get_json(force=True, silent=True) or {}
+    ok = db.save_ai_marketing_settings(data, bot_type=bot_type, owner_id=owner_id)
+    is_ok = bool(ok.get("success") if isinstance(ok, dict) else ok)
+    return jsonify({"success": is_ok})
+
 
 
 # ═══════════════════════════════════════════════════════════════════════

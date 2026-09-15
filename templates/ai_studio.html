@@ -1,0 +1,1003 @@
+{% extends "base.html" %}
+
+{% block title %}استودیو هوش مصنوعی و تولید محتوا{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+    <div>
+        <h1 class="page-title d-flex align-items-center gap-2 mb-1">
+            <i class="fas fa-robot text-primary"></i>
+            استودیو هوش مصنوعی و اتوماسیون محتوا (AI Studio)
+        </h1>
+        <p class="text-muted mb-0">
+            تولید هوشمند پست، نظرسنجی و بسته‌های اینستاگرام، ساخت کدهای تخفیف تعاملی و صف نظارت قبل از انتشار
+        </p>
+    </div>
+    <div class="d-flex align-items-center flex-wrap gap-2">
+        <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-3 py-2">
+            <i class="fas fa-brain me-1"></i> موتور فعال: <strong id="activeModelBadge">{{ settings.get('provider', 'gemini') }} ({{ settings.get('model_name', 'gemini-1.5-flash') }})</strong>
+        </span>
+        <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 px-3 py-2">
+            <i class="fab fa-telegram me-1"></i> کانال: <strong>{{ settings.get('target_channel') or 'تنظیم نشده' }}</strong>
+        </span>
+        <span class="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25 px-3 py-2">
+            <i class="fas fa-clock me-1"></i> در صف بررسی: <strong id="queueCountBadge">{{ pending_count }}</strong>
+        </span>
+    </div>
+</div>
+
+<!-- تب‌های ناوبری اصلی استودیو -->
+<ul class="nav nav-pills nav-fill gap-2 mb-4 bg-light p-2 rounded-3 shadow-sm border" id="aiStudioTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active fw-bold py-2 d-flex align-items-center justify-content-center gap-2" 
+                id="tab-generator-btn" data-bs-toggle="pill" data-bs-target="#tab-generator" type="button" role="tab">
+            <i class="fas fa-wand-magic-sparkles text-primary fs-5"></i>
+            <span>تولید هوشمند و گفتگوی هوش مصنوعی</span>
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link fw-bold py-2 d-flex align-items-center justify-content-center gap-2" 
+                id="tab-queue-btn" data-bs-toggle="pill" data-bs-target="#tab-queue" type="button" role="tab">
+            <i class="fas fa-list-check text-warning fs-5"></i>
+            <span>صف بررسی و تایید قبل از انتشار</span>
+            <span class="badge bg-danger rounded-pill ms-1" id="tabPendingBadge">{{ pending_count }}</span>
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link fw-bold py-2 d-flex align-items-center justify-content-center gap-2" 
+                id="tab-settings-btn" data-bs-toggle="pill" data-bs-target="#tab-settings" type="button" role="tab">
+            <i class="fas fa-sliders text-success fs-5"></i>
+            <span>تنظیمات هوش مصنوعی و کانال‌ها</span>
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content" id="aiStudioTabContent">
+
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <!-- تب ۱: تولید هوشمند محتوا و گفتگوی تعاملی با AI -->
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <div class="tab-pane fade show active" id="tab-generator" role="tabpanel">
+        
+        <!-- چیپ‌های اقدام سریع (Quick Action Chips) -->
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-body p-3">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                    <span class="fw-bold text-secondary small">
+                        <i class="fas fa-bolt text-warning me-1"></i> قالب‌های آماده تولید فوری محتوا:
+                    </span>
+                    <span class="text-muted small">با کلیک روی هر قالب، فرم زیر به طور خودکار تکمیل می‌شود</span>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm rounded-pill" onclick="quickFill('channel_post', 'راهنمای حل مشکل اتصال و افت سرعت در ساعات پیک')">
+                        <i class="fas fa-wrench me-1"></i> راهنمای رفع قطعی V2Ray
+                    </button>
+                    <button type="button" class="btn btn-outline-primary btn-sm rounded-pill" onclick="quickFill('channel_post', 'بروزرسانی پروتکل‌ها و روش جدید دور زدن اختلالات')">
+                        <i class="fas fa-shield-halved me-1"></i> پست پروتکل جدید ضد فیلتر
+                    </button>
+                    <button type="button" class="btn btn-outline-info btn-sm rounded-pill" onclick="quickFill('channel_poll', 'نظرسنجی کیفیت پایداری اتصال و سرعت سرورها')">
+                        <i class="fas fa-square-poll-vertical me-1"></i> نظرسنجی رضایت کاربران
+                    </button>
+                    <button type="button" class="btn btn-outline-danger btn-sm rounded-pill" onclick="quickFill('instagram_package', 'آموزش اتصال آیفون و اندروید به نرم‌افزار v2rayNG و Sing-box')">
+                        <i class="fab fa-instagram me-1"></i> پکیج پست و استوری اینستاگرام
+                    </button>
+                    <button type="button" class="btn btn-outline-success btn-sm rounded-pill" onclick="quickFill('discount_campaign', 'کمپین تخفیف به مناسبت رفع اختلالات و پاداش وفاداری')">
+                        <i class="fas fa-percent me-1"></i> تخفیف تعاملی بر اساس بازخورد
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill" onclick="switchMode('chat')">
+                        <i class="fas fa-comments me-1"></i> دستیار بازاریابی و چت آزاد
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <!-- ستون راست: فرم پارامترها و تنظیمات تولید -->
+            <div class="col-lg-5">
+                <div class="card shadow-sm border-0 h-100">
+                    <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+                        <h5 class="mb-0 fw-bold text-dark d-flex align-items-center gap-2">
+                            <i class="fas fa-sliders-h text-primary"></i>
+                            پارامترهای تولید محتوا
+                        </h5>
+                        <span id="formModeBadge" class="badge bg-primary">تولید پست کانال</span>
+                    </div>
+                    <div class="card-body p-4">
+                        <form id="aiGenerateForm" onsubmit="handleGenerateSubmit(event)">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">نوع محتوا</label>
+                                <select class="form-select" id="contentTypeSelect" onchange="updateFormFields()">
+                                    <option value="channel_post">📢 پست آموزشی و خبری تلگرام</option>
+                                    <option value="channel_poll">📊 نظرسنجی تعاملی تلگرام</option>
+                                    <option value="instagram_package">📸 پکیج اینستاگرام (کپشن + استوری + هشتگ)</option>
+                                    <option value="discount_campaign">🎁 کمپین تخفیف تعاملی و تبلیغاتی</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">موضوع اصلی محتوا</label>
+                                <textarea class="form-control" id="contentTopic" rows="3" placeholder="مثال: نحوه حل مشکل اتصال و تغییر DNS در کلاینت‌های V2Ray..." required></textarea>
+                            </div>
+
+                            <div class="row g-2 mb-3">
+                                <div class="col-6">
+                                    <label class="form-label fw-bold small">لحن نگارش (Tone)</label>
+                                    <select class="form-select form-select-sm" id="contentTone">
+                                        <option value="friendly">😊 دوستانه و صمیمی</option>
+                                        <option value="informative" selected>📘 آموزشی و تخصصی</option>
+                                        <option value="urgent">⚡ فوری و اخباری</option>
+                                        <option value="promo">🎁 تشویقی و تبلیغاتی</option>
+                                    </select>
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label fw-bold small">پلتفرم هدف</label>
+                                    <select class="form-select form-select-sm" id="targetPlatform">
+                                        <option value="telegram_channel" selected>کانال تلگرام</option>
+                                        <option value="instagram">پیج اینستاگرام</option>
+                                        <option value="both">تلگرام و اینستاگرام</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- گزینه‌های تکمیلی برای کمپین تخفیف تعاملی -->
+                            <div id="discountOptionsBox" class="p-3 bg-light rounded-3 mb-3 d-none border border-success border-opacity-25">
+                                <h6 class="fw-bold text-success small mb-2"><i class="fas fa-gift me-1"></i> تنظیمات ساخت کد تخفیف در دیتابیس:</h6>
+                                <div class="row g-2">
+                                    <div class="col-6">
+                                        <label class="form-label small">درصد تخفیف</label>
+                                        <input type="number" class="form-control form-control-sm" id="discountPercent" value="20" min="1" max="100">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label small">تعداد استفاده</label>
+                                        <input type="number" class="form-control form-control-sm" id="discountMaxUses" value="50" min="1">
+                                    </div>
+                                    <div class="col-12 mt-2">
+                                        <label class="form-label small">کد دلخواه (خالی = ساخت خودکار هوشمند)</label>
+                                        <input type="text" class="form-control form-control-sm text-uppercase" id="discountCustomCode" placeholder="مثال: SPRING2026">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label fw-bold small">آدرس مقصد (کانال تلگرام یا پیج اینستاگرام)</label>
+                                <input type="text" class="form-control form-control-sm" id="targetDestination" 
+                                       value="{{ settings.get('target_channel') or '' }}" 
+                                       placeholder="مثال: @MyChannel یا لینک">
+                            </div>
+
+                            <div class="form-check form-switch mb-4">
+                                <input class="form-check-input" type="checkbox" id="queueCheckbox" checked>
+                                <label class="form-check-label small" for="queueCheckbox">
+                                    <strong>ارسال به صف بررسی (پیشنهاد می‌شود)</strong>
+                                    <div class="text-muted" style="font-size: 0.78rem;">محتوا ابتدا در صف قرار می‌گیرد تا بتوانید آن را بررسی، ویرایش یا تایید کنید.</div>
+                                </label>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary w-100 py-2 fw-bold" id="generateSubmitBtn">
+                                <i class="fas fa-wand-magic-sparkles me-1"></i> تولید محتوا توسط هوش مصنوعی
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ستون چپ: خروجی زنده هوش مصنوعی و پنل چت -->
+            <div class="col-lg-7">
+                <div class="card shadow-sm border-0 h-100 d-flex flex-column">
+                    <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+                        <h5 class="mb-0 fw-bold text-dark d-flex align-items-center gap-2">
+                            <i class="fas fa-desktop text-success"></i>
+                            پیش‌نمایش محتوای تولید شده / استودیو گفتگو
+                        </h5>
+                        <div class="d-flex align-items-center gap-2">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="copyResultText()" title="کپی متن">
+                                <i class="fas fa-copy"></i> کپی
+                            </button>
+                            <button type="button" class="btn btn-outline-danger btn-sm" onclick="clearPreview()" title="پاکسازی">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body p-4 flex-grow-1 d-flex flex-column" style="min-height: 480px;">
+                        <!-- لودر هوش مصنوعی در زمان تفکر -->
+                        <div id="aiLoadingSpinner" class="text-center my-auto d-none py-5">
+                            <div class="spinner-grow text-primary mb-3" style="width: 3rem; height: 3rem;" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <h6 class="fw-bold text-dark">هوش مصنوعی در حال تدوین محتوا و ایده‌پردازی است...</h6>
+                            <p class="text-muted small">این کار ممکن است چند ثانیه زمان ببرد.</p>
+                        </div>
+
+                        <!-- حالت پیش‌فرض / خالی -->
+                        <div id="previewEmptyState" class="text-center my-auto py-5">
+                            <div class="text-muted opacity-50 mb-3">
+                                <i class="fas fa-robot fa-4x"></i>
+                            </div>
+                            <h6 class="fw-bold text-muted">محتوایی تولید نشده است</h6>
+                            <p class="text-muted small">از فرم سمت راست یا چیپ‌های قالب‌های آماده بالا برای تولید محتوا استفاده کنید.</p>
+                        </div>
+
+                        <!-- محفظه خروجی متن -->
+                        <div id="resultContentContainer" class="d-none flex-grow-1 d-flex flex-column">
+                            <div class="alert alert-info py-2 px-3 mb-3 d-flex align-items-center justify-content-between">
+                                <div class="small">
+                                    <i class="fas fa-circle-check text-success me-1"></i>
+                                    <span id="resultMetaText">تولید محتوا با موفقیت انجام شد</span>
+                                </div>
+                                <span class="badge bg-light text-dark border" id="resultPlatformBadge">Telegram</span>
+                            </div>
+
+                            <div class="border rounded-3 p-3 bg-light flex-grow-1 mb-3 overflow-auto" id="resultDisplayBox" style="white-space: pre-wrap; font-family: inherit; line-height: 1.8; max-height: 420px;"></div>
+
+                            <!-- بخش دکمه‌های اقدام روی خروجی -->
+                            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 pt-2 border-top">
+                                <div class="small text-muted" id="savedItemNotice">
+                                    <i class="fas fa-info-circle me-1"></i> محتوا در صف بررسی ذخیره شد.
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="openEditModalFromPreview()">
+                                        <i class="fas fa-edit me-1"></i> ویرایش متن
+                                    </button>
+                                    <button type="button" class="btn btn-success btn-sm fw-bold" id="publishDirectBtn" onclick="publishDirectFromPreview()">
+                                        <i class="fas fa-paper-plane me-1"></i> تایید و انتشار فوری در کانال
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- محفظه چت زنده با AI -->
+                        <div id="chatInterfaceContainer" class="d-none flex-grow-1 d-flex flex-column">
+                            <div class="chat-messages-box flex-grow-1 overflow-auto border rounded-3 p-3 bg-light mb-3" id="chatMessages" style="max-height: 380px;">
+                                <div class="d-flex mb-3">
+                                    <div class="bg-white p-3 rounded-3 shadow-sm border" style="max-width: 85%;">
+                                        <strong class="text-primary d-block mb-1"><i class="fas fa-robot me-1"></i> دستیار هوش مصنوعی:</strong>
+                                        سلام! من دستیار هوشمند مارکتینگ و تولید محتوای شما هستم. می‌تونید از من بخواید متنی برای رفع اختلال بنویسم، تیتر جذاب طراحی کنم، یا در مورد نحوه پروموت سرویس راهنماییتون کنم. چه کمکی از من ساخته است؟
+                                    </div>
+                                </div>
+                            </div>
+                            <form onsubmit="handleChatSubmit(event)" class="d-flex gap-2">
+                                <input type="text" class="form-control" id="chatInput" placeholder="پیام یا درخواست خود را بنویسید..." required>
+                                <button type="submit" class="btn btn-primary px-4" id="chatSendBtn">
+                                    <i class="fas fa-paper-plane"></i>
+                                </button>
+                            </form>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <!-- تب ۲: صف بررسی و تایید محتوا قبل از انتشار (Content Queue) -->
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <div class="tab-pane fade" id="tab-queue" role="tabpanel">
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <div>
+                    <h5 class="mb-1 fw-bold text-dark d-flex align-items-center gap-2">
+                        <i class="fas fa-list-check text-warning"></i>
+                        صف نظارت و تایید محتوا (Approval Queue)
+                    </h5>
+                    <p class="text-muted small mb-0">تمام محتواهای تولید شده ابتدا در اینجا قرار می‌گیرند تا بتوانید قبل از ارسال، متن را چک کرده یا موارد ناخواسته را حذف کنید.</p>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <select class="form-select form-select-sm" id="queueStatusFilter" onchange="filterQueueTable()">
+                        <option value="all">تمام وضعیت‌ها</option>
+                        <option value="pending_approval" selected>در انتظار تایید</option>
+                        <option value="published">منتشر شده</option>
+                        <option value="rejected">رد شده / ناموفق</option>
+                    </select>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0" id="queueTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 60px;">شناسه</th>
+                                <th>نوع / پلتفرم</th>
+                                <th>عنوان / موضوع</th>
+                                <th>خلاصه محتوا</th>
+                                <th>مقصد</th>
+                                <th>تاریخ ایجاد</th>
+                                <th>وضعیت</th>
+                                <th class="text-center" style="width: 180px;">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if queue %}
+                                {% for item in queue %}
+                                <tr id="queue-row-{{ item.id }}" data-status="{{ item.status }}">
+                                    <td class="fw-bold text-muted">#{{ item.id }}</td>
+                                    <td>
+                                        {% if item.content_type == 'post' %}
+                                            <span class="badge bg-primary-subtle text-primary border border-primary border-opacity-25"><i class="fas fa-newspaper me-1"></i> پست کانال</span>
+                                        {% elif item.content_type == 'poll' %}
+                                            <span class="badge bg-info-subtle text-info border border-info border-opacity-25"><i class="fas fa-square-poll-vertical me-1"></i> نظرسنجی</span>
+                                        {% elif item.content_type == 'story' or item.content_type == 'instagram' %}
+                                            <span class="badge bg-danger-subtle text-danger border border-danger border-opacity-25"><i class="fab fa-instagram me-1"></i> اینستاگرام</span>
+                                        {% elif item.content_type == 'discount_promo' %}
+                                            <span class="badge bg-success-subtle text-success border border-success border-opacity-25"><i class="fas fa-percent me-1"></i> کمپین تخفیف</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ item.content_type }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="fw-bold">{{ item.title or 'بدون عنوان' }}</td>
+                                    <td>
+                                        <div class="text-muted small text-truncate" style="max-width: 260px;" title="{{ item.content_text }}">
+                                            {{ item.content_text[:120] }}...
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <code class="small text-dark">{{ item.target_destination or '-' }}</code>
+                                    </td>
+                                    <td class="small text-muted">{{ item.created_at[:16] if item.created_at else '-' }}</td>
+                                    <td>
+                                        {% if item.status == 'pending_approval' %}
+                                            <span class="badge bg-warning text-dark"><i class="fas fa-hourglass-half me-1"></i> در انتظار تایید</span>
+                                        {% elif item.status == 'published' %}
+                                            <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i> منتشر شده</span>
+                                        {% elif item.status == 'rejected' %}
+                                            <span class="badge bg-danger"><i class="fas fa-times-circle me-1"></i> رد شده</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ item.status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="btn-group btn-group-sm">
+                                            <button type="button" class="btn btn-outline-primary" onclick="openEditItemModal({{ item.id }})" title="مشاهده و ویرایش">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            {% if item.status == 'pending_approval' %}
+                                            <button type="button" class="btn btn-success" onclick="approveQueueItem({{ item.id }})" title="تایید و ارسال به کانال">
+                                                <i class="fas fa-paper-plane"></i> ارسال
+                                            </button>
+                                            {% endif %}
+                                            <button type="button" class="btn btn-outline-danger" onclick="deleteQueueItem({{ item.id }})" title="حذف از صف">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr id="noQueueRow">
+                                    <td colspan="8" class="text-center py-5 text-muted">
+                                        <i class="fas fa-inbox fa-3x mb-3 opacity-50 d-block"></i>
+                                        هیچ موردی در صف بررسی محتوا وجود ندارد.
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <!-- تب ۳: تنظیمات هوش مصنوعی، دسترسی‌ها و کانال‌ها (Settings) -->
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <div class="tab-pane fade" id="tab-settings" role="tabpanel">
+        <div class="row justify-content-center">
+            <div class="col-xl-9 col-lg-10">
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-header bg-white py-3 border-bottom">
+                        <h5 class="mb-0 fw-bold text-dark d-flex align-items-center gap-2">
+                            <i class="fas fa-sliders text-success"></i>
+                            تنظیمات هوش مصنوعی و کانال‌های انتشار
+                        </h5>
+                        <p class="text-muted small mb-0 mt-1">اتصال به انواع APIهای هوش مصنوعی (Google Gemini, OpenAI, DeepSeek, یا مدل‌های شخصی/محلی) و تنظیم مقصد کانال‌ها</p>
+                    </div>
+                    <div class="card-body p-4">
+                        <form id="aiSettingsForm" onsubmit="handleSettingsSubmit(event)">
+                            <div class="row g-3 mb-4">
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold">سرویس‌دهنده هوش مصنوعی (AI Provider)</label>
+                                    <select class="form-select" id="settingsProvider" onchange="updateProviderFields()">
+                                        <option value="gemini" {% if settings.get('provider') == 'gemini' %}selected{% endif %}>Google Gemini (سریع و توصیه شده)</option>
+                                        <option value="openai" {% if settings.get('provider') == 'openai' %}selected{% endif %}>OpenAI (ChatGPT / GPT-4o)</option>
+                                        <option value="deepseek" {% if settings.get('provider') == 'deepseek' %}selected{% endif %}>DeepSeek AI</option>
+                                        <option value="custom" {% if settings.get('provider') == 'custom' %}selected{% endif %}>سفارشی / محلی (Ollama, LM-Studio, vLLM, OpenRouter)</option>
+                                        <option value="offline" {% if settings.get('provider') == 'offline' %}selected{% endif %}>هوشمند آفلاین (بدون نیاز به کلید و اینترنت خارجی)</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold">نام مدل (Model Name)</label>
+                                    <input type="text" class="form-control" id="settingsModel" value="{{ settings.get('model_name', 'gemini-1.5-flash') }}" placeholder="gemini-1.5-flash / gpt-4o-mini">
+                                    <div class="form-text small" id="modelHelpText">پیش‌فرض جِمینای: gemini-1.5-flash یا gemini-1.5-pro</div>
+                                </div>
+                            </div>
+
+                            <div class="mb-4" id="apiKeyContainer">
+                                <label class="form-label fw-bold">کلید دسترسی (API Key)</label>
+                                <div class="input-group">
+                                    <input type="password" class="form-control" id="settingsApiKey" value="{{ settings.get('api_key', '') }}" placeholder="AIzaSy... یا sk-...">
+                                    <button class="btn btn-outline-secondary" type="button" onclick="togglePassword('settingsApiKey')">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </div>
+                                <div class="form-text small">کلید با امنیت کامل در دیتابیس اختصاصی ذخیره می‌شود.</div>
+                            </div>
+
+                            <div class="mb-4" id="customUrlContainer" style="display: {% if settings.get('provider') == 'custom' %}block{% else %}none{% endif %};">
+                                <label class="form-label fw-bold">آدرس سرور API اختصاصی (Custom Base URL)</label>
+                                <input type="text" class="form-control" id="settingsCustomUrl" value="{{ settings.get('custom_base_url', '') }}" placeholder="http://localhost:11434/v1 یا https://openrouter.ai/api/v1">
+                                <div class="form-text small">آدرس باید با سازگاری استانداردهای OpenAI Chat Completions باشد.</div>
+                            </div>
+
+                            <hr class="my-4">
+
+                            <h6 class="fw-bold text-primary mb-3"><i class="fab fa-telegram me-1"></i> تنظیمات کانال‌ها و شبکه‌های اجتماعی:</h6>
+                            <div class="row g-3 mb-4">
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold small">شناسه کانال تلگرام جهت انتشار</label>
+                                    <input type="text" class="form-control" id="settingsTargetChannel" value="{{ settings.get('target_channel', '') }}" placeholder="مثال: @MyProxyChannel یا -100123456789">
+                                    <div class="form-text small">ربات تلگرام باید ادمین با دسترسی ارسال پیام در این کانال باشد.</div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold small">آدرس یا هندل پیج اینستاگرام</label>
+                                    <input type="text" class="form-control" id="settingsInstagramPage" value="{{ settings.get('instagram_page', '') }}" placeholder="مثال: @v2ray_vpn_iran">
+                                    <div class="form-text small">در بسته‌های کپشن و استوری برای هدایت فالوورها درج می‌شود.</div>
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <label class="form-label fw-bold small">امضا و پانوشت پیش‌فرض پست‌های تلگرام (Footer)</label>
+                                <textarea class="form-control" id="settingsSignature" rows="2" placeholder="🔹 عضویت در کانال: @MyChannel&#10;🚀 خرید سریع و تست رایگان: @MyBot">{{ settings.get('signature', '') }}</textarea>
+                            </div>
+
+                            <div class="mb-4">
+                                <label class="form-label fw-bold small">موضوعات و حوزه‌های پیش‌فرض تولید محتوا</label>
+                                <div class="d-flex flex-wrap gap-3 p-3 bg-light rounded-3 border">
+                                    {% set sel_topics = settings.get('selected_topics', []) %}
+                                    <div class="form-check">
+                                        <input class="form-check-input topic-check" type="checkbox" value="v2ray_help" id="topic_v2ray" {% if 'v2ray_help' in sel_topics %}checked{% endif %}>
+                                        <label class="form-check-label small" for="topic_v2ray">آموزش رفع قطعی و کار با V2Ray/Singbox</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input topic-check" type="checkbox" value="freedom_news" id="topic_news" {% if 'freedom_news' in sel_topics %}checked{% endif %}>
+                                        <label class="form-check-label small" for="topic_news">اخبار فیلترینگ و آزادی اینترنت</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input topic-check" type="checkbox" value="security_tips" id="topic_sec" {% if 'security_tips' in sel_topics %}checked{% endif %}>
+                                        <label class="form-check-label small" for="topic_sec">نکات امنیتی و حریم خصوصی دیجیتال</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input topic-check" type="checkbox" value="deals" id="topic_deals" {% if 'deals' in sel_topics %}checked{% endif %}>
+                                        <label class="form-check-label small" for="topic_deals">تخفیف‌ها و پیشنهادات بونوس ویژه</label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-check form-switch mb-4">
+                                <input class="form-check-input" type="checkbox" id="settingsAutoApprove" {% if settings.get('auto_approve') %}checked{% endif %}>
+                                <label class="form-check-label fw-bold small" for="settingsAutoApprove">
+                                    ارسال مستقیم به کانال بدون توقف در صف بررسی (توصیه نمی‌شود)
+                                </label>
+                            </div>
+
+                            <div class="text-end">
+                                <button type="submit" class="btn btn-success px-4 py-2 fw-bold" id="saveSettingsBtn">
+                                    <i class="fas fa-save me-1"></i> ذخیره تنظیمات هوش مصنوعی
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- مدال مشاهده و ویرایش آیتم قبل از تایید و انتشار -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="modal fade" id="editQueueItemModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-white border-bottom">
+                <h5 class="modal-title fw-bold text-dark d-flex align-items-center gap-2">
+                    <i class="fas fa-edit text-primary"></i>
+                    بررسی و ویرایش محتوا قبل از انتشار
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
+            </div>
+            <div class="modal-body p-4">
+                <input type="hidden" id="modalItemId">
+                <div class="mb-3">
+                    <label class="form-label fw-bold small">عنوان یا پرسش</label>
+                    <input type="text" class="form-control" id="modalItemTitle">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold small">متن محتوا / پست</label>
+                    <textarea class="form-control font-monospace" id="modalItemContent" rows="10" style="line-height: 1.8;"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold small">مقصد ارسال (کانال یا آیدی تلگرام)</label>
+                    <input type="text" class="form-control" id="modalItemDestination">
+                </div>
+            </div>
+            <div class="modal-footer bg-light border-top d-flex justify-content-between">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-primary" onclick="saveItemEdits()">
+                        <i class="fas fa-save me-1"></i> ذخیره تغییرات
+                    </button>
+                    <button type="button" class="btn btn-success fw-bold" onclick="approveCurrentModalItem()">
+                        <i class="fas fa-paper-plane me-1"></i> تایید و ارسال آنی به کانال
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentMode = "form";
+let lastGeneratedData = null;
+let currentPreviewItemId = null;
+
+function switchMode(mode) {
+    currentMode = mode;
+    const formContainer = document.getElementById("aiGenerateForm");
+    const resultContent = document.getElementById("resultContentContainer");
+    const chatContent = document.getElementById("chatInterfaceContainer");
+    const emptyState = document.getElementById("previewEmptyState");
+
+    if (mode === "chat") {
+        resultContent.classList.add("d-none");
+        emptyState.classList.add("d-none");
+        chatContent.classList.remove("d-none");
+        document.getElementById("chatInput").focus();
+    } else {
+        chatContent.classList.add("d-none");
+        if (lastGeneratedData) {
+            resultContent.classList.remove("d-none");
+            emptyState.classList.add("d-none");
+        } else {
+            emptyState.classList.remove("d-none");
+        }
+    }
+}
+
+function updateFormFields() {
+    const cType = document.getElementById("contentTypeSelect").value;
+    const badge = document.getElementById("formModeBadge");
+    const discountBox = document.getElementById("discountOptionsBox");
+
+    if (cType === "channel_post") {
+        badge.innerText = "تولید پست کانال";
+        badge.className = "badge bg-primary";
+        discountBox.classList.add("d-none");
+    } else if (cType === "channel_poll") {
+        badge.innerText = "طراحی نظرسنجی";
+        badge.className = "badge bg-info text-dark";
+        discountBox.classList.add("d-none");
+    } else if (cType === "instagram_package") {
+        badge.innerText = "پکیج اینستاگرام";
+        badge.className = "badge bg-danger";
+        discountBox.classList.add("d-none");
+    } else if (cType === "discount_campaign") {
+        badge.innerText = "کمپین تخفیف";
+        badge.className = "badge bg-success";
+        discountBox.classList.remove("d-none");
+    }
+}
+
+function quickFill(contentType, topic) {
+    switchMode("form");
+    document.getElementById("contentTypeSelect").value = contentType;
+    document.getElementById("contentTopic").value = topic;
+    updateFormFields();
+    document.getElementById("contentTopic").scrollIntoView({ behavior: "smooth" });
+}
+
+function togglePassword(id) {
+    const el = document.getElementById(id);
+    if (el.type === "password") {
+        el.type = "text";
+    } else {
+        el.type = "password";
+    }
+}
+
+function updateProviderFields() {
+    const provider = document.getElementById("settingsProvider").value;
+    const modelInput = document.getElementById("settingsModel");
+    const customUrlBox = document.getElementById("customUrlContainer");
+    const apiKeyBox = document.getElementById("apiKeyContainer");
+    const helpText = document.getElementById("modelHelpText");
+
+    if (provider === "gemini") {
+        modelInput.value = "gemini-1.5-flash";
+        helpText.innerText = "پیش‌فرض: gemini-1.5-flash یا gemini-1.5-pro";
+        customUrlBox.style.display = "none";
+        apiKeyBox.style.display = "block";
+    } else if (provider === "openai") {
+        modelInput.value = "gpt-4o-mini";
+        helpText.innerText = "پیش‌فرض: gpt-4o-mini یا gpt-4o";
+        customUrlBox.style.display = "none";
+        apiKeyBox.style.display = "block";
+    } else if (provider === "deepseek") {
+        modelInput.value = "deepseek-chat";
+        helpText.innerText = "پیش‌فرض: deepseek-chat یا deepseek-reasoner";
+        customUrlBox.style.display = "none";
+        apiKeyBox.style.display = "block";
+    } else if (provider === "custom") {
+        modelInput.value = "llama3:latest";
+        helpText.innerText = "نام مدل در Ollama یا سرور سفارشی شما";
+        customUrlBox.style.display = "block";
+        apiKeyBox.style.display = "block";
+    } else if (provider === "offline") {
+        modelInput.value = "smart-offline";
+        helpText.innerText = "موتور محلی آفلاین؛ نیاز به اینترنت و کلید ندارد.";
+        customUrlBox.style.display = "none";
+        apiKeyBox.style.display = "none";
+    }
+}
+
+async function handleGenerateSubmit(e) {
+    e.preventDefault();
+    switchMode("form");
+
+    const btn = document.getElementById("generateSubmitBtn");
+    const spinner = document.getElementById("aiLoadingSpinner");
+    const emptyState = document.getElementById("previewEmptyState");
+    const resultBox = document.getElementById("resultContentContainer");
+
+    const payload = {
+        action_type: document.getElementById("contentTypeSelect").value,
+        topic: document.getElementById("contentTopic").value,
+        tone: document.getElementById("contentTone").value,
+        platform: document.getElementById("targetPlatform").value,
+        target_destination: document.getElementById("targetDestination").value,
+        save_to_queue: document.getElementById("queueCheckbox").checked,
+        discount_percent: document.getElementById("discountPercent") ? parseInt(document.getElementById("discountPercent").value) : 20,
+        discount_max_uses: document.getElementById("discountMaxUses") ? parseInt(document.getElementById("discountMaxUses").value) : 50,
+        discount_code: document.getElementById("discountCustomCode") ? document.getElementById("discountCustomCode").value : ""
+    };
+
+    btn.disabled = true;
+    emptyState.classList.add("d-none");
+    resultBox.classList.add("d-none");
+    spinner.classList.remove("d-none");
+
+    try {
+        const resp = await fetch("/api/ai-studio/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        const res = await resp.json();
+        spinner.classList.add("d-none");
+        btn.disabled = false;
+
+        if (res.success) {
+            lastGeneratedData = res.result;
+            currentPreviewItemId = res.item_id;
+
+            let displayText = "";
+            if (res.result.post_text) {
+                displayText = res.result.post_text;
+            } else if (res.result.question) {
+                displayText = "📊 سوال نظرسنجی: " + res.result.question + "\n\nگزینه‌ها:\n";
+                (res.result.options || []).forEach((opt, idx) => {
+                    displayText += (idx + 1) + ". " + opt + "\n";
+                });
+            } else if (res.result.caption) {
+                displayText = "📸 کپشن اینستاگرام:\n" + res.result.caption;
+                if (res.result.story_idea) displayText += "\n\n💡 ایده استوری:\n" + res.result.story_idea;
+                if (res.result.hashtags) displayText += "\n\n🏷️ هشتگ‌ها:\n" + res.result.hashtags.join(" ");
+            } else {
+                displayText = JSON.stringify(res.result, null, 2);
+            }
+
+            document.getElementById("resultDisplayBox").innerText = displayText;
+            document.getElementById("resultPlatformBadge").innerText = payload.platform;
+            resultBox.classList.remove("d-none");
+
+            if (res.item_id) {
+                document.getElementById("savedItemNotice").innerHTML = 
+                    `<i class="fas fa-check-circle text-success me-1"></i> محتوا با شناسه <strong>#${res.item_id}</strong> در صف بررسی قرار گرفت.`;
+                updatePendingBadges(1);
+            } else {
+                document.getElementById("savedItemNotice").innerHTML = 
+                    `<i class="fas fa-info-circle me-1"></i> محتوا بدون ذخیره در صف تولید شد.`;
+            }
+        } else {
+            alert("خطا در تولید محتوا: " + (res.error || "خطای ناشناخته"));
+            emptyState.classList.remove("d-none");
+        }
+    } catch (err) {
+        spinner.classList.add("d-none");
+        btn.disabled = false;
+        emptyState.classList.remove("d-none");
+        alert("خطا در برقراری ارتباط با سرور: " + err.message);
+    }
+}
+
+async function handleChatSubmit(e) {
+    e.preventDefault();
+    const input = document.getElementById("chatInput");
+    const msg = input.value.trim();
+    if (!msg) return;
+
+    const messagesBox = document.getElementById("chatMessages");
+    const sendBtn = document.getElementById("chatSendBtn");
+
+    // Add user message to UI
+    const userDiv = document.createElement("div");
+    userDiv.className = "d-flex justify-content-end mb-3";
+    userDiv.innerHTML = `
+        <div class="bg-primary text-white p-3 rounded-3 shadow-sm" style="max-width: 85%;">
+            ${escapeHtml(msg)}
+        </div>
+    `;
+    messagesBox.appendChild(userDiv);
+    input.value = "";
+    messagesBox.scrollTop = messagesBox.scrollHeight;
+
+    sendBtn.disabled = true;
+
+    try {
+        const resp = await fetch("/api/ai-studio/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: msg })
+        });
+        const res = await resp.json();
+        sendBtn.disabled = false;
+
+        const botDiv = document.createElement("div");
+        botDiv.className = "d-flex mb-3";
+        if (res.success) {
+            botDiv.innerHTML = `
+                <div class="bg-white p-3 rounded-3 shadow-sm border" style="max-width: 85%;">
+                    <strong class="text-primary d-block mb-1"><i class="fas fa-robot me-1"></i> دستیار هوش مصنوعی:</strong>
+                    ${escapeHtml(res.reply).replace(/\n/g, "<br>")}
+                </div>
+            `;
+        } else {
+            botDiv.innerHTML = `
+                <div class="alert alert-danger p-2 small mb-0" style="max-width: 85%;">
+                    خطا: ${escapeHtml(res.error || "ناموفق")}
+                </div>
+            `;
+        }
+        messagesBox.appendChild(botDiv);
+        messagesBox.scrollTop = messagesBox.scrollHeight;
+    } catch (err) {
+        sendBtn.disabled = false;
+        alert("خطا در ارسال پیام: " + err.message);
+    }
+}
+
+async function approveQueueItem(itemId) {
+    if (!confirm("آیا از تایید و انتشار آنی این آیتم در کانال تلگرام اطمینان دارید؟")) return;
+
+    try {
+        const resp = await fetch("/api/ai-studio/queue/approve", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ item_id: itemId })
+        });
+        const res = await resp.json();
+        if (res.success) {
+            alert(res.message || "با موفقیت در کانال منتشر شد!");
+            const row = document.getElementById("queue-row-" + itemId);
+            if (row) {
+                row.setAttribute("data-status", "published");
+                const statusCell = row.cells[6];
+                if (statusCell) statusCell.innerHTML = '<span class="badge bg-success"><i class="fas fa-check-circle me-1"></i> منتشر شده</span>';
+                const actionsCell = row.cells[7];
+                if (actionsCell) {
+                    const sendBtn = actionsCell.querySelector(".btn-success");
+                    if (sendBtn) sendBtn.remove();
+                }
+            }
+            updatePendingBadges(-1);
+        } else {
+            alert("خطا در انتشار: " + (res.error || "خطای ناشناخته"));
+        }
+    } catch (err) {
+        alert("خطای ارتباط با سرور: " + err.message);
+    }
+}
+
+async function deleteQueueItem(itemId) {
+    if (!confirm("آیا از حذف این مورد از صف اطمینان دارید؟")) return;
+
+    try {
+        const resp = await fetch("/api/ai-studio/queue/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ item_id: itemId })
+        });
+        const res = await resp.json();
+        if (res.success) {
+            const row = document.getElementById("queue-row-" + itemId);
+            if (row) {
+                if (row.getAttribute("data-status") === "pending_approval") {
+                    updatePendingBadges(-1);
+                }
+                row.remove();
+            }
+        } else {
+            alert("خطا در حذف: " + (res.error || ""));
+        }
+    } catch (err) {
+        alert("خطا: " + err.message);
+    }
+}
+
+async function openEditItemModal(itemId) {
+    try {
+        const resp = await fetch(`/api/ai-studio/queue/get?item_id=${itemId}`);
+        const res = await resp.json();
+        if (res.success && res.item) {
+            document.getElementById("modalItemId").value = res.item.id;
+            document.getElementById("modalItemTitle").value = res.item.title || "";
+            document.getElementById("modalItemContent").value = res.item.content_text || "";
+            document.getElementById("modalItemDestination").value = res.item.target_destination || "";
+
+            const modal = new bootstrap.Modal(document.getElementById("editQueueItemModal"));
+            modal.show();
+        } else {
+            alert("یافت نشد.");
+        }
+    } catch (err) {
+        alert("خطا: " + err.message);
+    }
+}
+
+async function saveItemEdits() {
+    const itemId = document.getElementById("modalItemId").value;
+    const title = document.getElementById("modalItemTitle").value;
+    const contentText = document.getElementById("modalItemContent").value;
+    const destination = document.getElementById("modalItemDestination").value;
+
+    try {
+        const resp = await fetch("/api/ai-studio/queue/edit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                item_id: itemId,
+                title: title,
+                content_text: contentText,
+                target_destination: destination
+            })
+        });
+        const res = await resp.json();
+        if (res.success) {
+            alert("تغییرات با موفقیت ذخیره شد.");
+            const row = document.getElementById("queue-row-" + itemId);
+            if (row) {
+                row.cells[2].innerText = title;
+                row.cells[3].querySelector("div").innerText = contentText.substring(0, 120) + "...";
+                row.cells[4].querySelector("code").innerText = destination;
+            }
+            bootstrap.Modal.getInstance(document.getElementById("editQueueItemModal")).hide();
+        } else {
+            alert("خطا در ذخیره: " + (res.error || ""));
+        }
+    } catch (err) {
+        alert("خطا: " + err.message);
+    }
+}
+
+async function approveCurrentModalItem() {
+    const itemId = document.getElementById("modalItemId").value;
+    bootstrap.Modal.getInstance(document.getElementById("editQueueItemModal")).hide();
+    await approveQueueItem(itemId);
+}
+
+function openEditModalFromPreview() {
+    if (!currentPreviewItemId) {
+        alert("ابتدا باید محتوا در صف بررسی ذخیره شده باشد.");
+        return;
+    }
+    openEditItemModal(currentPreviewItemId);
+}
+
+function publishDirectFromPreview() {
+    if (!currentPreviewItemId) {
+        alert("ابتدا باید محتوا در صف بررسی ذخیره شده باشد.");
+        return;
+    }
+    approveQueueItem(currentPreviewItemId);
+}
+
+function copyResultText() {
+    const txt = document.getElementById("resultDisplayBox").innerText;
+    if (!txt) return;
+    navigator.clipboard.writeText(txt).then(() => {
+        alert("متن با موفقیت در کلیپ‌بورد کپی شد.");
+    }).catch(() => {
+        alert("خطا در کپی متن.");
+    });
+}
+
+function clearPreview() {
+    document.getElementById("resultDisplayBox").innerText = "";
+    document.getElementById("resultContentContainer").classList.add("d-none");
+    document.getElementById("previewEmptyState").classList.remove("d-none");
+    lastGeneratedData = null;
+    currentPreviewItemId = null;
+}
+
+function filterQueueTable() {
+    const status = document.getElementById("queueStatusFilter").value;
+    const rows = document.querySelectorAll("#queueTable tbody tr");
+    rows.forEach(r => {
+        if (r.id === "noQueueRow") return;
+        const rStatus = r.getAttribute("data-status");
+        if (status === "all" || rStatus === status) {
+            r.style.display = "";
+        } else {
+            r.style.display = "none";
+        }
+    });
+}
+
+function updatePendingBadges(delta) {
+    const badge1 = document.getElementById("queueCountBadge");
+    const badge2 = document.getElementById("tabPendingBadge");
+    if (badge1 && badge2) {
+        let count = parseInt(badge1.innerText || "0") + delta;
+        if (count < 0) count = 0;
+        badge1.innerText = count;
+        badge2.innerText = count;
+    }
+}
+
+async function handleSettingsSubmit(e) {
+    e.preventDefault();
+    const btn = document.getElementById("saveSettingsBtn");
+    btn.disabled = true;
+
+    const topics = [];
+    document.querySelectorAll(".topic-check:checked").forEach(cb => topics.push(cb.value));
+
+    const settingsData = {
+        provider: document.getElementById("settingsProvider").value,
+        model_name: document.getElementById("settingsModel").value,
+        api_key: document.getElementById("settingsApiKey").value,
+        custom_base_url: document.getElementById("settingsCustomUrl").value,
+        target_channel: document.getElementById("settingsTargetChannel").value,
+        instagram_page: document.getElementById("settingsInstagramPage").value,
+        signature: document.getElementById("settingsSignature").value,
+        auto_approve: document.getElementById("settingsAutoApprove").checked,
+        selected_topics: topics
+    };
+
+    try {
+        const resp = await fetch("/api/ai-studio/settings/save", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(settingsData)
+        });
+        const res = await resp.json();
+        btn.disabled = false;
+        if (res.success) {
+            alert("تنظیمات با موفقیت ذخیره شد!");
+            document.getElementById("activeModelBadge").innerText = `${settingsData.provider} (${settingsData.model_name})`;
+        } else {
+            alert("خطا در ذخیره تنظیمات: " + (res.error || ""));
+        }
+    } catch (err) {
+        btn.disabled = false;
+        alert("خطا در ارتباط با سرور: " + err.message);
+    }
+}
+
+function escapeHtml(text) {
+    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+    return String(text || '').replace(/[&<>"']/g, function(m) { return map[m]; });
+}
+</script>
+{% endblock %}

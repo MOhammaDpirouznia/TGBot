@@ -3545,6 +3545,12 @@ class ResellerBotInstance:
             if data == "res_adm_menu":
                 return await reseller_admin_panel_handler(update, context)
 
+            elif data in ("res_ai_menu",) or data.startswith("ai_"):
+                from ai_bot_handlers import handle_ai_bot_callback
+                handled = await handle_ai_bot_callback(update, context, bot_type="reseller", owner_id=r_id)
+                if handled:
+                    return
+
             elif data == "res_adm_stats":
                 txt = get_reseller_stats_text(r_id)
                 kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="res_adm_menu")]])

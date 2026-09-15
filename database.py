@@ -1579,6 +1579,30 @@ class Database:
         except Exception as e:
             logger.warning(f"Error initializing reseller_bundles table: {e}")
 
+        # ایجاد جدول صف انتشار و نظارت محتوای هوش مصنوعی (AI Content Queue)
+        try:
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS ai_content_queue (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    bot_type TEXT DEFAULT 'admin',
+                    owner_id INTEGER DEFAULT 0,
+                    content_type TEXT DEFAULT 'post',
+                    platform TEXT DEFAULT 'telegram_channel',
+                    target_destination TEXT DEFAULT '',
+                    title TEXT DEFAULT '',
+                    content_text TEXT DEFAULT '',
+                    poll_data TEXT DEFAULT '',
+                    discount_data TEXT DEFAULT '',
+                    status TEXT DEFAULT 'pending_approval',
+                    created_at TEXT,
+                    published_at TEXT,
+                    created_by TEXT DEFAULT 'ai'
+                )
+            ''')
+        except Exception as e:
+            logger.warning(f"Error initializing ai_content_queue table: {e}")
+
+
         # اصلاح دسته‌بندی تیکت‌های مشتریان نماینده به target_role='reseller'
         try:
             cursor.execute("""
@@ -4774,6 +4798,186 @@ class Database:
         new_channels = [ch for ch in channels if str(ch.get("channel_id")).strip() != channel_id]
         self.save_mandatory_channels(bot_type, new_channels)
         return True
+
+    # ==================== AI Marketing & Content Queue Methods ====================
+    def get_ai_marketing_settings(self, bot_type: str = "admin", owner_id: int = 0) -> dict:
+        """دریافت تنظیمات هوش مصنوعی برای ادمین یا نماینده"""
+        key = f"ai_marketing_settings_{bot_type}_{owner_id}"
+        raw = self.get_setting(key)
+        defaults = {
+            "provider": "gemini",
+            "api_key": "",
+            "custom_base_url": "",
+            "model_name": "gemini-1.5-flash",
+            "default_tone": "informative",
+            "target_channel": "",
+            "instagram_page": "",
+            "selected_topics": ["v2ray_help", "freedom_news", "security_tips", "deals"],
+            "auto_approve": False,
+            "signature": "",
+            "is_enabled": True
+        }
+        if not raw:
+            gen_api_key = self.get_setting("gemini_api_key") or self.get_setting("ai_api_key") or ""
+            if gen_api_key:
+                defaults["api_key"] = gen_api_key
+            return defaults
+        try:
+            val = json.loads(raw) if isinstance(raw, str) else raw
+            if isinstance(val, dict):
+                defaults.update(val)
+            return defaults
+        except Exception:
+            return defaults
+
+    def save_ai_marketing_settings(self, settings: dict, bot_type: str = "admin", owner_id: int = 0) -> bool:
+        """ذخیره تنظیمات هوش مصنوعی برای ادمین یا نماینده"""
+        key = f"ai_marketing_settings_{bot_type}_{owner_id}"
+        res = self.set_setting(key, json.dumps(settings, ensure_ascii=False))
+        if isinstance(res, dict):
+            return bool(res.get("success", False))
+        return bool(res)
+
+    def create_ai_content_item(
+        self,
+        bot_type: str = "admin",
+        owner_id: int = 0,
+        content_type: str = "post",
+        platform: str = "telegram_channel",
+        target_destination: str = "",
+        title: str = "",
+        content_text: str = "",
+        poll_data: dict = None,
+        discount_data: dict = None,
+        status: str = "pending_approval",
+        created_by: str = "ai"
+    ) -> int:
+        """افزودن محتوای تولید شده توسط هوش مصنوعی به صف بررسی و انتشار"""
+        poll_json = json.dumps(poll_data, ensure_ascii=False) if poll_data else ""
+        discount_json = json.dumps(discount_data, ensure_ascii=False) if discount_data else ""
+        now = get_now_iso()
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO ai_content_queue (
+                    bot_type, owner_id, content_type, platform, target_destination,
+                    title, content_text, poll_data, discount_data, status, created_at, created_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                bot_type, owner_id, content_type, platform, target_destination,
+                title, content_text, poll_json, discount_json, status, now, created_by
+            ))
+            conn.commit()
+            return cursor.lastrowid
+
+    def get_ai_content_queue(
+        self,
+        bot_type: str = None,
+        owner_id: int = None,
+        status: str = None,
+        limit: int = 50
+    ) -> list:
+        """دریافت لیست موارد صف تولید محتوا با قابلیت فیلتر"""
+        conditions = []
+        params = []
+        if bot_type:
+            conditions.append("bot_type = ?")
+            params.append(bot_type)
+        if owner_id is not None:
+            conditions.append("owner_id = ?")
+            params.append(owner_id)
+        if status and status != "all":
+            conditions.append("status = ?")
+            params.append(status)
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        sql = f"""
+            SELECT id, bot_type, owner_id, content_type, platform, target_destination,
+                   title, content_text, poll_data, discount_data, status, created_at,
+                   published_at, created_by
+            FROM ai_content_queue
+            {where_clause}
+            ORDER BY id DESC LIMIT ?
+        """
+        params.append(limit)
+
+        with self.get_connection() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(sql, params)
+            rows = cursor.fetchall()
+            items = []
+            for r in rows:
+                item = dict(r)
+                if item.get("poll_data"):
+                    try:
+                        item["poll_data"] = json.loads(item["poll_data"])
+                    except Exception:
+                        pass
+                if item.get("discount_data"):
+                    try:
+                        item["discount_data"] = json.loads(item["discount_data"])
+                    except Exception:
+                        pass
+                items.append(item)
+            return items
+
+    def get_ai_content_item(self, item_id: int) -> dict:
+        """دریافت جزئیات یک آیتم مشخص از صف محتوا"""
+        with self.get_connection() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM ai_content_queue WHERE id = ?", (item_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            item = dict(row)
+            if item.get("poll_data"):
+                try:
+                    item["poll_data"] = json.loads(item["poll_data"])
+                except Exception:
+                    pass
+            if item.get("discount_data"):
+                try:
+                    item["discount_data"] = json.loads(item["discount_data"])
+                except Exception:
+                    pass
+            return item
+
+    def update_ai_content_item(self, item_id: int, **kwargs) -> bool:
+        """بروزرسانی فیلدهای یک آیتم در صف محتوا"""
+        if not kwargs:
+            return False
+        allowed_keys = {
+            "title", "content_text", "status", "platform", "target_destination",
+            "published_at", "poll_data", "discount_data"
+        }
+        fields = []
+        params = []
+        for k, v in kwargs.items():
+            if k in allowed_keys:
+                if k in ("poll_data", "discount_data") and isinstance(v, (dict, list)):
+                    v = json.dumps(v, ensure_ascii=False)
+                fields.append(f"{k} = ?")
+                params.append(v)
+        if not fields:
+            return False
+        params.append(item_id)
+        sql = f"UPDATE ai_content_queue SET {', '.join(fields)} WHERE id = ?"
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(sql, params)
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def delete_ai_content_item(self, item_id: int) -> bool:
+        """حذف یک آیتم از صف محتوا"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM ai_content_queue WHERE id = ?", (item_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+
 
 
     def get_refund_settings(self) -> dict:

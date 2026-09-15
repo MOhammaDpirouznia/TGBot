@@ -165,6 +165,9 @@ def get_admin_advanced_keyboard(is_bundle_bot: bool = False, role: str = "super_
                     InlineKeyboardButton("📢 پیام همگانی به نمایندگان", callback_data="adm_adv_broadcast"),
                 ],
                 [
+                    InlineKeyboardButton("🤖 استودیو هوش مصنوعی و تبلیغات", callback_data="adm_ai_menu"),
+                ],
+                [
                     InlineKeyboardButton("⚙️ وضعیت حساب‌ها و درگاه‌ها", callback_data="adm_adv_settings"),
                 ],
                 [
@@ -230,6 +233,9 @@ def get_admin_advanced_keyboard(is_bundle_bot: bool = False, role: str = "super_
                 [
                     InlineKeyboardButton("💳 مدیریت کارت‌ها", callback_data="admin_cards"),
                     InlineKeyboardButton("📦 مدیریت پلن‌ها", callback_data="admin_plans"),
+                ],
+                [
+                    InlineKeyboardButton("🤖 استودیو هوش مصنوعی و محتوا", callback_data="adm_ai_menu"),
                 ],
                 [
                     InlineKeyboardButton("🔙 بازگشت به منوی کاربری", callback_data=back_cb)

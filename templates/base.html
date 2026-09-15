@@ -1499,6 +1499,9 @@
                 <a class="nav-link {% if request.endpoint == 'reseller_broadcast' %}active{% endif %}" href="{{ url_for('reseller_broadcast') }}">
                     <i class="fas fa-bullhorn text-warning"></i> پیام همگانی
                 </a>
+                <a class="nav-link {% if request.endpoint == 'reseller_ai_studio' %}active{% endif %}" href="{{ url_for('reseller_ai_studio') }}">
+                    <i class="fas fa-robot text-info"></i> استودیو هوش مصنوعی
+                </a>
                 {% endif %}
 
                 {% if not sub_role or sub_role in ['partner', 'finance', 'manager2'] %}
@@ -1699,6 +1702,9 @@
                             <i class="fas fa-paper-plane text-primary"></i> پیام همگانی و اطلاعیه‌ها
                         </a>
                         {% endif %}
+                        <a class="submenu-item {% if request.endpoint == 'admin_ai_studio' %}active{% endif %}" href="{{ url_for('admin_ai_studio') }}">
+                            <i class="fas fa-robot text-info"></i> استودیو هوش مصنوعی و مارکتینگ
+                        </a>
                     </div>
                 </div>
                 {% endif %}

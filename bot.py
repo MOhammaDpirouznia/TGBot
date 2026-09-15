@@ -6344,6 +6344,12 @@ async def admin_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     # ─── هندلرهای مدیریت پیشرفته ارشد سامانه ───
     if is_sys_admin:
+        if data == "adm_ai_menu" or data.startswith("ai_"):
+            from ai_bot_handlers import handle_ai_bot_callback
+            handled = await handle_ai_bot_callback(update, context, bot_type="admin", owner_id=0)
+            if handled:
+                return ADMIN_MENU
+
         if data == "adm_adv_stats":
             from admin_bot_admin import get_admin_advanced_stats_text
             txt = get_admin_advanced_stats_text()
