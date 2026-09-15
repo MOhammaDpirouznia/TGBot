@@ -62,11 +62,13 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 HIDIFY_PANEL_URL = os.getenv("HIDIFY_PANEL_URL")
-HIDIFY_PANEL_URL_TEST = os.getenv("HIDIFY_PANEL_URL_TEST", HIDIFY_PANEL_URL)
+HIDIFY_PANEL_URL_TEST = os.getenv("HIDIFY_PANEL_URL_TEST")
 HIDIFY_API_KEY = os.getenv("HIDIFY_API_KEY")
+HIDIFY_API_KEY_TEST = os.getenv("HIDIFY_API_KEY_TEST")
 HIDIFY_PROXY_PATH = os.getenv("HIDIFY_PROXY_PATH")
+HIDIFY_PROXY_PATH_TEST = os.getenv("HIDIFY_PROXY_PATH_TEST")
 USER_PROXY_PATH = os.getenv("USER_PROXY_PATH", HIDIFY_PROXY_PATH)
-USER_PROXY_PATH_TEST = os.getenv("USER_PROXY_PATH_TEST", HIDIFY_PROXY_PATH)
+USER_PROXY_PATH_TEST = os.getenv("USER_PROXY_PATH_TEST")
 PAYMENT_GATEWAY = os.getenv("PAYMENT_GATEWAY", "zarinpal")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 CARD_NUMBER = os.getenv("CARD_NUMBER", "")
@@ -79,6 +81,77 @@ for i in range(1, 4):
     ch_id = os.getenv(f"CHANEL_TG_ID_{i}", "")
     if ch_id and ch_id.strip():
         REQUIRED_CHANNELS.append(ch_id.strip())
+
+def get_test_server_config() -> dict:
+    """دریافت تنظیمات سرور تست هیدیفای با اولویت مقادیر داینامیک دیتابیس سپس متغیرهای محیطی و فال‌بک به سرور اصلی"""
+    panel_url = (
+        db.get_setting("hidify_panel_url_test")
+        or os.getenv("HIDIFY_PANEL_URL_TEST")
+        or db.get_setting("hidify_panel_url")
+        or db.get_setting("hiddify_url")
+        or os.getenv("HIDIFY_PANEL_URL")
+        or ""
+    ).strip()
+
+    api_key = (
+        db.get_setting("hidify_api_key_test")
+        or os.getenv("HIDIFY_API_KEY_TEST")
+        or db.get_setting("hidify_api_key")
+        or db.get_setting("hiddify_api_key")
+        or os.getenv("HIDIFY_API_KEY")
+        or ""
+    ).strip()
+
+    proxy_path = (
+        db.get_setting("hidify_proxy_path_test")
+        or os.getenv("HIDIFY_PROXY_PATH_TEST")
+        or db.get_setting("hidify_proxy_path")
+        or db.get_setting("hiddify_proxy_path")
+        or os.getenv("HIDIFY_PROXY_PATH")
+        or "admin"
+    ).strip()
+
+    user_proxy_path = (
+        db.get_setting("user_proxy_path_test")
+        or os.getenv("USER_PROXY_PATH_TEST")
+        or db.get_setting("user_proxy_path")
+        or db.get_setting("customer_proxy_path")
+        or os.getenv("USER_PROXY_PATH")
+        or proxy_path
+    ).strip()
+
+    return {
+        "panel_url": panel_url,
+        "api_key": api_key,
+        "proxy_path": proxy_path,
+        "user_proxy_path": user_proxy_path,
+    }
+
+def get_test_hidify_client() -> HidifyClient:
+    """ساخت کلاینت هیدیفای اختصاصی برای ساخت و مدیریت اکانت‌های تست"""
+    cfg = get_test_server_config()
+    return HidifyClient(
+        panel_url=cfg["panel_url"],
+        api_key=cfg["api_key"],
+        proxy_path=cfg["proxy_path"]
+    )
+
+def get_main_bot_mandatory_channels() -> list:
+    """دریافت لیست داینامیک کانال‌های عضویت اجباری ربات اصلی با حفظ سازگاری کانال‌های پیشین"""
+    channels = db.get_mandatory_channels("main")
+    if not channels:
+        for i in range(1, 4):
+            ch_id = (os.getenv(f"CHANEL_TG_ID_{i}") or db.get_setting(f"chanel_tg_id_{i}") or "").strip()
+            if ch_id:
+                link = f"https://t.me/{ch_id.lstrip('@')}" if ch_id.startswith("@") else ""
+                channels.append({
+                    "channel_id": ch_id,
+                    "title": f"کانال {i}",
+                    "invite_link": link,
+                    "is_active": True
+                })
+    return [c for c in channels if c.get("is_active", True) and c.get("channel_id")]
+
 
 # ─── تنظیم لاگینگ ───
 logging.basicConfig(
@@ -319,61 +392,75 @@ async def check_channel_membership(user_id: int, context: ContextTypes.DEFAULT_T
     بررسی آیا کاربر در تمام کانال‌های اجباری عضو هست
     Returns: True اگر عضو باشد یا کانالی تنظیم نشده باشد
     """
-    if not REQUIRED_CHANNELS:
+    channels = get_main_bot_mandatory_channels()
+    if not channels:
         return True
-    
+
     bot = context.bot
     not_joined = []
-    
-    for channel_id in REQUIRED_CHANNELS:
+
+    for ch in channels:
+        channel_id = ch["channel_id"]
         try:
-            member = await bot.get_chat_member(chat_id=channel_id, user_id=user_id)
-            # بررسی وضعیت عضویت
+            chat_id = int(channel_id) if str(channel_id).lstrip("-").isdigit() else str(channel_id)
+            member = await bot.get_chat_member(chat_id=chat_id, user_id=user_id)
             status = member.status
             if status not in ["member", "administrator", "creator"]:
-                not_joined.append(channel_id)
+                not_joined.append(ch)
         except Exception as e:
             logger.warning(f"Error checking membership for {channel_id}: {e}")
-            # اگه خطا خورد، کانال رو نادیده بگیر (ممکنه ربات admin نباشه)
+            # در صورت بروز خطا (عدم ادمین بودن ربات یا کانال خصوصی)، مانع کاربر نشو
             pass
-    
+
     return len(not_joined) == 0
 
 
 async def show_join_channels_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    نمایش پیام اجباری عضویت در کانال‌ها
+    نمایش پیام اجباری عضویت در کانال‌ها با دکمه‌های شیک و بررسی عضویت
     """
-    text = "🔒 برای استفاده از ربات، ابتدا در کانال‌های زیر عضو شوید:\n\n"
-    
+    channels = get_main_bot_mandatory_channels()
+    text = "🔒 **برای استفاده از امکانات ربات، لطفاً ابتدا در کانال‌های زیر عضو شوید:**\n\n"
+
     keyboard = []
-    for i, channel_id in enumerate(REQUIRED_CHANNELS, 1):
-        try:
-            chat = await context.bot.get_chat(chat_id=channel_id)
-            chat_title = chat.title or f"کانال {i}"
-            chat_username = chat.username
-            
-            if chat_username:
-                link = f"https://t.me/{chat_username}"
-            else:
-                link = f"https://t.me/c/{str(channel_id)[4:]}" if str(channel_id).startswith("-100") else ""
-            
-            text += f"{i}. {chat_title}\n"
-            if link:
-                keyboard.append([InlineKeyboardButton(f"🔗 {chat_title}", url=link)])
-        except Exception as e:
-            logger.warning(f"Error getting chat info for {channel_id}: {e}")
-            text += f"{i}. کانال {i}\n"
-    
-    text += "\n✅ پس از عضویت، دکمه «بررسی عضویت» را بزنید."
-    
-    keyboard.append([InlineKeyboardButton("✅ بررسی عضویت", callback_data="check_membership")])
+    for i, ch in enumerate(channels, 1):
+        channel_id = ch["channel_id"]
+        title = ch.get("title") or f"کانال {i}"
+        link = ch.get("invite_link") or ""
+
+        if not link:
+            try:
+                chat_id = int(channel_id) if str(channel_id).lstrip("-").isdigit() else str(channel_id)
+                chat = await context.bot.get_chat(chat_id=chat_id)
+                title = chat.title or title
+                if chat.username:
+                    link = f"https://t.me/{chat.username}"
+                elif chat.invite_link:
+                    link = chat.invite_link
+                else:
+                    link = f"https://t.me/c/{str(channel_id)[4:]}" if str(channel_id).startswith("-100") else ""
+            except Exception as e:
+                logger.warning(f"Error getting chat info for {channel_id}: {e}")
+                if str(channel_id).startswith("@"):
+                    link = f"https://t.me/{str(channel_id).lstrip('@')}"
+
+        text += f"{i}. **{title}**\n"
+        btn_url = link or (f"https://t.me/{str(channel_id).lstrip('@')}" if str(channel_id).startswith("@") else "https://t.me")
+        keyboard.append([InlineKeyboardButton(f"📢 عضویت در {title}", url=btn_url)])
+
+    text += "\n✅ پس از عضویت در تمامی کانال‌ها، روی دکمه **«بررسی عضویت»** در زیر کلیک فرمایید."
+
+    keyboard.append([InlineKeyboardButton("🔄 بررسی عضویت و شروع", callback_data="check_membership")])
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
+
     if update.callback_query:
-        await update.callback_query.edit_message_text(text, reply_markup=reply_markup)
+        try:
+            await update.callback_query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+        except Exception:
+            await update.callback_query.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
     else:
-        await update.message.reply_text(text, reply_markup=reply_markup)
+        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -2990,11 +3077,13 @@ async def get_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         account_name = sub.get("account_name") or f"tg_{user.id}"
 
         if sub.get("plan_id") == "test":
-            proxy = USER_PROXY_PATH_TEST or USER_PROXY_PATH or HIDIFY_PROXY_PATH
-            panel_url = HIDIFY_PANEL_URL_TEST or HIDIFY_PANEL_URL
+            tcfg = get_test_server_config()
+            proxy = tcfg["user_proxy_path"]
+            panel_url = tcfg["panel_url"]
         else:
             proxy = USER_PROXY_PATH or HIDIFY_PROXY_PATH
             panel_url = HIDIFY_PANEL_URL
+
 
         subscription_url = f"{panel_url.rstrip('/')}/{proxy.strip('/')}/{uuid}/"
         status_icon = "🟢 فعال" if status == "active" else "🔴 منقضی"
@@ -3528,8 +3617,9 @@ async def handle_test_subscription(update: Update, context: ContextTypes.DEFAULT
         if sub.get("plan_id") == "test":
             existing_uuid = sub.get("hidify_uuid", "")
             if existing_uuid:
-                p_url = (HIDIFY_PANEL_URL_TEST or HIDIFY_PANEL_URL).rstrip("/")
-                u_path = (USER_PROXY_PATH_TEST or USER_PROXY_PATH or HIDIFY_PROXY_PATH).strip("/")
+                tcfg = get_test_server_config()
+                p_url = tcfg["panel_url"].rstrip("/")
+                u_path = tcfg["user_proxy_path"].strip("/")
                 existing_link = f"{p_url}/{u_path}/{existing_uuid}/"
                 await send_subscription_card(
                     context.bot,
@@ -3545,18 +3635,22 @@ async def handle_test_subscription(update: Update, context: ContextTypes.DEFAULT
                 )
             return CHOOSING
 
-    # ایجاد اشتراک تست جدید
+    # ایجاد اشتراک تست جدید با سرور اختصاصی تست
     status_msg = await update.message.reply_text("⏳ در حال ساخت اشتراک تست...")
 
     # نام اکانت = آیدی تلگرام
     username = f"tg_{user.id}"
+    tcfg = get_test_server_config()
+    test_client = get_test_hidify_client()
+    test_traffic = float(db.get_setting("test_plan_data_limit", "0.3") or 0.3)
+    test_days = int(db.get_setting("test_plan_duration", "1") or 1)
 
     try:
         result = await asyncio.wait_for(
-            hidify.create_user(
+            test_client.create_user(
                 name=username,
-                usage_limit_gb=0.3,  # 0.3 گیگ حجم تست
-                package_days=1,     # 1 روز مدت تست
+                usage_limit_gb=test_traffic,
+                package_days=test_days,
                 enable=True,
                 comment=str(user.id),
             ),
@@ -3564,16 +3658,16 @@ async def handle_test_subscription(update: Update, context: ContextTypes.DEFAULT
         )
     except asyncio.TimeoutError:
         try:
-            await status_msg.edit_text("❌ خطا: زمان اتصال به سرور تمام شد. لطفاً دوباره تلاش کنید.")
+            await status_msg.edit_text("❌ خطا: زمان اتصال به سرور تست تمام شد. لطفاً دوباره تلاش کنید.")
         except:
-            await update.message.reply_text("❌ خطا: زمان اتصال به سرور تمام شد. لطفاً دوباره تلاش کنید.")
+            await update.message.reply_text("❌ خطا: زمان اتصال به سرور تست تمام شد. لطفاً دوباره تلاش کنید.")
         return CHOOSING
     except Exception as e:
-        logger.error(f"Error creating test user: {e}")
+        logger.error(f"Error creating test user on test server: {e}")
         try:
-            await status_msg.edit_text(f"❌ خطا در ساخت اشتراک تست:\n{str(e)[:200]}")
+            await status_msg.edit_text(f"❌ خطا در ساخت اشتراک تست در سرور:\n{str(e)[:200]}")
         except:
-            await update.message.reply_text(f"❌ خطا در ساخت اشتراک تست:\n{str(e)[:200]}")
+            await update.message.reply_text(f"❌ خطا در ساخت اشتراک تست در سرور:\n{str(e)[:200]}")
         return CHOOSING
 
     if "error" in result:
@@ -3590,8 +3684,8 @@ async def handle_test_subscription(update: Update, context: ContextTypes.DEFAULT
         hidify_uuid=user_uuid,
         plan_id="test",
         plan_name="اشتراک تست",
-        data_limit=0.3,
-        duration=1,
+        data_limit=test_traffic,
+        duration=test_days,
         status="active",
         account_name=username,
         account_comment=str(user.id),
@@ -3605,7 +3699,7 @@ async def handle_test_subscription(update: Update, context: ContextTypes.DEFAULT
         "hidify_uuid": user_uuid,
         "plan": "test",
         "created_at": get_now_iso(),
-        "data_limit": 0.3,
+        "data_limit": test_traffic,
     })
 
     # پاک کردن یا ویرایش پیام موقت در حال ساخت
@@ -3615,10 +3709,10 @@ async def handle_test_subscription(update: Update, context: ContextTypes.DEFAULT
         pass
 
     # ارسال کارت تست همراه با QR Code و دکمه‌های اتصال
-    p_url = (HIDIFY_PANEL_URL_TEST or HIDIFY_PANEL_URL).rstrip("/")
-    u_path = (USER_PROXY_PATH_TEST or USER_PROXY_PATH or HIDIFY_PROXY_PATH).strip("/")
+    p_url = tcfg["panel_url"].rstrip("/")
+    u_path = tcfg["user_proxy_path"].strip("/")
     test_link = f"{p_url}/{u_path}/{user_uuid}/"
-    details = "📋 پلن: **اشتراک تست رایگان**\n📊 حجم: **0.3 گیگابایت**\n⏰ مدت: **1 روز**"
+    details = f"📋 پلن: **اشتراک تست رایگان**\n📊 حجم: **{test_traffic} گیگابایت**\n⏰ مدت: **{test_days} روز**"
     await send_subscription_card(
         context.bot,
         chat_id=user.id,
@@ -3627,6 +3721,7 @@ async def handle_test_subscription(update: Update, context: ContextTypes.DEFAULT
         details=details
     )
     return CHOOSING
+
 
 
 # ═══════════════════════════════════════════════════════════════════════

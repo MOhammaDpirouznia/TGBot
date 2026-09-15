@@ -19,10 +19,13 @@
     <!-- قرص‌های دسته‌بندی موضوعی -->
     <div class="d-flex align-items-center gap-2 overflow-x-auto pb-2 mb-2 settings-pills-bar" style="scrollbar-width: thin;">
         <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 py-2 text-nowrap settings-category-pill active shadow-sm" data-category="all" onclick="filterSettingsCategory('all', this)">
-            <i class="fas fa-border-all me-1"></i> همه بخش‌ها <span class="badge bg-white bg-opacity-25 ms-1" id="badgeCountAll">17</span>
+            <i class="fas fa-border-all me-1"></i> همه بخش‌ها <span class="badge bg-white bg-opacity-25 ms-1" id="badgeCountAll">18</span>
         </button>
         <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-2 text-nowrap settings-category-pill" data-category="infra" onclick="filterSettingsCategory('infra', this)">
             <i class="fas fa-server me-1 text-primary"></i> متغیرهای زیرساخت و سرور <span class="badge bg-primary-subtle text-primary ms-1">1</span>
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-2 text-nowrap settings-category-pill" data-category="channels" onclick="filterSettingsCategory('channels', this)">
+            <i class="fab fa-telegram me-1 text-primary"></i> کانال‌های اجباری <span class="badge bg-primary-subtle text-primary ms-1">1</span>
         </button>
         <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-2 text-nowrap settings-category-pill" data-category="appearance" onclick="filterSettingsCategory('appearance', this)">
             <i class="fas fa-palette me-1 text-primary"></i> ظاهر و استایل <span class="badge bg-primary-subtle text-primary ms-1">3</span>
@@ -193,14 +196,287 @@
                     </label>
                     <input type="text" name="custom_domain" class="form-control font-monospace" value="{{ infrastructure_config.custom_domain or '' }}" placeholder="مثال: vpn.example.com">
                 </div>
+
+                <!-- ═══ تفکیک سرور تست هیدیفای ═══ -->
+                <div class="col-12 mt-4">
+                    <div class="p-3 rounded-3 bg-light border border-info-subtle shadow-sm">
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                            <h6 class="fw-bold text-info mb-0">
+                                <i class="fas fa-flask text-info me-2"></i> سرور مجزای تست رایگان هیدیفای (اختیاری)
+                            </h6>
+                            <span class="badge bg-info-subtle text-info border border-info-subtle px-2 py-1">
+                                <i class="fas fa-server me-1"></i> تفکیک کامل سرور تست
+                            </span>
+                        </div>
+                        <p class="small text-muted mb-3">
+                            در صورتی که می‌خواهید اشتراک‌های تست رایگان روی یک سرور، دامنه یا پنل هیدیفای جداگانه با کلید API مستقل ساخته و تحویل داده شوند، مقادیر زیر را تکمیل نمایید. در صورت خالی بودن، به صورت خودکار از تنظیمات سرور اصلی بالا استفاده خواهد شد.
+                        </p>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small">
+                                    <i class="fas fa-link text-info me-1"></i> آدرس پنل سرور تست (HIDIFY_PANEL_URL_TEST):
+                                </label>
+                                <input type="url" name="hidify_panel_url_test" class="form-control font-monospace" value="{{ infrastructure_config.hidify_panel_url_test or '' }}" placeholder="https://test-panel.example.com">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small">
+                                    <i class="fas fa-key text-warning me-1"></i> کلید وب‌سرویس سرور تست (HIDIFY_API_KEY_TEST):
+                                </label>
+                                <input type="text" name="hidify_api_key_test" class="form-control font-monospace" value="{{ infrastructure_config.hidify_api_key_test or '' }}" placeholder="کلید API سرور تست هیدیفای">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold small">
+                                    <i class="fas fa-route text-secondary me-1"></i> مسیر پروکسی ادمین تست:
+                                </label>
+                                <input type="text" name="hidify_proxy_path_test" class="form-control font-monospace" value="{{ infrastructure_config.hidify_proxy_path_test or '' }}" placeholder="پیش‌فرض: همانند سرور اصلی">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold small">
+                                    <i class="fas fa-users text-success me-1"></i> مسیر پروکسی مشترکین تست:
+                                </label>
+                                <input type="text" name="user_proxy_path_test" class="form-control font-monospace" value="{{ infrastructure_config.user_proxy_path_test or '' }}" placeholder="پیش‌فرض: همانند سرور اصلی">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold small">
+                                    <i class="fas fa-database text-primary me-1"></i> حجم اشتراک تست (GB):
+                                </label>
+                                <input type="number" step="0.1" name="test_plan_data_limit" class="form-control font-monospace" value="{{ infrastructure_config.test_plan_data_limit or '0.3' }}" placeholder="0.3">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold small">
+                                    <i class="fas fa-clock text-danger me-1"></i> مدت اشتراک تست (روز):
+                                </label>
+                                <input type="number" name="test_plan_duration" class="form-control font-monospace" value="{{ infrastructure_config.test_plan_duration or '1' }}" placeholder="1">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ═══ متغیرهای DATA_DIR و DASHBOARD_SECRET ═══ -->
+                <div class="col-md-6 mt-4">
+                    <div class="p-3 rounded-3 bg-light border h-100 shadow-sm">
+                        <label class="form-label fw-bold small text-secondary">
+                            <i class="fas fa-hard-drive text-secondary me-1"></i> مسیر ذخیره‌سازی داده‌های پایدار (DATA_DIR):
+                        </label>
+                        <input type="text" class="form-control font-monospace bg-white" value="{{ infrastructure_config.data_dir or 'data' }}" readonly>
+                        <div class="form-text small text-muted mt-2">
+                            <i class="fas fa-circle-info text-primary me-1"></i>
+                            <strong>توضیح کاربرد:</strong> در داکر یا سرورهای ابری مانند Railway، با اتصال یک Persistent Volume به مسیر <code>/data</code> و تنظیم متغیر <code>DATA_DIR=/data</code>، تمامی داده‌های حیاتی (دیتابیس SQLite، رسیدها، تصاویر و بکاپ‌ها) پس از هر دیپلوی مجدد کاملاً حفظ خواهند شد.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 mt-4">
+                    <div class="p-3 rounded-3 bg-light border h-100 shadow-sm">
+                        <label class="form-label fw-bold small text-danger">
+                            <i class="fas fa-lock text-danger me-1"></i> کلید رمزنگاری نشست‌های وب‌پنل (DASHBOARD_SECRET):
+                        </label>
+                        <div class="input-group">
+                            <input type="text" id="dashboardSecretInput" name="dashboard_secret" class="form-control font-monospace" value="{{ infrastructure_config.dashboard_secret or '' }}" placeholder="کلید محرمانه سشن‌های Flask">
+                            <button type="button" class="btn btn-outline-secondary" onclick="generateRandomSecret()" title="تولید کلید رندوم امن">
+                                <i class="fas fa-dice"></i> تولید رندوم
+                            </button>
+                        </div>
+                        <div class="form-text small text-muted mt-2">
+                            <i class="fas fa-shield-alt text-success me-1"></i>
+                            <strong>توضیح کاربرد:</strong> این کلید محرمانه توسط Flask جهت امضا و محافظت از کوکی‌های سشن ورود (Session Authentication) استفاده می‌شود تا جلوی حملات جعل نشست و دستکاری کوکی گرفته شود.
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="text-end mt-4">
                 <button type="submit" class="btn btn-primary px-4 py-2 fw-bold rounded-pill shadow-sm">
-                    <i class="fas fa-floppy-disk me-1"></i> ذخیره متغیرهای زیرساخت
+                    <i class="fas fa-floppy-disk me-1"></i> ذخیره متغیرهای زیرساخت و سرور تست
                 </button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- ═══ بخش کانال‌های عضویت اجباری ربات اصلی و ربات فروش بسته ═══ -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="channels" id="card-mandatory-channels">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-primary fw-bold">
+                <i class="fab fa-telegram text-primary me-2"></i> مدیریت کانال‌های عضویت اجباری (ربات اصلی و ربات بسته‌ها)
+            </h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2">
+                <i class="fas fa-users-viewfinder me-1"></i> افزودن نامحدود کانال
+            </span>
+        </div>
+    </div>
+    <div class="card-body p-4 settings-card-body">
+        <div class="row g-4">
+            <!-- ستون ۱: کانال‌های ربات اصلی تلگرام -->
+            <div class="col-lg-6">
+                <div class="p-3 rounded-3 border bg-light h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="fw-bold text-dark mb-0">
+                            <i class="fas fa-robot text-primary me-1"></i> کانال‌های اجباری ربات اصلی
+                        </h6>
+                        <span class="badge bg-primary text-white">{{ infrastructure_config.mandatory_channels_main|length }} کانال</span>
+                    </div>
+                    <p class="small text-muted mb-3">کاربران عادی قبل از شروع کار با ربات اصلی باید در تمامی این کانال‌ها عضو شوند (ربات باید در کانال ادمین باشد).</p>
+
+                    <!-- جدول کانال‌های فعال -->
+                    {% if infrastructure_config.mandatory_channels_main %}
+                    <div class="table-responsive mb-3">
+                        <table class="table table-sm table-bordered bg-white align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>عنوان کانال</th>
+                                    <th>شناسه / آیدی</th>
+                                    <th>لینک</th>
+                                    <th class="text-center" style="width: 50px;">عملیات</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for ch in infrastructure_config.mandatory_channels_main %}
+                                <tr>
+                                    <td class="fw-bold small">{{ ch.title or 'کانال' }}</td>
+                                    <td><code class="small text-primary">{{ ch.channel_id }}</code></td>
+                                    <td>
+                                        {% if ch.invite_link %}
+                                        <a href="{{ ch.invite_link }}" target="_blank" class="btn btn-xs btn-outline-info py-0 px-2 small text-decoration-none">
+                                            <i class="fas fa-external-link-alt me-1"></i> مشاهده
+                                        </a>
+                                        {% else %}
+                                        <span class="text-muted small">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        <form action="{{ url_for('settings') }}" method="POST" onsubmit="return confirm('آیا از حذف این کانال از عضویت اجباری اطمینان دارید؟');" style="display:inline;">
+                                            <input type="hidden" name="action" value="delete_mandatory_channel">
+                                            <input type="hidden" name="bot_type" value="main">
+                                            <input type="hidden" name="channel_id" value="{{ ch.channel_id }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-1" title="حذف کانال">
+                                                <i class="fas fa-trash-alt"></i>
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-secondary py-2 small mb-3 text-center">
+                        هیچ کانال عضویت اجباری برای ربات اصلی تعریف نشده است.
+                    </div>
+                    {% endif %}
+
+                    <!-- فرم افزودن کانال جدید ربات اصلی -->
+                    <form action="{{ url_for('settings') }}" method="POST" class="bg-white p-3 rounded-2 border">
+                        <input type="hidden" name="action" value="add_mandatory_channel">
+                        <input type="hidden" name="bot_type" value="main">
+                        <div class="fw-bold small text-primary mb-2"><i class="fas fa-plus-circle me-1"></i> افزودن کانال جدید:</div>
+                        <div class="row g-2">
+                            <div class="col-md-5">
+                                <input type="text" name="channel_id" class="form-control form-control-sm font-monospace" placeholder="آیدی یا آیدی عددی (مثال: @mychannel یا -100...)" required>
+                            </div>
+                            <div class="col-md-4">
+                                <input type="text" name="channel_title" class="form-control form-control-sm" placeholder="نام نمایشی کانال">
+                            </div>
+                            <div class="col-md-3">
+                                <button type="submit" class="btn btn-primary btn-sm w-100 fw-bold">
+                                    <i class="fas fa-plus me-1"></i> افزودن
+                                </button>
+                            </div>
+                            <div class="col-12">
+                                <input type="url" name="channel_link" class="form-control form-control-sm font-monospace" placeholder="لینک مستقیم عضویت (اختیاری، مثال: https://t.me/...)">
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- ستون ۲: کانال‌های ربات فروش بسته نمایندگی -->
+            <div class="col-lg-6">
+                <div class="p-3 rounded-3 border bg-light h-100">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="fw-bold text-dark mb-0">
+                            <i class="fas fa-box-open text-warning me-1"></i> کانال‌های اجباری ربات فروش بسته
+                        </h6>
+                        <span class="badge bg-warning text-dark">{{ infrastructure_config.mandatory_channels_bundle|length }} کانال</span>
+                    </div>
+                    <p class="small text-muted mb-3">همکاران و نمایندگان قبل از مشاهده منوی خرید بسته‌ها باید در این کانال‌ها عضو شوند.</p>
+
+                    <!-- جدول کانال‌های فعال ربات بسته -->
+                    {% if infrastructure_config.mandatory_channels_bundle %}
+                    <div class="table-responsive mb-3">
+                        <table class="table table-sm table-bordered bg-white align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>عنوان کانال</th>
+                                    <th>شناسه / آیدی</th>
+                                    <th>لینک</th>
+                                    <th class="text-center" style="width: 50px;">عملیات</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for ch in infrastructure_config.mandatory_channels_bundle %}
+                                <tr>
+                                    <td class="fw-bold small">{{ ch.title or 'کانال همکاران' }}</td>
+                                    <td><code class="small text-warning">{{ ch.channel_id }}</code></td>
+                                    <td>
+                                        {% if ch.invite_link %}
+                                        <a href="{{ ch.invite_link }}" target="_blank" class="btn btn-xs btn-outline-info py-0 px-2 small text-decoration-none">
+                                            <i class="fas fa-external-link-alt me-1"></i> مشاهده
+                                        </a>
+                                        {% else %}
+                                        <span class="text-muted small">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        <form action="{{ url_for('settings') }}" method="POST" onsubmit="return confirm('آیا از حذف این کانال اطمینان دارید؟');" style="display:inline;">
+                                            <input type="hidden" name="action" value="delete_mandatory_channel">
+                                            <input type="hidden" name="bot_type" value="bundle">
+                                            <input type="hidden" name="channel_id" value="{{ ch.channel_id }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-1" title="حذف کانال">
+                                                <i class="fas fa-trash-alt"></i>
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-secondary py-2 small mb-3 text-center">
+                        هیچ کانال عضویت اجباری برای ربات فروش بسته تعریف نشده است.
+                    </div>
+                    {% endif %}
+
+                    <!-- فرم افزودن کانال جدید ربات بسته -->
+                    <form action="{{ url_for('settings') }}" method="POST" class="bg-white p-3 rounded-2 border">
+                        <input type="hidden" name="action" value="add_mandatory_channel">
+                        <input type="hidden" name="bot_type" value="bundle">
+                        <div class="fw-bold small text-warning mb-2"><i class="fas fa-plus-circle me-1"></i> افزودن کانال جدید همکاران:</div>
+                        <div class="row g-2">
+                            <div class="col-md-5">
+                                <input type="text" name="channel_id" class="form-control form-control-sm font-monospace" placeholder="آیدی یا آیدی عددی (مثال: @resellers_ch)" required>
+                            </div>
+                            <div class="col-md-4">
+                                <input type="text" name="channel_title" class="form-control form-control-sm" placeholder="نام نمایشی کانال">
+                            </div>
+                            <div class="col-md-3">
+                                <button type="submit" class="btn btn-warning btn-sm w-100 fw-bold">
+                                    <i class="fas fa-plus me-1"></i> افزودن
+                                </button>
+                            </div>
+                            <div class="col-12">
+                                <input type="url" name="channel_link" class="form-control form-control-sm font-monospace" placeholder="لینک مستقیم عضویت (اختیاری)">
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -212,6 +488,21 @@ function copyServerIpVal(ip) {
         });
     } else {
         alert('آی‌پی سرور هنوز شناسایی نشده است.');
+    }
+}
+
+function generateRandomSecret() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%&*-_=+';
+    let secret = '';
+    const array = new Uint8Array(32);
+    window.crypto.getRandomValues(array);
+    for (let i = 0; i < 32; i++) {
+        secret += chars[array[i] % chars.length];
+    }
+    const input = document.getElementById('dashboardSecretInput');
+    if (input) {
+        input.value = secret;
+        alert('کلید تصادفی ۳۲ کاراکتری تولید گردید. برای اعمال، دکمه ذخیره متغیرهای زیرساخت را بزنید.');
     }
 }
 </script>

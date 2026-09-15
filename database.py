@@ -1677,8 +1677,15 @@ class Database:
                 conn.close()
                 logger.info(f"Database contains {users_count} users, full restore skipped.")
                 return {"restored": False, "reason": "database_not_empty"}
-            
-            # جستجوی فایل JSON فول بک‌آپ
+
+            # بازیابی خودکار فقط در صورتی که صراحتاً در متغیرهای محیطی خواسته شده باشد اجرا می‌شود
+            # تا هر نصب جدید کاملاً تمیز و صفر کیلومتر باشد و اطلاعات قدیمی بدون درخواست کاربر وارد نشود
+            auto_restore_flag = os.getenv("AUTO_RESTORE_ENABLED", "").strip().lower() in ("1", "true", "yes")
+            if not auto_restore_flag:
+                conn.close()
+                logger.info("Fresh install detected: skipping auto-restore from file (AUTO_RESTORE_ENABLED not set). Starting clean.")
+                return {"restored": False, "reason": "auto_restore_disabled_for_clean_install"}
+
             candidate_files = [
                 Path("data/backup_full_latest.json"),
                 Path("/data/backup_full_latest.json"),
@@ -4673,6 +4680,101 @@ class Database:
             return {}
         finally:
             conn.close()
+
+    def get_mandatory_channels(self, bot_type: str = "main") -> list:
+        """دریافت لیست کانال‌های عضویت اجباری به صورت داینامیک برای ربات اصلی یا ربات فروش بسته"""
+        bot_type = (bot_type or "main").strip().lower()
+        key = f"mandatory_channels_{bot_type}"
+        channels = self.get_setting(key)
+
+        if isinstance(channels, list):
+            result = channels
+        elif isinstance(channels, str) and channels.strip():
+            try:
+                result = json.loads(channels)
+            except Exception:
+                result = []
+        else:
+            result = []
+
+        # اگر برای ربات اصلی باشد و لیستی ثبت نشده باشد، کانال‌های محیطی CHANEL_TG_ID_1..3 را بررسی کن
+        if bot_type == "main" and not result:
+            legacy_channels = []
+            for i in range(1, 4):
+                ch_id = (self.get_setting(f"chanel_tg_id_{i}") or os.getenv(f"CHANEL_TG_ID_{i}") or "").strip()
+                if ch_id:
+                    link = f"https://t.me/{ch_id.lstrip('@')}" if ch_id.startswith("@") else ""
+                    legacy_channels.append({
+                        "channel_id": ch_id,
+                        "title": f"کانال اجباری {i}",
+                        "invite_link": link,
+                        "is_active": True
+                    })
+            if legacy_channels:
+                return legacy_channels
+
+        cleaned = []
+        for ch in result:
+            if isinstance(ch, dict) and ch.get("channel_id"):
+                cleaned.append({
+                    "channel_id": str(ch.get("channel_id")).strip(),
+                    "title": str(ch.get("title") or ch.get("channel_id")).strip(),
+                    "invite_link": str(ch.get("invite_link") or ch.get("link") or "").strip(),
+                    "is_active": bool(ch.get("is_active", True))
+                })
+        return cleaned
+
+    def save_mandatory_channels(self, bot_type: str, channels: list):
+        """ذخیره لیست کانال‌های عضویت اجباری"""
+        bot_type = (bot_type or "main").strip().lower()
+        key = f"mandatory_channels_{bot_type}"
+        cleaned = []
+        seen = set()
+        for ch in channels:
+            if isinstance(ch, dict):
+                cid = str(ch.get("channel_id", "")).strip()
+                if cid and cid not in seen:
+                    seen.add(cid)
+                    cleaned.append({
+                        "channel_id": cid,
+                        "title": str(ch.get("title") or cid).strip(),
+                        "invite_link": str(ch.get("invite_link") or ch.get("link") or "").strip(),
+                        "is_active": bool(ch.get("is_active", True))
+                    })
+        self.save_setting(key, json.dumps(cleaned, ensure_ascii=False))
+        return cleaned
+
+    def add_mandatory_channel(self, bot_type: str, channel_id: str, title: str = "", invite_link: str = "") -> bool:
+        """افزودن یا بروزرسانی کانال در لیست کانال‌های اجباری"""
+        channel_id = str(channel_id or "").strip()
+        if not channel_id:
+            return False
+        channels = self.get_mandatory_channels(bot_type)
+        for ch in channels:
+            if ch.get("channel_id") == channel_id:
+                ch["title"] = title or ch.get("title", channel_id)
+                ch["invite_link"] = invite_link or ch.get("invite_link", "")
+                self.save_mandatory_channels(bot_type, channels)
+                return True
+        channels.append({
+            "channel_id": channel_id,
+            "title": title or channel_id,
+            "invite_link": invite_link or (f"https://t.me/{channel_id.lstrip('@')}" if channel_id.startswith("@") else ""),
+            "is_active": True
+        })
+        self.save_mandatory_channels(bot_type, channels)
+        return True
+
+    def delete_mandatory_channel(self, bot_type: str, channel_id: str) -> bool:
+        """حذف یک کانال از لیست کانال‌های اجباری"""
+        channel_id = str(channel_id or "").strip()
+        if not channel_id:
+            return False
+        channels = self.get_mandatory_channels(bot_type)
+        new_channels = [ch for ch in channels if str(ch.get("channel_id")).strip() != channel_id]
+        self.save_mandatory_channels(bot_type, new_channels)
+        return True
+
 
     def get_refund_settings(self) -> dict:
         """دریافت تنظیمات جامع قوانین استرداد وجه و سقف‌های بازگردانی"""

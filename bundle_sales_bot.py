@@ -103,6 +103,63 @@ def get_bundle_sales_main_keyboard(user_id: int) -> InlineKeyboardMarkup:
 
 
 # ═══════════════════════════════════════════════════════════════
+# سیستم بررسی عضویت اجباری در کانال‌ها برای ربات فروش بسته
+# ═══════════════════════════════════════════════════════════════
+
+async def check_bundle_channel_membership(user_id: int, bot: Bot) -> Tuple[bool, List[dict]]:
+    """بررسی عضویت کاربر در کانال‌های اجباری ربات فروش بسته"""
+    channels = db.get_mandatory_channels("bundle")
+    if not channels:
+        return True, []
+
+    not_joined = []
+    for ch in channels:
+        if not ch.get("is_active", True):
+            continue
+        cid = ch.get("channel_id")
+        if not cid:
+            continue
+        try:
+            chat_id = int(cid) if str(cid).lstrip("-").isdigit() else str(cid)
+            member = await bot.get_chat_member(chat_id=chat_id, user_id=user_id)
+            if member.status not in ["member", "administrator", "creator"]:
+                not_joined.append(ch)
+        except Exception as e:
+            logger.warning(f"Bundle bot membership check failed for {cid}: {e}")
+            pass
+    return len(not_joined) == 0, not_joined
+
+
+async def show_bundle_join_channels_message(update: Update, context: ContextTypes.DEFAULT_TYPE, not_joined: List[dict]):
+    """نمایش پیام شیک عضویت در کانال‌های اجباری برای ربات فروش بسته"""
+    text = "🔒 **همکار گرامی، جهت استفاده از خدمات ربات فروش بسته‌های نمایندگی، لطفاً در کانال‌های زیر عضو شوید:**\n\n"
+    keyboard = []
+    for i, ch in enumerate(not_joined, 1):
+        cid = ch["channel_id"]
+        title = ch.get("title") or f"کانال {i}"
+        link = ch.get("invite_link") or ""
+        if not link and str(cid).startswith("@"):
+            link = f"https://t.me/{str(cid).lstrip('@')}"
+        elif not link:
+            link = "https://t.me"
+
+        text += f"{i}. **{title}**\n"
+        keyboard.append([InlineKeyboardButton(f"📢 عضویت در {title}", url=link)])
+
+    text += "\n✅ پس از عضویت در تمامی کانال‌ها، روی دکمه **«بررسی عضویت»** کلیک فرمایید."
+    keyboard.append([InlineKeyboardButton("🔄 بررسی عضویت و ورود", callback_data="bsb_check_membership")])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    if update.callback_query:
+        try:
+            await update.callback_query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+        except Exception:
+            await update.callback_query.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+    else:
+        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+
+
+# ═══════════════════════════════════════════════════════════════
 # هندلرهای اصلی ربات فروش بسته نمایندگی
 # ═══════════════════════════════════════════════════════════════
 
@@ -125,6 +182,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
         return
 
+    # بررسی عضویت اجباری در کانال‌ها برای کاربران غیرادمین
+    is_member, not_joined = await check_bundle_channel_membership(user.id, context.bot)
+    if not is_member:
+        await show_bundle_join_channels_message(update, context, not_joined)
+        return
+
     # بررسی هویت نماینده
     reseller = get_reseller_for_user(user.id)
     if not reseller:
@@ -145,6 +208,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown")
         return
+
 
     # نماینده مجاز
     r_id = reseller["id"]
@@ -180,6 +244,16 @@ async def bsb_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
     if data == "bsb_main_menu":
         return await start_command(update, context)
+
+    if data == "bsb_check_membership":
+        is_member, not_joined = await check_bundle_channel_membership(user.id, context.bot)
+        if is_member:
+            await query.answer("✅ عضویت شما تایید شد.", show_alert=False)
+            return await start_command(update, context)
+        else:
+            await query.answer("❌ شما هنوز در تمام کانال‌های اعلام‌شده عضو نشده‌اید!", show_alert=True)
+            return await show_bundle_join_channels_message(update, context, not_joined)
+
 
     # ─── بسته‌های اعتباری نماینده ───
     if data == "bsb_bundles":

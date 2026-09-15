@@ -19,10 +19,12 @@ data/.write_test
 
 # ─── تنظیمات، پلن‌ها و فایل بک‌آپ برای ماندگاری در دیپلوی گیت ───
 !data/plans.json
-!data/cards.json
-!data/backup_full_latest.json
 !plans.json
-!cards.json
+data/backup_full_latest.json
+backup_full_latest.json
+data/backups/
+backups/
+*.json.bak
 
 # ─── پایتون ───
 __pycache__/

@@ -11906,8 +11906,48 @@ def settings():
                 db.save_setting("custom_domain", clean_dom)
                 db.save_setting("panel_domain", clean_dom)
 
-            flash("متغیرهای پایه و راه‌اندازی زیرساخت با موفقیت ذخیره شدند.", "success")
+            h_url_test = request.form.get("hidify_panel_url_test", "").strip()
+            h_key_test = request.form.get("hidify_api_key_test", "").strip()
+            h_proxy_test = request.form.get("hidify_proxy_path_test", "").strip()
+            u_proxy_test = request.form.get("user_proxy_path_test", "").strip()
+            test_traffic = request.form.get("test_plan_data_limit", "").strip()
+            test_days = request.form.get("test_plan_duration", "").strip()
+            d_secret = request.form.get("dashboard_secret", "").strip()
+
+            db.save_setting("hidify_panel_url_test", h_url_test)
+            db.save_setting("hidify_api_key_test", h_key_test)
+            db.save_setting("hidify_proxy_path_test", h_proxy_test)
+            db.save_setting("user_proxy_path_test", u_proxy_test)
+            if test_traffic:
+                db.save_setting("test_plan_data_limit", test_traffic)
+            if test_days:
+                db.save_setting("test_plan_duration", test_days)
+            if d_secret:
+                db.save_setting("dashboard_secret", d_secret)
+
+            flash("متغیرهای پایه، سرور تست و راه‌اندازی زیرساخت با موفقیت ذخیره شدند.", "success")
             return redirect(url_for("settings", active_tab="infra"))
+
+        elif action == "add_mandatory_channel":
+            b_type = request.form.get("bot_type", "main").strip().lower()
+            ch_id = request.form.get("channel_id", "").strip()
+            ch_title = request.form.get("channel_title", "").strip()
+            ch_link = request.form.get("channel_link", "").strip()
+            if ch_id:
+                db.add_mandatory_channel(b_type, ch_id, ch_title, ch_link)
+                flash("کانال عضویت اجباری با موفقیت به ربات اضافه گردید.", "success")
+            else:
+                flash("شناسه یا آیدی کانال الزامی است.", "warning")
+            return redirect(url_for("settings", active_tab="channels"))
+
+        elif action == "delete_mandatory_channel":
+            b_type = request.form.get("bot_type", "main").strip().lower()
+            ch_id = request.form.get("channel_id", "").strip()
+            if ch_id:
+                db.delete_mandatory_channel(b_type, ch_id)
+                flash("کانال از لیست عضویت اجباری حذف گردید.", "info")
+            return redirect(url_for("settings", active_tab="channels"))
+
 
         elif action == "request_ssl":
             dom = request.form.get("ssl_domain", "").strip() or db.get_setting("custom_domain") or db.get_setting("panel_domain")
@@ -12343,6 +12383,7 @@ def settings():
     server_public_ip = ssl_manager.get_server_public_ip()
     ssl_status = db.get_setting("ssl_status") or "تنظیم نشده"
     ssl_details = db.get_setting("ssl_details") or ""
+    import database
     infrastructure_config = {
         "bot_token": get_bot_token(),
         "admin_id": get_admin_id(),
@@ -12351,9 +12392,19 @@ def settings():
         "hidify_proxy_path": get_hiddify_proxy(),
         "user_proxy_path": get_user_proxy(),
         "custom_domain": db.get_setting("custom_domain") or db.get_setting("panel_domain") or "",
+        "hidify_panel_url_test": db.get_setting("hidify_panel_url_test") or os.getenv("HIDIFY_PANEL_URL_TEST") or "",
+        "hidify_api_key_test": db.get_setting("hidify_api_key_test") or os.getenv("HIDIFY_API_KEY_TEST") or "",
+        "hidify_proxy_path_test": db.get_setting("hidify_proxy_path_test") or os.getenv("HIDIFY_PROXY_PATH_TEST") or "",
+        "user_proxy_path_test": db.get_setting("user_proxy_path_test") or os.getenv("USER_PROXY_PATH_TEST") or "",
+        "test_plan_data_limit": db.get_setting("test_plan_data_limit", "0.3"),
+        "test_plan_duration": db.get_setting("test_plan_duration", "1"),
+        "data_dir": os.getenv("DATA_DIR") or str(database.DB_DIR),
+        "dashboard_secret": os.getenv("DASHBOARD_SECRET") or db.get_setting("dashboard_secret") or "",
         "server_public_ip": server_public_ip,
         "ssl_status": ssl_status,
         "ssl_details": ssl_details,
+        "mandatory_channels_main": db.get_mandatory_channels("main"),
+        "mandatory_channels_bundle": db.get_mandatory_channels("bundle"),
     }
 
     return render_template(
