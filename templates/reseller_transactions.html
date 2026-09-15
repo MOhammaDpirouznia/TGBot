@@ -523,16 +523,162 @@
 </div>
 {% endif %}
 
-<div class="card shadow-sm border-0">
+<div class="card shadow-sm border-0 mb-4">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div class="d-flex align-items-center gap-2">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
             <h5 class="mb-0 fw-bold"><i class="fas fa-receipt text-primary me-2"></i>ریز تراکنش‌ها</h5>
-            <span class="badge bg-secondary" data-table-count="resellerTxTable">{{ transactions|length }} مورد</span>
+            <span class="badge bg-secondary" id="resellerTxCountBadge" data-table-count="resellerTxTable">{{ transactions|length }} مورد</span>
+            {% if selected_date_str %}
+            <span class="badge bg-primary-subtle text-primary border border-primary px-2 py-1">
+                <i class="fas fa-calendar-day me-1"></i> فیلتر تاریخ: {{ selected_date_str }}
+                <a href="?year={{ selected_year }}&month={{ selected_month }}" class="text-danger ms-2 text-decoration-none fw-bold" title="حذف فیلتر روز و نمایش کل ماه">✕</a>
+            </span>
+            {% endif %}
         </div>
-        <div class="table-search-wrapper">
-            <i class="fas fa-search table-search-icon"></i>
-            <input type="text" class="form-control table-search-input" data-table="resellerTxTable" placeholder="جستجو در تراکنش‌ها، مبالغ، نام مشتری...">
-            <button type="button" class="table-search-clear" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
+        
+        {% set prev_year = (selected_year - 1) if (selected_month and selected_month == 1) else selected_year %}
+        {% set prev_month = 12 if (selected_month and selected_month == 1) else ((selected_month - 1) if selected_month else 12) %}
+        {% set next_year = (selected_year + 1) if (selected_month and selected_month == 12) else selected_year %}
+        {% set next_month = 1 if (selected_month and selected_month == 12) else ((selected_month + 1) if selected_month else 1) %}
+
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <!-- تقویم انتخاب ماه و تاریخ دلخواه جلالی -->
+            <div class="btn-group btn-group-sm shadow-sm" role="group">
+                <a href="?year={{ prev_year }}&month={{ prev_month }}" class="btn btn-outline-secondary" title="ماه قبل ({{ prev_month }}/{{ prev_year }})">
+                    <i class="fas fa-chevron-right"></i>
+                </a>
+                <div class="btn-group btn-group-sm" role="group">
+                    <button type="button" class="btn btn-outline-primary dropdown-toggle fw-bold d-flex align-items-center gap-2 px-3" data-bs-toggle="dropdown" aria-expanded="false" id="txCalendarDropdownBtn">
+                        <i class="fas fa-calendar-alt text-primary"></i>
+                        <span>{% if selected_date_str %}{{ selected_date_str }}{% else %}{{ selected_month_name }} {{ selected_year }}{% endif %}</span>
+                        <span class="badge bg-primary rounded-pill ms-1">{{ transactions|length }}</span>
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-end p-3 shadow-lg border-0 rounded-3" style="min-width: 360px; z-index: 1060;">
+                        <!-- هدر تقویم: جابجایی بین سال‌ها -->
+                        <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                            <a href="?year={{ selected_year - 1 }}&month={{ selected_month or current_j_month }}" class="btn btn-sm btn-light border px-2 text-decoration-none" title="سال قبل">
+                                <i class="fas fa-angles-right me-1"></i> {{ selected_year - 1 }}
+                            </a>
+                            <span class="fw-bold fs-6 text-primary"><i class="fas fa-calendar-days me-1"></i> سال {{ selected_year }}</span>
+                            <a href="?year={{ selected_year + 1 }}&month={{ selected_month or current_j_month }}" class="btn btn-sm btn-light border px-2 text-decoration-none" title="سال بعد">
+                                {{ selected_year + 1 }} <i class="fas fa-angles-left ms-1"></i>
+                            </a>
+                        </div>
+
+                        <!-- تب‌های تقویم: روزانه و ماهانه -->
+                        <ul class="nav nav-pills nav-fill mb-2 gap-1" id="resellerCalTab" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link btn-sm active py-1" id="reseller-cal-day-tab" data-bs-toggle="tab" data-bs-target="#reseller-cal-day" type="button" role="tab">تقویم روزانه (تاریخ دلخواه)</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link btn-sm py-1" id="reseller-cal-month-tab" data-bs-toggle="tab" data-bs-target="#reseller-cal-month" type="button" role="tab">انتخاب ماهانه (۱۲ ماه)</button>
+                            </li>
+                        </ul>
+
+                        <div class="tab-content" id="resellerCalTabContent">
+                            <!-- تب تقویم روزانه -->
+                            <div class="tab-pane fade show active" id="reseller-cal-day" role="tabpanel">
+                                {% if selected_month %}
+                                <div class="d-flex justify-content-between align-items-center mb-2 px-1">
+                                    <strong class="text-dark small"><i class="fas fa-calendar-week text-primary me-1"></i>{{ selected_month_name }} {{ selected_year }}</strong>
+                                    {% if selected_day %}
+                                    <a href="?year={{ selected_year }}&month={{ selected_month }}" class="badge bg-secondary text-decoration-none" title="مشاهده تمام روزهای ماه">نمایش کل ماه</a>
+                                    {% endif %}
+                                </div>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-borderless text-center align-middle mb-1" style="font-size: 0.78rem;">
+                                        <thead>
+                                            <tr class="text-muted border-bottom">
+                                                <th class="py-1">ش</th>
+                                                <th class="py-1">ی</th>
+                                                <th class="py-1">د</th>
+                                                <th class="py-1">س</th>
+                                                <th class="py-1">چ</th>
+                                                <th class="py-1">پ</th>
+                                                <th class="py-1 text-danger">ج</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for week in calendar_weeks %}
+                                            <tr>
+                                                {% for cell in week %}
+                                                <td class="p-1">
+                                                    {% if cell %}
+                                                    <a href="?year={{ selected_year }}&month={{ selected_month }}&day={{ cell.day }}" 
+                                                       class="btn btn-sm w-100 p-0 position-relative rounded-2 text-decoration-none d-flex flex-column justify-content-center align-items-center {{ 'btn-primary text-white fw-bold shadow-sm' if cell.day == selected_day else ('btn-outline-primary fw-bold' if (cell.day == current_j_day and selected_month == current_j_month and selected_year == current_j_year) else ('btn-light text-dark' if cell.count == 0 else 'btn-primary-subtle text-primary fw-semibold')) }}"
+                                                       style="height: 32px; font-size: 0.78rem;">
+                                                        <span>{{ cell.day }}</span>
+                                                        {% if cell.count > 0 %}
+                                                        <span class="badge rounded-pill bg-danger" style="font-size: 8px; line-height: 1; padding: 1px 3px; position: absolute; bottom: 1px;">{{ cell.count }}</span>
+                                                        {% endif %}
+                                                    </a>
+                                                    {% else %}
+                                                    <span class="text-muted opacity-25">-</span>
+                                                    {% endif %}
+                                                </td>
+                                                {% endfor %}
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {% else %}
+                                <div class="text-center py-3 text-muted small">لطفاً برای انتخاب روز، ابتدا ماه مورد نظر را از تب ماهانه انتخاب فرمایید.</div>
+                                {% endif %}
+                            </div>
+
+                            <!-- تب انتخاب ۱۲ ماه سال -->
+                            <div class="tab-pane fade" id="reseller-cal-month" role="tabpanel">
+                                <div class="row g-2 mb-2">
+                                    {% for m in jalali_months %}
+                                    <div class="col-4">
+                                        <a href="?year={{ selected_year }}&month={{ m.num }}" 
+                                           class="btn btn-sm w-100 p-2 text-decoration-none text-center position-relative rounded-2 {{ 'btn-primary text-white shadow-sm' if m.num == selected_month and not selected_day else ('btn-outline-primary' if (m.num == current_j_month and selected_year == current_j_year) else 'btn-light border text-dark') }}"
+                                           style="font-size: 0.82rem;">
+                                            <div class="fw-bold">{{ m.name }}</div>
+                                            <div class="small {{ 'text-white-50' if m.num == selected_month and not selected_day else 'text-muted' }}" style="font-size: 0.72rem;">
+                                                {{ m.count }} تراکنش
+                                            </div>
+                                            {% if m.num == current_j_month and selected_year == current_j_year and m.num != selected_month %}
+                                            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="font-size: 9px;">جاری</span>
+                                            {% endif %}
+                                        </a>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- فوتر تقویم: عملیات سریع -->
+                        <div class="d-flex justify-content-between align-items-center pt-2 border-top small flex-wrap gap-2">
+                            <a href="?year={{ current_j_year }}&month={{ current_j_month }}&day={{ current_j_day }}" class="text-decoration-none fw-bold text-success">
+                                <i class="fas fa-calendar-check me-1"></i> امروز
+                            </a>
+                            <a href="?year={{ current_j_year }}&month={{ current_j_month }}" class="text-decoration-none text-primary">
+                                <i class="fas fa-clock-rotate-left me-1"></i> ماه جاری
+                            </a>
+                            <a href="?year={{ selected_year }}&month=all" class="text-decoration-none text-muted">
+                                <i class="fas fa-list me-1"></i> کل سال {{ selected_year }}
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                <a href="?year={{ next_year }}&month={{ next_month }}" class="btn btn-outline-secondary" title="ماه بعد ({{ next_month }}/{{ next_year }})">
+                    <i class="fas fa-chevron-left"></i>
+                </a>
+            </div>
+
+            {% if selected_month != current_j_month or selected_year != current_j_year or selected_day %}
+            <a href="?year={{ current_j_year }}&month={{ current_j_month }}" class="btn btn-sm btn-outline-success" title="بازگشت به ماه جاری">
+                <i class="fas fa-calendar-check me-1"></i> ماه جاری
+            </a>
+            {% endif %}
+
+            <div class="table-search-wrapper">
+                <i class="fas fa-search table-search-icon"></i>
+                <input type="text" class="form-control" id="resellerTxSearch" placeholder="جستجو در تراکنش‌ها، مبالغ، نام مشتری...">
+                <button type="button" class="table-search-clear" id="resellerTxSearchClear" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
+            </div>
         </div>
     </div>
     <div class="card-body p-0">
@@ -543,18 +689,19 @@
                         <th class="ps-3 sortable-th" data-column="0">شناسه</th>
                         <th class="sortable-th" data-column="1">نوع تراکنش</th>
                         <th class="sortable-th" data-column="2">خرید عمده (تراکنش)</th>
-                        <th class="sortable-th" data-column="3">نوع فروش</th>
-                        <th class="sortable-th" data-column="4">حاشیه سود</th>
-                        <th class="sortable-th" data-column="5">پلن / نام کاربری مشتری</th>
-                        <th class="sortable-th" data-column="6">صادر کننده</th>
-                        <th class="sortable-th" data-column="7">توضیحات</th>
-                        <th class="sortable-th" data-column="8">تاریخ و زمان</th>
+                        <th class="sortable-th" data-column="3">مانده پس از تراکنش</th>
+                        <th class="sortable-th" data-column="4">نوع فروش</th>
+                        <th class="sortable-th" data-column="5">حاشیه سود</th>
+                        <th class="sortable-th" data-column="6">پلن / نام کاربری مشتری</th>
+                        <th class="sortable-th" data-column="7">صادر کننده</th>
+                        <th class="sortable-th" data-column="8">توضیحات</th>
+                        <th class="sortable-th" data-column="9">تاریخ و زمان</th>
                         <th class="text-end pe-3">جزئیات</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="resellerTxTbody">
                     {% for tx in transactions %}
-                    <tr>
+                    <tr class="tx-row">
                         <td class="ps-3" data-value="{{ tx['id'] }}"><code class="fs-6 font-monospace">#{{ tx['id'] }}</code></td>
                         <td data-value="{{ tx['type'] }}">
                             {% if tx['type'] == 'deposit' %}
@@ -573,6 +720,9 @@
                             <strong class="{{ 'text-success' if (tx['type'] in ['deposit', 'refund']) else 'text-danger' }} font-monospace">
                                 {{ '+' if (tx['type'] in ['deposit', 'refund']) else '-' }}{{ "{:,}".format(tx['amount'] or 0) }} تومان
                             </strong>
+                        </td>
+                        <td data-value="{{ tx.get('balance_after') or 0 }}">
+                            <span class="font-monospace fw-bold text-dark">{{ "{:,}".format(tx.get('balance_after') or 0) }} تومان</span>
                         </td>
                         <td data-value="{{ tx.get('sale_type_title') or '' }}">
                             {% if tx.get('sale_type_title') and tx['sale_type_title'] != '-' %}
@@ -618,15 +768,187 @@
                     </tr>
                     {% endfor %}
                     {% if not transactions %}
-                    <tr>
-                        <td colspan="10" class="text-center py-4 text-muted">تراکنشی ثبت نشده است.</td>
+                    <tr id="txEmptyRow">
+                        <td colspan="11" class="text-center py-4 text-muted">تراکنشی در این دوره زمانی ثبت نشده است.</td>
                     </tr>
                     {% endif %}
                 </tbody>
             </table>
         </div>
     </div>
+    {% if transactions and transactions|length > 0 %}
+    <div class="card-footer bg-white py-2 d-flex justify-content-between align-items-center flex-wrap gap-2" id="resellerTxPaginationCard">
+        <div class="small text-muted" id="txPaginationInfo">
+            نمایش <span id="txStartItem" class="fw-bold text-dark">1</span> تا <span id="txEndItem" class="fw-bold text-dark">15</span> از مجموع <span id="txTotalItems" class="fw-bold text-primary">{{ transactions|length }}</span> تراکنش
+        </div>
+        <nav aria-label="صفحه‌بندی تراکنش‌ها">
+            <ul class="pagination pagination-sm mb-0 gap-1 align-items-center" id="txPaginationList">
+                <li class="page-item" id="txPrevItem">
+                    <button class="page-link rounded px-3 fw-bold" type="button" id="txPrevBtn" onclick="changeTxPage(-1)">
+                        <i class="fas fa-chevron-right me-1"></i> صفحه قبلی
+                    </button>
+                </li>
+                <div class="d-flex gap-1" id="txPageNumbers"></div>
+                <li class="page-item" id="txNextItem">
+                    <button class="page-link rounded px-3 fw-bold" type="button" id="txNextBtn" onclick="changeTxPage(1)">
+                        صفحه بعدی <i class="fas fa-chevron-left ms-1"></i>
+                    </button>
+                </li>
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
 </div>
+
+<script>
+(function() {
+    let currentTxPage = 1;
+    const txPageSize = 15;
+
+    function getMatchedTxRows() {
+        const input = document.getElementById('resellerTxSearch');
+        const query = input ? input.value.trim().toLowerCase() : '';
+        const words = query.split(/\s+/).filter(w => w.length > 0);
+        const tbody = document.getElementById('resellerTxTbody');
+        if (!tbody) return [];
+        const rows = Array.from(tbody.querySelectorAll('tr.tx-row'));
+
+        if (words.length === 0) return rows;
+
+        return rows.filter(row => {
+            const text = row.textContent.toLowerCase().replace(/\s+/g, ' ');
+            return words.every(w => text.includes(w));
+        });
+    }
+
+    function renderTxPagination() {
+        const tbody = document.getElementById('resellerTxTbody');
+        if (!tbody) return;
+
+        const allRows = Array.from(tbody.querySelectorAll('tr.tx-row'));
+        const matchedRows = getMatchedTxRows();
+        const totalItems = matchedRows.length;
+        const totalPages = Math.max(1, Math.ceil(totalItems / txPageSize));
+
+        if (currentTxPage > totalPages) currentTxPage = totalPages;
+        if (currentTxPage < 1) currentTxPage = 1;
+
+        const startIdx = (currentTxPage - 1) * txPageSize;
+        const endIdx = startIdx + txPageSize;
+
+        allRows.forEach(r => {
+            r.style.display = 'none';
+        });
+
+        matchedRows.forEach((r, idx) => {
+            if (idx >= startIdx && idx < endIdx) {
+                r.style.display = '';
+            } else {
+                r.style.display = 'none';
+            }
+        });
+
+        // پیام در صورت عدم تطابق با جستجو
+        const existingNoResults = tbody.querySelector('.tx-no-search-results');
+        if (existingNoResults) existingNoResults.remove();
+        if (totalItems === 0 && allRows.length > 0) {
+            const noRow = document.createElement('tr');
+            noRow.className = 'tx-no-search-results';
+            noRow.innerHTML = '<td colspan="11" class="text-center py-4 text-muted"><i class="fas fa-search-minus fa-2x mb-2 d-block text-secondary"></i> موردی با این مشخصات در تراکنش‌ها یافت نشد.</td>';
+            tbody.appendChild(noRow);
+        }
+
+        const startItemEl = document.getElementById('txStartItem');
+        const endItemEl = document.getElementById('txEndItem');
+        const totalItemsEl = document.getElementById('txTotalItems');
+        if (startItemEl) startItemEl.textContent = totalItems === 0 ? '0' : (startIdx + 1);
+        if (endItemEl) endItemEl.textContent = Math.min(endIdx, totalItems);
+        if (totalItemsEl) totalItemsEl.textContent = totalItems;
+
+        const prevBtn = document.getElementById('txPrevBtn');
+        const nextBtn = document.getElementById('txNextBtn');
+        const prevItem = document.getElementById('txPrevItem');
+        const nextItem = document.getElementById('txNextItem');
+
+        if (prevBtn && prevItem) {
+            if (currentTxPage <= 1) {
+                prevItem.classList.add('disabled');
+                prevBtn.disabled = true;
+            } else {
+                prevItem.classList.remove('disabled');
+                prevBtn.disabled = false;
+            }
+        }
+
+        if (nextBtn && nextItem) {
+            if (currentTxPage >= totalPages) {
+                nextItem.classList.add('disabled');
+                nextBtn.disabled = true;
+            } else {
+                nextItem.classList.remove('disabled');
+                nextBtn.disabled = false;
+            }
+        }
+
+        const pageNumbersContainer = document.getElementById('txPageNumbers');
+        if (pageNumbersContainer) {
+            pageNumbersContainer.innerHTML = '';
+            let startP = Math.max(1, currentTxPage - 2);
+            let endP = Math.min(totalPages, currentTxPage + 2);
+            if (totalPages <= 5) {
+                startP = 1;
+                endP = totalPages;
+            }
+            for (let p = startP; p <= endP; p++) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = `btn btn-sm ${p === currentTxPage ? 'btn-primary' : 'btn-outline-secondary'} px-2 py-0 fw-bold font-monospace`;
+                btn.textContent = p;
+                btn.onclick = () => {
+                    currentTxPage = p;
+                    renderTxPagination();
+                };
+                pageNumbersContainer.appendChild(btn);
+            }
+        }
+
+        const countBadge = document.getElementById('resellerTxCountBadge');
+        if (countBadge) {
+            countBadge.textContent = totalItems + ' مورد';
+        }
+    }
+
+    window.changeTxPage = function(delta) {
+        currentTxPage += delta;
+        renderTxPagination();
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const searchInput = document.getElementById('resellerTxSearch');
+        const clearBtn = document.getElementById('resellerTxSearchClear');
+        if (searchInput) {
+            searchInput.addEventListener('input', () => {
+                if (clearBtn) clearBtn.style.display = searchInput.value.trim() ? 'block' : 'none';
+                currentTxPage = 1;
+                renderTxPagination();
+            });
+        }
+        if (clearBtn && searchInput) {
+            clearBtn.addEventListener('click', () => {
+                searchInput.value = '';
+                clearBtn.style.display = 'none';
+                currentTxPage = 1;
+                renderTxPagination();
+            });
+        }
+        renderTxPagination();
+    });
+
+    if (document.readyState === 'interactive' || document.readyState === 'complete') {
+        renderTxPagination();
+    }
+})();
+</script>
 
 <!-- مودال‌های جزئیات تراکنش نماینده (خارج از ساختار جدول) -->
 {% for tx in transactions %}
@@ -688,6 +1010,10 @@
                         <strong class="{{ 'text-success' if (tx['type'] in ['deposit', 'refund']) else 'text-danger' }}">
                             {{ '+' if (tx['type'] in ['deposit', 'refund']) else '-' }}{{ "{:,}".format(tx['amount'] or 0) }} تومان
                         </strong>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center bg-light">
+                        <span class="text-muted fw-semibold">مانده کیف پول پس از تراکنش:</span>
+                        <strong class="text-dark font-monospace">{{ "{:,}".format(tx.get('balance_after') or 0) }} تومان</strong>
                     </div>
                     {% if tx.get('selling_price') and tx['selling_price'] > 0 %}
                     <div class="list-group-item d-flex justify-content-between align-items-center">

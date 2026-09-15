@@ -220,9 +220,10 @@
                                 <th class="ps-3 sortable-th" data-column="0">شناسه</th>
                                 <th class="sortable-th" data-column="1">نوع تراکنش</th>
                                 <th class="sortable-th" data-column="2">مبلغ</th>
-                                <th class="sortable-th" data-column="3">پلن / اکانت هیدیفای</th>
-                                <th class="sortable-th" data-column="4">توضیحات</th>
-                                <th class="sortable-th" data-column="5">تاریخ و زمان</th>
+                                <th class="sortable-th" data-column="3">مانده پس از تراکنش</th>
+                                <th class="sortable-th" data-column="4">پلن / اکانت هیدیفای</th>
+                                <th class="sortable-th" data-column="5">توضیحات</th>
+                                <th class="sortable-th" data-column="6">تاریخ و زمان</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -245,6 +246,9 @@
                                         {{ '+' if (tx['type'] in ['deposit', 'refund']) else '-' }}{{ "{:,}".format(tx['amount'] or 0) }} تومان
                                     </strong>
                                 </td>
+                                <td data-value="{{ tx.get('balance_after') or 0 }}">
+                                    <span class="font-monospace fw-bold text-dark">{{ "{:,}".format(tx.get('balance_after') or 0) }} تومان</span>
+                                </td>
                                 <td data-value="{{ tx['plan_name'] or '' }}">
                                     {{ tx['plan_name'] or '-' }}
                                     {% if tx['account_name'] and tx['account_name'] != '-' %}
@@ -257,7 +261,7 @@
                             {% endfor %}
                             {% if not history.get('wallet_transactions') %}
                             <tr>
-                                <td colspan="6" class="text-center py-4 text-muted">تراکنشی در کیف پول ثبت نشده است.</td>
+                                <td colspan="7" class="text-center py-4 text-muted">تراکنشی در کیف پول ثبت نشده است.</td>
                             </tr>
                             {% endif %}
                         </tbody>

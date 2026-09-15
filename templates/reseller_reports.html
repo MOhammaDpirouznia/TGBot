@@ -461,6 +461,7 @@
                         <th>پلن و مشخصات</th>
                         <th>صادر کننده</th>
                         <th>مبلغ تراکنش</th>
+                        <th>مانده پس از تراکنش</th>
                         <th>تاریخ و زمان</th>
                         <th class="text-end pe-3">وضعیت</th>
                     </tr>
@@ -536,6 +537,13 @@
                             {% endif %}
                         </td>
                         <td>
+                            {% if s.get('balance_after') is not none %}
+                                <span class="font-monospace fw-bold text-dark">{{ "{:,}".format(s.get('balance_after') or 0) }} تومان</span>
+                            {% else %}
+                                <span class="text-muted small">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
                             {% if s.get('created_at') %}
                                 <div class="font-monospace text-nowrap" style="font-size: 11px;">
                                     <div class="text-primary fw-semibold">{{ s['created_at'][:16].replace('T', ' ') }}</div>
@@ -561,7 +569,7 @@
                     {% endfor %}
                     {% if not timeline_subscriptions %}
                     <tr id="timelineEmptyRow">
-                        <td colspan="7" class="text-center py-4 text-muted">هنوز فعالیتی ثبت نشده است.</td>
+                        <td colspan="8" class="text-center py-4 text-muted">هنوز فعالیتی ثبت نشده است.</td>
                     </tr>
                     {% endif %}
                 </tbody>

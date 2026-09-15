@@ -148,10 +148,11 @@
                                 <th class="ps-3 sortable-th" data-column="0">شناسه</th>
                                 <th class="sortable-th" data-column="1">نوع تراکنش</th>
                                 <th class="sortable-th" data-column="2">مبلغ</th>
-                                <th class="sortable-th" data-column="3">پلن / اکانت هیدیفای</th>
-                                <th class="sortable-th" data-column="4">توضیحات</th>
-                                <th class="sortable-th" data-column="5">وضعیت و نشان مدیریت</th>
-                                <th class="sortable-th" data-column="6">تاریخ و زمان</th>
+                                <th class="sortable-th" data-column="3">مانده پس از تراکنش</th>
+                                <th class="sortable-th" data-column="4">پلن / اکانت هیدیفای</th>
+                                <th class="sortable-th" data-column="5">توضیحات</th>
+                                <th class="sortable-th" data-column="6">وضعیت و نشان مدیریت</th>
+                                <th class="sortable-th" data-column="7">تاریخ و زمان</th>
                                 <th class="text-end pe-3" style="min-width: 140px;">عملیات</th>
                             </tr>
                         </thead>
@@ -178,6 +179,9 @@
                                             {{ '+' if (tx['type'] in ['deposit', 'refund']) else '-' }}{{ "{:,}".format(tx['amount'] or 0) }} تومان
                                         </strong>
                                     {% endif %}
+                                </td>
+                                <td data-value="{{ tx.get('balance_after') or 0 }}">
+                                    <span class="font-monospace fw-bold text-dark">{{ "{:,}".format(tx.get('balance_after') or 0) }} تومان</span>
                                 </td>
                                 <td>
                                     {{ tx['plan_name'] or '-' }}
@@ -234,7 +238,7 @@
                             {% endfor %}
                             {% if not history.get('wallet_transactions') %}
                             <tr>
-                                <td colspan="8" class="text-center py-4 text-muted">تراکنشی در کیف پول این نماینده ثبت نشده است.</td>
+                                <td colspan="9" class="text-center py-4 text-muted">تراکنشی در کیف پول این نماینده ثبت نشده است.</td>
                             </tr>
                             {% endif %}
                         </tbody>
@@ -456,6 +460,10 @@
                     <div class="list-group-item d-flex justify-content-between align-items-center">
                         <span class="text-muted">مبلغ:</span>
                         <strong class="fs-6 font-monospace">{{ "{:,}".format(tx['amount'] or 0) }} تومان</strong>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center bg-light">
+                        <span class="text-muted fw-semibold">مانده پس از تراکنش:</span>
+                        <strong class="fs-6 font-monospace text-dark">{{ "{:,}".format(tx.get('balance_after') or 0) }} تومان</strong>
                     </div>
                     <div class="list-group-item d-flex justify-content-between align-items-center">
                         <span class="text-muted">پلن / اشتراک:</span>

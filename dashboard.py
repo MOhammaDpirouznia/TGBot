@@ -43,6 +43,7 @@ from admin_manager import (
 )
 from sms_service import send_auth_sms_notification, send_sms, get_sms_config, format_iranian_phone
 from payment import CryptoPaymentGateway
+import ssl_manager
 import avatar_generator
 from multibot_manager import multibot_manager, ResellerBotInstance
 from tutorials_data import PLATFORMS, TUTORIALS, TROUBLESHOOTING_GUIDES
@@ -78,33 +79,72 @@ def get_reseller_banners() -> List[Dict[str, Any]]:
     return result
 
 
-# ─── توابع داینامیک خواندن تنظیمات محیطی ───
+# ─── توابع داینامیک خواندن تنظیمات محیطی و زیرساخت ───
 
 def get_admin_username() -> str:
-    return os.getenv("DASHBOARD_USERNAME", "admin")
+    try:
+        val = db.get_setting("dashboard_username")
+        if val and str(val).strip():
+            return str(val).strip()
+    except Exception:
+        pass
+    return os.getenv("DASHBOARD_USERNAME", "admin").strip()
 
 def get_admin_password() -> str:
-    return os.getenv("DASHBOARD_PASSWORD", "admin123")
+    try:
+        val = db.get_setting("dashboard_password")
+        if val and str(val).strip():
+            return str(val).strip()
+    except Exception:
+        pass
+    return os.getenv("DASHBOARD_PASSWORD", "admin123").strip()
 
 def get_bot_token() -> str:
-    return os.getenv("BOT_TOKEN", "")
+    try:
+        val = db.get_setting("bot_token")
+        if val and str(val).strip():
+            return str(val).strip()
+    except Exception:
+        pass
+    return os.getenv("BOT_TOKEN", "").strip()
 
 def get_admin_id() -> int:
-    return int(os.getenv("ADMIN_ID", 0))
+    try:
+        val = db.get_setting("admin_telegram_id") or db.get_setting("admin_id")
+        if val and str(val).strip().isdigit():
+            return int(val)
+    except Exception:
+        pass
+    try:
+        return int(os.getenv("ADMIN_ID", 0))
+    except Exception:
+        return 0
 
 def get_hiddify_url() -> str:
-    url = os.getenv("HIDIFY_PANEL_URL", "").rstrip("/")
-    if not url:
-        try:
-            url = (db.get_setting("hiddify_url") or "").rstrip("/")
-        except Exception:
-            pass
-    return url
+    try:
+        val = db.get_setting("hidify_panel_url") or db.get_setting("hiddify_url")
+        if val and str(val).strip():
+            return str(val).strip().rstrip("/")
+    except Exception:
+        pass
+    return os.getenv("HIDIFY_PANEL_URL", "").rstrip("/")
 
 def get_hiddify_key() -> str:
-    return os.getenv("HIDIFY_API_KEY", "")
+    try:
+        val = db.get_setting("hidify_api_key") or db.get_setting("hiddify_api_key")
+        if val and str(val).strip():
+            return str(val).strip()
+    except Exception:
+        pass
+    return os.getenv("HIDIFY_API_KEY", "").strip()
 
 def get_hiddify_proxy() -> str:
+    try:
+        val = db.get_setting("hidify_proxy_path") or db.get_setting("hiddify_proxy_path")
+        if val and str(val).strip():
+            return str(val).strip().strip("/")
+    except Exception:
+        pass
     return os.getenv("HIDIFY_PROXY_PATH", "").strip("/")
 
 def get_user_proxy() -> str:
@@ -115,6 +155,35 @@ def get_user_proxy() -> str:
     except Exception:
         pass
     return os.getenv("USER_PROXY_PATH", "user").strip("/")
+
+def get_panel_domain() -> str:
+    try:
+        val = db.get_setting("panel_domain") or db.get_setting("custom_domain")
+        if val and str(val).strip():
+            return str(val).strip().rstrip("/")
+    except Exception:
+        pass
+    return os.getenv("PANEL_DOMAIN", "http://localhost:5000").rstrip("/")
+
+def is_setup_needed() -> bool:
+    """بررسی نیاز به اجرای ویزارد راه‌اندازی اولیه سیستم"""
+    try:
+        if db.get_setting("setup_completed") == "1":
+            return False
+        # اگر مدیر ارشدی در جدول admin_users باشد سیستم تنظیم شده است
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM admin_users WHERE role = 'super_admin'")
+        super_count = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM users")
+        user_count = cursor.fetchone()[0]
+        conn.close()
+        if super_count > 0 or user_count > 0:
+            return False
+        return True
+    except Exception as e:
+        logger.warning(f"Error checking is_setup_needed: {e}")
+        return False
 
 
 def get_portal_proxy_path() -> str:
@@ -2699,6 +2768,10 @@ def get_reseller_plans_dict(reseller_id: int) -> dict:
 
 @app.before_request
 def update_user_session_activity():
+    if is_setup_needed():
+        if not request.path.startswith("/static") and not request.path.startswith("/setup"):
+            return redirect(url_for("setup_wizard"))
+
     if session.get("logged_in") and session.get("session_token"):
         token = session.get("session_token")
         # بررسی اینکه آیا نشست توسط مدیر یا کاربر خاتمه داده شده است
@@ -3370,6 +3443,149 @@ def _handle_login_flow():
         flash("نام کاربری یا رمز عبور اشتباه است!", "danger")
 
     return render_login_page()
+
+
+@app.route("/setup", methods=["GET", "POST"])
+def setup_wizard():
+    """ویزارد راه‌اندازی هوشمند، بازیابی بک‌آپ و تنظیم متغیرهای اساسی زیرساخت"""
+    force = request.args.get("force") == "1"
+    is_admin = session.get("logged_in") and session.get("role") == "admin"
+    if not is_setup_needed() and not is_admin and not force:
+        flash("سیستم قبلاً راه‌اندازی شده است. لطفاً وارد حساب خود شوید.", "info")
+        return redirect(get_login_url())
+
+    if request.method == "POST":
+        mode = request.form.get("mode", "step_wizard")
+
+        # مسیر ۱: بازیابی از فایل بک‌آپ
+        if mode == "restore":
+            backup_file = request.files.get("backup_file")
+            if not backup_file or not backup_file.filename:
+                flash("لطفاً یک فایل پشتیبان معتبر (.json یا .db) انتخاب نمایید.", "warning")
+                return redirect(url_for("setup_wizard", force="1" if force else None))
+
+            fname = secure_filename(backup_file.filename)
+            temp_dir = db.db_path.parent if hasattr(db, "db_path") and db.db_path else Path("data")
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            temp_path = temp_dir / f"uploaded_restore_{int(time.time())}_{fname}"
+            backup_file.save(str(temp_path))
+
+            res = db.restore_from_file(temp_path)
+            try:
+                if temp_path.exists():
+                    temp_path.unlink()
+            except Exception:
+                pass
+
+            if res.get("success"):
+                db.save_setting("setup_completed", "1")
+                flash("🎉 تمامی جداول، تنظیمات، مدیران و اشتراک‌ها با موفقیت کامل بازیابی شدند. اکنون وارد شوید.", "success")
+                return redirect(get_login_url())
+            else:
+                flash(f"❌ خطا در بازیابی اطلاعات از فایل: {res.get('error')}", "danger")
+                return redirect(url_for("setup_wizard", force="1" if force else None))
+
+        # مسیر ۲: تنظیمات گام‌به‌گام و داینامیک
+        elif mode == "step_wizard":
+            admin_user = request.form.get("admin_username", "").strip() or "admin"
+            admin_pass = request.form.get("admin_password", "").strip() or "admin123"
+            admin_name = request.form.get("admin_display_name", "").strip() or "مدیر ارشد"
+            admin_tid = request.form.get("admin_telegram_id", "").strip()
+            bot_token = request.form.get("bot_token", "").strip()
+            hidify_url = request.form.get("hidify_panel_url", "").strip()
+            hidify_key = request.form.get("hidify_api_key", "").strip()
+            hidify_proxy = request.form.get("hidify_proxy_path", "").strip()
+            user_proxy = request.form.get("user_proxy_path", "").strip() or "user"
+            custom_dom = request.form.get("custom_domain", "").strip()
+            request_ssl_opt = request.form.get("request_ssl") in ("1", "on", "true")
+
+            # ذخیره متغیرها در تنظیمات دیتابیس
+            db.save_setting("dashboard_username", admin_user)
+            db.save_setting("dashboard_password", admin_pass)
+            if admin_tid and admin_tid.isdigit():
+                db.save_setting("admin_telegram_id", admin_tid)
+                db.save_setting("admin_id", admin_tid)
+            if bot_token:
+                db.save_setting("bot_token", bot_token)
+            if hidify_url:
+                db.save_setting("hidify_panel_url", hidify_url)
+                db.save_setting("hiddify_url", hidify_url)
+            if hidify_key:
+                db.save_setting("hidify_api_key", hidify_key)
+                db.save_setting("hiddify_api_key", hidify_key)
+            if hidify_proxy:
+                db.save_setting("hidify_proxy_path", hidify_proxy)
+                db.save_setting("hiddify_proxy_path", hidify_proxy)
+            if user_proxy:
+                db.save_setting("user_proxy_path", user_proxy)
+                db.save_setting("customer_proxy_path", user_proxy)
+            if custom_dom:
+                clean_dom = ssl_manager.clean_domain(custom_dom)
+                db.save_setting("custom_domain", clean_dom)
+                db.save_setting("panel_domain", clean_dom)
+
+                if request_ssl_opt:
+                    try:
+                        ssl_res = ssl_manager.request_ssl_certificate(clean_dom)
+                        logger.info(f"Setup wizard SSL result: {ssl_res}")
+                    except Exception as e:
+                        logger.error(f"Error issuing SSL in wizard: {e}")
+
+            # ثبت یا بروزرسانی حساب مدیر ارشد در دیتابیس
+            effective_tid = int(admin_tid) if (admin_tid and admin_tid.isdigit()) else None
+            existing_super = None
+            try:
+                conn = db.get_connection()
+                row = conn.execute("SELECT * FROM admin_users WHERE username=? LIMIT 1", (admin_user,)).fetchone()
+                existing_super = dict(row) if row else None
+                conn.close()
+            except Exception:
+                pass
+
+            if existing_super:
+                db.update_admin_user(
+                    existing_super["id"],
+                    username=admin_user,
+                    password=admin_pass,
+                    display_name=admin_name,
+                    role="super_admin",
+                    permissions="*",
+                    telegram_id=effective_tid,
+                    bot_access=1,
+                    bot_access_main=1,
+                    bot_access_bundle=1
+                )
+            else:
+                db.create_admin_user(
+                    username=admin_user,
+                    password=admin_pass,
+                    display_name=admin_name,
+                    role="super_admin",
+                    permissions="*",
+                    telegram_id=effective_tid,
+                    bot_access=1,
+                    bot_access_main=1,
+                    bot_access_bundle=1
+                )
+
+            db.save_setting("setup_completed", "1")
+            flash("✨ تنظیمات اولیه و حساب مدیریت با موفقیت ایجاد گردید. اکنون می‌توانید وارد پنل شوید.", "success")
+            return redirect(get_login_url())
+
+    server_public_ip = ssl_manager.get_server_public_ip()
+    current_config = {
+        "admin_username": get_admin_username(),
+        "admin_id": get_admin_id(),
+        "bot_token": get_bot_token(),
+        "hidify_panel_url": get_hiddify_url(),
+        "hidify_api_key": get_hiddify_key(),
+        "hidify_proxy_path": get_hiddify_proxy(),
+        "user_proxy_path": get_user_proxy(),
+        "custom_domain": db.get_setting("custom_domain") or db.get_setting("panel_domain") or "",
+        "server_public_ip": server_public_ip,
+        "ssl_status": db.get_setting("ssl_status") or "تنظیم نشده"
+    }
+    return render_template("setup_wizard.html", config=current_config, force=force)
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -7692,10 +7908,11 @@ def admin_reseller_add_manual_payment(reseller_id: int = None):
         )
     else:
         conn = db.get_connection()
+        res_bal = int(r.get("balance") or 0) if r else 0
         conn.execute("""
-            INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
-            VALUES (?, 'receipt', ?, 'رسید دستی', ?, ?, ?)
-        """, (reseller_id, amount, r.get("name"), f"ثبت رسید دستی {order_id}: {notes}".strip(" :"), now))
+            INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, plan_name, account_name, description, created_at)
+            VALUES (?, 'receipt', ?, ?, 'رسید دستی', ?, ?, ?)
+        """, (reseller_id, amount, res_bal, r.get("name"), f"ثبت رسید دستی {order_id}: {notes}".strip(" :"), now))
         conn.commit()
         conn.close()
 
@@ -10413,25 +10630,150 @@ def card_set_role(card_id, role_type):
     return redirect(url_for("cards"))
 
 
+def get_jalali_month_calendar(year: int, month: int, daily_counts: dict = None, selected_day: int = None) -> list:
+    """تولید ماتریس تقویم روزانه جلالی با محاسبه دقیق روز اول هفته و تعداد تراکنش‌های هر روز"""
+    import jdatetime
+    if not daily_counts:
+        daily_counts = {}
+    try:
+        first_d = jdatetime.date(year, month, 1)
+        if month <= 6:
+            num_days = 31
+        elif month < 12:
+            num_days = 30
+        else:
+            num_days = 30 if first_d.isleap() else 29
+
+        first_weekday = first_d.weekday()  # 0=Saturday (شنبه), ..., 6=Friday (جمعه)
+        weeks = []
+        current_week = [None] * first_weekday
+
+        for day in range(1, num_days + 1):
+            current_week.append({
+                "day": day,
+                "count": daily_counts.get(day, 0),
+                "is_selected": (day == selected_day)
+            })
+            if len(current_week) == 7:
+                weeks.append(current_week)
+                current_week = []
+
+        if current_week:
+            while len(current_week) < 7:
+                current_week.append(None)
+            weeks.append(current_week)
+
+        return weeks
+    except Exception as e:
+        logger.error(f"Error generating jalali calendar: {e}")
+        return []
+
+
 # ─── کیف پول و مدیریت جامع حساب‌ها و درگاه‌های مدیریت (Admin Wallet) ───
 
 @app.route("/admin/wallet", methods=["GET"])
 @permission_required("cards")
 def admin_wallet():
-    """کیف پول، حساب‌ها و تراز نقدینگی جامع مدیریت"""
+    """کیف پول، حساب‌ها، تراز نقدینگی و ریز تراکنش‌های واریزی جامع مدیریت با پشتیبانی از تقویم جلالی"""
+    import jdatetime
+    now_j = jdatetime.datetime.now()
+    current_j_year = now_j.year
+    current_j_month = now_j.month
+    current_j_day = now_j.day
+
+    req_year = request.args.get("year", "").strip()
+    req_month = request.args.get("month", "").strip()
+    req_day = request.args.get("day", "").strip()
+    req_date = request.args.get("date", "").strip()
+
+    if not req_year and not req_month and not req_day and not req_date:
+        selected_year = current_j_year
+        selected_month = current_j_month
+        selected_day = None
+        selected_date_str = None
+    else:
+        try:
+            selected_year = int(req_year) if req_year.isdigit() else current_j_year
+        except Exception:
+            selected_year = current_j_year
+
+        if req_month.lower() in ("all", "0", ""):
+            selected_month = None
+        else:
+            try:
+                m_val = int(req_month)
+                selected_month = m_val if 1 <= m_val <= 12 else current_j_month
+            except Exception:
+                selected_month = current_j_month
+
+        selected_day = None
+        if req_day and req_day.isdigit():
+            d_val = int(req_day)
+            if 1 <= d_val <= 31:
+                selected_day = d_val
+
+        selected_date_str = None
+        if req_date:
+            clean_d = req_date.replace("-", "/").strip()
+            if len(clean_d) >= 8:
+                selected_date_str = clean_d
+                parts = clean_d.split("/")
+                if len(parts) == 3 and parts[0].isdigit() and parts[1].isdigit() and parts[2].isdigit():
+                    selected_year = int(parts[0])
+                    selected_month = int(parts[1])
+                    selected_day = int(parts[2])
+
+    if selected_day and selected_month and not selected_date_str:
+        selected_date_str = f"{selected_year}/{selected_month:02d}/{selected_day:02d}"
+
+    # واکشی تراکنش‌های واریزی به مدیریت بر مبنای فیلتر تقویم
+    deposit_txs = db.get_admin_deposit_transactions(
+        year=selected_year,
+        month=selected_month,
+        day=selected_day,
+        date_str=selected_date_str
+    )
+    deposit_stats = db.get_admin_deposit_stats(deposit_txs)
+    monthly_counts = db.get_admin_monthly_deposit_counts(selected_year)
+    daily_counts = db.get_admin_daily_deposit_counts(selected_year, selected_month) if selected_month else {}
+
+    jalali_months = [
+        {"num": i, "name": jdatetime.date.j_months_fa[i - 1], "count": monthly_counts.get(i, 0)}
+        for i in range(1, 13)
+    ]
+    selected_month_name = jdatetime.date.j_months_fa[selected_month - 1] if selected_month else "تمام ماه‌ها"
+    current_month_name = jdatetime.date.j_months_fa[current_j_month - 1]
+
+    calendar_weeks = get_jalali_month_calendar(selected_year, selected_month, daily_counts, selected_day) if selected_month else []
+
     financial_summary = db.get_financial_accounts_summary("admin", 0)
     accounts = financial_summary.get("accounts", [])
     default_account = db.get_customer_default_account("admin", 0)
     cash_desk_logs = db.get_cash_desk_logs(owner_type="admin", status="all", limit=50)
     if isinstance(cash_desk_logs, dict) and "logs" in cash_desk_logs:
         cash_desk_logs = cash_desk_logs["logs"]
-    
+
     return render_template(
         "admin_wallet.html",
         financial_summary=financial_summary,
         accounts=accounts,
         default_account=default_account,
-        cash_desk_logs=cash_desk_logs
+        cash_desk_logs=cash_desk_logs,
+        deposit_txs=deposit_txs,
+        deposit_stats=deposit_stats,
+        selected_year=selected_year,
+        selected_month=selected_month,
+        selected_day=selected_day,
+        selected_date_str=selected_date_str,
+        selected_month_name=selected_month_name,
+        current_month_name=current_month_name,
+        current_j_year=current_j_year,
+        current_j_month=current_j_month,
+        current_j_day=current_j_day,
+        jalali_months=jalali_months,
+        monthly_counts=monthly_counts,
+        daily_counts=daily_counts,
+        calendar_weeks=calendar_weeks
     )
 
 
@@ -11533,7 +11875,54 @@ def settings():
     """تنظیمات کلی سیستم، قالب لینک اتصال تکی و سامانه پیامک"""
     if request.method == "POST":
         action = request.form.get("action")
-        if action == "save_single_link_template":
+        if action == "save_infrastructure_settings":
+            b_token = request.form.get("bot_token", "").strip()
+            a_id = request.form.get("admin_id", "").strip()
+            h_url = request.form.get("hidify_panel_url", "").strip()
+            h_key = request.form.get("hidify_api_key", "").strip()
+            h_proxy = request.form.get("hidify_proxy_path", "").strip()
+            u_proxy = request.form.get("user_proxy_path", "").strip()
+            c_domain = request.form.get("custom_domain", "").strip()
+
+            if b_token:
+                db.save_setting("bot_token", b_token)
+            if a_id and a_id.isdigit():
+                db.save_setting("admin_id", a_id)
+                db.save_setting("admin_telegram_id", a_id)
+            if h_url:
+                db.save_setting("hidify_panel_url", h_url)
+                db.save_setting("hiddify_url", h_url)
+            if h_key:
+                db.save_setting("hidify_api_key", h_key)
+                db.save_setting("hiddify_api_key", h_key)
+            if h_proxy:
+                db.save_setting("hidify_proxy_path", h_proxy)
+                db.save_setting("hiddify_proxy_path", h_proxy)
+            if u_proxy:
+                db.save_setting("user_proxy_path", u_proxy)
+                db.save_setting("customer_proxy_path", u_proxy)
+            if c_domain:
+                clean_dom = ssl_manager.clean_domain(c_domain)
+                db.save_setting("custom_domain", clean_dom)
+                db.save_setting("panel_domain", clean_dom)
+
+            flash("متغیرهای پایه و راه‌اندازی زیرساخت با موفقیت ذخیره شدند.", "success")
+            return redirect(url_for("settings", active_tab="infra"))
+
+        elif action == "request_ssl":
+            dom = request.form.get("ssl_domain", "").strip() or db.get_setting("custom_domain") or db.get_setting("panel_domain")
+            if not dom:
+                flash("لطفاً ابتدا نام دامنه معتبر را در فیلد مربوطه وارد نمایید.", "warning")
+                return redirect(url_for("settings", active_tab="infra"))
+
+            ssl_res = ssl_manager.request_ssl_certificate(dom)
+            if ssl_res.get("success"):
+                flash(f"✅ عملیات صدور گواهی SSL با موفقیت انجام گردید ({ssl_res.get('provider')}). {ssl_res.get('message')}", "success")
+            else:
+                flash(f"⚠️ صدور خودکار گواهی SSL با خطا مواجه شد: {ssl_res.get('message')}", "danger")
+            return redirect(url_for("settings", active_tab="infra"))
+
+        elif action == "save_single_link_template":
             tpl = request.form.get("single_link_template", "").strip()
             db.save_setting("single_link_template", tpl)
             flash("قالب آماده لینک اتصال تکی با موفقیت ذخیره شد.", "success")
@@ -11951,6 +12340,22 @@ def settings():
         "splash_duration": int(db.get_setting("mini_app_splash_duration", "1800") or 1800),
     }
 
+    server_public_ip = ssl_manager.get_server_public_ip()
+    ssl_status = db.get_setting("ssl_status") or "تنظیم نشده"
+    ssl_details = db.get_setting("ssl_details") or ""
+    infrastructure_config = {
+        "bot_token": get_bot_token(),
+        "admin_id": get_admin_id(),
+        "hidify_panel_url": get_hiddify_url(),
+        "hidify_api_key": get_hiddify_key(),
+        "hidify_proxy_path": get_hiddify_proxy(),
+        "user_proxy_path": get_user_proxy(),
+        "custom_domain": db.get_setting("custom_domain") or db.get_setting("panel_domain") or "",
+        "server_public_ip": server_public_ip,
+        "ssl_status": ssl_status,
+        "ssl_details": ssl_details,
+    }
+
     return render_template(
         "settings.html",
         settings=settings_list,
@@ -11974,7 +12379,8 @@ def settings():
         sms_templates=db.get_sms_templates(None),
         hiddify_backup_enabled=db.get_setting("hiddify_backup_enabled", "0") == "1",
         hiddify_backup_channel_id=db.get_setting("hiddify_backup_channel_id", ""),
-        hiddify_backup_interval_hours=db.get_setting("hiddify_backup_interval_hours", "12")
+        hiddify_backup_interval_hours=db.get_setting("hiddify_backup_interval_hours", "12"),
+        infrastructure_config=infrastructure_config
     )
 
 
@@ -13820,9 +14226,79 @@ def reseller_subscriptions_bulk():
 @app.route("/reseller/transactions")
 @reseller_required
 def reseller_transactions():
-    """لیست تراکنش‌ها، قبوض بدهی و شارژ کیف پول نماینده"""
+    """لیست تراکنش‌ها، قبوض بدهی و شارژ کیف پول نماینده با پشتیبانی از فیلتر تقویمی سال، ماه و روز جلالی"""
+    import jdatetime
+    now_j = jdatetime.datetime.now()
+    current_j_year = now_j.year
+    current_j_month = now_j.month
+    current_j_day = now_j.day
+
     reseller_id = session.get("reseller_id")
-    tx_list = db.get_reseller_transactions(reseller_id)
+
+    req_year = request.args.get("year", "").strip()
+    req_month = request.args.get("month", "").strip()
+    req_day = request.args.get("day", "").strip()
+    req_date = request.args.get("date", "").strip()
+
+    if not req_year and not req_month and not req_day and not req_date:
+        selected_year = current_j_year
+        selected_month = current_j_month
+        selected_day = None
+        selected_date_str = None
+    else:
+        try:
+            selected_year = int(req_year) if req_year.isdigit() else current_j_year
+        except Exception:
+            selected_year = current_j_year
+
+        if req_month.lower() in ("all", "0", ""):
+            selected_month = None
+        else:
+            try:
+                m_val = int(req_month)
+                selected_month = m_val if 1 <= m_val <= 12 else current_j_month
+            except Exception:
+                selected_month = current_j_month
+
+        selected_day = None
+        if req_day and req_day.isdigit():
+            d_val = int(req_day)
+            if 1 <= d_val <= 31:
+                selected_day = d_val
+
+        selected_date_str = None
+        if req_date:
+            clean_d = req_date.replace("-", "/").strip()
+            if len(clean_d) >= 8:
+                selected_date_str = clean_d
+                parts = clean_d.split("/")
+                if len(parts) == 3 and parts[0].isdigit() and parts[1].isdigit() and parts[2].isdigit():
+                    selected_year = int(parts[0])
+                    selected_month = int(parts[1])
+                    selected_day = int(parts[2])
+
+    if selected_day and selected_month and not selected_date_str:
+        selected_date_str = f"{selected_year}/{selected_month:02d}/{selected_day:02d}"
+
+    tx_list = db.get_reseller_transactions(
+        reseller_id,
+        year=selected_year,
+        month=selected_month,
+        day=selected_day,
+        date_str=selected_date_str
+    )
+    monthly_counts = db.get_reseller_monthly_transaction_counts(reseller_id, selected_year)
+    daily_counts = db.get_reseller_daily_transaction_counts(reseller_id, selected_year, selected_month) if selected_month else {}
+
+    jalali_months = [
+        {"num": i, "name": jdatetime.date.j_months_fa[i - 1], "count": monthly_counts.get(i, 0)}
+        for i in range(1, 13)
+    ]
+    selected_month_name = jdatetime.date.j_months_fa[selected_month - 1] if selected_month else "تمام ماه‌ها"
+    current_month_name = jdatetime.date.j_months_fa[current_j_month - 1]
+
+    calendar_weeks = get_jalali_month_calendar(selected_year, selected_month, daily_counts, selected_day) if selected_month else []
+
     debts = db.get_reseller_debts(reseller_id)
     stats = db.get_reseller_stats(reseller_id)
     bundles = db.get_reseller_credit_bundles(active_only=True)
@@ -13846,7 +14322,20 @@ def reseller_transactions():
         financial_summary=financial_summary,
         accounts=accounts,
         default_account=default_account,
-        cash_desk_logs=cash_desk_logs
+        cash_desk_logs=cash_desk_logs,
+        selected_year=selected_year,
+        selected_month=selected_month,
+        selected_day=selected_day,
+        selected_date_str=selected_date_str,
+        selected_month_name=selected_month_name,
+        current_month_name=current_month_name,
+        current_j_year=current_j_year,
+        current_j_month=current_j_month,
+        current_j_day=current_j_day,
+        jalali_months=jalali_months,
+        monthly_counts=monthly_counts,
+        daily_counts=daily_counts,
+        calendar_weeks=calendar_weeks
     )
 
 
@@ -16784,7 +17273,8 @@ def admin_managers():
         telegram_id_raw = request.form.get("telegram_id", "").strip()
         telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else None
         phone = request.form.get("phone", "").strip()
-        bot_access = 1 if request.form.get("bot_access") in ("1", "on", "true") else 0
+        bot_access_main = 1 if request.form.get("bot_access_main") in ("1", "on", "true") else (1 if request.form.get("bot_access") in ("1", "on", "true") else 0)
+        bot_access_bundle = 1 if request.form.get("bot_access_bundle") in ("1", "on", "true") else 0
 
         if username and password and display_name:
             res = db.create_admin_user(
@@ -16796,7 +17286,9 @@ def admin_managers():
                 telegram_id=telegram_id,
                 phone=phone,
                 share_percent=share_percent,
-                bot_access=bot_access
+                bot_access=bot_access_main,
+                bot_access_main=bot_access_main,
+                bot_access_bundle=bot_access_bundle
             )
             if res.get("success"):
                 flash(f"مدیر جدید «{display_name}» با موفقیت افزوده شد.", "success")
@@ -16823,7 +17315,8 @@ def admin_manager_edit(admin_id):
     telegram_id_raw = request.form.get("telegram_id", "").strip()
     telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else None
     phone = request.form.get("phone", "").strip()
-    bot_access = 1 if request.form.get("bot_access") in ("1", "on", "true") else 0
+    bot_access_main = 1 if request.form.get("bot_access_main") in ("1", "on", "true") else (1 if request.form.get("bot_access") in ("1", "on", "true") else 0)
+    bot_access_bundle = 1 if request.form.get("bot_access_bundle") in ("1", "on", "true") else 0
 
     perms_map = {
         "super_admin": "*",
@@ -16842,7 +17335,9 @@ def admin_manager_edit(admin_id):
         "telegram_id": telegram_id,
         "phone": phone,
         "share_percent": share_percent,
-        "bot_access": bot_access,
+        "bot_access": bot_access_main,
+        "bot_access_main": bot_access_main,
+        "bot_access_bundle": bot_access_bundle,
     }
     if password and len(password) > 0:
         update_kwargs["password"] = password

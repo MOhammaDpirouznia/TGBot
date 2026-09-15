@@ -1726,6 +1726,63 @@ class Database:
             logger.error(f"Error in auto_restore_full: {e}")
             return {"restored": False, "error": str(e)}
 
+    def restore_from_file(self, file_path: Union[str, Path]) -> dict:
+        """بازیابی جامع دیتابیس از فایل بارگذاری شده (.json یا .db / .sqlite)"""
+        try:
+            path = Path(file_path)
+            if not path.exists():
+                return {"success": False, "error": "فایل مورد نظر یافت نشد."}
+
+            suffix = path.suffix.lower()
+            if suffix == ".json":
+                with open(path, "r", encoding="utf-8") as f:
+                    backup_data = json.load(f)
+
+                tables_data = backup_data.get("tables", {})
+                if not tables_data:
+                    return {"success": False, "error": "فایل JSON شامل ساختار معتبر جداول نمی‌باشد."}
+
+                conn = self.get_connection()
+                cursor = conn.cursor()
+                restored_stats = {}
+                for table_name, rows in tables_data.items():
+                    if not rows:
+                        continue
+                    try:
+                        for row in rows:
+                            columns = list(row.keys())
+                            placeholders = ", ".join(["?"] * len(columns))
+                            col_names = ", ".join(columns)
+                            values = [row[c] for c in columns]
+                            cursor.execute(f"INSERT OR REPLACE INTO {table_name} ({col_names}) VALUES ({placeholders})", values)
+                        restored_stats[table_name] = len(rows)
+                    except Exception as ex:
+                        logger.warning(f"Error restoring table {table_name}: {ex}")
+
+                conn.commit()
+                conn.close()
+                self.migrate_add_columns()
+                self.save_setting("setup_completed", "1")
+                return {"success": True, "type": "json", "stats": restored_stats}
+
+            elif suffix in [".db", ".sqlite", ".sqlite3"]:
+                import shutil
+                # پشتیبان از دیتابیس فعلی
+                current_backup = DB_DIR / f"pre_restore_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+                if self.db_path.exists():
+                    shutil.copy2(self.db_path, current_backup)
+
+                # جایگزینی فایل دیتابیس
+                shutil.copy2(path, self.db_path)
+                self.migrate_add_columns()
+                self.save_setting("setup_completed", "1")
+                return {"success": True, "type": "sqlite", "file": str(self.db_path)}
+            else:
+                return {"success": False, "error": "فرمت فایل نامعتبر است. فقط .json یا .db پشتیبانی می‌شود."}
+        except Exception as e:
+            logger.error(f"Error restoring database from file: {e}")
+            return {"success": False, "error": str(e)}
+
     def auto_restore(self):
         """بازیابی خودکار از آخرین پشتیبان اگر دیتابیس خالی باشد"""
         try:
@@ -3057,18 +3114,21 @@ class Database:
                     if r_tx:
                         ref_amount = int(r_tx["amount"] or 0)
                         is_credit = (r_tx["payment_source"] == "credit" or r_tx["type"] in ("purchase_credit", "renewal_credit"))
+                        r_cur = cursor.execute("SELECT balance FROM resellers WHERE id=?", (r_id,)).fetchone()
+                        r_cur_bal = int(r_cur[0] or 0) if r_cur else 0
                         if is_credit:
                             cursor.execute("UPDATE resellers SET credit_debt = MAX(0, credit_debt - ?), updated_at=? WHERE id=?", (ref_amount, now_iso, r_id))
                             cursor.execute("""
-                                INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, description, payment_source, created_by, created_at)
-                                VALUES (?, 'refund_credit', ?, ?, ?, 'credit', ?, ?)
-                            """, (r_id, ref_amount, tx.get("plan_name"), f"کاهش بدهی اعتباری ناشی از ابطال سفارش #{tx['order_id']} توسط مدیریت ({admin_name})", admin_name, now_iso))
+                                INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, plan_name, description, payment_source, created_by, created_at)
+                                VALUES (?, 'refund_credit', ?, ?, ?, ?, 'credit', ?, ?)
+                            """, (r_id, ref_amount, r_cur_bal, tx.get("plan_name"), f"کاهش بدهی اعتباری ناشی از ابطال سفارش #{tx['order_id']} توسط مدیریت ({admin_name})", admin_name, now_iso))
                         else:
-                            cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at=? WHERE id=?", (ref_amount, now_iso, r_id))
+                            new_r_bal = r_cur_bal + ref_amount
+                            cursor.execute("UPDATE resellers SET balance = ?, updated_at=? WHERE id=?", (new_r_bal, now_iso, r_id))
                             cursor.execute("""
-                                INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, description, payment_source, created_by, created_at)
-                                VALUES (?, 'refund', ?, ?, ?, 'wallet', ?, ?)
-                            """, (r_id, ref_amount, tx.get("plan_name"), f"استرداد وجه ناشی از ابطال سفارش #{tx['order_id']} توسط مدیریت ({admin_name})", admin_name, now_iso))
+                                INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, plan_name, description, payment_source, created_by, created_at)
+                                VALUES (?, 'refund', ?, ?, ?, ?, 'wallet', ?, ?)
+                            """, (r_id, ref_amount, new_r_bal, tx.get("plan_name"), f"استرداد وجه ناشی از ابطال سفارش #{tx['order_id']} توسط مدیریت ({admin_name})", admin_name, now_iso))
 
                         cursor.execute("""
                             UPDATE reseller_transactions
@@ -3202,14 +3262,17 @@ class Database:
                 # برگشت وجه به کیف پول نماینده یا کاهش بدهی اعتباری
                 if refund_wallet and refund_amount > 0:
                     is_credit = bool(r_tx and (r_tx.get("payment_source") == "credit" or r_tx.get("type") in ("purchase_credit", "renewal_credit")))
+                    r_cur = cursor.execute("SELECT balance FROM resellers WHERE id=?", (reseller_id,)).fetchone()
+                    r_cur_bal = int(r_cur[0] or 0) if r_cur else 0
                     if is_credit:
                         cursor.execute("UPDATE resellers SET credit_debt = MAX(0, credit_debt - ?), updated_at=? WHERE id=?", (refund_amount, now_iso, reseller_id))
                         cursor.execute("""
-                            INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, created_by, created_at)
-                            VALUES (?, 'refund_credit', ?, ?, ?, ?, 'credit', ?, ?)
+                            INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, plan_name, account_name, description, payment_source, created_by, created_at)
+                            VALUES (?, 'refund_credit', ?, ?, ?, ?, ?, 'credit', ?, ?)
                         """, (
                             reseller_id,
                             refund_amount,
+                            r_cur_bal,
                             tx.get("plan_name"),
                             account_name,
                             f"کاهش بدهی اعتباری ناشی از ابطال فیش #{tx_id} (سفارش {order_id}) - علت: {reason}",
@@ -3217,13 +3280,15 @@ class Database:
                             now_iso
                         ))
                     else:
-                        cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at=? WHERE id=?", (refund_amount, now_iso, reseller_id))
+                        new_r_bal = r_cur_bal + refund_amount
+                        cursor.execute("UPDATE resellers SET balance = ?, updated_at=? WHERE id=?", (new_r_bal, now_iso, reseller_id))
                         cursor.execute("""
-                            INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, created_by, created_at)
-                            VALUES (?, 'refund', ?, ?, ?, ?, 'wallet', ?, ?)
+                            INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, plan_name, account_name, description, payment_source, created_by, created_at)
+                            VALUES (?, 'refund', ?, ?, ?, ?, ?, 'wallet', ?, ?)
                         """, (
                             reseller_id,
                             refund_amount,
+                            new_r_bal,
                             tx.get("plan_name"),
                             account_name,
                             f"استرداد وجه ناشی از ابطال فیش #{tx_id} (سفارش {order_id}) - علت: {reason}",
@@ -3592,8 +3657,8 @@ class Database:
                 desc_text += f" - یادداشت: {notes}"
 
             cursor.execute("""
-                INSERT INTO reseller_transactions (reseller_id, type, amount, description, is_deleted, created_at)
-                VALUES (?, 'settlement', 0, ?, 0, ?)
+                INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, description, is_deleted, created_at)
+                VALUES (?, 'settlement', 0, 0, ?, 0, ?)
             """, (reseller_id, desc_text, now_iso))
 
             try:
@@ -3674,8 +3739,8 @@ class Database:
             if reset_balance and current_balance != 0:
                 cursor.execute("UPDATE resellers SET balance = 0 WHERE id=?", (reseller_id,))
                 cursor.execute("""
-                    INSERT INTO reseller_transactions (reseller_id, type, amount, description, created_at)
-                    VALUES (?, 'settlement', ?, ?, ?)
+                    INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, description, created_at)
+                    VALUES (?, 'settlement', ?, 0, ?, ?)
                 """, (
                     reseller_id,
                     abs(current_balance),
@@ -3797,13 +3862,16 @@ class Database:
                 r_id = tx["reseller_id"]
                 is_bundle = (tx.get("gateway") == "bundle_reseller" or str(tx.get("order_id") or "").startswith("R_BUNDLE"))
                 if r_id and is_bundle and delta != 0:
-                    cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at=? WHERE id=?", (delta, now_iso, r_id))
+                    r_cur = cursor.execute("SELECT balance FROM resellers WHERE id=?", (r_id,)).fetchone()
+                    cur_r_bal = int(r_cur[0] or 0) if r_cur else 0
+                    new_r_bal = cur_r_bal + delta
+                    cursor.execute("UPDATE resellers SET balance = ?, updated_at=? WHERE id=?", (new_r_bal, now_iso, r_id))
                     t_type = "deposit" if delta > 0 else "refund"
                     t_desc = f"تعدیل موجودی به علت ویرایش مبلغ سفارش #{tx['order_id']} توسط مدیریت ({delta:+,} تومان)"
                     cursor.execute("""
-                        INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
-                        VALUES (?, ?, ?, ?, '-', ?, ?)
-                    """, (r_id, t_type, abs(delta), tx.get("plan_name"), t_desc, now_iso))
+                        INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, plan_name, account_name, description, created_at)
+                        VALUES (?, ?, ?, ?, ?, '-', ?, ?)
+                    """, (r_id, t_type, abs(delta), new_r_bal, tx.get("plan_name"), t_desc, now_iso))
 
                 # به‌روزرسانی سند در حسابداری
                 try:
@@ -8184,6 +8252,16 @@ class Database:
                 cursor.execute("ALTER TABLE admin_users ADD COLUMN logout_notification_enabled BOOLEAN DEFAULT 0")
                 logger.info("Added logout_notification_enabled to admin_users")
 
+            # تفکیک دسترسی به ربات اصلی و ربات فروش بسته
+            if "bot_access_main" not in a_cols:
+                cursor.execute("ALTER TABLE admin_users ADD COLUMN bot_access_main INTEGER DEFAULT 0")
+                logger.info("Added bot_access_main to admin_users")
+                if "bot_access" in a_cols:
+                    cursor.execute("UPDATE admin_users SET bot_access_main = bot_access WHERE bot_access IS NOT NULL")
+            if "bot_access_bundle" not in a_cols:
+                cursor.execute("ALTER TABLE admin_users ADD COLUMN bot_access_bundle INTEGER DEFAULT 0")
+                logger.info("Added bot_access_bundle to admin_users")
+
             cursor.execute("PRAGMA table_info(resellers)")
             r_cols = [row[1] for row in cursor.fetchall()]
             if "logout_notification_enabled" not in r_cols:
@@ -8443,9 +8521,9 @@ class Database:
 
             if initial_balance > 0:
                 cursor.execute("""
-                    INSERT INTO reseller_transactions (reseller_id, type, amount, description, created_at)
-                    VALUES (?, 'deposit', ?, 'شارژ اولیه حساب', ?)
-                """, (reseller_id, initial_balance, now))
+                    INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, description, created_at)
+                    VALUES (?, 'deposit', ?, ?, 'شارژ اولیه حساب', ?)
+                """, (reseller_id, initial_balance, initial_balance, now))
 
             conn.commit()
             return {"success": True, "reseller_id": reseller_id, "referral_code": final_ref_code}
@@ -8735,13 +8813,17 @@ class Database:
 
         try:
             # ۱. افزایش موجودی کیف پول نماینده بالادستی
-            cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at = ? WHERE id = ?", (commission_amount, now, parent_id))
+            cursor.execute("SELECT balance FROM resellers WHERE id = ?", (parent_id,))
+            p_row = cursor.fetchone()
+            cur_p_bal = int(p_row[0] or 0) if p_row else 0
+            new_p_bal = cur_p_bal + commission_amount
+            cursor.execute("UPDATE resellers SET balance = ?, updated_at = ? WHERE id = ?", (new_p_bal, now, parent_id))
 
             # ۲. ثبت تراکنش در reseller_transactions
             cursor.execute("""
-                INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
-                VALUES (?, 'deposit', ?, ?, ?, ?, ?)
-            """, (parent_id, commission_amount, plan_name, account_name, desc, now))
+                INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, plan_name, account_name, description, created_at)
+                VALUES (?, 'deposit', ?, ?, ?, ?, ?, ?)
+            """, (parent_id, commission_amount, new_p_bal, plan_name, account_name, desc, now))
 
             # ۳. ثبت رکورد در جدول تخصصی پورسانت‌های زیرمجموعه‌گیری
             cursor.execute("""
@@ -9898,32 +9980,64 @@ class Database:
         finally:
             conn.close()
 
-    def get_reseller_transactions(self, reseller_id: int, limit: int = 100):
-        """لیست تراکنش‌های یک نماینده به همراه صادرکننده، نوع فروش و حاشیه سود دقیق"""
+    def get_reseller_transactions(self, reseller_id: int, limit: int = None, year: int = None, month: int = None, day: int = None, date_str: str = None):
+        """لیست تراکنش‌های یک نماینده به همراه صادرکننده، نوع فروش، حاشیه سود و مانده پس از تراکنش با پشتیبانی از فیلتر سال، ماه و روز جلالی"""
+        import jdatetime
         conn = self.get_connection()
         cursor = conn.cursor()
         res_info = self.get_reseller(reseller_id) or {}
         reseller_uname = res_info.get("username") or f"reseller_{reseller_id}"
         discount_pct = res_info.get("discount_percent") if res_info.get("discount_percent") is not None else 20
 
-        cursor.execute("""
+        # اگر فیلتر ماه یا سال یا روز مشخص نشده باشد، لیمیت پیش‌فرض ۱۰۰ اعمال می‌شود
+        apply_limit = limit if limit is not None else (None if (year or month or day or date_str) else 100)
+
+        query = """
             SELECT rt.*, s.created_by as sub_creator, s.account_comment as sub_comment
             FROM reseller_transactions rt
             LEFT JOIN subscriptions s ON (rt.subscription_id = s.id OR (rt.subscription_id IS NULL AND rt.account_name IS NOT NULL AND rt.account_name != '' AND rt.account_name = s.account_name))
             WHERE rt.reseller_id = ?
-            ORDER BY rt.created_at DESC
-            LIMIT ?
-        """, (reseller_id, limit))
+            ORDER BY rt.created_at DESC, rt.id DESC
+        """
+        params = [reseller_id]
+        if apply_limit:
+            query += " LIMIT ?"
+            params.append(apply_limit)
+
+        cursor.execute(query, params)
         rows = cursor.fetchall()
         conn.close()
 
         result = []
         for r in rows:
             tx = dict(r)
+            created_at = tx.get("created_at") or ""
+            dt_j = self._parse_jalali_datetime(created_at)
+
+            # فیلتر ماه، سال و روز در صورت وجود
+            if year and dt_j and dt_j.year != year:
+                continue
+            if month and dt_j and dt_j.month != month:
+                continue
+            if day and dt_j and dt_j.day != day:
+                continue
+            if date_str and dt_j and f"{dt_j.year}/{dt_j.month:02d}/{dt_j.day:02d}" != str(date_str).replace("-", "/"):
+                continue
+
+            if dt_j:
+                tx["jalali_date"] = f"{dt_j.year}/{dt_j.month:02d}/{dt_j.day:02d}"
+                tx["jalali_month"] = dt_j.month
+                tx["jalali_year"] = dt_j.year
+                tx["jalali_day"] = dt_j.day
+                tx["jalali_month_name"] = jdatetime.date.j_months_fa[dt_j.month - 1] if 1 <= dt_j.month <= 12 else ""
+                t_time = created_at[11:16] if len(created_at) >= 16 else "۰۰:۰۰"
+                tx["jalali_time"] = t_time
+
             ttype = tx.get("type", "")
             amount = int(tx.get("amount") or 0)
             selling = int(tx.get("selling_price") or 0)
             profit = int(tx.get("profit_margin") or 0)
+            tx["balance_after"] = int(tx.get("balance_after") or 0)
 
             # محاسبه پشتیبان حاشیه سود و قیمت فروش در صورت ثبت نشدن در سوابق
             if profit <= 0 and selling <= 0 and amount > 0 and ttype in ("purchase", "purchase_credit", "renewal", "renew"):
@@ -9967,6 +10081,240 @@ class Database:
 
             result.append(tx)
         return result
+
+    def get_reseller_monthly_transaction_counts(self, reseller_id: int, year: int) -> dict:
+        """شمارش تعداد تراکنش‌های نماینده در هر یک از ۱۲ ماه سال جلالی مشخص"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        counts = {m: 0 for m in range(1, 13)}
+        try:
+            cursor.execute("SELECT created_at FROM reseller_transactions WHERE reseller_id = ?", (reseller_id,))
+            for row in cursor.fetchall():
+                dt_j = self._parse_jalali_datetime(row[0])
+                if dt_j and dt_j.year == year and 1 <= dt_j.month <= 12:
+                    counts[dt_j.month] += 1
+        except Exception as e:
+            logger.error(f"Error getting monthly tx counts: {e}")
+        finally:
+            conn.close()
+        return counts
+
+    def get_reseller_daily_transaction_counts(self, reseller_id: int, year: int, month: int) -> dict:
+        """شمارش تعداد تراکنش‌های نماینده برای هر روز از ماه جلالی مشخص"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        counts = {d: 0 for d in range(1, 32)}
+        try:
+            cursor.execute("SELECT created_at FROM reseller_transactions WHERE reseller_id = ?", (reseller_id,))
+            for row in cursor.fetchall():
+                dt_j = self._parse_jalali_datetime(row[0])
+                if dt_j and dt_j.year == year and dt_j.month == month and 1 <= dt_j.day <= 31:
+                    counts[dt_j.day] += 1
+        except Exception as e:
+            logger.error(f"Error getting daily tx counts: {e}")
+        finally:
+            conn.close()
+        return counts
+
+    def get_admin_deposit_transactions(self, year: int = None, month: int = None, day: int = None, date_str: str = None) -> list:
+        """
+        واکشی جامع تمامی تراکنش‌های واریزی به مدیریت:
+        - شامل واریزی‌ها به کارت‌های بانکی، ولت‌های کریپتو، درگاه‌ها و صندوق‌های نقدی
+        - شامل فیش‌ها و سفارشات تاییدشده کاربران و نمایندگان (بسته‌ها و شارژها)
+        - جلوگیری دقیق از ثبت رکوردهای تکراری از طریق رهگیری ref_id
+        - غنی‌سازی با متادیتای تقویمی جلالی (سال، ماه، روز، ساعت) و عنوان منبع
+        """
+        import jdatetime
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        items = []
+        ref_ids_seen = set()
+
+        try:
+            # ۱. تراکنش‌های واریزی ثبت شده در کارت‌ها و حساب‌های مدیریت
+            cursor.execute("""
+                SELECT ct.*, bc.bank_name, bc.card_holder, bc.card_number as b_card_number, bc.account_type as b_acc_type
+                FROM card_transactions ct
+                LEFT JOIN bank_cards bc ON ct.card_id = bc.id
+                WHERE ct.owner_type = 'admin' AND ct.type = 'deposit' AND (ct.is_revoked = 0 OR ct.is_revoked IS NULL)
+                ORDER BY ct.created_at DESC, ct.id DESC
+            """)
+            card_rows = cursor.fetchall()
+            for r in card_rows:
+                rd = dict(r)
+                if rd.get("ref_id") and rd.get("ref_type") in ("transaction", "reseller_bundle", "reseller_receipt"):
+                    ref_ids_seen.add(str(rd["ref_id"]))
+
+                acc_name = f"{rd.get('bank_name') or ''} - {rd.get('card_holder') or ''}".strip(" -") or f"حساب #{rd.get('card_id')}"
+                cat = rd.get("category") or "واریز به حساب"
+                badge = "primary"
+                if "مشتری" in cat:
+                    badge = "success"
+                elif "صندوق" in cat:
+                    badge = "warning"
+                elif "درگاه" in cat:
+                    badge = "info"
+
+                items.append({
+                    "id": f"ct_{rd['id']}",
+                    "raw_id": rd["id"],
+                    "source_table": "card_transactions",
+                    "type": "deposit",
+                    "category_label": cat,
+                    "category_badge": badge,
+                    "amount": int(rd.get("amount") or 0),
+                    "balance_after": int(rd.get("balance_after") or 0),
+                    "account_name": acc_name,
+                    "depositor": rd.get("created_by") or "سیستم / مدیریت",
+                    "tracking_code": rd.get("tracking_code") or f"CT-{rd['id']}",
+                    "description": rd.get("title") or rd.get("description") or "واریز به حساب مدیریت",
+                    "created_at": rd.get("created_at") or ""
+                })
+
+            # ۲. سفارشات و فیش‌های پرداختی تاییدشده کاربران و نمایندگان (در صورت عدم ثبت در کارت‌ها)
+            cursor.execute("""
+                SELECT t.*, bc.bank_name, bc.card_holder
+                FROM transactions t
+                LEFT JOIN bank_cards bc ON (t.card_number = bc.card_number OR t.card_number LIKE '%' || SUBSTR(bc.card_number, -4))
+                WHERE t.status IN ('approved', 'completed') AND (t.is_deleted = 0 OR t.is_deleted IS NULL)
+                  AND ((t.reseller_id IS NULL OR t.reseller_id = 0) OR (t.gateway = 'bundle_reseller' OR t.order_id LIKE 'R_BUNDLE%' OR t.order_id LIKE 'R_TOPUP%'))
+                ORDER BY t.created_at DESC, t.id DESC
+            """)
+            tx_rows = cursor.fetchall()
+            for t in tx_rows:
+                td = dict(t)
+                if str(td["id"]) in ref_ids_seen:
+                    continue
+
+                gw = td.get("gateway") or ""
+                oid = str(td.get("order_id") or "")
+                pname = td.get("plan_name") or ""
+
+                if gw == "card_to_card":
+                    cat = "کارت به کارت"
+                    badge = "info"
+                elif gw in ("zarinpal", "blupal", "nextpay", "idpay"):
+                    cat = f"درگاه {gw}"
+                    badge = "warning"
+                elif gw == "bundle_reseller" or oid.startswith("R_BUNDLE"):
+                    cat = "بسته اعتباری نماینده"
+                    badge = "primary"
+                elif oid.startswith("R_TOPUP") or "شارژ" in pname:
+                    cat = "شارژ کیف پول نماینده"
+                    badge = "success"
+                elif gw == "admin_manual":
+                    cat = "واریز دستی مدیریت"
+                    badge = "secondary"
+                else:
+                    cat = "واریز تایید شده"
+                    badge = "success"
+
+                acc_name = f"{td.get('bank_name') or ''} - {td.get('card_holder') or ''}".strip(" -") or (f"درگاه {gw}" if gw else "حساب اصلی")
+                depositor = td.get("username") or (f"کاربر {td.get('user_id')}" if td.get("user_id") else f"نماینده #{td.get('reseller_id')}")
+
+                items.append({
+                    "id": f"tx_{td['id']}",
+                    "raw_id": td["id"],
+                    "source_table": "transactions",
+                    "type": "deposit",
+                    "category_label": cat,
+                    "category_badge": badge,
+                    "amount": int(td.get("amount") or 0),
+                    "balance_after": 0,
+                    "account_name": acc_name,
+                    "depositor": depositor,
+                    "tracking_code": td.get("tracking_code") or td.get("order_id") or str(td["id"]),
+                    "description": f"پرداخت {pname} ({oid})" if pname else oid,
+                    "created_at": td.get("created_at") or ""
+                })
+        except Exception as e:
+            logger.error(f"Error fetching admin deposit transactions: {e}")
+        finally:
+            conn.close()
+
+        # فیلتر تقویمی جلالی و غنی‌سازی متادیتا
+        filtered_items = []
+        for it in items:
+            dt_j = self._parse_jalali_datetime(it.get("created_at"))
+            if dt_j:
+                it["jalali_date"] = f"{dt_j.year}/{dt_j.month:02d}/{dt_j.day:02d}"
+                it["jalali_month"] = dt_j.month
+                it["jalali_year"] = dt_j.year
+                it["jalali_day"] = dt_j.day
+                it["jalali_month_name"] = jdatetime.date.j_months_fa[dt_j.month - 1] if 1 <= dt_j.month <= 12 else ""
+                c_at = it.get("created_at") or ""
+                it["jalali_time"] = c_at[11:16] if len(c_at) >= 16 else "۰۰:۰۰"
+
+                if year and dt_j.year != year:
+                    continue
+                if month and dt_j.month != month:
+                    continue
+                if day and dt_j.day != day:
+                    continue
+                if date_str and it["jalali_date"] != str(date_str).replace("-", "/"):
+                    continue
+            else:
+                if year or month or day or date_str:
+                    continue
+                it["jalali_date"] = "-"
+                it["jalali_time"] = "-"
+                it["jalali_month_name"] = ""
+
+            filtered_items.append(it)
+
+        filtered_items.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+        return filtered_items
+
+    def get_admin_monthly_deposit_counts(self, year: int) -> dict:
+        """شمارش تعداد واریزی‌های مدیریت در هر یک از ۱۲ ماه سال جلالی مشخص"""
+        txs = self.get_admin_deposit_transactions()
+        counts = {m: 0 for m in range(1, 13)}
+        for t in txs:
+            if t.get("jalali_year") == year and 1 <= t.get("jalali_month", 0) <= 12:
+                counts[t["jalali_month"]] += 1
+        return counts
+
+    def get_admin_daily_deposit_counts(self, year: int, month: int) -> dict:
+        """شمارش تعداد واریزی‌های مدیریت برای هر روز از ماه جلالی مشخص"""
+        txs = self.get_admin_deposit_transactions(year=year, month=month)
+        counts = {d: 0 for d in range(1, 32)}
+        for t in txs:
+            day_val = t.get("jalali_day")
+            if day_val and 1 <= day_val <= 31:
+                counts[day_val] += 1
+        return counts
+
+    @staticmethod
+    def get_admin_deposit_stats(transactions: list) -> dict:
+        """محاسبه آمار و ارقام جامع واریزی‌های مدیریت"""
+        total_amount = sum(t.get("amount", 0) for t in transactions)
+        total_count = len(transactions)
+        gateway_amount = 0
+        card_amount = 0
+        reseller_amount = 0
+        cash_amount = 0
+
+        for t in transactions:
+            amt = t.get("amount", 0)
+            cat = str(t.get("category_label") or "")
+            if "درگاه" in cat:
+                gateway_amount += amt
+            elif "صندوق" in cat or "نقدی" in cat:
+                cash_amount += amt
+            elif "نماینده" in cat or "بسته" in cat:
+                reseller_amount += amt
+            else:
+                card_amount += amt
+
+        return {
+            "total_amount": total_amount,
+            "total_count": total_count,
+            "gateway_amount": gateway_amount,
+            "card_amount": card_amount,
+            "reseller_amount": reseller_amount,
+            "cash_amount": cash_amount,
+            "avg_amount": int(total_amount / total_count) if total_count > 0 else 0
+        }
 
     def get_reseller_activity_timeline(self, reseller_id: int, limit: int = 30) -> list:
         """
@@ -10055,6 +10403,7 @@ class Database:
                     "issuer": issuer,
                     "issuer_type": issuer_type,
                     "amount": amount,
+                    "balance_after": int(rd.get("balance_after") or 0),
                     "selling_price": selling,
                     "profit_margin": profit,
                     "created_at": rd.get("created_at") or "",
@@ -10841,7 +11190,8 @@ class Database:
             if chosen_source == "wallet":
                 if balance < cost:
                     return {"success": False, "error": f"موجودی کیف پول شما کافی نیست! موجودی: {balance:,} تومان | هزینه تمدید: {cost:,} تومان"}
-                cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (cost, now, reseller_id))
+                bal_after = balance - cost
+                cursor.execute("UPDATE resellers SET balance = ?, updated_at=? WHERE id=?", (bal_after, now, reseller_id))
                 tx_desc = f"تمدید اشتراک «{sub['account_name']}» با پلن {plan_name} ({mode_title} - کسر از کیف پول نقدی)"
                 actual_source = "wallet"
 
@@ -10854,6 +11204,7 @@ class Database:
                 cursor.execute("UPDATE resellers SET credit_debt = ?, updated_at=? WHERE id=?", (new_debt, now, reseller_id))
                 tx_desc = f"تمدید اشتراک «{sub['account_name']}» با پلن {plan_name} ({mode_title} - کسر از اعتبار خرید: {cost:,} ت بدهی)"
                 actual_source = "credit"
+                bal_after = balance
 
             else:
                 # حالت هوشمند و خودکار (auto)
@@ -10862,7 +11213,8 @@ class Database:
                     return {"success": False, "error": f"موجودی کیف پول ({balance:,} ت) و اعتبار تمدید ({available_credit:,} ت) برای تمدید این پلن ({cost:,} ت) کافی نیست."}
 
                 if balance >= cost:
-                    cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (cost, now, reseller_id))
+                    bal_after = balance - cost
+                    cursor.execute("UPDATE resellers SET balance = ?, updated_at=? WHERE id=?", (bal_after, now, reseller_id))
                     tx_desc = f"تمدید اشتراک «{sub['account_name']}» با پلن {plan_name} ({mode_title} - پرداخت از کیف پول)"
                     actual_source = "wallet"
                 else:
@@ -10871,12 +11223,13 @@ class Database:
                     cursor.execute("UPDATE resellers SET balance = 0, credit_debt = ?, updated_at=? WHERE id=?", (new_debt, now, reseller_id))
                     tx_desc = f"تمدید اشتراک «{sub['account_name']}» با پلن {plan_name} ({mode_title} - کسر {balance:,} ت از کیف پول و {from_credit:,} ت از اعتبار)"
                     actual_source = "credit"
+                    bal_after = 0
 
             # ثبت تراکنش تمدید با مشخص بودن مبدأ پرداخت، صادرکننده و حاشیه سود
             cursor.execute("""
-                INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
-                VALUES (?, 'renewal', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (reseller_id, cost, selling_val, profit_val, plan_name, sub["account_name"], tx_desc, actual_source, sub_id, creator_val, now))
+                INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
+                VALUES (?, 'renewal', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (reseller_id, cost, bal_after, selling_val, profit_val, plan_name, sub["account_name"], tx_desc, actual_source, sub_id, creator_val, now))
 
             if instant_activate:
                 # ۳. به‌روزرسانی آنی مشخصات اشتراک، ریست حجم مصرفی و ریست تاریخ شروع و انقضا
@@ -11151,18 +11504,21 @@ class Database:
                         WHERE id = ?
                     """, (renew_tx_id,))
 
+                r_row = cursor.execute("SELECT balance FROM resellers WHERE id=?", (r_id,)).fetchone()
+                cur_r_bal = int(r_row[0] or 0) if r_row else 0
                 if renew_source == "credit":
                     cursor.execute("UPDATE resellers SET credit_debt = MAX(0, credit_debt - ?), updated_at=? WHERE id=?", (cost, now, r_id))
                     cursor.execute("""
-                        INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
-                        VALUES (?, 'refund_credit', ?, ?, ?, ?, 'credit', ?, ?)
-                    """, (r_id, cost, item_dict.get("plan_name", ""), account_name, "استرداد وجه لغو بسته رزرو در صف (کاهش بدهی اعتبار)", sub_id, now))
+                        INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, plan_name, account_name, description, payment_source, subscription_id, created_at)
+                        VALUES (?, 'refund_credit', ?, ?, ?, ?, ?, 'credit', ?, ?)
+                    """, (r_id, cost, cur_r_bal, item_dict.get("plan_name", ""), account_name, "استرداد وجه لغو بسته رزرو در صف (کاهش بدهی اعتبار)", sub_id, now))
                 else:
-                    cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at=? WHERE id=?", (cost, now, r_id))
+                    new_r_bal = cur_r_bal + cost
+                    cursor.execute("UPDATE resellers SET balance = ?, updated_at=? WHERE id=?", (new_r_bal, now, r_id))
                     cursor.execute("""
-                        INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
-                        VALUES (?, 'refund', ?, ?, ?, ?, 'wallet', ?, ?)
-                    """, (r_id, cost, item_dict.get("plan_name", ""), account_name, "استرداد وجه لغو بسته رزرو در صف (واریز به کیف پول)", sub_id, now))
+                        INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, plan_name, account_name, description, payment_source, subscription_id, created_at)
+                        VALUES (?, 'refund', ?, ?, ?, ?, ?, 'wallet', ?, ?)
+                    """, (r_id, cost, new_r_bal, item_dict.get("plan_name", ""), account_name, "استرداد وجه لغو بسته رزرو در صف (واریز به کیف پول)", sub_id, now))
             elif not r_id and cost > 0:
                 # استرداد وجه برای مشتریان مستقیم ادمین
                 tg_id = item_dict.get("telegram_id") or sub_dict.get("telegram_id")
@@ -11449,22 +11805,25 @@ class Database:
 
             # ۱. در صورت تعلق استرداد وجه، برگشت به مبدأ اصلی انجام می‌شود
             if refund_amount > 0:
+                r_row = cursor.execute("SELECT balance FROM resellers WHERE id=?", (reseller_id,)).fetchone()
+                cur_r_bal = int(r_row[0] or 0) if r_row else 0
                 if payment_source == "credit":
                     # کسر بدهی اعتباری نماینده (بازگشت به سقف اعتبار)
                     cursor.execute("UPDATE resellers SET credit_debt = MAX(0, credit_debt - ?), updated_at=? WHERE id=?", (refund_amount, now, reseller_id))
                     desc_text = f"استرداد وجه {refund_percent}٪ بابت انتقال اشتراک «{account_name}» به سطل زباله (برگشت به اعتبار خرید - کاهش بدهی) - زمان گذشته: {refund_info['time_passed_text']} - علت: {reason}"
                     cursor.execute("""
-                        INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
-                        VALUES (?, 'refund', ?, 'استرداد وجه اعتباری', ?, ?, 'credit', ?, ?)
-                    """, (reseller_id, refund_amount, account_name, desc_text, sub_id, now))
+                        INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, plan_name, account_name, description, payment_source, subscription_id, created_at)
+                        VALUES (?, 'refund', ?, ?, 'استرداد وجه اعتباری', ?, ?, 'credit', ?, ?)
+                    """, (reseller_id, refund_amount, cur_r_bal, account_name, desc_text, sub_id, now))
                 else:
                     # افزایش موجودی کیف پول نقدی نماینده
-                    cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at=? WHERE id=?", (refund_amount, now, reseller_id))
+                    new_r_bal = cur_r_bal + refund_amount
+                    cursor.execute("UPDATE resellers SET balance = ?, updated_at=? WHERE id=?", (new_r_bal, now, reseller_id))
                     desc_text = f"استرداد وجه {refund_percent}٪ بابت انتقال اشتراک «{account_name}» به سطل زباله (واریز به کیف پول) - زمان گذشته: {refund_info['time_passed_text']} - علت: {reason}"
                     cursor.execute("""
-                        INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, payment_source, subscription_id, created_at)
-                        VALUES (?, 'refund', ?, 'استرداد وجه', ?, ?, 'wallet', ?, ?)
-                    """, (reseller_id, refund_amount, account_name, desc_text, sub_id, now))
+                        INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, plan_name, account_name, description, payment_source, subscription_id, created_at)
+                        VALUES (?, 'refund', ?, ?, 'استرداد وجه', ?, ?, 'wallet', ?, ?)
+                    """, (reseller_id, refund_amount, new_r_bal, account_name, desc_text, sub_id, now))
 
             # ۲. لغو خودکار بسته‌های معلق در صف تمدید این اشتراک تا در صف معلق نمانند و پس از بازگردانی دوبله استرداد نشوند
             cursor.execute("""
@@ -12318,7 +12677,7 @@ class Database:
             conn.close()
 
     def get_admin_manager_by_telegram_id(self, telegram_id: int) -> Optional[dict]:
-        """دریافت مدیر یا کارمند پنل مدیریت کل بر اساس آیدی عددی تلگرام و تیک اجازه دسترسی ربات"""
+        """دریافت مدیر یا کارمند پنل مدیریت کل بر اساس آیدی عددی تلگرام و تیک اجازه دسترسی ربات اصلی"""
         if not telegram_id:
             return None
         conn = self.get_connection()
@@ -12326,7 +12685,8 @@ class Database:
         try:
             cursor.execute("""
                 SELECT * FROM admin_users
-                WHERE telegram_id = ? AND (reseller_id IS NULL OR reseller_id = 0) AND is_active = 1 AND bot_access = 1
+                WHERE telegram_id = ? AND (reseller_id IS NULL OR reseller_id = 0) AND is_active = 1 
+                  AND (bot_access_main = 1 OR bot_access = 1 OR role = 'super_admin')
                 LIMIT 1
             """, (int(telegram_id) if str(telegram_id).isdigit() else 0,))
             row = cursor.fetchone()
@@ -12334,6 +12694,67 @@ class Database:
         except Exception as e:
             logger.error(f"Error in get_admin_manager_by_telegram_id: {e}")
             return None
+        finally:
+            conn.close()
+
+    def get_admin_manager_by_telegram_id_for_bundle(self, telegram_id: int) -> Optional[dict]:
+        """دریافت مدیر یا کارمند پنل مدیریت بر اساس آیدی عددی تلگرام و تیک اجازه دسترسی ربات فروش بسته"""
+        if not telegram_id:
+            return None
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT * FROM admin_users
+                WHERE telegram_id = ? AND (reseller_id IS NULL OR reseller_id = 0) AND is_active = 1 
+                  AND (bot_access_bundle = 1 OR role = 'super_admin')
+                LIMIT 1
+            """, (int(telegram_id) if str(telegram_id).isdigit() else 0,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error in get_admin_manager_by_telegram_id_for_bundle: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def get_main_bot_admins(self) -> List[dict]:
+        """دریافت لیست تمامی مدیران مجاز به استفاده و مدیریت در ربات اصلی مدیریت"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT * FROM admin_users
+                WHERE telegram_id IS NOT NULL AND telegram_id > 0 
+                  AND (reseller_id IS NULL OR reseller_id = 0) 
+                  AND is_active = 1 
+                  AND (bot_access_main = 1 OR bot_access = 1 OR role = 'super_admin')
+                ORDER BY role = 'super_admin' DESC, id ASC
+            """)
+            return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error in get_main_bot_admins: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_bundle_bot_admins(self) -> List[dict]:
+        """دریافت لیست تمامی مدیران مجاز به استفاده و مدیریت در ربات فروش بسته نمایندگی"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT * FROM admin_users
+                WHERE telegram_id IS NOT NULL AND telegram_id > 0 
+                  AND (reseller_id IS NULL OR reseller_id = 0) 
+                  AND is_active = 1 
+                  AND (bot_access_bundle = 1 OR role = 'super_admin')
+                ORDER BY role = 'super_admin' DESC, id ASC
+            """)
+            return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error in get_bundle_bot_admins: {e}")
+            return []
         finally:
             conn.close()
 
@@ -16243,17 +16664,19 @@ class Database:
     def create_admin_user(self, username: str, password: str, display_name: str,
                           role: str = "super_admin", permissions: str = "*", is_active: bool = True,
                           telegram_id: int = None, phone: str = None, share_percent: int = 0,
-                          bot_access: int = 0) -> dict:
-        """افزودن مدیر جدید با نقش و دسترسی‌های مشخص، آیدی تلگرام، شماره تماس، درصد شراکت و دسترسی ربات"""
+                          bot_access: int = 0, bot_access_main: int = None, bot_access_bundle: int = 0) -> dict:
+        """افزودن مدیر جدید با نقش و دسترسی‌های مشخص، آیدی تلگرام، شماره تماس، درصد شراکت و دسترسی ربات‌ها"""
         conn = self.get_connection()
         cursor = conn.cursor()
         now = get_now_iso()
         password_hash = self.hash_password(password)
+        effective_bot_main = 1 if (bot_access_main if bot_access_main is not None else bot_access) else 0
+        effective_bot_bundle = 1 if bot_access_bundle else 0
         try:
             cursor.execute("""
-                INSERT INTO admin_users (username, password_hash, display_name, role, permissions, is_active, created_at, telegram_id, phone, share_percent, debt_balance, bot_access)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
-            """, (username.strip(), password_hash, display_name.strip(), role, permissions, 1 if is_active else 0, now, telegram_id, phone.strip() if phone else None, int(share_percent or 0), 1 if bot_access else 0))
+                INSERT INTO admin_users (username, password_hash, display_name, role, permissions, is_active, created_at, telegram_id, phone, share_percent, debt_balance, bot_access, bot_access_main, bot_access_bundle)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+            """, (username.strip(), password_hash, display_name.strip(), role, permissions, 1 if is_active else 0, now, telegram_id, phone.strip() if phone else None, int(share_percent or 0), effective_bot_main, effective_bot_main, effective_bot_bundle))
             admin_id = cursor.lastrowid
             conn.commit()
             return {"success": True, "admin_id": admin_id}
@@ -16265,17 +16688,20 @@ class Database:
             conn.close()
 
     def update_admin_user(self, admin_id: int, **kwargs) -> dict:
-        """ویرایش اطلاعات، نقش، دسترسی‌ها، درصد شراکت و دسترسی ربات یک مدیر"""
+        """ویرایش اطلاعات، نقش، دسترسی‌ها، درصد شراکت و دسترسی تفکیک‌شده ربات‌های یک مدیر"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             fields = []
             params = []
+            if "bot_access_main" in kwargs and "bot_access" not in kwargs:
+                kwargs["bot_access"] = kwargs["bot_access_main"]
+
             for key, val in kwargs.items():
                 if key == "password" and val:
                     fields.append("password_hash=?")
                     params.append(self.hash_password(val))
-                elif key in ["username", "display_name", "role", "permissions", "is_active", "telegram_id", "phone", "custom_avatar", "share_percent", "debt_balance", "bot_access", "logout_notification_enabled"]:
+                elif key in ["username", "display_name", "role", "permissions", "is_active", "telegram_id", "phone", "custom_avatar", "share_percent", "debt_balance", "bot_access", "bot_access_main", "bot_access_bundle", "logout_notification_enabled"]:
                     fields.append(f"{key}=?")
                     params.append(val)
 
@@ -17019,9 +17445,9 @@ class Database:
             # ثبت تراکنش نماینده
             desc = f"خرید {bundle['title']} (واریز {credit_to_add:,} تومان با {bundle['badge']})"
             cursor.execute("""
-                INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
-                VALUES (?, 'deposit', ?, ?, '-', ?, ?)
-            """, (reseller_id, credit_to_add, bundle["title"], desc, now))
+                INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, plan_name, account_name, description, created_at)
+                VALUES (?, 'deposit', ?, ?, ?, '-', ?, ?)
+            """, (reseller_id, credit_to_add, new_balance, bundle["title"], desc, now))
 
             conn.commit()
 
@@ -18590,9 +19016,9 @@ class Database:
 
             desc = f"شارژ تاییدشده {bundle_title} (مبلغ شارژ: {credit_to_add:,} تومان | بونوس: {bonus_pct}٪)"
             cursor.execute("""
-                INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
-                VALUES (?, 'deposit', ?, ?, '-', ?, ?)
-            """, (reseller_id, credit_to_add, bundle_title, desc, now))
+                INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, plan_name, account_name, description, created_at)
+                VALUES (?, 'deposit', ?, ?, ?, '-', ?, ?)
+            """, (reseller_id, credit_to_add, new_balance, bundle_title, desc, now))
 
             conn.commit()
 
