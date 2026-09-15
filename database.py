@@ -15021,41 +15021,59 @@ class Database:
                     months[m_idx]["expense"] += amt
                     months[m_idx]["profit"] -= amt
 
-            # ۵. محاسبه رتبه و دسته‌بندی رنگی ملایم هر ماه (تسک ۱)
-            # آینده: future (نقره‌ای)
-            # سپری‌شده: بالاترین=highest (طلایی), پایین‌ترین=lowest (قهوه‌ای), بالاتر از میانگین=good (سبز), پایین‌تر=weak (نارنجی)
+            # ۵. محاسبه رتبه و دسته‌بندی رنگی ملایم هر ماه بر اساس درآمد کل هر ماه نسبت به سال جاری
+            # آینده و فرانرسیده: future (سفید یا نقره‌ای)
+            # کم‌درآمدترین ماه: lowest (قهوه‌ای)
+            # ماه‌های کم‌درآمد: weak (نارنجی یا قرمز ملایم)
+            # ماه‌های پردرآمد: good (سبز ملایم)
+            # پردرآمدترین ماه: highest (طلایی)
+            for m in months:
+                m["revenue"] = m["income"] if m["income"] > 0 else (m["profit"] if m["profit"] > 0 else 0)
+                m["display_amount"] = m["revenue"]
+                m["revenue_ratio"] = 0.0
+
             elapsed_months = []
             for m in months:
                 is_future = (year > now_j.year) or (year == now_j.year and m["month"] > now_j.month)
                 m["is_future"] = is_future
                 if is_future:
                     m["tier"] = "future"
+                    m["tier_name"] = "پیش‌رو"
                 else:
                     elapsed_months.append(m)
 
             if elapsed_months:
-                profits = [m["profit"] for m in elapsed_months]
-                incomes = [m["income"] for m in elapsed_months]
-                has_activity = any(p != 0 or inc != 0 for p, inc in zip(profits, incomes))
+                total_year_revenue = sum(m["revenue"] for m in elapsed_months)
+                for m in elapsed_months:
+                    if total_year_revenue > 0:
+                        m["revenue_ratio"] = round((m["revenue"] / total_year_revenue) * 100, 1)
+
+                revenues = [m["revenue"] for m in elapsed_months]
+                has_activity = any(r > 0 for r in revenues)
 
                 if has_activity:
-                    max_p = max(profits)
-                    min_p = min(profits)
-                    avg_p = sum(profits) / len(profits)
+                    max_r = max(revenues)
+                    min_r = min(revenues)
+                    avg_r = total_year_revenue / len(elapsed_months)
 
                     for m in elapsed_months:
-                        p = m["profit"]
-                        if p == max_p and p > 0:
-                            m["tier"] = "highest"
-                        elif p == min_p and min_p < max_p:
-                            m["tier"] = "lowest"
-                        elif p > avg_p:
-                            m["tier"] = "good"
+                        r = m["revenue"]
+                        if r == max_r and max_r > 0:
+                            m["tier"] = "highest"  # طلایی
+                            m["tier_name"] = "پردرآمدترین ماه"
+                        elif r == min_r and min_r < max_r:
+                            m["tier"] = "lowest"   # قهوه‌ای
+                            m["tier_name"] = "کم‌درآمدترین ماه"
+                        elif r >= avg_r:
+                            m["tier"] = "good"     # سبز ملایم
+                            m["tier_name"] = "پردرآمد"
                         else:
-                            m["tier"] = "weak"
+                            m["tier"] = "weak"     # نارنجی یا قرمز ملایم
+                            m["tier_name"] = "کم‌درآمد"
                 else:
                     for m in elapsed_months:
-                        m["tier"] = "neutral"
+                        m["tier"] = "future"  # سفید یا نقره‌ای
+                        m["tier_name"] = "بدون درآمد"
 
             return months
         except Exception as e:

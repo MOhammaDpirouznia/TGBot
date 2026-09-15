@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}حسابداری، تراز سود و تسهیم شرکا - پنل نمایندگی{% endblock %}
 
-{% block styles %}
+{% block extra_head %}
 <style>
 :root {
     --card-dark-bg: #111a2e;
@@ -9,117 +9,241 @@
     --border-dark-color: #273752;
 }
 
-.accounting-dark-card {
+/* کارت اصلی بخش حسابداری با سازگاری کامل تم تیره و روشن */
+.accounting-dark-card,
+.accounting-section-card {
+    background: var(--card-bg, #ffffff) !important;
+    border: 1px solid var(--card-border, #e2e8f0) !important;
+    border-radius: 1.25rem !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05) !important;
+    color: var(--text-main, #0f172a) !important;
+}
+[data-bs-theme="dark"] .accounting-dark-card,
+[data-bs-theme="dark"] .accounting-section-card {
     background: #0f172a !important;
     border: 1px solid #23334d !important;
-    border-radius: 1.25rem;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35) !important;
+    color: #f8fafc !important;
 }
 
-/* ۱. استایل بلوک‌های ماهانه بدون کادر با رنگ‌های ملایم داینامیک بر اساس درآمد (تسک ۱) */
+.accounting-section-title {
+    color: var(--text-main, #0f172a) !important;
+}
+[data-bs-theme="dark"] .accounting-section-title {
+    color: #f8fafc !important;
+}
+
+/* ۱. بلوک‌های ماهانه تفکیک‌شده با خط‌کشی مشخص و افکت حرکتی شناور (مطابق تصویر تیره) */
 .month-box {
-    border: none !important;
-    outline: none !important;
-    border-radius: 14px;
-    padding: 1.15rem 0.85rem;
+    border: 1.5px solid var(--month-border) !important;
+    background: var(--month-bg) !important;
+    border-radius: 14px !important;
+    padding: 1.15rem 0.75rem !important;
     text-align: center;
     cursor: pointer;
-    transition: all 0.22s ease-in-out;
     position: relative;
     user-select: none;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    /* انیمیشن نرم و الاستیک حرکتی هنگام هاور و کلیک */
+    transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
+                box-shadow 0.28s ease,
+                border-color 0.22s ease,
+                background-color 0.22s ease !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
 }
+
+/* افکت حرکتی شناور به بالا با افزایش عمق سایه */
 .month-box:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
-    filter: brightness(1.08);
+    transform: translateY(-5px) scale(1.025) !important;
+    box-shadow: 0 12px 24px -4px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.06) !important;
+    border-color: var(--month-border-hover, var(--month-border)) !important;
+    z-index: 5;
 }
+[data-bs-theme="dark"] .month-box:hover {
+    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.45), 0 0 16px var(--month-glow, rgba(255, 255, 255, 0.08)) !important;
+}
+
+.month-box:active {
+    transform: translateY(-2px) scale(0.99) !important;
+}
+
+/* وضعیت فیلتر فعال / کلیک‌شده (مشابه اسفند در تصویر تیره ارسالی) */
 .month-box.active {
-    box-shadow: 0 0 16px rgba(59, 130, 246, 0.5) !important;
-    filter: brightness(1.15);
+    border-color: #2563eb !important;
+    border-width: 2px !important;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25), 0 8px 18px rgba(37, 99, 235, 0.2) !important;
 }
 
-/* رنگ‌های ملایم، محو و پس‌زمینه‌محور بدون هیچ‌گونه خط‌کشی */
-.month-box.month-tier-future {
-    background: rgba(148, 163, 184, 0.12) !important; /* نقره‌ای / خاکستری ملایم ماه‌های آینده */
-}
-.month-box.month-tier-future .month-title {
-    color: #94a3b8 !important;
-}
-.month-box.month-tier-future .month-amount {
-    color: #64748b !important;
-}
-
-.month-box.month-tier-highest {
-    background: rgba(234, 179, 8, 0.16) !important; /* طلایی ملایم بالاترین سود */
-}
-.month-box.month-tier-highest .month-title {
-    color: #fef08a !important;
-}
-.month-box.month-tier-highest .month-amount {
-    color: #facc15 !important;
-}
-
-.month-box.month-tier-lowest {
-    background: rgba(180, 83, 9, 0.18) !important; /* قهوه‌ای ملایم پایین‌ترین سود */
-}
-.month-box.month-tier-lowest .month-title {
-    color: #fed7aa !important;
-}
-.month-box.month-tier-lowest .month-amount {
-    color: #fdba74 !important;
-}
-
-.month-box.month-tier-good {
-    background: rgba(34, 197, 94, 0.14) !important; /* سبز ملایم عملکرد خوب */
-}
-.month-box.month-tier-good .month-title {
-    color: #bbf7d0 !important;
-}
-.month-box.month-tier-good .month-amount {
-    color: #4ade80 !important;
-}
-
-.month-box.month-tier-weak {
-    background: rgba(249, 115, 22, 0.14) !important; /* نارنجی ملایم عملکرد ضعیف */
-}
-.month-box.month-tier-weak .month-title {
-    color: #fed7aa !important;
-}
-.month-box.month-tier-weak .month-amount {
-    color: #fb923c !important;
-}
-
-.month-box.month-tier-neutral {
-    background: rgba(30, 41, 59, 0.55) !important; /* پس‌زمینه پیش‌فرض ملایم */
-}
+/* نشانگر ماه جاری در گوشه بالا-چپ */
 .month-box .current-badge {
     position: absolute;
-    top: 8px;
-    left: 8px;
+    top: 7px;
+    left: 7px;
     background: #2563eb;
-    color: #fff;
-    font-size: 0.65rem;
+    color: #ffffff;
+    font-size: 0.62rem;
+    font-weight: 700;
     padding: 2px 7px;
     border-radius: 6px;
-    font-weight: 700;
-    box-shadow: 0 2px 6px rgba(37, 99, 235, 0.4);
+    box-shadow: 0 2px 5px rgba(37, 99, 235, 0.35);
+    line-height: 1.2;
+    z-index: 2;
 }
+
+/* آیکون تاج طلایی برای پردرآمدترین ماه */
+.month-box .tier-crown-badge {
+    position: absolute;
+    top: 7px;
+    right: 7px;
+    color: #d97706;
+    font-size: 0.8rem;
+    filter: drop-shadow(0 1px 2px rgba(217, 119, 6, 0.3));
+    z-index: 2;
+}
+[data-bs-theme="dark"] .month-box .tier-crown-badge {
+    color: #facc15;
+}
+
+/* برچسب سهم درصد از کل درآمد سال */
+.month-box .month-ratio-badge {
+    position: absolute;
+    bottom: 5px;
+    left: 8px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    color: var(--month-text-muted);
+    opacity: 0.85;
+    font-family: monospace;
+}
+
 .month-box .month-title {
     font-size: 1.05rem;
     font-weight: 700;
-    color: #f8fafc;
+    color: var(--month-title-color) !important;
     margin-bottom: 0.35rem;
+    transition: color 0.2s ease;
 }
+
 .month-box .month-amount {
-    font-size: 0.92rem;
-    font-weight: 700;
-    color: #34d399;
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: var(--month-amount-color) !important;
+    transition: color 0.2s ease;
 }
 .month-box .month-amount.zero {
-    color: #94a3b8;
-    font-weight: 500;
-    font-size: 0.88rem;
+    opacity: 0.7;
+    font-weight: 600;
+}
+.month-box .month-amount .currency-unit {
+    font-size: 0.72rem;
+    font-weight: 600;
+    opacity: 0.85;
+}
+
+/* ==========================================================================
+   ۲. پالت‌های رنگی ۵گانه ملایم، کم‌رنگ، مینیمال و چشم‌نواز (طبق الگو)
+   ========================================================================== */
+
+/* ۱. ماه‌های پیش‌رو و فرانرسیده: سفید یا نقره‌ای (Silver / Slate) */
+.month-box.month-tier-future,
+.month-box.month-tier-neutral {
+    --month-bg: #f8fafc;
+    --month-border: #e2e8f0;
+    --month-border-hover: #cbd5e1;
+    --month-title-color: #475569;
+    --month-amount-color: #64748b;
+    --month-text-muted: #94a3b8;
+    --month-glow: rgba(148, 163, 184, 0.15);
+}
+[data-bs-theme="dark"] .month-box.month-tier-future,
+[data-bs-theme="dark"] .month-box.month-tier-neutral {
+    --month-bg: rgba(30, 41, 59, 0.55);
+    --month-border: rgba(148, 163, 184, 0.22);
+    --month-border-hover: rgba(148, 163, 184, 0.4);
+    --month-title-color: #cbd5e1;
+    --month-amount-color: #94a3b8;
+    --month-text-muted: #64748b;
+    --month-glow: rgba(148, 163, 184, 0.12);
+}
+
+/* ۲. کم‌درآمدترین ماه: قهوه‌ای ملایم (Soft Pastel Mocha / Brown) */
+.month-box.month-tier-lowest {
+    --month-bg: #fcf6f0;
+    --month-border: #e8d0bc;
+    --month-border-hover: #d7b599;
+    --month-title-color: #78350f;
+    --month-amount-color: #8c4a16;
+    --month-text-muted: #b45309;
+    --month-glow: rgba(180, 83, 9, 0.22);
+}
+[data-bs-theme="dark"] .month-box.month-tier-lowest {
+    --month-bg: rgba(120, 53, 15, 0.22);
+    --month-border: rgba(217, 119, 6, 0.4);
+    --month-border-hover: rgba(217, 119, 6, 0.6);
+    --month-title-color: #fed7aa;
+    --month-amount-color: #fdba74;
+    --month-text-muted: #d97706;
+    --month-glow: rgba(217, 119, 6, 0.25);
+}
+
+/* ۳. ماه‌های کم‌درآمد: نارنجی یا قرمز ملایم (Soft Pastel Coral / Orange) */
+.month-box.month-tier-weak {
+    --month-bg: #fff6f0;
+    --month-border: #fed7aa;
+    --month-border-hover: #fdba74;
+    --month-title-color: #9a3412;
+    --month-amount-color: #c2410c;
+    --month-text-muted: #ea580c;
+    --month-glow: rgba(249, 115, 22, 0.22);
+}
+[data-bs-theme="dark"] .month-box.month-tier-weak {
+    --month-bg: rgba(194, 65, 12, 0.2);
+    --month-border: rgba(249, 115, 22, 0.38);
+    --month-border-hover: rgba(249, 115, 22, 0.58);
+    --month-title-color: #ffedd5;
+    --month-amount-color: #fb923c;
+    --month-text-muted: #f97316;
+    --month-glow: rgba(249, 115, 22, 0.25);
+}
+
+/* ۴. ماه‌های پردرآمد: سبز ملایم (Soft Pastel Mint / Emerald) */
+.month-box.month-tier-good {
+    --month-bg: #f0fdf4;
+    --month-border: #bbf7d0;
+    --month-border-hover: #86efac;
+    --month-title-color: #166534;
+    --month-amount-color: #15803d;
+    --month-text-muted: #16a34a;
+    --month-glow: rgba(34, 197, 94, 0.22);
+}
+[data-bs-theme="dark"] .month-box.month-tier-good {
+    --month-bg: rgba(21, 128, 61, 0.2);
+    --month-border: rgba(34, 197, 94, 0.38);
+    --month-border-hover: rgba(34, 197, 94, 0.6);
+    --month-title-color: #dcfce7;
+    --month-amount-color: #4ade80;
+    --month-text-muted: #22c55e;
+    --month-glow: rgba(34, 197, 94, 0.25);
+}
+
+/* ۵. پردرآمدترین ماه: طلایی ملایم و درخشان (Soft Golden / Amber) */
+.month-box.month-tier-highest {
+    --month-bg: linear-gradient(135deg, #fefce8 0%, #fef9c3 100%);
+    --month-border: #fde047;
+    --month-border-hover: #facc15;
+    --month-title-color: #854d0e;
+    --month-amount-color: #a16207;
+    --month-text-muted: #ca8a04;
+    --month-glow: rgba(234, 179, 8, 0.35);
+}
+[data-bs-theme="dark"] .month-box.month-tier-highest {
+    --month-bg: linear-gradient(135deg, rgba(161, 98, 7, 0.25) 0%, rgba(202, 138, 4, 0.18) 100%);
+    --month-border: rgba(234, 179, 8, 0.55);
+    --month-border-hover: rgba(234, 179, 8, 0.75);
+    --month-title-color: #fef9c3;
+    --month-amount-color: #facc15;
+    --month-text-muted: #eab308;
+    --month-glow: rgba(234, 179, 8, 0.38);
 }
 
 /* دکمه‌های فیلتر کپسولی */
@@ -332,15 +456,21 @@
         </div>
     </div>
 
-    <!-- ردیف ۲: کادر محاسبه درآمد ماهانه (سال انتخابی) - دقیقاً مطابق Mockup (Point 1) -->
-    <div class="accounting-dark-card p-4 mb-4">
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <!-- ردیف ۲: کادر محاسبه درآمد ماهانه (سال انتخابی) - بلوک‌بندی تفکیک‌شده با افکت حرکتی -->
+    <div class="accounting-dark-card p-3 p-md-4 mb-4">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 pb-2 border-bottom border-secondary border-opacity-10">
             <div>
-                <span class="text-white fw-bold fs-5">محاسبه درآمد ماهانه (سال {{ selected_year }})</span>
-                <span class="text-muted small ms-2">کلیک روی هر ماه جهت فیلتر لیست تراکنش‌ها</span>
+                <span class="fw-bold fs-5 accounting-section-title d-inline-flex align-items-center gap-2">
+                    <i class="fas fa-calendar-alt text-primary"></i>
+                    محاسبه درآمد ماهانه (سال {{ selected_year }})
+                </span>
+                <span class="text-muted small ms-2 d-none d-sm-inline">
+                    <i class="fas fa-info-circle text-info me-1"></i>کلیک روی هر ماه جهت فیلتر لیست تراکنش‌ها
+                </span>
             </div>
-            <button type="button" class="btn btn-link text-info p-0 text-decoration-none small fw-semibold" id="resetMonthFilterBtn" onclick="filterByMonth('all')">
-                <i class="fas fa-rotate-left me-1"></i> نمایش همه ماه‌ها (لغو فیلتر ماه)
+            <button type="button" class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1 rounded-pill px-3" id="resetMonthFilterBtn" onclick="filterByMonth('all')">
+                <i class="fas fa-rotate-left text-primary"></i>
+                <span>نمایش همه ماه‌ها (لغو فیلتر ماه)</span>
             </button>
         </div>
 
@@ -349,14 +479,20 @@
             <!-- ردیف اول: فروردین تا شهریور (ماه‌های ۱ تا ۶) -->
             {% for m in monthly_stats[:6] %}
             <div class="col-6 col-md-4 col-lg-2">
-                <div class="month-box month-tier-{{ m.tier or 'neutral' }}" data-month="{{ m.month }}" onclick="filterByMonth('{{ m.month }}')">
+                <div class="month-box month-tier-{{ m.tier or 'future' }}" data-month="{{ m.month }}" onclick="filterByMonth('{{ m.month }}')">
                     {% if m.is_current %}
                     <span class="current-badge">جاری</span>
                     {% endif %}
+                    {% if m.tier == 'highest' and (m.display_amount or 0) > 0 %}
+                    <span class="tier-crown-badge" title="پردرآمدترین ماه سال"><i class="fas fa-crown"></i></span>
+                    {% endif %}
                     <div class="month-title">{{ m.name }}</div>
-                    <div class="month-amount {% if m.profit == 0 %}zero{% endif %} font-monospace">
-                        {{ "{:,}".format(m.profit) }} تومان
+                    <div class="month-amount {% if (m.display_amount or 0) == 0 %}zero{% endif %} font-monospace">
+                        {{ "{:,}".format(m.display_amount or 0) }} <span class="currency-unit">تومان</span>
                     </div>
+                    {% if m.revenue_ratio and m.revenue_ratio > 0 %}
+                    <span class="month-ratio-badge" title="سهم {{ m.revenue_ratio }}٪ از درآمد کل سال">{{ m.revenue_ratio }}٪</span>
+                    {% endif %}
                 </div>
             </div>
             {% endfor %}
@@ -366,14 +502,20 @@
             <!-- ردیف دوم: مهر تا اسفند (ماه‌های ۷ تا ۱۲) -->
             {% for m in monthly_stats[6:] %}
             <div class="col-6 col-md-4 col-lg-2">
-                <div class="month-box month-tier-{{ m.tier or 'neutral' }}" data-month="{{ m.month }}" onclick="filterByMonth('{{ m.month }}')">
+                <div class="month-box month-tier-{{ m.tier or 'future' }}" data-month="{{ m.month }}" onclick="filterByMonth('{{ m.month }}')">
                     {% if m.is_current %}
                     <span class="current-badge">جاری</span>
                     {% endif %}
+                    {% if m.tier == 'highest' and (m.display_amount or 0) > 0 %}
+                    <span class="tier-crown-badge" title="پردرآمدترین ماه سال"><i class="fas fa-crown"></i></span>
+                    {% endif %}
                     <div class="month-title">{{ m.name }}</div>
-                    <div class="month-amount {% if m.profit == 0 %}zero{% endif %} font-monospace">
-                        {{ "{:,}".format(m.profit) }} تومان
+                    <div class="month-amount {% if (m.display_amount or 0) == 0 %}zero{% endif %} font-monospace">
+                        {{ "{:,}".format(m.display_amount or 0) }} <span class="currency-unit">تومان</span>
                     </div>
+                    {% if m.revenue_ratio and m.revenue_ratio > 0 %}
+                    <span class="month-ratio-badge" title="سهم {{ m.revenue_ratio }}٪ از درآمد کل سال">{{ m.revenue_ratio }}٪</span>
+                    {% endif %}
                 </div>
             </div>
             {% endfor %}
@@ -384,8 +526,8 @@
     <div class="accounting-dark-card p-4 mb-4">
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 pb-2 border-bottom border-secondary border-opacity-25">
             <div>
-                <h5 class="fw-bold text-white mb-1"><i class="fas fa-handshake text-warning me-2"></i>تسهیم سود و وضعیت شرکا (سال {{ selected_year }})</h5>
-                <p class="text-muted small mb-0">محاسبه پویای سهم سود هر شریک بر اساس درصدهای مصوب از سود خالص کل ({{ "{:,}".format(summary.net_profit) }} تومان)</p>
+                <h5 class="fw-bold accounting-section-title mb-1"><i class="fas fa-handshake text-warning me-2"></i>تسهیم سود و وضعیت شرکا (سال {{ selected_year }})</h5>
+                <p class="text-muted small mb-0">محاسبه پویای سهم سود هر شریک بر اساس درصدهای مصوب از سود خالص کل ({{ "{:,}".format(summary.net_profit or 0) }} تومان)</p>
             </div>
             <button type="button" class="btn btn-sm btn-outline-warning fw-bold px-3 py-2 rounded-3" data-bs-toggle="modal" data-bs-target="#addPartnerModal">
                 <i class="fas fa-plus me-1"></i> افزودن شریک جدید
@@ -412,15 +554,15 @@
                     <div class="bg-dark bg-opacity-50 p-2 rounded-3 mb-2">
                         <div class="d-flex justify-content-between small text-muted mb-1">
                             <span>سهم از سود خالص:</span>
-                            <span class="fw-bold text-success font-monospace">{{ "{:,}".format(summary.reseller_profit_share) }} تومان</span>
+                            <span class="fw-bold text-success font-monospace">{{ "{:,}".format(summary.reseller_profit_share or 0) }} تومان</span>
                         </div>
                         <div class="d-flex justify-content-between small text-muted mb-1">
                             <span>تسویه / برداشتی:</span>
-                            <span class="fw-bold text-info font-monospace">{{ "{:,}".format(summary.reseller_paid_share) }} تومان</span>
+                            <span class="fw-bold text-info font-monospace">{{ "{:,}".format(summary.reseller_paid_share or 0) }} تومان</span>
                         </div>
                         <div class="d-flex justify-content-between small text-muted pt-1 border-top border-secondary border-opacity-25">
                             <span class="text-white fw-semibold">مانده سهم:</span>
-                            <span class="fw-bold text-warning font-monospace">{{ "{:,}".format(summary.reseller_remaining_share) }} تومان</span>
+                            <span class="fw-bold text-warning font-monospace">{{ "{:,}".format(summary.reseller_remaining_share or 0) }} تومان</span>
                         </div>
                     </div>
                 </div>
@@ -511,12 +653,12 @@
     <div class="accounting-dark-card p-4 mb-4">
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 pb-2 border-bottom border-secondary border-opacity-25">
             <div>
-                <h5 class="fw-bold text-white mb-1"><i class="fas fa-credit-card text-success me-2"></i>کارت‌ها و حساب‌های بانکی نماینده</h5>
+                <h5 class="fw-bold accounting-section-title mb-1"><i class="fas fa-credit-card text-success me-2"></i>کارت‌ها و حساب‌های بانکی نماینده</h5>
                 <p class="text-muted small mb-0">محاسبه داینامیک موجودی، ورودی‌ها و خروجی‌های حساب‌های متصل به درگاه و کارت‌های بانکی</p>
             </div>
             <div class="d-flex align-items-center gap-2">
                 <span class="badge bg-success bg-opacity-20 text-success border border-success border-opacity-25 py-2 px-3">
-                    مجموع موجودی کارت‌ها: {{ "{:,}".format(summary.total_cards_balance) }} تومان
+                    مجموع موجودی کارت‌ها: {{ "{:,}".format(summary.total_cards_balance or 0) }} تومان
                 </span>
             </div>
         </div>
