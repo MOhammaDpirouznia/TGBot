@@ -219,97 +219,47 @@
             border-color: var(--palette-card-border-subtle, rgba(0,0,0,0.06));
         }
 
-        /* ─── استایل هوشمند و ملایم برای ردیف‌های مشتریان (VIP، تیکت‌دار و بدهکار) ─── */
-        /* حالت روشن (Light Mode) */
-        .table > tbody > tr.customer-row-vip > td,
-        .table > tbody > tr.customer-row-vip > th,
-        tr.customer-row-vip > td,
-        tr.customer-row-vip > th,
-        tr.customer-row-vip {
-            background-color: rgba(245, 158, 11, 0.07) !important;
-            --bs-table-bg: rgba(245, 158, 11, 0.07) !important;
+        /* ─── نشان مشتری ویژه VIP (فوق‌العاده خوانا، شارپ و پرکنتراست در تم تیره و روشن) ─── */
+        .badge-vip {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+            color: #000000 !important;
+            font-weight: 800 !important;
+            font-size: 0.72rem !important;
+            letter-spacing: 0.5px;
+            padding: 2px 7px !important;
+            border-radius: 5px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            vertical-align: middle;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+            border: 1px solid rgba(0, 0, 0, 0.15) !important;
         }
-        .table-hover > tbody > tr.customer-row-vip:hover > td,
-        .table-hover > tbody > tr.customer-row-vip:hover > th,
-        tr.customer-row-vip:hover > td {
-            background-color: rgba(245, 158, 11, 0.13) !important;
-            --bs-table-hover-bg: rgba(245, 158, 11, 0.13) !important;
-        }
-
-        .table > tbody > tr.customer-row-ticket > td,
-        .table > tbody > tr.customer-row-ticket > th,
-        tr.customer-row-ticket > td,
-        tr.customer-row-ticket > th,
-        tr.customer-row-ticket {
-            background-color: rgba(14, 165, 233, 0.07) !important;
-            --bs-table-bg: rgba(14, 165, 233, 0.07) !important;
-        }
-        .table-hover > tbody > tr.customer-row-ticket:hover > td,
-        .table-hover > tbody > tr.customer-row-ticket:hover > th,
-        tr.customer-row-ticket:hover > td {
-            background-color: rgba(14, 165, 233, 0.13) !important;
-            --bs-table-hover-bg: rgba(14, 165, 233, 0.13) !important;
+        .badge-vip i, .badge-vip svg {
+            color: #000000 !important;
+            font-size: 0.7rem;
         }
 
-        .table > tbody > tr.customer-row-debtor > td,
-        .table > tbody > tr.customer-row-debtor > th,
-        tr.customer-row-debtor > td,
-        tr.customer-row-debtor > th,
-        tr.customer-row-debtor {
-            background-color: rgba(239, 68, 68, 0.07) !important;
-            --bs-table-bg: rgba(239, 68, 68, 0.07) !important;
+        [data-bs-theme="dark"] .badge-vip {
+            background: linear-gradient(135deg, #facc15 0%, #eab308 100%) !important;
+            color: #000000 !important;
+            font-weight: 850 !important;
+            border: 1px solid #fef08a !important;
+            box-shadow: 0 0 8px rgba(250, 204, 21, 0.45) !important;
+            text-shadow: none !important;
         }
-        .table-hover > tbody > tr.customer-row-debtor:hover > td,
-        .table-hover > tbody > tr.customer-row-debtor:hover > th,
-        tr.customer-row-debtor:hover > td {
-            background-color: rgba(239, 68, 68, 0.13) !important;
-            --bs-table-hover-bg: rgba(239, 68, 68, 0.13) !important;
+        [data-bs-theme="dark"] .badge-vip i,
+        [data-bs-theme="dark"] .badge-vip svg {
+            color: #000000 !important;
         }
 
-        /* حالت تاریک (Dark Mode) - ملایم، کم‌رنگ و سازگار با تم تیره بدون خیره‌کنندگی */
-        [data-bs-theme="dark"] .table > tbody > tr.customer-row-vip > td,
-        [data-bs-theme="dark"] .table > tbody > tr.customer-row-vip > th,
-        [data-bs-theme="dark"] tr.customer-row-vip > td,
-        [data-bs-theme="dark"] tr.customer-row-vip > th,
-        [data-bs-theme="dark"] tr.customer-row-vip {
-            background-color: rgba(245, 158, 11, 0.11) !important;
-            --bs-table-bg: rgba(245, 158, 11, 0.11) !important;
-        }
-        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-vip:hover > td,
-        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-vip:hover > th,
-        [data-bs-theme="dark"] tr.customer-row-vip:hover > td {
-            background-color: rgba(245, 158, 11, 0.18) !important;
-            --bs-table-hover-bg: rgba(245, 158, 11, 0.18) !important;
-        }
-
-        [data-bs-theme="dark"] .table > tbody > tr.customer-row-ticket > td,
-        [data-bs-theme="dark"] .table > tbody > tr.customer-row-ticket > th,
-        [data-bs-theme="dark"] tr.customer-row-ticket > td,
-        [data-bs-theme="dark"] tr.customer-row-ticket > th,
-        [data-bs-theme="dark"] tr.customer-row-ticket {
-            background-color: rgba(14, 165, 233, 0.11) !important;
-            --bs-table-bg: rgba(14, 165, 233, 0.11) !important;
-        }
-        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-ticket:hover > td,
-        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-ticket:hover > th,
-        [data-bs-theme="dark"] tr.customer-row-ticket:hover > td {
-            background-color: rgba(14, 165, 233, 0.18) !important;
-            --bs-table-hover-bg: rgba(14, 165, 233, 0.18) !important;
-        }
-
-        [data-bs-theme="dark"] .table > tbody > tr.customer-row-debtor > td,
-        [data-bs-theme="dark"] .table > tbody > tr.customer-row-debtor > th,
-        [data-bs-theme="dark"] tr.customer-row-debtor > td,
-        [data-bs-theme="dark"] tr.customer-row-debtor > th,
-        [data-bs-theme="dark"] tr.customer-row-debtor {
-            background-color: rgba(239, 68, 68, 0.11) !important;
-            --bs-table-bg: rgba(239, 68, 68, 0.11) !important;
-        }
-        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-debtor:hover > td,
-        [data-bs-theme="dark"] .table-hover > tbody > tr.customer-row-debtor:hover > th,
-        [data-bs-theme="dark"] tr.customer-row-debtor:hover > td {
-            background-color: rgba(239, 68, 68, 0.18) !important;
-            --bs-table-hover-bg: rgba(239, 68, 68, 0.18) !important;
+        /* رفع باگ سراسری بوت‌استرپ ۵.۳ در حالت دارک مود که نوشته‌های text-dark روی bg-warning را سفید و ناخوانا می‌کرد */
+        [data-bs-theme="dark"] .badge.bg-warning,
+        [data-bs-theme="dark"] .badge.bg-warning.text-dark,
+        [data-bs-theme="dark"] .badge.bg-warning *,
+        [data-bs-theme="dark"] .badge.bg-warning i,
+        [data-bs-theme="dark"] .badge.bg-warning svg {
+            color: #000000 !important;
         }
 
         [data-bs-theme="dark"] .table th {

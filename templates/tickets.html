@@ -199,9 +199,9 @@
                         <td class="ps-2" data-value="{{ t['id'] }}">
                             <code class="badge ticket-badge-pill font-monospace fs-6">#{{ t['id'] }}</code>
                             {% if is_reseller_ticket %}
-                                <span class="badge bg-warning text-dark d-block mt-1"><i class="fas fa-crown"></i> نماینده</span>
+                                <span class="badge badge-vip d-block mt-1"><i class="fas fa-crown"></i> نماینده</span>
                             {% elif t.get('is_vip') %}
-                                <span class="badge bg-warning text-dark d-block mt-1"><i class="fas fa-crown"></i> VIP</span>
+                                <span class="badge badge-vip d-block mt-1"><i class="fas fa-crown"></i> VIP</span>
                             {% endif %}
                         </td>
                         <td data-value="{{ (t.get('reseller_name') or t.get('reseller_username') or t.get('user_first_name') or t.get('user_username') or t.get('telegram_id') or '')|striptags }}">
@@ -382,9 +382,9 @@
                 </div>
                 <div class="d-flex align-items-center gap-2">
                     {% if is_reseller_ticket %}
-                        <span class="badge bg-warning text-dark"><i class="fas fa-crown me-1"></i> نماینده همکار</span>
+                        <span class="badge badge-vip"><i class="fas fa-crown me-1"></i> نماینده همکار</span>
                     {% elif t.get('is_vip') %}
-                        <span class="badge bg-warning text-dark"><i class="fas fa-crown me-1"></i> مشتری طلایی VIP</span>
+                        <span class="badge badge-vip"><i class="fas fa-crown me-1"></i> مشتری طلایی VIP</span>
                     {% endif %}
                     <button type="button" class="btn-close {% if not is_reseller_ticket %}btn-close-white{% endif %}" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
