@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+
+{% block title %}ویزارد راه‌اندازی سامانه و اتصال زیرساخت{% endblock %}
+
+{% block login_content %}
+<div class="position-relative overflow-hidden d-flex align-items-center justify-content-center" style="min-height: 100vh; padding: 32px 16px; background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);">
+    
+    <!-- نورهای پس‌زمینه -->
+    <div class="position-absolute w-100 h-100 top-0 start-0 overflow-hidden" style="z-index: 0; pointer-events: none;">
+        <div class="position-absolute rounded-circle" style="width: 500px; height: 500px; top: -15%; right: -10%; background: radial-gradient(circle, rgba(99, 102, 241, 0.25) 0%, transparent 70%); filter: blur(70px);"></div>
+        <div class="position-absolute rounded-circle" style="width: 450px; height: 450px; bottom: -15%; left: -10%; background: radial-gradient(circle, rgba(14, 165, 233, 0.2) 0%, transparent 70%); filter: blur(70px);"></div>
+    </div>
+
+    <div class="position-relative" style="z-index: 2; width: 100%; max-width: 850px;">
+        
+        <!-- پیام‌های فلش سیستم -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="mb-3">
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show shadow-sm border-0 d-flex align-items-center gap-2" role="alert">
+                            <i class="fas {% if category == 'success' %}fa-check-circle{% elif category == 'warning' %}fa-triangle-exclamation{% else %}fa-circle-exclamation{% endif %} fs-5"></i>
+                            <div>{{ message }}</div>
+                            <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <div class="card border-0 shadow-2xl rounded-4 overflow-hidden" style="background: rgba(30, 41, 59, 0.92); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.1) !important; color: #f8fafc;">
+            
+            <!-- هدر ویزارد -->
+            <div class="p-4 text-center border-bottom" style="border-color: rgba(255, 255, 255, 0.08) !important; background: linear-gradient(180deg, rgba(99, 102, 241, 0.15) 0%, transparent 100%);">
+                <div class="d-inline-flex align-items-center justify-content-center p-3 rounded-4 mb-3 shadow-sm" style="background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.3);">
+                    <i class="fas fa-server text-primary fs-2"></i>
+                </div>
+                <h3 class="fw-bold mb-1" style="letter-spacing: -0.5px;">ویزارد راه‌اندازی و پیکربندی سامانه</h3>
+                <p class="text-muted small mb-0">راه‌اندازی امن و داینامیک بدون نیاز به ری‌استارت سرور | سازگار با Railway، سرور اختصاصی و لینوکس</p>
+                
+                {% if force %}
+                    <div class="alert alert-warning py-2 px-3 mt-3 mb-0 small d-inline-flex align-items-center gap-2 rounded-pill">
+                        <i class="fas fa-triangle-exclamation"></i>
+                        <span>حالت تنظیم مجدد: اطلاعات ثبت شده جایگزین مقادیر فعلی سیستم خواهند شد.</span>
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- تب‌های انتخاب روش راه‌اندازی -->
+            <div class="p-4 pb-0">
+                <ul class="nav nav-pills nav-fill p-1 rounded-3" style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.06);" id="setupTab" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active py-3 fw-bold rounded-2 d-flex align-items-center justify-content-center gap-2" id="wizard-tab" data-bs-toggle="tab" data-bs-target="#wizard-pane" type="button" role="tab">
+                            <i class="fas fa-wand-magic-sparkles text-primary"></i>
+                            <span>راه‌اندازی گام‌به‌گام (پیشنهادی)</span>
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link py-3 fw-bold rounded-2 d-flex align-items-center justify-content-center gap-2" id="restore-tab" data-bs-toggle="tab" data-bs-target="#restore-pane" type="button" role="tab">
+                            <i class="fas fa-cloud-arrow-up text-success"></i>
+                            <span>بازیابی از فایل پشتیبان (.json / .db)</span>
+                        </button>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="tab-content p-4" id="setupTabContent">
+                
+                <!-- تب ۱: راه‌اندازی گام به گام -->
+                <div class="tab-pane fade show active" id="wizard-pane" role="tabpanel">
+                    <form method="POST" action="{{ url_for('setup_wizard', force='1' if force else None) }}">
+                        <input type="hidden" name="mode" value="step_wizard">
+
+                        <!-- بخش ۱: حساب کاربری مدیر ارشد -->
+                        <div class="mb-4 p-3 rounded-3" style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255, 255, 255, 0.06);">
+                            <div class="d-flex align-items-center gap-2 mb-3 pb-2 border-bottom" style="border-color: rgba(255, 255, 255, 0.06) !important;">
+                                <i class="fas fa-crown text-warning fs-5"></i>
+                                <h6 class="fw-bold mb-0">۱. حساب کاربری مدیر ارشد (Super Admin)</h6>
+                            </div>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold">نام نمایشی مدیر:</label>
+                                    <input type="text" name="admin_display_name" class="form-control form-control-dark" value="مدیر ارشد" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold">آیدی عددی تلگرام مدیر (جهت دسترسی ربات):</label>
+                                    <input type="number" name="admin_telegram_id" class="form-control form-control-dark font-monospace" placeholder="مثال: 12345678" value="{{ config.admin_id or '' }}">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold">نام کاربری ورود به پنل وب: <span class="text-danger">*</span></label>
+                                    <input type="text" name="admin_username" class="form-control form-control-dark" value="{{ config.admin_username or 'admin' }}" required pattern="^[a-zA-Z0-9_.-]+$">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold">کلمه عبور ورود به پنل: <span class="text-danger">*</span></label>
+                                    <input type="password" name="admin_password" class="form-control form-control-dark" placeholder="حداقل ۶ کاراکتر" required minlength="6">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- بخش ۲: اتصال ربات تلگرام -->
+                        <div class="mb-4 p-3 rounded-3" style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255, 255, 255, 0.06);">
+                            <div class="d-flex align-items-center gap-2 mb-3 pb-2 border-bottom" style="border-color: rgba(255, 255, 255, 0.06) !important;">
+                                <i class="fab fa-telegram text-info fs-5"></i>
+                                <h6 class="fw-bold mb-0">۲. توکن ربات تلگرام (Telegram Bot Token)</h6>
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label small fw-bold">توکن دریافتی از BotFather: <span class="text-danger">*</span></label>
+                                <input type="text" name="bot_token" class="form-control form-control-dark font-monospace" placeholder="مثال: 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ" value="{{ config.bot_token or '' }}" required>
+                                <div class="form-text small text-muted">این توکن در دیتابیس ذخیره شده و پس از ثبت، ربات تلگرام بلافاصله و بدون نیاز به ریست سرور فعال می‌شود.</div>
+                            </div>
+                        </div>
+
+                        <!-- بخش ۳: اتصال به پنل هیدیفای -->
+                        <div class="mb-4 p-3 rounded-3" style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255, 255, 255, 0.06);">
+                            <div class="d-flex align-items-center gap-2 mb-3 pb-2 border-bottom" style="border-color: rgba(255, 255, 255, 0.06) !important;">
+                                <i class="fas fa-network-wired text-success fs-5"></i>
+                                <h6 class="fw-bold mb-0">۳. مشخصات وب‌سرویس هیدیفای (Hiddify Panel API)</h6>
+                            </div>
+                            <div class="row g-3">
+                                <div class="col-md-12">
+                                    <label class="form-label small fw-bold">آدرس کامل پنل هیدیفای: <span class="text-danger">*</span></label>
+                                    <input type="url" name="hidify_panel_url" class="form-control form-control-dark font-monospace" placeholder="https://panel.example.com" value="{{ config.hidify_panel_url or '' }}" required>
+                                </div>
+                                <div class="col-md-12">
+                                    <label class="form-label small fw-bold">کلید احراز هویت (Hiddify API Key / Secret): <span class="text-danger">*</span></label>
+                                    <input type="text" name="hidify_api_key" class="form-control form-control-dark font-monospace" placeholder="کلید API استخراج شده از تنظیمات هیدیفای" value="{{ config.hidify_api_key or '' }}" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold">مسیر پروکسی ادمین (Admin Proxy Path): <span class="text-danger">*</span></label>
+                                    <input type="text" name="hidify_proxy_path" class="form-control form-control-dark font-monospace" placeholder="مثال: secret_admin_path" value="{{ config.hidify_proxy_path or '' }}" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold">مسیر پروکسی مشترکین (User Proxy Path):</label>
+                                    <input type="text" name="user_proxy_path" class="form-control form-control-dark font-monospace" placeholder="پیش‌فرض: user" value="{{ config.user_proxy_path or 'user' }}">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- بخش ۴: آی‌پی سرور، دامنه و SSL خودکار -->
+                        <div class="mb-4 p-3 rounded-3" style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255, 255, 255, 0.06);">
+                            <div class="d-flex align-items-center gap-2 mb-3 pb-2 border-bottom" style="border-color: rgba(255, 255, 255, 0.06) !important;">
+                                <i class="fas fa-globe text-primary fs-5"></i>
+                                <h6 class="fw-bold mb-0">۴. دامنه، آی‌پی سرور و گواهی امنیتی SSL</h6>
+                            </div>
+                            
+                            <!-- نمایش باکس آی‌پی عمومی سرور -->
+                            <div class="alert alert-dark p-3 rounded-3 mb-3 border-0 d-flex align-items-center justify-content-between flex-wrap gap-2" style="background: rgba(30, 41, 59, 0.8);">
+                                <div>
+                                    <div class="small text-muted mb-1"><i class="fas fa-location-dot text-danger me-1"></i> آی‌پی عمومی سرور شما (جهت تنظیم رکورد DNS A):</div>
+                                    <div class="fs-5 fw-bold font-monospace text-warning" id="serverIpText">{{ config.server_public_ip or 'در حال شناسایی...' }}</div>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-light px-3 rounded-pill" onclick="copyServerIp()">
+                                    <i class="fas fa-copy me-1"></i> کپی آی‌پی
+                                </button>
+                            </div>
+
+                            <div class="row g-3">
+                                <div class="col-md-12">
+                                    <label class="form-label small fw-bold">دامنه اختصاصی متصل به این پنل (اختیاری):</label>
+                                    <input type="text" name="custom_domain" class="form-control form-control-dark font-monospace" placeholder="مثال: bot.yourdomain.com" value="{{ config.custom_domain or '' }}">
+                                    <div class="form-text small text-muted">دامنه را بدون https:// وارد کنید. مطمئن شوید در کلودفلر یا DNS دامنه، یک رکورد A به آی‌پی بالا متصل کرده‌اید.</div>
+                                </div>
+                                <div class="col-md-12">
+                                    <div class="form-check form-switch p-3 rounded-3 mt-1" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06);">
+                                        <input class="form-check-input ms-0 me-3" type="checkbox" name="request_ssl" value="1" id="requestSslCheck" checked>
+                                        <label class="form-check-label fw-bold" for="requestSslCheck">
+                                            <i class="fas fa-shield-halved text-success me-1"></i> صدور خودکار و رایگان گواهی امنیتی SSL
+                                        </label>
+                                        <div class="form-text small text-muted ms-4">تلاش متوالی برای دریافت گواهی رسمی از Let's Encrypt و ZeroSSL؛ در صورت عدم اتصال مستقیم از گواهی امن داخلی با پشتیبانی Cloudflare استفاده خواهد شد.</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- دکمه ذخیره و تکمیل -->
+                        <div class="text-end pt-2">
+                            <button type="submit" class="btn btn-primary px-5 py-3 fw-bold rounded-3 shadow-lg fs-6">
+                                <i class="fas fa-check-circle me-2"></i> ذخیره و اتمام راه‌اندازی سامانه
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- تب ۲: بازیابی از فایل پشتیبان -->
+                <div class="tab-pane fade" id="restore-pane" role="tabpanel">
+                    <form method="POST" action="{{ url_for('setup_wizard', force='1' if force else None) }}" enctype="multipart/form-data">
+                        <input type="hidden" name="mode" value="restore">
+
+                        <div class="p-4 rounded-4 text-center mb-4" style="background: rgba(15, 23, 42, 0.5); border: 2px dashed rgba(99, 102, 241, 0.4);">
+                            <div class="mb-3">
+                                <i class="fas fa-file-shield text-primary" style="font-size: 3rem;"></i>
+                            </div>
+                            <h5 class="fw-bold mb-2">فایل پشتیبان کامل سیستم را انتخاب کنید</h5>
+                            <p class="text-muted small mb-3">پشتیبانی از هر دو فرمت استاندارد <code>.json</code> و دیتابیس <code>.db</code> یا <code>.sqlite</code></p>
+                            
+                            <div class="col-md-8 mx-auto mb-3">
+                                <input type="file" name="backup_file" class="form-control form-control-dark py-2" accept=".json,.db,.sqlite,.sqlite3" required>
+                            </div>
+
+                            <div class="alert alert-info py-2 px-3 small d-inline-flex align-items-center gap-2 rounded-3 text-start">
+                                <i class="fas fa-info-circle flex-shrink-0"></i>
+                                <div>با آپلود این فایل، تمامی کاربران، اشتراک‌ها، تراکنش‌ها، کارت‌های بانکی، تنظیمات و مدیران فوراً بازگردانی خواهند شد.</div>
+                            </div>
+                        </div>
+
+                        <div class="text-end">
+                            <button type="submit" class="btn btn-success px-5 py-3 fw-bold rounded-3 shadow-lg fs-6" onclick="return confirm('آیا از بازگردانی این فایل اطمینان دارید؟ اطلاعات دیتابیس جایگزین خواهند شد.')">
+                                <i class="fas fa-cloud-arrow-up me-2"></i> آپلود و بازیابی اطلاعات سامانه
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+            </div>
+
+        </div>
+
+        <div class="text-center mt-3 text-muted small">
+            سامانه هوشمند اینترنت پرو © 2026 | تمامی حقوق محفوظ است.
+        </div>
+
+    </div>
+
+</div>
+
+<style>
+.form-control-dark {
+    background-color: rgba(15, 23, 42, 0.7) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    color: #f8fafc !important;
+    border-radius: 8px;
+    padding: 10px 14px;
+}
+.form-control-dark:focus {
+    background-color: rgba(15, 23, 42, 0.9) !important;
+    border-color: #6366f1 !important;
+    box-shadow: 0 0 0 0.25rem rgba(99, 102, 241, 0.25) !important;
+}
+.form-control-dark::placeholder {
+    color: #64748b !important;
+}
+.nav-pills .nav-link {
+    color: #94a3b8;
+    transition: all 0.2s ease;
+}
+.nav-pills .nav-link.active {
+    background-color: #6366f1 !important;
+    color: #ffffff !important;
+}
+</style>
+
+<script>
+function copyServerIp() {
+    const ip = document.getElementById('serverIpText').innerText.trim();
+    if (ip && ip !== 'در حال شناسایی...') {
+        navigator.clipboard.writeText(ip).then(() => {
+            alert('آی‌پی سرور (' + ip + ') در حافظه کپی شد.');
+        }).catch(err => {
+            console.error('Error copying IP: ', err);
+        });
+    }
+}
+</script>
+{% endblock %}

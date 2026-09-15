@@ -14,16 +14,23 @@ logger = logging.getLogger(__name__)
 class HidifyClient:
     """کلاینت اتصال به پنل Hidify v2 (async)"""
 
-    def __init__(self, panel_url: str, api_key: str, proxy_path: str):
-        self.panel_url = panel_url.rstrip("/")
-        self.api_key = api_key
-        self.proxy_path = proxy_path.strip("/")
-        self.base_api = f"{self.panel_url}/{self.proxy_path}/api/v2"
+    def __init__(self, panel_url: str = None, api_key: str = None, proxy_path: str = None):
+        self.update_credentials(panel_url or "", api_key or "", proxy_path or "")
+        self._client = None
+
+    def update_credentials(self, panel_url: str, api_key: str, proxy_path: str):
+        """بروزرسانی مشخصات اتصال به پنل هیدیفای به صورت داینامیک"""
+        self.panel_url = (panel_url or "").rstrip("/")
+        self.api_key = api_key or ""
+        self.proxy_path = (proxy_path or "").strip("/")
+        if self.panel_url and self.proxy_path:
+            self.base_api = f"{self.panel_url}/{self.proxy_path}/api/v2"
+        else:
+            self.base_api = ""
         self.headers = {
-            "Hiddify-API-Key": api_key,
+            "Hiddify-API-Key": self.api_key,
             "Content-Type": "application/json",
         }
-        self._client = None
 
     async def _get_client(self) -> httpx.AsyncClient:
         """دریافت یا ساخت کلاینت async"""

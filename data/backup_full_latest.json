@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "timestamp": "2026-09-15T11:09:07.580098+03:30",
+  "timestamp": "2026-09-15T19:35:33.165974+03:30",
   "tables": {
     "users": [
       {
@@ -62334,11 +62334,6 @@
         "updated_at": "2026-09-05T22:50:29.076666+03:30"
       },
       {
-        "key": "user_proxy_path",
-        "value": "xlew5Z7bySkXYheitHAXfpCm",
-        "updated_at": "2026-09-06T03:52:26.772355+03:30"
-      },
-      {
         "key": "cards_config",
         "value": "{\"card_1\": {\"card_number\": \"6219861873049117\", \"card_holder\": \"پوریا بابایی\", \"bank_name\": \"بلو\", \"is_active\": true, \"created_at\": \"2026-08-28T08:29:37.315489+03:30\"}}",
         "updated_at": "2026-09-06T11:41:41.983408+03:30"
@@ -62587,6 +62582,126 @@
         "key": "portal_customer_banners",
         "value": "[]",
         "updated_at": "2026-09-15T11:09:07.562611+03:30"
+      },
+      {
+        "key": "ssl_domain",
+        "value": "test.local",
+        "updated_at": "2026-09-15T19:30:17.323303+03:30"
+      },
+      {
+        "key": "ssl_provider",
+        "value": "self_signed",
+        "updated_at": "2026-09-15T19:30:17.772630+03:30"
+      },
+      {
+        "key": "ssl_provider_name",
+        "value": "Self-Signed (سازگار با Cloudflare Flexible/Full)",
+        "updated_at": "2026-09-15T19:30:18.190964+03:30"
+      },
+      {
+        "key": "ssl_cert_path",
+        "value": "data\\certs\\test.local.crt",
+        "updated_at": "2026-09-15T19:30:18.573830+03:30"
+      },
+      {
+        "key": "ssl_key_path",
+        "value": "data\\certs\\test.local.key",
+        "updated_at": "2026-09-15T19:30:18.886756+03:30"
+      },
+      {
+        "key": "ssl_status",
+        "value": "active",
+        "updated_at": "2026-09-15T19:30:19.403636+03:30"
+      },
+      {
+        "key": "ssl_updated_at",
+        "value": "1789488017.3181238",
+        "updated_at": "2026-09-15T19:30:19.834680+03:30"
+      },
+      {
+        "key": "server_public_ip",
+        "value": "192.187.124.130",
+        "updated_at": "2026-09-15T19:30:25.519568+03:30"
+      },
+      {
+        "key": "dashboard_username",
+        "value": "superadmin_test",
+        "updated_at": "2026-09-15T19:30:26.151606+03:30"
+      },
+      {
+        "key": "dashboard_password",
+        "value": "superpassword123",
+        "updated_at": "2026-09-15T19:30:26.631581+03:30"
+      },
+      {
+        "key": "admin_telegram_id",
+        "value": "777888999",
+        "updated_at": "2026-09-15T19:30:26.903198+03:30"
+      },
+      {
+        "key": "admin_id",
+        "value": "777888999",
+        "updated_at": "2026-09-15T19:30:27.216607+03:30"
+      },
+      {
+        "key": "bot_token",
+        "value": "111222333:TEST_TOKEN",
+        "updated_at": "2026-09-15T19:30:27.574436+03:30"
+      },
+      {
+        "key": "hidify_panel_url",
+        "value": "https://panel.test.org",
+        "updated_at": "2026-09-15T19:30:28.101462+03:30"
+      },
+      {
+        "key": "hiddify_url",
+        "value": "https://panel.test.org",
+        "updated_at": "2026-09-15T19:30:28.650270+03:30"
+      },
+      {
+        "key": "hidify_api_key",
+        "value": "test_key_123",
+        "updated_at": "2026-09-15T19:30:29.009975+03:30"
+      },
+      {
+        "key": "hiddify_api_key",
+        "value": "test_key_123",
+        "updated_at": "2026-09-15T19:30:29.342989+03:30"
+      },
+      {
+        "key": "hidify_proxy_path",
+        "value": "admin_proxy_test",
+        "updated_at": "2026-09-15T19:30:29.758465+03:30"
+      },
+      {
+        "key": "hiddify_proxy_path",
+        "value": "admin_proxy_test",
+        "updated_at": "2026-09-15T19:30:30.215353+03:30"
+      },
+      {
+        "key": "user_proxy_path",
+        "value": "user_test",
+        "updated_at": "2026-09-15T19:30:30.662814+03:30"
+      },
+      {
+        "key": "customer_proxy_path",
+        "value": "user_test",
+        "updated_at": "2026-09-15T19:30:31.190405+03:30"
+      },
+      {
+        "key": "custom_domain",
+        "value": "vpn.testdomain.com",
+        "updated_at": "2026-09-15T19:30:31.618180+03:30"
+      },
+      {
+        "key": "panel_domain",
+        "value": "vpn.testdomain.com",
+        "updated_at": "2026-09-15T19:30:31.922911+03:30"
+      },
+      {
+        "key": "setup_completed",
+        "value": "1",
+        "updated_at": "2026-09-15T19:30:32.212388+03:30"
       }
     ],
     "support_tickets": [
@@ -71762,7 +71877,9 @@
         "reseller_id": null,
         "parent_admin_id": null,
         "bot_access": 0,
-        "logout_notification_enabled": 0
+        "logout_notification_enabled": 0,
+        "bot_access_main": 0,
+        "bot_access_bundle": 0
       },
       {
         "id": 3,
@@ -71782,7 +71899,9 @@
         "reseller_id": null,
         "parent_admin_id": null,
         "bot_access": 0,
-        "logout_notification_enabled": 0
+        "logout_notification_enabled": 0,
+        "bot_access_main": 0,
+        "bot_access_bundle": 0
       },
       {
         "id": 4,
@@ -71802,7 +71921,9 @@
         "reseller_id": null,
         "parent_admin_id": null,
         "bot_access": 0,
-        "logout_notification_enabled": 0
+        "logout_notification_enabled": 0,
+        "bot_access_main": 0,
+        "bot_access_bundle": 0
       },
       {
         "id": 5,
@@ -71822,7 +71943,9 @@
         "reseller_id": null,
         "parent_admin_id": null,
         "bot_access": 0,
-        "logout_notification_enabled": 0
+        "logout_notification_enabled": 0,
+        "bot_access_main": 0,
+        "bot_access_bundle": 0
       },
       {
         "id": 6,
@@ -71842,7 +71965,9 @@
         "reseller_id": null,
         "parent_admin_id": null,
         "bot_access": 0,
-        "logout_notification_enabled": 0
+        "logout_notification_enabled": 0,
+        "bot_access_main": 0,
+        "bot_access_bundle": 0
       },
       {
         "id": 7,
@@ -71862,7 +71987,9 @@
         "reseller_id": 10,
         "parent_admin_id": null,
         "bot_access": 0,
-        "logout_notification_enabled": 0
+        "logout_notification_enabled": 0,
+        "bot_access_main": 0,
+        "bot_access_bundle": 0
       },
       {
         "id": 8,
@@ -71882,7 +72009,9 @@
         "reseller_id": 10,
         "parent_admin_id": null,
         "bot_access": 0,
-        "logout_notification_enabled": 0
+        "logout_notification_enabled": 0,
+        "bot_access_main": 0,
+        "bot_access_bundle": 0
       },
       {
         "id": 9,
@@ -71902,7 +72031,9 @@
         "reseller_id": 10,
         "parent_admin_id": null,
         "bot_access": 0,
-        "logout_notification_enabled": 0
+        "logout_notification_enabled": 0,
+        "bot_access_main": 0,
+        "bot_access_bundle": 0
       },
       {
         "id": 10,
@@ -71922,7 +72053,9 @@
         "reseller_id": null,
         "parent_admin_id": null,
         "bot_access": 0,
-        "logout_notification_enabled": 0
+        "logout_notification_enabled": 0,
+        "bot_access_main": 0,
+        "bot_access_bundle": 0
       }
     ],
     "reseller_bundles": [

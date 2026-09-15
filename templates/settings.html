@@ -19,7 +19,10 @@
     <!-- قرص‌های دسته‌بندی موضوعی -->
     <div class="d-flex align-items-center gap-2 overflow-x-auto pb-2 mb-2 settings-pills-bar" style="scrollbar-width: thin;">
         <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 py-2 text-nowrap settings-category-pill active shadow-sm" data-category="all" onclick="filterSettingsCategory('all', this)">
-            <i class="fas fa-border-all me-1"></i> همه بخش‌ها <span class="badge bg-white bg-opacity-25 ms-1" id="badgeCountAll">16</span>
+            <i class="fas fa-border-all me-1"></i> همه بخش‌ها <span class="badge bg-white bg-opacity-25 ms-1" id="badgeCountAll">17</span>
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-2 text-nowrap settings-category-pill" data-category="infra" onclick="filterSettingsCategory('infra', this)">
+            <i class="fas fa-server me-1 text-primary"></i> متغیرهای زیرساخت و سرور <span class="badge bg-primary-subtle text-primary ms-1">1</span>
         </button>
         <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-2 text-nowrap settings-category-pill" data-category="appearance" onclick="filterSettingsCategory('appearance', this)">
             <i class="fas fa-palette me-1 text-primary"></i> ظاهر و استایل <span class="badge bg-primary-subtle text-primary ms-1">3</span>
@@ -66,6 +69,152 @@
         </div>
     </div>
 </div>
+
+<!-- ═══ بخش ۰: متغیرهای پایه و راه‌اندازی زیرساخت ═══ -->
+<!-- کارت زیرساخت و ارتباطات -->
+<div class="card shadow-sm mb-4 border-0 settings-section-card" data-category="infra" id="card-infrastructure">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center settings-card-header" style="cursor: pointer;" onclick="toggleSettingsCard(this)">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-chevron-down settings-toggle-chevron"></i>
+            <h5 class="mb-0 text-primary fw-bold">
+                <i class="fas fa-server text-primary me-2"></i> متغیرهای پایه و راه‌اندازی زیرساخت
+            </h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2">
+                <i class="fas fa-network-wired me-1"></i> پیکربندی داینامیک بدون ری‌استارت
+            </span>
+        </div>
+    </div>
+    <div class="card-body p-4 settings-card-body">
+        <!-- باکس نمایش آی‌پی سرور و دکمه کپی -->
+        <div class="alert alert-primary bg-primary-subtle border-primary-subtle p-3 rounded-3 mb-4 d-flex justify-content-between align-items-center flex-wrap gap-3">
+            <div>
+                <div class="fw-bold mb-1 text-primary d-flex align-items-center gap-2">
+                    <i class="fas fa-globe fs-5"></i>
+                    <span>آی‌پی عمومی سرور شما (Public Server IP):</span>
+                    <code class="fs-5 bg-white px-2 py-1 rounded border border-primary-subtle text-dark fw-bold font-monospace" id="serverPublicIpDisplay">{{ infrastructure_config.server_public_ip or 'در حال بررسی...' }}</code>
+                </div>
+                <div class="small text-muted">جهت اتصال دامنه اختصاصی به پنل مدیریت یا اشتراک کاربران، در پنل مدیریت دامنه یا Cloudflare یک رکورد <code>A</code> به این آی‌پی تنظیم نمایید.</div>
+            </div>
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-sm btn-primary px-3 rounded-pill" onclick="copyServerIpVal('{{ infrastructure_config.server_public_ip }}')">
+                    <i class="fas fa-copy me-1"></i> کپی آی‌پی
+                </button>
+                <a href="{{ url_for('setup_wizard', force='1') }}" class="btn btn-sm btn-outline-warning px-3 rounded-pill">
+                    <i class="fas fa-rotate me-1"></i> اجرای مجدد ویزارد راه‌اندازی
+                </a>
+            </div>
+        </div>
+
+        <!-- فرم صدور و تمدید SSL خودکار -->
+        <div class="card bg-light border p-3 rounded-3 mb-4">
+            <h6 class="fw-bold mb-2 text-dark d-flex align-items-center gap-2">
+                <i class="fas fa-shield-halved text-success"></i>
+                <span>مدیریت گواهی امنیتی SSL خودکار (Let's Encrypt / ZeroSSL):</span>
+            </h6>
+            <div class="row align-items-center g-3">
+                <div class="col-md-7">
+                    <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                        <span class="small fw-semibold text-muted">وضعیت فعلی SSL:</span>
+                        <span class="badge {% if 'فعال' in infrastructure_config.ssl_status or 'Let' in infrastructure_config.ssl_status %}bg-success{% else %}bg-secondary{% endif %} px-2 py-1">
+                            {{ infrastructure_config.ssl_status }}
+                        </span>
+                    </div>
+                    {% if infrastructure_config.ssl_details %}
+                        <div class="small text-muted font-monospace">{{ infrastructure_config.ssl_details }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-5 text-md-end">
+                    <form action="{{ url_for('settings') }}" method="POST" class="d-inline">
+                        <input type="hidden" name="action" value="request_ssl">
+                        <input type="hidden" name="ssl_domain" value="{{ infrastructure_config.custom_domain }}">
+                        <button type="submit" class="btn btn-success btn-sm px-3 rounded-pill fw-bold shadow-sm" {% if not infrastructure_config.custom_domain %}disabled title="ابتدا نام دامنه را در فرم زیر ذخیره کنید"{% endif %}>
+                            <i class="fas fa-lock me-1"></i> صدور / تمدید خودکار گواهی SSL
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- فرم متغیرهای پایه زیرساخت -->
+        <form action="{{ url_for('settings') }}" method="POST">
+            <input type="hidden" name="action" value="save_infrastructure_settings">
+            
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold small">
+                        <i class="fab fa-telegram text-primary me-1"></i> توکن ربات اصلی تلگرام (BOT_TOKEN):
+                    </label>
+                    <input type="text" name="bot_token" class="form-control font-monospace" value="{{ infrastructure_config.bot_token or '' }}" placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ">
+                    <div class="form-text small text-muted">با ذخیره این متغیر، ربات تلگرام به طور داینامیک فعال یا بروزرسانی می‌شود.</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold small">
+                        <i class="fas fa-id-badge text-warning me-1"></i> شناسه عددی تلگرام مدیر ارشد (ADMIN_ID):
+                    </label>
+                    <input type="number" name="admin_id" class="form-control font-monospace" value="{{ infrastructure_config.admin_id or '' }}" placeholder="مثال: 12345678">
+                    <div class="form-text small text-muted">شناسه تلگرام جهت دسترسی کامل به فرامین ادمین و دریافت اعلان‌ها.</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold small">
+                        <i class="fas fa-link text-info me-1"></i> آدرس پنل هیدیفای (HIDIFY_PANEL_URL):
+                    </label>
+                    <input type="url" name="hidify_panel_url" class="form-control font-monospace" value="{{ infrastructure_config.hidify_panel_url or '' }}" placeholder="https://panel.example.com">
+                    <div class="form-text small text-muted">آدرس کامل دامنه‌ای که پنل Hiddify روی آن مستقر است.</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold small">
+                        <i class="fas fa-key text-danger me-1"></i> کلید وب‌سرویس هیدیفای (HIDIFY_API_KEY):
+                    </label>
+                    <input type="text" name="hidify_api_key" class="form-control font-monospace" value="{{ infrastructure_config.hidify_api_key or '' }}" placeholder="کلید API هیدیفای">
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold small">
+                        <i class="fas fa-route text-secondary me-1"></i> مسیر پروکسی پنل هیدیفای (HIDIFY_PROXY_PATH):
+                    </label>
+                    <input type="text" name="hidify_proxy_path" class="form-control font-monospace" value="{{ infrastructure_config.hidify_proxy_path or '' }}" placeholder="مثال: secret_admin_path">
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold small">
+                        <i class="fas fa-users text-success me-1"></i> مسیر پروکسی مشترکین (USER_PROXY_PATH):
+                    </label>
+                    <input type="text" name="user_proxy_path" class="form-control font-monospace" value="{{ infrastructure_config.user_proxy_path or 'user' }}" placeholder="پیش‌فرض: user">
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold small">
+                        <i class="fas fa-globe text-primary me-1"></i> دامنه اختصاصی متصل به این پنل:
+                    </label>
+                    <input type="text" name="custom_domain" class="form-control font-monospace" value="{{ infrastructure_config.custom_domain or '' }}" placeholder="مثال: vpn.example.com">
+                </div>
+            </div>
+
+            <div class="text-end mt-4">
+                <button type="submit" class="btn btn-primary px-4 py-2 fw-bold rounded-pill shadow-sm">
+                    <i class="fas fa-floppy-disk me-1"></i> ذخیره متغیرهای زیرساخت
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function copyServerIpVal(ip) {
+    if (ip && ip !== 'None' && ip !== '') {
+        navigator.clipboard.writeText(ip).then(() => {
+            alert('آی‌پی سرور (' + ip + ') در حافظه کپی شد.');
+        });
+    } else {
+        alert('آی‌پی سرور هنوز شناسایی نشده است.');
+    }
+}
+</script>
 
 <!-- ═══ بخش ۱: ظاهر و استایل ═══ -->
 <!-- کارت ۱: هویت بصری و برندینگ -->

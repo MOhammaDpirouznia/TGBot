@@ -9,10 +9,13 @@ data/*.db
 data/*.db-wal
 data/*.db-shm
 data/receipts/
+data/certs/
 data/.write_test
 *.db
 *.db-wal
 *.db-shm
+*.key
+*.crt
 
 # ─── تنظیمات، پلن‌ها و فایل بک‌آپ برای ماندگاری در دیپلوی گیت ───
 !data/plans.json

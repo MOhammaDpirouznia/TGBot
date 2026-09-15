@@ -104,11 +104,15 @@
                                         {% endif %}
                                     </div>
                                     {% if m['telegram_id'] %}
-                                        <div class="d-flex align-items-center gap-1 mt-1">
+                                        <div class="d-flex align-items-center gap-1 mt-1 flex-wrap">
                                             <small class="text-muted"><code>ID: {{ m['telegram_id'] }}</code></small>
-                                            {% if m['bot_access'] %}
-                                                <span class="badge bg-success-subtle text-success border border-success" style="font-size: 0.65rem;"><i class="fab fa-telegram me-1"></i>دسترسی ربات</span>
-                                            {% else %}
+                                            {% if m['bot_access_main'] or m['bot_access'] or m['role'] == 'super_admin' %}
+                                                <span class="badge bg-primary-subtle text-primary border border-primary" style="font-size: 0.65rem;" title="مجاز به مدیریت در ربات تلگرام اصلی"><i class="fas fa-robot me-1"></i>ربات مدیریت</span>
+                                            {% endif %}
+                                            {% if m['bot_access_bundle'] or m['role'] == 'super_admin' %}
+                                                <span class="badge bg-info-subtle text-info border border-info" style="font-size: 0.65rem;" title="مجاز به مدیریت در ربات فروش بسته‌های نمایندگی"><i class="fas fa-box-open me-1"></i>ربات بسته‌ها</span>
+                                            {% endif %}
+                                            {% if not (m['bot_access_main'] or m['bot_access'] or m['bot_access_bundle'] or m['role'] == 'super_admin') %}
                                                 <span class="badge bg-light text-muted border" style="font-size: 0.65rem;"><i class="fas fa-ban me-1"></i>بدون ربات</span>
                                             {% endif %}
                                         </div>
@@ -190,12 +194,22 @@
                         <label class="form-label fw-bold">آیدی عددی تلگرام (اختیاری):</label>
                         <input type="number" name="telegram_id" class="form-control font-monospace" placeholder="مثال: 12345678">
                     </div>
-                    <div class="mb-3 form-check form-switch bg-light p-3 rounded border">
-                        <input class="form-check-input ms-0 me-2" type="checkbox" name="bot_access" value="1" id="addBotAccess" checked>
-                        <label class="form-check-label fw-bold" for="addBotAccess">
-                            <i class="fab fa-telegram text-primary me-1"></i> اجازه دسترسی و مدیریت با ربات
-                        </label>
-                        <div class="form-text small text-muted mt-1">در صورت فعال بودن و وارد کردن آیدی عددی تلگرام، این مدیر می‌تواند با نقش خود به ربات تلگرام متصل شده و مدیریت انجام دهد.</div>
+                    <div class="p-3 bg-light rounded border mb-3">
+                        <div class="fw-bold mb-2 text-dark"><i class="fab fa-telegram text-primary me-1"></i> مجوزهای دسترسی به ربات‌های تلگرام:</div>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input ms-0 me-2" type="checkbox" name="bot_access_main" value="1" id="addBotAccessMain" checked>
+                            <label class="form-check-label fw-semibold" for="addBotAccessMain">
+                                🤖 دسترسی به ربات اصلی مدیریت
+                            </label>
+                            <div class="form-text small text-muted ms-4">مدیریت سفارش‌ها، فیش‌ها، اشتراک‌ها، تیکت‌ها و آمار در ربات اصلی.</div>
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input ms-0 me-2" type="checkbox" name="bot_access_bundle" value="1" id="addBotAccessBundle" checked>
+                            <label class="form-check-label fw-semibold" for="addBotAccessBundle">
+                                📦 دسترسی به ربات فروش بسته نمایندگی
+                            </label>
+                            <div class="form-text small text-muted ms-4">تایید فیش‌های شارژ بسته‌ها، مدیریت بسته‌های اعتباری و ارسال پیام به همکاران.</div>
+                        </div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">شماره همراه (اختیاری):</label>
@@ -256,12 +270,22 @@
                         <label class="form-label fw-bold">آیدی عددی تلگرام (اختیاری):</label>
                         <input type="number" name="telegram_id" class="form-control font-monospace" placeholder="مثال: 12345678" value="{{ m['telegram_id'] or '' }}">
                     </div>
-                    <div class="mb-3 form-check form-switch bg-light p-3 rounded border">
-                        <input class="form-check-input ms-0 me-2" type="checkbox" name="bot_access" value="1" id="editBotAccess{{ m['id'] }}" {% if m['bot_access'] %}checked{% endif %}>
-                        <label class="form-check-label fw-bold" for="editBotAccess{{ m['id'] }}">
-                            <i class="fab fa-telegram text-primary me-1"></i> اجازه دسترسی و مدیریت با ربات
-                        </label>
-                        <div class="form-text small text-muted mt-1">در صورت فعال بودن و ثبت آیدی تلگرام، کاربر با همین نقش به ربات مدیریت دسترسی خواهد داشت.</div>
+                    <div class="p-3 bg-light rounded border mb-3">
+                        <div class="fw-bold mb-2 text-dark"><i class="fab fa-telegram text-primary me-1"></i> مجوزهای دسترسی به ربات‌های تلگرام:</div>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input ms-0 me-2" type="checkbox" name="bot_access_main" value="1" id="editBotAccessMain{{ m['id'] }}" {% if m['bot_access_main'] or m['bot_access'] or m['role'] == 'super_admin' %}checked{% endif %}>
+                            <label class="form-check-label fw-semibold" for="editBotAccessMain{{ m['id'] }}">
+                                🤖 دسترسی به ربات اصلی مدیریت
+                            </label>
+                            <div class="form-text small text-muted ms-4">مدیریت سفارش‌ها، فیش‌ها، اشتراک‌ها، تیکت‌ها و آمار در ربات اصلی.</div>
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input ms-0 me-2" type="checkbox" name="bot_access_bundle" value="1" id="editBotAccessBundle{{ m['id'] }}" {% if m['bot_access_bundle'] or m['role'] == 'super_admin' %}checked{% endif %}>
+                            <label class="form-check-label fw-semibold" for="editBotAccessBundle{{ m['id'] }}">
+                                📦 دسترسی به ربات فروش بسته نمایندگی
+                            </label>
+                            <div class="form-text small text-muted ms-4">تایید فیش‌های شارژ بسته‌ها، مدیریت بسته‌های اعتباری و ارسال پیام به همکاران.</div>
+                        </div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">شماره همراه (اختیاری):</label>

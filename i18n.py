@@ -570,9 +570,21 @@ def get_main_keyboard(user_id: int, admin_id: int, lang: str = "fa", webapp_url:
     lang = lang if lang in SUPPORTED_LANGUAGES else "fa"
     keyboard = []
 
+    is_admin_user = (user_id == admin_id)
+    if not is_admin_user:
+        try:
+            from database import db
+            admin_tid_setting = db.get_setting("admin_telegram_id")
+            if admin_tid_setting and str(user_id) == str(admin_tid_setting):
+                is_admin_user = True
+            elif db.get_admin_manager_by_telegram_id(user_id):
+                is_admin_user = True
+        except Exception:
+            pass
+
     try:
         from database import db
-        menu_rows = db.get_bot_menu_keyboard_rows(is_admin=(user_id == admin_id), is_reseller=False)
+        menu_rows = db.get_bot_menu_keyboard_rows(is_admin=is_admin_user, is_reseller=False)
         if menu_rows:
             for row in menu_rows:
                 kb_row = []
@@ -617,7 +629,7 @@ def get_main_keyboard(user_id: int, admin_id: int, lang: str = "fa", webapp_url:
     except Exception:
         pass
 
-    if (user_id == admin_id or is_reseller_user) and not any(any(t("btn_admin", lang) in (getattr(b, "text", "") or "") for b in row) for row in keyboard):
+    if (is_admin_user or is_reseller_user) and not any(any(t("btn_admin", lang) in (getattr(b, "text", "") or "") for b in row) for row in keyboard):
         keyboard.append([KeyboardButton(t("btn_admin", lang))])
 
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)

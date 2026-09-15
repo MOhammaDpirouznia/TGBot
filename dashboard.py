@@ -168,7 +168,7 @@ def get_panel_domain() -> str:
 def is_setup_needed() -> bool:
     """بررسی نیاز به اجرای ویزارد راه‌اندازی اولیه سیستم"""
     try:
-        if db.get_setting("setup_completed") == "1":
+        if str(db.get_setting("setup_completed")) == "1":
             return False
         # اگر مدیر ارشدی در جدول admin_users باشد سیستم تنظیم شده است
         conn = db.get_connection()

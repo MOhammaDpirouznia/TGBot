@@ -57,12 +57,18 @@ ADMIN_ID = int(os.getenv("ADMIN_ID", "0") or 0)
 
 
 def is_user_super_admin(user_id: int) -> bool:
-    """بررسی دسترسی مدیریت ارشد"""
+    """بررسی دسترسی مدیریت ارشد و مدیران دارای مجوز ربات فروش بسته"""
     admin_tid = db.get_setting("admin_telegram_id")
-    if user_id == ADMIN_ID:
+    if ADMIN_ID and user_id == ADMIN_ID:
         return True
     if admin_tid and str(user_id) == str(admin_tid):
         return True
+    try:
+        mgr = db.get_admin_manager_by_telegram_id_for_bundle(user_id)
+        if mgr:
+            return True
+    except Exception as e:
+        logger.error(f"Error checking bundle manager for user {user_id}: {e}")
     return False
 
 
@@ -492,33 +498,38 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-        # ارسال اعلان و عکس فیش به مدیریت
-        admin_tid = int(db.get_setting("admin_telegram_id") or ADMIN_ID)
-        if admin_tid:
-            admin_notif = f"""🚨 **فیش جدید خرید بسته نمایندگی!**
-👤 نماینده: **{reseller.get('name')}** (شناسه: `{r_id}`)
-📦 بسته: **{bundle_title}**
-💰 مبلغ: **{price:,} تومان**
-🔖 سفارش: `{order_id}`
-"""
-            conn = db.get_connection()
-            last_tx = conn.execute("SELECT id FROM transactions WHERE order_id = ?", (order_id,)).fetchone()
-            conn.close()
-            tx_row_id = last_tx[0] if last_tx else 0
+        # ارسال اعلان و عکس فیش به کلیه مدیران مجاز ربات بسته‌ها
+        bundle_admins = db.get_bundle_bot_admins()
+        target_admin_ids = set()
+        if ADMIN_ID:
+            target_admin_ids.add(int(ADMIN_ID))
+        admin_tid_setting = db.get_setting("admin_telegram_id")
+        if admin_tid_setting and str(admin_tid_setting).isdigit():
+            target_admin_ids.add(int(admin_tid_setting))
+        for adm in bundle_admins:
+            if adm.get("telegram_id"):
+                target_admin_ids.add(int(adm["telegram_id"]))
 
-            admin_kb = InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton("✅ تایید و شارژ آنی کیف پول", callback_data=f"adm_b_app_{tx_row_id}"),
-                    InlineKeyboardButton("❌ رد فیش", callback_data=f"adm_b_rej_{tx_row_id}")
-                ]
-            ])
+        conn = db.get_connection()
+        last_tx = conn.execute("SELECT id FROM transactions WHERE order_id = ?", (order_id,)).fetchone()
+        conn.close()
+        tx_row_id = last_tx[0] if last_tx else 0
+
+        admin_kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("✅ تایید و شارژ آنی کیف پول", callback_data=f"adm_b_app_{tx_row_id}"),
+                InlineKeyboardButton("❌ رد فیش", callback_data=f"adm_b_rej_{tx_row_id}")
+            ]
+        ])
+
+        for target_id in target_admin_ids:
             try:
                 if photo_id:
-                    await context.bot.send_photo(chat_id=admin_tid, photo=photo_id, caption=admin_notif, reply_markup=admin_kb, parse_mode="Markdown")
+                    await context.bot.send_photo(chat_id=target_id, photo=photo_id, caption=admin_notif, reply_markup=admin_kb, parse_mode="Markdown")
                 else:
-                    await context.bot.send_message(chat_id=admin_tid, text=admin_notif, reply_markup=admin_kb, parse_mode="Markdown")
+                    await context.bot.send_message(chat_id=target_id, text=admin_notif, reply_markup=admin_kb, parse_mode="Markdown")
             except Exception as e_notif:
-                logger.error(f"Error notifying admin for bundle receipt: {e_notif}")
+                logger.error(f"Error notifying admin {target_id} for bundle receipt: {e_notif}")
         return
 
     # بررسی متن برای اتصال حساب نماینده

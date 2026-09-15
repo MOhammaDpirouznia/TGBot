@@ -8391,19 +8391,24 @@ async def sync_hidify_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 # بررسی متغیرهای محیطی
 def check_env_variables():
-    """بررسی متغیرهای محیطی ضروری"""
+    """بررسی متغیرهای محیطی ضروری با اولویت تنظیمات دیتابیس بدون خروج از برنامه"""
     missing = []
-    if not BOT_TOKEN:
+    token = BOT_TOKEN or db.get_setting("bot_token")
+    h_url = HIDIFY_PANEL_URL or db.get_setting("hidify_panel_url") or db.get_setting("hiddify_url")
+    h_key = HIDIFY_API_KEY or db.get_setting("hidify_api_key") or db.get_setting("hiddify_api_key")
+    h_proxy = HIDIFY_PROXY_PATH or db.get_setting("hidify_proxy_path") or db.get_setting("hiddify_proxy_path")
+
+    if not token:
         missing.append("BOT_TOKEN")
-    if not HIDIFY_PANEL_URL:
+    if not h_url:
         missing.append("HIDIFY_PANEL_URL")
-    if not HIDIFY_API_KEY:
+    if not h_key:
         missing.append("HIDIFY_API_KEY")
-    if not HIDIFY_PROXY_PATH:
+    if not h_proxy:
         missing.append("HIDIFY_PROXY_PATH")
-    
+
     if missing:
-        logger.error(f"Missing environment variables: {', '.join(missing)}")
+        logger.warning(f"⚠️ برخی متغیرهای اولیه در فایل محیطی یا دیتابیس تعریف نشده‌اند: {', '.join(missing)}. پنل مدیریت در حال اجراست و از آدرس /setup قابل تنظیم است.")
         return False
     return True
 
@@ -8492,28 +8497,67 @@ async def dynamic_main_menu_router(update: Update, context: ContextTypes.DEFAULT
 
 
 def main():
-    """راه‌اندازی ربات"""
-    # بررسی متغیرهای محیطی
-    if not check_env_variables():
-        logger.error("Bot cannot start due to missing environment variables!")
-        print("ERROR: Missing environment variables. Check .env file.")
-        return
-    
+    """راه‌اندازی ربات و پنل مدیریت وب"""
+    # ۱. اجرای بلادرنگ پنل مدیریت وب در ترد مستقل (جلوگیری از توقف پروسس و کرش در ریلوی و لینوکس)
+    try:
+        port = int(os.getenv("PORT", 5000))
+        start_dashboard_thread()
+        logger.info(f"Dashboard web server initiated on port {port}")
+    except Exception as e:
+        logger.error(f"Error starting dashboard thread: {e}")
+
     # بازیابی خودکار جامع دیتابیس (جداول، تنظیمات، کارت‌ها و پلن‌ها)
-    restore_result = db.auto_restore_full()
-    if restore_result.get("restored"):
-        logger.info(f"Database restored: {restore_result}")
-    else:
-        logger.info(f"Auto-restore skipped: {restore_result.get('reason', 'unknown')}")
-    
-    # مهاجرت ستون‌های جدید برای دیتابیس‌های قدیمی
-    db.migrate_add_columns()
-    
-    if not ADMIN_ID or ADMIN_ID == 0:
-        logger.warning("ADMIN_ID is not set! Admin features will not work.")
-    
+    try:
+        restore_result = db.auto_restore_full()
+        if restore_result.get("restored"):
+            logger.info(f"Database restored: {restore_result}")
+        else:
+            logger.info(f"Auto-restore skipped: {restore_result.get('reason', 'unknown')}")
+        
+        # مهاجرت ستون‌های جدید برای دیتابیس‌های قدیمی
+        db.migrate_add_columns()
+    except Exception as e:
+        logger.error(f"Error during auto-restore/migration: {e}")
+
+    # بررسی وضعیت متغیرهای محیطی بدون خروج از برنامه
+    check_env_variables()
+
+    # انتظار هوشمند برای BOT_TOKEN در صورت خالی بودن
+    effective_bot_token = BOT_TOKEN or db.get_setting("bot_token")
+    if not effective_bot_token:
+        logger.warning("⏳ BOT_TOKEN هنوز تنظیم نشده است. پنل مدیریت وب فعال است. در انتظار تنظیم توکن از طریق ویزارد /setup یا تنظیمات سیستم...")
+        print("=" * 60)
+        print("⚠️ BOT_TOKEN is missing!")
+        print("Web panel is running! Please open your browser at /setup to configure the bot.")
+        print("=" * 60)
+        while not effective_bot_token:
+            import time
+            time.sleep(3)
+            effective_bot_token = os.getenv("BOT_TOKEN") or db.get_setting("bot_token")
+            if effective_bot_token:
+                logger.info("✅ BOT_TOKEN received! Starting Telegram bot...")
+                break
+
+    # بروزرسانی مشخصات هیدیفای در صورت تنظیم در پنل
+    try:
+        h_url = db.get_setting("hidify_panel_url") or db.get_setting("hiddify_url") or HIDIFY_PANEL_URL
+        h_key = db.get_setting("hidify_api_key") or db.get_setting("hiddify_api_key") or HIDIFY_API_KEY
+        h_proxy = db.get_setting("hidify_proxy_path") or db.get_setting("hiddify_proxy_path") or HIDIFY_PROXY_PATH
+        hidify.update_credentials(h_url, h_key, h_proxy)
+    except Exception as e_h:
+        logger.warning(f"Could not update hidify credentials: {e_h}")
+
+    effective_admin_id = ADMIN_ID
+    if not effective_admin_id or effective_admin_id == 0:
+        try:
+            effective_admin_id = int(db.get_setting("admin_telegram_id") or db.get_setting("admin_id") or 0)
+        except Exception:
+            effective_admin_id = 0
+    if not effective_admin_id or effective_admin_id == 0:
+        logger.warning("ADMIN_ID is not set! Admin features will not work until set via web panel.")
+
     # ساخت Application
-    application = Application.builder().token(BOT_TOKEN).build()
+    application = Application.builder().token(effective_bot_token).build()
 
     # هندلرهای دکمه‌های منوی اصلی (Keyboard) با پشتیبانی از ۴ زبان
     main_menu_handlers = [
@@ -8848,11 +8892,6 @@ def main():
 
     application.post_init = post_init
     application.post_shutdown = post_shutdown
-
-    # شروع خودکار پنل مدیریت وب
-    port = int(os.getenv("PORT", 5000))
-    start_dashboard_thread()
-    logger.info(f"Dashboard auto-started on port {port}")
 
     # اجرا
     logger.info("Bot starting...")
