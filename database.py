@@ -1589,6 +1589,12 @@ class Database:
         except Exception as e:
             logger.warning(f"Error updating support_tickets target_role: {e}")
 
+        # افزودن ستون مانده پس از تراکنش به جدول reseller_transactions
+        try:
+            cursor.execute("ALTER TABLE reseller_transactions ADD COLUMN balance_after INTEGER DEFAULT 0")
+        except Exception:
+            pass
+
         conn.commit()
         conn.close()
         logger.info("Database initialized successfully")
@@ -1604,6 +1610,12 @@ class Database:
             self.repair_customer_debt_records()
         except Exception as e:
             logger.warning(f"Initial repair_customer_debt_records check: {e}")
+
+        # خودترمیمی و محاسبه مانده پس از هر تراکنش در سوابق گذشته نمایندگان
+        try:
+            self.repair_reseller_transactions_balance_after()
+        except Exception as e:
+            logger.warning(f"Initial repair_reseller_transactions_balance_after check: {e}")
 
     def export_full_backup_json(self) -> dict:
         """پشتیبان‌گیری کامل از تمام جداول، کاربران، پلن‌ها، کارت‌ها، تنظیمات، تخفیف‌ها و نمایندگان در قالب یک فایل JSON پایدار"""
@@ -6073,15 +6085,47 @@ class Database:
     # بنرها و اطلاعیه‌های پرتال مشتریان (مختص مدیریت)
     # ═══════════════════════════════════════════════════════════════
 
-    def get_portal_customer_banners(self) -> List[Dict[str, Any]]:
-        """دریافت لیست بنرها و اطلاعیه‌های فعال پرتال وب مشتریان"""
+    def get_portal_customer_banners(self, for_reseller_id: Optional[int] = None, customer_status: Optional[str] = None) -> List[Dict[str, Any]]:
+        """دریافت لیست بنرها و اطلاعیه‌های فعال پرتال وب مشتریان بر اساس نماینده و وضعیت مشتری"""
         try:
             raw = self.get_setting("portal_customer_banners", "[]")
             if isinstance(raw, list):
-                return raw
-            return json.loads(raw)
+                all_banners = raw
+            else:
+                all_banners = json.loads(raw)
         except Exception:
-            return []
+            all_banners = []
+
+        if for_reseller_id is None and customer_status is None:
+            return all_banners
+
+        active = []
+        for b in all_banners:
+            creator_r_id = b.get("creator_reseller_id")
+            # بنرهای ثبت‌شده توسط نماینده اختصاصی
+            if creator_r_id:
+                if for_reseller_id is None or int(for_reseller_id) != int(creator_r_id):
+                    continue
+            else:
+                # بنرهای ثبت‌شده توسط مدیریت
+                target_scope = b.get("target_scope", b.get("target", "all"))
+                if target_scope == "admin_only" and for_reseller_id and int(for_reseller_id) > 0:
+                    continue
+                elif target_scope == "all_resellers" and (not for_reseller_id or int(for_reseller_id) == 0):
+                    continue
+                elif target_scope == "selected_resellers":
+                    allowed_ids = [int(x) for x in b.get("selected_reseller_ids", []) if str(x).isdigit()]
+                    if not for_reseller_id or int(for_reseller_id) not in allowed_ids:
+                        continue
+
+            # فیلتر وضعیت مشتری
+            target_status = b.get("target_status", "all")
+            if target_status and target_status != "all" and customer_status:
+                if customer_status != target_status:
+                    continue
+
+            active.append(b)
+        return active
 
     def save_portal_customer_banners(self, banners: List[Dict[str, Any]]) -> bool:
         """ذخیره لیست بنرهای پرتال مشتریان در تنظیمات دیتابیس"""
@@ -6091,26 +6135,47 @@ class Database:
             logger.error(f"Error saving portal customer banners: {e}")
             return False
 
-    def add_portal_customer_banner(self, title: str, message: str, level: str = "warning", target: str = "all") -> Dict[str, Any]:
-        """افزودن بنر اطلاعیه جدید برای پرتال مشتریان توسط مدیریت"""
+    def add_portal_customer_banner(
+        self,
+        title: str,
+        message: str,
+        level: str = "warning",
+        target_scope: str = "all",
+        selected_reseller_ids: Optional[List[int]] = None,
+        target_status: str = "all",
+        creator_reseller_id: Optional[int] = None,
+        btn_text: Optional[str] = None,
+        btn_url: Optional[str] = None,
+        is_dismissible: bool = True
+    ) -> Dict[str, Any]:
+        """افزودن بنر اطلاعیه جدید برای پرتال مشتریان توسط مدیریت یا نماینده"""
         banners = self.get_portal_customer_banners()
         banner_id = f"pbnr_{int(time.time())}_{random.randint(100, 999)}"
         new_banner = {
             "id": banner_id,
             "title": title,
             "message": message,
-            "level": level,
-            "target": target,
+            "level": level or "warning",
+            "target_scope": target_scope,
+            "selected_reseller_ids": [int(x) for x in selected_reseller_ids if str(x).isdigit()] if selected_reseller_ids else [],
+            "target_status": target_status or "all",
+            "creator_reseller_id": int(creator_reseller_id) if (creator_reseller_id and int(creator_reseller_id) > 0) else None,
+            "btn_text": (btn_text or "").strip(),
+            "btn_url": (btn_url or "").strip(),
+            "is_dismissible": bool(is_dismissible),
             "created_at": get_now_iso()
         }
         banners.append(new_banner)
         self.save_portal_customer_banners(banners)
         return new_banner
 
-    def delete_portal_customer_banner(self, banner_id: str) -> bool:
-        """حذف بنر اطلاعیه پرتال مشتریان"""
+    def delete_portal_customer_banner(self, banner_id: str, creator_reseller_id: Optional[int] = None) -> bool:
+        """حذف بنر اطلاعیه پرتال مشتریان با رعایت سطح دسترسی"""
         banners = self.get_portal_customer_banners()
-        filtered = [b for b in banners if b.get("id") != banner_id]
+        if creator_reseller_id and int(creator_reseller_id) > 0:
+            filtered = [b for b in banners if not (b.get("id") == banner_id and b.get("creator_reseller_id") == int(creator_reseller_id))]
+        else:
+            filtered = [b for b in banners if b.get("id") != banner_id]
         return self.save_portal_customer_banners(filtered)
 
     def get_chat_settings(self) -> dict:
@@ -7165,6 +7230,43 @@ class Database:
         except Exception as e:
             logger.error(f"Error repairing customer debt records: {e}")
             return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+    def repair_reseller_transactions_balance_after(self):
+        """محاسبه و ترمیم مقدار balance_after برای تراکنش‌های پیشین نمایندگان در صورت خالی بودن"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT DISTINCT reseller_id FROM reseller_transactions")
+            reseller_ids = [r[0] for r in cursor.fetchall() if r[0]]
+            for r_id in reseller_ids:
+                cursor.execute("""
+                    SELECT id, type, amount, payment_source, balance_after
+                    FROM reseller_transactions
+                    WHERE reseller_id = ?
+                    ORDER BY id ASC
+                """, (r_id,))
+                rows = cursor.fetchall()
+                needs_update = any(r["balance_after"] is None or r["balance_after"] == 0 for r in rows)
+                if not needs_update:
+                    continue
+
+                running_bal = 0
+                for r in rows:
+                    t_type = r["type"]
+                    amt = int(r["amount"] or 0)
+                    src = str(r["payment_source"] or "").lower()
+                    if t_type in ("deposit", "refund", "topup"):
+                        running_bal += amt
+                    elif t_type in ("purchase", "renewal", "renew") and src != "credit":
+                        running_bal = max(0, running_bal - amt)
+                    elif t_type in ("settlement",):
+                        running_bal = 0
+                    cursor.execute("UPDATE reseller_transactions SET balance_after = ? WHERE id = ?", (running_bal, r["id"]))
+            conn.commit()
+        except Exception as e:
+            logger.warning(f"Error repairing reseller balance_after: {e}")
         finally:
             conn.close()
 
@@ -9501,17 +9603,19 @@ class Database:
         cursor = conn.cursor()
         now = get_now_iso()
         try:
-            cursor.execute("SELECT name, username, telegram_id FROM resellers WHERE id=?", (reseller_id,))
+            cursor.execute("SELECT name, username, telegram_id, balance FROM resellers WHERE id=?", (reseller_id,))
             r_row = cursor.fetchone()
             r_name = r_row["name"] if r_row else f"نماینده #{reseller_id}"
             r_uname = r_row["username"] if r_row else ""
             r_tg = r_row["telegram_id"] if r_row else 0
+            current_bal = int(r_row["balance"] or 0) if r_row else 0
+            new_bal = current_bal + amount
 
-            cursor.execute("UPDATE resellers SET balance = balance + ?, updated_at=? WHERE id=?", (amount, now, reseller_id))
+            cursor.execute("UPDATE resellers SET balance = ?, updated_at=? WHERE id=?", (new_bal, now, reseller_id))
             cursor.execute("""
-                INSERT INTO reseller_transactions (reseller_id, type, amount, description, created_at)
-                VALUES (?, 'deposit', ?, ?, ?)
-            """, (reseller_id, amount, description, now))
+                INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, description, created_at)
+                VALUES (?, 'deposit', ?, ?, ?, ?)
+            """, (reseller_id, amount, new_bal, description, now))
             conn.commit()
 
             # ثبت تراکنش در جدول transactions و ثبت درآمد در حسابداری
@@ -9613,9 +9717,9 @@ class Database:
                 profit_val = selling_val
                 desc_text = f"{description} (شریک سیستم - معاف از هزینه)"
                 cursor.execute("""
-                    INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
-                    VALUES (?, 'purchase', 0, ?, ?, ?, ?, ?, 'partner', ?, ?, ?)
-                """, (reseller_id, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, creator_val, now))
+                    INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
+                    VALUES (?, 'purchase', 0, ?, ?, ?, ?, ?, ?, 'partner', ?, ?, ?)
+                """, (reseller_id, balance, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, creator_val, now))
                 tx_id = cursor.lastrowid
                 conn.commit()
                 return {"success": True, "transaction_id": tx_id, "is_credit": False, "credit_used": 0, "payment_source": "partner"}
@@ -9626,12 +9730,13 @@ class Database:
                         "success": False,
                         "error": f"موجودی کیف پول شما کافی نیست! موجودی: {balance:,} تومان | مبلغ مورد نیاز: {amount:,} تومان"
                     }
-                cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (amount, now, reseller_id))
+                bal_after = balance - amount
+                cursor.execute("UPDATE resellers SET balance = ?, updated_at=? WHERE id=?", (bal_after, now, reseller_id))
                 desc_text = f"{description} (کسر از کیف پول نقدی)"
                 cursor.execute("""
-                    INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
-                    VALUES (?, 'purchase', ?, ?, ?, ?, ?, ?, 'wallet', ?, ?, ?)
-                """, (reseller_id, amount, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, creator_val, now))
+                    INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
+                    VALUES (?, 'purchase', ?, ?, ?, ?, ?, ?, ?, 'wallet', ?, ?, ?)
+                """, (reseller_id, amount, bal_after, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, creator_val, now))
                 tx_id = cursor.lastrowid
                 conn.commit()
                 return {"success": True, "transaction_id": tx_id, "is_credit": False, "credit_used": 0, "payment_source": "wallet"}
@@ -9647,9 +9752,9 @@ class Database:
                 cursor.execute("UPDATE resellers SET credit_debt = credit_debt + ?, updated_at=? WHERE id=?", (amount, now, reseller_id))
                 desc_text = f"{description} (کسر از اعتبار خرید: {amount:,} ت بدهی)"
                 cursor.execute("""
-                    INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
-                    VALUES (?, 'purchase_credit', ?, ?, ?, ?, ?, ?, 'credit', ?, ?, ?)
-                """, (reseller_id, amount, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, creator_val, now))
+                    INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
+                    VALUES (?, 'purchase_credit', ?, ?, ?, ?, ?, ?, ?, 'credit', ?, ?, ?)
+                """, (reseller_id, amount, balance, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, creator_val, now))
                 tx_id = cursor.lastrowid
                 conn.commit()
                 return {"success": True, "transaction_id": tx_id, "is_credit": True, "credit_used": amount, "payment_source": "credit"}
@@ -9664,11 +9769,12 @@ class Database:
                     }
 
                 if balance >= amount:
-                    cursor.execute("UPDATE resellers SET balance = balance - ?, updated_at=? WHERE id=?", (amount, now, reseller_id))
+                    bal_after = balance - amount
+                    cursor.execute("UPDATE resellers SET balance = ?, updated_at=? WHERE id=?", (bal_after, now, reseller_id))
                     cursor.execute("""
-                        INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
-                        VALUES (?, 'purchase', ?, ?, ?, ?, ?, ?, 'wallet', ?, ?, ?)
-                    """, (reseller_id, amount, selling_val, profit_val, plan_name, account_name, description, subscription_id, creator_val, now))
+                        INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
+                        VALUES (?, 'purchase', ?, ?, ?, ?, ?, ?, ?, 'wallet', ?, ?, ?)
+                    """, (reseller_id, amount, bal_after, selling_val, profit_val, plan_name, account_name, description, subscription_id, creator_val, now))
                     tx_id = cursor.lastrowid
                     conn.commit()
                     return {"success": True, "transaction_id": tx_id, "is_credit": False, "credit_used": 0, "payment_source": "wallet"}
@@ -9684,8 +9790,8 @@ class Database:
 
                     desc_text = f"{description} (خرید اعتباری: {credit_used:,} تومان بدهی)"
                     cursor.execute("""
-                        INSERT INTO reseller_transactions (reseller_id, type, amount, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
-                        VALUES (?, 'purchase_credit', ?, ?, ?, ?, ?, ?, 'credit', ?, ?, ?)
+                        INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, selling_price, profit_margin, plan_name, account_name, description, payment_source, subscription_id, created_by, created_at)
+                        VALUES (?, 'purchase_credit', ?, 0, ?, ?, ?, ?, ?, 'credit', ?, ?, ?)
                     """, (reseller_id, amount, selling_val, profit_val, plan_name, account_name, desc_text, subscription_id, creator_val, now))
                     tx_id = cursor.lastrowid
                     conn.commit()
@@ -9707,11 +9813,12 @@ class Database:
                 target_card_id = None
 
         try:
-            cursor.execute("SELECT credit_debt, name, username, telegram_id FROM resellers WHERE id=?", (reseller_id,))
+            cursor.execute("SELECT credit_debt, name, username, telegram_id, balance FROM resellers WHERE id=?", (reseller_id,))
             row = cursor.fetchone()
             if not row:
                 return {"success": False, "error": "نماینده یافت نشد."}
             row = dict(row)
+            res_bal = int(row.get("balance") or 0)
 
             current_debt = row["credit_debt"] or 0
             if amount <= 0:
@@ -9721,9 +9828,9 @@ class Database:
             cursor.execute("UPDATE resellers SET credit_debt = ?, updated_at = ? WHERE id = ?", (new_debt, now, reseller_id))
 
             cursor.execute("""
-                INSERT INTO reseller_transactions (reseller_id, type, amount, plan_name, account_name, description, created_at)
-                VALUES (?, 'settle_debt', ?, 'تسویه بدهی', ?, ?, ?)
-            """, (reseller_id, amount, row["username"], f"{description} توسط {settled_by}", now))
+                INSERT INTO reseller_transactions (reseller_id, type, amount, balance_after, plan_name, account_name, description, created_at)
+                VALUES (?, 'settle_debt', ?, ?, 'تسویه بدهی', ?, ?, ?)
+            """, (reseller_id, amount, res_bal, row["username"], f"{description} توسط {settled_by}", now))
 
             conn.commit()
 
@@ -12898,146 +13005,299 @@ class Database:
             conn.close()
 
     # ═══════════════════════════════════════════════════════════════════════
-    # ارسال پیام هدفمند به دسته‌های کاربری (Broadcast Engine)
+    # ارسال پیام هدفمند و پیشرفته به مخاطبین (Advanced Broadcast Engine)
     # ═══════════════════════════════════════════════════════════════════════
 
-    def get_target_broadcast_users(self, group_type: str = "all", reseller_id: int = None) -> list:
-        """استخراج لیست تلگرام آیدی کاربران بر اساس فیلتر هدفمند و ایزولاسیون نماینده یا مدیریت"""
+    @staticmethod
+    def _clean_broadcast_phone(phone_raw: str) -> Optional[str]:
+        """پاکسازی و استانداردسازی شماره‌های همراه به فرمت 09xxxxxxxxx"""
+        if not phone_raw:
+            return None
+        cleaned = re.sub(r"[^\d+]", "", str(phone_raw).strip())
+        if cleaned.startswith("+98"):
+            cleaned = "0" + cleaned[3:]
+        elif cleaned.startswith("0098"):
+            cleaned = "0" + cleaned[4:]
+        elif cleaned.startswith("98"):
+            cleaned = "0" + cleaned[2:]
+        elif len(cleaned) == 10 and cleaned.startswith("9"):
+            cleaned = "0" + cleaned
+        if len(cleaned) == 11 and cleaned.startswith("09"):
+            return cleaned
+        return None
+
+    def get_advanced_broadcast_recipients(
+        self,
+        channel: str = "telegram",             # "telegram" or "sms"
+        audience_type: str = "customer",       # "customer" or "reseller"
+        scope: str = "all",                    # "all", "admin_only", "all_resellers", "selected_resellers"
+        selected_reseller_ids: Optional[List[int]] = None,
+        target_group: str = "all",             # customer groups or reseller groups
+        current_reseller_id: Optional[int] = None
+    ) -> list:
+        """
+        استخراج لیست یکتای گیرندگان (شناسه تلگرام یا شماره تلفن)
+        با فیلترهای چندسطحی و پیشرفته برای نمایندگان و مشتریان
+        """
         conn = self.get_connection()
         cursor = conn.cursor()
-        
-        is_r = bool(reseller_id and int(reseller_id) > 0)
-        r_cond_sub = f" AND reseller_id = {int(reseller_id)}" if is_r else " AND (reseller_id IS NULL OR reseller_id = 0)"
-        r_cond_usr = f" AND reseller_id = {int(reseller_id)}" if is_r else " AND (reseller_id IS NULL OR reseller_id = 0)"
 
-        if group_type == "all":
-            cursor.execute(f"SELECT DISTINCT telegram_id FROM users WHERE telegram_id IS NOT NULL AND telegram_id != 0{r_cond_usr}")
-        elif group_type == "active":
-            cursor.execute(f"SELECT DISTINCT telegram_id FROM subscriptions WHERE status='active' AND (is_deleted=0 OR is_deleted IS NULL){r_cond_sub}")
-        elif group_type == "expired":
-            cursor.execute(f"""
-                SELECT DISTINCT telegram_id FROM subscriptions 
-                WHERE (status='expired' OR (expire_date IS NOT NULL AND expire_date < datetime('now')))
-                  AND (is_deleted=0 OR is_deleted IS NULL){r_cond_sub}
-            """)
-        elif group_type == "debtors":
-            cursor.execute(f"""
-                SELECT DISTINCT telegram_id FROM subscriptions 
-                WHERE (payment_status='debtor' OR debt_amount > 0)
-                  AND (is_deleted=0 OR is_deleted IS NULL){r_cond_sub}
-            """)
-        elif group_type == "test_only":
-            cursor.execute(f"""
-                SELECT DISTINCT telegram_id FROM subscriptions WHERE plan_id='test' AND (is_deleted=0 OR is_deleted IS NULL){r_cond_sub}
-                EXCEPT
-                SELECT DISTINCT telegram_id FROM subscriptions WHERE plan_id != 'test' AND (is_deleted=0 OR is_deleted IS NULL){r_cond_sub}
-            """)
-        elif group_type == "expiring_soon":
-            cursor.execute(f"""
-                SELECT DISTINCT telegram_id FROM subscriptions 
-                WHERE status='active' AND expire_date IS NOT NULL 
-                  AND expire_date BETWEEN datetime('now') AND datetime('now', '+3 days')
-                  AND (is_deleted=0 OR is_deleted IS NULL){r_cond_sub}
-            """)
-        else:
-            cursor.execute(f"SELECT DISTINCT telegram_id FROM users WHERE telegram_id IS NOT NULL{r_cond_usr}")
-            
-        rows = cursor.fetchall()
-        conn.close()
-        return [r[0] for r in rows if r[0]]
+        # اگر توسط نماینده فراخوانی شده، امنیت ایزولاسیون رعایت شود
+        if current_reseller_id and int(current_reseller_id) > 0:
+            audience_type = "customer"
+            scope = "selected_resellers"
+            selected_reseller_ids = [int(current_reseller_id)]
+
+        if audience_type == "reseller":
+            where = ["status != 'deleted'"]
+            if scope == "selected_resellers" and selected_reseller_ids:
+                ids_str = ",".join(str(int(x)) for x in selected_reseller_ids if str(x).isdigit())
+                if ids_str:
+                    where.append(f"id IN ({ids_str})")
+                else:
+                    conn.close()
+                    return []
+
+            if target_group == "debtors":
+                where.append("(credit_debt > 0 OR balance < 0)")
+            elif target_group == "inactive_bundles":
+                where.append("""
+                    id NOT IN (
+                        SELECT DISTINCT reseller_id FROM transactions 
+                        WHERE (gateway = 'bundle_reseller' OR order_id LIKE 'R_BUNDLE%') 
+                          AND status = 'approved' 
+                          AND created_at >= datetime('now', '-7 days')
+                    )
+                    AND id NOT IN (
+                        SELECT DISTINCT reseller_id FROM reseller_transactions 
+                        WHERE type IN ('bundle', 'purchase') 
+                          AND created_at >= datetime('now', '-7 days')
+                    )
+                """)
+            elif target_group == "inactive_customers":
+                where.append("""
+                    id NOT IN (
+                        SELECT DISTINCT reseller_id FROM subscriptions 
+                        WHERE (is_deleted = 0 OR is_deleted IS NULL) 
+                          AND created_at >= datetime('now', '-7 days')
+                    )
+                """)
+            elif target_group == "low_balance":
+                where.append("balance <= 100000")
+            elif target_group == "pending_tickets":
+                where.append("""
+                    id IN (
+                        SELECT DISTINCT reseller_id FROM support_tickets 
+                        WHERE status IN ('open', 'in_progress', 'pending')
+                    )
+                """)
+            elif target_group == "high_sales":
+                where.append("""
+                    id IN (
+                        SELECT reseller_id FROM (
+                            SELECT reseller_id, COUNT(*) as cnt 
+                            FROM subscriptions 
+                            WHERE reseller_id IS NOT NULL AND reseller_id > 0 
+                              AND (is_deleted = 0 OR is_deleted IS NULL)
+                              AND created_at >= datetime('now', '-30 days')
+                            GROUP BY reseller_id 
+                            ORDER BY cnt DESC LIMIT 10
+                        )
+                    )
+                """)
+
+            q = f"SELECT id, name, username, telegram_id, phone FROM resellers WHERE {' AND '.join(where)}"
+            cursor.execute(q)
+            rows = cursor.fetchall()
+            conn.close()
+
+            if channel == "sms":
+                valid_phones = set()
+                for r in rows:
+                    raw = str(r["phone"] or "").strip()
+                    clean = self._clean_broadcast_phone(raw)
+                    if clean:
+                        valid_phones.add(clean)
+                return sorted(list(valid_phones))
+            else:
+                valid_tg = set()
+                for r in rows:
+                    tid = r["telegram_id"]
+                    if tid and str(tid).isdigit() and int(tid) > 0:
+                        valid_tg.add(int(tid))
+                return sorted(list(valid_tg))
+
+        # ─── مخاطبین: مشتریان (Customers) ───
+        r_cond_sub = ""
+        r_cond_usr = ""
+        if scope == "admin_only":
+            r_cond_sub = " AND (s.reseller_id IS NULL OR s.reseller_id = 0)"
+            r_cond_usr = " AND (u.reseller_id IS NULL OR u.reseller_id = 0)"
+        elif scope == "all_resellers":
+            r_cond_sub = " AND (s.reseller_id > 0)"
+            r_cond_usr = " AND (u.reseller_id > 0)"
+        elif scope == "selected_resellers" and selected_reseller_ids:
+            ids_str = ",".join(str(int(x)) for x in selected_reseller_ids if str(x).isdigit())
+            if ids_str:
+                r_cond_sub = f" AND s.reseller_id IN ({ids_str})"
+                r_cond_usr = f" AND u.reseller_id IN ({ids_str})"
+            else:
+                conn.close()
+                return []
+
+        # شرایط وضعیت اشتراک مشتریان
+        sub_cond = ["(s.is_deleted = 0 OR s.is_deleted IS NULL)"]
+        if target_group == "active":
+            sub_cond.append("s.status = 'active' AND (s.expire_date IS NULL OR s.expire_date >= datetime('now'))")
+        elif target_group == "expiring_soon":
+            sub_cond.append("s.status = 'active' AND s.expire_date IS NOT NULL AND s.expire_date BETWEEN datetime('now') AND datetime('now', '+3 days')")
+        elif target_group in ("expired_3days", "expired_recent"):
+            sub_cond.append("(s.status = 'expired' OR (s.expire_date IS NOT NULL AND s.expire_date < datetime('now'))) AND s.expire_date >= datetime('now', '-3 days')")
+        elif target_group in ("expired_all", "expired"):
+            sub_cond.append("(s.status = 'expired' OR (s.expire_date IS NOT NULL AND s.expire_date < datetime('now')))")
+        elif target_group == "debtors":
+            sub_cond.append("(s.payment_status IN ('unpaid', 'debtor') OR s.debt_amount > 0)")
+        elif target_group == "vip":
+            sub_cond.append("s.is_vip = 1")
+        elif target_group == "no_traffic":
+            sub_cond.append("s.data_limit > 0 AND (s.data_limit - s.data_used) <= 1.0")
+        elif target_group == "online":
+            sub_cond.append("s.is_online = 1")
+        elif target_group == "test_only":
+            sub_cond.append("s.plan_id = 'test'")
+
+        sub_where_str = " AND ".join(sub_cond)
+
+        if channel == "sms":
+            if target_group == "all":
+                query = f"""
+                    SELECT DISTINCT u.phone_number FROM users u 
+                    WHERE u.phone_number IS NOT NULL AND u.phone_number != '' {r_cond_usr}
+                    UNION
+                    SELECT DISTINCT s.phone_number FROM subscriptions s 
+                    WHERE s.phone_number IS NOT NULL AND s.phone_number != '' AND (s.is_deleted = 0 OR s.is_deleted IS NULL) {r_cond_sub}
+                """
+            elif target_group == "test_only":
+                query = f"""
+                    SELECT DISTINCT COALESCE(s.phone_number, u.phone_number) 
+                    FROM subscriptions s
+                    LEFT JOIN users u ON s.telegram_id = u.telegram_id
+                    WHERE s.plan_id='test' AND (s.is_deleted = 0 OR s.is_deleted IS NULL) {r_cond_sub}
+                    EXCEPT
+                    SELECT DISTINCT COALESCE(s2.phone_number, u2.phone_number) 
+                    FROM subscriptions s2
+                    LEFT JOIN users u2 ON s2.telegram_id = u2.telegram_id
+                    WHERE s2.plan_id != 'test' AND (s2.is_deleted = 0 OR s2.is_deleted IS NULL) {r_cond_sub}
+                """
+            else:
+                query = f"""
+                    SELECT DISTINCT COALESCE(s.phone_number, u.phone_number) 
+                    FROM subscriptions s
+                    LEFT JOIN users u ON s.telegram_id = u.telegram_id
+                    WHERE {sub_where_str} {r_cond_sub}
+                      AND (s.phone_number IS NOT NULL OR u.phone_number IS NOT NULL)
+                """
+
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            conn.close()
+
+            valid_phones = set()
+            for r in rows:
+                raw = str(r[0] or "").strip()
+                clean = self._clean_broadcast_phone(raw)
+                if clean:
+                    valid_phones.add(clean)
+            return sorted(list(valid_phones))
+
+        else: # channel == "telegram"
+            if target_group == "all":
+                query = f"""
+                    SELECT DISTINCT telegram_id FROM users 
+                    WHERE telegram_id IS NOT NULL AND telegram_id != 0 {r_cond_usr}
+                    UNION
+                    SELECT DISTINCT telegram_id FROM subscriptions s 
+                    WHERE telegram_id IS NOT NULL AND telegram_id != 0 AND (s.is_deleted = 0 OR s.is_deleted IS NULL) {r_cond_sub}
+                """
+            elif target_group == "test_only":
+                query = f"""
+                    SELECT DISTINCT telegram_id FROM subscriptions s 
+                    WHERE plan_id='test' AND telegram_id IS NOT NULL AND telegram_id != 0 AND (is_deleted=0 OR is_deleted IS NULL) {r_cond_sub}
+                    EXCEPT
+                    SELECT DISTINCT telegram_id FROM subscriptions s 
+                    WHERE plan_id != 'test' AND telegram_id IS NOT NULL AND telegram_id != 0 AND (is_deleted=0 OR is_deleted IS NULL) {r_cond_sub}
+                """
+            else:
+                query = f"""
+                    SELECT DISTINCT s.telegram_id 
+                    FROM subscriptions s
+                    WHERE {sub_where_str} {r_cond_sub}
+                      AND s.telegram_id IS NOT NULL AND s.telegram_id != 0
+                """
+
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            conn.close()
+
+            valid_tg = set()
+            for r in rows:
+                tid = r[0]
+                if tid and str(tid).isdigit() and int(tid) > 0:
+                    valid_tg.add(int(tid))
+            return sorted(list(valid_tg))
+
+    def get_advanced_broadcast_counts(
+        self,
+        audience_type: str = "customer",
+        scope: str = "all",
+        selected_reseller_ids: Optional[List[int]] = None,
+        target_group: str = "all",
+        current_reseller_id: Optional[int] = None
+    ) -> Dict[str, int]:
+        """محاسبه و دریافت سریع تعداد مخاطبین دارای شناسه تلگرام و شماره همراه برای پیش‌نمایش آنی"""
+        tg_recipients = self.get_advanced_broadcast_recipients(
+            channel="telegram",
+            audience_type=audience_type,
+            scope=scope,
+            selected_reseller_ids=selected_reseller_ids,
+            target_group=target_group,
+            current_reseller_id=current_reseller_id
+        )
+        sms_recipients = self.get_advanced_broadcast_recipients(
+            channel="sms",
+            audience_type=audience_type,
+            scope=scope,
+            selected_reseller_ids=selected_reseller_ids,
+            target_group=target_group,
+            current_reseller_id=current_reseller_id
+        )
+        return {
+            "telegram_count": len(tg_recipients),
+            "sms_count": len(sms_recipients),
+            "total_count": len(tg_recipients) if len(tg_recipients) > 0 else len(sms_recipients)
+        }
+
+    def get_target_broadcast_users(self, group_type: str = "all", reseller_id: int = None) -> list:
+        """سازگاری با کدهای پیشین: استخراج لیست کاربران تلگرام"""
+        return self.get_advanced_broadcast_recipients(
+            channel="telegram",
+            audience_type="customer",
+            scope="selected_resellers" if (reseller_id and int(reseller_id) > 0) else "admin_only",
+            selected_reseller_ids=[int(reseller_id)] if (reseller_id and int(reseller_id) > 0) else None,
+            target_group=group_type,
+            current_reseller_id=reseller_id
+        )
 
     def get_target_broadcast_phones(self, group_type: str = "all", reseller_id: int = None) -> list:
-        """استخراج لیست یکتای شماره تلفن‌های معتبر کاربران بر اساس فیلتر هدفمند برای ارسال پیامک"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        is_r = bool(reseller_id and int(reseller_id) > 0)
-        r_cond_sub = f" AND s.reseller_id = {int(reseller_id)}" if is_r else " AND (s.reseller_id IS NULL OR s.reseller_id = 0)"
-        r_cond_usr = f" AND u.reseller_id = {int(reseller_id)}" if is_r else " AND (u.reseller_id IS NULL OR u.reseller_id = 0)"
-
-        if group_type == "all":
-            query = f"""
-                SELECT DISTINCT u.phone_number FROM users u 
-                WHERE u.phone_number IS NOT NULL AND u.phone_number != '' {r_cond_usr}
-                UNION
-                SELECT DISTINCT s.phone_number FROM subscriptions s 
-                WHERE s.phone_number IS NOT NULL AND s.phone_number != '' AND (s.is_deleted = 0 OR s.is_deleted IS NULL) {r_cond_sub}
-            """
-        elif group_type == "active":
-            query = f"""
-                SELECT DISTINCT COALESCE(s.phone_number, u.phone_number) 
-                FROM subscriptions s
-                LEFT JOIN users u ON s.telegram_id = u.telegram_id
-                WHERE s.status='active' AND (s.is_deleted = 0 OR s.is_deleted IS NULL)
-                  AND (s.phone_number IS NOT NULL OR u.phone_number IS NOT NULL) {r_cond_sub}
-            """
-        elif group_type == "expiring_soon":
-            query = f"""
-                SELECT DISTINCT COALESCE(s.phone_number, u.phone_number) 
-                FROM subscriptions s
-                LEFT JOIN users u ON s.telegram_id = u.telegram_id
-                WHERE s.status='active' AND (s.is_deleted = 0 OR s.is_deleted IS NULL)
-                  AND s.expire_date IS NOT NULL 
-                  AND s.expire_date BETWEEN datetime('now') AND datetime('now', '+3 days')
-                  AND (s.phone_number IS NOT NULL OR u.phone_number IS NOT NULL) {r_cond_sub}
-            """
-        elif group_type == "expired":
-            query = f"""
-                SELECT DISTINCT COALESCE(s.phone_number, u.phone_number) 
-                FROM subscriptions s
-                LEFT JOIN users u ON s.telegram_id = u.telegram_id
-                WHERE (s.status='expired' OR (s.expire_date IS NOT NULL AND s.expire_date < datetime('now')))
-                  AND (s.is_deleted = 0 OR s.is_deleted IS NULL)
-                  AND (s.phone_number IS NOT NULL OR u.phone_number IS NOT NULL) {r_cond_sub}
-            """
-        elif group_type == "debtors":
-            query = f"""
-                SELECT DISTINCT COALESCE(s.phone_number, u.phone_number) 
-                FROM subscriptions s
-                LEFT JOIN users u ON s.telegram_id = u.telegram_id
-                WHERE (s.payment_status = 'debtor' OR s.debt_amount > 0)
-                  AND (s.is_deleted = 0 OR s.is_deleted IS NULL)
-                  AND (s.phone_number IS NOT NULL OR u.phone_number IS NOT NULL) {r_cond_sub}
-            """
-        elif group_type == "test_only":
-            query = f"""
-                SELECT DISTINCT COALESCE(s.phone_number, u.phone_number) 
-                FROM subscriptions s
-                LEFT JOIN users u ON s.telegram_id = u.telegram_id
-                WHERE s.plan_id='test' AND (s.is_deleted = 0 OR s.is_deleted IS NULL) {r_cond_sub}
-                EXCEPT
-                SELECT DISTINCT COALESCE(s2.phone_number, u2.phone_number) 
-                FROM subscriptions s2
-                LEFT JOIN users u2 ON s2.telegram_id = u2.telegram_id
-                WHERE s2.plan_id != 'test' AND (s2.is_deleted = 0 OR s2.is_deleted IS NULL) {r_cond_sub}
-            """
-        else:
-            query = f"""
-                SELECT DISTINCT u.phone_number FROM users u 
-                WHERE u.phone_number IS NOT NULL AND u.phone_number != '' {r_cond_usr}
-            """
-
-        cursor.execute(query)
-        rows = cursor.fetchall()
-        conn.close()
-
-        valid_phones = set()
-        for r in rows:
-            raw = str(r[0] or "").strip()
-            if raw:
-                # پاکسازی و فرمت شماره ایران
-                clean = re.sub(r"[^\d+]", "", raw)
-                if clean.startswith("+98"):
-                    clean = "0" + clean[3:]
-                elif clean.startswith("0098"):
-                    clean = "0" + clean[4:]
-                elif clean.startswith("98"):
-                    clean = "0" + clean[2:]
-                elif len(clean) == 10 and clean.startswith("9"):
-                    clean = "0" + clean
-                if len(clean) == 11 and clean.startswith("09"):
-                    valid_phones.add(clean)
-        return sorted(list(valid_phones))
+        """سازگاری با کدهای پیشین: استخراج لیست شماره‌های همراه"""
+        return self.get_advanced_broadcast_recipients(
+            channel="sms",
+            audience_type="customer",
+            scope="selected_resellers" if (reseller_id and int(reseller_id) > 0) else "admin_only",
+            selected_reseller_ids=[int(reseller_id)] if (reseller_id and int(reseller_id) > 0) else None,
+            target_group=group_type,
+            current_reseller_id=reseller_id
+        )
 
     # ═══════════════════════════════════════════════════════════════════════
     # مدیریت کارت‌های بانکی مقصد (Smart Card Rotator)

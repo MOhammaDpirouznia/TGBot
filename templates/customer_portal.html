@@ -2189,6 +2189,35 @@
         {% endif %}
     {% endwith %}
 
+    <!-- بنرهای سراسری و اطلاعیه‌های پرتال وب مشتریان -->
+    {% if portal_banners %}
+        <div class="portal-banners-container mb-4 d-flex flex-column gap-2">
+            {% for bnr in portal_banners %}
+                <div class="alert alert-{{ bnr.level or 'info' }} {% if bnr.is_dismissible != false %}alert-dismissible{% endif %} fade show shadow-sm border-0 rounded-3 p-3 mb-0" role="alert" style="backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
+                    <div class="d-flex align-items-start gap-2">
+                        <i class="fas fa-{% if bnr.level == 'danger' %}circle-exclamation text-danger{% elif bnr.level == 'warning' %}triangle-exclamation text-warning{% elif bnr.level == 'success' %}circle-check text-success{% elif bnr.level == 'purple' or bnr.level == 'primary' %}star text-primary{% else %}bullhorn text-info{% endif %} fs-5 mt-1 flex-shrink-0"></i>
+                        <div class="flex-grow-1">
+                            {% if bnr.title %}
+                                <div class="fw-bold mb-1 fs-6">{{ bnr.title }}</div>
+                            {% endif %}
+                            <div class="small" style="white-space: pre-line; line-height: 1.6;">{{ bnr.message }}</div>
+                            {% if bnr.btn_text and bnr.btn_url %}
+                                <div class="mt-2">
+                                    <a href="{{ bnr.btn_url }}" target="_blank" class="btn btn-sm btn-{{ bnr.level if bnr.level in ['primary', 'success', 'danger', 'warning', 'info'] else 'primary' }} text-white px-3 py-1 rounded-pill fw-bold shadow-sm">
+                                        {{ bnr.btn_text }} <i class="fas fa-arrow-left ms-1"></i>
+                                    </a>
+                                </div>
+                            {% endif %}
+                        </div>
+                        {% if bnr.is_dismissible != false %}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="بستن"></button>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
     <!-- ═══════════════════════════════════════════════════════════════════════ -->
     <!-- رندر طرح‌بندی‌های اختصاصی پورتال مشتری بر اساس تنظیمات (Portal Layouts) -->
     <!-- ═══════════════════════════════════════════════════════════════════════ -->

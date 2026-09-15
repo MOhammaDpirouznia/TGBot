@@ -68,8 +68,12 @@ def get_reseller_banners() -> List[Dict[str, Any]]:
     reseller_id = session.get("reseller_id")
     result = []
     for b in RESELLER_PANEL_BANNERS:
+        t_ids = b.get("target_reseller_ids")
         t_id = b.get("target_reseller_id")
-        if t_id is None or (reseller_id and int(t_id) == int(reseller_id)):
+        if t_ids is not None:
+            if not t_ids or (reseller_id and int(reseller_id) in [int(x) for x in t_ids]):
+                result.append(b)
+        elif t_id is None or (reseller_id and int(t_id) == int(reseller_id)):
             result.append(b)
     return result
 
@@ -8861,72 +8865,157 @@ def export_accounting():
 # بخش پیام همگانی و برودکست (Targeted Broadcast Engine)
 # ═══════════════════════════════════════════════════════════════════════
 
+@app.route("/api/broadcast/preview-count", methods=["POST"])
+def api_broadcast_preview_count():
+    """استعلام آنی و زنده تعداد مخاطبان تلگرام و شماره‌های همراه بر اساس فیلترهای انتخابی"""
+    is_admin = bool(session.get("logged_in") and session.get("role") == "admin")
+    reseller_id = session.get("reseller_id")
+    is_reseller = bool(session.get("role") == "reseller" and reseller_id is not None)
+
+    if not is_admin and not is_reseller:
+        return jsonify({"success": False, "error": "دسترسی غیرمجاز"}), 403
+
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    if is_reseller:
+        # نماینده فقط به مشتریان اختصاصی خودش دسترسی دارد
+        audience_type = "customer"
+        scope = "selected_resellers"
+        selected_reseller_ids = [int(reseller_id)]
+        current_reseller_id = int(reseller_id)
+        target_group = payload.get("target_group", "all")
+    else:
+        # پنل مدیریت
+        audience_type = payload.get("audience_type", "customer")
+        scope = payload.get("scope", "all")
+        raw_resellers = payload.get("selected_resellers") or payload.get("selected_reseller_ids")
+        if isinstance(raw_resellers, list):
+            selected_reseller_ids = [int(x) for x in raw_resellers if str(x).isdigit()]
+        elif isinstance(raw_resellers, str) and raw_resellers.strip():
+            selected_reseller_ids = [int(x) for x in raw_resellers.split(",") if x.strip().isdigit()]
+        else:
+            selected_reseller_ids = None
+        target_group = payload.get("target_group", "all")
+        current_reseller_id = None
+
+    counts = db.get_advanced_broadcast_counts(
+        audience_type=audience_type,
+        scope=scope,
+        selected_reseller_ids=selected_reseller_ids,
+        target_group=target_group,
+        current_reseller_id=current_reseller_id
+    )
+
+    return jsonify({
+        "success": True,
+        "audience_type": audience_type,
+        "scope": scope,
+        "target_group": target_group,
+        "telegram_count": counts["telegram_count"],
+        "sms_count": counts["sms_count"],
+        "total_count": counts["total_count"]
+    })
+
+
 @app.route("/broadcast", methods=["GET", "POST"])
 @permission_required("broadcast")
 def broadcast():
-    """ارسال پیام انبوه هدفمند به کاربران تلگرام و بنر اطلاعیه اختصاصی پنل نمایندگان"""
+    """ارسال پیام انبوه هدفمند و مدیریت بنرهای اطلاعیه پنل نمایندگان و پرتال مشتریان"""
     global RESELLER_PANEL_BANNERS
     if request.method == "POST":
         action_type = request.form.get("action_type")
+
+        # ۱) ایجاد بنر در بالای پنل نمایندگان
         if action_type == "reseller_banner":
-            target = request.form.get("target_reseller", "all")
-            banner_message = request.form.get("banner_message", "").strip()
+            scope = request.form.get("banner_target_scope", "all")
+            selected_reseller_ids = [int(x) for x in request.form.getlist("selected_resellers") if str(x).isdigit()]
             banner_title = request.form.get("banner_title", "").strip()
-            banner_level = request.form.get("banner_level", "info")
+            banner_message = request.form.get("banner_message", "").strip()
+            banner_level = request.form.get("banner_level", "warning")
+            btn_text = request.form.get("btn_text", "").strip()
+            btn_url = request.form.get("btn_url", "").strip()
+
             if not banner_message:
                 flash("متن بنر اطلاعیه نمی‌تواند خالی باشد.", "danger")
                 return redirect(url_for("broadcast"))
 
-            target_id = None
             target_name = "همه نمایندگان"
-            if target != "all" and target.isdigit():
-                target_id = int(target)
-                r_info = db.get_reseller(target_id)
-                target_name = (r_info.get("name") if r_info else None) or f"نماینده #{target_id}"
+            target_ids = None
+            if scope == "selected_resellers" and selected_reseller_ids:
+                target_ids = selected_reseller_ids
+                if len(selected_reseller_ids) == 1:
+                    r_info = db.get_reseller(selected_reseller_ids[0])
+                    target_name = (r_info.get("name") if r_info else None) or f"نماینده #{selected_reseller_ids[0]}"
+                else:
+                    target_name = f"{len(selected_reseller_ids)} نماینده انتخابی"
 
             banner_id = f"bnr_{int(time.time())}_{random.randint(100, 999)}"
             RESELLER_PANEL_BANNERS.append({
                 "id": banner_id,
-                "target_reseller_id": target_id,
+                "target_reseller_id": target_ids[0] if (target_ids and len(target_ids) == 1) else None,
+                "target_reseller_ids": target_ids,
                 "target_name": target_name,
                 "title": banner_title,
                 "message": banner_message,
                 "level": banner_level,
+                "btn_text": btn_text,
+                "btn_url": btn_url,
                 "created_at": get_now_shamsi()
             })
             flash(f"✅ بنر اطلاعیه با موفقیت برای «{target_name}» در پنل نمایندگان فعال گردید.", "success")
             return redirect(url_for("broadcast"))
 
+        # ۲) حذف بنر پنل نمایندگان
         elif action_type == "delete_banner":
             banner_id = request.form.get("banner_id")
             RESELLER_PANEL_BANNERS = [b for b in RESELLER_PANEL_BANNERS if b.get("id") != banner_id]
             flash("🗑️ بنر اطلاعیه با موفقیت از پنل نمایندگان حذف گردید.", "info")
             return redirect(url_for("broadcast"))
 
+        # ۳) ایجاد بنر در پرتال وب مشتریان
         elif action_type == "portal_customer_banner":
             banner_title = request.form.get("banner_title", "").strip()
             banner_message = request.form.get("banner_message", "").strip()
             banner_level = request.form.get("banner_level", "info")
+            target_scope = request.form.get("banner_target_scope", "all")
+            selected_reseller_ids = [int(x) for x in request.form.getlist("selected_resellers") if str(x).isdigit()]
+            target_status = request.form.get("banner_target_status", "all")
+            btn_text = request.form.get("btn_text", "").strip()
+            btn_url = request.form.get("btn_url", "").strip()
+            is_dismissible = bool(request.form.get("is_dismissible", "1") == "1")
+
             if not banner_message:
-                flash("متن بنر اطلاعیه پورتال مشتریان نمی‌تواند خالی باشد.", "danger")
+                flash("متن بنر اطلاعیه پرتال مشتریان نمی‌تواند خالی باشد.", "danger")
                 return redirect(url_for("broadcast"))
+
             db.add_portal_customer_banner(
                 title=banner_title,
                 message=banner_message,
-                level=banner_level
+                level=banner_level,
+                creator_reseller_id=None,
+                target_scope=target_scope,
+                selected_reseller_ids=selected_reseller_ids if selected_reseller_ids else None,
+                target_status=target_status,
+                btn_text=btn_text,
+                btn_url=btn_url,
+                is_dismissible=is_dismissible
             )
-            flash("✅ بنر اطلاعیه پورتال مشتریان با موفقیت ایجاد و فعال شد.", "success")
+            flash("✅ بنر اطلاعیه پرتال وب مشتریان با موفقیت ثبت و فعال شد.", "success")
             return redirect(url_for("broadcast"))
 
+        # ۴) حذف بنر پرتال مشتریان
         elif action_type == "delete_portal_banner":
             banner_id = request.form.get("banner_id")
             if banner_id:
                 db.delete_portal_customer_banner(banner_id)
-                flash("🗑️ بنر اطلاعیه پورتال مشتریان با موفقیت حذف گردید.", "info")
+                flash("🗑️ بنر اطلاعیه پرتال مشتریان با موفقیت حذف گردید.", "info")
             return redirect(url_for("broadcast"))
 
-        # ارسال پیام به کاربران (تلگرام یا پیامک)
+        # ۵) ارسال پیام مستقیم (تلگرام یا پیامک)
         channel = request.form.get("channel", "telegram")
+        audience_type = request.form.get("audience_type", "customer")
+        scope = request.form.get("scope", "all")
+        selected_resellers = [int(x) for x in request.form.getlist("selected_resellers") if str(x).isdigit()]
         target_group = request.form.get("target_group", "all")
         message_text = request.form.get("message", "").strip()
 
@@ -8934,45 +9023,47 @@ def broadcast():
             flash("متن پیام نمی‌تواند خالی باشد!", "danger")
             return redirect(url_for("broadcast"))
 
-        if channel == "sms":
-            phones = db.get_target_broadcast_phones(target_group)
-            if not phones:
-                flash("هیچ شماره همراهی در گروه هدف انتخاب شده یافت نشد.", "warning")
-                return redirect(url_for("broadcast"))
+        recipients = db.get_advanced_broadcast_recipients(
+            channel=channel,
+            audience_type=audience_type,
+            scope=scope,
+            selected_reseller_ids=selected_resellers if selected_resellers else None,
+            target_group=target_group,
+            current_reseller_id=None
+        )
 
-            success_count = 0
-            fail_count = 0
-            for ph in phones:
+        if not recipients:
+            target_label = "شماره همراهی" if channel == "sms" else "کاربری"
+            flash(f"هیچ {target_label} در گروه هدف و دامنه انتخابی یافت نشد.", "warning")
+            return redirect(url_for("broadcast"))
+
+        success_count = 0
+        fail_count = 0
+
+        if channel == "sms":
+            for ph in recipients:
                 ok, res_msg = send_sms(receptor=ph, message=message_text, db_instance=db)
                 if ok:
                     success_count += 1
                 else:
                     fail_count += 1
-
-            flash(f"پیامک به {success_count} شماره همراه با موفقیت ارسال شد. (خطا: {fail_count})", "success")
+            flash(f"پیامک به {success_count} شماره همراه با موفقیت ارسال شد. (خطا: {fail_count})", "success" if success_count > 0 else "danger")
             return redirect(url_for("broadcast"))
-        else:
-            user_ids = db.get_target_broadcast_users(target_group)
-            if not user_ids:
-                flash("هیچ کاربری در گروه هدف انتخاب شده یافت نشد.", "warning")
-                return redirect(url_for("broadcast"))
-
+        else: # telegram
             btn_text = request.form.get("btn_text", "").strip()
             btn_url = request.form.get("btn_url", "").strip()
             reply_markup = None
             if btn_text and btn_url:
                 reply_markup = {"inline_keyboard": [[{"text": btn_text, "url": btn_url}]]}
 
-            success_count = 0
-            fail_count = 0
-            for uid in user_ids:
+            for uid in recipients:
                 ok = send_telegram_msg(uid, message_text, reply_markup=reply_markup)
                 if ok:
                     success_count += 1
                 else:
                     fail_count += 1
 
-            flash(f"پیام به {success_count} کاربر تلگرام ارسال شد. (خطا: {fail_count})", "success")
+            flash(f"پیام به {success_count} مخاطب تلگرام ارسال شد. (خطا: {fail_count})", "success" if success_count > 0 else "danger")
             return redirect(url_for("broadcast"))
 
     resellers = db.get_all_resellers()
@@ -8988,9 +9079,49 @@ def broadcast():
 @app.route("/reseller/broadcast", methods=["GET", "POST"])
 @reseller_required
 def reseller_broadcast():
-    """ارسال پیام همگانی به مشتریان نماینده (از طریق پیامک اختصاصی یا ربات اختصاصی نماینده)"""
+    """ارسال پیام همگانی به مشتریان نماینده و مدیریت بنرهای پرتال وب مشتریان خود نماینده"""
     reseller_id = session.get("reseller_id")
     if request.method == "POST":
+        action_type = request.form.get("action_type")
+
+        # ۱) ایجاد بنر اختصاصی در پرتال وب مشتریان این نماینده
+        if action_type == "portal_customer_banner":
+            banner_title = request.form.get("banner_title", "").strip()
+            banner_message = request.form.get("banner_message", "").strip()
+            banner_level = request.form.get("banner_level", "info")
+            target_status = request.form.get("banner_target_status", "all")
+            btn_text = request.form.get("btn_text", "").strip()
+            btn_url = request.form.get("btn_url", "").strip()
+            is_dismissible = bool(request.form.get("is_dismissible", "1") == "1")
+
+            if not banner_message:
+                flash("متن بنر اطلاعیه پرتال مشتریان نمی‌تواند خالی باشد.", "danger")
+                return redirect(url_for("reseller_broadcast"))
+
+            db.add_portal_customer_banner(
+                title=banner_title,
+                message=banner_message,
+                level=banner_level,
+                creator_reseller_id=reseller_id,
+                target_scope="selected_resellers",
+                selected_reseller_ids=[reseller_id],
+                target_status=target_status,
+                btn_text=btn_text,
+                btn_url=btn_url,
+                is_dismissible=is_dismissible
+            )
+            flash("✅ بنر اطلاعیه با موفقیت در پرتال وب مشتریان شما فعال شد.", "success")
+            return redirect(url_for("reseller_broadcast"))
+
+        # ۲) حذف بنر پرتال مشتریان توسط نماینده
+        elif action_type == "delete_portal_banner":
+            banner_id = request.form.get("banner_id")
+            if banner_id:
+                db.delete_portal_customer_banner(banner_id, creator_reseller_id=reseller_id)
+                flash("🗑️ بنر اطلاعیه پرتال مشتریان حذف گردید.", "info")
+            return redirect(url_for("reseller_broadcast"))
+
+        # ۳) ارسال پیام به مشتریان نماینده (تلگرام یا پیامک)
         channel = request.form.get("channel", "telegram")
         target_group = request.form.get("target_group", "all")
         message_text = request.form.get("message", "").strip()
@@ -8999,29 +9130,34 @@ def reseller_broadcast():
             flash("متن پیام نمی‌تواند خالی باشد!", "danger")
             return redirect(url_for("reseller_broadcast"))
 
-        if channel == "sms":
-            phones = db.get_target_broadcast_phones(target_group, reseller_id=reseller_id)
-            if not phones:
-                flash("هیچ شماره همراهی در میان مشتریان شما در این گروه یافت نشد.", "warning")
-                return redirect(url_for("reseller_broadcast"))
+        recipients = db.get_advanced_broadcast_recipients(
+            channel=channel,
+            audience_type="customer",
+            scope="selected_resellers",
+            selected_reseller_ids=[reseller_id],
+            target_group=target_group,
+            current_reseller_id=reseller_id
+        )
 
-            success_count = 0
-            fail_count = 0
-            for ph in phones:
+        if not recipients:
+            target_label = "شماره همراهی" if channel == "sms" else "کاربری"
+            flash(f"هیچ {target_label} در میان مشتریان شما در این گروه یافت نشد.", "warning")
+            return redirect(url_for("reseller_broadcast"))
+
+        success_count = 0
+        fail_count = 0
+
+        if channel == "sms":
+            for ph in recipients:
                 ok, res_msg = send_sms(receptor=ph, message=message_text, db_instance=db, reseller_id=reseller_id)
                 if ok:
                     success_count += 1
                 else:
                     fail_count += 1
 
-            flash(f"پیامک به {success_count} شماره مشتری شما با موفقیت ارسال شد. (خطا: {fail_count})", "success")
+            flash(f"پیامک به {success_count} شماره مشتری شما با موفقیت ارسال شد. (خطا: {fail_count})", "success" if success_count > 0 else "danger")
             return redirect(url_for("reseller_broadcast"))
-        else:
-            user_ids = db.get_target_broadcast_users(target_group, reseller_id=reseller_id)
-            if not user_ids:
-                flash("هیچ کاربری در گروه هدف انتخاب شده در ربات شما یافت نشد.", "warning")
-                return redirect(url_for("reseller_broadcast"))
-
+        else: # telegram
             r_data = db.get_reseller(reseller_id) or {}
             bot_token = r_data.get("bot_token")
             btn_text = request.form.get("btn_text", "").strip()
@@ -9030,20 +9166,22 @@ def reseller_broadcast():
             if btn_text and btn_url:
                 reply_markup = {"inline_keyboard": [[{"text": btn_text, "url": btn_url}]]}
 
-            success_count = 0
-            fail_count = 0
-            for uid in user_ids:
+            for uid in recipients:
                 ok = send_telegram_msg(uid, message_text, bot_token=bot_token, reply_markup=reply_markup)
                 if ok:
                     success_count += 1
                 else:
                     fail_count += 1
 
-            flash(f"پیام با موفقیت به {success_count} کاربر در ربات شما ارسال شد. (خطا: {fail_count})", "success")
+            flash(f"پیام با موفقیت به {success_count} مخاطب در ربات شما ارسال شد. (خطا: {fail_count})", "success" if success_count > 0 else "danger")
             return redirect(url_for("reseller_broadcast"))
 
     sms_config = db.get_reseller_sms_config(reseller_id) if hasattr(db, "get_reseller_sms_config") else {}
-    return render_template("reseller_broadcast.html", sms_config=sms_config)
+    portal_banners = [
+        b for b in db.get_portal_customer_banners()
+        if b.get("creator_reseller_id") == reseller_id
+    ]
+    return render_template("reseller_broadcast.html", sms_config=sms_config, portal_banners=portal_banners)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -18776,8 +18914,18 @@ def _handle_customer_portal_view(token: str = None, telegram_id: int = None, res
         mini_app_splash_title=mini_app_splash_title,
         mini_app_splash_subtitle=mini_app_splash_subtitle,
         mini_app_splash_image=mini_app_splash_image,
-        mini_app_splash_duration=mini_app_splash_duration,
-        portal_banners=db.get_portal_customer_banners()
+        portal_banners=db.get_portal_customer_banners(
+            for_reseller_id=(sub.get("reseller_id") if sub else reseller_id),
+            customer_status=(
+                "vip" if (sub and sub.get("is_vip")) else (
+                    "debtors" if (sub and (sub.get("payment_status") in ("unpaid", "debtor") or (sub.get("debt_amount") or 0) > 0)) else (
+                        "no_traffic" if (sub and sub.get("data_limit") and (sub.get("data_limit") - (sub.get("data_used") or 0)) <= 1.0) else (
+                            (sub.get("status") or "active") if sub else "all"
+                        )
+                    )
+                )
+            )
+        )
     )
 
 
