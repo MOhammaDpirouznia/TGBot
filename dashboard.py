@@ -692,29 +692,25 @@ def filter_gateway_name(gateway):
 @app.template_global("format_happ_url")
 def filter_happ_url(sub_url, name="HiddiPlus"):
     """
-    تولید دیپ‌لینک کاملاً استاندارد و بدون نقص برای برنامه Happ Proxy Utility
-    استفاده از پروتکل استاندارد happ://add?url= به همراه آدرس مستقیم کانفیگ‌ها (all.txt) و انکود اصولی
+    تولید دیپ‌لینک مستقیم و استاندارد برای برنامه Happ Proxy به فرمت تست‌شده و بدون خطا:
+    happ://add/{raw_clean_url}
+    بدون انکود کاراکترهای اسلش و دونقطه (%2F و %3A) و بدون افزودن /all.txt یا پارامترهای اضافی
     """
     if not sub_url:
         return ""
     clean = str(sub_url).strip()
-    if clean.startswith("happ://"):
-        return clean
-    if clean.startswith(("vless://", "vmess://", "trojan://", "ss://", "hysteria2://")):
-        enc = urllib.parse.quote(clean, safe="")
-        return f"happ://add?url={enc}"
-    if clean.endswith("/"):
-        config_url = f"{clean}all.txt"
-    elif not clean.endswith(".txt") and not clean.endswith("/sub/"):
-        config_url = f"{clean}/all.txt"
-    else:
-        config_url = clean
+    # رفع انکودهای درصدی (%2F به / و %3A به :) در صورتی که قبلاً انکود شده باشد
+    try:
+        clean = urllib.parse.unquote(clean)
+    except Exception:
+        pass
+    # پاکسازی پیشوندهای مختلف happ:// در صورت وجود
+    clean = re.sub(r"^happ://(add/|add\?url=)?", "", clean, flags=re.IGNORECASE).strip()
+    # جداسازی پارامترهای قدیمی احتمالی نظیر &name=
+    if "&name=" in clean:
+        clean = clean.split("&name=")[0].strip()
+    return f"happ://add/{clean}"
 
-    enc_url = urllib.parse.quote(config_url, safe="")
-    if name:
-        enc_name = urllib.parse.quote(str(name).strip(), safe="")
-        return f"happ://add?url={enc_url}&name={enc_name}"
-    return f"happ://add?url={enc_url}"
 
 
 @app.template_filter("reviewer_name")
@@ -4641,6 +4637,8 @@ def bot_menu_settings():
         "card_payment",
         "language",
         "wallet",
+        "renew",
+        "my_subscriptions",
         "support",
         "tutorials",
     ]
@@ -4654,6 +4652,8 @@ def bot_menu_settings():
         "card_payment",
         "language",
         "wallet",
+        "renew",
+        "my_subscriptions",
         "support",
         "tutorials",
     ]
@@ -4666,6 +4666,7 @@ def bot_menu_settings():
         "bundle_support",
     ]
     bundle_sub_menus = {k: db.get_sub_menu_config("bundle", k) for k in bundle_sub_menu_keys}
+
 
     return render_template(
         "bot_menu_settings.html",

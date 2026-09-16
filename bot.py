@@ -759,40 +759,41 @@ def get_payment_selection_payload(user_id: int, plan: dict, reseller_id: Optiona
         btn_kw = {"style": style_val} if style_val in ("primary", "success", "danger") else {}
 
         if m_id == "card_to_card":
-            btn_title = cfg_item.get("title") or "💵 کارت به کارت (بانکی)"
-            if not btn_kw:
-                btn_kw["style"] = "primary"
+            raw_title = cfg_item.get("title") or "💵 کارت به کارت (بانکی)"
+            btn_title = db.format_styled_button_text(raw_title, style_val)
             keyboard.append([InlineKeyboardButton(btn_title, callback_data="pay_card", **btn_kw)])
 
         elif m_id == "wallet":
-            if not btn_kw:
-                btn_kw["style"] = "success"
             if user_wallet >= price:
-                keyboard.append([InlineKeyboardButton(f"⚡ پرداخت آنی از کیف پول ({user_wallet:,} ت)", callback_data="pay_wallet", **btn_kw)])
+                raw_title = cfg_item.get("title") or f"⚡ پرداخت آنی از کیف پول ({user_wallet:,} ت)"
             else:
-                keyboard.append([InlineKeyboardButton(f"💰 پرداخت از کیف پول (کسری: {price - user_wallet:,} ت)", callback_data="pay_wallet_insufficient", **btn_kw)])
+                raw_title = f"💰 پرداخت از کیف پول (کسری: {price - user_wallet:,} ت)"
+            btn_title = db.format_styled_button_text(raw_title, style_val)
+            cb = "pay_wallet" if user_wallet >= price else "pay_wallet_insufficient"
+            keyboard.append([InlineKeyboardButton(btn_title, callback_data=cb, **btn_kw)])
 
         elif m_id == "online_gateway":
-            if not btn_kw:
-                btn_kw["style"] = "success"
             if gw_cfg.get("enabled") and gw_cfg.get("key"):
                 if gw_cfg.get("type") == "blupal":
                     gw_btn_text = "💳 پرداخت کارت به کارت هوشمند (بلوپال)"
                 else:
                     gw_label = "زرین‌پال" if gw_cfg.get("type") == "zarinpal" else ("آیدی‌پی" if gw_cfg.get("type") == "idpay" else "آنلاین")
                     gw_btn_text = f"💳 درگاه پرداخت آنلاین ({gw_label})"
-                keyboard.append([InlineKeyboardButton(gw_btn_text, callback_data="pay_online_gateway", **btn_kw)])
+                btn_title = db.format_styled_button_text(gw_btn_text, style_val)
+                keyboard.append([InlineKeyboardButton(btn_title, callback_data="pay_online_gateway", **btn_kw)])
             else:
                 keyboard.append([InlineKeyboardButton("💳 درگاه آنلاین (بزودی)", callback_data="coming_soon_gateway")])
 
         elif m_id == "crypto":
             if crypto_cfg.get("enabled"):
                 crypto_title = cfg_item.get("title") or f"💎 پرداخت با تتر / کریپتو ({usdt_price} USDT)"
-                keyboard.append([InlineKeyboardButton(crypto_title, callback_data="pay_crypto", **btn_kw)])
+                btn_title = db.format_styled_button_text(crypto_title, style_val)
+                keyboard.append([InlineKeyboardButton(btn_title, callback_data="pay_crypto", **btn_kw)])
 
     # دکمه‌های بازگشت و انصراف
     keyboard.append([
         InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_confirm_purchase"),
+
         InlineKeyboardButton("❌ انصراف", callback_data="cancel", style="danger")
     ])
 
@@ -902,6 +903,9 @@ async def back_to_confirm_purchase(update: Update, context: ContextTypes.DEFAULT
     back_st = db.get_sub_menu_item_style("admin", "confirm_subscription", "change_name", default=None)
     back_kw = {"style": back_st} if back_st in ("primary", "success", "danger") else {}
 
+    conf_title = db.format_styled_button_text(conf_title, conf_st)
+    back_title = db.format_styled_button_text(back_title, back_st)
+
     keyboard = [
         [
             InlineKeyboardButton(conf_title, callback_data="confirm_purchase", **conf_kw),
@@ -999,11 +1003,11 @@ async def back_to_enter_tracking(update: Update, context: ContextTypes.DEFAULT_T
     back_kw = {"style": back_st} if back_st in ("primary", "success", "danger") else {}
     cancel_kw = {"style": cancel_st} if cancel_st in ("primary", "success", "danger") else {}
 
-    card_title = c2c_cfg.get("copy_card", {}).get("title") or "📋 کپی شماره کارت"
-    rial_title = c2c_cfg.get("copy_rial", {}).get("title") or f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)"
-    toman_title = c2c_cfg.get("copy_toman", {}).get("title") or f"💵 کپی مبلغ به تومان ({price_formatted} ت)"
-    back_title = c2c_cfg.get("back_payment", {}).get("title") or "◀️ بازگشت"
-    cancel_title = c2c_cfg.get("cancel_payment", {}).get("title") or "❌ انصراف"
+    card_title = db.format_styled_button_text(c2c_cfg.get("copy_card", {}).get("title") or "📋 کپی شماره کارت", card_st)
+    rial_title = db.format_styled_button_text(c2c_cfg.get("copy_rial", {}).get("title") or f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)", rial_st)
+    toman_title = db.format_styled_button_text(c2c_cfg.get("copy_toman", {}).get("title") or f"💵 کپی مبلغ به تومان ({price_formatted} ت)", toman_st)
+    back_title = db.format_styled_button_text(c2c_cfg.get("back_payment", {}).get("title") or "◀️ بازگشت", back_st)
+    cancel_title = db.format_styled_button_text(c2c_cfg.get("cancel_payment", {}).get("title") or "❌ انصراف", cancel_st)
 
     keyboard = [
         [InlineKeyboardButton(card_title, callback_data=f"copy_card_{card_number_clean}", **card_kw)],
@@ -1026,17 +1030,17 @@ def get_tutorial_inline_buttons(tutorial_url: str, troubleshoot_url: str, is_res
     cfg_web = t_cfg.get("tutorial_url") or t_cfg.get("windows") or {}
     cfg_ts_web = t_cfg.get("troubleshoot_url") or t_cfg.get("troubleshoot") or {}
 
-    tb_title = cfg_tb.get("title") or "🧭 راهنمای قدم‌به‌قدم حل مشکل (داخل تلگرام)"
     tb_style = cfg_tb.get("style") or "primary"
+    tb_title = db.format_styled_button_text(cfg_tb.get("title") or "🧭 راهنمای قدم‌به‌قدم حل مشکل (داخل تلگرام)", tb_style)
 
-    conn_title = cfg_conn.get("title") or "🚀 راهنمای قدم‌به‌قدم اتصال (داخل تلگرام)"
     conn_style = cfg_conn.get("style") or "success"
+    conn_title = db.format_styled_button_text(cfg_conn.get("title") or "🚀 راهنمای قدم‌به‌قدم اتصال (داخل تلگرام)", conn_style)
 
-    web_title = cfg_web.get("title") or "🌐 مشاهده آموزش‌های تصویری جامع (وب)"
     web_style = cfg_web.get("style") or "primary"
+    web_title = db.format_styled_button_text(cfg_web.get("title") or "🌐 مشاهده آموزش‌های تصویری جامع (وب)", web_style)
 
-    ts_web_title = cfg_ts_web.get("title") or "🛠️ سامانه آنلاین عیب‌یابی هوشمند (وب)"
     ts_web_style = cfg_ts_web.get("style") or "danger"
+    ts_web_title = db.format_styled_button_text(cfg_ts_web.get("title") or "🛠️ سامانه آنلاین عیب‌یابی هوشمند (وب)", ts_web_style)
 
     keyboard = []
     if cfg_tb.get("enabled", True):
@@ -1473,6 +1477,8 @@ async def show_plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
             emoji = get_plan_telegram_emoji(plan, plan_id)
             btn_title = f"{emoji} {plan['name']} - {plan.get('description', '')} - {price_formatted} تومان"
 
+        btn_title = db.format_styled_button_text(btn_title, st)
+
         r = cfg_it.get("row", len(row_map))
         c = cfg_it.get("col", 0)
         if r not in row_map:
@@ -1485,6 +1491,7 @@ async def show_plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
         b_st_arg = b_st if b_st in ("primary", "success", "danger") else None
         b_kw = {"style": b_st_arg} if b_st_arg else {}
         b_title = back_it.get("title") or "◀️ بازگشت"
+        b_title = db.format_styled_button_text(b_title, b_st)
         r_back = back_it.get("row", 99)
         c_back = back_it.get("col", 0)
         if r_back not in row_map:
@@ -1645,6 +1652,9 @@ async def select_name_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
         back_title = conf_cfg.get("change_name", {}).get("title") or "◀️ بازگشت"
         back_st = db.get_sub_menu_item_style("admin", "confirm_subscription", "change_name", default=None)
         back_kw = {"style": back_st} if back_st in ("primary", "success", "danger") else {}
+
+        conf_title = db.format_styled_button_text(conf_title, conf_st)
+        back_title = db.format_styled_button_text(back_title, back_st)
 
         keyboard = [
             [
@@ -2968,7 +2978,41 @@ async def show_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     InlineKeyboardButton(f"🔀 تغییر اولویت و چینش صف ({s_name})", callback_data=f"usr_qman_{sub_id}")
                 ])
 
-    reply_markup = InlineKeyboardMarkup(queue_buttons) if queue_buttons else None
+    status_sub_cfg = db.get_sub_menu_config("admin", "my_subscriptions")
+    sub_cb_map = {
+        "sub_refresh": "usr_refresh_status",
+        "sub_renew": "start_renew",
+        "sub_test_traffic": "wiz_tb_start",
+        "sub_tutorial": "wiz_conn_start",
+        "sub_support": "ticket_new",
+        "back_to_menu": "back_to_menu",
+    }
+    status_row_map = {}
+    for it in status_sub_cfg:
+        if not isinstance(it, dict) or not it.get("enabled", True):
+            continue
+        i_id = it.get("id")
+        cb = sub_cb_map.get(i_id)
+        if not cb:
+            continue
+        st = it.get("style")
+        st_arg = st if st in ("primary", "success", "danger") else None
+        kw = {"style": st_arg} if st_arg else {}
+        title = db.format_styled_button_text(it.get("title", ""), st)
+        r = it.get("row", len(status_row_map))
+        c = it.get("col", 0)
+        if r not in status_row_map:
+            status_row_map[r] = []
+        status_row_map[r].append((c, InlineKeyboardButton(title, callback_data=cb, **kw)))
+
+    menu_buttons = []
+    for r in sorted(status_row_map.keys()):
+        row_btns = [btn for _, btn in sorted(status_row_map[r], key=lambda x: x[0])]
+        if row_btns:
+            menu_buttons.append(row_btns)
+
+    all_buttons = queue_buttons + menu_buttons
+    reply_markup = InlineKeyboardMarkup(all_buttons) if all_buttons else None
     try:
         await status_msg.edit_text(text, parse_mode="Markdown", reply_markup=reply_markup)
     except Exception as e:
@@ -3409,66 +3453,118 @@ async def handle_import_sub_text(update: Update, context: ContextTypes.DEFAULT_T
     return CHOOSING
 
 
+def get_renew_inline_buttons(sub: Optional[dict] = None, is_reseller: bool = False, reseller_id: Optional[int] = None) -> list:
+    """ساخت دکمه‌های زیرمنوی تمدید اشتراک بر اساس تنظیمات دیتابیس با پشتیبانی از استایل و چیدمان"""
+    bot_type = "reseller" if is_reseller else "admin"
+    r_cfg = db.get_sub_menu_config(bot_type, "renew", is_reseller=is_reseller, reseller_id=reseller_id)
+    sub_id = sub.get("id") if sub else 0
+    plan_id = sub.get("plan_id") if sub else None
+
+    cb_map = {
+        "renew_current": f"renew_plan_{plan_id}" if plan_id else f"renew_choose_plan_{sub_id}",
+        "renew_change_plan": f"renew_choose_plan_{sub_id}",
+        "renew_wallet": f"renew_wallet_{sub_id}",
+        "renew_support": "ticket_new",
+        "renew_history": "renew_history",
+        "back_to_menu": "back_to_menu",
+    }
+
+    row_map = {}
+    for it in r_cfg:
+        if not isinstance(it, dict) or not it.get("enabled", True):
+            continue
+        i_id = it.get("id")
+        cb = cb_map.get(i_id)
+        if not cb:
+            continue
+        st = it.get("style")
+        st_arg = st if st in ("primary", "success", "danger") else None
+        kw = {"style": st_arg} if st_arg else {}
+        title = db.format_styled_button_text(it.get("title", ""), st)
+        r = it.get("row", len(row_map))
+        c = it.get("col", 0)
+        if r not in row_map:
+            row_map[r] = []
+        row_map[r].append((c, InlineKeyboardButton(title, callback_data=cb, **kw)))
+
+    keyboard = []
+    for r in sorted(row_map.keys()):
+        row_btns = [btn for _, btn in sorted(row_map[r], key=lambda x: x[0])]
+        if row_btns:
+            keyboard.append(row_btns)
+    if not keyboard:
+        keyboard = [[InlineKeyboardButton("◀️ بازگشت به منوی اصلی", callback_data="back_to_menu")]]
+    return keyboard
+
+
 async def renew_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """تمدید اشتراک - نمایش اشتراک‌های موجود"""
+    """تمدید اشتراک - نمایش اشتراک‌های موجود و زیرمنوی تمدید"""
     if not await ensure_user_verified(update, context):
         return CHOOSING
 
     user = update.effective_user
-    
+    query = update.callback_query
+    if query:
+        await query.answer()
+
     # دریافت اشتراک‌های کاربر از دیتابیس
     subscriptions = db.get_user_subscriptions(user.id, is_admin_bot=True)
-    
-    if not subscriptions:
+    non_test_subs = [s for s in subscriptions if s.get("plan_id") != "test"]
+
+    if not non_test_subs:
         # بررسی اطلاعات قدیمی
         user_data = get_user_data(user.id)
         if not user_data or not user_data.get("hidify_uuid"):
-            await update.message.reply_text(
+            msg = (
                 "❌ شما هنوز اشتراکی ندارید!\n\n"
                 "برای خرید اشتراک، روی «🛒 خرید اشتراک» کلیک کنید."
             )
+            if query:
+                await query.message.reply_text(msg)
+            else:
+                await update.message.reply_text(msg)
             return CHOOSING
-        # اگر فقط یک اشتراک قدیمی داره، مستقیم به انتخاب پلن بره
-        keyboard = []
-        plans = get_plans()
-        for plan_id, plan in plans.items():
-            price_formatted = f"{plan['price']:,}".replace(",", "،")
-            emoji = get_plan_telegram_emoji(plan, plan_id)
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"{emoji} {plan['name']} - {plan['description']} - {price_formatted} تومان",
-                    callback_data=f"renew_plan_{plan_id}",
-                )
-            ])
-        keyboard.append([InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_menu")])
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(
-            "🔄 تمدید اشتراک:\n\n"
-            "پلن مورد نظر برای تمدید را انتخاب کنید:",
-            reply_markup=reply_markup,
+
+        target_sub = {"id": 0, "account_name": user_data.get("account_name") or f"tg_{user.id}", "plan_id": None}
+        context.user_data["renew_subscription_id"] = 0
+        keyboard = get_renew_inline_buttons(target_sub)
+        text = (
+            "🔄 <b>تمدید اشتراک فعلی:</b>\n\n"
+            "لطفاً یکی از گزینه‌های زیر را انتخاب نمایید:"
         )
+        if query:
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        else:
+            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
         return RENEWING
-    
-    # اگر چند اشتراک داره، لیست اشتراک‌ها رو نشون بده (فقط غیرتست)
+
+    if len(non_test_subs) == 1:
+        target_sub = non_test_subs[0]
+        context.user_data["renew_subscription_id"] = target_sub.get("id")
+        s_name = target_sub.get("account_name") or f"tg_{user.id}"
+        p_name = target_sub.get("plan_name") or "پلن اختصاصی"
+        keyboard = get_renew_inline_buttons(target_sub)
+        text = (
+            f"🔄 <b>تمدید اشتراک «{s_name}»</b> ({p_name}):\n\n"
+            f"لطفاً نحوه تمدید مورد نظر خود را انتخاب نمایید:"
+        )
+        if query:
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        else:
+            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        return RENEWING
+
+    # اگر چند اشتراک دارد، لیست را نشان بده تا انتخاب کند
     keyboard = []
-    for sub in subscriptions:
-        # حذف اشتراک تست از لیست تمدید
-        if sub.get("plan_id") == "test":
-            continue
-        # محاسبه وضعیت اشتراک
-        status_emoji = "🟢" if sub["status"] == "active" else "🔴"
-        status_text = "فعال" if sub["status"] == "active" else "منقضی"
-        
-        # محاسبه حجم باقیمانده
+    for sub in non_test_subs:
+        status_emoji = "🟢" if sub.get("status") == "active" else "🔴"
         data_limit = sub.get("data_limit", 0)
         data_used = sub.get("data_used", 0)
         if data_limit and data_limit > 0:
-            data_info = f"📊 {data_limit - data_used:.1f} از {data_limit} گیگ باقیمانده"
+            data_info = f"📊 {max(0.0, round(data_limit - data_used, 1))} از {data_limit} گیگ باقیمانده"
         else:
             data_info = "📊 نامحدود"
-        
-        # تاریخ انقضا
+
         expire_date = sub.get("expire_date", "")
         if expire_date:
             try:
@@ -3477,33 +3573,23 @@ async def renew_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     data_info = "🔴 منقضی شده"
             except:
                 pass
-        
+
         account_name = sub.get("account_name") or f"tg_{user.id}"
-        button_text = f"{status_emoji} {sub['plan_name']} ({account_name})\n{data_info}"
+        button_text = f"{status_emoji} {sub.get('plan_name', 'اشتراک')} ({account_name}) | {data_info}"
         keyboard.append([
             InlineKeyboardButton(
                 button_text,
                 callback_data=f"renew_sub_{sub['id']}",
             )
         ])
-    
-    # اگر فقط اشتراک تست داره (یا اصلاً اشتراک غیرتست نداره)
-    if not keyboard:
-        await update.message.reply_text(
-            "❌ شما اشتراک قابل تمدیدی ندارید!\n\n"
-            "🧪 اشتراک تست قابل تمدید نیست.\n"
-            "برای خرید اشتراک، روی «🛒 خرید اشتراک» کلیک کنید."
-        )
-        return CHOOSING
 
-    keyboard.append([InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_menu")])
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(
-        "🔄 تمدید اشتراک:\n\n"
-        "کدام اشتراک را می‌خواهید تمدید کنید؟",
-        reply_markup=reply_markup,
-    )
+    keyboard.append([InlineKeyboardButton("◀️ بازگشت به منوی اصلی", callback_data="back_to_menu")])
+
+    text = "🔄 <b>تمدید اشتراک:</b>\n\nکدام اشتراک را می‌خواهید تمدید فرمایید؟"
+    if query:
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    else:
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
     return RENEWING
 
 
@@ -3511,21 +3597,44 @@ async def handle_renew(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """پردازش درخواست تمدید و هدایت به پیش‌فاکتور و پرداخت"""
     query = update.callback_query
     await query.answer()
-    
+
     if query.data == "cancel":
         await query.edit_message_text("❌ عملیات لغو شد.")
         return CHOOSING
-    
+
     # بازگشت به منوی اصلی
     if query.data == "back_to_menu":
         return await back_to_menu(update, context)
-    
+
+    # تاریخچه تمدیدها و تراکنش‌ها
+    if query.data == "renew_history":
+        return await show_payments_history(update, context)
+
     # اگر اشتراک خاصی انتخاب شده (renew_sub_123)
     if query.data.startswith("renew_sub_"):
         sub_id = int(query.data.replace("renew_sub_", ""))
         context.user_data["renew_subscription_id"] = sub_id
-        
-        # نمایش پلن‌های تمدید
+        target_sub = None
+        for s in db.get_user_subscriptions(update.effective_user.id, is_admin_bot=True):
+            if s.get("id") == sub_id:
+                target_sub = s
+                break
+        s_name = target_sub.get("account_name", f"اشتراک #{sub_id}") if target_sub else f"اشتراک #{sub_id}"
+        p_name = target_sub.get("plan_name", "") if target_sub else ""
+        keyboard = get_renew_inline_buttons(target_sub or {"id": sub_id})
+        await query.edit_message_text(
+            f"🔄 <b>تمدید اشتراک «{s_name}»</b>" + (f" ({p_name})" if p_name else "") + ":\n\n"
+            f"لطفاً نحوه تمدید مورد نظر خود را انتخاب فرمایید:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        return RENEWING
+
+    # انتخاب پلن دلخواه برای تمدید
+    if query.data.startswith("renew_choose_plan_"):
+        sub_id = int(query.data.replace("renew_choose_plan_", ""))
+        context.user_data["renew_subscription_id"] = sub_id
+
         plans = get_plans()
         keyboard = []
         for plan_id, plan in plans.items():
@@ -3538,7 +3647,7 @@ async def handle_renew(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             ])
         keyboard.append([InlineKeyboardButton("◀️ بازگشت", callback_data="back_to_menu")])
-        
+
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
             "🔄 **انتخاب پلن تمدید:**\n\n"
@@ -3547,6 +3656,25 @@ async def handle_renew(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
         return RENEWING
+
+    # تمدید مستقیم از کیف پول
+    if query.data.startswith("renew_wallet_"):
+        sub_id = int(query.data.replace("renew_wallet_", ""))
+        context.user_data["renew_subscription_id"] = sub_id
+        target_sub = None
+        for s in db.get_user_subscriptions(update.effective_user.id, is_admin_bot=True):
+            if s.get("id") == sub_id:
+                target_sub = s
+                break
+        plan_id = target_sub.get("plan_id") if target_sub else None
+        plans = {**get_all_plans(), **get_plans()}
+        if plan_id and plan_id in plans:
+            context.user_data["preferred_payment"] = "wallet"
+            query.data = f"renew_plan_{plan_id}"
+            # ادامه پردازش به صورت renew_plan_
+        else:
+            query.data = f"renew_choose_plan_{sub_id}"
+            return await handle_renew(update, context)
     
     # اگر پلن انتخاب شده (renew_plan_123)
     if not query.data.startswith("renew_plan_"):
@@ -3945,13 +4073,16 @@ async def show_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     card_style = db.get_sub_menu_item_style("admin", "wallet", "charge_card", default="primary")
     crypto_style = db.get_sub_menu_item_style("admin", "wallet", "charge_crypto", default=None)
 
-    card_kw = {"style": card_style} if card_style else {}
-    crypto_kw = {"style": crypto_style} if crypto_style else {}
+    card_kw = {"style": card_style} if card_style in ("primary", "success", "danger") else {}
+    crypto_kw = {"style": crypto_style} if crypto_style in ("primary", "success", "danger") else {}
+
+    card_title = db.get_sub_menu_item_styled_title("admin", "wallet", "charge_card", default="💳 افزایش موجودی (کارت بانکی)")
+    crypto_title = db.get_sub_menu_item_styled_title("admin", "wallet", "charge_crypto", default="💎 شارژ با تتر/کریپتو")
 
     crypto_cfg = CryptoPaymentGateway.get_crypto_config(db)
-    charge_row = [InlineKeyboardButton("💳 افزایش موجودی (کارت بانکی)", callback_data="charge_wallet_card", **card_kw)]
+    charge_row = [InlineKeyboardButton(card_title, callback_data="charge_wallet_card", **card_kw)]
     if crypto_cfg.get("enabled"):
-        charge_row.append(InlineKeyboardButton("💎 شارژ با تتر/کریپتو", callback_data="charge_wallet_crypto", **crypto_kw))
+        charge_row.append(InlineKeyboardButton(crypto_title, callback_data="charge_wallet_crypto", **crypto_kw))
     keyboard.append(charge_row)
     keyboard.append([InlineKeyboardButton("🛒 خرید پلن جدید", callback_data="buy_plan_from_wallet", style="success")])
     keyboard.append([InlineKeyboardButton("◀️ بازگشت به منوی اصلی", callback_data="back_to_menu")])
@@ -4134,9 +4265,9 @@ async def support_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tl_style = db.get_sub_menu_item_style("admin", "support", "ticket_list", default=None)
     ds_style = db.get_sub_menu_item_style("admin", "support", "direct_support", default="success")
 
-    tn_title = cfg_tn.get("title") or "✍️ ارسال پیام به پشتیبانی (ثبت تیکت)"
-    tl_title = cfg_tl.get("title") or "📋 تیکت‌های قبلی من"
-    ds_title = cfg_ds.get("title") or "💬 گفتگو مستقیم با ادمین"
+    tn_title = db.format_styled_button_text(cfg_tn.get("title") or "✍️ ارسال پیام به پشتیبانی (ثبت تیکت)", tn_style)
+    tl_title = db.format_styled_button_text(cfg_tl.get("title") or "📋 تیکت‌های قبلی من", tl_style)
+    ds_title = db.format_styled_button_text(cfg_ds.get("title") or "💬 گفتگو مستقیم با ادمین", ds_style)
 
     keyboard = []
     if cfg_tn.get("enabled", True):
@@ -8886,6 +9017,8 @@ def main():
             CallbackQueryHandler(ticket_new_prompt, pattern="^ticket_new$"),
             CallbackQueryHandler(ticket_list, pattern="^ticket_list$"),
             CallbackQueryHandler(import_sub_start, pattern="^btn_import_sub$"),
+            CallbackQueryHandler(renew_subscription, pattern="^(start_renew|sub_renew)$"),
+            CallbackQueryHandler(show_payments_history, pattern="^renew_history$"),
             CallbackQueryHandler(handle_renew, pattern="^renew_"),
             CallbackQueryHandler(customer_queue_action_callback, pattern="^(usr_qact_|usr_qconf_|usr_qman_|usr_qmove_|usr_qcancel_|usr_refresh_status)"),
             CallbackQueryHandler(admin_reply_ticket_callback, pattern="^admin_reply_ticket_"),
@@ -8901,6 +9034,8 @@ def main():
                 CallbackQueryHandler(ticket_new_prompt, pattern="^ticket_new$"),
                 CallbackQueryHandler(ticket_list, pattern="^ticket_list$"),
                 CallbackQueryHandler(import_sub_start, pattern="^btn_import_sub$"),
+                CallbackQueryHandler(renew_subscription, pattern="^(start_renew|sub_renew)$"),
+                CallbackQueryHandler(show_payments_history, pattern="^renew_history$"),
                 CallbackQueryHandler(handle_renew, pattern="^renew_"),
                 CallbackQueryHandler(customer_queue_action_callback, pattern="^(usr_qact_|usr_qconf_|usr_qman_|usr_qmove_|usr_qcancel_|usr_refresh_status)"),
                 CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"),
@@ -8963,6 +9098,7 @@ def main():
                 CallbackQueryHandler(cancel, pattern="^cancel$"),
             ] + main_menu_handlers,
             RENEWING: [
+                CallbackQueryHandler(show_payments_history, pattern="^renew_history$"),
                 CallbackQueryHandler(handle_renew, pattern="^renew_"),
                 CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"),
                 CallbackQueryHandler(cancel, pattern="^cancel$"),

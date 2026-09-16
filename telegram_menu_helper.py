@@ -322,17 +322,15 @@ def get_tutorial_inline_buttons(tutorial_url: str, troubleshoot_url: str, is_res
     cfg_web = t_cfg.get("tutorial_url") or t_cfg.get("windows") or {}
     cfg_ts_web = t_cfg.get("troubleshoot_url") or t_cfg.get("troubleshoot") or {}
 
-    tb_title = cfg_tb.get("title") or "🧭 راهنمای قدم‌به‌قدم حل مشکل (داخل تلگرام)"
     tb_style = cfg_tb.get("style") or "primary"
-
-    conn_title = cfg_conn.get("title") or "🚀 راهنمای قدم‌به‌قدم اتصال (داخل تلگرام)"
     conn_style = cfg_conn.get("style") or "success"
-
-    web_title = cfg_web.get("title") or "🌐 مشاهده آموزش‌های تصویری جامع (وب)"
     web_style = cfg_web.get("style") or "primary"
-
-    ts_web_title = cfg_ts_web.get("title") or "🛠️ سامانه آنلاین عیب‌یابی هوشمند (وب)"
     ts_web_style = cfg_ts_web.get("style") or "danger"
+
+    tb_title = db.format_styled_button_text(cfg_tb.get("title") or "🧭 راهنمای قدم‌به‌قدم حل مشکل (داخل تلگرام)", tb_style)
+    conn_title = db.format_styled_button_text(cfg_conn.get("title") or "🚀 راهنمای قدم‌به‌قدم اتصال (داخل تلگرام)", conn_style)
+    web_title = db.format_styled_button_text(cfg_web.get("title") or "🌐 مشاهده آموزش‌های تصویری جامع (وب)", web_style)
+    ts_web_title = db.format_styled_button_text(cfg_ts_web.get("title") or "🛠️ سامانه آنلاین عیب‌یابی هوشمند (وب)", ts_web_style)
 
     keyboard = []
     if cfg_tb.get("enabled", True):

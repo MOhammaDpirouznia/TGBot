@@ -620,6 +620,8 @@ class ResellerBotInstance:
                         emoji = get_plan_telegram_emoji(p, pid)
                         btn_text = f"{emoji} {pname} | {vol_str} - {days} روز ({price:,} تومان)"
 
+                    btn_text = db.format_styled_button_text(btn_text, st)
+
                     r = cfg_it.get("row", idx)
                     c = cfg_it.get("col", 0)
                     if r not in row_map:
@@ -632,6 +634,7 @@ class ResellerBotInstance:
                     b_st_arg = b_st if b_st in ("primary", "success", "danger") else None
                     b_kw = {"style": b_st_arg} if b_st_arg else {}
                     b_title = back_it.get("title") or "◀️ بازگشت"
+                    b_title = db.format_styled_button_text(b_title, b_st)
                     r_back = back_it.get("row", 99)
                     c_back = back_it.get("col", 0)
                     if r_back not in row_map:
@@ -819,8 +822,8 @@ class ResellerBotInstance:
                 cb = cb_map.get(i_id)
                 if not cb:
                     continue
-                title = it.get("title", "")
                 st = it.get("style")
+                title = db.format_styled_button_text(it.get("title", ""), st)
                 kw = {"style": st} if st in ("primary", "success", "danger") else {}
                 r = it.get("row", len(row_map))
                 c = it.get("col", 0)
@@ -920,9 +923,11 @@ class ResellerBotInstance:
                         continue
                     if m_id == "wallet":
                         if user_wallet >= price:
-                            buttons.append([InlineKeyboardButton(f"⚡ پرداخت آنی از کیف پول ({user_wallet:,} ت)", callback_data=f"r_pwal_{plan_id}", style=wal_style)])
+                            btn_t = db.format_styled_button_text(f"⚡ پرداخت آنی از کیف پول ({user_wallet:,} ت)", wal_style)
+                            buttons.append([InlineKeyboardButton(btn_t, callback_data=f"r_pwal_{plan_id}", style=wal_style)])
                         else:
-                            buttons.append([InlineKeyboardButton(f"💰 پرداخت از کیف پول (کسری: {price - user_wallet:,} ت)", callback_data="r_pwal_insuf", style=wal_style)])
+                            btn_t = db.format_styled_button_text(f"💰 پرداخت از کیف پول (کسری: {price - user_wallet:,} ت)", wal_style)
+                            buttons.append([InlineKeyboardButton(btn_t, callback_data="r_pwal_insuf", style=wal_style)])
                     elif m_id == "online_gateway":
                         if gw_cfg.get("enabled") and gw_cfg.get("key"):
                             if gw_cfg.get("type") == "blupal":
@@ -930,17 +935,20 @@ class ResellerBotInstance:
                             else:
                                 gw_label = "زرین‌پال" if gw_cfg.get("type") == "zarinpal" else ("آیدی‌پی" if gw_cfg.get("type") == "idpay" else "آنلاین")
                                 gw_btn_text = f"💳 درگاه پرداخت آنلاین ({gw_label})"
-                            buttons.append([InlineKeyboardButton(gw_btn_text, callback_data=f"r_ponl_{plan_id}", style=gw_style)])
+                            btn_t = db.format_styled_button_text(gw_btn_text, gw_style)
+                            buttons.append([InlineKeyboardButton(btn_t, callback_data=f"r_ponl_{plan_id}", style=gw_style)])
                         else:
                             buttons.append([InlineKeyboardButton("💳 درگاه آنلاین (بزودی)", callback_data="r_ponl_soon")])
                     elif m_id == "card_to_card":
-                        buttons.append([InlineKeyboardButton("💵 کارت به کارت (بانکی)", callback_data=f"r_pcard_{plan_id}", style=c2c_style)])
+                        c2c_t = db.format_styled_button_text("💵 کارت به کارت (بانکی)", c2c_style)
+                        buttons.append([InlineKeyboardButton(c2c_t, callback_data=f"r_pcard_{plan_id}", style=c2c_style)])
 
                 # تغییر نام یا انصراف
+                can_t = db.format_styled_button_text("❌ انصراف", can_style)
                 if is_renewal and renew_sub_id:
-                    buttons.append([InlineKeyboardButton("◀️ تغییر نحوه تمدید / پلن", callback_data=f"r_renew_choose_{renew_sub_id}_{plan_id}"), InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy", style=can_style)])
+                    buttons.append([InlineKeyboardButton("◀️ تغییر نحوه تمدید / پلن", callback_data=f"r_renew_choose_{renew_sub_id}_{plan_id}"), InlineKeyboardButton(can_t, callback_data="r_cancel_buy", style=can_style)])
                 else:
-                    buttons.append([InlineKeyboardButton("◀️ تغییر نام اکانت", callback_data=f"r_buy_{plan_id}"), InlineKeyboardButton("❌ انصراف", callback_data="r_cancel_buy", style=can_style)])
+                    buttons.append([InlineKeyboardButton("◀️ تغییر نام اکانت", callback_data=f"r_buy_{plan_id}"), InlineKeyboardButton(can_t, callback_data="r_cancel_buy", style=can_style)])
 
                 kb = InlineKeyboardMarkup(buttons)
                 await query.edit_message_text(msg, reply_markup=kb, parse_mode="HTML")
@@ -1087,10 +1095,11 @@ class ResellerBotInstance:
                     i_id = it.get("id")
                     st = it.get("style")
                     kw = {"style": st} if st in ("primary", "success", "danger") else {}
-                    title = it.get("title", "")
+                    title = db.format_styled_button_text(it.get("title", ""), st)
                     btn = None
                     if i_id in ("copy_card", "card"):
-                        btn = InlineKeyboardButton(title or "📋 کپی شماره کارت", copy_text=CopyTextButton(card_num), **kw)
+                        btn_t = title or db.format_styled_button_text("📋 کپی شماره کارت", st)
+                        btn = InlineKeyboardButton(btn_t, copy_text=CopyTextButton(card_num), **kw)
                     elif i_id in ("copy_rial", "copy_amount", "rial"):
                         if not title:
                             t = f"💰 کپی مبلغ به ریال ({rial_fmt} ریال)"
@@ -1100,9 +1109,11 @@ class ResellerBotInstance:
                             t = f"{title} ({rial_fmt} ریال)"
                         btn = InlineKeyboardButton(t, copy_text=CopyTextButton(str(rial_price)), **kw)
                     elif i_id in ("back", "back_payment"):
-                        btn = InlineKeyboardButton(title or "◀️ بازگشت", callback_data=f"r_conf_{plan_id}", **kw)
+                        btn_t = title or db.format_styled_button_text("◀️ بازگشت", st)
+                        btn = InlineKeyboardButton(btn_t, callback_data=f"r_conf_{plan_id}", **kw)
                     elif i_id in ("cancel", "cancel_payment"):
-                        btn = InlineKeyboardButton(title or "❌ انصراف", callback_data="r_cancel_buy", **kw)
+                        btn_t = title or db.format_styled_button_text("❌ انصراف", st)
+                        btn = InlineKeyboardButton(btn_t, callback_data="r_cancel_buy", **kw)
 
                     if btn:
                         r = it.get("row", len(row_map))
@@ -3196,6 +3207,7 @@ class ResellerBotInstance:
             brand = self.reseller_data.get("brand_name") or "پشتیبانی"
             tkt_style = db.get_sub_menu_item_style("reseller", "support", "ticket_new", default="primary", is_reseller=True, reseller_id=r_id)
             dir_style = db.get_sub_menu_item_style("reseller", "support", "direct_support", default="success", is_reseller=True, reseller_id=r_id)
+            tkt_title = db.get_sub_menu_item_styled_title("reseller", "support", "ticket_new", default="✍️ ارسال پیام دلخواه به پشتیبانی", is_reseller=True, reseller_id=r_id)
             buttons = [
                 [
                     InlineKeyboardButton("🔴 قطعی و عدم اتصال سرویس", callback_data="r_quick_tkt_disconnect", style="danger"),
@@ -3206,12 +3218,13 @@ class ResellerBotInstance:
                     InlineKeyboardButton("💳 سوال درباره تمدید یا واریزی", callback_data="r_quick_tkt_billing", style="primary")
                 ],
                 [
-                    InlineKeyboardButton("✍️ ارسال پیام دلخواه به پشتیبانی", callback_data="r_quick_tkt_custom", style=tkt_style)
+                    InlineKeyboardButton(tkt_title, callback_data="r_quick_tkt_custom", style=tkt_style)
                 ]
             ]
             if sup_user:
                 sup_clean = sup_user.replace("@", "")
-                buttons.append([InlineKeyboardButton("💬 ارتباط مستقیم با پشتیبان در تلگرام", url=f"https://t.me/{sup_clean}", style=dir_style)])
+                dir_title = db.get_sub_menu_item_styled_title("reseller", "support", "direct_support", default="💬 ارتباط مستقیم با پشتیبان در تلگرام", is_reseller=True, reseller_id=r_id)
+                buttons.append([InlineKeyboardButton(dir_title, url=f"https://t.me/{sup_clean}", style=dir_style)])
 
             msg = (
                 f"🎧 <b>واحد پشتیبانی و خدمات مشتریان {brand}</b>\n\n"

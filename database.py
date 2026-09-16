@@ -15652,6 +15652,22 @@ class Database:
             {"id": "admin_chat", "title": "🎧 ارتباط مستقیم با مدیریت", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
             {"id": "faq", "title": "❓ راهنما و سوالات متداول", "enabled": True, "row": 0, "col": 1, "order": 2, "style": "default"},
             {"id": "back", "title": "🔙 بازگشت به منو", "enabled": True, "row": 1, "col": 0, "order": 3, "style": "danger"}
+        ],
+        "renew": [
+            {"id": "renew_current", "title": "🔄 تمدید همین پلن فعلی", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
+            {"id": "renew_change_plan", "title": "📦 تغییر پلن و حجم", "enabled": True, "row": 0, "col": 1, "order": 2, "style": "success"},
+            {"id": "renew_wallet", "title": "⚡ تمدید فوری از کیف پول", "enabled": True, "row": 1, "col": 0, "order": 3, "style": "success"},
+            {"id": "renew_support", "title": "🎧 راهنمایی و پشتیبانی تمدید", "enabled": True, "row": 1, "col": 1, "order": 4, "style": "default"},
+            {"id": "renew_history", "title": "🧾 سوابق تمدیدهای قبلی", "enabled": True, "row": 2, "col": 0, "order": 5, "style": "default"},
+            {"id": "back_to_menu", "title": "◀️ بازگشت به منوی اصلی", "enabled": True, "row": 2, "col": 1, "order": 6, "style": "danger"}
+        ],
+        "my_subscriptions": [
+            {"id": "sub_refresh", "title": "🔄 استعلام لحظه‌ای و بروزرسانی", "enabled": True, "row": 0, "col": 0, "order": 1, "style": "primary"},
+            {"id": "sub_renew", "title": "⚡ تمدید این اشتراک", "enabled": True, "row": 0, "col": 1, "order": 2, "style": "success"},
+            {"id": "sub_test_traffic", "title": "🧪 تست اتصال و سرعت", "enabled": True, "row": 1, "col": 0, "order": 3, "style": "default"},
+            {"id": "sub_tutorial", "title": "🚀 آموزش و راهنمای اتصال", "enabled": True, "row": 1, "col": 1, "order": 4, "style": "primary"},
+            {"id": "sub_support", "title": "🎧 گزارش خرابی / پشتیبانی", "enabled": True, "row": 2, "col": 0, "order": 5, "style": "default"},
+            {"id": "back_to_menu", "title": "◀️ بازگشت به منوی اصلی", "enabled": True, "row": 2, "col": 1, "order": 6, "style": "danger"}
         ]
     }
 
@@ -15660,13 +15676,22 @@ class Database:
         if bot_raw in ("admin", "reseller", "bundle", "bundle_bot"):
             bot_kind = "bundle" if bot_raw in ("bundle", "bundle_bot") else bot_raw
             menu_key = str(arg2 or ("bundle_payment" if bot_kind == "bundle" else "payment")).strip().lower()
+            if menu_key in ("renew_subscription", "subscription_renew", "renewal", "renew_sub"):
+                menu_key = "renew"
+            elif menu_key in ("sub_status", "subscription_status", "subscriptions", "user_subs"):
+                menu_key = "my_subscriptions"
             return menu_key, bot_kind, reseller_id
         else:
             menu_key = str(arg1 or "payment").strip().lower()
             bot_kind = "reseller" if is_reseller else "admin"
         if menu_key == "payment_methods":
             menu_key = "payment"
+        elif menu_key in ("renew_subscription", "subscription_renew", "renewal", "renew_sub"):
+            menu_key = "renew"
+        elif menu_key in ("sub_status", "subscription_status", "subscriptions", "user_subs"):
+            menu_key = "my_subscriptions"
         return menu_key, bot_kind, reseller_id
+
 
     def get_default_sub_menu(self, menu_key: str, bot_kind: str = "admin", reseller_id: Optional[int] = None) -> list:
         """تولید تنظیمات پیش‌فرض زیرمنوها با پشتیبانی کامل از همگام‌سازی داینامیک پلن‌ها و بسته‌ها"""
@@ -15898,13 +15923,13 @@ class Database:
                         break
             if item:
                 st = item.get("style")
-                if st in ("primary", "success", "danger"):
+                if st in ("primary", "success", "danger", "default"):
                     return st
-                elif st in ("default", "none", "", None):
-                    return None
+                elif st in ("none", "", None):
+                    return "default"
         except Exception:
             pass
-        return default if default in ("primary", "success", "danger") else None
+        return default if default in ("primary", "success", "danger", "default") else "default"
 
     def get_sub_menu_item_title(self, bot_type: str, menu_key: str, item_id: str, default: Optional[str] = None, is_reseller: bool = False, reseller_id: Optional[int] = None) -> str:
         """استخراج عنوان سفارشی دکمه با در نظر گرفتن تنظیمات دیتابیس یا فال‌بک"""
@@ -15949,6 +15974,28 @@ class Database:
         except Exception:
             pass
         return default or ""
+
+    @staticmethod
+    def format_styled_button_text(title: str, style: Optional[str]) -> str:
+        """قالب‌بندی عنوان دکمه تلگرام بر اساس استایل رنگی با ایموجی دایره‌ای"""
+        if not title:
+            return ""
+        # پاکسازی نشانگرهای دایره‌ای قبلی
+        clean_title = re.sub(r"^[🔵🟢🔴⚪]\s*", "", str(title).strip())
+        if style == "primary":
+            return f"🔵 {clean_title}"
+        elif style == "success":
+            return f"🟢 {clean_title}"
+        elif style == "danger":
+            return f"🔴 {clean_title}"
+        return clean_title
+
+    def get_sub_menu_item_styled_title(self, bot_type: str, menu_key: str, item_id: str, default: Optional[str] = None, is_reseller: bool = False, reseller_id: Optional[int] = None) -> str:
+        """استخراج عنوان سفارشی دکمه به همراه رنگ انتخابی متناسب با استایل تنظیم‌شده"""
+        title = self.get_sub_menu_item_title(bot_type, menu_key, item_id, default=default, is_reseller=is_reseller, reseller_id=reseller_id)
+        style = self.get_sub_menu_item_style(bot_type, menu_key, item_id, default=None, is_reseller=is_reseller, reseller_id=reseller_id)
+        return self.format_styled_button_text(title, style)
+
 
     def save_sub_menu_config(self, *args, **kwargs) -> bool:
         """ذخیره تنظیمات، رنگ و ترتیب زیرمنوهای ربات"""

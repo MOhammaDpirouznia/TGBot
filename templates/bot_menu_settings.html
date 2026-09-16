@@ -1210,20 +1210,24 @@
             </div>
             <div class="card-body p-4 bg-light">
 
+                {% set is_sub_reseller = active_tab.startswith('sub_reseller_') or active_tab == 'sub_reseller' %}
+                {% set is_sub_bundle = active_tab.startswith('sub_bundle_') or active_tab == 'sub_bundle' %}
+                {% set is_sub_admin = not is_sub_reseller and not is_sub_bundle %}
+
                 <!-- تب‌های تفکیک ربات مدیریت و ربات‌های نمایندگان برای زیرمنوها -->
                 <ul class="nav nav-pills mb-4 nav-fill gap-2 p-1 bg-white rounded-3 shadow-sm border" id="subMenusBotTabs" role="tablist">
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link py-2 fw-bold active" id="sub-admin-tab" data-bs-toggle="pill" data-bs-target="#sub-admin-panel" type="button" role="tab">
+                        <button class="nav-link py-2 fw-bold {% if is_sub_admin %}active{% endif %}" id="sub-admin-tab" data-bs-toggle="pill" data-bs-target="#sub-admin-panel" type="button" role="tab">
                             <i class="fas fa-robot me-1 text-primary"></i> زیرمنوهای ربات اصلی مدیریت
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link py-2 fw-bold" id="sub-reseller-tab" data-bs-toggle="pill" data-bs-target="#sub-reseller-panel" type="button" role="tab">
+                        <button class="nav-link py-2 fw-bold {% if is_sub_reseller %}active{% endif %}" id="sub-reseller-tab" data-bs-toggle="pill" data-bs-target="#sub-reseller-panel" type="button" role="tab">
                             <i class="fas fa-users-gear me-1 text-success"></i> زیرمنوهای ربات‌های نمایندگان
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link py-2 fw-bold" id="sub-bundle-tab" data-bs-toggle="pill" data-bs-target="#sub-bundle-panel" type="button" role="tab">
+                        <button class="nav-link py-2 fw-bold {% if is_sub_bundle %}active{% endif %}" id="sub-bundle-tab" data-bs-toggle="pill" data-bs-target="#sub-bundle-panel" type="button" role="tab">
                             <i class="fas fa-cubes-stacked me-1 text-info"></i> زیرمنوهای «ربات فروش بسته نمایندگی»
                         </button>
                     </li>
@@ -1238,6 +1242,8 @@
                         'card_payment': 'صفحه اطلاعات واریز کارت به کارت',
                         'language': 'انتخاب زبان ربات (چندزبانه)',
                         'wallet': 'کیف پول و مدیریت حساب کاربری',
+                        'renew': 'تمدید اشتراک فعلی (پلن، کیف پول، تغییر سرویس)',
+                        'my_subscriptions': 'اشتراک‌های من و مشاهده وضعیت سرویس‌ها',
                         'support': 'پشتیبانی، تیکت و ارتباط',
                         'tutorials': 'آموزش اتصال و دانلود نرم‌افزارها'
                     } %}
@@ -1249,12 +1255,14 @@
                         'card_payment': 'fas fa-money-bill-transfer text-primary',
                         'language': 'fas fa-language text-secondary',
                         'wallet': 'fas fa-wallet text-warning',
+                        'renew': 'fas fa-arrows-rotate text-success',
+                        'my_subscriptions': 'fas fa-layer-group text-primary',
                         'support': 'fas fa-headset text-info',
                         'tutorials': 'fas fa-book-open text-primary'
                     } %}
                     
                     <!-- زیرمنوهای ربات مدیریت -->
-                    <div class="tab-pane fade show active" id="sub-admin-panel" role="tabpanel">
+                    <div class="tab-pane fade {% if is_sub_admin %}show active{% endif %}" id="sub-admin-panel" role="tabpanel">
                         <div class="row g-4">
                             
                             {% for m_key, items in admin_sub_menus.items() %}
@@ -1298,13 +1306,15 @@
                                                                 <small class="font-monospace text-muted d-block" style="font-size: 0.7rem;">{{ it.id }}</small>
                                                             </td>
                                                             <td class="text-center">
-                                                                <select name="style_{{ it.id }}" class="form-select form-select-sm text-center fw-bold">
+                                                                {% set s_val = it.get('style', 'default') %}
+                                                                <select name="style_{{ it.id }}" class="form-select form-select-sm text-center fw-bold sub-btn-style-select {% if s_val == 'primary' %}bg-primary bg-opacity-10 text-primary border-primary{% elif s_val == 'success' %}bg-success bg-opacity-10 text-success border-success{% elif s_val == 'danger' %}bg-danger bg-opacity-10 text-danger border-danger{% else %}bg-light text-dark{% endif %}" style="border-radius: 8px;">
                                                                     <option value="default" {% if not it.get('style') or it.get('style') == 'default' %}selected{% endif %}>⚪ عادی</option>
-                                                                    <option value="primary" {% if it.get('style') == 'primary' %}selected{% endif %} class="text-primary">🔵 آبی</option>
-                                                                    <option value="success" {% if it.get('style') == 'success' %}selected{% endif %} class="text-success">🟢 سبز</option>
-                                                                    <option value="danger" {% if it.get('style') == 'danger' %}selected{% endif %} class="text-danger">🔴 قرمز</option>
+                                                                    <option value="primary" {% if it.get('style') == 'primary' %}selected{% endif %} class="text-primary fw-bold">🔵 آبی</option>
+                                                                    <option value="success" {% if it.get('style') == 'success' %}selected{% endif %} class="text-success fw-bold">🟢 سبز</option>
+                                                                    <option value="danger" {% if it.get('style') == 'danger' %}selected{% endif %} class="text-danger fw-bold">🔴 قرمز</option>
                                                                 </select>
                                                             </td>
+
                                                             <td class="text-center">
                                                                 <select name="row_{{ it.id }}" class="form-select form-select-sm text-center">
                                                                     {% for r in range(0, 6) %}
@@ -1343,7 +1353,7 @@
                     </div>
 
                     <!-- زیرمنوهای ربات نمایندگان -->
-                    <div class="tab-pane fade" id="sub-reseller-panel" role="tabpanel">
+                    <div class="tab-pane fade {% if is_sub_reseller %}show active{% endif %}" id="sub-reseller-panel" role="tabpanel">
                         <div class="row g-4">
                             {% for m_key, items in reseller_sub_menus.items() %}
                             <div class="col-lg-6">
@@ -1386,11 +1396,12 @@
                                                                 <small class="font-monospace text-muted d-block" style="font-size: 0.7rem;">{{ it.id }}</small>
                                                             </td>
                                                             <td class="text-center">
-                                                                <select name="style_{{ it.id }}" class="form-select form-select-sm text-center fw-bold">
+                                                                {% set s_val = it.get('style', 'default') %}
+                                                                <select name="style_{{ it.id }}" class="form-select form-select-sm text-center fw-bold sub-btn-style-select {% if s_val == 'primary' %}bg-primary bg-opacity-10 text-primary border-primary{% elif s_val == 'success' %}bg-success bg-opacity-10 text-success border-success{% elif s_val == 'danger' %}bg-danger bg-opacity-10 text-danger border-danger{% else %}bg-light text-dark{% endif %}" style="border-radius: 8px;">
                                                                     <option value="default" {% if not it.get('style') or it.get('style') == 'default' %}selected{% endif %}>⚪ عادی</option>
-                                                                    <option value="primary" {% if it.get('style') == 'primary' %}selected{% endif %} class="text-primary">🔵 آبی</option>
-                                                                    <option value="success" {% if it.get('style') == 'success' %}selected{% endif %} class="text-success">🟢 سبز</option>
-                                                                    <option value="danger" {% if it.get('style') == 'danger' %}selected{% endif %} class="text-danger">🔴 قرمز</option>
+                                                                    <option value="primary" {% if it.get('style') == 'primary' %}selected{% endif %} class="text-primary fw-bold">🔵 آبی</option>
+                                                                    <option value="success" {% if it.get('style') == 'success' %}selected{% endif %} class="text-success fw-bold">🟢 سبز</option>
+                                                                    <option value="danger" {% if it.get('style') == 'danger' %}selected{% endif %} class="text-danger fw-bold">🔴 قرمز</option>
                                                                 </select>
                                                             </td>
                                                             <td class="text-center">
@@ -1430,7 +1441,7 @@
                         </div>
                     </div>
                     <!-- زیرمنوهای ربات فروش بسته نمایندگی -->
-                    <div class="tab-pane fade" id="sub-bundle-panel" role="tabpanel">
+                    <div class="tab-pane fade {% if is_sub_bundle %}show active{% endif %}" id="sub-bundle-panel" role="tabpanel">
                         <div class="row g-4">
                             {% set b_sub_titles = {
                                 'bundle_packages': 'بسته‌های شارژ و اعتبار نمایندگی (داینامیک)',
@@ -1486,13 +1497,15 @@
                                                                 <small class="font-monospace text-muted d-block" style="font-size: 0.7rem;">{{ it.id }}</small>
                                                             </td>
                                                             <td class="text-center">
-                                                                <select name="style_{{ it.id }}" class="form-select form-select-sm text-center fw-bold">
+                                                                {% set s_val = it.get('style', 'default') %}
+                                                                <select name="style_{{ it.id }}" class="form-select form-select-sm text-center fw-bold sub-btn-style-select {% if s_val == 'primary' %}bg-primary bg-opacity-10 text-primary border-primary{% elif s_val == 'success' %}bg-success bg-opacity-10 text-success border-success{% elif s_val == 'danger' %}bg-danger bg-opacity-10 text-danger border-danger{% else %}bg-light text-dark{% endif %}" style="border-radius: 8px;">
                                                                     <option value="default" {% if not it.get('style') or it.get('style') == 'default' %}selected{% endif %}>⚪ عادی</option>
-                                                                    <option value="primary" {% if it.get('style') == 'primary' %}selected{% endif %} class="text-primary">🔵 آبی</option>
-                                                                    <option value="success" {% if it.get('style') == 'success' %}selected{% endif %} class="text-success">🟢 سبز</option>
-                                                                    <option value="danger" {% if it.get('style') == 'danger' %}selected{% endif %} class="text-danger">🔴 قرمز</option>
+                                                                    <option value="primary" {% if it.get('style') == 'primary' %}selected{% endif %} class="text-primary fw-bold">🔵 آبی</option>
+                                                                    <option value="success" {% if it.get('style') == 'success' %}selected{% endif %} class="text-success fw-bold">🟢 سبز</option>
+                                                                    <option value="danger" {% if it.get('style') == 'danger' %}selected{% endif %} class="text-danger fw-bold">🔴 قرمز</option>
                                                                 </select>
                                                             </td>
+
                                                             <td class="text-center">
                                                                 <select name="row_{{ it.id }}" class="form-select form-select-sm text-center">
                                                                     {% for r in range(0, 6) %}
@@ -1781,6 +1794,28 @@ document.addEventListener("DOMContentLoaded", function() {
     document.querySelectorAll(".reseller-btn-title-input, .reseller-btn-row-select, .reseller-btn-col-select, .reseller-btn-style-select, .reseller-btn-enable-toggle, select[id^='reseller_behavior_']").forEach(el => {
         el.addEventListener("input", updateResellerLivePreview);
         el.addEventListener("change", updateResellerLivePreview);
+    });
+
+    // تابع بروزرسانی استایل بصری دراپ‌داون‌های رنگ زیرمنوها
+    function updateSelectStyleColor(selectEl) {
+        if (!selectEl) return;
+        selectEl.classList.remove("bg-primary", "bg-success", "bg-danger", "bg-light", "text-primary", "text-success", "text-danger", "text-dark", "border-primary", "border-success", "border-danger", "bg-opacity-10");
+        const val = selectEl.value;
+        if (val === "primary") {
+            selectEl.classList.add("bg-primary", "bg-opacity-10", "text-primary", "border-primary");
+        } else if (val === "success") {
+            selectEl.classList.add("bg-success", "bg-opacity-10", "text-success", "border-success");
+        } else if (val === "danger") {
+            selectEl.classList.add("bg-danger", "bg-opacity-10", "text-danger", "border-danger");
+        } else {
+            selectEl.classList.add("bg-light", "text-dark");
+        }
+    }
+
+    document.querySelectorAll(".sub-btn-style-select").forEach(sel => {
+        sel.addEventListener("change", function() {
+            updateSelectStyleColor(this);
+        });
     });
 
     // گوش دادن به رویدادهای فیلدهای ربات فروش بسته
