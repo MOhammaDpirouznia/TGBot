@@ -20384,6 +20384,10 @@ class Database:
             for k, v in user_tmps.items():
                 if v and str(v).strip():
                     default_templates[k] = str(v).strip()
+            # ادغام قالب‌های سفارشی
+            for ct in (cfg.get("custom_templates") or []):
+                if isinstance(ct, dict) and ct.get("id") and ct.get("text"):
+                    default_templates[ct["id"]] = ct["text"]
             return default_templates
         else:
             admin_tmps_val = self.get_setting("admin_sms_templates")
@@ -20399,11 +20403,22 @@ class Database:
                 for k, v in admin_tmps.items():
                     if v and str(v).strip():
                         default_templates[k] = str(v).strip()
+            # ادغام قالب‌های سفارشی ادمین
+            for ct in self.get_custom_sms_templates(None):
+                if isinstance(ct, dict) and ct.get("id") and ct.get("text"):
+                    default_templates[ct["id"]] = ct["text"]
             return default_templates
 
-    def save_sms_templates(self, templates: dict, reseller_id: int = None) -> bool:
-        """ذخیره قالب‌های پیام‌های آماده برای ادمین یا نماینده"""
+    def save_sms_templates(self, arg1, arg2=None) -> bool:
+        """ذخیره قالب‌های پیام‌های آماده برای ادمین یا نماینده با پشتیبانی از هر دو ترتیب پارامتر"""
         try:
+            if isinstance(arg1, dict):
+                templates = arg1
+                reseller_id = arg2
+            else:
+                reseller_id = arg1
+                templates = arg2 or {}
+
             if reseller_id:
                 cfg = self.get_reseller_sms_config(reseller_id)
                 cfg["templates"] = templates
@@ -20413,6 +20428,166 @@ class Database:
         except Exception as e:
             logger.error(f"Error saving SMS templates: {e}")
             return False
+
+    def get_custom_sms_templates(self, reseller_id: int = None) -> list:
+        """دریافت لیست قالب‌های دلخواه و سفارشی پیامک"""
+        try:
+            if reseller_id:
+                cfg = self.get_reseller_sms_config(reseller_id)
+                return cfg.get("custom_templates") or []
+            else:
+                raw = self.get_setting("admin_custom_sms_templates")
+                if not raw:
+                    return []
+                if isinstance(raw, list):
+                    return raw
+                return json.loads(raw)
+        except Exception as e:
+            logger.error(f"Error reading custom SMS templates: {e}")
+            return []
+
+    def save_custom_sms_template(self, template_data: dict, reseller_id: int = None) -> dict:
+        """افزودن یا ویرایش یک قالب سفارشی پیامک"""
+        import secrets
+        from datetime import datetime
+        try:
+            templates = self.get_custom_sms_templates(reseller_id)
+            t_id = str(template_data.get("id") or "").strip()
+            now_iso = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+            if not t_id:
+                t_id = f"tpl_{secrets.token_hex(4)}"
+                new_item = {
+                    "id": t_id,
+                    "title": str(template_data.get("title") or "قالب جدید").strip(),
+                    "text": str(template_data.get("text") or "").strip(),
+                    "pattern_code": str(template_data.get("pattern_code") or "").strip(),
+                    "is_active": bool(template_data.get("is_active", True)),
+                    "created_at": now_iso
+                }
+                templates.append(new_item)
+                target_item = new_item
+            else:
+                target_item = None
+                for it in templates:
+                    if it.get("id") == t_id:
+                        it["title"] = str(template_data.get("title", it.get("title"))).strip()
+                        it["text"] = str(template_data.get("text", it.get("text"))).strip()
+                        it["pattern_code"] = str(template_data.get("pattern_code", it.get("pattern_code", ""))).strip()
+                        if "is_active" in template_data:
+                            it["is_active"] = bool(template_data["is_active"])
+                        it["updated_at"] = now_iso
+                        target_item = it
+                        break
+                if not target_item:
+                    new_item = {
+                        "id": t_id,
+                        "title": str(template_data.get("title") or "قالب جدید").strip(),
+                        "text": str(template_data.get("text") or "").strip(),
+                        "pattern_code": str(template_data.get("pattern_code") or "").strip(),
+                        "is_active": bool(template_data.get("is_active", True)),
+                        "created_at": now_iso
+                    }
+                    templates.append(new_item)
+                    target_item = new_item
+
+            if reseller_id:
+                cfg = self.get_reseller_sms_config(reseller_id)
+                cfg["custom_templates"] = templates
+                self.save_reseller_sms_config(reseller_id, cfg)
+            else:
+                self.set_setting("admin_custom_sms_templates", json.dumps(templates))
+
+            return {"success": True, "template": target_item}
+        except Exception as e:
+            logger.error(f"Error saving custom SMS template: {e}")
+            return {"success": False, "error": str(e)}
+
+    def delete_custom_sms_template(self, template_id: str, reseller_id: int = None) -> bool:
+        """حذف یک قالب سفارشی پیامک"""
+        try:
+            templates = self.get_custom_sms_templates(reseller_id)
+            filtered = [t for t in templates if str(t.get("id")) != str(template_id)]
+            if len(filtered) == len(templates):
+                return False
+            if reseller_id:
+                cfg = self.get_reseller_sms_config(reseller_id)
+                cfg["custom_templates"] = filtered
+                return self.save_reseller_sms_config(reseller_id, cfg)
+            else:
+                return self.set_setting("admin_custom_sms_templates", json.dumps(filtered))
+        except Exception as e:
+            logger.error(f"Error deleting custom SMS template {template_id}: {e}")
+            return False
+
+    def get_reseller_notification_settings(self, reseller_id: int = None) -> dict:
+        """دریافت تنظیمات تفکیک‌شده اطلاع‌رسانی ورود و خروج نمایندگان (پیامک و تلگرام)"""
+        settings = {
+            "login_sms": True,
+            "logout_sms": False,
+            "login_telegram": True,
+            "logout_telegram": True
+        }
+        val_l_sms = self.get_setting("reseller_notify_login_sms")
+        val_o_sms = self.get_setting("reseller_notify_logout_sms")
+        val_l_tg = self.get_setting("reseller_notify_login_telegram")
+        val_o_tg = self.get_setting("reseller_notify_logout_telegram")
+
+        if val_l_sms is not None:
+            settings["login_sms"] = str(val_l_sms).lower() in ("1", "true", "yes")
+        if val_o_sms is not None:
+            settings["logout_sms"] = str(val_o_sms).lower() in ("1", "true", "yes")
+        if val_l_tg is not None:
+            settings["login_telegram"] = str(val_l_tg).lower() in ("1", "true", "yes")
+        if val_o_tg is not None:
+            settings["logout_telegram"] = str(val_o_tg).lower() in ("1", "true", "yes")
+
+        if reseller_id:
+            try:
+                r = self.get_reseller(reseller_id)
+                if r:
+                    if r.get("notify_login_sms") is not None:
+                        settings["login_sms"] = bool(r.get("notify_login_sms"))
+                    if r.get("notify_logout_sms") is not None:
+                        settings["logout_sms"] = bool(r.get("notify_logout_sms"))
+                    if r.get("notify_login_telegram") is not None:
+                        settings["login_telegram"] = bool(r.get("notify_login_telegram"))
+                    if r.get("notify_logout_telegram") is not None:
+                        settings["logout_telegram"] = bool(r.get("notify_logout_telegram"))
+            except Exception:
+                pass
+        return settings
+
+    def save_reseller_notification_settings(self, settings: dict, reseller_id: Optional[int] = None) -> bool:
+        """ذخیره تنظیمات سراسری یا اختصاصی ورود و خروج نمایندگان"""
+        try:
+            if reseller_id and int(reseller_id) > 0:
+                conn = self.get_connection()
+                cursor = conn.cursor()
+                for k, col in [("login_sms", "notify_login_sms"), ("logout_sms", "notify_logout_sms"),
+                               ("login_telegram", "notify_login_telegram"), ("logout_telegram", "notify_logout_telegram")]:
+                    if k in settings:
+                        try:
+                            cursor.execute(f"UPDATE resellers SET {col} = ? WHERE id = ?", (1 if settings[k] else 0, int(reseller_id)))
+                        except Exception:
+                            pass
+                conn.commit()
+                conn.close()
+                return True
+
+            if "login_sms" in settings:
+                self.save_setting("reseller_notify_login_sms", "1" if settings["login_sms"] else "0")
+            if "logout_sms" in settings:
+                self.save_setting("reseller_notify_logout_sms", "1" if settings["logout_sms"] else "0")
+            if "login_telegram" in settings:
+                self.save_setting("reseller_notify_login_telegram", "1" if settings["login_telegram"] else "0")
+            if "logout_telegram" in settings:
+                self.save_setting("reseller_notify_logout_telegram", "1" if settings["logout_telegram"] else "0")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving reseller notification settings: {e}")
+            return False
+
 
     # ─── Security Methods ───
     def get_active_sessions(self) -> list:

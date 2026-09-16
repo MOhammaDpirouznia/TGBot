@@ -41,7 +41,11 @@ from admin_manager import (
     get_all_plans, add_plan, update_plan, delete_plan, move_plan_up, move_plan_down,
     get_plan_icon, get_bundle_icon, get_plan_telegram_emoji
 )
-from sms_service import send_auth_sms_notification, send_sms, get_sms_config, format_iranian_phone
+import sms_service
+from sms_service import (
+    send_auth_sms_notification, send_sms, get_sms_config, format_iranian_phone,
+    get_sms_account_info, format_sms_template, send_customer_templated_sms
+)
 from payment import CryptoPaymentGateway
 import ssl_manager
 import avatar_generator
@@ -1228,8 +1232,46 @@ def send_telegram_poll(chat_id, question: str, options: list, is_anonymous: bool
             return resp.status == 200
     except Exception as e:
         logger.error(f"Error sending telegram poll to {chat_id}: {e}")
-        return False
+def send_reseller_telegram_notification(reseller_id: int, telegram_id: int, text: str, reply_markup=None, parse_mode: str = "HTML") -> dict:
+    """
+    ارسال پیام/اعلان تلگرامی به نماینده از طریق:
+    ۱. ربات فروش بسته نمایندگی (Bundle Sales Bot)
+    ۲. ربات پنل اختصاصی خود نماینده (در صورت فعال و راه‌اندازی بودن)
+    در صورت عدم دسترسی به هیچ‌کدام، ارسال از طریق ربات اصلی سیستم انجام می‌شود.
+    """
+    results = {"bundle_bot": False, "reseller_bot": False, "main_bot": False}
+    if not telegram_id:
+        return results
 
+    # ۱. ارسال از ربات فروش بسته نمایندگی
+    bundle_tok = db.get_setting("bundle_bot_token") or os.getenv("BUNDLE_BOT_TOKEN")
+    if bundle_tok and str(bundle_tok).strip() and str(bundle_tok).lower() != "none":
+        try:
+            ok_bundle = send_telegram_msg(int(telegram_id), text, reply_markup=reply_markup, parse_mode=parse_mode, bot_token=bundle_tok.strip())
+            results["bundle_bot"] = ok_bundle
+        except Exception as e:
+            logger.warning(f"Failed sending to reseller {reseller_id} via bundle bot: {e}")
+
+    # ۲. ارسال از ربات پنل اختصاصی نماینده
+    if reseller_id:
+        try:
+            r_info = db.get_reseller(int(reseller_id)) or {}
+            r_tok = r_info.get("bot_token")
+            if r_tok and str(r_tok).strip() and str(r_tok).lower() != "none" and str(r_tok).strip() != str(bundle_tok).strip():
+                ok_r = send_telegram_msg(int(telegram_id), text, reply_markup=reply_markup, parse_mode=parse_mode, bot_token=str(r_tok).strip())
+                results["reseller_bot"] = ok_r
+        except Exception as e:
+            logger.warning(f"Failed sending to reseller {reseller_id} via own bot: {e}")
+
+    # ۳. در صورتی که هیچ‌یک ارسال نشدند، ارسال از طریق ربات اصلی انجام می‌شود
+    if not results["bundle_bot"] and not results["reseller_bot"]:
+        try:
+            ok_main = send_telegram_msg(int(telegram_id), text, reply_markup=reply_markup, parse_mode=parse_mode)
+            results["main_bot"] = ok_main
+        except Exception as e:
+            logger.error(f"Failed sending to reseller {reseller_id} via main bot fallback: {e}")
+
+    return results
 
 
 def parse_client_info(req) -> dict:
@@ -1328,7 +1370,7 @@ def send_failed_login_telegram_alert(username: str, password: str, ip: str, brow
 
 
 def notify_auth_event(event_type: str, username: str, contact_info: dict, ip: str, device_os: str, browser: str, attempted_password: str = None, failure_reason: str = None):
-    """ارسال اطلاع‌رسانی ورود، خروج و ورود ناموفق به تلگرام و پیامک صاحب حساب کاربری"""
+    """ارسال اطلاع‌رسانی ورود، خروج و ورود ناموفق به تلگرام و پیامک صاحب حساب کاربری با تفکیک کامل دسترسی نمایندگان"""
     if not contact_info:
         return
 
@@ -1337,8 +1379,30 @@ def notify_auth_event(event_type: str, username: str, contact_info: dict, ip: st
     telegram_id = contact_info.get("telegram_id")
     phone = contact_info.get("phone")
 
-    # ۱. ارسال پیام تلگرام به صاحب حساب (در صورت ثبت بودن آیدی تلگرام)
-    if telegram_id:
+    is_reseller = (contact_info.get("user_type") == "reseller") or (contact_info.get("role") == "partner") or bool(contact_info.get("reseller_id"))
+    reseller_id = contact_info.get("reseller_id") or (contact_info.get("user_id") if is_reseller else None)
+    r_notif_cfg = db.get_reseller_notification_settings(reseller_id) if is_reseller else None
+
+    # بررسی مجوز ارسال تلگرام
+    can_send_tg = True
+    if is_reseller and r_notif_cfg:
+        if event_type == "login":
+            can_send_tg = r_notif_cfg.get("login_telegram", True)
+        elif event_type == "logout":
+            can_send_tg = r_notif_cfg.get("logout_telegram", True)
+    elif event_type == "logout":
+        can_send_tg = bool(contact_info.get("logout_notification_enabled", 0))
+
+    # بررسی مجوز ارسال پیامک
+    can_send_sms = True
+    if is_reseller and r_notif_cfg:
+        if event_type == "login":
+            can_send_sms = r_notif_cfg.get("login_sms", True)
+        elif event_type == "logout":
+            can_send_sms = r_notif_cfg.get("logout_sms", False)
+
+    # ۱. ارسال پیام تلگرام به صاحب حساب (در صورت ثبت بودن آیدی تلگرام و مجاز بودن رویداد)
+    if telegram_id and can_send_tg:
         tg_text = ""
         if event_type == "login":
             tg_text = (
@@ -1377,12 +1441,16 @@ def notify_auth_event(event_type: str, username: str, contact_info: dict, ip: st
 
         if tg_text:
             try:
-                send_telegram_msg(int(telegram_id), tg_text)
+                if is_reseller and reseller_id:
+                    # ارسال دوگانه از ربات بسته نمایندگی و ربات خود نماینده
+                    send_reseller_telegram_notification(int(reseller_id), int(telegram_id), tg_text)
+                else:
+                    send_telegram_msg(int(telegram_id), tg_text)
             except Exception as e:
                 logger.error(f"Error notifying user {username} on telegram {telegram_id}: {e}")
 
-    # ۲. ارسال پیامک به شماره همراه صاحب حساب (در صورت فعال بودن پنل پیامکی)
-    if phone:
+    # ۲. ارسال پیامک به شماره همراه صاحب حساب (در صورت فعال بودن و مجاز بودن)
+    if phone and can_send_sms:
         try:
             send_auth_sms_notification(
                 phone=phone,
@@ -3732,7 +3800,7 @@ def logout():
         try:
             client_info = parse_client_info(request)
             contact_info = db.find_user_contact_info(username)
-            if contact_info and contact_info.get("logout_notification_enabled", 0):
+            if contact_info:
                 notify_auth_event("logout", username, contact_info, client_info["ip"], client_info["device_os"], client_info["browser"])
         except Exception as e:
             logger.error(f"Error notifying logout event: {e}")
@@ -6806,7 +6874,8 @@ def subscriptions():
         single_link_template=single_link_template,
         cards=db.get_active_bank_cards(),
         accounts=db.get_financial_accounts_summary("admin", 0).get("accounts", []),
-        default_account=db.get_customer_default_account("admin", 0)
+        default_account=db.get_customer_default_account("admin", 0),
+        custom_sms_templates=db.get_custom_sms_templates(None)
     )
 
 
@@ -9541,7 +9610,12 @@ def broadcast():
                 reply_markup = {"inline_keyboard": [[{"text": btn_text, "url": btn_url}]]}
 
             for uid in recipients:
-                ok = send_telegram_msg(uid, message_text, reply_markup=reply_markup)
+                if audience_type == "reseller":
+                    r_info = db.get_reseller_by_telegram_id(uid)
+                    r_id = r_info.get("id") if r_info else None
+                    ok = send_reseller_telegram_notification(r_id, uid, message_text, reply_markup=reply_markup)
+                else:
+                    ok = send_telegram_msg(uid, message_text, reply_markup=reply_markup)
                 if ok:
                     success_count += 1
                 else:
@@ -9552,11 +9626,13 @@ def broadcast():
 
     resellers = db.get_all_resellers()
     portal_customer_banners = db.get_portal_customer_banners()
+    sms_account_info = sms_service.get_sms_account_info(db, None)
     return render_template(
         "broadcast.html", 
         resellers=resellers, 
         active_banners=RESELLER_PANEL_BANNERS,
-        portal_customer_banners=portal_customer_banners
+        portal_customer_banners=portal_customer_banners,
+        sms_account_info=sms_account_info
     )
 
 
@@ -9661,11 +9737,17 @@ def reseller_broadcast():
             return redirect(url_for("reseller_broadcast"))
 
     sms_config = db.get_reseller_sms_config(reseller_id) if hasattr(db, "get_reseller_sms_config") else {}
+    sms_account_info = sms_service.get_sms_account_info(db, reseller_id)
     portal_banners = [
         b for b in db.get_portal_customer_banners()
         if b.get("creator_reseller_id") == reseller_id
     ]
-    return render_template("reseller_broadcast.html", sms_config=sms_config, portal_banners=portal_banners)
+    return render_template(
+        "reseller_broadcast.html", 
+        sms_config=sms_config, 
+        sms_account_info=sms_account_info,
+        portal_banners=portal_banners
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -10394,7 +10476,7 @@ def api_send_customer_sms():
         "debt_invoice": "debt_invoice",
         "custom": "custom"
     }
-    standard_type = type_map.get(sms_type, "portal_link")
+    standard_type = type_map.get(sms_type, sms_type)
     custom_message = data.get("custom_text") or data.get("custom_message")
 
     # استخراج لینک‌ها و اطلاعات اشتراک
@@ -10419,8 +10501,21 @@ def api_send_customer_sms():
     debt_amount = sub.get("debt_amount") or 0
     formatted_debt = f"{debt_amount:,}".replace(",", "،") if debt_amount else "0"
 
+    traffic_used = sub.get("data_used") or 0
+    traffic_limit = sub.get("data_limit") or 0
+    rem_gb = max(0, traffic_limit - traffic_used) if traffic_limit > 0 else "نامحدود"
+    exp_date = sub.get("expire_date") or sub.get("expire") or "-"
+    try:
+        exp_date_shamsi = gregorian_to_shamsi(str(exp_date)[:10]) if exp_date and "-" in str(exp_date) else str(exp_date)
+    except Exception:
+        exp_date_shamsi = str(exp_date)
+
+    now_shamsi = get_now_shamsi()
+    now_time = datetime.now(TEHRAN_TZ).strftime("%H:%M")
+
     template_data = {
         "name": sub.get("account_name") or "مشتری گرامی",
+        "username": sub.get("account_name") or "",
         "brand_name": brand_name,
         "portal_url": portal_url,
         "sub_url": sub_url,
@@ -10428,7 +10523,12 @@ def api_send_customer_sms():
         "debt_amount": formatted_debt,
         "plan_name": sub.get("plan_name") or "اشتراک",
         "data_limit": str(sub.get("data_limit") or "-"),
-        "duration": str(sub.get("duration") or "-")
+        "traffic_remaining": str(rem_gb),
+        "duration": str(sub.get("duration") or "-"),
+        "expire_date": exp_date_shamsi,
+        "phone": phone,
+        "date": now_shamsi,
+        "time": now_time
     }
 
     ok, msg = sms_service.send_customer_templated_sms(
@@ -10476,7 +10576,7 @@ def api_preview_customer_sms():
         "debtor": "debt_invoice",
         "debt_invoice": "debt_invoice"
     }
-    standard_type = type_map.get(sms_type, "portal_link")
+    standard_type = type_map.get(sms_type, sms_type)
 
     user_uuid = sub.get("hidify_uuid") or ""
     h_url = get_hiddify_url()
@@ -10498,8 +10598,21 @@ def api_preview_customer_sms():
     debt_amount = sub.get("debt_amount") or 0
     formatted_debt = f"{debt_amount:,}".replace(",", "،") if debt_amount else "0"
 
+    traffic_used = sub.get("data_used") or 0
+    traffic_limit = sub.get("data_limit") or 0
+    rem_gb = max(0, traffic_limit - traffic_used) if traffic_limit > 0 else "نامحدود"
+    exp_date = sub.get("expire_date") or sub.get("expire") or "-"
+    try:
+        exp_date_shamsi = gregorian_to_shamsi(str(exp_date)[:10]) if exp_date and "-" in str(exp_date) else str(exp_date)
+    except Exception:
+        exp_date_shamsi = str(exp_date)
+
+    now_shamsi = get_now_shamsi()
+    now_time = datetime.now(TEHRAN_TZ).strftime("%H:%M")
+
     template_data = {
         "name": sub.get("account_name") or "مشتری گرامی",
+        "username": sub.get("account_name") or "",
         "brand_name": brand_name,
         "portal_url": portal_url,
         "sub_url": sub_url,
@@ -10507,7 +10620,12 @@ def api_preview_customer_sms():
         "debt_amount": formatted_debt,
         "plan_name": sub.get("plan_name") or "اشتراک",
         "data_limit": str(sub.get("data_limit") or "-"),
-        "duration": str(sub.get("duration") or "-")
+        "traffic_remaining": str(rem_gb),
+        "duration": str(sub.get("duration") or "-"),
+        "expire_date": exp_date_shamsi,
+        "phone": sub.get("phone_number") or "",
+        "date": now_shamsi,
+        "time": now_time
     }
 
     templates = db.get_sms_templates(reseller_id=effective_reseller_id)
@@ -10523,6 +10641,90 @@ def api_preview_customer_sms():
 
     preview_text = sms_service.format_sms_template(raw_template, template_data)
     return jsonify({"success": True, "preview": preview_text, "raw_template": raw_template})
+
+
+@app.route("/api/sms_account_info", methods=["GET"])
+def api_sms_account_info():
+    """استعلام وضعیت زنده و موجودی پنل پیامکی متصل برای ادمین یا نماینده"""
+    is_admin = bool(session.get("logged_in") and (session.get("role") in ("admin", "super_admin", "partner") or session.get("is_admin") or session.get("user_id") == 1))
+    reseller_id = session.get("reseller_id")
+    if not is_admin and not reseller_id:
+        return jsonify({"success": False, "message": "دسترسی غیرمجاز"}), 403
+
+    effective_reseller_id = None if is_admin and not reseller_id else reseller_id
+    if is_admin and request.args.get("reseller_id"):
+        try:
+            effective_reseller_id = int(request.args.get("reseller_id"))
+        except Exception:
+            pass
+
+    info = sms_service.get_sms_account_info(db, effective_reseller_id)
+    return jsonify({"success": True, "data": info, "account_info": info})
+
+
+
+@app.route("/api/custom_sms_templates", methods=["GET", "POST"])
+def api_custom_sms_templates():
+    """واکشی و ایجاد/ویرایش قالب‌های دلخواه پیامک برای ادمین یا نماینده"""
+    is_admin = bool(session.get("logged_in") and (session.get("role") in ("admin", "super_admin", "partner") or session.get("is_admin") or session.get("user_id") == 1))
+    reseller_id = session.get("reseller_id")
+    if not is_admin and not reseller_id:
+        return jsonify({"success": False, "message": "دسترسی غیرمجاز"}), 403
+
+    effective_reseller_id = None if is_admin and not reseller_id else reseller_id
+    if is_admin and request.args.get("reseller_id"):
+        try:
+            effective_reseller_id = int(request.args.get("reseller_id"))
+        except Exception:
+            pass
+
+    if request.method == "GET":
+        templates = db.get_custom_sms_templates(effective_reseller_id)
+        return jsonify({"success": True, "templates": templates})
+
+    elif request.method == "POST":
+        data = request.get_json(silent=True) or request.form.to_dict() or {}
+        title = (data.get("title") or "").strip()
+        text = (data.get("text") or "").strip()
+        pattern_code = (data.get("pattern_code") or "").strip()
+        t_id = (data.get("id") or "").strip()
+        is_active = bool(data.get("is_active", True))
+
+        if not title:
+            return jsonify({"success": False, "message": "عنوان قالب الزامی است."}), 400
+        if not text:
+            return jsonify({"success": False, "message": "متن قالب نمی‌تواند خالی باشد."}), 400
+
+        res = db.save_custom_sms_template({
+            "id": t_id,
+            "title": title,
+            "text": text,
+            "pattern_code": pattern_code,
+            "is_active": is_active
+        }, effective_reseller_id)
+
+        return jsonify(res)
+
+
+@app.route("/api/custom_sms_templates/<template_id>", methods=["DELETE"])
+def api_delete_custom_sms_template(template_id: str):
+    """حذف یک قالب دلخواه پیامک"""
+    is_admin = bool(session.get("logged_in") and (session.get("role") in ("admin", "super_admin", "partner") or session.get("is_admin") or session.get("user_id") == 1))
+    reseller_id = session.get("reseller_id")
+    if not is_admin and not reseller_id:
+        return jsonify({"success": False, "message": "دسترسی غیرمجاز"}), 403
+
+    effective_reseller_id = None if is_admin and not reseller_id else reseller_id
+    if is_admin and request.args.get("reseller_id"):
+        try:
+            effective_reseller_id = int(request.args.get("reseller_id"))
+        except Exception:
+            pass
+
+    ok = db.delete_custom_sms_template(template_id, effective_reseller_id)
+    if ok:
+        return jsonify({"success": True, "message": "قالب دلخواه پیامک با موفقیت حذف شد."})
+    return jsonify({"success": False, "message": "قالب مورد نظر یافت نشد."}), 404
 
 
 
@@ -12539,7 +12741,25 @@ def settings():
             db.save_setting("sms_pattern_failed", sms_pattern_failed)
             db.save_setting("sms_pattern_logout", sms_pattern_logout)
 
+            # ذخیره سوییچ‌های تفکیک‌شده ورود و خروج نمایندگان (پیامکی و تلگرامی)
+            if "reseller_notify_login_sms" in request.form or "reseller_notify_login_telegram" in request.form:
+                db.save_reseller_notification_settings({
+                    "login_sms": request.form.get("reseller_notify_login_sms") == "on",
+                    "logout_sms": request.form.get("reseller_notify_logout_sms") == "on",
+                    "login_telegram": request.form.get("reseller_notify_login_telegram") == "on",
+                    "logout_telegram": request.form.get("reseller_notify_logout_telegram") == "on",
+                })
+
             flash("تنظیمات درگاه پیامک با موفقیت ذخیره شد.", "success")
+            return redirect(url_for("settings"))
+        elif action == "save_reseller_auth_notifications":
+            db.save_reseller_notification_settings({
+                "login_sms": request.form.get("reseller_notify_login_sms") == "on",
+                "logout_sms": request.form.get("reseller_notify_logout_sms") == "on",
+                "login_telegram": request.form.get("reseller_notify_login_telegram") == "on",
+                "logout_telegram": request.form.get("reseller_notify_logout_telegram") == "on",
+            })
+            flash("تنظیمات تفکیک‌شده ورود و خروج نمایندگان با موفقیت ذخیره شد.", "success")
             return redirect(url_for("settings"))
         elif action == "save_sms_templates":
             portal_tpl = request.form.get("sms_template_portal", "").strip()
@@ -12547,12 +12767,12 @@ def settings():
             both_tpl = request.form.get("sms_template_both", "").strip()
             debtor_tpl = request.form.get("sms_template_debtor", "").strip()
 
-            db.save_sms_templates(None, {
+            db.save_sms_templates({
                 "portal_link": portal_tpl,
                 "sub_link": sub_tpl,
                 "both_links": both_tpl,
                 "debt_invoice": debtor_tpl
-            })
+            }, None)
             flash("قالب‌های پیش‌فرض پیامک مشتریان با موفقیت ذخیره شدند.", "success")
             return redirect(url_for("settings"))
         elif action == "save_crypto_settings":
@@ -12979,6 +13199,9 @@ def settings():
         available_palettes=get_all_palettes(),
         mini_app_config=mini_app_config,
         sms_templates=db.get_sms_templates(None),
+        custom_sms_templates=db.get_custom_sms_templates(None),
+        reseller_notif_settings=db.get_reseller_notification_settings(None),
+        sms_account_info=sms_service.get_sms_account_info(db, None),
         hiddify_backup_enabled=db.get_setting("hiddify_backup_enabled", "0") == "1",
         hiddify_backup_channel_id=db.get_setting("hiddify_backup_channel_id", ""),
         hiddify_backup_interval_hours=db.get_setting("hiddify_backup_interval_hours", "12"),
@@ -13725,7 +13948,8 @@ def reseller_users():
         single_link_template=single_link_template,
         cards=db.get_reseller_cards(reseller_id),
         accounts=db.get_financial_accounts_summary("reseller", reseller_id).get("accounts", []),
-        default_account=db.get_customer_default_account("reseller", reseller_id)
+        default_account=db.get_customer_default_account("reseller", reseller_id),
+        custom_sms_templates=db.get_custom_sms_templates(reseller_id)
     )
 
 
@@ -16016,11 +16240,15 @@ def reseller_sms_settings():
 
     sms_config = db.get_reseller_sms_config(reseller_id)
     sms_templates = db.get_sms_templates(reseller_id)
+    custom_sms_templates = db.get_custom_sms_templates(reseller_id)
+    sms_account_info = sms_service.get_sms_account_info(db, reseller_id)
     return render_template(
         "reseller_sms_settings.html",
         reseller=reseller,
         sms_config=sms_config,
-        sms_templates=sms_templates
+        sms_templates=sms_templates,
+        custom_sms_templates=custom_sms_templates,
+        sms_account_info=sms_account_info
     )
 
 

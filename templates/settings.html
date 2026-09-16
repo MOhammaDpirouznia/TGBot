@@ -2944,9 +2944,6 @@ function updateSmsFields() {
     } else if (provider === 'smsir') {
         urlInput.placeholder = 'https://api.sms.ir (پیش‌فرض سامانه sms.ir)';
         urlHelp.innerHTML = 'آدرس پیش‌فرض وب‌سرویس: <code>https://api.sms.ir</code> (نیاز به تغییر ندارد مگر آدرس اختصاصی). شناسه قالب (TemplateId) عددی پنل sms.ir را در کدهای پترن زیر ثبت فرمایید.';
-
-    </div>
-</div>
         if (urlLabel) urlLabel.classList.remove('text-danger');
     } else if (provider === 'kavenegar') {
         urlInput.placeholder = 'https://api.kavenegar.com (پیش‌فرض)';
@@ -2964,6 +2961,159 @@ function updateSmsFields() {
         urlInput.placeholder = 'http://rest.ippanel.com (پیش‌فرض)';
         urlHelp.innerHTML = 'آدرس پیش‌فرض وب‌سرویس: <code>http://rest.ippanel.com</code> (نیاز به تغییر ندارد مگر آدرس اختصاصی).';
         if (urlLabel) urlLabel.classList.remove('text-danger');
+    }
+}
+
+async function refreshSmsAccountInfo() {
+    const icon = document.getElementById('refreshSmsCreditIcon');
+    const btn = document.getElementById('btnRefreshSmsCredit');
+    if (icon) icon.classList.add('fa-spin');
+    if (btn) btn.disabled = true;
+    try {
+        const resp = await fetch('/api/sms_account_info');
+        const data = await resp.json();
+        if (data.success && data.account_info) {
+            const info = data.account_info;
+            const statusText = document.getElementById('smsStatusText');
+            if (statusText) statusText.innerText = info.message || 'متصل';
+            const provText = document.getElementById('smsProviderText');
+            if (provText) provText.innerText = info.provider_name || info.provider || '---';
+            const badge = document.getElementById('smsStatusBadge');
+            if (badge) {
+                badge.className = 'badge ' + (info.status === 'connected' ? 'bg-success' : (info.status === 'disabled' ? 'bg-secondary' : 'bg-warning text-dark'));
+            }
+            const creditVal = document.getElementById('smsCreditValue');
+            if (creditVal && info.credit !== null && info.credit !== undefined) {
+                creditVal.innerHTML = Number(info.credit).toLocaleString('fa-IR') + ' <span class="fs-6 text-muted">' + (info.currency || 'ریال') + '</span>';
+            }
+            const countVal = document.getElementById('smsCountValue');
+            if (countVal && info.approx_sms_count !== null && info.approx_sms_count !== undefined) {
+                countVal.innerHTML = Number(info.approx_sms_count).toLocaleString('fa-IR') + ' <span class="fs-6 text-muted">پیامک فارسی</span>';
+            }
+            const linesVal = document.getElementById('smsLinesValue');
+            if (linesVal && info.lines && info.lines.length > 0) {
+                linesVal.innerText = info.lines.join(' ، ');
+            }
+        }
+    } catch(e) {
+        console.error('Error refreshing SMS credit:', e);
+    } finally {
+        if (icon) icon.classList.remove('fa-spin');
+        if (btn) btn.disabled = false;
+    }
+}
+
+function openCreateCustomSmsModal() {
+    document.getElementById('customSmsEditId').value = '';
+    document.getElementById('customSmsModalTitle').innerText = 'افزودن قالب دلخواه پیامک';
+    document.getElementById('customSmsTitleInput').value = '';
+    document.getElementById('customSmsPatternInput').value = '';
+    document.getElementById('customSmsTextInput').value = '';
+    const alertBox = document.getElementById('customSmsModalAlert');
+    if (alertBox) alertBox.classList.add('d-none');
+    updateCustomSmsStats();
+    const modal = new bootstrap.Modal(document.getElementById('customSmsTemplateModal'));
+    modal.show();
+}
+
+function editCustomSmsTemplate(tpl) {
+    if (!tpl) return;
+    document.getElementById('customSmsEditId').value = tpl.id || '';
+    document.getElementById('customSmsModalTitle').innerText = 'ویرایش قالب دلخواه: ' + (tpl.title || '');
+    document.getElementById('customSmsTitleInput').value = tpl.title || '';
+    document.getElementById('customSmsPatternInput').value = tpl.pattern_code || '';
+    document.getElementById('customSmsTextInput').value = tpl.text || '';
+    const alertBox = document.getElementById('customSmsModalAlert');
+    if (alertBox) alertBox.classList.add('d-none');
+    updateCustomSmsStats();
+    const modal = new bootstrap.Modal(document.getElementById('customSmsTemplateModal'));
+    modal.show();
+}
+
+function insertCustomSmsVar(varStr) {
+    const textarea = document.getElementById('customSmsTextInput');
+    if (!textarea) return;
+    const start = textarea.selectionStart || 0;
+    const end = textarea.selectionEnd || 0;
+    const text = textarea.value;
+    textarea.value = text.substring(0, start) + varStr + text.substring(end);
+    textarea.focus();
+    textarea.selectionStart = textarea.selectionEnd = start + varStr.length;
+    updateCustomSmsStats();
+}
+
+function updateCustomSmsStats() {
+    const textarea = document.getElementById('customSmsTextInput');
+    const info = document.getElementById('customSmsCharCountInfo');
+    if (!textarea || !info) return;
+    const len = textarea.value.length;
+    let parts = 1;
+    if (len > 70) {
+        parts = 1 + Math.ceil((len - 70) / 64);
+    }
+    info.innerText = `تعداد کاراکتر: ${len} | ${parts} پیامک فارسی`;
+}
+
+async function submitCustomSmsTemplate() {
+    const id = document.getElementById('customSmsEditId').value.trim();
+    const title = document.getElementById('customSmsTitleInput').value.trim();
+    const pattern_code = document.getElementById('customSmsPatternInput').value.trim();
+    const text = document.getElementById('customSmsTextInput').value.trim();
+    const alertBox = document.getElementById('customSmsModalAlert');
+    const spinner = document.getElementById('saveCustomSmsSpinner');
+    const btn = document.getElementById('btnSaveCustomSms');
+
+    if (!title || !text) {
+        alertBox.className = 'alert alert-danger py-2 px-3 small rounded-3 mb-0';
+        alertBox.textContent = 'عنوان و متن قالب پیامک نمی‌توانند خالی باشند.';
+        alertBox.classList.remove('d-none');
+        return;
+    }
+
+    alertBox.classList.add('d-none');
+    spinner.classList.remove('d-none');
+    btn.disabled = true;
+
+    try {
+        const resp = await fetch('/api/custom_sms_templates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, title, pattern_code, text })
+        });
+        const res = await resp.json();
+        if (res.success) {
+            alertBox.className = 'alert alert-success py-2 px-3 small rounded-3 mb-0';
+            alertBox.textContent = '✅ قالب پیامک با موفقیت ذخیره گردید.';
+            alertBox.classList.remove('d-none');
+            setTimeout(() => { location.reload(); }, 900);
+        } else {
+            alertBox.className = 'alert alert-danger py-2 px-3 small rounded-3 mb-0';
+            alertBox.textContent = '❌ خطا: ' + (res.message || 'ذخیره قالب ناموفق بود.');
+            alertBox.classList.remove('d-none');
+        }
+    } catch(e) {
+        alertBox.className = 'alert alert-danger py-2 px-3 small rounded-3 mb-0';
+        alertBox.textContent = '❌ خطای شبکه یا ارتباط با سرور!';
+        alertBox.classList.remove('d-none');
+    } finally {
+        spinner.classList.add('d-none');
+        btn.disabled = false;
+    }
+}
+
+async function deleteCustomSmsTemplate(templateId) {
+    if (!confirm('آیا از حذف این قالب دلخواه پیامک اطمینان دارید؟')) return;
+    try {
+        const resp = await fetch('/api/custom_sms_templates/' + templateId, { method: 'DELETE' });
+        const res = await resp.json();
+        if (res.success) {
+            const row = document.getElementById('tpl-row-' + templateId);
+            if (row) row.remove();
+        } else {
+            alert('خطا در حذف قالب: ' + (res.message || ''));
+        }
+    } catch(e) {
+        alert('خطای ارتباط با سرور!');
     }
 }
 
@@ -3287,7 +3437,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="d-flex align-items-center gap-2">
             <i class="fas fa-chevron-down settings-toggle-chevron"></i>
             <h5 class="mb-0 text-success fw-bold">
-                <i class="fas fa-comment-sms text-success me-2"></i> درگاه پیامک
+                <i class="fas fa-comment-sms text-success me-2"></i> درگاه پیامک و اطلاع‌رسانی
             </h5>
         </div>
         <div class="d-flex align-items-center gap-2">
@@ -3296,12 +3446,81 @@ document.addEventListener('DOMContentLoaded', function() {
         {% else %}
             <span class="badge bg-secondary-subtle text-muted border"><i class="fas fa-circle-pause me-1"></i>غیرفعال</span>
         {% endif %}
-    </div>
-    <div class="card-body">
-
         </div>
     </div>
     <div class="card-body p-4 settings-card-body">
+        <!-- ویجت زنده اطلاعات و اعتبار درگاه پیامک -->
+        <div class="card border-0 shadow-sm rounded-4 mb-4" id="smsAccountInfoCard" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.05) 0%, rgba(6, 95, 70, 0.08) 100%); border: 1px solid rgba(16, 185, 129, 0.2) !important;">
+            <div class="card-body p-3 p-md-4">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="avatar-lg bg-success text-white rounded-3 d-flex align-items-center justify-content-center shadow-sm" style="width: 46px; height: 46px;">
+                            <i class="fas fa-sim-card fs-4"></i>
+                        </div>
+                        <div>
+                            <div class="d-flex align-items-center gap-2">
+                                <h6 class="mb-0 fw-bold text-dark">اطلاعات زنده درگاه پیامک متصل</h6>
+                                <span id="smsStatusBadge" class="badge {% if sms_account_info and sms_account_info.get('status') == 'connected' %}bg-success{% elif sms_config and not sms_config.get('enabled') %}bg-secondary{% else %}bg-warning text-dark{% endif %}">
+                                    <i class="fas fa-circle-dot me-1"></i>
+                                    <span id="smsStatusText">{{ sms_account_info.get('message', 'در حال بررسی') if sms_account_info else 'در حال بررسی' }}</span>
+                                </span>
+                            </div>
+                            <small class="text-muted">
+                                سامانه: <strong id="smsProviderText" class="text-primary">{{ (sms_account_info.get('provider_name') or sms_account_info.get('provider') or sms_config.get('provider', 'نامشخص')) if sms_account_info else '---' }}</strong>
+                            </small>
+                        </div>
+                    </div>
+                    <div>
+                        <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-3 d-flex align-items-center gap-1 shadow-2xs" id="btnRefreshSmsCredit" onclick="refreshSmsAccountInfo()">
+                            <i class="fas fa-arrows-rotate" id="refreshSmsCreditIcon"></i>
+                            <span>به‌روزرسانی اعتبار</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="row g-3 text-center text-md-start">
+                    <div class="col-sm-4">
+                        <div class="bg-white p-3 rounded-3 border shadow-2xs h-100">
+                            <span class="text-muted small d-block mb-1"><i class="fas fa-wallet text-success me-1"></i> موجودی و اعتبار پنل</span>
+                            <h5 class="fw-bold mb-0 text-dark" id="smsCreditValue">
+                                {% if sms_account_info and sms_account_info.get('credit') is not none %}
+                                    {{ "{:,}".format(sms_account_info.get('credit')|int) }} <span class="fs-6 text-muted">{{ sms_account_info.get('currency', 'ریال') }}</span>
+                                {% else %}
+                                    <span class="text-muted">---</span>
+                                {% endif %}
+                            </h5>
+                        </div>
+                    </div>
+                    <div class="col-sm-4">
+                        <div class="bg-white p-3 rounded-3 border shadow-2xs h-100">
+                            <span class="text-muted small d-block mb-1"><i class="fas fa-envelope text-primary me-1"></i> برآورد پیامک باقیمانده</span>
+                            <h5 class="fw-bold mb-0 text-dark" id="smsCountValue">
+                                {% if sms_account_info and sms_account_info.get('approx_sms_count') is not none %}
+                                    {{ "{:,}".format(sms_account_info.get('approx_sms_count')|int) }} <span class="fs-6 text-muted">پیامک فارسی</span>
+                                {% else %}
+                                    <span class="text-muted">---</span>
+                                {% endif %}
+                            </h5>
+                        </div>
+                    </div>
+                    <div class="col-sm-4">
+                        <div class="bg-white p-3 rounded-3 border shadow-2xs h-100">
+                            <span class="text-muted small d-block mb-1"><i class="fas fa-phone text-warning me-1"></i> خط اختصاصی متصل</span>
+                            <div class="fw-bold text-dark font-monospace" id="smsLinesValue" style="direction: ltr; font-size: 0.92rem;">
+                                {% if sms_account_info and sms_account_info.get('lines') %}
+                                    {{ sms_account_info.get('lines')|join(' ، ') }}
+                                {% elif sms_config and sms_config.get('originator') %}
+                                    {{ sms_config.get('originator') }}
+                                {% else %}
+                                    <span class="text-muted">ثبت نشده</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <p class="text-muted small">
             با اتصال سامانه به درگاه پیامکی، هشدارهای امنیتی ورود، تلاش‌های ناموفق و خروج علاوه بر تلگرام به شماره همراه مدیران و همکاران نیز پیامک خواهد شد.
         </p>
@@ -3369,9 +3588,58 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             </div>
 
+            <!-- تنظیمات تفکیک‌شده اعلان ورود و خروج نمایندگان (پیامکی و تلگرامی) -->
+            <div class="card bg-light border-0 p-3 mb-3">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <i class="fas fa-bell text-warning"></i>
+                    <h6 class="fw-bold text-dark mb-0">تنظیمات اعلان ورود و خروج همکاران و نمایندگان:</h6>
+                </div>
+                <p class="text-muted small mb-3">
+                    می‌توانید اعلان‌های ورود و خروج همکاران و نمایندگان را به صورت جداگانه از طریق پیامک و تلگرام (ارسال هم‌زمان از ربات فروش بسته و ربات اختصاصی نماینده در صورت فعال بودن) کنترل نمایید.
+                </p>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="form-check form-switch p-3 bg-white rounded-3 border shadow-2xs">
+                            <input class="form-check-input ms-0 me-3" type="checkbox" role="switch" name="reseller_notify_login_sms" id="resellerNotifyLoginSms" {% if reseller_notif_settings and reseller_notif_settings.get('login_sms') %}checked{% endif %}>
+                            <label class="form-check-label fw-bold text-dark cursor-pointer" for="resellerNotifyLoginSms">
+                                <i class="fas fa-comment-sms text-success me-1"></i> پیامک هنگام ورود نماینده
+                            </label>
+                            <div class="form-text small mt-1">ارسال پیامک خوش‌آمد و ثبت ورود امنیتی به شماره همراه نماینده</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check form-switch p-3 bg-white rounded-3 border shadow-2xs">
+                            <input class="form-check-input ms-0 me-3" type="checkbox" role="switch" name="reseller_notify_logout_sms" id="resellerNotifyLogoutSms" {% if reseller_notif_settings and reseller_notif_settings.get('logout_sms') %}checked{% endif %}>
+                            <label class="form-check-label fw-bold text-dark cursor-pointer" for="resellerNotifyLogoutSms">
+                                <i class="fas fa-comment-sms text-danger me-1"></i> پیامک هنگام خروج نماینده
+                            </label>
+                            <div class="form-text small mt-1">ارسال پیامک خروج از حساب کاربری به شماره همراه نماینده</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check form-switch p-3 bg-white rounded-3 border shadow-2xs">
+                            <input class="form-check-input ms-0 me-3" type="checkbox" role="switch" name="reseller_notify_login_telegram" id="resellerNotifyLoginTelegram" {% if reseller_notif_settings and reseller_notif_settings.get('login_telegram') %}checked{% endif %}>
+                            <label class="form-check-label fw-bold text-dark cursor-pointer" for="resellerNotifyLoginTelegram">
+                                <i class="fab fa-telegram text-info me-1"></i> اعلان تلگرام هنگام ورود نماینده
+                            </label>
+                            <div class="form-text small mt-1">ارسال پیام ورود از ربات فروش بسته نمایندگی و ربات اختصاصی نماینده</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check form-switch p-3 bg-white rounded-3 border shadow-2xs">
+                            <input class="form-check-input ms-0 me-3" type="checkbox" role="switch" name="reseller_notify_logout_telegram" id="resellerNotifyLogoutTelegram" {% if reseller_notif_settings and reseller_notif_settings.get('logout_telegram') %}checked{% endif %}>
+                            <label class="form-check-label fw-bold text-dark cursor-pointer" for="resellerNotifyLogoutTelegram">
+                                <i class="fab fa-telegram text-secondary me-1"></i> اعلان تلگرام هنگام خروج نماینده
+                            </label>
+                            <div class="form-text small mt-1">ارسال پیام خروج از ربات فروش بسته و ربات اختصاصی نماینده</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <button type="submit" class="btn btn-success px-4">
-                    <i class="fas fa-save me-1"></i> ذخیره تنظیمات سامانه پیامک
+                    <i class="fas fa-save me-1"></i> ذخیره تنظیمات سامانه پیامک و اعلان‌ها
                 </button>
             </div>
         </form>
@@ -3434,11 +3702,147 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             </form>
         </div>
+
+        <hr class="my-4">
+
+        <!-- بخش مدیریت قالب‌های دلخواه پیامک -->
+        <div class="bg-white border rounded-4 p-3 p-md-4" id="customSmsTemplatesSection">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+                <div>
+                    <h6 class="fw-bold text-dark mb-1">
+                        <i class="fas fa-layer-group text-primary me-2"></i> مدیریت قالب‌های دلخواه و پیشرفته پیامک
+                    </h6>
+                    <small class="text-muted">ایجاد قالب‌های سفارشی نامحدود با متغیرهای هوشمند پویا جهت ارسال مستقیم به مشتریان از جدول اشتراک‌ها</small>
+                </div>
+                <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 shadow-2xs" onclick="openCreateCustomSmsModal()">
+                    <i class="fas fa-plus me-1"></i> افزودن قالب دلخواه جدید
+                </button>
+            </div>
+
+            <!-- جدول قالب‌های دلخواه موجود -->
+            <div class="table-responsive mb-3">
+                <table class="table table-hover align-middle mb-0" id="customTemplatesTable">
+                    <thead class="table-light small">
+                        <tr>
+                            <th class="py-2">عنوان قالب</th>
+                            <th class="py-2">کد پترن سامانه</th>
+                            <th class="py-2">پیش‌نمایش متن</th>
+                            <th class="py-2 text-center" style="width: 140px;">عملیات</th>
+                        </tr>
+                    </thead>
+                    <tbody class="small" id="customTemplatesTableBody">
+                        {% if custom_sms_templates and custom_sms_templates|length > 0 %}
+                            {% for tpl in custom_sms_templates %}
+                            <tr id="tpl-row-{{ tpl.id }}">
+                                <td class="fw-bold text-dark">
+                                    <i class="fas fa-file-lines text-info me-1"></i> {{ tpl.title }}
+                                </td>
+                                <td>
+                                    {% if tpl.pattern_code %}
+                                        <code class="text-primary">{{ tpl.pattern_code }}</code>
+                                    {% else %}
+                                        <span class="badge bg-secondary-subtle text-muted">متن مستقیم</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-truncate text-muted" style="max-width: 320px;" title="{{ tpl.text }}">
+                                    {{ tpl.text }}
+                                </td>
+                                <td class="text-center">
+                                    <div class="btn-group btn-group-sm">
+                                        <button type="button" class="btn btn-outline-primary" onclick='editCustomSmsTemplate({{ tpl|tojson }})' title="ویرایش">
+                                            <i class="fas fa-pen-to-square"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-danger" onclick="deleteCustomSmsTemplate('{{ tpl.id }}')" title="حذف">
+                                            <i class="fas fa-trash-can"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr id="noCustomTemplatesRow">
+                                <td colspan="4" class="text-center py-4 text-muted">
+                                    <i class="fas fa-inbox fs-3 d-block mb-2 text-secondary opacity-50"></i>
+                                    هنوز هیچ قالب دلخواهی تعریف نشده است. با کلیک بر روی دکمه «افزودن قالب دلخواه جدید» اولین قالب خود را بسازید.
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Modal افزودن / ویرایش قالب دلخواه پیامک -->
+        <div class="modal fade text-start" id="customSmsTemplateModal" tabindex="-1" aria-labelledby="customSmsTemplateModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-lg">
+                <div class="modal-content rounded-4 border-0 shadow-lg">
+                    <div class="modal-header bg-dark text-white py-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="fas fa-file-pen text-warning fs-5"></i>
+                            <h5 class="modal-title fw-bold mb-0" id="customSmsModalTitle">افزودن قالب دلخواه پیامک</h5>
+                        </div>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="بستن"></button>
+                    </div>
+                    <div class="modal-body p-4">
+                        <input type="hidden" id="customSmsEditId" value="">
+                        
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-7">
+                                <label class="form-label small fw-bold">عنوان قالب (جهت شناسایی در منو):</label>
+                                <input type="text" class="form-control" id="customSmsTitleInput" placeholder="مثال: یادآوری تمدید اشتراک">
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label small fw-bold">کد پترن/الگوی وب‌سرویس (اختیاری):</label>
+                                <input type="text" class="form-control font-monospace text-center" id="customSmsPatternInput" placeholder="مثال: renew-notice-01" style="direction: ltr;">
+                            </div>
+                        </div>
+
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold d-block mb-1">
+                                <i class="fas fa-wand-magic-sparkles text-primary me-1"></i> درج سریع متغیرهای هوشمند پویا (کلیک برای درج):
+                            </label>
+                            <div class="d-flex flex-wrap gap-1 p-2 bg-light rounded-3 border mb-2">
+                                <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="insertCustomSmsVar('{name}')">نام مشتری <code>{name}</code></button>
+                                <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="insertCustomSmsVar('{username}')">نام کاربری <code>{username}</code></button>
+                                <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="insertCustomSmsVar('{phone}')">شماره همراه <code>{phone}</code></button>
+                                <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="insertCustomSmsVar('{brand_name}')">نام برند <code>{brand_name}</code></button>
+                                <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="insertCustomSmsVar('{portal_url}')">لینک پرتال <code>{portal_url}</code></button>
+                                <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="insertCustomSmsVar('{sub_url}')">لینک ساب <code>{sub_url}</code></button>
+                                <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="insertCustomSmsVar('{payment_url}')">لینک پرداخت <code>{payment_url}</code></button>
+                                <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="insertCustomSmsVar('{debt_amount}')">مبلغ بدهی <code>{debt_amount}</code></button>
+                                <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="insertCustomSmsVar('{plan_name}')">نام پلن <code>{plan_name}</code></button>
+                                <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="insertCustomSmsVar('{data_limit}')">حجم کل <code>{data_limit}</code></button>
+                                <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="insertCustomSmsVar('{traffic_remaining}')">حجم باقیمانده <code>{traffic_remaining}</code></button>
+                                <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="insertCustomSmsVar('{duration}')">مدت روز <code>{duration}</code></button>
+                                <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="insertCustomSmsVar('{expire_date}')">تاریخ انقضا <code>{expire_date}</code></button>
+                                <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="insertCustomSmsVar('{date}')">تاریخ جاری <code>{date}</code></button>
+                                <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" onclick="insertCustomSmsVar('{time}')">ساعت جاری <code>{time}</code></button>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label class="form-label small fw-bold mb-0">متن پیامک قالب:</label>
+                                <small class="text-muted" id="customSmsCharCountInfo">تعداد کاراکتر: ۰ | ۱ پیامک فارسی</small>
+                            </div>
+                            <textarea class="form-control font-monospace" id="customSmsTextInput" rows="5" style="direction: rtl;" oninput="updateCustomSmsStats()" placeholder="متن پیامک دلخواه خود را بنویسید..."></textarea>
+                        </div>
+
+                        <div id="customSmsModalAlert" class="alert d-none py-2 px-3 small rounded-3 mb-0"></div>
+                    </div>
+                    <div class="modal-footer bg-light py-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm px-3" data-bs-dismiss="modal">انصراف</button>
+                        <button type="button" class="btn btn-primary btn-sm px-4 fw-bold" id="btnSaveCustomSms" onclick="submitCustomSmsTemplate()">
+                            <span id="saveCustomSmsSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status"></span>
+                            <i class="fas fa-save me-1"></i> ذخیره قالب
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
-    </div>
-</div>
 
 <!-- ═══ بخش ۶: سیستم و دیتابیس ═══ -->
 <!-- کارت ۱۵: پشتیبان‌گیری و بازیابی -->

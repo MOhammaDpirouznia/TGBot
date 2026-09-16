@@ -1995,6 +1995,20 @@
                                 <small class="text-muted d-block" id="smsChoiceDebtSubtitle">ارسال مبلغ بدهی به همراه لینک پرداخت</small>
                             </div>
                         </label>
+                        {% if custom_sms_templates and custom_sms_templates|length > 0 %}
+                        <div class="mt-2 pt-2 border-top">
+                            <div class="fw-bold small text-secondary mb-2"><i class="fas fa-layer-group text-primary me-1"></i> قالب‌های سفارشی شما:</div>
+                            {% for ct in custom_sms_templates %}
+                            <label class="btn btn-outline-secondary text-start d-flex align-items-center gap-2 py-2 px-3 rounded-3 cursor-pointer mb-2">
+                                <input type="radio" name="customer_sms_choice" value="custom_{{ ct.get('id') }}" class="form-check-input mt-0" onchange="fetchTableSmsPreview()">
+                                <div>
+                                    <div class="fw-bold text-dark"><i class="fas fa-file-lines text-primary me-1"></i> {{ ct.get('title') }}</div>
+                                    <small class="text-muted d-block text-truncate" style="max-width: 320px;">{{ ct.get('text', '') }}</small>
+                                </div>
+                            </label>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
 
@@ -2680,6 +2694,23 @@ function toggleTableCustomSmsEdit() {
 async function fetchTableSmsPreview() {
     if (isTableEditingCustomSms) return;
     const subId = document.getElementById('smsModalSubId').value;
+
+    document.querySelectorAll('#smsTypeOptionsContainer label').forEach(lbl => {
+        const inp = lbl.querySelector('input');
+        if (inp && inp.checked) {
+            lbl.classList.add('active');
+            if (lbl.classList.contains('btn-outline-secondary')) {
+                lbl.classList.remove('btn-outline-secondary');
+                lbl.classList.add('btn-outline-primary');
+            }
+        } else {
+            lbl.classList.remove('active');
+            if (lbl.classList.contains('btn-outline-primary') && !lbl.classList.contains('btn-default-choice')) {
+                // leave style clean
+            }
+        }
+    });
+
     const checked = document.querySelector('input[name="customer_sms_choice"]:checked');
     const smsType = checked ? checked.value : 'portal_link';
     const previewBox = document.getElementById('smsModalPreviewBox');

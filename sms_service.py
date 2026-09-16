@@ -40,6 +40,14 @@ def format_iranian_phone(phone: str) -> Optional[str]:
     return None
 
 
+def clean_smsir_base_url(raw_url: str) -> str:
+    """پاکسازی آدرس وب‌سرویس سامانه SMS.ir از پسوندهای اشتباه v1/send"""
+    if not raw_url:
+        return "https://api.sms.ir"
+    cleaned = re.sub(r"/v1(/send)?(/bulk|/verify)?/?$", "", str(raw_url).strip()).rstrip("/")
+    return cleaned if (cleaned and cleaned.startswith("http")) else "https://api.sms.ir"
+
+
 def get_sms_config(db_instance=None, reseller_id: int = None) -> Dict[str, Any]:
     """دریافت تنظیمات فعال پنل پیامکی از دیتابیس (مدیریت یا نماینده اختصاصی) یا فایل .env"""
     cfg = {
@@ -259,7 +267,9 @@ def send_sms(
 
         # ۵. وب‌سرویس سامانه SMS.ir (نسخه جدید API v1/v3)
         elif provider in ("smsir", "sms.ir"):
-            base_url = (config.get("url") or "https://api.sms.ir").rstrip("/")
+            raw_url = str(config.get("url") or "https://api.sms.ir").strip()
+            cleaned_url = re.sub(r"/v1(/send)?(/bulk|/verify)?/?$", "", raw_url).rstrip("/")
+            base_url = cleaned_url if (cleaned_url and cleaned_url.startswith("http")) else "https://api.sms.ir"
             headers = {
                 "x-api-key": api_key,
                 "Content-Type": "application/json",
@@ -278,7 +288,7 @@ def send_sms(
                 # ارسال متنی مستقیم / انبوه (Bulk)
                 url = f"{base_url}/v1/send/bulk"
                 originator = config.get("originator") or ""
-                line_num = int(originator) if originator.isdigit() else originator
+                line_num = int(originator) if str(originator).isdigit() else originator
                 payload = {
                     "lineNumber": line_num,
                     "messageText": message,
@@ -286,14 +296,22 @@ def send_sms(
                 }
 
             req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers)
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=12) as resp:
                 res_body = resp.read().decode("utf-8")
                 try:
                     res_json = json.loads(res_body)
-                    if res_json.get("status") == 1:
+                    st = res_json.get("status")
+                    if st == 1:
                         return True, f"پیامک SMS.ir با موفقیت ارسال شد: {res_json.get('message', 'موفق')}"
                     else:
-                        return False, f"خطای SMS.ir: {res_json.get('message', res_body)}"
+                        st_desc = ""
+                        if st == 102:
+                            st_desc = " (اعتبار ریالی پنل پیامک کافی نمی‌باشد)"
+                        elif st == 103:
+                            st_desc = " (شماره خط فرستنده نامعتبر است یا در پنل فعال نیست)"
+                        elif st == 105:
+                            st_desc = " (شماره همراه گیرنده نامعتبر است)"
+                        return False, f"خطای SMS.ir (کد {st}): {res_json.get('message', '')}{st_desc}"
                 except Exception:
                     return True, f"پیامک SMS.ir با موفقیت ارسال شد: {res_body}"
 
@@ -442,4 +460,164 @@ def send_customer_templated_sms(
 
     formatted_msg = format_sms_template(raw_template, data)
     return send_sms(phone, formatted_msg, db_instance=db_instance, reseller_id=reseller_id)
+
+
+def get_sms_account_info(db_instance=None, reseller_id: int = None) -> Dict[str, Any]:
+    """
+    دریافت اطلاعات زنده و وضعیت پنل پیامکی متصل (اعتبار ریالی، تعداد پیامک تخمینی، شماره خطوط)
+    پشتیبانی کامل از SMS.ir، Kavenegar، IPPanel/FarazSMS
+    """
+    config = get_sms_config(db_instance, reseller_id=reseller_id)
+    prov_names = {
+        "ippanel": "فراز اس‌ام‌اس / IPPanel",
+        "farazsms": "فراز اس‌ام‌اس",
+        "maxsms": "MaxSMS",
+        "smsir": "سامانه SMS.ir",
+        "sms.ir": "سامانه SMS.ir",
+        "kavenegar": "کاوه‌نگار",
+        "melipayamak": "ملی پیامک",
+        "ghasedak": "قاصدک",
+        "generic": "وب‌هوک اختصاصی"
+    }
+    provider = config.get("provider", "ippanel")
+    result = {
+        "enabled": bool(config.get("enabled")),
+        "provider": provider,
+        "provider_name": prov_names.get(provider, provider),
+        "status": "disabled" if not config.get("enabled") else "connecting",
+        "connected": False,
+        "currency": "ریال",
+        "credit": 0.0,
+        "credit_formatted": "۰ ریال",
+        "approx_sms_count": 0,
+        "lines": [],
+        "originator": config.get("originator", ""),
+        "message": "",
+        "updated_at": ""
+    }
+
+    try:
+        from datetime import datetime
+        import zoneinfo
+        tehran_tz = zoneinfo.ZoneInfo("Asia/Tehran")
+        result["updated_at"] = datetime.now(tehran_tz).strftime("%H:%M:%S")
+    except Exception:
+        pass
+
+    if not config.get("enabled"):
+        result["message"] = "سامانه پیامک در تنظیمات غیرفعال است."
+        result["status"] = "disabled"
+        return result
+
+    provider = config.get("provider", "ippanel")
+    api_key = str(config.get("api_key") or "").strip()
+    if not api_key and provider != "generic":
+        result["message"] = "کلید API پنل پیامکی ثبت نشده است."
+        return result
+
+    try:
+        # ۱. سامانه پیامکی SMS.ir
+        if provider in ("smsir", "sms.ir"):
+            raw_url = str(config.get("url") or "https://api.sms.ir").strip()
+            cleaned_url = re.sub(r"/v1(/send)?(/bulk|/verify)?/?$", "", raw_url).rstrip("/")
+            base_url = cleaned_url if (cleaned_url and cleaned_url.startswith("http")) else "https://api.sms.ir"
+
+            headers = {
+                "x-api-key": api_key,
+                "Accept": "text/plain"
+            }
+
+            # الف) دریافت اعتبار ریالی
+            credit_url = f"{base_url}/v1/credit"
+            req_c = urllib.request.Request(credit_url, headers=headers)
+            with urllib.request.urlopen(req_c, timeout=8) as resp_c:
+                c_body = resp_c.read().decode("utf-8")
+                c_json = json.loads(c_body)
+                if c_json.get("status") == 1:
+                    raw_credit = float(c_json.get("data") or 0)
+                    result["credit"] = raw_credit
+                    result["credit_formatted"] = f"{int(raw_credit):,} ریال".replace(",", "،")
+                    result["approx_sms_count"] = max(0, int(raw_credit // 2600))
+                    result["connected"] = True
+                else:
+                    result["message"] = c_json.get("message", "خطا در دریافت اعتبار")
+
+            # ب) دریافت خطوط حساب
+            try:
+                line_url = f"{base_url}/v1/line"
+                req_l = urllib.request.Request(line_url, headers=headers)
+                with urllib.request.urlopen(req_l, timeout=8) as resp_l:
+                    l_body = resp_l.read().decode("utf-8")
+                    l_json = json.loads(l_body)
+                    if l_json.get("status") == 1 and isinstance(l_json.get("data"), list):
+                        result["lines"] = [str(line) for line in l_json.get("data")]
+            except Exception as e_line:
+                logger.warning(f"Error fetching SMS.ir lines: {e_line}")
+
+            if result["connected"]:
+                lines_str = "، ".join(result["lines"]) if result["lines"] else (config.get("originator") or "خط پیش‌فرض")
+                result["message"] = f"متصل به سامانه SMS.ir (خطوط فعال: {lines_str})"
+                return result
+
+        # ۲. سامانه کاوه‌نگار (Kavenegar)
+        elif provider == "kavenegar":
+            base_url = (config.get("url") or "https://api.kavenegar.com").rstrip("/")
+            url = f"{base_url}/v1/{api_key}/account/info.json"
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                entries = data.get("entries", {})
+                rem = float(entries.get("remaincredit") or 0)
+                result["connected"] = True
+                result["credit"] = rem
+                result["credit_formatted"] = f"{int(rem):,} ریال".replace(",", "،")
+                result["approx_sms_count"] = max(0, int(rem // 2500))
+                if config.get("originator"):
+                    result["lines"] = [config.get("originator")]
+                result["message"] = "متصل به درگاه کاوه‌نگار"
+                return result
+
+        # ۳. سامانه فراز اس‌ام‌اس / IPPanel
+        elif provider in ("ippanel", "farazsms", "maxsms"):
+            base_url = (config.get("url") or "http://rest.ippanel.com").rstrip("/")
+            url = f"{base_url}/v1/credit"
+            headers = {"Authorization": f"AccessKey {api_key}"}
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                rem = float(data.get("data", {}).get("credit") or 0)
+                result["connected"] = True
+                result["credit"] = rem
+                result["credit_formatted"] = f"{int(rem):,} ریال".replace(",", "،")
+                result["approx_sms_count"] = max(0, int(rem // 2000))
+                if config.get("originator"):
+                    result["lines"] = [config.get("originator")]
+                result["message"] = f"متصل به سامانه {provider.upper()}"
+                return result
+
+        elif provider == "generic":
+            result["connected"] = True
+            result["message"] = "درگاه وب‌هوک دلخواه فعال است."
+            return result
+
+    except urllib.error.HTTPError as e:
+        err_text = ""
+        try:
+            err_text = e.read().decode("utf-8")
+            err_j = json.loads(err_text)
+            err_text = err_j.get("message") or err_text
+        except Exception:
+            err_text = str(e)
+        result["message"] = f"خطای وب‌سرویس ({e.code}): {err_text}"
+        result["status"] = "error"
+    except Exception as e:
+        result["message"] = f"خطا در ارتباط با پنل: {str(e)}"
+        result["status"] = "error"
+
+    if result.get("connected"):
+        result["status"] = "connected"
+
+    return result
+
+
 
