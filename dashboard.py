@@ -138,6 +138,10 @@ def get_hiddify_key() -> str:
         pass
     return os.getenv("HIDIFY_API_KEY", "").strip()
 
+def get_active_hiddify_admin_key() -> str:
+    """دریافت کلید ادمین فعال هیدیفای برای همگام‌سازی و تغییر مشخصات کاربر"""
+    return get_hiddify_key()
+
 def get_hiddify_proxy() -> str:
     try:
         val = db.get_setting("hidify_proxy_path") or db.get_setting("hiddify_proxy_path")
@@ -1774,67 +1778,73 @@ def hidify_sync_update_user(uuid: str, api_key: str = None, reseller_id: int = N
 
 def hidify_sync_change_user_uuid(old_uuid: str, new_uuid: str, sub_fallback_data: dict = None) -> dict:
     """تغییر مطمئن شناسه UUID مشتری در پنل هیدیفای با پشتیبانی از PATCH و ساخت مجدد Fallback"""
-    clean_old = str(old_uuid).strip().strip("/") if old_uuid else ""
-    clean_new = str(new_uuid).strip().strip("/")
-    if not clean_new:
-        return {"error": "شناسه جدید نامعتبر است"}
-    if clean_old == clean_new:
-        return {"success": True, "uuid": clean_new}
+    try:
+        clean_old = str(old_uuid).strip().strip("/") if old_uuid else ""
+        clean_new = str(new_uuid).strip().strip("/")
+        if not clean_new:
+            return {"error": "شناسه جدید نامعتبر است"}
+        if clean_old == clean_new:
+            return {"success": True, "uuid": clean_new}
 
-    # کلیدهای معتبر برای اتصال
-    active_key = session.get("reseller_uuid") if "reseller_uuid" in session else None
-    main_admin_key = get_active_hiddify_admin_key()
-    keys_to_try = []
-    if active_key:
-        keys_to_try.append(active_key)
-    if main_admin_key and main_admin_key not in keys_to_try:
-        keys_to_try.append(main_admin_key)
+        # کلیدهای معتبر برای اتصال
+        active_key = session.get("reseller_uuid") if (session and "reseller_uuid" in session) else None
+        main_admin_key = get_active_hiddify_admin_key()
+        keys_to_try = []
+        if active_key:
+            keys_to_try.append(active_key)
+        if main_admin_key and main_admin_key not in keys_to_try:
+            keys_to_try.append(main_admin_key)
+        if not keys_to_try:
+            keys_to_try.append(None)
 
-    for k_val in keys_to_try:
-        # ۱. ابتدا تلاش با متد PATCH
-        if clean_old:
-            for ep in (f"/admin/user/{clean_old}/", f"/admin/user/{clean_old}"):
-                res = hidify_sync_request("PATCH", ep, {"uuid": clean_new}, api_key=k_val)
-                if isinstance(res, dict) and "error" not in res:
-                    check = hidify_sync_request("GET", f"/admin/user/{clean_new}/", api_key=k_val)
-                    if isinstance(check, dict) and check.get("name"):
-                        logger.info(f"Successfully changed user UUID from {clean_old} to {clean_new} via PATCH")
-                        return check
-
-        # ۲. در صورت عدم تغییر با PATCH، استخراج مشخصات و ثبت مجدد با UUID جدید
-        old_user = {}
-        if clean_old:
-            for ep_get in (f"/admin/user/{clean_old}/", f"/admin/user/{clean_old}"):
-                resp = hidify_sync_request("GET", ep_get, api_key=k_val)
-                if isinstance(resp, dict) and "error" not in resp and resp.get("name"):
-                    old_user = resp
-                    break
-
-        # ساخت پیلود کاربر
-        allowed_fields = {
-            "name", "usage_limit_GB", "current_usage_GB", "package_days", "comment", "mode",
-            "start_date", "expire_date", "enable", "is_active", "lang",
-            "added_by", "wg_pk", "wg_pub", "wg_psk", "telegram_id"
-        }
-        payload = {k: v for k, v in old_user.items() if k in allowed_fields and v is not None}
-        payload["uuid"] = clean_new
-
-        # اگر اطلاعاتی از سرور هیدیفای برنگشت، از اطلاعات دیتابیس لوکال اشتراک استفاده می‌کنیم
-        if not payload.get("name") and sub_fallback_data:
-            payload["name"] = sub_fallback_data.get("account_name") or f"user_{clean_new[:8]}"
-            payload["usage_limit_GB"] = float(sub_fallback_data.get("data_limit") or 30)
-            payload["package_days"] = int(sub_fallback_data.get("duration") or 30)
-            payload["enable"] = (sub_fallback_data.get("status") != "disabled")
-            payload["is_active"] = True
-
-        create_res = hidify_sync_request("POST", "/admin/user/", payload, api_key=k_val)
-        if isinstance(create_res, dict) and "error" not in create_res:
-            logger.info(f"User recreated with new UUID {clean_new}. Deleting old user {clean_old}...")
+        for k_val in keys_to_try:
+            # ۱. ابتدا تلاش با متد PATCH
             if clean_old:
-                hidify_sync_request("DELETE", f"/admin/user/{clean_old}/", api_key=k_val)
-            return create_res
+                for ep in (f"/admin/user/{clean_old}/", f"/admin/user/{clean_old}"):
+                    res = hidify_sync_request("PATCH", ep, {"uuid": clean_new}, api_key=k_val)
+                    if isinstance(res, dict) and "error" not in res:
+                        check = hidify_sync_request("GET", f"/admin/user/{clean_new}/", api_key=k_val)
+                        if isinstance(check, dict) and check.get("name"):
+                            logger.info(f"Successfully changed user UUID from {clean_old} to {clean_new} via PATCH")
+                            return check
 
-    return {"error": "خطا در برقراری ارتباط با سرور هیدیفای جهت تغییر UUID"}
+            # ۲. در صورت عدم تغییر با PATCH، استخراج مشخصات و ثبت مجدد با UUID جدید
+            old_user = {}
+            if clean_old:
+                for ep_get in (f"/admin/user/{clean_old}/", f"/admin/user/{clean_old}"):
+                    resp = hidify_sync_request("GET", ep_get, api_key=k_val)
+                    if isinstance(resp, dict) and "error" not in resp and resp.get("name"):
+                        old_user = resp
+                        break
+
+            # ساخت پیلود کاربر
+            allowed_fields = {
+                "name", "usage_limit_GB", "current_usage_GB", "package_days", "comment", "mode",
+                "start_date", "expire_date", "enable", "is_active", "lang",
+                "added_by", "wg_pk", "wg_pub", "wg_psk", "telegram_id"
+            }
+            payload = {k: v for k, v in old_user.items() if k in allowed_fields and v is not None}
+            payload["uuid"] = clean_new
+
+            # اگر اطلاعاتی از سرور هیدیفای برنگشت، از اطلاعات دیتابیس لوکال اشتراک استفاده می‌کنیم
+            if not payload.get("name") and sub_fallback_data:
+                payload["name"] = sub_fallback_data.get("account_name") or f"user_{clean_new[:8]}"
+                payload["usage_limit_GB"] = float(sub_fallback_data.get("data_limit") or 30)
+                payload["package_days"] = int(sub_fallback_data.get("duration") or 30)
+                payload["enable"] = (sub_fallback_data.get("status") != "disabled")
+                payload["is_active"] = True
+
+            create_res = hidify_sync_request("POST", "/admin/user/", payload, api_key=k_val)
+            if isinstance(create_res, dict) and "error" not in create_res:
+                logger.info(f"User recreated with new UUID {clean_new}. Deleting old user {clean_old}...")
+                if clean_old:
+                    hidify_sync_request("DELETE", f"/admin/user/{clean_old}/", api_key=k_val)
+                return create_res
+
+        return {"error": "خطا در برقراری ارتباط با سرور هیدیفای جهت تغییر UUID"}
+    except Exception as e:
+        logger.exception(f"Exception in hidify_sync_change_user_uuid: {e}")
+        return {"error": str(e)}
 
 
 def hidify_sync_renew_user(uuid: str, new_limit_gb: float, new_duration_days: int, force_instant: bool = True) -> dict:
@@ -7224,122 +7234,137 @@ def admin_subscription_toggle_vip(sub_id):
 @permission_required("sub_manage")
 def admin_subscription_edit(sub_id):
     """ویرایش جامع مشخصات، حجم، روزها، آیدی تلگرام و وضعیت بدهی اشتراک هیدیفای توسط مدیر"""
-    conn = db.get_connection()
-    sub_row = conn.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,)).fetchone()
-    conn.close()
-    if not sub_row:
-        flash("اشتراک یافت نشد.", "danger")
-        return redirect(get_redirect_target("subscriptions"))
-
-    sub = dict(sub_row)
-    account_name = request.form.get("account_name", "").strip() or sub["account_name"]
-    phone_number = request.form.get("phone_number", "").strip()
-    comment = request.form.get("comment", "").strip()
-    telegram_id_raw = request.form.get("telegram_id", "").strip()
-    telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else (sub.get("telegram_id") or 0)
-
-    data_limit = float(request.form.get("data_limit", sub.get("data_limit") or 30))
-    duration = int(request.form.get("duration", sub.get("duration") or 30))
-    status = request.form.get("status", sub.get("status") or "active")
-
-    payment_status = request.form.get("payment_status", sub.get("payment_status") or "paid").strip()
-    debt_amount_raw = request.form.get("debt_amount", "").strip()
-    debt_notes = request.form.get("debt_notes", "").strip()
-    debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else 0
-
-    now = get_now_iso()
-    debt_created = now if (payment_status in ('unpaid', 'debtor') and not sub.get("debt_created_at")) else sub.get("debt_created_at")
-
-    # بررسی و تغییر شناسه اختصاصی (UUID) در صورت تغییر
-    form_uuid = request.form.get("hidify_uuid", "").strip().lower()
-    old_uuid = (sub.get("hidify_uuid") or "").strip().lower()
-    final_uuid = old_uuid
-    uuid_changed = False
-
-    if form_uuid and form_uuid != old_uuid:
-        try:
-            val_uuid = str(uuid.UUID(form_uuid))
-        except ValueError:
-            flash("شناسه UUID وارد شده نامعتبر است. لطفاً فرمت استاندارد UUID را رعایت فرمایید.", "danger")
+    try:
+        conn = db.get_connection()
+        sub_row = conn.execute("SELECT * FROM subscriptions WHERE id=?", (sub_id,)).fetchone()
+        conn.close()
+        if not sub_row:
+            flash("اشتراک یافت نشد.", "danger")
             return redirect(get_redirect_target("subscriptions"))
 
-        change_res = hidify_sync_change_user_uuid(old_uuid, val_uuid, sub_fallback_data=sub)
-        if isinstance(change_res, dict) and "error" in change_res:
-            flash(f"خطا در تغییر شناسه UUID در پنل هیدیفای: {change_res.get('error')}", "danger")
-            return redirect(get_redirect_target("subscriptions"))
+        sub = dict(sub_row)
+        account_name = request.form.get("account_name", "").strip() or sub["account_name"]
+        phone_number = request.form.get("phone_number", "").strip()
+        comment = request.form.get("comment", "").strip()
+        telegram_id_raw = request.form.get("telegram_id", "").strip()
+        telegram_id = int(telegram_id_raw) if telegram_id_raw.isdigit() else (sub.get("telegram_id") or 0)
 
-        final_uuid = val_uuid
-        uuid_changed = True
+        data_limit = float(request.form.get("data_limit", sub.get("data_limit") or 30))
+        duration = int(request.form.get("duration", sub.get("duration") or 30))
+        status = request.form.get("status", sub.get("status") or "active")
 
-    # بروزرسانی در سرور هیدیفای
-    if final_uuid:
-        h_update = {
-            "name": account_name,
-            "usage_limit_GB": data_limit,
-            "package_days": duration
-        }
-        if status == "disabled":
-            h_update["enable"] = False
-            h_update["is_active"] = False
-        elif status == "active":
-            h_update["enable"] = True
-            h_update["is_active"] = True
+        payment_status = request.form.get("payment_status", sub.get("payment_status") or "paid").strip()
+        debt_amount_raw = request.form.get("debt_amount", "").strip()
+        debt_notes = request.form.get("debt_notes", "").strip()
+        debt_amount = int(debt_amount_raw) if debt_amount_raw.isdigit() else 0
 
-        hidify_sync_update_user(final_uuid, **h_update)
+        now = get_now_iso()
+        debt_created = now if (payment_status in ('unpaid', 'debtor') and not sub.get("debt_created_at")) else sub.get("debt_created_at")
 
-    # بروزرسانی در پایگاه‌داده
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE subscriptions 
-        SET account_name = ?,
-            hidify_uuid = ?,
-            data_limit = ?,
-            duration = ?,
-            status = ?,
-            telegram_id = ?,
-            phone_number = ?,
-            account_comment = ?,
-            payment_status = ?,
-            debt_amount = ?,
-            debt_notes = ?,
-            debt_created_at = ?,
-            updated_at = ?
-        WHERE id = ?
-    """, (
-        account_name, final_uuid, data_limit, duration, status,
-        telegram_id, phone_number or None, comment or None,
-        payment_status, debt_amount, debt_notes or None,
-        debt_created, now, sub_id
-    ))
+        # بررسی و تغییر شناسه اختصاصی (UUID) در صورت تغییر
+        form_uuid = request.form.get("hidify_uuid", "").strip().lower()
+        old_uuid = (sub.get("hidify_uuid") or "").strip().lower()
+        final_uuid = old_uuid
+        uuid_changed = False
+        hiddify_sync_warning = None
 
-    # در صورت تسویه وضعیت مالی، بستن فاکتورهای باز
-    if payment_status == 'paid' or debt_amount == 0:
+        if form_uuid and form_uuid != old_uuid:
+            try:
+                val_uuid = str(uuid.UUID(form_uuid))
+            except ValueError:
+                flash("شناسه UUID وارد شده نامعتبر است. لطفاً فرمت استاندارد UUID را رعایت فرمایید.", "danger")
+                return redirect(get_redirect_target("subscriptions"))
+
+            change_res = hidify_sync_change_user_uuid(old_uuid, val_uuid, sub_fallback_data=sub)
+            if isinstance(change_res, dict) and "error" in change_res:
+                logger.warning(f"Hiddify change UUID error for sub {sub_id}: {change_res.get('error')}")
+                hiddify_sync_warning = f"تغییر در هیدیفای با خطا مواجه شد ({change_res.get('error')}) ولی در دیتابیس لوکال اعمال گردید."
+
+            final_uuid = val_uuid
+            uuid_changed = True
+
+        # بروزرسانی در سرور هیدیفای
+        if final_uuid:
+            try:
+                h_update = {
+                    "name": account_name,
+                    "usage_limit_GB": data_limit,
+                    "package_days": duration
+                }
+                if status == "disabled":
+                    h_update["enable"] = False
+                    h_update["is_active"] = False
+                elif status == "active":
+                    h_update["enable"] = True
+                    h_update["is_active"] = True
+
+                hidify_sync_update_user(final_uuid, **h_update)
+            except Exception as he:
+                logger.warning(f"Error syncing user update with Hiddify for {final_uuid}: {he}")
+
+        # بروزرسانی در پایگاه‌داده
+        conn = db.get_connection()
+        cursor = conn.cursor()
         cursor.execute("""
-            UPDATE customer_debt_records
-            SET status = 'paid', paid_at = ?, settled_by = ?, updated_at = ?
-            WHERE subscription_id = ? AND status = 'unpaid'
-        """, (now, session.get("username") or "admin", now, sub_id))
+            UPDATE subscriptions 
+            SET account_name = ?,
+                hidify_uuid = ?,
+                data_limit = ?,
+                duration = ?,
+                status = ?,
+                telegram_id = ?,
+                phone_number = ?,
+                account_comment = ?,
+                payment_status = ?,
+                debt_amount = ?,
+                debt_notes = ?,
+                debt_created_at = ?,
+                updated_at = ?
+            WHERE id = ?
+        """, (
+            account_name, final_uuid, data_limit, duration, status,
+            telegram_id, phone_number or None, comment or None,
+            payment_status, debt_amount, debt_notes or None,
+            debt_created, now, sub_id
+        ))
 
-    # اگر کاربر در جدول users باشد، بروزرسانی نام، شماره تلفن و UUID
-    if telegram_id and telegram_id > 0:
-        cursor.execute("SELECT * FROM users WHERE telegram_id=?", (telegram_id,))
-        if cursor.fetchone():
-            cursor.execute("UPDATE users SET phone_number=COALESCE(?, phone_number), username=COALESCE(?, username), hidify_uuid=COALESCE(?, hidify_uuid), updated_at=? WHERE telegram_id=?", (phone_number or None, account_name, final_uuid, now, telegram_id))
+        # در صورت تسویه وضعیت مالی، بستن فاکتورهای باز
+        if payment_status == 'paid' or debt_amount == 0:
+            cursor.execute("""
+                UPDATE customer_debt_records
+                SET status = 'paid', paid_at = ?, settled_by = ?, updated_at = ?
+                WHERE subscription_id = ? AND status = 'unpaid'
+            """, (now, session.get("username") or "admin", now, sub_id))
+
+        # اگر کاربر در جدول users باشد، بروزرسانی نام، شماره تلفن و UUID
+        if telegram_id and telegram_id > 0:
+            cursor.execute("SELECT * FROM users WHERE telegram_id=?", (telegram_id,))
+            if cursor.fetchone():
+                cursor.execute("UPDATE users SET phone_number=COALESCE(?, phone_number), username=COALESCE(?, username), hidify_uuid=COALESCE(?, hidify_uuid), updated_at=? WHERE telegram_id=?", (phone_number or None, account_name, final_uuid, now, telegram_id))
+            else:
+                cursor.execute("INSERT INTO users (telegram_id, username, phone_number, hidify_uuid, is_verified, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)", (telegram_id, account_name, phone_number or None, final_uuid, now, now))
+
+        conn.commit()
+        conn.close()
+
+        # همگام‌سازی فوری
+        try:
+            sync_hiddify_online_users(force=True)
+        except Exception:
+            pass
+
+        if uuid_changed:
+            if hiddify_sync_warning:
+                flash(f"مشخصات اشتراک «{account_name}» و UUID در دیتابیس ثبت شد. ⚠️ {hiddify_sync_warning}", "warning")
+            else:
+                flash(f"مشخصات اشتراک «{account_name}» و شناسه هیدیفای (UUID) با موفقیت در سیستم و پنل هیدیفای تغییر یافت. لینک‌های قبلی مشتری باطل گردیدند.", "success")
         else:
-            cursor.execute("INSERT INTO users (telegram_id, username, phone_number, hidify_uuid, is_verified, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)", (telegram_id, account_name, phone_number or None, final_uuid, now, now))
-
-    conn.commit()
-    conn.close()
-
-    # همگام‌سازی فوری
-    sync_hiddify_online_users(force=True)
-
-    if uuid_changed:
-        flash(f"مشخصات اشتراک «{account_name}» و شناسه هیدیفای (UUID) با موفقیت در سیستم و پنل هیدیفای تغییر یافت. لینک‌های قبلی مشتری باطل گردیدند.", "success")
-    else:
-        flash(f"مشخصات اشتراک «{account_name}» با موفقیت ویرایش و در هیدیفای اعمال شد.", "success")
-    return redirect(get_redirect_target("subscriptions"))
+            flash(f"مشخصات اشتراک «{account_name}» با موفقیت ویرایش و در سیستم ذخیره شد.", "success")
+        return redirect(get_redirect_target("subscriptions"))
+    except Exception as e:
+        logger.exception(f"Exception in admin_subscription_edit for sub {sub_id}: {e}")
+        flash(f"خطای سیستمی در ویرایش مشخصات اشتراک: {e}", "danger")
+        return redirect(get_redirect_target("subscriptions"))
 
 
 @app.route("/admin/subscription/<int:sub_id>/toggle", methods=["POST"])

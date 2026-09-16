@@ -116,6 +116,8 @@
                                 <div class="d-flex flex-wrap gap-1 justify-content-center mt-2">
                                     <a href="hiddify://install-sub?url={{ sub_url|urlencode }}" class="btn btn-xs btn-outline-primary py-1 px-2"><i class="fas fa-rocket me-1"></i> Hiddify</a>
                                     <a href="streisand://import/{{ sub_url|urlencode }}" class="btn btn-xs btn-outline-info py-1 px-2"><i class="fas fa-bolt me-1"></i> Streisand</a>
+                                    <a href="happ://add/{{ sub_url|urlencode }}" class="btn btn-xs btn-outline-success py-1 px-2"><i class="fas fa-play me-1"></i> Happ</a>
+                                    <a href="v2box://install-sub?url={{ sub_url|urlencode }}" class="btn btn-xs btn-outline-danger py-1 px-2"><i class="fas fa-box me-1"></i> V2box</a>
                                     <a href="{{ sub_url }}" target="_blank" class="btn btn-xs btn-outline-secondary py-1 px-2"><i class="fas fa-external-link-alt me-1"></i> صفحه وب ساب</a>
                                 </div>
                             </div>
@@ -242,12 +244,41 @@ const CURRENT_SUB_ID = {{ sub_id | default(0) }};
 function copyActionText(elemId, label) {
     const input = document.getElementById(elemId);
     if (!input) return;
-    input.select();
-    navigator.clipboard.writeText(input.value).then(() => {
-        alert((label || 'لینک') + ' با موفقیت کپی شد! ✅');
-    }).catch(() => {
-        prompt('لینک را کپی کنید:', input.value);
-    });
+    const text = input.value || '';
+    if (!text) return;
+    try {
+        input.select();
+        if (input.setSelectionRange) input.setSelectionRange(0, 99999);
+    } catch(e) {}
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(() => {
+            alert((label || 'لینک') + ' با موفقیت کپی شد! ✅');
+        }).catch(() => {
+            fallbackCopyReseller(text, label);
+        });
+    } else {
+        fallbackCopyReseller(text, label);
+    }
+}
+
+function fallbackCopyReseller(text, label) {
+    try {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.top = "-9999px";
+        textArea.style.left = "-9999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        const success = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        if (success) {
+            alert((label || 'لینک') + ' کپی شد! ✅');
+            return;
+        }
+    } catch(e) {}
+    prompt('لینک را کپی کنید:', text);
 }
 
 function downloadQrCode(containerId, filename) {
@@ -255,30 +286,74 @@ function downloadQrCode(containerId, filename) {
     if (!container) return;
     const canvas = container.querySelector('canvas');
     const img = container.querySelector('img');
-    let dataUrl = '';
-    if (canvas) {
-        dataUrl = canvas.toDataURL('image/png');
+
+    // قاب سفید دور بارکد (Quiet Zone) به اندازه ۳۵ پیکسل برای اسکن استاندارد
+    const padding = 35;
+
+    const triggerDownload = (sourceDrawable, srcW, srcH) => {
+        try {
+            const offscreenCanvas = document.createElement('canvas');
+            offscreenCanvas.width = srcW + (padding * 2);
+            offscreenCanvas.height = srcH + (padding * 2);
+            const ctx = offscreenCanvas.getContext('2d');
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
+            ctx.drawImage(sourceDrawable, padding, padding, srcW, srcH);
+
+            const dataUrl = offscreenCanvas.toDataURL('image/png');
+            const a = document.createElement('a');
+            a.href = dataUrl;
+            a.download = filename || ('qrcode_' + Date.now() + '.png');
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        } catch (e) {
+            console.error('Error generating padded QR code download:', e);
+            if (canvas) {
+                const a = document.createElement('a');
+                a.href = canvas.toDataURL('image/png');
+                a.download = filename || ('qrcode_' + Date.now() + '.png');
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            } else if (img && img.src) {
+                const a = document.createElement('a');
+                a.href = img.src;
+                a.download = filename || ('qrcode_' + Date.now() + '.png');
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
+        }
+    };
+
+    if (canvas && canvas.width > 0) {
+        triggerDownload(canvas, canvas.width, canvas.height);
     } else if (img && img.src) {
-        dataUrl = img.src;
-    }
-    if (dataUrl) {
-        const a = document.createElement('a');
-        a.href = dataUrl;
-        a.download = filename || ('qrcode_' + Date.now() + '.png');
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        if (img.complete && img.naturalWidth > 0) {
+            triggerDownload(img, img.naturalWidth, img.naturalHeight);
+        } else {
+            const tempImg = new Image();
+            tempImg.crossOrigin = 'Anonymous';
+            tempImg.onload = function() {
+                triggerDownload(tempImg, tempImg.naturalWidth, tempImg.naturalHeight);
+            };
+            tempImg.src = img.src;
+        }
     } else {
         alert('تصویر بارکد برای دانلود آماده نیست.');
     }
 }
 
 async function shareQrCode(url, title) {
+    if (!url) return;
+    const shareTitle = title || 'لینک اشتراک';
     if (navigator.share) {
         try {
             await navigator.share({
-                title: title || 'لینک اشتراک',
-                text: (title || 'لینک اشتراک') + ':\n' + url,
+                title: shareTitle,
+                text: shareTitle,
                 url: url
             });
             return;
@@ -286,7 +361,7 @@ async function shareQrCode(url, title) {
             if (err.name !== 'AbortError') return;
         }
     }
-    window.open('https://t.me/share/url?url=' + encodeURIComponent(url) + '&text=' + encodeURIComponent(title || ''));
+    window.open('https://t.me/share/url?url=' + encodeURIComponent(url) + '&text=' + encodeURIComponent(shareTitle));
 }
 
 let isEditingCustomSms = false;

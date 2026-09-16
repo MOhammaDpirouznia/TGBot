@@ -500,7 +500,7 @@
                                 {% endif %}
 
                                 <!-- ۳. دکمه سریع کپی لینک دائمی پورتال مشتری -->
-                                <button type="button" class="btn btn-sm btn-outline-info d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" onclick="copyLink('{{ get_customer_portal_url(sub.get('hidify_uuid') or sub['id']) }}', 'لینک پورتال مشتری')" title="مشاهده و کپی لینک پورتال مشتری">
+                                <button type="button" class="btn btn-sm btn-outline-info d-inline-flex align-items-center gap-1 shadow-sm px-2 py-1" onclick="copyLink('{{ get_customer_portal_url(sub.get('hidify_uuid') or sub['id']) }}', 'لینک پورتال مشتری', this)" title="مشاهده و کپی لینک پورتال مشتری">
                                     <i class="fas fa-link"></i>
                                     <span class="d-none d-lg-inline">پورتال مشتری</span>
                                 </button>
@@ -818,7 +818,7 @@
                                 </div>
                                 <div class="input-group mb-2">
                                     <input type="text" id="portalInput{{ sub['id'] }}" class="form-control text-center font-monospace small" readonly value="{{ portal_url }}" style="direction: ltr; font-size: 11px;">
-                                    <button class="btn btn-primary btn-sm" onclick="copyLink('{{ portal_url }}', 'لینک پورتال مشتری')"><i class="fas fa-copy me-1"></i> کپی</button>
+                                    <button class="btn btn-primary btn-sm" onclick="copyTabInput('portalInput{{ sub['id'] }}', 'لینک پورتال مشتری', this)"><i class="fas fa-copy me-1"></i> کپی</button>
                                 </div>
                                 <div class="small text-muted">
                                     <i class="fas fa-info-circle text-info me-1"></i> پورتال دائمی کاربر جهت بررسی حجم باقی‌مانده، تمدید آنلاین، پرداخت و پشتیبانی
@@ -847,11 +847,13 @@
                                 </div>
                                 <div class="input-group mb-2">
                                     <input type="text" id="subInput{{ sub['id'] }}" class="form-control text-center font-monospace small" readonly value="{{ sub_url }}" style="direction: ltr; font-size: 11px;">
-                                    <button class="btn btn-primary btn-sm" onclick="copyLink('{{ sub_url }}', 'لینک ساب')"><i class="fas fa-copy me-1"></i> کپی</button>
+                                    <button class="btn btn-primary btn-sm" onclick="copyTabInput('subInput{{ sub['id'] }}', 'لینک ساب', this)"><i class="fas fa-copy me-1"></i> کپی</button>
                                 </div>
                                 <div class="d-flex flex-wrap gap-1 justify-content-center mt-2">
                                     <a href="hiddify://install-sub?url={{ sub_url|urlencode }}" class="btn btn-xs btn-outline-primary py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-rocket me-1"></i> Hiddify</a>
                                     <a href="streisand://import/{{ sub_url|urlencode }}" class="btn btn-xs btn-outline-info py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-bolt me-1"></i> Streisand</a>
+                                    <a href="happ://add/{{ sub_url|urlencode }}" class="btn btn-xs btn-outline-success py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-play me-1"></i> Happ</a>
+                                    <a href="v2box://install-sub?url={{ sub_url|urlencode }}" class="btn btn-xs btn-outline-danger py-1 px-2 font-monospace" style="font-size: 11px;"><i class="fas fa-box me-1"></i> V2box</a>
                                 </div>
                             </div>
                         </div>
@@ -871,13 +873,13 @@
                                     <button type="button" class="btn btn-sm btn-outline-info" onclick="shareConnectionLink('{{ single_url }}', 'کانفیگ تکی {{ sub['account_name'] }}')">
                                         <i class="fas fa-share-nodes me-1"></i> اشتراک‌گذاری
                                     </button>
-                                    <button type="button" class="btn btn-sm btn-outline-warning" onclick="copyLink('{{ single_url }}', 'لینک مستقیم تکی')">
+                                    <button type="button" class="btn btn-sm btn-outline-warning" onclick="copyTabInput('singleInput{{ sub['id'] }}', 'کانفیگ تکی', this)">
                                         <i class="fas fa-copy me-1"></i> کپی کانفیگ
                                     </button>
                                 </div>
                                 <div class="input-group mb-2">
                                     <input type="text" id="singleInput{{ sub['id'] }}" class="form-control text-center font-monospace small" readonly value="{{ single_url }}" style="direction: ltr; font-size: 11px;">
-                                    <button class="btn btn-warning btn-sm" onclick="copyLink('{{ single_url }}', 'لینک تکی')"><i class="fas fa-copy me-1"></i> کپی</button>
+                                    <button class="btn btn-warning btn-sm" onclick="copyTabInput('singleInput{{ sub['id'] }}', 'لینک تکی', this)"><i class="fas fa-copy me-1"></i> کپی</button>
                                 </div>
                                 <div class="small text-muted">
                                     <i class="fas fa-bolt text-warning me-1"></i> مناسب نرم‌افزارهای V2RayNG, v2rayN, Shadowrocket, Clash
@@ -3155,22 +3157,81 @@ function changePerPage(val) {
     window.location.href = url.toString();
 }
 
-function copyLink(text, label) {
+function copyTextDirectly(text, label, btnElem, sourceInput) {
     if (!text) {
         alert('لینکی جهت کپی موجود نیست.');
         return;
     }
-    navigator.clipboard.writeText(text).then(() => {
-        alert((label || 'لینک') + ' با موفقیت در کلیپ‌بورد کپی شد.');
-    }).catch(() => {
-        const inp = document.createElement('input');
-        inp.value = text;
-        document.body.appendChild(inp);
-        inp.select();
-        document.execCommand('copy');
-        document.body.removeChild(inp);
-        alert((label || 'لینک') + ' کپی شد.');
-    });
+    const showFeedback = () => {
+        if (btnElem) {
+            const originalHtml = btnElem.innerHTML;
+            const originalClass = btnElem.className;
+            btnElem.innerHTML = '<i class="fas fa-check me-1"></i> کپی شد!';
+            btnElem.classList.remove('btn-primary', 'btn-warning', 'btn-outline-warning', 'btn-outline-info', 'btn-outline-secondary');
+            btnElem.classList.add('btn-success');
+            setTimeout(() => {
+                btnElem.innerHTML = originalHtml;
+                btnElem.className = originalClass;
+            }, 2000);
+        }
+    };
+
+    if (sourceInput) {
+        try {
+            sourceInput.focus();
+            sourceInput.select();
+            if (sourceInput.setSelectionRange) {
+                sourceInput.setSelectionRange(0, 99999);
+            }
+        } catch (e) {}
+    }
+
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(() => {
+            showFeedback();
+        }).catch(() => {
+            fallbackCopy(text, showFeedback);
+        });
+    } else {
+        fallbackCopy(text, showFeedback);
+    }
+}
+
+function fallbackCopy(text, successCb) {
+    let success = false;
+    try {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.top = "-9999px";
+        textArea.style.left = "-9999px";
+        textArea.style.opacity = "0";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        if (textArea.setSelectionRange) {
+            textArea.setSelectionRange(0, 99999);
+        }
+        success = document.execCommand('copy');
+        document.body.removeChild(textArea);
+    } catch (err) {
+        success = false;
+    }
+    if (success) {
+        if (successCb) successCb();
+    } else {
+        prompt('لطفاً لینک را به صورت دستی کپی فرمایید:', text);
+    }
+}
+
+function copyTabInput(inputId, label, btnElem) {
+    const input = document.getElementById(inputId);
+    const text = input ? input.value : '';
+    copyTextDirectly(text, label, btnElem, input);
+}
+
+function copyLink(text, label, btnElem) {
+    copyTextDirectly(text, label, btnElem);
 }
 
 function toggleDebtorFields(selectElem, targetId) {
@@ -3485,22 +3546,65 @@ function downloadQrCode(elementId, filename) {
     if (!container) return;
     const canvas = container.querySelector('canvas');
     const img = container.querySelector('img');
-    let dataUrl = '';
-    if (canvas) {
+
+    // قاب سفید دور بارکد (Quiet Zone) به اندازه ۳۵ پیکسل برای اسکن استاندارد
+    const padding = 35;
+
+    const triggerDownload = (sourceDrawable, srcW, srcH) => {
         try {
-            dataUrl = canvas.toDataURL('image/png');
-        } catch (e) {}
+            const offscreenCanvas = document.createElement('canvas');
+            offscreenCanvas.width = srcW + (padding * 2);
+            offscreenCanvas.height = srcH + (padding * 2);
+            const ctx = offscreenCanvas.getContext('2d');
+
+            // پر کردن پس‌زمینه با رنگ سفید خالص
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
+
+            // ترسیم بارکد دقیقاً در وسط قاب سفید
+            ctx.drawImage(sourceDrawable, padding, padding, srcW, srcH);
+
+            const dataUrl = offscreenCanvas.toDataURL('image/png');
+            const a = document.createElement('a');
+            a.href = dataUrl;
+            a.download = filename || ('qrcode_' + Date.now() + '.png');
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        } catch (e) {
+            console.error('Error generating padded QR code download:', e);
+            // در صورت بروز هرگونه خطای canvas فال‌بک مستقیم
+            if (canvas) {
+                const a = document.createElement('a');
+                a.href = canvas.toDataURL('image/png');
+                a.download = filename || ('qrcode_' + Date.now() + '.png');
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            } else if (img && img.src) {
+                const a = document.createElement('a');
+                a.href = img.src;
+                a.download = filename || ('qrcode_' + Date.now() + '.png');
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
+        }
+    };
+
+    if (canvas && canvas.width > 0) {
+        triggerDownload(canvas, canvas.width, canvas.height);
     } else if (img && img.src) {
-        dataUrl = img.src;
-    }
-    if (dataUrl) {
-        const a = document.createElement('a');
-        a.href = dataUrl;
-        a.download = filename || ('qrcode_' + Date.now() + '.png');
-        a.target = '_blank';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        if (img.complete && img.naturalWidth > 0) {
+            triggerDownload(img, img.naturalWidth, img.naturalHeight);
+        } else {
+            const tempImg = new Image();
+            tempImg.crossOrigin = 'Anonymous';
+            tempImg.onload = function() {
+                triggerDownload(tempImg, tempImg.naturalWidth, tempImg.naturalHeight);
+            };
+            tempImg.src = img.src;
+        }
     } else {
         alert('تصویر بارکد برای دانلود آماده نیست.');
     }
@@ -3717,11 +3821,12 @@ function executePatternTransfer() {
 
 async function shareConnectionLink(url, title) {
     if (!url) return;
+    const shareTitle = title || 'لینک اتصال شما';
     if (navigator.share) {
         try {
             await navigator.share({
-                title: title || 'لینک اتصال VPN',
-                text: `${title || 'لینک اتصال شما'}:\n${url}`,
+                title: shareTitle,
+                text: shareTitle,
                 url: url
             });
             return;
